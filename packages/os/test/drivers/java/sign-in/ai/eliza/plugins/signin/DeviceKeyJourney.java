@@ -61,6 +61,7 @@ public final class DeviceKeyJourney {
     final Map<String, Grant1> codes = new ConcurrentHashMap<>();
     final Map<String, String> live = new ConcurrentHashMap<>();
     final List<String> revoked = new CopyOnWriteArrayList<>();
+    final List<String> revokeSuccessors = new CopyOnWriteArrayList<>();
     final List<String> proofs = new CopyOnWriteArrayList<>();
     final AtomicInteger issued = new AtomicInteger(), tokenAsks = new AtomicInteger(), revokeAsks = new AtomicInteger(), refreshes = new AtomicInteger();
     final AtomicInteger ackAsks = new AtomicInteger();
@@ -191,6 +192,8 @@ public final class DeviceKeyJourney {
         }
         case "DELETE " + DeviceKeyClient.REVOKE -> {
           revokeAsks.incrementAndGet();
+          String successor = x.getRequestHeaders().getFirst("X-Renewed-Credential-Id");
+          revokeSuccessors.add(successor == null ? "" : successor);
           if (offline) { answer(x, 503, "{\"error\":\"service_unavailable\"}"); return; }
           String credentialId = live.remove(bearer(x));
           if (credentialId == null) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
@@ -443,7 +446,20 @@ public final class DeviceKeyJourney {
     seen.add(take("secondSignIn", signIn()));
     seen.add(take("secondHeld", held()));
     seen.add(take("owedAfterReplace", store.owed().size()));
+    String successor = store.current().credentialId();
+    String named = ",\"successor\":" + CredentialJson.quote(successor);
+    String saved = slots.read(prefix + "credential");
+    slots.write(prefix + "credential", saved.replace(named, "").replace(",\"lease\":false", named)
+        .replace(",\"lease\":{\"tag\":\"NoLease\"}", ""));
+    start();
+    cloud.offline = true;
     client.settleDuties();
+    cloud.offline = false;
+    start();
+    client.settleDuties();
+    if (!cloud.revokeSuccessors.equals(List.of(successor, successor)) || !saved.contains(named)) {
+      throw new IllegalStateException("Replacement must name its saved successor on retry after restart");
+    }
     seen.add(take("revokedAfterReplace", String.join(",", cloud.revoked)));
 
     cloud.offline = true;
@@ -461,6 +477,7 @@ public final class DeviceKeyJourney {
     String retired = store.owed().get(0).value();
     int beforeRetry = cloud.revokeAsks.get();
     client.settleDuties();
+    if (!cloud.revokeSuccessors.get(beforeRetry).isEmpty()) throw new IllegalStateException("Sign-out must not name a successor");
     seen.add(take("onlineRevokeAsks", cloud.revokeAsks.get() - beforeRetry));
     seen.add(take("alreadyRevoked", client.revoke(retired)));
     seen.add(take("revokedAfterStart", String.join(",", cloud.revoked)));
