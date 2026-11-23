@@ -1,11 +1,11 @@
-// spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "My whole-message open command opens the address without waiting on the model's choice"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"
+// spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "My whole-message open command opens the address without waiting on the model's choice"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/browser/control.md, "Showing the tab list requires both capabilities and a whole-message request"
 import type { ActionParameterSchema } from "@elizaos/core"
 import { decodeBrowserPage } from "@elizaos/agent/client"
 import type { CheckedOperation, DeviceOperation, DeviceProposalFamily, DeviceTurn, Grounding, NegotiatedDevice, ProposalForm, ProposalText } from "@elizaos/agent/device-actions"
 import { refusalReply, type BrowserRefusal, type RefusalReply } from "../gen/browser__control.effect.vibe"
 import { emptyTabOpensAddress, openAskedFirst, openBound, opensInNewTab } from "../gen/browser__requestGrounding.effect.vibe"
 import {
-  BROWSER_HISTORY_ACTIONS, browserCloseAnswer, browserControlBound, browserControlCapabilityAvailable, browserHistoryHome, browserNavigationAvailable,
+  BROWSER_HISTORY_ACTIONS, browserCloseAnswer, browserControlBound, browserControlCapabilityAvailable, browserHistoryHome, browserNavigationAvailable, browserTabListAvailable,
   type BrowserControlOperation, type BrowserControlType,
 } from "./contract.vibe"
 import {
@@ -16,13 +16,14 @@ import {
 type BrowserProposalType = "browser_navigate" | BrowserControlType
 
 export const BROWSER_PROPOSAL_TYPES: readonly BrowserProposalType[] = [
-  "browser_navigate", "browser_search", "browser_tab_new", "browser_tab_switch", "browser_tab_close", "browser_find", "browser_history",
+  "browser_navigate", "browser_search", "browser_tab_new", "browser_tab_switch", "browser_tab_close", "browser_tabs_show", "browser_find", "browser_history",
 ]
 
 const NAVIGATE_GUIDANCE = 'HTTPS browser navigation: browser_navigate opens a web address in the phone Browser only when the owner asks now to open, visit or go to an address they typed in this message, including "in the browser" or "in a new tab", writing any spoken hostname dots as periods ("example dot com" is example.com), or a link of the browserPage this message carried that they point to ("open the second story", "open the one about BSD"), with that link\'s exact url; the owner reviews a page link. Opening the Browser view does not load an address: use browser_navigate for the address, not open_view browser, VIEWS or browser_tab_new. Never for a deferred, hypothetical, question-about, past or reported mention, a site name with no address, or an address the owner says not to open. Navigation only: never claim page content or that the page loaded.'
 const NEW_TAB_GUIDANCE = "To open a typed address in a new tab, propose one browser_navigate with newTab true, never browser_tab_new."
 const SEARCH_GUIDANCE = "browser_search opens a web search in the phone Browser when the owner asks to search the web, look something up online or google something now. query must be words the user typed in this message, copied exactly; never add, reorder or reword them. The phone builds the search with its own search engine. You receive no results and no page content; never claim what the search found."
 const TABS_GUIDANCE = "Browser tabs: browser_tab_new opens an empty tab and never loads an address. browser_tab_switch shows an open tab and browser_tab_close closes one, or every open tab with all true when the owner asks to close all of them; never narrow a request for several or all tabs to the one showing. The phone finds the tab, the owner picks when more than one matches, and the phone reports when no open tab matches. Closing a tab is always reviewed by the owner. You never receive the list of tabs, a title or an address; never say which tabs are open."
+const TAB_LIST_GUIDANCE = "browser_tabs_show brings the tab list forward on the phone when the owner asks to see or list open tabs. You receive no tab title, address or count."
 const FIND_GUIDANCE = "browser_find shows the matches for text on the page open in the phone Browser. You receive no match count and no page content."
 const HISTORY_GUIDANCE = "browser_history goes back, forward, reloads or stops loading on the tab that is showing in the phone Browser."
 
@@ -78,6 +79,7 @@ const FORMS: readonly ProposalForm[] = [
     target: { type: "string", description: `${tabWord}. Leave it and all out to close only the tab that is showing.` },
     all: { type: "boolean", enum: [true], description: "true when the owner asks to close all or every open tab; never with target. Without it exactly one tab closes." },
   }, [], negotiated("browser_tab_close")),
+  form("browser_tabs_show", {}, [], negotiated("browser_tabs_show"), TAB_LIST_GUIDANCE),
   form("browser_find", { text: { type: "string", description: "The text to find on the page" } }, ["text"], negotiated("browser_find"), FIND_GUIDANCE),
   form("browser_history", { action: { type: "string", enum: [...BROWSER_HISTORY_ACTIONS] } }, ["action"],
     (device) => browserHistoryHome(device.capabilities, false) === "HistoryAsControl", HISTORY_GUIDANCE),
@@ -140,6 +142,10 @@ effect function ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!
       if (query === undefined) return refused("SearchNotTyped", turn)
       return controlled({ type: "browser_search", query }, turn, browserSearchQueryMatches(query, directBrowserSearchQuery(turn.ownerText, turn.assistantName)))
     }
+    case "browser_tabs_show":
+      return browserTabListAvailable(turn.ownerText, turn.assistantName, turn.capabilities)
+        ? grounded(operation, true)
+        : { kind: "Refused", code: "DEVICE_BROWSER_TAB_LIST_NOT_REQUESTED", forModel: "This message did not ask only to see open tabs on this phone. No tab list was opened.", forOwner: "Ask me to show your open tabs." }
     case "browser_tab_close":
       return browserCloseAnswer(operation, turn.capabilities) === "CloseEveryRefused" ? refused("CloseEveryUnavailable", turn) : controlled(operation, turn, false)
     case "browser_tab_new": {
@@ -157,6 +163,7 @@ effect function ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!
 }
 
 function wholeMessageOperation(turn: DeviceTurn): DeviceOperation | undefined {
+  if (browserTabListAvailable(turn.ownerText, turn.assistantName, turn.capabilities)) return { type: "browser_tabs_show" }
   const asked = authoredBrowserOpen(turn.ownerText, turn.assistantName)
   return openAskedFirst(asked !== undefined, opensAddresses(turn)) && asked !== undefined ? { type: "browser_navigate", url: asked.href } : undefined
 }
@@ -167,6 +174,7 @@ const CONTROLLING = "The requesting phone runs this requested Browser control ri
 function directText(operation: DeviceOperation): ProposalText | undefined {
   switch (operation.type) {
     case "browser_navigate": return { forOwner: `Opening ${URL.parse(operation.url)?.host ?? operation.url}.`, forModel: OPENING }
+    case "browser_tabs_show": return { forOwner: "Opening your tab list in Browser.", forModel: "The requesting phone will open its Browser tab list. You will receive no tab data or count." }
     case "browser_search": return { forOwner: `Searching the web for “${operation.query}”.`, forModel: CONTROLLING }
     case "browser_tab_new":
     case "browser_tab_switch":

@@ -1,6 +1,6 @@
-// spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"
-import { closeAllApprovable, closeAllReview, closeAnswer, closeFormOffered, controlBound, controlOffered, historyHome, navigationOffered, reviewAdmitted, runsUnreviewed, type BrowserControl, type CloseAnswer, type HistoryHome, type Negotiated, type TabCloseForm } from "../gen/browser__control.effect.vibe"
-import { BROWSER_SEARCH_QUERY_MAX } from "./grounding.vibe"
+// spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/control.md, "Showing the tab list requires both capabilities and a whole-message request"
+import { closeAllApprovable, closeAllReview, closeAnswer, closeFormOffered, controlBound, controlOffered, historyHome, navigationOffered, reviewAdmitted, runsUnreviewed, tabListAsked, type BrowserControl, type CloseAnswer, type HistoryHome, type Negotiated, type TabCloseForm } from "../gen/browser__control.effect.vibe"
+import { asksToSeeBrowserTabs, BROWSER_SEARCH_QUERY_MAX } from "./grounding.vibe"
 
 export const BROWSER_SEARCH_CAPABILITY = "browser.search.v1"
 export const BROWSER_TABS_CAPABILITY = "browser.tabs.v1"
@@ -8,6 +8,7 @@ export const BROWSER_FIND_CAPABILITY = "browser.find.v1"
 export const BROWSER_HISTORY_CAPABILITY = "browser.history.v1"
 export const BROWSER_OPEN_NEW_TAB_CAPABILITY = "browser.open-new-tab.v1"
 export const BROWSER_TABS_CLOSE_ALL_CAPABILITY = "browser.tabs.close-all.v1"
+export const BROWSER_TABS_SHOW_CAPABILITY = "browser.tabs.show.v1"
 
 export const BROWSER_TAB_TARGET_MAX = 128
 export const BROWSER_FIND_TEXT_MAX = 256
@@ -21,6 +22,7 @@ export type BrowserControlOperation =
   | { readonly type: "browser_tab_new"; readonly private?: true }
   | { readonly type: "browser_tab_switch"; readonly target: string }
   | { readonly type: "browser_tab_close"; readonly target?: string; readonly all?: true }
+  | { readonly type: "browser_tabs_show" }
   | { readonly type: "browser_find"; readonly text: string }
   | { readonly type: "browser_history"; readonly action: BrowserHistoryAction }
 
@@ -47,12 +49,13 @@ const CONTROLS: Readonly<Record<BrowserControlType, BrowserControl>> = {
   browser_tab_new: "TabNewControl",
   browser_tab_switch: "TabSwitchControl",
   browser_tab_close: "TabCloseControl",
+  browser_tabs_show: "TabListControl",
   browser_find: "FindControl",
   browser_history: "HistoryControl",
 }
 
 export const BROWSER_CONTROL_TYPES: readonly BrowserControlType[] = [
-  "browser_search", "browser_tab_new", "browser_tab_switch", "browser_tab_close", "browser_find", "browser_history",
+  "browser_search", "browser_tab_new", "browser_tab_switch", "browser_tab_close", "browser_tabs_show", "browser_find", "browser_history",
 ]
 
 export const BROWSER_CONTROL_DIRECT_TYPES: readonly BrowserControlType[] = BROWSER_CONTROL_TYPES.filter((type) =>
@@ -72,7 +75,12 @@ function negotiatedOf(capabilities: readonly string[] | undefined): Negotiated {
     historyCapability: has(BROWSER_HISTORY_CAPABILITY),
     newTabCapability: has(BROWSER_OPEN_NEW_TAB_CAPABILITY),
     closeAllCapability: has(BROWSER_TABS_CLOSE_ALL_CAPABILITY),
+    tabListCapability: has(BROWSER_TABS_SHOW_CAPABILITY),
   }
+}
+
+export function browserTabListAvailable(text: string, assistantName: string, capabilities?: readonly string[]): boolean {
+  return tabListAsked(asksToSeeBrowserTabs(text, assistantName), negotiatedOf(capabilities))
 }
 
 export function isBrowserControlType(type: unknown): type is BrowserControlType {
@@ -189,6 +197,7 @@ export function parseBrowserControl(value: unknown): BrowserParse<BrowserControl
       const target = words(named, BROWSER_TAB_TARGET_MAX)
       return target === undefined ? refuse("Invalid tab target") : accept({ type: value.type, target })
     }
+    case "browser_tabs_show": return onlyKeys(value, []) ? accept({ type: value.type }) : refuse("Unexpected Browser field")
     case "browser_find": {
       if (!onlyKeys(value, ["text"])) return refuse("Unexpected Browser field")
       const text = words(field(value, "text"), BROWSER_FIND_TEXT_MAX)
@@ -250,6 +259,7 @@ export function describeBrowserControl(operation: BrowserControlOperation, closi
           : { title: `Close ${plural(closing.length, "tab")}`, description: `${closingList(closing)}\n\nCloses every tab listed here. The agent does not see your tabs.` }
       }
       return { title: "Close tab", description: operation.target === undefined ? "Closes the tab that is showing in Browser." : `Tab matching ${quoted(operation.target)}${TAB_MATCH}` }
+    case "browser_tabs_show": return { title: "Show open tabs", description: "Opens the tab list in Browser." }
     case "browser_find":
       return { title: "Find in page", description: `${quoted(operation.text)}\n\nShows the matches on the page that is open in Browser. The agent does not see the page.` }
     case "browser_history":

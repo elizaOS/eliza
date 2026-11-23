@@ -41,7 +41,7 @@ type OperationType =
   | SmsDraft | PhoneKeypad | ContactShow | ContactReadSelected
   | ReadSelectedNotes | ReadCalendarRange | ReadSelectedReminders | PostNotification | SpeakText
   | CreateNote | CreateReminder | OpenView | BrowserNavigate
-  | BrowserSearch | BrowserTabNew | BrowserTabSwitch | BrowserTabClose | BrowserFind | BrowserHistory
+  | BrowserSearch | BrowserTabNew | BrowserTabSwitch | BrowserTabsShow | BrowserTabClose | BrowserFind | BrowserHistory
 type Family = CalendarFamily | ReminderFamily | ReminderCreateFamily | CameraFamily | FilesFamily | ReviewFamily | MapsFamily | NotesFamily
   | NotesOrganizeFamily | NotesQueryFamily | PhotoLibraryFamily | PhotosViewFamily | TelephonyFamily | ClockFamily | WorkflowFamily | BaseFamily
   | BrowserFamily
@@ -69,7 +69,7 @@ pure def wireType(t: OperationType): str = match t {
   | PostNotification => "post_notification" | SpeakText => "speak_text"
   | CreateNote => "create_note" | CreateReminder => "create_reminder" | OpenView => "open_view" | BrowserNavigate => "browser_navigate"
   | BrowserSearch => "browser_search" | BrowserTabNew => "browser_tab_new" | BrowserTabSwitch => "browser_tab_switch"
-  | BrowserTabClose => "browser_tab_close" | BrowserFind => "browser_find" | BrowserHistory => "browser_history"
+  | BrowserTabsShow => "browser_tabs_show" | BrowserTabClose => "browser_tab_close" | BrowserFind => "browser_find" | BrowserHistory => "browser_history"
 }
 pure def family(t: OperationType): Family = match t {
   | CalendarCreateLocal => CalendarFamily | CalendarReadNext => CalendarFamily | CalendarCreate => CalendarFamily
@@ -95,7 +95,7 @@ pure def family(t: OperationType): Family = match t {
   | PostNotification => WorkflowFamily | SpeakText => WorkflowFamily
   | CreateNote => BaseFamily | CreateReminder => BaseFamily | OpenView => BaseFamily | BrowserNavigate => BaseFamily
   | BrowserSearch => BrowserFamily | BrowserTabNew => BrowserFamily | BrowserTabSwitch => BrowserFamily
-  | BrowserTabClose => BrowserFamily | BrowserFind => BrowserFamily | BrowserHistory => BrowserFamily
+  | BrowserTabsShow => BrowserFamily | BrowserTabClose => BrowserFamily | BrowserFind => BrowserFamily | BrowserHistory => BrowserFamily
 }
 pure def lawOneWireTypeIsOneOperation(a: OperationType, b: OperationType): bool =
   wireType(a) == wireType(b) implies
@@ -181,7 +181,7 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
   | BrowserFamily =>
       if (t == BrowserSearch) needOne(BrowserSearchV1) else if (t == BrowserFind) needOne(BrowserFindV1)
       else if (t == BrowserHistory) needOne(BrowserHistoryV1) else if (t == BrowserTabClose and versionTwo) needAll(BrowserTabsV1, BrowserTabsCloseAllV1)
-      else needOne(BrowserTabsV1)
+      else if (t == BrowserTabsShow) needAll(BrowserTabsV1, BrowserTabsShowV1) else needOne(BrowserTabsV1)
 }
 pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: Set() }), Negotiated({ capabilities: Set(ClockHandoffV1) }),
   Negotiated({ capabilities: Set(ClockHandoffV1, ClockHandoffV2) }), Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV1, NotesLocalRecordV1) }),
@@ -189,7 +189,7 @@ pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: S
   Negotiated({ capabilities: Set(CameraCapturePhotoV1, BrowserOpenNewTabV1) }),
   Negotiated({ capabilities: Set(CameraCapturePhotoV1, CameraCaptureLensV1) }),
   Negotiated({ capabilities: Set(BrowserTabsV1, BrowserTabsCloseAllV1, BrowserOpenNewTabV1, FilesBrowserV1, FilesShownTargetV1) }),
-  Negotiated({ capabilities: Set(BrowserTabsV1, FilesBrowserV1) }))
+  Negotiated({ capabilities: Set(BrowserTabsV1, FilesBrowserV1) }), Negotiated({ capabilities: Set(BrowserTabsV1, BrowserTabsShowV1) }))
 pure def clockOnly(neg: Negotiation): bool = allCapabilities.forall(c => negotiatedHas(neg, c) implies (c == ClockHandoffV1 or c == ClockHandoffV2))
 pure def recordingAlone(neg: Negotiation): bool = negotiatedHas(neg, NotesRecordV1)
 pure def lawRecordingRunsUnderItsOwnCapabilityAlone(t: OperationType): bool =
@@ -333,7 +333,7 @@ the [Browser](../../browser/control.md)'s.
 pure def directEligible(t: OperationType): bool =
   t == FilesFilter or t == FilesOpen or t == NotesFilter or t == NotesListFilter or t == NotesRecord or t == PhotosFilter or t == PhotosOpen
   or t == CreateNote or t == OpenView or t == BrowserNavigate or t == CameraCapturePhoto or t == PhotoLibrarySelect or t == SmsReplySelected
-  or t == BrowserSearch or t == BrowserTabNew or t == BrowserTabSwitch or t == BrowserFind or t == BrowserHistory
+  or t == BrowserSearch or t == BrowserTabNew or t == BrowserTabSwitch or t == BrowserTabsShow or t == BrowserFind or t == BrowserHistory
   or t == SmsDraft or t == PhoneKeypad or t == SmsLatestSender
 pure def mayRunDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
   directEligible(prop.opType) and prop.binding == NoBinding and boundToCurrentMessage
