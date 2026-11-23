@@ -32,6 +32,7 @@ function port(provider: "eliza" | "google", rows: readonly CalendarSummary[], ev
   return {
     provider,
     recurrenceLines: false,
+    notifies: false,
     effect sources() { return rows },
     effect read() { return { events, complete: true } },
     effect get(_account, _source, eventId) { return events.find((event) => event.id === eventId) },

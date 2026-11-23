@@ -1,8 +1,9 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
-import type { Memory, UUID } from "@elizaos/core"
+import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply } from "../gen/agent__conversation__planning.ts"
+import { groundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
@@ -386,3 +387,31 @@ it.live(`The open Browser page reaches the model once, fenced as web content fro
     storedBound: page, hidden: false, storedStale: false,
   }))
 }, 120_000)
+
+it.effect(`A calendar change is reported at the time it got (spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is replaced by the change's own words")`, effect () => {
+  const own = "Updated Dentist, Mar 4, 2030, 9:00 AM."
+  const changed = (id: string, version = "v2", receipt = true): ActionResult => ({
+    success: true, text: own,
+    data: { event: { id, agentId: "agent-1", isAllDay: false, startAt: "2030-03-04T17:00:00.000Z", endAt: "2030-03-04T18:00:00.000Z", timezone: "America/Los_Angeles", title: "Dentist", metadata: { etag: version } } },
+    effectReceipts: receipt ? [{
+      receiptId: `receipt-${id}`, operation: "calendar.event.update", resource: { kind: "calendar.event", id, version }, artifacts: [], idempotency: { key: id, replayed: false },
+      observedAt: "2030-03-01T00:00:00.000Z", outcome: "applied", commit: { kind: "durable", id, committedAt: "2030-03-01T00:00:00.000Z" },
+    }] : [],
+  })
+  const reply = (said: string, results: readonly ActionResult[], request = "Move my dentist to 9am") => groundedEventReply(said, request, results, "agent-1")
+  try Effect.try(() => assert.deepStrictEqual([
+    reply("Done, your dentist is now 3–4 PM.", [changed("e1")]),
+    reply("Done, your dentist is now 9–10 AM.", [changed("e1")]),
+    reply("Done, your dentist is now 09:00-10:00.", [changed("e1")]),
+    reply("Done, your dentist is now 3–4 PM.", [changed("e1"), changed("e1")]),
+    reply("Done, your dentist is now 3–4 PM UTC.", [changed("e1")]),
+    reply("Done, your dentist is now at 3 PM.", [changed("e1")]),
+    reply("Done, your dentist is now 3–4 PM.", [changed("e1")], "What time is it?"),
+    reply("Done, your dentist is now 3–4 PM.", [changed("e1"), changed("e2")]),
+    reply("Done, your dentist is now 3–4 PM.", [changed("e1", "v2", false)]),
+    reply("Done, your dentist is now 3–4 PM.", [{ ...changed("e1"), data: { event: { ...(changed("e1").data?.event as object), agentId: "agent-2" } } }]),
+  ], [
+    own, "Done, your dentist is now 9–10 AM.", "Done, your dentist is now 09:00-10:00.", own, "Done, your dentist is now 3–4 PM UTC.", "Done, your dentist is now at 3 PM.",
+    "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.",
+  ]))
+})

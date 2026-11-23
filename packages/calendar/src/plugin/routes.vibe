@@ -1,10 +1,11 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
+import { clientNoticeRefused } from "../../gen/calendar__actions.effect.vibe"
 import type { CalendarEvent } from "../model.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { eventVersion } from "./providers.vibe"
-import type { CalendarChangeResult, CalendarHost, CalendarRefusal } from "./host.vibe"
+import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarRefusal } from "./host.vibe"
 
 /** What the agent's route table hands a calendar route. */
 export interface CalendarRouteInput {
@@ -35,21 +36,21 @@ const Key = Schema.String.check(Schema.makeFilter((key) => key.trim() !== "" && 
 const CreateBody = Schema.Struct({
   title: Schema.String, description: Schema.optionalKey(Schema.String), location: Schema.optionalKey(Schema.String),
   startAt: Instant, endAt: Instant, isAllDay: Schema.optionalKey(Schema.Boolean), timeZone: Schema.optionalKey(Schema.String),
-  calendarId: Schema.optionalKey(Schema.String), recurrence: Schema.optionalKey(RecurrenceRecord), idempotencyKey: Key,
+  calendarId: Schema.optionalKey(Schema.String), recurrence: Schema.optionalKey(RecurrenceRecord), attendees: Schema.optionalKey(Schema.Array(Schema.String)), idempotencyKey: Key,
 })
 const UpdateBody = Schema.Struct({
   title: Schema.optionalKey(Schema.String), notes: Schema.optionalKey(Schema.String), location: Schema.optionalKey(Schema.String),
   startAt: Schema.optionalKey(Instant), endAt: Schema.optionalKey(Instant), isAllDay: Schema.optionalKey(Schema.Boolean),
   timeZone: Schema.optionalKey(Schema.String), calendarId: Schema.optionalKey(Schema.String), recurrenceScope: Schema.optionalKey(WriteScopeRecord),
-  expectedProviderVersion: Key, idempotencyKey: Key,
+  attendees: Schema.optionalKey(Schema.Array(Schema.String)), notifyAttendees: Schema.optionalKey(Schema.Boolean), expectedProviderVersion: Key, idempotencyKey: Key,
 })
 const RespondBody = Schema.Struct({
   responseStatus: Schema.Literals(["accepted", "tentative", "declined"]), recurrenceScope: Schema.optionalKey(Schema.Literals(["instance", "series"])),
-  calendarId: Schema.optionalKey(Schema.String), expectedProviderVersion: Key, idempotencyKey: Key,
+  calendarId: Schema.optionalKey(Schema.String), notifyAttendees: Schema.optionalKey(Schema.Boolean), expectedProviderVersion: Key, idempotencyKey: Key,
 })
 const decodeScope = Schema.decodeUnknownOption(WriteScopeRecord)
 const decodeRespond = Schema.decodeUnknownOption(RespondBody)
-const refusalStatus: Partial<Record<CalendarRefusal, number>> = { no_account: 409, answers_unsupported: 501, answer_scope: 400 }
+const refusalStatus: Partial<Record<CalendarRefusal, number>> = { no_account: 409, answers_unsupported: 501, deletes_unsupported: 501, answer_scope: 400 }
 const decodeCreate = Schema.decodeUnknownOption(CreateBody)
 const decodeUpdate = Schema.decodeUnknownOption(UpdateBody)
 const decodeFields = Schema.decodeUnknownOption(FieldsRecord)
@@ -104,8 +105,13 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
       if (found === undefined) return refused(409, "CALENDAR_NO_ACCOUNT", "No calendar account is active.")
       return { status: 200, body: { calendarId: calendarId ?? "all", events: [...found.events], source: "synced",
         state: found.complete ? "complete" : found.events.length > 0 ? "partial" : "unavailable",
-        sources: [], timeMin: found.timeMin, timeMax: found.timeMax, syncedAt: found.complete ? new Date().toISOString() : null } }
+        sources: [...found.sources], timeMin: found.timeMin, timeMax: found.timeMax, syncedAt: found.complete ? new Date().toISOString() : null } }
     })
+  }
+
+  async function unannounced(calendar: CalendarHost, found: CalendarFound, asked: boolean): Promise<CalendarRouteReply | undefined> {
+    return clientNoticeRefused(asked, await runPromise(calendar.notifies(found.source)))
+      ? refused(400, "CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED", "This calendar cannot email attendees, so nothing was changed.") : undefined
   }
 
   async function target(calendar: CalendarHost, input: CalendarRouteInput, calendarId: string | undefined, expected: string) {
@@ -135,7 +141,7 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         const startsAt = event === null ? null : event.startAt
         return { status: 200, body: {
           event, readScope: { selection: "next_event", timeMin: found.timeMin, timeMax: found.timeMax, exhaustive: false },
-          calendarFeedState: found.complete ? "complete" : "partial", calendarSources: [],
+          calendarFeedState: found.complete ? "complete" : "partial", calendarSources: [...found.sources],
           startsAt, startsInMinutes: startsAt === null ? null : Math.round((Date.parse(startsAt) - now) / 60_000),
           attendeeCount: event?.attendees.length ?? 0, attendeeNames: (event?.attendees ?? []).flatMap((attendee) => attendee.displayName ?? attendee.email ?? []),
           location: event === null || event.location === "" ? null : event.location,
@@ -148,7 +154,8 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         if (Option.isNone(body)) return refused(400, "CALENDAR_REQUEST_INVALID", "The event needs a title, a start, an end and an idempotency key.")
         const request = body.value
         const fields = decodeFields({ title: request.title, description: request.description ?? "", location: request.location ?? "",
-          startAt: canonical(request.startAt), endAt: canonical(request.endAt), isAllDay: request.isAllDay ?? false, timeZone: request.timeZone ?? hostZone() })
+          startAt: canonical(request.startAt), endAt: canonical(request.endAt), isAllDay: request.isAllDay ?? false, timeZone: request.timeZone ?? hostZone(),
+          ...(request.attendees === undefined ? {} : { attendees: request.attendees }) })
         if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return refused(400, "CALENDAR_FIELDS_INVALID", "The event needs a title and a start before its end.")
         const source = await runPromise(calendar.writeTarget(request.calendarId))
         if (source === undefined) return refused(403, "CALENDAR_NOT_WRITABLE", "There is no calendar this account can write.")
@@ -161,14 +168,18 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         const request = body.value
         const found = await target(calendar, input, request.calendarId, request.expectedProviderVersion)
         if (!("event" in found)) return found
+        const silent = await unannounced(calendar, found, request.notifyAttendees === true)
+        if (silent !== undefined) return silent
         const event = found.event
         const fields = decodeFields({
           title: request.title ?? event.title, description: request.notes ?? event.description, location: request.location ?? event.location,
           startAt: canonical(request.startAt ?? event.startAt), endAt: canonical(request.endAt ?? event.endAt),
           isAllDay: request.isAllDay ?? event.isAllDay, timeZone: request.timeZone ?? event.timezone ?? hostZone(),
+          ...(request.attendees === undefined ? {} : { attendees: request.attendees }),
         })
         if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return refused(400, "CALENDAR_FIELDS_INVALID", "The event needs a title and a start before its end.")
-        return changed(await runPromise(Effect.option(calendar.change({ kind: "update", target: found, scope: request.recurrenceScope ?? "instance", fields: fields.value, askedBy: "owner", askId: request.idempotencyKey }))))
+        return changed(await runPromise(Effect.option(calendar.change({ kind: "update", target: found, scope: request.recurrenceScope ?? "instance", fields: fields.value,
+          notifyAttendees: request.notifyAttendees === true, askedBy: "owner", askId: request.idempotencyKey }))))
       }) },
     { method: "POST", path: `${base}/events/{eventId}/response`, maxBodyBytes: 4_096,
       handler: (input) => withHost(async (calendar) => {
@@ -179,8 +190,10 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         const request = body.value
         const found = await target(calendar, input, request.calendarId, request.expectedProviderVersion)
         if (!("event" in found)) return found
+        const silent = await unannounced(calendar, found, request.notifyAttendees === true)
+        if (silent !== undefined) return silent
         return changed(await runPromise(Effect.option(calendar.change({ kind: "respond", target: found, scope: request.recurrenceScope ?? "instance", response: request.responseStatus,
-          askedBy: "owner", askId: request.idempotencyKey }))))
+          notifyAttendees: request.notifyAttendees === true, askedBy: "owner", askId: request.idempotencyKey }))))
       }) },
     { method: "DELETE", path: `${base}/events/{eventId}`, query: anyOf("calendarId", "grantId", "side", "recurrenceScope", "notifyAttendees", "expectedProviderVersion", "idempotencyKey", "cancellationMode"),
       handler: (input) => withHost(async (calendar) => {
@@ -193,7 +206,9 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         if (Option.isNone(scope)) return refused(400, "CALENDAR_SCOPE_INVALID", "The recurrence scope is instance, this_and_following or series.")
         const found = await target(calendar, input, input.query.get("calendarId"), expected)
         if (!("event" in found)) return found
-        return changed(await runPromise(Effect.option(calendar.change({ kind: "delete", target: found, scope: scope.value, askedBy: "owner", askId: key }))))
+        const silent = await unannounced(calendar, found, input.query.get("notifyAttendees") === "true")
+        if (silent !== undefined) return silent
+        return changed(await runPromise(Effect.option(calendar.change({ kind: "delete", target: found, scope: scope.value, notifyAttendees: input.query.get("notifyAttendees") === "true", askedBy: "owner", askId: key }))))
       }) },
   ]
 }

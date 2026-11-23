@@ -5,7 +5,7 @@ import {
   executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
-import { groundedTimeReply, turnClock } from "./clock.vibe"
+import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
 import { textForTurn } from "./heard.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "./turn-context.schema.vibe"
@@ -209,7 +209,7 @@ async function respond(
           ...(options?.onActivityStatus === undefined ? {} : { onActivityStatus: options.onActivityStatus }),
         }, actions)
         signal.throwIfAborted()
-        const replyText = groundedTimeReply(planned.reply, asked, clock)
+        const replyText = groundedEventReply(groundedTimeReply(planned.reply, asked, clock), asked, planned.steps.map(({ result }) => result), runtime.agentId)
         if (!replyText.trim()) throw new Error("The turn produced no reply")
         if (onStreamChunk !== undefined && replyText !== written) options?.onReplyRestart?.(replyText)
         written = replyText

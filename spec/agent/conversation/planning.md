@@ -417,6 +417,31 @@ pure def lawAWrongStatementIsReplaced(statement: StatedTime, localClock: LocalCl
   statementDisagrees(statement, localClock) implies statedTimeIsUngrounded(true, true, List(statement), localClock)
 ```
 
+### A reply that gives a just-changed calendar event a time range other than the one it got is replaced by the change's own words
+
+When a turn's actions applied exactly one timed calendar event, through a
+successful result that carries the event (its id, start, end, zone and
+version, and a title naming no clock time) and its own applied create or
+update receipt for that event at that version, a reply that states one
+clock range, a start and an end such as "3–4 PM", is read on the event's
+own clock. When its start or end is not the event's, the reply is
+replaced by that action's own words, with no further model call. A reply
+to a current-time question, one that states a single clock time, a zone
+or an offset, and a turn that changed no event or more than one, are kept
+as they are; identical copies of one result count as one event.
+
+```quint
+pure def eventRangeIsUngrounded(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int, rangeMatches: bool): bool =
+  not(asksTime) and oneRange and not(zoneStated) and changedEvents == 1 and not(rangeMatches)
+pure def lawTheAppliedRangeIsKept(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int): bool =
+  not(eventRangeIsUngrounded(asksTime, oneRange, zoneStated, changedEvents, true))
+pure def lawOnlyOneChangedEventJudgesARange(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int, rangeMatches: bool): bool =
+  eventRangeIsUngrounded(asksTime, oneRange, zoneStated, changedEvents, rangeMatches) implies changedEvents == 1
+pure def lawAZoneOrASingleClockIsLeftToTheReply(asksTime: bool, changedEvents: int, rangeMatches: bool): bool =
+  not(eventRangeIsUngrounded(asksTime, true, true, changedEvents, rangeMatches)) and not(eventRangeIsUngrounded(asksTime, false, false, changedEvents, rangeMatches))
+pure val changedEventsValues = Set(0, 1, 2)
+```
+
 ## Story: Let my plugins learn from a finished turn
 
 > As the maker of a product, I want the evaluators my plugins register to

@@ -53,6 +53,7 @@ export interface CalendarUpdateRequest {
   readonly timeZone?: string
   readonly calendarId?: string
   readonly recurrenceScope?: CalendarWriteScope
+  readonly notifyAttendees?: boolean
   readonly expectedProviderVersion: string
   readonly idempotencyKey: string
 }
@@ -63,6 +64,7 @@ export interface CalendarDeleteRequest {
   readonly grantId?: string
   readonly side?: ConnectorSide
   readonly recurrenceScope?: CalendarWriteScope
+  readonly notifyAttendees?: boolean
   readonly expectedProviderVersion: string
   readonly idempotencyKey: string
   readonly cancellationMode: "organizer_cancel" | "decline_invitation" | "remove_private_copy"
@@ -73,6 +75,7 @@ export interface CalendarRespondRequest {
   readonly responseStatus: CalendarInvitationResponse
   readonly recurrenceScope?: CalendarAnswerScope
   readonly calendarId?: string
+  readonly notifyAttendees?: boolean
   readonly expectedProviderVersion: string
   readonly idempotencyKey: string
 }
@@ -130,7 +133,8 @@ export function createCalendarApi(fetch: CalendarFetch): CalendarApi {
     deleteLifeOpsCalendarEvent: async (eventId, options) => {
       await required(options.expectedProviderVersion, "Calendar event deletion requires expectedProviderVersion.")
       await required(options.idempotencyKey, "Calendar event deletion requires a stable idempotencyKey.")
-      return fetch<CalendarChangeReply>(`${base}/events/${encodeURIComponent(eventId)}${query({ ...options })}`, { method: "DELETE" })
+      const { notifyAttendees, ...rest } = options
+      return fetch<CalendarChangeReply>(`${base}/events/${encodeURIComponent(eventId)}${query({ ...rest, ...(notifyAttendees === undefined ? {} : { notifyAttendees: String(notifyAttendees) }) })}`, { method: "DELETE" })
     },
     respondToLifeOpsCalendarEvent: async (eventId, answer) => {
       await required(answer.expectedProviderVersion, "An invitation answer requires expectedProviderVersion.")

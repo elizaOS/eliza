@@ -1,5 +1,6 @@
-// spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"; spec/calendar/managedFeed.md, "An event's change time is the provider's edit time, never the refresh time"
+// spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"; spec/calendar/managedFeed.md, "An event's change time is the provider's edit time, never the refresh time"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
 import { Service, type IAgentRuntime } from "@elizaos/core"
+import { configuredBroker } from "../feed/broker.vibe"
 import { providerTimestamps } from "../feed/cache.vibe"
 import { calendarHost, type CalendarApprovalRecord, type CalendarApprovalRow, type CalendarApprovals, type CalendarHost, type CalendarLedgerOutcome } from "./host.vibe"
 import type { CalendarEvent } from "../model.vibe"
@@ -26,6 +27,14 @@ function approvalsOf(runtime: IAgentRuntime): CalendarApprovals | undefined {
       return reply
     },
   }
+}
+
+/** The calendar host over the agent's durable cache, with the managed Google calendar when the host's environment names its private broker. */
+export effect function startCalendarHost(runtime: IAgentRuntime) {
+  const endpoint = try Config.withDefault(Config.String("ELIZA_MANAGED_CALENDAR_READ_BROKER"), "")
+  const token = try Config.withDefault(Config.String("ELIZA_API_TOKEN"), "")
+  const managed = try configuredBroker(endpoint, token)
+  return try calendarHost({ cache: runtime, agentId: runtime.agentId, approvals: () => approvalsOf(runtime), ...(managed === undefined ? {} : { managed }) })
 }
 
 /** What a check-in reads of one event: its title and start, whether it is a provider copy, and the clocks its change is read from. */
@@ -56,7 +65,7 @@ function eventFacts(event: CalendarEvent): CalendarEventFacts {
 /** The Calendar plugin's runtime service: the calendar host over the agent's durable cache. */
 export class CalendarService extends Service {
   static override serviceType = calendarServiceType
-  override capabilityDescription = "The owner's calendars: the resident calendar, connected providers, reads and ledgered changes"
+  override capabilityDescription = "The owner's calendars: the resident calendar, the managed Google calendar when the host names its broker, reads and ledgered changes"
   readonly host: CalendarHost | undefined
 
   constructor(runtime?: IAgentRuntime, host?: CalendarHost) {
@@ -65,7 +74,7 @@ export class CalendarService extends Service {
   }
 
   static override async start(runtime: IAgentRuntime): Promise<CalendarService> {
-    const host = await runPromise(calendarHost({ cache: runtime, agentId: runtime.agentId, approvals: () => approvalsOf(runtime) }))
+    const host = await runPromise(startCalendarHost(runtime))
     return new CalendarService(runtime, host)
   }
 

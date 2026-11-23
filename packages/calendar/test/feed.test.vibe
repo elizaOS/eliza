@@ -1,7 +1,9 @@
-// spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "Story: Show one checked copy of a mapped event after a provider read"; spec/calendar/managedFeed.md, "Story: Keep each cached copy under its own source and its provider's edit time"; spec/calendar/aggregateMerge.md, "Story: See one occurrence with its precise source evidence"
+// spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "Story: Show one checked copy of a mapped event after a provider read"; spec/calendar/managedFeed.md, "Story: Keep each cached copy under its own source and its provider's edit time"; spec/calendar/aggregateMerge.md, "Story: See one occurrence with its precise source evidence"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
 import { assert, it } from "@effect/vitest"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
+import { cacheKeyValueStore, calendarHost, runCalendarAction, type CalendarApprovalRow, type CalendarCache } from "../src/index.vibe"
+import { managedGoogleCalendar } from "../src/plugin/managed-provider.vibe"
 import { managedBroker, managedFeed, mergeFeedEvents, parseBrokerEndpoint, parseManagedGoogleCalendarFeed, PurgeRefused,
   type AggregatePorts, type CalendarLinkRecord, type FeedComponent, type ImportedSourceScope, type ManagedCacheStore } from "../src/feed/index.vibe"
 
@@ -142,6 +144,78 @@ it.effect(`Read only the exact selected source and window, cache it under its ow
   const cloudFeed = { calendarId: "work", syncedAt, events: [] }
   assert.deepEqual(try parseManagedGoogleCalendarFeed(cloudFeed, "work"), cloudFeed)
   assert.equal(try map(Effect.flip(parseManagedGoogleCalendarFeed({ ...cloudFeed, truncated: true }, "work")), (failure) => failure._tag), "ManagedGoogleWireInvalid")
+})
+
+function at(value: unknown, ...path: string[]): unknown {
+  return path.reduce<unknown>((inner, key) => typeof inner === "object" && inner !== null && key in inner ? (inner as Record<string, unknown>)[key] : undefined, value)
+}
+
+function memoryCache(): CalendarCache {
+  const rows = new Map<string, unknown>()
+  return {
+    async getCache<T>(key: string) { return rows.get(key) as T | undefined },
+    async setCache<T>(key: string, value: T) { rows.set(key, value); return true },
+    async deleteCache(key: string) { return rows.delete(key) },
+  }
+}
+
+it.effect(`Read and change the managed Google calendar beside the resident one (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account")`, effect () => {
+  const held = new Map<string, Record<string, unknown>>([[`${grant}:e1`, { ...providerRow(grant, "work", "e1", { etag: "\"1\"" }), id: `${grant}:e1`, organizer: { self: true } }]])
+  const health = { feed: true }
+  const executed: Call[] = []
+  const answer = (status: number, body: unknown): Answer => ({ status, body: JSON.stringify(body) })
+  const broker = try brokerFake((call) => sync(() => {
+    switch (call.operation) {
+      case "sources": return answer(200, { calendars: [work] })
+      case "feed": return health.feed ? answer(200, feedReply(call, [...held.values()])) : answer(503, {})
+      case "write-capabilities": return answer(200, { version: 1, grantId: grant, calendarId: "work", accountId: "account-1", read: true, write: true, idempotentCreate: true, conditionalWrites: true, providerExactlyOnce: false })
+      case "write-target": {
+        const row = held.get(String(call.eventId))
+        return row === undefined ? answer(409, {}) : answer(200, { event: row })
+      }
+      default: {
+        executed.push(call)
+        const payload = call.payload as Record<string, unknown>
+        const patch = (payload.action === "modify_event" ? payload.patch : payload) as Record<string, unknown>
+        const id = payload.action === "modify_event" ? String(payload.eventId) : `${grant}:made-${executed.length}`
+        const before = held.get(id) ?? { ...providerRow(grant, "work", id.slice(grant.length + 1), {}), id, organizer: { self: true } }
+        const row = { ...before, title: patch.title, startAt: new Date(Number(patch.startsAtMs)).toISOString(), endAt: new Date(Number(patch.endsAtMs)).toISOString(), metadata: { etag: `"${executed.length + 1}"` } }
+        held.set(id, row)
+        return answer(200, { event: row })
+      }
+    }
+  }))
+  provide broker.layer {
+    try scoped(effect {
+      const filed: CalendarApprovalRow[] = []
+      const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
+      const account = try host.active()
+      if (account === undefined) return
+      try host.register(try managedGoogleCalendar({ broker: managedBroker(endpoint), owner: account, store: try cacheKeyValueStore(memoryCache()) }))
+      const day = { timeMin: Date.parse(window.timeMin), timeMax: Date.parse(window.timeMax) }
+      const read = try host.search(day)
+      assert.deepEqual([read?.events.map((event) => [event.id, event.connectorAccountId, event.grantId]), read?.complete, read?.sources.map((source) => [source.key.provider, source.status])],
+        [[[`${grant}:e1`, account.accountId, grant]], true, [["eliza", "fresh"], ["google", "fresh"]]])
+
+      const ask = { by: "owner-entity", conversation: "room:owner", id: "message-1", text: "" }
+      const approve = effect () => {
+        const row = filed.at(-1)
+        return row === undefined ? "missing" : (try host.executeApproval({ id: row.id, action: row.action, payload: row.payload })).result
+      }
+      const created = try runCalendarAction(host, ask, { subaction: "create_event", calendarId: "work", title: "Review", startAt: "2026-11-23T19:00:00Z", endAt: "2026-11-23T20:00:00Z", timeZone: "UTC" })
+      assert.deepEqual([created.success, at(filed.at(-1)?.payload.change, "source", "grantId"), try approve()], [true, grant, "ChangeSucceeded"])
+      assert.deepEqual([executed[0]?.accountId, at(executed[0]?.payload, "action"), at(executed[0]?.payload, "title"), at(executed[0]?.payload, "startsAtMs"), at(executed[0]?.preflight, "idempotencyKey")],
+        ["account-1", "schedule_event", "Review", Date.parse("2026-11-23T19:00:00Z"), filed.at(-1)?.id])
+      const renamed = try runCalendarAction(host, { ...ask, id: "message-2" }, { subaction: "update_event", eventId: `${grant}:e1`, title: "Standup, moved" })
+      assert.deepEqual([renamed.success, try approve(), held.get(`${grant}:e1`)?.title, at(executed[1]?.preflight, "providerEventId")], [true, "ChangeSucceeded", "Standup, moved", "e1"])
+      const removal = try runCalendarAction(host, { ...ask, id: "message-3", text: "Delete Review" }, { subaction: "delete_event", query: "review", ...window })
+      assert.deepEqual([removal.success, at(removal.data, "refusal"), filed.length], [false, "deletes_unsupported", 2])
+
+      health.feed = false
+      const kept = try host.search(day)
+      assert.deepEqual([kept?.events.map((event) => event.title).sort(), kept?.complete, kept?.sources.map((source) => source.status)], [["Review", "Standup, moved"], false, ["fresh", "stale"]])
+    })
+  }
 })
 
 it.effect(`A purge waits for the grant's admitted write, removes exactly its projection, and a later read imports again (spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "A purge drains preexisting writes for its grant before acknowledging local removal")`, effect () => {
