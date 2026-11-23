@@ -43,7 +43,7 @@ const RegistrationFile = Schema.Struct({
   clients: Schema.Array(ClientEntry)
 })
 
-export interface ClientReceipt {
+interface ClientReceipt {
   readonly clientId: string
   readonly action: "registered" | "updated" | "unchanged"
   readonly registration: string

@@ -39,7 +39,7 @@
     "test:models": "node vibestack/spec.ts tasks check",
     "typecheck": "vibelang --noEmit -p tsconfig.json",
     "lint": "node vibestack/spec.ts tasks //#lint:js //#lint:css",
-    "lint:js": "NODE_OPTIONS=--max-old-space-size=8192 eslint . --max-warnings 0",
+    "lint:js": "NODE_OPTIONS=--max-old-space-size=8192 node lint-js.js",
     "lint:css": "stylelint \"**/*.css\" --allow-empty-input",
     "analyze": "knip && madge --circular vibestack packages && jscpd .",
     "quick": "node vibestack/spec.ts tasks typecheck test //#lint:js //#lint:css",
