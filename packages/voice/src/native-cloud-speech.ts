@@ -81,12 +81,14 @@ export function createCloudStreamingSpeech(
   },
   port: CloudStreamPort,
 ) {
-  const sessionId = crypto.randomUUID();
+  let sessionId = crypto.randomUUID();
   let handle: CloudSpeechListenerHandle | undefined,
     opening: Promise<void> | undefined,
-    stopping: Promise<void> | undefined;
+    stopping: Promise<void> | undefined,
+    closingTransport: Promise<unknown> | undefined;
   let opened = false,
     retired = false,
+    outputMuted = false,
     echoCancelled = false,
     speechActive = false;
   let captureGeneration = 0,
@@ -125,7 +127,7 @@ export function createCloudStreamingSpeech(
     utterances.clear();
     stopping = (async () => {
       try {
-        await port.stopCloudSpeech({ sessionId });
+        await (closingTransport ?? port.stopCloudSpeech({ sessionId }));
       } finally {
         await handle?.remove();
         handle = undefined;
@@ -142,7 +144,7 @@ export function createCloudStreamingSpeech(
     capture?.onEnd(error);
   };
   const receive = (event: CloudStreamEvent) => {
-    if (retired || event.sessionId !== sessionId) return;
+    if (retired || closingTransport || event.sessionId !== sessionId) return;
     try {
       check();
       if (event.type === "error") {
@@ -232,25 +234,35 @@ export function createCloudStreamingSpeech(
       fail(error);
     }
   };
-  const open = () =>
+  const open = (muted = false) =>
     (opening ??= (async () => {
       try {
         check();
-        const registered = await port.addListener("cloudSpeechEvent", receive);
-        if (retired) {
-          await registered.remove();
-          throw cancelled();
+        if (!handle) {
+          const registered = await port.addListener(
+            "cloudSpeechEvent",
+            receive,
+          );
+          if (retired) {
+            await registered.remove();
+            throw cancelled();
+          }
+          handle = registered;
         }
-        handle = registered;
         check();
         const result = await port.startCloudSpeech({
           sessionId,
           environment: input.environment,
           credentialId: input.credentialId,
+          ...(muted ? { muted } : {}),
         });
         check();
         if (result.sessionId !== sessionId || result.sampleRate !== 16000)
           throw Error("Cloud speech session changed.");
+        if (outputMuted) {
+          await port.setCloudSpeechOutputMuted?.({ sessionId, muted: true });
+          check();
+        }
         opened = true;
         echoCancelled = result.echoCancelled === true;
       } catch (error) {
@@ -258,6 +270,34 @@ export function createCloudStreamingSpeech(
         throw error;
       }
     })());
+  const replaceMutedTransport = async () => {
+    check();
+    // A late final cannot be attributed safely on this socket. Confirm the
+    // old transport is stopped before starting a new, muted one.
+    const previousId = sessionId;
+    const capture = listening;
+    const stalled = speechActive && speechGeneration === captureGeneration;
+    speechActive = false;
+    speechGeneration = undefined;
+    if (stalled && capture && !capture.signal.aborted) {
+      capture.onSpeechEnd(Date.now());
+      capture.onSegment(null);
+    }
+    opened = false;
+    opening = undefined;
+    const close = (closingTransport ??= port.stopCloudSpeech({
+      sessionId: previousId,
+    }));
+    try {
+      await close;
+    } finally {
+      if (closingTransport === close) closingTransport = undefined;
+    }
+    check();
+    if (sessionId !== previousId) return;
+    sessionId = crypto.randomUUID();
+    await open(true);
+  };
   const muteAndDrain = async () => {
     check();
     const final = speechActive
@@ -266,17 +306,26 @@ export function createCloudStreamingSpeech(
     // Bound native mute and the provider final together. Repeating an already-muted
     // native call supplies another silence tail without reopening physical input.
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let nativeMuted = false;
     try {
-      await Promise.race([
-        port.setCloudSpeechMuted({ sessionId, muted: true }).then(() => final),
-        new Promise<void>((_, reject) => {
-          timer = setTimeout(
-            () =>
-              reject(Error("Cloud speech did not confirm the mute in time.")),
-            2500,
-          );
+      const drained = await Promise.race([
+        port.setCloudSpeechMuted({ sessionId, muted: true }).then(async () => {
+          nativeMuted = true;
+          await final;
+          return true;
+        }),
+        new Promise<false>((resolve) => {
+          timer = setTimeout(() => resolve(false), 2500);
         }),
       ]);
+      if (drained) return;
+      if (!nativeMuted)
+        throw Error("Cloud speech did not confirm the mute in time.");
+      if (utterances.size)
+        throw Error(
+          "Cloud speech could not settle the capture during playback.",
+        );
+      await replaceMutedTransport();
     } finally {
       if (timer) clearTimeout(timer);
       ended = () => {};
@@ -289,6 +338,7 @@ export function createCloudStreamingSpeech(
         throw Error("Speaker mute is unavailable.");
       await port.setCloudSpeechOutputMuted({ sessionId, muted });
       check();
+      outputMuted = muted;
     },
     async listen(handlers: AssistantListenHandlers): Promise<AssistantCapture> {
       check();
@@ -351,6 +401,7 @@ export function createCloudStreamingSpeech(
       if (!value) return;
       if (value.length > 4096) throw Error("Cloud speech phrase is too long.");
       const utteranceId = crypto.randomUUID();
+      const utteranceSessionId = sessionId;
       let reject!: (error: unknown) => void;
       const done = new Promise<void>((resolve, failed) => {
         reject = failed;
@@ -366,7 +417,12 @@ export function createCloudStreamingSpeech(
       const abort = () => {
         if (retiring) return;
         retiring = Promise.resolve()
-          .then(() => port.cancelCloudSpeech({ sessionId, utteranceId }))
+          .then(() =>
+            port.cancelCloudSpeech({
+              sessionId: utteranceSessionId,
+              utteranceId,
+            }),
+          )
           .catch(() => {
             throw Object.assign(
               Error("Cloud speech cleanup was not confirmed."),
@@ -383,7 +439,11 @@ export function createCloudStreamingSpeech(
       try {
         signal.throwIfAborted();
         check();
-        await port.speakCloudSpeech({ sessionId, utteranceId, text: value });
+        await port.speakCloudSpeech({
+          sessionId: utteranceSessionId,
+          utteranceId,
+          text: value,
+        });
         await done;
         signal.throwIfAborted();
         check();
