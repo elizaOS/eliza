@@ -1,5 +1,5 @@
 import { ElizaError } from "@elizaos/core";
-import type { Address } from "viem";
+import { type Address, keccak256 } from "viem";
 import { base } from "viem/chains";
 import { describe, expect, it, vi } from "vitest";
 import { SwapAction } from "./actions/swap";
@@ -21,7 +21,7 @@ function stubWalletProvider() {
       account: { address: ACCOUNT, type: "local", signTransaction },
       getAddresses: async () => [ACCOUNT],
       prepareTransactionRequest: async (params: unknown) => params,
-      sendRawTransaction: async () => "0xhash",
+      sendRawTransaction: async () => keccak256("0x02"),
     }),
     getPublicClient: () => ({ readContract: async () => 6 }),
   } as unknown as WalletProvider;
