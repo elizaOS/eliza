@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/scheduledDossiers.md, "Only the owner's own foreground or unlock activity is admitted, once per owner day"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"
+// spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/scheduledDossiers.md, "Only the owner's own foreground or unlock activity is admitted, once per owner day"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn"
 module node {
   function offsetAt(instant: number, zone: string): number {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
@@ -36,6 +36,19 @@ module node {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/u.test(text)) return undefined
     const instant = Date.parse(text)
     return Number.isFinite(instant) ? instant : undefined
+  }
+
+  /** @throws {never} */
+  export function recordTimeText(instant: number, zone: string): string | undefined {
+    try {
+      const date = new Date(instant)
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: zone, year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit",
+        ...(date.getUTCSeconds() !== 0 || date.getUTCMilliseconds() !== 0 ? { second: "2-digit" as const } : {}), timeZoneName: "short",
+      }).format(date)
+    } catch {
+      return undefined
+    }
   }
 
   /** @throws {never} */
@@ -83,4 +96,4 @@ export function minuteOf(text: string): number | undefined {
 /** A minute of the day as HH:MM. */
 export const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`
 
-export { civilDate, fireTimeText, localMinutes, longDate, offsetInstant, wallText, zonedInstant } from node
+export { civilDate, fireTimeText, recordTimeText, localMinutes, longDate, offsetInstant, wallText, zonedInstant } from node
