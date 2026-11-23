@@ -54,8 +54,11 @@ pure def alwaysNextIdIsPositive(s: Todos): bool = s.nextId > 0
 
 ### A change by text applies only when exactly one item matches
 
-When no item or several items match, nothing changes and the result names
-the miss, with the candidates when there are several.
+An item matches only when its text is the text of the change, so a
+change never lands on a near miss: "Read the new" never names "Read the
+news", and "Pay water bill" never names "Pay electricity bill". When no
+item or several items match, nothing changes and the result names the
+miss, with the candidates when there are several.
 
 ```quint
 pure def matching(s: Todos, content: str): List[Todo] = s.todos.select(t => t.content == content)

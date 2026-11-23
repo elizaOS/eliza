@@ -78,3 +78,22 @@ pure def sometimesAnsweredOnTrack(s: Goal): bool = s.status == GoalActive and s.
 pure def sometimesPausedWithoutCheckins(s: Goal): bool = s.status == GoalPaused and s.cadence != NoCadence
 pure def sometimesResumedWithoutTheDismissedSlot(s: Goal): bool = s.status == GoalActive and s.dismissedSlots.contains(1) and s.liveSlots.contains(2)
 ```
+
+## Story: Save the goal I asked for, once
+
+> As an owner, I want a goal I ask for saved, unless I already work
+> towards that same goal, and never folded into another goal whose title
+> only contains its words.
+
+### A new goal is refused only when an active goal has the same title
+
+Titles are compared without case and without the spaces around them. A
+title that is part of a longer one names another goal: "Run a marathon"
+is saved beside "Run a half marathon". A paused, archived or satisfied
+goal never stops a new goal with its title.
+
+```quint
+pure def duplicatesGoal(status: GoalStatus, title: str, requested: str): bool = status == GoalActive and title == requested
+pure def lawOnlyAnActiveGoalIsADuplicate(status: GoalStatus, title: str): bool = duplicatesGoal(status, title, title) iff status == GoalActive
+pure def lawADifferentTitleIsNeverADuplicate(status: GoalStatus, title: str, requested: str): bool = title != requested implies not(duplicatesGoal(status, title, requested))
+```
