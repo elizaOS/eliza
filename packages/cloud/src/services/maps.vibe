@@ -20,6 +20,7 @@ type Answer =
   | { readonly kind: "tile"; readonly tile: MapsTile }
 
 interface Entered {
+  readonly enteredAt: number
   readonly caller: Signed
   readonly credential: string
   readonly provider: MapsProvider
@@ -40,6 +41,16 @@ const KeptAnswerSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("refused"), code: Schema.Literals(["NoRoute", "UnsupportedMode", "UnsupportedRegion", "ProviderInvalidResponse", "ProviderUnavailable"]) })
 ])
 type KeptAnswer = typeof KeptAnswerSchema.Type
+
+interface Phase {
+  readonly name: "maps_auth" | "maps_admission" | "maps_provider"
+  readonly ms: number
+}
+
+interface Timed {
+  readonly answer: Answer
+  readonly phases: ReadonlyArray<Phase>
+}
 
 error KeptAnswerCorrupt { holdKey: string }
 
@@ -98,10 +109,14 @@ function providerRefusal(code: ProviderRefusal, now: number): Refused {
   return code === "ProviderUnavailable" ? refused("ProviderUnavailable", "NoReason", now + providerPause) : refused(code)
 }
 
-function respondWith(answer: Answer): HttpServerResponse.HttpServerResponse {
+function serverTiming(phases: ReadonlyArray<Phase>): Readonly<Record<string, string>> {
+  return phases.length === 0 ? {} : { "server-timing": phases.map((phase) => `${phase.name};dur=${Math.max(0, phase.ms)}`).join(", ") }
+}
+
+function respondWith({ answer, phases }: Timed): HttpServerResponse.HttpServerResponse {
   switch (answer.kind) {
-    case "json": return json(answer.body)
-    case "tile": return HttpServerResponse.uint8Array(answer.tile.bytes, { status: 200, contentType: answer.tile.contentType, headers: { "cache-control": "no-store" } })
+    case "json": return json(answer.body, { headers: serverTiming(phases) })
+    case "tile": return HttpServerResponse.uint8Array(answer.tile.bytes, { status: 200, contentType: answer.tile.contentType, headers: { "cache-control": "no-store", ...serverTiming(phases) } })
     default: {
       const _exhaustive: never = answer
       return _exhaustive
@@ -137,6 +152,7 @@ effect function admitLimits(caller: Signed, credential: string, op: MapsOperatio
 }
 
 effect function enter(context: RouteContext, op: MapsOperation): Entered!Refused!(Store | Deployment) {
+  const enteredAt = try Clock.currentTimeMillis
   const caller = signed(context.caller)
   if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
   const maps = (try Deployment).settings.maps
@@ -149,7 +165,7 @@ effect function enter(context: RouteContext, op: MapsOperation): Entered!Refused
   if (provider === undefined) throw refused("CapabilityUnavailable")
   const credential = credentialOf(caller)
   try admitLimits(caller, credential, op)
-  return { caller, credential, provider, kind, key }
+  return { enteredAt, caller, credential, provider, kind, key }
 }
 
 type OpenRequest =
@@ -194,7 +210,7 @@ effect function record(holdKey: string, status: string, answer: KeptAnswer | und
   ))
 }
 
-effect function metered(context: RouteContext, entered: Entered, call: Call): Answer!{ readonly _tag: string }!CloudContext {
+effect function metered(context: RouteContext, entered: Entered, call: Call): Timed!{ readonly _tag: string }!CloudContext {
   const key = entered.key
   if (key === undefined) throw refused("InvalidRequest")
   const quote = providerQuote(entered.kind, call.op, call.preferPlace, call.mode)
@@ -202,9 +218,11 @@ effect function metered(context: RouteContext, entered: Entered, call: Call): An
   const store = try Store
   const reservedAt = try Clock.currentTimeMillis
   const opened = try store.transaction((tx) => openRequest(tx, entered, key, call, quote, digest, reservedAt))
+  const admitted = (at: number): ReadonlyArray<Phase> => [{ name: "maps_auth", ms: entered.enteredAt - context.now }, { name: "maps_admission", ms: at - entered.enteredAt }]
   if (opened.kind === "prior") {
     if (courseOf(true, opened.digest === digest, opened.answer !== undefined) === "RepeatKept") {
-      return try repeatKept(opened.key, opened.answer, reservedAt)
+      const answer = try repeatKept(opened.key, opened.answer, reservedAt)
+      return { answer, phases: admitted(try Clock.currentTimeMillis) }
     }
     throw refused("IdempotencyConflict")
   }
@@ -215,6 +233,7 @@ effect function metered(context: RouteContext, entered: Entered, call: Call): An
     throw failure
   }
   try markDispatched(ticket.key)
+  const dispatchedAt = try Clock.currentTimeMillis
   const reply = try call.run
   const now = try Clock.currentTimeMillis
   const outcome = outcomeOf(reply)
@@ -228,7 +247,7 @@ effect function metered(context: RouteContext, entered: Entered, call: Call): An
     : reply.kind === "answered" && reply.value.kind === "json" ? { kind: "answered", body: reply.value.body }
     : undefined
   try record(ticket.key, statusOf(outcome), keep, now)
-  return try answerOf(reply, now)
+  return { answer: try answerOf(reply, now), phases: [...admitted(dispatchedAt), { name: "maps_provider", ms: now - dispatchedAt }] }
 }
 
 effect function capabilities(context: RouteContext): HttpServerResponse.HttpServerResponse!Refused!(Store | Deployment) {
@@ -284,7 +303,7 @@ effect function viewport(context: RouteContext) {
   const body = try jsonBody(context, ViewportRequest)
   const copyright = entered.provider.viewport
   if (copyright === undefined) throw refused("CapabilityUnavailable")
-  return respondWith(try answerOf(try asJson(copyright(body)), try Clock.currentTimeMillis))
+  return respondWith({ answer: try answerOf(try asJson(copyright(body)), try Clock.currentTimeMillis), phases: [] })
 }
 
 effect function forgetKept() {

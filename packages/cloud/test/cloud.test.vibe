@@ -1541,6 +1541,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         noRoute: [noRoute.status, errorOf(noRoute)],
         tiles: [tileOne.status, tileOne.headers.get("cache-control"), tileOne.headers.get("content-type"), tileOneBytes, tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
         reverse: [nearbyFound.status, lookupsWithPlace, nearbyEmpty.status, (nearbyEmpty.body as { readonly place: unknown }).place !== null, lookupsWithoutPlace],
+        timing: [tileOne.headers.get("server-timing"), repeated.headers["server-timing"]].map((value) => (value ?? "").split(", ").map((entry) => entry.replace(/;dur=\d+$/, ""))),
         broke: [broke.status, errorOf(broke), callsAfterBroke - callsBeforeBroke],
         rollback: [rolledBack.status, callsAfterRollback - callsBeforeRollback, Number(holdsAfterRollback[0]?.n), retried.status, maps.count("geocode") - callsAfterRollback, Number(retriedUsage[0]?.n), Number(retriedUsage[0]?.charged)],
         usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]),
@@ -1555,6 +1556,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         noRoute: [422, "no_route"],
         tiles: [200, "no-store", "image/png", tilePng, 200, "no-store", 409, "idempotency_conflict", 2],
         reverse: [200, [1, 2], 200, true, [2, 3]],
+        timing: [["maps_auth", "maps_admission", "maps_provider"], ["maps_auth", "maps_admission"]],
         broke: [402, "insufficient_credits", 0],
         rollback: [503, 0, 7, 200, 1, 8, 95_200],
         usage: [

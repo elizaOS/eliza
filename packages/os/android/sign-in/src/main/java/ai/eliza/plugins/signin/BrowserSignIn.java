@@ -18,6 +18,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.content.pm.verify.domain.DomainVerificationManager;
 import android.content.pm.verify.domain.DomainVerificationUserState;
 import android.net.Uri;
@@ -180,17 +181,23 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
       if (live.get(environment.name) != opened) return;
     }
     Activity host = activity.get();
-    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE);
+    String browser = externalBrowser(context, url);
+    if (browser == null) { unlaunched(environment, opened); return; }
+    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(browser);
     try {
       if (host == null || host.isFinishing()) context.startActivity(view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
       else host.startActivity(view);
     } catch (ActivityNotFoundException | SecurityException unavailable) {
-      worker.execute(() -> {
-        Live failed = take(environment.name, opened.reservation().generation());
-        engine(environment).cancel(opened.reservation());
-        if (failed != null) failed.returned().refused(Failure.GOOGLE_UNAVAILABLE);
-      });
+      unlaunched(environment, opened);
     }
+  }
+
+  private void unlaunched(Environment environment, Live opened) {
+    worker.execute(() -> {
+      Live failed = take(environment.name, opened.reservation().generation());
+      engine(environment).cancel(opened.reservation());
+      if (failed != null) failed.returned().refused(Failure.GOOGLE_UNAVAILABLE);
+    });
   }
 
   @Override public void cancel(int attempt) {
@@ -208,6 +215,18 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
       }
       if (reserved != null) engine(registration.environment(reserved.client())).cancel(reserved);
     });
+  }
+
+  static String externalBrowser(Context context, String url) {
+    PackageManager packages = context.getPackageManager();
+    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE);
+    ResolveInfo chosen = packages.resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY);
+    List<String> handlers = new ArrayList<>();
+    for (ResolveInfo handler : packages.queryIntentActivities(view, PackageManager.MATCH_DEFAULT_ONLY)) {
+      if (handler.activityInfo != null) handlers.add(handler.activityInfo.packageName);
+    }
+    return BrowserReturnPolicy.externalBrowser(chosen == null || chosen.activityInfo == null ? null : chosen.activityInfo.packageName,
+      handlers, context.getPackageName());
   }
 
   static boolean appLinkVerified(Context context, Environment environment) {
