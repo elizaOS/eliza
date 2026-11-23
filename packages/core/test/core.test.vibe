@@ -4231,6 +4231,7 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
 it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.md, \"Story: Publish complete durable JSON with an honest receipt\"; spec/core/atomicWriters.md, \"Story: Publish whole snapshots despite interleaved processes\"; spec/core/temporaryNames.md, \"Story: Give concurrent publications distinct temporary paths\"; spec/core/logging/files.md, \"Story: Open optional log files lazily and close their descriptors\"; spec/core/logging/index.md, \"Story: Retain recent diagnostics and notify current listeners\"; spec/core/security.md, \"Story: Admit content and outbound data\")", () => effect {
   const time = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g
   const core = `${coreDir}/src/index.vibe`
+  const loggerEntry = `${coreDir}/src/logger.vibe`
   const writerScript = `${coreDir}/test/support/atomic-json-writer.ts`
   const listing = `
     import fs from "node:fs"
@@ -4252,11 +4253,12 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     return try Effect.try(() => JSON.parse(out.stdout) as string[])
   }
   const remove = (target: string) => host(() => removeScratch(target))
-  const loggingChild = (dir: string, env: Record<string, string | undefined>) => effect {
+  const loggingChild = (entry: string, dir: string, env: Record<string, string | undefined>) => effect {
     const script = `
       import fs from "node:fs"
       const [dir] = process.argv.slice(1)
-      const { logger, logPrompt, logChatIn, logChatOut, recentLogs } = await import(${JSON.stringify(core)})
+      const { logger, logPrompt, logChatIn, logChatOut, recentLogs } = await import(${JSON.stringify(entry)})
+      void process.stderr
       const afterImport = fs.readdirSync(dir).sort()
       const before = fs.readdirSync("/dev/fd").length
       logger.info({ apiKey: "sk-j12-0123456789abcdefghij" }, "j12 output")
@@ -4280,7 +4282,8 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     import fs from "node:fs"
     import fsp from "node:fs/promises"
     const [state, dir] = process.argv.slice(1)
-    const { writeJsonAtomic, writeJsonAtomicSync } = await import(${JSON.stringify(core)})
+    const { writeJsonAtomicPromise: writeJsonAtomic, writeJsonAtomicSyncOrThrow: writeJsonAtomicSync } =
+      await import(${JSON.stringify(`${coreDir}/src/utils/atomic-json.vibe`)})
     const big = "x".repeat(8 * 1024 * 1024)
     const beforeRename = Promise.withResolvers()
     const releaseRename = Promise.withResolvers()
@@ -4400,12 +4403,12 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
   try host(() => writeJsonAtomic(`${unwritable}/plain`, {}))
   const silentDir = try scratch("eliza-core-j12-silent")
   const children = try forEach([
-    [logs, { LOG_FILE: `${logs}/output.log`, LOG_LEVEL: "info" }],
-    [promptBlocked, { LOG_FILE: `${promptBlocked}/output.log`, LOG_LEVEL: "info" }],
-    [chatBlocked, { LOG_FILE: `${chatBlocked}/output.log`, LOG_LEVEL: "info" }],
-    [unwritable, { LOG_FILE: `${unwritable}/plain/logs/output.log`, LOG_LEVEL: "info" }],
-    [silentDir, { LOG_FILE: `${silentDir}/output.log`, LOG_LEVEL: "silent" }],
-  ] as const, ([childDir, env]) => loggingChild(childDir, env), { concurrency: "unbounded" })
+    [core, logs, { LOG_FILE: `${logs}/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, promptBlocked, { LOG_FILE: `${promptBlocked}/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, chatBlocked, { LOG_FILE: `${chatBlocked}/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, unwritable, { LOG_FILE: `${unwritable}/plain/logs/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, silentDir, { LOG_FILE: `${silentDir}/output.log`, LOG_LEVEL: "silent" }],
+  ] as const, ([entry, childDir, env]) => loggingChild(entry, childDir, env), { concurrency: "unbounded" })
   const [opened, promptChild, chatChild, failed, silent] = children
   const files = Object.fromEntries(Object.entries(try inspect(logs)).map(([name, entry]) => [name, entry === "directory" ? entry : { mode: entry.mode, text: entry.text.replace(time, "<time>") }]))
   const order = [
@@ -4476,6 +4479,7 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     }
     try {
       const { logger, logPrompt, recentLogs } = await import(entry)
+      void process.stderr
       const exits = process.listenerCount("exit")
       logger.info("j12 close failure")
       logger.info("j12 after close failure")
@@ -4508,7 +4512,7 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
       }
     }
     `,
-    args: [closeFaultDir, core],
+    args: [closeFaultDir, loggerEntry],
     vibe: true,
     env: { LOG_FILE: `${closeFaultDir}/output.log`, LOG_LEVEL: "info", LOG_JSON_FORMAT: undefined, LOG_TIMESTAMPS: undefined, NO_COLOR: "1", FORCE_COLOR: "0" },
   }))
