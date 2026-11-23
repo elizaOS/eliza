@@ -272,8 +272,8 @@ pure def lawAReminderThatWentOffIsNeverMovedToATime(dueAt: int, now: int): bool 
 ### Listing reminders changes nothing, and a rename changes the title of the one reminder named
 
 A list tells every live reminder with its next time or its repeat on the
-owner's clock. A rename names a reminder by its title or its id and gives
-a nonblank new title; it applies only when exactly one live reminder is
+owner's clock. A rename names a reminder as [names](./names.md) says and
+gives a nonblank new title; it applies only when exactly one live reminder is
 named, and keeps its time, delivery choices and escalation plan.
 
 ```quint

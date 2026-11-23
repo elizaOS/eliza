@@ -30,7 +30,7 @@ export function renderTodos(todos: readonly Todo[], includeClosed: boolean): str
   return shown.length === 0 ? "" : ["# Current todos", ...shown.map((todo) => `- ${marks[todo.todoStatus]} ${todo.content} (t-${todo.todoId})`)].join("\n")
 }
 
-const plain = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/gu, " ").trim()
+export const plain = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/gu, " ").trim()
 const isOpen = (todo: Todo) => todo.todoStatus === "TodoPending" || todo.todoStatus === "TodoInProgress"
 
 function namedTexts(list: Todos, words: string): readonly string[] {
