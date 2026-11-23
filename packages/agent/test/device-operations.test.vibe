@@ -17,6 +17,7 @@ const everyOperation = {
   PhotosFilter: true, PhotosOpen: true, PhotosAlbumCreate: true, PhotosShare: true,
   SmsSend: true, MmsSend: true, PhoneDial: true, PhoneCall: true, ContactCreate: true, ContactUpdate: true, ContactDelete: true, SmsCompose: true, SmsReplySelected: true,
   MessagesReadSelected: true, VoicemailReadSelected: true, VoicemailDeleteSelected: true, SmsLatestSender: true, ClockHandoff: true,
+  PhoneKeypad: true, ContactShow: true, ContactReadSelected: true,
   ReadSelectedNotes: true, ReadCalendarRange: true, ReadSelectedReminders: true, PostNotification: true, SpeakText: true,
   CreateNote: true, CreateReminder: true, OpenView: true, BrowserNavigate: true,
 } as const satisfies Record<OperationType, true>
@@ -35,10 +36,11 @@ it('Offer the agent only what my device advertised: the header is read whole, re
     assert.deepStrictEqual(negotiation(true, refused), { tag: "Refused" }, refused)
   }
 
-  assert.deepStrictEqual(readViewProfileChange({ version: 1, expectedRevision: null, views: ["notes", "home"] }), { read: { tag: "NoRevisionRead" }, views: ["NotesView", "HomeView"] })
-  assert.deepStrictEqual(readViewProfileChange({ version: 1, expectedRevision: "r1", views: [] }), { read: { tag: "ReadAt", revision: "r1" }, views: [] })
+  const plain = negotiation(true, undefined)
+  assert.deepStrictEqual(readViewProfileChange({ version: 1, expectedRevision: null, views: ["notes", "home"] }, plain), { read: { tag: "NoRevisionRead" }, views: ["NotesView", "HomeView"] })
+  assert.deepStrictEqual(readViewProfileChange({ version: 1, expectedRevision: "r1", views: [] }, plain), { read: { tag: "ReadAt", revision: "r1" }, views: [] })
   for (const refused of [{ version: 1, expectedRevision: null, views: ["home", "home"] }, { version: 1, expectedRevision: null, views: ["mail"] }, { version: 2, expectedRevision: null, views: [] }, { version: 1, views: [] }, { version: 1, expectedRevision: null, views: [], extra: true }]) {
-    assert.strictEqual(readViewProfileChange(refused), undefined)
+    assert.strictEqual(readViewProfileChange(refused, plain), undefined)
   }
   const profile: ViewProfile = { tag: "Profile", revision: "r1", views: ["NotesView", "HomeView"] }
   assert.deepStrictEqual(viewProfileWire(profile), { version: 1, revision: "r1", views: ["home", "notes"] })
@@ -49,6 +51,8 @@ it('Offer the agent only what my device advertised: the header is read whole, re
   assert.isFalse(openViewAllowed(profile, { tag: "ReadAt", revision: "r1" }, "mail"))
   assert.isTrue(openViewAllowed({ tag: "NoProfile" }, { tag: "NoRevisionRead" }, "maps"))
   assert.isFalse(openViewAllowed({ tag: "NoProfile" }, { tag: "ReadAt", revision: "r1" }, "maps"))
+  assert.isFalse(openViewAllowed({ tag: "NoProfile" }, { tag: "NoRevisionRead" }, "phone"))
+  assert.isTrue(openViewAllowed({ tag: "Profile", revision: "r1", views: ["PhoneView"] }, { tag: "ReadAt", revision: "r1" }, "phone"))
 })
 
 it('Propose only operations the device can check: one schema per wire type of the closed vocabulary, exact keys, the need of its version and its binding (spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check")', () => {

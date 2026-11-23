@@ -142,8 +142,9 @@ it("Propose only operations the device can check: a keypad, a contact search or 
       accepted(samples.ContactShow, "contacts.show.v1"), accepted(samples.ContactShow, "contacts.write.v1"),
       accepted(samples.ContactReadSelected, "contacts.read.v1"), accepted(samples.ContactReadSelected, "contacts.show.v1"),
       accepted(values, "contacts.write.v1,contacts.write.v2"), accepted(values, "contacts.write.v1"), accepted(samples.ContactUpdate, "contacts.write.v1"),
-      accepted(draft, "sms.compose.v1,sms.compose.v2"), accepted(toNumber, "sms.compose.v1"), accepted(samples.SmsCompose, "sms.compose.v1")],
-    [true, true, false, true, false, true, false, true, false, true, true, false, true])
+      accepted(draft, "sms.compose.v1,sms.compose.v2"), accepted(toNumber, "sms.compose.v1"), accepted(samples.SmsCompose, "sms.compose.v1"),
+      accepted({ type: "open_view", view: "contacts" }, "views.telephony.v1"), accepted({ type: "open_view", view: "contacts" }, "files.browser.v1")],
+    [true, true, false, true, false, true, false, true, false, true, true, false, true, true, false])
   for (const input of [
     { type: "phone_keypad", number: "call 911" }, { type: "phone_keypad", number: "+15550100", dial: true },
     { type: "contact_update", query: "Maya" }, { type: "contact_update", query: "Maya", add: { phoneNumbers: [] } },
