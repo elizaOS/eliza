@@ -13,6 +13,7 @@ const token = "driver-token";
 const paths: Record<RouteClass, string> = {
   MessageRoute: "/api/conversations/c1/messages",
   SpeechRoute: "/api/asr/local-inference/transcribe",
+  RunRoute: "/api/triggers/t1/execute",
   PlainRoute: "/api/echo",
 };
 

@@ -83,6 +83,7 @@ module node {
     const path = target.split("?", 1)[0]
     if (/^\/api\/conversations\/[^/]+\/messages(?:\/stream)?$/.test(path)) return "MessageRoute"
     if (/^\/api\/asr\/local-inference(?:\/|$)/.test(path)) return "SpeechRoute"
+    if (/^\/api\/triggers\/[^/]+\/execute$/.test(path)) return "RunRoute"
     return "PlainRoute"
   }
 
