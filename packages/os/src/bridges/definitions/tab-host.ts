@@ -91,16 +91,6 @@ export interface BrowserSavedState {
 
 export type BrowserTabCommand = "back" | "forward" | "reload" | "stop";
 
-export interface BrowserBookmark {
-  readonly url: string;
-  readonly title?: string;
-}
-
-export interface BrowserBookmarkList {
-  readonly urls: string[];
-  readonly entries: BrowserBookmark[];
-}
-
 export interface BrowserTabHostPlugin {
   create(options: { session: string; id: string; private?: boolean }): Promise<BrowserTabState>;
   navigate(options: { session: string; id: string; url: string }): Promise<BrowserTabState>;
@@ -110,8 +100,8 @@ export interface BrowserTabHostPlugin {
   find(options: { session: string; id: string; query: string }): Promise<BrowserTabState>;
   findNext(options: { session: string; id: string; forward?: boolean }): Promise<BrowserTabState>;
   clearFind(options: { session: string; id: string }): Promise<BrowserTabState>;
-  bookmarks(options: { session: string }): Promise<BrowserBookmarkList>;
-  setBookmark(options: { session: string; url: string; saved: boolean; title?: string }): Promise<BrowserBookmarkList>;
+  bookmarks(options: { session: string }): Promise<{ urls: string[] }>;
+  setBookmark(options: { session: string; url: string; saved: boolean }): Promise<{ urls: string[] }>;
   browsingState(options: { session: string }): Promise<BrowserSavedState>;
   saveBrowsingState(options: { session: string } & BrowserSavedState): Promise<BrowserSavedState>;
   clearBrowsingData(options: { session: string }): Promise<{ closed: string[] }>;

@@ -919,20 +919,16 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   if(requested==null||requested.isEmpty()||requested.length()>100||(session!=null&&!session.equals(requested))){call.reject("Expired browser session");return false;}
   session=requested;return true;
  }
- private JSObject bookmarkResult(java.util.List<BrowserBookmarkRecord.Entry> rows) { JSObject result=new JSObject();JSArray list=new JSArray(),entries=new JSArray();
-  for(BrowserBookmarkRecord.Entry row:rows){list.put(row.url);JSObject entry=new JSObject();entry.put("url",row.url);if(row.title!=null)entry.put("title",row.title);entries.put(entry);}
-  result.put("urls",list);result.put("entries",entries);return result; }
+ private JSObject bookmarkResult(ArrayList<String> urls) { JSObject result=new JSObject();JSArray list=new JSArray();for(String url:urls)list.put(url);result.put("urls",list);return result; }
  @PluginMethod public void bookmarks(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!bookmarkSession(call))return;
-  try{call.resolve(bookmarkResult(bookmarks.entries()));}catch(Exception unavailable){call.reject("Saved bookmarks could not be read. Existing bookmarks were not changed.");}
+  try{call.resolve(bookmarkResult(bookmarks.read()));}catch(Exception unavailable){call.reject("Saved bookmarks could not be read. Existing bookmarks were not changed.");}
  }); }
  @PluginMethod public void setBookmark(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!bookmarkSession(call))return;
-  String url=call.getString("url");Boolean saved=call.getBoolean("saved");Object title=call.getData().opt("title");
-  if(title==org.json.JSONObject.NULL)title=null;
+  String url=call.getString("url");Boolean saved=call.getBoolean("saved");
   if(!BrowserBookmarkStore.valid(url)||saved==null){call.reject("Only HTTPS addresses without embedded credentials can be bookmarked.");return;}
-  if(title!=null&&!(title instanceof String)){call.reject("A bookmark title must be text.");return;}
-  try{call.resolve(bookmarkResult(bookmarks.change(url,saved,(String)title)));}catch(Exception unavailable){call.reject("Bookmark could not be saved. The device stores up to 100 bookmarks; existing data was not changed.");}
+  try{call.resolve(bookmarkResult(bookmarks.change(url,saved)));}catch(Exception unavailable){call.reject("Bookmark could not be saved. The device stores up to 100 bookmarks; existing data was not changed.");}
  }); }
  @PluginMethod public void browsingState(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!bookmarkSession(call))return;

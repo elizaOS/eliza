@@ -3,18 +3,17 @@ package ai.eliza.plugins.browsersurface;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import java.util.ArrayList;
-import java.util.List;
+import org.json.JSONArray;
 
 /**
  * Explicit bookmarks only: at most {@link #MAX} HTTPS addresses without embedded credentials,
- * newest first, each with an optional host-supplied title ({@link BrowserBookmarkRecord}). No page
- * content, history or cookies. Addresses can carry private query parameters and titles name what
- * was saved, so the whole record is sealed by the host's {@link BrowserSealedText}. The host
- * chooses the preferences file (and the seal's key) so installed data keeps its name; the record
- * lives under {@link #KEY}. A damaged record is reported, never silently replaced.
+ * newest first. No page content, history or cookies. Addresses can carry private query
+ * parameters, so the record is sealed by the host's {@link BrowserSealedText}. The host chooses
+ * the preferences file (and the seal's key) so installed data keeps its name; the record lives
+ * under {@link #KEY}. A damaged record is reported, never silently replaced.
  */
 public final class BrowserBookmarkStore {
-  public static final int MAX = BrowserBookmarkRecord.MAX;
+  public static final int MAX = 100;
   public static final String KEY = "sealed";
   private final SharedPreferences preferences;
   private final BrowserSealedText sealer;
@@ -39,33 +38,32 @@ public final class BrowserBookmarkStore {
 
   /** Saved bookmarks, newest first. Throws when the record is damaged or cannot be opened. */
   public synchronized ArrayList<String> read() throws Exception {
-    return urls(entries());
-  }
-
-  public synchronized List<BrowserBookmarkRecord.Entry> entries() throws Exception {
     String packed = preferences.getString(KEY, null);
-    if (packed == null) return new ArrayList<>();
-    return BrowserBookmarkRecord.read(sealer.open(packed), BrowserBookmarkStore::valid);
+    ArrayList<String> result = new ArrayList<>();
+    if (packed == null) return result;
+    JSONArray rows = new JSONArray(sealer.open(packed));
+    if (rows.length() > MAX) throw new IllegalStateException();
+    for (int i = 0; i < rows.length(); i++) {
+      String value = rows.getString(i);
+      if (!valid(value) || result.contains(value)) throw new IllegalStateException();
+      result.add(value);
+    }
+    return result;
   }
 
   /** Saves {@code url} first, or removes it. Returns the stored list; nothing changes on failure. */
   public synchronized ArrayList<String> change(String url, boolean saved) throws Exception {
-    return urls(change(url, saved, null));
-  }
-
-  public synchronized List<BrowserBookmarkRecord.Entry> change(String url, boolean saved, String title)
-      throws Exception {
     if (!valid(url)) throw new IllegalArgumentException();
-    List<BrowserBookmarkRecord.Entry> rows =
-        BrowserBookmarkRecord.change(entries(), url, saved, title, BrowserBookmarkStore::valid);
-    if (!preferences.edit().putString(KEY, sealer.seal(BrowserBookmarkRecord.write(rows))).commit())
+    ArrayList<String> rows = read();
+    rows.remove(url);
+    if (saved) {
+      if (rows.size() >= MAX) throw new IllegalStateException();
+      rows.add(0, url);
+    }
+    JSONArray json = new JSONArray();
+    for (String value : rows) json.put(value);
+    if (!preferences.edit().putString(KEY, sealer.seal(json.toString())).commit())
       throw new IllegalStateException();
     return rows;
-  }
-
-  private static ArrayList<String> urls(List<BrowserBookmarkRecord.Entry> entries) {
-    ArrayList<String> result = new ArrayList<>();
-    for (BrowserBookmarkRecord.Entry entry : entries) result.add(entry.url);
-    return result;
   }
 }
