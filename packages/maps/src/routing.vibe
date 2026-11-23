@@ -22,11 +22,20 @@ const streetAddress = /^\d+[a-z]?\s+\S+(?:\s+\S+)*\s+(?:st|street|ave|avenue|rd|
 const properName = /^\p{Lu}[\p{Ll}'’]/u
 const appDestination = /\b(?:page|screen|tab|menu|view|section|step|level|folder|file|settings?|options?|line|slide|chapter|stage|part|item|message|email|thread|inbox|chat|conversation|document|doc|link|website|site)$/iu
 const compoundRequest = /\b(?:then|if|unless|when|once)\b/iu
+const businessNames = new Set(["7-eleven", "albertsons", "aldi", "applebees", "arbys", "arco", "carrefour", "chevron", "chilis", "chipotle", "costco", "dennys", "dunkin", "exxon", "familymart", "h&m", "hilton", "hyatt", "ikea", "in-n-out", "kmart", "kohls", "kroger", "lawson", "lidl", "lowes", "macys", "marriott", "mcdonalds", "meijer", "nordstrom", "panera", "peets", "petco", "petsmart", "popeyes", "publix", "safeway", "sephora", "sheraton", "staples", "starbucks", "target", "tesco", "texaco", "ulta", "uniqlo", "valero", "walgreens", "walmart", "wegmans", "wendys", "westin", "yodobashi", "zara"])
+const placeCode = /^(?!(?:PDF|FAQ|URL|API|TODO|HTML|CSS|JSON|XML|SQL|CSV|USB|TV|AM|PM|OK|ASAP|FYI|AI|ML|UI|UX|IT|HR|PR|CI|QA|SDK|CLI|GUI|OS|AWS|VPN|DNS|SSH|IDE|DM|DMS|SMS|MMS|BIOS)\b)\p{Lu}{2,5}(?=\s|$)/u
+const streetName = /\p{L}\s+(?:street|st|avenue|ave|boulevard|blvd|road|rd|lane|ln|parkway|pkwy|highway|hwy)\.?(?:,|$)/iu
+const placeNameCue = /^(?:cathedral|college|museum|university)\s+of\s+\p{L}|\b(?:airport|aquarium|beach|bridge|building|caf[eé]|cathedral|center|centre|cinema|clinic|college|court|garden|hospital|hotel|library|market|museum|park|pharmacy|pier|plaza|restaurant|shop|square|stadium|station|store|terminal|theat(?:er|re)|tower|trail|university|zoo)(?:\s+\d+[a-z]?)?$/iu
+const spokenIdiom = /^(?:sleep|bed|work|school|church|war|waste|town|pieces|great\s+lengths)\b/u
+const spokenFirstWord = /^(?:right|wrong|left|main|current|latest|original|default|following|above|below|more|less|all|any|some|every|each|no|one|two|three|second|third|fourth|fifth|see|watch|pick|check|look|find|buy|grab|eat|drink|meet|visit|help|talk|ask|tell|say|take|bring|go|come|stay|lunch|dinner|breakfast|brunch|class|practice|rehearsal|apple|microsoft|app|apps|play|android|iphone|ios|windows|mac|phone|device|system|control|bing|yahoo|duckduckgo)\b/u
+const spokenNotAPlace = /\b(?:i|me|my|mine|you|your|yours|we|us|our|he|him|his|she|her|they|them|their|it|its|this|that|these|those|today|tomorrow|tonight|yesterday|now|later|soon|morning|afternoon|evening|weekend|with|for|and|or|but|so|to|about|after|before|without|because|until|while)\b/u
+const spokenNearest = /^(?:nearest|closest)\b/u
 const addressWithLocality = /^\d+[a-z]?\s+[^,]+(?:,\s*[\p{Lu}\d][\p{L}\d.'’ -]*)+$/u
 const notAPlaceKind = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`
 const findVerb = String.raw`(?:(?:find|show|locate|get|search\s+for|look\s+(?:for|up))\s+(?:me\s+)?|where(?:'s|’s|\s+is|\s+are)\s+|what(?:'s|’s|\s+is)\s+)`
 const placeKind = String.raw`(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}`
 const nearby = String.raw`(?:near\s+(?:me|here|by)|nearby|around\s+here|close\s+by)`
+const spokenNearestPlace = new RegExp(String.raw`^(?:nearest|closest)\s+${notAPlaceKind}`, "u")
 const notAThere = String.raw`(?!(?:anyone|anybody|someone|somebody|no\s?one|nobody|one|(?:a|any)\s+(?:way|chance|reason|problem|issue|bug|error|difference|need|point))\b)`
 const nearestRequest = new RegExp(String.raw`^\s*${courtesy}${findVerb}?(?:(?:the|a|my)\s+)?(?:nearest|closest)\s+${notAPlaceKind}[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,4}${end}`, "iu")
 const nearMeRequest = new RegExp([
@@ -102,9 +111,18 @@ function compound(destination: string): boolean {
   return compoundRequest.test(destination) || (destination.includes(",") && !addressWithLocality.test(destination))
 }
 
+function spokenPlaceName(name: string): boolean {
+  return /^\p{Ll}/u.test(name) && /\s/u.test(name) && placeNameCue.test(name) && !spokenIdiom.test(name) && !spokenFirstWord.test(name)
+    && !spokenNotAPlace.test(name) && (!spokenNearest.test(name) || spokenNearestPlace.test(name))
+}
+
 function goToPlace(destination: string): boolean {
   const name = destination.replace(/^the\s+/iu, "")
-  return !goToNotAPlace.test(name) && (streetAddress.test(name) || (properName.test(name) && (name !== destination || /\s/u.test(name))))
+  const code = placeCode.exec(name)?.[0]
+  return !goToNotAPlace.test(name) && (businessNames.has(name.toLowerCase().replace(/['’]/gu, ""))
+    || (properName.test(name) && (name !== destination || /\s/u.test(name)))
+    || (code !== undefined && (code === name || (placeNameCue.test(name) && !spokenNotAPlace.test(name.toLowerCase()))))
+    || streetAddress.test(name) || streetName.test(name) || spokenPlaceName(name))
 }
 
 /** The shape of a short request and what a routing decision needs to know about its destination. */

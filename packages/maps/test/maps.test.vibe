@@ -591,6 +591,9 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
     routeOf("find the nearest pharmacy", ownerTurn("x"), false, () => false),
     routeOf("directions to Coit Tower", { ...ownerTurn("x"), content: { text: "x", source: "discord", channelType: "GROUP" } } as unknown as Memory, false, () => false),
     routeOf("directions to assemble the shelf", ownerTurn("x"), false, () => false),
+    ...["go to coit tower", "go to the ferry building", "go to SFO", "go to UCSF Medical Center", "go to Starbucks", "go to the Presidio",
+      "go to Sam", "go to Notion", "go to sleep", "go to the PDF", "go to my inbox", "go to the right place"]
+      .map((text) => routeOf(text, ownerTurn(text), false, () => false)),
   ]
   const receipt = (result: { readonly effectReceipts?: ReadonlyArray<{ readonly outcome: string }> }) => result.effectReceipts?.[0]?.outcome
   try Effect.try(() => assert.deepStrictEqual({
@@ -606,6 +609,8 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
     asked: [false, "destination"],
     answered: [true, "near"],
     elsewhere: false,
-    routes: ["ToDirections", "ToTravel", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner", "ToPlanner"],
+    routes: ["ToDirections", "ToTravel", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner", "ToPlanner",
+      "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel",
+      "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner"],
   }))
 })
