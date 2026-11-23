@@ -231,11 +231,11 @@ pure def sometimesSteppedUpAtSignIn(f: Family): bool = isActive(f, f.seenEpoch) 
 
 ## Story: Keep a tablet signed in to mail and calendar
 
-> As an older person using a Grace tablet, I want it to stay signed in to my
-> mail and calendar like a phone app does, without asking me to sign in
-> again every week, while the assistant on it can never read or send my mail
-> with its own key, so that only signing out, removing the account, a
-> revoked device or a stolen secret ever signs the tablet out.
+> As a device owner, I want my device to stay signed in to mail and
+> calendar like a phone app does, without asking me to sign in again
+> every week. The assistant must never use its own key to read or send
+> my mail. The device signs out only when I sign out or remove the
+> account, the device is revoked, or a secret is stolen.
 
 A device lease is a session family bound to one device grant. Only the
 tablet's native shell holds its secrets, in the secure-store slots that hold
