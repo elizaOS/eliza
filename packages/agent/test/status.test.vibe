@@ -1,24 +1,17 @@
 // spec/agent/host/process.md, "Status says running only when health says ready, and the agent can respond only with a text backend and an unblocked account"; spec/agent/access/auth.md, "A Root-only route admits only a caller holding the launch token"
 import { assert, it } from "@effect/vitest"
 import { messageBodyLimitBytes } from "../gen/agent__access__transport.ts"
-import { parseLaunch } from "../src/host/launch.vibe"
-import { startAgent } from "../src/host/process.vibe"
 import { statusRoutes, type BindingState } from "../src/host/status.vibe"
 import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
-import { launchDocument, launchFrame, type LaunchOptions } from "./support/scratch.ts"
+import { type LaunchOptions } from "./support/scratch.ts"
 import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
+import { launchOnSocket } from "./support/socket-agent.vibe"
 
 const answered = (answer: LocalAnswer | Refusal) => "status" in answer ? [answer.status, answer.json] : answer
 
 effect function started(options: LaunchOptions, credential: boolean) {
   const state = try scratch("ez-status")
-  const socket = state.file("agent.sock")
-  const frame = launchFrame(credential ? { credential: { version: 1, value: deviceKey } } : {})
-  const parsed = try parseLaunch(JSON.stringify(launchDocument(options)), JSON.stringify(frame))
-  const running = try acquireRelease(
-    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),
-    (agent) => orDie(host("retire agent", () => agent.stop())),
-  )
+  const { socket, frame, running } = try launchOnSocket(state, options, credential ? { credential: { version: 1, value: deviceKey } } : {})
   const ask = (path: string, token?: string) => host(path, () => request(socket, { method: "GET", path, ...(token === undefined ? {} : { token }) }))
   return { running, ask, token: frame.token }
 }

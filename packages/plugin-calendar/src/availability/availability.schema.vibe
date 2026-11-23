@@ -1,5 +1,5 @@
 // spec/calendar/availability.md, "Choose a bounded interval and accept occupancy-only rows"; spec/calendar/availability.md, "Return sorted rows and preserve their multiplicity"
-import { SchemaGetter } from "effect"
+import { sampledSchema } from "@elizaos/core"
 import { knownTimeZone } from "../clock.vibe"
 
 const day = 86_400_000
@@ -12,25 +12,18 @@ function roundTrips(value: string) {
   return Number.isFinite(stamp) && instantText(stamp) === value
 }
 
-function sampled<Wire extends Schema.Constraint, Seed extends Schema.Constraint>(wire: Wire, seed: Seed, build: (seed: Seed["Type"]) => Wire["Type"]) {
-  const domain = Schema.declare(Schema.is(Schema.toType(wire)), {
-    toCodecArbitrary: () => Schema.link<Wire["Type"]>()(seed, { decode: SchemaGetter.transform(build), encode: SchemaGetter.forbiddenEncoding }),
-  })
-  return Schema.decodeTo(domain)(wire)
-}
-
 const ZoneSeed = Schema.Literals(["UTC", "America/Los_Angeles", "America/New_York", "Europe/London", "Australia/Lord_Howe"])
 
-export const Instant = sampled(Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/), Schema.makeFilter(roundTrips)),
+export const Instant = sampledSchema(Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/), Schema.makeFilter(roundTrips)),
   between(0, lastInstant), instantText)
 
 export function sampledWireInstant(wire: Schema.Codec<string, string>, { allowDateOnly = true }: { readonly allowDateOnly?: boolean } = {}) {
   const formats = allowDateOnly ? ["Z", "+05:30", "-07:00", "date"] as const : ["Z", "+05:30", "-07:00"] as const
-  return sampled(wire, Schema.Struct({ instant: Instant, format: Schema.Literals(formats) }),
+  return sampledSchema(wire, Schema.Struct({ instant: Instant, format: Schema.Literals(formats) }),
     ({ instant, format }) => format === "date" ? instant.slice(0, 10) : instant.slice(0, -1) + format)
 }
 
-export const ZoneName = sampled(Schema.String.check(Schema.makeFilter((name: string) => knownTimeZone(name))), ZoneSeed, (zone) => zone)
+export const ZoneName = sampledSchema(Schema.String.check(Schema.makeFilter((name: string) => knownTimeZone(name))), ZoneSeed, (zone) => zone)
 
 function boundedSpan({ start, end }: { readonly start: string; readonly end: string }) {
   const from = Date.parse(start), to = Date.parse(end)
@@ -40,7 +33,7 @@ function boundedSpan({ start, end }: { readonly start: string; readonly end: str
 const OperationWire = Schema.Struct({ type: Schema.Literal("calendar_availability"), start: Instant, end: Instant, timeZone: ZoneName })
   .check(Schema.makeFilter(boundedSpan))
 
-export const AvailabilityOperation = sampled(OperationWire,
+export const AvailabilityOperation = sampledSchema(OperationWire,
   Schema.Struct({ from: between(0, lastInstant - 7 * day), duration: between(1, 7 * day), timeZone: ZoneSeed }),
   ({ from, duration, timeZone }) => ({ type: "calendar_availability", start: instantText(from), end: instantText(from + duration), timeZone } as const))
 

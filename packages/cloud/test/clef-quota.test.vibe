@@ -1,5 +1,6 @@
 // spec/cloud/index.md, "A dispatch uses the current account and its available quota slots"
 import { assert, it } from "@effect/vitest"
+import { check } from "./support/cloud.vibe"
 
 module node {
   import { Effect } from "effect"
@@ -67,10 +68,6 @@ module node {
   }
 }
 import { decideUnderEachFunding } from node
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 it.live('A funded or subscribed organization gets more Clef decisions, and only a subscription continues past the day (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideUnderEachFunding())

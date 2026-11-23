@@ -1,7 +1,7 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { assert, describe, it } from "@effect/vitest"
 import { Store } from "../src/store/store.vibe"
-import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { check, testCloud, type TestCloud } from "./support/cloud.vibe"
 import { testProfile } from "./support/profile.ts"
 import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import { scopeFor, storeGrant, type Owner } from "../src/services/google/grant-access.vibe"
@@ -10,10 +10,6 @@ import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/googl
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
   try cloud.store.transaction((tx) => storeGrant(tx, {

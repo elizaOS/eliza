@@ -83,18 +83,11 @@ import { assert, it } from "@effect/vitest"
 import type { UUID } from "@elizaos/core"
 import { privateNotice } from "../gen/agent__conversation__conversations.ts"
 import { textDigest } from "../src/conversation/fork.vibe"
-import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
-import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
+import { ask, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import type { Conversation, Message } from "./support/streaming.vibe"
 
-interface Conversation { readonly id: string; readonly roomId: UUID; readonly title: string }
-interface Message { readonly id: string; readonly role: string; readonly text: string; readonly timestamp: number }
 
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 const base = 1_700_000_000_000
-
-effect function ask(agent: InProcess, asked: LocalRequest) {
-  return answerOf(try call(agent, asked))
-}
 
 effect function open(agent: InProcess, title: string) {
   const answer = try ask(agent, { method: "POST", path: "/api/conversations", body: { title } })

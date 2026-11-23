@@ -446,6 +446,11 @@ async function settle(work: ActionResult!Refusal): Promise<ActionResult> {
 const ownerOnly = { minRole: "OWNER" as const }
 const modeParameter = { name: "travelMode", required: false, description: "drive, walk, bicycle or transit; drive when the owner named none.", schema: { type: "string" as const, enum: [...travelModes] } }
 
+const placeParameters: NonNullable<Action["parameters"]> = [
+  { name: "query", required: false, description: "The place the owner named.", schema: { type: "string" } },
+  { name: "placeId", required: false, description: "The provider place id of a place the owner chose from a list.", schema: { type: "string" } },
+]
+
 function mapsActions(ports: MapsPluginPorts): Action[] {
   const handle = (operation: ChoiceOperation | undefined, work: (service: MapsService, navigation: MapsDeviceNavigation | undefined, message: Memory, params: Params, ask: Ask, runtime: IAgentRuntime) => ActionResult!Refusal): Action["handler"] =>
     (runtime, message, _state, options) => {
@@ -530,10 +535,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       description: "Show one place on the phone's map, or describe it when the phone is not connected.",
       tags: ["domain:maps", "capability:device"],
       roleGate: ownerOnly,
-      parameters: [
-        { name: "query", required: false, description: "The place the owner named.", schema: { type: "string" } },
-        { name: "placeId", required: false, description: "The provider place id of a place the owner chose from a list.", schema: { type: "string" } },
-      ],
+      parameters: placeParameters,
       validate: always,
       handler: handle("select", (service, navigation, _message, params, ask) => selectPlace(service, navigation, params, ask)),
     },
@@ -543,8 +545,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       tags: ["domain:maps", "capability:write", "effect:idempotent", "effect:receipt-required"],
       roleGate: ownerOnly,
       parameters: [
-        { name: "query", required: false, description: "The place the owner named.", schema: { type: "string" } },
-        { name: "placeId", required: false, description: "The provider place id of a place the owner chose from a list.", schema: { type: "string" } },
+        ...placeParameters,
         { name: "label", required: false, description: "The name to save it under, such as Work; the place's own name when the owner gave none.", schema: { type: "string" } },
         { name: "idempotencyKey", required: false, description: "A key that makes a retried save repeat its first outcome.", schema: { type: "string" } },
       ],
@@ -557,10 +558,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       similes: ["SHARE_PLACE", "SHARE_LOCATION"],
       tags: ["domain:maps", "capability:write"],
       roleGate: ownerOnly,
-      parameters: [
-        { name: "query", required: false, description: "The place the owner named.", schema: { type: "string" } },
-        { name: "placeId", required: false, description: "The provider place id of a place the owner chose from a list.", schema: { type: "string" } },
-      ],
+      parameters: placeParameters,
       validate: always,
       handler: handle("share", (service, _navigation, message, params, ask, runtime) => sharePlace(service, runtime, message, params, ask)),
     },

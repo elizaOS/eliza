@@ -1,12 +1,12 @@
 // spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"
 import { Base64 } from "effect/encoding"
-import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
+import { HttpClientRequest, type HttpClient, type HttpClientResponse } from "effect/http"
 import { Socket } from "effect/socket"
 import type { SttEventKind } from "../../gen/cloud__services__speechRelay.ts"
 import type { Millis } from "../../gen/cloud__shared__types.ts"
 import type { SpeechSettings as SpeechProfile } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
-import { ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, retryAfter } from "./llm.vibe"
+import { acceptedResponse, ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable } from "./llm.vibe"
 import { headerWebSocket } from "./socket.ts"
 
 export { ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable }
@@ -266,18 +266,10 @@ module node {
 }
 import { recordingForm } from node
 
-effect function released(response: HttpClientResponse.HttpClientResponse): void!! {
-  Stream.runHead(response.stream) catch () => undefined
-}
-
 effect function accepted(settings: SpeechSettings, request: HttpClientRequest.HttpClientRequest): HttpClientResponse.HttpClientResponse!(ProviderRefused | ProviderUnreachable)!SpeechContext {
   const key = try orDie((try Deployment).secret(settings.apiKeyEnv))
   const keyed = request.pipe(HttpClientRequest.setHeaders({ "x-api-key": key, "cartesia-version": restVersion }))
-  const response = Effect.provideService(HttpClient.execute(keyed), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new ProviderUnreachable() }
-  if (response.status >= 200 && response.status < 300) return response
-  try released(response)
-  const wait = retryAfter(response.headers["retry-after"])
-  throw new ProviderRefused(wait === undefined ? { status: response.status } : { status: response.status, retryAfter: wait })
+  return try acceptedResponse(keyed)
 }
 
 effect function within<A, R>(budget: Millis, call: A!SpeechFailure!R): A!SpeechFailure!R {

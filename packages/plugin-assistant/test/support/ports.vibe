@@ -28,6 +28,18 @@ export function ports(now = Date.UTC(2026, 10, 22, 15, 0)): Ports {
 
 export function portsLayer(seen: Ports) {
   const keyed = new Set<string>()
+  function keyedChange(taskId: string, key: string, apply: (row: TaskRow & { readonly key: string }) => void) {
+    const row = seen.tasks.get(taskId)
+    if (row === undefined) return { kind: "notFound" } as const
+    if (seen.refusals > 0) {
+      seen.refusals -= 1
+      return { kind: "refused", reason: "scripted refusal" } as const
+    }
+    if (keyed.has(key)) return { kind: "applied" } as const
+    keyed.add(key)
+    apply(row)
+    return { kind: "applied" } as const
+  }
   return Layer.mergeAll(
     KeyValueStore.layerMemory,
     Layer.succeed(Scheduler, {
@@ -43,30 +55,15 @@ export function portsLayer(seen: Ports) {
         return { created: true, task: row }
       },
       effect answer(taskId: string, verb: TaskVerb, key: string) {
-        const row = seen.tasks.get(taskId)
-        if (row === undefined) return { kind: "notFound" } as const
-        if (seen.refusals > 0) {
-          seen.refusals -= 1
-          return { kind: "refused", reason: "scripted refusal" } as const
-        }
-        if (keyed.has(key)) return { kind: "applied" } as const
-        keyed.add(key)
-        seen.verbs.push({ taskId, verb, key })
-        const next = { ...row, status: statusAfter[verb.tag], revision: row.revision + 1 }
-        seen.tasks.set(taskId, next)
-        return { kind: "applied" } as const
+        return keyedChange(taskId, key, (row) => {
+          seen.verbs.push({ taskId, verb, key })
+          seen.tasks.set(taskId, { ...row, status: statusAfter[verb.tag], revision: row.revision + 1 })
+        })
       },
       effect edit(taskId: string, change: TaskEdit, key: string) {
-        const row = seen.tasks.get(taskId)
-        if (row === undefined) return { kind: "notFound" } as const
-        if (seen.refusals > 0) {
-          seen.refusals -= 1
-          return { kind: "refused", reason: "scripted refusal" } as const
-        }
-        if (keyed.has(key)) return { kind: "applied" } as const
-        keyed.add(key)
-        seen.tasks.set(taskId, { ...row, ...change, revision: row.revision + 1 })
-        return { kind: "applied" } as const
+        return keyedChange(taskId, key, (row) => {
+          seen.tasks.set(taskId, { ...row, ...change, revision: row.revision + 1 })
+        })
       },
       effect find(taskId: string) { return seen.tasks.get(taskId) },
       effect list() {

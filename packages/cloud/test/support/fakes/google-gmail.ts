@@ -170,3 +170,33 @@ export function gmailReads(mailbox: ReadableMailbox): FakeHandler {
     return answer(mailbox, request, request.path.slice(base.length));
   };
 }
+
+export const htmlTextAtLimit = "é".repeat(256 * 1024 - 4) + "x";
+export const htmlAtLimit = `<p>${htmlTextAtLimit}</p>`;
+export const htmlOverLimit = `<p>${htmlTextAtLimit}y</p>`;
+
+interface ReadBody {
+  readonly bodyHtmlStatus: string;
+  readonly bodyHtml: string | null;
+  readonly bodyText: string;
+  readonly attachments?: readonly { readonly name: string }[];
+}
+
+/** @throws {never} */
+export function htmlReadSummary(reads: readonly ReadBody[]): unknown[] {
+  return reads.map((message, index) => [
+    message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
+    message.bodyText === [htmlTextAtLimit, "Plain alternative", htmlTextAtLimit + "y"][index],
+  ]);
+}
+
+/** @throws {never} */
+export function mimeReadSummary(reads: readonly ReadBody[]): unknown[] {
+  return reads.map((message) => [message.bodyHtmlStatus, message.bodyHtml, message.bodyText, message.attachments?.map(({ name }) => name)]);
+}
+
+export const expectedHtmlReads = [["available", true, true], ["too_large", null, true], ["too_large", null, true]];
+
+export const expectedMimeReads = [["available", "<p>HTML after the attachments</p>", "Complete plain text", ["first.txt", "last.txt"]],
+  ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
+  ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]];

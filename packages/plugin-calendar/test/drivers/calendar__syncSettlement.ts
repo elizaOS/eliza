@@ -2,7 +2,8 @@
 import { Deferred, Effect, Fiber } from "effect";
 import type { Driver, Options } from "../../gen/calendar__syncSettlement.conformance.ts";
 import type { Event, ForegroundSync, SyncSettlement } from "../../gen/calendar__syncSettlement.ts";
-import { calendarWatchChannel, foregroundSyncMachine, type CalendarLinkStorage, type CalendarWatchAttemptOutcome, type CalendarWatchChannel } from "../../src/linked-sync/index.vibe";
+import { calendarWatchChannel, foregroundSyncMachine, type CalendarWatchAttemptOutcome, type CalendarWatchChannel } from "../../src/linked-sync/index.vibe";
+import { memoryLinkStorage } from "../support/link-storage.ts";
 
 interface Observed {
   readonly watch: CalendarWatchChannel;
@@ -24,14 +25,7 @@ let channel: Channel | undefined;
 let foreground: Foreground | undefined;
 const running = new Map<number, Running>();
 
-const storage: CalendarLinkStorage = {
-  read: (slot) => Promise.resolve(structuredClone(slots.get(slot) ?? null)),
-  compareExchange(slot, expected, value) {
-    if (JSON.stringify(slots.get(slot) ?? null) !== JSON.stringify(expected)) return Promise.resolve({ status: "conflict" });
-    slots.set(slot, structuredClone(value));
-    return Promise.resolve({ status: "saved" });
-  },
-};
+const storage = memoryLinkStorage(() => slots);
 
 const run = <A>(effect: Effect.Effect<A, unknown>) => Effect.runPromise(effect);
 

@@ -2,7 +2,8 @@
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/calendar__linkedSync.conformance.ts";
 import type { ControlLedger, ControlOp, ControlProof, Event } from "../../gen/calendar__linkedSync.ts";
-import { linkedCalendarControl, type CalendarLinkStorage, type LinkedCalendarControlRequest, type LinkedCalendarDestination } from "../../src/linked-sync/index.vibe";
+import { linkedCalendarControl, type LinkedCalendarControlRequest, type LinkedCalendarDestination } from "../../src/linked-sync/index.vibe";
+import { memoryLinkStorage } from "../support/link-storage.ts";
 
 interface Observed {
   readonly revision: number;
@@ -29,14 +30,7 @@ let keys = 0;
 const tokens = new Map<number, string>();
 const references = new Map<number, string>();
 
-const storage: CalendarLinkStorage = {
-  read: (slot) => Promise.resolve(structuredClone(slots.get(slot) ?? null)),
-  compareExchange(slot, expected, value) {
-    if (failWrites || JSON.stringify(slots.get(slot) ?? null) !== JSON.stringify(expected)) return Promise.resolve({ status: "conflict" });
-    slots.set(slot, structuredClone(value));
-    return Promise.resolve({ status: "saved" });
-  },
-};
+const storage = memoryLinkStorage(() => slots, () => failWrites);
 
 const open = () => Effect.runPromise(linkedCalendarControl({
   agentId: "agent",

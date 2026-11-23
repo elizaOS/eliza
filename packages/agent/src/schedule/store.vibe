@@ -2,6 +2,7 @@
 import type { IDatabaseAdapter } from "@elizaos/core"
 import { initial as unsavedTrigger, type Trigger } from "../../gen/agent__schedule__triggers.effect.vibe"
 import type { ScheduledTask } from "../../gen/agent__schedule__scheduledTasks.effect.vibe"
+import { currentFiber, readFirst } from "../storage/transaction.vibe"
 
 export error ScheduleStoreUnavailable { step: string; cause: unknown }
 export error StaleRevision { table: "schedule_triggers" | "schedule_tasks"; id: string; revision: number }
@@ -15,6 +16,7 @@ export error TaskIdTaken { taskId: string }
 module node {
   import { Schema } from "effect"
   import type { IDatabaseAdapter } from "@elizaos/core"
+  import { withinTransaction, type Sql } from "../storage/transaction.vibe"
   import { maxRunHistory, parseState as parseTrigger, type RunSource, type RunStatus, type Trigger } from "../../gen/agent__schedule__triggers.ts"
   import { parseState as parseTask, type ScheduledTask } from "../../gen/agent__schedule__scheduledTasks.ts"
 
@@ -76,10 +78,6 @@ module node {
     | { readonly kind: "existing"; readonly task: StoredTask }
     | { readonly kind: "taken" }
 
-  interface Sql {
-    query<R>(text: string, params?: unknown[]): Promise<{ rows: R[]; affectedRows?: number }>
-  }
-
   type Row = { revision: number; data: unknown }
   type TaskRow = Row & { task_id: string; idempotency_key: string | null; owner_visible: boolean }
 
@@ -108,14 +106,7 @@ module node {
   const decodeRun = Schema.decodeUnknownSync(Run)
   const decodeTaskDetails = Schema.decodeUnknownSync(TaskDetails)
 
-  function connection(value: object): Sql {
-    if (!("query" in value) || typeof value.query !== "function") throw new TypeError("The schedule store needs a SQL connection")
-    return value as Sql
-  }
-
-  function within<A>(adapter: IDatabaseAdapter, work: (sql: Sql) => Promise<A>): Promise<A> {
-    return adapter.transaction(async (tx) => await work(connection(await tx.getConnection())))
-  }
+  const within = <A>(adapter: IDatabaseAdapter, work: (sql: Sql) => Promise<A>): Promise<A> => withinTransaction(adapter, "schedule store", work)
 
   function field(data: unknown, name: string): unknown {
     return typeof data === "object" && data !== null ? Reflect.get(data, name) : undefined
@@ -280,17 +271,6 @@ effect function stored<A>(step: string, call: () => Promise<A>) {
   return try tryPromise({ try: () => call(), catch: (cause) => new ScheduleStoreUnavailable({ step, cause }) })
 }
 
-effect function currentFiber() {
-  return try withFiberSucceed((fiber) => fiber.id)
-}
-
-effect function readBy<A>(reads: Map<number, A>) {
-  const fiber = try currentFiber()
-  const read = reads.get(fiber)
-  reads.delete(fiber)
-  return read === undefined ? try die(new Error("A schedule row was kept without being read first")) : read
-}
-
 export function triggerKeeping(adapter: IDatabaseAdapter, id: string, write: TriggerWrite = {}) {
   const reads = new Map<number, { readonly revision: number; readonly details: TriggerDetails | undefined }>()
   const load = effect function (): Trigger!ScheduleStoreUnavailable {
@@ -299,7 +279,7 @@ export function triggerKeeping(adapter: IDatabaseAdapter, id: string, write: Tri
     return row?.state ?? unsavedTrigger
   }
   const keep = effect function (next: Trigger): void!! {
-    const read = try readBy(reads)
+    const read = try readFirst(reads, "schedule")
     const details = write.details ?? read.details
     if (details === undefined) return try die(new MissingTriggerDetails({ id }))
     const written = try orDie(stored("keep a trigger", () => writeTrigger(adapter, id, read.revision, next, details, write.run)))
@@ -317,7 +297,7 @@ export function scheduledTaskKeeping(adapter: IDatabaseAdapter, taskId: string, 
     return row.state
   }
   const keep = effect function (next: ScheduledTask): void!! {
-    const read = try readBy(reads)
+    const read = try readFirst(reads, "schedule")
     const written = try orDie(stored("keep a scheduled task", () => writeTask(adapter, taskId, read.revision, next, revise(read.details, next))))
     if (written === "stale") try die(new StaleRevision({ table: "schedule_tasks", id: taskId, revision: read.revision }))
   }

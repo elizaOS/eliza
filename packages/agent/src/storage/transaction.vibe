@@ -1,0 +1,29 @@
+// spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
+module node {
+  import type { IDatabaseAdapter } from "@elizaos/core"
+
+  export interface Sql {
+    query<R>(text: string, params?: unknown[]): Promise<{ rows: R[]; affectedRows?: number }>
+  }
+
+  export function sqlConnection(value: object, store: string): Sql {
+    if (!("query" in value) || typeof value.query !== "function") throw new TypeError(`The ${store} needs a SQL connection`)
+    return value as Sql
+  }
+
+  export function withinTransaction<A>(adapter: IDatabaseAdapter, store: string, work: (sql: Sql) => Promise<A>): Promise<A> {
+    return adapter.transaction(async (tx) => await work(sqlConnection(await tx.getConnection(), store)))
+  }
+}
+export { sqlConnection, withinTransaction, type Sql } from node
+
+export effect function currentFiber() {
+  return try withFiberSucceed((fiber) => fiber.id)
+}
+
+export effect function readFirst<A>(reads: Map<number, A>, store: string) {
+  const fiber = try currentFiber()
+  const read = reads.get(fiber)
+  reads.delete(fiber)
+  return read === undefined ? try die(new Error(`A ${store} row was kept without being read first`)) : read
+}

@@ -10,7 +10,7 @@ import { Store } from "../src/store/store.vibe"
 import { signedCaller } from "./support/caller.vibe"
 import { createStripeFake, type SignedEvent } from "./support/fakes/stripe.ts"
 import { manualClock, shiftedClock } from "./support/clock.ts"
-import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
+import { check, organization, sql, testCloud, type TestCloud } from "./support/cloud.vibe"
 
 const minute = 60_000
 const month = 30 * 24 * 60 * minute
@@ -20,14 +20,6 @@ effect function failureOf<A, E extends { readonly _tag: string }, R>(program: A!
     when Exit.Success(let value): `succeeded with ${JSON.stringify(value)}`;
     when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => "refusal" in error && typeof error.refusal === "object" && error.refusal !== null ? refusalBody(error.refusal as Parameters<typeof refusalBody>[0]) : error._tag), Option.getOrElse(() => "defect"));
   }
-}
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
-
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
 }
 
 effect function numbers(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {

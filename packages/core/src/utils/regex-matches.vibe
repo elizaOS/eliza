@@ -1,0 +1,11 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+export function regexMatches(text: string, pattern: RegExp): RegExpExecArray[] {
+  const found: RegExpExecArray[] = []
+  pattern.lastIndex = 0
+  for (let match = pattern.exec(text); match !== null; match = pattern.exec(text)) {
+    found.push(match)
+    if (match[0] === "") pattern.lastIndex += 1
+  }
+  pattern.lastIndex = 0
+  return found
+}

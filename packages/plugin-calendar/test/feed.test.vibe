@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
-import { cacheKeyValueStore, calendarHost, runCalendarAction, type CalendarApprovalRow, type CalendarCache } from "../src/index.vibe"
+import { cacheKeyValueStore, calendarHost, runCalendarAction, type CalendarApprovalRow } from "../src/index.vibe"
 import { managedGoogleCalendar } from "../src/plugin/managed-provider.vibe"
 import { managedBroker, managedFeed, mergeFeedEvents, parseBrokerEndpoint, parseManagedGoogleCalendarFeed, type PurgeRefused,
   type AggregatePorts, type CalendarLinkRecord, type FeedComponent, type ImportedSourceScope, type ManagedCacheStore } from "../src/feed/index.vibe"
@@ -13,6 +13,7 @@ module node {
   }
 }
 import { webResponse } from node
+import { memoryCache } from "./support/memory-cache.ts"
 
 const grant = `alpha-google:${"a".repeat(64)}`
 const otherGrant = `alpha-google:${"b".repeat(64)}`
@@ -148,15 +149,6 @@ it.effect(`Read only the exact selected source and window, cache it under its ow
 
 function at(value: unknown, ...path: string[]): unknown {
   return path.reduce<unknown>((inner, key) => typeof inner === "object" && inner !== null && key in inner ? (inner as Record<string, unknown>)[key] : undefined, value)
-}
-
-function memoryCache(): CalendarCache {
-  const rows = new Map<string, unknown>()
-  return {
-    async getCache<T>(key: string) { return rows.get(key) as T | undefined },
-    async setCache<T>(key: string, value: T) { rows.set(key, value); return true },
-    async deleteCache(key: string) { return rows.delete(key) },
-  }
 }
 
 it.effect(`Read and change the managed Google calendar beside the resident one (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account")`, effect () => {
