@@ -1,3 +1,4 @@
+// spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { driver } from "./drivers/cloud__services__speechRelay.ts";
