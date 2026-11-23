@@ -482,7 +482,12 @@ describe("Network date stated on the current day", () => {
     ]) {
       assert.deepEqual(
         authorizeSetState(
-          { state: "traveling", from: null, until: "2026-10-20", evidence: text },
+          {
+            state: "traveling",
+            from: null,
+            until: "2026-10-20",
+            evidence: text,
+          },
           text,
           now,
         ),
