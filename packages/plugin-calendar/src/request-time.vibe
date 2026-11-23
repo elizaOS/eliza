@@ -247,10 +247,15 @@ export function asksToDeleteInWords(text: string): boolean {
   return deleteWords.test(text) || denseDeleteTarget(text) !== undefined
 }
 
-const yesWords = /^[\s"“'‘]*(?:(?:yes|yeah|yea|yep|yup|sure|ok|okay|confirm(?:ed)?|correct|right|absolutely|definitely|please\s+do|go\s+ahead|do\s+it|delete\s+it|remove\s+it|that\s+one)\b|y\s*[.!]?\s*$)/iu
+const yesWords = /^(?:(?:yes|yeah|yea|yep|yup|sure|ok|okay|confirm|confirmed|correct|right|absolutely|definitely|y)(?: (?:please )?(?:delete it|remove it|do it|go ahead))?|please do|go ahead|do it|delete it|remove it|that one)$/u
 
 export function saysYes(text: string): boolean {
-  return yesWords.test(text)
+  return yesWords.test(folded(text))
+}
+
+export function exactTitleAnswer(title: string, text: string): boolean {
+  const name = folded(title)
+  return name !== "" && name === folded(text)
 }
 
 const people = String.raw`(?:all\s+|the\s+|my\s+|our\s+|both\s+)?(?:attendees?|guests?|invitees?|participants?|everyone|everybody|people|team|others|them|him|her)\b`

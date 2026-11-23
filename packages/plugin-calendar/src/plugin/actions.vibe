@@ -4,23 +4,23 @@ import { readTurnContext } from "@elizaos/agent"
 import { selectedCalendarDeleteTarget } from "../../gen/calendar__requestRouting.ts"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  chatCreateReviewed, deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
+  chatCreateReviewed, deleteAnswer, deleteQuestionMatches, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, statedYearCreate } from "../clock.vibe"
-import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
+import { sameSourceKey, type CalendarEvent, type CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
 import {
-  addressWrittenInWords, asksToDeleteInWords, declinesInWords, deleteWords, denseDeleteTarget, eventNamedInWords, guestIs, guestNamedInWords, noticeAskedInWords, noticeDeclinedInWords, saysYes,
+  addressWrittenInWords, asksToDeleteInWords, declinesInWords, deleteWords, denseDeleteTarget, eventNamedInWords, exactTitleAnswer, guestIs, guestNamedInWords, noticeAskedInWords, noticeDeclinedInWords, saysYes,
 } from "../request-time.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { tripEvents } from "./lookup.vibe"
 import { asksOnlyAboutTomorrowMorning, blockingSpans, openings, spanText, tomorrowMorning, windowFitsWeek } from "./free-time.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearchResult } from "./host.vibe"
-import { guestAddresses } from "./providers.vibe"
+import { eventVersion, guestAddresses } from "./providers.vibe"
 import { CalendarService, calendarServiceType } from "./service.vibe"
 
 export const calendarActionName = "CALENDAR"
@@ -305,23 +305,33 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
   const read = try namedRead(host, event, text, now)
   const question = try host.deleteQuestion(conversation)
   const declines = declinesInWords(text, deleteWords)
-  const answer = deleteAnswer(question?.eventId === event.id, question !== undefined && question.askedIn !== ask.id, question === undefined ? -1 : now - question.askedAt,
-    saysYes(text) || titled, declines, text.includes("?"))
+  const exact = question !== undefined && deleteQuestionMatches(question.eventId === event.id, sameSourceKey(question.source, found.source), question.version === eventVersion(event))
+  if (question !== undefined && !exact && saysYes(text) && !declines) {
+    return failed(subaction, "The event or its source changed since I asked. Nothing was deleted.")
+  }
+  const answer = deleteAnswer(exact, question !== undefined && question.askedIn !== ask.id, question === undefined ? -1 : now - question.askedAt,
+    saysYes(text) || exactTitleAnswer(event.title, text), declines, text.normalize("NFKC").includes("?"))
   const selected = selectedCalendarDeleteTarget(denseDeleteTarget(text) !== undefined, ask.selected === event.id)
   switch (residentDeleteStep(ownerPointedAt(titled, read.only, read.complete, selected), asksToDeleteInWords(text), declines, answer)) {
     case "KeepEvent": {
-      if (question?.eventId === event.id) try host.settleDeleteQuestion(conversation)
+      if (exact && question !== undefined) try host.settleDeleteQuestion(conversation, question.askedIn)
       return failed(subaction, `Nothing was deleted. You turned down deleting “${event.title}”, so it stays on your calendar.`, { declined: true, eventId: event.id })
     }
     case "AskInChat": {
-      try host.askToDelete(conversation, { eventId: event.id, askedIn: ask.id, askedAt: now })
+      try host.askToDelete(conversation, { eventId: event.id, source: found.source, version: eventVersion(event),
+        scope, notifyAttendees, askedIn: ask.id, askedAt: now })
       const unread = read.complete ? "" : " Another calendar could not be read, so the event you meant may be there."
-      return failed(subaction, `Nothing was deleted. Your request didn't name one exact event; the closest match is “${event.title}”, ${wallTime(event, zone)}.${unread} Should I delete it?`,
+      const which = scope === "series" ? "the entire series" : scope === "this_and_following" ? "this and following occurrences" : "it"
+      const notice = notifyAttendees ? " and notify its attendees" : ""
+      return failed(subaction, `Nothing was deleted. Your request didn't name one exact event; the closest match is “${event.title}”, ${wallTime(event, zone)}.${unread} Should I delete ${which}${notice}?`,
         { requiresInput: true, missing: ["delete confirmation"], eventId: event.id, targetEvent: event })
     }
     case "DeleteNow": {
-      const result = host.change({ kind: "delete", target: found, scope, notifyAttendees, askedBy: ask.by, askId: `${ask.id}:${subaction}` }) catch () => undefined
-      if (question !== undefined && result?.kind === "ran") try host.settleDeleteQuestion(conversation)
+      const confirmed = answer === "AnsweredYes" ? question : undefined
+      const result = host.change({ kind: "delete", target: found, scope: confirmed?.scope ?? scope,
+        notifyAttendees: confirmed?.notifyAttendees ?? notifyAttendees, askedBy: ask.by,
+        askId: confirmed === undefined ? `${ask.id}:${subaction}` : `${confirmed.askedIn}:${subaction}:confirmed` }) catch () => undefined
+      if (exact && question !== undefined && result?.kind === "ran") try host.settleDeleteQuestion(conversation, question.askedIn)
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
   }

@@ -337,10 +337,24 @@ question for that one event: a yes, or the event's whole title, with no
 question back and no decline, deletes it; a decline keeps it and spends the
 question.
 
+The question is stored under the active account and conversation. It
+names the exact source, event revision, recurrence scope and notification
+choice the question describes. An answer can use only that saved authority.
+An answer for a changed revision or a different source cannot use it.
+An affirmative answer must be a complete assent or the exact title.
+An assent followed by another instruction does not confirm the question.
+Retries of a confirmed question keep its mutation identity.
+
 ```quint
 type DeleteAnswer = Unanswered | AnsweredYes | AnsweredNo
 type ResidentDeleteStep = DeleteNow | AskInChat | KeepEvent
 pure val deleteQuestionLifetime: int = 1800000
+pure def deleteQuestionMatches(eventMatches: bool, sourceMatches: bool, versionMatches: bool): bool =
+  eventMatches and sourceMatches and versionMatches
+pure def lawAnotherSourceCannotUseTheDeleteQuestion(eventMatches: bool, versionMatches: bool): bool =
+  not(deleteQuestionMatches(eventMatches, false, versionMatches))
+pure def lawAChangedEventCannotUseTheDeleteQuestion(eventMatches: bool, sourceMatches: bool): bool =
+  not(deleteQuestionMatches(eventMatches, sourceMatches, false))
 pure def ownerPointedAt(wholeTitleSaid: bool, onlyEventNamed: bool, everyCalendarRead: bool, selectedOnScreen: bool): bool =
   (wholeTitleSaid and onlyEventNamed and everyCalendarRead) or selectedOnScreen
 pure def deleteAnswer(askedAboutThisEvent: bool, laterRequest: bool, sinceAsked: int, yesOrTitle: bool, declines: bool, asksBack: bool): DeleteAnswer =

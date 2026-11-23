@@ -12,8 +12,9 @@ import {
   type CalendarAnswerScope, type CalendarInvitationResponse, type CalendarMutationOutcome, type CalendarMutationPayload, type CalendarMutationRequest,
 } from "../mutations/ledger.vibe"
 import { invitationChangeOf, providerMutationPort, reviewDigest } from "../mutations/provider-port.vibe"
-import { PayloadRecord } from "../mutations/records.schema.vibe"
+import { PayloadRecord, SourceKeyRecord } from "../mutations/records.schema.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
+import { WriteScopeRecord } from "../series/rows.schema.vibe"
 import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
 import { eventInWindow, eventVersion, hasOtherAttendees, ownerRole, residentCalendar, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
 import { lookupMatches } from "./lookup.vibe"
@@ -92,6 +93,10 @@ export type CalendarRefusal =
 
 interface CalendarDeleteQuestion {
   readonly eventId: string
+  readonly source: CalendarSourceKey
+  readonly version: string
+  readonly scope: CalendarWriteScope
+  readonly notifyAttendees: boolean
   readonly askedIn: string
   readonly askedAt: number
 }
@@ -105,8 +110,12 @@ export interface CalendarHostOptions {
 
 const approvalLifetimeMs = 24 * 60 * 60 * 1000
 const decodePayload = Schema.decodeUnknownOption(PayloadRecord, { onExcessProperty: "error" })
-const decodeQuestion = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ eventId: Schema.String, askedIn: Schema.String, askedAt: Schema.Number })))
-const questionKey = (conversation: string) => `calendar.delete-question.${encodeURIComponent(conversation)}`
+const decodeQuestion = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({
+  eventId: Schema.String, source: SourceKeyRecord, version: Schema.String, scope: WriteScopeRecord, notifyAttendees: Schema.Boolean,
+  askedIn: Schema.String, askedAt: Schema.Number,
+})))
+const questionKey = (account: CalendarAccount, conversation: string) =>
+  `calendar.delete-question.${sha256Hex(JSON.stringify([account.agentId, account.ownerId, account.accountId, conversation]))}`
 const sourceStatus: Readonly<Record<SourceRead, CalendarSourceStatus>> = { ReadFresh: "fresh", ReadStale: "stale", ReadFailed: "error" }
 const noticeReason: Readonly<Record<AttendeeNotice, string>> = {
   NotifyAttendees: ", telling its attendees",
@@ -225,17 +234,28 @@ export effect function calendarHost(options: CalendarHostOptions) {
   }
 
   effect function deleteQuestion(conversation: string): (CalendarDeleteQuestion | undefined)!! {
-    const raw = store.get(questionKey(conversation)) catch () => undefined
+    const account = try Ref.get(active)
+    if (account === undefined) return undefined
+    const raw = store.get(questionKey(account, conversation)) catch () => undefined
     const read = decodeQuestion(raw ?? "")
     return Option.isSome(read) ? read.value : undefined
   }
 
   effect function askToDelete(conversation: string, question: CalendarDeleteQuestion): void!! {
-    store.set(questionKey(conversation), JSON.stringify(question)) catch () => undefined
+    const account = try Ref.get(active)
+    if (account === undefined || account.accountId !== question.source.connectorAccountId) return
+    store.set(questionKey(account, conversation), JSON.stringify(question)) catch () => undefined
   }
 
-  effect function settleDeleteQuestion(conversation: string): void!! {
-    store.remove(questionKey(conversation)) catch () => undefined
+  effect function settleDeleteQuestion(conversation: string, askedIn: string): void!! {
+    const account = try Ref.get(active)
+    if (account === undefined) return
+    const key = questionKey(account, conversation)
+    const stored = store.get(key) catch () => undefined
+    const read = decodeQuestion(stored ?? "")
+    if (Option.isSome(read) && read.value.askedIn === askedIn) {
+      store.remove(key) catch () => undefined
+    }
   }
 
   effect function writeTarget(calendarId?: string): (CalendarSourceKey | undefined)!! {
