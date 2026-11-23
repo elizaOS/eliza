@@ -2,6 +2,8 @@
 import { assert, it } from "@effect/vitest"
 import { calendarPlugin } from "../src/index.vibe"
 import { calendarAvailabilityRequest, calendarEventRequest } from "../src/plugin/request-routing.vibe"
+import { registerOwnerActionRelevance as registerFromPackage } from "@elizaos/agent"
+import { registerOwnerActionRelevance as registerFromHost } from "../../agent/src/conversation/planning.vibe"
 import type { AgentPlugin } from "../../agent/src/host/module.vibe"
 import { toolCalls, text } from "../../agent/test/support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, startInProcess } from "../../agent/test/support/kernel.vibe"
@@ -62,6 +64,7 @@ it.live('Use resident Calendar and keep the other work while Contacts is open (s
   if (!("status" in opened) || opened.status !== 201) throw new Error("The fixture conversation did not open")
   const id = (opened.json as { conversation: { id: string } }).conversation.id
   const asked = `Add an event called ${title} on March 4, 2035 at 9am UTC, save it now, and check the other fixture.`
+  try Effect.try(() => assert.strictEqual(registerFromPackage, registerFromHost))
   try Effect.sync(() => cloud.script(toolCalls("",
     { name: "CALENDAR", arguments: { subaction: "create_event", title, startAt, endAt, timeZone: "UTC", reviewBeforeCreate: false } },
     { name: "READ_EXTRA_FIXTURE", arguments: {} },
@@ -100,7 +103,7 @@ it.live('Use resident Calendar and keep the other work while Contacts is open (s
   const availability = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
     body: { text: "Do I have 20 minutes on March 4, 2035 from 9am to 11am UTC, and check the other fixture?",
       metadata: { observation: { view: "contacts", revision: 3, sensitive: false } } } })
-  const availabilityPlan = cloud.calls.slice(availabilityFrom).find(({ path }) => path.endsWith("/chat/completions"))
+  const availabilityCalls = cloud.calls.slice(availabilityFrom).filter(({ path }) => path.endsWith("/chat/completions"))
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALENDAR", arguments: {
     subaction: "delete_event", query: "vet", timeMin: "2035-03-04T00:00:00Z", timeMax: "2035-03-05T00:00:00Z",
   } }), text("I found the Vet consultation.")))
@@ -140,13 +143,21 @@ it.live('Use resident Calendar and keep the other work while Contacts is open (s
     assert.notInclude(JSON.stringify(afterAnswer.json), confirmationTitle)
     assert.notInclude(JSON.stringify(afterAnswer.json), "Unexpected event")
     assert.strictEqual(availability.status, 200)
-    assert.include(JSON.stringify(availabilityPlan?.body), "Use CALENDAR's propose_times for that length")
+    assert.include(JSON.stringify(availabilityCalls[0]?.body), "Use CALENDAR's propose_times for that length")
+    const afterTools = availabilityCalls[1]?.body as { messages?: readonly {
+      role: string; tool_call_id?: string; content?: string
+    }[] } | undefined
+    for (const id of ["call-0", "call-1"]) {
+      const feedback = afterTools?.messages?.find(({ role, tool_call_id }) => role === "tool" && tool_call_id === id)?.content
+      assert.isString(feedback, `Expected a planner response to ${id}`)
+      assert.include(JSON.parse(feedback ?? "{}"), { success: false, error: "Action CALENDAR is not allowed in the current context" })
+    }
     const availabilityActions = (availability.json as { actionResults: readonly { action: string; data: {
-      slots?: readonly { startAt: string; endAt: string; durationMinutes: number; timeZone: string }[]; executionStatus?: string
+      slots?: readonly { startAt: string; endAt: string; durationMinutes: number; timeZone: string }[]
     } }[] }).actionResults
     assert.includeMembers(availabilityActions.map(({ action }) => action), ["CALENDAR", "READ_EXTRA_FIXTURE"])
     const calendarSteps = availabilityActions.filter(({ action }) => action === "CALENDAR")
-    assert.strictEqual(calendarSteps.filter(({ data }) => data.executionStatus === "not_started").length, 2)
+    assert.strictEqual(calendarSteps.filter(({ data }) => data.slots !== undefined).length, 1)
     assert.deepInclude(calendarSteps.find(({ data }) => data.slots !== undefined)?.data.slots ?? [], {
       startAt: "2035-03-04T10:00:00.000Z", endAt: "2035-03-04T10:20:00.000Z", durationMinutes: 20, timeZone: "UTC",
     })
