@@ -3,18 +3,16 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import type { ProvisioningRequest } from "../gen/os__image__provisioning.effect.vibe"
 import { aaptManifestTree } from "../src/image/apk.vibe"
+import { requireClockProduct, verifySecureCameraSource, writeSecureCameraOverlay } from "../src/image/index.vibe"
 import {
   IMAGE_FEATURE_VERSION,
   imageFeatureName,
   listenerStagingOf,
   provisioningComponents,
-  requireClockProduct,
-  verifySecureCameraSource,
   writeImageCapability,
   writeImageProvisioningOverlay,
   writeListenerActivation,
   writeProvisioningOverlay,
-  writeSecureCameraOverlay,
 } from "../src/image/provisioning.vibe"
 import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
 import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
