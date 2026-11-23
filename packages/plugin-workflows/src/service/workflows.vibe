@@ -792,10 +792,9 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       let current = starting
       for (;;) {
         const message = try connection.next
-        if (generated && message?.type === "needsEffect") {
-          try lock(effect { try persist(try journaled(try runOf(runId), { type: "dispatchEffect", call: message.call, digest: message.digest })) })
-        }
-        const prompt = message?.type === "needsDraft" ? message.prompt : message?.type === "needsEffect" ? message.request.prompt : undefined
+        const effectCall = generated && message?.type === "needsEffect" ? message : undefined
+        if (effectCall !== undefined) try lock(effect { try persist(try journaled(try runOf(runId), { type: "dispatchEffect", call: effectCall.call, digest: effectCall.digest })) })
+        const prompt = message?.type === "needsDraft" ? message.prompt : effectCall?.request.prompt
         const draft = host.draft
         const drafted = prompt === undefined || draft === undefined ? undefined : draft(prompt) catch () => undefined
         const handled = try lock(effect {
