@@ -217,10 +217,10 @@ and visible labels referenced by the section accompany their own scope.
 A nested section also carries enclosing labels so a neutral child cannot
 hide its historical parent's identity. An owned section header contributes
 its ordinary visible text, excluding links and controls. Site banners and
-unowned headers contribute no statement fragments. Links elsewhere on the
-page and invisible labels supply no heading. Competing primary headings leave the
-read incomplete, and ambiguous section labels mark that section and its
-descendants ambiguous. A row in a visible, noninteractive table with a
+unowned headers contribute no statement fragments. Links, controls, and
+invisible text do not contribute to headings or referenced labels.
+Competing primary headings leave the read incomplete, and ambiguous
+section labels mark that section and its descendants ambiguous. A row in a visible, noninteractive table with a
 single unambiguous set of column headings can identify its directly
 owning region and visible columns. The row and owner remain separate
 regions. Missing or ambiguous ownership, competing table scopes, and
