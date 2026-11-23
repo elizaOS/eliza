@@ -217,3 +217,26 @@ pure def lawStaleExtractionNeverSpawns(extraction: Extraction, versionCode: int,
 pure def lawReadyMeansEveryFileMatches(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile]): bool =
   startCheck(extraction, versionCode, deviceFiles) == PayloadReady implies deviceFiles.every(f => f.observed == Present({ observedSha256: f.sha256, observedSize: f.size }))
 ```
+
+### A damaged extracted file is extracted again once before the start fails
+
+The service removes the extraction of another package version before it
+extracts this one, and never starts from it. When a file of this version's
+extraction is missing, changed or unlisted, the service replaces the whole
+extraction from the signed APK once and checks it again. A second
+mismatch, a file the APK cannot supply or a native library that differs
+fails the start with `Failed(Payload)`.
+
+```quint
+type PayloadRepair = StartFromPayload | ExtractOnceMore | RefuseStart
+pure def afterPayloadCheck(extractedIntact: bool, nativeIntact: bool, extractedThisStart: bool): PayloadRepair =
+  if (extractedIntact and nativeIntact) StartFromPayload
+  else if (not(extractedIntact) and not(extractedThisStart)) ExtractOnceMore
+  else RefuseStart
+pure def lawOnlyAnIntactPayloadStarts(extractedIntact: bool, nativeIntact: bool, extractedThisStart: bool): bool =
+  (afterPayloadCheck(extractedIntact, nativeIntact, extractedThisStart) == StartFromPayload) iff (extractedIntact and nativeIntact)
+pure def lawAnExtractionIsReplacedAtMostOnce(extractedIntact: bool, nativeIntact: bool): bool =
+  afterPayloadCheck(extractedIntact, nativeIntact, true) != ExtractOnceMore
+pure def lawADifferingNativeLibraryAloneIsNeverRepaired(nativeIntact: bool, extractedThisStart: bool): bool =
+  afterPayloadCheck(true, nativeIntact, extractedThisStart) != ExtractOnceMore
+```
