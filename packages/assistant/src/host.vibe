@@ -75,6 +75,7 @@ export interface Presented {
 export service Scheduler {
   create(task: AssistantTask): { readonly created: boolean; readonly task: TaskRow }!SchedulerUnavailable
   answer(taskId: string, verb: TaskVerb, key: string): VerbAnswer!SchedulerUnavailable
+  retrigger(taskId: string, trigger: TaskTrigger, key: string): VerbAnswer!SchedulerUnavailable
   find(taskId: string): (TaskRow | undefined)!SchedulerUnavailable
   list(): (readonly TaskRow[])!SchedulerUnavailable
 }
@@ -210,6 +211,11 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
     effect answer(taskId, verb, key) {
       const tasks = try agentScheduler(runtime)
       const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "verb", verb }, { tag: "Keyed", key }), catch: unavailable })
+      return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
+    },
+    effect retrigger(taskId, trigger, key) {
+      const tasks = try agentScheduler(runtime)
+      const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "edit", edit: { trigger } }, { tag: "Keyed", key }), catch: unavailable })
       return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
     },
     effect find(taskId) {

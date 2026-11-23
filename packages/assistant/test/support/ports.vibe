@@ -1,7 +1,7 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import type { DeliveryEnd } from "../../gen/assistant__reminderEscalation.effect.vibe"
-import { Approvals, ApprovalsUnavailable, Calendar, DeliveryFailed, Facts, Model, ModelUnavailable, Presenter, Scheduler, SchedulerUnavailable, type ApprovalView, type AssistantTask, type CalendarEventFacts, type Presented, type TaskRow, type TaskVerb } from "../../src/host.vibe"
+import { Approvals, ApprovalsUnavailable, Calendar, DeliveryFailed, Facts, Model, ModelUnavailable, Presenter, Scheduler, SchedulerUnavailable, type ApprovalView, type AssistantTask, type CalendarEventFacts, type Presented, type TaskRow, type TaskTrigger, type TaskVerb } from "../../src/host.vibe"
 
 /** What the scripted ports saw and how they answer. */
 export interface Ports {
@@ -51,6 +51,14 @@ export function portsLayer(seen: Ports) {
         seen.verbs.push({ taskId, verb, key })
         const next = { ...row, status: statusAfter[verb.tag], revision: row.revision + 1 }
         seen.tasks.set(taskId, next)
+        return { kind: "applied" } as const
+      },
+      effect retrigger(taskId: string, trigger: TaskTrigger, key: string) {
+        const row = seen.tasks.get(taskId)
+        if (row === undefined) return { kind: "notFound" } as const
+        if (keyed.has(key)) return { kind: "applied" } as const
+        keyed.add(key)
+        seen.tasks.set(taskId, { ...row, trigger, revision: row.revision + 1 })
         return { kind: "applied" } as const
       },
       effect find(taskId: string) { return seen.tasks.get(taskId) },

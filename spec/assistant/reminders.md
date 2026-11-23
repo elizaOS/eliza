@@ -131,6 +131,38 @@ pure def lawAnotherReminderIsNeverTakenBack(savedAt: int, now: int, sameMessage:
   not(retractsRecentSave(savedAt, now, sameMessage, saveLive, true))
 ```
 
+## Story: Move the reminder I just saved
+
+> As an owner, when I say "actually make that 30 minutes" about a reminder
+> I saved, I want it to go off that long after I asked, with nothing else
+> about it changed.
+
+### A delay moves a waiting reminder to that long after the request, and anything else changes nothing
+
+A move carries a delay in whole seconds or whole minutes, and seconds win
+when both are given; a fraction of the winning unit is no delay. The
+delay counts from the instant of the owner's message, as "in 20 minutes"
+does when a reminder is saved. The move names the reminder by its title
+or its id, or by "that" or "it", which is the reminder this conversation
+just saved. Only a reminder still waiting to fire moves: one that already
+went off is snoozed instead. A delay that is not positive, is longer than
+366 days, or lands at or before now changes nothing, and the reply says
+why. The moved reminder keeps its title, its delivery choices and its
+escalation plan, and the reply names its new time on the owner's clock.
+
+```quint
+pure val maxMoveDelayMs = 31622400000
+pure def movedDueAt(askedAt: int, delayMs: int): int = askedAt + delayMs
+pure def moveAdmitted(waiting: bool, delayMs: int, askedAt: int, now: int): bool =
+  waiting and delayMs > 0 and delayMs <= maxMoveDelayMs and movedDueAt(askedAt, delayMs) > now
+pure def lawAMoveCountsFromTheRequest(askedAt: int, delayMs: int): bool = movedDueAt(askedAt, delayMs) - askedAt == delayMs
+pure def lawAReminderThatWentOffIsNeverMoved(delayMs: int, askedAt: int, now: int): bool = not(moveAdmitted(false, delayMs, askedAt, now))
+pure def lawNoDelayNeverMoves(waiting: bool, delayMs: int, askedAt: int, now: int): bool =
+  delayMs <= 0 implies not(moveAdmitted(waiting, delayMs, askedAt, now))
+pure def lawAMovedReminderIsStillAhead(waiting: bool, delayMs: int, askedAt: int, now: int): bool =
+  moveAdmitted(waiting, delayMs, askedAt, now) implies movedDueAt(askedAt, delayMs) > now
+```
+
 ## Story: Propose a reminder or alarm on my phone only as I asked
 
 > As an owner, I want a chat request about my phone's reminders or Clock to

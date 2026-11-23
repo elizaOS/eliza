@@ -11,7 +11,7 @@ import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
-import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, reminderKind, reminderReply, retractRecentSave } from "../src/reminders.vibe"
+import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, moveReminder, reminderKind, reminderReply, retractRecentSave } from "../src/reminders.vibe"
 import { onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKind, updateRoutine } from "../src/routines.vibe"
@@ -116,6 +116,28 @@ it.effect('A later message saying "actually, don\'t save that one" takes back on
     try equal({ ignored, retracted: [retracted?.success, retracted?.text], first: first?.status, stale, live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
       ignored: [undefined, undefined, undefined], retracted: [true, 'Okay — I removed "Call the dentist". Nothing is saved for it now.'],
       first: "Dismissed", stale: undefined, live: ["Dismissed", "Scheduled"],
+    })
+  }
+})
+
+it.effect('Move the reminder I just saved: a delay counts from my message, seconds win, and a fraction or a reminder that went off changes nothing (spec/assistant/reminders.md, "Story: Move the reminder I just saved"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing")', effect () => {
+  const seen = ports()
+  seen.answers.push(check({}))
+  const roomId = "room-3" as UUID
+  const said = (messageId: string, askedAt: number) => ({ messageId, text: "actually make that 30 minutes", roomId, askedAt })
+  provide portsLayer(seen) {
+    try createReminder({ ...asked("v1"), roomId })
+    const replies = [
+      try moveReminder({ target: "that", delayMinutes: 30 }, said("v2", seen.now - 5_000)),
+      try moveReminder({ target: "Call the dentist", delaySeconds: 90, delayMinutes: 30 }, said("v3", seen.now)),
+      try moveReminder({ target: "that", delayMinutes: 1.5 }, said("v4", seen.now)),
+    ]
+    const [row] = rowsOf(seen, reminderKind)
+    seen.tasks.set(row.taskId, { ...row, status: "Fired" })
+    replies.push(try moveReminder({ target: "that", delayMinutes: 30 }, said("v5", seen.now)))
+    try equal({ replies: replies.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]), trigger: row.trigger }, {
+      replies: [[true, 'Moved "Call the dentist" to 10:29 AM.'], [true, 'Moved "Call the dentist" to 10:01 AM.'], [false, "REMINDER_DELAY_INVALID"], [false, "REMINDER_ALREADY_FIRED"]],
+      trigger: { kind: "once", atIso: new Date(seen.now + 90_000).toISOString() },
     })
   }
 })

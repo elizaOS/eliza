@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/scheduledDossiers.md, "Only the owner's own foreground or unlock activity is admitted, once per owner day"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"
+// spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/scheduledDossiers.md, "Only the owner's own foreground or unlock activity is admitted, once per owner day"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"
 module node {
   function offsetAt(instant: number, zone: string): number {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
@@ -39,6 +39,16 @@ module node {
   }
 
   /** @throws {never} */
+  export function fireTimeText(instant: number, zone: string, now: number): string {
+    try {
+      const sameDay = civilDate(instant, zone) === civilDate(now, zone)
+      return new Intl.DateTimeFormat("en-US", { timeZone: zone, ...(sameDay ? {} : { month: "short", day: "numeric" }), hour: "numeric", minute: "2-digit" }).format(new Date(instant))
+    } catch {
+      return new Date(instant).toISOString()
+    }
+  }
+
+  /** @throws {never} */
   export function civilDate(instant: number, zone: string): string {
     try {
       return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(instant))
@@ -62,4 +72,4 @@ module node {
   }
 }
 
-export { civilDate, localMinutes, longDate, offsetInstant, wallText, zonedInstant } from node
+export { civilDate, fireTimeText, localMinutes, longDate, offsetInstant, wallText, zonedInstant } from node
