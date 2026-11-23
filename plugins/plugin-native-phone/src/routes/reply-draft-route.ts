@@ -197,6 +197,11 @@ export async function handleReplyDraft(
       prompt: buildReplyDraftPrompt(thread),
       // No output cap: reasoning counts inside one, so a small cap can stop
       // the call before any reply text. normalizeReplyDraft bounds the draft.
+      // Thinking off: a one-line reply needs no reasoning. On Cerebras
+      // qwen-3.8-27b the default (effort high) spent 86-732 reasoning tokens
+      // per draft; off answered in 7-15 tokens with usable drafts and still
+      // answered NONE to an automated notice.
+      providerOptions: { eliza: { thinking: "off" } },
       voiceOutput: "internal",
       signal: ctx.signal,
     });

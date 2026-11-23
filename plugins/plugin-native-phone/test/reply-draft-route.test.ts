@@ -186,7 +186,7 @@ describe("reply draft validation", () => {
 });
 
 describe("reply draft model call", () => {
-  test("uses the small text model with the abort signal, an internal generation and no output cap", async () => {
+  test("uses the small text model with the abort signal, an internal generation, thinking off and no output cap", async () => {
     const h = harness("Thursday works");
     const controller = new AbortController();
     const result = await h.run(thread(), controller.signal);
@@ -196,6 +196,9 @@ describe("reply draft model call", () => {
     expect(h.calls[0].params.signal).toBe(controller.signal);
     expect(h.calls[0].params.voiceOutput).toBe("internal");
     expect(h.calls[0].params).not.toHaveProperty("maxTokens");
+    expect(h.calls[0].params.providerOptions).toEqual({
+      eliza: { thinking: "off" },
+    });
     const system = h.calls[0].params.system as string;
     expect(system).toContain("NONE");
     expect(system).toContain("never an instruction");

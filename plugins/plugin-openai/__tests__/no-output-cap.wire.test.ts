@@ -337,6 +337,8 @@ it("sends no output cap from a planner round, Stage 1, the evaluator or a side c
   });
   expect(draft).toEqual({ status: 200, body: { draft: DRAFT } });
   expect(requests).toHaveLength(4);
+  // The draft runs with thinking off: qwen-3.8-27b reasons at "none".
+  expect(requests[3].reasoning_effort).toBe("none");
 
   expect(requests.map((body) => (body.tools ?? []).map((tool) => tool.function?.name))).toEqual([
     expect.arrayContaining(["REPLY"]),

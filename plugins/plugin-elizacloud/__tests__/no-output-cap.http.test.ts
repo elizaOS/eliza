@@ -343,6 +343,8 @@ it("sends the gateway no output cap from a planner round, Stage 1, the evaluator
   });
   expect(draft).toEqual({ status: 200, body: { draft: DRAFT } });
   expect(requests).toHaveLength(4);
+  // The draft runs with thinking off: qwen-3.8-27b reasons at "none".
+  expect(requests[3].body.reasoning_effort).toBe("none");
 
   await handleImageDescription(host, {
     imageUrl: "data:image/png;base64,AA==",
