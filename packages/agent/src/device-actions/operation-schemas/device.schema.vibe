@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"
+// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it"; spec/agent/deviceActions/operations.md, "A photo capture names the front or back lens only when the request negotiated it"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"
 import { libraryIdAdmitted, photoTargets, type OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import { opensTelephonyView, supportedViews } from "../capabilities.vibe"
 import { digestOf as revisionOf } from "./digest.vibe"
@@ -18,7 +18,7 @@ export function withoutResult<S extends Schema.Decoder<WireOperation>>(operation
   return { operation, result: undefined, classify: (op: S["Type"]) => ({ opType, versionTwo: versionTwo(op) }) }
 }
 
-const CameraCapture = Schema.Struct({ type: Schema.Literal("camera_capture_photo") })
+const CameraCapture = Schema.Struct({ type: Schema.Literal("camera_capture_photo"), lens: Schema.optionalKey(Schema.Literals(["front", "back"])) })
 export const CameraReceipt = Schema.Struct({
   version: Schema.Literal(1), kind: Schema.Literal("camera_capture_photo"), operationId,
   mediaId: Schema.String.check(Schema.isPattern(/^[1-9][0-9]{0,24}$/)),
@@ -28,7 +28,7 @@ export const CameraReceipt = Schema.Struct({
 const capture = {
   operation: CameraCapture,
   result: CameraReceipt,
-  classify: () => ({ opType: "CameraCapturePhoto", versionTwo: false }),
+  classify: (operation) => ({ opType: "CameraCapturePhoto", versionTwo: operation.lens !== undefined }),
   evidence: (result, _operation, receipt) =>
     receipt.operationId === result.operationId && libraryIdAdmitted(receipt.versionTwo, result.libraryId !== undefined) ? applied : undefined
 } satisfies OperationSchema<typeof CameraCapture.Type, typeof CameraReceipt.Type>
@@ -133,6 +133,11 @@ const BrowserNavigate = Schema.Struct({
     encode: (value) => value
   })
 ))
+const browserNavigate = {
+  operation: BrowserNavigate,
+  result: undefined,
+  classify: (operation) => ({ opType: "BrowserNavigate", versionTwo: operation.newTab === true })
+} satisfies OperationSchema<typeof BrowserNavigate.Type>
 
 const Revision = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
 const ReviewInstant = Schema.String.check(Schema.isMaxLength(30), Schema.makeFilter(isoInstant))

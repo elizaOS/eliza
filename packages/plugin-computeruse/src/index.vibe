@@ -1,0 +1,47 @@
+// spec/computerUse/index.md, "Story: Control an authorized computer session"
+import {
+  acceptsComputerObservation,
+  computerCommandAllowed,
+  type ComputerCommand,
+  type ComputerSession,
+  type OperationObservation,
+} from "../gen/computerUse.effect.vibe"
+
+export error ComputerOperationRefused { operationId: string }
+export error ComputerHostFailed { operationId: string; reason: string }
+
+export type ComputerInput =
+  | { readonly operation: "ReadScreen" }
+  | { readonly operation: "ClickTarget"; readonly x: number; readonly y: number }
+  | { readonly operation: "TypeText"; readonly text: string }
+  | { readonly operation: "WindowControl"; readonly windowId: string; readonly change: "focus" | "minimize" | "close" }
+  | { readonly operation: "ClipboardRead" }
+  | { readonly operation: "ClipboardWrite"; readonly contents: string }
+
+export interface ComputerResult {
+  readonly correlation: OperationObservation
+  readonly value: unknown
+}
+
+export service BoundComputerHost {
+  session(sessionId: string): (ComputerSession | undefined)!ComputerHostFailed
+  execute(session: ComputerSession, operationId: string, input: ComputerInput): ComputerResult!ComputerHostFailed
+}
+
+export effect function useComputer(request: Omit<ComputerCommand, "operation">, operationId: string, input: ComputerInput) {
+  const host = try BoundComputerHost
+  const session = try host.session(request.forSession)
+  if (session === undefined || operationId === "" || !computerCommandAllowed(session, { ...request, operation: input.operation })) {
+    throw new ComputerOperationRefused({ operationId })
+  }
+  if (input.operation === "ClickTarget" && (!Number.isSafeInteger(input.x) || !Number.isSafeInteger(input.y) || input.x < 0 || input.y < 0)) {
+    throw new ComputerOperationRefused({ operationId })
+  }
+  const observed = try host.execute(session, operationId, input)
+  const current = try host.session(request.forSession)
+  if (current === undefined || !computerCommandAllowed(current, { ...request, operation: input.operation }) ||
+    !acceptsComputerObservation(current, operationId, observed.correlation)) {
+    throw new ComputerOperationRefused({ operationId })
+  }
+  return observed.value
+}

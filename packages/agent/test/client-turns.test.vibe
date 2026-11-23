@@ -6,7 +6,7 @@ module node {
   import { createRuntimeJsonClient, TurnController, type RuntimeJsonBridge, type RuntimeStreamFrame, type TurnResult } from "../src/client/index.vibe"
   import { held, text, type CloudFake } from "./support/cloud-fake.ts"
 
-  interface Sent { readonly method: string; readonly path: string; readonly clientMessageId?: unknown }
+  interface Sent { readonly method: string; readonly path: string; readonly clientMessageId?: unknown; readonly clientId?: string }
 
   export interface Network {
     readonly bridge: RuntimeJsonBridge
@@ -18,22 +18,23 @@ module node {
   /** @throws {never} */
   export function network(port: number, token: string): Network {
     const origin = `http://127.0.0.1:${port}`
-    const init = (method: string, body: unknown, signal?: AbortSignal): RequestInit => ({
-      method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    const init = (method: string, body: unknown, headers: Readonly<Record<string, string>> = {}, signal?: AbortSignal): RequestInit => ({
+      method, headers: { ...headers, authorization: `Bearer ${token}`, "content-type": "application/json" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), ...(signal === undefined ? {} : { signal }),
     })
-    const note = (method: string, path: string, body: unknown) => {
+    const note = (method: string, path: string, body: unknown, headers: Readonly<Record<string, string>> = {}) => {
       const key = typeof body === "object" && body !== null && "clientMessageId" in body ? { clientMessageId: body.clientMessageId } : {}
-      net.sent.push({ method, path, ...key })
+      const client = headers["x-elizaos-client-id"]
+      net.sent.push({ method, path, ...key, ...(client === undefined ? {} : { clientId: client }) })
     }
     const running = () => Promise.resolve({ available: true, state: "running" as const })
     const net: Network = {
       sent: [], dropStreams: 0, loseAnswers: [],
       bridge: {
         status: running, start: running, restart: running,
-        async request({ path, method, body }) {
-          note(method, path, body)
-          const response = await fetch(origin + path, init(method, body))
+        async request({ path, method, body, headers }) {
+          note(method, path, body, headers)
+          const response = await fetch(origin + path, init(method, body, headers))
           const answer = await response.text()
           const lost = net.loseAnswers.findIndex((part) => path.includes(part))
           if (lost >= 0) {
@@ -42,13 +43,13 @@ module node {
           }
           return { status: response.status, data: answer === "" ? null : JSON.parse(answer) }
         },
-        async *requestStream({ path, body }, signal): AsyncIterable<RuntimeStreamFrame> {
-          note("POST", path, body)
+        async *requestStream({ path, body, headers }, signal): AsyncIterable<RuntimeStreamFrame> {
+          note("POST", path, body, headers)
           const native = new AbortController()
           const dropped = net.dropStreams > 0
           if (dropped) net.dropStreams -= 1
           else signal.addEventListener("abort", () => native.abort(signal.reason), { once: true })
-          const response = await fetch(origin + path, init("POST", body, native.signal))
+          const response = await fetch(origin + path, init("POST", body, headers, native.signal))
           yield { kind: "head", status: response.status, headers: Object.fromEntries(response.headers) }
           const chunks = response.body?.[Symbol.asyncIterator]()
           if (chunks === undefined) return yield { kind: "end" }
@@ -128,11 +129,13 @@ module node {
     const gate = Promise.withResolvers<void>()
     cloud.script(held(gate.promise, text("Back again.")))
     net.dropStreams = 1
-    const sending = controller.send({ text: "Tell me something." }, { stream: {} })
+    const sending = controller.send({ text: "Tell me something." }, { stream: {}, headers: { "X-ElizaOS-Client-Id": "screen-1" } })
     while (net.sent.filter(({ path }) => path.endsWith("/messages")).length === 0) await new Promise((resolve) => setTimeout(resolve, 20))
     gate.resolve()
     const resent = await sending
-    const keys = net.sent.filter(({ path }) => path.includes("/messages")).map(({ path, clientMessageId }) => ({ stream: path.endsWith("/stream"), clientMessageId }))
+    const posts = net.sent.filter(({ path }) => path.includes("/messages"))
+    const keys = posts.map(({ path, clientMessageId }) => ({ stream: path.endsWith("/stream"), clientMessageId }))
+    const clientIds = posts.map(({ clientId }) => clientId)
     const calls = completions(cloud)
     net.dropStreams = 1
     net.loseAnswers.push("/messages")
@@ -145,7 +148,7 @@ module node {
     const fresh = await gone.send({ text: "Hello?" }, { stream: {} })
     return {
       resent: shown(resent),
-      sameKey: keys.length === 2 && keys[0]?.stream === true && keys[1]?.stream === false && keys[0]?.clientMessageId === keys[1]?.clientMessageId,
+      sameKey: keys.length === 2 && keys[0]?.stream === true && keys[1]?.stream === false && keys[0]?.clientMessageId === keys[1]?.clientMessageId, clientIds,
       actedOnce: calls === 1, unknown: shown(unknown), stillBound, lost: shown(lost), unboundAfterLoss, fresh: shown(fresh),
     }
   }
@@ -171,11 +174,11 @@ it.live('Stop a reply, wait for its receipt, refuse once after an uncertain Stop
   }))
 }, 120_000)
 
-it.live('A dropped stream is resent once under the same clientMessageId and the agent acts once; a lost conversation unbinds (spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it")', effect () => {
+it.live('A dropped stream is resent once under the same clientMessageId and client id header and the agent acts once; a lost conversation unbinds (spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few";spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it")', effect () => {
   const { cloud, net } = try connected()
   const observed = try host("drop journey", () => dropJourney(net, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    resent: { kind: "Replied", text: "Back again." }, sameKey: true, actedOnce: true, unknown: { kind: "MaybeAccepted" }, stillBound: true,
+    resent: { kind: "Replied", text: "Back again." }, sameKey: true, clientIds: ["screen-1", "screen-1"], actedOnce: true, unknown: { kind: "MaybeAccepted" }, stillBound: true,
     lost: { kind: "ConversationLost" }, unboundAfterLoss: null, fresh: { kind: "Replied", text: "ok" },
   }))
 }, 120_000)

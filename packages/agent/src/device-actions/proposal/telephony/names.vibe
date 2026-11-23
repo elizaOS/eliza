@@ -6,8 +6,14 @@ const notAName: ReadonlySet<string> = new Set((
 ).split(" "))
 const notANameAround: ReadonlySet<string> = new Set([...notAName, ..."again right away asap home work office landline line phone".split(" ")])
 
-function normalizedWords(text: string): string {
-  return text.normalize("NFKC").toLowerCase().replace(/[’‘]/g, "'").replace(/'s(?![\p{L}\p{N}])/gu, "").replace(/[^\p{L}\p{N}']+/gu, " ").trim()
+export function isWrittenCallbackName(word: string): boolean {
+  return /^(?:back|again)$/iu.test(word) && word !== word.toLowerCase()
+}
+
+function normalizedWords(text: string, preserveCase = false): string {
+  const normalized = text.normalize("NFKC")
+  return (preserveCase ? normalized : normalized.toLowerCase())
+    .replace(/[’‘]/g, "'").replace(/'s(?![\p{L}\p{N}])/giu, "").replace(/[^\p{L}\p{N}']+/gu, " ").trim()
 }
 
 export function namesSomeone(name: string): boolean {
@@ -20,11 +26,17 @@ export function writesContactName(text: string, name: string): boolean {
 }
 
 export function ownerNameWithoutFiller(authored: string, proposed: string): boolean {
-  const owner = normalizedWords(authored).split(" "), name = normalizedWords(proposed).split(" ")
+  const owner = normalizedWords(authored, true).split(" ").flatMap((spelling) =>
+    normalizedWords(spelling).split(" ").map((word) => ({
+      word,
+      omittable: notANameAround.has(word) && !isWrittenCallbackName(spelling),
+    })),
+  )
+  const name = normalizedWords(proposed).split(" ")
   if (name[0] === undefined || name[0] === "" || name.length >= owner.length) return false
   for (let at = 0; at + name.length <= owner.length; at++) {
-    const here = name.every((word, index) => owner[at + index] === word)
-    if (here && [...owner.slice(0, at), ...owner.slice(at + name.length)].every((word) => notANameAround.has(word))) return true
+    const here = name.every((word, index) => owner[at + index]?.word === word)
+    if (here && [...owner.slice(0, at), ...owner.slice(at + name.length)].every(({ omittable }) => omittable)) return true
   }
   return false
 }

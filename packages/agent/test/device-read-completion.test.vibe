@@ -14,7 +14,7 @@ module node {
   import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
   import { DeviceExecution, type DeviceAgent, type JournalIdentity } from "../src/client/index.vibe"
   import { readOperation } from "../src/device-actions/operations.schema.vibe"
-  import { offerRequest, openRequest, recordRequestReceipt, type RequestTerms } from "../src/device-actions/store.vibe"
+  import { offerRequest, openRequest, recordRequestReceipt, requestSnapshot, type RequestTerms } from "../src/device-actions/store.vibe"
   import type { RunningAgent } from "../src/host/process.vibe"
   import { held, text, type CloudFake } from "./support/cloud-fake.ts"
   import { request, requestStream } from "./support/socket-client.ts"
@@ -428,11 +428,29 @@ module node {
     const bridge = workflowDeviceOffer(running.runtime, { deadlineMs: 600_000, pollMs: 20 })
     const device = await bridge.enrollment()
     if (device === undefined) throw new Error("The enrolled device was not named for workflows")
+    const proposals = async () => {
+      const answer = await send("/api/client-devices/proposals")
+      if (answer.status !== 200) throw new Error(`Proposal listing failed with HTTP ${answer.status}: ${answer.text}`)
+      return workflowList(answer.json).proposals
+    }
+    const adapter = running.runtime.adapter
+    const by: SessionOwner = { agentId: running.status.agentId, actorId: "owner-user", connector: device.installationId }
+    const agendaId = "host-only-agenda"
+    const digest = "c".repeat(64)
+    await Effect.runPromise(offerRequest(adapter, {
+      type: "offer", proposalId: agendaId, digest, capability, expiresAt: Date.now() + 600_000, readBack: false,
+      origin: { requestId: "host-turn", conversationId: "host-room", inReplyTo: "host-message" },
+    }, by, terms))
+    const listed = (await proposals()).length
+    const decision = { digest, decision: "approve" }
+    const hidden = await send(`/api/client-devices/proposals/${agendaId}/decision`, decision)
+    const missing = await send("/api/client-devices/proposals/unknown-agenda/decision", decision)
+    const retained = await Effect.runPromise(requestSnapshot(adapter, agendaId))
+    const agenda = { listed, status: hidden.status, matchesMissing: hidden.status === missing.status && isDeepStrictEqual(hidden.json, missing.json), phase: retained?.state.phase.tag }
     const step = (stepId: string) => ({ workflowId: "workflow-1", versionId: "version-1", runId: "run-1", stepId, specDigest: "a".repeat(64) })
     async function offered(stepId: string) {
       for (const deadline = Date.now() + 10_000; Date.now() < deadline; await wait(20)) {
-        const listed = workflowList((await send("/api/client-devices/proposals")).json).proposals
-        const found = listed.flatMap((raw) => {
+        const found = (await proposals()).flatMap((raw) => {
           const proposal = workflowProposal(raw)
           return proposal._tag === "Some" && proposal.value.payload.workflow.stepId === stepId ? [proposal.value] : []
         })[0]
@@ -464,6 +482,7 @@ module node {
       .then(() => "applied", (error: unknown) => typeof error === "object" && error !== null && "code" in error ? error.code : String(error))
     return {
       device: { installationId: device.installationId === running.status.agentId, protocol: device.protocol },
+      agenda,
       offered: { state: speak.state, operation: speak.payload.operation, installation: speak.payload.installationId === device.installationId, enrollment: speak.payload.enrollmentId === device.enrollmentId },
       states: [approved, claimed, uncertain].map((answer) => typeof answer === "number" ? answer : answer.state),
       reconciliation: { wrongAttempt, reviewed: typeof reviewed === "number" ? reviewed : reviewed.state, sameReview: typeof sameReview === "number" ? sameReview : sameReview.state, otherReview },
@@ -534,6 +553,7 @@ it.effect('A workflow step is offered to the enrolled device, settles only by it
   )
   assert.deepStrictEqual(try host("offer workflow steps to the device", () => workflowStepsOffered(running, socket, frame.token)), {
     device: { installationId: true, protocol: 1 },
+    agenda: { listed: 0, status: 404, matchesMissing: true, phase: "Offered" },
     offered: { state: "pending", operation: { type: "speak_text", text: "The reviewed notice" }, installation: true, enrollment: true },
     states: ["approved", "executing", "reconciliation_required"],
     reconciliation: { wrongAttempt: 409, reviewed: "done", sameReview: "done", otherReview: 409 },

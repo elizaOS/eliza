@@ -1,0 +1,67 @@
+// spec/meetings/index.md, "Story: Join a meeting as a disclosed transcription guest"
+import { Machine, stored, type MeetingProvider, type TranscriptSegment } from "../gen/meetings.effect.vibe"
+
+export error MeetingProviderFailure { sessionKey: string; operation: string; reason: string }
+export error MeetingIdentityMissing
+
+export interface MeetingRequest {
+  readonly ownerId: string
+  readonly sessionKey: string
+  readonly provider: MeetingProvider
+  readonly verifiedJoinUrl: string
+}
+
+export service MeetingTransport {
+  waitForAdmission(request: MeetingRequest): boolean!MeetingProviderFailure
+  disclose(request: MeetingRequest): boolean!MeetingProviderFailure
+  stop(request: MeetingRequest): void!MeetingProviderFailure
+  saveTranscript(request: MeetingRequest, transcript: readonly TranscriptSegment[]): void!MeetingProviderFailure
+}
+
+export effect function captureMeeting(request: MeetingRequest) {
+  const key = try meetingKey(request.ownerId, request.sessionKey)
+  const transport = try MeetingTransport
+  provide stored(key) {
+    const meeting = try Machine
+    try meeting.send({ type: "requestJoin", sessionKey: request.sessionKey, provider: request.provider })
+    const accepted = try transport.waitForAdmission(request)
+    const admitted = try meeting.send({ type: "observeJoin", sessionKey: request.sessionKey, accepted })
+    if (admitted.capturePhase !== "Admitted") return admitted
+    const disclosed = try transport.disclose(request)
+    return try meeting.send({ type: "observeDisclosure", sessionKey: request.sessionKey, disclosed })
+  }
+}
+
+export effect function keepTranscriptSegment(ownerId: string, sessionKey: string, segment: unknown) {
+  const key = try meetingKey(ownerId, sessionKey)
+  provide stored(key) {
+    return try (try Machine).receive({ type: "appendSegment", sessionKey, segment })
+  }
+}
+
+export effect function finishMeeting(request: MeetingRequest) {
+  const key = try meetingKey(request.ownerId, request.sessionKey)
+  const transport = try MeetingTransport
+  provide stored(key) {
+    const meeting = try Machine
+    const snapshot = try meeting.get()
+    if (snapshot.capturePhase === "CompleteMeeting") return snapshot
+    const finalizing = snapshot.capturePhase === "Finalizing" ? snapshot :
+      try meeting.send({ type: "stopCapture", sessionKey: request.sessionKey })
+    try transport.stop(request)
+    try transport.saveTranscript(request, finalizing.transcript)
+    return try meeting.send({ type: "finishTranscript", sessionKey: request.sessionKey, saved: true })
+  }
+}
+
+export effect function getMeetingTranscript(ownerId: string, sessionKey: string) {
+  const key = try meetingKey(ownerId, sessionKey)
+  provide stored(key) {
+    return (try (try Machine).get()).transcript
+  }
+}
+
+effect function meetingKey(ownerId: string, sessionKey: string) {
+  if (ownerId === "" || sessionKey === "") throw new MeetingIdentityMissing()
+  return "meeting:" + ownerId.length + ":" + ownerId + ":" + sessionKey
+}

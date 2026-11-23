@@ -1,0 +1,47 @@
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"
+import {
+  evaluateTask,
+  routeDirective,
+  type Evidence,
+  type PeerAddress,
+  type PeerDirective,
+  type TaskEvaluation,
+} from "../gen/agentOrchestrator.effect.vibe"
+
+export error ChildSessionFailure { childId: string; reason: string }
+
+export interface ChildSession {
+  readonly childId: string
+  readonly sessionId: string
+  readonly running: boolean
+}
+
+export service ChildAgentSessions {
+  list(roomId: string): ChildSession[]!ChildSessionFailure
+  send(sessionId: string, text: string): void!ChildSessionFailure
+  cancel(sessionId: string): void!ChildSessionFailure
+  evidence(taskKey: string, generation: number): Evidence!ChildSessionFailure
+}
+
+export effect function sendChildDirective(roomId: string, input: {
+  readonly address: PeerAddress
+  readonly directive: PeerDirective
+  readonly text: string
+}) {
+  const sessions = try ChildAgentSessions
+  const peers = try sessions.list(roomId)
+  const touched: string[] = []
+  for (const peer of peers) {
+    const decision = routeDirective(input.address, input.directive, peer.childId, peers.length, peer.running)
+    if (decision === "NoPeerAction") continue
+    if (decision === "CancelTurn") try sessions.cancel(peer.sessionId)
+    else try sessions.send(peer.sessionId, input.text)
+    touched.push(peer.childId)
+  }
+  return touched
+}
+
+export effect function verifyChildTask(task: TaskEvaluation) {
+  const sessions = try ChildAgentSessions
+  return evaluateTask(task, try sessions.evidence(task.taskKey, task.taskGeneration))
+}

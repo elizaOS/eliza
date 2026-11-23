@@ -16,8 +16,9 @@ content; the agent learns only whether a control was sent.
 ### Each control needs its group's capability, and a new-tab open needs its own
 
 A search needs `browser.search.v1`; opening, switching and closing a tab
-need `browser.tabs.v1`; find needs `browser.find.v1`; back, forward, reload
-and stop need `browser.history.v1`. A phone that did not advertise a group is
+need `browser.tabs.v1`, and closing every tab needs its own capability too
+(below); find needs `browser.find.v1`; back, forward, reload and stop need
+`browser.history.v1`. A phone that did not advertise a group is
 never offered or sent its controls. Opening a typed address in a tab of its
 own needs `browser.open-new-tab.v1`: without it the phone is never sent a
 new-tab open, and an address asked for in a new tab opens as it always has,
@@ -27,7 +28,7 @@ for explicitly, opens empty, and is never where an address is placed.
 ```quint
 type BrowserControl = SearchControl | TabNewControl | TabSwitchControl | TabCloseControl | FindControl | HistoryControl
 type ControlFamily = SearchFamily | TabsFamily | FindFamily | HistoryFamily
-type Negotiated = { searchCapability: bool, tabsCapability: bool, findCapability: bool, historyCapability: bool, newTabCapability: bool }
+type Negotiated = { searchCapability: bool, tabsCapability: bool, findCapability: bool, historyCapability: bool, newTabCapability: bool, closeAllCapability: bool }
 pure def controlFamily(control: BrowserControl): ControlFamily =
   match control {
     | SearchControl => SearchFamily
@@ -52,9 +53,10 @@ pure def lawTabControlsShareTheTabsCapability(negotiated: Negotiated): bool =
   not(negotiated.tabsCapability) implies not(controlOffered(TabNewControl, negotiated) or controlOffered(TabSwitchControl, negotiated) or controlOffered(TabCloseControl, negotiated))
 pure def lawNewTabNeedsItsCapability(negotiated: Negotiated): bool =
   not(negotiated.newTabCapability) implies (not(navigationOffered(true, negotiated)) and navigationOffered(false, negotiated))
-pure val nothingNegotiated: Negotiated = { searchCapability: false, tabsCapability: false, findCapability: false, historyCapability: false, newTabCapability: false }
+pure val nothingNegotiated: Negotiated = { searchCapability: false, tabsCapability: false, findCapability: false, historyCapability: false, newTabCapability: false, closeAllCapability: false }
 pure val negotiatedValues = Set(nothingNegotiated, { ...nothingNegotiated, searchCapability: true }, { ...nothingNegotiated, tabsCapability: true, newTabCapability: true },
-  { searchCapability: true, tabsCapability: true, findCapability: true, historyCapability: true, newTabCapability: false })
+  { searchCapability: true, tabsCapability: true, findCapability: true, historyCapability: true, newTabCapability: false, closeAllCapability: false },
+  { ...nothingNegotiated, tabsCapability: true, closeAllCapability: true }, { ...nothingNegotiated, closeAllCapability: true })
 ```
 
 ### Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs

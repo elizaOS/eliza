@@ -6,8 +6,8 @@ import { registerDeviceProposalFamily, type DeviceOperation } from "@elizaos/age
 import {
   BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY,
   BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable,
-  browserControlFormAvailable, browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, describeBrowserControl, parseBrowserControl,
-  parseBrowserNavigate,
+  browserControlFormAvailable, browserControlRefusal, browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable,
+  describeBrowserControl, parseBrowserControl, parseBrowserNavigate,
 } from "../src/contract.vibe"
 import {
   browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination,
@@ -107,12 +107,18 @@ it.effect(`Offer a Browser control only as negotiated and review it only on the 
     assert.isUndefined(browserControlReviewNotice({ sensitive: false }))
     const closeAll = { type: "browser_tab_close", all: true } as const
     const tabs = [{ title: "News", host: "news.example" }, { title: "Docs", host: "Docs" }, { title: "Secret", private: true }]
+    const everyTab = [BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY]
     assert.deepStrictEqual(
       [parseBrowserControl({ type: "browser_tab_close", all: true }), parseBrowserControl({ type: "browser_tab_close", all: true, target: "News" }).ok, parseBrowserControl({ type: "browser_tab_close", all: false }).ok],
       [{ ok: true, operation: closeAll }, false, false])
     assert.deepStrictEqual(
+      [browserControlRefusal(closeAll, everyTab), browserControlRefusal({ type: "browser_tab_close" }, tabsOnly), browserControlRefusal(closeAll, [BROWSER_TABS_CLOSE_ALL_CAPABILITY]) !== undefined],
+      [undefined, undefined, true])
+    assert.notStrictEqual(browserControlRefusal(closeAll, tabsOnly), browserControlRefusal(closeAll, []))
+    assert.isFalse(browserControlRunsUnreviewed(closeAll, { boundToMessage: true, wordsTyped: true }))
+    assert.deepStrictEqual(
       [browserControlFormAvailable(closeAll, tabsOnly), browserControlFormAvailable(closeAll, [BROWSER_TABS_CLOSE_ALL_CAPABILITY]),
-        browserControlFormAvailable(closeAll, [BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY]), browserControlFormAvailable({ type: "browser_tab_close" }, tabsOnly)],
+        browserControlFormAvailable(closeAll, everyTab), browserControlFormAvailable({ type: "browser_tab_close" }, tabsOnly)],
       [false, false, true, true])
     assert.deepStrictEqual(describeBrowserControl(closeAll, tabs), {
       title: "Close 3 tabs",

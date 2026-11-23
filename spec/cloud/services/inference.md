@@ -31,7 +31,11 @@ answer is `Cache-Control: no-store`.
 The ingress limit is 600 requests a minute per client address; the plan
 limit is the plan's chat completions limit ([plans](../billing/plans.md))
 per organization, and an unreadable policy answers `503`. The body accepts
-exactly `acceptedFields`, passed to the provider as sent; another field is
+exactly `acceptedFields`, passed to the provider as sent: an agent's planning
+turn, with its sampling settings, its function tools and tool choice, the
+assistant's earlier tool calls and their tool results, and a
+`prompt_cache_key` of at most 1,024 characters that keeps one
+conversation's turns on the provider's prompt cache. Another field is
 refused `400 invalid_request` with reason `unsupported_field`, and so are
 empty `messages` and an image part with neither a URL nor a data URL (an
 unknown part kind fails the schema the same way). The model is the one
@@ -57,7 +61,8 @@ type Funding = { allowanceAvailable: Micros, creditAvailable: Micros }
 type Stage = AtIngress | AtAuth | AtPlanLimit | AtBody | AtModel | AtQuote | AtHold
 type AdmittedCall = { model: Mo::Model, counts: Mo::TokenCounts, quote: Micros, lane: M::FundingLane, hold: M::Hold }
 type CompletionAdmission = RefusedAt({ stage: Stage, refusal: Refusal }) | Admit({ call: AdmittedCall })
-pure val acceptedFields: Set[str] = Set("model", "messages", "stream", "stream_options", "temperature", "max_tokens", "max_completion_tokens", "reasoning_effort", "response_format", "tools", "tool_choice")
+pure val acceptedFields: Set[str] = Set("model", "messages", "stream", "stream_options", "temperature", "max_tokens", "max_completion_tokens", "reasoning_effort", "response_format", "tools", "tool_choice",
+  "top_p", "stop", "seed", "frequency_penalty", "presence_penalty", "prompt_cache_key")
 pure val ingressLimit: R::RateLimit = R::perMinute("chatIngress", 600)
 pure def planLimit(plan: P::PlanKey): R::RateLimit =
   R::perMinute(P::planRateLimitName(P::CompletionsRequests), P::requestsPerMinute(plan, P::CompletionsRequests))
@@ -126,7 +131,7 @@ pure val authValues: Set[RA::Admission] = Set(RA::Caller({ kind: DeviceKeyCreden
 pure val policyValues: Set[E::PolicyAnswer] = E::pValues.map(p => E::PolicyOf({ policy: p })).union(Set(E::PolicyUnavailable))
 pure val textBody: ChatBody = { fields: Set("model", "messages"), model: "m1", messageCount: 1, parts: List(TextPart), inputChars: 40, maxCompletionTokens: NoAsk, maxTokens: NoAsk }
 pure val bodyValues: Set[ChatBody] = Set(textBody, { ...textBody, parts: List(TextPart, ImagePart), maxTokens: AskFor({ tokens: 100 }) },
-  { ...textBody, fields: Set("model", "messages", "seed") }, { ...textBody, messageCount: 0 }, { ...textBody, parts: List(SourcelessImagePart) },
+  { ...textBody, fields: Set("model", "messages", "tools", "seed") }, { ...textBody, fields: Set("model", "messages", "functions") }, { ...textBody, messageCount: 0 }, { ...textBody, parts: List(SourcelessImagePart) },
   { ...textBody, model: "m9" }, { ...textBody, maxTokens: AskFor({ tokens: 9 }), maxCompletionTokens: AskFor({ tokens: 3000000 }) })
 pure val otherBodyValues: Set[ChatBody] = bodyValues
 pure val catalogValues: Set[Catalog] = {

@@ -1465,6 +1465,103 @@ export function pageCommand(
     // Neither the expected text nor the field value leaves the page.
     const inputReadback = monitor.inputReadback;
     delete monitor.inputReadback;
+    const statementRegions = () => {
+      const incomplete = { complete: false, regions: [] };
+      if (
+        policy ||
+        window !== window.top ||
+        document.readyState !== "complete" ||
+        blockers.some(({ kind, covers, overlay }) =>
+          kind === "captcha" || covers !== "partial" ||
+          (overlay && ["login-wall", "modal", "paywall"].includes(kind)),
+        ) ||
+        elements.some(({ tag, type, role, sensitive, edited, focused, hasInput }) =>
+          sensitive || hasInput || edited || tag === "textarea" || role === "textbox" ||
+          (tag !== "input" && tag !== "select" && edited !== undefined) ||
+          (tag === "input" &&
+            !(["hidden", "submit", "button", "reset", "checkbox", "radio", "image"].includes(type) ||
+              ((type === "search" || role === "searchbox") && !focused))),
+        )
+      ) return incomplete;
+
+      const areas = document.querySelectorAll('main,[role="main"]');
+      if (areas.length > 1) return incomplete;
+      const scope = areas[0] ?? document.body;
+      const excluded =
+        'nav,aside,header,footer,form,input,textarea,select,button,iframe,frame,object,embed,script,style,template,noscript,[contenteditable],[role="navigation"],[role="complementary"],[role="banner"],[role="contentinfo"],[hidden],[aria-hidden="true"],[inert]';
+      if (!scope || scope.closest(excluded)) return incomplete;
+      for (let ancestor = scope.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const style = styleOf(ancestor);
+        if (style.display === "none" || style.opacity === "0") return incomplete;
+      }
+
+      const groups = new Map();
+      const startsSection = (node, region) =>
+        node.matches('article,[role="article"],[role="region"]') ||
+        (node.matches("section") &&
+          (!region || node.hasAttribute("aria-label") ||
+            node.hasAttribute("aria-labelledby") ||
+            node.querySelector(":scope > :is(h1,h2,h3,h4,h5,h6), :scope > header > :is(h1,h2,h3,h4,h5,h6)")));
+      const startsRow = (node) => {
+        if (!is(node, "HTMLTableRowElement") || !node.cells.length) return false;
+        const header = node.closest("table")?.tHead?.rows[0]?.cells;
+        return header?.length > 1 && node.cells[0].localName === "td" &&
+          Array.from(header).every((cell) => cell.localName === "th");
+      };
+      let visited = 0;
+      let fragments = 0;
+      let characters = 0;
+      let previousRun;
+      const visit = (node, key, region, line, depth) => {
+        if (++visited > 4096 || depth > 40) return false;
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent;
+          if (!region || !text || styleOf(node.parentElement).visibility !== "visible") return true;
+          characters += text.length;
+          if (characters > 24576 || ++fragments > 1024) return false;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          if (!range.getClientRects().length) return true;
+          if (!groups.has(region)) groups.set(region, []);
+          if (groups.size > 128) return false;
+          const runs = groups.get(region);
+          const run = region + ":" + line;
+          if (run === previousRun) runs[runs.length - 1] += text;
+          else runs.push(text);
+          previousRun = run;
+          return true;
+        }
+        if (!is(node, "Element") || node.matches(excluded)) return true;
+        const style = styleOf(node);
+        if (style.display === "none" || style.opacity === "0") return true;
+        if (
+          node !== scope &&
+          (startsSection(node, region) ||
+            (node.parentElement === scope && node.matches("p,dl,table,ol,ul")) ||
+            startsRow(node))
+        ) region = key;
+        if (style.display !== "contents" && !style.display.startsWith("inline")) line = key;
+        if (node.localName === "br") previousRun = undefined;
+        if (is(node, "HTMLDetailsElement") && !node.open) {
+          const summary = node.querySelector(":scope > summary");
+          return summary === null || visit(summary, key + ".summary", region, line, depth + 1);
+        }
+        let index = 0;
+        for (const child of node.childNodes) {
+          const childKey = child.nodeType === Node.ELEMENT_NODE ? key + "." + index++ : key;
+          if (!visit(child, childKey, region, line, depth + 1)) return false;
+        }
+        return true;
+      };
+      if (!visit(scope, "main", undefined, "main", 0)) return incomplete;
+      return {
+        complete: true,
+        regions: [...groups].flatMap(([key, runs]) => {
+          const fragments = runs.map((run) => withoutSecrets(run.trim())).filter(Boolean);
+          return fragments.length ? [{ key, fragments }] : [];
+        }),
+      };
+    };
     const clickReadback = monitor.clickReadback;
     delete monitor.clickReadback;
     const codeReadback = monitor.codeReadback;
@@ -1553,7 +1650,8 @@ export function pageCommand(
       domRevision: monitor.domRevision,
       inputRevision: monitor.inputRevision,
       viewport: viewport(),
-      text: withoutSecrets(pageText),
+      text: command.statementRegions === true ? "" : withoutSecrets(pageText),
+      ...(command.statementRegions === true && { statementRegions: statementRegions() }),
       blockers,
       ...(descend
         ? {

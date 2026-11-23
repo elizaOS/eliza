@@ -53,6 +53,11 @@ export function parseCommand(value) {
     !actions.has(String(command.subaction))
   )
     throw new BridgeError("UNSUPPORTED", "Unsupported typed browser command.");
+  if (Object.hasOwn(command, "statementRegions"))
+    throw new BridgeError(
+      "POLICY_BLOCKED",
+      "Statement regions are read only by a local native surface.",
+    );
   if (
     !["list", "open"].includes(String(command.subaction)) &&
     (typeof command.id !== "string" ||
