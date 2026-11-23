@@ -50,7 +50,9 @@ export interface Model extends Roles {
   ts: string;
   harness: string;
   guardHarness: string;
-  witness?: { harness: string; lengths: Map<string, number>; names: string[] };
+  guideNames: readonly string[];
+  witness?: { harness: string; lengths: Map<string, number> };
+  refusal?: { harness: string; guards: ReadonlySet<string> };
 }
 
 /** Where a definition came from in the spec, for doc comments and ordering. */
@@ -67,6 +69,7 @@ const TAKEN = new Set([...EMITTED, ...HARNESS, ...`
 const RULE_OR_GUARD = new RegExp(`^(${[...ROLES, "can"].join("|")})[A-Z]`);
 const GENERATED = new RegExp(`^(${[...HELPERS, "eval", "Out", "set", "opaque", "table", "else"].join("|")})_|^x\\d+$|__\\d+$`);
 const WITNESS_PREFIX = "eval_witness_";
+const REFUSAL_PREFIX = "eval_refuse_";
 
 function concreteWitnesses(defs: Json[], roles: Roles, at: (name: string) => string): Map<string, WitnessStep[]> {
   const tuple = (value: Json): Json[] | undefined => value.kind === "app" && value.opcode === "Tup" ? value.args : undefined;
@@ -139,9 +142,11 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   // sample sets, they never reach TypeScript.
   const settings = defs.filter((d) => d.qualifier === "pureval" && /^(weight|fair|within)_/.test(d.name));
   const examples = defs.filter((d) => d.qualifier === "pureval" && d.name.startsWith(WITNESS_PREFIX));
-  const code = defs.filter((d) => !isSampleSet(d) && !settings.includes(d) && !examples.includes(d));
+  const refusalExamples = defs.filter((d) => d.qualifier === "pureval" && d.name.startsWith(REFUSAL_PREFIX));
+  const guides = [...examples, ...refusalExamples];
+  const code = defs.filter((d) => !isSampleSet(d) && !settings.includes(d) && !guides.includes(d));
   /** Names only the simulator reads; a definition that used one would refer to nothing in TypeScript. */
-  const simulatorOnly = new Set([...ownSamples, ...settings, ...examples, ...links.flatMap((l) => l.exports.samples.map((s) => ({ name: qualify(l.alias, s.name) })))].map((d) => d.name as string));
+  const simulatorOnly = new Set([...ownSamples, ...settings, ...guides, ...links.flatMap((l) => l.exports.samples.map((s) => ({ name: qualify(l.alias, s.name) })))].map((d) => d.name as string));
   // `const f: (A, B) => R` is an opaque function: no body, only the laws stated with it (SPEC.md, "Opaque functions").
   const consts = decls.filter((d) => d.kind === "const");
   for (const d of consts) if (d.typeAnnotation?.kind !== "oper" || !d.typeAnnotation.args.length) fail(`${d.name}: a \`const\` is an opaque function, written \`const ${d.name}: (A, B) => R\` on one line`);
@@ -156,7 +161,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
       : owner ? fail(`\`${n}\` cannot be used as a name: names beginning ${owner}_ are how the generated code refers to that module`)
       : n;
   };
-  [...defs, ...localTypedefs, ...consts].forEach((d) => bind(d.name, examples.includes(d)));
+  [...defs, ...localTypedefs, ...consts].forEach((d) => bind(d.name, guides.includes(d)));
 
   // --- types: the module's own, and those of what it imports under the names it knows them by ---
   /** A type from a module imported under a name, with the types it mentions renamed the same way. */
@@ -262,15 +267,41 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   };
   const ts = render("", true, false);
 
-  const run = harness(name, source, [...imports, ...typeOnly], funs, sig, samples, roles, types, { weights, fair });
+  const refusals = new Map<string, string>();
+  for (const example of refusalExamples) {
+    const guard = example.name.slice(REFUSAL_PREFIX.length);
+    const definition = funs.find((f) => f.name === guard);
+    if (!definition || !roles.transitions.some((t) => t.guard === guard))
+      fail(`${at(example.name)}: name a transition guard after \`${REFUSAL_PREFIX}\``);
+    if (opaques.length) fail(`${at(example.name)}: an initial refusal example requires a model without opaque functions`);
+    const params = sig(definition).params.slice(1);
+    const value = example.expr;
+    if (value.kind !== "app" || value.opcode !== "Rec" || !params.length || value.args.length !== 2 * params.length)
+      fail(`${at(example.name)}: give a record with one field for each argument of ${guard} after its state`);
+    const fields = new Map<string, Json>();
+    for (let i = 0; i < value.args.length; i += 2) fields.set(value.args[i].value, value.args[i + 1]);
+    for (const { name, type } of params) {
+      const field = fields.get(name);
+      if (!field) fail(`${at(example.name)}: the refusal record needs the argument ${name} of ${guard}`);
+      if (types.shape(typeOf(field.id)) !== types.shape(type))
+        fail(`${at(example.name)}: the refusal argument ${name} does not have the type expected by ${guard}`);
+    }
+    refusals.set(guard, example.name);
+  }
+  const run = harness(name, source, [...imports, ...typeOnly], funs, sig, samples, roles, types, { weights, fair, refusals });
+  for (const [guard, declaration] of refusals) {
+    const evaluation = run.evals.find((e) => e.name === guard);
+    if (evaluation?.params[0]?.from !== "state" || !evaluation.params.slice(1).every((p) => p.from === "pick"))
+      fail(`${at(declaration)}: ${guard} must be a sampled guard of the current state and its arguments`);
+  }
   const witnesses = concreteWitnesses(examples, roles, at);
   const witness = witnesses.size ? {
     harness: harness(name, source, [...imports, ...typeOnly], funs, sig, samples, roles, types, { weights, fair }, witnesses).text,
     lengths: new Map([...witnesses].map(([goal, steps]) => [goal, steps.length])),
-    names: [...witnesses.keys()].map((goal) => `${WITNESS_PREFIX}${goal}`),
   } : undefined;
+  const refusal = run.refusalHarness ? { harness: run.refusalHarness, guards: new Set(refusals.keys()) } : undefined;
   return {
-    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text, guardHarness: run.guardHarness, witness,
+    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text, guardHarness: run.guardHarness, guideNames: guides.map((d) => d.name), witness, refusal,
     ts, render, proofTypeOfConstant, decode: types.decode, canon: types.canon,
     shape: roles.stateType ? types.comparison(roles.stateType) : undefined,
     outputShape: roles.output ? types.comparison(roles.output.out) : undefined,
