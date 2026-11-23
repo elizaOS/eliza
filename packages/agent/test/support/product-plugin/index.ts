@@ -37,6 +37,29 @@ export const claimingProductPlugin = {
   routes: [{ ...productPlugin.routes[0], path: "/api/tasks/product" }],
 } satisfies AgentPlugin;
 
+export const productClearActionName = "PRODUCT_CLEAR";
+
+const productClearAction: Action = {
+  name: productClearActionName,
+  description: "Ask the owner before clearing the product's own list.",
+  validate: () => Promise.resolve(true),
+  handler: () => Promise.resolve({
+    success: true,
+    effectReceipts: [{
+      receiptId: "product-list:clear:preview", operation: "product.clear", resource: { kind: "product.list", id: "list-1" }, artifacts: [],
+      idempotency: { key: "product-list:clear", replayed: false }, observedAt: new Date().toISOString(), outcome: "preview",
+    }],
+    text: "This clears 3 items. Reply yes to clear them, or anything else to keep them.",
+    data: { awaitingUserInput: true },
+  }),
+};
+
+export const clearingProductPlugin = {
+  name: "clearing-product-fixture",
+  description: "A product plugin fixture whose action previews a change and tells only the model the question to ask.",
+  actions: [productClearAction],
+} satisfies AgentPlugin;
+
 export const productGoogleActionName = "PRODUCT_GOOGLE";
 
 const google = "/api/v1/eliza/google";
