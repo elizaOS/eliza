@@ -4,7 +4,7 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { exec } from "./run.ts";
 import { evaluatorIdentity } from "./installed.ts";
-import { heading, isStd, type Spec } from "./parse.ts";
+import { badSpecName, heading, isStd, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
 import ts from "typescript";
 import { profile, type TestProfile } from "./testing/profile.ts";
@@ -77,15 +77,31 @@ export function projectRoot(directory: string, base = process.cwd()): string {
 /** The declarations the VibeLang compiler writes for a `.vibe` module: its output, not the package's code. */
 const SIDECAR = /\.d\.vibex?\.ts$/;
 
-/**
- * The workspace package a spec belongs to by name, as a path from the root: `spec/<name>/…` is `apps/<name>` or
- * `packages/<name>`, if that is a package with no `spec/` of its own. The root's check generates into its `gen/` and
- * checks its code (SPEC.md, "One spec tree").
- */
+export function specOwnerPaths(root: string, name: string): string[] {
+  const conventional = [`apps/${name}`, `packages/${name}`];
+  const declared: unknown = manifest(root).specOwners;
+  if (declared === undefined) return conventional;
+  if (typeof declared !== "object" || declared === null || Array.isArray(declared)) {
+    throw new Error("package.json: specOwners must map spec areas to workspace directories");
+  }
+  const entries: [string, unknown][] = Object.entries(declared);
+  const claimed = new Set<string>();
+  let match: string | undefined;
+  for (const [area, dir] of entries) {
+    if (badSpecName(area) || typeof dir !== "string" || !/^(?:apps|packages)\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(dir)) {
+      throw new Error(`package.json: specOwners.${area} must map a spec area to a workspace directory under apps/ or packages/`);
+    }
+    if (claimed.has(dir)) throw new Error(`package.json: specOwners assigns ${dir} to more than one spec area`);
+    claimed.add(dir);
+    if (area === name) match = dir;
+  }
+  return match ? [match] : conventional.filter((dir) => !claimed.has(dir));
+}
+
 export function owner(root: string, spec: string): string | undefined {
   const [top, name, below] = spec.split("/");
   if (top !== "spec" || below === undefined) return undefined;
-  return [`apps/${name}`, `packages/${name}`].find((dir) => fs.existsSync(path.join(root, dir, "package.json")) && !fs.existsSync(path.join(root, dir, "spec")));
+  return specOwnerPaths(root, name).find((dir) => fs.existsSync(path.join(root, dir, "package.json")) && !fs.existsSync(path.join(root, dir, "spec")));
 }
 /**
  * The directories whose code a check reads, each as the prefix of a path from the root: "" for the root's own

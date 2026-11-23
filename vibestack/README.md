@@ -179,8 +179,8 @@ pnpm --filter vibestack-studio test           # its journeys only, Playwright in
 A `##` heading is a story, a `###` heading is a rule, and a `quint` block
 under a rule states its formal meaning. Write the prose; the agent writes
 the rules and their Quint. `spec/index.md` introduces the product and links
-to each area; `spec/<name>/` holds the requirements of the package
-`apps/<name>` or `packages/<name>` ([one spec tree](../SPEC.md#one-spec-tree)).
+to each area. A package's requirements live in the spec area it owns
+([one spec tree](../SPEC.md#one-spec-tree)).
 `pnpm new <name>` writes `spec/<name>/index.md` with a scaffold to replace.
 The format is in the [spec reference](../SPEC.md#writing-a-spec).
 

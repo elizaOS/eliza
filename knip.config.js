@@ -27,13 +27,13 @@ export default {
     "packages/cloud/src/services/sse.ts": ["exports"],
     "packages/cloud/src/client/relay-frames.ts": ["exports"],
     "packages/agent/test/support/product-plugin/entry.ts": ["unlisted"],
-    "packages/assistant/src/index.vibe": ["duplicates"],
-    "packages/browser/src/index.vibe": ["duplicates"],
-    "packages/calendar/src/index.vibe": ["duplicates"],
-    "packages/files/src/index.vibe": ["duplicates"],
-    "packages/inbox/src/index.vibe": ["duplicates"],
-    "packages/maps/src/index.vibe": ["duplicates"],
-    "packages/workflow/src/index.vibe": ["duplicates"]
+    "packages/plugin-assistant/src/index.vibe": ["duplicates"],
+    "packages/plugin-browser/src/index.vibe": ["duplicates"],
+    "packages/plugin-calendar/src/index.vibe": ["duplicates"],
+    "packages/plugin-files/src/index.vibe": ["duplicates"],
+    "packages/plugin-inbox/src/index.vibe": ["duplicates"],
+    "packages/plugin-maps/src/index.vibe": ["duplicates"],
+    "packages/plugin-workflows/src/index.vibe": ["duplicates"]
   },
   "workspaces": {
     ".": {
@@ -137,19 +137,19 @@ export default {
         "test/**/*.{ts,vibe,vibex}"
       ]
     },
-    "packages/assistant": {
+    "packages/plugin-assistant": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
-    "packages/calendar": {
+    "packages/plugin-calendar": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
-    "packages/inbox": {
+    "packages/plugin-inbox": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
-    "packages/notes": {
+    "packages/plugin-notes": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
-    "packages/workflow": {
+    "packages/plugin-workflows": {
       "entry": ["src/worker/main.vibe", "src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/os": {
