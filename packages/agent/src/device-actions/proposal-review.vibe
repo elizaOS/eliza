@@ -141,7 +141,12 @@ module node {
     }
   }
 
-  export function proposalReviewRoutes(adapter: IDatabaseAdapter, sender: DeviceEnrollment["deviceSender"]): LocalRoute[] {
+  function servedHere(record: Pick<DeviceRequestRecord, "terms">, servesAgenda: boolean): boolean {
+    const { binding } = record.terms
+    return servesAgenda || typeof binding === "string" || binding.kind !== "AgendaBinding"
+  }
+
+  export function proposalReviewRoutes(adapter: IDatabaseAdapter, sender: DeviceEnrollment["deviceSender"], servesAgenda: boolean): LocalRoute[] {
     async function viewStillAllowed(record: DeviceRequestRecord, terms: Reviewed): Promise<boolean> {
       if (terms.operation.type !== "open_view") return true
       return openViewAllowed(await Effect.runPromise(viewProfile(adapter)), record.terms.boundProfile, terms.operation.view)
@@ -153,7 +158,7 @@ module node {
         if (by === undefined) return failure(401, "device_unauthorized")
         const proposalId = input.parameters.get("id") ?? ""
         const record = await Effect.runPromise(openRequest(adapter, proposalId))
-        if (record === undefined) return failure(404, "unknown_proposal")
+        if (record === undefined || !servedHere(record, servesAgenda)) return failure(404, "unknown_proposal")
         const terms = reviewedOf(record, input.headers.get(capabilitiesHeader))
         if (terms === undefined) return failure(409, "proposal_scope_refused")
         const request = { proposalId, digest: event.value.digest, by }
@@ -228,7 +233,7 @@ module node {
             if (by === undefined) return failure(401, "device_unauthorized")
             const rows = await Effect.runPromise(deviceReviewRows(adapter, by))
             const header = input.headers.get(capabilitiesHeader)
-            const proposals = rows.flatMap((row) => {
+            const proposals = rows.filter((row) => servedHere(row, servesAgenda)).flatMap((row) => {
               const terms = reviewedOf(row, header)
               const phase = observedPhase(row)
               if (terms === undefined || phase === undefined) return []
