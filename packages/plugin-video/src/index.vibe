@@ -13,6 +13,7 @@ module node {
 
   const run = promisify(execFile)
 
+  /** @throws {never} */
   export function approvedVideoSource(raw: string): URL | undefined {
     const url = URL.parse(raw)
     if (!url || url.protocol !== "https:" || url.username || url.password) return undefined
@@ -117,7 +118,7 @@ export effect function transcribeVideo(runtime: IAgentRuntime, source: string) {
   provide machine() {
     const run = try Machine
     try run.send({ type: "beginVideo", sourceRef: url.href, job: "BuildTranscript", formatName: "text", sourceAllowed: true })
-    let text = ""
+    let text: string
     if (youtubePage(url)) {
       const metadata = try probeVideo(url.href)
       text = (extractCaption(metadata)) catch () => ""
