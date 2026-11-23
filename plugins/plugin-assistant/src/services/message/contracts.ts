@@ -33,6 +33,8 @@ export type ResolvedMessageOptions = {
   onStreamChunk?: StreamChunkCallback;
   onPlanningAcknowledgment?: (text: string) => void | Promise<void>;
   onResponseDecision?: () => void;
+  /** Records the contexts Stage 1 selected; only names this turn's activity status. */
+  onStage1SelectedContexts?: (contexts: readonly string[]) => void;
   shouldRespondModel: ShouldRespondModelType;
   /**
    * Per-turn abort signal threaded into the streaming context so

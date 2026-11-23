@@ -35,6 +35,7 @@ import {
   mergeEffectReceipts,
   modelStreamChunkPipelineHookContext,
   nextInferenceTurnId,
+  normalizeContextId,
   ownerExclusiveDisclosureWasUsed,
   parseBooleanFromText,
   RunTerminalOwner,
@@ -74,14 +75,18 @@ import {
 /**
  * Content-free activity label from an unambiguous registered category. Catch-all and system contexts name no activity. Publishing without
  * an owner-only audience check requires every listed category to be public.
+ * A multi-category action is named by the one labelled category the turn's
+ * Stage 1 selected, if exactly one; the selection never narrows publicity.
  */
 function activityStatusCategory(
   runtime: IAgentRuntime,
   action: Action,
+  selectedContexts?: ReadonlySet<string>,
 ): { label: string; public: boolean } | undefined {
   let label: string | undefined;
   let isPublic = true;
   const categoryLabels = new Set<string>();
+  const selectedLabels = new Set<string>();
   for (const context of resolveActionContexts(action)) {
     if (context === "general" || context === "simple") continue;
     const definition = runtime.contexts.get(context);
@@ -89,11 +94,16 @@ function activityStatusCategory(
     if (definition?.sensitivity === "system") continue;
     const contextLabel = definition?.label?.trim();
     categoryLabels.add(contextLabel || context);
-    if (!label && contextLabel) label = `Using ${contextLabel}`;
+    if (!contextLabel) continue;
+    if (!label) label = `Using ${contextLabel}`;
+    if (selectedContexts?.has(normalizeContextId(context)))
+      selectedLabels.add(contextLabel);
   }
   // Shared actions such as VIEWS can target several apps. Their first category
   // is ambiguous even if other declared categories have no registered label.
-  if (label && categoryLabels.size > 1) label = "Working";
+  if (label && categoryLabels.size > 1)
+    label =
+      selectedLabels.size === 1 ? `Using ${[...selectedLabels][0]}` : "Working";
   return label ? { label, public: isPublic } : undefined;
 }
 
@@ -464,6 +474,8 @@ export class MessageTurnLifetime {
               }
             : undefined;
 
+        // Latest Stage 1 context selection; it only picks an activity label.
+        let stage1SelectedContexts: ReadonlySet<string> | undefined;
         const opts: ResolvedMessageOptions = {
           maxRetries: options?.maxRetries ?? 3,
           codingMode: options?.codingMode === true,
@@ -507,6 +519,15 @@ export class MessageTurnLifetime {
               }
             : undefined,
           onResponseDecision: options?.onResponseDecision,
+          ...(options?.onActivityStatus
+            ? {
+                onStage1SelectedContexts: (contexts: readonly string[]) => {
+                  stage1SelectedContexts = new Set(
+                    contexts.map(normalizeContextId),
+                  );
+                },
+              }
+            : {}),
           keepExistingResponses:
             options?.keepExistingResponses ??
             parseBooleanFromText(
@@ -570,7 +591,11 @@ export class MessageTurnLifetime {
                   toolName,
                 );
                 const category = action
-                  ? activityStatusCategory(runtime, action)
+                  ? activityStatusCategory(
+                      runtime,
+                      action,
+                      stage1SelectedContexts,
+                    )
                   : undefined;
                 if (
                   !action ||

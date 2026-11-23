@@ -876,6 +876,9 @@ export class MessageProcessor {
                 stage1DecidedRespond = true;
                 opts.onResponseDecision?.();
               },
+              ...(opts.onStage1SelectedContexts
+                ? { onStage1SelectedContexts: opts.onStage1SelectedContexts }
+                : {}),
             }),
           ),
           timeInferenceSpan("message:ingress:parallel-respond-hooks", () =>
