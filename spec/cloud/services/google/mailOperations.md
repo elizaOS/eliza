@@ -3,11 +3,15 @@
 Every change the cloud makes to the owner's mailbox, reviewed first and sent
 to Google at most once on a receipt of [the dispatch ledger](../../shared/dispatchOnce.md)
 (develop `agent-google-connector/inbox-{receipts,provider,operation-routes}.ts`).
-Routes under `/api/v1/eliza/google/gmail/inbox-v1/` (device key or session,
-grant chosen by [the connection](./connection.md)): `POST operations
+Routes under `/api/v1/eliza/google/gmail/inbox-v1/` (a session or the
+tablet's device lease, never the device key, per [request
+authentication](../../identity/requestAuth.md); grant chosen by [the
+connection](./connection.md)): `POST operations
 {grantId, requestId, proposal}`, `POST operations/:requestId/dispatch
-{grantId, reviewDigest, proposal}`, `GET operations/:requestId?grantId`; ids
-are UUIDs. There is no other Gmail write route.
+{grantId, reviewDigest, proposal}`, `GET
+operations/:requestId?grantId`; ids are UUIDs. Beside them only the tablet's
+own drafts are written, by `POST gmail/drafts` and `DELETE
+gmail/drafts/:draftId` (below).
 
 One instance is one `mail_operations` row, keyed by organization, user,
 grant and request id (provider key `grantId:requestId`). The shell reads
@@ -26,8 +30,8 @@ deadline and renders the wire.
 
 A label change (`archive`, `unarchive`, `trash`, `untrash`, `mark-read`,
 `mark-unread`, `star`, `unstar`) names `{messageId, expectedHistoryId}`;
-`draft-delete` names `{draftId, expectedDigest}` with `confirmPermanentDelete:
-true`. `send`, `draft-create` and `draft-replace` carry `mode ∈ {compose,
+`purge` names `{messageId, expectedHistoryId}` and `draft-delete` names
+`{draftId, expectedDigest}`, each with `confirmPermanentDelete: true`. `send`, `draft-create` and `draft-replace` carry `mode ∈ {compose,
 reply, reply-all, forward}`; `to`, `cc`, `bcc` (bare addresses, at most 50 in
 all, a send at least one); `subject`; `bodyText`; `replyMessageId` exactly in
 the reply modes (subject `Re:` the parent's, parent with safe `Message-ID` and
@@ -52,17 +56,19 @@ type OutgoingFiles = { count: int, bytes: int, wellFormed: bool, forwarded: bool
 type Proposal =
   LabelChangeProposal({ kind: MailOperationKind, target: TargetFit })
   | DraftDeleteProposal({ target: TargetFit, confirmed: bool })
+  | PurgeProposal({ target: TargetFit, confirmed: bool })
   | MessageProposal({ kind: MailOperationKind, mode: ComposeMode, recipients: int, reply: ReplyFit, target: TargetFit, acknowledged: bool, files: OutgoingFiles })
 type ReviewOutcome = ReviewPasses | ReviewRefused({ refusal: Refusal })
 pure val maxRecipients: int = 50
 pure val maxAttachments: int = 10
-pure def isLabelKind(kind: MailOperationKind): bool = kind != SendKind and not(isDraftKind(kind))
-pure def kindOfProposal(proposal: Proposal): MailOperationKind = match proposal { | LabelChangeProposal(x) => x.kind | DraftDeleteProposal(x) => DraftDeleteKind | MessageProposal(x) => x.kind }
-pure def targetOf(proposal: Proposal): TargetFit = match proposal { | LabelChangeProposal(x) => x.target | DraftDeleteProposal(x) => x.target | MessageProposal(x) => x.target }
+pure def isLabelKind(kind: MailOperationKind): bool = kind != SendKind and kind != PurgeKind and not(isDraftKind(kind))
+pure def kindOfProposal(proposal: Proposal): MailOperationKind = match proposal { | LabelChangeProposal(x) => x.kind | DraftDeleteProposal(x) => DraftDeleteKind | PurgeProposal(x) => PurgeKind | MessageProposal(x) => x.kind }
+pure def targetOf(proposal: Proposal): TargetFit = match proposal { | LabelChangeProposal(x) => x.target | DraftDeleteProposal(x) => x.target | PurgeProposal(x) => x.target | MessageProposal(x) => x.target }
 pure def attachedBytes(proposal: Proposal): int = match proposal { | MessageProposal(x) => x.files.bytes | _ => 0 }
 pure def shapeFits(proposal: Proposal): bool = match proposal {
   | LabelChangeProposal(x) => isLabelKind(x.kind)
   | DraftDeleteProposal(x) => x.confirmed
+  | PurgeProposal(x) => x.confirmed
   | MessageProposal(x) =>
       (x.kind == SendKind or x.kind == DraftCreateKind or x.kind == DraftReplaceKind)
       and x.recipients >= (if (x.kind == SendKind) 1 else 0) and x.recipients <= maxRecipients
@@ -84,6 +90,7 @@ pure val proposalValues: Set[Proposal] = {
   Set(LabelChangeProposal({ kind: TrashKind, target: TargetCurrent }), LabelChangeProposal({ kind: MarkReadKind, target: TargetCurrent }),
     LabelChangeProposal({ kind: StarKind, target: TargetChanged }), LabelChangeProposal({ kind: SendKind, target: TargetCurrent }),
     DraftDeleteProposal({ target: TargetCurrent, confirmed: true }), DraftDeleteProposal({ target: TargetMissing, confirmed: true }),
+    PurgeProposal({ target: TargetCurrent, confirmed: true }), PurgeProposal({ target: TargetCurrent, confirmed: false }), PurgeProposal({ target: TargetChanged, confirmed: true }),
     MessageProposal(compose), MessageProposal({ ...compose, mode: Reply, reply: ReplyHeadersSafe }), MessageProposal({ ...compose, mode: Reply, reply: ReplySubjectMismatch }),
     MessageProposal({ ...compose, mode: Forward, files: { ...files, forwarded: true } }), MessageProposal({ ...compose, recipients: 0 }),
     MessageProposal({ ...compose, files: { ...files, bytes: 8388609 } }), MessageProposal({ ...compose, kind: DraftCreateKind, recipients: 0 }),
@@ -100,8 +107,8 @@ pure def lawAPassingReviewSawEverythingAtItsRevisionAndARefusalIsFinal(proposal:
 
 ### A change needs a usable connection holding the capability its kind needs, and a reply or forwarded part also message reads
 
-`send` needs `google.gmail.send`, drafts `google.gmail.drafts`, label kinds
-`google.gmail.manage`; a reply or forwarded part also needs message reads. A
+`send` needs `google.gmail.send`, drafts `google.gmail.drafts`, `purge`
+`google.gmail.purge`, label kinds `google.gmail.manage`; a reply or forwarded part also needs message reads. A
 refusal is the connection's use refusal, after its refresh.
 
 ```quint
@@ -113,7 +120,7 @@ pure def authorityAllows(proposal: Proposal, authority: MailAuthority): bool = C
 pure def authorityRefusal(proposal: Proposal, authority: MailAuthority): Refusal = C::useRefusal(authority.status, authority.access, holdsFor(proposal, authority.scopes))
 pure val authorityValues: Set[MailAuthority] = {
   val ok: MailAuthority = { status: C::Active, access: C::AccessLive, scopes: List(C::ScopeGmailModify, C::ScopeGmailSend) }
-  Set(ok, { ...ok, scopes: List(C::ScopeGmailModify) }, { ...ok, scopes: List(C::ScopeGmailSend) }, { ...ok, status: C::Expired })
+  Set(ok, { ...ok, scopes: List(C::ScopeGmailModify) }, { ...ok, scopes: List(C::ScopeGmailSend) }, { ...ok, scopes: List(C::ScopeGmailFull) }, { ...ok, status: C::Expired })
 }
 pure def lawAnAdmittedChangeIsOneTheCapabilitiesOffer(proposal: Proposal, authority: MailAuthority): bool =
   authorityAllows(proposal, authority) implies offeredKinds(authority.scopes).includes(kindOfProposal(proposal))
@@ -156,6 +163,23 @@ pure def alwaysAPreparedOperationHasItsKindAndAGmailKey(o: Operation): bool =
   and (o.slot != NoKind implies D::kindOf(o.receipt) == GmailOperation)
 pure def stepKindIsFixed(before: Operation, after: Operation): bool = before.slot != NoKind implies after.slot == before.slot
 pure def sometimesPreparedAwaitingDispatch(o: Operation): bool = o.slot != NoKind and D::receiptStatus(o.receipt) == D::StatusPrepared
+```
+
+### A permanent delete is dispatched only as staged and reviewed, never with the device key
+
+A purge passes review only marked `confirmPermanentDelete: true` and naming
+the message at its current history id, and is dispatched like any change:
+prepared first, then claimed by a dispatch naming its reviewed digest and
+reviewed again against Google. Its routes refuse the device key the on-device
+agent holds, so Grace may stage a purge but never dispatch one. The cloud
+cannot tell whether a person tapped confirm: the tablet shows the staged
+review to the person and dispatches only on their confirmation, and that is
+the tablet's obligation, as it is for every change Grace proposes.
+
+```quint
+pure def isConfirmedCurrentPurge(proposal: Proposal): bool = match proposal { | PurgeProposal(x) => x.confirmed and x.target == TargetCurrent | _ => false }
+pure def lawAPurgePassesOnlyMarkedPermanentAtItsCurrentRevision(proposal: Proposal): bool =
+  (kindOfProposal(proposal) == PurgeKind and reviewOf(proposal) == ReviewPasses) iff isConfirmedCurrentPurge(proposal)
 ```
 
 ### A prepared change is claimed only by a dispatch naming its digest, reviewed again against Google at that moment
@@ -219,14 +243,15 @@ pure def stepReceiptKeepsItsRules(before: Operation, via: str, after: Operation)
 A label change succeeds when the returned labels show its label (`TRASH`,
 `UNREAD`, `INBOX`, `STARRED`) added or removed, a send when Google returns
 its ids, a draft save when the draft read back holds exactly the reviewed
-bytes, a draft delete when Google confirms it. Google's 404 rejects as
+bytes, a draft delete when Google confirms it, a purge when the message then
+reads as gone. Google's 404 rejects as
 `not_found`, 401 or 403 as `reauth_required`, 400, 409, 412 or 422 as
 `provider_rejected`. Only a succeeded receipt carries `providerResult`.
 
 ```quint
 type MailLabel = LabelInbox | LabelTrash | LabelUnread | LabelStarred
 type LabelChange = AddLabel({ label: MailLabel }) | RemoveLabel({ label: MailLabel }) | NoLabelChange
-type MailReply = LabelsReturned({ labels: List[MailLabel] }) | MessageSent | DraftStored({ sameBytes: bool }) | DraftDeleted | GoogleNotFound | GoogleRefusedAccess | GoogleRefusedOther | NoClearReply
+type MailReply = LabelsReturned({ labels: List[MailLabel] }) | MessageSent | DraftStored({ sameBytes: bool }) | DraftDeleted | MessagePurged | GoogleNotFound | GoogleRefusedAccess | GoogleRefusedOther | NoClearReply
 pure def labelChangeOf(kind: MailOperationKind): LabelChange =
   if (kind == ArchiveKind) RemoveLabel({ label: LabelInbox }) else if (kind == UnarchiveKind) AddLabel({ label: LabelInbox }) else if (kind == TrashKind) AddLabel({ label: LabelTrash })
   else if (kind == UntrashKind) RemoveLabel({ label: LabelTrash }) else if (kind == MarkReadKind) RemoveLabel({ label: LabelUnread }) else if (kind == MarkUnreadKind) AddLabel({ label: LabelUnread })
@@ -234,12 +259,12 @@ pure def labelChangeOf(kind: MailOperationKind): LabelChange =
 pure def showsRequested(kind: MailOperationKind, labels: List[MailLabel]): bool = { val change = labelChangeOf(kind)
   match change { | AddLabel(x) => labels.includes(x.label) | RemoveLabel(x) => not(labels.includes(x.label)) | NoLabelChange => true } }
 pure def replyFits(kind: MailOperationKind, reply: MailReply): bool = match reply {
-  | LabelsReturned(x) => isLabelKind(kind) | MessageSent => kind == SendKind | DraftDeleted => kind == DraftDeleteKind
+  | LabelsReturned(x) => isLabelKind(kind) | MessageSent => kind == SendKind | DraftDeleted => kind == DraftDeleteKind | MessagePurged => kind == PurgeKind
   | DraftStored(x) => kind == DraftCreateKind or kind == DraftReplaceKind | _ => true }
 pure def resultOf(kind: MailOperationKind, reply: MailReply): MailResult = match reply {
   | LabelsReturned(x) => if (showsRequested(kind, x.labels)) Shown({ shownLabels: x.labels }) else NoResult
   | DraftStored(x) => if (x.sameBytes) Shown({ shownLabels: List() }) else NoResult
-  | MessageSent => Shown({ shownLabels: List() }) | DraftDeleted => Shown({ shownLabels: List() }) | _ => NoResult }
+  | MessageSent => Shown({ shownLabels: List() }) | DraftDeleted => Shown({ shownLabels: List() }) | MessagePurged => Shown({ shownLabels: List() }) | _ => NoResult }
 pure def providerReplyOf(kind: MailOperationKind, reply: MailReply): D::ProviderReply =
   if (resultOf(kind, reply) != NoResult) D::ShowsEffect
   else if (reply == GoogleNotFound) D::DefiniteRefusal({ cause: D::NotFoundAtProvider })
@@ -252,13 +277,14 @@ pure def canReceiveReply(o: Operation, reply: MailReply): bool =
 pure def receiveReply(o: Operation, reply: MailReply): Operation =
   { ...o, receipt: D::receiveReply(o.receipt, providerReplyOf(slotKind(o), reply)), result: resultOf(slotKind(o), reply) }
 pure val replyValues = Set(LabelsReturned({ labels: List(LabelTrash) }), LabelsReturned({ labels: List(LabelInbox, LabelUnread) }), MessageSent,
-  DraftStored({ sameBytes: true }), DraftStored({ sameBytes: false }), DraftDeleted, GoogleNotFound, GoogleRefusedAccess, GoogleRefusedOther, NoClearReply)
+  DraftStored({ sameBytes: true }), DraftStored({ sameBytes: false }), DraftDeleted, MessagePurged, GoogleNotFound, GoogleRefusedAccess, GoogleRefusedOther, NoClearReply)
 pure val weight_receiveReply = 5
 pure def alwaysAResultExactlyWhenGoogleShowedTheRequestedState(o: Operation): bool =
   ((o.result != NoResult) iff (o.receipt.settlement == D::Succeeded)) and (o.result != NoResult implies showsRequested(slotKind(o), shownLabelsOf(o.result)))
 pure def sometimesSentAsReviewed(o: Operation): bool = slotKind(o) == SendKind and o.receipt.settlement == D::Succeeded
 pure def sometimesLabelChangeShown(o: Operation): bool = o.slot != NoKind and isLabelKind(slotKind(o)) and o.receipt.settlement == D::Succeeded
 pure def sometimesDraftSavedAsReviewed(o: Operation): bool = (slotKind(o) == DraftCreateKind or slotKind(o) == DraftReplaceKind) and o.receipt.settlement == D::Succeeded
+pure def sometimesPurgedAsReviewed(o: Operation): bool = slotKind(o) == PurgeKind and o.receipt.settlement == D::Succeeded
 pure def sometimesUnverifiedReplyLeftUnknown(o: Operation): bool =
   o.slot != NoKind and isLabelKind(slotKind(o)) and o.receipt.session.effects == 1 and o.receipt.settlement == D::Unsettled and not(o.receipt.session.executorAlive)
 pure def sometimesRejectedByGoogle(o: Operation): bool = o.receipt.settlement == D::Refused
@@ -296,4 +322,52 @@ pure def rejectionOf(o: Operation): Rejection = { val r = o.receipt
   if (r.settlement == D::NotApplied) RejectedNotApplied else if (r.settlement != D::Refused) NoRejection
   else if (r.refusal == D::NotFoundAtProvider) RejectedNotFound else if (r.refusal == D::AuthorizationLost) RejectedReauth else RejectedByGoogle }
 pure def sometimesAnsweredOutcomeUnknown(o: Operation): bool = o.slot != NoKind and wireStateOf(o) == WireOutcomeUnknown
+```
+
+## Story: Keep the email I am writing as one draft under the tablet's name for it
+
+> As an owner, I want the email I am still writing kept in my mailbox's
+> drafts under the tablet's own id, saved again in place as I change it and
+> removed when I discard it, so that one draft follows my writing and
+> nothing piles up after a lost connection.
+
+### A draft save replaces the draft holding the tablet's id, or creates it when none does
+
+`POST gmail/drafts {grantId, draftId, to, cc, bcc, subject, bodyText,
+attachments}` needs `google.gmail.drafts`; `draftId` is the tablet's id, 1 to
+256 printable characters. The message is composed as a `compose`-mode
+`draft-create` would be, with its caps and refusals, and carries
+`Message-ID: <eliza-draft-{keyed digest of grant and draftId}@message.invalid>`,
+so the id is the cloud's alone and differs between accounts. Gmail's
+drafts holding that Message-ID are listed: with none a draft is created,
+otherwise the first is replaced in place. The answer is `{draftId}` with the
+tablet's id once the draft read back holds exactly the composed bytes, so a
+save repeated after a lost answer replaces the same draft instead of adding
+one.
+
+```quint
+type DraftSave = CreateDraft | ReplaceDraft
+pure def draftSaveOf(holding: int): DraftSave = if (holding == 0) CreateDraft else ReplaceDraft
+pure def draftsAfterSave(holding: int): int = if (holding == 0) 1 else holding
+pure val holdingValues = Set(0, 1, 2)
+pure def lawASaveNeverAddsADraftBesideOneItHolds(holding: int): bool =
+  holding >= 0 implies (draftsAfterSave(holding) >= 1 and (holding > 0 implies (draftSaveOf(holding) == ReplaceDraft and draftsAfterSave(holding) == holding)))
+```
+
+### Deleting the tablet's draft removes every draft holding its id, and answers not found when none does
+
+`DELETE gmail/drafts/:draftId?grantId` needs `google.gmail.drafts` and
+deletes each draft Gmail lists with the draft's Message-ID, answering `{ok:
+true}`; with none it is `404 not_found`, which the tablet takes as already
+gone. `grantId` is required, as for a save. Unlike `draft-delete`, it needs no
+`confirmPermanentDelete` or digest: it removes only the tablet's own unsent
+writing, named by the tablet's id, the person's discard of what they are
+composing, never a draft Gmail held before.
+
+```quint
+type DraftRemoval = DraftsRemoved | NoDraftHeld
+pure def removalOf(holding: int): DraftRemoval = if (holding <= 0) NoDraftHeld else DraftsRemoved
+pure def removalAnswer(holding: int): OperationAnswer = if (removalOf(holding) == NoDraftHeld) AnswerRefused({ refusal: refuse(NotFound) }) else AnswerReceipt
+pure def lawARemovalAnswersNotFoundExactlyWhenNoDraftHeldTheId(holding: int): bool =
+  (removalAnswer(holding) == AnswerReceipt) iff holding > 0
 ```

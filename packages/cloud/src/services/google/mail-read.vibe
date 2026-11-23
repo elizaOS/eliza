@@ -1,6 +1,6 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 // spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"
-import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, offeredReads, threadMaxMessages, threadOutcome, threadPageMax, type MailSurface, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
+import { contactQueryFits, contactsOf, htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, offeredReads, threadMaxMessages, threadOutcome, threadPageMax, type MailSurface, type SeenAddress, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
 import { bearerToken, recheckAccess, signed } from "../../http/request-auth.vibe"
@@ -76,6 +76,8 @@ const historyPattern = /^\d{1,20}$/
 const partIdPattern = /^[0-9.]{1,32}$/
 const threadPageMaxBytes = 1.5 * mebibyte
 const draftPage = 25
+const contactSources: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [["SENT", ["to", "cc"]], ["INBOX", ["from"]]]
+const contactSourcePage = 50
 const messageMaxBytes = Math.ceil(GoogleRead.attachmentMaxBytes / 3) * 4 + 65536
 const threadMaxBytes = 12 * 1024 * 1024
 const metadataHeaders = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", "Precedence", "List-Id", "Auto-Submitted"]
@@ -84,13 +86,14 @@ const trashQuery = /(?:^|[\s({])in:(?:spam|trash|anywhere)(?=[\s)}]|$)/i
 const kindsByCapability: ReadonlyArray<readonly [GoogleCapability, ReadonlyArray<OperationKind>]> = [
   ["google.gmail.send", ["send"]],
   ["google.gmail.drafts", ["draft-create", "draft-replace", "draft-delete"]],
-  ["google.gmail.manage", ["archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"]]
+  ["google.gmail.manage", ["archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"]],
+  ["google.gmail.purge", ["purge"]]
 ]
 
 const readNames: Readonly<Record<MailSurface, string>> = {
   TriageSurface: "triage", SearchSurface: "search", MessageSurface: "read",
   ThreadSurface: "thread", AttachmentSurface: "attachment",
-  DraftsSurface: "drafts", DraftSurface: "draft", CapabilitiesSurface: "capabilities"
+  DraftsSurface: "drafts", DraftSurface: "draft", ContactsSurface: "contacts", CapabilitiesSurface: "capabilities"
 }
 
 export function googleRefused(failure: GoogleFailure): Refused {
@@ -355,6 +358,28 @@ effect function arrivalRoute(context: RouteContext) {
   })
 }
 
+effect function contactsRoute(context: RouteContext) {
+  const query = (context.query.get("query") ?? "").trim().toLowerCase()
+  if (!contactQueryFits(query.length)) throw refused("InvalidRequest")
+  const grant = try grantOf(context, "ContactsSurface")
+  const read = try Effect.forEach(contactSources, effect ([label, fields]) => {
+    const page = try parsed(MessageList, try google(grant, `/messages?${new URLSearchParams({ maxResults: String(contactSourcePage), labelIds: label })}`))
+    if ((page.messages ?? []).length > contactSourcePage) throw refused("ProviderInvalidResponse")
+    return try Effect.forEach(page.messages ?? [], effect (entry) => {
+      return { message: try readMessage(grant, entry.id, "metadata"), fields }
+    }, { concurrency: 8 })
+  })
+  const self = grant.email.toLowerCase()
+  const seen: SeenAddress[] = read.flat()
+    .toSorted((left, right) => Number(right.message.internalDate ?? "0") - Number(left.message.internalDate ?? "0"))
+    .flatMap(({ message, fields }) => fields.flatMap((field) => GoogleRead.namedAddresses(header(message.payload, field))))
+    .map(({ name, email }) => {
+      const address = email.toLowerCase()
+      return { address, name, matches: address !== self && (address.includes(query) || name.toLowerCase().includes(query)) }
+    })
+  return json({ version: 1, contacts: contactsOf(seen).map(({ name, address }) => ({ name, email: address })) })
+}
+
 effect function threadRoute(context: RouteContext) {
   const threadId = try param(context, "threadId", providerId)
   const offset = Number(context.query.get("offset") ?? "0")
@@ -452,6 +477,7 @@ export const mailReadRoutes: ReadonlyArray<Route> = [
   { method: "GET", path: `${gmailPath}/triage`, auth: "MailAccess", capability: "managedGoogle", handler: triageRoute },
   { method: "GET", path: `${gmailPath}/search`, auth: "MailAccess", capability: "managedGoogle", handler: searchRoute },
   { method: "GET", path: `${gmailPath}/read`, auth: "MailAccess", capability: "managedGoogle", handler: readRoute },
+  { method: "GET", path: `${gmailPath}/contacts`, auth: "MailAccess", capability: "managedGoogle", handler: contactsRoute },
   { method: "GET", path: inboxArrivalPath, auth: "ServiceAccess", capability: "managedGoogle", handler: arrivalRoute },
   { method: "GET", path: `${gmailPath}/inbox-v1/capabilities`, auth: "MailAccess", capability: "managedGoogle", handler: capabilitiesRoute },
   { method: "GET", path: `${gmailPath}/inbox-v1/thread`, auth: "MailAccess", capability: "managedGoogle", handler: threadRoute },

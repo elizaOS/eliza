@@ -43,6 +43,10 @@ export function sentTexts(mailbox: GmailMailbox): string[] {
   return [...mailbox.messages.values()].filter((message) => message.labelIds.includes("SENT")).map((message) => Buffer.from(message.raw ?? "", "base64url").toString("utf8"));
 }
 
+export function draftTexts(mailbox: GmailMailbox): string[] {
+  return [...mailbox.drafts.values()].map((draft) => Buffer.from(draft.raw, "base64url").toString("utf8"));
+}
+
 function touch(mailbox: GmailMailbox, message: MailboxMessage): MailboxMessage {
   message.historyId = String(++mailbox.history);
   return message;
@@ -94,6 +98,12 @@ function change(mailbox: GmailMailbox, request: FakeRequest, rest: string): Fake
       : labelPath[2] === "untrash" ? relabel(mailbox, message, ["INBOX"], ["TRASH"])
       : relabel(mailbox, message, body.addLabelIds ?? [], body.removeLabelIds ?? []);
     return { status: 200, body: shown(changed) };
+  }
+  const purgePath = /^\/messages\/([A-Za-z0-9_-]+)$/.exec(rest);
+  if (request.method === "DELETE" && purgePath !== null) {
+    if (!mailbox.messages.delete(purgePath[1] ?? "")) return notFound;
+    mailbox.history += 1;
+    return { status: 204 };
   }
   if (request.method === "POST" && rest === "/messages/send") {
     const body = parsed(request) as { raw?: string; threadId?: string };

@@ -75,8 +75,21 @@ function addressOf(value: string) {
   return (bracketed?.[1] ?? value).trim()
 }
 
+function addressEntries(value: string): ReadonlyArray<string> {
+  return value.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+}
+
 export function mailAddresses(value: string): ReadonlyArray<string> {
-  return value.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(addressOf).filter(Boolean)
+  return addressEntries(value).map(addressOf).filter(Boolean)
+}
+
+export function namedAddresses(value: string): ReadonlyArray<{ readonly name: string; readonly email: string }> {
+  return addressEntries(value).flatMap((entry) => {
+    const email = addressOf(entry)
+    const bracket = entry.lastIndexOf("<")
+    const name = bracket < 0 ? "" : entry.slice(0, bracket).trim().replace(/^"(.*)"$/, "$1").replace(/\\(.)/g, "$1").trim()
+    return mailAddress.test(email) && !hasControlCharacter(name) ? [{ name, email }] : []
+  })
 }
 
 function sender(value: string) {

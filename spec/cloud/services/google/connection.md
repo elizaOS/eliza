@@ -26,7 +26,9 @@ subject).
 
 `google.basic_identity` is always asked for. Calendar read and write ask for
 `calendar.events`, triage `gmail.readonly`, drafts `gmail.compose`, mailbox
-and manage `gmail.modify`, send `gmail.send`. A granted scope outside this
+and manage `gmail.modify`, send `gmail.send`, purge `https://mail.google.com/`,
+Gmail's full access, which is the only scope that permanently deletes and so
+also holds every other Gmail capability. A granted scope outside this
 list is kept as text in `grantedScopes` and grants nothing. Older stored grants
 keep their recorded scopes and encrypted credential. The service uses an old
 active grant only after the credential opens and matches the stored expiry.
@@ -37,28 +39,30 @@ cannot be verified requires reconnection.
 import types.* from "../../shared/types"
 import oauth as O from "../../../core/oauth"
 import registry as N from "../../nativeClients/registry"
-type GoogleCapability = BasicIdentity | GmailTriage | GmailSend | GmailManage | GmailDrafts | GmailMailbox | CalendarRead | CalendarWrite
-type GoogleScope = ScopeOpenId | ScopeUserinfoEmail | ScopeUserinfoProfile | ScopeCalendarReadonly | ScopeCalendarEvents | ScopeCalendar | ScopeGmailMetadata | ScopeGmailReadonly | ScopeGmailCompose | ScopeGmailModify | ScopeGmailSend
-pure val allCapabilities: List[GoogleCapability] = List(BasicIdentity, GmailTriage, GmailSend, GmailManage, GmailDrafts, GmailMailbox, CalendarRead, CalendarWrite)
-pure val allScopes: List[GoogleScope] = List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile, ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar, ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailCompose, ScopeGmailModify, ScopeGmailSend)
+type GoogleCapability = BasicIdentity | GmailTriage | GmailSend | GmailManage | GmailDrafts | GmailMailbox | GmailPurge | CalendarRead | CalendarWrite
+type GoogleScope = ScopeOpenId | ScopeUserinfoEmail | ScopeUserinfoProfile | ScopeCalendarReadonly | ScopeCalendarEvents | ScopeCalendar | ScopeGmailMetadata | ScopeGmailReadonly | ScopeGmailCompose | ScopeGmailModify | ScopeGmailSend | ScopeGmailFull
+pure val allCapabilities: List[GoogleCapability] = List(BasicIdentity, GmailTriage, GmailSend, GmailManage, GmailDrafts, GmailMailbox, GmailPurge, CalendarRead, CalendarWrite)
+pure val allScopes: List[GoogleScope] = List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile, ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar, ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailCompose, ScopeGmailModify, ScopeGmailSend, ScopeGmailFull)
 pure def scopesFor(k: GoogleCapability): List[GoogleScope] =
   if (k == BasicIdentity) List(ScopeUserinfoEmail, ScopeUserinfoProfile) else if (k == GmailTriage) List(ScopeGmailReadonly) else if (k == GmailSend) List(ScopeGmailSend)
-  else if (k == GmailDrafts) List(ScopeGmailCompose) else if (k == GmailManage or k == GmailMailbox) List(ScopeGmailModify) else List(ScopeCalendarEvents)
+  else if (k == GmailDrafts) List(ScopeGmailCompose) else if (k == GmailManage or k == GmailMailbox) List(ScopeGmailModify) else if (k == GmailPurge) List(ScopeGmailFull) else List(ScopeCalendarEvents)
 pure def requestedScopes(asked: List[GoogleCapability]): List[GoogleScope] = allScopes.select(s => asked.append(BasicIdentity).some(k => scopesFor(k).includes(s)))
 pure def grantsCapability(scopes: List[GoogleScope], k: GoogleCapability): bool = {
   val enough = if (k == BasicIdentity) List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile) else if (k == CalendarRead) List(ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar)
-    else if (k == CalendarWrite) List(ScopeCalendarEvents, ScopeCalendar) else if (k == GmailTriage) List(ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailModify, ScopeGmailCompose)
-    else if (k == GmailDrafts) List(ScopeGmailCompose, ScopeGmailModify) else if (k == GmailSend) List(ScopeGmailSend) else List(ScopeGmailModify)
+    else if (k == CalendarWrite) List(ScopeCalendarEvents, ScopeCalendar) else if (k == GmailTriage) List(ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailModify, ScopeGmailCompose, ScopeGmailFull)
+    else if (k == GmailDrafts) List(ScopeGmailCompose, ScopeGmailModify, ScopeGmailFull) else if (k == GmailSend) List(ScopeGmailSend, ScopeGmailFull)
+    else if (k == GmailPurge) List(ScopeGmailFull) else List(ScopeGmailModify, ScopeGmailFull)
   enough.some(s => scopes.includes(s))
 }
 pure def capabilitiesOf(scopes: List[GoogleScope]): List[GoogleCapability] = allCapabilities.select(k => grantsCapability(scopes, k))
 pure def scopesOf(granted: List[GoogleScope]): List[GoogleScope] = allScopes.select(s => granted.includes(s))
-pure val askedValues = Set(List(), List(GmailTriage), List(GmailSend, CalendarWrite), List(GmailManage, GmailDrafts), List(GmailMailbox, CalendarRead))
-pure val scopesValues = Set(List(), List(ScopeGmailModify), List(ScopeCalendarReadonly, ScopeGmailCompose), List(ScopeCalendar, ScopeGmailMetadata, ScopeGmailSend), List(ScopeOpenId))
+pure val askedValues = Set(List(), List(GmailTriage), List(GmailSend, CalendarWrite), List(GmailManage, GmailDrafts), List(GmailMailbox, CalendarRead), List(GmailPurge))
+pure val scopesValues = Set(List(), List(ScopeGmailModify), List(ScopeCalendarReadonly, ScopeGmailCompose), List(ScopeCalendar, ScopeGmailMetadata, ScopeGmailSend), List(ScopeOpenId), List(ScopeGmailFull))
 pure def lawEveryAskedCapabilityIsGrantedByItsScopes(asked: List[GoogleCapability]): bool = asked.every(k => capabilitiesOf(requestedScopes(asked)).includes(k))
 pure def lawStrongerAccessImpliesWeaker(scopes: List[GoogleScope]): bool = {
   val held = capabilitiesOf(scopes)
   (held.includes(CalendarWrite) implies held.includes(CalendarRead)) and (held.includes(GmailManage) iff held.includes(GmailMailbox)) and (held.includes(GmailMailbox) implies (held.includes(GmailTriage) and held.includes(GmailDrafts)))
+  and (held.includes(GmailPurge) implies (held.includes(GmailManage) and held.includes(GmailSend)))
 }
 ```
 
