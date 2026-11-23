@@ -177,15 +177,17 @@ A turn offers the phone's Notes operations from its own observation.
 A lookup the phone resolves itself (a title or latest query, a content or
 titles search, a named delete) is offered from Home or the Notes view,
 never while a canonical Notes record or source is selected. Sharing,
-deleting or moving one exact note is offered only in the Notes view with a
-phone note selected whose target reads as a note target. The canonical
-list filter is offered only while the canonical Notes list is shown.
-Filtering by folder or kind, creating a folder, restoring and recording are
-offered by their capabilities alone, and the device reviews where they
-run. With no observation, on a sensitive screen, or in the Notes view with
-a phone Notes selection that does not read, nothing else is offered. Every
-operation also needs what its device-action need names; a canonical Notes
-request uses the agent's own Notes actions.
+deleting, moving or editing one exact note is offered only in the Notes
+view with a phone note selected whose target reads as a note target. The
+canonical list filter is offered only while the canonical Notes list is
+shown. Filtering by folder or kind, creating a folder, restoring and
+recording are offered by their capabilities alone on a turn with no
+observation, and otherwise only where [organizing](./organize.md) admits
+them: never on a sensitive screen, recording only in Notes, the rest only
+in Home or Notes. With no observation, on a sensitive screen, or in the
+Notes view with a phone Notes selection that does not read, nothing else is
+offered. Every operation also needs what its device-action need names; a
+canonical Notes request uses the agent's own Notes actions.
 
 ```quint
 type PhoneScreen = PhoneHome | PhoneNotes | PhoneElsewhere
@@ -193,21 +195,23 @@ type NotesSelection = NothingSelected | PhoneNoteSelected | PhoneSourceSelected 
 type PhoneNotesReach = ResolvedByPhone | ExactPhoneNote | CanonicalListOnly | ByCapability
 pure def phoneNotesReadable(sensitive: bool, screen: PhoneScreen, selection: NotesSelection): bool =
   not(sensitive) and not(screen == PhoneNotes and selection == UnreadablePhoneSelection)
-pure def phoneNotesOffered(reach: PhoneNotesReach, observed: bool, sensitive: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool): bool =
-  if (reach == ByCapability) true
+pure def phoneNotesOffered(reach: PhoneNotesReach, observed: bool, sensitive: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool, organizeAdmitted: bool): bool =
+  if (reach == ByCapability) not(observed) or organizeAdmitted
   else if (not(observed) or not(phoneNotesReadable(sensitive, screen, selection))) false
   else if (reach == ExactPhoneNote) screen == PhoneNotes and selection == PhoneNoteSelected
   else if (reach == CanonicalListOnly) screen == PhoneNotes and canonicalList
   else (screen == PhoneHome or screen == PhoneNotes) and selection != CanonicalNotesSelected
-pure def lawAnExactNoteIsTheOpenPhoneNote(observed: bool, sensitive: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool): bool =
-  phoneNotesOffered(ExactPhoneNote, observed, sensitive, screen, selection, canonicalList) implies
+pure def lawAnExactNoteIsTheOpenPhoneNote(observed: bool, sensitive: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool, organizeAdmitted: bool): bool =
+  phoneNotesOffered(ExactPhoneNote, observed, sensitive, screen, selection, canonicalList, organizeAdmitted) implies
     (observed and not(sensitive) and screen == PhoneNotes and selection == PhoneNoteSelected)
-pure def lawASensitiveScreenOffersNoPhoneRecord(reach: PhoneNotesReach, observed: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool): bool =
-  reach != ByCapability implies not(phoneNotesOffered(reach, observed, true, screen, selection, canonicalList))
-pure def lawACanonicalSelectionKeepsPhoneLookupsOff(observed: bool, sensitive: bool, screen: PhoneScreen, canonicalList: bool): bool =
-  not(phoneNotesOffered(ResolvedByPhone, observed, sensitive, screen, CanonicalNotesSelected, canonicalList))
-pure def lawALookupWorksFromHome(selection: NotesSelection): bool =
-  selection != CanonicalNotesSelected implies phoneNotesOffered(ResolvedByPhone, true, false, PhoneHome, selection, false)
+pure def lawASensitiveScreenOffersNoPhoneRecord(reach: PhoneNotesReach, observed: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool, organizeAdmitted: bool): bool =
+  reach != ByCapability implies not(phoneNotesOffered(reach, observed, true, screen, selection, canonicalList, organizeAdmitted))
+pure def lawAnObservedScreenGatesOrganizing(sensitive: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool): bool =
+  not(phoneNotesOffered(ByCapability, true, sensitive, screen, selection, canonicalList, false))
+pure def lawACanonicalSelectionKeepsPhoneLookupsOff(observed: bool, sensitive: bool, screen: PhoneScreen, canonicalList: bool, organizeAdmitted: bool): bool =
+  not(phoneNotesOffered(ResolvedByPhone, observed, sensitive, screen, CanonicalNotesSelected, canonicalList, organizeAdmitted))
+pure def lawALookupWorksFromHome(selection: NotesSelection, organizeAdmitted: bool): bool =
+  selection != CanonicalNotesSelected implies phoneNotesOffered(ResolvedByPhone, true, false, PhoneHome, selection, false, organizeAdmitted)
 ```
 
 ### A phone note proposal names only words the owner said and only the note the owner has open
@@ -216,52 +220,81 @@ A title query, a content search and a named delete or edit carry text
 that appears as a whole phrase, case and spacing aside, in the owner's own
 words in this message; anything else proposes nothing, and the owner is
 asked which note. A latest query and a titles list carry no text. Sharing,
-deleting or moving an exact note targets exactly the phone note open in
-Notes: another target is refused. A named edit is proposed as the title
-lookup of that name, never with the model's replacement fields, and only
-when the phone negotiated the lookup.
+deleting, moving or editing an exact note targets exactly the phone note
+open in Notes: another target is refused. A named edit is proposed as the
+title lookup of that name, never with the model's replacement fields, and
+only when the phone negotiated the lookup; an edit of the open note is
+proposed as its selected read, marked as read for that edit, never with
+replacement fields. A restore names only a note an applied deletion of this
+conversation moved to Recently deleted; any other note ID proposes nothing.
 
 ```quint
-type PhoneNotesProposal = TitleLookup | LatestLookup | ContentSearch | TitlesList | NamedDelete | NamedEdit | OpenNoteTarget | OtherPhoneNotes
-type PhoneNotesGrounding = GroundedAsProposed | GroundedAsTitleLookup | AskWhichNote | NotTheOpenNote | LookupUnavailable
+type PhoneNotesProposal = TitleLookup | LatestLookup | ContentSearch | TitlesList | NamedDelete | NamedEdit | OpenNoteTarget | OpenNoteEdit | RestoreDeleted | OtherPhoneNotes
+type PhoneNotesGrounding = GroundedAsProposed | GroundedAsTitleLookup | GroundedAsSelectedRead | AskWhichNote | NotTheOpenNote | LookupUnavailable | RestoreUnknown
 pure def carriesOwnerText(proposal: PhoneNotesProposal): bool =
   proposal == TitleLookup or proposal == ContentSearch or proposal == NamedDelete or proposal == NamedEdit
-pure def groundPhoneNotes(proposal: PhoneNotesProposal, inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool): PhoneNotesGrounding =
+pure def targetsOpenNote(proposal: PhoneNotesProposal): bool = proposal == OpenNoteTarget or proposal == OpenNoteEdit
+pure def groundPhoneNotes(proposal: PhoneNotesProposal, inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool): PhoneNotesGrounding =
   if (carriesOwnerText(proposal) and not(inOwnerWords)) AskWhichNote
-  else if (proposal == OpenNoteTarget and not(matchesOpenNote)) NotTheOpenNote
+  else if (targetsOpenNote(proposal) and not(matchesOpenNote)) NotTheOpenNote
   else if (proposal == NamedEdit) (if (lookupNegotiated) GroundedAsTitleLookup else LookupUnavailable)
+  else if (proposal == OpenNoteEdit) GroundedAsSelectedRead
+  else if (proposal == RestoreDeleted and not(deletedHere)) RestoreUnknown
   else GroundedAsProposed
-pure def lawUnsaidTextIsNeverProposed(proposal: PhoneNotesProposal, matchesOpenNote: bool, lookupNegotiated: bool): bool =
-  carriesOwnerText(proposal) implies groundPhoneNotes(proposal, false, matchesOpenNote, lookupNegotiated) == AskWhichNote
-pure def lawANamedEditIsALookupFirst(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool): bool =
-  groundPhoneNotes(NamedEdit, inOwnerWords, matchesOpenNote, lookupNegotiated) != GroundedAsProposed
-pure def lawAnotherNoteIsNotTheOpenOne(inOwnerWords: bool, lookupNegotiated: bool): bool =
-  groundPhoneNotes(OpenNoteTarget, inOwnerWords, false, lookupNegotiated) == NotTheOpenNote
+pure def lawUnsaidTextIsNeverProposed(proposal: PhoneNotesProposal, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool): bool =
+  carriesOwnerText(proposal) implies groundPhoneNotes(proposal, false, matchesOpenNote, lookupNegotiated, deletedHere) == AskWhichNote
+pure def lawANamedEditIsALookupFirst(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool): bool =
+  groundPhoneNotes(NamedEdit, inOwnerWords, matchesOpenNote, lookupNegotiated, deletedHere) != GroundedAsProposed
+pure def lawAnOpenNoteEditIsItsReadFirst(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool): bool =
+  groundPhoneNotes(OpenNoteEdit, inOwnerWords, matchesOpenNote, lookupNegotiated, deletedHere) != GroundedAsProposed
+pure def lawAnotherNoteIsNotTheOpenOne(proposal: PhoneNotesProposal, inOwnerWords: bool, lookupNegotiated: bool, deletedHere: bool): bool =
+  targetsOpenNote(proposal) implies groundPhoneNotes(proposal, inOwnerWords, false, lookupNegotiated, deletedHere) == NotTheOpenNote
+pure def lawOnlyADeletedNoteIsRestored(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool): bool =
+  groundPhoneNotes(RestoreDeleted, inOwnerWords, matchesOpenNote, lookupNegotiated, false) == RestoreUnknown
 ```
 
 ### A phone note is edited only from the note the owner shared, in a review of its own
 
 An edit of a phone note is proposed as its read: the open note's selected
-read, or a title lookup. Once the owner shares that note, the owner's
-original request is read against the shared text, and a change it asks for
-is offered for its own review, bound to the original message and to the
-shared note's target. A request that changes nothing, needs more input,
-names another note or asks for a partial edit offers nothing. A lookup that
-matched no note, matched by recency or left the choice uncertain offers no
-edit, and a lookup whose original message was a direct deletion command
-offers its deletion instead and never an edit. The change keeps every field
-the request does not name, appends a list item in the note's own list form,
-and a change that leaves both fields as they were is no change.
+read marked for the edit, or a title lookup. Once the owner shares that
+note, the owner's original request is read against the shared text, and a
+change it asks for is offered for its own review, bound to the original
+message and to the shared note's target, with the answer "The note is
+ready for update review. Confirm the requested changes; nothing has changed
+yet." A selected read not marked for an edit only answers the read and is
+never read for an edit. A request that needs more input answers with the
+question the reading asked, or "The requested note edit needs
+clarification. Nothing was changed."; one that changes nothing after an
+edit of the open note answers "No requested note change was resolved.
+Nothing was changed.", and after a title lookup it only answers the read.
+Either way nothing is offered. A lookup that matched no note, matched by
+recency or left the choice uncertain offers no edit, and a lookup whose
+original message was a direct deletion command offers its deletion instead
+and never an edit. The change keeps every field the request does not name,
+appends a list item in the note's own list form, appends to an empty body
+from its first new line, and a change that leaves both fields as they were
+is no change.
 
 ```quint
-type SharedRead = SharedOpenNote | TitleMatchedNote | OtherLookupResult
+type SharedRead = OpenNoteForEdit | OpenNoteRead | TitleMatchedNote | OtherLookupResult
 type EditReading = ChangeRequested | NothingToChange | NeedsMoreInput
+type EditReply = OffersEditReview | AsksForTheEdit | SaysNothingChanged | AnswersTheRead
+pure def editRead(shared: SharedRead, deletionCommand: bool): bool =
+  not(deletionCommand) and (shared == OpenNoteForEdit or shared == TitleMatchedNote)
+pure def editReply(shared: SharedRead, deletionCommand: bool, reading: EditReading): EditReply =
+  if (not(editRead(shared, deletionCommand))) AnswersTheRead
+  else if (reading == ChangeRequested) OffersEditReview
+  else if (reading == NeedsMoreInput) AsksForTheEdit
+  else if (shared == TitleMatchedNote) AnswersTheRead
+  else SaysNothingChanged
 pure def editOffered(shared: SharedRead, deletionCommand: bool, reading: EditReading): bool =
-  not(deletionCommand) and (shared == SharedOpenNote or shared == TitleMatchedNote) and reading == ChangeRequested
+  editReply(shared, deletionCommand, reading) == OffersEditReview
 pure def lawADeletionCommandIsNeverAnEdit(shared: SharedRead, reading: EditReading): bool =
   not(editOffered(shared, true, reading))
 pure def lawNoEditWithoutAChange(shared: SharedRead, deletionCommand: bool): bool =
   not(editOffered(shared, deletionCommand, NothingToChange)) and not(editOffered(shared, deletionCommand, NeedsMoreInput))
 pure def lawAnUnresolvedLookupIsNotEdited(deletionCommand: bool, reading: EditReading): bool =
   not(editOffered(OtherLookupResult, deletionCommand, reading))
+pure def lawAPlainReadIsNeverReadForAnEdit(deletionCommand: bool, reading: EditReading): bool =
+  not(editRead(OpenNoteRead, deletionCommand)) and editReply(OpenNoteRead, deletionCommand, reading) == AnswersTheRead
 ```

@@ -268,9 +268,13 @@ pure def stepCompletionMovesOnlyBeforeItsDeadline(before: DeviceRequest, via: st
 ### A durable claim allows at most one inference, even after a lost outcome
 
 Claiming the completion fixes the attempt and authorizes one model call with
-no tool. A prepared or delivered reply is read again without another call. A
-failure after the claim ends cancelled when the turn was aborted and unknown
-otherwise; neither admits a new inference.
+no tool. When the read's family continues the original request from the
+shared result, as with an edit or a deletion it prepares for its own
+review, that family's answer is the reply in place of the model's, and its
+follow-up is kept with the reply and offered once the reply is delivered,
+bound to the original message. A prepared or delivered reply is read again
+without another call. A failure after the claim ends cancelled when the turn
+was aborted and unknown otherwise; neither admits a new inference.
 
 ```quint
 pure val weight_failCompletion = 2
