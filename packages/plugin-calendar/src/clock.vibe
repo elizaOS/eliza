@@ -152,13 +152,11 @@ function folded(text: string): string {
   return text.normalize("NFKC").toLowerCase()
 }
 
-/** Whether a create request names a calendar date: a month and day, a slash or ISO date. */
 export function namesCalendarDate(text: string): boolean {
   const said = folded(text)
   return calendarDates.some((date) => date.test(said))
 }
 
-/** What a create request says about its year: a trailing year, a stated year, "next year", "this year" or nothing. */
 export function yearCueOf(text: string): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number } {
   const said = folded(text)
   const trailing = /(?<!\d)((?:19|20|21)\d{2})\s*[.!?]?\s*$/.exec(said)
@@ -168,13 +166,11 @@ export function yearCueOf(text: string): { readonly cue: YearCue; readonly state
   return { cue, statedYear, trailingYear: trailing === null ? 0 : Number(trailing[1]) }
 }
 
-/** The year a create starts in: from the request text when it names a calendar date, never then the year an extractor guessed; else the extracted year. */
 export function createStartYearOf(text: string, currentYear: number, extractedYear: number): number {
   const { cue, statedYear, trailingYear } = yearCueOf(text)
   return createStartYear(namesCalendarDate(text), cue, statedYear, trailingYear, currentYear, extractedYear)
 }
 
-/** A create's start and end in the year its request states, with the wall clock and duration kept, or undefined when that date does not exist in that year. */
 export function inCreateYear(span: { readonly startAt: string; readonly endAt: string; readonly isAllDay: boolean }, text: string, now: Date, timeZone: string): { readonly startAt: string; readonly endAt: string } | undefined {
   const zone = span.isAllDay ? "UTC" : timeZone
   const start = getZonedDateParts(new Date(span.startAt), zone)
@@ -182,9 +178,9 @@ export function inCreateYear(span: { readonly startAt: string; readonly endAt: s
   if (start === undefined || today === undefined) return undefined
   const year = createStartYearOf(text, today.year, start.year)
   if (year === start.year) return { startAt: span.startAt, endAt: span.endAt }
-  const moved = buildUtcDateFromLocalParts(zone, { ...start, year })
-  const kept = moved === undefined ? undefined : getZonedDateParts(moved, zone)
-  if (moved === undefined || kept?.month !== start.month || kept.day !== start.day) return undefined
+  const targetStart = { ...start, year }
+  const moved = buildUtcDateFromLocalParts(zone, targetStart)
+  if (moved === undefined || !sameParts(getZonedDateParts(moved, zone), targetStart)) return undefined
   const shift = moved.getTime() - Date.parse(span.startAt)
   return { startAt: moved.toISOString(), endAt: new Date(Date.parse(span.endAt) + shift).toISOString() }
 }
