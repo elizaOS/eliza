@@ -32,13 +32,13 @@ type Turn = NoTurn | TurnOf({ capture: int })
 type Reply = NoReply | Playing({ utteranceId: str, pace: int, receivedMs: Millis, playedMs: Millis, completed: bool })
 type BatchVerdict = BatchPending | BatchDone | BatchCancelled | BatchFailed({ failure: Cr::Failure, wait: WaitTime })
 type BatchRequest = { requestId: int, direction: SpeechDirection, version: int, verdict: BatchVerdict }
-type DeviceCause = NoDeviceCause | DevicePaused | PlaybackStuck | MicrophoneLost | CallBeforeLive
-type CloudSpeech = { credential: int, bound: int, phase: Phase, audioStarted: bool, capture: Capture, generation: int, turn: Turn, reply: Reply, batches: List[BatchRequest], endedBy: DeviceCause }
+type DeviceCause = NoDeviceCause | DevicePaused | PlaybackStuck | MicrophoneLost | CallBeforeLive | FocusUnavailable
+type CloudSpeech = { credential: int, bound: int, phase: Phase, audioStarted: bool, capture: Capture, generation: int, turn: Turn, reply: Reply, batches: List[BatchRequest], endedBy: DeviceCause, focusPaused: bool }
 type SpeechNotice = AskConsent | ReserveLiveCapture | ReleaseLiveCapture | RevokeSession | CancelUtterance({ utteranceId: str })
   | ReportRefusedKey({ version: int, reason: RefusalReason, on: C::RejectedOn }) | SessionFailed({ failure: Cr::Failure, beforeAudio: bool, wait: WaitTime })
   | Heard({ final: bool, capture: int }) | ReplySettled({ utteranceId: str, completed: bool }) | BatchSettled({ requestId: int, verdict: BatchVerdict })
 type SpeechStep = { state: CloudSpeech, out: List[SpeechNotice] }
-pure val initial: CloudSpeech = { credential: 0, bound: 0, phase: Idle, audioStarted: false, capture: Muted, generation: 0, turn: NoTurn, reply: NoReply, batches: List(), endedBy: NoDeviceCause }
+pure val initial: CloudSpeech = { credential: 0, bound: 0, phase: Idle, audioStarted: false, capture: Muted, generation: 0, turn: NoTurn, reply: NoReply, batches: List(), endedBy: NoDeviceCause, focusPaused: false }
 pure val consentDeadline: Millis = 30 * millisPerSecond
 pure def speechStep(out: List[SpeechNotice], s: CloudSpeech): SpeechStep = { state: s, out: out }
 pure def noticeIf(c: bool, n: SpeechNotice): List[SpeechNotice] = if (c) List(n) else List()
@@ -147,16 +147,17 @@ pure def stepTheSessionOpensInOrder(before: CloudSpeech, after: CloudSpeech): bo
 Unmuting reserves the slot as a live capture; a refused slot ends the
 session, as in develop. Each granted capture gets the next number; muting
 releases the slot and keeps it, so a turn the capture began may finish.
+Muting a session paused by a focus loss also ends the pause.
 
 ```quint
-pure def canUnmute(s: CloudSpeech, recordAudio: bool): bool = s.phase == Live and s.capture == Muted and recordAudio
+pure def canUnmute(s: CloudSpeech, recordAudio: bool): bool = s.phase == Live and s.capture == Muted and recordAudio and not(s.focusPaused)
 pure def unmute(s: CloudSpeech, recordAudio: bool): SpeechStep = { state: { ...s, capture: Reserving }, out: List(ReserveLiveCapture) }
 pure def canCaptureAnswered(s: CloudSpeech): bool = s.capture == Reserving
 pure def captureAnswered(s: CloudSpeech, slot: M::Refusal): SpeechStep = if (slot == M::NoRefusal) speechStep(List(), { ...s, capture: Listening, generation: s.generation + 1, audioStarted: true })
   else failWith(Cr::CapabilityUnavailable, { ...s, capture: Muted }, List(), NoWait)
 pure val slotValues = Set(M::NoRefusal, M::SlotBusy)
-pure def canMute(s: CloudSpeech): bool = s.capture != Muted
-pure def mute(s: CloudSpeech): SpeechStep = { state: { ...s, capture: Muted }, out: List(ReleaseLiveCapture) }
+pure def canMute(s: CloudSpeech): bool = s.capture != Muted or s.focusPaused
+pure def mute(s: CloudSpeech): SpeechStep = { state: { ...s, capture: Muted, focusPaused: false }, out: noticeIf(s.capture != Muted, ReleaseLiveCapture) }
 pure def sometimesListening(s: CloudSpeech): bool = s.phase == Live and s.capture == Listening
 ```
 
@@ -174,8 +175,9 @@ pure def onTurn(kind: Rl::SttEventKind, s: CloudSpeech): SpeechStep = if (kind =
 pure def heardCapture(n: SpeechNotice): int = match n { | Heard(h) => h.capture | _ => -1 }
 pure def stepOnlyTheCaptureATurnBeganInPublishesIt(before: CloudSpeech, via: str, after: CloudSpeech, out: List[SpeechNotice]): bool = out.every(n => heardCapture(n) == -1 or (heardCapture(n) >= 1 and heardCapture(n) == before.generation and turnOwner(before.turn) == heardCapture(n)))
 pure def alwaysOnlyALiveSessionCaptures(s: CloudSpeech): bool = s.generation >= 0 and turnOwner(s.turn) <= s.generation
-  and (s.phase != Live implies (s.capture == Muted and s.turn == NoTurn and s.reply == NoReply))
+  and (s.phase != Live implies (s.capture == Muted and s.turn == NoTurn and s.reply == NoReply and not(s.focusPaused)))
   and (s.capture == Listening implies (s.generation >= 1 and s.audioStarted))
+  and (s.focusPaused implies (s.capture == Muted and s.reply == NoReply))
 pure def sometimesTurnWithoutCapture(s: CloudSpeech): bool = s.phase == Live and s.turn == TurnOf({ capture: 0 })
 pure val weight_unmute = 6
 pure val weight_captureAnswered = 8
@@ -194,7 +196,7 @@ another id is ignored; audio after the relay's `complete` ends the session.
 pure val minPace = 50
 pure val maxPace = 200
 pure def replyId(r: Reply): str = match r { | Playing(x) => x.utteranceId | NoReply => "" }
-pure def canSpeak(s: CloudSpeech, utteranceId: str, pace: int): bool = s.phase == Live and s.reply == NoReply and utteranceId != "" and pace >= minPace and pace <= maxPace
+pure def canSpeak(s: CloudSpeech, utteranceId: str, pace: int): bool = s.phase == Live and s.reply == NoReply and not(s.focusPaused) and utteranceId != "" and pace >= minPace and pace <= maxPace
 pure def speak(s: CloudSpeech, utteranceId: str, pace: int): CloudSpeech = { ...s, reply: Playing({ utteranceId: utteranceId, pace: pace, receivedMs: 0, playedMs: 0, completed: false }) }
 pure val utteranceIdValues = Set("u1", "u2")
 pure val paceValues = Set(50, 200, 250)
@@ -231,10 +233,13 @@ pure val playedMsValues = Set(20, 40, 60)
 pure val weight_played = 6
 pure def canCancelReply(s: CloudSpeech): bool = s.reply != NoReply
 pure def cancelReply(s: CloudSpeech): SpeechStep = { val id = replyId(s.reply)  { state: { ...s, reply: NoReply }, out: List(CancelUtterance({ utteranceId: id }), ReplySettled({ utteranceId: id, completed: false })) } }
-pure def canOutputNotice(s: CloudSpeech, notice: O::OutputNotice): bool = s.phase == Live
+pure def canOutputNotice(s: CloudSpeech, notice: O::OutputNotice): bool = s.phase == Live and (notice == O::PauseListening implies s.reply == NoReply)
 pure def outputNotice(s: CloudSpeech, notice: O::OutputNotice): SpeechStep = if (notice == O::StopCapture) failRelay(Cr::CapabilityUnavailable, s)
-  else if ((notice == O::RefusedFocusDenied or notice == O::RefusedCallActive) and s.reply != NoReply) cancelReply(s) else speechStep(List(), s)
-pure val noticeValues = Set(O::StopCapture, O::RefusedFocusDenied)
+  else if ((notice == O::RefusedFocusDenied or notice == O::RefusedCallActive or notice == O::RefusedFocusPaused) and s.reply != NoReply) cancelReply(s)
+  else if (notice == O::PauseListening and not(s.focusPaused)) { state: { ...s, capture: Muted, focusPaused: true }, out: noticeIf(s.capture != Muted, ReleaseLiveCapture) }
+  else if (notice == O::ResumeListening and s.focusPaused) { state: { ...s, capture: Reserving, focusPaused: false }, out: List(ReserveLiveCapture) }
+  else speechStep(List(), s)
+pure val noticeValues = Set(O::StopCapture, O::RefusedFocusDenied, O::PauseListening, O::ResumeListening)
 pure def isReplySettled(n: SpeechNotice): bool = match n { | ReplySettled(x) => true | _ => false }
 pure def stepAReplySettlesOnce(before: CloudSpeech, via: str, after: CloudSpeech, out: List[SpeechNotice]): bool = out.select(n => isReplySettled(n)).length() == (if (replyId(before.reply) != "" and replyId(after.reply) != replyId(before.reply)) 1 else 0)
 pure def sometimesCompletedReplyStillPlaying(s: CloudSpeech): bool = { val r = s.reply  match r { | Playing(x) => x.completed and x.playedMs > 0 | NoReply => false } }
@@ -252,7 +257,7 @@ pure def revokeOwed(p: Phase): bool = p == Minting or mintedPhase(p)
 pure def failureOfEnding(e: Ending): Cr::Failure = match e { | FailedBeforeAudio(f) => f.failure | FailedAfterAudio(f) => f.failure | _ => Cr::NoFailure }
 pure def endingOf(p: Phase): Ending = match p { | Closed(c) => c.ending | _ => Stopped }
 pure def closeWith(ending: Ending, s: CloudSpeech, first: List[SpeechNotice], wait: WaitTime): SpeechStep = { val id = replyId(s.reply)  val failure = failureOfEnding(ending)
-  { state: { ...s, phase: Closed({ ending: ending }), capture: Muted, turn: NoTurn, reply: NoReply },
+  { state: { ...s, phase: Closed({ ending: ending }), capture: Muted, turn: NoTurn, reply: NoReply, focusPaused: false },
     out: first.concat(noticeIf(s.capture != Muted, ReleaseLiveCapture)).concat(noticeIf(id != "", ReplySettled({ utteranceId: id, completed: false })))
       .concat(noticeIf(revokeOwed(s.phase), RevokeSession)).concat(noticeIf(failure != Cr::NoFailure, SessionFailed({ failure: failure, beforeAudio: not(s.audioStarted), wait: wait }))) } }
 pure def failWith(failure: Cr::Failure, s: CloudSpeech, first: List[SpeechNotice], wait: WaitTime): SpeechStep =
@@ -280,8 +285,10 @@ pure def sometimesFailedAfterAudio(s: CloudSpeech): bool = failedAfterAudio(endi
 
 Leaving the foreground or closing (`DevicePaused`), a reply's speaker that
 fails or stalls (`PlaybackStuck`), a microphone lost while capture is on
-(`MicrophoneLost`) and a call starting before the session is live
-(`CallBeforeLive`) each end the open session as `CapabilityUnavailable`,
+(`MicrophoneLost`), a call starting before the session is live
+(`CallBeforeLive`) and audio focus refused when the live session opens its
+microphone or lost for good (`FocusUnavailable`, `audio-focus-lost`) each
+end the open session as `CapabilityUnavailable`,
 closing it as every other failure does. A call once the session is live is
 `O::StopCapture`. The cause is kept until the next session begins.
 
@@ -292,15 +299,34 @@ pure def canDeviceEnded(s: CloudSpeech, cause: DeviceCause): bool = match cause 
   | PlaybackStuck => s.phase == Live
   | MicrophoneLost => s.phase == Live and s.capture != Muted
   | CallBeforeLive => isOpen(s.phase) and s.phase != Live
+  | FocusUnavailable => s.phase == Live
   | NoDeviceCause => false
 }
 pure def deviceEnded(s: CloudSpeech, cause: DeviceCause): SpeechStep = { val ended = failWith(deviceFailure(cause), s, List(), NoWait)
   { state: { ...ended.state, endedBy: cause }, out: ended.out } }
-pure val causeValues = Set(DevicePaused, PlaybackStuck, MicrophoneLost, CallBeforeLive)
+pure val causeValues = Set(DevicePaused, PlaybackStuck, MicrophoneLost, CallBeforeLive, FocusUnavailable)
 pure def alwaysADeviceEndIsAFailure(s: CloudSpeech): bool = s.endedBy != NoDeviceCause implies
   (hasEnded(s.phase) and failureOfEnding(endingOf(s.phase)) == Cr::CapabilityUnavailable)
 pure def sometimesCallEndedBeforeLive(s: CloudSpeech): bool = s.endedBy == CallBeforeLive and hasEnded(s.phase)
 pure def sometimesPlaybackStuckAfterAudio(s: CloudSpeech): bool = s.endedBy == PlaybackStuck and failedAfterAudio(endingOf(s.phase))
+```
+
+### A transient focus loss pauses listening and speaking until focus returns
+
+The session holds audio focus while it speaks or its microphone is open
+(`O::openListening`). When another app takes focus for a while, the reply
+stops, interrupted (`audio-focus-lost`), the microphone closes after the
+silence tail that ends the provider's turn, and the session stays open but
+paused (`focus-paused`): it neither listens nor speaks, and a reply is
+refused as `audio-focus-paused`. When focus returns (`focus-resumed`) the
+microphone opens again; muting meanwhile ends the pause and gives focus up.
+A session that only speaks holds focus only while it does, so a loss stops
+its reply and nothing else. Only a permanent loss or a call ends the
+session.
+
+```quint
+pure def sometimesFocusPaused(s: CloudSpeech): bool = s.phase == Live and s.focusPaused and s.turn != NoTurn
+pure def sometimesFocusUnavailable(s: CloudSpeech): bool = s.endedBy == FocusUnavailable and failedAfterAudio(endingOf(s.phase))
 ```
 
 ## Story: Transcribe a recording or hear a reply with one cloud request
