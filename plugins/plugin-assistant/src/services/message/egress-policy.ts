@@ -1179,12 +1179,18 @@ export async function resolvePlannedReplyEgress(args: {
     // supersession is judged per target, not per action name: one turn can
     // call an action for several targets, and a success for one target says
     // nothing about another target's failure.
-    // - A committed receipt for the same operation and resource, or with the
-    //   same idempotency key, supersedes a cited receipt wherever it appears.
-    // - A later call of the same named action supersedes the cited attempt
-    //   when its target cannot be told apart: it committed a receipt that is
-    //   not known to address a different resource of the same operation and
-    //   kind, or (for a receipt-less attempt) it succeeded or committed.
+    // - A cited receipt is superseded only by target evidence: a committed
+    //   receipt for the same operation and resource, or with the same
+    //   idempotency key, wherever it appears. A later committed receipt of
+    //   the same action for another resource does not supersede it, even when
+    //   the two kinds differ and cannot be compared: a CALENDAR failure
+    //   receipt (kind calendar.operation) and a later create (kind
+    //   calendar.event) may be a retry of one event or two different events,
+    //   and code cannot tell which. Rejecting both would strip every honest
+    //   multi-target report, so whether such a create was a retry is left to
+    //   the judge, which sees the ordered results.
+    // - A receipt-less attempt has no target to compare, so a later call of
+    //   the same named action that succeeded or committed supersedes it.
     // Only later results are retries, and "Unknown Action" names no action.
     // When a cited result carries several receipts, a claim whose evidence
     // names one of them is checked against that receipt only.
@@ -1215,11 +1221,6 @@ export async function resolvePlannedReplyEgress(args: {
       (result.effectReceipts ?? []).filter((receipt) =>
         committed.has(receipt.receiptId),
       );
-    const knownDifferentTarget = (a: EffectReceipt, b: EffectReceipt) =>
-      a.operation === b.operation &&
-      a.resource.kind === b.resource.kind &&
-      a.resource.id !== b.resource.id &&
-      (a.idempotency.key === null || a.idempotency.key !== b.idempotency.key);
     const reportsUnappliedResult = (claim: RecoveredReplyClaim) => {
       const index =
         typeof claim.failedResult === "number" ? claim.failedResult - 1 : -1;
@@ -1227,20 +1228,18 @@ export async function resolvePlannedReplyEgress(args: {
       if (result === undefined) return false;
       const receipts = result.effectReceipts ?? [];
       if (result.success !== false && receipts.length === 0) return false;
-      const actionName = namedAction(result);
-      const laterRetries = results
-        .slice(index + 1)
-        .filter(
-          (other) =>
-            actionName !== undefined && namedAction(other) === actionName,
-        );
       if (receipts.length === 0) {
-        return !laterRetries.some(
-          (other) =>
-            (other.success !== false &&
-              (other.effectReceipts ?? []).length === 0) ||
-            committedOf(other).length > 0,
-        );
+        const actionName = namedAction(result);
+        if (actionName === undefined) return true;
+        return !results
+          .slice(index + 1)
+          .some(
+            (other) =>
+              namedAction(other) === actionName &&
+              ((other.success !== false &&
+                (other.effectReceipts ?? []).length === 0) ||
+                committedOf(other).length > 0),
+          );
       }
       const evidence = claim.evidence.trim();
       const named = receipts.filter(
@@ -1256,11 +1255,6 @@ export async function resolvePlannedReplyEgress(args: {
         !(
           receipt.outcome === "failed" &&
           receipt.failure.acceptance === "unknown"
-        ) &&
-        !laterRetries.some((other) =>
-          committedOf(other).some(
-            (retry) => !knownDifferentTarget(receipt, retry),
-          ),
         );
       return (named.length > 0 ? named : receipts).some(reportable);
     };

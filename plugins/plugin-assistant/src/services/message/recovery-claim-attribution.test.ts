@@ -774,11 +774,6 @@ const calendarCreated = (
 
 it.each([
   [
-    "a cited rejected receipt a later call of the same action superseded",
-    [calendarFailed, calendarCreated()],
-    failureClaim({ failedResult: 1 }),
-  ],
-  [
     "a cited rejected receipt whose retry committed under the same idempotency key",
     [
       {
@@ -828,3 +823,68 @@ it.each([
     });
   },
 );
+
+// A CALENDAR failure receipt (kind calendar.operation) and a later create
+// (kind calendar.event) cannot be compared by target: code cannot tell a
+// retry of one event from a second event, so it does not strip the failure
+// report, and whether the create was a retry is the judge's call.
+const CALENDAR_MIXED_REPLY =
+  "added lunch with sam. i couldn't add the dentist appointment: no calendar source was picked.";
+const lunchAdded = (): RecoveredReplyClaim => ({
+  quote: "added lunch with sam",
+  actor: "assistant",
+  change: true,
+  outcome: "occurred",
+  failedResult: null,
+  supported: true,
+  evidence: "calendar-event-9",
+});
+const dentistFailed = (supported: boolean): RecoveredReplyClaim => ({
+  quote: "i couldn't add the dentist appointment",
+  actor: "assistant",
+  change: true,
+  outcome: "not_occurred",
+  failedResult: 1,
+  supported,
+  evidence: "Calendar source required.",
+});
+
+it("keeps an honest CALENDAR failure report beside a later create for another event", async () => {
+  const f = fixture(
+    [
+      {
+        response: CALENDAR_MIXED_REPLY,
+        effectReceiptIds: ["calendar-event-9"],
+      },
+    ],
+    [{ grounded: true, claims: [lunchAdded(), dentistFailed(true)] }],
+  );
+  await expect(
+    f.recover([
+      calendarFailed,
+      calendarCreated({
+        idempotency: { key: "create-lunch", replayed: false },
+      }),
+    ]),
+  ).resolves.toEqual({
+    text: CALENDAR_MIXED_REPLY,
+    effectReceiptIds: ["calendar-event-9"],
+  });
+  expect(f.renderPrompts).toHaveLength(1);
+});
+
+it("leaves a CALENDAR failure retried by a later create of the same event to the judge", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+    [
+      { grounded: true, claims: [dentistFailed(false)] },
+      { grounded: true, claims: [dentistFailed(false)] },
+    ],
+  );
+  await expect(
+    f.recover([calendarFailed, calendarCreated()]),
+  ).rejects.toMatchObject({
+    code: "REPLY_GROUNDING_FAILED",
+    message: "Recovered reply asserts an unsupported outcome",
+  });
+});
