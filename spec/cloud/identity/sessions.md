@@ -246,8 +246,13 @@ never see either. A lease is issued only inside the device's PKCE-protected
 exchange (`nativeClients/deviceKeys`), so a holder of the device key alone
 can never mint one. `POST /api/v1/app-auth/mobile/lease`, with `Authorization:
 Bearer <lease refresh>`, answers `{access, accessExpiresIn, refresh,
-refreshExpiresIn}`; `DELETE` on the same path ends the lease alone, which
-works with an expired key. Revoking the person's devices
+refreshExpiresIn}`. `DELETE` on the same path signs the tablet out: in one
+transaction it ends the lease and the key it is bound to (`selfRevoke` in
+`nativeClients/deviceKeys`), which works with an expired key, and answers
+`204`; a spent refresh presented there is theft, as at a refresh. While the
+lease is live the key alone cannot sign the tablet out
+(`nativeClients/deviceKeys`), so the on-device agent, which holds the key,
+cannot sign the tablet out of its mail. Revoking the person's devices
 (`nativeClients/deviceKeys`, `revokeAll`) ends every lease of the person in
 the same transaction, so a revoked tablet's lease neither rotates nor renews. Devices signed in before leases existed get one at
 their next sign-in; no migration invents one.
@@ -338,10 +343,13 @@ pure def sometimesLeaseReOfferedAfterALostReply(f: Family): bool = isActive(f, f
 
 ### A spent lease refresh presented after its rotation committed ends that device's lease and key only
 
-A refresh of an earlier generation than the current one, before the lease
-ends, is theft: the lease becomes Reused and its device grant ends with it
+A refresh of an earlier generation than the current one, presented again
+before the lease ends, to refresh, to renew a key or to sign out, is theft:
+the lease becomes Reused and its device grant ends with it
 (`EndLeaseAndGrant`, ended by `LeaseReused` in `nativeClients/deviceKeys`),
-and the shell logs a security event naming the grant. Unlike a browser
+and the shell logs a security event naming the grant. The shell commits
+those ends before it answers `401 credential_revoked`, so a refused sign-out
+still ends the lease and its key. Unlike a browser
 family's theft it does not move the person's epoch. The refresh lived only in
 that device's secure store and is never sent to a browser, so the theft
 implicates that device alone; ending its key and lease removes everything a

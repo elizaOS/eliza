@@ -276,6 +276,17 @@ async function renew(key: string, event: Extract<Event, { type: "renew" }>) {
   return "accepted" as const;
 }
 
+async function leased(held: Device, live: boolean) {
+  await run(within((tx) => Effect.gen(function* () {
+    yield* endLease(tx, held.grantKey, now);
+    if (!live) return;
+    yield* tx.query("DELETE FROM cloud_spent_refresh WHERE session_key IN (SELECT key FROM sessions WHERE grant_key = $1)", [held.grantKey]);
+    yield* tx.query("DELETE FROM sessions WHERE grant_key = $1", [held.grantKey]);
+    yield* offerLease(tx, { userId: held.person.userId, grantKey: held.grantKey, now });
+    yield* activateLease(tx, held.grantKey, now);
+  })));
+}
+
 async function endedByLease(key: string, ending: "supersede" | "endForLeaseTheft") {
   const held = await device(key);
   const ended = await run(within((tx) => ending === "supersede" ? supersedeGrant(tx, held.grantKey) : endGrantForLeaseTheft(tx, held.grantKey)));
@@ -317,6 +328,7 @@ async function dispatch(key: string, event: Event) {
     case "selfRevoke": {
       const held = await device(key);
       await epoch(held.person, event.deviceEpoch);
+      await leased(held, event.leaseLive);
       const request = HttpServerRequest.fromWeb(new Request("https://api.staging.example.com/api/v1/api-keys/current", { method: "DELETE", headers: { authorization: `Bearer ${held.minted?.secret ?? `eliza_mobile_${hex(32)}`}` } }));
       const response = await run(Effect.provideService(respond(routes), HttpServerRequest.HttpServerRequest, request));
       if (response.status !== 204) return "refused" as const;

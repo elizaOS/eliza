@@ -2,7 +2,7 @@
 import { type NotAState, type Rejected, apply, canActivateLease, canLogout, canMoveLease, canRecordStepUp, canRefresh, canRevokeOthers, canUseOffered, decodeState, elapse, initial, offeredAccessEnd, offeredGeneration, refreshPerIp, refreshRefusal, revokeAll, sessionRefusal, type Assurance, type Event, type Family, type FamilyStep, type Moment, type SessionEffect } from "../../gen/cloud__identity__sessions.effect.vibe"
 import { refused, type Refused, type RefusalReason } from "../http/refusal.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
-import { endGrantForLeaseTheft } from "../native-clients/grants.vibe"
+import { endBoundKey, endGrantForLeaseTheft, type KeyFailure } from "../native-clients/grants.vibe"
 import { admit } from "../shared/rate-limit.vibe"
 import { newId, secretText, tokenDigest } from "../shared/sealing.vibe"
 import { loadRow, stepRow, type RowConflict, type RowCorrupt, type Columns, type MachineRows } from "../store/rows.vibe"
@@ -297,6 +297,13 @@ export effect function endLease(tx: Tx, grantKey: string, now: number): void!Ses
   if (key !== undefined) try endFamily(tx, key, now)
 }
 
+export effect function holdsLiveLease(tx: Tx, grantKey: string, now: number): boolean!(StoreFailure | RowCorrupt | Refused) {
+  const key = try leaseKeyOf(tx, grantKey)
+  if (key === undefined) return false
+  const { family, epoch } = try liveFamily(tx, key, now)
+  return refreshRefusal(family.generation, family, epoch) === "NoReason"
+}
+
 export effect function endLeasesOf(tx: Tx, userId: string, now: number): void!SessionFailure {
   const leases = try tx.query("SELECT key FROM sessions WHERE kind = 'device_lease' AND user_id = $1 FOR UPDATE", [userId])
   for (const row of leases) {
@@ -364,13 +371,18 @@ export effect function rotateLease(tx: Tx, refresh: string, now: number): LeaseA
   return { kind: "done", value: { access, accessExpiresIn: seconds(offeredAccessEnd(state), now), refresh: next, refreshExpiresIn: seconds(state.refreshExpiresAt, now) } }
 }
 
-export effect function admitLeaseRefresh(tx: Tx, refresh: string, now: number): LeaseAnswer<PresentedLease>!SessionFailure {
+effect function unspentLease(tx: Tx, refresh: string, now: number): LeaseAnswer<PresentedLease>!SessionFailure {
   const lease = try presentedLease(tx, refresh, now)
   if (lease === undefined) return refusedLease("CredentialUnknown")
-  if (lease.presented < lease.family.generation) {
-    const rotated = try rotateLease(tx, refresh, now)
-    return rotated.kind === "refused" ? rotated : refusedLease("CredentialRevoked")
-  }
+  if (lease.presented >= lease.family.generation) return { kind: "done", value: lease }
+  const rotated = try rotateLease(tx, refresh, now)
+  return rotated.kind === "refused" ? rotated : refusedLease("CredentialRevoked")
+}
+
+export effect function admitLeaseRefresh(tx: Tx, refresh: string, now: number): LeaseAnswer<PresentedLease>!SessionFailure {
+  const unspent = try unspentLease(tx, refresh, now)
+  if (unspent.kind === "refused") return unspent
+  const lease = unspent.value
   const reason = refreshRefusal(lease.presented, lease.family, lease.epoch)
   if (reason !== "NoReason") return refusedLease(reason)
   if (lease.presented !== lease.family.generation && canUseOffered(lease.family, lease.epoch)) try useOfferedAccess(tx, lease.key, lease.family.generation, lease.epoch, now)
@@ -380,6 +392,16 @@ export effect function admitLeaseRefresh(tx: Tx, refresh: string, now: number): 
 export effect function useOfferedAccess(tx: Tx, key: string, generation: number, epoch: number, now: number): void!(StoreFailure | RowCorrupt | RowConflict | Rejected) {
   try commitOffered(tx, key, generation)
   try stepFamily(tx, key, { type: "useOffered", personEpoch: epoch }, now)
+}
+
+effect function signOutLease(tx: Tx, refresh: string, now: number): LeaseAnswer<string>!(SessionFailure | KeyFailure) {
+  const unspent = try unspentLease(tx, refresh, now)
+  if (unspent.kind === "refused") return unspent
+  const lease = unspent.value
+  if (lease.family.phase !== "Live" && lease.family.phase !== "Offered") return refusedLease("CredentialRevoked")
+  try endFamily(tx, lease.key, now)
+  try endBoundKey(tx, lease.grantKey, now)
+  return { kind: "done", value: lease.grantKey }
 }
 
 export effect function leaseRefusedOr<T>(answer: LeaseAnswer<T>): T!Refused {
@@ -408,12 +430,7 @@ export const leaseRoutes: ReadonlyArray<Route> = [
       const refresh = bearerToken(context.request.headers.authorization)
       if (refresh === undefined || !leaseRefreshPattern.test(refresh)) throw refused("AuthenticationRequired", "CredentialUnknown")
       const store = try Store
-      try store.transaction(effect (tx: Tx) => {
-        const lease = try presentedLease(tx, refresh, context.now)
-        if (lease === undefined || lease.presented < lease.family.generation) throw refused("AuthenticationRequired", "CredentialUnknown")
-        if (lease.family.phase !== "Live" && lease.family.phase !== "Offered") throw refused("AuthenticationRequired", "CredentialRevoked")
-        try endLease(tx, lease.grantKey, context.now)
-      })
+      try leaseRefusedOr(try store.transaction((tx) => signOutLease(tx, refresh, context.now)))
       return HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
     }
   }

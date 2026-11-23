@@ -12,7 +12,7 @@ import {
 } from "./identity-store.vibe"
 
 import { endKey, inspectKey, supersedeGrant } from "./native-clients/grants.vibe"
-import { activateLease, admitLeaseRefresh, endLease, leaseRefreshPattern, moveLease, offerLease, presentedLease, leaseRefusedOr, rotateLease } from "./identity/sessions.vibe"
+import { activateLease, admitLeaseRefresh, endLease, holdsLiveLease, leaseRefreshPattern, moveLease, offerLease, presentedLease, leaseRefusedOr, rotateLease } from "./identity/sessions.vibe"
 import { refusalBody, refused, Refused } from "./http/refusal.vibe"
 import { Store, toText, type Tx } from "./store/connection.vibe"
 import { clientStore } from "./worker-store.vibe"
@@ -554,14 +554,15 @@ effect function revokeDevice(request: Request, db: Client) {
     `, [hash, lease?.grantKey ?? null]))[0]
     const grantKey = toText(row?.key)
     if (row === undefined || grantKey === undefined) return
+    if (refresh === null && try holdsLiveLease(tx, grantKey, now)) throw refused("AccessDenied", "DeviceKeyNotAllowed")
+    try endLease(tx, grantKey, now)
     if (row.phase === "exchanged") {
       try tx.query("UPDATE device_grants SET phase = 'ended', state = state || jsonb_build_object('endedBy','SelfRevoked'), sealed_copy = NULL, revision = revision + 1, updated_at = $2 WHERE key = $1 AND state->>'flatDeviceGrant' = 'FlatTokenStarted'", [grantKey, now])
     } else if (row.phase === "active") {
       if (row.status !== "active") throw new Unauthorized()
-      const reason = endKey(tx, row, now) catch effect () => { throw new StorageUnavailable() }
+      const reason = endKey(tx, row, now, false) catch effect () => { throw new StorageUnavailable() }
       if (reason !== "NoReason" && reason !== "CredentialExpired") throw new Unauthorized()
     }
-    try endLease(tx, grantKey, now)
   })
   return empty()
 }

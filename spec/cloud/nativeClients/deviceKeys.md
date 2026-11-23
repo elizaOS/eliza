@@ -10,7 +10,9 @@ acknowledges the key once it has stored it (`POST
 it is renewed only by its device lease (`identity/sessions`): `POST
 /api/v1/app-auth/mobile/renew` with `Authorization: Bearer <lease refresh>`
 mints its successor, and any other new key needs a new sign-in. `DELETE
-/api/v1/api-keys/current` ends the presenting key and its lease. The device's own Google
+/api/v1/api-keys/current` ends the presenting key and its lease, unless a
+live lease is bound to the key: that device signs out through its lease
+(`identity/sessions`), which ends both. The device's own Google
 account does connect and exchange in one call (`POST
 /api/v1/app-auth/mobile/google`). The device half is
 `spec/os/signIn/credential.md`.
@@ -425,11 +427,18 @@ pure def lawNoLaterEpochRevivesAKey(g: Grant, now: Millis, deviceEpoch: int, lat
 
 `DELETE /api/v1/api-keys/current`, admitted by the key itself, answers `204`;
 a repeat answers `401 credential_revoked`, which the device takes as done.
-It ends the key's device lease in the same transaction.
+It ends the key's device lease in the same transaction. While a live lease,
+one its holder could still refresh, is bound to the key, the key alone is
+refused `403 access_denied` with reason `device_key_not_allowed`: only the
+native shell, which holds the lease, signs that device out, with `DELETE
+/api/v1/app-auth/mobile/lease` (`identity/sessions`), which ends the lease
+and then the key as here. So the on-device agent, which holds the key,
+cannot sign the tablet out of its mail. A key with no live lease, such as
+one signed in before leases existed, still signs itself out.
 
 ```quint
-pure def canSelfRevoke(g: Grant, deviceEpoch: int): bool = keyRefusal(g, g.now, deviceEpoch) == NoReason
-pure def selfRevoke(g: Grant, deviceEpoch: int): GrantStep = { state: { ...g, phase: Ended({ endedBy: SelfRevoked }) }, out: List(EndLease) }
+pure def canSelfRevoke(g: Grant, deviceEpoch: int, leaseLive: bool): bool = keyRefusal(g, g.now, deviceEpoch) == NoReason and not(leaseLive)
+pure def selfRevoke(g: Grant, deviceEpoch: int, leaseLive: bool): GrantStep = { state: { ...g, phase: Ended({ endedBy: SelfRevoked }) }, out: List(EndLease) }
 pure def sometimesSignedOut(g: Grant): bool = g.phase == Ended({ endedBy: SelfRevoked })
 ```
 

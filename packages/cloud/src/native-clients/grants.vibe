@@ -3,6 +3,8 @@ import { ackAnswer, apply, authorityExpiry, authorityRefusal, decodeState, initi
 import { loadRow, outputRows, stepRow, type Columns } from "../store/rows.vibe"
 import { type Row, type Tx } from "../store/connection.vibe"
 
+export type KeyFailure = NotAState | Rejected
+
 const NonEmpty = Schema.String.check(Schema.isMinLength(1))
 const Return = Schema.Struct({ origin: NonEmpty, path: NonEmpty })
 const Client = Schema.Struct({ clientId: NonEmpty, environment: Schema.Literals(["Production", "Staging"]), signInReturn: Return })
@@ -96,15 +98,16 @@ export effect function stepGrant(tx: Tx, key: string, event: Event, columns: (gr
   return try stepRow(tx, grants, key, event, columns)
 }
 
-export effect function endKey(tx: Tx, row: Row, now: number) {
+export effect function endKey(tx: Tx, row: Row, now: number, leaseLive: boolean) {
   const key = try inspectKey(row, now)
   if (key.reason !== "NoReason") return key.reason
+  if (leaseLive) return "DeviceKeyNotAllowed" as const
   if (key.authority.tag === "GrantAuthority") {
     const parsed = Option.getOrUndefined(Schema.decodeUnknownOption(KeyRow)(row))
     if (parsed === undefined) throw new NotAState({ input: row })
     const identity = Option.getOrUndefined(Schema.decodeUnknownOption(NonEmpty)(row.key))
     if (identity === undefined) throw new NotAState({ input: row })
-    const ended = stepGrant(tx, identity, { type: "selfRevoke", deviceEpoch: parsed.account_epoch }, (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, updated_at: grant.now })) catch effect (failure) => {
+    const ended = stepGrant(tx, identity, { type: "selfRevoke", deviceEpoch: parsed.account_epoch, leaseLive }, (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, updated_at: grant.now })) catch effect (failure) => {
       if (failure._tag !== "Rejected") throw failure
       const reason = keyRefusal(failure.state, failure.state.now, parsed.account_epoch)
       if (reason === "NoReason") throw failure
@@ -115,6 +118,11 @@ export effect function endKey(tx: Tx, row: Row, now: number) {
     try tx.query("UPDATE device_grants SET phase = 'ended', state = state || jsonb_build_object('endedBy', 'SelfRevoked'), sealed_copy = NULL, revision = revision + 1, updated_at = $2 WHERE key = $1", [row.key, now])
   }
   return "NoReason" as const
+}
+
+export effect function endBoundKey(tx: Tx, grantKey: string, now: number) {
+  const row = (try tx.query("SELECT g.key, g.state, g.phase, g.key_expires_at, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.key = $1 FOR UPDATE OF a, g", [grantKey]))[0]
+  if (row !== undefined) try endKey(tx, row, now, false)
 }
 
 effect function endByLease(tx: Tx, key: string, event: { readonly type: "endForLeaseTheft" | "supersede" }) {

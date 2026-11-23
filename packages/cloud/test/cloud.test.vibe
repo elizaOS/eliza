@@ -417,7 +417,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     }
   }))
 
-  it.live("Refuse an expired key, end this key on self-revoke, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\"; spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\")", () => scoped(effect {
+  it.live("Refuse an expired key, refuse a leased key's own sign-out and end it through its lease, let a key with no lease sign itself out, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\"; spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(1_000_000))
     provide Clock.Clock = clock.clock {
@@ -436,8 +436,11 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const now = try Clock.currentTimeMillis
     const expired = try cloud.call("/api/v1/user", { headers: bearer(expiring.credential.secret) })
 
-    const revoked = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
+    const keyAlone = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
+    const leavingLease = (leaving.minted.body as { readonly lease: { readonly refresh: string } }).lease.refresh
+    const revoked = try cloud.call("/api/v1/app-auth/mobile/lease", { method: "DELETE", headers: bearer(leavingLease) })
     const afterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(leaving.credential.secret) })
+    const keyAfterLease = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
     const keptAfterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
     const sessionRevoke = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(signed.accessToken) })
 
@@ -458,14 +461,14 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
       {
         acked: [expiring.acked.status, leaving.acked.status, kept.acked.status],
         expired: [expired.status, ...refusal(expired.body)],
-        revoked: [revoked.status, revoked.body, afterSelfRevoke.status, keptAfterSelfRevoke.status, sessionRevoke.status],
+        revoked: [keyAlone.status, ...refusal(keyAlone.body), revoked.status, revoked.body, afterSelfRevoke.status, keyAfterLease.status, ...refusal(keyAfterLease.body), keptAfterSelfRevoke.status, sessionRevoke.status],
         swept: [swept[0]?.phase === "code_issued", lateToken.status >= 400, keptAfterSweep.status],
         revokeAll: [ended, afterRevokeAll.status, ...refusal(afterRevokeAll.body), session.status]
       },
       {
         acked: [200, 200, 200],
         expired: [401, "authentication_required", "credential_expired"],
-        revoked: [204, "", 401, 200, 401],
+        revoked: [403, "access_denied", "device_key_not_allowed", 204, "", 401, 401, "authentication_required", "credential_revoked", 200, 401],
         swept: [false, true, 200],
         revokeAll: [1, 401, "authentication_required", "credential_revoked", 200]
       }
@@ -535,6 +538,11 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
         ["legacy-pending", "ended", null, 0, 0], ["legacy-revoked", "active", null, expiry, -1], ["legacy-scalar-active", "active", null, expiry, 0], ["legacy-truncated", "ended", null, 0, 0]
       ]
     }))
+    const preLease = bearer(`eliza_mobile_${tokenDigest("legacy-minimal")}`)
+    const preLeaseSignOut = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: preLease })
+    const afterPreLeaseSignOut = try cloud.call("/api/v1/user", { headers: preLease })
+    try check(() => assert.deepStrictEqual([preLeaseSignOut.status, afterPreLeaseSignOut.status, ...refusal(afterPreLeaseSignOut.body)],
+      [204, 401, "authentication_required", "credential_revoked"]))
     const afterMigration = try device(cloud, futureCutoff.accessToken, "After migration")
     const admittedAfterMigration = try cloud.call("/api/v1/user", { headers: bearer(afterMigration.credential.secret) })
     const observed = try sql(cloud, "SELECT g.issued_at, g.device_epoch, a.device_epoch AS account_epoch, a.devices_revoked_before FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.credential_id = $1", [afterMigration.credential.credentialId])
@@ -557,7 +565,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     }
   }))
 
-  it.live("Keep a tablet signed in: the key's sign-in offers a lease, a lost reply answers it again, rotation is two-phase, mail admits only the lease, a renewed key replaces the old one, and a spent lease ends only its device (spec/cloud/identity/sessions.md, \"Story: Keep a tablet signed in to mail and calendar\"; spec/cloud/nativeClients/deviceKeys.md, \"Story: Keep a tablet's key without signing in again\")", () => scoped(effect {
+  it.live("Keep a tablet signed in: the key's sign-in offers a lease, a lost reply answers it again, rotation is two-phase, mail admits only the lease, a renewed key replaces the old one, only the lease signs the tablet out and ends its key, and a spent lease ends only its device, also when presented to sign out (spec/cloud/identity/sessions.md, \"Story: Keep a tablet signed in to mail and calendar\"; spec/cloud/nativeClients/deviceKeys.md, \"Story: Keep a tablet's key without signing in again\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(1_000_000))
     provide Clock.Clock = clock.clock {
@@ -615,9 +623,25 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const oldAfterAck = try cloud.call("/api/v1/user", { headers: bearer(tablet.credential.secret) })
     const newAfterAck = try cloud.call("/api/v1/user", { headers: bearer(successor.secret) })
     const movedLease = pairOf(try rotate(tabletLease.refresh))
-    const signOut = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(successor.secret) })
+    const signOutLease = (refresh: string) => cloud.call("/api/v1/app-auth/mobile/lease", { method: "DELETE", headers: bearer(refresh) })
+    const keyAlone = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(successor.secret) })
+    const signOut = try signOutLease(tabletLease.refresh)
+    const keyAfterSignOut = try cloud.call("/api/v1/user", { headers: bearer(successor.secret) })
+    const keyDuty = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(successor.secret) })
     const leaseAfterSignOut = try rotate(tabletLease.refresh)
     const renewAfterSignOut = try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(tabletLease.refresh) })
+    const signOutAgain = try signOutLease(tabletLease.refresh)
+    const copied = try device(cloud, signed.accessToken, "Copied tablet")
+    const copiedLease = lease(copied.minted)
+    const copierCommitted = pairOf(try rotate(copiedLease.refresh))
+    const copierOffered = pairOf(try rotate(copierCommitted.refresh))
+    const spentSignOut = try signOutLease(copiedLease.refresh)
+    const spentAgain = try signOutLease(copiedLease.refresh)
+    const copierRotates = try rotate(copierCommitted.refresh)
+    const copierMail = try mail(copierOffered.access)
+    const copiedKey = try cloud.call("/api/v1/user", { headers: bearer(copied.credential.secret) })
+    const revokedKey = [401, "authentication_required", "credential_revoked"]
+    const copiedEnds = try sql(cloud, "SELECT s.state->>'phase' AS lease, g.phase AS key, g.state->'phase'->>'endedBy' AS ended_by FROM device_grants g JOIN sessions s ON s.grant_key = g.key WHERE g.credential_id = $1", [copied.credential.credentialId])
     try sync(() => clock.set(1_200_000))
     const idle = try device(cloud, signed.accessToken, "Idle tablet")
     try sync(() => clock.set(1_200_000 + 7_776_000_000))
@@ -625,12 +649,26 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     try check(() => assert.deepStrictEqual({
       renewed: [renewed.status, /^eliza_mobile_[0-9a-f]{64}$/.test(successor.secret), successor.credentialId !== tablet.credential.credentialId, oldBeforeAck.status, keyRenewing.status],
       replaced: [successorAck.status, oldAfterAck.status, ...refusal(oldAfterAck.body), newAfterAck.status, movedLease.accessExpiresIn],
-      signedOut: [signOut.status, leaseAfterSignOut.status, ...refusal(leaseAfterSignOut.body), renewAfterSignOut.status, ...refusal(renewAfterSignOut.body)],
+      signedOut: {
+        keyAlone: [keyAlone.status, ...refusal(keyAlone.body)], lease: signOut.status,
+        after: [keyAfterSignOut, keyDuty, leaseAfterSignOut, renewAfterSignOut, signOutAgain].map((answer) => [answer.status, ...refusal(answer.body)])
+      },
+      spentSignOut: {
+        answers: [spentSignOut, spentAgain, copierRotates, copierMail, copiedKey].map((answer) => [answer.status, ...refusal(answer.body)]),
+        ends: copiedEnds.map((row) => [row.lease, row.key, row.ended_by])
+      },
       lapsed: [lapsed.status, ...refusal(lapsed.body)]
     }, {
       renewed: [200, true, true, 200, 401],
       replaced: [200, 401, "authentication_required", "credential_revoked", 200, 900],
-      signedOut: [204, 401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked"],
+      signedOut: {
+        keyAlone: [403, "access_denied", "device_key_not_allowed"], lease: 204,
+        after: [revokedKey, revokedKey, revokedKey, revokedKey, revokedKey]
+      },
+      spentSignOut: {
+        answers: [revokedKey, revokedKey, revokedKey, [401, "authentication_required", "credential_unknown"], revokedKey],
+        ends: [["Reused", "ended", "LeaseReused"]]
+      },
       lapsed: [401, "authentication_required", "credential_unknown"]
     }))
     const awake = try signedIn(cloud, "tablet@example.com")

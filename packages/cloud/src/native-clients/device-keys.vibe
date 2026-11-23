@@ -14,7 +14,7 @@ import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../share
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 import { type Columns } from "../store/rows.vibe"
 import { currentGrant, decodeGrant, endKey, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant, supersedeGrant } from "./grants.vibe"
-import { activateLease, admitLeaseRefresh, bearerToken, endLease, endLeasesOf, leaseRefreshExpiresIn, leaseRefreshPattern, leaseRefusedOr, moveLease, offerLease, type LeaseRefresh } from "../identity/sessions.vibe"
+import { activateLease, admitLeaseRefresh, bearerToken, endLease, endLeasesOf, holdsLiveLease, leaseRefreshExpiresIn, leaseRefreshPattern, leaseRefusedOr, moveLease, offerLease, type LeaseRefresh } from "../identity/sessions.vibe"
 import { admitClient, parseReturn, readRegistry, servedEnvironment } from "./registry.vibe"
 
 const pkceText = /^[A-Za-z0-9._~-]{43,128}$/
@@ -361,8 +361,8 @@ effect function selfRevoke(context: RouteContext) {
     const row = try grantBy(tx, "key", caller.grantKey)
     if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
     const now = try Clock.currentTimeMillis
-    const reason = try endKey(tx, row, now)
-    if (reason !== "NoReason") throw refused("AuthenticationRequired", reason)
+    const reason = try endKey(tx, row, now, try holdsLiveLease(tx, caller.grantKey, now))
+    if (reason !== "NoReason") throw refused(reason === "DeviceKeyNotAllowed" ? "AccessDenied" : "AuthenticationRequired", reason)
     try endLease(tx, caller.grantKey, now)
   })
   return HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
