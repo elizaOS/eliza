@@ -261,8 +261,25 @@ runs:
         key: ${{ steps.quint-cache.outputs.cache-primary-key }}
     - name: Install Chromium
       if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest'
+      env:
+        FULL_CHROMIUM_ONLY: ${{ inputs.job == 'selftest-a' }}
       run: |
-        pnpm exec playwright install-deps chromium & deps=$!
-        pnpm exec playwright install chromium ${{ inputs.job == 'selftest-a' && '--no-shell' || '' }}
-        wait "$deps"
+        args=(chromium)
+        [[ "$FULL_CHROMIUM_ONLY" != true ]] || args+=(--no-shell)
+        pnpm exec playwright install "${args[@]}"
+        probe() {
+          node --input-type=module <<'JS'
+        import { chromium } from "playwright";
+        async function check(options) {
+          const browser = await chromium.launch({ timeout: 10_000, ...options });
+          await browser.close();
+        }
+        await check({ executablePath: chromium.executablePath() });
+        if (process.env.FULL_CHROMIUM_ONLY !== "true") await check({});
+        JS
+        }
+        if ! probe; then
+          pnpm exec playwright install-deps chromium
+          probe
+        fi
       shell: bash

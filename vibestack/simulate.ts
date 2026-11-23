@@ -306,6 +306,18 @@ const COULD_NOT_RUN = "the simulator could not run";
 /** What simulating a spec found: the `always`, `sometimes` and `replay` results, and what the traces stage checks programs against. */
 export interface Simulation { said: Result[]; tested?: Simulated }
 
+function witnessedIn(traces: Step[][], goals: string[]): Map<string, Step[]> {
+  const pending = new Set(goals);
+  const found = new Map<string, Step[]>();
+  if (!pending.size) return found;
+  for (const trace of traces) for (const [index, { evaluated }] of trace.entries()) {
+    if (evaluated?.result !== true || !pending.has(evaluated.name)) continue;
+    const earlier = found.get(evaluated.name);
+    if (!earlier || earlier.length > index + 1) found.set(evaluated.name, trace.slice(0, index + 1));
+  }
+  return found;
+}
+
 const SPECS_AT_ONCE = 2 * os.availableParallelism();
 let specsSimulating = 0;
 const specsWaiting: (() => void)[] = [];
@@ -449,14 +461,25 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
         `${shown}\n      ${sim.again}`);
         return { said, tested };
       }
+      const retained = witnessedIn(probe.traces, witnesses.filter(({ w, run }) => !run.broken && !model.witness?.lengths.has(w)).map(({ w }) => w));
+      const reached = witnesses.map(({ w, run }) => {
+        const fallback = retained.get(w);
+        if (fallback) {
+          replay(domain, fallback, model);
+          return { w, run, goal: fallback };
+        }
+        const goal = run.broken ? run.traces.filter((t) => standIn(domain, t)[w](t.at(-1)?.state) === true).sort((a, b) => a.length - b.length)[0] : undefined;
+        if (!goal && run.broken) throw new Error(`TypeScript and Quint disagree on the violation of never_${w} in the witness search: ${run.again}`);
+        return { w, run, goal };
+      });
       const loops = runsOf.reduce((n, r) => n + r.loops, 0);
       say(true, "always", `no rule broken in ${SAMPLES + COMPARED_SAMPLES} simulated traces`
         + (model.leadsTo.length ? `, and no fair run that stops or loops in ${sim.traces.length} of them breaks a \`leadsTo\` rule (${loops} loops found)` : ""));
-      for (const { w, run } of witnesses) {
-        const reached = run.broken && run.traces.some((t) => standIn(domain, t)[w](t.at(-1)?.state));
-        say(reached, "sometimes", reached ? `${w} is reachable`
-          : `${cite(w)} was not reached in ${SEARCHED}: a guard is too strict, a transition is missing, or the goal needs values the simulator does not try`, reached ? "" : `      ${run.again}`);
-      }
+      const journeys = reached.flatMap(({ w, run, goal }) => {
+        say(!!goal, "sometimes", goal ? `${w} is reachable`
+          : `${cite(w)} was not reached in ${SEARCHED}: a guard is too strict, a transition is missing, or the goal needs values the simulator does not try`, goal ? "" : `      ${run.again}`);
+        return goal ? [{ w, trace: goal }] : [];
+      });
       for (const { t, again } of neverAllowed) {
         const causes = ["the guard is too strict", "a transition that leads to the states it needs is missing", `the event becomes possible only after more than ${DEPTHS.at(-1)} events`,
           ...(t.guardParams.length ? [`it needs values the simulator does not try (define ${t.guardParams.map((p) => `${p}Values`).join(" or ")})`] : [])];
@@ -470,8 +493,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       const missed = [...model.evals.map((v) => v.name).filter((n) => !compared.has(n)), ...model.uncompared];
       say(true, "replay", `generated TypeScript agrees with Quint on ${traces.length} traces: every state${model.laws.length ? ", every law" : ""}, and ${compared.size} definitions evaluated on them`
         + (missed.length ? `; not compared on their own, because the simulator had no arguments for them: ${missed.join(", ")}` : ""));
-      if (model.stateType) tested = conformanceFound(model, spec, traces, witnesses.flatMap(({ w, run }) =>
-        run.traces.filter((trace) => standIn(domain, trace)[w](trace.at(-1)?.state)).sort((a, b) => a.length - b.length).slice(0, 1).map((trace) => ({ w, trace }))));
+      if (model.stateType) tested = conformanceFound(model, spec, traces, journeys);
     } catch (e) {
       const mismatch = (e as Error).message.startsWith("TypeScript and Quint disagree");
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
