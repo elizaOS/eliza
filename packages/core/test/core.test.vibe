@@ -3802,8 +3802,8 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const deviceDone = try host(() => onDevice.completeOAuth("dropbox", dropbox.consent(deviceStart.authUrl ?? "", "device-user")))
   const deviceStored = try host(() => onDevice.getOAuthFlow("dropbox", deviceStart.id))
   const unsupported = {
-    accounts: deviceAccounts.map((account) => [account.accountKey, account.id === deviceBot.id]),
-    flow: [(deviceStart.codeVerifier ?? "").length, deviceDone.flow.status, deviceDone.account?.accountKey, deviceStored?.status, deviceStored?.codeVerifier ?? null],
+    accounts: deviceAccounts.map((account) => [account.id, account.id === deviceBot.id]),
+    flow: [(deviceStart.codeVerifier ?? "").length, deviceDone.flow.status, deviceDone.account?.id, deviceStored?.status, deviceStored?.codeVerifier ?? null],
   }
   const facade = manager.getStorage()
   // spec/core/accountValues.md, "Normalization preserves explicit values and applies only documented defaults"
