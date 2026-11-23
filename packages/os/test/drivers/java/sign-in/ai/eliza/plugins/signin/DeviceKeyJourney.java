@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -37,6 +38,7 @@ public final class DeviceKeyJourney {
   private static final Account ACCOUNT = new Account("user-1", "org-1");
   private static final Binding BINDING = new Binding("client-1", "staging", "https://app.test/auth/callback");
   private static final long DAY_MS = 86_400_000L;
+  private static final long LEASE_IDLE_MS = 90 * DAY_MS;
 
   private static final class Grant1 {
     final String challenge, state;
@@ -48,7 +50,7 @@ public final class DeviceKeyJourney {
 
   private static final class Family {
     String grant, refresh, access, offeredRefresh, offeredAccess;
-    long accessExpiresAt;
+    long accessExpiresAt, refreshExpiresAt;
     boolean ended;
     final List<String> spent = new ArrayList<>();
     boolean holds(String bearer) { return bearer.equals(refresh) || bearer.equals(offeredRefresh) || spent.contains(bearer); }
@@ -64,11 +66,15 @@ public final class DeviceKeyJourney {
     final List<String> proofs = new CopyOnWriteArrayList<>();
     final AtomicInteger issued = new AtomicInteger(), tokenAsks = new AtomicInteger(), revokeAsks = new AtomicInteger(), refreshes = new AtomicInteger();
     final AtomicInteger rotations = new AtomicInteger(), reused = new AtomicInteger(), secrets = new AtomicInteger();
+    final AtomicInteger renewAsks = new AtomicInteger(), renewsWithOffered = new AtomicInteger(), leaseSignOuts = new AtomicInteger(), keyAloneRefused = new AtomicInteger();
     final List<Family> families = new CopyOnWriteArrayList<>();
     final Map<String, Renewal> renewals = new ConcurrentHashMap<>();
     final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>();
     volatile boolean offline, leases, dropNextRotation;
     volatile int dropAcks;
+    volatile long keyLifeMs = 30 * DAY_MS, leaseDelayMs;
+    volatile String renewRefusal = "";
+    volatile CountDownLatch leaseArrived = new CountDownLatch(0);
     final HttpServer server;
 
     FakeCloud(AtomicLong clock) throws IOException {
@@ -103,8 +109,13 @@ public final class DeviceKeyJourney {
       for (Family f : families) if (credentialId.equals(f.grant)) f.ended = true;
     }
 
+    private boolean leased(String credentialId) {
+      for (Family f : families) if (credentialId.equals(f.grant) && !f.ended && clock.get() < f.refreshExpiresAt) return true;
+      return false;
+    }
+
     private boolean presented(HttpExchange x, Family f, String bearer) throws IOException {
-      if (f == null) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return false; }
+      if (f == null || clock.get() >= f.refreshExpiresAt) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return false; }
       if (!f.ended && f.spent.contains(bearer)) {
         reused.incrementAndGet();
         endGrant(f.grant);
@@ -125,6 +136,7 @@ public final class DeviceKeyJourney {
       f.offeredRefresh = minted("eliza_lease_refresh_", 54);
       f.offeredAccess = minted("eliza_lease_", 43);
       f.accessExpiresAt = now + 900_000;
+      f.refreshExpiresAt = now + LEASE_IDLE_MS;
       return "{\"access\":\"" + f.offeredAccess + "\",\"accessExpiresIn\":900,\"refresh\":\"" + f.offeredRefresh + "\",\"refreshExpiresIn\":7776000}";
     }
 
@@ -139,8 +151,8 @@ public final class DeviceKeyJourney {
 
     private void handle(HttpExchange x) throws IOException {
       String route = x.getRequestMethod() + " " + x.getRequestURI().getPath();
-      Map<String, Object> body = "POST".equals(x.getRequestMethod())
-        ? CredentialJson.object(CredentialJson.parse(new String(x.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)), "body") : Map.of();
+      String sent = new String(x.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+      Map<String, Object> body = sent.isEmpty() ? Map.of() : CredentialJson.object(CredentialJson.parse(sent), "body");
       long now = clock.get();
       switch (route) {
         case "POST " + DeviceKeyClient.CONNECT -> {
@@ -165,12 +177,13 @@ public final class DeviceKeyJourney {
               grant.lease = new Family();
               grant.lease.grant = grant.credentialId;
               grant.lease.refresh = minted("eliza_lease_refresh_", 54);
+              grant.lease.refreshExpiresAt = now + LEASE_IDLE_MS;
             }
           }
           if (grant.asks++ == 0) { x.close(); return; }
           String lease = grant.lease == null ? "" : ",\"lease\":{\"refresh\":\"" + grant.lease.refresh + "\",\"refreshExpiresIn\":7776000}";
           answer(x, 200, "{\"credentialId\":\"" + grant.credentialId + "\",\"secret\":\"" + grant.secret + "\",\"tokenType\":\"Bearer\",\"expiresAt\":\""
-            + iso(now + 30 * DAY_MS) + "\",\"user\":{\"id\":\"" + ACCOUNT.userId() + "\"},\"organizationId\":\"" + ACCOUNT.organizationId() + "\"" + lease + "}");
+            + iso(now + keyLifeMs) + "\",\"user\":{\"id\":\"" + ACCOUNT.userId() + "\"},\"organizationId\":\"" + ACCOUNT.organizationId() + "\"" + lease + "}");
         }
         case "POST " + DeviceKeyClient.ACK -> {
           String credentialId = CredentialJson.text(body, "credentialId"), secret = CredentialJson.text(body, "secret");
@@ -184,18 +197,28 @@ public final class DeviceKeyJourney {
           }
           live.put(secret, credentialId);
           if (dropAcks > 0) { dropAcks--; x.close(); return; }
-          answer(x, 200, "{\"status\":\"acknowledged\",\"credentialId\":\"" + credentialId + "\",\"expiresAt\":\"" + iso(now + 30 * DAY_MS) + "\"}");
+          answer(x, 200, "{\"status\":\"acknowledged\",\"credentialId\":\"" + credentialId + "\",\"expiresAt\":\"" + iso(now + keyLifeMs) + "\"}");
         }
         case "DELETE " + DeviceKeyClient.REVOKE -> {
           revokeAsks.incrementAndGet();
           if (offline) { answer(x, 503, "{\"error\":\"service_unavailable\"}"); return; }
-          String credentialId = live.remove(bearer(x));
+          String credentialId = live.get(bearer(x));
           if (credentialId == null) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
+          if (leased(credentialId)) {
+            keyAloneRefused.incrementAndGet();
+            answer(x, 403, "{\"error\":\"access_denied\",\"reason\":\"device_key_not_allowed\"}");
+            return;
+          }
+          live.remove(bearer(x));
           revoked.add(credentialId);
           endGrant(credentialId);
           x.sendResponseHeaders(204, -1);
         }
         case "POST " + DeviceKeyClient.LEASE -> {
+          leaseArrived.countDown();
+          if (leaseDelayMs > 0) {
+            try { Thread.sleep(leaseDelayMs); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+          }
           Family f = family(bearer(x));
           if (!presented(x, f, bearer(x))) return;
           rotations.incrementAndGet();
@@ -208,14 +231,24 @@ public final class DeviceKeyJourney {
           Family f = family(bearer(x));
           if (!presented(x, f, bearer(x))) return;
           f.ended = true;
+          live.values().removeIf(f.grant::equals);
+          leaseSignOuts.incrementAndGet();
           x.sendResponseHeaders(204, -1);
         }
         case "POST " + DeviceKeyClient.RENEW -> {
+          renewAsks.incrementAndGet();
           Family f = family(bearer(x));
+          boolean offered = f != null && bearer(x).equals(f.offeredRefresh);
           if (!presented(x, f, bearer(x))) return;
+          switch (renewRefusal) {
+            case "client_disabled" -> { answer(x, 403, "{\"error\":\"client_disabled\"}"); return; }
+            case "proof_invalid" -> { answer(x, 401, "{\"error\":\"credential_proof_invalid\"}"); return; }
+            default -> {}
+          }
+          if (offered) renewsWithOffered.incrementAndGet();
           String credentialId = "cred-" + issued.incrementAndGet();
           renewals.put(credentialId, new Renewal("eliza_mobile_" + credentialId, f, f.grant));
-          answer(x, 200, "{\"credentialId\":\"" + credentialId + "\",\"secret\":\"eliza_mobile_" + credentialId + "\",\"expiresIn\":" + 30 * DAY_MS / 1000 + "}");
+          answer(x, 200, "{\"credentialId\":\"" + credentialId + "\",\"secret\":\"eliza_mobile_" + credentialId + "\",\"expiresIn\":" + keyLifeMs / 1000 + "}");
         }
         case "GET /api/v1/eliza/google/calendar/feed" -> {
           String bearer = bearer(x);
@@ -276,15 +309,15 @@ public final class DeviceKeyJourney {
     client = new DeviceKeyClient(cloud.origin(), store, ms -> {}, clock::get);
     store.listen(notice -> notices.add(CredentialPolicy.json(notice)));
     store.onVerifyAccount(() -> { notices.add(CredentialPolicy.json(new Notice.VerifyAccount())); client.verifyAccount(); });
-    store.onRenewKey(() -> client.renew());
-    lease = new DeviceLease(store, client, () -> client.renewIfDue());
+    store.onRenewKey(() -> lease.renewKey());
+    lease = new DeviceLease(store, client, Runnable::run);
   }
 
   private long leaseSlots(String prefix) {
     return slots.held.keySet().stream().filter(slot -> slot.startsWith(prefix) && (slot.contains(":key:") || slot.contains(":lease:"))).count();
   }
 
-  private String leaseJourney(List<String> seen, String prefix) {
+  private String leaseJourney(List<String> seen, String prefix) throws Exception {
     int before = notices.size();
     cloud.leases = true;
     seen.add(take("leasedSignIn", signIn()));
@@ -314,10 +347,17 @@ public final class DeviceKeyJourney {
     seen.add(take("lostRenewalAckAskedAgain", stranded && store.pendingRenewal() == null && store.current().version() == beforeLostAck + 1 ? held() : "stranded"));
     client.settleDuties();
     clock.addAndGet(16 * 60_000L);
-    int beforeRace = store.current().version();
-    boolean racing = store.readLease() == DeviceCredentialStore.SessionRead.START_REFRESH && client.renew() == DeviceKeyClient.Exchange.SIGNED_IN;
-    DeviceCredentialStore.Kept late = store.leaseRotated(beforeRace, "eliza_lease_refresh_" + "s".repeat(54), clock.get() + 900_000, clock.get() + 90 * DAY_MS);
-    seen.add(take("rotationAfterRenewalAck", racing + "/" + late + "/" + (lease.accessToken() != null)));
+    int offeredBefore = cloud.renewsWithOffered.get();
+    cloud.leaseDelayMs = 300;
+    cloud.leaseArrived = new CountDownLatch(1);
+    ExecutorService reader = Executors.newSingleThreadExecutor();
+    Future<DeviceLease.Held> rotating = reader.submit(lease::accessToken);
+    cloud.leaseArrived.await();
+    DeviceKeyClient.Exchange waited = lease.renewKey();
+    boolean readerServed = rotating.get() != null;
+    reader.shutdown();
+    cloud.leaseDelayMs = 0;
+    seen.add(take("renewalWaitsForRotation", waited + "/" + (cloud.renewsWithOffered.get() - offeredBefore) + "/" + readerServed + "/" + cloud.reused.get()));
     client.settleDuties();
     String renewed = store.current().credentialId();
     cloud.families.get(cloud.families.size() - 1).ended = true;
@@ -330,6 +370,94 @@ public final class DeviceKeyJourney {
     seen.add(take("slotsAfterLeaseSignOut", leaseSlots(prefix)));
     seen.add(take("leaseReuses", cloud.reused.get()));
     return CredentialJson.quote("leaseNotices") + ":[" + String.join(",", notices.subList(before, notices.size())) + "]";
+  }
+
+  private String noticesSince(int before) {
+    return "[" + String.join(",", notices.subList(before, notices.size())) + "]";
+  }
+
+  private long endings(int before) {
+    return notices.subList(before, notices.size()).stream().filter(n -> n.contains("SignedOutNotice") || n.contains("ExpiredNotice")).count();
+  }
+
+  private String keepJourney() throws Exception {
+    List<String> seen = new ArrayList<>();
+    cloud.leases = true;
+    cloud.keyLifeMs = 7 * DAY_MS;
+    seen.add(take("keptSignIn", signIn()));
+    int before = notices.size();
+    int activeDays = 0;
+    for (int day = 0; day < 400; day++) {
+      clock.addAndGet(DAY_MS);
+      lease.runDailyJob();
+      if (CredentialPolicy.isSignedIn(store.state()) && store.state().attempt() instanceof CredentialPolicy.Attempt.NoAttempt) activeDays++;
+    }
+    seen.add(take("dailyUse", activeDays + "/" + cloud.renewAsks.get() + "/" + cloud.renewsWithOffered.get() + "/" + cloud.rotations.get() + "/"
+      + cloud.reused.get() + "/" + endings(before) + "/" + cloud.mailBearers.size() + "/" + store.owed().size()));
+
+    clock.addAndGet(91 * DAY_MS);
+    before = notices.size();
+    lease.runDailyJob();
+    boolean owesKeyOnly = store.owed().size() == 1 && store.owed().get(0).lease() == null;
+    client.settleDuties();
+    seen.add(take("idleLapse", held() + "/" + store.account().userId() + "/" + owesKeyOnly + "/" + store.owed().size() + "/" + noticesSince(before)));
+
+    for (String refusal : List.of("client_disabled", "proof_invalid")) {
+      signIn();
+      cloud.renewRefusal = refusal;
+      clock.addAndGet(4 * DAY_MS);
+      int asks = cloud.renewAsks.get();
+      lease.runDailyJob();
+      String kept = (store.current() != null) + "/" + (store.state().attempt() instanceof CredentialPolicy.Attempt.NoAttempt) + "/" + (cloud.renewAsks.get() - asks);
+      clock.addAndGet(4 * DAY_MS);
+      before = notices.size();
+      int signOuts = cloud.leaseSignOuts.get();
+      store.report401(store.current().version(), "credential_expired");
+      boolean owesLease = store.owed().size() == 1 && store.owed().get(0).lease() != null;
+      client.settleDuties();
+      seen.add(take(refusal + "Renewal", kept + "|" + held() + "/" + store.account().userId() + "/" + owesLease + "/" + (cloud.leaseSignOuts.get() - signOuts)
+        + "/" + store.owed().size() + "/" + noticesSince(before)));
+      cloud.renewRefusal = "";
+    }
+
+    signIn();
+    client.settleDuties();
+    clock.addAndGet(4 * DAY_MS);
+    String keyBefore = store.current().credentialId();
+    int rotations = cloud.rotations.get(), offered = cloud.renewsWithOffered.get();
+    cloud.dropNextRotation = true;
+    lease.runDailyJob();
+    seen.add(take("lostRotationDuringRenewal", !store.current().credentialId().equals(keyBefore) + "/" + (cloud.rotations.get() - rotations) + "/"
+      + (cloud.renewsWithOffered.get() - offered) + "/" + cloud.reused.get()));
+
+    client.settleDuties();
+    CredentialReader.Credential tablet = store.current();
+    seen.add(take("keyAloneSignsNothingOut", !client.revoke(tablet.value()) + "/" + cloud.keyAloneRefused.get() + "/" + cloud.live.containsValue(tablet.credentialId())));
+    String copied = store.lease().refresh();
+    Answer<Map<String, Object>> renewed = client.ask("POST", DeviceKeyClient.RENEW, copied, null, 200, body -> body);
+    if (!(renewed instanceof Answer.Answered<Map<String, Object>> copy)) throw new IllegalStateException("copier renewal " + renewed);
+    String copier = CredentialJson.text(copy.value(), "credentialId");
+    client.ack(copier, CredentialJson.text(copy.value(), "secret"));
+    before = notices.size();
+    store.report401(tablet.version(), "credential_revoked");
+    boolean copierCut = !cloud.live.containsValue(copier) && cloud.families.stream().filter(f -> copier.equals(f.grant)).allMatch(f -> f.ended);
+    seen.add(take("copiedLeaseEndedAtSignOut", held() + "/" + copierCut + "/" + store.owed().size() + "/" + noticesSince(before)));
+
+    signIn();
+    client.settleDuties();
+    CredentialReader.Credential last = store.current();
+    cloud.offline = true;
+    store.signOut();
+    client.settleDuties();
+    int spent = store.state().duties().size() - store.owed().size();
+    cloud.offline = false;
+    int signOuts = cloud.leaseSignOuts.get();
+    lease.runDailyJob();
+    seen.add(take("offlineSignOutSettledByTheDailyJob", spent + "/" + (cloud.leaseSignOuts.get() - signOuts) + "/" + cloud.live.containsValue(last.credentialId())
+      + "/" + store.state().duties().size()));
+    seen.add(take("keptReuses", cloud.reused.get()));
+    cloud.server.stop(0);
+    return String.join(",", seen);
   }
 
   private static final String MAIL_TABLE = "[{\"prefixes\":[\"/api/v1\"],\"routes\":["
@@ -454,6 +582,7 @@ public final class DeviceKeyJourney {
     for (String slot : slots.held.keySet()) kinds.merge(slot.startsWith(prefix) ? "prefixed" : "other", 1, Integer::sum);
     seen.add(take("unprefixedSlots", kinds.getOrDefault("other", 0)));
     cloud.server.stop(0);
+    seen.add(new DeviceKeyJourney().keepJourney());
     return "{" + String.join(",", seen) + "}";
   }
 
@@ -562,6 +691,7 @@ public final class DeviceKeyJourney {
   }
 
   public static void main(String[] args) throws Exception {
+    System.setProperty("sun.net.http.retryPost", "false");
     if (args.length == 1 && args[0].equals("browser")) System.out.println(browserReturn());
     else if (args.length == 1 && args[0].equals("cloud")) System.out.println(new DeviceKeyJourney().cloudJourney());
     else System.out.println(new DeviceKeyJourney().run());

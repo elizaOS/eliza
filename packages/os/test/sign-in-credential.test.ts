@@ -40,9 +40,22 @@ describe("Keep me signed in without a second copy of my key", () => {
     expect(seen.leaseNotices).toEqual([announce(6), announce(7), announce(8), announce(9), { tag: "SignedOutNotice" }]);
   });
 
-  it("asks a renewal's lost acknowledgement again instead of stranding or signing out, and ends a lease refresh a renewal overtook", () => {
+  it("asks a renewal's lost acknowledgement again instead of stranding or signing out, and renews only with the secret of the lease refresh it waited for", () => {
     const seen = journey();
-    expect([seen.lostRenewalAckAskedAgain, seen.rotationAfterRenewalAck]).toEqual(["8/cred-14/user-1", "true/NOT_KEPT/true"]);
+    expect([seen.lostRenewalAckAskedAgain, seen.renewalWaitsForRotation]).toEqual(["8/cred-14/user-1", "SIGNED_IN/1/true/0"]);
+  });
+
+  it("keeps a tablet in daily use that never reads mail signed in for 400 days, refreshing its lease daily and renewing only through a fresh refresh", () => {
+    const seen = journey();
+    expect([seen.keptSignIn, seen.dailyUse]).toEqual(["SIGNED_IN", "400/100/100/400/0/0/0/1"]);
+    expect([seen.lostRotationDuringRenewal, seen.keptReuses]).toEqual(["true/2/1/0", 0]);
+  });
+
+  it("asks a tablet off for 91 days, or one whose key expired after a renewal refused for good, to sign in once, keeping the account", () => {
+    const seen = journey();
+    const expired = '[{"tag":"ExpiredNotice"}]';
+    expect(seen.idleLapse).toBe(`none/user-1/true/0/${expired}`);
+    expect([seen.client_disabledRenewal, seen.proof_invalidRenewal]).toEqual(Array(2).fill(`true/true/1|none/user-1/true/1/0/${expired}`));
   });
 });
 
@@ -51,6 +64,13 @@ describe("Sign out or reset cleanly", () => {
     const seen = journey();
     expect([seen.dutyStoredWithSignOut, seen.offlineRevokeAsks, seen.dutiesKeptOffline]).toEqual([true, 3, 1]);
     expect([seen.triesAtStart, seen.onlineRevokeAsks, seen.revokedAfterStart, seen.dutiesAfterStart, seen.alreadyRevoked]).toEqual([1, 1, "cred-2,cred-4", 0, true]);
+  });
+
+  it("signs out through the lease: the key alone is refused, a copied lease ends with the device found revoked, and the daily job settles an offline sign-out", () => {
+    const seen = journey();
+    expect(seen.keyAloneSignsNothingOut).toBe("true/1/true");
+    expect(seen.copiedLeaseEndedAtSignOut).toBe('none/true/0/[{"tag":"VerifyAccount"},{"tag":"SignedOutNotice"}]');
+    expect(seen.offlineSignOutSettledByTheDailyJob).toBe("1/1/false/0");
   });
 
   it("signs out completely when the cloud revokes the lease, owing the key and leaving no key or lease slot", () => {

@@ -43,6 +43,8 @@ public final class SignInRegistration {
     }
   }
 
+  public record KeyJobs(int daily, int renewal) {}
+
   public static final String PRODUCTION = "production";
   private static final Pattern CLIENT_ID = Pattern.compile("(?=.{1,200}$)[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+");
   private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9-]{0,31}");
@@ -56,14 +58,15 @@ public final class SignInRegistration {
   public final boolean testEnvironmentsEnabled;
   public final GoogleMode googleMode;
   public final boolean googleBrowserFallback;
+  public final KeyJobs keyJobs;
   private final Map<String, Environment> environments;
   private final List<String> googleScopes;
   private final List<Route> routes;
 
   private SignInRegistration(String clientId, boolean testEnvironmentsEnabled, GoogleMode googleMode, boolean googleBrowserFallback,
-      Map<String, Environment> environments, List<String> googleScopes, List<Route> routes) {
+      KeyJobs keyJobs, Map<String, Environment> environments, List<String> googleScopes, List<Route> routes) {
     this.clientId = clientId; this.testEnvironmentsEnabled = testEnvironmentsEnabled; this.googleMode = googleMode;
-    this.googleBrowserFallback = googleBrowserFallback;
+    this.googleBrowserFallback = googleBrowserFallback; this.keyJobs = keyJobs;
     this.environments = environments; this.googleScopes = googleScopes; this.routes = routes;
   }
 
@@ -81,8 +84,8 @@ public final class SignInRegistration {
 
   /**
    * Parses the host's registration from plain maps and lists, as the plugin reads them from its
-   * configuration: {clientId, testEnvironments?, googleMode, googleScopes?, environments: [{name,
-   * apiOrigin, appLinkHost, redirectPath}], routes?: [{method, path}]}. The redirect is always
+   * configuration: {clientId, testEnvironments?, googleMode, googleScopes?, keyJobs: {daily, renewal},
+   * environments: [{name, apiOrigin, appLinkHost, redirectPath}], routes?: [{method, path}]}. The redirect is always
    * https://appLinkHost + redirectPath, so a redirect can never leave its own App Link host.
    */
   public static SignInRegistration parse(Map<String, ?> config) {
@@ -100,6 +103,9 @@ public final class SignInRegistration {
     if (fallbackFlag != null && !(fallbackFlag instanceof Boolean)) throw new Refused("googleBrowserFallback");
     boolean browserFallback = Boolean.TRUE.equals(fallbackFlag);
     if (browserFallback && mode != GoogleMode.PICKER) throw new Refused("googleBrowserFallback needs picker");
+    Map<String, ?> jobs = map(config.get("keyJobs"), "keyJobs");
+    KeyJobs keyJobs = new KeyJobs(jobId(jobs, "daily"), jobId(jobs, "renewal"));
+    if (keyJobs.daily() == keyJobs.renewal()) throw new Refused("keyJobs must differ");
     Map<String, Environment> environments = new LinkedHashMap<>();
     List<String> hosts = new ArrayList<>();
     for (Object row : list(config, "environments", true)) {
@@ -128,7 +134,7 @@ public final class SignInRegistration {
       if (!METHODS.contains(method) || !path.startsWith("/api/") || !ROUTE_PATH.matcher(path).matches()) throw new Refused("route " + method + " " + path);
       routes.add(new Route(method, path));
     }
-    return new SignInRegistration(clientId, tests, mode, browserFallback, Collections.unmodifiableMap(environments),
+    return new SignInRegistration(clientId, tests, mode, browserFallback, keyJobs, Collections.unmodifiableMap(environments),
       List.copyOf(scopes), List.copyOf(routes));
   }
 
@@ -137,6 +143,11 @@ public final class SignInRegistration {
   }
 
   private static String refuse(String key) { throw new Refused(key); }
+
+  private static int jobId(Map<String, ?> jobs, String key) {
+    if (jobs.get(key) instanceof Number id && id.doubleValue() == id.longValue() && id.longValue() >= 1 && id.longValue() <= Integer.MAX_VALUE) return id.intValue();
+    throw new Refused("keyJobs." + key);
+  }
 
   @SuppressWarnings("unchecked")
   private static Map<String, ?> map(Object value, String key) {

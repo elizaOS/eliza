@@ -202,6 +202,34 @@ public final class DeviceCredentialStore implements CredentialReader {
     synchronized (lock) { advance(); return CredentialPolicy.renewDue(state); }
   }
 
+  public boolean leaseRefreshDue() {
+    synchronized (lock) { advance(); return CredentialPolicy.leaseRefreshDue(state); }
+  }
+
+  public long renewAt() {
+    synchronized (lock) { advance(); return state.lease() instanceof Lease.Held held ? held.renewAt() : 0; }
+  }
+
+  public Outcome renewalRefused(int attempt) {
+    List<Notice> out;
+    synchronized (lock) {
+      advance();
+      if (!CredentialPolicy.canRenewalRefused(state, attempt)) return Outcome.REFUSED;
+      out = commit(CredentialPolicy.renewalRefused(state, attempt));
+    }
+    deliver(out);
+    return Outcome.ACCEPTED;
+  }
+
+  public Outcome retryDuties() {
+    synchronized (lock) {
+      advance();
+      if (!CredentialPolicy.canRetryDuties(state)) return Outcome.REFUSED;
+      commit(new Step(CredentialPolicy.retryDuties(state), List.of()));
+    }
+    return Outcome.ACCEPTED;
+  }
+
   public HeldLease lease() {
     synchronized (lock) {
       advance();

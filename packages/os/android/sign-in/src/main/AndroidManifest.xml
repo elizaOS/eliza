@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />
@@ -8,4 +9,10 @@
             <data android:scheme="https" />
         </intent>
     </queries>
+    <application>
+        <service
+            android:name="ai.eliza.plugins.signin.DeviceKeyJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+    </application>
 </manifest>

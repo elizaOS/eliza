@@ -49,6 +49,7 @@ public final class ReadinessJourney {
     if (tests) config.put("testEnvironments", true);
     config.put("environments", environments);
     config.put("googleScopes", List.of("openid", "email"));
+    config.put("keyJobs", Map.of("daily", 7101, "renewal", 7102));
     config.put("routes", List.of(Map.of("method", "GET", "path", "/api/v1/user")));
     return config;
   }
@@ -92,6 +93,12 @@ public final class ReadinessJourney {
     emit("registration-no-production", refusal(config("picker", true, List.of(environment("staging", STAGING)))));
     emit("registration-shared-origin", refusal(config("picker", true, List.of(environment("production", ORIGIN), environment("staging", ORIGIN)))));
     emit("registration-hosted-mode", refusal(config("hosted", false, List.of(environment("production", ORIGIN)))));
+    Map<String, Object> noKeyJobs = config("picker", false, List.of(environment("production", ORIGIN)));
+    noKeyJobs.remove("keyJobs");
+    emit("registration-no-key-jobs", refusal(noKeyJobs));
+    Map<String, Object> oneKeyJob = config("picker", false, List.of(environment("production", ORIGIN)));
+    oneKeyJob.put("keyJobs", Map.of("daily", 7101, "renewal", 7101));
+    emit("registration-one-key-job", refusal(oneKeyJob));
 
     AtomicReference<Reply> configReply = new AtomicReference<>();
     AtomicReference<Reply> serviceReply = new AtomicReference<>();

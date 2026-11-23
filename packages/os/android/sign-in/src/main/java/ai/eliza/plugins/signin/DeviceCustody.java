@@ -14,6 +14,7 @@ import ai.eliza.plugins.signin.SignInRegistration.Environment;
 import android.content.Context;
 import java.net.URI;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -33,7 +34,25 @@ public final class DeviceCustody implements SignInCustody {
   }
 
   public static SignInCustody custody(Context context, SignInRegistration registration) {
-    return new DeviceCustody(context.getApplicationContext(), registration);
+    Context application = context.getApplicationContext();
+    DeviceKeyJob.schedule(application, registration);
+    return new DeviceCustody(application, registration);
+  }
+
+  static void runDailyJob(Context context, List<String> apiOrigins, Runnable finished) {
+    DUTIES.execute(() -> {
+      long renewAt = Long.MAX_VALUE;
+      try {
+        for (String apiOrigin : apiOrigins) {
+          Authority authority = authority(context, apiOrigin);
+          authority.lease().runDailyJob();
+          if (authority.store().renewAt() > 0) renewAt = Math.min(renewAt, authority.store().renewAt());
+        }
+      } finally {
+        finished.run();
+        if (renewAt < Long.MAX_VALUE) DeviceKeyJob.renewAt(context, renewAt);
+      }
+    });
   }
 
   public static CredentialReader reader(Context context, String apiOrigin) {
@@ -94,12 +113,16 @@ public final class DeviceCustody implements SignInCustody {
       @Override public void remove(String slot) throws Exception { secure.remove(slot); }
     }, DeviceCredentialStore.authorityDigest(apiOrigin), System::currentTimeMillis);
     DeviceKeyClient client = new DeviceKeyClient(URI.create(apiOrigin), store, Thread::sleep);
+    DeviceLease lease = new DeviceLease(store, client, DUTIES);
     store.onVerifyAccount(() -> DUTIES.execute(client::verifyAccount));
-    store.onRenewKey(() -> DUTIES.execute(client::renew));
-    Authority created = new Authority(store, client, new AccountSession(store, client), new DeviceLease(store, client, () -> DUTIES.execute(client::renewIfDue)));
+    store.onRenewKey(() -> DUTIES.execute(lease::renewKey));
+    store.listen(notice -> {
+      if (notice instanceof CredentialPolicy.Notice.Announce) DeviceKeyJob.renewAt(context.getApplicationContext(), store.renewAt());
+    });
+    Authority created = new Authority(store, client, new AccountSession(store, client), lease);
     AUTHORITIES.put(apiOrigin, created);
     DUTIES.execute(client::settleDuties);
-    DUTIES.execute(client::renewIfDue);
+    DUTIES.execute(lease::renewKeyIfDue);
     return created;
   }
 

@@ -139,23 +139,28 @@ public final class DeviceKeyClient {
   private long after(Map<String, Object> answer, String key) {
     long seconds = CredentialJson.whole(answer, key);
     if (seconds <= 0 || seconds > Integer.MAX_VALUE) throw new CredentialJson.Malformed(key);
-    return clock.getAsLong() + seconds * 1000L;
+    return Math.max(clock.getAsLong(), store.state().now()) + seconds * 1000L;
   }
 
-  public <T> Answer<T> presentLease(String method, String path, String body, Reading<T> reading) {
+  public interface Settle<T> {
+    void settle(int version, Answer<T> answer);
+  }
+
+  public <T> Answer<T> presentLease(String method, String path, String body, Reading<T> reading, Settle<T> settle) {
     synchronized (presenting) {
       HeldLease held = store.lease();
       if (held == null) return new Answer.Refused<>(401, "authentication_required", Reason.CREDENTIAL_UNKNOWN);
       Answer<T> answer = ask(method, path, held.refresh(), body, 200, reading);
-      if (answer instanceof Answer.Refused<T> refused && refused.status() == 401)
-        store.leaseRejected(held.version(), CloudRequestPolicy.credentialReasonOf(refused.reason()), LeaseUse.REFRESH_USE);
+      if (answer instanceof Answer.Refused<T> refused && refused.status() == 401 && refused.reason().credential())
+        store.leaseRejected(held.version(), refused.reason(), LeaseUse.REFRESH_USE);
+      settle.settle(held.version(), answer);
       return answer;
     }
   }
 
-  public Answer<Rotated> rotateLease() {
-    return presentLease("POST", LEASE, "{}", answer -> new Rotated(secret(answer, "access", LEASE_ACCESS), after(answer, "accessExpiresIn"),
-      secret(answer, "refresh", LEASE_REFRESH), after(answer, "refreshExpiresIn")));
+  public Answer<Rotated> rotateLease(Settle<Rotated> written) {
+    return presentLease("POST", LEASE, null, answer -> new Rotated(secret(answer, "access", LEASE_ACCESS), after(answer, "accessExpiresIn"),
+      secret(answer, "refresh", LEASE_REFRESH), after(answer, "refreshExpiresIn")), written);
   }
 
   public Exchange renew() {
@@ -164,8 +169,10 @@ public final class DeviceKeyClient {
     int attempt = store.beginRenewal();
     if (attempt == 0) return Exchange.SUPERSEDED;
     Account account = store.account();
-    Answer<Renewed> answer = presentLease("POST", RENEW, "{}",
-      body -> new Renewed(CredentialJson.text(body, "credentialId"), CredentialJson.text(body, "secret"), after(body, "expiresIn")));
+    Answer<Renewed> answer = presentLease("POST", RENEW, null,
+      body -> new Renewed(CredentialJson.text(body, "credentialId"), CredentialJson.text(body, "secret"), after(body, "expiresIn")), (version, settled) -> {});
+    if (answer instanceof Answer.Refused<Renewed> refused && refusedForGood(refused))
+      return store.renewalRefused(attempt) == Outcome.ACCEPTED ? Exchange.REFUSED : Exchange.SUPERSEDED;
     if (!(answer instanceof Answer.Answered<Renewed> renewed)) return end(attempt);
     Kept kept = store.tokenAnswered(attempt, new Token(renewed.value().credentialId(), renewed.value().secret(), account, renewed.value().expiresAt()));
     if (kept != Kept.KEPT) return end(attempt);
@@ -173,8 +180,8 @@ public final class DeviceKeyClient {
     return pending == null || pending.attempt() != attempt ? Exchange.SUPERSEDED : acknowledge(pending);
   }
 
-  public void renewIfDue() {
-    if (store.renewDue() || store.pendingRenewal() != null) renew();
+  private static boolean refusedForGood(Answer.Refused<?> refused) {
+    return refused.status() >= 400 && refused.status() < 500 && !refused.retryable() && !(refused.status() == 401 && refused.reason().credential());
   }
 
   public Answer<Acknowledgement> ack(String credentialId, String secret) {
@@ -243,8 +250,8 @@ public final class DeviceKeyClient {
   public void verifyAccount() {
     CredentialReader.Credential held = store.current();
     if (held == null) return;
-    if (user(held.value()) instanceof Answer.Refused<Account> refused && refused.status() == 401 && refused.reason().credential())
-      store.rejected(held.version(), refused.reason(), RejectedOn.ACCOUNT_READ);
+    if (user(held.value()) instanceof Answer.Refused<Account> refused && refused.status() == 401 && refused.reason().credential()
+      && store.rejected(held.version(), refused.reason(), RejectedOn.ACCOUNT_READ) == Outcome.ACCEPTED) settleDuties();
   }
 
   private Exchange acknowledge(Pending pending) {

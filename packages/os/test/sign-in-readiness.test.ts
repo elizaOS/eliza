@@ -40,7 +40,8 @@ describe("Show only the methods the cloud is ready for", () => {
   it("serves a fresh answer at once, measures behind it, keeps it through no reading and announces only a change", async () => {
     const steps = await journey();
     expect(["registration-no-client", "registration-test-environment-not-enabled", "registration-plain-http", "registration-no-production",
-      "registration-shared-origin", "registration-hosted-mode"].map((step) => steps.get(step))).toEqual(Array(6).fill("refused"));
+      "registration-shared-origin", "registration-hosted-mode", "registration-no-key-jobs", "registration-one-key-job"].map((step) => steps.get(step)))
+      .toEqual(Array(8).fill("refused"));
     expect(steps.get("registration-valid")).toBe("accepted");
     expect(steps.get("load-probes")).toEqual([1, 1]);
     expect(steps.get("load-query")).toBe("/api/v1/app-auth/mobile/config?clientId=ai.example.phone&environment=production&redirectUri=https%3A%2F%2Fapp.cloud.test%2Fauth%2Fproduction");

@@ -134,6 +134,8 @@ public final class CredentialReplay {
         }
       }
       case "beginRenewal" -> store.beginRenewal() != 0;
+      case "renewalRefused" -> store.renewalRefused(CredentialJson.small(e, "attempt")) == Outcome.ACCEPTED;
+      case "retryDuties" -> store.retryDuties() == Outcome.ACCEPTED;
       case "readLease" -> {
         SessionRead read = store.readLease();
         if (read == SessionRead.START_REFRESH) out.add(new Notice.RefreshLease());

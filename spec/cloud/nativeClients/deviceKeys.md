@@ -508,10 +508,14 @@ same `/mobile/ack`. The native shell renews when less than half the key's
 life is left, at a lease refresh or a daily job. Every renewal follows a
 lease refresh made just before it and presents the refresh that refresh
 offered, within its 15 minutes, which commits that pair; a renewal alone
-never moves the lease's 90-day end (`identity/sessions`). The daily job also
-refreshes a lease not refreshed for a day, so a tablet asks for a sign-in
-only after 90 days switched off or offline, a sign-out or a revocation. The
-device key can never renew itself.
+never moves the lease's 90-day end (`identity/sessions`). The daily job, which
+the shared sign-in shell schedules itself and keeps across reboots
+(`spec/os/signIn/credential.md`) and an app on its own device account
+schedules for it, also refreshes a lease not refreshed for a day, so a
+tablet asks for a sign-in only after 90 days switched off or offline, a
+sign-out or a revocation. A renewal refused for good once the key has
+expired also asks for one sign-in, and keeps the account. The device key can
+never renew itself.
 
 ### Only a live lease renews a key, and only while the key it replaces is live or merely expired and of the person's current device epoch
 

@@ -23,7 +23,7 @@ public final class BrowserReturnReplay {
   private static final String LINK = "https://links.example.test/open/same";
   private static final String VERIFIER = "v".repeat(64);
   private static final SignInRegistration REGISTRATION = SignInRegistration.parse(Map.of(
-    "clientId", "test.client", "testEnvironments", true, "googleMode", "browser",
+    "clientId", "test.client", "testEnvironments", true, "googleMode", "browser", "keyJobs", Map.of("daily", 7101, "renewal", 7102),
     "environments", List.of(
       Map.of("name", "production", "apiOrigin", "https://cloud.example.test", "appLinkHost", "one.example.test", "redirectPath", "/callback"),
       Map.of("name", "staging", "apiOrigin", "https://staging.example.test", "appLinkHost", "two.example.test", "redirectPath", "/callback"))));

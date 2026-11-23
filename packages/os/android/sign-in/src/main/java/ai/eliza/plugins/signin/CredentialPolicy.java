@@ -9,6 +9,8 @@ public final class CredentialPolicy {
   private CredentialPolicy() {}
 
   public static final long MILLIS_PER_MINUTE = 60_000L;
+  public static final long MILLIS_PER_DAY = 1_440 * MILLIS_PER_MINUTE;
+  public static final long LEASE_IDLE_LIFETIME_MS = 90 * MILLIS_PER_DAY;
   public static final long ACK_WINDOW_MS = 5 * MILLIS_PER_MINUTE;
   public static final long FRESH_WINDOW_MS = 60 * MILLIS_PER_MINUTE;
   public static final long LEASE_ACCESS_LIFETIME_MS = 15 * MILLIS_PER_MINUTE;
@@ -244,7 +246,9 @@ public final class CredentialPolicy {
       return new Step(s.with(NO_SESSION), s.attempt() instanceof Attempt.NoAttempt ? List.of(new Notice.RenewKey()) : List.of());
     if (reason == Reason.CREDENTIAL_EXPIRED) return new Step(s.with(new Custody.Expired(accountOf(s))).with(NO_SESSION).with(NO_LEASE), List.of(new Notice.ExpiredNotice()));
     if (on == RejectedOn.ACCOUNT_READ)
-      return new Step(s.with(SIGNED_OUT).with(NO_SESSION).with(NO_LEASE).with(isRenewal(s.attempt()) ? NO_ATTEMPT : s.attempt()), List.of(new Notice.SignedOutNotice()));
+      return new Step(s.with(SIGNED_OUT).with(NO_SESSION).with(NO_LEASE).with(isRenewal(s.attempt()) ? NO_ATTEMPT : s.attempt())
+        .withDuties(concat(s.duties(), leaseVersionOf(s.lease()) == version ? keyDuty(s.custody(), s.lease(), SIGN_OUT_ATTEMPTS) : List.of())),
+        List.of(new Notice.SignedOutNotice()));
     return new Step(s, List.of(new Notice.VerifyAccount()));
   }
 
@@ -365,12 +369,13 @@ public final class CredentialPolicy {
     State left = new State(s.now(), s.generation(), s.lastVersion(), s.custody(), renewing ? NO_ATTEMPT : s.attempt(),
       concat(concat(s.duties(), keyDuty(s.custody(), NO_LEASE, SIGN_OUT_ATTEMPTS)), renewing ? pendingDuty(s.attempt(), SIGN_OUT_ATTEMPTS) : List.of()),
       NO_SESSION, NO_LEASE);
-    if (reason == Reason.CREDENTIAL_EXPIRED) return new Step(left.with(new Custody.Expired(accountOf(s))), List.of(new Notice.ExpiredNotice()));
+    if (reason == Reason.CREDENTIAL_EXPIRED || reason == Reason.CREDENTIAL_UNKNOWN && s.now() >= x.refreshExpiresAt())
+      return new Step(left.with(new Custody.Expired(accountOf(s))), List.of(new Notice.ExpiredNotice()));
     return new Step(left.with(SIGNED_OUT), List.of(new Notice.SignedOutNotice()));
   }
 
   public static boolean canBeginRenewal(State s) {
-    return isSignedIn(s) && s.attempt() instanceof Attempt.NoAttempt && leaseVersionOf(s.lease()) == activeVersion(s);
+    return isSignedIn(s) && s.attempt() instanceof Attempt.NoAttempt && leaseVersionOf(s.lease()) == activeVersion(s) && leaseUsable(s);
   }
 
   public static State beginRenewal(State s) {
@@ -379,7 +384,36 @@ public final class CredentialPolicy {
   }
 
   public static boolean renewDue(State s) {
-    return canBeginRenewal(s) && s.lease() instanceof Lease.Held x && s.now() >= x.renewAt();
+    return isSignedIn(s) && s.attempt() instanceof Attempt.NoAttempt && s.lease() instanceof Lease.Held x && x.version() == activeVersion(s) && s.now() >= x.renewAt();
+  }
+
+  static long keyExpiresAtOf(Custody c) {
+    return c instanceof Custody.Active a ? a.keyExpiresAt() : 0;
+  }
+
+  public static boolean canRenewalRefused(State s, int attempt) {
+    return s.attempt() instanceof Attempt.Renewing && attemptOf(s) == attempt;
+  }
+
+  public static Step renewalRefused(State s, int attempt) {
+    if (s.now() < keyExpiresAtOf(s.custody())) return Step.of(s.with(NO_ATTEMPT));
+    return new Step(new State(s.now(), s.generation(), s.lastVersion(), new Custody.Expired(accountOf(s)), NO_ATTEMPT,
+      concat(s.duties(), keyDuty(s.custody(), s.lease(), SIGN_OUT_ATTEMPTS)), NO_SESSION, NO_LEASE), List.of(new Notice.ExpiredNotice()));
+  }
+
+  public static boolean leaseRefreshDue(State s) {
+    return s.lease() instanceof Lease.Held x && x.refreshExpiresAt() <= s.now() + LEASE_IDLE_LIFETIME_MS - MILLIS_PER_DAY;
+  }
+
+  public static boolean canRetryDuties(State s) {
+    for (Duty d : s.duties()) if (d.tries() < START_ATTEMPTS) return true;
+    return false;
+  }
+
+  public static State retryDuties(State s) {
+    List<Duty> duties = new ArrayList<>();
+    for (Duty d : s.duties()) duties.add(d.tries() < START_ATTEMPTS ? new Duty(d.version(), d.lapsesAt(), START_ATTEMPTS, d.lease()) : d);
+    return s.withDuties(duties);
   }
 
   public static String json(Account a) {
@@ -524,7 +558,7 @@ public final class CredentialPolicy {
     }
     if (s.lease() instanceof Lease.Held x) {
       if (!(x.version() >= 1 && x.version() == activeVersion(s) && x.accessExpiresAt() <= s.now() + LEASE_ACCESS_LIFETIME_MS)) return false;
-      if (x.waiters() < 0 || (x.waiters() >= 1 && !x.refreshing())) return false;
+      if (x.waiters() < 0 || (x.waiters() >= 1 && !x.refreshing()) || (x.refreshing() && s.now() < x.accessExpiresAt())) return false;
     }
     if (isRenewal(s.attempt()) && !(isSignedIn(s) && leaseVersionOf(s.lease()) == activeVersion(s))) return false;
     return true;

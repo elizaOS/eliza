@@ -171,9 +171,12 @@ to renew the key through the lease (`RenewKey`), unless a sign-in or
 renewal is already under way; on a key without a lease it keeps the account
 and the local data and asks for a new sign-in. `credential_revoked` or
 `credential_unknown` from `GET /api/v1/user` signs out and clears the stored
-credential and its lease, owing no revoke; from any other request it only
-asks the shell to read `GET /api/v1/user`. A `401` for a key already
-replaced changes nothing.
+credential and its lease, owing a revoke only of the lease it held, with its
+key: a copier that renewed with this device's lease refresh moved that lease
+off this device, and the lease's `DELETE` ends it and the copier's key
+(`spec/cloud/identity/sessions.md`). From any other request it only asks the
+shell to read `GET /api/v1/user`. A `401` for a key already replaced changes
+nothing.
 
 ```quint
 pure def canRejected(s: DeviceCredential, version: int, reason: RefusalReason): bool = version >= 1 and activeVersion(s) == version and isCredentialReason(reason)
@@ -182,7 +185,8 @@ pure def rejected(s: DeviceCredential, version: int, reason: RefusalReason, on: 
   if (isRenewal(s.attempt) and pendingVersion(s) >= 1) { state: { ...s, session: NoSession }, out: List(RenewKey) }
   else if (reason == CredentialExpired and leaseVersionOf(s.lease) == version) { state: { ...s, session: NoSession }, out: if (s.attempt == NoAttempt) List(RenewKey) else List() }
   else if (reason == CredentialExpired) { state: { ...s, custody: Expired({ account: accountOf(s) }), session: NoSession, lease: NoLease }, out: List(ExpiredNotice) }
-  else if (on == AccountRead) { state: { ...s, custody: SignedOut, session: NoSession, lease: NoLease, attempt: if (isRenewal(s.attempt)) NoAttempt else s.attempt }, out: List(SignedOutNotice) }
+  else if (on == AccountRead) { state: { ...s, custody: SignedOut, session: NoSession, lease: NoLease, attempt: if (isRenewal(s.attempt)) NoAttempt else s.attempt,
+      duties: s.duties.concat(if (leaseVersionOf(s.lease) == version) keyDuty(s.custody, s.lease, signOutAttempts) else List()) }, out: List(SignedOutNotice) }
   else { state: s, out: List(VerifyAccount) }
 pure val versionValues = Set(1, 2)
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
@@ -219,10 +223,14 @@ keeps the old secret valid until the new one is first presented, so a lost
 or unwritten answer leaves the device on the old secret, and a later refresh
 is answered with the same new pair; presenting an older secret after the new
 one is theft, which ends this device's key and lease. No answer keeps the
-lease for the next reader. Every refresh ends with an answer: one that lands
-after a renewal moved the lease to a new key is not written, and a refresh
-the shell cannot finish counts as unanswered, so no reader waits on a
-refresh that is gone.
+lease for the next reader; a `401` without a credential reason counts as no
+answer. The shell writes the rotated secret before any other request can
+present the lease, so a renewal that waits on a refresh presents the secret
+that refresh offered, never the one before it. Every refresh ends with an
+answer: one that lands after a renewal moved the lease to a new key is not
+written, and a refresh the shell cannot finish counts as unanswered, so no
+reader waits on a refresh that is gone. While a refresh is in flight the
+lease's access token is never usable.
 
 ```quint
 type LeaseAnswer = LeaseRotated({ accessExpiresAt: Millis, refreshExpiresAt: Millis, stored: S::ExchangeOutcome }) | LeaseUnanswered
@@ -255,21 +263,27 @@ pure val weight_readLease = 3
 pure def stepOneLeaseRefreshInFlight(before: DeviceCredential, via: str, after: DeviceCredential, out: List[CredentialNotice]): bool =
   out.includes(RefreshLease) implies (not(isLeaseRefreshing(before)) and isLeaseRefreshing(after))
 pure def alwaysLeaseWaitersAreCounted(s: DeviceCredential): bool = isLeaseRefreshing(s) implies waitersOf(leaseRefreshOf(s.lease)) >= 0
+pure def alwaysARefreshingLeaseIsNotUsable(s: DeviceCredential): bool = isLeaseRefreshing(s) implies not(leaseUsable(s))
 pure def sometimesLeaseRotated(s: DeviceCredential): bool = leaseUsable(s)
 pure def sometimesLeaseReadersShareOneRefresh(s: DeviceCredential): bool = waitersOf(leaseRefreshOf(s.lease)) >= 1
 ```
 
-### A revoked or unknown lease signs the device out completely, and an expired one keeps the account
+### A revoked lease, or one unknown before its end, signs the device out completely, and an expired or lapsed one keeps the account
 
 A `401` with a credential reason for the lease's refresh secret, from a
-refresh, a renewal or a revoke, ends the lease. `credential_revoked` or
-`credential_unknown` signs the device out: the key, and a renewal under way,
-leave with a revoke duty, so the device is never left able to reach the
-cloud without mail. `credential_expired` (ninety days without a refresh)
-keeps the account and the local data and asks for a new sign-in, owing the
-key. A sign-in under way is kept: it is how the person comes back. A `401`
-for the lease's access token only discards that token, so the next reader
-refreshes and the refresh decides.
+refresh, a renewal or a revoke, ends the lease. `credential_revoked`, or
+`credential_unknown` before the lease's end, signs the device out: the key,
+and a renewal under way, leave with a revoke duty, so the device is never
+left able to reach the cloud without mail. `credential_expired`, or
+`credential_unknown` once the lease's end has passed (`refreshExpiresAt`,
+ninety days after its last refresh, as the device last heard it), keeps the
+account and the local data and asks for a new sign-in, owing the key: the
+cloud forgets a lease past its end and answers `credential_unknown` for it
+(`spec/cloud/identity/sessions.md`), so a device switched off or offline
+for ninety days signs in once and loses nothing. A sign-in under way is
+kept: it is how the person comes back. A `401` for the lease's access token
+only discards that token, so the next reader refreshes and the refresh
+decides.
 
 ```quint
 type LeaseUse = RefreshUse | AccessUse
@@ -282,7 +296,8 @@ pure def leaseRejected(s: DeviceCredential, version: int, reason: RefusalReason,
     duties: s.duties.concat(keyDuty(s.custody, NoLease, signOutAttempts)).concat(if (isRenewal(s.attempt)) pendingDuty(s.attempt, signOutAttempts) else List()) }
   match held {
     | Lease(x) => if (presented == AccessUse) { state: { ...s, lease: Lease({ ...x, accessExpiresAt: 0 }) }, out: List() }
-        else if (reason == CredentialExpired) { state: { ...left, custody: Expired({ account: accountOf(s) }) }, out: List(ExpiredNotice) }
+        else if (reason == CredentialExpired or (reason == CredentialUnknown and s.now >= x.refreshExpiresAt))
+          { state: { ...left, custody: Expired({ account: accountOf(s) }) }, out: List(ExpiredNotice) }
         else { state: { ...left, custody: SignedOut }, out: List(SignedOutNotice) }
     | NoLease => { state: s, out: List() }
   } }
@@ -292,33 +307,90 @@ pure def sometimesSignedOutByTheLease(s: DeviceCredential): bool = s.custody == 
 ### Only the lease renews the key, and a renewed key keeps the account and the lease
 
 The key itself can never renew itself, so a copied key lapses with its
-lifetime. While the device holds a lease and no sign-in or renewal is under
-way, the shell asks `POST /api/v1/app-auth/mobile/renew` with the lease's
-refresh secret: after any lease refresh or at a daily job once half the
-key's life is gone (`renewDue`), and at once when the cloud says the key
+lifetime. Only a lease refresh moves the lease's ninety-day end
+(`spec/cloud/identity/sessions.md`), so every renewal follows one: while the
+device holds a lease and no sign-in or renewal is under way, the shell first
+refreshes the lease unless its access token is still usable (a refresh taken
+within the last quarter hour), and then asks `POST
+/api/v1/app-auth/mobile/renew` with the refresh secret that refresh stored,
+within its quarter hour, which spends the secret before it. It renews once
+half the key's life is gone (`renewDue`), checked at each start, after each
+lease refresh and at its daily job, and at once when the cloud says the key
 expired (`RenewKey`). The answer is a new key of the same account, kept and
 acknowledged as a sign-in's is; the acknowledgement moves the lease to it
 and the replaced key leaves with a revoke duty. A renewed key whose
-acknowledgement went unanswered is asked about again at the next start, lease
-refresh or `RenewKey`, before any new renewal, so a lost reply never strands
-the device. A renewal the cloud refuses ends as a refused sign-in does.
-Starting a renewal changes nothing else: the active key, the duties and the
-account session stay as they were until the successor is acknowledged.
+acknowledgement went unanswered is asked about again at the next start,
+daily job, lease refresh or `RenewKey`, before any new renewal, so a lost
+reply never strands the device. A renewal refused for good, any `4xx` but
+`408`, `429` and a `401` with a credential reason (which the lease rules
+take), ends the attempt: a key already expired leaves for `Expired`, which
+keeps the account and the local data, owes the key and its lease and asks
+for one sign-in (`ExpiredNotice`); a key still live is kept, and the next
+start, lease refresh, daily job or `RenewKey` asks again. No answer, `408`,
+`429` or a `5xx` leave the next try to those same moments. Starting a
+renewal changes nothing else: the active key, the duties and the account
+session stay as they were until the successor is acknowledged.
 
 ```quint
 pure def renewAtOf(l: DeviceLease): Millis = match l { | Lease(x) => x.renewAt | NoLease => 0 }
-pure def canBeginRenewal(s: DeviceCredential): bool = isSignedIn(s) and s.attempt == NoAttempt and leaseVersionOf(s.lease) == activeVersion(s)
+pure def canBeginRenewal(s: DeviceCredential): bool = isSignedIn(s) and s.attempt == NoAttempt and leaseVersionOf(s.lease) == activeVersion(s) and leaseUsable(s)
 pure def beginRenewal(s: DeviceCredential): DeviceCredential = { ...s, generation: s.generation + 1, attempt: Renewing({ attempt: s.generation + 1 }) }
-pure def renewDue(s: DeviceCredential): bool = canBeginRenewal(s) and s.now >= renewAtOf(s.lease)
+pure def renewDue(s: DeviceCredential): bool = isSignedIn(s) and s.attempt == NoAttempt and leaseVersionOf(s.lease) == activeVersion(s) and s.now >= renewAtOf(s.lease)
 pure def isRenewing(p: Attempt): bool = match p { | Renewing(r) => true | _ => false }
+pure def keyExpiresAtOf(c: Custody): Millis = match c { | Active(a) => a.keyExpiresAt | _ => 0 }
+pure def canRenewalRefused(s: DeviceCredential, attempt: int): bool = isRenewing(s.attempt) and attemptOf(s) == attempt
+pure def renewalRefused(s: DeviceCredential, attempt: int): CredentialStep =
+  if (s.now >= keyExpiresAtOf(s.custody)) { state: { ...s, custody: Expired({ account: accountOf(s) }), attempt: NoAttempt, session: NoSession, lease: NoLease,
+      duties: s.duties.concat(keyDuty(s.custody, s.lease, signOutAttempts)) }, out: List(ExpiredNotice) }
+  else { state: { ...s, attempt: NoAttempt }, out: List() }
 pure def stepARenewalStartsOnlyFromTheLease(before: DeviceCredential, via: str, after: DeviceCredential): bool =
   (isRenewing(after.attempt) and not(isRenewing(before.attempt))) implies (via == "beginRenewal" and canBeginRenewal(before))
 pure def stepARenewalKeepsTheActiveKey(before: DeviceCredential, via: str, after: DeviceCredential): bool =
   via == "beginRenewal" implies (after.custody == before.custody and after.duties == before.duties and after.session == before.session)
+pure def stepARefusedRenewalEndsOnlyAnExpiredKey(before: DeviceCredential, via: str, after: DeviceCredential): bool =
+  via == "renewalRefused" implies (if (before.now >= keyExpiresAtOf(before.custody)) (after.custody == Expired({ account: accountOf(before) }) and owesLease(after, activeVersion(before)))
+    else (after.custody == before.custody and after.lease == before.lease and after.duties == before.duties))
 pure def alwaysARenewalKeepsTheAccount(s: DeviceCredential): bool = isRenewal(s.attempt) implies (isSignedIn(s) and leaseVersionOf(s.lease) == activeVersion(s))
 pure def sometimesRenewing(s: DeviceCredential): bool = offerOf(s.attempt) == Renewal
 pure def sometimesKeyRenewedByTheLease(s: DeviceCredential): bool =
   activeVersion(s) >= 2 and leaseVersionOf(s.lease) == activeVersion(s) and s.duties.some(d => d.version == activeVersion(s) - 1 and not(d.lease))
+pure def sometimesExpiredOwingItsLease(s: DeviceCredential): bool = s.custody == Expired({ account: accountOf(s) }) and s.duties.some(d => d.lease)
+pure val eval_witness_sometimesRenewing = ("beginSignIn",
+  ("tokenAnswered", 1, "c1", { userId: "u1", organizationId: "o1" }, 2592000000, Offered({ refreshExpiresAt: 7776000000 }), S::Written), ("acknowledged", 1, "c1", 2592000000),
+  "readLease", ("leaseRefreshAnswered", LeaseRotated({ accessExpiresAt: 9000000000, refreshExpiresAt: 7776000000, stored: S::Written })), "beginRenewal", ("tokenAnswered", 2, "c2", { userId: "u1", organizationId: "o1" }, 2592000000, NoOffer, S::Written))
+pure val eval_witness_sometimesKeyRenewedByTheLease = ("beginSignIn",
+  ("tokenAnswered", 1, "c1", { userId: "u1", organizationId: "o1" }, 2592000000, Offered({ refreshExpiresAt: 7776000000 }), S::Written), ("acknowledged", 1, "c1", 2592000000),
+  "readLease", ("leaseRefreshAnswered", LeaseRotated({ accessExpiresAt: 9000000000, refreshExpiresAt: 7776000000, stored: S::Written })), "beginRenewal", ("tokenAnswered", 2, "c2", { userId: "u1", organizationId: "o1" }, 2592000000, NoOffer, S::Written),
+  ("acknowledged", 2, "c2", 2592000000))
+pure val eval_witness_sometimesExpiredOwingItsLease = ("beginSignIn",
+  ("tokenAnswered", 1, "c1", { userId: "u1", organizationId: "o1" }, 120000, Offered({ refreshExpiresAt: 7776000000 }), S::Written), ("acknowledged", 1, "c1", 120000),
+  "readLease", ("leaseRefreshAnswered", LeaseRotated({ accessExpiresAt: 9000000000, refreshExpiresAt: 7776000000, stored: S::Written })), "beginRenewal", ("elapse", 1000000), ("renewalRefused", 2))
+```
+
+### A daily job kept across reboots gives every spent duty one more try, refreshes a lease a day old and renews a key that is due
+
+The shell schedules its own job, persisted across reboots under the two job
+ids its host registers (`./flow.md`), and runs it in the app's own process:
+daily, and once more when a key is due to renew, so a key of one day still
+renews in time. Each run, for each of the host's deployments, gives every
+owed duty whose tries are spent one more, as a start does, and asks the
+duties; then refreshes the lease when its last refresh is a day old or more
+(`leaseRefreshDue`), and renews the key when it is due. So a device that is
+switched on and online refreshes its lease at least daily and never reaches
+the lease's ninety-day end, a sign-out made offline still reaches the cloud,
+and a lease a copier rotated and used is found within a day: the device's
+next refresh presents a spent secret, which the cloud takes as theft.
+
+```quint
+pure def leaseRefreshDue(s: DeviceCredential): bool = { val held = s.lease  match held {
+  | Lease(x) => x.refreshExpiresAt <= s.now + Iss::leaseIdleLifetime - millisPerDay
+  | NoLease => false } }
+pure def canRetryDuties(s: DeviceCredential): bool = s.duties.some(d => d.tries < startAttempts)
+pure def retryDuties(s: DeviceCredential): DeviceCredential =
+  { ...s, duties: s.duties.listMap(d => if (d.tries < startAttempts) { ...d, tries: startAttempts } else d) }
+pure def stepTheDailyJobOnlyGivesSpentDutiesATry(before: DeviceCredential, via: str, after: DeviceCredential): bool =
+  via == "retryDuties" implies (after.custody == before.custody and after.attempt == before.attempt and after.lease == before.lease
+    and after.session == before.session and after.duties.length() == before.duties.length() and after.duties.every(d => d.tries >= startAttempts))
 ```
 
 ## Story: Sign out or reset cleanly
@@ -330,14 +402,17 @@ pure def sometimesKeyRenewedByTheLease(s: DeviceCredential): bool =
 
 A duty names the key's version, whether its lease left with it, and when
 the later of the two lapses. The shell stores the duty before it removes
-the key and the lease from their slots, under one lock, and sends
-`DELETE /api/v1/app-auth/mobile/lease` with the owed lease's refresh secret
-and `DELETE /api/v1/api-keys/current` with the owed key; the cloud ends
-those only. Sign-out and reset end the active key and its lease, and a key
-awaiting acknowledgement with the lease offered with it; several duties may
-be owed. A key the cloud said is expired, revoked or unknown is owed
-nothing, a key still held is never owed, and a lease a renewal kept never
-leaves with the key it replaced.
+the key and the lease from their slots, under one lock, and sends first
+`DELETE /api/v1/app-auth/mobile/lease` with the owed lease's refresh secret,
+which ends the lease and the key it is bound to, and then `DELETE
+/api/v1/api-keys/current` with the owed key, which the cloud refuses while a
+live lease is bound to it (`spec/cloud/nativeClients/deviceKeys.md`); the
+cloud ends those only. Sign-out and reset end the active key and its lease,
+and a key awaiting acknowledgement with the lease offered with it; several
+duties may be owed. A key the cloud said is expired is owed nothing, one it
+said is revoked or unknown is owed only the lease it held, a key still held
+is never owed, and a lease a renewal kept never leaves with the key it
+replaced.
 
 ```quint
 pure val signOutAttempts = 3
@@ -377,8 +452,9 @@ pure def sometimesSeveralDutiesOwed(s: DeviceCredential): bool = s.duties.length
 
 A sign-out asks at once and twice more; a reset asks once, and its local
 wipe never waits for the answer. A `2xx` or `401` answer settles the duty;
-no answer uses one try. Each start gives every owed duty one more try. A
-duty is dropped once its key has lapsed.
+no answer uses one try. Each start gives every owed duty one more try, and
+the daily job gives a spent one one more. A duty is dropped once its key has
+lapsed.
 
 ```quint
 pure val startAttempts = 1
@@ -390,7 +466,7 @@ pure def revokeAnswered(s: DeviceCredential, version: int, reply: RevokeReply): 
 pure def canElapse(s: DeviceCredential, ms: Millis): bool = ms > 0
 pure def elapse(s: DeviceCredential, ms: Millis): DeviceCredential =
   { ...s, now: s.now + ms, duties: s.duties.select(d => d.lapsesAt > s.now + ms), session: sessionAt(s.now + ms, s.session) }
-pure val msValues = Set(60000, 1000000, 3600000)
+pure val msValues = Set(60000, 1000000, 3600000, 7776000000)
 pure def sometimesSignedOutWhileKeyStillOwed(s: DeviceCredential): bool = s.custody == SignedOut and s.duties.some(d => d.tries == startAttempts)
 ```
 

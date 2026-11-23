@@ -27,7 +27,8 @@ call with its `Settled` receipt.
 ### A registration that is incomplete or ambiguous is refused when the plugin loads, and then nothing starts
 
 The host gives its client id, environments (redirects, App Link host),
-Google mode and Google scopes as data, checked once at load. A refused
+Google mode, Google scopes and the two distinct ids of the key job
+(`./credential.md`) as data, checked once at load. A refused
 registration leaves every call refused, never a hosted page. A release
 build admits only production unless the host enables test environments.
 
