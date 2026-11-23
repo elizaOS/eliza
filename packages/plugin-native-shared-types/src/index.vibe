@@ -1,0 +1,67 @@
+// spec/nativeSharedTypes/index.md, "Story: Read the speech updates the platform actually delivered"
+import { mayReadResult, speechProvider, validSegment, type RecognitionSegment } from "../gen/nativeSharedTypes.effect.vibe"
+
+export type EventCallback<T = unknown> = (event: T) => void
+
+export interface ListenerEntry<Name extends string = string, Payload = unknown> {
+  readonly eventName: Name
+  readonly callback: EventCallback<Payload>
+}
+
+export interface RecognitionAlternative {
+  readonly transcript: string
+  readonly confidence: number
+}
+
+export interface SpeechRecognitionResultList {
+  readonly length: number
+  readonly [index: number]: { readonly isFinal: boolean; readonly 0: RecognitionAlternative }
+}
+
+export interface SpeechRecognitionResultEvent {
+  readonly results: SpeechRecognitionResultList
+  readonly resultIndex: number
+}
+
+export interface SpeechRecognitionInstance extends EventTarget {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onstart: ((this: SpeechRecognitionInstance) => void) | null
+  onend: ((this: SpeechRecognitionInstance) => void) | null
+  onerror: ((this: SpeechRecognitionInstance, event: { error: string; message?: string }) => void) | null
+  onresult: ((this: SpeechRecognitionInstance, event: SpeechRecognitionResultEvent) => void) | null
+  start(): void
+  stop(): void
+  abort(): void
+}
+
+export type SpeechRecognitionCtor = new () => SpeechRecognitionInstance
+
+export interface SpeechRecognitionWindow {
+  readonly SpeechRecognition?: SpeechRecognitionCtor
+  readonly webkitSpeechRecognition?: SpeechRecognitionCtor
+}
+
+export function browserRecognitionConstructor(browser: SpeechRecognitionWindow): SpeechRecognitionCtor | undefined {
+  const source = speechProvider(browser.SpeechRecognition !== undefined, browser.webkitSpeechRecognition !== undefined)
+  return source === "StandardRecognition" ? browser.SpeechRecognition :
+    source === "WebkitRecognition" ? browser.webkitSpeechRecognition : undefined
+}
+
+export function changedSpeechResults(event: SpeechRecognitionResultEvent): RecognitionSegment[] {
+  const { results, resultIndex } = event
+  if (!Number.isSafeInteger(results.length) || !Number.isSafeInteger(resultIndex)) return []
+  const changed: RecognitionSegment[] = []
+  for (let index = resultIndex; mayReadResult(index, resultIndex, results.length); index += 1) {
+    const entry = results[index]
+    if (entry === undefined || entry[0] === undefined) continue
+    const segment: RecognitionSegment = {
+      transcript: entry[0].transcript.trim(),
+      stability: entry.isFinal ? "FinalSpeech" : "InterimSpeech",
+      confidenceMillionths: Math.round(entry[0].confidence * 1000000),
+    }
+    if (Number.isSafeInteger(segment.confidenceMillionths) && validSegment(segment)) changed.push(segment)
+  }
+  return changed
+}

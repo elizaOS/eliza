@@ -1,0 +1,118 @@
+{
+  "uuid": "10203040-5060-4070-8070-000000000001",
+  "lastMigration": 33,
+  "name": "Network signed relay fixture",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3000,
+  "hostname": "127.0.0.1",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "10203040-5060-4070-8070-000000000002",
+      "type": "http",
+      "documentation": "Accept the fixture member\u2019s signed relay; refuse altered payloads.",
+      "method": "post",
+      "endpoint": "internal/relay",
+      "responses": [
+        {
+          "uuid": "10203040-5060-4070-8070-000000000003",
+          "body": "{\"decision\":\"pass\",\"senderNotice\":\"Passed on.\",\"delivered\":true,\"replayed\":false}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Matching signed request",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "x-ntwrk-svc-ts",
+              "value": "1700000000",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "header",
+              "modifier": "x-ntwrk-svc-id",
+              "value": "local-msg-1",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "header",
+              "modifier": "x-ntwrk-svc-sig",
+              "value": "ed90531031998f3ea7e201460848d53f54bc5986e1bbf9905669e7dd4fe3a013",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "AND",
+          "disableTemplating": true,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "10203040-5060-4070-8070-000000000004",
+          "body": "{\"error\":\"bad_signature\"}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "Invalid signature or request binding",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "AND",
+          "disableTemplating": true,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    {
+      "type": "route",
+      "uuid": "10203040-5060-4070-8070-000000000002"
+    }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": false,
+  "headers": [],
+  "proxyReqHeaders": [],
+  "proxyResHeaders": [],
+  "data": [],
+  "callbacks": []
+}

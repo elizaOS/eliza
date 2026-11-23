@@ -1,0 +1,22 @@
+// spec/notes/client.md, "A save owns the captured draft and adopts only the server's exact target"; spec/notes/trash.md, "An erase that may or may not have committed never reports success"
+module edge {
+  function canonical(value: unknown): string {
+    if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]"
+    if (value !== null && typeof value === "object") {
+      const record = value as Record<string, unknown>
+      return "{" + Object.keys(record).filter((key) => record[key] !== undefined).sort()
+        .map((key) => JSON.stringify(key) + ":" + canonical(record[key])).join(",") + "}"
+    }
+    return JSON.stringify(value) ?? "null"
+  }
+  /** @throws {never} */
+  export function sameJson(a: unknown, b: unknown): boolean {
+    try {
+      return canonical(a) === canonical(b)
+    } catch {
+      return false
+    }
+  }
+}
+import { sameJson } from edge
+export { sameJson }

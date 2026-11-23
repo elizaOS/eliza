@@ -1,0 +1,25 @@
+// spec/reminders/index.md, "Story: Preserve a reminder and its escalation policy"
+import { escalationDue, mayImportReminder, validReminderDelivery, type ReminderDelivery } from "../gen/reminders.effect.vibe"
+
+export error ReminderRecordsUnavailable { reason: string }
+
+export service ReminderRecords {
+  idsForOwner(ownerId: string): string[]!ReminderRecordsUnavailable
+  insertMissing(row: ReminderDelivery): boolean!ReminderRecordsUnavailable
+  pendingForOwner(ownerId: string): ReminderDelivery[]!ReminderRecordsUnavailable
+}
+
+export effect function importReminder(ownerId: string, row: ReminderDelivery) {
+  const records = try ReminderRecords
+  const ids = try records.idsForOwner(ownerId)
+  if (!mayImportReminder(row, ownerId, [...new Set(ids)])) return false
+  return try records.insertMissing(row)
+}
+
+export effect function overdueReminders(ownerId: string) {
+  if (ownerId === "") return []
+  const at = try Clock.currentTimeMillis
+  const records = try ReminderRecords
+  const pending = try records.pendingForOwner(ownerId)
+  return pending.filter((row) => row.ownerId === ownerId && validReminderDelivery(row) && escalationDue(row, at))
+}

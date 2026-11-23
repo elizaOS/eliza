@@ -22,6 +22,8 @@ export const HARNESS = [...VARS, "fairOn", "init", "settle", "step", "probe", "i
 
 export const positiveGuardEvaluation = (name: string) => `eval_${name}__0`;
 export const positiveGuardProbe = (name: string) => `eval_${name}__1`;
+export const refusalEvaluation = (name: string) => `eval_${name}__2`;
+export const refusalFile = (model: string) => `${model}.refusal.run.qnt`;
 
 /** Values the simulator tries for a parameter of each scalar type (the proof covers all values). */
 const TRIED: Record<string, string> = { int: "(-1).to(6)", bool: "Set(true, false)", str: 'Set("", "a", "b")' };
@@ -30,9 +32,9 @@ export function harness(
   module: string, source: string, imports: string[], funs: Json[], sig: (d: Json) => { params: Param[]; result: Json },
   samples: Map<string, { elem: Json; ref: string; line: number | undefined }>, { stateType, transitions, always, sometimes, steps, laws, opaques, output, refines, sender }: Roles,
   { fields, typedef, resolve, shape, tagged, named, qType }: Types,
-  { weights, fair }: { weights: Map<string, number>; fair: Map<string, Fairness> },
+  { weights, fair, refusals }: { weights: Map<string, number>; fair: Map<string, Fairness>; refusals?: ReadonlyMap<string, string> },
   witnesses?: ReadonlyMap<string, WitnessStep[]>,
-): { text: string; guardHarness: string; evals: Eval[]; uncompared: string[] } {
+): { text: string; guardHarness: string; refusalHarness?: string; evals: Eval[]; uncompared: string[] } {
   const stateShape = stateType && shape(stateType);
   const spell = (t: Json) => { try { return qType(t).replace(/^(M|D_\w+)::/, ""); } catch { return shape(t); } };
   /**
@@ -168,7 +170,7 @@ export function harness(
   const sampled = laws.filter((l) => !onReached(l) || l.params.every((p) => !stateType || shape(p.type) !== stateShape || samples.has(`${p.name}Values`)));
   const lawAction = (l: Law) =>
     `  action ${l.name} = ${braces(l.params, l.name, frame([], { lawsHold: `M::${l.name}(${l.params.map((p) => p.name).join(", ")})` }))}`;
-  const evalAction = (v: Eval, allowOnly = false) => {
+  const evalAction = (v: Eval, allowOnly = false, refusal?: string) => {
     const argument = (p: Eval["params"][number]) => p.from === "pick" ? p.name : p.from;
     const args = v.params.map(argument).join(", ");
     // A transition is only evaluated where its guard allows it, as it would be in use.
@@ -177,8 +179,14 @@ export function harness(
     const result = `M::${v.name}(${args})`;
     const law: Record<string, string> = laws.some((l) => l.name === v.name) ? { lawsHold: result } : {};
     const guard = transition && call(transition.guard!, transition.guardParams.map((name) => argument(v.params.find((p) => p.name === name)!)), argument(v.params[0]));
+    const params = v.params.filter((p) => p.from === "pick");
+    const set = { outcome: `Out_${v.name}(${result})`, ...law };
+    if (refusal) {
+      const picks = params.map((p) => `nondet ${p.name} = Set(M::${refusal}.${p.name}).oneOf()`).join(" ");
+      return `  action ${refusalEvaluation(v.name)} = { ${picks} ${frame([], set)} }`;
+    }
     const name = allowOnly ? positiveGuardEvaluation(v.name) : `eval_${v.name}`;
-    return `  action ${name} = ${guarded(v.params.filter((p) => p.from === "pick"), v.name, guard, !transition?.guardParams.length, { outcome: `Out_${v.name}(${result})`, ...law }, allowOnly ? [result] : [])}`;
+    return `  action ${name} = ${guarded(params, v.name, guard, !transition?.guardParams.length, set, allowOnly ? [result] : [])}`;
   };
   // An event of weight n is offered n times, so the simulator, which tries what it is offered in random order, picks it n times as often.
   const events = [...transitions.flatMap((t) => Array(weights.get(t.name) ?? 1).fill(t.name)), ...sampled.map((l) => l.name)];
@@ -228,13 +236,18 @@ export function harness(
     evalAction(v, true),
     `  action ${positiveGuardProbe(v.name)} = ${settled(any(["step", positiveGuardEvaluation(v.name)]))}`,
   ]);
+  const refused = refusals?.size ? evals.flatMap((v) => {
+    const declaration = refusals.get(v.name);
+    return declaration ? [evalAction(v, false, declaration)] : [];
+  }) : [];
+  const refusalHarness = refused.length ? [...lines, ...refused, "}", ""].join("\n") : undefined;
   const text = [...lines, "}", ""].join("\n");
   const guardHarness = focused.length ? [...lines, ...focused, "}", ""].join("\n") : "";
   // A sample set no parameter is named for is never used: most likely a typo for the parameter it was meant for.
   const forParams = new Set([...funs.flatMap((d) => sig(d).params.map((p) => `${p.name}Values`)), ...opaques.map((o) => `${o.name}Values`)]);
   for (const [set, { ref, line }] of samples)
     if (ref.startsWith("M::") && !forParams.has(set)) fail(`${set} (${source}${line ? `:${line}` : ""}): no parameter is named ${set.slice(0, -"Values".length)}, so the simulator never uses it; name it after the parameter it is for`);
-  return { text, guardHarness, evals, uncompared };
+  return { text, guardHarness, refusalHarness, evals, uncompared };
 }
 
 /**

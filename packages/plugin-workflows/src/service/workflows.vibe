@@ -1249,38 +1249,52 @@ function workflowDefinitions(
 function workflowConformance(
   { db, store, lock, now, owner, writeDefinition, persist }: Pick<WorkflowRows, "db" | "store" | "lock" | "now" | "owner" | "writeDefinition" | "persist">,
 ) {
+  const pendingAdmission = new Map<string, A.Workflow>()
+
+  effect function readDefinition(id: string): (StoredDefinition | undefined)!WorkflowRefused {
+    return try db(store.definition(id))
+  }
+
+  effect function commitDefinition(read: StoredDefinition | undefined, row: DefinitionRow): void!WorkflowRefused {
+    try writeDefinition(read, row)
+    pendingAdmission.delete(row.id)
+  }
+
   effect function storedOrPlaceholder(id: string): { readonly read: StoredDefinition | undefined; readonly row: DefinitionRow }!WorkflowRefused {
-    const read = try db(store.definition(id))
+    const read = try readDefinition(id)
     if (read !== undefined) return { read, row: read.row }
     const { spec, specDigest } = try placeholderSpec()
     const at = iso(try now)
-    return { read, row: { id, owner: "", admission: A.initial, lifecycleState: L.initial, revisions: [], name: spec.name, description: "", spec, specDigest, origin: "view", createdAt: at, updatedAt: at, armedVersion: 0 } }
+    return { read, row: { id, owner: "", admission: pendingAdmission.get(id) ?? A.initial, lifecycleState: L.initial, revisions: [], name: spec.name, description: "", spec, specDigest, origin: "view", createdAt: at, updatedAt: at, armedVersion: 0 } }
   }
 
   effect function admissionStep(id: string, change: A.Event, by: string): A.Workflow!(A.Rejected | WorkflowRefused) {
     return try lock(effect {
       const { read, row } = try storedOrPlaceholder(id)
       const next = try A.apply(row.admission, change, by)
-      if (read !== undefined || next.owner !== "") try writeDefinition(read, { ...row, owner: row.owner === "" ? next.owner : row.owner, admission: next })
+      if (read === undefined && next.owner === "") pendingAdmission.set(id, next)
+      else try commitDefinition(read, { ...row, owner: row.owner === "" ? next.owner : row.owner, admission: next })
       return next
     })
   }
 
   effect function admissionState(id: string): A.Workflow!WorkflowRefused {
-    return (try db(store.definition(id)))?.row.admission ?? A.initial
+    return try lock(effect {
+      return (try readDefinition(id))?.row.admission ?? pendingAdmission.get(id) ?? A.initial
+    })
   }
 
   effect function lifecycleStep(id: string, change: L.Event, by: string): L.Lifecycle!(L.Rejected | WorkflowRefused) {
     return try lock(effect {
       const { read, row } = try storedOrPlaceholder(id)
       const next = try L.apply(row.lifecycleState, change, by)
-      if (read !== undefined || next.owner !== "") try writeDefinition(read, { ...withLifecycle(row, next), owner: row.owner === "" ? next.owner : row.owner })
+      if (read !== undefined || next.owner !== "") try commitDefinition(read, { ...withLifecycle(row, next), owner: row.owner === "" ? next.owner : row.owner })
       return next
     })
   }
 
   effect function lifecycleOf(id: string): L.Lifecycle!WorkflowRefused {
-    return (try db(store.definition(id)))?.row.lifecycleState ?? L.initial
+    return (try readDefinition(id))?.row.lifecycleState ?? L.initial
   }
 
   effect function runOrPlaceholder(runId: string): RunRow!WorkflowRefused {

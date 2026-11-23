@@ -9,8 +9,8 @@ module node {
   import { enrollmentId, type DeviceEnrollment } from "./enrollment.vibe"
   import { receiptOutcome, validate, type CheckedOperation, type DeviceOperation, type DeviceReceipt } from "./operations.schema.vibe"
   import {
-    deviceReviewRows, openRequest, recordRequestClaim, recordRequestDecision, recordRequestReceipt, recordRequestReview, viewProfile,
-    type DeviceRequestRecord, type RequestRow,
+    deviceReviewRows, recordRequestClaim, recordRequestDecision, recordRequestReceipt, recordRequestReview, requestSnapshot, viewProfile,
+    type ProposalReviewScope, type RequestRow,
   } from "./store.vibe"
 
   const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
@@ -67,7 +67,7 @@ module node {
     | { readonly state: "pending" | "approved" | "rejected" | "expired" }
     | { readonly state: "executing" | "done" | "reconciliation_required"; readonly execution: Execution }
 
-  function scopeOf(binding: DeviceRequestRecord["terms"]["binding"]): Pick<ReviewedTerms, "calendarAgendaSource" | "workflow"> | undefined {
+  function scopeOf(binding: RequestRow["terms"]["binding"]): Pick<ReviewedTerms, "calendarAgendaSource" | "workflow"> | undefined {
     if (typeof binding === "string") return binding === "NoBinding" ? {} : undefined
     switch (binding.kind) {
       case "AgendaBinding": return { calendarAgendaSource: { sourceId: binding.sourceId, sourceRevision: binding.sourceRevision } }
@@ -78,7 +78,7 @@ module node {
     }
   }
 
-  function reviewedOf(record: Pick<DeviceRequestRecord, "terms">, header: string | undefined): Reviewed | undefined {
+  function reviewedOf(record: Pick<RequestRow, "terms">, header: string | undefined): Reviewed | undefined {
     const { binding, boundProfile } = record.terms
     const scope = scopeOf(binding)
     if (scope === undefined) return undefined
@@ -141,18 +141,17 @@ module node {
     }
   }
 
-  export function proposalReviewRoutes(adapter: IDatabaseAdapter, sender: DeviceEnrollment["deviceSender"]): LocalRoute[] {
-    async function viewStillAllowed(record: DeviceRequestRecord, terms: Reviewed): Promise<boolean> {
+  export function proposalReviewRoutes(adapter: IDatabaseAdapter, sender: DeviceEnrollment["deviceSender"], scope: ProposalReviewScope): LocalRoute[] {
+    async function viewStillAllowed(record: Pick<RequestRow, "terms">, terms: Reviewed): Promise<boolean> {
       if (terms.operation.type !== "open_view") return true
       return openViewAllowed(await Effect.runPromise(viewProfile(adapter)), record.terms.boundProfile, terms.operation.view)
     }
-
     async function handle(input: RouteInput, event: Request) {
       try {
         const by = await Effect.runPromise(sender(input))
         if (by === undefined) return failure(401, "device_unauthorized")
         const proposalId = input.parameters.get("id") ?? ""
-        const record = await Effect.runPromise(openRequest(adapter, proposalId))
+        const record = await Effect.runPromise(requestSnapshot(adapter, proposalId, scope))
         if (record === undefined) return failure(404, "unknown_proposal")
         const terms = reviewedOf(record, input.headers.get(capabilitiesHeader))
         if (terms === undefined) return failure(409, "proposal_scope_refused")
@@ -226,7 +225,7 @@ module node {
           try {
             const by = await Effect.runPromise(sender(input))
             if (by === undefined) return failure(401, "device_unauthorized")
-            const rows = await Effect.runPromise(deviceReviewRows(adapter, by))
+            const rows = await Effect.runPromise(deviceReviewRows(adapter, by, scope))
             const header = input.headers.get(capabilitiesHeader)
             const proposals = rows.flatMap((row) => {
               const terms = reviewedOf(row, header)

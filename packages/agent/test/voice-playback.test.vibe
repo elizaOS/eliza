@@ -8,7 +8,7 @@ module node {
   import { attachProgressiveSpeech, SegmentedSpeechPlayback, type SegmentedSpeechState } from "../src/voice/index.vibe"
   import { FakeMicrophone, FakePlayer, FakeSpeechSource, fakeCaptureAudio, fakeSpeechMedia, tone } from "./support/audio-fake.ts"
 
-  const turn = () => new Promise<void>((resolve) => setImmediate(resolve))
+  const turn = () => Effect.runPromise(Effect.sleep("1 millis"))
 
   async function until(check: () => boolean): Promise<void> {
     for (let attempt = 0; attempt < 1000 && !check(); attempt += 1) await turn()

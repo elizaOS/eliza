@@ -24,6 +24,7 @@ export interface CloudCall {
   readonly method: string;
   readonly path: string;
   readonly authorization: string | undefined;
+  readonly idempotencyKey: string | undefined;
   readonly body: unknown;
   readonly aborted: Promise<void>;
 }
@@ -241,7 +242,8 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     const body = await readBody(request);
     const aborted = new Promise<void>((resolve) => response.once("close", () => resolve()));
     const authorization = request.headers.authorization;
-    const call = { method: request.method ?? "", path: request.url ?? "", authorization, body, aborted };
+    const idempotencyKey = request.headers["idempotency-key"];
+    const call = { method: request.method ?? "", path: request.url ?? "", authorization, idempotencyKey: typeof idempotencyKey === "string" ? idempotencyKey : undefined, body, aborted };
     calls.push(call);
     const pathname = new URL(request.url ?? "/", "https://localhost").pathname;
     if (call.method === "POST" && pathname.endsWith("/chat/completions")) completions.shift()?.(call);

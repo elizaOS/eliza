@@ -1,0 +1,38 @@
+// spec/knowledge/index.md, "Story: Find and manage the documents I am allowed to use"
+import {
+  documentManageable,
+  documentReadable,
+  searchableDocuments,
+  visibleDocuments,
+  type KnowledgeDocument,
+} from "../gen/knowledge.effect.vibe"
+
+export error DocumentStoreUnavailable { reason: string }
+export error DocumentMissingOrDenied { docId: string }
+
+export service KnowledgeStore {
+  list(viewerId: string): KnowledgeDocument[]!DocumentStoreUnavailable
+  document(viewerId: string, docId: string): (KnowledgeDocument | undefined)!DocumentStoreUnavailable
+  setPinned(ownerId: string, docId: string, pinned: boolean): boolean!DocumentStoreUnavailable
+}
+
+export effect function listDocuments(viewerId: string, indexedOnly: boolean) {
+  if (viewerId === "") return []
+  const rows = try (try KnowledgeStore).list(viewerId)
+  return indexedOnly ? searchableDocuments(rows, viewerId) : visibleDocuments(rows, viewerId)
+}
+
+export effect function readDocument(viewerId: string, docId: string) {
+  if (viewerId === "" || docId === "") throw new DocumentMissingOrDenied({ docId })
+  const row = try (try KnowledgeStore).document(viewerId, docId)
+  if (row === undefined || row.docId !== docId || !documentReadable(row, viewerId)) {
+    throw new DocumentMissingOrDenied({ docId })
+  }
+  return row
+}
+
+export effect function pinDocument(ownerId: string, docId: string, pinned: boolean) {
+  const row = try readDocument(ownerId, docId)
+  if (!documentManageable(row, ownerId)) throw new DocumentMissingOrDenied({ docId })
+  return try (try KnowledgeStore).setPinned(ownerId, docId, pinned)
+}

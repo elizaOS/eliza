@@ -72,7 +72,7 @@ pure def canCheckpointStep(r: GeneratedRun, call: str, digest: str): bool = r.ph
 pure def checkpointStep(r: GeneratedRun, call: str, digest: str): GeneratedRun = { ...r, journal: r.journal.append({ call: call, digest: digest, kind: StepCall }) }
 pure def canReplayCall(r: GeneratedRun, call: str, digest: str): bool = r.phase == Replaying and journaled(r, call)
 pure def replayCall(r: GeneratedRun, call: str, digest: str): GeneratedRun = if (entryOf(r, call).digest == digest) r else { ...r, phase: Diverged }
-pure val callValues = Set("count", "draft", "review")
+pure val callValues = Set("count", "draft", "review", "ready", "pause")
 pure val digestValues = Set("d1", "d2")
 ```
 
