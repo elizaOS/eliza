@@ -14,7 +14,6 @@ import { cameraWords } from "../surfaces/camera-request.ts"
 
 type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
 
-const reviewText = "Review this request on your phone before it can run."
 
 const text = (description: string): ActionParameterSchema => ({ type: "string", description })
 const libraryIds = (maximum: number): ActionParameterSchema => ({
@@ -123,7 +122,7 @@ const selectionUnseen: Refusal = {
 }
 
 function grounded(turn: DeviceTurn, verdict: SurfaceVerdict, operation: DeviceOperation): Grounding {
-  return { kind: "Grounded", operation, reviewed: !surfaceBound(directRequests(turn), verdict) }
+  return { kind: "Grounded", operation, grounding: surfaceBound(directRequests(turn), verdict) ? "GroundedAsAsked" : "GroundedForReview" }
 }
 
 function decided(turn: DeviceTurn, verdict: SurfaceVerdict, operation: DeviceOperation, refusal: Refusal): Grounding {
@@ -179,11 +178,14 @@ export const surfacesFamily: DeviceProposalFamily = {
       }
     }
   },
-  proposedText: (operation, reviewed) => operation.type === "camera_capture_photo" && !reviewed ? "Opening Camera to take the photo." : reviewText,
+  proposedText: (operation, { direct }) => operation.type === "camera_capture_photo" && direct ? {
+    forOwner: "Opening Camera to take the photo.",
+    forModel: "The requesting phone takes this requested photo right after this reply once Camera is showing, with no review. No photo has been taken yet; do not claim that one was taken or saved.",
+  } : undefined,
   settledText: (operation) => {
     switch (operation.type) {
-      case "camera_capture_photo": return "Your phone already took that photo."
-      case "create_note": return `Your phone already saved the note “${operation.title}”.`
+      case "camera_capture_photo": return { forOwner: "Your phone already took that photo." }
+      case "create_note": return { forOwner: `Your phone already saved the note “${operation.title}”.` }
       default: return undefined
     }
   },

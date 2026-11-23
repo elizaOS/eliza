@@ -1,7 +1,7 @@
 // spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"
 import type { ActionParameterSchema } from "@elizaos/core"
 import { decodeBrowserPage } from "@elizaos/agent/client"
-import type { CheckedOperation, DeviceOperation, DeviceProposalFamily, DeviceTurn, Grounding, ProposalForm } from "@elizaos/agent/device-actions"
+import type { CheckedOperation, DeviceOperation, DeviceProposalFamily, DeviceTurn, Grounding, ProposalForm, ProposalText } from "@elizaos/agent/device-actions"
 import { refusalReply, type BrowserRefusal, type RefusalReply } from "../gen/browser__control.effect.vibe"
 import { emptyTabOffered, openBound, opensInNewTab } from "../gen/browser__requestGrounding.effect.vibe"
 import {
@@ -91,7 +91,7 @@ function refused(refusal: BrowserRefusal, turn: DeviceTurn): Grounding {
 }
 
 function grounded(operation: DeviceOperation, bound: boolean): Grounding {
-  return bound ? { kind: "Grounded", operation } : { kind: "Grounded", operation, reviewed: true }
+  return { kind: "Grounded", operation, grounding: bound ? "GroundedAsAsked" : "GroundedForReview" }
 }
 
 effect function pageLinks(turn: DeviceTurn): (readonly string[])!! {
@@ -151,15 +151,18 @@ effect function ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!
   }
 }
 
-function proposedText(operation: DeviceOperation): string {
+const OPENING = "The requesting phone opens this exact requested address in its Browser right after this reply, with no review. The page has not loaded yet; do not claim its content or that it loaded."
+const CONTROLLING = "The requesting phone runs this requested Browser control right after this reply, with no review. It has not run yet; do not claim that it finished, what a search found or what a page shows."
+
+function directText(operation: DeviceOperation): ProposalText | undefined {
   switch (operation.type) {
-    case "browser_navigate": return `Opening ${URL.parse(operation.url)?.host ?? operation.url}.`
-    case "browser_search": return `Searching the web for “${operation.query}”.`
+    case "browser_navigate": return { forOwner: `Opening ${URL.parse(operation.url)?.host ?? operation.url}.`, forModel: OPENING }
+    case "browser_search": return { forOwner: `Searching the web for “${operation.query}”.`, forModel: CONTROLLING }
     case "browser_tab_new":
     case "browser_tab_switch":
     case "browser_find":
-    case "browser_history": return "Doing that in Browser."
-    default: return "Review this request on your phone before it can run."
+    case "browser_history": return { forOwner: "Doing that in Browser.", forModel: CONTROLLING }
+    default: return undefined
   }
 }
 
@@ -169,6 +172,6 @@ export const browserProposalFamily: DeviceProposalFamily = {
   forms: FORMS,
   guidance: (turn) => browserControlCapabilityAvailable("browser_tab_new", turn.capabilities) ? TABS_GUIDANCE : undefined,
   ground,
-  proposedText,
-  settledText: () => "Your phone's Browser already took that request. It never told me how the page looks.",
+  proposedText: (operation, { direct }) => direct ? directText(operation) : undefined,
+  settledText: () => ({ forOwner: "Your phone's Browser already took that request. It never told me how the page looks." }),
 }

@@ -94,18 +94,22 @@ for; a set in any other zone offers nothing. A stated local reminder time
 is placed in that zone, and a wall time the zone skips or repeats is
 refused rather than moved. An empty repeat is a one-off alarm and carries
 no days. A proposed reminder's time is shown to the owner in its repeat
-zone, else in UTC, named either way, never in a zone guessed for the owner.
+zone, else in the zone the phone reported for this turn, else in UTC, named
+every way, never in a zone guessed for the owner.
 
 ```quint
 pure def phoneZoneGrounded(sensitive: bool, observedZone: str, proposedZone: str): bool =
   not(sensitive) and observedZone != "" and observedZone == proposedZone
 pure def localDueGrounded(phoneZoneKnown: bool, wallTimeExists: bool, wallTimeRepeats: bool): bool =
   phoneZoneKnown and wallTimeExists and not(wallTimeRepeats)
-pure def reminderShownZone(repeatZone: str): str = if (repeatZone != "") repeatZone else "UTC"
+pure def reminderShownZone(repeatZone: str, phoneZone: str): str = if (repeatZone != "") repeatZone else if (phoneZone != "") phoneZone else "UTC"
 pure val observedZoneValues = Set("", "Europe/Berlin", "America/New_York")
 pure val proposedZoneValues = Set("", "Europe/Berlin", "UTC")
 pure val repeatZoneValues = Set("", "Europe/Berlin")
+pure val phoneZoneValues = Set("", "America/New_York")
 pure def lawAClockSetNeverPicksItsOwnZone(sensitive: bool, observedZone: str, proposedZone: str): bool =
   phoneZoneGrounded(sensitive, observedZone, proposedZone) implies (proposedZone == observedZone and proposedZone != "")
-pure def lawAShownTimeAlwaysNamesItsZone(repeatZone: str): bool = reminderShownZone(repeatZone) != ""
+pure def lawAShownTimeAlwaysNamesItsZone(repeatZone: str, phoneZone: str): bool = reminderShownZone(repeatZone, phoneZone) != ""
+pure def lawAShownZoneIsNeverGuessed(repeatZone: str, phoneZone: str): bool =
+  reminderShownZone(repeatZone, phoneZone) == repeatZone or reminderShownZone(repeatZone, phoneZone) == phoneZone or reminderShownZone(repeatZone, phoneZone) == "UTC"
 ```

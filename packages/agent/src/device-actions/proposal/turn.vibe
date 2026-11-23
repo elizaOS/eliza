@@ -1,8 +1,8 @@
-// spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six applied outcomes of its own requests"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"
+// spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"
 module node {
   import { AsyncLocalStorage } from "node:async_hooks"
   import { Effect } from "effect"
-  import { extractUserText, getTrajectoryContext, type AgentRuntime, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+  import { extractUserText, getTrajectoryContext, unwrapUserMessageText, type AgentRuntime, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
   import { capabilityName } from "../../../gen/agent__deviceActions__capabilities.ts"
   import type { RouteInput } from "../../access/routes.vibe"
   import { readTurnContext } from "../../conversation/turn-context.schema.vibe"
@@ -11,7 +11,7 @@ module node {
   import { validate } from "../operations.schema.vibe"
   import { viewProfile } from "../store.vibe"
   import type { DeviceTurn } from "./family.vibe"
-  import { deviceOutcomesNote, earlierRequests } from "./receipts.vibe"
+  import { deviceOutcomesNote, earlierRequests, outcomesUnchecked } from "./receipts.vibe"
 
   export interface DeviceTurnStart {
     readonly headers: RouteInput["headers"]
@@ -39,15 +39,19 @@ module node {
   }
 
   const bound = new AsyncLocalStorage<DeviceTurn>()
-  const completing = new WeakSet<DeviceTurn>()
+  const live = new WeakSet<DeviceTurn>()
+
+  export function ownerWords(message: Memory): string {
+    return extractUserText(unwrapUserMessageText(message))
+  }
+
+  export function turnLive(turn: DeviceTurn): boolean {
+    return live.has(turn) && !turn.signal.aborted
+  }
 
   export function deviceTurnFor(runtime: IAgentRuntime, message: Memory): DeviceTurn | undefined {
     const turn = bound.getStore()
-    return turn !== undefined && turn.runtime === runtime && message.id !== undefined && turn.message.id === message.id ? turn : undefined
-  }
-
-  export function completesReads(turn: DeviceTurn): boolean {
-    return completing.has(turn)
+    return turn !== undefined && turnLive(turn) && turn.runtime === runtime && message.id !== undefined && turn.message.id === message.id ? turn : undefined
   }
 
   export function deviceTurnPort(runtime: AgentRuntime, sender: DeviceEnrollment["deviceSender"], options: DeviceTurnOptions): DeviceTurnPort {
@@ -61,9 +65,10 @@ module node {
         const turn: DeviceTurn = {
           runtime, by, negotiation: negotiated, message, conversationId, requestId, signal,
           capabilities: negotiated.tag === "Negotiated" ? negotiated.capabilities.map(capabilityName) : [],
-          ownerText: extractUserText(message.content.text ?? ""),
+          ownerText: ownerWords(message),
           observation: context.observation,
           completedActionNavigation: context.voiceUi?.viewDelivery === "completed-action",
+          completesReads: options.completesReads,
           assistantName: runtime.character.name,
           get swapped() {
             return getTrajectoryContext()?.secretSwapSession?.entries ?? []
@@ -75,13 +80,14 @@ module node {
           earlier: (types, limit) => Effect.map(earlierRequests(runtime.adapter, by, conversationId),
             (applied) => applied.filter(({ operation }) => types.includes(operation.type)).slice(0, limit)),
         }
-        if (options.completesReads) completing.add(turn)
-        const note = await Effect.runPromise(Effect.orElseSucceed(deviceOutcomesNote(runtime.adapter, by, conversationId), () => undefined))
+        live.add(turn)
+        const note = await deviceOutcomesNote(turn).catch(() => outcomesUnchecked)
         const retire = await options.agenda?.(turn)
         return {
           context: note,
           run: (work) => bound.run(turn, work),
           end: async () => {
+            live.delete(turn)
             await retire?.()
           },
         }
@@ -90,4 +96,4 @@ module node {
   }
 }
 
-export { completesReads, deviceTurnFor, deviceTurnPort, type DeviceTurnOptions, type DeviceTurnPort, type DeviceTurnSession, type DeviceTurnStart, type TurnOffer } from node
+export { deviceTurnFor, deviceTurnPort, ownerWords, turnLive, type DeviceTurnOptions, type DeviceTurnPort, type DeviceTurnSession, type DeviceTurnStart, type TurnOffer } from node

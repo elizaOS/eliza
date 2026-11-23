@@ -1,6 +1,6 @@
 // spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner's own words ask for it, and a no keeps the event"; spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone's zone"; spec/calendar/reviewedReads.md, "A change after a shared read moves the event to the day and time the owner gave it, keeping its length unless the owner gave one"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone's zone"
 import type { ActionParameterSchema } from "@elizaos/core"
-import { readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type ProposalForm } from "@elizaos/agent/device-actions"
+import { readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type ProposalForm, type ProposalText } from "@elizaos/agent/device-actions"
 import { askedAvailability, availabilityDayKnown, availabilityWindowed } from "../../gen/calendar__availability.effect.vibe"
 import {
   calendarProposalAdmitted, changedEnd, changeOf, changeReadAdmitted, deleteAsked, editAfterRead, namedGrounded, newEventStated, ownerWordsKept, recordSource,
@@ -360,7 +360,12 @@ function continueCalendar(read: EarlierRequest, original: Pick<DeviceTurn, "owne
   return end > start ? { type: "calendar_update", target: shared.target, fields: { ...shared.fields, start: iso(start), end: iso(end) } } : undefined
 }
 
-function proposedCalendarText(operation: DeviceOperation): string {
+function proposedCalendarText(operation: DeviceOperation): ProposalText | undefined {
+  const review = reviewSentence(operation)
+  return review === undefined ? undefined : { forOwner: review }
+}
+
+function reviewSentence(operation: DeviceOperation): string | undefined {
   switch (operation.type) {
     case "calendar_read_next": return "Review sharing your next event on your phone."
     case "calendar_create_local":
@@ -373,11 +378,16 @@ function proposedCalendarText(operation: DeviceOperation): string {
         ? `Choose “${operation.name}” in Calendar on your phone to review deleting it. Nothing has been deleted yet.`
         : `Choose “${operation.name}” in Calendar on your phone and share it to prepare the change. Nothing has changed yet.`
     case "calendar_availability": return "Choose which calendars to check on your phone. Only busy times are shared."
-    default: return "Review this request on your phone before it can run."
+    default: return undefined
   }
 }
 
-function settledCalendarText(operation: DeviceOperation, result: unknown): string | undefined {
+function settledCalendarText(operation: DeviceOperation, result: unknown): ProposalText | undefined {
+  const settled = settledSentence(operation, result)
+  return settled === undefined ? undefined : { forOwner: settled }
+}
+
+function settledSentence(operation: DeviceOperation, result: unknown): string | undefined {
   switch (operation.type) {
     case "calendar_create_local":
     case "calendar_create": return `Your phone saved “${operation.fields.title}”.`

@@ -531,7 +531,7 @@ function phoneTurn(runtime: IAgentRuntime, words: string, observation: DeviceTur
   return {
     runtime, by: {} as DeviceTurn["by"], negotiation: negotiated, capabilities: phoneCapabilities.split(","),
     message: { ...owner, id: stringToUuid(words), content: { text: words, metadata: { ...metadata, ...(observation === undefined ? {} : { observation }) } } } as DeviceTurn["message"],
-    ownerText: words, observation, completedActionNavigation: false, conversationId: "conversation", requestId: "request", assistantName: "Eliza",
+    ownerText: words, observation, completedActionNavigation: false, completesReads: false, conversationId: "conversation", requestId: "request", assistantName: "Eliza",
     swapped: [], startedAt: start, timeZone: "Etc/UTC", signal: new AbortController().signal,
     admit: (operation) => validate(operation, negotiated, "NoBinding"),
     earlier: () => succeed(earlier),

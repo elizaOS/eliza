@@ -37,7 +37,11 @@ form offers it, so chat never proposes an MMS. Whether an offered request may
 run without its review card is decided by device operations' `directEligible`
 and by [execution](./execution.md), never here: a latest-sender read and a
 Messages draft are reviewed on the phone first, also when the owner asked for
-exactly that sender or that draft.
+exactly that sender or that draft. A reply draft in the open conversation,
+and a read or deletion of the thread or voicemail the owner has open, are
+grounded as steps on that open selection, so they carry the owner's message
+while the turn is live whatever its action mode; every other telephony
+proposal is grounded as asked.
 
 ## Story: Call or text the person I named, as I named them
 

@@ -1,10 +1,13 @@
-// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal its family grounds for review is offered without the owner's message, so the phone shows its card"
-import type { ActionParameterSchema, IAgentRuntime, Memory, UUID } from "@elizaos/core"
+// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A read's follow-up is offered only after its reply was delivered, as its own family continued it"
+import type { ActionParameterSchema, IAgentRuntime, Memory, ProviderValue, UUID } from "@elizaos/core"
+import type { ProposalGrounding } from "../../../gen/agent__deviceActions.effect.vibe"
 import type { Negotiation, ViewProfile } from "../../../gen/agent__deviceActions__capabilities.effect.vibe"
 import type { SessionOwner } from "../../../gen/core__sessions.effect.vibe"
 import { readTurnContext, type Observation } from "../../conversation/turn-context.schema.vibe"
 import type { CheckedOperation, DeviceOperation, DeviceOperationType } from "../operations.schema.vibe"
 import type { DeviceStoreUnavailable } from "../store.vibe"
+
+export type { ProposalGrounding }
 
 export type FamilyName = "telephony" | "browser" | "surfaces" | "files" | "calendar" | "reminders" | "notes"
 
@@ -27,6 +30,7 @@ export interface DeviceTurn {
   readonly ownerText: string
   readonly observation: typeof Observation.Type | undefined
   readonly completedActionNavigation: boolean
+  readonly completesReads: boolean
   readonly conversationId: string
   readonly requestId: string
   readonly assistantName: string
@@ -40,12 +44,23 @@ export interface DeviceTurn {
 }
 
 export type Grounding =
-  | { readonly kind: "Grounded"; readonly operation: DeviceOperation; readonly reviewed?: boolean }
+  | { readonly kind: "Grounded"; readonly operation: DeviceOperation; readonly grounding?: ProposalGrounding }
   | { readonly kind: "Refused"; readonly code: string; readonly forModel: string; readonly forOwner: string }
 
 export interface ReadContinuation {
   readonly operation?: DeviceOperation
   readonly text?: string
+}
+
+export interface PendingRequest {
+  readonly direct: boolean
+  readonly timeZone: string | undefined
+}
+
+export interface ProposalText {
+  readonly forModel?: string
+  readonly forOwner?: string
+  readonly data?: { readonly [key: string]: ProviderValue }
 }
 
 export interface ProposalForm {
@@ -60,9 +75,10 @@ export interface DeviceProposalFamily {
   readonly types: readonly DeviceOperationType[]
   readonly forms: readonly ProposalForm[]
   guidance(turn: DeviceTurn): string | undefined
+  prepare?(operation: unknown): unknown
   ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable
-  proposedText(operation: DeviceOperation, reviewed: boolean): string
-  settledText(operation: DeviceOperation, result: unknown): string | undefined
+  proposedText(operation: DeviceOperation, pending: PendingRequest): ProposalText | undefined
+  settledText(operation: DeviceOperation, result: unknown, timeZone: string | undefined): ProposalText | undefined
   continueAfterRead?(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "message" | "negotiation" | "startedAt" | "timeZone">): (ReadContinuation | undefined)!DeviceStoreUnavailable
 }
 
@@ -79,7 +95,7 @@ export function unoffered(name: FamilyName): DeviceProposalFamily {
       forModel: `The ${name} operations are not offered on this phone. No device proposal was created.`,
       forOwner: "I can't do that on your phone yet.",
     }),
-    proposedText: () => "Review this request on your phone before it can run.",
+    proposedText: () => undefined,
     settledText: () => undefined,
   }
 }

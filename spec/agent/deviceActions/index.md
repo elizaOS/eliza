@@ -358,10 +358,25 @@ pure def lawAGroundedProposalIsReadmitted(deviceTurn: bool, offeredForm: bool, v
   proposalReply(deviceTurn, offeredForm, verdict, false) == RefusedBeforeDispatch
 ```
 
+### Each wire type belongs to at most one proposal family, and a family offers forms only of its own types
+
+The operation families that register with the agent own disjoint sets of
+wire types. A registration that claims a type another family already owns,
+or that offers a form naming a type outside its own set, is refused whole,
+and the module that made it does not start; registering the same family
+again changes nothing.
+
+```quint
+pure def registrationAdmitted(claimedByAnother: bool, formsWithinTypes: bool): bool = not(claimedByAnother) and formsWithinTypes
+pure def lawATypeAnotherFamilyOwnsIsRefused(formsWithinTypes: bool): bool = not(registrationAdmitted(true, formsWithinTypes))
+pure def lawAFormOutsideTheFamilysTypesIsRefused(claimedByAnother: bool): bool = not(registrationAdmitted(claimedByAnother, false))
+```
+
 ### A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card
 
 A family grounds an operation as the owner asked for it, for review, or as
-a step on the thread or call the owner has open. The proposal carries the
+a step on what the owner has open: the thread or voicemail on the screen,
+or the Calendar day a standalone agenda read shows. The proposal carries the
 owner's message as `requestMessageId` only while its turn is live, and then
 only for a step on the open selection, or for an operation grounded as
 asked on a turn whose message is a direct request (`voiceUi.agentActionMode`
@@ -480,7 +495,8 @@ when it settled, or that it never ran. The note says that an applied
 outcome supersedes older pending dialogue for that proposal only and that
 a completed request is never replayed; with no outcome, that earlier
 pending dialogue proves nothing is still pending; and when the requests
-cannot be read, that they could not be checked. It is a historical
+cannot be read, that they could not be checked. It looks at the fifty
+newest requests of this conversation that settled. It is a historical
 receipt, never a current read or authority for a new effect, and it names
 at most six.
 

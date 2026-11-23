@@ -33,7 +33,7 @@ module node {
     return {
       runtime, by: { agentId: runtime.agentId, actorId: "owner", connector: runtime.agentId }, negotiation: negotiated, capabilities,
       message: { id, entityId: id, roomId: id, content: { text: asked, ...(screen.direct === true ? { metadata: directRequest } : {}) } }, ownerText: asked,
-      observation: screen.observation, completedActionNavigation: screen.direct === true,
+      observation: screen.observation, completedActionNavigation: screen.direct === true, completesReads: false,
       conversationId: "files-chat", requestId: "files-chat-1", assistantName: "Eliza", swapped: [], startedAt: 0, timeZone: undefined,
       signal: new AbortController().signal,
       admit: (operation) => validate(operation, negotiated, "NoBinding"),
@@ -280,14 +280,14 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
             forms: [offeredForms(runtime, []), offeredForms(runtime, [FILES_CAPABILITY]), offeredForms(runtime, both)],
             guided: guidanceFor(runtime, both)?.includes(FILES_SHOWN_TARGET_GUIDANCE),
           }, {
-            rival: "FamilyConflict", asked: { kind: "Grounded", operation: { type: "files_trash", shown: [2, 1] }, reviewed: true },
+            rival: "FamilyConflict", asked: { kind: "Grounded", operation: { type: "files_trash", shown: [2, 1] }, grounding: "GroundedForReview" },
             unnegotiated: { code: "FILES_FORM_NOT_NEGOTIATED", forOwner: "Your phone can't do that in Files from chat right now." },
-            chosenIdentity: { kind: "Grounded", operation: { type: "files_move", paths: ["Download/lease.pdf"], dest: "Archive" }, reviewed: true }, hiddenFolder: true,
+            chosenIdentity: { kind: "Grounded", operation: { type: "files_move", paths: ["Download/lease.pdf"], dest: "Archive" }, grounding: "GroundedForReview" }, hiddenFolder: true,
             trashFromHome: { code: "FILES_CONTEXT_NOT_SHOWN", forOwner: "Open Files to review this action." },
-            filterFromHome: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, reviewed: true },
+            filterFromHome: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, grounding: "GroundedForReview" },
             lockedScreen: { code: "FILES_CONTEXT_LOCKED", forOwner: "Unlock the phone to review this action." },
             unseenScreen: { code: "FILES_CONTEXT_LOCKED", forOwner: "Unlock the phone to review this action." },
-            directOpen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, reviewed: false },
+            directOpen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedAsAsked" },
             forms: [0, 6, 9], guided: true,
           })
         })

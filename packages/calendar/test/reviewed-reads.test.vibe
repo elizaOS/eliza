@@ -105,7 +105,7 @@ function phoneTurn(ownerText: string, observation: DeviceTurn["observation"], ac
   return {
     runtime: { actions: actions.map((name) => ({ name })) } as unknown as IAgentRuntime, by: {} as DeviceTurn["by"], negotiation: negotiated,
     capabilities: phoneCapabilities, message: { id: "00000000-0000-4000-8000-000000000001" as UUID, content: { text: ownerText } } as DeviceTurn["message"],
-    ownerText, observation, completedActionNavigation: false, conversationId: "c1", requestId: "r1", assistantName: "Eliza", swapped: [],
+    ownerText, observation, completedActionNavigation: false, completesReads: false, conversationId: "c1", requestId: "r1", assistantName: "Eliza", swapped: [],
     startedAt: turnStarted, timeZone: observation?.timeZone, signal: new AbortController().signal,
     admit: (operation) => validate(operation, negotiated, "NoBinding"), earlier: () => succeed([]),
   }

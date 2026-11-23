@@ -1,14 +1,15 @@
 // spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/operations.md, "A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it"
-import { stringToUuid, type ActionParameterSchema, type Memory } from "@elizaos/core"
+import type { ActionParameterSchema, Memory } from "@elizaos/core"
 import { completionOpen, retainedHint } from "../../../../gen/agent__deviceActions.effect.vibe"
 import { negotiatedHas, type Capability } from "../../../../gen/agent__deviceActions__capabilities.effect.vibe"
 import { draftPlan, senderDraftReady, senderReadForm, type DraftAddress, type SenderScope, type SenderSource } from "../../../../gen/agent__deviceActions__telephony.effect.vibe"
 import { latestSenderGuidance, latestSenderReplyFor } from "../../latest-sender.vibe"
+import { readReplyId, readReplyKey } from "../../read-completion.vibe"
 import { readLatestSender } from "../../operation-schemas/telephony.vibe"
 import type { DeviceOperation, DeviceOperationType } from "../../operations.schema.vibe"
 import { DeviceStoreUnavailable, openRequest } from "../../store.vibe"
-import type { DeviceProposalFamily, DeviceTurn, EarlierRequest, Grounding, ProposalForm } from "../family.vibe"
-import { samePhoneNumber } from "../telephony/dial-number.vibe"
+import type { DeviceProposalFamily, DeviceTurn, EarlierRequest, Grounding, ProposalForm, ProposalText } from "../family.vibe"
+import { samePhoneNumber, withDialNumber } from "../telephony/dial-number.vibe"
 import { composeTarget, groundTelephonyTarget, swappedPhoneReferences, telephonyTargetRefusalReply } from "../telephony/grounding.vibe"
 import { writesContactName } from "../telephony/names.vibe"
 import { requestedSmsDraftRecipient, smsDraftRequestAlsoSends, smsSenderDisclosure, type DraftRecipient, type PhoneTarget } from "../telephony/request.vibe"
@@ -111,8 +112,10 @@ const noSender = "No current SMS sender. Ask who last texted you or give one rec
 const senderGone = "No current SMS sender for this reply. Ask who texted you or choose a recipient."
 const askSenderScope = "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable."
 
+const onScreen: ReadonlySet<DeviceOperationType> = new Set(["sms_reply_selected", "messages_read_selected", "voicemail_read_selected", "voicemail_delete_selected"])
+
 function grounded(operation: DeviceOperation): Grounding {
-  return { kind: "Grounded", operation }
+  return onScreen.has(operation.type) ? { kind: "Grounded", operation, grounding: "GroundedOnScreen" } : { kind: "Grounded", operation }
 }
 
 function refused(sentence: string): Grounding {
@@ -178,11 +181,11 @@ effect function deliveredAnswer(turn: DeviceTurn, read: EarlierRequest, reply: M
   const state = try record.machine.get()
   const { proposalId, digest, attemptId, inReplyTo } = retainedHint(state)
   const answerId = try Effect.try({
-    try: () => stringToUuid(JSON.stringify(["device-read-reply", runtime.agentId, proposalId, digest, attemptId, inReplyTo])),
+    try: () => readReplyId(runtime.agentId, { proposalId, digest, attemptId, inReplyTo }),
     catch: (cause) => new DeviceStoreUnavailable({ step: "previous sender reply id", cause }),
   })
   const kept = try tryPromise({
-    try: () => runtime.getCache<{ readonly text: string }>(`device-read-reply:${answerId}`),
+    try: () => runtime.getCache<{ readonly text: string }>(readReplyKey(answerId)),
     catch: (cause) => new DeviceStoreUnavailable({ step: "previous sender reply text", cause }),
   })
   return state.completion === "CompletionDelivered" && completionOpen(state) && reply.id === answerId && kept?.text === reply.content.text
@@ -256,14 +259,30 @@ const settledSentences: Readonly<Record<string, string>> = {
   "contact-write:saved": "The contact was saved on your phone.",
   "contact-write:deleted": "The contact was deleted from your phone.",
   "voicemail-delete:deleted": "The voicemail was deleted.",
-  "messages-read:read": "You already shared the message thread open on your phone.",
-  "voicemail-read:read": "You already shared the voicemail open on your phone.",
 }
 
-function settledText(operation: DeviceOperation, result: unknown): string | undefined {
-  if (operation.type === "sms_latest_sender") return latestSenderReplyFor(result)
+const sendSettled = "Retrieved the historical SMS receipt without sending again. Report its exact status. submitted is submission only; sent is not delivery. Only delivered establishes all matching delivery reports. Never retry an uncertain or partially failed send automatically."
+const readSettled = "Retrieved the historical approved read without reading the phone again. It is not a current read; answer from its result."
+
+function settledModelText(operation: DeviceOperation): string {
+  switch (operation.type) {
+    case "sms_send":
+    case "mms_send":
+    case "sms_compose": return sendSettled
+    case "phone_dial": return "Retrieved the historical dial receipt without dialing again. It proves only that the dial screen opened, never a placed, connected or completed call."
+    case "phone_call": return "Retrieved the historical call receipt without calling again. It proves a started call, never an answered or connected one."
+    case "messages_read_selected":
+    case "voicemail_read_selected":
+    case "sms_latest_sender": return readSettled
+    default: return "Retrieved the historical receipt without acting on the phone again."
+  }
+}
+
+function settledText(operation: DeviceOperation, result: unknown): ProposalText {
   const outcome = readOutcome(result)
-  return Option.isSome(outcome) ? settledSentences[`${outcome.value.kind}:${outcome.value.status}`] : undefined
+  const forOwner = operation.type === "sms_latest_sender" ? latestSenderReplyFor(result)
+    : Option.isSome(outcome) ? settledSentences[`${outcome.value.kind}:${outcome.value.status}`] : undefined
+  return { forModel: settledModelText(operation), ...(forOwner === undefined ? {} : { forOwner }) }
 }
 
 export const telephonyFamily: DeviceProposalFamily = {
@@ -280,6 +299,7 @@ export const telephonyFamily: DeviceProposalFamily = {
     }
     return targetGrounding(operation, turn)
   },
-  proposedText: () => "Review this request on your phone before it can run.",
+  prepare: withDialNumber,
+  proposedText: () => undefined,
   settledText,
 }

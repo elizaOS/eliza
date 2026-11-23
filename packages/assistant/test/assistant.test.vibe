@@ -423,7 +423,7 @@ function reminderTurn(ownerText: string, selectedObject: object | undefined, obs
   return {
     runtime: { actions: [{ name: "OWNER_REMINDERS" }] } as unknown as IAgentRuntime, by: {} as DeviceTurn["by"], negotiation: negotiated, capabilities: phoneCapabilities,
     message: { id: "00000000-0000-4000-8000-000000000002" as UUID, content: { text: ownerText } } as DeviceTurn["message"],
-    ownerText, observation, completedActionNavigation: false, conversationId: "c1", requestId: "r1", assistantName: "Eliza", swapped: [],
+    ownerText, observation, completedActionNavigation: false, completesReads: false, conversationId: "c1", requestId: "r1", assistantName: "Eliza", swapped: [],
     startedAt, timeZone: "Europe/Berlin", signal: new AbortController().signal,
     admit: (operation) => validate(operation, negotiated, "NoBinding"), earlier: () => succeed([]),
   }
@@ -474,7 +474,8 @@ it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assista
   try equal<unknown>(try groundedReminder({ ...alarm, days: [] }, reminderTurn("Wake me at 6:30", undefined)), alarm)
   try equal<unknown>(try groundedReminder({ ...alarm, timeZone: "UTC" }, reminderTurn("Wake me at 6:30", undefined)), "CLOCK_OBSERVATION_CHANGED")
   const oneOff = readOperation({ type: "create_reminder", title: "Renew passport", dueAt: "2030-01-05T08:00:00.000Z" })
-  try equal<unknown>(oneOff !== undefined && reminderProposalFamily.proposedText(oneOff.operation).includes("(UTC)"), true)
+  const reviewOf = (timeZone: string | undefined) => oneOff === undefined ? undefined : reminderProposalFamily.proposedText(oneOff.operation, { direct: false, timeZone })?.forOwner
+  try equal<unknown>([reviewOf(undefined)?.includes("(UTC)"), reviewOf("America/New_York")?.includes("(America/New_York)")], [true, true])
 
   try TestClock.setTime(Date.UTC(2030, 0, 6))
   try equal<unknown>([try renew("Remind me on 2030-01-05 at 9am to renew my passport"), try renew("Remind me on 2030-01-06 at 1:05am to renew my passport")],

@@ -2,7 +2,7 @@
 import { ModelType, parseJsonModelRecord, type ActionParameterSchema, type IAgentRuntime, type JSONSchema } from "@elizaos/core"
 import {
   bindingHash, readResult, type DeviceOperation, type DeviceOperationType, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type ProposalForm,
-  type ReadContinuation,
+  type ProposalText, type ReadContinuation,
 } from "@elizaos/agent/device-actions"
 import {
   editRead, editReply, groundPhoneNotes, phoneNotesOffered, type EditReading, type NotesSelection, type PhoneNotesProposal, type PhoneNotesReach, type PhoneScreen, type SharedRead,
@@ -232,7 +232,12 @@ effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, 
   }
 }
 
-function proposedText(operation: DeviceOperation): string {
+function proposedText(operation: DeviceOperation): ProposalText | undefined {
+  const review = reviewSentence(operation)
+  return review === undefined ? undefined : { forOwner: review }
+}
+
+function reviewSentence(operation: DeviceOperation): string | undefined {
   switch (operation.type) {
     case "notes_read_selected": return "Share this note on your phone to continue. Nothing has changed yet."
     case "notes_query": return "Choose the note on your phone to share it. Nothing has changed yet."
@@ -246,11 +251,16 @@ function proposedText(operation: DeviceOperation): string {
     case "notes_record": return operation.action === "start" ? "Your phone will start recording a voice note in Notes." : "Your phone will stop the recording and save the voice note."
     case "notes_filter":
     case "notes_list_filter": return "Your phone will show the matching notes."
-    default: return "Review this request on your phone before it can run."
+    default: return undefined
   }
 }
 
-function settledText(operation: DeviceOperation, result: unknown): string | undefined {
+function settledText(operation: DeviceOperation, result: unknown): ProposalText | undefined {
+  const settled = settledSentence(operation, result)
+  return settled === undefined ? undefined : { forOwner: settled }
+}
+
+function settledSentence(operation: DeviceOperation, result: unknown): string | undefined {
   switch (operation.type) {
     case "notes_delete": return "Your phone moved that note to Recently deleted."
     case "notes_update": return "Your phone saved that change to the note."

@@ -69,10 +69,10 @@ export const filesProposalFamily: DeviceProposalFamily = {
         const operation = readOperation(sentIdentitiesDropped(decoded.success))?.operation
         return operation === undefined
           ? invalid("not a device operation")
-          : { kind: "Grounded", operation, reviewed: !filesChatBound(directRequests(turn), answer) } satisfies Grounding
+          : { kind: "Grounded", operation, grounding: filesChatBound(directRequests(turn), answer) ? "GroundedAsAsked" : "GroundedForReview" } satisfies Grounding
       }
     }
   },
-  proposedText: () => "Review this request on your phone before it can run.",
+  proposedText: () => undefined,
   settledText: () => undefined,
 }

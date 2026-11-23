@@ -26,6 +26,7 @@ module node {
   }
 
   const propose = (operation: unknown) => ({ name: proposeTool, arguments: { operation } })
+  const direct = { voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } }
   const call = (number: string) => ({ type: "phone_call", target: { kind: "number", number } })
 
   async function proposals(client: DeviceClient): Promise<readonly Proposal[]> {
@@ -51,7 +52,7 @@ module node {
     const offeredFor = async (turn: Turn) => (await proposals(client)).find(({ payload }) => payload.requestMessageId === turn.userMessageId)
     const ask = async (words: string, operation: unknown) => {
       cloud.script(toolCalls("", propose(operation)), text("Okay."))
-      const turn = (await client.call("POST", path, { text: words })).json as Turn
+      const turn = (await client.call("POST", path, { text: words, metadata: direct })).json as Turn
       const offered = await offeredFor(turn)
       return { reply: turn.text.split("\n\n").at(-1), operation: offered?.payload.operation }
     }
@@ -86,6 +87,15 @@ module node {
     const callEveryone = await ask("call everyone", { type: "phone_call", target: { kind: "contact", query: "everyone" } })
     const partial = await ask("Who sent my latest text? Only the first three digits", { type: "sms_latest_sender" })
 
+    cloud.script(toolCalls("", propose(JSON.stringify(call("4155550142"))), propose({ type: "phone_call", target: { kind: "contact", query: "dad" } })), text("Okay."))
+    const both = (await client.call("POST", path, { text: "call 415-555-0142, then call dad", metadata: direct })).json as Turn
+    const compound = (await proposals(client)).filter(({ payload }) => payload.requestMessageId === both.userMessageId)
+      .map(({ payload }) => JSON.stringify(payload.operation)).toSorted()
+
+    cloud.script(toolCalls("", propose(call("4155550143"))), text("Okay."))
+    const unbound = (await client.call("POST", path, { text: "call 415-555-0143" })).json as Turn
+    const reviewedCall = (await proposals(client)).find(({ payload }) => JSON.stringify(payload.operation) === JSON.stringify(call("4155550143")))
+
     const asked = await ask("Who sent my latest text?", { type: "sms_latest_sender" })
     const senderRead = (await proposals(client)).find(({ payload }) => JSON.stringify(payload.operation) === JSON.stringify(asked.operation))
     const delivered = senderRead === undefined ? undefined : await deliverSender(client, senderRead)
@@ -100,7 +110,9 @@ module node {
     return {
       handedThrough, ownerDialForm, invented, noNumber, callBack, unnamed, bodyNumber, keypad, emergency, writtenEmergency,
       contactNumber, draft, unclear, composedNumber, contactUpdate, contactDelete, contactNoNumber, simSendToName, threadReply,
-      draftToNobody, draftToTwoNumbers, callEveryone, partial, asked, delivered, toThem, copyReference: { reply: swapped.reply, toldReference },
+      draftToNobody, draftToTwoNumbers, callEveryone, partial, compound,
+      unbound: { reply: unbound.text.split("\n\n").at(-1), carriesMessage: reviewedCall === undefined ? undefined : reviewedCall.payload.requestMessageId !== undefined },
+      asked, delivered, toThem, copyReference: { reply: swapped.reply, toldReference },
     }
   }
 }
@@ -112,7 +124,7 @@ const numberNotWritten = "I didn't set that up, because that number isn't one yo
 const numberNotSaved = "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
 const askRecipient = "Which person should receive this draft? Give one recipient."
 
-it.live(`A call, dial, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, and the sender is read only as asked (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers the owner wrote"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch")`, effect () => {
+it.live(`A call, dial, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, and the sender is read only as asked (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers the owner wrote"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -165,6 +177,8 @@ it.live(`A call, dial, text or contact change goes only to the recipient the own
       operation: undefined,
     },
     partial: { reply: "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable.", operation: undefined },
+    compound: [JSON.stringify({ type: "phone_call", target: { kind: "contact", query: "dad" } }), JSON.stringify({ type: "phone_call", target: { kind: "number", number: "4155550142" } })],
+    unbound: { reply: review, carriesMessage: false },
     asked: { reply: review, operation: { type: "sms_latest_sender", includeAddress: true } },
     delivered: "Your latest incoming SMS came from +14155550124.",
     toThem: { reply: review, operation: { type: "sms_compose", query: "+14155550124", body: "I'm on my way" } },

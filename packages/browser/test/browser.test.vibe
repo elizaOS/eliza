@@ -215,7 +215,7 @@ module node {
         content: { text: ownerText, ...(browserPage === undefined ? {} : { metadata: { observation, browserPage } }) },
       } as DeviceTurn["message"],
       ownerText, observation: (browserPage === undefined ? undefined : observation) as DeviceTurn["observation"],
-      completedActionNavigation: false, conversationId: "conversation", requestId: "request", assistantName: "Eliza", swapped: [], startedAt: 0, timeZone: undefined,
+      completedActionNavigation: false, completesReads: false, conversationId: "conversation", requestId: "request", assistantName: "Eliza", swapped: [], startedAt: 0, timeZone: undefined,
       signal: new AbortController().signal,
       admit: (operation) => validate(operation, negotiated, "NoBinding"),
       earlier: () => Effect.succeed([]),
@@ -239,7 +239,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
   const tabsOnly = ["browser.tabs.v1"]
   const propose = effect (ownerText: string, operation: unknown, capabilities: readonly string[] = everyBrowserCapability, page?: unknown, observation: unknown = pageObservation) => {
     const grounding = try browserProposalFamily.ground(checked(operation), ownerTurn(ownerText, capabilities, page, observation))
-    return grounding.kind === "Grounded" ? { operation: grounding.operation, reviewed: grounding.reviewed === true } : grounding.code
+    return grounding.kind === "Grounded" ? { operation: grounding.operation, reviewed: grounding.grounding === "GroundedForReview" } : grounding.code
   }
   const navigate = (url: string, newTab?: true) => ({ type: "browser_navigate", url, ...(newTab === undefined ? {} : { newTab }) })
   const direct = (operation: unknown) => ({ operation, reviewed: false })
