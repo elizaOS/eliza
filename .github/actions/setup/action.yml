@@ -29,7 +29,7 @@ runs:
     - id: setup-pnpm
       uses: pnpm/action-setup@v6
     - name: Install Dafny
-      if: inputs.verification == 'true'
+      if: inputs.verification == 'true' && !startsWith(inputs.job, 'simulate-')
       shell: bash
       run: |
         version=4.11.0
@@ -73,6 +73,7 @@ runs:
       env:
         JOB: ${{ inputs.job }}
       run: |
+        [[ $JOB != simulate-* ]] || JOB=verify
         lock='${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}'
         named="spec-${{ runner.os }}-${{ runner.arch }}-${JOB}-"
         prefix="${named}${lock}-"
@@ -298,7 +299,7 @@ runs:
         path: ~/.quint/rust-evaluator-${{ steps.quint-evaluator.outputs.version }}
         key: ${{ steps.quint-cache.outputs.cache-primary-key }}
     - name: Install Chromium
-      if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest'
+      if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest' && !startsWith(inputs.job, 'simulate-')
       run: |
         node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
         import { hostedCachedFixture, installChromium } from "./vibestack/selftests/install.ts";

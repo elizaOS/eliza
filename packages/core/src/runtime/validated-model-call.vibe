@@ -87,11 +87,10 @@ export function getProviderForModelType(
 
 function shouldValidate(
   runtime: IAgentRuntime,
-  modelType: ModelTypeName | string,
-  explicit: boolean | undefined,
+  options: CallModelWithValidationOptions,
 ): boolean {
-  if (explicit !== undefined) return explicit
-  const provider = getProviderForModelType(runtime, modelType)
+  if (options.validateBeforeReturn !== undefined) return options.validateBeforeReturn
+  const provider = options.provider ?? getProviderForModelType(runtime, options.modelType)
   if (provider && isLocalProvider(provider)) return false
   return true
 }
@@ -136,11 +135,7 @@ effect function callModelWithValidation(
   runtime: IAgentRuntime,
   options: CallModelWithValidationOptions,
 ): CallModelWithValidationResult!(SchemaValidationFailedError | Foreign) {
-  const validate = shouldValidate(
-    runtime,
-    options.modelType,
-    options.validateBeforeReturn,
-  )
+  const validate = shouldValidate(runtime, options)
   const requestedBudget = options.maxRerolls ?? DEFAULT_REMOTE_REROLL_BUDGET
   const ceiling = rerollBudgetCeilingFromSetting(runtime)
   const effectiveBudget = ceiling !== undefined

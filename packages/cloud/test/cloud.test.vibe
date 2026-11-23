@@ -1476,7 +1476,15 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
   it.live("Answer a maps request once and pay for it once, keep tiles unstored and look a place up nearby first (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\"; spec/cloud/services/maps.md, \"Story: Keep maps requests within the provider's terms\")", () => scoped(effect {
     const maps = try sync(() => googleMapsFake())
-    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+    const timer = try TestClock.make()
+    const { clock: liveClock } = try sync(() => shiftedClock())
+    let testingDeadline = false
+    const clock = { ...liveClock, sleep: (duration: Duration.Duration) => testingDeadline ? timer.sleep(duration) : liveClock.sleep(duration) }
+    const cloud = try effect {
+      provide Clock.Clock = clock {
+        return try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+      }
+    }
     const caller = try signedCaller(cloud, "mapper")
     const unfunded = try signedCaller(cloud, "mapless")
     try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "maps-funding" }))
@@ -1485,8 +1493,24 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const errorOf = (answer: { readonly body: unknown }) => (answer.body as { readonly error?: string }).error
     const berlin = { latitude: 52.5163, longitude: 13.3777 }
 
-    try sync(() => maps.script({ kind: "slow", delayMs: 10_500 }))
-    const lost = try post("geocode", "geo-lost", { query: "Pariser Platz" })
+    const lost = try scoped(effect {
+      const reached = Promise.withResolvers<void>()
+      const release = try acquireRelease(sync(() => {
+        testingDeadline = true
+        return Promise.withResolvers<void>()
+      }), (gate) => sync(() => {
+        testingDeadline = false
+        gate.resolve()
+      }))
+      try sync(() => maps.script({ kind: "hold", wait: () => {
+        reached.resolve()
+        return release.promise
+      } }))
+      const waiting = try forkChild(post("geocode", "geo-lost", { query: "Pariser Platz" }))
+      try promise(() => reached.promise)
+      try timer.adjust(Duration.seconds(10))
+      return try Fiber.join(waiting)
+    })
 
     const first = try post("geocode", "geo-1", { query: "Brandenburger Tor" })
     const geocodesAfterFirst = maps.count("geocode")
@@ -1664,6 +1688,9 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const tile = try cloud.call("/api/v1/maps/tiles/3/4/2", { headers: { ...caller.headers, "idempotency-key": "osm-tile-1" } })
     const usage = try sql(cloud, "SELECT r.operation, r.status, u.quote, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key", [])
     const route = (walked.body as { readonly routes: ReadonlyArray<{ readonly distanceMeters: number; readonly durationSeconds: number; readonly traffic: string; readonly steps: ReadonlyArray<{ readonly maneuver?: string }> }> }).routes[0]
+    const walkedRequest = try Effect.try(() => JSON.parse(osm.calls[4]?.body ?? "{}"))
+    const walkedProfile = try Schema.decodeUnknownEffect(Schema.Struct({ profile: Schema.String }))(walkedRequest)
+    try check(() => assert.equal(walkedProfile.profile, "foot"))
     const place = (reversed.body as { readonly place: { readonly id: string; readonly name: string } }).place
     const detail = (detailed.body as { readonly place: { readonly website?: string; readonly openingHours?: string; readonly phone?: string } }).place
     const offered = capabilities.body as { readonly providerId: string; readonly tiles?: unknown; readonly capabilities: { readonly map: boolean; readonly placeLookup: boolean; readonly modes: ReadonlyArray<string>; readonly traffic: string; readonly transit: string } }
@@ -1885,6 +1912,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const htmlOverLimit = `<p>${htmlTextAtLimit}y</p>`
     try sync(() => {
       const message = { labelIds: ["TRASH"], historyId: String(mailbox.history), internalDate: now, snippet: "Preview only" }
+      mailbox.messages.set("msg-ascii-oversized", { ...message, id: "msg-ascii-oversized", threadId: "msg-ascii-oversized", bodyText: "x".repeat(8 * 1024 * 1024 + 1) })
       mailbox.messages.set("html-at-limit", { ...message, id: "html-at-limit", threadId: "html-at-limit", bodyHtml: htmlAtLimit })
       mailbox.messages.set("html-alternative", { ...message, id: "html-alternative", threadId: "html-alternative", bodyText: "Plain alternative", bodyHtml: htmlOverLimit })
       mailbox.messages.set("html-over-limit", { ...message, id: "html-over-limit", threadId: "html-over-limit", bodyHtml: htmlOverLimit })
@@ -1893,6 +1921,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       mailbox.messages.set("mime-html-only", { ...message, id: "mime-html-only", threadId: "mime-html-only", mimePayload: mimeBoundaryPayload(201, "html") })
       mailbox.messages.set("mime-malformed", { ...message, id: "mime-malformed", threadId: "mime-malformed", mimePayload: mimeBoundaryPayload(201, "malformed") })
     })
+    const asciiOversized = try gmail("/read?messageId=msg-ascii-oversized")
     const htmlReads = try promise(() => Promise.all(["html-at-limit", "html-alternative", "html-over-limit"].map((messageId) => client.gmailRead({ messageId }))))
     const html = htmlReads.map((message, index) => [
       message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
@@ -2005,6 +2034,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         html,
         mime: [mime, mimeAttachment.status, (mimeAttachment.body as { readonly dataBase64?: string }).dataBase64, mimeMalformed.status],
         oversized: errorOf(oversized),
+        asciiOversized: errorOf(asciiOversized),
         capabilities: [capabilities.status, capabilities.body],
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
         thread: [thread.status, threadBody.historyId, threadBody.total, threadBody.messages.map((message) => message.bodyText)],
@@ -2032,6 +2062,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
           ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
         oversized: [413, "content_too_large"],
+        asciiOversized: [413, "content_too_large"],
         capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"],
           kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
@@ -2055,6 +2086,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const again = try operation("", { grantId, requestId, proposal })
     const otherKind = try operation("", { grantId, requestId, proposal: { ...proposal, kind: "archive" } })
     const wrongDigest = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: "0".repeat(64), proposal })
+    try check(() => assert.deepStrictEqual(switches.calls, []))
     switches.dropNextReply = true
     const lost = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
     const looked = try operation(`/${requestId}?grantId=${grantId}`)
@@ -2095,7 +2127,9 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const prepared = try operation("", { grantId, requestId, proposal })
     const reviewDigest = (prepared.body as OperationAnswer).receipt.reviewDigest
     const changed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal: { ...proposal, bodyText: "Something else." } })
+    try check(() => assert.deepStrictEqual(switches.calls, []))
     const sent = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    try check(() => assert.equal(sent.status, 200, JSON.stringify(sent.body)))
     const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
     const looked = try operation(`/${requestId}?grantId=${grantId}`)
     const sends = switches.calls.filter((call) => call.path === "/messages/send").length
@@ -2128,7 +2162,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         stale: [409, "stale_revision"]
       }
     ))
-  }))
+  }), 30_000)
 })
 
 type OperationAnswer = {
@@ -2637,7 +2671,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     ))
   }))
 
-  it.live("Verify an entitlement the service signed and refuse it for another audience (spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\")", () => scoped(effect {
+  it.live("Verify an entitlement the service signed for my account and audience (spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\")", () => scoped(effect {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis
     const token = try entitledDevice(cloud, "verified", now)
@@ -2645,13 +2679,23 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     const published = try cloud.call("/api/v1/subscription/entitlement-keys")
     const answer = try cloud.call("/api/v1/subscription/entitlement", bearer)
     const signed = (answer.body as { readonly entitlement: string }).entitlement
-    const expected = { keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription", now }
+    const account = try promise(() => clientOf(cloud.url, () => token).account())
+    const expected = {
+      keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription",
+      userId: account.id, organizationId: account.organization_id, now
+    }
+    const refusalOf = (result: Promise<unknown>) => result.then(
+      () => "verified",
+      (error: unknown) => error instanceof EntitlementInvalid ? error.check : `threw ${String(error)}`
+    )
     const checked = try promise(() => checkEntitlement(signed, expected))
     const laterVersion = try promise(() => verifyOnDevice(resignedEntitlement(signed, { ver: 4 }, secrets.CLOUD_ENTITLEMENT_KEY ?? ""), expected))
-    const otherAudience = try promise(() => verifyOnDevice(signed, { ...expected, audience: "another-service" }).then(() => "verified", (error: unknown) => error instanceof EntitlementInvalid ? error.check : `threw ${String(error)}`))
+    const otherAudience = try promise(() => refusalOf(verifyOnDevice(signed, { ...expected, audience: "another-service" })))
+    const otherUser = try promise(() => refusalOf(verifyOnDevice(signed, { ...expected, userId: "user-another" })))
+    const otherOrganization = try promise(() => refusalOf(checkEntitlement(signed, { ...expected, organizationId: "org-another" })))
     try check(() => assert.deepStrictEqual(
-      { user: checked.userId, organization: checked.organizationId, plan: checked.plan, lifetime: checked.expiresAt - checked.issuedAt, laterVersion: laterVersion.ver, otherAudience },
-      { user: "user-verified", organization: "org-verified", plan: { id: "free", name: "Free", status: "none" }, lifetime: 1_800_000, laterVersion: 4, otherAudience: "WrongAudience" }
+      { user: checked.userId, organization: checked.organizationId, plan: checked.plan, lifetime: checked.expiresAt - checked.issuedAt, laterVersion: laterVersion.ver, otherAudience, otherUser, otherOrganization },
+      { user: "user-verified", organization: "org-verified", plan: { id: "free", name: "Free", status: "none" }, lifetime: 1_800_000, laterVersion: 4, otherAudience: "WrongAudience", otherUser: "WrongSubject", otherOrganization: "WrongOrganization" }
     ))
   }))
 
@@ -3162,7 +3206,10 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
     try sql(cloud, "UPDATE subscriptions SET status = 'unpaid' WHERE key = 'org-entitled'", [])
     const unpaidAnswer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
     const unpaidAt = try Clock.currentTimeMillis
-    const unpaid = try promise(() => verifyOnDevice((unpaidAnswer.body as { readonly entitlement: string }).entitlement, { keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription", now: unpaidAt }))
+    const unpaid = try promise(() => verifyOnDevice((unpaidAnswer.body as { readonly entitlement: string }).entitlement, {
+      keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription",
+      userId: "user-entitled", organizationId: "org-entitled", now: unpaidAt
+    }))
     try sql(cloud, "UPDATE subscriptions SET plan_key = 'gold' WHERE key = 'org-entitled'", [])
     const unreadable = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
 

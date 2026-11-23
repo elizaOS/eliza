@@ -784,6 +784,7 @@ export interface Memory {
   root: string;
   fresh: boolean;
   used: Set<string>;
+  actionSignal?: AbortSignal;
   actionProjection?: { version: string; encode: (value: unknown) => unknown };
   /** Actual receipt bytes, including writes pending installation certification. */
   captureReceipt?: (receipt: { name: string; bytes: Uint8Array }) => void;

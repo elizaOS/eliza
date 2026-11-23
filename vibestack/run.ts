@@ -266,22 +266,48 @@ export function startAttached(exe: string, args: string[], cwd: string) {
 /** How many programs run at once; the others wait for one to end. */
 const SLOTS = availableParallelism();
 let busy = 0;
-const waiting: (() => void)[] = [];
+const waiting = new Set<() => void>();
+
+function waitForSlot(signal: AbortSignal | undefined): Promise<boolean> {
+  return new Promise((settle) => {
+    const grant = () => {
+      subscription?.[Symbol.dispose]();
+      settle(true);
+    };
+    const subscription = signal && addAbortListener(signal, () => {
+      if (waiting.delete(grant)) settle(false);
+    });
+    waiting.add(grant);
+  });
+}
+
+function releaseSlot() {
+  for (const next of waiting) {
+    waiting.delete(next);
+    next();
+    return;
+  }
+  busy--;
+}
 
 /**
  * Run a program to the end, once fewer than SLOTS are running, and return what it wrote. One that cannot be started
  * is an error; one that writes too much, runs too long or is killed by a signal is stopped, and `stopped` says so.
  */
-export async function exec(exe: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv, input?: string): Promise<{ status: number; stdout: string; stderr: string; stopped?: string }> {
+export async function exec(exe: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv, input?: string, cancellation?: AbortSignal): Promise<{ status: number; stdout: string; stderr: string; stopped?: string }> {
+  const canceled = { status: -1, stdout: "", stderr: "", stopped: "proof work was canceled after simulation failed" };
+  if (cancellation?.aborted) return canceled;
   if (busy < SLOTS) busy++;
-  else await new Promise<void>((go) => waiting.push(go));
+  else if (!await waitForSlot(cancellation)) return canceled;
   // On Windows anything but an .exe (an npm .cmd shim, or a name on the PATH) needs a shell, which reads each argument quoted for cmd.exe.
   const shell = WINDOWS && !/\.exe$/i.test(exe);
   const quote = (a: string) => (shell && (a === "" || /[\s"&|<>^%()!,;=]/.test(a)) ? `"${a.replace(/"/g, '""')}"` : a);
   const name = path.basename(exe).replace(/\.cmd$/, "");
   const started = Date.now();
   let unwatch: (() => void) | undefined;
+  let unabort: Disposable | undefined;
   try {
+    if (cancellation?.aborted) return canceled;
     return await new Promise((resolve, reject) => {
       const child = spawn(quote(exe), args.map(quote), { cwd, env, shell, detached: !WINDOWS });
       endsWithTheCheck(child, "SIGTERM");
@@ -293,6 +319,7 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
         child.stdout.destroy();
         child.stderr.destroy();
       };
+      if (cancellation && !WINDOWS) unabort = addAbortListener(cancellation, () => stop("was canceled after simulation failed"));
       const minutes = TOOL_TIMEOUT / 60_000;
       let lastComplete: { seconds: number; since: number } | undefined;
       let observedAt = started;
@@ -335,15 +362,18 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
       });
       child.once("error", reject);
       child.once("exit", (_, by) => { if (by) signal(child, "SIGKILL"); });
-      child.once("close", (code, by) => resolve({ status: code ?? -1, ...output, stopped: stopped ?? (by ? `${name} was killed by ${by} after ${Math.round((Date.now() - started) / 1000)} s` : undefined) }));
+      child.once("close", (code, by) => {
+        unabort?.[Symbol.dispose]();
+        unabort = undefined;
+        resolve({ status: code ?? -1, ...output, stopped: stopped ?? (by ? `${name} was killed by ${by} after ${Math.round((Date.now() - started) / 1000)} s` : undefined) });
+      });
       // A tool may exit before reading its input; its exit status still reports the failure.
       if (input !== undefined) { child.stdin.on("error", () => {}); child.stdin.end(input); }
     });
   } finally {
+    unabort?.[Symbol.dispose]();
     unwatch?.();
-    const next = waiting.shift();
-    if (next) next();
-    else busy--;
+    releaseSlot();
   }
 }
 

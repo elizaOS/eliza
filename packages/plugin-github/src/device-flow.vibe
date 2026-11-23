@@ -1,0 +1,86 @@
+// spec/github/deviceFlow.md, "The owning agent can poll its pending flow only after the provider interval, before expiry"; spec/github/deviceFlow.md, "A slow-down response delays the same flow by another five seconds"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import type { IAgentRuntime } from "@elizaos/core"
+import { initial, machineOver, enabled, type GithubDeviceObservation } from "../gen/github__deviceFlow.effect.vibe"
+
+module node {
+  import { randomBytes } from "node:crypto"
+  export function freshGitHubFlowId(): string { return randomBytes(24).toString("base64url") }
+}
+import { freshGitHubFlowId } from node
+
+export error GitHubDeviceConnectionFailed { stage: string }
+
+const ProviderChallenge = Schema.Struct({ device_code: Schema.String, user_code: Schema.String, verification_uri: Schema.String, expires_in: Schema.Int, interval: Schema.Int })
+const ProviderObservation = Schema.Struct({ access_token: Schema.optionalKey(Schema.String), error: Schema.optionalKey(Schema.String) })
+const GitHubIdentity = Schema.Struct({ login: Schema.String })
+
+function verificationPage(uri: string): boolean {
+  try { const parsed = new URL(uri); return parsed.protocol === "https:" && parsed.hostname === "github.com" && parsed.pathname === "/login/device" && !parsed.username && !parsed.password } catch { return false }
+}
+
+effect function githubDeviceForm(path: "/login/device/code" | "/login/oauth/access_token", form: URLSearchParams): unknown!GitHubDeviceConnectionFailed!HttpClient.HttpClient {
+  const request = HttpClientRequest.post(`https://github.com${path}`).pipe(HttpClientRequest.acceptJson, HttpClientRequest.bodyText(form.toString(), "application/x-www-form-urlencoded"))
+  const result = timeout(Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" }), "15 seconds") catch effect () => { throw new GitHubDeviceConnectionFailed({ stage: "network" }) }
+  if (result.status < 200 || result.status >= 300) throw new GitHubDeviceConnectionFailed({ stage: "provider" })
+  return result.json catch effect () => { throw new GitHubDeviceConnectionFailed({ stage: "response" }) }
+}
+
+export effect function startGitHubDeviceConnection(runtime: IAgentRuntime, agentKey: string) {
+  const raw = runtime.getSetting("GITHUB_OAUTH_CLIENT_ID")
+  const clientId = typeof raw === "string" ? raw.trim() : ""
+  if (agentKey.trim() === "" || clientId === "") throw new GitHubDeviceConnectionFailed({ stage: "configuration" })
+  const challenge = try Schema.decodeUnknownEffect(ProviderChallenge)(try githubDeviceForm("/login/device/code", new URLSearchParams({ client_id: clientId, scope: "repo read:user notifications" })))
+  if (challenge.device_code === "" || challenge.user_code === "" || challenge.expires_in <= 0 || challenge.interval <= 0 || !verificationPage(challenge.verification_uri)) throw new GitHubDeviceConnectionFailed({ stage: "challenge" })
+  const deviceCode = Redacted.make(challenge.device_code)
+  const binding = { flowId: try Effect.try(() => freshGitHubFlowId()), agentKey }
+  const kept = try Ref.make(initial)
+  const model = try machineOver(() => Ref.get(kept), next => Ref.set(kept, next))
+  const now = try Clock.currentTimeMillis
+  try model.send({ type: "startGitHubDevice", binding, nowMs: now, deadline: now + challenge.expires_in * 1000, intervalSeconds: challenge.interval }, "GitHubDeviceHost")
+  return {
+    flowId: binding.flowId,
+    userCode: challenge.user_code,
+    verificationUri: challenge.verification_uri,
+    expiresInSeconds: challenge.expires_in,
+    effect poll(flowId: string, authenticatedAgent: string) {
+      if (binding.flowId !== flowId || binding.agentKey !== authenticatedAgent) throw new GitHubDeviceConnectionFailed({ stage: "unknown-flow" })
+      const before = try model.get()
+      const nowMs = try Clock.currentTimeMillis
+      if (enabled(before, { type: "expireGitHubDevice", nowMs }, "GitHubDeviceHost")) try model.send({ type: "expireGitHubDevice", nowMs }, "GitHubDeviceHost")
+      const current = try model.get()
+      if (current.phase === "GitHubDeviceExpired") return { status: "expired" as const }
+      if (current.phase === "GitHubDeviceDenied") return { status: "denied" as const }
+      if (current.phase === "GitHubDeviceComplete" || current.phase === "GitHubDeviceFailed") throw new GitHubDeviceConnectionFailed({ stage: "unknown-flow" })
+      const poll = { type: "pollGitHubDevice" as const, binding, nowMs }
+      if (!enabled(current, poll, "GitHubDeviceHost")) return { status: "pending" as const, retryAfterSeconds: Math.max(1, Math.ceil((current.nextPollAt - nowMs) / 1000)) }
+      try model.send(poll, "GitHubDeviceHost")
+      const response = (effect {
+        const message = try githubDeviceForm("/login/oauth/access_token", new URLSearchParams({ client_id: clientId, device_code: Redacted.value(deviceCode), grant_type: "urn:ietf:params:oauth:grant-type:device_code" }))
+        return try Schema.decodeUnknownEffect(ProviderObservation)(message)
+      }) catch () => undefined
+      let observation: GithubDeviceObservation
+      let login: string | undefined
+      if (response?.access_token) {
+        const token = Redacted.make(response.access_token)
+        const identity = (effect {
+          const request = HttpClientRequest.get("https://api.github.com/user").pipe(HttpClientRequest.setHeaders({ Authorization: `Bearer ${Redacted.value(token)}`, Accept: "application/vnd.github+json", "User-Agent": "elizaos-github" }))
+          const result = try timeout(Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" }), "10 seconds")
+          if (result.status !== 200) throw new GitHubDeviceConnectionFailed({ stage: "identity" })
+          return try Schema.decodeUnknownEffect(GitHubIdentity)(try result.json)
+        }) catch () => undefined
+        const awaiting = try model.get()
+        if (awaiting.phase !== "GitHubDevicePolling" || awaiting.pollStartedAt !== nowMs) throw new GitHubDeviceConnectionFailed({ stage: "expired" })
+        login = identity?.login
+        if (login) try Effect.try(() => runtime.setSetting("GITHUB_USER_PAT", Redacted.value(token), true))
+        observation = login ? "GitHubDeviceTokenStored" : "GitHubDeviceInvalid"
+      } else observation = response === undefined ? "GitHubDeviceTransportFailure" : response.error === "authorization_pending" ? "GitHubDeviceStillPending" : response.error === "slow_down" ? "GitHubDeviceSlowDown" : response.error === "access_denied" ? "GitHubDeviceAccessDenied" : response.error === "expired_token" ? "GitHubDeviceCodeExpired" : "GitHubDeviceInvalid"
+      const done = try model.send({ type: "observeGitHubDevice", binding, pollAt: nowMs, observation }, "GitHubDeviceAdapter")
+      if (done.state.phase === "GitHubDeviceComplete" && login) return { status: "complete" as const, login }
+      if (done.state.phase === "GitHubDeviceDenied") return { status: "denied" as const }
+      if (done.state.phase === "GitHubDeviceExpired") return { status: "expired" as const }
+      if (done.state.phase === "GitHubDeviceFailed") throw new GitHubDeviceConnectionFailed({ stage: "provider" })
+      return { status: "pending" as const, retryAfterSeconds: done.state.intervalSeconds }
+    },
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@elizaos/plugin-mcp",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13",
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
+  }
+}

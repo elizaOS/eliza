@@ -1,0 +1,85 @@
+// spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime"
+import { mayApplySqliteMigration, mayOpenSqlite, type DatabaseOwner, type SqliteLease } from "../gen/sqlite.effect.vibe"
+
+export error SqliteFailure { reason: string }
+
+export interface SqliteMigration {
+  readonly revision: number
+  readonly sql: string
+}
+
+module node {
+  import { isAbsolute } from "node:path"
+  import { DatabaseSync } from "node:sqlite"
+
+  export function openSqliteFile(path: string) {
+    if (!isAbsolute(path)) throw new Error("SQLite requires an absolute path")
+    const database = new DatabaseSync(path)
+    try {
+      database.exec("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE")
+      return database
+    } catch (error) {
+      database.close()
+      throw error
+    }
+  }
+
+  export function sqliteVersion(database: DatabaseSync): number {
+    const row = database.prepare("PRAGMA user_version").get()
+    if (typeof row?.user_version !== "number" || !Number.isSafeInteger(row.user_version)) throw new Error("Invalid SQLite schema version")
+    return row.user_version
+  }
+
+  export function sqliteOwner(database: DatabaseSync): string | undefined {
+    database.exec("CREATE TABLE IF NOT EXISTS eliza_sqlite_owner (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), agent_id TEXT NOT NULL)")
+    const row = database.prepare("SELECT agent_id FROM eliza_sqlite_owner WHERE singleton = 1").get()
+    if (row === undefined) return undefined
+    if (typeof row.agent_id !== "string" || row.agent_id === "") throw new Error("Invalid SQLite owner marker")
+    return row.agent_id
+  }
+
+  export function bindSqliteOwner(database: DatabaseSync, agentId: string): void {
+    database.prepare("INSERT INTO eliza_sqlite_owner (singleton, agent_id) VALUES (1, ?)").run(agentId)
+  }
+
+  export function applySqliteVersion(database: DatabaseSync, migration: SqliteMigration): void {
+    database.exec(migration.sql)
+    database.exec("PRAGMA user_version = " + migration.revision)
+  }
+}
+import { openSqliteFile, sqliteVersion, sqliteOwner, bindSqliteOwner, applySqliteVersion } from node
+
+export effect function openSqlite(path: string, agentId: string, lease: SqliteLease, migrations: readonly SqliteMigration[]) {
+  const database = try Effect.try({ try: () => openSqliteFile(path), catch: () => new SqliteFailure({ reason: "database could not be opened exclusively" }) })
+  let prepared = false
+  return try ensuring(effect {
+    const actual = try Effect.try({ try: () => sqliteOwner(database), catch: () => new SqliteFailure({ reason: "owner marker is unreadable" }) })
+    const owner: DatabaseOwner = actual === undefined ? { tag: "UnboundSqlite" } : { tag: "BoundSqlite", agent: actual }
+    if (!mayOpenSqlite(owner, lease, { requestedAgent: agentId, requestingProcess: lease.processKey, observedGeneration: lease.leaseGeneration, absolutePath: true })) {
+      throw new SqliteFailure({ reason: "database belongs to another agent or the process lease is invalid" })
+    }
+    try Effect.try({
+      try: () => {
+        if (actual === undefined) bindSqliteOwner(database, agentId)
+      },
+      catch: () => new SqliteFailure({ reason: "owner marker could not be saved" }),
+    })
+    let version = try Effect.try({ try: () => sqliteVersion(database), catch: () => new SqliteFailure({ reason: "schema version is unreadable" }) })
+    const desired = migrations.length
+    if (version > desired || migrations.some((migration, index) => migration.revision !== index + 1)) {
+      throw new SqliteFailure({ reason: "schema version conflicts with the migration sequence" })
+    }
+    for (const migration of migrations.slice(version)) {
+      if (!mayApplySqliteMigration(version, desired, migration.revision)) throw new SqliteFailure({ reason: "migration is out of order" })
+      try Effect.try({ try: () => applySqliteVersion(database, migration), catch: () => new SqliteFailure({ reason: "migration failed" }) })
+      version = migration.revision
+    }
+    try Effect.try({ try: () => database.exec("COMMIT"), catch: () => new SqliteFailure({ reason: "could not commit database preparation" }) })
+    prepared = true
+    return database
+  }, effect {
+    if (!prepared) {
+      Effect.try(() => database.close()) catch () => undefined
+    }
+  })
+}

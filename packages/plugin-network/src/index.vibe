@@ -1,0 +1,139 @@
+// spec/network/index.md, "Availability uses the member's own evidence and calendar window"; spec/network/index.md, "Only the authenticated turn may request a state write or relay"; spec/network/index.md, "A successful Network action requires its own matching receipt"; spec/network/index.md, "Only unseen updates for the bound member appear in the read acknowledgement"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import type { Action, ActionResult, Memory, Plugin } from "@elizaos/core"
+import { initial, machineOver, effectiveNetworkAvailability, networkWindow, validNetworkAvailability, type Availability, type AvailabilityCue, type AvailabilityRequest, type MemberTurn, type NetworkAction, type NetworkOutcome } from "../gen/network.effect.vibe"
+
+module node {
+  import { createHash, createHmac } from "node:crypto"
+  export function signNetworkRequest(secret: string, path: string, time: number, request: string, body: string): string {
+    const digest = createHash("sha256").update(body).digest("hex")
+    return createHmac("sha256", secret).update(`POST\n${path}\n${time}\n${request}\n${digest}`).digest("hex")
+  }
+}
+import { signNetworkRequest } from node
+
+export error NetworkUnavailable { stage: string; status: number }
+
+export interface NetworkRouteAuthority {
+  readonly version: 1
+  readonly routeId: string
+  readonly generation: string
+  readonly audience: string
+  readonly realmId: string
+}
+
+export interface NetworkTurnAuthority {
+  readonly turn: MemberTurn
+  readonly channel: "blooio" | "twilio"
+  readonly text: string
+  readonly timeZone: string
+  readonly singlePlayer: boolean
+  readonly route?: NetworkRouteAuthority
+}
+
+export interface NetworkServiceOptions {
+  readonly baseUrl: string
+  readonly secret: Redacted.Redacted<string>
+}
+
+const StateReceipt = Schema.Struct({ eventId: Schema.NullOr(Schema.String), previous: Schema.String, current: Schema.String, committedAt: Schema.String, replayed: Schema.Boolean, unchanged: Schema.Boolean })
+const RelayReceipt = Schema.Struct({ decision: Schema.Literals(["pass", "hold", "block", "none"]), senderNotice: Schema.String, delivered: Schema.Boolean, replayed: Schema.Boolean })
+const UpdatesReceipt = Schema.Struct({ items: Schema.Array(Schema.Struct({ summary: Schema.String })) })
+const SetStateParameters = Schema.Struct({ state: Schema.Literals(["open", "busy", "traveling", "paused"]), from: Schema.optionalKey(Schema.String), until: Schema.optionalKey(Schema.String), evidence: Schema.optionalKey(Schema.String), note: Schema.optionalKey(Schema.String) })
+const RelayParameters = Schema.Struct({ itemId: Schema.optionalKey(Schema.String) })
+
+const application = { NtwrkApp: "ntwrk", SlopApp: "slop", PeonApp: "peon", FriendsApp: "friends" } as const
+const stateName: Record<Availability, string> = { OpenAvailability: "open", BusyAvailability: "busy", TravelingAvailability: "traveling", PausedAvailability: "paused" }
+const availabilityOf = { open: "OpenAvailability", busy: "BusyAvailability", traveling: "TravelingAvailability", paused: "PausedAvailability" } as const
+const failed = (text: string): ActionResult => ({ success: false, text, continueChain: false })
+
+function safeOrigin(value: string): string | undefined {
+  try {
+    const url = new URL(value)
+    const testOrigin = url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost")
+    return (url.protocol === "https:" || testOrigin) && !url.username && !url.password && !url.search && !url.hash && url.pathname === "/" ? url.origin : undefined
+  } catch { return undefined }
+}
+
+export effect function postNetwork(options: NetworkServiceOptions, path: "/internal/set-state" | "/internal/relay" | "/internal/updates", key: string, payload: object): unknown!NetworkUnavailable!HttpClient.HttpClient {
+  const origin = safeOrigin(options.baseUrl)
+  const secret = Redacted.value(options.secret)
+  if (origin === undefined || new TextEncoder().encode(secret).length < 32 || !key || /[\r\n]/.test(key)) throw new NetworkUnavailable({ stage: "configuration", status: 0 })
+  const body = JSON.stringify(payload)
+  const timestamp = Math.floor((try Clock.currentTimeMillis) / 1000)
+  const signature = try Effect.try({ try: () => signNetworkRequest(secret, path, timestamp, key, body), catch: () => new NetworkUnavailable({ stage: "signature", status: 0 }) })
+  const request = HttpClientRequest.post(`${origin}${path}`).pipe(HttpClientRequest.setHeaders({ "x-ntwrk-svc-ts": String(timestamp), "x-ntwrk-svc-id": key, "x-ntwrk-svc-sig": signature }), HttpClientRequest.bodyText(body, "application/json"))
+  const response = timeout(Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" }), "8 seconds") catch effect () => { throw new NetworkUnavailable({ stage: "request", status: 0 }) }
+  if (response.status < 200 || response.status >= 300) throw new NetworkUnavailable({ stage: "http", status: response.status })
+  return response.json catch effect () => { throw new NetworkUnavailable({ stage: "response", status: response.status }) }
+}
+
+function units(text: string): number[] { return Array.from({ length: text.length }, (_, index) => text.charCodeAt(index)) }
+function parameters(raw: unknown): unknown { return typeof raw === "object" && raw !== null && "parameters" in raw ? raw.parameters : raw }
+function day(value: string | undefined): number {
+  if (value === undefined || value === "") return -1
+  if (!/^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value)) return -2
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? Math.floor(parsed / 86400000) : -2
+}
+function isoDay(value: number): string | null { return value < 0 ? null : new Date(value * 86400000).toISOString() }
+function cue(text: string): AvailabilityCue {
+  if (/\b(?:travel(?:ing|ling)?|out of town|away)\b/i.test(text)) return "TravelCue"
+  if (/\b(?:pause|stop matching|take a break)\b/i.test(text)) return "PauseCue"
+  if (/\b(?:busy|swamped|booked|unavailable)\b/i.test(text)) return "BusyCue"
+  if (/\b(?:open|available|resume|back)\b/i.test(text)) return "OpenCue"
+  return "NoCue"
+}
+
+export function createNetworkEdgePlugin(options: { readonly service: NetworkServiceOptions; readonly authority: NetworkTurnAuthority; readonly actionsEnabled?: boolean }): Plugin {
+  const host = options.authority
+  const turn: MemberTurn = { ...host.turn, messageUnits: units(host.text) }
+  const bound = { ...(host.route === undefined ? {} : { networkAuthority: host.route }), memberId: turn.memberId, channel: host.channel, app: application[turn.app], messageId: turn.messageId }
+  const isCurrent = (message: Memory) => typeof message.content.text === "string" && message.content.text.trim() === host.text.trim()
+  effect function run(action: "state" | "relay" | "updates", message: Memory, raw: unknown) {
+    if (!isCurrent(message)) return failed("The Network request no longer matches the member's turn.")
+    if (action === "updates") {
+      const receipt = try Schema.decodeUnknownEffect(UpdatesReceipt)(try postNetwork(options.service, "/internal/updates", turn.messageId, bound))
+      return { success: true, text: receipt.items.length === 0 ? "No new Network updates." : `Network updates:\n${receipt.items.map(item => `- ${item.summary}`).join("\n")}`, data: { count: receipt.items.length } } satisfies ActionResult
+    }
+    const kept = try Ref.make(initial)
+    const journal = try machineOver(() => Ref.get(kept), next => Ref.set(kept, next))
+    try journal.send({ type: "bindNetworkTurn", turn }, "NetworkHost")
+    if (action === "relay") {
+      if (host.singlePlayer) return failed("Relays are unavailable for this Network account.")
+      const input = try Schema.decodeUnknownEffect(RelayParameters)(parameters(raw) ?? {})
+      const itemId = input.itemId?.trim() ?? ""
+      const dispatched = try journal.send({ type: "relayNetwork", itemId }, "NetworkHost")
+      const receipt = try Schema.decodeUnknownEffect(RelayReceipt)(try postNetwork(options.service, "/internal/relay", turn.messageId, { ...bound, itemId: itemId === "" ? null : itemId, text: host.text }))
+      const result: NetworkOutcome = receipt.decision === "hold" ? { tag: "RelayHeld" } : receipt.decision === "block" ? { tag: "RelayBlocked" } : receipt.decision === "none" ? { tag: "RelayNotRequested" } : receipt.delivered ? { tag: "RelayDelivered", deliveryRequestId: turn.messageId } : { tag: "RelayUnconfirmed" }
+      try journal.send({ type: "observeNetworkAction", turn, operation: dispatched.state.operation, result }, "NetworkService")
+      return { success: result.tag === "RelayDelivered", text: receipt.senderNotice || (result.tag === "RelayDelivered" ? "Passed on." : result.tag === "RelayUnconfirmed" ? "The service accepted the request. Delivery is unconfirmed." : "The message was not sent."), data: { decision: receipt.decision, delivered: receipt.delivered, replayed: receipt.replayed } } satisfies ActionResult
+    }
+    const input = try Schema.decodeUnknownEffect(SetStateParameters)(parameters(raw))
+    const evidence = input.evidence?.trim() || host.text
+    const at = try Clock.currentTimeMillis
+    const localDay = day(new Intl.DateTimeFormat("en-CA", { timeZone: host.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at))
+    const stated = [...host.text.matchAll(/\b(from|until|through)\s+(\d{4}-\d{2}-\d{2})\b/gi)]
+    const statedDay = (beginning: boolean) => day(stated.find((match) => (match[1]?.toLowerCase() === "from") === beginning)?.[2])
+    const request: AvailabilityRequest = { requested: availabilityOf[input.state], suggested: { begins: day(input.from), ends: day(input.until) }, today: localDay, words: { bodyUnits: turn.messageUnits, quoteUnits: units(evidence), quoteOffset: host.text.indexOf(evidence), cue: cue(evidence), statedWindow: { begins: statedDay(true), ends: statedDay(false) } } }
+    if ((input.note?.length ?? 0) > 280 || !validNetworkAvailability(request)) return failed("Those dates or that availability do not match the member's request.")
+    const next: NetworkAction = { tag: "SetAvailability", availability: effectiveNetworkAvailability(request), window: networkWindow(request) }
+    try journal.send({ type: "setNetworkAvailability", availabilityRequest: request }, "NetworkHost")
+    const idempotencyKey = `state:${turn.memberId}:${turn.messageId}`
+    const receipt = try Schema.decodeUnknownEffect(StateReceipt)(try postNetwork(options.service, "/internal/set-state", idempotencyKey, { ...bound, idempotencyKey, state: stateName[next.availability], from: isoDay(next.window.begins), until: isoDay(next.window.ends), note: input.note ?? null }))
+    if (!receipt.unchanged && (receipt.eventId === null || receipt.eventId === "")) return failed("The Network service did not confirm the change.")
+    const result: NetworkOutcome = receipt.unchanged ? { tag: "AvailabilityUnchanged" } : { tag: "AvailabilityCommitted", eventId: receipt.eventId ?? "" }
+    try journal.send({ type: "observeNetworkAction", turn, operation: next, result }, "NetworkService")
+    return { success: true, text: receipt.unchanged ? `Your availability was already ${receipt.current}.` : `Your availability is now ${receipt.current}.`, data: { eventId: receipt.eventId, replayed: receipt.replayed } } satisfies ActionResult
+  }
+
+  const action = (name: string, description: string, kind: "state" | "relay" | "updates", args: Action["parameters"]): Action => ({
+    name, description, contexts: ["network"], roleGate: { minRole: "GUEST" }, ...(args === undefined ? {} : { parameters: args }), validate: async (_runtime, message) => isCurrent(message),
+    handler: (_runtime, message, _state, raw) => runPromise(Effect.catch(Effect.provide(run(kind, message, raw), FetchHttpClient.layer), () => succeed(failed("The Network service could not confirm this request.")))),
+  })
+  return { name: "@elizaos/plugin-network", description: "Network member availability, updates and relays", contexts: ["network"], actions: options.actionsEnabled === false ? [] : [
+    action("SET_STATE", "Change the member's availability only using their current words and dates.", "state", [{ name: "state", description: "open, busy, traveling, or paused", required: true, schema: { type: "string", enum: ["open", "busy", "traveling", "paused"] } }, { name: "evidence", description: "Exact words from the member's message", schema: { type: "string" } }, { name: "from", description: "Start date", schema: { type: "string" } }, { name: "until", description: "End date", schema: { type: "string" } }, { name: "note", description: "Member's reason", schema: { type: "string" } }]),
+    action("GET_UPDATES", "Show and acknowledge the member's new Network updates.", "updates", []),
+    action("RELAY", "Ask the Network to pass the member's exact message to an active introduction or plan.", "relay", [{ name: "itemId", description: "Optional exact active item identifier", schema: { type: "string" } }]),
+  ] }
+}

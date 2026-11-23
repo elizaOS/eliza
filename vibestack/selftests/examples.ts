@@ -12,7 +12,7 @@ const EXAMPLES = "vibestack/examples";
 // The examples are the tools' own subjects: checked here, where the tools test themselves, and never by an application
 // built on them, whose check reaches only its own packages and whose installed toolchain carries no example.
 export async function exampleCheckKeys(root: string, turbo: string): Promise<Map<string, string>> {
-  const planned = await exec(turbo, ["run", "//#selftest:examples", "--dry=json"], root, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
+  const planned = await exec(turbo, ["run", "//#selftest:examples", "--dry=json", "--cache=local:w"], root, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
   assert.equal(planned.status, 0, planned.stderr);
   const Schema = await import("effect/Schema");
   const plan = Schema.decodeUnknownSync(Schema.Struct({
