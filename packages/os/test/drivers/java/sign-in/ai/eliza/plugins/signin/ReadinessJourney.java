@@ -214,7 +214,7 @@ public final class ReadinessJourney {
         @Override public String get(String key) { return held.get(key); }
         @Override public void put(String key, String value) { held.put(key, value); }
       }, Runnable::run, clock::get, () -> new ReadinessPolicy.DeviceFacts(ReadinessPolicy.GoogleMode.PICKER, appLink.get(),
-        BrowserReturnPolicy.externalBrowser(null, browsers.get(), "ai.example.phone") != null), (environment, s) -> {});
+        !ReadinessPolicy.browserToOpen(browsers.get(), "", "ai.example.phone").isEmpty()), (environment, s) -> {});
       configReply.set(new Reply(200, configBody(true, true, true, false, "", "production")));
       browser.status("production", false, s -> served.add(status(s)));
       emit("browser-unverified", served.get(served.size() - 1));
@@ -222,17 +222,17 @@ public final class ReadinessJourney {
       browser.status("production", false, s -> served.add(status(s)));
       emit("browser-verified", served.get(served.size() - 1));
       before = probes(requests, "production");
-      browsers.set(List.of("ai.example.phone", BrowserReturnPolicy.WEBVIEW_SHELL));
+      browsers.set(List.of("ai.example.phone", ReadinessPolicy.WEBVIEW_SHELL_PACKAGE));
       browser.status("production", false, s -> served.add(status(s)));
       emit("browser-shell-only", served.get(served.size() - 1));
-      browsers.set(List.of(BrowserReturnPolicy.WEBVIEW_SHELL, "browser.without.custom.tabs"));
+      browsers.set(List.of(ReadinessPolicy.WEBVIEW_SHELL_PACKAGE, "browser.without.custom.tabs"));
       browser.status("production", false, s -> served.add(status(s)));
       emit("browser-full", served.get(served.size() - 1));
       emit("browser-change-probes", probes(requests, "production") - before);
       emit("browser-choice", new JSONArray(List.of(
-        String.valueOf(BrowserReturnPolicy.externalBrowser("browser.default", List.of("browser.other", "browser.default"), "ai.example.phone")),
-        String.valueOf(BrowserReturnPolicy.externalBrowser(BrowserReturnPolicy.WEBVIEW_SHELL, List.of(BrowserReturnPolicy.WEBVIEW_SHELL, "browser.other"), "ai.example.phone")),
-        String.valueOf(BrowserReturnPolicy.externalBrowser("ai.example.phone", List.of("ai.example.phone", BrowserReturnPolicy.WEBVIEW_SHELL), "ai.example.phone")))));
+        String.valueOf(ReadinessPolicy.browserToOpen(List.of("browser.other", "browser.default"), "browser.default", "ai.example.phone")),
+        String.valueOf(ReadinessPolicy.browserToOpen(List.of(ReadinessPolicy.WEBVIEW_SHELL_PACKAGE, "browser.other"), ReadinessPolicy.WEBVIEW_SHELL_PACKAGE, "ai.example.phone")),
+        String.valueOf(ReadinessPolicy.browserToOpen(List.of("ai.example.phone", ReadinessPolicy.WEBVIEW_SHELL_PACKAGE), "ai.example.phone", "ai.example.phone")))));
 
       List<String> outcomes = new ArrayList<>();
       String document = new JSONObject().put("success", true).put("version", 1)

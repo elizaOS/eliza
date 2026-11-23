@@ -16,7 +16,6 @@ public final class BrowserReturnPolicy {
   private BrowserReturnPolicy() {}
 
   public static final long PENDING_LIFETIME_MS = 10 * 60 * 1000L;
-  public static final String WEBVIEW_SHELL = "org.chromium.webview_shell";
   public static final String AUTHORIZE = "/api/v1/auth/google/authorize";
   public static final String EXCHANGE = "/api/v1/auth/google/exchange";
   public static final Set<String> RETURN_ERRORS = Set.of("access_denied", "app_link_unverified", "mfa_required",
@@ -138,16 +137,6 @@ public final class BrowserReturnPolicy {
         && p.generation() == c.generation() && c.now() < p.expiresAt() && c.attempt().equals(new Attempt.Exchanging(c.generation())))) return false;
     if (s.attempt() instanceof BrowserAttempt.Handed h && !(p == null && h.generation() == c.generation() && c.attempt().equals(new Attempt.Exchanging(h.generation())))) return false;
     return s.retirement() == Retirement.SETTLED || (s.attempt() instanceof BrowserAttempt.None && p != null);
-  }
-
-  public static String externalBrowser(String preferred, List<String> handlers, String host) {
-    String first = null;
-    for (String handler : handlers) {
-      if (handler == null || handler.equals(host) || handler.equals(WEBVIEW_SHELL)) continue;
-      if (handler.equals(preferred)) return handler;
-      if (first == null) first = handler;
-    }
-    return first;
   }
 
   public static boolean validState(String value) { return value != null && STATE.matcher(value).matches(); }
