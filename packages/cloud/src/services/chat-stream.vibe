@@ -1,24 +1,35 @@
-// spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal"
-import { endOfFailure, failureRefusal, hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
-import { refusalBody, refused } from "../http/refusal.vibe"
-import { maxReplyBytes, ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, readLlmObject, type LlmFailure } from "../providers/llm.vibe"
+// spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal"; spec/cloud/services/inference.md, "A refused call is retried when its provider can take it again, and a Cerebras rate limit within four seconds"; spec/cloud/services/inference.md, "A provider's 400 keeps only its listed code and parameter and a short message for the caller"
+import { detailOf, endOfFailure, failureRefusal, hangUpCounts, noDetail, type ProviderDetail, type Upstream } from "../../gen/cloud__services__inference.effect.vibe"
+import { refusalBody, refused, Refused, type ProviderFields } from "../http/refusal.vibe"
+import { maxReplyBytes, ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, readLlmObject, type LlmFailure, type LlmProvider } from "../providers/llm.vibe"
 import type { Settlement } from "../shared/metering.vibe"
 import { billedFromUsage, type TokenCounts } from "./models.vibe"
 import { chunkFrame, doneFrame, errorFrame, feed, finish, isDone, segmenter } from "./sse.ts"
 
 const frameBytes = 256 * 1024
 const chunkBytes = 16 * 1024
-const providerPause = 5_000
+const cerebrasHost = /(?:^|\.)cerebras\.ai$/i
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const DeltaText = Schema.Struct({ delta: Schema.optionalKey(Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) })) })
 const readDeltaText = Schema.decodeUnknownOption(DeltaText)
 
-export function providerRefusal(failure: LlmFailure, now: number) {
-  if (failure._tag === "ProviderInvalidResponse") return refused("ProviderInvalidResponse")
-  const code = failure._tag === "ProviderRefused" ? failureRefusal(endOfFailure(failure.status, false)).code : "ProviderUnavailable"
-  if (code !== "ProviderUnavailable") return refused(code)
-  return refused("ProviderUnavailable", "NoReason", now + (failure._tag === "ProviderRefused" ? failure.retryAfter ?? providerPause : providerPause))
+function fieldsOf(detail: ProviderDetail): ProviderFields {
+  return {
+    ...(detail.code.tag === "FieldSent" ? { code: detail.code.value } : {}),
+    ...(detail.param.tag === "FieldSent" ? { param: detail.param.value } : {}),
+    ...(detail.message.tag === "FieldSent" ? { providerMessage: detail.message.value } : {})
+  }
+}
+
+export function providerRefusal(failure: LlmFailure, provider: LlmProvider, delivered: boolean, now: number): Refused {
+  const rejected = failure._tag === "ProviderRefused" ? failure : undefined
+  const end = endOfFailure(rejected?.status ?? 0, delivered)
+  const upstream: Upstream = {
+    cerebras: cerebrasHost.test(URL.parse(provider.baseUrl)?.hostname ?? ""),
+    retryAfter: rejected?.retryAfter === undefined ? { tag: "NoRetryAfter" } : { tag: "RetryAfterMs", millis: rejected.retryAfter }
+  }
+  return new Refused({ refusal: failureRefusal(end, upstream, now), fields: fieldsOf(detailOf(end, rejected?.sent ?? noDetail)) })
 }
 
 type ChatSettlement = Exclude<Settlement, { readonly kind: "release" }>
@@ -27,8 +38,9 @@ export function completionSettlement(actual: number | undefined): ChatSettlement
   return actual === undefined ? { kind: "unknown" } : { kind: "known", actual }
 }
 
-export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, price, finishHold, includeUsage }: {
+export function meteredChatStream({ upstream, provider, publicModelId, quoted, holdKey, price, finishHold, includeUsage }: {
   readonly upstream: Stream.Stream<Uint8Array, LlmFailure>
+  readonly provider: LlmProvider
   readonly publicModelId: string
   readonly quoted: TokenCounts
   readonly holdKey: string
@@ -93,9 +105,9 @@ export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, pr
   return Stream.concat(replies, terminal).pipe(
     Stream.catch((failure) => Stream.fromEffect(effect {
       failed = true
-      const refusal = failure instanceof ProviderInvalidResponse || failure instanceof ProviderUnreachable || failure instanceof ProviderTimedOut || failure instanceof ProviderRefused
-        ? providerRefusal(failure, try Clock.currentTimeMillis) : refused("ServiceUnavailable")
-      return encoder.encode(errorFrame(JSON.stringify(refusalBody(refusal.refusal))) + doneFrame)
+      const answer = failure instanceof ProviderInvalidResponse || failure instanceof ProviderUnreachable || failure instanceof ProviderTimedOut || failure instanceof ProviderRefused
+        ? providerRefusal(failure, provider, true, try Clock.currentTimeMillis) : refused("ServiceUnavailable")
+      return encoder.encode(errorFrame(JSON.stringify(refusalBody(answer.refusal, answer.fields))) + doneFrame)
     })),
     Stream.ensuring(effect {
       if (settled) return

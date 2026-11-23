@@ -12,11 +12,32 @@ export type LlmScript =
   | { readonly kind: "malformedFrame" }
   | { readonly kind: "oversizedFrame" }
   | { readonly kind: "refuse"; readonly retryAfterSeconds?: number }
-  | { readonly kind: "reject"; readonly status: number }
+  | { readonly kind: "reject"; readonly status: number; readonly body?: unknown }
   | { readonly kind: "hang"; readonly after: number }
   | { readonly kind: "notJson" };
 
 export const replyText = "Héllo";
+
+export const cerebrasBaseUrl = "https://api.cerebras.ai/v1";
+
+export const parserError = {
+  message: "Failed to generate tool_calls. Exception: Failed to generate tool call but tool_choice = 'required'.",
+  type: "generation_error",
+  param: "tool_calls",
+  code: "parser_error",
+  id: "",
+  failed_generation: "PRIVATE_FAILED_GENERATION",
+} as const;
+
+export function cerebrasRoute(fakeUrl: string): typeof fetch {
+  const fakes = new URL(fakeUrl).origin;
+  return (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin === fakes) return fetch(input, init);
+    if (url.href.startsWith(`${cerebrasBaseUrl}/`)) return fetch(`${fakeUrl}/llm/${url.href.slice(cerebrasBaseUrl.length + 1)}`, init);
+    return Promise.reject(new TypeError(`The test network has no route to ${url.origin}`));
+  };
+}
 
 export const usage = {
   prompt_tokens: 12,
@@ -96,7 +117,7 @@ function answerFor(script: LlmScript, cut: () => void): FakeAnswer {
         headers: script.retryAfterSeconds === undefined ? {} : { "retry-after": String(script.retryAfterSeconds) },
       };
     case "reject":
-      return { status: script.status, body: { error: { code: "context_length_exceeded", param: "messages", message: "too long" } } };
+      return { status: script.status, body: script.body ?? { error: { code: "context_length_exceeded", param: "messages", message: "too long" } } };
     case "hang":
       return { status: 200, chunks: contentFrames, hangAfter: script.after, onClose: (finished) => { if (!finished) cut(); } };
     case "notJson":
