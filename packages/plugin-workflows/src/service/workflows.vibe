@@ -1249,52 +1249,68 @@ function workflowDefinitions(
 function workflowConformance(
   { db, store, lock, now, owner, writeDefinition, persist }: Pick<WorkflowRows, "db" | "store" | "lock" | "now" | "owner" | "writeDefinition" | "persist">,
 ) {
-  const pendingAdmission = new Map<string, A.Workflow>()
-
-  effect function readDefinition(id: string): (StoredDefinition | undefined)!WorkflowRefused {
-    return try db(store.definition(id))
-  }
-
-  effect function commitDefinition(read: StoredDefinition | undefined, row: DefinitionRow): void!WorkflowRefused {
-    try writeDefinition(read, row)
-    pendingAdmission.delete(row.id)
-  }
-
   effect function storedOrPlaceholder(id: string): { readonly read: StoredDefinition | undefined; readonly row: DefinitionRow }!WorkflowRefused {
-    const read = try readDefinition(id)
+    const read = try db(store.definition(id))
     if (read !== undefined) return { read, row: read.row }
     const { spec, specDigest } = try placeholderSpec()
     const at = iso(try now)
-    return { read, row: { id, owner: "", admission: pendingAdmission.get(id) ?? A.initial, lifecycleState: L.initial, revisions: [], name: spec.name, description: "", spec, specDigest, origin: "view", createdAt: at, updatedAt: at, armedVersion: 0 } }
+    return { read, row: { id, owner: "", admission: A.initial, lifecycleState: L.initial, revisions: [], name: spec.name, description: "", spec, specDigest, origin: "view", createdAt: at, updatedAt: at, armedVersion: 0 } }
   }
 
-  effect function admissionStep(id: string, change: A.Event, by: string): A.Workflow!(A.Rejected | WorkflowRefused) {
-    return try lock(effect {
-      const { read, row } = try storedOrPlaceholder(id)
-      const next = try A.apply(row.admission, change, by)
-      if (read === undefined && next.owner === "") pendingAdmission.set(id, next)
-      else try commitDefinition(read, { ...row, owner: row.owner === "" ? next.owner : row.owner, admission: next })
-      return next
+  function definitionFor<View extends { owner: string }, Change, Rejected>(id: string, {
+    initial, select, apply, reply, update,
+  }: {
+    initial: View
+    select: (row: DefinitionRow) => View
+    apply: (before: View, change: Change, by: string) => Effect.Effect<View, Rejected>
+    reply: (view: View) => Partial<View>
+    update: (row: DefinitionRow, view: View) => DefinitionRow
+  }) {
+    let pendingReply: Partial<View> | undefined
+
+    effect function step(change: Change, by: string): View!(Rejected | WorkflowRefused) {
+      return try lock(effect {
+        const { read, row } = try storedOrPlaceholder(id)
+        const before = read === undefined ? { ...initial, ...pendingReply } : select(row)
+        const next = try apply(before, change, by)
+        if (read === undefined && next.owner === "") {
+          pendingReply = reply(next)
+        } else {
+          try writeDefinition(read, update({ ...row, owner: row.owner === "" ? next.owner : row.owner }, next))
+          pendingReply = undefined
+        }
+        return next
+      })
+    }
+
+    effect function observe(): View!WorkflowRefused {
+      return try lock(effect {
+        const read = try db(store.definition(id))
+        return read === undefined ? { ...initial, ...pendingReply } : select(read.row)
+      })
+    }
+
+    return { step, observe }
+  }
+
+  function admissionFor(id: string) {
+    return definitionFor(id, {
+      initial: A.initial,
+      select: (row) => row.admission,
+      apply: A.apply,
+      reply: ({ reply, replyRun }) => ({ reply, replyRun }),
+      update: (row, admission) => ({ ...row, admission }),
     })
   }
 
-  effect function admissionState(id: string): A.Workflow!WorkflowRefused {
-    return try lock(effect {
-      return (try readDefinition(id))?.row.admission ?? pendingAdmission.get(id) ?? A.initial
+  function lifecycleFor(id: string) {
+    return definitionFor(id, {
+      initial: L.initial,
+      select: (row) => row.lifecycleState,
+      apply: L.apply,
+      reply: ({ reply, replyVersion, replyKey }) => ({ reply, replyVersion, replyKey }),
+      update: withLifecycle,
     })
-  }
-
-  effect function lifecycleStep(id: string, change: L.Event, by: string): L.Lifecycle!(L.Rejected | WorkflowRefused) {
-    return try lock(effect {
-      const { read, row } = try storedOrPlaceholder(id)
-      const next = try L.apply(row.lifecycleState, change, by)
-      if (read !== undefined || next.owner !== "") try commitDefinition(read, { ...withLifecycle(row, next), owner: row.owner === "" ? next.owner : row.owner })
-      return next
-    })
-  }
-
-  effect function lifecycleOf(id: string): L.Lifecycle!WorkflowRefused {
-    return (try readDefinition(id))?.row.lifecycleState ?? L.initial
   }
 
   effect function runOrPlaceholder(runId: string): RunRow!WorkflowRefused {
@@ -1354,7 +1370,7 @@ function workflowConformance(
     return (try db(store.run(runId)))?.generated ?? G.initial
   }
 
-  return { admissionStep, admissionState, lifecycleStep, lifecycleOf, executionStep, executionState, approvalStep, approvalState, generatedStep, generatedState }
+  return { admissionFor, lifecycleFor, executionStep, executionState, approvalStep, approvalState, generatedStep, generatedState }
 }
 
 export type WorkflowService = Effect.Success<ReturnType<typeof openWorkflows>>
@@ -1384,7 +1400,7 @@ export effect function openWorkflows(host: WorkflowHost) {
     save, saveReceipt, list, detail, activation, metadata, metadataReceipt, lifecycle, lifecycleReceipt, revisions, restoreRevision, evaluationSuite,
   } = workflowDefinitions(rows, drafts, schedules)
   const {
-    admissionStep, admissionState, lifecycleStep, lifecycleOf, executionStep, executionState, approvalStep, approvalState, generatedStep, generatedState,
+    admissionFor, lifecycleFor, executionStep, executionState, approvalStep, approvalState, generatedStep, generatedState,
   } = workflowConformance(rows)
 
   effect function start(): void!! {
@@ -1434,7 +1450,7 @@ export effect function openWorkflows(host: WorkflowHost) {
     host, store, owner, lock, now, db, status, catalog, validate, generate, draftSpec, save, saveReceipt, list, detail, activation, metadata, metadataReceipt, lifecycle, lifecycleReceipt,
     run, submit, launch, submission, executions, execution, cancel, approvals, decide, phoneReview, arm, fire, start, stop, definitionOf, writeDefinition, admitted,
     project, runOf, updateRun, executed, persist, finishApprovals, freshRun, definitionView, runView, recordOccurrence, deviceProtocol, refuse,
-    admissionStep, admissionState, lifecycleStep, lifecycleOf, executionStep, executionState, approvalStep, approvalState, signal, runEvents, revisions, restoreRevision, evaluationSuite,
+    admissionFor, lifecycleFor, executionStep, executionState, approvalStep, approvalState, signal, runEvents, revisions, restoreRevision, evaluationSuite,
     generatedStep, generatedState, checkSource, generatedActivation,
   }
 }

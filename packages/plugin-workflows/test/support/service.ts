@@ -2,6 +2,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { computeNextCronRunAtMs } from "@elizaos/core";
 import { Effect } from "effect";
+import type { Driver as ConformanceDriver } from "../../gen/_conformance.ts";
 import { openWorkflows, type WorkflowService } from "../../src/service/workflows.vibe";
 import type { WorkflowHost } from "../../src/service/host.vibe";
 
@@ -10,12 +11,12 @@ interface OpenedService {
   close(): Promise<void>;
 }
 
-async function openDriverService(owner = "owner"): Promise<OpenedService> {
+async function openDriverService(): Promise<OpenedService> {
   const db = new PGlite();
   const wakeups = new Map<string, number>();
   const host: WorkflowHost = {
     sql: { transaction: (work) => db.transaction((tx) => work(tx)) },
-    owner, agentId: "agent", origin: "agent:conformance",
+    owner: "owner", agentId: "agent", origin: "agent:conformance",
     worker: undefined, device: undefined, draft: undefined, nativeDigests: undefined, google: undefined,
     notify: () => Effect.void,
     scheduler: {
@@ -30,40 +31,56 @@ async function openDriverService(owner = "owner"): Promise<OpenedService> {
   return { service, close: () => db.close() };
 }
 
+interface WorkflowDriverDefinition<Event, View> {
+  readonly step: (event: Event, actor: string) => Effect.Effect<unknown, { readonly _tag: string }>;
+  readonly observe: () => Effect.Effect<View, unknown>;
+}
+
+interface WorkflowDriverSetup<Event, View> {
+  readonly namespace: string;
+  readonly bind: (service: WorkflowService, id: string) => WorkflowDriverDefinition<Event, View>;
+}
+
+export function workflowDriver<Event, View>({ namespace, bind }: WorkflowDriverSetup<Event, View>) {
+  let opened: Promise<OpenedService> | undefined;
+  let generation = 0;
+  const definitions = new Map<string, Promise<WorkflowDriverDefinition<Event, View>>>();
+
+  function definition(key: string) {
+    const existing = definitions.get(key);
+    if (existing !== undefined) return existing;
+    const id = `${namespace}-${generation}-${key}`;
+    const bound = (opened ??= openDriverService()).then(({ service }) => bind(service, id));
+    definitions.set(key, bound);
+    return bound;
+  }
+
+  const driver: ConformanceDriver<Event, View> & AsyncDisposable = {
+    reset() {
+      generation += 1;
+      definitions.clear();
+    },
+    async dispatch(key, event, by) {
+      const { step } = await definition(key);
+      return outcome(step(event, typeof by === "string" ? by : ""));
+    },
+    async observe(key) {
+      const { observe } = await definition(key);
+      return Effect.runPromise(observe());
+    },
+    async [Symbol.asyncDispose]() {
+      const done = opened;
+      opened = undefined;
+      definitions.clear();
+      if (done !== undefined) await (await done).close();
+    },
+  };
+  return { driver, options: { keys: ["a", "b"] } };
+}
+
 export async function outcome<A>(step: Effect.Effect<A, { readonly _tag: string }>): Promise<"accepted" | "refused"> {
   const result = await Effect.runPromise(Effect.result(step));
   if (result._tag === "Success") return "accepted";
   if (result.failure._tag === "Rejected") return "refused";
   throw new Error(`The shell failed a step: ${result.failure._tag}`);
-}
-
-interface DriverRoute<Event, View> {
-  step(service: WorkflowService, id: string, event: Event, actor: string): Effect.Effect<unknown, { readonly _tag: string }>;
-  observe(service: WorkflowService, id: string): Effect.Effect<View, unknown>;
-}
-
-export function workflowDriver<Event, View>(namespace: string, route: DriverRoute<Event, View>) {
-  let opened: Promise<OpenedService> | undefined;
-  let generation = 0;
-  const open = () => (opened ??= openDriverService());
-  const id = (key: string) => `${namespace}-${generation}-${key}`;
-
-  return {
-    reset() {
-      generation += 1;
-    },
-    async dispatch(key: string, event: Event, by?: unknown) {
-      const { service } = await open();
-      return outcome(route.step(service, id(key), event, typeof by === "string" ? by : ""));
-    },
-    async observe(key: string) {
-      const { service } = await open();
-      return Effect.runPromise(route.observe(service, id(key)));
-    },
-    async [Symbol.asyncDispose]() {
-      const done = opened;
-      opened = undefined;
-      if (done !== undefined) await (await done).close();
-    },
-  };
 }
