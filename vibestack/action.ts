@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { entry, executableDigest, installedProgram, recall, stableInstallation, store, verifiedNow, verifierIdentity, type Memory } from "./cache.ts";
+import { entry, executableDigest, installedProgram, inSteadyCheck, recall, stableInstallation, store, verifiedNow, verifierIdentity, type Memory } from "./cache.ts";
 import { NEEDS_DAFNY, exec, stamp } from "./run.ts";
 import { SIMULATOR, TABLE } from "./simulator.ts";
 
@@ -71,7 +71,8 @@ export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string
   if (launcher && !installed) throw new Error(`${launcher} is not installed; run pnpm install`);
   const exe = installed?.exe ?? tool;
   const since = script && stamp([script]);
-  const id = installed ? installed.id && installed.id + (script ? ` ${executableDigest(script)}` : "") : await verifierIdentity();
+  const verifier = installed ? undefined : await verifierIdentity();
+  const id = installed ? installed.id && installed.id + (script ? ` ${executableDigest(script)}` : "") : verifier;
   const at = await entry(memory.root, "action", [id, JSON.stringify(args), ...Object.keys(files).sort().flatMap((f) => [f, files[f].key])], (tool === "quint" || tool === "simulator") && args[0] === "run");
   const known = recall<Ran>(memory, at);
   if (known) return known;
@@ -83,13 +84,19 @@ export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string
   const isolated = installed?.isolated;
   const selected = script ? isolated?.script ?? script : isolated?.entry;
   const env = isolated ? { ...process.env, NODE_PATH: undefined, NODE_OPTIONS: undefined, NODE_PRESERVE_SYMLINKS: undefined, NODE_PRESERVE_SYMLINKS_MAIN: undefined } : undefined;
-  const r = await exec(selected ? process.execPath : exe, selected ? [...isolated ? ["--no-global-search-paths"] : [], selected, ...args] : args, where, env, undefined, memory.actionSignal).catch((e: Error) => { throw new Error(`${tool} could not be run (${exe}): ${e.message}; ${tool === "dafny" ? NEEDS_DAFNY : "run pnpm install"}`); });
+  const priority = tool === "quint" || tool === "simulator" ? 0 : 2;
+  const r = await exec(selected ? process.execPath : exe, selected ? [...isolated ? ["--no-global-search-paths"] : [], selected, ...args] : args, where, env, undefined, memory.actionSignal, priority).catch((e: Error) => { throw new Error(`${tool} could not be run (${exe}): ${e.message}; ${tool === "dafny" ? NEEDS_DAFNY : "run pnpm install"}`); });
   const written = fs.readdirSync(where, { withFileTypes: true }).filter((f) => f.isFile() && !Object.hasOwn(files, f.name)).map((f) => f.name).sort();
   const ran: Ran = { ok: r.status === 0 && !r.stopped, status: r.status, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, stderr: r.stderr, stopped: r.stopped,
     files: Object.fromEntries(written.map((f) => [f, fs.readFileSync(path.join(where, f), "utf8")])) };
   if (!ran.stopped && answered(args, ran)) {
-    const same = installed ? !script || stamp([script]) === since : await verifiedNow() === id;
-    if (stableInstallation(same)) store(memory, at, ran, installed && { program: installed, began });
+    if (installed) {
+      if (stableInstallation(!script || stamp([script]) === since)) store(memory, at, ran, { program: installed, began });
+    } else if (inSteadyCheck()) {
+      store(memory, at, ran, { dafny: verifier! });
+    } else if (stableInstallation(await verifiedNow() === verifier)) {
+      store(memory, at, ran);
+    }
   }
   return ran;
 }

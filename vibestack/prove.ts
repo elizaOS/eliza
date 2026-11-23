@@ -20,7 +20,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SENDER } from "./gen/classify.ts";
 import { act, type Input } from "./action.ts";
-import { solver, type Memory } from "./cache.ts";
+import { installedProgram, solver, type Memory } from "./cache.ts";
 import { bin } from "./run.ts";
 import { plainText } from "./scan.ts";
 import { allDone } from "./util.ts";
@@ -722,20 +722,31 @@ function stepBody(gen: string, transitions: { name: string; params: string[] }[]
 }
 
 /** LemmaScript's own generated helpers are runtime support, not obligations the user may accept as simulated. */
-let helpers: Promise<ReadonlySet<string>> | undefined;
+const helpersByLsc = new Map<string, Promise<ReadonlySet<string>>>();
+async function loadHelperNames(root: string): Promise<ReadonlySet<string>> {
+  const lsc = bin("lsc", root);
+  const real = fs.realpathSync(lsc);
+  // pnpm's executable is a shell shim; the declared dependency still resolves beside this package.
+  let dependency: string | undefined;
+  try { dependency = createRequire(import.meta.url).resolve("lemmascript/tools/dist/dafny-emit.js"); } catch { /* use the executable's installation below */ }
+  const file = [path.join(path.dirname(real), "dafny-emit.js"), path.join(path.dirname(lsc), "..", "lemmascript", "tools", "dist", "dafny-emit.js"), dependency].find((f): f is string => f !== undefined && fs.existsSync(f));
+  if (!file) throw new Error("LemmaScript's dafny-emit.js was not found beside lsc");
+  const names = (await import(pathToFileURL(file).href)).DAFNY_HELPER_NAMES;
+  if (!(names instanceof Set)) throw new Error("LemmaScript's dafny-emit.js does not export DAFNY_HELPER_NAMES");
+  return names as ReadonlySet<string>;
+}
 function helperNames(root: string): Promise<ReadonlySet<string>> {
-  return helpers ??= (async () => {
-    const lsc = bin("lsc", root);
-    const real = fs.realpathSync(lsc);
-    // pnpm's executable is a shell shim; the declared dependency still resolves beside this package.
-    let dependency: string | undefined;
-    try { dependency = createRequire(import.meta.url).resolve("lemmascript/tools/dist/dafny-emit.js"); } catch { /* use the executable's installation below */ }
-    const file = [path.join(path.dirname(real), "dafny-emit.js"), path.join(path.dirname(lsc), "..", "lemmascript", "tools", "dist", "dafny-emit.js"), dependency].find((f): f is string => f !== undefined && fs.existsSync(f));
-    if (!file) throw new Error("LemmaScript's dafny-emit.js was not found beside lsc");
-    const names = (await import(pathToFileURL(file).href)).DAFNY_HELPER_NAMES;
-    if (!(names instanceof Set)) throw new Error("LemmaScript's dafny-emit.js does not export DAFNY_HELPER_NAMES");
-    return names as ReadonlySet<string>;
-  })();
+  const program = installedProgram(root, "lsc");
+  const key = program?.id ?? program?.exe;
+  if (!key) return loadHelperNames(root);
+  const hit = helpersByLsc.get(key);
+  if (hit) return hit;
+  const loading = loadHelperNames(root).catch((error) => {
+    if (helpersByLsc.get(key) === loading) helpersByLsc.delete(key);
+    throw error;
+  });
+  helpersByLsc.set(key, loading);
+  return loading;
 }
 
 /** Where a unit's proof is written: its directory, Dafny's full output, the final Dafny, and the lemmas left to prove. */

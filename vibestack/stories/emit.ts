@@ -11,7 +11,7 @@ import { type Plan, type Story, plan } from "./variants.ts";
 export type { Prop, Story };
 
 /** Part of every hash: raise it when the same inputs would be written differently. */
-const VERSION = 8;
+const VERSION = 9;
 
 export interface Component {
   id: string;
@@ -24,6 +24,10 @@ export interface Component {
   stories: Story[];
   model?: { spec: string; module: string; state: string; events: string[] };
   design?: string[];
+  part?: string;
+  children?: string[];
+  citations?: { spec: string; heading: string }[];
+  uses?: string[];
   diagnostics: string[];
 }
 /** `catalog.json`. */
@@ -235,6 +239,10 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
           stories: p.catalog,
           ...(c.model ? { model: { spec: c.model.spec, module: c.model.module, state: c.model.state, events: c.model.events } } : {}),
           ...(c.design.length ? { design: c.design } : {}),
+          ...(c.part ? { part: c.part } : {}),
+          ...(c.children?.length ? { children: c.children } : {}),
+          ...(c.citations?.length ? { citations: c.citations } : {}),
+          ...(c.uses?.length ? { uses: c.uses } : {}),
           diagnostics: p.diagnostics,
         })))),
       };

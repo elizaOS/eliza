@@ -7,7 +7,7 @@ product must do; agents build it, from verified rules to a tested, running
 React application, and every layer they touch is checked before you sign
 off.
 
-This checkout imports tooling from [Vibestack `747bf8d`](https://github.com/lalalune/vibestack/commit/747bf8da8b0818062f9428936230e2fb3bffeccf), with simulation and package verification from [Vibestack `790ef39`](https://github.com/lalalune/vibestack/commit/790ef3978e2330b475ff23065a6d20a512e9dcb5). Eliza retains its guard coverage, proof compiler compatibility and application task graph.
+This checkout imports tooling from [Vibestack `1acbe9b`](https://github.com/lalalune/vibestack/commit/1acbe9b2c2d198b1e479d475bf1ba85e4a5a6b41). Eliza retains its guard coverage, proof compiler compatibility and application task graph, and has not adopted the workspace barrel lint (`vibestack/eslint.ts`): its packages still export code subpaths.
 
 [![Use this template](https://img.shields.io/badge/Use_this_template-2ea44f?style=for-the-badge&logo=github)](https://github.com/lalalune/vibestack/generate)
 

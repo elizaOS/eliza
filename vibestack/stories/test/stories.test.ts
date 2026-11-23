@@ -19,6 +19,13 @@ const stories = (name: string, from = first) => component(name, from).stories.ma
 const read = (name: string) => readFileSync(join(out, name), "utf8");
 const everything = () => Object.fromEntries(readdirSync(out, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => relative(out, join(e.parentPath, e.name))).sort().map((name) => [name, read(name)]));
 const edit = (file: string, change: (text: string) => string) => writeFileSync(join(root, file), change(readFileSync(join(root, file), "utf8")));
+const writeFiles = (dir: string, files: Record<string, string>) => {
+  for (const [file, text] of Object.entries(files)) {
+    const path = join(dir, file);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, text);
+  }
+};
 
 it("finds the exported components and nothing else", () => {
   expect(first.index.components.map((c) => c.id)).toEqual(["kit-chip", "kit-kinds", "kit-many", "kit-meter", "kit-receipt", "kit-table", "kit-tag"]);
@@ -131,7 +138,7 @@ it("links a component to its spec model and renders it from the generated initia
     .replace(/^export (?:type Status|interface Order) .*\n/gm, "")
     .replace("units: 0", "units: 9");
   const receipt = readFileSync(join(root, "src/Receipt.tsx"), "utf8");
-  const files = {
+  writeFiles(workspace, {
     "package.json": "{}",
     "packages/ui/package.json": readFileSync(join(root, "package.json"), "utf8"),
     "packages/ui/tsconfig.json": readFileSync(join(root, "tsconfig.json"), "utf8"),
@@ -140,12 +147,7 @@ it("links a component to its spec model and renders it from the generated initia
     "gen/workflow.ts": model,
     "packages/plugin-workflows/package.json": '{"name":"@fixture/plugin-workflows"}',
     "packages/plugin-workflows/gen/workflow.ts": mapped,
-  };
-  for (const [file, text] of Object.entries(files)) {
-    const path = join(workspace, file);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, text);
-  }
+  });
   const generate = generator({ root: ui });
   expect(component("Receipt", generate()).stories[1].args).toEqual({ order: { status: "Draft", units: 0 } });
   expect(generate().written).toEqual([]);
@@ -214,4 +216,43 @@ it("rewrites only what a change touches, and removes what a deleted component le
   expect(gone.index.components.map((c) => c.name)).not.toContain("Chip");
   expect(read("stories.test.tsx")).not.toContain("Chip.stories.tsx");
   expect(read("stories.browser.test.tsx")).not.toContain("Chip.stories.tsx");
+});
+
+it("records optional part, children, citations, and gen uses metadata and omits empty keys", () => {
+  const workspace = join(root, "metadata");
+  writeFiles(workspace, {
+    "package.json": '{"name":"@fixture/meta"}',
+    "tsconfig.json": readFileSync(join(root, "tsconfig.json"), "utf8"),
+    "gen/order.ts": "export interface Order { id: string }\nexport const canPay = () => true;\nexport const total = () => 1;\n",
+    "gen/status.ts": 'export type Status = "Draft" | "Paid";\n',
+    "gen/order.effect.vibe": "export const send = () => {};\n",
+    "src/helper.ts": "export const helper = () => 1;\n",
+    "src/Badge.tsx": 'import type { Status } from "../gen/status.ts";\nexport function Badge({ status }: { status?: Status }) { return <span>{status}</span>; }\n',
+  });
+  const result = generator({ root: workspace })();
+  const badge = component("Badge", result);
+  const card = component("Card", result);
+  const title = component("CardTitle", result);
+  const footer = component("CardFooter", result);
+
+  expect("part" in badge).toBe(false);
+  expect("children" in badge).toBe(false);
+  expect("citations" in badge).toBe(false);
+  expect("uses" in badge).toBe(false);
+
+  expect("part" in card).toBe(false);
+  expect(card.children).toEqual(["Badge", "CardTitle"]);
+  expect(card.citations).toEqual([
+    { spec: "spec/order.md", heading: "Story: Pay" },
+    { spec: "spec/order.md", heading: "A payment never exceeds the balance" },
+  ]);
+  expect(card.uses).toEqual(["canPay", "send", "total"]);
+
+  expect(title.part).toBe("Card");
+  expect("children" in title).toBe(false);
+  expect(title.citations).toEqual(card.citations);
+  expect(title.uses).toEqual(["canPay", "send", "total"]);
+
+  expect(footer.part).toBe("Card");
+  expect(footer.children).toEqual(["Badge"]);
 });
