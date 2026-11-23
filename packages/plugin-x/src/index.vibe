@@ -163,13 +163,15 @@ export effect function connectXAccount(runtime: IAgentRuntime, config: XAccount)
 class XConnector extends Service {
   static override serviceType = "twitter"
   override capabilityDescription = "Connects X direct messages and publishing to the selected account"
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>) { super(runtime) }
+  constructor(runtime?: IAgentRuntime)
+  constructor(runtime: IAgentRuntime, close: () => Promise<void>)
+  constructor(runtime?: IAgentRuntime, readonly close: () => Promise<void> = () => Promise.resolve()) { super(runtime) }
   static override async start(runtime: IAgentRuntime): Promise<XConnector> {
     const accessToken = runtime.getSetting("TWITTER_ACCESS_TOKEN")
     const appKey = runtime.getSetting("TWITTER_API_KEY")
     const appSecret = runtime.getSetting("TWITTER_API_SECRET_KEY")
     const accessSecret = runtime.getSetting("TWITTER_ACCESS_TOKEN_SECRET")
-    if (typeof accessToken !== "string" || !accessToken || typeof appKey !== "string" || !appKey || typeof appSecret !== "string" || !appSecret || typeof accessSecret !== "string" || !accessSecret) return new XConnector(runtime, async () => {})
+    if (typeof accessToken !== "string" || !accessToken || typeof appKey !== "string" || !appKey || typeof appSecret !== "string" || !appSecret || typeof accessSecret !== "string" || !accessSecret) return new XConnector(runtime)
     const dm = runtime.getSetting("TWITTER_DM_POLICY")
     const connection = await runPromise(connectXAccount(runtime, { binding: { accountId: "default", epoch: 1, auth: "XEnvironment" }, credentials: { kind: "oauth1", appKey, appSecret: Redacted.make(appSecret), accessToken: Redacted.make(accessToken), accessSecret: Redacted.make(accessSecret) }, policy: { dryRun: runtime.getSetting("TWITTER_DRY_RUN") === "true", postsEnabled: runtime.getSetting("TWITTER_ENABLE_POST") === "true", repliesEnabled: runtime.getSetting("TWITTER_ENABLE_REPLIES") !== "false", directEnabled: runtime.getSetting("TWITTER_ENABLE_DMS") !== "false", timelineActionsEnabled: runtime.getSetting("TWITTER_ENABLE_ACTIONS") === "true" }, dmMode: dm === "open" ? "XDmOpen" : dm === "disabled" ? "XDmDisabled" : dm === "allowlist" ? "XDmAllowlist" : "XDmPairing", allowedSenders: new Set(), pollSeconds: 90 }))
     return new XConnector(runtime, () => runPromise(connection.stop()))

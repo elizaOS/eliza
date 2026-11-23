@@ -191,22 +191,30 @@ export effect function connectIMessageAccount(runtime: IAgentRuntime, config: IM
   return { send, readBlooio, effect stop() { try Ref.set(active, false); try Fiber.interrupt(worker) } }
 }
 
+type WebhookHandler = (raw: string, signature: string) => Promise<"ignored" | "unauthorized" | "accepted">
+
 export class IMessageService extends Service {
   static override serviceType = "imessage"
   override capabilityDescription = "Reads macOS Messages or signed Blooio messages for the configured account"
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>, readonly acceptWebhook?: (raw: string, signature: string) => Promise<"ignored" | "unauthorized" | "accepted">) { super(runtime) }
+  constructor(runtime?: IAgentRuntime)
+  constructor(runtime: IAgentRuntime, close: () => Promise<void>, acceptWebhook?: WebhookHandler)
+  constructor(
+    runtime?: IAgentRuntime,
+    readonly close: () => Promise<void> = () => Promise.resolve(),
+    readonly acceptWebhook?: WebhookHandler,
+  ) { super(runtime) }
   static override async start(runtime: IAgentRuntime): Promise<IMessageService> {
-    if (runtime.getSetting("IMESSAGE_ENABLED") === "false") return new IMessageService(runtime, async () => {})
+    if (runtime.getSetting("IMESSAGE_ENABLED") === "false") return new IMessageService(runtime)
     let transport: IMessageTransport
     if (runtime.getSetting("IMESSAGE_TRANSPORT") === "blooio") {
       const key = runtime.getSetting("IMESSAGE_BLOOIO_API_KEY")
       const secret = runtime.getSetting("IMESSAGE_BLOOIO_WEBHOOK_SECRET")
       const channelId = runtime.getSetting("IMESSAGE_BLOOIO_CHANNEL_ID")
       const from = runtime.getSetting("IMESSAGE_BLOOIO_FROM_NUMBER")
-      if (typeof key !== "string" || !key || typeof secret !== "string" || !secret || typeof channelId !== "string" || !channelId) return new IMessageService(runtime, async () => {})
+      if (typeof key !== "string" || !key || typeof secret !== "string" || !secret || typeof channelId !== "string" || !channelId) return new IMessageService(runtime)
       transport = { kind: "blooio", apiKey: Redacted.make(key), webhookSecret: Redacted.make(secret), channelId, from: channelId || (typeof from === "string" ? from : "") }
     } else {
-      if (!nativeMessagesAvailable()) return new IMessageService(runtime, async () => {})
+      if (!nativeMessagesAvailable()) return new IMessageService(runtime)
       const database = runtime.getSetting("IMESSAGE_DB_PATH")
       transport = { kind: "native", ...(typeof database === "string" && database !== "" ? { database } : {}) }
     }

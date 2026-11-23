@@ -108,11 +108,13 @@ class DiscordConnector extends Service {
   static override serviceType = "discord"
   override capabilityDescription = "Connects authorized Discord bot channels to the agent"
 
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>) { super(runtime) }
+  constructor(runtime?: IAgentRuntime)
+  constructor(runtime: IAgentRuntime, close: () => Promise<void>)
+  constructor(runtime?: IAgentRuntime, readonly close: () => Promise<void> = () => Promise.resolve()) { super(runtime) }
 
   static override async start(runtime: IAgentRuntime): Promise<DiscordConnector> {
     const token = runtime.getSetting("DISCORD_API_TOKEN")
-    if (typeof token !== "string" || token.trim() === "") return new DiscordConnector(runtime, async () => {})
+    if (typeof token !== "string" || token.trim() === "") return new DiscordConnector(runtime)
     const dmSetting = runtime.getSetting("DISCORD_DM_POLICY")
     const groupSetting = runtime.getSetting("DISCORD_GROUP_POLICY")
     const connection = await runPromise(connectDiscordAccount(runtime, {

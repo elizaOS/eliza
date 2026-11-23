@@ -143,11 +143,13 @@ function slackIds(input: unknown): Set<string> {
 class SlackConnector extends Service {
   static override serviceType = "slack"
   override capabilityDescription = "Connects authorized Slack conversations to the agent"
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>) { super(runtime) }
+  constructor(runtime?: IAgentRuntime)
+  constructor(runtime: IAgentRuntime, close: () => Promise<void>)
+  constructor(runtime?: IAgentRuntime, readonly close: () => Promise<void> = () => Promise.resolve()) { super(runtime) }
   static override async start(runtime: IAgentRuntime): Promise<SlackConnector> {
     const botToken = runtime.getSetting("SLACK_BOT_TOKEN")
     const appToken = runtime.getSetting("SLACK_APP_TOKEN")
-    if (typeof botToken !== "string" || typeof appToken !== "string" || !botToken || !appToken) return new SlackConnector(runtime, async () => {})
+    if (typeof botToken !== "string" || typeof appToken !== "string" || !botToken || !appToken) return new SlackConnector(runtime)
     const connection = await runPromise(connectSlackAccount(runtime, { accountId: "default", botToken: Redacted.make(botToken), appToken: Redacted.make(appToken), channels: slackIds(runtime.getSetting("SLACK_CHANNEL_IDS")), directUsers: slackIds(runtime.getSetting("SLACK_ALLOW_FROM")), allowBots: false, dmMode: "SlackDmPairing", groupDms: false, requireMention: true }))
     return new SlackConnector(runtime, () => runPromise(connection.stop()))
   }

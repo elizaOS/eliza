@@ -145,10 +145,12 @@ function parseChatList(input: unknown): TelegramChatList {
 class TelegramConnector extends Service {
   static override serviceType = "telegram"
   override capabilityDescription = "Connects authorized Telegram bot conversations to the agent"
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>) { super(runtime) }
+  constructor(runtime?: IAgentRuntime)
+  constructor(runtime: IAgentRuntime, close: () => Promise<void>)
+  constructor(runtime?: IAgentRuntime, readonly close: () => Promise<void> = () => Promise.resolve()) { super(runtime) }
   static override async start(runtime: IAgentRuntime): Promise<TelegramConnector> {
     const token = runtime.getSetting("TELEGRAM_BOT_TOKEN")
-    if (typeof token !== "string" || token === "") return new TelegramConnector(runtime, async () => {})
+    if (typeof token !== "string" || token === "") return new TelegramConnector(runtime)
     const mode = runtime.getSetting("TELEGRAM_DM_POLICY")
     const apiRoot = runtime.getSetting("TELEGRAM_API_ROOT")
     const connection = await runPromise(connectTelegramAccount(runtime, { accountId: "default", ownerId: runtime.agentId, token: Redacted.make(token), ...(typeof apiRoot === "string" && /^https?:\/\//.test(apiRoot) ? { apiRoot } : {}), dmPolicy: mode === "open" ? "TelegramOpen" : mode === "disabled" ? "TelegramDisabled" : mode === "allowlist" ? "TelegramAllowlist" : "TelegramPairing", accountChats: new Set(), globalChats: parseChatList(runtime.getSetting("TELEGRAM_ALLOWED_CHATS")), mode: "TelegramFull", autoReply: runtime.getSetting("TELEGRAM_AUTO_REPLY") === "true", passive: runtime.getSetting("ELIZA_LIFEOPS_PASSIVE_CONNECTORS") === "true" }))
