@@ -295,9 +295,15 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   const taken = try say("create a workflow called Garden digest", { action: "create", name: "Fresh" })
   const created = try say("create a workflow called Fresh one", { action: "create", name: "Something else" })
   const unknown = try say("show me the Payroll workflow", { action: "get", workflowName: "Payroll" })
+  const quoted = [
+    try say("rename the workflow 'Evening note' to 'Parents' Day'", { action: "rename", workflowName: "Evening note'", name: "Parents' Day'" }),
+    try say("Create a workflow called ‘Morning brief’.", { action: "create", name: "Morning brief’" }),
+    try say("create a workflow called Mom’s birthday", { action: "create", name: "Mom" }),
+  ]
   const names = ((try rig.service.list(false)) as { readonly name: string }[]).map(({ name }) => name).sort()
   try check(() => assert.deepStrictEqual({
     codes: [conflict, renamed, partial, descriptive, mispaired, twins, taken, created, unknown, exactName, removedId, currentId].map(code),
+    quoted: quoted.map(code),
     twins: (twins.data as { readonly matches?: readonly unknown[] } | undefined)?.matches?.length,
     ownerZone: twins.userFacingText?.includes(`created ${kiritimati}`),
     confirm: partial.userFacingText,
@@ -307,10 +313,11 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
       "WORKFLOW_REQUEST_CONFLICT", "applied", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_REF_MISMATCH", "WORKFLOW_AMBIGUOUS", "WORKFLOW_NAME_TAKEN", "applied",
       "WORKFLOW_NOT_FOUND", "applied", "WORKFLOW_NOT_FOUND", "WORKFLOW_NOT_FOUND",
     ],
+    quoted: ["applied", "applied", "applied"],
     twins: 2,
     ownerZone: true,
     confirm: "Do you mean “Garden digest”? I left it unchanged.",
-    names: ["Backup workflow", "Evening note", "Fresh one", "Garden digest", "Twin", "Twin"],
+    names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Twin", "Twin"],
   }))
 })
 

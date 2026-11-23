@@ -7,7 +7,8 @@ import type { WorkflowRefused, WorkflowService } from "./service/workflows.vibe"
 module edge {
   const courtesy = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
   const end = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`
-  const name = String.raw`["“'‘]?([\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`
+  const name = String.raw`(["“'‘]?[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`
+  const closingQuote: Readonly<Partial<Record<string, RegExp>>> = { '"': /["”]$/u, "“": /["”]$/u, "'": /['’]$/u, "‘": /['’]$/u }
   const descriptiveWord = "(?:this|that|these|those|it|one|ones|the|my|last|latest|newest|new|old|oldest|older|newer|first|second|other|another|current|same|previous|recent|most|earlier|above|below|only|just|made|created|added)"
   const describesNotNames = new RegExp(`^${descriptiveWord}(?:\\s+${descriptiveWord})*$`, "iu")
   const pronounClause = /^(?:i|we|you|they|it)(?:['’](?:ve|d|ll|m|re|s))?\s+(?:just|recently|earlier|already|today|yesterday|made|make|created|create|added|add|set|setup|built|build|wrote|write|have|had|did|do|was|were|is|are|asked|told|mentioned|named|called|started|use|used|got|showed|saw)\b/iu
@@ -25,7 +26,9 @@ module edge {
     | { readonly op: "list" }
 
   function nameOf(value: string | undefined): string | undefined {
-    const trimmed = value?.trim().replace(/[.]+$/u, "")
+    const written = value?.trim().replace(/[.]+$/u, "")
+    const closing = written === undefined ? undefined : closingQuote[written.charAt(0)]
+    const trimmed = closing === undefined || written === undefined ? written : written.slice(1).replace(closing, "")
     if (!trimmed || trimmed.length > 80 || notAName.test(trimmed)) return undefined
     if (/^(?:the|my|a|an)$/iu.test(trimmed) || /^workflows?$/iu.test(trimmed)) return undefined
     return describesNotNames.test(trimmed) || pronounClause.test(trimmed) ? undefined : trimmed
@@ -138,7 +141,7 @@ export function ownerZone(runtime: IAgentRuntime, message: Memory): string {
 }
 
 export effect function ownerWords(message: Memory): string!! {
-  const bound = try (Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null)
+  const bound = (Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null)
   return bound === null ? "" : unwrapUserMessageText(bound ?? message)
 }
 
@@ -181,7 +184,7 @@ export effect function resolveWorkflowReference(
   service: WorkflowService, reference: { readonly workflowId?: string; readonly workflowName?: string }, options: ReferenceOptions,
 ): WorkflowView!(WorkflowRefused | WorkflowReferenceRefused) {
   const { workflowId, workflowName } = reference
-  const detailed = workflowId === undefined ? undefined : (try (service.detail(workflowId) catch effect (refused) => {
+  const detailed = workflowId === undefined ? undefined : ((service.detail(workflowId) catch effect (refused) => {
     if (refused.status !== 404) throw refused
     return undefined
   })) as WorkflowView | undefined

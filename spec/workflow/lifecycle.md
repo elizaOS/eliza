@@ -81,15 +81,18 @@ start a new workflow called one; rename the workflow X to Y, or rename the X
 workflow to Y; delete or remove the workflow X, or the X workflow; list,
 show or what are my workflows, or what workflows do I have. A name is one
 to six words of at most 80 characters, optionally quoted, without its own
-full stop; a name with a clause word (that, which, to, and, then, every, at,
-for, not and the like), a name that only describes a workflow ("the new
-one", "this", "the latest") or a pronoun clause ("the one I just made") is
-no name, and then the words are no command. A change the planner proposes
-on a turn with a command runs only as that command, with the command's
-names and the owner's words as its instruction; the planner's workflow ID
-is kept only to choose among same-named workflows. A different change, or a
-change on a list command, is refused with nothing changed. A read is never
-bound.
+full stop. A name that opens with a quote mark loses that mark and one
+closing mark of its kind, straight or curly, at its end, so "'Parents' Day'"
+names Parents' Day; an apostrophe inside or at the end of an unquoted name
+(Mom’s birthday, Parents') is part of it. A name with a clause word (that,
+which, to, and, then, every, at, for, not and the like), a name that only
+describes a workflow ("the new one", "this", "the latest") or a pronoun
+clause ("the one I just made") is no name, and then the words are no
+command. A change the planner proposes on a turn with a command runs only
+as that command, with the command's names and the owner's words as its
+instruction; the planner's workflow ID is kept only to choose among
+same-named workflows. A different change, or a change on a list command, is
+refused with nothing changed. A read is never bound.
 
 ```quint
 type WorkflowCommand = CreateCommand | RenameCommand | RemoveCommand | ListCommand | NoCommand
