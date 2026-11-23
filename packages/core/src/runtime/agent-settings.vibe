@@ -7,7 +7,7 @@ import { CompositeEntityRecognizer, PII_ENTITY_RECOGNIZER_SERVICE, type PiiEntit
 import { locateConfiguredSecretFragmentTaint as locateFragmentTaint, type SecretFragment, type SecretFragmentTaintProfile } from "../security/fragment-redaction.vibe"
 import { DEFAULT_PSEUDONYM_BLOCKLIST, PII_SWAP_DISABLED_KINDS_SETTING, PII_SWAP_ENABLED_SETTING, PII_SWAP_EXEMPT_VALUES_SETTING, PseudonymSession, parsePiiSwapList } from "../security/pii-pseudonymizer.vibe"
 import { redactWithSecrets } from "../security/redact.vibe"
-import { createSecretSwapStableKey, parseSecretSwapExemptValues, pseudonymSaltFromStableKey, SECRET_SWAP_ENABLED_SETTING, SECRET_SWAP_EXEMPT_VALUES_SETTING, SECRET_SWAP_STABLE_REFERENCES_SETTING, SecretSwapSession } from "../security/secret-swap.vibe"
+import { createSecretSwapStableKey, parseSecretSwapExemptValues, pseudonymSaltFromStableKey, SECRET_SWAP_ENABLED_SETTING, SECRET_SWAP_EXEMPT_VALUES_SETTING, SecretSwapSession } from "../security/secret-swap.vibe"
 import { deriveKnownSecrets } from "../security/secrets.vibe"
 import { decryptStringValue, getSalt, type UnsafeProductionSalt } from "../settings.vibe"
 import type { Agent, Character } from "../types/agent.vibe"
@@ -256,7 +256,7 @@ function toSecretStrings(values: Record<string, unknown> | undefined): Record<st
 const stableKeys = new WeakMap<object, string>()
 
 effect function swapStableKey(conversation: string | undefined): (string | undefined)!SettingsFailure!RuntimeKernel {
-  if (conversation === undefined || !(try swapEnabled(SECRET_SWAP_STABLE_REFERENCES_SETTING))) return undefined
+  if (conversation === undefined || !(try swapEnabled(SECRET_SWAP_ENABLED_SETTING))) return undefined
   const { runtime } = try Host
   const held = stableKeys.get(runtime) ?? createSecretSwapStableKey()
   stableKeys.set(runtime, held)

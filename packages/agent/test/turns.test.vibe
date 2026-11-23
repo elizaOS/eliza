@@ -290,12 +290,13 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   }))
 }, 120_000)
 
-it.live(`Each call keeps the system prompt and puts the turn's notes after the history, a host notice is not read back, a rate limit or an unparsed tool call is sent once more, and a cut-off ends the turn (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn"; ${planning}, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; ${planning}, "A call that stopped at the model's own output limit ends planning")`, effect () => {
+it.live(`Each call keeps the system prompt and puts the turn's notes after the history, a contact keeps its reference from turn to turn, a host notice is not read back, a rate limit or an unparsed tool call is sent once more, and a cut-off ends the turn (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn"; ${planning}, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; ${planning}, "A call that stopped at the model's own output limit ends planning")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const actions = { load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"], environment: { OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS: "1" } }
   const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin }, ...actions }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
   const { id, roomId } = try conversation(agent)
   const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[] } & Record<string, unknown>)
+  const textOf = (content: unknown) => typeof content === "string" ? content : JSON.stringify(content)
 
   try Effect.sync(() => cloud.script(text("First answer.")))
   const first = replyOf(try send(agent, id, { text: "Hi", metadata: { observation: { view: "home", revision: 1, sensitive: false } } }))
@@ -306,6 +307,15 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   const waitedCalls = completions(cloud) - beforeWait
   const bodies = sent()
   const [opening, latest] = [bodies[0], bodies.at(-1)]
+
+  try Effect.sync(() => agent.agent.runtime.setSetting("ELIZA_SECRET_SWAP_ENABLED", true))
+  try Effect.sync(() => cloud.script(text("I'll write to them."), text("You're welcome.")))
+  try send(agent, id, { text: "Email ada.lovelace@gmail.com about the meeting" })
+  try send(agent, id, { text: "Thanks" })
+  try Effect.sync(() => agent.agent.runtime.setSetting("ELIZA_SECRET_SWAP_ENABLED", false))
+  const [mentioned, after] = sent().slice(-2)
+  const asked = textOf(mentioned?.messages.at(-1)?.content).split("\n\n")[0] ?? ""
+  const replayed = after?.messages.map(({ content }) => textOf(content)).find((content) => content.startsWith("Email ")) ?? ""
 
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({ choices: [{ message: { role: "assistant", content: "A long answer that" }, finish_reason: "length" }] })))
   const beforeCut = completions(cloud)
@@ -322,7 +332,6 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   const parsed = replyOf(try send(own, ownConversation.id, { text: "Work it out." }))
   const parseCalls = completions(cloud) - beforeParse
 
-  const textOf = (content: unknown) => typeof content === "string" ? content : JSON.stringify(content)
   try Effect.try(() => assert.deepStrictEqual({
     first: first.text,
     sameSystem: opening?.messages[0]?.role === "system" && textOf(opening.messages[0].content) === textOf(latest?.messages[0]?.content),
@@ -331,11 +340,12 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     uncapped: bodies.every((body) => !("max_tokens" in body)),
     waited: waited.text, waitedCalls,
     noticeUnread: latest?.messages.every(({ content }) => !textOf(content).includes(notice)),
+    stableReference: [asked.includes("ada.lovelace@gmail.com"), asked.includes("__ELIZA_"), replayed === asked],
     cut: cut.text, cutCalls,
     parsed: parsed.text, parseCalls,
   }, {
     first: "First answer.", sameSystem: true, screenNoteLast: true, screenNoteOutOfSystem: true, uncapped: true,
-    waited: "After the wait.", waitedCalls: 2, noticeUnread: true,
+    waited: "After the wait.", waitedCalls: 2, noticeUnread: true, stableReference: [false, true, true],
     cut: cutOffReply, cutCalls: 1,
     parsed: "Read on the second try.", parseCalls: 2,
   }))
