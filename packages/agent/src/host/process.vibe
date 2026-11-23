@@ -249,7 +249,8 @@ module node {
     const formed = await Effect.runPromise(Effect.result(composeAgent({
       agentId, character, settings: { ...launch.environment }, bundled: sources.bundled, modules: sources.modules, hostRoutes: reservedHostPrefixes,
       context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
-        ownerEntityId: ownerId, conversationOwner, binding: () => Effect.runSync(models.state()), publishEvent: events.publishFromModule, viewFeeds: events.viewFeeds },
+        ownerEntityId: ownerId, conversationOwner, binding: () => Effect.runSync(models.state()), publishEvent: events.publishFromModule, viewFeeds: events.viewFeeds,
+        conversationNews: { updated: events.conversationUpdated, proactive: events.proactiveMessage } },
       storage: { name: storagePlugin, description: "Own the device database", services: [...agentServices, events.PublishEventService, ...runtimeServices], init: async (_config, runtime) => {
         if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
         runtime.registerDatabaseAdapter(adapter)

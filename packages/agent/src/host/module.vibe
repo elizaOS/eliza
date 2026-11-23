@@ -21,6 +21,11 @@ export interface ViewFeeds {
 
 export type PublishEvent = (stream: string, payload: unknown, clientId?: string) => void
 
+export interface ConversationNews {
+  readonly updated: (payload: unknown) => void
+  readonly proactive: (payload: unknown) => void
+}
+
 export interface ModuleContext {
   readonly runtime: AgentRuntime
   readonly launch: LaunchDocument
@@ -32,6 +37,7 @@ export interface ModuleContext {
   readonly conversationOwner?: ConversationOwner
   readonly binding: () => ModelBinding
   readonly publishEvent?: PublishEvent | undefined
+  readonly conversationNews?: ConversationNews | undefined
   readonly viewFeeds?: ViewFeeds | undefined
 }
 
