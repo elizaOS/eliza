@@ -443,12 +443,12 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
   return answer
 }
 
-const hints: Readonly<Record<NonNullable<GenerateTextParams["reasoning"]>, ReasoningHint>> = { low: { tag: "ReasonLittle" }, off: { tag: "ReasonOff" } }
+const hints: Readonly<Record<NonNullable<GenerateTextParams["reasoning"]>, ReasoningHint>> = { low: "ReasonLittle", off: "ReasonOff" }
 
 function requestOf(endpoint: Endpoint, handler: ChatHandler, agentId: string, params: GenerateTextParams): object | undefined {
   const messages = conversation(params)
   if (messages === undefined) return undefined
-  const effort = reasoningEffortFor(params.reasoning === undefined ? { tag: "NoReasoningHint" } : hints[params.reasoning], endpoint.models[handler] ?? "")
+  const effort = reasoningEffortFor(params.reasoning === undefined ? "NoReasoningHint" : hints[params.reasoning], endpoint.models[handler] ?? "")
   const max = params.omitMaxTokens ? undefined : params.maxTokens
   const tools = toolsOf(params.tools)
   const toolChoice = toolChoiceOf(params.toolChoice)
