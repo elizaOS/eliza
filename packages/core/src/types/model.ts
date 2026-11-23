@@ -423,14 +423,19 @@ export interface GenerateTextParams {
 	) => Promise<void> | void;
 	/** Concatenated prompt for text-only adapters. Callers using structured messages leave this unset. */
 	prompt?: string;
+	/**
+	 * Output cap the caller asks for. Unset sends none: hosted adapters omit the
+	 * max-tokens field, and an API that requires one (Anthropic) sends the
+	 * model's own maximum. The runtime adds no cap from settings.
+	 */
 	maxTokens?: number;
 	/**
-	 * When true, the adapter must avoid applying the runtime's normal default
-	 * output cap and instead use the provider/model maximum. Most hosted adapters
-	 * do this by omitting the max-tokens field; APIs that require a value (or
-	 * local backends that would otherwise fall back to a small default) send a
-	 * model/provider max instead. Scoped opt-in (e.g. direct-channel Stage 1):
-	 * when unset, adapters keep their default cap so other callers stay bounded.
+	 * When true, the adapter ignores `maxTokens` and uses the provider/model
+	 * maximum, as it does for an unset `maxTokens`: hosted adapters omit the
+	 * max-tokens field, and APIs that require a value (or local backends that
+	 * would otherwise fall back to a small default) send a model/provider
+	 * maximum instead. Hosted-provider adapters have no default cap of their own; local
+	 * and on-device adapters keep their own default bounds.
 	 */
 	omitMaxTokens?: boolean;
 	minTokens?: number;

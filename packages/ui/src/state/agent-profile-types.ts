@@ -23,7 +23,7 @@ export interface AgentProfile {
   /** Native credential-store lookup key; never a bearer value. */
   credentialRef?: string;
   /** How a remote profile reaches its agent without exposing private transport details. */
-  connectionMode?: "direct" | "relay" | "ssh";
+  connectionMode?: "direct" | "relay";
   /** Cloud relay authority and target public identity for an E2EE session. */
   remoteRelay?: {
     ownerId: string;
@@ -40,14 +40,6 @@ export interface AgentProfile {
     targetSigningPublicKeyJwk: JsonWebKey;
     targetEncryptionPublicKeyJwk: JsonWebKey;
     expiresAt: string | null;
-  };
-  /** Non-secret SSH connection metadata; credentials stay in the OS/SSH agent. */
-  ssh?: {
-    target: string;
-    sshPort: number;
-    remoteApiPort: number;
-    hostFingerprint: string;
-    identityFile?: string;
   };
   /** ISO-8601 creation timestamp. */
   createdAt: string;

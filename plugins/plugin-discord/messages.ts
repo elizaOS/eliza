@@ -135,6 +135,7 @@ import {
 	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
 	sendMessageInChunks,
+	sendNonce,
 } from "./utils";
 
 export const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
@@ -947,6 +948,8 @@ async function persistDiscordMessageMemoryOnce(
 /** Options handed to `User.send` when delivering a Discord DM reply. */
 export interface DmSendOptions {
 	content: string;
+	nonce?: string;
+	enforceNonce?: boolean;
 	files?: AttachmentBuilder[];
 	components?: ActionRowBuilder<MessageActionRowComponentBuilder>[];
 }
@@ -1012,20 +1015,28 @@ export async function sendDmInChunks(
 			: [];
 	if (chunks.length <= 1) {
 		const content = chunks[0] ?? textContent;
-		return [await user.send(buildDmSendOptions(content, files, components))];
+		return [
+			await user.send({
+				...buildDmSendOptions(content, files, components),
+				nonce: sendNonce(),
+				enforceNonce: true,
+			}),
+		];
 	}
 	const sent: DiscordMessage[] = [];
 	for (let i = 0; i < chunks.length; i++) {
 		const isLast = i === chunks.length - 1;
 		try {
 			sent.push(
-				await user.send(
-					buildDmSendOptions(
+				await user.send({
+					...buildDmSendOptions(
 						chunks[i],
 						isLast ? files : [],
 						isLast ? components : undefined,
 					),
-				),
+					nonce: sendNonce(),
+					enforceNonce: true,
+				}),
 			);
 		} catch (error) {
 			// error-policy:J1 once a chunk is delivered, a later failure keeps the

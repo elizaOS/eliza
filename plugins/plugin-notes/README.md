@@ -18,6 +18,12 @@ bun run --cwd plugins/plugin-notes test   # tests
 
 Service create/update inputs using `title`/`body` treat a nonempty body as lines after the title: one separator is added, including when the supplied body already starts with a newline. An empty body clears it; omitted fields remain unchanged. Use `{ content }` for a complete verbatim note and `textEdit` for a literal edit of stored fields. Do not mix complete content with structured fields. Stored schema-2 `body` includes its separator and is not a structured input body.
 
+## Deleting, restoring and folders from chat
+
+`NOTES_DELETE` by text deletes only a note whose title is in the owner's message. Any other match returns `NOTES_DELETE_NAME_MISMATCH` with the candidate and deletes nothing. No match and several matches also return a result (`NOTES_NOT_FOUND`, `NOTES_AMBIGUOUS_NOTE` with candidates) and do not throw. `NOTES_RESTORE` brings a note back from Recently deleted by `noteId` or by its text; its receipt is `notes.note.restore`.
+
+The device owns the folder list. A host with folders sends the current list with each chat message as `content.metadata.notesFolders`, an array of `{ id, name }` (`readNoteFolders` in `src/note-folders.ts`). The agent keeps no copy. `NOTES_MOVE` is offered only on such a message. It takes a folder name, sets the note's `format.data.folderId`, and returns a `notes.note.update` receipt; `folder: null` takes the note out of its folder. Chat cannot create or rename a folder.
+
 The app renderer resolves the package to `src/browser.ts`, which keeps views and
 client registration separate from runtime actions and provider storage.
 
@@ -54,7 +60,12 @@ Restore checks the deadline in the same transaction that would restore the note.
 The commit removes the note and records any owned recording cleanup together.
 An authenticated owner reads pending work at `GET /api/notes/trash/recordings`.
 The host supplies `verifyRecordingCleanup` to prove the matching native erase
-before `POST /api/notes/trash/recordings/complete` retires the receipt.
+before `POST /api/notes/trash/recordings/complete` retires the receipt. A host
+that starts the stock service registers a runtime service of type
+`NOTES_RECORDING_CLEANUP_VERIFIER_SERVICE` with a `verifyRecordingCleanup`
+method; the service looks it up at acknowledgement time, and a verifier passed
+to the `NotesService` constructor takes precedence. Without either, no receipt
+is retired.
 Hosts enable the policy after connecting their recording store and cleanup
 scheduler. Notes content and recording transcripts stay out of cleanup receipts.
 

@@ -8,7 +8,8 @@
  * Recipient resolution is gated by the IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE
  * runtime setting. Legacy mode (default, while claim ingestion from issue
  * #23099 is unshipped): a literal address on the target is used as-is and an
- * entity UUID resolves through the entity's stored email component data. Claim
+ * entity UUID resolves through the entity's stored email (the CONTACT email
+ * on entity metadata, or email component data). Claim
  * mode: a principal UUID always resolves through the canonical identity
  * service's active verified Google claim scoped to the selected connector
  * account; a carried channelId cannot override that authority. Account
@@ -185,8 +186,10 @@ type RecipientResolution =
 /**
  * Legacy (pre-claim-authority) recipient resolution: a literal target address
  * wins; otherwise the entity graph must yield exactly one distinct stored
- * email (across explicitly email-named component fields, or — only when no
- * named field exists — email-shaped component values). Multiple distinct
+ * email (across explicitly email-named entity metadata and component fields,
+ * or — only when no named field exists — email-shaped component values).
+ * CONTACT create and update store a contact's email on entity metadata, so
+ * that field counts as named. Multiple distinct
  * candidates refuse rather than guess, so a contact with work + personal
  * addresses never gets mail routed by component iteration order. Active only
  * while IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE is off.
@@ -207,6 +210,11 @@ async function resolveLegacyRecipientEmail(
 
   const named = new Set<string>();
   const emailShaped = new Set<string>();
+  const metadata: Record<string, unknown> = entity.metadata ?? {};
+  for (const key of EMAIL_COMPONENT_KEYS) {
+    const value = emailLiteral(metadata[key]);
+    if (value) named.add(value.toLowerCase());
+  }
   for (const component of entity.components ?? []) {
     const data = component.data ?? {};
     for (const key of EMAIL_COMPONENT_KEYS) {

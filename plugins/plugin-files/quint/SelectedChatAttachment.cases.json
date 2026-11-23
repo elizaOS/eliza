@@ -1,0 +1,35 @@
+{
+  "sources": [
+    "packages/core/src/chat-upload-limits.ts",
+    "packages/ui/src/utils/image-attachment.ts",
+    "plugins/plugin-files/src/browser/files.ts",
+    "plugins/plugin-files/test/browser-files-share.test.mjs",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/DocumentBytes.java",
+    "plugins/plugin-native-media/test/native-host/SelectedDocumentsTest.java"
+  ],
+  "bounds": "One opaque selected-file capability, mail/chat purposes, symbolic sizes 6 and 21 MiB, revisions 0/1, one read and one terminal publication.",
+  "limitations": [
+    "The native byte reader receives a stream already authorized by the host, not a renderer path or URI. Browser revision and selection fencing is checked by the actual Files implementation. Native grant, account/conversation fencing and user-visible picker acceptance remain host/device checks.",
+    "Weak fairness of a read settlement assumes I/O returns or fails. The model does not claim a provider responds or an upload succeeds. Native permission revocation during stream I/O and process crash recovery are not modeled. Shared chat MIME, compression, aggregate and nonimage payload limits still apply after materialization."
+  ],
+  "conformance": "plugins/plugin-files/quint/check-selected-chat-attachment.mjs",
+  "cases": [
+    {
+      "name": "selected-chat-attachment",
+      "main": "SelectedChatAttachment",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["Completes"],
+      "temporalChecks": [
+        {
+          "property": "Completes",
+          "expect": "holds",
+          "assumptions": ["Weak fairness of I/O settlement or cancellation."]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 1000
+    }
+  ]
+}

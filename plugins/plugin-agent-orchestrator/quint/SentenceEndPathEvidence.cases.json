@@ -1,0 +1,42 @@
+{
+  "sources": [
+    "plugins/plugin-agent-orchestrator/src/services/quick-app-evidence.ts",
+    "plugins/plugin-agent-orchestrator/src/__tests__/sentence-end-path-evidence-model.test.ts",
+    "plugins/plugin-agent-orchestrator/quint/check-sentence-end-path-evidence.mjs"
+  ],
+  "conformance": "plugins/plugin-agent-orchestrator/quint/check-sentence-end-path-evidence.mjs",
+  "bounds": "One task session without a write ledger writes data/apps/echo-fade/index.html in its workdir after it starts and names the file once, either in the task_complete summary or in one sub-agent stdout message, as a workdir-relative or an absolute path. The path is followed by no mark, a period, a colon, a semicolon, an exclamation mark, a question mark or an ellipsis, and then by the end of the reply, a space and the next sentence, a newline and the next line, a closing parenthesis, a closing double quote, or more name characters that make a longer file name. The conformance script replays every generated reply through OrchestratorTaskService on a PGlite-backed runtime: the message goes through the session event handler and the bundle through buildCompletionEvidence, and all 168 replies (7 marks x 6 followers x 2 forms x 2 channels) must match. Replies that name several files, files outside the workdir or older than the session, sessions with a write ledger or a captured change set, file:line references followed by sentence punctuation and route URL probing are not covered by this model. Under weak fairness of the collect step the evidence bundle is eventually built. Explicit stuttering lets the completion handler leave the bundle unbuilt, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "sentence-end-path-evidence",
+      "main": "SentenceEndPathEvidence",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "LongerNameNotObserved",
+        "NothingObservedBeforeCollect",
+        "SentencePunctuationKeepsFile",
+        "TypeOK"
+      ],
+      "temporal": ["EvidenceBuilt", "EvidenceBuiltWithoutFairness"],
+      "maxSteps": 4,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "EvidenceBuilt",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled collect step eventually runs (weak fairness). This checks that the evidence bundle is then built, not how long the completion handler takes."
+          ]
+        },
+        {
+          "property": "EvidenceBuiltWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The completion handler may leave the bundle unbuilt forever, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

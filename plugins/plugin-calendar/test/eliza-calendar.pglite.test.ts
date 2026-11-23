@@ -37,6 +37,7 @@ import {
   describe,
   expect,
   it,
+  onTestFinished,
   vi,
 } from "vitest";
 import { NotesService } from "../../plugin-notes/src/service.js";
@@ -69,6 +70,7 @@ const WINDOW = {
 let pg: PGlite;
 let service: CalendarService;
 let runtime: IAgentRuntime;
+const cache = new Map<string, unknown>();
 const reminderPlans: LifeOpsReminderPlan[] = [];
 
 function createEvidence(
@@ -78,6 +80,7 @@ function createEvidence(
 ) {
   const evidence = [{ sourceId: `current:${id}`, quote: text }];
   return {
+    reviewBeforeCreate: false,
     guestIntent: {
       state: guests.length ? "requested" : "none",
       evidence,
@@ -171,8 +174,12 @@ beforeAll(async () => {
     adapter: { db },
     db,
     initPromise: Promise.resolve(),
-    getCache: async () => undefined,
-    setCache: async () => undefined,
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+      return true;
+    },
+    deleteCache: async (key: string) => cache.delete(key),
     getSetting: () => undefined,
     getService: (serviceType: string) =>
       serviceType === CalendarService.serviceType ? service : null,
@@ -191,6 +198,7 @@ beforeEach(async () => {
   await pg.query("DELETE FROM app_calendar.life_calendar_sync_states");
   await pg.query("DELETE FROM app_calendar.life_calendar_feed_preferences");
   reminderPlans.length = 0;
+  cache.clear();
   service.setGate(gate());
 });
 
@@ -1205,6 +1213,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
                   ? null
                   : paraphrase,
             location: null,
+            reviewBeforeCreate: false,
             guestIntent: { state: "none", evidence, guests: [] },
             noteIntent: {
               state: solo || mode === "native-inline" ? "none" : "requested",
@@ -1803,6 +1812,168 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       });
     },
   );
+
+  const moveToFour = {
+    requiresInput: false,
+    clarification: null,
+    title: null,
+    description: null,
+    location: null,
+    startAt: "2026-09-18T16:00:00",
+    endAt: null,
+    allDayStartDate: null,
+    allDayEndDate: null,
+    timeZone: null,
+    recurrence: null,
+    recurrenceScope: null,
+    clearFields: [],
+    addGuests: [],
+    removeGuests: [],
+  };
+  it.each([
+    {
+      name: "applies the conforming retry after an empty update extraction",
+      responses: [{}, { startAt: "2026-09-18T16:00:00", requiresInput: false }],
+      outcome: "applied",
+    },
+    {
+      name: "applies a first-call move with null guest and clear-field arrays",
+      responses: [
+        {
+          ...moveToFour,
+          clearFields: null,
+          addGuests: null,
+          removeGuests: null,
+        },
+      ],
+      outcome: "applied",
+    },
+    {
+      name: "applies a first-call move with a null requiresInput",
+      responses: [{ ...moveToFour, requiresInput: null }],
+      outcome: "applied",
+    },
+    {
+      name: "applies a first-call move with a string requiresInput",
+      responses: [{ ...moveToFour, requiresInput: "false" }],
+      outcome: "applied",
+    },
+    {
+      name: "fails the update explicitly, without a write, after two empty extractions",
+      responses: [{}, {}],
+      outcome: "invalid",
+    },
+    {
+      name: "reports a model call that returns nothing as a provider failure, without a write",
+      responses: [null],
+      outcome: "unavailable",
+    },
+  ] as Array<{
+    name: string;
+    responses: Array<Record<string, unknown> | null>;
+    outcome: "applied" | "invalid" | "unavailable";
+  }>)("$name", async ({ responses, outcome }) => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "V619 check",
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T19:30:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "calendar-update-extraction-conformance",
+    });
+    if (!created.event)
+      throw new Error("Calendar fixture event was not created");
+    const updateResponses = [...responses];
+    const runJsonModel = vi.fn(async ({ actionType }) => {
+      if (actionType !== "lifeops.calendar.extract_update_event") return null;
+      if (updateResponses.length === 0)
+        throw new Error("unexpected extra update extraction");
+      const parsed = updateResponses.shift() ?? null;
+      return parsed === null
+        ? null
+        : { rawResponse: JSON.stringify(parsed), parsed };
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel,
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000303",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+        content: { text: "move v619 check to 4pm" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "update_event",
+          query: "v619 check",
+          details: {
+            eventId: created.event.id,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+          },
+        },
+      },
+    );
+    const updateCalls = runJsonModel.mock.calls.filter(
+      ([args]) => args.actionType === "lifeops.calendar.extract_update_event",
+    );
+    expect(updateCalls).toHaveLength(responses.length);
+    const stored = await service.getCalendarEventById(created.event.id);
+    if (outcome === "applied") {
+      expect(result?.success, JSON.stringify(result)).toBe(true);
+      expect(stored).toMatchObject({
+        startAt: "2026-09-18T20:00:00.000Z",
+        endAt: "2026-09-18T20:30:00.000Z",
+      });
+      return;
+    }
+    expect(stored).toMatchObject({
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T19:30:00.000Z",
+    });
+    if (outcome === "unavailable") {
+      expect(result?.success).toBe(false);
+      expect(result?.data?.error).toBe("CALENDAR_EXTRACTION_MODEL_UNAVAILABLE");
+      // A provider failure is not a request the owner should rephrase.
+      expect(result?.data?.coachingFailure).toBeUndefined();
+      const reply = JSON.stringify(result?.data?.replyContext);
+      expect(reply).toContain("The calendar model did not respond");
+      expect(reply).not.toContain("Tell me the event and timing again");
+      expect(result?.effectReceipts?.[0]).toMatchObject({
+        outcome: "failed",
+        failure: {
+          code: "CALENDAR_EXTRACTION_MODEL_UNAVAILABLE",
+          acceptance: "rejected",
+          retryable: true,
+        },
+      });
+      return;
+    }
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        coachingFailure: true,
+        error: "CALENDAR_UPDATE_EXTRACTION_INVALID",
+      },
+    });
+    expect(result?.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: {
+        code: "CALENDAR_UPDATE_EXTRACTION_INVALID",
+        acceptance: "rejected",
+      },
+    });
+    expect(stored).toMatchObject({
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T19:30:00.000Z",
+    });
+  });
 
   it.each([{ explicitEnd: "16:30:00" }, { explicitEnd: "17:00:00" }])(
     "preserves stored duration despite a planner end of $explicitEnd",
@@ -2893,6 +3064,637 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         metadata: { version: 1, etag: '"eliza-1"' },
       },
     );
+  });
+
+  /** One chat turn through the real handler; `extracted` is the extraction model's reply. */
+  async function runChat(
+    id: string,
+    text: string,
+    parameters: Record<string, unknown>,
+    extracted: Record<string, unknown> = {},
+    metadata: Record<string, unknown> = { uiTimeZone: "UTC" },
+    deps: Partial<Parameters<typeof createCalendarActionRunner>[0]> = {},
+  ) {
+    const messageId = `00000000-0000-0000-0000-0000000007${id}`;
+    const action = createCalendarActionRunner({
+      ...deps,
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_create_event"
+          ? {
+              rawResponse: "{}",
+              parsed: { ...createEvidence(messageId, text), ...extracted },
+            }
+          : actionType === "lifeops.calendar.extract_update_event"
+            ? { rawResponse: "{}", parsed: extracted }
+            : null,
+      ),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    return action.handler(
+      runtime,
+      {
+        id: messageId,
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-08-01T12:00:00.000Z"),
+        content: { text, metadata },
+      } as Memory,
+      undefined,
+      { parameters },
+    );
+  }
+  /** One linked Google account whose primary calendar reads through `listEventPage`. */
+  async function linkGoogle(listEventPage: () => Promise<unknown>) {
+    const linked = connectedGoogleGate();
+    const [account] = await linked.getGoogleConnectorAccounts(INTERNAL_URL);
+    const grant = async () => account?.grant as never;
+    service.setGate({
+      ...linked,
+      requireGoogleCalendarGrant: grant,
+      requireGoogleCalendarWriteGrant: grant,
+    });
+    const services = runtime.getService.bind(runtime);
+    const google = vi.spyOn(runtime, "getService").mockImplementation(((
+      name: string,
+    ) =>
+      name === "google"
+        ? {
+            listCalendars: async () => [
+              {
+                calendarId: "primary",
+                summary: "Linked Google",
+                primary: true,
+                accessRole: "owner",
+                timeZone: "UTC",
+                selected: true,
+              },
+            ],
+            listEventPage,
+          }
+        : services(name)) as never);
+    onTestFinished(() => google.mockRestore());
+  }
+  const augustEvents = async () =>
+    (await service.getCalendarFeed(INTERNAL_URL, WINDOW)).events;
+
+  it("creates an all-day event from chat and converts it to timed and back", async () => {
+    const created = await runChat(
+      "01",
+      "Add Mom's birthday all day on August 14, 2026",
+      { subaction: "create_event", title: "Mom's birthday", details: {} },
+      {
+        title: "Mom's birthday",
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        startAt: null,
+        endAt: null,
+        allDayStartDate: "2026-08-14",
+        allDayEndDate: null,
+      },
+    );
+    expect(created?.success, JSON.stringify(created)).toBe(true);
+    expect(created?.data?.event).toMatchObject({
+      isAllDay: true,
+      startAt: "2026-08-14T00:00:00.000Z",
+      endAt: "2026-08-15T00:00:00.000Z",
+    });
+    const update = (id: string, text: string, extracted: object) =>
+      runChat(
+        id,
+        text,
+        {
+          subaction: "update_event",
+          query: "Mom's birthday",
+          details: { timeZone: "UTC", ...WINDOW },
+        },
+        { requiresInput: false, ...extracted },
+      );
+    const timed = await update("02", "Make Mom's birthday start at 3pm", {
+      startAt: "2026-08-14T15:00:00",
+      endAt: null,
+    });
+    expect(timed?.success, JSON.stringify(timed)).toBe(true);
+    expect((await augustEvents())[0]).toMatchObject({
+      isAllDay: false,
+      startAt: "2026-08-14T15:00:00.000Z",
+      endAt: "2026-08-14T16:00:00.000Z",
+    });
+    const allDay = await update(
+      "03",
+      "Make Mom's birthday all day on August 14 and 15",
+      { allDayStartDate: "2026-08-14", allDayEndDate: "2026-08-15" },
+    );
+    expect(allDay?.success, JSON.stringify(allDay)).toBe(true);
+    expect((await augustEvents())[0]).toMatchObject({
+      isAllDay: true,
+      startAt: "2026-08-14T00:00:00.000Z",
+      endAt: "2026-08-16T00:00:00.000Z",
+    });
+    const reversed = await update("04", "Make Mom's birthday August 15 to 14", {
+      allDayStartDate: "2026-08-15",
+      allDayEndDate: "2026-08-14",
+    });
+    expect(reversed?.data).toMatchObject({ requiresInput: true });
+    expect((await augustEvents())[0]?.endAt).toBe("2026-08-16T00:00:00.000Z");
+    // A new first day alone moves the whole two days.
+    const moved = await update("05", "Move Mom's birthday to start August 20", {
+      allDayStartDate: "2026-08-20",
+      allDayEndDate: null,
+    });
+    expect(moved?.success, JSON.stringify(moved)).toBe(true);
+    expect((await augustEvents())[0]).toMatchObject({
+      isAllDay: true,
+      startAt: "2026-08-20T00:00:00.000Z",
+      endAt: "2026-08-22T00:00:00.000Z",
+    });
+  });
+
+  it("adds and removes guests by chat update, and only with the owner's own address", async () => {
+    await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
+    const update = (id: string, text: string, extracted: object) =>
+      runChat(
+        id,
+        text,
+        {
+          subaction: "update_event",
+          query: "Willow Harbor QA",
+          details: { timeZone: "UTC", ...WINDOW },
+        },
+        { requiresInput: false, ...extracted },
+      );
+    const invented = await update("11", "Add Sam to Willow Harbor QA", {
+      addGuests: [{ name: "Sam", email: "sam@harbor.io" }],
+      removeGuests: [],
+    });
+    expect(invented?.success).toBe(false);
+    expect((await augustEvents())[0]?.attendees).toEqual([]);
+    const added = await update(
+      "12",
+      "Add sam@harbor.io and kim@harbor.io to Willow Harbor QA",
+      {
+        addGuests: [
+          { name: null, email: "sam@harbor.io" },
+          { name: null, email: "kim@harbor.io" },
+        ],
+        removeGuests: [],
+      },
+    );
+    expect(added?.success, JSON.stringify(added)).toBe(true);
+    const removed = await update(
+      "13",
+      "Remove sam@harbor.io from Willow Harbor QA",
+      { addGuests: [], removeGuests: ["sam@harbor.io"] },
+    );
+    expect(removed?.success, JSON.stringify(removed)).toBe(true);
+    // A removal the owner did not ask for is not taken from the extraction.
+    const unasked = await update(
+      "14",
+      "Add amy@harbor.io to Willow Harbor QA",
+      {
+        addGuests: [{ name: null, email: "amy@harbor.io" }],
+        removeGuests: ["kim@harbor.io"],
+      },
+    );
+    expect(unasked?.success).toBe(false);
+    const [event] = await augustEvents();
+    expect(event?.attendees.map((attendee) => attendee.email)).toEqual([
+      "kim@harbor.io",
+    ]);
+    expect(event).toMatchObject({
+      title: originalEvent.title,
+      startAt: originalEvent.startAt,
+      endAt: originalEvent.endAt,
+    });
+  });
+
+  it("writes to the built-in calendar while a linked Google calendar is unreachable", async () => {
+    await linkGoogle(async () => {
+      throw new Error("Google is offline.");
+    });
+    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+      ...WINDOW,
+      forceSync: true,
+      includeHiddenCalendars: true,
+    });
+    expect(feed.state).not.toBe("complete");
+    expect(
+      feed.sources.find((source) => source.key.provider === "eliza")?.status,
+    ).toBe("fresh");
+    const created = await runChat(
+      "31",
+      "Add Willow Harbor QA on August 9, 2026 from 10:00 to 10:15",
+      { subaction: "create_event", title: "Willow Harbor QA", details: {} },
+      {
+        title: "Willow Harbor QA",
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        startAt: "2026-08-09T10:00:00",
+        endAt: "2026-08-09T10:15:00",
+      },
+    );
+    expect(created?.success, JSON.stringify(created)).toBe(true);
+    const moved = await runChat(
+      "32",
+      "Move Willow Harbor QA to 3pm",
+      {
+        subaction: "update_event",
+        query: "Willow Harbor QA",
+        details: { timeZone: "UTC", ...WINDOW },
+      },
+      { requiresInput: false, startAt: "2026-08-09T15:00:00", endAt: null },
+    );
+    expect(moved?.success, JSON.stringify(moved)).toBe(true);
+    // An unread source may hold the event, so a miss is not "not found".
+    const missing = await runChat("33", "Delete Cedar Review", {
+      subaction: "delete_event",
+      query: "Cedar Review",
+      details: { timeZone: "UTC", ...WINDOW },
+    });
+    expect(missing?.success).toBe(false);
+    expect(missing?.data).toMatchObject({
+      error: "CALENDAR_MUTATION_CONTEXT_INCOMPLETE",
+    });
+    // One match is not known to be the only one while Google is unread, so
+    // the built-in delete asks first.
+    const asked = await runChat("34", "Delete Willow Harbor QA", {
+      subaction: "delete_event",
+      query: "Willow Harbor QA",
+      details: { timeZone: "UTC", ...WINDOW },
+    });
+    expect(asked?.success).toBe(false);
+    expect(asked?.data).toMatchObject({ missing: ["delete confirmation"] });
+    const deleted = await runChat("35", "Yes, delete it", {
+      subaction: "delete_event",
+      targetKind: "eventId",
+      target: (asked?.data as { eventId?: string } | undefined)?.eventId,
+      details: { timeZone: "UTC", confirmed: true },
+    });
+    expect(deleted?.success, JSON.stringify(deleted)).toBe(true);
+    expect(
+      (await service.getCalendarFeed(INTERNAL_URL, WINDOW)).events,
+    ).toHaveLength(0);
+  });
+
+  it("sends a repeating event to the one connected Google calendar for owner approval", async () => {
+    const extracted = {
+      title: "Standup",
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: ELIZA_CALENDAR_ID,
+      startAt: "2026-08-10T09:00:00",
+      endAt: "2026-08-10T09:15:00",
+      recurrence: "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+    };
+    const text = "Add standup every weekday at 9am starting August 10, 2026";
+    const parameters = { subaction: "create_event", title: "Standup" };
+    // With no connected calendar the built-in limit is named, as before.
+    const refused = await runChat("41", text, parameters, extracted);
+    expect(refused?.success).toBe(false);
+    expect(await augustEvents()).toHaveLength(0);
+
+    await linkGoogle(async () => ({
+      events: [],
+      nextPageToken: null,
+      nextSyncToken: null,
+    }));
+    const schedule = vi.fn(async () => ({
+      text: "Review this Calendar change.",
+      requestId: "approval-1",
+      action: "schedule_event" as const,
+      state: "pending" as const,
+      acceptedAt: "2026-08-01T12:00:00.000Z",
+      idempotencyKey: "approval-key",
+      replayed: false,
+    }));
+    const routed = await runChat("42", text, parameters, extracted, undefined, {
+      mutationGateway: { schedule } as never,
+    });
+    expect(routed?.success, JSON.stringify(routed)).toBe(true);
+    expect(schedule.mock.calls[0]?.[0]).toMatchObject({
+      request: {
+        grantId: "connector-account:shawgotbags",
+        calendarId: "primary",
+        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"],
+      },
+    });
+    expect(await augustEvents()).toHaveLength(0);
+  });
+
+  it.each([
+    ["BYMONTHDAY=-1", "monthly on the last day"],
+    ["BYMONTHDAY=-2", "monthly on the 2nd-to-last day"],
+    ["BYMONTHDAY=15,-1", "monthly on day 15 and the last day"],
+    ["BYMONTHDAY=1,15", "monthly on day 1, 15"],
+  ])(
+    "names the days of a Google %s series when a delete asks for the scope",
+    async (days, label) => {
+      // A negative BYMONTHDAY counts from the month end (RFC 5545).
+      await linkGoogle(async () => ({
+        events: [
+          {
+            id: "rent-series",
+            calendarId: "primary",
+            title: "Pay rent",
+            status: "confirmed",
+            start: "2026-08-31T16:00:00.000Z",
+            end: "2026-08-31T16:30:00.000Z",
+            isAllDay: false,
+            timeZone: "UTC",
+            recurrence: [`RRULE:FREQ=MONTHLY;${days}`],
+            attendees: [],
+            metadata: {},
+          },
+        ],
+        nextPageToken: null,
+        nextSyncToken: "rent-sync",
+      }));
+      const asked = await runChat("43", "Delete pay rent", {
+        subaction: "delete_event",
+        query: "Pay rent",
+        details: { timeZone: "UTC", ...WINDOW },
+      });
+      expect(asked?.data).toMatchObject({
+        missing: ["recurrenceScope"],
+        replyContext: {
+          facts: `"Pay rent" repeats ${label}. should i delete just this occurrence, this and every following occurrence, or the whole series?`,
+          context: { recurrenceDescription: label },
+        },
+      });
+    },
+  );
+
+  it("asks instead of dropping an end that is not after the new start", async () => {
+    await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
+    const unchanged = await runUpdate(
+      "Move Willow Harbor QA to 3pm until 2pm.",
+      {},
+      {
+        requiresInput: false,
+        startAt: "2026-08-09T15:00:00",
+        endAt: "2026-08-09T14:00:00",
+      },
+      false,
+    );
+    expect(unchanged).toMatchObject({
+      startAt: originalEvent.startAt,
+      endAt: originalEvent.endAt,
+    });
+    // The event's own end echoed beside a new start is not a requested end.
+    const moved = await runUpdate(
+      "Move Willow Harbor QA to 3pm.",
+      {},
+      {
+        requiresInput: false,
+        startAt: "2026-08-09T15:00:00",
+        endAt: "2026-08-09T10:15:00",
+      },
+    );
+    expect(moved).toMatchObject({
+      startAt: "2026-08-09T15:00:00.000Z",
+      endAt: "2026-08-09T15:15:00.000Z",
+    });
+  });
+
+  it("deletes a named built-in event at once, asks about a partial match, and returns an Undo request", async () => {
+    const seed = async () => {
+      const { event } = await service.createCalendarEventMutation(
+        INTERNAL_URL,
+        originalEvent,
+      );
+      if (!event) throw new Error("Expected a persisted seed event");
+      return event;
+    };
+    const remove = (id: string, text: string, parameters: object) =>
+      runChat(id, text, {
+        subaction: "delete_event",
+        details: { timeZone: "UTC", ...WINDOW },
+        ...parameters,
+      });
+    const seeded = await seed();
+    // A planner `confirmed` with an id the action never asked about is not
+    // the owner's yes.
+    const unasked = await remove("20", "Get rid of my Willow Harbor thing", {
+      targetKind: "eventId",
+      target: seeded.externalId,
+      details: { timeZone: "UTC", confirmed: true },
+    });
+    expect(unasked?.data).toMatchObject({ missing: ["delete confirmation"] });
+    // A shorter title inside a longer reference is not the event named.
+    const longer = await remove("19", "Delete Willow Harbor QA retro", {
+      query: "Willow Harbor QA retro",
+    });
+    expect(longer?.data).toMatchObject({ missing: ["delete confirmation"] });
+    expect(await augustEvents()).toHaveLength(1);
+    const asked = await remove("21", "Delete my Willow Harbor thing", {
+      query: "Willow Harbor",
+    });
+    expect(asked?.success).toBe(false);
+    expect(asked?.data).toMatchObject({
+      requiresInput: true,
+      missing: ["delete confirmation"],
+      eventId: seeded.externalId,
+    });
+    expect(await augustEvents()).toHaveLength(1);
+    // A planner flag alone does not stand in for the owner's answer.
+    const unconfirmed = await remove("22", "Delete my Willow Harbor thing", {
+      query: "Willow Harbor",
+      details: { timeZone: "UTC", ...WINDOW, confirmed: true },
+    });
+    expect(unconfirmed?.success).toBe(false);
+    expect(await augustEvents()).toHaveLength(1);
+    const confirmed = await remove("23", "Yes, delete it", {
+      targetKind: "eventId",
+      target: seeded.externalId,
+      details: { timeZone: "UTC", confirmed: true },
+    });
+    expect(confirmed?.success, JSON.stringify(confirmed)).toBe(true);
+    expect(await augustEvents()).toHaveLength(0);
+    const undo = (
+      confirmed?.data?.values as
+        | {
+            calendarEventUndo: {
+              deletedEventId: string;
+              request: Parameters<
+                typeof service.createCalendarEventMutation
+              >[1];
+            };
+          }
+        | undefined
+    )?.calendarEventUndo;
+    if (!undo) throw new Error("Expected an Undo request");
+    expect(undo.deletedEventId).toBe(seeded.id);
+    // A repeated Undo restores one event.
+    await service.createCalendarEventMutation(INTERNAL_URL, undo.request);
+    await service.createCalendarEventMutation(INTERNAL_URL, undo.request);
+    expect(await augustEvents()).toHaveLength(1);
+    expect((await augustEvents())[0]).toMatchObject({
+      title: originalEvent.title,
+      description: originalEvent.description,
+      location: originalEvent.location,
+      startAt: originalEvent.startAt,
+      endAt: originalEvent.endAt,
+    });
+    const named = await remove("24", "Delete Willow Harbor QA", {
+      query: "Willow Harbor QA",
+    });
+    expect(named?.success, JSON.stringify(named)).toBe(true);
+    expect(await augustEvents()).toHaveLength(0);
+  });
+
+  // v617 on the owner's Pixel (2026-11-20, America/New_York): with Contacts in
+  // front in direct-request mode, "add an event called v617 check tomorrow at
+  // 3pm" ran CALENDAR_CREATE_EVENT and replied with an applied receipt for
+  // eliza-calendar/primary, the Agent Calendar source Alpha's Calendar view
+  // reads through this feed. Twelve minutes later "delete the calendar event
+  // v617 check" deleted it (applied receipt) but its reply was lost to a 429,
+  // so the retry found nothing and Saturday showed "Free all day". That delete
+  // receipt carried the event's creation time as its commit time.
+  it("replays the v617 create and delete against the calendar the Agent Calendar view reads", async () => {
+    const zone = "America/New_York";
+    const window = {
+      timeMin: "2026-11-21T05:00:00.000Z",
+      timeMax: "2026-11-22T05:00:00.000Z",
+    };
+    // The turn metadata the phone sent for each v617 message.
+    const metadata = {
+      uiView: "contacts",
+      uiViewPath: "/contacts",
+      uiTimeZone: zone,
+      clientDevice: {
+        context: {
+          view: "contacts",
+          revision: 3,
+          timeZone: zone,
+          sensitive: false,
+        },
+      },
+      notesFolders: [],
+      viewDelivery: "completed-action",
+      userTextFormat: "plain-v1",
+      agentActionMode: "direct-request-v1",
+      uiViewActionNames: [],
+      uiViewCapabilities: [],
+    };
+    const send = (
+      id: string,
+      text: string,
+      at: string,
+      parameters: Record<string, unknown>,
+    ) => {
+      const messageId = `00000000-0000-0000-0000-0000000617${id}`;
+      return createCalendarActionRunner({
+        runTextModel: vi.fn(async () => null),
+        runJsonModel: vi.fn(async ({ actionType }) =>
+          actionType === "lifeops.calendar.extract_create_event"
+            ? {
+                rawResponse: "{}",
+                parsed: {
+                  ...createEvidence(messageId, text),
+                  title: "v617 check",
+                  grantId: ELIZA_CALENDAR_GRANT_ID,
+                  calendarId: ELIZA_CALENDAR_ID,
+                  startAt: "2026-11-21T15:00:00",
+                  endAt: "2026-11-21T16:00:00",
+                  timeZone: null,
+                },
+              }
+            : null,
+        ),
+        recentConversationTexts: vi.fn(async () => []),
+      }).handler(
+        runtime,
+        {
+          id: messageId,
+          entityId: "00000000-0000-0000-0000-000000000102",
+          roomId: "00000000-0000-0000-0000-000000000103",
+          createdAt: Date.parse(at),
+          content: { text, source: "client_chat", metadata },
+        } as Memory,
+        undefined,
+        { parameters },
+      );
+    };
+    const agentCalendar = async () =>
+      (await service.getCalendarFeed(INTERNAL_URL, window)).events;
+
+    const created = await send(
+      "01",
+      "add an event called v617 check tomorrow at 3pm",
+      "2026-11-20T22:23:52.000Z",
+      { subaction: "create_event", title: "v617 check", details: {} },
+    );
+    expect(created?.success, JSON.stringify(created)).toBe(true);
+    const [createReceipt] = created?.effectReceipts ?? [];
+    expect(createReceipt).toMatchObject({
+      operation: "calendar.event.create",
+      outcome: "applied",
+      commit: { kind: "durable" },
+    });
+    // The receipt names the event the Agent Calendar view now lists.
+    const [shown] = await agentCalendar();
+    expect(shown).toMatchObject({
+      id: createReceipt?.resource.id,
+      provider: "eliza",
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: ELIZA_CALENDAR_ID,
+      title: "v617 check",
+      startAt: "2026-11-21T20:00:00.000Z",
+      endAt: "2026-11-21T21:00:00.000Z",
+      timezone: zone,
+    });
+    expect(await agentCalendar()).toHaveLength(1);
+    // The phone's event was written at 22:24:19Z, twelve minutes before the delete.
+    await pg.query(
+      "UPDATE app_calendar.life_calendar_events SET updated_at = $1, synced_at = $1 WHERE id = $2",
+      ["2026-11-20T22:24:19.045Z", shown?.id],
+    );
+
+    const removeParameters = {
+      subaction: "delete_event",
+      query: "v617 check",
+      details: { timeZone: zone, ...window },
+    };
+    const deleteStarted = Date.now();
+    const removed = await send(
+      "02",
+      "delete the calendar event v617 check",
+      "2026-11-20T22:35:50.000Z",
+      removeParameters,
+    );
+    expect(removed?.success, JSON.stringify(removed)).toBe(true);
+    const [deleteReceipt] = removed?.effectReceipts ?? [];
+    expect(deleteReceipt).toMatchObject({
+      operation: "calendar.event.delete",
+      outcome: "applied",
+      resource: { id: shown?.id, version: `deleted:${'"eliza-1"'}` },
+      commit: { kind: "durable", id: shown?.id },
+    });
+    // The delete committed when it ran, not when the event was created.
+    const committedAt = Date.parse(
+      (deleteReceipt as { commit?: { committedAt?: string } }).commit
+        ?.committedAt ?? "",
+    );
+    expect(committedAt).toBeGreaterThanOrEqual(deleteStarted);
+    expect(deleteReceipt?.observedAt).toBe(
+      (deleteReceipt as { commit?: { committedAt?: string } }).commit
+        ?.committedAt,
+    );
+    expect(await agentCalendar()).toEqual([]);
+
+    // The retry finds nothing and claims no deletion.
+    const retried = await send(
+      "03",
+      "delete the calendar event v617 check",
+      "2026-11-20T22:38:43.000Z",
+      removeParameters,
+    );
+    expect(retried?.success).not.toBe(true);
+    expect(
+      (retried?.effectReceipts ?? []).filter(
+        (receipt) => receipt.outcome === "applied",
+      ),
+    ).toEqual([]);
+    expect(await agentCalendar()).toEqual([]);
   });
 });
 

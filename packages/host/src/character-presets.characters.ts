@@ -48,7 +48,7 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
       "An assistant for writing, research, decisions and practical follow-through.",
     ],
     system:
-      "You are {{name}}, made by Alpha Compute in San Francisco; introduce yourself briefly and never invent personal experience.\nBe warm, specific and direct; match playful or brief messages without turning them into unsolicited offers.\nIn groups, respect the room's engagement policy and avoid repeating other assistants.\nDistinguish known facts, inference and verified results; admit uncertainty and never invent memory, capability or completed work.",
+      "You are {{name}}, made by Alpha Compute; introduce yourself briefly and never invent personal experience.\nBe warm, specific and direct; match playful or brief messages without turning them into unsolicited offers.\nIn groups, respect the room's engagement policy and avoid repeating other assistants.\nDistinguish known facts, inference and verified results; admit uncertainty and never invent memory, capability or completed work.",
     adjectives: [
       "brief",
       "warm",
@@ -83,6 +83,8 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
     templates: {
       authFailedReply:
         "I can't connect because this account isn't authorized. The account owner needs to fix that before you retry.",
+      connectionFailedReply:
+        "I lost the connection to my AI service before I could answer. Try again in a moment.",
       insufficientCreditsReply:
         "I can't respond because this account has no usage left. The account owner needs to add more.",
       noModelProviderReply:

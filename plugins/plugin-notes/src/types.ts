@@ -37,6 +37,16 @@ export interface TrashedNote {
   deletedAt: string;
 }
 
+/** One owner-confirmed permanent erase, bound to the Notes revision the owner saw. */
+export type NotesTrashErase =
+  | { scope: "all"; expectedRevision: number }
+  | {
+      scope: "entry";
+      expectedRevision: number;
+      id: string;
+      deletedAt: string;
+    };
+
 /** A committed Trash deletion whose device recording still needs cleanup. */
 export interface NotesTrashRecordingCleanup {
   operationId: string;
@@ -65,6 +75,9 @@ export interface NotesDocument extends NotesSnapshot {
   persistedAt: string;
   /** Private mutation order. Public snapshots omit it; legacy documents may lack it. */
   noteRevisions?: Record<string, number>;
+  /** Private client creation ids mapped to the note each one created. An entry
+   * retires when its note is permanently erased. */
+  noteCreations?: Record<string, string>;
   /** Private cleanup work. The ordinary Notes snapshot does not expose it. */
   trashRecordingCleanup?: NotesTrashRecordingCleanup[];
 }
@@ -94,6 +107,9 @@ export interface CreateNoteInput {
   /** Owner-UI drafts set this so a new note keeps its own id when its first
    * saved text matches another note. Agent creates omit it and still replay. */
   forceNew?: boolean;
+  /** A client's own id for this creation. A repeat with the same id returns the
+   * note it created and never adds a second one; a new id always creates. */
+  creationId?: string;
 }
 
 /** Append carries only the exact suffix; old content stays inside the transaction. */

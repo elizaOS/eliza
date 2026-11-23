@@ -1,0 +1,37 @@
+{
+  "sources": [
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSurfacePlugin.kt",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserLoginFields.java",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserFieldOrigin.java",
+    "plugins/plugin-native-passwords/android/src/main/java/ai/eliza/plugins/passwords/PasswordFillActivity.java"
+  ],
+  "cases": [
+    {
+      "name": "isolated-sign-in",
+      "main": "ManualSignInSurface",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "FieldNeedsCurrentExactDocument",
+        "FilledNeedsCurrentForeground",
+        "ProtectedSurfaceBlocksCapture"
+      ],
+      "temporal": ["PendingChoiceSettles"],
+      "temporalChecks": [
+        {
+          "property": "PendingChoiceSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of settlement while a selected choice remains pending. Cancel models OS cancellation or request expiry. This does not promise successful authentication or a wall-clock deadline."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 300
+    }
+  ],
+  "limitations": [
+    "One protected profile, one pending native field binding, and one ordinary window capture. Exact origin and native consent are validated by the browser and password provider.",
+    "The model does not establish device or WebView support, engine origin attestation, Android lifecycle callback order, or the native provider journey. The browser bridge test covers policy and platform refusal."
+  ]
+}

@@ -59,7 +59,8 @@ const cssInput = `
 @source "${bundlePath}";
 `;
 const css = (
-  await postcss([tailwindPostcss()]).process(cssInput, {
+  // A repo-root invocation must not turn benchmark text into CSS utilities.
+  await postcss([tailwindPostcss({ base: uiSrc })]).process(cssInput, {
     from: join(outDir, "fixture-input.css"),
   })
 ).css;
@@ -130,7 +131,6 @@ for (const name of [
   "Refresh",
   "Use runtime",
   "Claim pairing",
-  "Retry",
   "Revoke",
   "Remove",
   "Stop relay",
@@ -174,14 +174,12 @@ const expectedInitialOrder = [
   "button:Refresh",
   "button:Use runtime",
   "input:Mac's 6-digit code",
-  "button:Retry",
   "button:Revoke",
   "button:Remove",
   "button:Stop relay",
   "button:Revoke host",
   "button:Confirm controller on this Linux computer",
   "button:Deny",
-  "summary:Advanced SSH",
 ];
 await page.locator("body").click({ position: { x: 2, y: 2 } });
 const actualInitialOrder = [];
@@ -210,29 +208,6 @@ assert(
   `keyboard order and names match: ${actualInitialOrder.join(" -> ")}`,
 );
 
-await page.keyboard.press("Enter");
-assert(
-  await page.locator("details").evaluate((details) => details.open),
-  "Advanced SSH expands from the keyboard",
-);
-const expectedSshOrder = [
-  "input:Name",
-  "input:SSH target",
-  "input:SSH port",
-  "input:Remote Eliza port",
-  "input:Private key path (optional)",
-  "input:Runtime access token (optional)",
-];
-const actualSshOrder = [];
-for (const _expected of expectedSshOrder) {
-  await page.keyboard.press("Tab");
-  actualSshOrder.push(await activeDescriptor());
-}
-assert(
-  JSON.stringify(actualSshOrder) === JSON.stringify(expectedSshOrder),
-  `expanded SSH fields stay in label order: ${actualSshOrder.join(" -> ")}`,
-);
-
 await page.setViewportSize({ width: 390, height: 844 });
 await page.evaluate(() => window.scrollTo(0, 0));
 const narrowBoxes = await Promise.all(
@@ -258,7 +233,21 @@ const normalTextSize = await page
 await page.evaluate(() => {
   document.documentElement.style.fontSize = "32px";
 });
-await page.evaluate(() => new Promise(requestAnimationFrame));
+// One animation frame is not always enough for the scaled computed size to
+// settle in Chromium (observed intermittently as "14px -> 14px"). Wait for it
+// to settle; a size that never scales still fails the assertion below.
+await page
+  .waitForFunction(
+    (minimum) =>
+      Number.parseFloat(
+        getComputedStyle(
+          document.querySelector('[data-testid="devices-runtimes"] button'),
+        ).fontSize,
+      ) >= minimum,
+    normalTextSize * 1.95,
+    { timeout: 2_000 },
+  )
+  .catch(() => undefined);
 const scaled = await page.evaluate(() => {
   const root = document.documentElement;
   const controls = [...document.querySelectorAll("button,input,summary")];

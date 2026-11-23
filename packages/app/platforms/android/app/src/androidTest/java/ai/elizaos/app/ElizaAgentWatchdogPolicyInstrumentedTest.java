@@ -125,24 +125,9 @@ public class ElizaAgentWatchdogPolicyInstrumentedTest {
     }
 
     @Test
-    public void restartPolicyUsesBoundedExponentialBackoff() {
-        long[] expectedDelays = {1000L, 2000L, 4000L, 8000L, 16000L};
-
-        int attempts = 0;
-        for (long expectedDelay : expectedDelays) {
-            ElizaAgentWatchdogPolicy.RestartDecision decision =
-                ElizaAgentWatchdogPolicy.nextRestart(attempts, 5);
-            assertTrue(decision.allowed);
-            assertEquals(expectedDelay, decision.delayMs);
-            assertEquals(attempts + 1, decision.nextRestartAttempts);
-            attempts = decision.nextRestartAttempts;
-        }
-
-        ElizaAgentWatchdogPolicy.RestartDecision fatal =
-            ElizaAgentWatchdogPolicy.nextRestart(attempts, 5);
-        assertFalse(fatal.allowed);
-        assertEquals(5, fatal.nextRestartAttempts);
-        assertEquals(0L, fatal.delayMs);
+    public void pendingRestartIsVisibleEvenIfTheOldSocketListens() throws Exception {
+        assertEquals("restarting", ElizaAgentService.projectLocalAgentBootState(
+            "restarting", true, true, false, true, 1L, 100).getString("state"));
     }
 
     @Test

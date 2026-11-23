@@ -18,7 +18,7 @@ describe("fetchKeylessWeb", () => {
         expect(result?.text).toBe(payload);
         expect(fetchImpl).toHaveBeenCalledTimes(1);
         const [endpoint, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-        expect(endpoint).toBe("https://search.parallel.ai/mcp");
+        expect(endpoint).toBe("https://mcp.parallel.ai/mcp");
         expect(init.redirect).toBe("manual");
         expect(new Headers(init.headers).has("Authorization")).toBe(false);
         const request = JSON.parse(String(init.body));

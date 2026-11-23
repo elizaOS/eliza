@@ -317,14 +317,28 @@ export class GoalsService {
         if (candidate.status !== "active") continue;
         if (candidate.subjectType !== ownership.subjectType) continue;
         if (candidate.subjectId !== ownership.subjectId) continue;
-        const score = scoreGoalSimilarity({
-          reference: {
-            title: requestTitle,
-            description: requestDescription,
-            successCriteria: requestSuccessCriteria,
-          },
-          candidate,
-        });
+        // The score measures how much of the reference the candidate covers,
+        // so score both ways: "Swim a mile" is fully covered by "Swim a half
+        // mile", but the existing title's "half" is missing from the request.
+        const score = Math.min(
+          scoreGoalSimilarity({
+            reference: {
+              title: requestTitle,
+              description: requestDescription,
+              successCriteria: requestSuccessCriteria,
+            },
+            candidate,
+          }),
+          scoreGoalSimilarity({
+            reference: { title: candidate.title },
+            candidate: {
+              ...candidate,
+              title: requestTitle,
+              description: requestDescription,
+              successCriteria: requestSuccessCriteria,
+            },
+          }),
+        );
         if (score >= 0.85 && (best === null || score > best.score)) {
           best = { record: candidate, score };
         }

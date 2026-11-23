@@ -6,7 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-/** JVM tests for the watchdog's restart ceilings and restart-budget reset. */
+/** JVM tests for health strikes and capped restart backoff. */
 public class ElizaAgentWatchdogPolicyTest {
     private static final int STRIKES = 3;
 
@@ -54,18 +54,21 @@ public class ElizaAgentWatchdogPolicyTest {
     }
 
     @Test
-    public void restartAttemptsSurviveACrashThirtySecondsAfterReady() {
+    public void shortUptimeNeverResetsBackoffOrDisablesRetries() {
         long readyAt = 1_000_000L;
         int attempts = 0;
-        // Ready, then crash 30 s later, five times over: the budget is never reset.
-        for (int cycle = 0; cycle < 5; cycle++) {
+        long[] delays = {1000L, 2000L, 4000L, 8000L, 16000L, 32000L};
+        for (int cycle = 0; cycle < 100; cycle++) {
             attempts = ElizaAgentWatchdogPolicy.restartAttemptsAfterHealthy(attempts, readyAt, readyAt + 30_000L);
-            ElizaAgentWatchdogPolicy.RestartDecision restart = ElizaAgentWatchdogPolicy.nextRestart(attempts, 5);
-            assertTrue(restart.allowed);
+            ElizaAgentWatchdogPolicy.RestartDecision restart = ElizaAgentWatchdogPolicy.nextRestart(attempts);
+            assertEquals(cycle < delays.length ? delays[cycle] : 60_000L, restart.delayMs);
+            assertEquals(cycle + 1, restart.nextRestartAttempts);
             attempts = restart.nextRestartAttempts;
             readyAt += 60_000L;
         }
-        assertFalse(ElizaAgentWatchdogPolicy.nextRestart(attempts, 5).allowed);
+        ElizaAgentWatchdogPolicy.RestartDecision saturated = ElizaAgentWatchdogPolicy.nextRestart(Integer.MAX_VALUE);
+        assertEquals(Integer.MAX_VALUE, saturated.nextRestartAttempts);
+        assertEquals(60_000L, saturated.delayMs);
     }
 
     @Test
@@ -77,6 +80,13 @@ public class ElizaAgentWatchdogPolicyTest {
             3, readyAt, readyAt + ElizaAgentWatchdogPolicy.STABLE_UPTIME_MS));
         // Not healthy since the last start: never reset.
         assertEquals(3, ElizaAgentWatchdogPolicy.restartAttemptsAfterHealthy(3, 0L, Long.MAX_VALUE));
+    }
+
+    @Test
+    public void storageAdmissionStillRequiresIntervention() {
+        assertTrue(ElizaAgentWatchdogPolicy.isTerminalStartupFailure("ELIZA_PGLITE_MANUAL_RESET_REQUIRED"));
+        assertTrue(ElizaAgentWatchdogPolicy.isTerminalStartupFailure("Destructive migration blocked"));
+        assertFalse(ElizaAgentWatchdogPolicy.isTerminalStartupFailure("exit 137"));
     }
 
     @Test

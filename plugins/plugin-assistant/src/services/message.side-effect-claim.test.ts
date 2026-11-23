@@ -2601,11 +2601,9 @@ describe("replyIsClaimSafeAcknowledgment", () => {
   // "your note" or "the event", plus an optional now, for you, real quick or
   // quickly tail. For a view outside the app list, or a listed app with an
   // article, the open form is dropped whole (silence until the final reply)
-  // while the lookup form of the same view is admitted. The planned-view rule
-  // steers toward the open form, so this pins the trade-off instead of
-  // growing the grammar.
+  // while the lookup form of the same view is admitted. The rule's open-an-app
+  // example can still steer toward such a form, so this pins that fallback.
   it.each([
-    { open: "Let me open Messages.", lookup: "Let me check your messages." },
     { open: "Let me open Reminders.", lookup: "Let me check your reminders." },
     {
       open: "Let me open the calendar.",
@@ -2622,6 +2620,56 @@ describe("replyIsClaimSafeAcknowledgment", () => {
         actions: [],
       }).verdict,
     ).not.toBe("reject");
+  });
+
+  // The acknowledgement rule's own cues: a wait cue for any action or change,
+  // a lookup of a named source, and opening the requested app, now including
+  // the phone's Contacts, Messages, Phone and Clock apps.
+  it.each([
+    "On it.",
+    "One sec.",
+    "Let me check your calendar.",
+    "Let me check the weather.",
+    "Let me open Contacts.",
+    "Let me open Messages.",
+    "Let me open Phone.",
+    "Let me open Clock.",
+    "let me open contacts",
+    "let me open messages",
+    "I’ll open Messages.",
+    "I'll open Phone now.",
+  ])("admits the rule's cue or an app open: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(true);
+    expect(
+      evaluatePlannedReplyEgress({
+        reply,
+        pendingWork: true,
+        actionResults: [],
+        actions: [],
+      }).verdict,
+    ).not.toBe("reject");
+  });
+
+  // The phone apps join only the open intent: as a gerund the open reports
+  // work under way, and anything after the app name can carry its data.
+  it.each([
+    "Opening Contacts.",
+    "Opening Messages now.",
+    "Opening Phone.",
+    "Opening the Clock.",
+    "I'm opening Clock.",
+    "Let me open the Clock.",
+    "Let me open Messages to text Sam.",
+    "Let me open Messages, Sam replied.",
+    "Let me open Phone and call Sam.",
+    "Let me open Clock for the alarm.",
+    "Let me open Clock and set an alarm for seven.",
+    "Let me open Clock, it's set.",
+    "Let me open Clock to check your alarm.",
+    "Let me open Contacts. Sam is there.",
+    "I opened Contacts.",
+  ])("drops a phone-app open outside the intent form: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
 
   // Natural wording outside the closed grammar is dropped as well; the final

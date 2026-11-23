@@ -241,10 +241,14 @@ export function isTemperatureLockedModel(runtime: IAgentRuntime, modelName: Mode
 }
 
 /**
- * ANTHROPIC_MAX_OUTPUT_TOKENS accepts comma-separated `model-id:tokens` pairs
- * and/or a bare token count that applies to models without a per-model entry
- * (e.g. "claude-unknown-test-9:32000" or "16000"). Returns the output-token cap
- * for `modelName`, or undefined to use the built-in heuristic.
+ * ANTHROPIC_MAX_OUTPUT_TOKENS declares a model's output capacity, for ids the
+ * built-in table does not know or whose limit changed. It is not a way to cap
+ * output: Anthropic requires max_tokens, so a request that names no cap sends
+ * this capacity, and an explicit request above it is rejected before dispatch.
+ * Accepts comma-separated `model-id:tokens` pairs and/or a bare token count
+ * that applies to models without a per-model entry (e.g.
+ * "claude-unknown-test-9:32000" or "16000"). Returns the declared capacity for
+ * `modelName`, or undefined to use the built-in heuristic.
  */
 export function getMaxOutputTokensOverride(
   runtime: IAgentRuntime,

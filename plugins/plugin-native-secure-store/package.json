@@ -75,7 +75,7 @@
       "browser": "Unavailable fallback; secrets are never persisted on web by this plugin.",
       "android": "Android Keystore AES-GCM key with atomic ciphertexts in the app no-backup directory.",
       "ios": true,
-      "node": "macOS uses the Electrobun secure-store bridge."
+      "node": "Not supported; there is no Node or desktop implementation, so secrets are stored only by the iOS Keychain and Android Keystore backends."
     }
   }
 }

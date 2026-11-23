@@ -83,7 +83,9 @@ import {
 } from "./security/processing-policy.js";
 import { MIN_SECRET_LENGTH, redactWithSecrets } from "./security/redact.js";
 import {
+	createSecretSwapStableKey,
 	parseSecretSwapExemptValues,
+	pseudonymSaltFromStableKey,
 	SECRET_SWAP_ENABLED_SETTING,
 	SECRET_SWAP_EXEMPT_VALUES_SETTING,
 	SecretSwapSession,
@@ -839,7 +841,26 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
-	private createSecretSwapSession(): SecretSwapSession {
+	/** Held in memory for the life of this runtime; never persisted or logged. */
+	private secretSwapStableKey: string | undefined;
+
+	/**
+	 * The key that keeps a conversation's references and pseudonyms the same
+	 * across its turns whenever secret swap is enabled, so an earlier turn's text
+	 * is resent byte for byte and a provider can reuse the prompt prefix. A call
+	 * outside a conversation gets none: there is no later turn whose prompt it
+	 * could match. The key lives only in this runtime's memory, so a fresh
+	 * process draws a fresh one, and restore resolves only references the
+	 * session itself wrote.
+	 */
+	private swapStableKey(conversation?: string): string | undefined {
+		if (conversation === undefined || !this.isSecretSwapEnabled())
+			return undefined;
+		this.secretSwapStableKey ??= createSecretSwapStableKey();
+		return `${this.secretSwapStableKey}:${conversation}`;
+	}
+
+	private createSecretSwapSession(conversation?: string): SecretSwapSession {
 		const toSecretStrings = (
 			values: Record<string, unknown> | undefined,
 		): Record<string, string | undefined> => {
@@ -872,6 +893,7 @@ export class AgentRuntime implements IAgentRuntime {
 			process.env as Record<string, string | undefined>,
 		);
 		return new SecretSwapSession({
+			stableKey: this.swapStableKey(conversation),
 			knownSecrets: {
 				...envSecrets,
 				...settingsSecrets,
@@ -898,9 +920,12 @@ export class AgentRuntime implements IAgentRuntime {
 	 * `PII_ENTITY_RECOGNIZER_SERVICE` — the local NER model (person/org/location).
 	 * With no model plugin present the layer runs regex-only: degraded coverage,
 	 * but still never leaks what it does detect. The agent's own name is added to
-	 * the blocklist so the model's identity is never pseudonymized.
+	 * the blocklist so the model's identity is never pseudonymized. Surrogates
+	 * are salted afresh per session unless the conversation has a stable key:
+	 * then a value keeps its surrogate, and an earlier turn's text its bytes.
 	 */
-	private createPiiSwapSession(): PseudonymSession {
+	private createPiiSwapSession(conversation?: string): PseudonymSession {
+		const stableKey = this.swapStableKey(conversation);
 		const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()];
 		const nerService = this.getService(PII_ENTITY_RECOGNIZER_SERVICE) as
 			| (Service & Partial<PiiEntityRecognizerService>)
@@ -914,6 +939,7 @@ export class AgentRuntime implements IAgentRuntime {
 			...parsePiiSwapList(this.getSetting(PII_SWAP_EXEMPT_VALUES_SETTING)),
 		];
 		return new PseudonymSession({
+			salt: stableKey ? pseudonymSaltFromStableKey(stableKey) : undefined,
 			recognizer: new CompositeEntityRecognizer(recognizers, { blocklist }),
 			blocklist,
 			disabledKinds: parsePiiSwapList(

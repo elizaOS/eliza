@@ -5,6 +5,8 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { afterEach, expect, it, vi } from "vitest";
+import { browserPlugin } from "../../../plugins/plugin-browser/src/mobile.ts";
+import { inboxPlugin } from "../../../plugins/plugin-inbox/src/plugin.ts";
 import { mapsPlugin } from "../../../plugins/plugin-maps/src/plugin.ts";
 import { BUILTIN_VIEWS } from "../src/api/builtin-views.ts";
 import { nativeViewDeclarations } from "../src/api/native-view-declarations.ts";
@@ -19,6 +21,7 @@ import {
 import { viewNavigationField } from "../src/runtime/view-navigation.ts";
 import {
   resolveViewNavigationTargets,
+  viewNavigationAvailable,
   viewNavigationDestination,
 } from "../src/runtime/view-navigation-targets.ts";
 
@@ -141,6 +144,57 @@ it("preserves an already installed plugin and yields only to the declared packag
   unregisterPluginViews(second, installation);
   expect(getView(second, "maps")).toBe(fallback);
 });
+
+it.each([
+  { plugin: inboxPlugin, id: "inbox", label: "Inbox" },
+  { plugin: mapsPlugin, id: "maps", label: "Maps" },
+])(
+  "keeps the host's native $label navigable after the shipped plugin registers",
+  async ({ plugin, id, label }) => {
+    vi.stubEnv(
+      "ELIZA_NATIVE_VIEW_DECLARATIONS",
+      JSON.stringify([
+        {
+          id,
+          label,
+          path: `/${id}`,
+          fallbackFor: plugin.packageName ?? plugin.name,
+        },
+      ]),
+    );
+    const owner = runtime();
+    registerBuiltinViews(owner);
+    // A phone package ships no hosted view bundle for these plugins.
+    await registerPluginViews(owner, plugin, {
+      pluginDir: "/nonexistent-plugin-package",
+    });
+    const view = getView(owner, id);
+    expect(view).toMatchObject({
+      pluginName: plugin.name,
+      nativeOs: true,
+      available: false,
+    });
+    expect(view && viewNavigationAvailable(view, true)).toBe(true);
+  },
+);
+
+it.each(["plugin-first", "builtin-first"])(
+  "registers the mobile browser plugin beside the built-in Browser view (%s)",
+  async (order) => {
+    const owner = runtime();
+    if (order === "builtin-first") registerBuiltinViews(owner);
+    await registerPluginViews(owner, browserPlugin, {
+      pluginDir: process.cwd(),
+    });
+    if (order === "plugin-first") registerBuiltinViews(owner);
+    expect(getView(owner, "browser")).toMatchObject({
+      builtin: true,
+      available: true,
+      roleGate: { minRole: "OWNER" },
+    });
+    expect(getView(owner, "chat")?.builtin).toBe(true);
+  },
+);
 
 it.each(["plugin-first", "builtin-first"])(
   "retains exact native Notes delivery after plugin registration (%s)",

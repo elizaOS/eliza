@@ -170,6 +170,23 @@ it("unsupported notification options fail before a provider call", async () => {
   ).rejects.toThrow("editor");
   expect(state.call).not.toHaveBeenCalled();
 });
+it("sends an invitation response to the Calendar editor before a provider call", async () => {
+  await expect(
+    make().port.preflight({
+      payload: {
+        action: "modify_event",
+        side: "owner",
+        grantId: source,
+        calendarId: "calendar",
+        eventId: "event-1",
+        expectedProviderVersion: '"v1"',
+        invitationResponse: "accepted",
+        patch: {},
+      },
+    } as never),
+  ).rejects.toThrow("editor");
+  expect(state.call).not.toHaveBeenCalled();
+});
 describe("managed Calendar deletion gate", () => {
   const cancel = {
     payload: {

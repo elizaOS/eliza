@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "plugins/plugin-google-workspace/src/gmail-message-connector.ts",
+    "plugins/plugin-google-workspace/src/gmail-contact-email.real.test.ts",
+    "plugins/plugin-google-workspace/quint/check-gmail-contact-email.mjs"
+  ],
+  "conformance": "plugins/plugin-google-workspace/quint/check-gmail-contact-email.mjs",
+  "bounds": "One agent with one connected Google account that can send mail, and no identity claims. Each case saves one contact through the production CONTACT action (create, with no email or with one of two addresses), optionally adds a second component with an `email` field (none or one of the same two addresses) and an email-shaped value under another key (none or a third address), and then sends through the production MESSAGE action (op send, source gmail, the contact's entity id as target) with IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE off or on. The conformance script replays all 36 generated cases on a PGlite-backed runtime with the assistant, relationships and Google Workspace plugins and a loopback Gmail API, and compares the address the Gmail API received (or that nothing was sent) and the refusal code. Literal address targets, `gmail` components that carry a channel id, the emailAddress key, more than one extra component, claim-mode delivery with a verified claim, account routing and the MESSAGE contact-name search are not covered by this model. Under weak fairness of the replay step the send runs. Explicit stuttering lets the replay stop before it, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "gmail-contact-email",
+      "main": "GmailContactEmail",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ClaimModeIgnoresStoredEmail",
+        "ContactEmailDelivers",
+        "DistinctNamedEmailsRefuse",
+        "NamedEmailBeatsShaped",
+        "NoStoredEmailRefuses",
+        "TypeOK"
+      ],
+      "temporal": ["ReplayEnds", "ReplayEndsWithoutFairness"],
+      "maxSteps": 6,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "ReplayEnds",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled replay step eventually runs (weak fairness). This checks that the replay then reaches the send, not how long the database or loopback work takes."
+          ]
+        },
+        {
+          "property": "ReplayEndsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The replay may stop before the send, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

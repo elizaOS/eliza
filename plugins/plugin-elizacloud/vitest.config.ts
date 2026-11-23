@@ -38,6 +38,11 @@ export default defineConfig({
       },
       { find: /^@elizaos\/cloud-routing$/, replacement: src("cloud/routing/src/index.ts") },
       { find: /^@elizaos\/cloud-sdk$/, replacement: src("cloud/sdk/src/index.ts") },
+      {
+        find: /^@elizaos\/cloud-sdk\/app-delegation$/,
+        replacement: src("cloud/sdk/src/app-delegation.ts"),
+      },
+      { find: /^@elizaos\/cloud-sdk\/app-auth$/, replacement: src("cloud/sdk/src/app-auth.ts") },
       { find: /^@elizaos\/core$/, replacement: src("core/src/index.ts") },
       { find: /^@elizaos\/core\/(.+)$/, replacement: src("core/src/$1") },
       { find: /^@elizaos\/ui\/(.*)$/, replacement: `${src("ui/src")}/$1` },

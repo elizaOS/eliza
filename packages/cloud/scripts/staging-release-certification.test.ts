@@ -1,3 +1,10 @@
+import {
+  verifyReleaseWaiver,
+  verifyFinalWaiverJobs,
+  WAIVER_BASELINE,
+  WAIVER_RUN,
+  WAIVER_JOBS,
+} from "./production-validation-waiver.ts";
 /**
  * Exercises tree-bound staging release certification and the production gate.
  *
@@ -1265,4 +1272,130 @@ describe("exact-source main Full admission", () => {
         ).not.toContain('if [ "$FORCE"'); // existing force may be used later by freshness, proof itself is unconditional on it
       }
   }, 90_000);
+});
+
+describe("one-release owner validation waiver", () => {
+  function fixture() {
+    const record = {
+      schema: "eliza.production-validation-waiver/v1",
+      approval: "approved",
+      baselineSha: WAIVER_BASELINE,
+      baselineRunId: WAIVER_RUN,
+      baselineRunAttempt: 1,
+      sourceSha: "a".repeat(40),
+      treeSha: "b".repeat(40),
+      issuedAt: "2026-11-17T05:00:00.000Z",
+      expiresAt: "2026-11-18T05:00:00.000Z",
+    };
+    return {
+      record,
+      repository: "elizaOS/eliza",
+      sourceSha: record.sourceSha,
+      treeSha: record.treeSha,
+      changedPaths: ["packages/cloud/scripts/production-validation-waiver.ts"],
+      now: new Date("2026-11-17T06:00:00.000Z"),
+      run: {
+        repository: { full_name: "elizaOS/eliza" },
+        id: WAIVER_RUN,
+        run_attempt: 1,
+        head_sha: WAIVER_BASELINE,
+        head_branch: "main",
+        path: ".github/workflows/develop-full.yml",
+        event: "push",
+        status: "completed",
+        conclusion: "cancelled",
+      },
+      jobs: Object.entries(WAIVER_JOBS).map(([id, value]) => ({
+        id: Number(id),
+        status: "completed",
+        ...value,
+      })),
+    };
+  }
+  test("records the waiver without rewriting failed and cancelled outcomes", () => {
+    const proof = verifyReleaseWaiver(fixture());
+    expect(proof.validationKind).toBe("owner-waiver");
+    expect(proof.waivedJobs.some((job) => job.conclusion === "failure")).toBe(
+      true,
+    );
+    expect(proof.sourceSha).toBe("a".repeat(40));
+  });
+  test("rejects another source, tree, run, attempt, runtime edit and expired approval", () => {
+    for (const patch of [
+      { sourceSha: "c".repeat(40) },
+      { treeSha: "c".repeat(40) },
+      { changedPaths: ["packages/cloud/api/index.ts"] },
+      { now: new Date("2026-11-18T05:00:00.000Z") },
+    ])
+      expect(() => verifyReleaseWaiver({ ...fixture(), ...patch })).toThrow();
+    for (const patch of [
+      { id: WAIVER_RUN + 1 },
+      { run_attempt: 2 },
+      { head_sha: "c".repeat(40) },
+      { status: "in_progress" },
+    ]) {
+      const f = fixture();
+      expect(() =>
+        verifyReleaseWaiver({ ...f, run: { ...f.run, ...patch } }),
+      ).toThrow();
+    }
+  });
+  test("rejects missing, duplicated, active or changed nonwaived job results", () => {
+    const f = fixture();
+    expect(() =>
+      verifyReleaseWaiver({ ...f, jobs: f.jobs.slice(1) }),
+    ).toThrow();
+    expect(() =>
+      verifyReleaseWaiver({ ...f, jobs: [f.jobs[0], ...f.jobs.slice(0, -1)] }),
+    ).toThrow();
+    for (const patch of [
+      { status: "in_progress" },
+      { conclusion: "failure" },
+      { name: "unknown" },
+    ])
+      expect(() =>
+        verifyReleaseWaiver({
+          ...f,
+          jobs: [{ ...f.jobs[0], ...patch }, ...f.jobs.slice(1)],
+        }),
+      ).toThrow();
+  });
+  test("does not permit indefinite, future or malformed waiver records", () => {
+    const f = fixture();
+    for (const patch of [
+      { expiresAt: "2026-12-17T05:00:00.000Z" },
+      { issuedAt: "2026-11-17T07:00:00.000Z" },
+      { approval: "pending" },
+      { other: true },
+    ])
+      expect(() =>
+        verifyReleaseWaiver({ ...f, record: { ...f.record, ...patch } }),
+      ).toThrow();
+  });
+});
+
+test("one-release waiver never absorbs a new final-source failure", () => {
+  expect(() =>
+    verifyFinalWaiverJobs([
+      {
+        name: "canonical / Quint (1/4)",
+        status: "completed",
+        conclusion: "cancelled",
+      },
+    ]),
+  ).not.toThrow();
+  expect(() =>
+    verifyFinalWaiverJobs([
+      {
+        name: "canonical / Quality",
+        status: "completed",
+        conclusion: "failure",
+      },
+    ]),
+  ).toThrow();
+  expect(() =>
+    verifyFinalWaiverJobs([
+      { name: "unknown", status: "completed", conclusion: "skipped" },
+    ]),
+  ).toThrow();
 });

@@ -119,8 +119,7 @@ export const CORS_MAX_AGE = "86400";
  */
 export const APP_LOCAL_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
-export const APP_SCHEME_ORIGIN_RE =
-  /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
+export const APP_SCHEME_ORIGIN_RE = /^(capacitor|capacitor-electron|app|tauri|file):\/\/.*$/i;
 
 /**
  * Exact Capacitor WebView origin (`iosScheme`/`androidScheme` = "https", no

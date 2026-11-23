@@ -440,10 +440,11 @@ async function missResult(
     (candidate) =>
       `- ${quotedContent(candidate.content)} (${statePhrase(candidate.status)}, added ${candidate.createdAt.slice(0, 10)}) ref ${candidate.ref}`,
   );
+  const asked = quotedContent(locator.match ?? locator.ref ?? "");
   const text = [
-    `${candidates.length} todos match ${quotedContent(
-      locator.match ?? locator.ref ?? "",
-    )}, so nothing was changed. Which one did you mean?`,
+    candidates.length === 1
+      ? `No todo matches ${asked} exactly, so nothing was changed. Did you mean this one?`
+      : `${candidates.length} todos match ${asked}, so nothing was changed. Which one did you mean?`,
     ...lines,
   ].join("\n");
   return {

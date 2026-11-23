@@ -14,6 +14,8 @@ const fixtures = {
   "NativeAndroidAckRecovery.qnt": [chain],
   "NativeAndroidCodeVerification.qnt": [chain],
   "NativeAndroidActivation.qnt": [chain],
+  "NativeAndroidSignOut.qnt": [chain],
+  "NativeGoogleGmail.qnt": [chain],
   "NativeAndroidKeyRenewal.qnt": [
     chain,
     "^silent renewal stages durable custody before confirmation",

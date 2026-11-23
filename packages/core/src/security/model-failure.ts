@@ -442,7 +442,8 @@ const FAILURE_PROMPT_CAUSE_RETRY_RULE: Record<StructuredFailureCause, string> =
 			"- Acknowledge that you could not finish the request and suggest a retry.",
 		context_overflow:
 			"- Tell the user plainly that this needed more context than you can take in one go, and suggest retrying with a smaller range or a narrower request. Do NOT claim it was done, and do not suggest retrying the identical request.",
-		transient: "- Acknowledge that something went wrong and suggest a retry.",
+		transient:
+			"- Acknowledge that something went wrong and suggest a retry. You do not know which step failed: do not name an app, a list or data (such as contacts, a calendar, notes, messages or a website) as what failed, and do not promise that a retry will work.",
 	};
 
 export function buildFailureReplyPrompt(

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
 import { crc32 } from "node:zlib";
+import { MAX_CHAT_IMAGE_INTAKE_BYTES } from "../../../packages/core/src/chat-upload-limits.ts";
 import { BrowserFiles } from "../src/browser/files.ts";
 import { BrowserStorageVolume } from "../src/browser/storage-volume.ts";
 
@@ -12,6 +13,100 @@ const previousDocument = Object.getOwnPropertyDescriptor(
   globalThis,
   "document",
 );
+test("selected chat bytes keep the mail bound, exact content and revision fence", async () => {
+  const bytes = new Uint8Array(5 * 1024 * 1024 + 1);
+  bytes[0] = 42;
+  bytes[bytes.length - 1] = 91;
+  const row = {
+    id: "selected",
+    name: "notes.txt",
+    mimeType: "text/plain",
+    revision: "one",
+    blob: new Blob([bytes]),
+    size: bytes.length,
+  };
+  const files = new BrowserFiles({}, { entries: async () => [row] });
+  const selected = await files.select({ id: row.id });
+  try {
+    await assert.rejects(files.attachment(selected), /5 MiB/);
+    await assert.rejects(
+      files.attachment({ ...selected, purpose: "mail" }),
+      /5 MiB/,
+    );
+    const result = await files.attachment({ ...selected, purpose: "chat" });
+    assert.deepEqual(
+      Buffer.from(result.dataBase64, "base64"),
+      Buffer.from(bytes),
+    );
+    await assert.rejects(
+      files.attachment({ ...selected, purpose: "unknown" }),
+      /Unknown attachment purpose/,
+    );
+    row.blob = new Blob([new Uint8Array(MAX_CHAT_IMAGE_INTAKE_BYTES + 1)]);
+    row.size = 0; // Provider metadata cannot bypass the actual Blob bound.
+    await assert.rejects(
+      files.attachment({ ...selected, purpose: "chat" }),
+      /20 MiB/,
+    );
+    row.blob = {
+      size: 1,
+      arrayBuffer: async () => {
+        row.revision = "two";
+        return new Uint8Array([7]).buffer;
+      },
+    };
+    await assert.rejects(
+      files.attachment({ ...selected, purpose: "chat" }),
+      /Select this file again/,
+    );
+    row.revision = "one";
+    row.blob = {
+      size: 1,
+      arrayBuffer: async () => {
+        await files.forgetSelected(selected);
+        return new Uint8Array([7]).buffer;
+      },
+    };
+    await assert.rejects(
+      files.attachment({ ...selected, purpose: "chat" }),
+      /Select this file again/,
+    );
+    // Revocation can occur while the final selection lookup awaits storage.
+    row.blob = new Blob([new Uint8Array([7])]);
+    let releaseEntries;
+    const entriesGate = new Promise((resolve) => {
+      releaseEntries = resolve;
+    });
+    let enteredEntries;
+    const entriesPending = new Promise((resolve) => {
+      enteredEntries = resolve;
+    });
+    let reads = 0;
+    const revokingFiles = new BrowserFiles(
+      {},
+      {
+        entries: async () => {
+          if (++reads === 3) {
+            enteredEntries();
+            await entriesGate;
+          }
+          return [row];
+        },
+      },
+    );
+    const revokingSelection = await revokingFiles.select({ id: row.id });
+    const attachment = revokingFiles.attachment({
+      ...revokingSelection,
+      purpose: "chat",
+    });
+    await entriesPending;
+    await revokingFiles.forgetSelected(revokingSelection);
+    releaseEntries();
+    await assert.rejects(attachment, /Select this file again/);
+  } finally {
+    URL.revokeObjectURL(selected.uri);
+  }
+});
 afterEach(() => {
   mock.restoreAll();
   for (const [name, previous] of [

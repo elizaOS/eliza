@@ -684,7 +684,7 @@ jobs:
             steps.website_owning_scope.outputs.run == 'true') ||
            (steps.notes_owning_scope.outcome == 'success' &&
             steps.notes_owning_scope.outputs.run == 'true'))
-        timeout-minutes: 5
+        timeout-minutes: 7
         working-directory: plugins/plugin-assistant
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
@@ -692,6 +692,7 @@ jobs:
           bun ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts
           test/browser-request-grounding.pglite.test.ts
           test/device-actions.e2e.test.ts
+          test/gmail-request-policy.e2e.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
 
@@ -922,7 +923,7 @@ jobs:
           bun packages/scripts/patch-llama-cpp-capacitor.ts
       - name: Setup Java
         if: steps.changes.outputs.run == 'true'
-        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880
         with:
           distribution: temurin
           java-version: "21"

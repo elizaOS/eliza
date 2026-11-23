@@ -166,6 +166,7 @@ export const placeSearchRequestSchema = z
   .object({
     query: boundedText(500),
     near: coordinatesSchema.optional(),
+    rank: z.literal("distance").optional(),
     cursor: opaqueText(2_048).optional(),
     limit: z.number().int().min(1).max(100).optional(),
   })
@@ -255,6 +256,8 @@ export type MapsRouteResult = z.infer<typeof mapsRouteResultSchema>;
 export interface PlaceSearchRequest {
   query: string;
   near?: Coordinates;
+  /** With `near`: ask for the closest places instead of the most relevant. */
+  rank?: "distance";
   cursor?: string;
   limit?: number;
 }

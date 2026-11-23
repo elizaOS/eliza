@@ -3,7 +3,7 @@
     "className": "ai.eliza.plugins.phone.TelecomCallPresentationTest",
     "required": [
       "initialsAreTheFirstAndLastWordsLetters",
-      "aNumberWithNoNameIsAHashAndAWithheldCallerIsBlank",
+      "numberWithoutNameAndWithheldCallerHaveNoInitials",
       "elapsedTimeGainsAnHourFieldOnlyFromOneHour",
       "secondaryLineFollowsTheCallState",
       "timerTicksOnTheCallsOwnSecondBoundary",
@@ -20,7 +20,11 @@
       "revokedContactsPermissionFencesAnAlreadyRunningNameLookup",
       "removedCallFencesAnAlreadyRunningNameLookup",
       "destroyedServiceFencesAnAlreadyRunningNameLookup",
-      "cachedContactNameIsNotReusedAfterPermissionWithdrawal"
+      "cachedContactNameIsNotReusedAfterPermissionWithdrawal",
+      "currentScreenReceivesContactNameWithoutAnExternalPhotoRequest",
+      "stoppedScreenRejectsAlreadyRunningContactRead",
+      "screenRejectsContactReadAfterPermissionWithdrawal",
+      "ringingAlertsAndConnectedCallsUseTheQuietChannel"
     ]
   },
   {

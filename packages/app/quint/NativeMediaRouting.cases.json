@@ -1,0 +1,42 @@
+{
+  "sources": [
+    "packages/app/src/runtime/native-runtime-profile.ts",
+    "packages/app/src/runtime/native-runtime-profile.test.ts",
+    "plugins/plugin-native-inference/src/model-catalog/routing-preferences.ts",
+    "packages/host/src/contracts/cloud-topology.ts",
+    "plugins/plugin-elizacloud/src/index.ts",
+    "plugins/plugin-elizacloud/__tests__/image-native-funding.http.test.ts",
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderAdmission.java",
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderSlot.java",
+    "plugins/plugin-native-agent/test/provider-admission/NativeProviderAdmissionTest.java",
+    "plugins/plugin-native-agent/test/connection/ResidentLifecycleTest.java",
+    "plugins/plugin-native-agent/test/provider-admission/provider-admission.node.mjs",
+    "plugins/plugin-native-agent/test/connection/connection.node.mjs"
+  ],
+  "bounds": "One model-free native media profile, two selected payers, an unbound state, one selected Cloud image-model environment binding and one preserved owner-data token. State represents completed TS profile and native JVM environment projections, not atomic cross-process writes.",
+  "limitations": [
+    "No concurrent boot, partial disk writes or process crash model. Native model-env admission, Direct retirement and unbound retirement execute through the actual compiled Java classes. Default native local-model preferences and custom Cloud-base/fenced-clear contracts retain their existing owning checks.",
+    "Weak fairness assumes a valid Cloud binding is eventually admitted and applied; it does not assume provider availability or image recognition. Coverage is TS profile projection, JVM env binding and actual SDK HTTP over a synthetic local server. It creates no IMAGE_DESCRIPTION local routing slot. New Pixel vision acceptance remains separate.",
+    "The unbound state means no admitted Cloud image-model environment binding. The media fields are admitted-route projections; this model does not assert that persisted TS serviceRouting is erased."
+  ],
+  "conformance": "packages/app/quint/check-native-media-routing.mjs",
+  "cases": [
+    {
+      "name": "native-media-routing",
+      "main": "NativeMediaRouting",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety", "SelectedCloudImage"],
+      "temporal": ["CanBind"],
+      "temporalChecks": [
+        {
+          "property": "CanBind",
+          "expect": "holds",
+          "assumptions": ["Weak fairness of applying a valid Cloud binding."]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 1000
+    }
+  ]
+}

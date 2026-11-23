@@ -84,6 +84,12 @@ describe("contextual native discovery", () => {
     expect(admitted.some((action) => action.name === "MESSAGE_SEND")).toBe(
       false,
     );
+    expect(admitted.map((action) => action.name)).toContain(
+      "MESSAGE_SEARCH_INBOX",
+    );
+    expect(admitted.map((action) => action.name)).not.toContain(
+      "MESSAGE_LIST_CHANNELS",
+    );
     const selected = retrieveContextualPlannerActions({
       actions: admitted,
       query: "send Gmail email message",
@@ -122,6 +128,37 @@ describe("contextual native discovery", () => {
     });
     expect(admitted.some((action) => action.name === "MESSAGE_SEND")).toBe(
       true,
+    );
+    expect(admitted.map((action) => action.name)).not.toContain(
+      "MESSAGE_LIST_CHANNELS",
+    );
+  });
+
+  it("keeps channel listing eligible when a connector can enumerate rooms", async () => {
+    const connected = new AgentRuntime({
+      character: { name: "Channel topology", bio: [] },
+      logLevel: "fatal",
+    });
+    connected.registerMessageConnector({
+      source: "discord",
+      label: "Discord",
+      capabilities: ["list_channels"],
+      supportedTargetKinds: [],
+      contexts: ["messaging"],
+      listRooms: async () => {
+        throw Error("Admission must not call the connector");
+      },
+    });
+    const admitted = await collectV5PlannerCandidateActions({
+      runtime: connected,
+      message: { content: { text: "List my Discord channels" } } as Memory,
+      state: { values: {}, data: {}, text: "" },
+      actions: promoteMessageActions(),
+      selectedContexts: ["messaging"],
+      userRoles: ["OWNER"],
+    });
+    expect(admitted.map((action) => action.name)).toContain(
+      "MESSAGE_LIST_CHANNELS",
     );
   });
 

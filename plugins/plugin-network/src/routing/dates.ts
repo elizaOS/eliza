@@ -89,13 +89,13 @@ const startOfDay = (now: Date) =>
 const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
 const monthIndex = (s: string) => MONTHS.indexOf(s.slice(0, 3).toLowerCase());
 
-/** Next calendar day (today excluded) with this day-of-month. */
+/** Next calendar day with this day-of-month, including today. */
 function nextDayOfMonth(n: number, today: Date): Date | null {
   if (n < 1 || n > 31) return null;
   for (let k = 0; k < 13; k++) {
     const m = today.getUTCMonth() + k;
     const d = day(today.getUTCFullYear(), m, n);
-    if (d.getUTCDate() === n && d > today) return d;
+    if (d.getUTCDate() === n && d >= today) return d;
   }
   return null;
 }
@@ -216,14 +216,13 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
     // "Friday next week" names the Friday of the next calendar week. The bare
     // weekday branch resolved it to this week's Friday, ending the window six
     // days early; "next Friday" already resolved to that date.
-    if (/^,?\s+(?:of\s+)?next\s+week\b/.test(rest))
-      return nextWeekday(
-        WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
-        today,
-        true,
-      );
     const w = WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase());
-    return nextWeekday(w, today, Boolean(m[7]));
+    const before = expr.slice(0, m.index);
+    const nextWeek =
+      Boolean(m[7]) ||
+      /(?:^|[\s,])next\s+week(?:['’]s)?,?\s*(?:on\s+)?$/i.test(before) ||
+      /^,?\s+(?:of\s+)?next\s+week\b/i.test(rest);
+    return nextWeekday(w, today, nextWeek);
   }
   if (m[9]) return nextMonthDay(monthIndex(m[9]), 1, today);
   if (m[10] && m[11]) {
@@ -289,7 +288,15 @@ export function resolveWindow(
     String.raw`\bfrom\s+(.+?)\s+(?:${END}|to)\s+(.+)$`,
   ).exec(t);
   if (range?.[1] && range[2]) {
-    const from = parseDateExpr(range[1], now);
+    // "next week from Tuesday until Friday": a weekday that starts the range
+    // is a day of next week. Read it from the Sunday before next Monday. Read
+    // from today, it was this week's Tuesday.
+    const base =
+      /\bnext\s+week\b/.test(t) &&
+      new RegExp(String.raw`^${WEEKDAY}\b`).test(range[1])
+        ? addDays(today, ((8 - today.getUTCDay()) % 7 || 7) - 1)
+        : now;
+    const from = parseDateExpr(range[1], base);
     // A place-to-place phrase ("from Boston to New York on Friday") has the
     // shape of a range but states no start date. Adopting it set from to null
     // and until to the departure day, so the member's duration never ran.

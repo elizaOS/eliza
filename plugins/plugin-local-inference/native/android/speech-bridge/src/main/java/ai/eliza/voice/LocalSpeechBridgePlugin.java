@@ -92,6 +92,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private VoiceLatencyTrials.Trial playbackTrial;
  private int playbackLeadIn=-1,playbackFrames,playbackRate;
  private MediaPlayer player;
+ private boolean outputMuted;
+ private float playerFocusVolume=1f;
  private PluginCall preparingPlayback;
  // The streamed local utterance (main thread, like player) and assistant-speech audio focus.
  // Volatile: the capture thread asks whether it is audible before it reports a barge-in.
@@ -567,7 +569,20 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   CountDownLatch completed=new CountDownLatch(1);
   File file=File.createTempFile(playbackPrefix,".audio",getContext().getCacheDir());try{try(FileOutputStream out=new FileOutputStream(file)){out.write(audio);}if(request.cancelled||destroyed)throw new IOException();main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackBusy()){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject value=new JSObject();value.put("playbackId",playbackId);request.result=value;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});completed.await();}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
  }
- @PluginMethod public void play(PluginCall call){main.post(()->{try{if(streamPlayback!=null&&Objects.equals(playbackId,call.getString("playbackId"))){playStream(call);return;}if(playbackFile==null||!Objects.equals(playbackId,call.getString("playbackId"))){call.reject("Playback unavailable");return;}if(player!=null){player.release();player=null;}if(preparingPlayback!=null)preparingPlayback.reject("Playback replaced");preparingPlayback=call;MediaPlayer next=new MediaPlayer();player=next;next.setAudioAttributes(SpeechAudioFocus.ATTRIBUTES);next.setDataSource(playbackFile.getAbsolutePath());final String activePlaybackId=playbackId;next.setOnCompletionListener(p->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackEnded",event);}});next.setOnErrorListener((p,what,extra)->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackFailed",event);}return true;});next.setOnPreparedListener(p->{if(player==p&&!destroyed){try{String refusal=focus.acquire();if(refusal!=null){preparingPlayback=null;clearPlayback();call.reject(refusalMessage(refusal),refusal);return;}p.start();if(playbackLocalReply)VoiceLatencyProbe.playbackStarted(playbackTrial,getContext(),p,main,playbackLeadIn,playbackFrames,playbackRate,()->player==p&&!destroyed);preparingPlayback=null;call.resolve();}catch(RuntimeException error){clearPlayback();}}else call.reject("Playback cancelled");});next.prepareAsync();}catch(Exception error){clearPlayback();call.reject("Playback unavailable");}});}
+ @PluginMethod public void setSpeechOutputMuted(PluginCall call){
+  Boolean muted=call.getBoolean("muted");if(muted==null){call.reject("Speaker mute was missing");return;}
+  main.post(()->{
+   if(destroyed){call.reject("Voice is closed");return;}
+   outputMuted=muted;
+   if(streamPlayback!=null)streamPlayback.setOutputMuted(outputMuted);
+   updatePlayerVolume();
+   call.resolve();
+  });
+ }
+ private void updatePlayerVolume(){
+  if(player!=null)try{float volume=outputMuted?0f:playerFocusVolume;player.setVolume(volume,volume);}catch(IllegalStateException ignored){/* Retired player. */}
+ }
+ @PluginMethod public void play(PluginCall call){main.post(()->{try{if(streamPlayback!=null&&Objects.equals(playbackId,call.getString("playbackId"))){playStream(call);return;}if(playbackFile==null||!Objects.equals(playbackId,call.getString("playbackId"))){call.reject("Playback unavailable");return;}if(player!=null){player.release();player=null;}if(preparingPlayback!=null)preparingPlayback.reject("Playback replaced");preparingPlayback=call;MediaPlayer next=new MediaPlayer();player=next;next.setAudioAttributes(SpeechAudioFocus.ATTRIBUTES);next.setDataSource(playbackFile.getAbsolutePath());final String activePlaybackId=playbackId;next.setOnCompletionListener(p->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackEnded",event);}});next.setOnErrorListener((p,what,extra)->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackFailed",event);}return true;});next.setOnPreparedListener(p->{if(player==p&&!destroyed){try{String refusal=focus.acquire();if(refusal!=null){preparingPlayback=null;clearPlayback();call.reject(refusalMessage(refusal),refusal);return;}updatePlayerVolume();p.start();if(playbackLocalReply)VoiceLatencyProbe.playbackStarted(playbackTrial,getContext(),p,main,playbackLeadIn,playbackFrames,playbackRate,()->player==p&&!destroyed);preparingPlayback=null;call.resolve();}catch(RuntimeException error){clearPlayback();}}else call.reject("Playback cancelled");});next.prepareAsync();}catch(Exception error){clearPlayback();call.reject("Playback unavailable");}});}
  private static String refusalMessage(String refusal){return SpeechAudioFocusPolicy.CALL_ACTIVE.equals(refusal)?CALL_MESSAGE:"Another app is using the speaker";}
  /** Starts a published streamed utterance: audio focus first, never during a call. */
  private void playStream(PluginCall call){
@@ -575,12 +590,12 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(refusal!=null){clearPlayback();call.reject(refusalMessage(refusal),refusal);return;}
   if(preparingPlayback!=null){preparingPlayback.reject("Playback replaced");preparingPlayback=null;}
   if(player!=null){player.release();player=null;}
-  streamPlayback.start();call.resolve();
+  streamPlayback.setOutputMuted(outputMuted);streamPlayback.start();call.resolve();
  }
  /** Focus changes while speech plays (main thread). */
  private void speechFocusChanged(SpeechAudioFocusPolicy.Action action,boolean call){
   switch(action){
-   case DUCK:case RESTORE:{boolean ducked=action==SpeechAudioFocusPolicy.Action.DUCK;if(streamPlayback!=null)streamPlayback.duck(ducked);float volume=ducked?SpeechAudioFocusPolicy.DUCK_VOLUME:1f;if(player!=null)try{player.setVolume(volume,volume);}catch(IllegalStateException ignored){/* Released. */}break;}
+   case DUCK:case RESTORE:{boolean ducked=action==SpeechAudioFocusPolicy.Action.DUCK;if(streamPlayback!=null)streamPlayback.duck(ducked);playerFocusVolume=ducked?SpeechAudioFocusPolicy.DUCK_VOLUME:1f;updatePlayerVolume();break;}
    case STOP:stopSpeechFor(call?SpeechAudioFocusPolicy.CALL_ACTIVE:"audio-focus-lost");if(call)stopCaptureForCall();break;
    default:break;
   }
@@ -594,7 +609,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(capture!=null)capture.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);
  }
  private void clearPlayback(){clearPlayback(true);}
- private void clearPlayback(boolean stopped){closeOutputWarmup();String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(streamPlayback!=null){streamPlayback.stop();streamPlayback=null;VoiceLatencyProbe.TRIALS.stopped(playbackTrial);}appendedRequestIds.clear();if(focus!=null)focus.release();if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackTrial=null;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
+ private void clearPlayback(boolean stopped){closeOutputWarmup();playerFocusVolume=1f;String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(streamPlayback!=null){streamPlayback.stop();streamPlayback=null;VoiceLatencyProbe.TRIALS.stopped(playbackTrial);}appendedRequestIds.clear();if(focus!=null)focus.release();if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackTrial=null;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
  @PluginMethod public void stopPlayback(PluginCall call){String requestId=call.getString("requestId");main.post(()->{if(requestId==null||Objects.equals(playbackRequestId,requestId)||appendedRequestIds.contains(requestId)){appendEpoch++;clearPlayback();}call.resolve();});}
 
  // ---- Voice-turn latency --------------------------------------------------------------------

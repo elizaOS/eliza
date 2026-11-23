@@ -230,7 +230,12 @@ export async function generateDefaultAcceptanceCriteria(
     // The prompt forbids invented paths, but the filter is the enforcement:
     // a criterion pinning a path the goal never named is unsatisfiable by
     // design (#20794), so it is dropped and the template tops the set back up.
-    const producible = stripInventedArtifactCriteria(candidates, goal).kept;
+    // A path the baseline template names ("rollback/undo", "/api/views") was
+    // handed to the model by the prompt above, so it is not invented.
+    const producible = stripInventedArtifactCriteria(
+      candidates,
+      [goal, ...fallback].join("\n"),
+    ).kept;
     const refined = normalizeCriteria(producible, fallback);
     return refined.length >= MIN_CRITERIA ? refined : fallback;
   } catch {

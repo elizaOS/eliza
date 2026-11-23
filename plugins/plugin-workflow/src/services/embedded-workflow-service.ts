@@ -53,7 +53,11 @@ import type {
   WorkflowSchedule,
   WorkflowTag,
 } from '../types/index';
-import { WORKFLOW_RUN_EVENT, WorkflowApiError } from '../types/index';
+import {
+  WORKFLOW_DEFINITION_NOT_APPLIED,
+  WORKFLOW_RUN_EVENT,
+  WorkflowApiError,
+} from '../types/index';
 import {
   type DigestSource,
   type DigestSpec,
@@ -282,7 +286,47 @@ function approvalKey(approval: WorkflowApproval): string {
   return `${approval.nodeId}\u0000${approval.iteration}`;
 }
 
+/** Why an enabled schedule cannot be armed, or undefined when it can (or is off). */
+export function workflowScheduleProblem(
+  schedule: WorkflowSchedule | undefined
+): string | undefined {
+  if (!schedule?.enabled) return undefined;
+  try {
+    scheduleNextRunAtMs(schedule, Date.now());
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+/**
+ * Every refusal here happens before the caller writes the row, so a 400 says
+ * so: the chat action may then report "nothing was saved" instead of an
+ * outcome it has to reconcile.
+ */
 function normalizeWorkflow(
+  workflow: WorkflowDefinition,
+  id: string | undefined,
+  fallbackActive: boolean
+): WorkflowDefinition {
+  try {
+    return checkedWorkflow(workflow, id, fallbackActive);
+  } catch (error) {
+    if (!(error instanceof WorkflowApiError) || error.statusCode !== 400) throw error;
+    const response =
+      error.response !== null &&
+      typeof error.response === 'object' &&
+      !Array.isArray(error.response)
+        ? (error.response as Record<string, unknown>)
+        : {};
+    throw new WorkflowApiError(error.message, 400, {
+      ...response,
+      code: WORKFLOW_DEFINITION_NOT_APPLIED,
+    });
+  }
+}
+
+function checkedWorkflow(
   workflow: WorkflowDefinition,
   id: string | undefined,
   fallbackActive: boolean
@@ -1304,7 +1348,7 @@ export class EmbeddedWorkflowService extends Service {
       authorize(current);
       requireMutable(current);
       if (current.metadata?.[PHONE_SPEC_KEY])
-        throw new WorkflowApiError('Use the typed full-spec editor', 409);
+        throw new WorkflowApiError('Edit this workflow in the Workflows view', 409);
       const [prior] = await tx
         .select()
         .from(metadataMutations)
@@ -1543,7 +1587,7 @@ export class EmbeddedWorkflowService extends Service {
       const [current] = await tx.select().from(embeddedWorkflows).where(where).for('update');
       if (!current) throw new WorkflowApiError('Workflow not found', 404);
       if (current.workflow.metadata?.[PHONE_SPEC_KEY])
-        throw new WorkflowApiError('Use the typed full-spec editor', 409);
+        throw new WorkflowApiError('Edit this workflow in the Workflows view', 409);
       requireMutable(current.workflow);
       const updatedAt = nowIso(),
         versionId = randomUUID(),
@@ -1638,14 +1682,14 @@ export class EmbeddedWorkflowService extends Service {
         const trigger = storedPhoneTimeTrigger(current.workflow.metadata);
         if (!trigger)
           throw new WorkflowApiError(
-            'Manual typed workflows run only when the owner starts them; there is no schedule to enable',
+            'This workflow has no schedule to turn on. It runs only when you start it',
             409
           );
         // Arming a phone schedule needs the owner's review of this exact version; a
         // version-free activation (for example a model-invoked action) is refused.
         if (expectedVersionId === undefined)
           throw new WorkflowApiError(
-            'Turn on a typed workflow schedule for the exact version you reviewed',
+            'Turn this schedule on in the Workflows view, where you confirm the version you reviewed',
             409
           );
         // Only the schedule derived from the reviewed trigger may be armed.
