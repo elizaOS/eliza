@@ -185,13 +185,14 @@ export function searchHistory<S extends HistorySource>(candidates: readonly S[],
 /** The notice a windowed turn carries after its transcript: how many originals are not shown, why, and when to read them through `readThrough`, the host's history read, followed by the exchanges recalled for this request. */
 export function historyWindowNotice(window: { readonly deferred: readonly unknown[]; readonly recalled: readonly HistorySource[] }, readThrough?: string): string {
   const recalled = window.recalled.length > 0
-    ? " Up to three earlier exchanges matched to this request by its words are recalled at the end of this note; others on the same subject may be unread."
+    ? " Up to three earlier exchanges matched to this request by its words are recalled at the end of this note; they are part of this conversation, and others on the same subject may be unread."
     : ""
+  const held = window.recalled.length > 0 ? "the messages shown and the recalled exchanges" : "the messages shown"
   const read = readThrough === undefined
-    ? " When the messages shown do not hold what the request needs (an earlier item, \"as before\", \"like last time\", an unresolved \"it\" or \"that\", something said, given or done earlier), say that the earlier part of this conversation is not in view rather than guessing or denying it was said."
-    : ` Answer from the messages shown when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), read first through ${readThrough}: search the subject's main words, or read a known reference. Do not reply that you do not know, do not have or will check something before such a read. When the read finds nothing, say what you looked for and that this conversation does not hold it.`
+    ? ` Answer from ${held} when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), say that the earlier part of this conversation is not in view rather than guessing or denying it was said.`
+    : ` Answer from ${held} when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), read first through ${readThrough}: search the subject's main words, or read a known reference. Do not reply that you do not know, do not have or will check something before such a read. When the read finds nothing, say what you looked for and that this conversation does not hold it.`
   const exchanges = window.recalled.length > 0
-    ? `\n\nRecalled earlier exchanges, oldest first, said before the messages shown and not in this turn:\n${window.recalled.map(({ fromUser, text }) => `${fromUser ? "user" : "assistant"}: ${JSON.stringify(text)}`).join("\n")}`
+    ? `\n\nRecalled earlier exchanges, oldest first, said in this conversation before the messages shown and not in this turn:\n${window.recalled.map(({ fromUser, text }) => `${fromUser ? "user" : "assistant"}: ${JSON.stringify(text)}`).join("\n")}`
     : ""
   return `${window.deferred.length} earlier messages and the recorded outcomes of their requests are not shown. The conversation holds only the most recent ones.${recalled} They were deferred by position, not reviewed, and that alone is no reason to read them.${read}${exchanges}`
 }
