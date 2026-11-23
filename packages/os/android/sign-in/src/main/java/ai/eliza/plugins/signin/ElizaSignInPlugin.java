@@ -29,12 +29,10 @@ import ai.eliza.plugins.signin.SignInPolicy.Step;
 import ai.eliza.plugins.signin.SignInPolicy.Verdict;
 import android.app.Activity;
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.CancellationSignal;
+import android.util.Log;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -60,11 +58,13 @@ import org.json.JSONObject;
 
 @CapacitorPlugin(name = "ElizaSignIn")
 public class ElizaSignInPlugin extends Plugin {
+  private static final String TAG = "ElizaSignIn";
   private static final class Attempt {
     final int number;
     final SignInRegistration.Environment environment;
     final Method method;
     final boolean reauthenticating;
+    final CredentialPolicy.MailLeaseUpgrade upgrade;
     final String destination, verifier = SignInPolicy.newVerifier();
     final CancellationSignal cancellation = new CancellationSignal();
     long expiresAt, resendAt, expiryAt;
@@ -78,7 +78,12 @@ public class ElizaSignInPlugin extends Plugin {
     ScheduledFuture<?> expiry;
 
     Attempt(int number, SignInRegistration.Environment environment, Method method, boolean reauthenticating, String destination) {
+      this(number, environment, method, reauthenticating, destination, null);
+    }
+
+    Attempt(int number, SignInRegistration.Environment environment, Method method, boolean reauthenticating, String destination, CredentialPolicy.MailLeaseUpgrade upgrade) {
       this.number = number; this.environment = environment; this.method = method; this.reauthenticating = reauthenticating; this.destination = destination;
+      this.upgrade = upgrade;
     }
 
     @Override public String toString() { return "Attempt[" + number + ", " + method + "]"; }
@@ -111,9 +116,7 @@ public class ElizaSignInPlugin extends Plugin {
   protected DeviceFacts deviceFacts() {
     Context context = getContext();
     boolean verified = registration.environments().stream().allMatch(environment -> BrowserSignIn.appLinkVerified(context, environment));
-    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(registration.production().apiOrigin)).addCategory(Intent.CATEGORY_BROWSABLE);
-    boolean browserApp = context.getPackageManager().resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY) != null;
-    return new DeviceFacts(registration.googleMode, verified, browserApp);
+    return new DeviceFacts(registration.googleMode, verified, BrowserSignIn.externalBrowser(context, registration.production().apiOrigin) != null);
   }
 
   @Override public void load() {
@@ -193,6 +196,29 @@ public class ElizaSignInPlugin extends Plugin {
     }
   }
 
+  @PluginMethod public void upgradeMailLease(PluginCall call) {
+    SignInRegistration.Environment environment = environment(call);
+    if (environment == null) return;
+    try {
+      CredentialPolicy.MailLeaseUpgrade expected = custody.mailLeaseUpgrade(environment);
+      if (expected == null) { reject(call, Failure.REJECTED); return; }
+      openGoogle(call, environment, Method.GOOGLE_BROWSER, false, expected);
+    } catch (DeviceCredentialStore.StorageFailure unavailable) {
+      reject(call, Failure.UNAVAILABLE);
+    }
+  }
+
+  @PluginMethod public void cancelMailLeaseUpgrade(PluginCall call) {
+    SignInRegistration.Environment environment = environment(call);
+    if (environment == null) return;
+    int number;
+    synchronized (lock) {
+      Attempt attempt = attempts.get(state.attempt());
+      number = attempt != null && attempt.environment == environment && attempt.upgrade != null ? attempt.number : 0;
+    }
+    call.resolve(new JSObject().put("cancelled", number > 0 && cancelAttempt(number)));
+  }
+
   @PluginMethod public void resend(PluginCall call) {
     Integer number = call.getInt("attempt");
     if (number == null) { reject(call, Failure.INVALID_INPUT); return; }
@@ -247,6 +273,10 @@ public class ElizaSignInPlugin extends Plugin {
   @PluginMethod public void cancel(PluginCall call) {
     Integer number = call.getInt("attempt");
     if (number == null) { reject(call, Failure.INVALID_INPUT); return; }
+    call.resolve(new JSObject().put("cancelled", cancelAttempt(number)));
+  }
+
+  private boolean cancelAttempt(int number) {
     List<Runnable> after;
     boolean changed;
     synchronized (lock) {
@@ -255,7 +285,7 @@ public class ElizaSignInPlugin extends Plugin {
       changed = after != null && !state.equals(before);
     }
     if (after != null) after.forEach(Runnable::run);
-    call.resolve(new JSObject().put("cancelled", changed));
+    return changed;
   }
 
   @PluginMethod public void signOut(PluginCall call) {
@@ -296,12 +326,17 @@ public class ElizaSignInPlugin extends Plugin {
   private void startGoogle(PluginCall call, Method method, boolean reauthenticating) {
     SignInRegistration.Environment environment = environment(call);
     if (environment == null) return;
+    openGoogle(call, environment, method, reauthenticating, null);
+  }
+
+  private void openGoogle(PluginCall call, SignInRegistration.Environment environment, Method method, boolean reauthenticating,
+                          CredentialPolicy.MailLeaseUpgrade upgrade) {
     Event event = startEvent(call, environment, method, reauthenticating);
     if (event == null) return;
-    Attempt opened = open(call, event, new Attempt(0, environment, method, reauthenticating, null), false);
+    Attempt opened = open(call, event, new Attempt(0, environment, method, reauthenticating, null, upgrade), false);
     if (opened == null) return;
     if (method == Method.GOOGLE_BROWSER) {
-      browser.open(opened.number, environment, reauthenticating, new GoogleSignIn.Returned() {
+      browser.open(opened.number, environment, reauthenticating || upgrade != null, new GoogleSignIn.Returned() {
         @Override public void exchanged(int credentialAttempt, Checked answer) {
           run(() -> checked(opened, answer, credentialAttempt));
         }
@@ -334,9 +369,8 @@ public class ElizaSignInPlugin extends Plugin {
   private DeviceFacts startDeviceFacts(SignInRegistration.Environment environment, Method method) {
     if (method != Method.GOOGLE_BROWSER || !registration.googleBrowserFallback) return deviceFacts();
     Context context = getContext();
-    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(environment.apiOrigin)).addCategory(Intent.CATEGORY_BROWSABLE);
     return new DeviceFacts(registration.googleMode, BrowserSignIn.appLinkVerified(context, environment),
-      context.getPackageManager().resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY) != null, true);
+      BrowserSignIn.externalBrowser(context, environment.apiOrigin) != null, true);
   }
 
   private void picked(Attempt attempt, Picked picked) {
@@ -408,7 +442,13 @@ public class ElizaSignInPlugin extends Plugin {
       if (!handed) codes.logout(attempt.environment, session);
       return;
     }
-    int credentialAttempt = reserved > 0 ? reserved : begin(attempt.environment);
+    if (attempt.upgrade != null && (reserved != 0 || !attempt.upgrade.account().equals(session.account()))) {
+      if (reserved > 0) custody.signInEnded(attempt.environment, reserved);
+      codes.logout(attempt.environment, session);
+      browserRefused(attempt, Failure.REJECTED);
+      return;
+    }
+    int credentialAttempt = reserved > 0 ? reserved : begin(attempt);
     if (credentialAttempt == 0) {
       codes.logout(attempt.environment, session);
       dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.Unanswered()));
@@ -433,7 +473,12 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   private void keyMinted(Attempt attempt, Checked.KeyMinted minted, int reserved) {
-    int credentialAttempt = reserved > 0 ? reserved : begin(attempt.environment);
+    if (attempt.upgrade != null) {
+      if (reserved > 0) custody.signInEnded(attempt.environment, reserved);
+      browserRefused(attempt, Failure.REJECTED);
+      return;
+    }
+    int credentialAttempt = reserved > 0 ? reserved : begin(attempt);
     if (credentialAttempt == 0) { dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.Unanswered())); return; }
     GoogleReport report = minted.googleConnected() ? GoogleReport.GOOGLE_CONNECTED : GoogleReport.GOOGLE_REFUSED;
     if (!dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.Authenticated(minted.userId(), credentialAttempt, minted.keyExpiresAt(), report)))) {
@@ -452,14 +497,23 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   private void connectGoogle(Attempt attempt, SecretServerCode code) {
-    Held held = custody.held(attempt.environment);
-    boolean connected = held != null && google.connectNative(attempt.environment, held.key(), code);
+    boolean connected;
+    try {
+      Held held = custody.held(attempt.environment);
+      connected = held != null && google.connectNative(attempt.environment, held.key(), code);
+    } catch (RuntimeException failed) {
+      Log.e(TAG, "Google connect for attempt " + attempt.number + " failed, so the attempt settles unconnected", failed);
+      connected = false;
+    }
     if (code != null) code.drop();
     dispatch(new Event.GoogleConnected(attempt.number, connected));
   }
 
-  private int begin(SignInRegistration.Environment environment) {
-    try { return custody.beginSignIn(environment); }
+  private int begin(Attempt attempt) {
+    try {
+      return attempt.upgrade == null ? custody.beginSignIn(attempt.environment)
+        : custody.beginMailLeaseUpgrade(attempt.environment, attempt.upgrade);
+    }
     catch (Refused unstored) { return 0; }
   }
 
@@ -474,7 +528,7 @@ public class ElizaSignInPlugin extends Plugin {
         calls.put(state.open(), call);
         if (same) opened = template;
         else {
-          opened = new Attempt(state.attempt(), template.environment, template.method, template.reauthenticating, template.destination);
+          opened = new Attempt(state.attempt(), template.environment, template.method, template.reauthenticating, template.destination, template.upgrade);
           attempts.put(opened.number, opened);
         }
       }

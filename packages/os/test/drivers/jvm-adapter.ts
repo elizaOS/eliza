@@ -105,8 +105,8 @@ interface Sources {
   readonly adapters: ReadonlyMap<string, string>;
 }
 
-function sources(): Sources {
-  const files = SOURCE_TREES.flatMap((tree) => javaFiles(path.join(PACKAGE, tree))).sort();
+function sources(trees: readonly string[] = SOURCE_TREES, adapterTrees: readonly string[] = [ADAPTERS]): Sources {
+  const files = trees.flatMap((tree) => javaFiles(path.join(PACKAGE, tree))).sort();
   const digest = createHash("sha256");
   const roots = new Set<string>();
   const adapters = new Map<string, string>();
@@ -115,7 +115,7 @@ function sources(): Sources {
     digest.update(`${path.relative(PACKAGE, file)}\0${text}\0`);
     const root = sourceRoot(file, text);
     roots.add(root);
-    if (file.startsWith(path.join(PACKAGE, ADAPTERS) + path.sep) && /\bpublic\s+static\s+void\s+main\s*\(/.test(text))
+    if (adapterTrees.some((tree) => file.startsWith(path.join(PACKAGE, tree) + path.sep)) && /\bpublic\s+static\s+void\s+main\s*\(/.test(text))
       adapters.set(path.relative(root, file).slice(0, -".java".length).split(path.sep).join("."), file);
   }
   return { digest: digest.digest("hex").slice(0, 24), roots: [...roots], adapters };
@@ -149,9 +149,9 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
   return classes;
 }
 
-export async function orgJsonAdapterClasspath(main: string): Promise<string> {
+export async function orgJsonAdapterClasspath(main: string, trees?: readonly string[]): Promise<string> {
   const jar = await jsonJavaArtifact();
-  return [compileAdapter(main, undefined, [jar]), jar].join(path.delimiter);
+  return [compileAdapter(main, trees === undefined ? undefined : sources(trees, trees), [jar]), jar].join(path.delimiter);
 }
 
 export async function compileAdapters(): Promise<{ readonly compiled: readonly string[]; readonly failed: readonly string[] }> {
@@ -209,9 +209,7 @@ async function start(classes: string, main: string, args: string[]): Promise<Ses
   const answers = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]();
   const ask = async (request: Request): Promise<Answer> => {
     child.stdin.write(`${JSON.stringify(wire(request))}\n`);
-    let timer: NodeJS.Timeout | undefined;
-    const next = await Promise.race([answers.next(), new Promise<undefined>((resolve) => { timer = setTimeout(() => resolve(undefined), ANSWER_WITHIN_MS); })]);
-    clearTimeout(timer);
+    const next = await Promise.race([answers.next(), once(AbortSignal.timeout(ANSWER_WITHIN_MS), "abort").then(() => undefined)]);
     if (next === undefined) throw new Error(`${main} did not answer ${JSON.stringify(request)} within ${ANSWER_WITHIN_MS / 1000} seconds${stderr ? `; stderr: ${stderr}` : ""}`);
     if (next.done) throw new Error(`${main} ended without answering ${JSON.stringify(request)}${stderr ? `; stderr: ${stderr}` : ""}`);
     return parseAnswer(next.value, request);
