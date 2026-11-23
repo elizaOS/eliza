@@ -490,7 +490,7 @@ it.effect('A routine told to the assistant is added once, a change applies only 
       triggers: [{ kind: "cron", expression: "0 8 * * 1,3", tz: "America/New_York" }, { kind: "cron", expression: "30 21 * * 1,3", tz: "America/New_York" }],
       replies: [
         [true, 'Added the routine "Stretch" for afternoon (15:00) every day.'], [true, '"Stretch" was already added by this request; nothing new was created.'],
-        [false, '2 routines are called "Stretch", so nothing was changed. Which one did you mean: routine-chat%3Ah1, routine-chat%3Ah2?'],
+        [false, `2 routines are called "Stretch", so nothing was changed. Which one did you mean: ${String(replies[0]?.data?.routineId)}, ${String(second.data?.routineId)}?`],
         [false, 'No routine is called "Meditate", so nothing was changed.'], [true, 'Deleted the routine "stretch".'], [false, '"Stretch" was not changed.'],
         [true, 'Marked done "Stretch".'], [true, '"Stretch" is now paused.'],
       ],
@@ -530,7 +530,7 @@ it.effect('Check-ins come at the times I chose: the morning one at eight until I
     replies.push(try setCheckinTimes({ morning: "06:45" }, "s8"))
     seen.refusals = 1
     const refused = try setCheckinTimes({ night: "23:00" }, "s9")
-    const cron = (expression: string, tz = "America/New_York") => ({ kind: "cron", expression, tz })
+    const cron = (expression: string, tz = "America/New_York") => ({ kind: "cron" as const, expression, tz })
     try equal({
       first, replies: replies.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]),
       afterDismissal, refused: [refused.success, refused.text, try checkinSchedules()],
@@ -592,7 +592,7 @@ it.effect('Brief me on my morning, evening or week: the kind and days come from 
     seen.listingFails = false
     try recalibrateBrief("recalibrate", "goals")
     briefs.push(try told("compose_evening", undefined, "my evening brief please"))
-    const unwritten = try composeBrief(undefined, undefined, "brief me")
+    const unwritten: ActionResult = try composeBrief(undefined, undefined, "brief me")
     try equal({ briefs, unwritten: [unwritten.success, unwritten.data?.outcome] }, {
       briefs: [
         ["morning", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day"]],
@@ -787,12 +787,12 @@ it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assista
   try equal<unknown>(try groundedReminder({ ...alarm, days: [] }, reminderTurn("Wake me at 6:30", undefined)), alarm)
   try equal<unknown>(try groundedReminder({ ...alarm, timeZone: "UTC" }, reminderTurn("Wake me at 6:30", undefined)), "CLOCK_OBSERVATION_CHANGED")
   const oneOff = readOperation({ type: "create_reminder", title: "Renew passport", dueAt: "2030-01-05T08:00:00.000Z" })
-  const reviewOf = (timeZone: string | undefined) => oneOff === undefined ? undefined : reminderProposalFamily.proposedText(oneOff.operation, { direct: false, timeZone })?.forOwner
+  const reviewOf = (timeZone: string | undefined) => oneOff === undefined ? undefined : reminderProposalFamily.proposedText(oneOff.operation, { direct: false, timeZone, ownerText: "Remind me to renew my passport" })?.forOwner
   try equal<unknown>([reviewOf(undefined)?.includes("(UTC)"), reviewOf("America/New_York")?.includes("(America/New_York)")], [true, true])
   const passportCreate = readOperation(create({ at: Date.UTC(2030, 0, 5, 8) - 600_000, recurrence: null, dueAt: Date.UTC(2030, 0, 5, 8), alertMinutes: 10 }, "Renew passport"))
   type Timing = { readonly dueAt?: string; readonly alertAt?: string | null; readonly timeZone?: string; readonly dueAtDisplay?: string; readonly alertAtDisplay?: string | null }
   const timingOf = (timeZone: string | undefined) => passportCreate === undefined ? undefined
-    : reminderProposalFamily.proposedText(passportCreate.operation, { direct: false, timeZone })?.data?.reminderTiming as Timing | undefined
+    : reminderProposalFamily.proposedText(passportCreate.operation, { direct: false, timeZone, ownerText: "Remind me to renew my passport" })?.data?.reminderTiming as Timing | undefined
   const [berlin, unzoned] = [timingOf("Europe/Berlin"), timingOf(undefined)]
   try equal<unknown>([berlin?.dueAt, berlin?.alertAt, berlin?.timeZone, berlin?.dueAtDisplay?.includes("9:00"), berlin?.alertAtDisplay?.includes("8:50"), unzoned],
     ["2030-01-05T08:00:00.000Z", "2030-01-05T07:50:00.000Z", "Europe/Berlin", true, true, { dueAt: "2030-01-05T08:00:00.000Z", alertAt: "2030-01-05T07:50:00.000Z" }])

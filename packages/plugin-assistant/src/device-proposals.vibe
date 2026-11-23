@@ -335,7 +335,7 @@ function settledSentence(operation: DeviceOperation, result: unknown): string | 
   switch (operation.type) {
     case "reminder_create": {
       const title = operation.fields.title
-      switch (readResult(operation, result)?.status) {
+      switch (readResult<"reminder_create">(operation, result)?.status) {
         case "pending": return `Your phone saved “${title}” without an alert.`
         case "permission-denied": return `Your phone saved “${title}”, but its notifications are off, so it can't alert you.`
         case "scheduling-failed": return `Your phone saved “${title}”, but couldn't schedule its alert.`
@@ -348,7 +348,7 @@ function settledSentence(operation: DeviceOperation, result: unknown): string | 
     case "reminder_snooze": return "Your phone snoozed that reminder."
     case "reminder_cancel": return "Your phone cancelled that reminder."
     case "reminder_named":
-      return readResult(operation, result)?.basis === "owner-chosen"
+      return readResult<"reminder_named">(operation, result)?.basis === "owner-chosen"
         ? operation.action === "cancel" ? "Your phone cancelled that reminder." : "Your phone updated that reminder."
         : "No reminder on your phone matched that name, so nothing changed."
     case "clock_handoff": return clockSettledText[operation.action]
