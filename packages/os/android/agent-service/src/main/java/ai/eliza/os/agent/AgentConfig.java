@@ -1,4 +1,4 @@
-// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
+// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "A consumer explicitly opts into keeping its resident without inference"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
 package ai.eliza.os.agent;
 
 import java.math.BigDecimal;
@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
@@ -35,7 +36,7 @@ public final class AgentConfig {
   private static final int MAX_VIEWS = 32, MAX_VIEW_BYTES = 16384;
   private static final BigDecimal SAFE_INTEGER = BigDecimal.valueOf(9007199254740991L);
   private static final Set<String> HOST_KEYS = Set.of("schema", "service", "notification", "routes", "nativeRoutes", "cloud", "model", "embeddings",
-    "embeddingDimensions", "persistMemory", "callerRole", "views", "timeZone", "privacy", "google", "retention", "environment");
+    "embeddingDimensions", "persistMemory", "callerRole", "residentWithoutInference", "views", "timeZone", "privacy", "google", "retention", "environment");
   private static final Set<String> CHARACTER_KEYS = Set.of("name", "system", "bio", "adjectives", "style", "messageExamples");
 
   public static final class Refused extends Exception {
@@ -43,6 +44,21 @@ public final class AgentConfig {
   }
 
   public record Notification(String channel, String title, String text) {}
+
+  sealed interface ResidentOwner permits InstallationOwner, RetainedOwner {
+    AgentCredentials.Account linkedAccount();
+  }
+  record InstallationOwner(AgentCredentials.Account linkedAccount) implements ResidentOwner {}
+  record RetainedOwner(AgentCredentials.Account linkedAccount) implements ResidentOwner {
+    RetainedOwner { Objects.requireNonNull(linkedAccount); }
+  }
+
+  sealed interface ResidentInference permits NoInference, OwnKeyInference, CloudInference {}
+  record NoInference() implements ResidentInference {}
+  record OwnKeyInference() implements ResidentInference {}
+  record CloudInference(AgentCredentials.Account account) implements ResidentInference {
+    CloudInference { Objects.requireNonNull(account); }
+  }
 
   public record WorkflowWorker(String runtimeDir, String executable, String sha256) {
     public WorkflowWorker {
@@ -57,6 +73,7 @@ public final class AgentConfig {
   private final Map<String, Object> character, policy, launch;
   private final boolean cloud;
   private final boolean ownKey;
+  private final boolean residentWithoutInference;
 
   private AgentConfig(Map<String, Object> host, Map<String, Object> character, Map<String, Object> policy) throws Refused {
     known(host, HOST_KEYS, "host");
@@ -74,6 +91,11 @@ public final class AgentConfig {
     Object backend = ((Map<?, ?>) launch.get("model")).get("backend");
     cloud = "cloud".equals(backend);
     ownKey = "own-key".equals(backend);
+    Object optIn = host.getOrDefault("residentWithoutInference", Boolean.FALSE);
+    if (!(optIn instanceof Boolean enabled)) throw new Refused("The agent residentWithoutInference is true or false");
+    if (enabled && (!Boolean.TRUE.equals(launch.get("persistMemory")) || !"owner".equals(launch.get("callerRole"))))
+      throw new Refused("A resident without inference needs persistent memory and the owner role");
+    residentWithoutInference = enabled;
   }
 
   public static AgentConfig parse(byte[] host, byte[] character, byte[] policy) throws Refused {
@@ -91,18 +113,54 @@ public final class AgentConfig {
 
   public boolean ownKey() { return ownKey; }
 
+  public boolean residentWithoutInference() { return residentWithoutInference; }
+
   public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker) {
+    if (residentWithoutInference) throw new IllegalArgumentException("The resident's stored owner must be resolved before launch");
     if (cloud && account == null) throw new IllegalArgumentException("A cloud launch names the signed-in account");
+    return json(document(launch.get("model"), account, workflowWorker));
+  }
+
+  String residentLaunchDocument(ResidentOwner owner, ResidentInference inference, WorkflowWorker workflowWorker) {
+    if (!residentWithoutInference) throw new IllegalArgumentException("The agent host has not opted into resident ownership");
+    AgentCredentials.Account linked = owner.linkedAccount();
+    Object residentModel = switch (inference) {
+      case NoInference ignored -> ordered("backend", "none");
+      case OwnKeyInference ignored -> {
+        if (!ownKey) throw new IllegalArgumentException("The resident's configured backend is not own-key");
+        yield launch.get("model");
+      }
+      case CloudInference selected -> {
+        if (!cloud || !selected.account().equals(linked)) throw new IllegalArgumentException("Cloud inference needs the resident's linked account");
+        yield launch.get("model");
+      }
+    };
+    AgentCredentials.Account inferenceAccount = inference instanceof CloudInference selected ? selected.account() : null;
+    Map<String, Object> document = document(residentModel, inferenceAccount, workflowWorker);
+    Map<String, Object> resident = switch (owner) {
+      case InstallationOwner ignored -> linked == null ? ordered("kind", "installation")
+        : ordered("kind", "installation", "linkedAccount", accountOf(linked));
+      case RetainedOwner ignored -> ordered("kind", "retained-account", "account", accountOf(linked));
+    };
+    document.put("residentOwner", resident);
+    return json(document);
+  }
+
+  private static Map<String, Object> accountOf(AgentCredentials.Account account) {
+    return ordered("userId", account.userId(), "organizationId", account.organizationId());
+  }
+
+  private Map<String, Object> document(Object model, AgentCredentials.Account account, WorkflowWorker workflowWorker) {
     Map<String, Object> document = new LinkedHashMap<>();
     document.put("schema", BigDecimal.ONE);
     document.put("character", character);
     document.put("policy", policy);
-    document.put("model", launch.get("model"));
-    if (account != null) document.put("account", ordered("userId", account.userId(), "organizationId", account.organizationId()));
+    document.put("model", model);
+    if (account != null) document.put("account", accountOf(account));
     for (Map.Entry<String, Object> entry : launch.entrySet()) if (!entry.getKey().equals("model")) document.put(entry.getKey(), entry.getValue());
     if (workflowWorker != null)
       document.put("workflowWorker", ordered("runtimeDir", workflowWorker.runtimeDir(), "executable", workflowWorker.executable(), "sha256", workflowWorker.sha256()));
-    return json(document);
+    return document;
   }
 
   @Override public String toString() { return "AgentConfig(" + service + ")"; }

@@ -1,10 +1,11 @@
-// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"
+// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "A consumer explicitly opts into keeping its resident without inference"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"
 import {
   filesAdmitted,
   filesFit,
   launchSettingsAdmitted,
   needsAccount,
   notificationAdmitted,
+  residentOptInAdmitted,
   routesAdmitted,
   serviceNamed,
   type AgentData,
@@ -95,6 +96,7 @@ const HostFileCodec = Schema.Struct({
   embeddingDimensions: Schema.optionalKey(Schema.Int),
   persistMemory: Schema.optionalKey(Schema.Boolean),
   callerRole: Schema.optionalKey(Schema.Literals(["owner", "user"])),
+  residentWithoutInference: Schema.optionalKey(Schema.Boolean),
   views: Schema.optionalKey(Views),
   timeZone: Schema.optionalKey(Schema.String.check(Schema.makeFilter(namedZone))),
   privacy: Schema.optionalKey(Switches("secretSwap", "piiSwap")),
@@ -273,6 +275,8 @@ export effect function admitAgentBytes(files: Readonly<Record<AgentFile, Uint8Ar
     if (allowed(policy).includes(name)) throw new AgentConfigRefused({ detail: `Action ${name} is both allowed and refused` })
   if (host.embeddingDimensions !== undefined && host.embeddingDimensions <= 0) throw new AgentConfigRefused({ detail: "The agent embeddingDimensions is a positive whole number" })
   const data = agentData({ host: files.host.byteLength, character: files.character.byteLength, policy: files.policy.byteLength }, host, character, policy)
+  if (!residentOptInAdmitted(host.residentWithoutInference ?? false, data.host.launch.persistMemory, data.host.launch.callerRole))
+    throw new AgentConfigRefused({ detail: "A resident without inference needs persistent memory and the owner role" })
   const detail = broken(data, host.nativeRoutes === undefined ? undefined : routeList(host.nativeRoutes))
   if (detail !== undefined) throw new AgentConfigRefused({ detail })
   const notification = data.host.notification

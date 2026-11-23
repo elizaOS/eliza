@@ -96,9 +96,35 @@ pure def filesAdmitted(d: AgentData): bool =
     and Launch::characterAdmitted(d.character) and Launch::policyAdmitted(d.policy.policy) and launchSettingsAdmitted(d.host.launch)
 ```
 
+### A consumer explicitly opts into keeping its resident without inference
+
+The host's `residentWithoutInference` setting defaults to false. True
+requires a persistent launch acting as the owner. The setting opts into the
+[resident binding](./residentBinding.md) and stays in the native host
+configuration. The native host resolves the actual owner and storage.
+
+```quint
+pure def residentOptInAdmitted(optIn: bool, persistent: bool, callerRole: Launch::CallerRole): bool =
+  not(optIn) or (persistent and callerRole == Launch::ChatAsOwner)
+pure def lawResidentOptInRequiresPersistentOwner(persistent: bool, callerRole: Launch::CallerRole): bool =
+  residentOptInAdmitted(true, persistent, callerRole) iff (persistent and callerRole == Launch::ChatAsOwner)
+pure def lawRegularLaunchKeepsItsAdmissibleRoles(persistent: bool, callerRole: Launch::CallerRole): bool =
+  residentOptInAdmitted(false, persistent, callerRole)
+```
+
+### The resident document projects its stored owner separately from its current inference
+
+An opted-in service supplies the installation binding or the retained
+account binding from native storage. The document carries this binding
+as `residentOwner`. It projects the configured backend only for its
+admitted inference grant and otherwise writes `model.backend: none`.
+The document carries `account` only for Cloud inference and that account
+must equal the resident's link. The frame carries the matching credential
+and the resident key separately.
+
 ### A refused file is a configuration error whoever is signed in, and a cloud launch without an active key is a credential error
 
-The files are judged first. Then a backend that the agent refuses without a
+For the regular launch the files are judged first. Then a backend that the agent refuses without a
 signed-in account (the cloud backend) needs the account of the active device
 key (`../signIn/credential.md`); an expired key, a sign-out or
 a key whose sign-in answer named no user or organization withholds the
