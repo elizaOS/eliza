@@ -130,6 +130,11 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     }
   }
 
+  const current = () => {
+    const failure = stale()
+    if (failure) throw failure.error
+  }
+
   const ownerAborted = () => {
     void stop().catch(() => {})
   }
@@ -228,19 +233,16 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
   const open = () =>
     (opening ??= (async () => {
       try {
-        const before = stale()
-        if (before) throw before.error
+        current()
         const registered = await port.addListener("cloudSpeechEvent", receive)
         if (retired) {
           await registered.remove()
           throw stopped()
         }
         handle = registered
-        const registeredStale = stale()
-        if (registeredStale) throw registeredStale.error
+        current()
         const result = await port.startCloudSpeech({ sessionId, environment: input.environment, credentialId: input.credentialId })
-        const startedStale = stale()
-        if (startedStale) throw startedStale.error
+        current()
         if (result.sessionId !== sessionId || result.sampleRate !== SAMPLE_RATE) throw new CloudSpeechRefused({ reason: "session-changed" })
         opened = true
         echoCancelled = result.echoCancelled === true
@@ -251,8 +253,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     })())
 
   const muteAndDrain = async () => {
-    const failure = stale()
-    if (failure) throw failure.error
+    current()
     const final = speechActive ? new Promise<void>((resolve) => (ended = resolve)) : Promise.resolve()
     let cancelTimer = () => {}
     try {
@@ -269,8 +270,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
   }
 
   const listen = async (handlers: AssistantListenHandlers): Promise<AssistantCapture> => {
-    const failure = stale()
-    if (failure) throw failure.error
+    current()
     handlers.signal.throwIfAborted()
     if (ownerSignal && ownerSignal !== handlers.signal) throw new CloudSpeechRefused({ reason: "owner-changed" })
     if (!ownerSignal) {
@@ -279,19 +279,16 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     }
     try {
       if (speechActive) await muteAndDrain()
-      const drained = stale()
-      if (drained) throw drained.error
+      current()
       handlers.signal.throwIfAborted()
       ++captureGeneration
       listening = lifecycle = handlers
       speechActive = false
       await open()
-      const connected = stale()
-      if (connected) throw connected.error
+      current()
       handlers.signal.throwIfAborted()
       await port.setCloudSpeechMuted({ sessionId, muted: false })
-      const unmuted = stale()
-      if (unmuted) throw unmuted.error
+      current()
     } catch (error) {
       await stop().catch(() => {})
       throw error
@@ -319,8 +316,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
   }
 
   const speak = async (text: string, signal: AbortSignal, onStarted: () => void): Promise<void> => {
-    const failure = stale()
-    if (failure) throw failure.error
+    current()
     signal.throwIfAborted()
     if (!opened) throw new CloudSpeechRefused({ reason: "not-connected" })
     const value = text.trim()
@@ -345,13 +341,11 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     if (signal.aborted) abort()
     try {
       signal.throwIfAborted()
-      const before = stale()
-      if (before) throw before.error
+      current()
       await port.speakCloudSpeech({ sessionId, utteranceId, text: value })
       await done
       signal.throwIfAborted()
-      const after = stale()
-      if (after) throw after.error
+      current()
     } finally {
       signal.removeEventListener("abort", abort)
       utterances.delete(utteranceId)
@@ -361,12 +355,10 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
 
   return {
     async setOutputMuted(muted: boolean) {
-      const failure = stale()
-      if (failure) throw failure.error
+      current()
       if (!opened || !port.setCloudSpeechOutputMuted) throw new CloudSpeechRefused({ reason: "output-mute-unavailable" })
       await port.setCloudSpeechOutputMuted({ sessionId, muted })
-      const after = stale()
-      if (after) throw after.error
+      current()
     },
     listen,
     speak,
