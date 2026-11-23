@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"
 import { assert, it } from "@effect/vitest"
 import { readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
 import { collectFacts, runCheckin, checkinReport } from "../src/checkin.vibe"
@@ -9,7 +9,8 @@ import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
-import { answerReminder, createReminder, deliverReminder, reminderKind, reminderReply } from "../src/reminders.vibe"
+import { answerReminder, createReminder, deliverReminder, escalateReminder, reminderKind, reminderReply } from "../src/reminders.vibe"
+import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { createRoutine, deleteRoutine, updateRoutine } from "../src/routines.vibe"
 import { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
 import { changeTodos, currentTodos } from "../src/todos.vibe"
@@ -79,6 +80,46 @@ it.effect('A fired reminder reaches the owner as the exact presentation issued f
       { delivered: { kind: "delivered" }, trusted: true, chatText: "Call the dentist", copy: null })
     const dismissed = try answerReminder({ op: "dismiss", target: "call the dentist" }, "m8")
     try equal([dismissed.success, seen.tasks.get(row.taskId)?.status], [true, "Dismissed"])
+  }
+})
+
+it.effect('A reminder I named nudges me again on the channels I chose until I answer it, and a phone nudge inside my quiet hours is held (spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/reminderEscalation.md, "New steps keep the quiet hours of the reminder"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held")', effect () => {
+  const seen = ports()
+  seen.answers.push(check({}))
+  provide portsLayer(seen) {
+    try createReminder({ ...asked("e1"), roomId: "room-1" as UUID })
+    const target = "call the dentist"
+    const replies = [
+      try escalateReminder({ op: "escalate", afterMinutes: 30 }, "e2"),
+      try escalateReminder({ op: "escalate", target, steps: [{ channel: "voice", afterMinutes: 30 }] }, "e3"),
+      try escalateReminder({ op: "escalate", target, quietHours: { start: "22:00", end: "07:00" } }, "e4"),
+      try escalateReminder({ op: "escalate", target, afterMinutes: 30 }, "e5"),
+      try escalateReminder({ op: "escalate", target, steps: [{ channel: "in_app", afterMinutes: 10 }] }, "e6"),
+    ]
+    try equal(replies.map((reply) => [reply.success, reply.success ? reply.text : reply.data?.outcome]), [
+      [false, "GLOBAL_ESCALATION_UNSUPPORTED"], [false, "REMINDER_CHANNEL_UNREACHABLE"],
+      [true, 'Updated reminder plan for "Call the dentist": no follow-ups; quiet hours 22:00-07:00 America/New_York.'],
+      [true, 'Updated reminder plan for "Call the dentist": push at +30m; quiet hours 22:00-07:00 America/New_York.'],
+      [true, 'Updated reminder plan for "Call the dentist": in_app at +10m, push at +30m; quiet hours 22:00-07:00 America/New_York.'],
+    ])
+    const [reminder] = rowsOf(seen, reminderKind)
+    seen.now += 20 * 60_000
+    try deliverReminder(reminder)
+    seen.tasks.set(reminder.taskId, { ...reminder, status: "Fired" })
+    const [inApp, push] = rowsOf(seen, escalationKind)
+    try equal([inApp, push].map((row) => [row?.metadata.channel, row?.trigger]), [
+      ["in_app", { kind: "once", atIso: new Date(seen.now + 10 * 60_000).toISOString() }], ["push", { kind: "once", atIso: new Date(seen.now + 30 * 60_000).toISOString() }],
+    ])
+    seen.now += 10 * 60_000
+    try deliverEscalation(inApp)
+    seen.now = Date.UTC(2026, 10, 23, 4, 0)
+    try deliverEscalation(push)
+    try answerReminder({ op: "acknowledge", target }, "e7")
+    seen.now = Date.UTC(2026, 10, 23, 16, 0)
+    try deliverEscalation(push)
+    try equal(seen.presented.map((shown) => [shown.presentation.chatText, shown.conversationOnly ?? false]), [
+      ["Call the dentist", false], ["Call the dentist still needs your attention", true],
+    ])
   }
 })
 

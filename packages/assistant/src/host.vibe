@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
+// spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { ModelType, ServiceType, type IAgentRuntime, type NotificationService, type ReminderPresentation, type Service, type UUID } from "@elizaos/core"
 import type { ScheduledTasksApi } from "@elizaos/agent"
@@ -60,12 +60,13 @@ export type DeliveryAnswer =
   | { readonly kind: "retry"; readonly afterMs: number; readonly reason: string }
   | { readonly kind: "undeliverable"; readonly error: string }
 
-/** What a saved reminder or check-in shows the owner when it fires. */
+/** What a saved reminder or check-in shows the owner when it fires; a conversation-only one posts no phone notification. */
 export interface Presented {
   readonly taskId: string
   readonly kind: string
   readonly roomId: UUID | undefined
   readonly presentation: ReminderPresentation
+  readonly conversationOnly?: boolean
 }
 
 /** The agent's scheduled tasks, as the assistant asks for them. */
@@ -232,16 +233,19 @@ export function runtimeModel(runtime: IAgentRuntime): Model.Shape {
 export function runtimePresenter(runtime: IAgentRuntime): Presenter.Shape {
   const failed = (cause: unknown) => new DeliveryFailed({ reason: cause instanceof Error ? cause.message : String(cause) })
   return {
-    effect present({ taskId, kind, roomId, presentation }) {
-      const notifications = runtime.getService<NotificationService>(ServiceType.NOTIFICATION)
-      if (notifications === null) throw new DeliveryFailed({ reason: "No notification service is registered" })
-      try tryPromise({
-        try: () => notifications.notify({
-          title: presentation.title, body: presentation.body, category: "reminder", source: "personal-assistant",
-          groupKey: taskId, data: { taskId, kind },
-        }),
-        catch: failed,
-      })
+    effect present({ taskId, kind, roomId, presentation, conversationOnly }) {
+      if (conversationOnly === true && roomId === undefined) throw new DeliveryFailed({ reason: "The reminder has no conversation to post in" })
+      if (conversationOnly !== true) {
+        const notifications = runtime.getService<NotificationService>(ServiceType.NOTIFICATION)
+        if (notifications === null) throw new DeliveryFailed({ reason: "No notification service is registered" })
+        try tryPromise({
+          try: () => notifications.notify({
+            title: presentation.title, body: presentation.body, category: "reminder", source: "personal-assistant",
+            groupKey: taskId, data: { taskId, kind },
+          }),
+          catch: failed,
+        })
+      }
       if (roomId === undefined) return
       try tryPromise({
         try: () => runtime.createMemory({

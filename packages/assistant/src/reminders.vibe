@@ -1,12 +1,13 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"
 import { createReminderPresentation, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider, type UUID } from "@elizaos/core"
 import { Machine, machine, recoveredChoice, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
 import {
   DeliveryFailed, Facts, Model, Presenter, Scheduler, SchedulerUnavailable, onAgent,
   type DeliveryAnswer, type TaskRow, type TaskVerb, type VerbAnswer,
 } from "./host.vibe"
+import { changeEscalation, scheduleEscalation } from "./escalation.vibe"
 import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attempt } from "./replies.vibe"
-import { ReminderAnswer, ReminderCheck, ReminderPlan } from "./requests.schema.vibe"
+import { ReminderAnswer, ReminderCheck, ReminderEscalation, ReminderPlan } from "./requests.schema.vibe"
 import { ownerClockAt } from "./timezone.vibe"
 
 import { offsetInstant, wallText, zonedInstant } from "./time.vibe"
@@ -153,17 +154,18 @@ function metadataText(task: TaskRow, name: string): string {
   return typeof value === "string" ? value : ""
 }
 
-/** Presents a fired reminder to the owner as the exact presentation issued for it, and says how the delivery went. */
+/** Presents a fired reminder to the owner as the exact presentation issued for it, schedules its escalation steps, and says how the delivery went. */
 export effect function deliverReminder(task: TaskRow) {
   const body = metadataText(task, "body").trim() || metadataText(task, "title").trim() || task.promptInstructions.trim()
   const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => new DeliveryFailed({ reason: "The reminder has no text to present" }) })
     catch (failed) => failed
   if (presentation instanceof DeliveryFailed) return { kind: "undeliverable", error: presentation.reason } satisfies DeliveryAnswer
   const room = task.metadata.roomId
-  const presenter = try Presenter
-  return try (presenter.present({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
-    |> Effect.as(%, { kind: "delivered" } as DeliveryAnswer)
-    |> Effect.catch(%, (failed) => Effect.succeed({ kind: "retry", afterMs: 60_000, reason: failed.reason } as DeliveryAnswer)))
+  const presented = (try Presenter).present({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
+    catch (failed) => failed
+  if (presented instanceof DeliveryFailed) return { kind: "retry", afterMs: 60_000, reason: presented.reason } satisfies DeliveryAnswer
+  scheduleEscalation(task) catch () => undefined
+  return { kind: "delivered" } satisfies DeliveryAnswer
 }
 
 const live = new Set(["Scheduled", "Fired", "Acknowledged"])
@@ -185,27 +187,34 @@ function verbOf(answer: ReminderAnswer): TaskVerb {
 
 const said = { complete: "Marked done", dismiss: "Dismissed", acknowledge: "Acknowledged", snooze: "Snoozed" } as const
 const decodeAnswer = Schema.decodeUnknownOption(ReminderAnswer, { onExcessProperty: "error" })
+const decodeEscalation = Schema.decodeUnknownOption(ReminderEscalation, { onExcessProperty: "error" })
+
+/** The live reminders a target names: by id, or by its whole title. */
+export effect function namedReminders(target: string) {
+  const name = target.trim().toLowerCase()
+  return (try liveReminders()).filter((task) => task.taskId === target || task.promptInstructions.trim().toLowerCase() === name)
+}
+
+function unmatched(op: string, target: string, matches: readonly TaskRow[], key: string, at: number): ActionResult {
+  const receipt = unchangedReceipt({ operation: `reminder.${op}`, kind: "reminder", id: target, key, at }, matches.length === 0 ? "no_match" : "ambiguous")
+  return {
+    success: false, effectReceipts: [receipt],
+    text: matches.length === 0 ? `No live reminder is called "${target}", so nothing was changed.`
+      : `${matches.length} reminders match "${target}", so nothing was changed. Which one did you mean: ${matches.map((task) => `"${task.promptInstructions}"`).join(", ")}?`,
+    data: { outcome: matches.length === 0 ? "not_found" : "ambiguous", target: `reminder:${target}`, candidates: matches.map((task) => task.taskId) },
+  }
+}
 
 /** Completes, dismisses, snoozes or acknowledges the one live reminder the owner named, once per message. */
 export effect function answerReminder(input: unknown, messageId: string) {
   const decoded = decodeAnswer(input)
   if (Option.isNone(decoded)) return { success: false, text: "Say which reminder and what to do with it.", data: { outcome: "REMINDER_ANSWER_INVALID" } } satisfies ActionResult
   const answer = decoded.value
-  const name = answer.target.trim().toLowerCase()
-  const matches = (try liveReminders()).filter((task) => task.taskId === answer.target || task.promptInstructions.trim().toLowerCase() === name)
+  const matches = try namedReminders(answer.target)
   const host = try Facts
   const at = try host.now()
   const key = `reminder:${answer.op}:${messageId}`
-  if (matches.length !== 1) {
-    const target = `reminder:${answer.target}`
-    const receipt = unchangedReceipt({ operation: `reminder.${answer.op}`, kind: "reminder", id: answer.target, key, at }, matches.length === 0 ? "no_match" : "ambiguous")
-    return {
-      success: false, effectReceipts: [receipt],
-      text: matches.length === 0 ? `No live reminder is called "${answer.target}", so nothing was changed.`
-        : `${matches.length} reminders match "${answer.target}", so nothing was changed. Which one did you mean: ${matches.map((task) => `"${task.promptInstructions}"`).join(", ")}?`,
-      data: { outcome: matches.length === 0 ? "not_found" : "ambiguous", target, candidates: matches.map((task) => task.taskId) },
-    } satisfies ActionResult
-  }
+  if (matches.length !== 1) return unmatched(answer.op, answer.target, matches, key, at)
   const task = matches[0]
   const facts = { operation: `reminder.${answer.op}`, kind: "reminder", id: task.taskId, key, at }
   const scheduler = try Scheduler
@@ -220,6 +229,24 @@ export effect function answerReminder(input: unknown, messageId: string) {
   }, { taskId: task.taskId })
 }
 
+/** Sets how the one live reminder the owner named escalates while they do not answer it; a request that names no reminder changes nothing. */
+export effect function escalateReminder(input: unknown, messageId: string) {
+  const decoded = decodeEscalation(input)
+  if (Option.isNone(decoded)) {
+    return { success: false, text: "Say which reminder should escalate and how, such as: nudge me again if I don't respond in 30 minutes.", data: { outcome: "REMINDER_ESCALATION_INVALID" } } satisfies ActionResult
+  }
+  const request = decoded.value
+  const target = request.target?.trim() ?? ""
+  if (target === "") {
+    return { success: false, text: "Global escalation rules are not supported yet. Name a reminder and I'll set its escalation.", data: { outcome: "GLOBAL_ESCALATION_UNSUPPORTED" } } satisfies ActionResult
+  }
+  const matches = try namedReminders(target)
+  if (matches.length !== 1) return unmatched("escalate", target, matches, `reminder:escalate:${messageId}`, try (try Facts).now())
+  return try changeEscalation(matches[0], request, messageId)
+}
+
+const escalationFields = ["target", "steps", "afterMinutes", "replace", "quietHours"] as const
+
 function parameters(options: unknown): Readonly<Record<string, unknown>> {
   const found = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
   return typeof found === "object" && found !== null ? found as Record<string, unknown> : {}
@@ -233,13 +260,17 @@ export function requestOf(message: Memory) {
 /** Saves, completes, dismisses, snoozes or acknowledges the owner's own reminders. */
 export const ownerRemindersAction: Action = {
   name: saveAction,
-  description: "Save a one-shot reminder the owner asked for in this message, or complete, dismiss, snooze or acknowledge one of their saved reminders. A reminder is saved only after the owner's own message is checked again.",
-  similes: ["REMINDER", "REMINDERS", "SET_REMINDER", "REMIND_ME", "REMIND_ME_TO", "CREATE_REMINDER", "SNOOZE_REMINDER", "DISMISS_REMINDER", "COMPLETE_REMINDER"],
+  description: "Save a one-shot reminder the owner asked for in this message, complete, dismiss, snooze or acknowledge one of their saved reminders, or set how one saved reminder escalates while they do not answer it. A reminder is saved only after the owner's own message is checked again.",
+  similes: ["REMINDER", "REMINDERS", "SET_REMINDER", "REMIND_ME", "REMIND_ME_TO", "CREATE_REMINDER", "SNOOZE_REMINDER", "DISMISS_REMINDER", "COMPLETE_REMINDER", "ESCALATE_REMINDER"],
   parameters: [
-    { name: "op", required: true, description: "create, complete, dismiss, snooze or acknowledge.", schema: { type: "string", enum: ["create", "complete", "dismiss", "snooze", "acknowledge"] } },
+    { name: "op", required: true, description: "create, complete, dismiss, snooze, acknowledge or escalate.", schema: { type: "string", enum: ["create", "complete", "dismiss", "snooze", "acknowledge", "escalate"] } },
     { name: "plan", required: false, description: 'For create: {"title", "body"?, "due": {"kind":"in","minutes"} | {"kind":"at","instant" with Z or ±HH:MM} | {"kind":"local","date":"YYYY-MM-DD","time":"HH:MM"}, "destination": "chat"|"device"|null, "alert": "alert"|"silent"|null}. Leave a choice null unless the owner stated it.', schema: { type: "object" } },
     { name: "target", required: false, description: "For any other op: the saved reminder's title or id.", schema: { type: "string" } },
     { name: "minutes", required: false, description: "For snooze: minutes, 1 to 1440; 10 when omitted.", schema: { type: "number" } },
+    { name: "steps", required: false, description: 'For escalate: [{"channel": "push" | "in_app", "afterMinutes": 1 to 1440}], each counted from when the reminder fires. push is a phone notification, in_app a message in this conversation. Name any other channel the owner asked for, such as voice or sms, as they said it.', schema: { type: "array" } },
+    { name: "afterMinutes", required: false, description: "For escalate: one phone notification this many minutes after the reminder fires, when steps is omitted.", schema: { type: "number" } },
+    { name: "replace", required: false, description: "For escalate: true only when the owner asked to replace every earlier step.", schema: { type: "boolean" } },
+    { name: "quietHours", required: false, description: 'For escalate: {"start": "HH:MM", "end": "HH:MM"} on the owner\'s clock, when the owner asked for quiet hours.', schema: { type: "object" } },
   ],
   tags: ["domain:reminders", "capability:write", "effect:receipt-required"],
   roleGate: { minRole: "OWNER" },
@@ -248,6 +279,10 @@ export const ownerRemindersAction: Action = {
     const given = parameters(options)
     const request = requestOf(message)
     if (given.op === "create") return reminderReply(await onAgent(runtime, createReminder({ ...request, plan: given.plan })))
+    if (given.op === "escalate") {
+      const asked = Object.fromEntries(escalationFields.flatMap((field) => given[field] === undefined || given[field] === null ? [] : [[field, given[field]] as const]))
+      return onAgent(runtime, escalateReminder({ op: "escalate", ...asked }, request.messageId))
+    }
     const { op, target, minutes } = given
     return onAgent(runtime, answerReminder({ op, target, ...(minutes === undefined ? {} : { minutes }) }, request.messageId))
   },

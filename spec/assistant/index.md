@@ -17,6 +17,7 @@ travel booking, health, bill and blocking services are not part of this package.
 | Area | Specification |
 | --- | --- |
 | Creating reminders the owner asked for | [Reminders](./reminders.md), [reminder presentation](./reminderPresentation.md) |
+| Nudging again about an unanswered reminder, outside quiet hours | [Reminder escalation](./reminderEscalation.md) |
 | The owner's local time zone | [Time zone](./timezone.md) |
 | Trips the owner tells the assistant about | [Travel](./travel.md) |
 | Follow-ups on open approvals | [Follow-ups](./followups.md) |

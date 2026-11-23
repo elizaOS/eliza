@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/routines.md, "A creation with an idempotency key creates at most one definition"
+// spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/routines.md, "A creation with an idempotency key creates at most one definition"
 
 const Text = (most: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(most))
 const Minutes = (least: number, most: number) => Schema.Int.check(Schema.isBetween({ minimum: least, maximum: most }))
@@ -44,6 +44,24 @@ export const ReminderAnswer = Schema.Struct({
 })
 /** A change to a saved reminder the owner asks for. */
 export type ReminderAnswer = typeof ReminderAnswer.Type
+
+/** A step of an escalation the owner asks for: a channel and the minutes after the reminder fired. */
+export const EscalationStep = Schema.Struct({ channel: Text(20), afterMinutes: Minutes(1, 1_440) })
+
+/** Quiet hours the owner asks for, as start and end times on their clock. */
+export const QuietHoursInput = Schema.Struct({ start: Text(5), end: Text(5) })
+
+/** How the owner asks one saved reminder to escalate while they do not answer it. */
+export const ReminderEscalation = Schema.Struct({
+  op: Schema.Literal("escalate"),
+  target: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+  steps: Schema.optionalKey(Schema.Array(EscalationStep).check(Schema.isMaxLength(8))),
+  afterMinutes: Schema.optionalKey(Minutes(1, 1_440)),
+  replace: Schema.optionalKey(Schema.Boolean),
+  quietHours: Schema.optionalKey(QuietHoursInput),
+})
+/** How the owner asks one saved reminder to escalate while they do not answer it. */
+export type ReminderEscalation = typeof ReminderEscalation.Type
 
 /** A goal change the owner asks for. */
 export const GoalRequest = Schema.Union([

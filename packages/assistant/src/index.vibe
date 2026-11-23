@@ -1,8 +1,9 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"
 import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
 import { checkinKind, deliverCheckin } from "./checkin.vibe"
 import { dossierRoutes } from "./dossier.vibe"
+import { deliverEscalation, escalationKind } from "./escalation.vibe"
 import { runEvaluators, type EvaluatorRun } from "./evaluators/runner.vibe"
 import { deliverFollowupTick, followupTickCron, followupTickKind } from "./followups.vibe"
 import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvider } from "./goals.vibe"
@@ -27,6 +28,7 @@ type Deliverer = (task: TaskRow) => DeliveryAnswer!unknown!AssistantPorts
 
 const deliverers: ReadonlyArray<readonly [string, Deliverer]> = [
   [reminderKind, deliverReminder],
+  [escalationKind, deliverEscalation],
   [goalCheckinKind, deliverGoalCheckin],
   [routineKind, deliverRoutine],
   [checkinKind, deliverCheckin],
