@@ -944,40 +944,6 @@ async function generateOwner(root: string, name: string) {
 }
 
 const rootTurboJson = "--root-turbo-json";
-const excludedProofs = /^!(spec|(?:apps|packages)\/\*\/spec)\/\*\*\/\*\.proof\.dfy$/;
-
-function turboOption(args: readonly string[], name: string): { index: number; count: number; value?: string } | undefined {
-  const index = args.findLastIndex((arg) => arg === name || arg.startsWith(`${name}=`));
-  if (index < 0) return;
-  const separate = args[index] === name;
-  const value = separate ? args[index + 1] : args[index].slice(name.length + 1);
-  return { index, count: separate ? 2 : 1, value: value && (!separate || !value.startsWith("-")) ? value : undefined };
-}
-
-async function sameTurboWorkspace(root: string, options: readonly string[]): Promise<boolean> {
-  const cwd = turboOption(options, "--cwd");
-  if (!cwd) return true;
-  if (!cwd.value) return false;
-  try {
-    const workspace = fs.realpathSync(root);
-    const directory = projectRoot(cwd.value, root);
-    const relative = path.relative(workspace, directory);
-    if (!relative) return true;
-    if (path.isAbsolute(relative) || relative.split(path.sep)[0] === ".." || options.includes("--skip-infer")) return false;
-    let member: string | undefined;
-    for (let at = directory; path.relative(workspace, at); at = path.dirname(at)) {
-      if ([".git", "pnpm-workspace.yaml"].some((file) => fs.existsSync(path.join(at, file)))) return false;
-      if (!member && fs.existsSync(path.join(at, "package.json"))) member = at;
-    }
-    if (!member) return true;
-    const listed = await exec("pnpm", ["list", "--recursive", "--depth", "-1", "--json"], root);
-    const projects: unknown = listed.status === 0 ? JSON.parse(listed.stdout) : undefined;
-    return Array.isArray(projects) && projects.some((project: unknown) =>
-      typeof project === "object" && project !== null && "path" in project && project.path === member);
-  } catch {
-    return false;
-  }
-}
 
 function generationNeedsUncached(root: string, scopes: readonly string[]): boolean {
   const standalone = (dir: string): boolean => {
@@ -989,7 +955,7 @@ function generationNeedsUncached(root: string, scopes: readonly string[]): boole
       if (scope === "spec") {
         const directory = path.join(root, scope);
         const files = specFiles(root);
-        if (files.some((file) => file.includes(".proof.dfy/"))) return true;
+        if (files.some(inProofDirectory)) return true;
         const areas = new Set(files.map((file) => file.split("/")[1]));
         return fs.existsSync(directory) && fs.readdirSync(directory).some((name) => !areas.has(name) && owner(root, `spec/${name}/`) !== undefined);
       }
@@ -1029,7 +995,7 @@ async function generationOverlay(root: string, args: string[]): Promise<{ args: 
   const cache = propertiesOf(task, "cache");
   if (!paths || !ts.isArrayLiteralExpression(paths) || cache.length > 1 || (cache[0] && cache[0].initializer.kind !== ts.SyntaxKind.TrueKeyword)) return;
   const scopes = paths.elements.flatMap((entry) => {
-    const scope = ts.isStringLiteral(entry) ? excludedProofs.exec(entry.text)?.[1] : undefined;
+    const scope = ts.isStringLiteral(entry) ? legacyProofInput.exec(entry.text)?.[1] : undefined;
     return scope === undefined ? [] : [scope];
   });
   if (!generationNeedsUncached(root, scopes) || !await sameTurboWorkspace(root, options)) return;
@@ -1049,13 +1015,14 @@ async function generationOverlay(root: string, args: string[]): Promise<{ args: 
 }
 
 type GenerationLayout = { kind: "ordinary" | "proof-directory"; owners: [string, string | null][]; dirs: string[] } | { kind: "invalid" };
+const inProofDirectory = (file: string) => file.includes(".proof.dfy/");
 
 function generationLayout(root: string): GenerationLayout {
   try {
     const files = specFiles(root);
     const areas = [...new Set(files.map((file) => file.split("/")).filter((parts) => parts.length > 2).map((parts) => parts[1]))].sort();
     return {
-      kind: files.some((file) => file.split("/").some((part) => part.endsWith(".proof.dfy"))) ? "proof-directory" : "ordinary",
+      kind: files.some(inProofDirectory) ? "proof-directory" : "ordinary",
       owners: areas.map((area) => [area, owner(root, `spec/${area}/`) ?? null]),
       dirs: codeDirs(root),
     };
@@ -1120,6 +1087,114 @@ function generationConfig(root: string, args: string[], env: NodeJS.ProcessEnv) 
   return { path: projectedPath, index, count: separate ? 2 : option ? 1 : 0 };
 }
 
+const legacyProofInput = /^!(spec|(?:apps|packages)\/\*\/spec)\/\*\*\/\*\.proof\.dfy$/;
+
+function turboOption(args: readonly string[], name: string): { index: number; count: number; value?: string } | undefined {
+  const index = args.findLastIndex((arg) => arg === name || arg.startsWith(`${name}=`));
+  if (index < 0) return;
+  const separate = args[index] === name;
+  const value = separate ? args[index + 1] : args[index].slice(name.length + 1);
+  return { index, count: separate ? 2 : 1, value: value && (!separate || !value.startsWith("-")) ? value : undefined };
+}
+
+async function sameTurboWorkspace(root: string, args: readonly string[]): Promise<boolean> {
+  const cwd = turboOption(args, "--cwd");
+  if (!cwd) return true;
+  if (!cwd.value) return false;
+  try {
+    const workspace = fs.realpathSync(root);
+    const directory = projectRoot(cwd.value, root);
+    const relative = path.relative(workspace, directory);
+    if (!relative) return true;
+    if (path.isAbsolute(relative) || relative.split(path.sep)[0] === ".." || args.includes("--skip-infer")) return false;
+    let member: string | undefined;
+    for (let at = directory; path.relative(workspace, at); at = path.dirname(at)) {
+      if ([".git", "pnpm-workspace.yaml"].some((file) => fs.existsSync(path.join(at, file)))) return false;
+      if (!member && fs.existsSync(path.join(at, "package.json"))) member = at;
+    }
+    if (!member) return true;
+    const listed = await exec("pnpm", ["list", "--recursive", "--depth", "-1", "--json"], root);
+    const projects: unknown = listed.status === 0 ? JSON.parse(listed.stdout) : undefined;
+    return Array.isArray(projects) && projects.some((project: unknown) =>
+      typeof project === "object" && project !== null && "path" in project && project.path === member);
+  } catch {
+    return false;
+  }
+}
+
+type LegacySpecInput = { directory: string; kind: "invalid" } | { directory: string; kind: "hidden"; models: [string, string][] };
+
+function legacySpecInputs(root: string, scopes: readonly string[]): LegacySpecInput[] {
+  const signature: LegacySpecInput[] = [];
+  for (const scope of new Set(scopes)) {
+    const [container] = scope.split("/");
+    const directory = path.join(root, container);
+    const entry = fs.lstatSync(directory, { throwIfNoEntry: false });
+    if (!entry) continue;
+    const projects = scope === "spec" ? [root] : entry.isDirectory()
+      ? fs.readdirSync(directory, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => path.join(directory, item.name))
+      : [];
+    for (const project of projects.sort()) {
+      const name = path.relative(root, path.join(project, "spec"));
+      const spec = fs.lstatSync(path.join(root, name), { throwIfNoEntry: false });
+      if (!spec) continue;
+      if (!spec.isDirectory()) {
+        signature.push({ directory: name, kind: "invalid" });
+        continue;
+      }
+      try {
+        const hidden = specFiles(project).filter(inProofDirectory);
+        if (hidden.length) signature.push({ directory: name, kind: "hidden", models: hidden.map((file) => [file, digest(fs.readFileSync(path.join(project, file), "utf8"))]) });
+      } catch {
+        signature.push({ directory: name, kind: "invalid" });
+      }
+    }
+  }
+  return signature;
+}
+
+function configProperty(node: ts.Expression | undefined, name: string): ts.Expression | undefined {
+  if (!node || !ts.isObjectLiteralExpression(node)) return;
+  const matches = node.properties.filter((property): property is ts.PropertyAssignment =>
+    ts.isPropertyAssignment(property) && ts.isStringLiteral(property.name) && property.name.text === name);
+  if (matches.length === 1) return matches[0].initializer;
+}
+
+async function legacyGenerationConfig(root: string, args: string[], env: NodeJS.ProcessEnv) {
+  const boundary = args.indexOf("--");
+  const options = boundary < 0 ? args : args.slice(0, boundary);
+  const explicit = turboOption(options, "--root-turbo-json");
+  const selected = explicit?.value ?? env.TURBO_ROOT_TURBO_JSON;
+  if ((explicit && !explicit.value) || selected === "") return;
+  const files = selected === undefined ? ["turbo.json", "turbo.jsonc"].map((name) => path.join(root, name)).filter((file) => fs.existsSync(file)) : [path.resolve(root, selected)];
+  if (files.length !== 1) return;
+  const [file] = files;
+  let text: string;
+  try { text = fs.readFileSync(file, "utf8"); } catch { return; }
+  const source = ts.parseJsonText(file, text);
+  const tasks = configProperty(source.statements[0]?.expression, "tasks");
+  const gen = configProperty(tasks, "//#gen");
+  const inputs = configProperty(gen, "inputs");
+  if (!inputs || !ts.isArrayLiteralExpression(inputs)) return;
+  const scopes = inputs.elements.flatMap((element) => ts.isStringLiteral(element) ? legacyProofInput.exec(element.text)?.slice(1) ?? [] : []);
+  if (!scopes.length || !await sameTurboWorkspace(root, options)) return;
+  const layout = JSON.stringify({ version: 1, hidden: legacySpecInputs(root, scopes), layout: generationLayout(root) });
+  const input = `.cache/gen-legacy-${digest(layout)}.json`;
+  const position = inputs.getStart(source) + 1;
+  const overlay = text.slice(0, position) + `${JSON.stringify(input)},` + text.slice(position);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-turbo-"));
+  const config = path.join(directory, path.basename(file));
+  try {
+    const marker = path.join(root, input);
+    if (!fs.lstatSync(marker, { throwIfNoEntry: false })?.isFile() || fs.readFileSync(marker, "utf8") !== layout) writeWhole(marker, layout);
+    fs.writeFileSync(config, overlay, { mode: 0o600 });
+    return { args: args.toSpliced(explicit?.index ?? 0, explicit?.count ?? 0, `--root-turbo-json=${config}`), directory };
+  } catch (error) {
+    fs.rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function runTasks(root: string, args: string[]): Promise<number | null> {
   const fingerprint = path.join(root, ".cache", "toolchain.json");
   const text = JSON.stringify(await steady(toolchainFingerprint)) + "\n";
@@ -1135,16 +1210,19 @@ async function runTasks(root: string, args: string[]): Promise<number | null> {
   const turboPackage = createRequire(bin("turbo", root)).resolve("turbo/package.json");
   const turboEntry = path.resolve(path.dirname(turboPackage), JSON.parse(fs.readFileSync(turboPackage, "utf8")).bin.turbo);
   const overlay = await generationOverlay(root, args);
+  let legacy: Awaited<ReturnType<typeof legacyGenerationConfig>>;
   try {
-    const config = overlay ? undefined : generationConfig(root, args, env);
-    const options = overlay?.args ?? (config ? args.toSpliced(config.index, config.count, "--root-turbo-json", config.path) : args);
+    legacy = await legacyGenerationConfig(root, overlay?.args ?? args, env);
+    const selected = legacy ?? overlay;
+    const config = selected ? undefined : generationConfig(root, args, env);
+    const options = selected?.args ?? (config ? args.toSpliced(config.index, config.count, "--root-turbo-json", config.path) : args);
     const child = spawn(process.execPath, [turboEntry, "run", ...options], { cwd: root, env, stdio: "inherit" });
     return await new Promise((resolve, reject) => {
       child.once("error", reject);
       child.once("exit", resolve);
     });
   } finally {
-    if (overlay) fs.rmSync(overlay.directory, { recursive: true, force: true });
+    for (const made of [legacy, overlay]) if (made) fs.rmSync(made.directory, { recursive: true, force: true });
   }
 }
 

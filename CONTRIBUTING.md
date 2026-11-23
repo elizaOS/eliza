@@ -116,7 +116,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `03ed430`](https://github.com/lalalune/vibestack/commit/03ed43079689961c290d2548e850f6c0c0266a7d).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `604d50b`](https://github.com/lalalune/vibestack/commit/604d50b62e47be230dca5195489118406551556d).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -316,7 +316,12 @@ other spec cache entries. The check computes its own keys and recomputes a
 missing or unreadable result.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
-to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
+to `turbo.json`. When a legacy generation config excludes proof paths, the
+task entry point includes the spec ownership layout and any Markdown under
+those proof-named directories in the generation key. Dependent task keys
+follow these changes. Eliza also runs that generation uncached when a nested
+proof directory or a standalone package spec could escape those exclusions.
+The task entry point fingerprints Node, VibeLang, Dafny, Z3
 and their runtime files before Turbo hashes its inputs. A build can run
 without the verifier. Its task key records missing verification tools,
 and a proof still requires them. What it reads of an
