@@ -1,4 +1,4 @@
-// spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/registries.md, "Each extension registry preserves its own normalization and replacement policy"; spec/core/models.md, "A model-call log row records the request parts its prompt omits and only the token counts the provider reported"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"; spec/core/models.md, "A model call takes no output cap from settings"; spec/core/secretSession.md, "A reserved example contact in a tool definition or response schema stays as written"
+// spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/registries.md, "Each extension registry preserves its own normalization and replacement policy"; spec/core/models.md, "A model-call log row records the request parts its prompt omits and only the token counts the provider reported"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"; spec/core/models.md, "A model call takes no output cap from settings"; spec/core/secretSession.md, "A reserved example contact in a tool definition or response schema stays as written"; spec/core/models.md, "A failed dispatch tells its caller how many provider attempts it made"
 import { errorText } from "../utils/errors.vibe"
 import { Machine, machine } from "../../gen/core__registries.effect.vibe"
 import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
@@ -75,6 +75,7 @@ import {
   modelProviderErrorDetail,
 } from "../utils/model-errors.vibe"
 import { captureModelLookupCaller } from "../utils/model-lookup-caller.vibe"
+import { carryDispatchAttempts } from "../utils/model-retry.vibe"
 import { ResponseSkeletonStreamExtractor } from "../utils/streaming.vibe"
 import { isPlainObject } from "../utils/type-guards.vibe"
 import type { ModelLogTool } from "../types/database.vibe"
@@ -609,6 +610,11 @@ export effect function rethrowModelFailoverError(
     context: { provider: failed?.provider, modelKey: failed?.modelKey },
     severity: "ephemeral",
   })
+}
+
+effect function failedDispatch(run: DispatchRun) {
+  carryDispatchAttempts(run.lastError, run.providerAttempts)
+  return try rethrowModelFailoverError(run.lastError, run.lastFailed)
 }
 
 export function getModel(core: DispatchCore, modelType: ModelTypeName | string): ModelCallHandler | undefined {
@@ -1153,7 +1159,7 @@ effect function dispatchModel(
     index = try afterFailedAttempt(run, attempt, thrownValue(Cause.squash(outcome.cause)))
   }
   if (run.lastError === undefined || run.lastError === null) return try noModelHandler(run.requestedModelKey)
-  return try rethrowModelFailoverError(run.lastError, run.lastFailed)
+  return try failedDispatch(run)
 }
 
 effect function startAttempt(run: DispatchRun, model: ResolvedModelRegistration, index: number) {
@@ -2172,7 +2178,7 @@ effect function afterFailedAttempt(run: DispatchRun, attempt: Attempt, error: un
     if (run.requestedProvider !== undefined) throw new Foreign({ cause: error })
     if (!nextAfterPreparation) {
       if (rejectedLocalAdmission) {
-        try rethrowModelFailoverError(run.lastError, run.lastFailed)
+        try failedDispatch(run)
       }
       throw new Foreign({ cause: error })
     }
@@ -2238,7 +2244,7 @@ effect function afterFailedAttempt(run: DispatchRun, attempt: Attempt, error: un
     || run.startedOutput
     || !isModelProviderFallbackError(error, run.requestedModelKey)
   ) {
-    return try rethrowModelFailoverError(run.lastError, run.lastFailed)
+    return try failedDispatch(run)
   }
   logModelProviderFailover(core, {
     requestedModelKey: run.requestedModelKey,

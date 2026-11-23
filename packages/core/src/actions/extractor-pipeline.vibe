@@ -1,4 +1,4 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"; spec/core/models.md, "A failed dispatch tells its caller how many provider attempts it made"
 import { errorText } from "../utils/errors.vibe"
 import { type Foreign, foreign, foreignSync, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
@@ -9,7 +9,7 @@ import { runWithTrajectoryPurpose } from "../trajectory-context.vibe"
 import { type GenerateTextParams, ModelType } from "../types/model.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { modelProviderErrorStatus } from "../utils/model-errors.vibe"
-import { isPermanentQuotaError, providerRateLimitRetryAt, readProviderRateLimit } from "../utils/model-retry.vibe"
+import { dispatchAttemptsOf, isPermanentQuotaError, providerRateLimitRetryAt, readProviderRateLimit } from "../utils/model-retry.vibe"
 import { sleepWithAbort } from "../utils/retry.vibe"
 
 type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType]
@@ -57,6 +57,7 @@ function extractorRefusalOf(error: unknown, now: number): ExtractorRefusal {
     hintMs: hint === undefined ? 0 : Math.ceil(hint),
     spent: isInsufficientCreditsError(error) || isPermanentQuotaError(error),
     period: reported?.scope === "period",
+    attempts: dispatchAttemptsOf(error),
   }
 }
 
