@@ -361,3 +361,16 @@ type PlaceOrder = NearestFirst | CloudOrder
 pure val listedPlaces = 5
 pure def placeOrder(aroundAPoint: bool): PlaceOrder = if (aroundAPoint) NearestFirst else CloudOrder
 ```
+
+### A route planned without any traffic says so on its card
+
+A route's card carries the warning "No live traffic." when Cloud Maps
+planned the chosen route with no traffic at all. A route planned with
+approximated or live traffic carries no warning.
+
+```quint
+type RouteTraffic = NoTraffic | ApproximatedTraffic | LiveTraffic
+pure val noLiveTrafficWarning = "No live traffic."
+pure def warnsNoLiveTraffic(traffic: RouteTraffic): bool = traffic == NoTraffic
+pure def lawARouteWithTrafficIsNotWarned(traffic: RouteTraffic): bool = traffic != NoTraffic implies not(warnsNoLiveTraffic(traffic))
+```
