@@ -108,6 +108,21 @@ pure def lawAScoreIsWithinItsRange(signals: TriageSignals): bool =
   triageScore(signals) >= 0 and triageScore(signals) <= 110 and (triageReasons(signals) == List() implies triageScore(signals) == 0)
 ```
 
+### A message row names the one address its replies go to
+
+Every message row, in triage, a search page, a message read and a thread
+page, carries `replyTo`: the single literal address its `Reply-To` header
+names, or null when the message has no such header or the header names
+anything else. [The reviewed operations](./mailOperations.md) bind a reply
+to that header, so a client can address the reply where the review will
+accept it.
+
+```quint
+pure def replyAddressNamed(headerPresent: bool, oneLiteralAddress: bool): bool = headerPresent and oneLiteralAddress
+pure def lawNoReplyHeaderNamesNoAddress(oneLiteralAddress: bool): bool = not(replyAddressNamed(false, oneLiteralAddress))
+pure def lawOnlyALiteralAddressIsNamed(headerPresent: bool): bool = not(replyAddressNamed(headerPresent, false))
+```
+
 ### A search page names the mailbox revision read before it was listed and never continues at the token it was asked with
 
 The query is non-blank and a page token is 1 to 4,096 characters. The shell

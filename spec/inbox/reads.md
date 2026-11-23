@@ -60,6 +60,26 @@ pure def sometimesShifted(s: MailboxFeed): bool = s.shifted
 pure def sometimesListHasNextPage(s: MailboxFeed): bool = s.cursor != ""
 ```
 
+## Story: Take from Cloud only what fits the read I asked for
+
+> As the owner, I want each message Cloud answers with to carry what a
+> reply needs, and nothing a confused answer could smuggle in, so that the
+> composer addresses a reply where its review will accept it.
+
+### A message names where its replies go only as one literal address
+
+Cloud's message row may name a `replyTo`. The message keeps it only when
+it is one literal address, lower-cased like the sender's own; a row
+without one, or naming anything else, leaves the message without a reply
+address, and a reply then goes to its sender. The saved mailbox keeps the
+reply address with the message.
+
+```quint
+pure def replyToKept(named: bool, literalAddress: bool): bool = named and literalAddress
+pure def lawAnUnreadableReplyAddressIsNotKept(named: bool): bool = not(replyToKept(named, false))
+pure def lawAnUnnamedReplyAddressIsNotKept(literalAddress: bool): bool = not(replyToKept(false, literalAddress))
+```
+
 ## Story: Resume my own mailbox from what was saved, and recheck its access
 
 > As the owner, I want a reopened inbox to show what my last read saved,

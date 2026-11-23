@@ -2,7 +2,7 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 import { Result } from "effect"
 import { Base64Url } from "effect/encoding"
-import { htmlMaxBytes, htmlViewOf, listCount, mailMaxBytes, needsReply, searchOutcome, triageImportant, triageReasons, triageScore, type Continuation, type MailList, type TriageReason } from "../gen/cloud__services__google__mailRead.effect.vibe"
+import { htmlMaxBytes, htmlViewOf, listCount, mailMaxBytes, needsReply, replyAddressNamed, searchOutcome, triageImportant, triageReasons, triageScore, type Continuation, type MailList, type TriageReason } from "../gen/cloud__services__google__mailRead.effect.vibe"
 
 export type GoogleReadApi<E, R> = (url: string, maxBytes?: number) => unknown!E!R
 export error GoogleReadInput
@@ -84,6 +84,12 @@ function sender(value: string) {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate) ? candidate : null
 }
 
+export function mailReplyAddress(headers: ReadonlyMap<string, string>): string | null {
+  const named = headers.get("reply-to")
+  const address = named === undefined ? null : sender(named)
+  return replyAddressNamed(named !== undefined, address !== null) ? address : null
+}
+
 export function isoMailDate(value: string | undefined) {
   if (!value || !history.test(value)) return null
   const instant = new Date(Number(value))
@@ -136,7 +142,7 @@ effect function mailCard(message: MailMessage, selfEmail: string) {
   return {
     ...mailTriageFields(labels, headers, selfEmail),
     id: message.id, externalId: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from, fromEmail: sender(from),
-    replyTo: sender(headers.get("reply-to") ?? ""), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
+    replyTo: mailReplyAddress(headers), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
     receivedAt, labels,
     htmlLink: `https://mail.google.com/mail/u/0/#all/${message.id}`, metadata: { historyId: message.historyId ?? null }
   }

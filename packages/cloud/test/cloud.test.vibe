@@ -1932,7 +1932,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           { name: "Received-SPF", value: "pass (google.com: domain of ada@example.org designates 192.0.2.10 as permitted sender)" },
           { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org" }
         ],
-        headers: { From: "Ada <ada@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan", "Authentication-Results": "mx.google.com; dkim=pass header.d=bank.example" }, snippet: "Can you review", bodyText: "Please review the plan.",
+        headers: { From: "Ada <ada@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan", "Reply-To": "Plans <plans@example.org>", "Authentication-Results": "mx.google.com; dkim=pass header.d=bank.example" }, snippet: "Can you review", bodyText: "Please review the plan.",
         attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
       },
       {
@@ -2094,11 +2094,11 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       providerCallsOnRejectedSelection: 0,
     }))
     const pdf = new TextEncoder().encode("%PDF-plan")
-    type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
+    type Card = { readonly id: string; readonly replyTo: string | null; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
     const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
     const readBody = read.body as { readonly message: Card; readonly bodyText: string; readonly bodyHtml: string | null; readonly bodyHtmlStatus: string; readonly attachments: ReadonlyArray<unknown>; readonly authenticationResults: string | null }
     const file = attachment.body as { readonly name: string; readonly mimeType: string; readonly size: number; readonly dataBase64: string; readonly sha256: string; readonly supported: boolean }
-    const threadBody = thread.body as { readonly historyId: string; readonly total: number; readonly messages: ReadonlyArray<{ readonly bodyText: string }> }
+    const threadBody = thread.body as { readonly historyId: string; readonly total: number; readonly messages: ReadonlyArray<{ readonly message: Card; readonly bodyText: string }> }
     const draftList = drafts.body as { readonly drafts: ReadonlyArray<{ readonly draftId: string; readonly messageId: string; readonly subject: string; readonly to: ReadonlyArray<string> }>; readonly nextPageToken: string | null }
     const draftBody = draft.body as { readonly providerDigest: string; readonly content: { readonly to: ReadonlyArray<string>; readonly subject: string; readonly bodyText: string; readonly plainText: boolean } }
     try check(() => assert.deepStrictEqual(
@@ -2117,6 +2117,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         capabilities: [capabilities.status, capabilities.body],
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
         thread: [thread.status, threadBody.historyId, threadBody.total, threadBody.messages.map((message) => message.bodyText)],
+        replyTo: [readBody.message.replyTo, (triage.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => card.replyTo), threadBody.messages.map((message) => message.message.replyTo)],
         pages: [first.body.historyId === next.body.historyId, pageOf(first, earlierText), pageOf(next, laterText)],
         pageRefusals: [errorOf(missingRevision), errorOf(changedPage), errorOf(indivisible)],
         stale: [errorOf(staleAttachment), errorOf(staleThread)],
@@ -2146,6 +2147,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
         thread: [200, "1001", 1, ["Please review the plan."]],
+        replyTo: ["plans@example.org", ["plans@example.org", null], ["plans@example.org"]],
         pages: [true, [200, true, 2, 0, 1, [["page-earlier", "1006", true]]], [200, true, 2, 1, null, [["page-later", "1005", true]]]],
         pageRefusals: [[400, "invalid_request"], [409, "stale_revision"], [413, "content_too_large"]],
         stale: [[409, "stale_revision"], [409, "stale_revision"]],

@@ -138,7 +138,7 @@ effect function mailCard(message: MailMessage, selfEmail: string) {
   const labels = (message.labelIds ?? []).map((label) => label.trim()).filter((label) => label !== "")
   return {
     id: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from: headers.get("from") ?? "",
-    snippet: message.snippet ?? "", receivedAt, labels, ...GoogleRead.mailTriageFields(labels, headers, selfEmail),
+    replyTo: GoogleRead.mailReplyAddress(headers), snippet: message.snippet ?? "", receivedAt, labels, ...GoogleRead.mailTriageFields(labels, headers, selfEmail),
     metadata: { historyId: message.historyId ?? null }
   }
 }

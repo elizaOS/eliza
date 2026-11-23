@@ -58,6 +58,7 @@ function fakeCloud() {
     refuse: undefined as { readonly status: number; readonly error: string } | undefined,
     afterSearch: () => {},
     paths: [] as string[],
+    rowFields: new Map<string, Readonly<Record<string, unknown>>>(),
   }
 
   const connection = (id: string) => state.connections.find((row) => row.id === id)
@@ -135,7 +136,7 @@ function fakeCloud() {
       }
       if (at === "/gmail/read") {
         const id = url.searchParams.get("messageId") ?? ""
-        return { message: wireCard(card(id)), bodyText: `Body of ${id}, see https://example.com/a).`, bodyHtml: null, bodyHtmlStatus: "none", attachments: [], authenticationResults: null }
+        return { message: { ...wireCard(card(id)), ...state.rowFields.get(id) }, bodyText: `Body of ${id}, see https://example.com/a).`, bodyHtml: null, bodyHtmlStatus: "none", attachments: [], authenticationResults: null }
       }
       if (at === "/gmail/inbox-v1/capabilities") {
         return { version: 1, from: "ana@example.com", kinds: kindsOf(connection(url.searchParams.get("grantId") ?? "")?.capabilities ?? []), attachmentPolicy: { mimeTypes: ["application/pdf"], maxBytes: 8388608 } }
@@ -249,8 +250,10 @@ it.effect(`Page a folder once per message, notice a changed mailbox, and keep ca
   const row = { key: listKey, account: "grant-a", at: now, firstPageRevision: "41", messages: second.messages, query: "in:inbox", cursor: null, cursors: ["p1", "p2"], shifted: true }
   assert.isFalse(try caches.rememberList({ ...row, key: "drafts", query: "in:drafts" }))
   assert.isTrue(try caches.rememberList(row))
+  cloud.state.rowFields.set("m1", { replyTo: "Plans <Plans@Example.org>" }).set("m2", { replyTo: "bo@example.com, cy@example.com" })
   const body = try cloud.client.gmailRead("grant-a", "m1")
   assert.deepEqual(body.links, [{ href: "https://example.com/a", text: "https://example.com/a" }])
+  assert.deepEqual([body.message.replyTo, (try cloud.client.gmailRead("grant-a", "m2")).message.replyTo], ["plans@example.org", undefined])
   try caches.rememberBody({ key: "m1", account: "grant-a", at: now, body })
   assert.isTrue((try caches.body("m1", now + 1000))?.skipsRead)
   assert.isFalse((try caches.body("m1", now + 600_000))?.skipsRead)
@@ -270,7 +273,8 @@ it.effect(`Page a folder once per message, notice a changed mailbox, and keep ca
   assert.isTrue(try saveMailbox(store, "mailbox", document, 1, () => 1))
   assert.isFalse(try saveMailbox(store, "mailbox", document, 1, () => 2))
   const raw = saved.get("mailbox") ?? ""
-  assert.deepEqual(readSavedMailbox(raw, "ana", null, () => true)?.lists.map((list) => list.key), [listKey])
+  const restored = readSavedMailbox(raw, "ana", null, () => true)
+  assert.deepEqual([restored?.lists.map((list) => list.key), restored?.bodies.map((entry) => entry.body.message.replyTo)], [[listKey], ["plans@example.org"]])
   assert.isNull(readSavedMailbox(raw, "bo", null, () => true))
   assert.deepEqual(readSavedMailbox(raw, "ana", null, (entry) => entry.key !== listKey)?.lists, [])
   assert.isTrue(try clearMailbox(store, "mailbox", 3, () => 3))
