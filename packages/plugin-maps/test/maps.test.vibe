@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
-import type { IAgentRuntime, JsonObject, Memory } from "@elizaos/core"
+import { getDirectActionRoutingRules, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
 import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
 import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
 import { MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route } from "../src/client/contracts.vibe"
@@ -703,6 +703,37 @@ function memoryStore(): AgentSavedPlaceStore {
 function ownerTurn(text: string, roomId = "00000000-0000-4000-8000-000000000002"): Memory {
   return { entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text, source: "device" } } as unknown as Memory
 }
+
+it.live('An unrelated owner turn closes the Maps choice, while routing the immediate answer twice keeps it tied to the original request (spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes")', effect () => {
+  const { link } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const runtime = {} as IAgentRuntime
+  const navigation = plugin.actions?.find(({ name }) => name === "MAPS_NAVIGATION_START")
+  if (navigation === undefined) throw new Error("Missing Maps navigation action")
+  try promise(async () => { await plugin.init?.({}, runtime) })
+  const route = getDirectActionRoutingRules(runtime).find(({ id }) => id === "maps.place-choice.navigation-start")?.wholeRequest
+  if (route === undefined) throw new Error("Missing Maps choice route")
+  const keyed = (text: string, key: number, roomId?: string): Memory => ({
+    ...ownerTurn(text, roomId), id: `00000000-0000-4000-8000-0000000000${key}` as Memory["entityId"],
+  })
+  const act = (message: Memory, parameters: JsonObject) => promise(async () => await navigation.handler(runtime, message, undefined, { parameters }))
+  const ask = { destination: "pharmacy" }
+  const first = try act(keyed("take me to the pharmacy", 10), ask)
+  const otherRoom = keyed("call Mom", 11, "00000000-0000-4000-8000-000000000003")
+  const immediate = keyed("2", 12)
+  const foreign = route.matches("call Mom", otherRoom)
+  const immediateRoutes = [route.matches("2", immediate), route.matches("2", immediate)]
+  const answer = try act(immediate, {})
+  const second = try act(keyed("take me to the pharmacy", 13), ask)
+  const moveOn = route.matches("call Mom", keyed("call Mom", 14))
+  const stale = keyed("2", 15)
+  const staleRoute = route.matches("2", stale)
+  const staleResult = try act(stale, {})
+  try Effect.try(() => assert.deepStrictEqual(
+    [first.data?.choice, foreign, immediateRoutes, answer.success, second.data?.choice, moveOn, staleRoute, staleResult.success],
+    ["destination", false, [true, true], true, "destination", false, false, false],
+  ))
+})
 
 it.live('Save a place with my assistant once, and answer the question Maps asked: a repeat saves nothing, a superseded repeat is a new change, a reused key is refused, and "the second one" continues the request that asked (spec/maps/savedPlaces.md, "Story: Save a place with my assistant once"; spec/maps/routing.md, "Story: Send my directions request to Maps, not to a view")', effect () => {
   const { link } = linkFake()

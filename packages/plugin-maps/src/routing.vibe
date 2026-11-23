@@ -1,5 +1,5 @@
 // spec/maps/routing.md, "A plain Maps request of the owner's own chat turn goes to the Maps action for its shape"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"
-import { containsResourceAddress, registerDirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { containsResourceAddress, registerDirectActionRoutingRule, type DirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { choiceBinds, mapsRouteOf, type RequestShape, type RoutedTo } from "../gen/maps__routing.effect.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
 
@@ -79,18 +79,25 @@ export interface PlaceChoice {
   readonly askedAt: number
 }
 
-const choices = new WeakMap<IAgentRuntime, Map<string, PlaceChoice>>()
+interface OpenPlaceChoice {
+  readonly choice: PlaceChoice
+  readonly askedBy: Memory["entityId"]
+  readonly askingMessage: Memory["id"]
+  answeringMessage?: Memory["id"]
+}
 
-function roomChoices(runtime: IAgentRuntime): Map<string, PlaceChoice> {
+const choices = new WeakMap<IAgentRuntime, Map<string, OpenPlaceChoice>>()
+
+function roomChoices(runtime: IAgentRuntime): Map<string, OpenPlaceChoice> {
   const known = choices.get(runtime)
   if (known !== undefined) return known
-  const made = new Map<string, PlaceChoice>()
+  const made = new Map<string, OpenPlaceChoice>()
   choices.set(runtime, made)
   return made
 }
 
-export function openChoice(runtime: IAgentRuntime, roomId: string, choice: PlaceChoice): void {
-  roomChoices(runtime).set(roomId, choice)
+export function openChoice(runtime: IAgentRuntime, message: Memory, choice: PlaceChoice): void {
+  roomChoices(runtime).set(message.roomId, { choice, askedBy: message.entityId, askingMessage: message.id })
 }
 
 export function choicePosition(reply: string, count: number): number | undefined {
@@ -101,13 +108,22 @@ export function choicePosition(reply: string, count: number): number | undefined
 }
 
 export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: number): { readonly choice: PlaceChoice; readonly place: AgentPlaceRef } | undefined {
-  const open = roomChoices(runtime).get(message.roomId)
+  const rooms = roomChoices(runtime)
+  const open = rooms.get(message.roomId)
+  if (open === undefined || !isOwnerChatTurn(message) || open.askedBy !== message.entityId) return undefined
+  const { choice, askingMessage } = open
+  const keyed = askingMessage !== undefined && message.id !== undefined
+  if (keyed && askingMessage === message.id) return undefined
   const reply = typeof message.content.text === "string" ? message.content.text : ""
-  if (open === undefined) return undefined
-  const position = choicePosition(reply, open.options.length) ?? 0
-  if (!choiceBinds({ open: true, sameConversation: true, age: Math.floor(now - open.askedAt), position, options: open.options.length })) return undefined
-  const place = open.options[position - 1]
-  return place === undefined ? undefined : { choice: open, place }
+  const position = choicePosition(reply, choice.options.length) ?? 0
+  const nextOwnerTurn = open.answeringMessage === undefined || open.answeringMessage === message.id
+  if (!choiceBinds({ open: true, sameConversation: true, nextOwnerTurn, age: Math.floor(now - choice.askedAt), position, options: choice.options.length })) {
+    if (keyed) rooms.delete(message.roomId)
+    return undefined
+  }
+  if (keyed) open.answeringMessage = message.id
+  const place = choice.options[position - 1]
+  return place === undefined ? undefined : { choice, place }
 }
 
 export function closeChoice(runtime: IAgentRuntime, roomId: string): void {
@@ -186,13 +202,17 @@ export function requestShape(text: string, openChoiceAnswered: boolean): { reado
   return { shape: "OtherRequest" }
 }
 
+function isOwnerChatTurn(message: Memory | undefined): boolean {
+  return message !== undefined && (
+    (message.content.source === "device" && ownerChannels.has(message.content.channelType))
+    || (message.content.source === "client_chat" && (message.content.channelType === "DM" || message.content.channelType === "VOICE_DM"))
+  )
+}
+
 export function routeOf(text: string, message: Memory | undefined, openChoiceAnswered: boolean, namesView: (destination: string) => boolean): RoutedTo {
   const { shape, destination } = requestShape(text, openChoiceAnswered)
   return mapsRouteOf({
-    ownerTurn: message !== undefined && (
-      (message.content.source === "device" && ownerChannels.has(message.content.channelType))
-      || (message.content.source === "client_chat" && (message.content.channelType === "DM" || message.content.channelType === "VOICE_DM"))
-    ),
+    ownerTurn: isOwnerChatTurn(message),
     shape,
     compound: destination !== undefined && compound(destination),
     webAddress: destination !== undefined && containsResourceAddress(destination),
@@ -209,16 +229,17 @@ const routedActions: Record<Exclude<RoutedTo, "ToPlanner" | "ToChoice">, readonl
 }
 
 export function registerMapsRouting(runtime: IAgentRuntime, namesView: (destination: string) => boolean): void {
-  const rule = (id: string, actionNames: readonly string[], matches: (text: string, message?: Memory) => boolean) =>
-    registerDirectActionRoutingRule(runtime, { id, actionNames, replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: ["domain:maps"], contexts: ["maps"], matches })
+  const rule = (id: string, actionNames: readonly string[], matches: DirectActionRoutingRule["matches"], wholeRequest?: DirectActionRoutingRule["wholeRequest"]) =>
+    registerDirectActionRoutingRule(runtime, { id, actionNames, replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: ["domain:maps"], contexts: ["maps"], matches, wholeRequest })
   for (const [routed, actionNames] of Object.entries(routedActions)) {
     rule(`maps.${routed}`, actionNames, (text, message) => routeOf(text, message, false, namesView) === routed)
   }
   for (const [operation, actionName] of Object.entries(choiceActions)) {
-    rule(`maps.place-choice.${operation}`, [actionName], (text, message) => {
+    const matches: DirectActionRoutingRule["matches"] = (text, message) => {
       if (message === undefined) return false
       const answered = answeredChoice(runtime, message, Date.now())
       return answered?.choice.operation === operation && routeOf(text, message, true, namesView) === "ToChoice"
-    })
+    }
+    rule(`maps.place-choice.${operation}`, [actionName], matches, { matches, invalidateFields: [] })
   }
 }
