@@ -842,7 +842,6 @@ function toolLogEntry(tool: unknown): ModelLogTool[] {
   return [{ name, chars: text.length, hash: sha256Hex(text).slice(0, 12) }]
 }
 
-/** The request parts a logged prompt omits: each tool schema by size and digest, and the output cap when one was sent. */
 function modelCallRequestSizes(request: unknown): { tools?: ModelLogTool[]; maxTokens?: number } {
   if (!isPlainObject(request)) return {}
   return {

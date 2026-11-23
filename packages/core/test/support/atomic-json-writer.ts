@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { Effect } from "effect";
 import { writeJsonAtomicPromise, writeJsonAtomicSyncOrThrow } from "../../src/utils/atomic-json.vibe";
 
 const [file, writer, mode, boundary] = process.argv.slice(2);
@@ -13,8 +14,7 @@ if (crash) {
   fsp.rename = async (source, destination) => {
     if (boundary === "after-rename") await rename(source, destination);
     process.stdout.write(`${boundary}\n`);
-    setInterval(() => undefined, 1_000);
-    await new Promise<void>(() => undefined);
+    await Effect.runPromise(Effect.forever(Effect.sleep(1_000)));
   };
 }
 

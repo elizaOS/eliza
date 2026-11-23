@@ -9,13 +9,10 @@ import { inboxArrivalPath } from "../services/google/inbox-arrival.vibe"
 import { limitedBody, WorkerHeaders, WorkerResponse, withRequestBody } from "../worker-platform.ts"
 import { withCloudDatabase, type WorkerDatabase } from "../worker-store.vibe"
 
-/** The bindings the Worker-only routes read. */
 export type LegacyBindings = ClefEnv & IdentityEnv & GoogleEnv & WorkerDatabase
 
-/** A product's own routes under `/api/product/`, answered for a signed-in browser session. */
 export type DeploymentExtension<E extends LegacyBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>
 
-/** What a Worker-only route may call besides its bindings. */
 export interface WorkerPorts<E extends LegacyBindings> {
   readonly extension: DeploymentExtension<E> | undefined
   readonly providerFetch: typeof fetch
@@ -118,7 +115,6 @@ function workerOnlyRoutes<E extends LegacyBindings>(): ReadonlyArray<WorkerOnlyR
   ]
 }
 
-/** Whether a path belongs to a Worker-only route. */
 export function ownsWorkerOnly<E extends LegacyBindings>(path: string, ports: WorkerPorts<E>): boolean {
   return workerOnlyRoutes<E>().some((route) => route.owns(path, ports))
 }
@@ -139,7 +135,6 @@ function corsFor(request: Request, env: LegacyBindings, path: string) {
   return { origin, cors, foreign: origin !== null && origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN }
 }
 
-/** Answers a request of a Worker-only route, with that route's own origin rules. */
 export async function workerOnlyRequest<E extends LegacyBindings>(request: Request, env: E, ports: WorkerPorts<E>): Promise<Response> {
   const path = new URL(request.url).pathname
   const route = workerOnlyRoutes<E>().find((each) => each.owns(path, ports))

@@ -8,29 +8,24 @@ import { sha256Hex, utf8Length } from "./digest.vibe"
 import { gmailReadable } from "./grants.vibe"
 import type { GmailAccount, GmailMessage, GmailReadResult, GmailSearchPage } from "./types.vibe"
 
-/** The folders the Inbox lists. */
 export type MailboxFolder = "inbox" | "sent" | "drafts" | "archive" | "trash" | "starred" | "all" | "spam"
 
-/** The Gmail search each folder lists. */
 export const MAILBOX_FOLDER_QUERY: Readonly<Record<MailboxFolder, string>> = {
   inbox: "in:inbox", sent: "in:sent", drafts: "in:drafts", archive: "in:archive",
   trash: "in:trash", starred: "is:starred", all: "-in:spam -in:trash", spam: "in:spam",
 }
 
-/** The account, folder and search one list belongs to. */
 export interface MailboxListRequest {
   readonly connectionId: string
   readonly folder: MailboxFolder
   readonly search: string
 }
 
-/** The identity a page is read under; only the current one can adopt the page. */
 export interface MailboxReadReceipt {
   readonly request: MailboxListRequest
   readonly load: number
 }
 
-/** The messages a list shows, whether a later page came from a changed mailbox, and the cursor to offer next. */
 export interface MailboxListView {
   readonly request: MailboxListRequest | null
   readonly messages: readonly GmailMessage[]
@@ -39,7 +34,6 @@ export interface MailboxListView {
   readonly shifted: boolean
 }
 
-/** One mailbox list's paging over the reads model. */
 export interface MailboxFeed {
   begin(request: MailboxListRequest): (MailboxReadReceipt | null)!!
   accept(receipt: MailboxReadReceipt, pageToken: string | null, page: GmailSearchPage): boolean!!
@@ -48,7 +42,6 @@ export interface MailboxFeed {
   state(): FeedState!!
 }
 
-/** A paging feed for one mailbox list: each message is shown once, a repeated cursor ends paging, and a stale page is dropped. */
 export effect function mailboxFeed(): MailboxFeed!! {
   const kept = try Ref.make(initial)
   const feed = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
@@ -104,7 +97,6 @@ export effect function mailboxFeed(): MailboxFeed!! {
   }
 }
 
-/** The grant a cached read was made under. */
 export interface MailReadGrant {
   readonly session: string
   readonly credential: string
@@ -115,18 +107,15 @@ function grantReadOf(grant: MailReadGrant): GrantRead {
   return { session: grant.session, account: grant.account?.connectionId ?? "", readable: gmailReadable(grant.account) }
 }
 
-/** The cache key of one list query or message under a grant, or null while the account is not readable. */
 export function mailReadKey(grant: MailReadGrant, keyPart: string): string | null {
   const read = grantReadOf(grant)
   return liveReadKey(read) ? JSON.stringify([read.session, grant.credential, read.account, keyPart]) : null
 }
 
-/** Whether a change of selection or grant drops both caches. */
 export function mailCacheDropped(prior: MailReadGrant, next: MailReadGrant, previousSelection: string, nextSelection: string): boolean {
   return droppedRead(grantReadOf(prior), grantReadOf(next), previousSelection, nextSelection) || prior.credential !== next.credential
 }
 
-/** A loaded folder list kept for a quick reopen. */
 export interface MailboxListSnapshot {
   readonly key: string
   readonly account: string
@@ -139,7 +128,6 @@ export interface MailboxListSnapshot {
   readonly shifted: boolean
 }
 
-/** One read message body and when it was read. */
 export interface MailBodyEntry {
   readonly key: string
   readonly account: string
@@ -147,7 +135,6 @@ export interface MailBodyEntry {
   readonly body: GmailReadResult
 }
 
-/** The list and body caches of one mailbox view, newest first and bounded. */
 export interface MailCaches {
   rememberList(row: MailboxListSnapshot): boolean!!
   list(key: string, now: number): (MailboxListSnapshot | undefined)!!
@@ -158,7 +145,6 @@ export interface MailCaches {
   clear(): void!!
 }
 
-/** Bounded list and body caches: eight lists, and sixteen bodies within four MiB, each evicting its oldest first. */
 export effect function mailCaches(): MailCaches!! {
   const lists = new Map<string, MailboxListSnapshot>()
   const bodies = new Map<string, MailBodyEntry>()
@@ -225,7 +211,6 @@ export effect function mailCaches(): MailCaches!! {
   }
 }
 
-/** The owner-bound mailbox document a host saves after a successful read. */
 export interface SavedMailbox {
   readonly version: 1
   readonly owner: string
@@ -265,10 +250,8 @@ const decodeSaved = Schema.decodeUnknownOption(Schema.fromJsonString(Saved))
 const decodeList = Schema.decodeUnknownOption(ListRow)
 const decodeBody = Schema.decodeUnknownOption(BodyRow)
 
-/** The fence a restore or save captured: view generation, cache epoch, client, session and owner. */
 export type MailRestoreFence = RestoreFence
 
-/** A saved mailbox restorable for the account the owner last chose, its rows checked one by one. */
 export interface RestoredMailbox {
   readonly accounts: readonly GmailAccount[]
   readonly selected: string
@@ -278,7 +261,6 @@ export interface RestoredMailbox {
   readonly bodies: readonly MailBodyEntry[]
 }
 
-/** Reads a saved mailbox document for its owner: the chosen readable account and only its rows that the current read key also matches. */
 export function readSavedMailbox(raw: string, owner: string, hint: string | null, readKeyMatches: (row: { readonly key: string }) => boolean): RestoredMailbox | null {
   const decoded = decodeSaved(raw)
   if (Option.isNone(decoded)) return null
@@ -299,10 +281,8 @@ export function readSavedMailbox(raw: string, owner: string, hint: string | null
   }
 }
 
-/** Home's metadata of one message: never a snippet, recipient or body. */
 export type InboxSummaryMessage = Pick<GmailMessage, "id" | "subject" | "from" | "unread">
 
-/** The newest fresh saved Inbox page of the chosen account, reduced to what a Home summary may show. */
 export function readSavedInboxSummary(raw: string, owner: string, hint: string | null, now: number) {
   const restored = readSavedMailbox(raw, owner, hint, () => true)
   if (restored === null) return null
@@ -318,12 +298,10 @@ export function readSavedInboxSummary(raw: string, owner: string, hint: string |
   }
 }
 
-/** Whether a disk restore captured under `captured` may still be applied to the view now fenced by `active`. */
 export function mailRestoreAllowed(captured: MailRestoreFence, active: MailRestoreFence, viewActive: boolean, revoked: boolean): boolean {
   return restoreAllowed(captured, active, viewActive, revoked)
 }
 
-/** What a save captured, and what is current when it would be written. */
 export interface MailSaveFacts {
   readonly selected: string
   readonly failedRead: boolean
@@ -333,26 +311,21 @@ export interface MailSaveFacts {
   readonly listAccount: string
 }
 
-/** Whether a save may be written: its epoch and selection are current and its list is the selected account's. */
 export function mailSaveAllowed(facts: MailSaveFacts): boolean {
   return saveAllowed(facts.selected, facts.failedRead, facts.capturedEpoch, facts.activeEpoch, facts.capturedSelection, facts.listAccount)
 }
 
-/** Whether the account list must be read again: always after a disk restore, and when the live list is a minute old. */
 export function accountsNeedDiscovery(accountsFromDisk: boolean, accountListAgeMs: number): boolean {
   return needsDiscovery(accountsFromDisk, accountListAgeMs)
 }
 
-/** A failure of the host's saved-mailbox storage. */
 export error MailStoreFailed { cause: unknown }
 
-/** Compare-and-exchange storage for the saved mailbox document. */
 export interface SavedMailboxStore {
   read(name: string): (string | undefined)!MailStoreFailed
   compareExchange(name: string, expected: string | undefined, next: string | undefined): ("saved" | "conflict")!MailStoreFailed
 }
 
-/** The storage name of the saved mailbox of one owner, organization and credential. */
 export effect function savedMailboxName(owner: string, organization: string, credential: string): string!! {
   return `inbox-mailbox:v1:${try sha256Hex(JSON.stringify([owner, organization, credential]))}`
 }
@@ -369,19 +342,16 @@ effect function exchange(store: SavedMailboxStore, name: string, next: string | 
   }
 }
 
-/** Saves the mailbox document under the cache epoch it was queued in, retrying a conflict at most twice while that epoch is current. */
 export effect function saveMailbox(store: SavedMailboxStore, name: string, saved: SavedMailbox, launchEpoch: number, currentEpoch: () => number): boolean!MailStoreFailed {
   if (saved.lists.length + saved.bodies.length > 24) return false
   return try exchange(store, name, JSON.stringify(saved), launchEpoch, currentEpoch)
 }
 
-/** Clears the saved mailbox; true only when the clear itself landed, which proves the document is gone. */
 export effect function clearMailbox(store: SavedMailboxStore, name: string, launchEpoch: number, currentEpoch: () => number): boolean!MailStoreFailed {
   const written = try exchange(store, name, undefined, launchEpoch, currentEpoch)
   return clearProvesDeletion(written ? 1 : 0, written)
 }
 
-/** What a Home surface may show about mail: counts, the account label and a time, never a subject, sender or body. */
 export interface InboxAttention {
   readonly state: "not-connected" | "loading" | "ready" | "error" | "stale"
   readonly unread: number | undefined
@@ -390,7 +360,6 @@ export interface InboxAttention {
   readonly updatedAt: string | null
 }
 
-/** Attention for loaded Inbox messages; `updatedAt` is never newer than the oldest data counted. */
 export function inboxAttentionFor(messages: readonly Pick<GmailMessage, "unread">[], more: boolean, source: string | null, updatedAt: string, state: "ready" | "stale" = "ready"): InboxAttention {
   return { state, unread: messages.filter((message) => message.unread).length, unreadMore: more, source, updatedAt }
 }

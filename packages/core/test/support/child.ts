@@ -48,7 +48,6 @@ export const coreDir = path.resolve(import.meta.dirname, "../..");
 
 const run = promisify(execFile);
 
-// Linux refuses any single argv string over MAX_ARG_STRLEN (32 pages, 128 KiB) with E2BIG.
 const INLINE_ARGUMENT_LIMIT = 64 * 1024;
 
 function nodeArguments(options: NodeRun, spill: () => string): string[] {
@@ -57,7 +56,6 @@ function nodeArguments(options: NodeRun, spill: () => string): string[] {
   if (options.script !== undefined && options.file === undefined) {
     const args = options.args ?? [];
     if (!args.some((arg) => arg.length > INLINE_ARGUMENT_LIMIT)) return ["--no-warnings", ...loader, "--input-type=module", "--eval", options.script, "--", ...args];
-    // Too large for argv: hand the arguments over in a file and restore process.argv before the script body runs.
     const file = path.join(spill(), "argv.json");
     writeFileSync(file, JSON.stringify(args));
     const restore = `import { readFileSync as readSpilledArguments } from "node:fs"; process.argv.splice(1, Infinity, ...JSON.parse(readSpilledArguments(process.argv[1], "utf8")));\n`;

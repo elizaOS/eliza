@@ -12,7 +12,6 @@ module browser {
 }
 import { permissionRequestId } from browser
 
-/** One location fix from the device. */
 export interface Position {
   readonly coordinate: Coordinate
   readonly accuracyMeters: number
@@ -22,21 +21,18 @@ export interface Position {
   readonly speedMetersPerSecond?: number
 }
 
-/** The host's permission and lifecycle boundary for the location watch; a controller never discovers a device. */
 export interface MapsLocation {
   awaitingPermission(): boolean
   start(oneShot: boolean, onFix: (position: Position) => void, onError: (error: MapsFailure) => void): void!MapsFailure
   stop(): void!MapsFailure
 }
 
-/** The phone's last known position as it travels with a message: degrees, an optional accuracy radius and when the fix was taken. */
 export const PhoneLocation = Schema.Struct({
   latitude: Coordinate.fields.latitude,
   longitude: Coordinate.fields.longitude,
   accuracyMeters: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1_000_000 }))),
   capturedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 })
-/** The phone's last known position as it travels with a message. */
 export type PhoneLocation = typeof PhoneLocation.Type
 
 const strict = { onExcessProperty: "error" } as const
@@ -44,7 +40,6 @@ const decodePhoneLocation = Schema.decodeUnknownOption(PhoneLocation, strict)
 const MessageLocation = Schema.Struct({ clientDevice: Schema.Struct({ context: Schema.Struct({ location: Schema.Unknown }) }) })
 const decodeMessageLocation = Schema.decodeUnknownOption(MessageLocation)
 
-/** A reported phone position, rounded to about a meter, or undefined when the value is not one. */
 export function phoneLocation(value: unknown): PhoneLocation | undefined {
   const read = decodePhoneLocation(value)
   if (read._tag === "None") return undefined
@@ -53,13 +48,11 @@ export function phoneLocation(value: unknown): PhoneLocation | undefined {
   return { ...fix, latitude: round(fix.latitude), longitude: round(fix.longitude), ...(accuracyMeters === undefined ? {} : { accuracyMeters: Math.round(accuracyMeters) }) }
 }
 
-/** The position the phone reported with the message whose metadata this is, or undefined. */
 export function messageLocation(metadata: unknown): PhoneLocation | undefined {
   const read = decodeMessageLocation(metadata)
   return read._tag === "Some" ? phoneLocation(read.value.clientDevice.context.location) : undefined
 }
 
-/** The reported position as a search point when it is recent enough to describe where the phone is now. */
 export function nearbyPoint(location: PhoneLocation | undefined, now: number): Coordinate | undefined {
   if (location === undefined) return undefined
   const usable = nearbyPositionUsable({
@@ -71,16 +64,13 @@ export function nearbyPoint(location: PhoneLocation | undefined, now: number): C
   return usable ? { latitude: location.latitude, longitude: location.longitude } : undefined
 }
 
-/** Why the native location bridge did not answer. */
 export error LocationBridgeFailed { operation: string }
 
-/** The platform's location permission and the precision it grants. */
 export interface LocationPermission {
   readonly location: "granted" | "denied" | "prompt"
   readonly accuracy?: "precise" | "approximate" | "none"
 }
 
-/** One fix as the native bridge reports it. */
 export interface NativeFix {
   readonly coords: {
     readonly latitude: number
@@ -92,7 +82,6 @@ export interface NativeFix {
   }
 }
 
-/** The host's native location plugin; each listener registration returns how to remove it. */
 export interface LocationBridge {
   checkPermissions(): LocationPermission!LocationBridgeFailed
   requestPermissions(requestId?: string): LocationPermission!LocationBridgeFailed
@@ -103,7 +92,6 @@ export interface LocationBridge {
   onError(listener: (error: { readonly code: string }) => void): (void!LocationBridgeFailed)!LocationBridgeFailed
 }
 
-/** What the location watch needs of its platform: whether it is native, whether location exists, and the page's visibility. */
 export interface LocationPlatform {
   isNative(): boolean
   available(): boolean
@@ -119,7 +107,6 @@ interface WatchSession {
   release?: () => void
 }
 
-/** One location watch per Maps controller: listeners attach before the high-accuracy watch, a retired attempt's late listener or watch is cleared, a grant received while hidden waits for the screen, and cleanup failures are reported. */
 export effect function nativeMapsLocation(bridge: LocationBridge, platform: LocationPlatform) {
   let session: WatchSession | undefined
   let admitting = false

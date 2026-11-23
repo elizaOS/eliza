@@ -3,7 +3,6 @@ import { filesClient, type ElizaFilesPlugin, type FileOutcomeRow, type FilesResu
 import { nativeAcknowledged, receiptOutcome, type FilesOp, type WriteResult } from "../../gen/os__android__files__storage.effect.vibe"
 import { filterMatches, filterTime, listing, type CategoryFolder, type FilesCategory, type FilesFilter, type Listing, type StorageVolume, type TrashEntry } from "./model.vibe"
 
-/** One row's answer; `unknown` is a row whose write may have happened and is never repeated on its own. */
 export type RowStatus = "copied" | "moved" | "unchanged" | "trashed" | "restored" | "changed" | "missing" | "invalid" | "failed" | "unknown"
 export type RowOutcome = { readonly path: string; readonly status: RowStatus; readonly to?: string }
 export type VolumeRefusal = "cancelled" | "denied" | "unavailable" | "invalid" | "exists" | "missing" | "failed" | "changed" | "superseded" | "unsupported" | "confirmation-required"
@@ -12,7 +11,6 @@ export type StorageAccess = { readonly access: "granted" | "denied" | "unsupport
 
 export error VolumeRefused { status: VolumeRefusal; message: string }
 
-/** One mounted volume of the owner's files, every change answered row by row. */
 export service FilesVolume {
   state(): StorageAccess!VolumeRefused
   requestAccess(settings: boolean): StorageAccess["access"]!VolumeRefused
@@ -34,7 +32,6 @@ export service FilesVolume {
 const WRITTEN: Readonly<Partial<Record<RowStatus, WriteResult>>> = { copied: "WriteCopied", moved: "WriteMoved", trashed: "WriteMoved", restored: "WriteMoved" }
 const OPS: Readonly<Partial<Record<RowStatus, FilesOp>>> = { copied: "Copy", moved: "Move", trashed: "Trash", restored: "Move" }
 
-/** One outcome per requested path in request order: a row the device did not answer is unknown, and an applied row without its receipt failed. */
 export function settleRows(requested: readonly string[], rows: readonly { readonly path: string; readonly status: string; readonly to?: string }[] | undefined): RowOutcome[] {
   return requested.map((path) => {
     const row = rows?.find((candidate) => candidate.path === path)
@@ -83,7 +80,6 @@ function filterQuery(filter: FilesFilter) {
   }
 }
 
-/** The owner's shared storage through the device's files bridge. */
 export function nativeVolume(plugin: ElizaFilesPlugin = filesClient()) {
   return Layer.succeed(FilesVolume, {
     effect state() {

@@ -5,7 +5,6 @@ const NonBlank = Schema.String.check(Schema.isPattern(/\S/))
 const NullableNonBlank = Schema.NullOr(NonBlank)
 const Instant = sampledWireInstant(NonBlank.check(Schema.makeFilter((value) => Number.isFinite(Date.parse(value)))))
 
-/** One calendar the Cloud's managed Google connection lists. */
 export const ManagedGoogleCalendar = Schema.Struct({
   calendarId: NonBlank,
   summary: NonBlank,
@@ -18,7 +17,6 @@ export const ManagedGoogleCalendar = Schema.Struct({
   selected: Schema.Boolean,
 })
 
-/** One attendee of a managed Google event. */
 export const ManagedGoogleAttendee = Schema.Struct({
   email: NullableNonBlank,
   displayName: NullableNonBlank,
@@ -28,7 +26,6 @@ export const ManagedGoogleAttendee = Schema.Struct({
   optional: Schema.Boolean,
 })
 
-/** One event of a managed Google calendar feed. */
 export const ManagedGoogleEvent = Schema.Struct({
   externalId: NonBlank,
   calendarId: NonBlank,
@@ -47,7 +44,6 @@ export const ManagedGoogleEvent = Schema.Struct({
   attendees: Schema.Array(ManagedGoogleAttendee),
 })
 
-/** One complete page of a managed Google calendar feed. */
 export const ManagedGoogleFeed = Schema.Struct({
   calendarId: NonBlank,
   events: Schema.Array(ManagedGoogleEvent),
@@ -56,33 +52,27 @@ export const ManagedGoogleFeed = Schema.Struct({
   truncated: Schema.optionalKey(Schema.Literal(false)),
 })
 
-/** A listed managed Google calendar. */
 export type ManagedGoogleCalendar = typeof ManagedGoogleCalendar.Type
 
-/** A managed Google event as the Cloud sends it. */
 export type ManagedGoogleEvent = typeof ManagedGoogleEvent.Type
 
-/** One managed Google calendar's events in a window. */
 export interface ManagedGoogleCalendarFeed {
   readonly calendarId: string
   readonly events: readonly ManagedGoogleEvent[]
   readonly syncedAt: string
 }
 
-/** A Cloud managed Calendar reply that is not the shape it must have. */
 export error ManagedGoogleWireInvalid
 
 const decodeCalendars = Schema.decodeUnknownEffect(Schema.Array(ManagedGoogleCalendar))
 const decodeFeed = Schema.decodeUnknownEffect(ManagedGoogleFeed)
 
-/** The calendars of a Cloud managed Google listing, each listed once. */
 export effect function parseManagedGoogleCalendars(data: unknown): readonly ManagedGoogleCalendar[]!ManagedGoogleWireInvalid {
   const calendars = decodeCalendars(data) catch effect () => { throw new ManagedGoogleWireInvalid() }
   if (new Set(calendars.map((calendar) => calendar.calendarId)).size !== calendars.length) throw new ManagedGoogleWireInvalid()
   return calendars
 }
 
-/** The complete feed of exactly one requested managed Google calendar, each event listed once and never ending before it starts. */
 export effect function parseManagedGoogleCalendarFeed(value: unknown, calendarId: string): ManagedGoogleCalendarFeed!ManagedGoogleWireInvalid {
   const feed = decodeFeed(value) catch effect () => { throw new ManagedGoogleWireInvalid() }
   const exact = feed.calendarId === calendarId

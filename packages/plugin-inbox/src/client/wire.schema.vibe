@@ -3,7 +3,6 @@ const Text = Schema.String
 const Texts = Schema.Array(Schema.String)
 const Kind = Schema.Literals(["send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"])
 
-/** One owner Google connection as Cloud's status and accounts routes answer it. */
 export const ConnectionWire = Schema.Struct({
   configured: Schema.Boolean,
   connected: Schema.Boolean,
@@ -13,21 +12,17 @@ export const ConnectionWire = Schema.Struct({
   connectionId: Schema.NullOr(Text),
 })
 
-/** The owner's connections. */
 export const AccountsWire = Schema.Array(ConnectionWire)
 
-/** One listed message as Cloud renders it. */
 export const MailCardWire = Schema.Struct({
   id: Text, threadId: Text, subject: Text, from: Text, to: Texts, cc: Texts, snippet: Text, receivedAt: Text,
   labels: Texts, isUnread: Schema.Boolean, metadata: Schema.Struct({ historyId: Schema.NullOr(Text) }),
 })
 
-/** One search page. */
 export const SearchWire = Schema.Struct({
   messages: Schema.Array(MailCardWire), nextPageToken: Schema.NullOr(Text), syncedAt: Text, mailboxHistoryId: Text, supportsSpamTrash: Schema.Boolean,
 })
 
-/** One attachment descriptor of a read message. */
 export const AttachmentDescriptorWire = Schema.Struct({ partId: Text, name: Text, mimeType: Text, size: Schema.Number, supported: Schema.Boolean })
 
 const messageFields = {
@@ -39,41 +34,34 @@ const messageFields = {
   authenticationResults: Schema.optionalKey(Schema.NullOr(Text)),
 }
 
-/** One message read whole. */
 export const MessageWire = Schema.Struct(messageFields)
 
-/** One bounded thread page. */
 export const ThreadWire = Schema.Struct({
   version: Schema.Literal(1), threadId: Text, historyId: Text, total: Schema.Number, offset: Schema.Number, nextOffset: Schema.NullOr(Schema.Number),
   messages: Schema.Array(Schema.Struct({ ...messageFields, historyId: Schema.NullOr(Text) })),
 })
 
-/** The operation kinds and attachment policy Cloud allows for a grant. */
 export const CapabilitiesWire = Schema.Struct({
   version: Schema.Literal(1), from: Text, kinds: Schema.Array(Kind),
   attachmentPolicy: Schema.Struct({ mimeTypes: Texts, maxBytes: Schema.Number }),
 })
 
-/** One attachment's bytes at the history it was read. */
 export const AttachmentWire = Schema.Struct({
   version: Schema.Literal(1), messageId: Text, partId: Text, historyId: Text, name: Text, mimeType: Text,
   size: Schema.Number, dataBase64: Text, sha256: Text, supported: Schema.Boolean,
 })
 
-/** One page of provider drafts, metadata only. */
 export const DraftsWire = Schema.Struct({
   version: Schema.Literal(1),
   drafts: Schema.Array(Schema.Struct({ draftId: Text, messageId: Text, subject: Text, to: Texts, snippet: Text, updatedAt: Schema.NullOr(Text) })),
   nextPageToken: Schema.NullOr(Text),
 })
 
-/** One provider draft's content and raw-MIME digest. */
 export const DraftWire = Schema.Struct({
   version: Schema.Literal(1), id: Text, messageId: Text, providerDigest: Text,
   content: Schema.Struct({ to: Texts, cc: Texts, bcc: Texts, subject: Text, bodyText: Text, plainText: Schema.Boolean, threaded: Schema.Boolean, attachmentCount: Schema.Number }),
 })
 
-/** One reviewed operation's receipt as it stands. */
 export const ReceiptWire = Schema.Struct({
   requestId: Text, kind: Kind, reviewDigest: Text,
   state: Schema.Literals(["prepared", "dispatched", "succeeded", "rejected", "outcome-unknown"]),
@@ -81,13 +69,10 @@ export const ReceiptWire = Schema.Struct({
   rejectionCode: Schema.NullOr(Text),
 })
 
-/** Every answer of the operation routes. */
 export const OperationWire = Schema.Struct({
   version: Schema.Literal(1), receipt: ReceiptWire, review: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)), providerExactlyOnce: Schema.Literal(false),
 })
 
-/** The consent start of a connect. */
 export const ConnectWire = Schema.Struct({ authUrl: Text })
 
-/** A disconnect Cloud applied. */
 export const DisconnectWire = Schema.Struct({ ok: Schema.Literal(true) })

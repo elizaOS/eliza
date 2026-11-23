@@ -10,14 +10,12 @@ import { eventVersion } from "./providers.vibe"
 import type { CalendarRoute, CalendarRouteInput, CalendarRouteReply } from "./routes.vibe"
 import { cacheKeyValueStore, type CalendarCache } from "./runtime-store.vibe"
 
-/** What the linked-control routes need from the running plugin: its calendar host, the agent's durable cache and the agent. */
 export interface LinkedRouteContext {
   readonly host: CalendarHost
   readonly cache: CalendarCache
   readonly agentId: string
 }
 
-/** The resident sync worker the routes hand a resumed or recovered destination to; without one, recovery stays unresolved. */
 export interface LinkedSyncWorker {
   readonly bootstrap?: (destination: LinkedCalendarDestination) => Promise<void>
   readonly recoverDispatch?: (linkId: string, destination: LinkedCalendarDestination, dispatchedAt: string | null) =>
@@ -98,7 +96,6 @@ effect function storageOver(cache: CalendarCache) {
   return storage
 }
 
-/** The owner routes for linked sync: read and change the sync control, choose its destination, and link, disconnect or rebind events. */
 export function linkedCalendarRoutes(context: () => Promise<LinkedRouteContext | undefined>, worker: LinkedSyncWorker = {}): readonly CalendarRoute[] {
   const controls = new WeakMap<CalendarHost, Promise<Effect.Success<ReturnType<typeof linkedCalendarControl>>>>()
 

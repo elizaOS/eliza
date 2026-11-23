@@ -3,7 +3,6 @@ import { digestOf } from "./digest.vibe"
 import type { OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import type { Evidence, FamilySchemas, OperationSchema, ReceiptContext, WireOperation } from "./family.vibe"
 
-/** The digest a SIM send receipt carries: the SHA-256 of the operation fields it was asked to send, in wire order. */
 export function bindingHash(operation: object): string | undefined {
   return digestOf(operation)
 }
@@ -203,10 +202,8 @@ const LatestSender = Schema.Union([
   Schema.Struct({ ...senderKind, status: Schema.Literals(["empty", "sender-unavailable", "unavailable"]) })
 ])
 
-/** A latest-sender result as the device reports it: the number's last four digits, the whole address with its thread, or why there is none. */
 export type LatestSenderResult = typeof LatestSender.Type
 
-/** Decodes an untrusted latest-sender result, or `undefined` when it is not one. */
 export const readLatestSender = Schema.decodeUnknownOption(LatestSender, { onExcessProperty: "error" })
 
 function senderEvidence(result: typeof LatestSender.Type, operation: typeof SmsLatestSender.Type): Evidence | undefined {

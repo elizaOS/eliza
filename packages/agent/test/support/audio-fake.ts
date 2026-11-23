@@ -83,12 +83,18 @@ export class FakeAudioContext implements CaptureContext<FakeMicrophone> {
     }
   }
 
-  async resume(): Promise<void> {
-    this.resumed = true
+  resume(): Promise<void> {
+    return new Promise((resolve) => {
+      this.resumed = true
+      resolve()
+    })
   }
 
-  async close(): Promise<void> {
-    this.closed = true
+  close(): Promise<void> {
+    return new Promise((resolve) => {
+      this.closed = true
+      resolve()
+    })
   }
 }
 
@@ -145,14 +151,14 @@ export function fakeClipAudio(duration: number, decoded: () => void = () => unde
   const rendered: number[] = []
   return {
     rendered,
-    decode: async () => {
+    decode: () => new Promise((resolve) => {
       decoded()
-      return { duration }
-    },
-    render: async (_clip, length) => {
+      resolve({ duration })
+    }),
+    render: (_clip, length) => new Promise((resolve) => {
       rendered.push(length)
-      return new Float32Array(length)
-    },
+      resolve(new Float32Array(length))
+    }),
   }
 }
 

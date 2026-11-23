@@ -6,20 +6,17 @@ import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { eventVersion } from "./providers.vibe"
 import type { CalendarChangeResult, CalendarHost } from "./host.vibe"
 
-/** What the agent's route table hands a calendar route. */
 export interface CalendarRouteInput {
   readonly parameters: ReadonlyMap<string, string>
   readonly query: ReadonlyMap<string, string>
   readonly body: unknown
 }
 
-/** A route reply: a status and a JSON body. */
 export interface CalendarRouteReply {
   readonly status: number
   readonly body: object
 }
 
-/** One calendar route as the agent's local route table admits it. */
 export interface CalendarRoute {
   readonly method: "GET" | "POST" | "PATCH" | "DELETE"
   readonly path: string
@@ -82,7 +79,6 @@ function hostZone(): string {
   }
 }
 
-/** The calendar routes the agent serves its owner's client, over the host the plugin started. */
 export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): readonly CalendarRoute[] {
   async function withHost(run: (calendar: CalendarHost) => Promise<CalendarRouteReply>): Promise<CalendarRouteReply> {
     const calendar = await host()

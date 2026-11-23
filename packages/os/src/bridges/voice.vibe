@@ -102,7 +102,7 @@ function unavailable(event: { readonly code?: unknown; readonly data?: unknown }
   })
 }
 
-function settleAudio(utterances: Map<string, PendingUtterance>, type: "audio-start" | "audio-end", utteranceId: string) {
+function settleAudio(utterances: Map<string, PendingUtterance>, type: "audio-start" | "audio-end", utteranceId: string): void {
   const pending = utterances.get(utteranceId)
   if (!pending) return
   if (type === "audio-start") {

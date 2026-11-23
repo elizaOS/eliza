@@ -1,11 +1,7 @@
 // spec/workflow/generated.md, "Activation needs a passing check and a review of the current source digest"; spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity"
-/** The largest generated workflow source the compiler checks. */
 export const GENERATED_SOURCE_MAX_BYTES = 65_536
-/** The engine revision every generated workflow check names, beside the TypeScript version. */
 export const GENERATED_ENGINE_REVISION = "generated-workflow-engine-2"
-/** The context methods generated code may call, each with a literal or computed id first. */
 export const GENERATED_CONTEXT_METHODS: readonly string[] = ["step", "generate", "approval", "signal", "sleep"]
-/** The declarations generated code is checked against; the only module it may import, and only for types. */
 export const GENERATED_ENGINE_DECLARATION = `declare module "eliza-workflow" {
   export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
   export interface ApprovalRequest { title: string; summary: string; operation: string; target: string; account: string }
@@ -23,13 +19,11 @@ export const GENERATED_ENGINE_DECLARATION = `declare module "eliza-workflow" {
 `
 
 
-/** The staged TypeScript compiler could not be loaded or did not answer. */
 export error CompilerUnavailable { reason: string }
 
 module node {
-  /** One context call the checker found, for the owner's review. */
+  import type { CompilerOptions, Node } from "typescript"
   export interface GeneratedCall { readonly id: string; readonly method: string }
-  /** The compiler's verdict on one generated source. */
   export interface GeneratedCheck {
     readonly ok: boolean
     readonly diagnostics: readonly string[]
@@ -55,7 +49,7 @@ module node {
     const calls: GeneratedCall[] = []
     if (/@ts-(?:ignore|expect-error|nocheck|check)\b/i.test(source)) rejected.push("TypeScript suppression and directive comments are not supported")
     if (parsed.referencedFiles.length > 0 || parsed.typeReferenceDirectives.length > 0 || parsed.libReferenceDirectives.length > 0 || parsed.hasNoDefaultLib) rejected.push("Source reference directives are not supported")
-    const visit = (node: import("typescript").Node): void => {
+    const visit = (node: Node): void => {
       if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier !== undefined) {
         const typeOnly = ts.isImportDeclaration(node) ? node.importClause?.isTypeOnly === true : node.isTypeOnly
         if (!ts.isStringLiteral(node.moduleSpecifier) || node.moduleSpecifier.text !== "eliza-workflow" || !typeOnly) rejected.push("Only type imports from eliza-workflow are supported")
@@ -75,7 +69,7 @@ module node {
     }
     visit(parsed)
     if (rejected.length > 0) return refuse(rejected)
-    const options: import("typescript").CompilerOptions = {
+    const options: CompilerOptions = {
       target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, strict: true, noEmit: true,
       skipLibCheck: true, types: [], lib: ["lib.es2022.d.ts"], noImplicitAny: true, exactOptionalPropertyTypes: false,
     }
@@ -106,7 +100,6 @@ module node {
 import { check, type GeneratedCheck } from node
 export type { GeneratedCall, GeneratedCheck } from node
 
-/** Checks generated workflow source with the staged TypeScript compiler and compiles it to a self-contained module; it never runs the draft. */
 export effect function checkGeneratedSource(source: string): GeneratedCheck!CompilerUnavailable {
   return try tryPromise({
     try: () => check(source, GENERATED_ENGINE_DECLARATION, GENERATED_CONTEXT_METHODS, GENERATED_ENGINE_REVISION, GENERATED_SOURCE_MAX_BYTES),

@@ -1,6 +1,7 @@
 // spec/calendar/linkedReconcile.md, "A push retains its operation and uses the exact provider preconditions"; spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"
 import { sampledWireInstant } from "../availability/availability.schema.vibe"
 
+// eslint-disable-next-line no-control-regex -- Wire identifiers exclude C0 controls and DEL in the schema pattern.
 const plain = /^[^\u0000-\u001f\u007f]+$/
 const Text = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max), Schema.isPattern(plain))
 const InstantWire = Schema.String.check(Schema.isMaxLength(64), Schema.makeFilter((value) => Number.isFinite(Date.parse(value))))
@@ -8,10 +9,8 @@ const Instant = sampledWireInstant(InstantWire)
 const TimedInstant = sampledWireInstant(InstantWire.check(Schema.isPattern(/(Z|[+-]\d{2}:\d{2})$/)), { allowDateOnly: false })
 const CivilDate = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
 
-/** One attendee as the sync protocol carries it. */
 export const SemanticAttendee = Schema.Struct({ email: Text(320), optional: Schema.Boolean })
 
-/** The fields two-way sync compares and writes: body, times, attendees and recurrence. */
 export const SemanticEvent = Schema.Struct({
   title: Schema.String.check(Schema.isMaxLength(4000)),
   description: Schema.String,
@@ -46,14 +45,12 @@ const AllDayEvent = Schema.Struct({
   timeZone: Schema.Null,
 })
 
-/** A provider event as the Cloud sync protocol returns it, before its interval and zone are checked. */
 export const ProviderEventWire = Schema.Struct({
   eventId: Text(1024),
   etag: Text(1024),
   event: Schema.Union([TimedEvent, AllDayEvent]),
 })
 
-/** The capabilities the Cloud reports for one selected Google calendar. */
 export const SyncCapabilities = Schema.Struct({
   version: Schema.Literal(1),
   calendarId: Text(1024),
@@ -67,21 +64,18 @@ export const SyncCapabilities = Schema.Struct({
   calendarLabel: Schema.optionalKey(Schema.String),
 })
 
-/** The envelope every sync protocol response carries. */
 export const SyncEnvelope = Schema.Struct({
   version: Schema.Literal(1),
   calendarId: Text(1024),
   providerExactlyOnce: Schema.Literal(false),
 })
 
-/** A provider refusal the Cloud reports with a definite outcome. */
 export const SyncRefusal = Schema.Struct({
   code: Schema.String.check(Schema.isPattern(/^CALENDAR_SYNC_/)),
   outcome: Schema.Literals(["not_accepted", "precondition_failed"]),
   error: Schema.optionalKey(Schema.String),
 })
 
-/** The owner, connection, calendar, agent and local source a sync is bound to. */
 export const SyncBinding = Schema.Struct({
   environment: Schema.Literals(["production", "staging"]),
   userId: Text(1024),
@@ -97,7 +91,6 @@ export const SyncBinding = Schema.Struct({
 const LinkState = Schema.Literals(["clean", "dirty", "conflicted", "quarantined", "paused", "local_only"])
 const Nullable = (max: number) => Schema.NullOr(Text(max))
 
-/** One durable link between a resident event and its provider copy. */
 export const LinkRecord = Schema.Struct({
   id: Text(1024),
   agentId: Text(1024),
@@ -117,14 +110,12 @@ export const LinkRecord = Schema.Struct({
   updatedAt: Instant,
 })
 
-/** The whole link document kept under one owner scope. */
 export const LinkDocument = Schema.Struct({
   version: Schema.Literal(1),
   owner: Text(128),
   links: Schema.Array(LinkRecord).check(Schema.isMaxLength(2000)),
 })
 
-/** The owner's saved sync opt-in for one reviewed binding. */
 export const SyncSettings = Schema.Struct({
   version: Schema.Literal(1),
   scope: Schema.String,
