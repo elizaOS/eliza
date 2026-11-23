@@ -3848,13 +3848,28 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
         .replace(/^const TOOL_TIMEOUT = .*;$/m, "const TOOL_TIMEOUT = 500;")
         .replace(/^const WATCH = .*;$/m, "const WATCH = 100;"),
       "inherited-output.mjs": `import { spawn } from "node:child_process";
-const helper = spawn(process.execPath, ["-e", "setTimeout(() => {}, 4000)"], { stdio: ["ignore", process.stdout, "ignore"] });
-helper.once("spawn", () => process.exit(0));
+import fs from "node:fs";
+const mode = process.argv[2];
+const helper = spawn(process.execPath, ["-e", 'setTimeout(() => require("node:fs").writeFileSync(process.argv[1], "done"), 12000)', "finished-" + mode], {
+  stdio: ["ignore", process.stdout, process.stderr], detached: mode === "detached",
+});
+helper.once("spawn", () => { fs.writeFileSync("helper-" + mode, String(helper.pid)); process.exit(0); });
 `,
       "watchdog-check.mjs": `import assert from "node:assert/strict";
+import fs from "node:fs";
 import { exec } from "./short-watchdog.ts";
-const result = await exec(process.execPath, ["inherited-output.mjs"], import.meta.dirname);
-assert.ok(result.stopped, "the watchdog stopped the helper that kept stdout open");
+await Promise.all(["same-group", "detached"].map(async mode => {
+  try {
+    const result = await exec(process.execPath, ["inherited-output.mjs", mode], import.meta.dirname);
+    assert.ok(fs.existsSync("helper-" + mode), "the writer started");
+    assert.ok(result.stopped, "the watchdog ended the command");
+    assert.ok(!fs.existsSync("finished-" + mode), "the command returned while its inherited pipe was still held");
+  } finally {
+    if (fs.existsSync("helper-" + mode) && !fs.existsSync("finished-" + mode)) {
+      try { process.kill(Number(fs.readFileSync("helper-" + mode)), "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+    }
+  }
+}));
 `,
       "tool.mjs": 'import { spawn } from "node:child_process";\nimport fs from "node:fs";\nconst started = [false, true].map((detached) => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached }).pid);\nfs.writeFileSync(process.argv[2], `${process.pid} ${started.join(" ")} `);\nsetInterval(() => {}, 1000);\nconst flood = () => { while (process.stdout.write("x".repeat(1 << 20))); process.stdout.once("drain", flood); };\nif (process.argv[3]) flood();\n',
       "check.mjs": `import { exec } from ${JSON.stringify(path.join(project, "vibestack/run.ts"))};\nvoid exec(process.execPath, ["tool.mjs", process.argv[2]], import.meta.dirname);\nprocess.stdin.once("data", () => process.exit(3));\n`,

@@ -254,7 +254,12 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
       endsWithTheCheck(child, "SIGTERM");
       const output = { stdout: "", stderr: "" };
       let stopped: string | undefined;
-      const stop = (why: string, table = processes()) => { stopped ??= `${name} ${why} and was stopped`; signal(child, "SIGKILL", table); };
+      const stop = (why: string, table = processes()) => {
+        stopped ??= `${name} ${why} and was stopped`;
+        signal(child, "SIGKILL", table);
+        child.stdout.destroy();
+        child.stderr.destroy();
+      };
       const minutes = TOOL_TIMEOUT / 60_000;
       let lastComplete: { seconds: number; since: number } | undefined;
       let observedAt = started;
