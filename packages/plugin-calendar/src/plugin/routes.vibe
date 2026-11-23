@@ -1,4 +1,5 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
+import { cancellationRoute } from "../../gen/calendar__actions.effect.vibe"
 import type { CalendarEvent } from "../model.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
@@ -40,6 +41,8 @@ const UpdateBody = Schema.Struct({
   timeZone: Schema.optionalKey(Schema.String), calendarId: Schema.optionalKey(Schema.String), recurrenceScope: Schema.optionalKey(WriteScopeRecord),
   expectedProviderVersion: Key, idempotencyKey: Key,
 })
+const cancellationModes = { organizer_cancel: "OrganizerCancel", decline_invitation: "DeclineInvitation", remove_private_copy: "RemovePrivateCopy" } as const
+const decodeCancellation = Schema.decodeUnknownOption(Schema.Literals(["organizer_cancel", "decline_invitation", "remove_private_copy"]))
 const decodeScope = Schema.decodeUnknownOption(WriteScopeRecord)
 const decodeCreate = Schema.decodeUnknownOption(CreateBody)
 const decodeUpdate = Schema.decodeUnknownOption(UpdateBody)
@@ -142,7 +145,7 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return refused(400, "CALENDAR_FIELDS_INVALID", "The event needs a title and a start before its end.")
         const source = await runPromise(calendar.writeTarget(request.calendarId))
         if (source === undefined) return refused(403, "CALENDAR_NOT_WRITABLE", "There is no calendar this account can write.")
-        return changed(await runPromise(Effect.option(calendar.change({ kind: "create", source, fields: fields.value, recurrence: request.recurrence ?? null, askedBy: "owner", askId: request.idempotencyKey }))))
+        return changed(await runPromise(Effect.option(calendar.change({ kind: "create", source, fields: fields.value, recurrence: request.recurrence ?? null, reviewAsked: false, askedBy: "owner", askId: request.idempotencyKey }))))
       }) },
     { method: "PATCH", path: `${base}/events/{eventId}`, maxBodyBytes: 65_536,
       handler: (input) => withHost(async (calendar) => {
@@ -164,9 +167,14 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
       handler: (input) => withHost(async (calendar) => {
         const expected = input.query.get("expectedProviderVersion") ?? ""
         const key = input.query.get("idempotencyKey") ?? ""
-        if (expected === "" || key.trim() === "" || !input.query.has("cancellationMode")) {
+        const mode = decodeCancellation(input.query.get("cancellationMode"))
+        if (expected === "" || key.trim() === "" || Option.isNone(mode)) {
           return refused(400, "CALENDAR_REQUEST_INVALID", "A deletion needs expectedProviderVersion, an idempotency key and a cancellation mode.")
         }
+        if (cancellationRoute(cancellationModes[mode.value]) === "RefuseUnsupported") {
+          return refused(501, "CALENDAR_RESPONSE_UNSUPPORTED", "Declining an invitation is not supported yet, so the event was kept.")
+        }
+
         const scope = input.query.has("recurrenceScope") ? decodeScope(input.query.get("recurrenceScope")) : Option.some("instance" as const)
         if (Option.isNone(scope)) return refused(400, "CALENDAR_SCOPE_INVALID", "The recurrence scope is instance, this_and_following or series.")
         const found = await target(calendar, input, input.query.get("calendarId"), expected)
