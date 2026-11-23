@@ -388,6 +388,9 @@ typechecks reusable before and after installation. Turbo passes `QUINT_HOME`
 to tasks so they use the selected evaluator. Its bytes determine the fingerprint.
 In CI, a Turborepo cache entry is
 kept for seven days after its last hit, which the run summary names.
+Fixture jobs restore their pull request’s Turbo archive before the shared fallback.
+A full replay keeps that archive when its cached files stay unchanged and none
+need pruning. Turbo refreshes its checkout-specific restore manifests locally.
 
 The shared Dafny library is a direct input of the tool package build and the
 Studio tests that run proofs. An edit to that library leaves the application
