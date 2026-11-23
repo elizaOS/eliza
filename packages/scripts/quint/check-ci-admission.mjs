@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { parse } from "yaml";
 import { parseJunitSummary } from "../lib/junit-summary.ts";
+import { quintShardForFile } from "../lib/quint-shards.ts";
 import { testOutputPath } from "../lib/test-output.ts";
 import { validateWorkflowTriggerPolicy } from "../workflow-trigger-policy.ts";
 
@@ -391,6 +392,44 @@ for (const invalid of [
 const output = testOutputPath("quint-ci-admission");
 await mkdir(output, { recursive: true });
 const directory = await mkdtemp(path.join(output, "run-"));
+const acceptanceModel = "packages/benchmarks/quint/AcceptanceGroupSignal.qnt";
+const acceptanceShard = quintShardForFile(acceptanceModel, 4);
+const benchmarkAction = parse(
+  await readFile(
+    path.join(root, ".github/actions/setup-benchmark-quint-python/action.yml"),
+    "utf8",
+  ),
+);
+const benchmarkSelection = benchmarkAction.runs.steps.find(
+  (step) => step.id === "selection",
+);
+assert.ok(benchmarkSelection, "Missing benchmark prerequisite selector");
+const benchmarkSelectionPath = path.join(directory, "benchmark-pytest.txt");
+const benchmarkSelectionResult = spawnSync(
+  "bash",
+  ["-e", "-o", "pipefail", "-c", benchmarkSelection.run],
+  {
+    cwd: root,
+    env: {
+      ...process.env,
+      QUINT_SHARD: String(acceptanceShard),
+      GITHUB_OUTPUT: benchmarkSelectionPath,
+    },
+    encoding: "utf8",
+    timeout: 10_000,
+  },
+);
+if (benchmarkSelectionResult.error) throw benchmarkSelectionResult.error;
+assert.equal(
+  benchmarkSelectionResult.status,
+  0,
+  benchmarkSelectionResult.stderr,
+);
+assert.equal(
+  (await readFile(benchmarkSelectionPath, "utf8")).trim(),
+  "needed=true",
+  `Shard ${acceptanceShard} must prepare pytest for ${acceptanceModel}`,
+);
 const results = [];
 const outcomes = ["success", "failure", "cancelled", "skipped", "running"];
 for (const promoted of ["true", "false"]) {
