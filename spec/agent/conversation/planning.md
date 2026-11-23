@@ -88,12 +88,15 @@ parameter the action never registered is dropped, and the action's handler
 still checks its arguments against everything its registered form allows.
 
 ```quint
-pure def turnNarrowed(registered: Set[str], narrowed: Set[str]): Set[str] = registered.intersect(narrowed)
-pure val narrowedValues = Set(Set(), Set("operation"), Set("operation", "extra"))
-pure def lawATurnNarrowsOnlyRegisteredParameters(registered: Set[str], narrowed: Set[str]): bool =
-  turnNarrowed(registered, narrowed).subseteq(registered)
-pure def lawEveryRegisteredParameterTheTurnNamesIsNarrowed(registered: Set[str], narrowed: Set[str]): bool =
-  registered.forall(p => narrowed.contains(p) implies turnNarrowed(registered, narrowed).contains(p))
+pure def turnNarrowed(params: Set[str], narrowed: Set[str]): Set[str] = params.intersect(narrowed)
+pure val paramsValues = Set(Set(), Set("operation"), Set("operation", "reason"))
+pure val narrowedValues = Set(Set(), Set("operation"), Set("operation", "extra"), Set("extra"))
+pure def lawANarrowedSchemaForAnUnregisteredParameterIsDropped(params: Set[str], narrowed: Set[str]): bool =
+  narrowed.forall(p => not(params.contains(p)) implies not(turnNarrowed(params, narrowed).contains(p)))
+pure def lawARegisteredParameterTheTurnNamesIsNarrowed(params: Set[str], narrowed: Set[str]): bool =
+  params.forall(p => narrowed.contains(p) implies turnNarrowed(params, narrowed).contains(p))
+pure def lawAParameterTheTurnDoesNotNameKeepsItsRegisteredSchema(params: Set[str], narrowed: Set[str]): bool =
+  params.forall(p => not(narrowed.contains(p)) implies not(turnNarrowed(params, narrowed).contains(p)))
 ```
 
 ### The model reads what was said in the conversation, in a window taken once for the whole turn

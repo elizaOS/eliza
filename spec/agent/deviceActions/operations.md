@@ -162,7 +162,9 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
 }
 pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: Set() }), Negotiated({ capabilities: Set(ClockHandoffV1) }),
   Negotiated({ capabilities: Set(ClockHandoffV1, ClockHandoffV2) }), Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV1, NotesLocalRecordV1) }),
-  Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV2, CalendarAgendaReadV1, NotesQueryV1, NotesLocalRecordV1) }))
+  Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV2, CalendarAgendaReadV1, NotesQueryV1, NotesLocalRecordV1) }),
+  Negotiated({ capabilities: Set(BrowserTabsV1, BrowserTabsCloseAllV1, BrowserOpenNewTabV1, FilesBrowserV1, FilesShownTargetV1) }),
+  Negotiated({ capabilities: Set(BrowserTabsV1, FilesBrowserV1) }))
 pure def clockOnly(neg: Negotiation): bool = allCapabilities.forall(c => negotiatedHas(neg, c) implies (c == ClockHandoffV1 or c == ClockHandoffV2))
 pure def recordingAlone(neg: Negotiation): bool = negotiatedHas(neg, NotesRecordV1)
 pure def lawRecordingRunsUnderItsOwnCapabilityAlone(t: OperationType): bool =
@@ -295,17 +297,23 @@ pure def lawNothingThatSendsSharesOrDeletesRunsDirectly(prop: Proposal, boundToC
 When the launch carries `hostContextRevision`, an offered read of the
 owner's calendar, reminders, notes, Maps selection, open Messages thread,
 voicemail or latest SMS sender opens a [read completion](./index.md): its
-applied result answers the message that asked for it. No edit, send or
-presentation does, and neither does a workflow read, which answers its
-workflow.
+applied result answers the message that asked for it. The calendar range
+read completes only as the standalone agenda read of the owner's message
+or a proposal with no binding. No edit, send or presentation does, and
+neither does any read a workflow bound, which answers its workflow.
 
 ```quint
-pure def completableRead(t: OperationType): bool =
-  t == CalendarNamedRead or t == CalendarAvailability or t == NotesQuery or t == NotesReadSelected or t == ReadCalendarRange
-  or t == CalendarReadSelected or t == CalendarReadNext or t == ReminderReadSelected or t == MapsReadSelected
-  or t == MessagesReadSelected or t == SmsLatestSender or t == VoicemailReadSelected
-pure def lawACompletableReadCarriesAResult(t: OperationType): bool = completableRead(t) implies evidenceOf(t) != NoResultEver
-pure def lawACompletableReadChangesNothing(t: OperationType): bool = completableRead(t) implies not(sendsSharesOrDeletes(t))
+pure def completableRead(t: OperationType, binding: ReadBinding): bool =
+  binding != WorkflowBinding and (
+    t == CalendarNamedRead or t == CalendarAvailability or t == NotesQuery or t == NotesReadSelected or t == ReadCalendarRange
+    or t == CalendarReadSelected or t == CalendarReadNext or t == ReminderReadSelected or t == MapsReadSelected
+    or t == MessagesReadSelected or t == SmsLatestSender or t == VoicemailReadSelected)
+pure val bindingValues = Set(NoBinding, WorkflowBinding, AgendaBinding)
+pure def lawACompletableReadCarriesAResult(t: OperationType, binding: ReadBinding): bool = completableRead(t, binding) implies evidenceOf(t) != NoResultEver
+pure def lawACompletableReadChangesNothing(t: OperationType, binding: ReadBinding): bool = completableRead(t, binding) implies not(sendsSharesOrDeletes(t))
+pure def lawAWorkflowBoundReadNeverCompletes(t: OperationType): bool = not(completableRead(t, WorkflowBinding))
+pure def lawTheOnlyCompletableWorkflowReadIsTheCalendarRange(t: OperationType, binding: ReadBinding): bool =
+  (completableRead(t, binding) and family(t) == WorkflowFamily) implies (t == ReadCalendarRange and binding != WorkflowBinding)
 ```
 
 ## Story: Learn exactly what the device did
@@ -450,4 +458,27 @@ pure def lawAFailedDialOrHandoffIsReconciled(t: OperationType, r: DeviceReceipt,
     implies receiptOutcome(t, r, claimKey) == ReceiptAdmitted({ settles: StaysUncertain })
 pure def lawAnUnknownReceiptStaysUncertain(t: OperationType, r: DeviceReceipt, claimKey: str): bool =
   (r.reported == ReportsUnknown and receiptAdmitted(t, r, claimKey)) implies receiptOutcome(t, r, claimKey) == ReceiptAdmitted({ settles: StaysUncertain })
+```
+
+### A read, a view change or an opened review is recorded as no effect, even when it applied
+
+An applied read reports what the phone held, never a change: the
+agent records it as no effect, and a later turn never learns it as one
+([device requests](./index.md)). So do the steps that change only what a
+screen shows (filtering or opening Photos or Files, and searching,
+inspecting or selecting library photos) and the album, share and library
+reviews, which only open a review in Photos that the owner confirms there.
+Every other applied operation is recorded as the change it made.
+
+```quint
+pure def changesNothing(t: OperationType): bool =
+  t == MapsReadSelected or t == NotesReadSelected or t == NotesQuery or t == NotesSearch or t == CalendarAvailability
+  or t == ReminderReadSelected or t == CalendarReadNext or t == CalendarReadSelected or t == CalendarNamedRead
+  or t == ReadSelectedNotes or t == ReadCalendarRange or t == ReadSelectedReminders
+  or t == MessagesReadSelected or t == SmsLatestSender or t == VoicemailReadSelected
+  or t == PhotosFilter or t == PhotosOpen or t == PhotoLibrarySearch or t == PhotoLibraryInspect or t == PhotoLibrarySelect
+  or t == FilesFilter or t == FilesOpen or t == PhotosAlbumCreate or t == PhotosShare or t == PhotoLibraryReview
+pure def lawEveryCompletableReadChangesNothing(t: OperationType, binding: ReadBinding): bool = completableRead(t, binding) implies changesNothing(t)
+pure def lawNothingThatSendsOrDeletesIsRecordedAsNoEffect(t: OperationType): bool =
+  (sendsSharesOrDeletes(t) and t != PhotosShare and t != PhotoLibraryReview) implies not(changesNothing(t))
 ```
