@@ -117,10 +117,11 @@ accepted observation, labelled untrusted data about the device, and so
 reaches the bound backend, which may be hosted inference (Eliza Cloud or
 the owner's own provider). The agent never asks the device for it. With
 it comes a note that it is the phone's last known position, that no
-street, neighbourhood or city is guessed from its coordinates, and that
-an accuracy over 1,000 m is a rough estimate that names only the area,
-never a street or building ([Maps](../../maps/phonePosition.md) answers
-where the owner is).
+street, neighbourhood or city is guessed from its coordinates, that where
+the owner is comes from the Maps place lookup or else is given as the
+coordinates themselves, and that an accuracy over 1,000 m is a rough
+estimate that names only the area, never a street or building
+([Maps](../../maps/phonePosition.md) answers where the owner is).
 
 ```quint
 pure val locationBytesValues = Set(1, 90, 2048)

@@ -15,27 +15,28 @@ answers where the owner is.
 
 ### A position reported with the message serves a nearby search only while it is recent
 
-The position is read from the message it came with. It serves a nearby
-search when it was taken at most 30 minutes before the message was handled
-and at most one minute ahead of the agent's clock, with a reported accuracy
-no worse than 5 km when the phone reports one. Without such a position a
-nearby search asks the phone for its own precise location, and never
-searches around a guessed or remembered place.
+The position is read from the message it came with, where the turn keeps
+the screen observation that carries it. It serves a nearby search when it
+was taken at most 30 minutes before the message was handled and at most
+one minute ahead of the agent's clock, at any reported accuracy: a Wi-Fi
+or cell estimate kilometres wide is still searched around. Without such a
+position a nearby search asks the phone for its own precise location, and
+never searches around a guessed or remembered place.
 
 ```quint
 import navigation as N from "./navigation"
 type PhonePosition = { present: bool, age: int, hasAccuracy: bool, accuracy: int }
 pure val nearbyMaxAge = 1800000
 pure val nearbyMaxAhead = 60000
-pure val nearbyMaxAccuracy = 5000
 pure def nearbyPositionUsable(p: PhonePosition): bool =
-  p.present and p.age >= 0 - nearbyMaxAhead and p.age <= nearbyMaxAge and
-  (not(p.hasAccuracy) or (p.accuracy >= 0 and p.accuracy <= nearbyMaxAccuracy))
+  p.present and p.age >= 0 - nearbyMaxAhead and p.age <= nearbyMaxAge
 pure val pValues = Set({ present: true, age: 0, hasAccuracy: true, accuracy: 20 }, { present: true, age: 1800001, hasAccuracy: false, accuracy: 0 },
   { present: true, age: -60001, hasAccuracy: true, accuracy: 10 }, { present: true, age: 600000, hasAccuracy: true, accuracy: 5001 },
   { present: false, age: 0, hasAccuracy: false, accuracy: 0 })
 pure def lawAbsentPositionNeverSearches(p: PhonePosition): bool = not(p.present) implies not(nearbyPositionUsable(p))
 pure def lawStalePositionNeverSearches(p: PhonePosition): bool = p.age > nearbyMaxAge implies not(nearbyPositionUsable(p))
+pure def lawAnyAccuracyOfARecentPositionSearches(p: PhonePosition, accuracy: int): bool =
+  nearbyPositionUsable(p) implies nearbyPositionUsable({ ...p, hasAccuracy: true, accuracy: accuracy })
 ```
 
 ### A kind of place near a named place is searched around that place, never around the phone
@@ -43,11 +44,23 @@ pure def lawStalePositionNeverSearches(p: PhonePosition): bool = p.age > nearbyM
 "Pharmacy near the Ferry Building" names where to search: the named place
 is looked up first, and the kind of place is searched around it, nearest
 first, whether or not the phone reported a position and even when the
-request also asked for places near the owner. A named place that is not
-found, or not one place, is said or asked about before anything is
-searched. Without a recent position, a request for places near the owner
-asks the phone for its location and says that a place to search near can
-be named instead, such as "pharmacy near the Ferry Building".
+request also asked for places near the owner. The owner's own words
+decide: when the planner passes only the kind of place for a request near
+the owner, a place the owner's message names after "near" is still the
+one searched around. Courtesy and timing after the place ("please",
+"thanks", "right now", "that's open now") are not part of its name, and
+the owner's own position after "near" ("me right now", "where I am",
+"my phone", "myself", "this spot") names no place, so "coffee near me
+right now" is a search around the phone. "The nearest pharmacy to the
+Ferry Building" names its own point and is no request near the owner;
+only "the nearest pharmacy to me" is. A named place that is not found is
+said, with a request to name another place or area to search near; one
+with several matches is asked about as a numbered question that a reply
+such as "the first one" answers. The results begin "Near" the place, and
+their card shows the place they are near. Without a recent position, a
+request for places near the owner asks the phone for its location and
+says that a place to search near can be named instead, such as
+"pharmacy near the Ferry Building".
 
 ```quint
 type SearchAround = AroundNamedPlace | AroundPhone | AskForPosition | AroundNothing
@@ -63,7 +76,12 @@ pure def lawNearMeWithoutAPositionAsks(p: PhonePosition): bool = not(nearbyPosit
 
 The reported position carries no precision, so it is never the precise fix
 a route from here is planned from: the phone plans that route from its own
-fresh fix, and the agent only names the destination.
+fresh fix, and the agent only names the destination. A route asked for
+from where the owner is, with no starting place or with "here", "my
+location" or "where I am" as its start, answers with a card that asks the
+phone for its location and carries the destination found; a nearby kind
+of place, or a destination with several matches, goes to the phone as the
+words asked, for the phone to search around itself.
 
 ```quint
 pure def asRouteFix(p: PhonePosition): N::Fix = { present: p.present, precise: false, age: p.age, accuracy: p.accuracy }
@@ -82,9 +100,8 @@ pure def lawReportedPositionIsNeverARouteOrigin(p: PhonePosition): bool = not(N:
 Asked where the owner is, Maps looks up the place at the position the
 phone reported with the message, through Cloud Maps' reverse lookup, and
 never guesses a street, neighbourhood or city from the coordinates. The
-position answers only while it is recent, as for a nearby search, at any
-reported accuracy; without one Maps says it cannot tell and looks nothing
-up. A position reported as accurate to more than 1 km is a rough
+position answers only while it is recent, as for a nearby search; without
+one Maps says it cannot tell and looks nothing up. A position reported as accurate to more than 1 km is a rough
 estimate, such as a Wi-Fi or cell fix, whose nearest address is not where
 the owner is: the reply names only the area of the address found there
 (the address without its street part or any word with a digit, at most
@@ -96,11 +113,9 @@ area in what was found, is said as such.
 ```quint
 type WhereAnswer = NoRecentPosition | NamePlace | NameArea | NothingThere
 pure val roughPositionMeters = 1000
-pure def positionRecent(p: PhonePosition): bool =
-  p.present and p.age >= 0 - nearbyMaxAhead and p.age <= nearbyMaxAge
 pure def roughPosition(p: PhonePosition): bool = p.hasAccuracy and p.accuracy > roughPositionMeters
 pure def whereAnswer(p: PhonePosition, placeFound: bool, areaKnown: bool): WhereAnswer =
-  if (not(positionRecent(p))) NoRecentPosition
+  if (not(nearbyPositionUsable(p))) NoRecentPosition
   else if (roughPosition(p)) (if (areaKnown) NameArea else NothingThere)
   else if (placeFound) NamePlace else NothingThere
 pure def lawARoughPositionNeverNamesAPlace(p: PhonePosition, placeFound: bool, areaKnown: bool): bool =
@@ -108,5 +123,22 @@ pure def lawARoughPositionNeverNamesAPlace(p: PhonePosition, placeFound: bool, a
 pure def lawAStalePositionAnswersNothing(p: PhonePosition, placeFound: bool, areaKnown: bool): bool =
   p.age > nearbyMaxAge implies whereAnswer(p, placeFound, areaKnown) == NoRecentPosition
 pure def lawAPreciseRecentPositionNamesWhatIsThere(p: PhonePosition, areaKnown: bool): bool =
-  (positionRecent(p) and not(roughPosition(p))) implies whereAnswer(p, true, areaKnown) == NamePlace
+  (nearbyPositionUsable(p) and not(roughPosition(p))) implies whereAnswer(p, true, areaKnown) == NamePlace
+```
+
+### Coordinates the owner names are looked up or searched around as given, never the phone's position
+
+Given coordinates and no place, Maps looks up the place at that point
+through Cloud Maps' reverse lookup and names it with its card, or says
+that no named place is known there. Given a kind of place or a name with
+them, it searches around that point, nearest first. Named coordinates are
+a place to search near: the phone is never asked for its position, and
+the position it reported plays no part. When the planner cannot look a
+reported position up, it gives the coordinates as they are rather than a
+guessed street.
+
+```quint
+type PointRequest = PlaceAtPoint | SearchAroundPoint
+pure def pointRequest(searchedFor: bool): PointRequest = if (searchedFor) SearchAroundPoint else PlaceAtPoint
+pure def lawNamedCoordinatesNeverAskThePhone(nearMe: bool, p: PhonePosition): bool = searchAround(true, nearMe, p) != AskForPosition
 ```

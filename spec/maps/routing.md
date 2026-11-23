@@ -67,11 +67,7 @@ qualified by its locality ("Union Station, Washington, DC", "Union Station
 in Washington") fits only a result whose name holds the name and whose
 address holds the locality, or whose name or address holds the whole query.
 When no result is in the named locality, Maps asks which one rather than
-taking a namesake elsewhere, even when it found only one. A route's
-destination is searched around its starting place: when it names no
-locality, the results within 100 km of the start are the ones that fit,
-if any are, so "Union Square" from the Ferry Building is the one in San
-Francisco. That alone never takes a result: two that fit still ask.
+taking a namesake elsewhere, even when it found only one.
 
 ```quint
 type PlacePick = TakePlace | AskWhich | NoPlace
@@ -85,6 +81,17 @@ pure val matchingValues = Set(0, 1, 2)
 pure def lawANamesakeOutsideTheLocalityIsNeverTaken(found: int, near: bool): bool = placePick(found, true, 0, near) != TakePlace
 pure def lawNothingFoundIsNeverTaken(qualified: bool, matching: int, near: bool): bool = placePick(0, qualified, matching, near) == NoPlace
 pure def lawOneFittingResultIsTaken(found: int, qualified: bool, near: bool): bool = found > 0 implies placePick(found, qualified, 1, near) == TakePlace
+```
+
+### A route's destination that names no locality is taken from within 100 km of its start when any result is there
+
+A route's destination is searched around its starting place: when it
+names no locality, the results within 100 km of the start are the ones
+that fit, if any are, so "Union Square" from the Ferry Building is the
+one in San Francisco. That alone never takes a result: two that fit still
+ask, as for any typed place.
+
+```quint
 pure val startAreaMeters = 100000
 pure def aroundTheStart(meters: int): bool = meters >= 0 and meters <= startAreaMeters
 pure def lawAFarNamesakeIsNotAroundTheStart(meters: int): bool = meters > startAreaMeters implies not(aroundTheStart(meters))
@@ -129,4 +136,41 @@ pure def lawStreetAddressStillAsks(otherIsArea: bool, meters: int): bool =
   not(sameLandmark(false, otherIsArea, meters)) and not(sameLandmark(otherIsArea, false, meters))
 pure def lawFarAreasStillAsk(meters: int): bool = meters > landmarkAreaMeters implies not(sameLandmark(true, true, meters))
 pure def lawCloseAreasAreOneLandmark(meters: int): bool = (meters >= 0 and meters <= landmarkAreaMeters) implies sameLandmark(true, true, meters)
+```
+
+## Story: Share a place only once I agree, and hear where Maps works
+
+> As the owner, I want "share this place" to send its location only after
+> I say yes to sharing it, and "where does Maps work" answered from what
+> my Maps service says it serves.
+
+### A place's location is shared only after the owner's own later yes to sharing that place
+
+Asked to share a place, Maps finds it as it finds a place to show, then
+asks "Share the location of <place>?" with Share and Don't share choices,
+and shares nothing. Only the owner's own later reply to that question,
+for the same place and within five minutes, settles it: a yes returns a
+geo link, an Apple Maps link and an OpenStreetMap link for the place with
+the time it was shared; a no says it was not shared; anything unclear
+asks again. The message that asked never answers its own question, and
+no parameter the planner sets confirms it.
+
+```quint
+type ShareDecision = ShareAsked | ShareConfirmed | ShareCancelled
+pure def sharesLocation(d: ShareDecision): bool = d == ShareConfirmed
+pure def lawOnlyAConfirmedShareSendsTheLocation(d: ShareDecision): bool = sharesLocation(d) implies d == ShareConfirmed
+```
+
+### Asked where Maps works, the reply states only what Cloud Maps reports
+
+The reply names the regions and dataset revision Cloud Maps reports, the
+travel modes it routes and whether it offers alternatives, that it does
+not look up places from coordinates when it says so, which of live
+traffic, transit schedules and offline use it lacks, who receives search
+text and route points, and its attribution. A deployment that serves no
+maps says so, and nothing is inferred for what it does not report.
+
+```quint
+type CoverageAnswer = NoMapsServed | ReportedCoverage
+pure def coverageAnswer(served: bool): CoverageAnswer = if (served) ReportedCoverage else NoMapsServed
 ```
