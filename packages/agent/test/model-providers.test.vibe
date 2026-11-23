@@ -240,7 +240,7 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
 
 it.effect('A tool is offered without its pattern constraints, and the rest of its schema is sent as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
   const cloud = try cloudFake(deviceKey)
-  const { runtime } = try cloudAgent(cloud, "cerebras/qwen-3.8-27b")
+  const { runtime } = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
     choices: [{ message: { role: "assistant", content: "Done." }, finish_reason: "stop" }],
     usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 },
