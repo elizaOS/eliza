@@ -1,4 +1,4 @@
-// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"
 export { startAgent, type AgentStatus, type RunningAgent } from "./host/process.vibe"
 export { AGENT_EXIT_CODES, exitClass, exitCode, parseLaunch, type ExitClass, type LaunchDocument } from "./host/launch.vibe"
 export { ModuleRefused, routePrefix, type AgentModule, type AgentPlugin, type ModuleContext, type ModuleFactory, type PublishEvent, type ViewFeeds } from "./host/module.vibe"
@@ -14,3 +14,7 @@ export {
   createScheduledTask, getScheduledTask, listScheduledTasks, NoScheduledTask, scheduledTaskByKey, scheduledTaskKeeping, ScheduleStoreUnavailable, StaleRevision, TaskIdTaken,
   type NewScheduledTask, type ScheduledTaskDetails, type StoredTask,
 } from "./schedule/store.vibe"
+export {
+  workflowDeviceOffer, WorkflowStepRefused,
+  type WorkflowDeviceOffer, type WorkflowOfferTiming, type WorkflowStep, type WorkflowStepDevice, type WorkflowStepTarget,
+} from "./device-actions/workflow-offer.vibe"

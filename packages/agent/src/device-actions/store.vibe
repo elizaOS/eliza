@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "The claim commits the dispatch once, before the deadline"; spec/agent/deviceActions/index.md, "Only the exact binding decides an open offer before its deadline"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six applied outcomes of its own requests"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
+// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "The claim commits the dispatch once, before the deadline"; spec/agent/deviceActions/index.md, "Only the exact binding decides an open offer before its deadline"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six applied outcomes of its own requests"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"
 import type { IDatabaseAdapter } from "@elizaos/core"
 import { apply, initial, machineOver, noOwner, step, type DeviceRequest, type Rejected } from "../../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
@@ -13,7 +13,7 @@ module node {
   import { randomUUID } from "node:crypto"
   import { Schema } from "effect"
   import { validateUuid, type IDatabaseAdapter, type UUID } from "@elizaos/core"
-  import { canClaim, canClaimCompletion, canDecide, canDeliverCompletion, canEndTurn, canExpire, canReceipt, exactBinding, noOwner, parseState, requestSettled, step, type CompletionHint, type DeviceRequest, type Event } from "../../gen/agent__deviceActions.ts"
+  import { canClaim, canClaimCompletion, canDecide, canDeliverCompletion, canEndTurn, canExpire, canReceipt, canReconcile, exactBinding, noOwner, parseState, requestSettled, step, type CompletionHint, type DeviceRequest, type Event, type ReviewOutcome } from "../../gen/agent__deviceActions.ts"
   import type { SessionOwner } from "../../gen/core__sessions.ts"
   import { allCapabilities, canSetViewProfile, setViewProfile, type DeviceView, type Need, type RevisionRead, type ViewProfile } from "../../gen/agent__deviceActions__capabilities.ts"
   import type { ReadBinding } from "../../gen/agent__deviceActions__operations.ts"
@@ -25,14 +25,18 @@ module node {
 
   const WorkflowId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/))
   const WorkflowDigest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
-  const Authority = Schema.Union([
-    Schema.Struct({
-      kind: Schema.Literal("WorkflowBinding"), workflowId: WorkflowId, versionId: WorkflowId,
-      runId: WorkflowId, stepId: WorkflowId, specDigest: WorkflowDigest,
-    }),
-    Schema.Struct({ kind: Schema.Literal("AgendaBinding"), ...CalendarSource.fields }),
-  ])
+  const WorkflowAuthority = Schema.Struct({
+    kind: Schema.Literal("WorkflowBinding"), workflowId: WorkflowId, versionId: WorkflowId,
+    runId: WorkflowId, stepId: WorkflowId, specDigest: WorkflowDigest,
+  })
+  const Authority = Schema.Union([WorkflowAuthority, Schema.Struct({ kind: Schema.Literal("AgendaBinding"), ...CalendarSource.fields })])
   type BindingAuthority = typeof Authority.Type
+  const decodeWorkflowAuthority = Schema.decodeUnknownOption(WorkflowAuthority, { onExcessProperty: "error" })
+
+  export function workflowAuthority(binding: unknown): typeof WorkflowAuthority.Type | undefined {
+    const found = decodeWorkflowAuthority(binding)
+    return found._tag === "Some" ? found.value : undefined
+  }
 
   export interface RequestTerms {
     readonly operation: unknown
@@ -196,12 +200,14 @@ module node {
     })
   }
 
+  async function requestIn(sql: Sql, proposalId: string, lock = false): Promise<RequestRow | undefined> {
+    const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE proposal_id = $1${lock ? " FOR UPDATE" : ""}`, [proposalId])
+    const row = found.rows[0]
+    return row === undefined ? undefined : request(row)
+  }
+
   export function readRequest(adapter: IDatabaseAdapter, proposalId: string): Promise<RequestRow | undefined> {
-    return within(adapter, async (sql) => {
-      const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE proposal_id = $1`, [proposalId])
-      const row = found.rows[0]
-      return row === undefined ? undefined : request(row)
-    })
+    return within(adapter, (sql) => requestIn(sql, proposalId))
   }
 
   export type ReceiptEvent = Extract<Event, { type: "receipt" }>
@@ -217,6 +223,13 @@ module node {
   export type DecisionCommit =
     | { readonly kind: "decided"; readonly state: DeviceRequest }
     | { readonly kind: "missing" | "refused" }
+  export interface RequestReview extends RequestClaim {
+    readonly attemptId: string
+    readonly review: ReviewOutcome
+  }
+  export type ReviewCommit =
+    | { readonly kind: "reviewed"; readonly state: DeviceRequest; readonly claim: ClaimBinding; readonly providerReceipt: DeviceReceipt }
+    | { readonly kind: "missing" | "refused" | "attempt_refused" }
   export type ClaimCommit =
     | { readonly kind: "claimed"; readonly state: DeviceRequest; readonly binding: ClaimBinding }
     | { readonly kind: "missing" | "refused" }
@@ -305,6 +318,22 @@ module node {
         throw new Error(`The locked decision for ${proposalId} could not be saved`)
       }
       return { kind: "decided", state: decided }
+    })
+  }
+
+  export function writeReview(adapter: IDatabaseAdapter, { proposalId, digest, by, attemptId, review }: RequestReview): Promise<ReviewCommit> {
+    return within(adapter, async (sql) => {
+      const row = await requestIn(sql, proposalId, true)
+      if (row === undefined) return { kind: "missing" }
+      const { claim, providerReceipt } = row
+      if (claim === undefined || claim.wireAttemptId !== attemptId) return { kind: "attempt_refused" }
+      const current = atWallTime(row.state)
+      if (providerReceipt === undefined || !canReconcile(current, by, digest, claim.modelAttemptId, review)) return { kind: "refused" }
+      const reviewed = step(current, { type: "reconcile", digest, attemptId: claim.modelAttemptId, review }, by)
+      if (reviewed.phase.tag !== current.phase.tag && await keepRequest(sql, proposalId, row.revision, reviewed) !== "written") {
+        throw new Error(`The locked review for ${proposalId} could not be saved`)
+      }
+      return { kind: "reviewed", state: reviewed, claim, providerReceipt }
     })
   }
 
@@ -432,12 +461,12 @@ module node {
   }
 }
 import {
-  conversationRows, readEnrollment, readRequest, readViewProfile, requestRows, retireAbandonedAgendaRows, retireTurnRequest, reviewRows, seedRequest, writeClaim, writeDecision, writeEnrollment, writeReceipt, writeRequest, writeViewProfile,
+  conversationRows, readEnrollment, readRequest, readViewProfile, requestRows, retireAbandonedAgendaRows, retireTurnRequest, reviewRows, seedRequest, writeClaim, writeDecision, writeEnrollment, writeReceipt, writeRequest, writeReview, writeViewProfile,
   type AdmittedRequestReceipt, type ClaimBinding, type ClaimCommit, type DecisionCommit, type EnrollmentEvent, type EnrollmentRow, type OfferEvent, type ProfileChange,
-  type ReceiptCommit, type RequestClaim, type RequestDecision, type RequestEvent, type RequestRow, type RequestTerms, type RetainedRequestTerms, type Settled,
+  type ReceiptCommit, type RequestClaim, type RequestDecision, type RequestEvent, type RequestReview, type RequestRow, type RequestTerms, type RetainedRequestTerms, type ReviewCommit, type Settled,
 } from node
-export type { AdmittedRequestReceipt, ClaimCommit, DecisionCommit, EnrollmentEvent, OfferEvent, ProfileChange, ReceiptCommit, RequestClaim, RequestDecision, RequestEvent, RequestRow, RequestTerms, RetainedRequestTerms, Settled } from node
-export { commitReadCompletion, readCompletionPublication, withReadCompletionPublication } from node
+export type { AdmittedRequestReceipt, ClaimCommit, DecisionCommit, EnrollmentEvent, OfferEvent, ProfileChange, ReceiptCommit, RequestClaim, RequestDecision, RequestEvent, RequestReview, RequestRow, RequestTerms, RetainedRequestTerms, ReviewCommit, Settled } from node
+export { commitReadCompletion, readCompletionPublication, withReadCompletionPublication, workflowAuthority } from node
 
 type RequestMachine = Effect.Success<ReturnType<typeof machineOver>>
 
@@ -499,6 +528,11 @@ export effect function changeEnrollment(adapter: IDatabaseAdapter, event: Enroll
   return try machine.send(event, by)
 }
 
+export effect function requestSnapshot(adapter: IDatabaseAdapter, proposalId: string): (RequestRow | undefined)!DeviceStoreUnavailable {
+  const row = try stored("read a device request", () => readRequest(adapter, proposalId))
+  return row === undefined ? undefined : { ...row, state: try caughtUp(row.state) }
+}
+
 export effect function openRequest(adapter: IDatabaseAdapter, proposalId: string): (DeviceRequestRecord | undefined)!DeviceStoreUnavailable {
   const row = try stored("read a device request", () => readRequest(adapter, proposalId))
   if (row === undefined) return undefined
@@ -546,6 +580,10 @@ export effect function recordRequestDecision(adapter: IDatabaseAdapter, decision
 
 export effect function recordRequestClaim(adapter: IDatabaseAdapter, claim: RequestClaim): ClaimCommit!DeviceStoreUnavailable {
   return try stored("keep a device claim", () => writeClaim(adapter, claim))
+}
+
+export effect function recordRequestReview(adapter: IDatabaseAdapter, review: RequestReview): ReviewCommit!DeviceStoreUnavailable {
+  return try stored("keep a device review", () => writeReview(adapter, review))
 }
 
 export effect function recordRequestReceipt(adapter: IDatabaseAdapter, receipt: AdmittedRequestReceipt): ReceiptCommit!DeviceStoreUnavailable {

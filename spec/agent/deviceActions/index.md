@@ -15,7 +15,7 @@ device does with a claimed request and its execution journal are
 
 The routes are `POST /api/client-devices/{register,revoke}`,
 `GET /api/client-devices/context`, `GET /api/client-devices/proposals` and
-`POST /api/client-devices/proposals/:id/{decision,claim,receipt,reconcile,read-completion,cancel-read-completion}`.
+`POST /api/client-devices/proposals/:id/{decision,claim,receipt,reconciliation,read-completion,cancel-read-completion}`.
 The shell checks the device key in constant time and passes the sender as a
 session owner: the agent's id, the owner's user id and the installation id.
 A refused event answers 409 and changes nothing; a store failure answers 503.
@@ -99,7 +99,15 @@ pure def deviceContext(d: DeviceRequest): ContextReply = if (isEnrolled(d.enroll
 The agent offers a request in the turn of the device that asked, on a fresh
 session owned by that device, with a proposal digest and a deadline. When
 the launch carries `hostContextRevision` and the operation is an original
-read, the offer also opens a read completion (`readBack`).
+read, the offer also opens a read completion (`readBack`). A workflow step
+is offered outside any turn the same way: to the enrolled device named as
+its target, bound to its workflow, version, run, step and spec digest, for a
+capability its operation needs that the device declared. The step waits for
+the request to settle and answers with the applied result; it is refused
+when the request is declined, lapses, runs nothing or is reviewed as not
+applied, and its offer retires when the step stops waiting. A step whose
+request is still dispatched or uncertain at the deadline is refused as
+unknown, and the request keeps waiting for its receipt or review.
 
 ```quint
 pure val proposalIdValues = Set("p1")
@@ -196,9 +204,11 @@ pure def sometimesNothingRan(d: DeviceRequest): bool = d.phase == Receipted({ re
 
 The owner reviews the device's own journal for the claimed attempt and
 confirms applied, not applied, or unresolved: an outcome nobody can prove,
-closed without being taken for an effect. The shell refuses an unconfirmed
-review. A review never dispatches again; the same review again changes
-nothing.
+closed without being taken for an effect. The device posts
+`{digest, attemptId, review}` to `reconciliation`, with the claim's attempt
+id and `review` one of `applied`, `not_applied` or `unresolved`. The shell
+refuses an unconfirmed review. A review never dispatches again; the same
+review again changes nothing.
 
 ```quint
 pure val uncertainPhase: RequestPhase = Receipted({ reported: ReportedUnknown })
