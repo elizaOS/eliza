@@ -5,6 +5,7 @@ import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-reader.vibe"
+import { cueRule } from "../src/conversation/reply-text.vibe"
 
 module node {
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
@@ -209,9 +210,22 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
   const answer = try turn("Hi")
   try Effect.sync(() => cloud.script(text("Sure.")))
   const assentWithoutWork = try turn("Remember that I like tea")
+  try Effect.sync(() => cloud.script(toolCalls("Let me open Maps.", agenda), text("The nearest coffee is on Main Street.")))
+  const openAsPart = try turn("Open Maps and find coffee nearby")
+  try Effect.sync(() => cloud.script(toolCalls("Maps is open.", agenda), text("Maps is open.")))
+  const navigationOnly = try turn("Open Maps.")
+  try Effect.sync(() => cloud.script(toolCalls("Opened your calendar.", agenda), text("Opened your calendar.")))
+  const calendarOnly = try turn("Open my calendar")
+  const system = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions")
+    .map(({ body }) => (body as { messages: { role: string; content?: unknown }[] }).messages[0])
+    .map((message) => message?.role === "system" && typeof message.content === "string" ? message.content : "")
 
   const done = (reply: string) => ({ kind: "Done", text: reply, failureKind: undefined, keyed: true })
-  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork }, {
+  try Effect.try(() => assert.deepStrictEqual({
+    exemptionInRule: [cueRule.includes("A request whose only work is opening one app gets no cue"), cueRule.includes("\"Let me open Maps.\"")],
+    ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
+  }, { exemptionInRule: [true, true], ruleInEverySystemPrompt: true }))
+  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork, openAsPart, navigationOnly, calendarOnly }, {
     instruction: {
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
@@ -223,5 +237,11 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
     },
     answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    openAsPart: {
+      done: done("The nearest coffee is on Main Street."), asked: 2, acknowledgments: ["acknowledgment:Let me open Maps."], tools: ["tool:AGENDA_READ:Using Agenda"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
+    navigationOnly: { done: done("Maps is open."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    calendarOnly: { done: done("Opened your calendar."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
   }))
 }, 120_000)
