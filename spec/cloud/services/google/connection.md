@@ -151,26 +151,29 @@ lifetime and whether a refresh token came. A failed exchange supplies no
 subject or access lifetime. When the organization already
 holds that subject (`subjectHeld`), the grant goes to that row by
 `receiveGrant` and this attempt row stays `Pending`; otherwise this row
-becomes the subject's connection: `Active`, or `Unconfirmed` when a tablet's
-sign-in session began the attempt (`confirmFirst`). A row's subject, once set,
-never changes.
+becomes the subject's connection, `Unconfirmed`. The state binds the callback
+to the attempt, not to the browser that finishes it, so whoever completes the
+Google page, by initiate or a sign-in session, binds the account they choose
+to the caller; only the person confirming its address makes it `Active`. A
+grant with no verified address is not kept, since nothing could confirm it.
+A row's subject, once set, never changes.
 
 ```quint
 pure def canProviderResult(c: Connection, success: bool, hasAccount: bool, subject: str, lifetime: Millis): bool = O::canProviderResult(c.flow) and hasAccount and (not(success) or (subject != "" and lifetime > 0))
 pure def providerResult(c: Connection, success: bool, hasAccount: bool, subject: str, granted: List[GoogleScope], lifetime: Millis, refreshable: bool): Connection =
   { ...c, flow: O::providerResult(c.flow, success, hasAccount), exchange: if (success) Exchanged({ subject: subject, accessUntil: c.now + lifetime, refreshable: refreshable }) else NotExchanged, offered: if (success) scopesOf(granted) else List() }
 pure def canAccountResult(c: Connection): bool = O::canAccountResult(c.flow) and c.exchange != NotExchanged
-pure def accountResult(c: Connection, success: bool, subjectHeld: bool, confirmFirst: bool): Connection = {
+pure def accountResult(c: Connection, success: bool, subjectHeld: bool): Connection = {
   val x = c.exchange
   val flow = O::accountResult(c.flow, success)
   match x {
-    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: if (confirmFirst) Unconfirmed else Active, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }), landedOnHeld: false }
+    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: Unconfirmed, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }), landedOnHeld: false }
         else { ...c, flow: flow, landedOnHeld: success }
     | NotExchanged => { ...c, flow: flow }
   }
 }
 pure val hasAccountValues = Set(true)
-pure val confirmFirstValues = Set(true, false)
+pure val fromBrowserValues = Set(true, false)
 pure val subjectValues = Set("", "sub1", "sub2")
 pure val grantedValues = Set(List(ScopeUserinfoEmail, ScopeGmailReadonly), List(ScopeUserinfoEmail, ScopeGmailModify, ScopeCalendarEvents, ScopeGmailSend))
 pure val lifetimeValues = Set(0, 120000, 3600000)
@@ -217,17 +220,23 @@ A different returned subject stores nothing. The answer names the connection
 and its reported scopes, with verified email and display name when available.
 If Google omits a refresh token, a verified refresh token from the same
 active grant can be retained only with the same reported scopes. A grant for
-an `Unconfirmed` row leaves it `Unconfirmed`, and one a sign-in session brings
-to a `Revoked` row makes it `Unconfirmed` (`confirmFirst`): only the person
-confirming its address makes either `Active`.
+an `Unconfirmed` row leaves it `Unconfirmed`, and one a browser callback
+brings to a `Revoked` row makes it `Unconfirmed` (`fromBrowser`): only the
+person confirming its address makes either `Active`, and an `Unconfirmed` row
+leaves that status only by that confirmation or a disconnect. A native code
+needs no confirmation: the device's own Google sign-in produced it.
 
 ```quint
 pure def canReceiveGrant(c: Connection, subject: str, lifetime: Millis): bool =
   subject != "" and lifetime > 0 and ((c.status != Pending and subject == c.subject) or (c.status == Pending and c.flow.phase == O::FlowIdle))
-pure def receiveGrant(c: Connection, subject: str, granted: List[GoogleScope], lifetime: Millis, refreshable: bool, confirmFirst: bool): Connection =
-  { ...c, status: if (c.status == Unconfirmed or (confirmFirst and c.status == Revoked)) Unconfirmed else Active, subject: subject, scopes: scopesOf(granted), tokens: SealedTokens({ expiresAt: c.now + lifetime, hasRefreshToken: refreshable }), refreshing: false }
+pure def receiveGrant(c: Connection, subject: str, granted: List[GoogleScope], lifetime: Millis, refreshable: bool, fromBrowser: bool): Connection =
+  { ...c, status: if (c.status == Unconfirmed or (fromBrowser and c.status == Revoked)) Unconfirmed else Active, subject: subject, scopes: scopesOf(granted), tokens: SealedTokens({ expiresAt: c.now + lifetime, hasRefreshToken: refreshable }), refreshing: false }
 pure def stepOnlyANewGrantOrAConfirmationActivatesAConnection(before: Connection, via: str, after: Connection): bool =
-  (before.status != Active and after.status == Active) implies (via == "accountResult" or via == "receiveGrant" or (via == "confirmAddress" and before.status == Unconfirmed))
+  (before.status != Active and after.status == Active) implies ((via == "receiveGrant" and before.status != Unconfirmed) or (via == "confirmAddress" and before.status == Unconfirmed))
+pure def stepAnUnconfirmedConnectionLeavesOnlyByConfirmationOrDisconnect(before: Connection, via: str, after: Connection): bool =
+  (before.status == Unconfirmed and after.status != Unconfirmed) implies ((via == "confirmAddress" and after.status == Active) or (via == "disconnect" and after.status == Revoked))
+pure def stepABrowserCallbackNeverMakesANewConnectionActive(before: Connection, via: str, after: Connection): bool =
+  (via == "accountResult" and before.status == Pending and after.status != Pending) implies after.status == Unconfirmed
 pure def sometimesLinkedNatively(c: Connection): bool = c.status == Active and c.flow.phase == O::FlowIdle
 ```
 
@@ -272,22 +281,23 @@ pure def sometimesRotationLost(c: Connection): bool = c.status == Errored
 > connected, why not if it is not, and exactly what it lets my assistant do,
 > so that I reconnect only when I must.
 
-### A request names a grant or uses the only active connection, never another organization's, and only the owner side
+### A request names a grant or uses the only active connection, never another person's, and only the owner side
 
 A Google route that needs one grant, including disconnect, selects this way
-over the caller's organization's rows, newest first. A named grant outside
-those rows returns `404 not_found`. With no named grant, several active rows
+over the caller's own rows (`owner`: its organization and cloud user),
+newest first; another person's row in the same organization is outside them.
+A named grant outside those rows returns `404 not_found`. With no named grant, several active rows
 return `400 invalid_request` with reason `grant_required`. If no row is
 active, selection uses the newest established grant. A `side` other than
 `owner` returns `400 invalid_request`.
 
 ```quint
 type GrantChoice = AnyGrant | NamedGrant({ grantId: str })
-type GrantView = { grantId: str, organization: str, status: ConnectionStatus }
+type GrantView = { grantId: str, owner: str, status: ConnectionStatus }
 type SelectionFault = SideNotOwner | SeveralActiveGrants | GrantUnknown
 type Selection = SelectedGrant({ grantId: str }) | NoGrantHeld | SelectionRefused({ fault: SelectionFault })
-pure def selectGrant(rows: List[GrantView], organization: str, side: Side, choice: GrantChoice): Selection = {
-  val held = rows.select(r => r.organization == organization and r.status != Pending)
+pure def selectGrant(rows: List[GrantView], owner: str, side: Side, choice: GrantChoice): Selection = {
+  val held = rows.select(r => r.owner == owner and r.status != Pending)
   val active = held.select(r => r.status == Active)
   val newest = held.foldl("", (acc, r) => if (acc == "") r.grantId else acc)
   if (side != OwnerSide) SelectionRefused({ fault: SideNotOwner })
@@ -297,16 +307,17 @@ pure def selectGrant(rows: List[GrantView], organization: str, side: Side, choic
   }
 }
 pure def selectionRefusal(fault: SelectionFault): Refusal = if (fault == SideNotOwner) refuse(InvalidRequest) else if (fault == SeveralActiveGrants) refuseFor(InvalidRequest, GrantRequired) else refuse(NotFound)
-pure val rowsValues: Set[List[GrantView]] = Set(List(), List({ grantId: "g1", organization: "o1", status: Active }), List({ grantId: "g1", organization: "o1", status: Active }, { grantId: "g2", organization: "o1", status: Active }),
-  List({ grantId: "g1", organization: "o1", status: Expired }, { grantId: "g2", organization: "o2", status: Active }), List({ grantId: "g3", organization: "o1", status: Pending }))
-pure val organizationValues = Set("o1", "o2")
+pure val rowsValues: Set[List[GrantView]] = Set(List(), List({ grantId: "g1", owner: "u1", status: Active }), List({ grantId: "g1", owner: "u1", status: Active }, { grantId: "g2", owner: "u1", status: Active }),
+  List({ grantId: "g1", owner: "u1", status: Expired }, { grantId: "g2", owner: "u2", status: Active }), List({ grantId: "g3", owner: "u1", status: Pending }),
+  List({ grantId: "g1", owner: "u1", status: Unconfirmed }, { grantId: "g2", owner: "u1", status: Active }), List({ grantId: "g2", owner: "u2", status: Unconfirmed }))
+pure val ownerValues = Set("u1", "u2")
 pure val choiceValues = Set(AnyGrant, NamedGrant({ grantId: "g1" }), NamedGrant({ grantId: "g2" }), NamedGrant({ grantId: "g3" }))
-pure def lawASelectedGrantIsTheCallersConnection(rows: List[GrantView], organization: str, side: Side, choice: GrantChoice): bool = {
-  val chosen = selectGrant(rows, organization, side, choice)
-  match chosen { | SelectedGrant(g) => rows.some(r => r.grantId == g.grantId and r.organization == organization and r.status != Pending) | _ => true }
+pure def lawASelectedGrantIsTheCallersConnection(rows: List[GrantView], owner: str, side: Side, choice: GrantChoice): bool = {
+  val chosen = selectGrant(rows, owner, side, choice)
+  match chosen { | SelectedGrant(g) => rows.some(r => r.grantId == g.grantId and r.owner == owner and r.status != Pending) | _ => true }
 }
-pure def lawNoGrantIsGuessedAmongSeveral(rows: List[GrantView], organization: str): bool =
-  rows.select(r => r.organization == organization and r.status == Active).length() > 1 implies selectGrant(rows, organization, OwnerSide, AnyGrant) == SelectionRefused({ fault: SeveralActiveGrants })
+pure def lawNoGrantIsGuessedAmongSeveral(rows: List[GrantView], owner: str): bool =
+  rows.select(r => r.owner == owner and r.status == Active).length() > 1 implies selectGrant(rows, owner, OwnerSide, AnyGrant) == SelectionRefused({ fault: SeveralActiveGrants })
 pure def lawASelectionRefusalIsFinal(fault: SelectionFault): bool = wellFormed(selectionRefusal(fault)) and not(retryableOf(selectionRefusal(fault)))
 ```
 
@@ -373,7 +384,7 @@ The shell calls Google's revoke endpoint with the refresh token (else the
 access token) first; a Google failure is logged and does not keep the
 tokens. Disconnecting a connection already revoked answers `{ok: true}` and
 changes nothing; only a new grant for the same subject makes it active again,
-after the person confirms its address when a sign-in session brought it.
+after the person confirms its address when a browser callback brought it.
 Disconnect names one grant and ends only that one; declining an address that
 awaits confirmation is a disconnect of its grant.
 
@@ -418,14 +429,16 @@ pure def alwaysAnAllowedSessionHoldsItsGrant(c: Connection): bool = sessionOutco
 pure def sometimesASessionIsAllowed(c: Connection): bool = sessionOutcomeOf(callbackAnswerOf(c), false, false) == SessionAllowed and c.status == Unconfirmed
 ```
 
-### A connection a sign-in session first made is not used until the person confirms its address, and only that address confirms it
+### A connection a browser sign-in first made is not used until the person confirms its address, and only that address confirms it
 
 `POST confirm {grantId, address}` makes an `Unconfirmed` connection `Active`
 when `address` is the one it connected; another address is `400
 invalid_request`. Confirming an `Active` connection at its own address
 answers `{ok: true}` and changes nothing; any other connection is `409
 google_reauth_required`. Until then every use is refused as for a connection
-that is not active, and `GET accounts` lists it with `connected: false`.
+that is not active, and `GET accounts` lists it with `connected: false`. This
+holds for initiate as for a sign-in session: an app that initiates shows the
+address `GET accounts` reports and confirms it the same way.
 
 ```quint
 pure def canConfirmAddress(c: Connection, sameAddress: bool): bool = c.status == Unconfirmed and sameAddress

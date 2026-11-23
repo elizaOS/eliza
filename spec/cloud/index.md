@@ -164,8 +164,8 @@ Mailbox and calendar access requires a separate consent prompt where the
 person approves each requested capability. A deployment can use its sign-in OAuth
 client for this separate exchange. The exchange requests only the selected scopes and identity needed to link the right account. The person may connect
 any Google account, and several, whatever address they signed in with; one
-that a tablet's sign-in session first connected is used only after the person
-confirms its address ([connection](services/google/connection.md)).
+that a browser sign-in first connected is used only after the person confirms
+its address ([connection](services/google/connection.md)).
 
 ```quint
 type CloudGoogleReadScope = GoogleReadMail | GoogleReadCalendar

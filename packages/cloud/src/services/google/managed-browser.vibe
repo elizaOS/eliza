@@ -295,13 +295,13 @@ effect function recordProviderFailure(attempt: Attempt, code: GoogleLinkFault) {
 
 effect function keepConnection(tx: Tx, attempt: Attempt, landing: ManagedLanding) {
   const { grant, subjectHeld } = try prepareManagedGrant(tx, landing, attempt.key)
-  const confirmFirst = attempt.session
+  if (grant.email === "") throw refused("GoogleReauthRequired")
   if (subjectHeld) {
-    try storeGrant(tx, grant, confirmFirst)
-    try step(tx, attempt.key, landing.now, { type: "accountResult", success: true, subjectHeld: true, confirmFirst })
+    try storeGrant(tx, grant, true)
+    try step(tx, attempt.key, landing.now, { type: "accountResult", success: true, subjectHeld: true })
   } else {
     const tokens = try sealTokens(grant.tokens)
-    try step(tx, attempt.key, landing.now, { type: "accountResult", success: true, subjectHeld: false, confirmFirst }, {
+    try step(tx, attempt.key, landing.now, { type: "accountResult", success: true, subjectHeld: false }, {
       subject: grant.subject, email: grant.email, granted_scopes: JSON.stringify(grant.grantedScopes), tokens, linked_at: landing.now
     })
   }
@@ -322,7 +322,7 @@ effect function storeConnected(attempt: Attempt, landing: Omit<ManagedLanding, "
   }
   if (retained === undefined) {
     const connection = try store.transaction(effect (tx: Tx) => {
-      try step(tx, key, now, { type: "accountResult", success: false, subjectHeld: false, confirmFirst: false })
+      try step(tx, key, now, { type: "accountResult", success: false, subjectHeld: false })
       try step(tx, key, now, { type: "compensate", supported: false, success: true })
       return try finishFailure(tx, key, now)
     })
