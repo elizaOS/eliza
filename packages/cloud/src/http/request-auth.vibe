@@ -158,9 +158,9 @@ effect function readCaller(authorization: string | undefined, routeClass: RouteC
   throw refused("AuthenticationRequired", "CredentialUnknown")
 }
 
-export effect function authenticate(authorization: string | undefined, routeClass: RouteAuth): Caller!(Refused | StoreFailure)!Store {
+export effect function authenticate(authorization: string | undefined, routeClass: RouteAuth, countRequest = true): Caller!(Refused | StoreFailure)!Store {
   if (routeClass === "SessionFamily") return { kind: "anonymous" }
-  return try readCaller(authorization, routeClass, true)
+  return try readCaller(authorization, routeClass, countRequest)
 }
 
 function credentialKey(caller: Signed): string {
