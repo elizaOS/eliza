@@ -360,23 +360,23 @@ notify there is refused before anything changes.
 
 ```quint
 type AttendeeNotice = NotifyAttendees | NotifyNobody | CannotNotify
-pure def attendeeNotice(asked: bool, otherAttendees: bool, canNotify: bool): AttendeeNotice =
-  if (not(asked and otherAttendees)) NotifyNobody
+pure def attendeeNotice(askedFlag: bool, otherAttendees: bool, canNotify: bool): AttendeeNotice =
+  if (not(askedFlag and otherAttendees)) NotifyNobody
   else if (not(canNotify)) CannotNotify
   else NotifyAttendees
 pure def noticeAsked(flagged: bool, ownerWordsAsk: bool, ownerWordsDecline: bool): bool =
   flagged and ownerWordsAsk and not(ownerWordsDecline)
-pure def clientNoticeRefused(asked: bool, canNotify: bool): bool = asked and not(canNotify)
+pure def clientNoticeRefused(askedFlag: bool, canNotify: bool): bool = askedFlag and not(canNotify)
 pure def lawAnUnaskedChangeTellsNobody(otherAttendees: bool, canNotify: bool): bool =
   attendeeNotice(false, otherAttendees, canNotify) == NotifyNobody
-pure def lawACalendarThatCannotSendNeverNotifies(asked: bool, otherAttendees: bool): bool =
-  attendeeNotice(asked, otherAttendees, false) != NotifyAttendees
-pure def lawNoAttendeesNoNotice(asked: bool, canNotify: bool): bool =
-  attendeeNotice(asked, false, canNotify) == NotifyNobody
+pure def lawACalendarThatCannotSendNeverNotifies(askedFlag: bool, otherAttendees: bool): bool =
+  attendeeNotice(askedFlag, otherAttendees, false) != NotifyAttendees
+pure def lawNoAttendeesNoNotice(askedFlag: bool, canNotify: bool): bool =
+  attendeeNotice(askedFlag, false, canNotify) == NotifyNobody
 pure def lawAModelFlagAloneAsksNothing(ownerWordsDecline: bool): bool =
   not(noticeAsked(true, false, ownerWordsDecline))
-pure def lawAClientNoticeIsRefusedWhereNobodyCanBeTold(asked: bool): bool =
-  clientNoticeRefused(asked, false) == asked
+pure def lawAClientNoticeIsRefusedWhereNobodyCanBeTold(askedFlag: bool): bool =
+  clientNoticeRefused(askedFlag, false) == askedFlag
 ```
 
 ### An approved change runs only with its reviewed fields for the account that approved it

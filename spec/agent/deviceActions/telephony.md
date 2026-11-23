@@ -396,10 +396,10 @@ with 4153024399.", or, for an emergency, the keypad and how to dial from it.
 
 ```quint
 type DirectTelephony = KeypadOpen | MessagesDraft | SenderAddressRead
-pure def telephonyAsAsked(step: DirectTelephony, ownersOwn: bool, reviewAsked: bool): bool = ownersOwn and (step == KeypadOpen or not(reviewAsked))
-pure def lawWhatTheOwnerDidNotAskForKeepsItsCard(step: DirectTelephony, reviewAsked: bool): bool = not(telephonyAsAsked(step, false, reviewAsked))
-pure def lawAskingForReviewKeepsADraftOrAReadOnItsCard(step: DirectTelephony, ownersOwn: bool): bool =
-  step != KeypadOpen implies not(telephonyAsAsked(step, ownersOwn, true))
+pure def telephonyAsAsked(direct: DirectTelephony, ownersOwn: bool, reviewAsked: bool): bool = ownersOwn and (direct == KeypadOpen or not(reviewAsked))
+pure def lawWhatTheOwnerDidNotAskForKeepsItsCard(direct: DirectTelephony, reviewAsked: bool): bool = not(telephonyAsAsked(direct, false, reviewAsked))
+pure def lawAskingForReviewKeepsADraftOrAReadOnItsCard(direct: DirectTelephony, ownersOwn: bool): bool =
+  direct != KeypadOpen implies not(telephonyAsAsked(direct, ownersOwn, true))
 pure def lawTheOwnersOwnKeypadOpensAsAsked(reviewAsked: bool): bool = telephonyAsAsked(KeypadOpen, true, reviewAsked)
 ```
 
@@ -432,13 +432,13 @@ the owner verbatim.
 type SettledTelephony = SettledCall | SettledDial | SettledKeypad | SettledSimSend | SettledDraft | SettledContactChange
   | SettledContactShow | SettledOpenRead | SettledSenderRead | SettledVoicemailDelete
 type SettledLead = RetrievedReceipt | RetrievedDial | RetrievedSimSend | RetrievedRead
-pure def settledLead(settled: SettledTelephony): SettledLead =
-  if (settled == SettledOpenRead or settled == SettledSenderRead) RetrievedRead
-  else if (settled == SettledDial) RetrievedDial
-  else if (settled == SettledSimSend) RetrievedSimSend
+pure def settledLead(settledArg: SettledTelephony): SettledLead =
+  if (settledArg == SettledOpenRead or settledArg == SettledSenderRead) RetrievedRead
+  else if (settledArg == SettledDial) RetrievedDial
+  else if (settledArg == SettledSimSend) RetrievedSimSend
   else RetrievedReceipt
-pure def lawEveryReadIsToldAsHistorical(settled: SettledTelephony): bool =
-  (settledLead(settled) == RetrievedRead) iff (settled == SettledOpenRead or settled == SettledSenderRead)
-pure def lawOnlyASimSendIsToldItsExactStatus(settled: SettledTelephony): bool =
-  (settledLead(settled) == RetrievedSimSend) iff (settled == SettledSimSend)
+pure def lawEveryReadIsToldAsHistorical(settledArg: SettledTelephony): bool =
+  (settledLead(settledArg) == RetrievedRead) iff (settledArg == SettledOpenRead or settledArg == SettledSenderRead)
+pure def lawOnlyASimSendIsToldItsExactStatus(settledArg: SettledTelephony): bool =
+  (settledLead(settledArg) == RetrievedSimSend) iff (settledArg == SettledSimSend)
 ```
