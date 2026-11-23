@@ -1,7 +1,12 @@
 # Routines
 
 A routine is a habit the owner keeps on a cadence, such as brushing teeth
-morning and night or stretching in the afternoon. Each due time is an
+morning and night or stretching in the afternoon. It comes in the daily
+windows the owner names (morning at 09:00, afternoon at 15:00, evening at
+18:00, night at 21:00), at the exact times they name, or both, every day
+or on the weekdays they name, on the owner's clock; a routine that names
+no valid time is not created. The assistant keeps the instants the owner
+marked its occurrences done, for the evening brief. Each due time is an
 occurrence: pending until its window opens, then shown to the owner, who
 completes it, skips it or snoozes it; an occurrence nobody answered
 expires when its window ends. The owner may mute a routine. During

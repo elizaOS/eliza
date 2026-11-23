@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/scheduledDossiers.md, "Only the owner's own foreground or unlock activity is admitted, once per owner day"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"
+// spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/scheduledDossiers.md, "Only the owner's own foreground or unlock activity is admitted, once per owner day"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn"
 module node {
   function offsetAt(instant: number, zone: string): number {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
@@ -39,6 +39,29 @@ module node {
   }
 
   /** @throws {never} */
+  export function recordTimeText(instant: number, zone: string): string | undefined {
+    try {
+      const date = new Date(instant)
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: zone, year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit",
+        ...(date.getUTCSeconds() !== 0 || date.getUTCMilliseconds() !== 0 ? { second: "2-digit" as const } : {}), timeZoneName: "short",
+      }).format(date)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function fireTimeText(instant: number, zone: string, now: number): string {
+    try {
+      const sameDay = civilDate(instant, zone) === civilDate(now, zone)
+      return new Intl.DateTimeFormat("en-US", { timeZone: zone, ...(sameDay ? {} : { month: "short", day: "numeric" }), hour: "numeric", minute: "2-digit" }).format(new Date(instant))
+    } catch {
+      return new Date(instant).toISOString()
+    }
+  }
+
+  /** @throws {never} */
   export function civilDate(instant: number, zone: string): string {
     try {
       return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(instant))
@@ -62,4 +85,15 @@ module node {
   }
 }
 
-export { civilDate, localMinutes, longDate, offsetInstant, wallText, zonedInstant } from node
+const clockText = /^([01]\d|2[0-3]):([0-5]\d)$/u
+
+/** The minute of the day an HH:MM time names, or undefined when it names none. */
+export function minuteOf(text: string): number | undefined {
+  const clock = clockText.exec(text.trim())
+  return clock === null ? undefined : Number(clock[1]) * 60 + Number(clock[2])
+}
+
+/** A minute of the day as HH:MM. */
+export const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`
+
+export { civilDate, fireTimeText, recordTimeText, localMinutes, longDate, offsetInstant, wallText, zonedInstant } from node

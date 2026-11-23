@@ -1,14 +1,15 @@
-// spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
+// spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { ModelType, ServiceType, type IAgentRuntime, type NotificationService, type ReminderPresentation, type Service, type UUID } from "@elizaos/core"
+import { ModelType, ServiceType, type IAgentRuntime, type Memory, type NotificationService, type ReminderPresentation, type Service, type UUID } from "@elizaos/core"
 import type { ScheduledTasksApi } from "@elizaos/agent"
+import { sentAgain, type DeliveryEnd } from "../gen/assistant__reminderEscalation.effect.vibe"
 
 /** The scheduler refused or could not be reached. */
 export error SchedulerUnavailable { reason: string }
 /** No model answered. */
 export error ModelUnavailable { reason: string }
-/** The owner could not be told. */
-export error DeliveryFailed { reason: string }
+/** The owner could not be told, before anything left or after it may have reached them. */
+export error DeliveryFailed { reason: string; ending: DeliveryEnd }
 /** A stored record is not the shape this package writes. */
 /** @public */
 export error RecordUnreadable { key: string }
@@ -38,6 +39,12 @@ export interface TaskRow {
   readonly metadata: Readonly<Record<string, unknown>>
   readonly status: string
   readonly revision: number
+}
+
+/** A change to a scheduled task's words or its trigger. */
+export interface TaskEdit {
+  readonly promptInstructions?: string
+  readonly trigger?: TaskTrigger
 }
 
 /** A verb the owner answers a scheduled task with. */
@@ -74,13 +81,14 @@ export interface Presented {
 export service Scheduler {
   create(task: AssistantTask): { readonly created: boolean; readonly task: TaskRow }!SchedulerUnavailable
   answer(taskId: string, verb: TaskVerb, key: string): VerbAnswer!SchedulerUnavailable
+  edit(taskId: string, change: TaskEdit, key: string): VerbAnswer!SchedulerUnavailable
   find(taskId: string): (TaskRow | undefined)!SchedulerUnavailable
   list(): (readonly TaskRow[])!SchedulerUnavailable
 }
 
 /** The configured text model. */
 export service Model {
-  complete(system: string, prompt: string, maxTokens: number): string!ModelUnavailable
+  complete(system: string, prompt: string): string!ModelUnavailable
 }
 
 /** Where a fired reminder reaches the owner: a notice and the conversation it was asked in. */
@@ -106,10 +114,12 @@ export service Approvals {
   list(): (readonly ApprovalView[])!ApprovalsUnavailable
 }
 
-/** A calendar event and the clocks a check-in reads its change from. */
+/** A calendar event, where and until when it runs when the calendar says, and the clocks a check-in reads its change from. */
 export interface CalendarEventFacts {
   readonly title: string
   readonly startAt: number
+  readonly endAt?: number
+  readonly location?: string
   readonly synced: boolean
   readonly metadataValid: boolean
   readonly providerEditedAt: string | undefined
@@ -211,6 +221,11 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
       const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "verb", verb }, { tag: "Keyed", key }), catch: unavailable })
       return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
     },
+    effect edit(taskId, change, key) {
+      const tasks = try agentScheduler(runtime)
+      const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "edit", edit: change }, { tag: "Keyed", key }), catch: unavailable })
+      return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
+    },
     effect find(taskId) {
       const tasks = try agentScheduler(runtime)
       return try tryPromise({ try: () => tasks.get(taskId), catch: unavailable })
@@ -225,9 +240,9 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
 /** The Model over the runtime's small text model. */
 function runtimeModel(runtime: IAgentRuntime): Model.Shape {
   return {
-    effect complete(system, prompt, maxTokens) {
+    effect complete(system, prompt) {
       const text = try tryPromise({
-        try: () => runtime.useModel(ModelType.TEXT_SMALL, { system, prompt, maxTokens }),
+        try: () => runtime.useModel(ModelType.TEXT_SMALL, { system, prompt }),
         catch: (cause) => new ModelUnavailable({ reason: cause instanceof Error ? cause.message : String(cause) }),
       })
       if (typeof text !== "string") throw new ModelUnavailable({ reason: "The model returned no text" })
@@ -238,19 +253,19 @@ function runtimeModel(runtime: IAgentRuntime): Model.Shape {
 
 /** The Presenter over the agent's notifications and the conversation the reminder was asked in. */
 function runtimePresenter(runtime: IAgentRuntime): Presenter.Shape {
-  const failed = (cause: unknown) => new DeliveryFailed({ reason: cause instanceof Error ? cause.message : String(cause) })
+  const failed = (ending: DeliveryEnd) => (cause: unknown) => new DeliveryFailed({ reason: cause instanceof Error ? cause.message : String(cause), ending })
   return {
     effect present({ taskId, kind, roomId, presentation, conversationOnly }) {
-      if (conversationOnly === true && roomId === undefined) throw new DeliveryFailed({ reason: "The reminder has no conversation to post in" })
+      if (conversationOnly === true && roomId === undefined) throw new DeliveryFailed({ reason: "The reminder has no conversation to post in", ending: "NothingSent" })
       if (conversationOnly !== true) {
         const notifications = runtime.getService<NotificationService>(ServiceType.NOTIFICATION)
-        if (notifications === null) throw new DeliveryFailed({ reason: "No notification service is registered" })
+        if (notifications === null) throw new DeliveryFailed({ reason: "No notification service is registered", ending: "NothingSent" })
         try tryPromise({
           try: () => notifications.notify({
             title: presentation.title, body: presentation.body, category: "reminder", source: "personal-assistant",
             groupKey: taskId, data: { taskId, kind },
           }),
-          catch: failed,
+          catch: failed("AcceptanceUnknown"),
         })
       }
       if (roomId === undefined) return
@@ -259,10 +274,18 @@ function runtimePresenter(runtime: IAgentRuntime): Presenter.Shape {
           entityId: runtime.agentId, agentId: runtime.agentId, roomId,
           content: { text: presentation.chatText, source: "reminder", reminderPresentation: presentation },
         }, "messages"),
-        catch: failed,
+        catch: failed(conversationOnly === true ? "NothingSent" : "AcceptanceUnknown"),
       })
     },
   }
+}
+
+/** Shows the owner one delivery, sending it again later only when nothing left. */
+export effect function presentOnce(presented: Presented) {
+  const shown = (try Presenter).present(presented) catch (failed) => failed
+  return shown instanceof DeliveryFailed && sentAgain(shown.ending)
+    ? { kind: "retry", afterMs: 60_000, reason: shown.reason } satisfies DeliveryAnswer
+    : { kind: "delivered" } satisfies DeliveryAnswer
 }
 
 module node {
@@ -342,6 +365,17 @@ export function runtimeLayer(runtime: IAgentRuntime) {
 
 /** The ports the assistant's programs need. */
 export type AssistantPorts = KeyValueStore.KeyValueStore | Scheduler | Model | Presenter | Facts | Approvals | Calendar
+
+/** The owner's request as this package reads it from a message, with the instant it was sent when known. */
+export function requestOf(message: Memory) {
+  return {
+    messageId: message.id ?? "", text: typeof message.content.text === "string" ? message.content.text : "", roomId: message.roomId,
+    askedAt: typeof message.createdAt === "number" && Number.isSafeInteger(message.createdAt) ? message.createdAt : undefined,
+  }
+}
+
+/** The owner's request as this package reads it from a message. */
+export type OwnerRequest = ReturnType<typeof requestOf>
 
 /** Runs one program of this package against a running agent's ports. */
 export function onAgent<A, E>(runtime: IAgentRuntime, program: A!E!AssistantPorts): Promise<A> {

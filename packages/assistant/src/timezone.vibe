@@ -1,8 +1,7 @@
 // spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "A return ends the trip, a trip starts at the message, and anything else leaves the trip as it was"; spec/assistant/timezone.md, "Whether a name is a zone is the host's zone database to say, and the empty name never is"; spec/assistant/timezone.md, "A stated zone replaces the stored zone only when the resolver knows it"; spec/assistant/timezone.md, "The calendar reads the stored zone, or the agent's zone when none is stored"; spec/assistant/timezone.md, "At a tick, the owner's clock is the travel zone while travelling, else the first zone known"
-import type { RegisteredEvaluator } from "@elizaos/core"
 import { Machine, calendarZone, opaque, ownerClockZone, stored, type ClockFacts } from "../gen/assistant__timezone.effect.vibe"
 import { travellingAt } from "../gen/assistant__travel.effect.vibe"
-import { Facts, onAgent, readRecord, writeRecord } from "./host.vibe"
+import { Facts, readRecord, writeRecord } from "./host.vibe"
 
 module node {
   /** @throws {never} */
@@ -115,23 +114,4 @@ export effect function ownerCalendarZone() {
   const host = try Facts
   const agentZone = resolveZone(try host.runtimeZone()) ?? resolveZone(try host.hostZone()) ?? "UTC"
   return calendarZone({ storedZone: (try ownerFacts()).zone }, agentZone)
-}
-
-/** Records the owner's zone whenever they state one the resolver knows. */
-export const ownerTimezoneEvaluator: RegisteredEvaluator = {
-  name: "PERSONAL_ASSISTANT_OWNER_TIMEZONE",
-  description: "Keeps the time zone the owner states, such as \"my timezone is America/New_York\", for reminders, check-ins and the calendar.",
-  schema: { type: "object", properties: { zone: { type: "string" } }, required: ["zone"] },
-  inputScope: "current_message",
-  shouldRun: async ({ runtime, message }) => message.entityId !== runtime.agentId && typeof message.content.text === "string" && statedZone(message.content.text) !== undefined,
-  resolveOutputWhen: () => true,
-  resolveOutput: ({ message }) => ({ zone: statedZone(message.content.text ?? "") ?? "" }),
-  prompt: () => "",
-  processors: [{
-    name: "keep-owner-zone",
-    process: async ({ runtime, message }) => {
-      const kept = await onAgent(runtime, stateOwnerZone(message.content.text ?? ""))
-      return { success: true, text: `Owner time zone is ${kept.zone}.`, data: { zone: kept.zone, changed: kept.changed } }
-    },
-  }],
 }

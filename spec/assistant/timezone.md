@@ -95,7 +95,10 @@ is placed in that zone, and a wall time the zone skips or repeats is
 refused rather than moved. An empty repeat is a one-off alarm and carries
 no days. A proposed reminder's time is shown to the owner in its repeat
 zone, else in the zone the phone reported for this turn, else in UTC, named
-every way, never in a zone guessed for the owner.
+every way, never in a zone guessed for the owner. A new reminder's pending
+or settled result also gives the model its due and alert instants in UTC
+and, when the phone reported a zone this turn, their wall times in that
+zone, named, to repeat as they are.
 
 ```quint
 pure def phoneZoneGrounded(sensitive: bool, observedZone: str, proposedZone: str): bool =

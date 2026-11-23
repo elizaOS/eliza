@@ -20,7 +20,14 @@ later fires on the device, belong to the device and its reminder journal.
 ### A reminder intent is proposed with a plan and what the original message asked
 
 The verification of the original message reports whether it asked for a
-reminder, the clock it names, and any delivery choices it states.
+reminder, the clock it names, any delivery choices it states, and whether
+it says the reminder is important or urgent.
+
+A plan's due time is a duration, an instant with its offset, a wall time
+on a day of the owner's clock, a day alone, which comes at 09:00 that day
+as a deadline "by the 20th" does, or a repeat at a wall time every day or
+on the weekdays the owner named. A repeat keeps the owner's clock and
+follows it when they state a new zone.
 
 ```quint
 type ReminderPhase = NoReminderIntent | IntentPending | IntentReady | IntentRejected | IntentCancelled | ReminderSaved
@@ -29,22 +36,23 @@ type DeliveryChoice = UnknownChoice | FirstChoice | SecondChoice
 type ReminderIntent = { reminderPhase: ReminderPhase, requested: bool, checked: bool, writes: int,
   plannedClock: ReminderClock, extractedClock: ReminderClock, savedClock: ReminderClock,
   plannedDestination: DeliveryChoice, extractedDestination: DeliveryChoice, savedDestination: DeliveryChoice,
-  plannedAlert: DeliveryChoice, extractedAlert: DeliveryChoice, savedAlert: DeliveryChoice }
+  plannedAlert: DeliveryChoice, extractedAlert: DeliveryChoice, savedAlert: DeliveryChoice, saidHigh: bool, savedHigh: bool }
 pure val initial: ReminderIntent = { reminderPhase: NoReminderIntent, requested: false, checked: false, writes: 0,
   plannedClock: UtcClock, extractedClock: UtcClock, savedClock: UtcClock,
   plannedDestination: UnknownChoice, extractedDestination: UnknownChoice, savedDestination: UnknownChoice,
-  plannedAlert: UnknownChoice, extractedAlert: UnknownChoice, savedAlert: UnknownChoice }
+  plannedAlert: UnknownChoice, extractedAlert: UnknownChoice, savedAlert: UnknownChoice, saidHigh: false, savedHigh: false }
 pure def canProposeReminder(s: ReminderIntent): bool = s.reminderPhase == NoReminderIntent
-pure def proposeReminder(s: ReminderIntent, requested: bool, plannedClock: ReminderClock, extractedClock: ReminderClock, plannedDestination: DeliveryChoice, extractedDestination: DeliveryChoice, plannedAlert: DeliveryChoice, extractedAlert: DeliveryChoice): ReminderIntent =
+pure def proposeReminder(s: ReminderIntent, requested: bool, plannedClock: ReminderClock, extractedClock: ReminderClock, plannedDestination: DeliveryChoice, extractedDestination: DeliveryChoice, plannedAlert: DeliveryChoice, extractedAlert: DeliveryChoice, saidHigh: bool): ReminderIntent =
   { ...s, reminderPhase: IntentPending, requested: requested, plannedClock: plannedClock, extractedClock: extractedClock,
-    plannedDestination: plannedDestination, extractedDestination: extractedDestination, plannedAlert: plannedAlert, extractedAlert: extractedAlert }
+    plannedDestination: plannedDestination, extractedDestination: extractedDestination, plannedAlert: plannedAlert, extractedAlert: extractedAlert, saidHigh: saidHigh }
 ```
 
 ### The original message is checked before a reminder is written
 
 A check that finds the message asked for the reminder makes it ready; one
 that finds it did not, or a check that cannot run, rejects it. The owner
-may cancel before it is written.
+may cancel before it is written. The check asks the model with no output
+limit, so its answer is never cut short.
 
 ```quint
 pure def canCheckRequest(s: ReminderIntent): bool = s.reminderPhase == IntentPending
@@ -63,7 +71,7 @@ pure def recoveredChoice(planned: DeliveryChoice, extracted: DeliveryChoice): De
 pure def canSaveReminder(s: ReminderIntent): bool = s.reminderPhase == IntentReady and s.checked and s.requested
 pure def saveReminder(s: ReminderIntent): ReminderIntent =
   { ...s, reminderPhase: ReminderSaved, writes: s.writes + 1, savedClock: s.plannedClock,
-    savedDestination: recoveredChoice(s.plannedDestination, s.extractedDestination), savedAlert: recoveredChoice(s.plannedAlert, s.extractedAlert) }
+    savedDestination: recoveredChoice(s.plannedDestination, s.extractedDestination), savedAlert: recoveredChoice(s.plannedAlert, s.extractedAlert), savedHigh: s.saidHigh }
 pure def alwaysWrittenAtMostOnce(s: ReminderIntent): bool = s.writes >= 0 and s.writes <= 1 and ((s.writes == 1) == (s.reminderPhase == ReminderSaved))
 pure def alwaysRefusalWritesNothing(s: ReminderIntent): bool = (s.reminderPhase == IntentRejected or s.reminderPhase == IntentCancelled) implies s.writes == 0
 ```
@@ -81,6 +89,17 @@ pure def alwaysPlannedClockKept(s: ReminderIntent): bool = s.writes > 0 implies 
 ```quint
 pure def alwaysDeliveryChoicesKept(s: ReminderIntent): bool =
   s.writes > 0 implies (s.savedDestination == recoveredChoice(s.plannedDestination, s.extractedDestination) and s.savedAlert == recoveredChoice(s.plannedAlert, s.extractedAlert))
+```
+
+### A reminder is high priority only when the owner's message says so
+
+The plan's priority never makes a reminder high priority: only the
+owner's own message, read again, saying it is important or urgent does,
+and a message that says nothing of it saves a normal one.
+
+```quint
+pure def alwaysHighPriorityOnlyWhenSaid(s: ReminderIntent): bool = s.writes > 0 implies s.savedHigh == s.saidHigh
+pure def sometimesSavedHighPriority(s: ReminderIntent): bool = s.reminderPhase == ReminderSaved and s.savedHigh
 ```
 
 ### A proposed reminder is settled
@@ -128,6 +147,72 @@ pure def lawTheSavingMessageNeverTakesItBack(savedAt: int, now: int, saveLive: b
   not(retractsRecentSave(savedAt, now, true, saveLive, otherTarget))
 pure def lawAnotherReminderIsNeverTakenBack(savedAt: int, now: int, sameMessage: bool, saveLive: bool): bool =
   not(retractsRecentSave(savedAt, now, sameMessage, saveLive, true))
+```
+
+## Story: Move the reminder I just saved
+
+> As an owner, when I say "actually make that 30 minutes" or "move it to
+> 5pm" about a reminder I saved, I want it to go off then, with nothing
+> else about it changed.
+
+### A delay moves a waiting reminder to that long after the request, and anything else changes nothing
+
+A move carries a delay in whole seconds or whole minutes, and seconds win
+when both are given, so a second count that is not a positive whole
+number is no delay even beside a good minute count; a fraction of the
+winning unit is no delay. The
+delay counts from the instant of the owner's message, as "in 20 minutes"
+does when a reminder is saved. The move names the reminder by its title
+or its id, or by "that" or "it", which is the reminder this conversation
+just saved. Only a reminder still waiting to fire moves: one that already
+went off is snoozed instead. A delay that is not positive, is longer than
+366 days, or lands at or before now changes nothing, and the reply says
+why. The moved reminder keeps its title, its delivery choices and its
+escalation plan, and the reply names its new time on the owner's clock.
+
+```quint
+pure val maxMoveDelayMs = 31622400000
+pure def movedDueAt(askedAt: int, delayMs: int): int = askedAt + delayMs
+pure def moveAdmitted(waiting: bool, delayMs: int, askedAt: int, now: int): bool =
+  waiting and delayMs > 0 and delayMs <= maxMoveDelayMs and movedDueAt(askedAt, delayMs) > now
+pure def lawAMoveCountsFromTheRequest(askedAt: int, delayMs: int): bool = movedDueAt(askedAt, delayMs) - askedAt == delayMs
+pure def lawAReminderThatWentOffIsNeverMoved(delayMs: int, askedAt: int, now: int): bool = not(moveAdmitted(false, delayMs, askedAt, now))
+pure def lawNoDelayNeverMoves(waiting: bool, delayMs: int, askedAt: int, now: int): bool =
+  delayMs <= 0 implies not(moveAdmitted(waiting, delayMs, askedAt, now))
+pure def lawAMovedReminderIsStillAhead(waiting: bool, delayMs: int, askedAt: int, now: int): bool =
+  moveAdmitted(waiting, delayMs, askedAt, now) implies movedDueAt(askedAt, delayMs) > now
+```
+
+### A stated time moves a waiting reminder to that time, and a time already passed changes nothing
+
+A move may instead name when the reminder goes off, as a create names
+it: an instant, a wall time on a day of the owner's clock, a day alone, or
+a repeat. The reminder then goes off at that time, or on that repeat, as
+long as it is still waiting and a one-off time is ahead of now.
+
+```quint
+pure def moveToAdmitted(waiting: bool, dueAt: int, now: int): bool = waiting and dueAt > now
+pure def lawAStatedTimeAlreadyPassedNeverMoves(waiting: bool, dueAt: int, now: int): bool = dueAt <= now implies not(moveToAdmitted(waiting, dueAt, now))
+pure def lawAReminderThatWentOffIsNeverMovedToATime(dueAt: int, now: int): bool = not(moveToAdmitted(false, dueAt, now))
+```
+
+## Story: Hear and rename the reminders I keep
+
+> As an owner, I want to ask what reminders I have and hear each with when
+> it comes, and to rename one by its title without anything else about it
+> changing.
+
+### Listing reminders changes nothing, and a rename changes the title of the one reminder named
+
+A list tells every live reminder with its next time or its repeat on the
+owner's clock. A rename names a reminder by its title or its id and gives
+a nonblank new title; it applies only when exactly one live reminder is
+named, and keeps its time, delivery choices and escalation plan.
+
+```quint
+pure def renameAdmitted(matches: int, newTitle: str): bool = matches == 1 and newTitle != ""
+pure def lawOnlyOneNamedReminderIsRenamed(matches: int, newTitle: str): bool = renameAdmitted(matches, newTitle) implies matches == 1
+pure def lawABlankTitleNeverRenames(matches: int): bool = not(renameAdmitted(matches, ""))
 ```
 
 ## Story: Propose a reminder or alarm on my phone only as I asked

@@ -1,9 +1,8 @@
-// spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"
+// spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item's completion time is set exactly while it is completed"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"
 import type { Action, ActionResult, Provider } from "@elizaos/core"
 import { Machine, Rejected, matching, stored, type Event, type Todo, type TodoStatus, type Todos } from "../gen/assistant__todos.effect.vibe"
-import { Facts, onAgent, readRecord, writeRecord } from "./host.vibe"
+import { Facts, onAgent, readRecord, requestOf, writeRecord } from "./host.vibe"
 import { appliedReceipt, attributed, failedReceipt, previewReceipt, unchangedReceipt } from "./replies.vibe"
-import { requestOf } from "./reminders.vibe"
 import { TodoRequest } from "./requests.schema.vibe"
 
 const listKey = "todos"
@@ -34,10 +33,18 @@ export function renderTodos(todos: readonly Todo[], includeClosed: boolean): str
   return shown.length === 0 ? "" : ["# Current todos", ...shown.map((todo) => `- ${marks[todo.todoStatus]} ${todo.content} (t-${todo.todoId})`)].join("\n")
 }
 
-function contentOf(list: Todos, target: string): string {
-  const ref = /^t-(\d+)$/u.exec(target.trim())
+const plain = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/gu, " ").trim()
+const isOpen = (todo: Todo) => todo.todoStatus === "TodoPending" || todo.todoStatus === "TodoInProgress"
+
+/** The item texts the owner's words name: by a t-N reference, by an exact text, or every text they match apart from case, punctuation and spacing. */
+function namedTexts(list: Todos, words: string): readonly string[] {
+  const target = words.trim()
+  const ref = /^t-(\d+)$/u.exec(target)
   const byRef = ref === null ? undefined : list.todos.find((todo) => todo.todoId === Number(ref[1]))
-  return byRef?.content ?? target.trim()
+  if (byRef !== undefined) return [byRef.content]
+  if (list.todos.some((todo) => todo.content === target)) return [target]
+  const loose = [...new Set(list.todos.filter((todo) => plain(todo.content) === plain(target)).map((todo) => todo.content))]
+  return loose.length === 0 ? [target] : loose
 }
 
 const decodeRequest = Schema.decodeUnknownOption(TodoRequest, { onExcessProperty: "error" })
@@ -53,16 +60,27 @@ export effect function changeTodos(input: unknown, messageId: string, text: stri
     const list = try Machine
     const before = try list.get()
     if (request.op === "list") return { success: true, text: renderTodos(before.todos, true) || "Your to-do list is empty.", data: { todos: before.todos } } satisfies ActionResult
-    const content = request.op === "create" ? request.content.trim() : request.op === "clear" ? "" : contentOf(before, request.target)
+    const named = request.op === "create" || request.op === "clear" ? [] : namedTexts(before, request.target)
+    if (named.length > 1) {
+      const candidates = before.todos.filter((todo) => named.includes(todo.content))
+      return {
+        success: false, effectReceipts: [unchangedReceipt({ operation: `todo.${request.op}`, kind: "todo", id: request.target, key: `${messageId}:${request.op}:${request.target}`, at }, "ambiguous")],
+        text: `${candidates.length} to-dos match "${request.target}", so nothing was changed. Which one did you mean: ${candidates.map((todo) => `"${todo.content}" (t-${todo.todoId})`).join(", ")}?`,
+        data: { outcome: "ambiguous", candidates: candidates.map((todo) => todo.todoId), awaitingUserInput: true },
+      } satisfies ActionResult
+    }
+    const content = request.op === "create" ? request.content.trim() : request.op === "clear" ? "" : named[0] ?? request.target.trim()
     const key = `${messageId}:${request.op}:${content}`
     const facts = { operation: `todo.${request.op}`, kind: request.op === "clear" ? "todo-list" : "todo", id: request.op === "clear" ? listKey : content, key, at }
     const target = `${facts.kind}:${facts.id}`
     const asked = try readRecord(questionKey, decodeQuestion)
-    const affirmed = affirms(text) && (request.op === "clear" || (asked !== undefined && asked.content === content && at - asked.at <= questionLifetime))
-    const event: Event = request.op === "create" ? { type: "createTodo", key, content, affirmed }
+    const affirmed = affirms(text) && (request.op === "clear" || (asked !== undefined && plain(asked.content) === plain(content) && at - asked.at <= questionLifetime))
+    const twin = request.op === "create" && !affirmed ? before.todos.find((todo) => isOpen(todo) && plain(todo.content) === plain(content))?.content : undefined
+    const event: Event = request.op === "create" ? { type: "createTodo", key, content: twin ?? content, affirmed }
       : request.op === "delete" ? { type: "deleteTodo", key, content }
+      : request.op === "rename" ? { type: "renameTodo", key, content, renamed: request.content.trim() }
       : request.op === "clear" ? (before.clearPreviewed ? { type: "confirmClear", key, affirmed } : { type: "previewClear", key })
-      : { type: "setTodoStatus", key, content, status: statusOf[request.op] }
+      : { type: "setTodoStatus", key, content, status: statusOf[request.op], at }
     const replay = before.mutations.some((mutation) => mutation.key === key)
     const after = list.send(event) catch (refused) => refused
     if (after instanceof Rejected) {
@@ -70,12 +88,22 @@ export effect function changeTodos(input: unknown, messageId: string, text: stri
       return attributed([{ actionName: todoActionName, success: false, receipts: [receipt] }], target, { done: "", notDone: "That request was already used for a different change, so nothing was changed.", unproven: "" })
     }
     if (replay) {
-      return attributed([{ actionName: todoActionName, success: true, receipts: [appliedReceipt(facts, true)] }], target, { done: "Reused the change this request already made.", notDone: "", unproven: "" }, { todos: after.todos })
+      return {
+        success: true, effectReceipts: [unchangedReceipt(facts, "already_recorded")],
+        text: "That request was already recorded. Nothing changed.", data: { outcome: "replayed", todos: after.todos },
+      } satisfies ActionResult
     }
     switch (after.lastOutcome) {
+      case "AlreadySet": {
+        const status = request.op === "reopen" ? "open" : request.op === "rename" ? `called "${content}"` : statusWords[request.op]
+        return {
+          success: true, effectReceipts: [unchangedReceipt(facts, request.op === "rename" ? "already_named" : "already_at_status")],
+          text: `"${content}" was already ${status}.`, data: { outcome: "unchanged", todos: after.todos },
+        } satisfies ActionResult
+      }
       case "Duplicate": {
         try writeRecord(questionKey, { content, at })
-        return { success: false, effectReceipts: [unchangedReceipt(facts, "duplicate")], text: `"${content}" is already on your list. Add another copy anyway? Reply yes to confirm or no to cancel.`, data: { outcome: "duplicate", awaitingUserInput: true } } satisfies ActionResult
+        return { success: false, effectReceipts: [unchangedReceipt(facts, "duplicate")], text: `"${twin ?? content}" is already on your list. Add another copy anyway? Reply yes to confirm or no to cancel.`, data: { outcome: "duplicate", awaitingUserInput: true } } satisfies ActionResult
       }
       case "Missed": {
         const candidates = matching(before, content)
@@ -96,6 +124,7 @@ export effect function changeTodos(input: unknown, messageId: string, text: stri
       return { success: true, effectReceipts: [unchangedReceipt(facts, "cancelled")], text: "Kept your to-do list as it was.", data: { outcome: "cancelled" } } satisfies ActionResult
     }
     const done = event.type === "createTodo" ? `Added "${content}".` : event.type === "deleteTodo" ? `Deleted "${content}".`
+      : event.type === "renameTodo" ? `Renamed "${content}" to "${event.renamed}".`
       : event.type === "confirmClear" ? `Cleared ${before.todos.length - after.todos.length} to-dos.`
       : `"${content}" is now ${statusWords[request.op]}.`
     return attributed([{ actionName: todoActionName, success: true, receipts: [appliedReceipt(facts)] }], target, { done, notDone: "", unproven: "" }, { todos: after.todos })
@@ -110,12 +139,12 @@ function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
 /** Adds, changes, deletes, lists and clears the owner's to-dos. */
 export const todosAction: Action = {
   name: todoActionName,
-  description: "The owner's to-do list: create, start, complete, cancel, reopen, delete, list or clear. A change names the item by its text or its t-N reference and applies only when exactly one item matches; clearing asks first.",
-  similes: ["TODOS", "CREATE_TODO", "ADD_TODO", "COMPLETE_TODO", "FINISH_TODO", "CANCEL_TODO", "DELETE_TODO", "LIST_TODOS", "CLEAR_TODOS"],
+  description: "The owner's to-do list: create, start, complete, cancel, reopen, rename, delete, list or clear. A change names the item by its text, case and punctuation aside, or its t-N reference and applies only when exactly one item matches; clearing asks first.",
+  similes: ["TODOS", "CREATE_TODO", "ADD_TODO", "COMPLETE_TODO", "FINISH_TODO", "CANCEL_TODO", "RENAME_TODO", "UPDATE_TODO", "DELETE_TODO", "LIST_TODOS", "CLEAR_TODOS"],
   parameters: [
-    { name: "op", required: true, description: "create, start, complete, cancel, reopen, delete, list or clear.", schema: { type: "string", enum: ["create", "start", "complete", "cancel", "reopen", "delete", "list", "clear"] } },
-    { name: "content", required: false, description: "For create: the to-do's text.", schema: { type: "string" } },
-    { name: "target", required: false, description: "For a change: the to-do's exact text or its t-N reference.", schema: { type: "string" } },
+    { name: "op", required: true, description: "create, start, complete, cancel, reopen, rename, delete, list or clear.", schema: { type: "string", enum: ["create", "start", "complete", "cancel", "reopen", "rename", "delete", "list", "clear"] } },
+    { name: "content", required: false, description: "For create: the to-do's text. For rename: its new text.", schema: { type: "string" } },
+    { name: "target", required: false, description: "For a change: the to-do's text or its t-N reference.", schema: { type: "string" } },
   ],
   tags: ["domain:todos", "capability:write", "effect:receipt-required"],
   roleGate: { minRole: "OWNER" },

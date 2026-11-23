@@ -3,12 +3,18 @@
 const Text = (most: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(most))
 const Minutes = (least: number, most: number) => Schema.Int.check(Schema.isBetween({ minimum: least, maximum: most }))
 
-/** When the plan says the reminder is due: after a duration, at an instant with its offset, or at a wall time on the owner's clock. */
+const Weekdays = Schema.Array(Schema.Literals(["mon", "tue", "wed", "thu", "fri", "sat", "sun"])).check(Schema.isMinLength(1), Schema.isMaxLength(7))
+
+/** When the plan says the reminder is due: after a duration, at an instant with its offset, at a wall time on the owner's clock, on a day of that clock, or at a wall time every day or on named weekdays. */
 export const ReminderDue = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("in"), minutes: Minutes(1, 525_600) }),
   Schema.Struct({ kind: Schema.Literal("at"), instant: Text(40) }),
   Schema.Struct({ kind: Schema.Literal("local"), date: Text(10), time: Text(5) }),
+  Schema.Struct({ kind: Schema.Literal("day"), date: Text(10) }),
+  Schema.Struct({ kind: Schema.Literal("repeat"), time: Text(5), days: Schema.optionalKey(Weekdays) }),
 ])
+/** When the plan says the reminder is due. */
+export type ReminderDue = typeof ReminderDue.Type
 
 /** A delivery choice the plan or the message states, or null when neither does. */
 export const Destination = Schema.NullOr(Schema.Literals(["chat", "device"]))
@@ -32,6 +38,7 @@ export const ReminderCheck = Schema.Struct({
   clock: Schema.Literals(["utc", "owner_local"]),
   destination: Destination,
   alert: Alert,
+  important: Schema.optionalKey(Schema.Boolean),
 })
 /** What the owner's original message asks, as the verification reads it again. */
 export type ReminderCheck = typeof ReminderCheck.Type
@@ -70,6 +77,7 @@ export const GoalRequest = Schema.Union([
   Schema.Struct({ op: Schema.Literal("delete"), target: Text(200) }),
   Schema.Struct({ op: Schema.Literal("dismiss_checkin"), target: Text(200), slot: Schema.Literals(["morning", "evening", "weekly"]) }),
   Schema.Struct({ op: Schema.Literal("checkin"), target: Text(200), progress: Schema.Literals(["on_track", "at_risk", "needs_attention"]), note: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))) }),
+  Schema.Struct({ op: Schema.Literal("review"), target: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))) }),
 ])
 /** A goal change the owner asks for. */
 export type GoalRequest = typeof GoalRequest.Type
@@ -78,6 +86,7 @@ export type GoalRequest = typeof GoalRequest.Type
 export const TodoRequest = Schema.Union([
   Schema.Struct({ op: Schema.Literal("create"), content: Text(500) }),
   Schema.Struct({ op: Schema.Literals(["start", "complete", "cancel", "reopen", "delete"]), target: Text(500) }),
+  Schema.Struct({ op: Schema.Literal("rename"), target: Text(500), content: Text(500) }),
   Schema.Struct({ op: Schema.Literal("clear") }),
   Schema.Struct({ op: Schema.Literal("list") }),
 ])
@@ -85,12 +94,14 @@ export const TodoRequest = Schema.Union([
 export type TodoRequest = typeof TodoRequest.Type
 
 const RoutineWindows = Schema.Array(Schema.Literals(["morning", "afternoon", "evening", "night"])).check(Schema.isMinLength(1), Schema.isMaxLength(4))
+const RoutineTimes = Schema.Array(Text(5)).check(Schema.isMinLength(1), Schema.isMaxLength(8))
+const RoutineWhen = { windows: Schema.optionalKey(RoutineWindows), times: Schema.optionalKey(RoutineTimes), days: Schema.optionalKey(Weekdays) }
 
-/** A routine the owner's client creates. */
+/** A routine the owner's client creates: its daily windows, its exact HH:MM times, or both, every day or on the weekdays named. */
 export const RoutineCreate = Schema.Struct({
   idempotencyKey: Text(256),
   title: Text(200),
-  windows: RoutineWindows,
+  ...RoutineWhen,
 })
 /** A routine the owner's client creates. */
 export type RoutineCreate = typeof RoutineCreate.Type
@@ -107,7 +118,7 @@ export type OccurrenceAnswer = typeof OccurrenceAnswer.Type
 
 /** A routine change the owner asks for in conversation. */
 export const RoutineRequest = Schema.Union([
-  Schema.Struct({ op: Schema.Literal("create"), title: Text(200), windows: RoutineWindows }),
+  Schema.Struct({ op: Schema.Literal("create"), title: Text(200), ...RoutineWhen }),
   Schema.Struct({ op: Schema.Literals(["pause", "resume", "archive", "delete"]), target: Text(200) }),
   Schema.Struct({ op: OccurrenceAnswer.fields.op, target: Text(200) }),
   Schema.Struct({ op: Schema.Literal("list") }),

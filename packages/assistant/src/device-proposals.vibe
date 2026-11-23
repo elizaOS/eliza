@@ -6,7 +6,7 @@ import { alertAt, newReminderStated, phoneReminderProposed, relativeDueAt, remin
 import { localDueGrounded, phoneZoneGrounded, reminderShownZone } from "../gen/assistant__timezone.effect.vibe"
 import { clockCapability, clockHandoffDispatch, clockRepeatCapability, describeClockHandoff, normalizeClockTimeZone } from "./clock.vibe"
 import { ownerRemindersAction } from "./reminders.vibe"
-import { wallText, zonedInstant } from "./time.vibe"
+import { recordTimeText, wallText, zonedInstant } from "./time.vibe"
 
 type Op<T extends DeviceOperation["type"]> = Extract<DeviceOperation, { readonly type: T }>
 type ReminderTarget = Op<"reminder_read_selected">["target"]
@@ -114,7 +114,7 @@ const reminderForms: readonly ProposalForm[] = [
   {
     types: ["reminder_create"],
     schema: object({ type: typed("reminder_create"), fields: createFields }),
-    guidance: "Create reviewed phone reminders with reminder_create: alertMinutes null means no alert, recurrence is null or an exact repeat, at = dueAt - (alertMinutes ?? 0) * 60000 and the recurrence leadMinutes matches. For a relative time (\"in 20 minutes\") or a stated day and time the host sets dueAt from the owner's words and the phone's clock; a relative reminder alerts when due, or not at all. The title uses the owner's words and the body stays empty unless the owner gave a note. A reminder without an alert is pending, not delivered.",
+    guidance: "Create reviewed phone reminders with reminder_create: alertMinutes null means no alert, recurrence is null or an exact repeat, at = dueAt - (alertMinutes ?? 0) * 60000 and the recurrence leadMinutes matches. For a relative time (\"in 20 minutes\") or a stated day and time the host sets dueAt from the owner's words and the phone's clock; a relative reminder alerts when due, or not at all. The title uses the owner's words and the body stays empty unless the owner gave a note. A reminder without an alert is pending, not delivered. Use a returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when present; they already use the phone's time zone. Otherwise keep its UTC instants explicit, without inventing a local time zone.",
     offered: (turn) => has(turn, createCapability) && recordsProposed(turn),
   },
   {
@@ -283,9 +283,26 @@ function alertText(alertMinutes: number | null | undefined): string {
   return alertMinutes === undefined || alertMinutes === 0 ? "" : ` It alerts you ${alertMinutes} minute${alertMinutes === 1 ? "" : "s"} before.`
 }
 
+function reminderTiming(operation: DeviceOperation, timeZone: string | undefined) {
+  if (operation.type !== "reminder_create") return undefined
+  const { dueAt, at, alertMinutes } = operation.fields.schedule
+  const zone = normalizeClockTimeZone(timeZone)
+  const dueAtDisplay = zone === undefined ? undefined : recordTimeText(dueAt, zone)
+  const alertAtDisplay = alertMinutes === null || zone === undefined ? undefined : recordTimeText(at, zone)
+  return {
+    dueAt: new Date(dueAt).toISOString(), alertAt: alertMinutes === null ? null : new Date(at).toISOString(),
+    ...(zone === undefined || dueAtDisplay === undefined ? {} : { timeZone: zone, dueAtDisplay, alertAtDisplay: alertAtDisplay ?? null }),
+  }
+}
+
+function withTiming(operation: DeviceOperation, timeZone: string | undefined, text: ProposalText | undefined): ProposalText | undefined {
+  const timing = reminderTiming(operation, timeZone)
+  return timing === undefined ? text : { ...text, data: { ...text?.data, reminderTiming: timing } }
+}
+
 function proposedReminderText(operation: DeviceOperation, { timeZone }: PendingRequest): ProposalText | undefined {
   const review = reviewSentence(operation, timeZone)
-  return review === undefined ? undefined : { forOwner: review }
+  return withTiming(operation, timeZone, review === undefined ? undefined : { forOwner: review })
 }
 
 function reviewSentence(operation: DeviceOperation, timeZone: string | undefined): string | undefined {
@@ -308,10 +325,10 @@ function reviewSentence(operation: DeviceOperation, timeZone: string | undefined
 
 const clockSettledModelText = "Retrieved the historical approved Clock handoff receipt. Opened records dispatch of the approved Clock request, not proof of its final alarm state. The request may already have changed an alarm; check Clock before requesting another. It does not establish creation, snoozing, dismissal or ringing. No new dispatch occurred."
 
-function settledReminderText(operation: DeviceOperation, result: unknown): ProposalText | undefined {
+function settledReminderText(operation: DeviceOperation, result: unknown, timeZone: string | undefined): ProposalText | undefined {
   const settled = settledSentence(operation, result)
   if (operation.type === "clock_handoff") return { forModel: clockSettledModelText, ...(settled === undefined ? {} : { forOwner: settled }) }
-  return settled === undefined ? undefined : { forOwner: settled }
+  return withTiming(operation, timeZone, settled === undefined ? undefined : { forOwner: settled })
 }
 
 function settledSentence(operation: DeviceOperation, result: unknown): string | undefined {

@@ -10,7 +10,8 @@ channel. A phone notification reaches the owner as the first alert did,
 with its message in the conversation; the conversation alone adds only
 the message. These are the channels the assistant reaches on the owner's
 phone, and a step on any other, such as a call or a text message, is
-refused when the owner asks for it, with the channels it can use.
+refused when the owner asks for it, with the channels it can use, so a
+reminder never texts or calls the owner.
 
 A plan may also keep quiet hours, a span of the day on the owner's clock
 in which no step notifies the phone. The zone is the owner's clock when
@@ -105,4 +106,104 @@ pure def lawAPhoneStepOutsideQuietHoursIsSent(quiet: QuietHours, minuteOfDay: in
   not(inQuietHours(quiet, minuteOfDay)) implies stepOutcome(Push, quiet, minuteOfDay, true) == NudgeSent
 pure def lawQuietHoursWrapPastMidnight(minuteOfDay: int): bool =
   inQuietHours(nightQuiet, minuteOfDay) iff (minuteOfDay >= 1320 or minuteOfDay < 420)
+```
+
+### A reminder, nudge or check-in that may have reached the owner is never sent again
+
+A delivery that failed before anything left, with no conversation to post
+in or no notification service, is tried again later. One that failed once
+the notice was handed to the phone's notifications, or after it was
+shown, may already have reached the owner: it counts as sent and is never
+sent again, so a lost answer never repeats a nudge.
+
+```quint
+type DeliveryEnd = DeliveryShown | NothingSent | AcceptanceUnknown
+pure def sentAgain(ending: DeliveryEnd): bool = ending == NothingSent
+pure def lawADeliveryThatMayHaveReachedTheOwnerIsNeverSentAgain(ending: DeliveryEnd): bool =
+  (ending == DeliveryShown or ending == AcceptanceUnknown) implies not(sentAgain(ending))
+pure def lawOnlyADeliveryThatNeverLeftIsTriedAgain(ending: DeliveryEnd): bool = sentAgain(ending) iff ending == NothingSent
+```
+
+## Story: Chase me about my reminders only as hard as I asked
+
+> As an owner, I want to say how persistently my reminders and routines
+> follow up, for all of them or for one, to still get each first alert,
+> and to be chased less while I have stopped answering.
+
+### A reminder's own intensity wins over the owner's, and an unset one is normal
+
+The owner sets an intensity, minimal, normal, persistent or high priority
+only, for every reminder and routine or for one they name: a live
+reminder by its title or id, else a routine by its title or id. A name
+that matches none, or several, sets nothing. When the request gives no
+intensity, it is read from the owner's own message, and a message that
+names none sets nothing. Intensity is read when a reminder fires or a
+routine shows, so a change applies from its next firing.
+
+```quint
+type ReminderIntensity = IntensityUnset | IntensityMinimal | IntensityNormal | IntensityPersistent | IntensityHighPriorityOnly
+pure def effectiveIntensity(own: ReminderIntensity, owners: ReminderIntensity): ReminderIntensity =
+  if (own != IntensityUnset) own else if (owners != IntensityUnset) owners else IntensityNormal
+pure def lawAReminderOwnIntensityWins(own: ReminderIntensity, owners: ReminderIntensity): bool =
+  own != IntensityUnset implies effectiveIntensity(own, owners) == own
+pure def lawAnUnsetIntensityIsNormal(owners: ReminderIntensity): bool =
+  effectiveIntensity(IntensityUnset, owners) == (if (owners == IntensityUnset) IntensityNormal else owners)
+```
+
+### Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder
+
+A reminder's first alert always comes. Minimal schedules no follow-up, and
+high priority only schedules them only for a reminder the owner said was
+high priority. Persistent adds one more nudge in the conversation an hour
+after the plan's last step, or an hour after the reminder fired when it
+has none. Normal keeps the plan, and every intensity keeps its quiet hours.
+A routine has no plan of its own, so only persistent gives it a nudge, an
+hour after its occurrence was shown and only while that occurrence is
+still unanswered.
+
+```quint
+pure val persistentNudgeMinutes = 60
+pure def lastStepMinute(plan: EscalationPlan): int =
+  plan.inAppAfter.concat(plan.pushAfter).foldl(0, (latest, minute) => if (minute > latest) minute else latest)
+pure def followupsUnder(plan: EscalationPlan, intensity: ReminderIntensity, highPriority: bool): EscalationPlan = {
+  val nudge = lastStepMinute(plan) + persistentNudgeMinutes
+  if (intensity == IntensityMinimal or (intensity == IntensityHighPriorityOnly and not(highPriority))) { ...plan, inAppAfter: List(), pushAfter: List() }
+  else if (intensity == IntensityPersistent and not(plan.inAppAfter.includes(nudge))) { ...plan, inAppAfter: plan.inAppAfter.append(nudge) }
+  else plan
+}
+pure def lawMinimalSendsNoFollowup(plan: EscalationPlan, highPriority: bool): bool =
+  followupsUnder(plan, IntensityMinimal, highPriority).inAppAfter.length() == 0 and followupsUnder(plan, IntensityMinimal, highPriority).pushAfter.length() == 0
+pure def lawHighPriorityOnlyKeepsAHighPriorityPlan(plan: EscalationPlan): bool = followupsUnder(plan, IntensityHighPriorityOnly, true) == plan
+pure def lawHighPriorityOnlyDropsAnOrdinaryPlan(plan: EscalationPlan): bool =
+  followupsUnder(plan, IntensityHighPriorityOnly, false) == { ...plan, inAppAfter: List(), pushAfter: List() }
+pure def lawPersistentNudgesAnHourAfterTheLastStep(plan: EscalationPlan, highPriority: bool): bool =
+  followupsUnder(plan, IntensityPersistent, highPriority).inAppAfter.includes(lastStepMinute(plan) + persistentNudgeMinutes)
+pure def lawNormalKeepsThePlan(plan: EscalationPlan, highPriority: bool): bool = followupsUnder(plan, IntensityNormal, highPriority) == plan
+pure def lawIntensityKeepsTheQuietHours(plan: EscalationPlan, intensity: ReminderIntensity, highPriority: bool): bool =
+  followupsUnder(plan, intensity, highPriority).quiet == plan.quiet
+```
+
+### A quiet owner is chased one notch less
+
+An owner who has answered none of their reminders, routines or goal
+check-ins for three days is quiet: what fires next follows up as if they
+had asked for one notch less. Persistent becomes normal, normal or unset
+becomes minimal, and minimal and high priority only stay as they are. An
+owner who has never answered anything is not quiet, and their next
+answer ends the quiet.
+
+```quint
+pure val quietStreakMs = 259200000
+pure def ownerQuiet(lastAnswerAt: int, now: int): bool = lastAnswerAt > 0 and now - lastAnswerAt >= quietStreakMs
+pure def quietIntensity(intensity: ReminderIntensity, quiet: bool): ReminderIntensity =
+  if (not(quiet)) intensity
+  else if (intensity == IntensityPersistent) IntensityNormal
+  else if (intensity == IntensityHighPriorityOnly) IntensityHighPriorityOnly
+  else IntensityMinimal
+pure def lawAnAnsweringOwnerKeepsTheirIntensity(intensity: ReminderIntensity): bool = quietIntensity(intensity, false) == intensity
+pure def lawAQuietOwnerIsNeverChasedPersistently(intensity: ReminderIntensity): bool = quietIntensity(intensity, true) != IntensityPersistent
+pure def lawAQuietOwnerLosesOneNotch(intensity: ReminderIntensity): bool =
+  (intensity == IntensityPersistent implies quietIntensity(intensity, true) == IntensityNormal)
+  and ((intensity == IntensityNormal or intensity == IntensityUnset) implies quietIntensity(intensity, true) == IntensityMinimal)
+pure def lawAnOwnerWhoNeverAnsweredIsNotQuiet(now: int): bool = not(ownerQuiet(0, now))
 ```
