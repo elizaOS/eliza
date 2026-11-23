@@ -15,6 +15,7 @@ module node {
 
   const readReason = "Retrieved the immutable historical selected-read snapshot; no resource was changed or reread."
   const shownReasons: Partial<Record<DeviceOperationType, string>> = {
+    browser_tabs_show: "Displayed the Browser tab overview on the phone.",
     photos_filter: "Changed only what Photos shows; no media was changed or shared.",
     photos_open: "Changed only what Photos shows; no media was changed or shared.",
     photos_album_create: "Opened the album review in Photos; no album exists until the owner confirms it there.",

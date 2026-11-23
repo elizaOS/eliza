@@ -87,6 +87,7 @@ export interface WholeRequestRoute {
   readonly tags: readonly string[]
   readonly contexts: readonly string[]
   readonly lead: string
+  readonly invalidateFields?: readonly string[]
   claims(turn: DeviceTurn): readonly ProposalForm[]
 }
 

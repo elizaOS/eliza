@@ -10,14 +10,14 @@ import { deviceTurnFor } from "./turn.vibe"
 
 export const deviceActionsModuleName = "@elizaos/agent/device-actions"
 
-function registerRoute(runtime: IAgentRuntime, route: WholeRequestRoute): void {
+export function registerDeviceProposalRoute(runtime: IAgentRuntime, route: WholeRequestRoute): void {
   const matches = (_text: string, message?: Memory): boolean => {
     const turn = message === undefined ? undefined : deviceTurnFor(runtime, message)
     return turn !== undefined && routedRequest(runtime, turn)?.route === route
   }
   registerDirectActionRoutingRule(runtime, {
     id: route.id, actionNames: [proposeDeviceActionName], replacesActionNames: route.replaces,
-    requiredActionTags: route.tags, contexts: route.contexts, matches, wholeRequest: { matches, invalidateFields: [] },
+    requiredActionTags: route.tags, contexts: route.contexts, matches, wholeRequest: { matches, invalidateFields: route.invalidateFields ?? [] },
   })
 }
 
@@ -26,7 +26,7 @@ export const deviceActionsModule: ModuleFactory<never> = effect ({ runtime }) =>
     registerDeviceProposalFamily(runtime, family) catch effect (conflict) => {
       throw new ModuleRefused({ module: deviceActionsModuleName, reason: `${conflict.family} also claims ${conflict.type}` })
     }
-    if (family.route !== undefined) registerRoute(runtime, family.route)
+    if (family.route !== undefined) registerDeviceProposalRoute(runtime, family.route)
   }
   return {
     name: deviceActionsModuleName,
