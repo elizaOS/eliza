@@ -279,6 +279,8 @@ type StandaloneUpgrade = StandaloneSignedOut | LegacyDeviceKey(UpgradeKey)
   | UpgradedDeviceKey({ active: UpgradeKey, retired: UpgradeKey })
 type UpgradeExchange = NoLeaseReply | LeaseReply(UpgradeKey)
 type UpgradePrompt = NoUpgradePrompt | UpgradeRequired | UpgradeSignInPending | UpgradeAcknowledgmentPending
+pure def legacyDeviceKey(key: UpgradeKey): StandaloneUpgrade =
+  LegacyDeviceKey({ owner: key.owner, version: key.version })
 pure def upgradePrompt(s: StandaloneUpgrade): UpgradePrompt = match s {
   | LegacyDeviceKey(_) => UpgradeRequired
   | UpgradeBrowser(_) => UpgradeSignInPending
@@ -290,21 +292,22 @@ pure def beginStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneU
   | _ => s
 }
 pure def cancelStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneUpgrade = match s {
-  | UpgradeBrowser(p) => if (p.attempt == attempt) LegacyDeviceKey(p.prior) else s
+  | UpgradeBrowser(p) => if (p.attempt == attempt) legacyDeviceKey(p.prior) else s
   | _ => s
 }
 pure def stageStandaloneUpgrade(s: StandaloneUpgrade, attempt: int, response: UpgradeExchange): StandaloneUpgrade = match s {
   | UpgradeBrowser(p) => if (p.attempt != attempt) s else match response {
-      | NoLeaseReply => LegacyDeviceKey(p.prior)
+      | NoLeaseReply => legacyDeviceKey(p.prior)
       | LeaseReply(k) => if (k.owner == p.prior.owner and k.version != p.prior.version)
-          UpgradeAcknowledging({ prior: p.prior, replacement: { owner: k.owner, version: k.version } }) else LegacyDeviceKey(p.prior)
+          UpgradeAcknowledging({ prior: p.prior, replacement: { owner: k.owner, version: k.version } }) else legacyDeviceKey(p.prior)
     }
   | _ => s
 }
 pure def lawCancelingAnUpgradeKeepsTheCurrentKey(prior: UpgradeKey, attempt: int): bool =
-  cancelStandaloneUpgrade(beginStandaloneUpgrade(LegacyDeviceKey(prior), attempt), attempt) == LegacyDeviceKey(prior)
+  cancelStandaloneUpgrade(beginStandaloneUpgrade(legacyDeviceKey(prior), attempt), attempt) == legacyDeviceKey(prior)
 pure def lawAnUpgradeRequiresAReplacementKeyForTheSameOwner(prior: UpgradeKey, replacement: UpgradeKey, attempt: int): bool =
-  (upgradePrompt(stageStandaloneUpgrade(UpgradeBrowser({ prior: prior, attempt: attempt }), attempt, LeaseReply(replacement)))
+  (upgradePrompt(stageStandaloneUpgrade(UpgradeBrowser({ prior: prior, attempt: attempt }), attempt,
+    LeaseReply({ owner: replacement.owner, version: replacement.version })))
     == UpgradeAcknowledgmentPending) iff (replacement.owner == prior.owner and replacement.version != prior.version)
 ```
 
@@ -322,7 +325,7 @@ type UpgradeAck = UpgradeAckPending | UpgradeAckRefused | UpgradeAckSaved
 pure def finishStandaloneUpgrade(s: StandaloneUpgrade, ackResult: UpgradeAck): StandaloneUpgrade = match s {
   | UpgradeAcknowledging(p) => match ackResult {
       | UpgradeAckPending => s
-      | UpgradeAckRefused => LegacyDeviceKey(p.prior)
+      | UpgradeAckRefused => legacyDeviceKey(p.prior)
       | UpgradeAckSaved => UpgradedDeviceKey({ active: p.replacement, retired: p.prior })
     }
   | _ => s
