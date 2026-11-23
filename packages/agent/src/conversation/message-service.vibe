@@ -4,7 +4,7 @@ import {
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
   executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
-import { hostNoteLabels } from "../../gen/agent__conversation__planning.ts"
+import { hostNoteLabels, offersContextRestore } from "../../gen/agent__conversation__planning.ts"
 import { replyQuoteChars } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
@@ -195,14 +195,14 @@ async function respond(
           const content = previous.id === message.id ? "" : await spoken(runtime, previous)
           return content ? [{ id: previous.id ?? "", fromUser: previous.entityId !== runtime.agentId, text: content, position }] : []
         }))).flat()
-        const earlier = recent.length < historyReadCount ? 0 : await runtime.countMemories(message.roomId, false, "messages") - recent.length
+        const earlier = recent.length < historyReadCount ? 0 : Math.max(0, await runtime.countMemories(message.roomId, false, "messages") - recent.length)
         const window = windowHistory(sources, asked, { earlier, readCount: recent.length, positions: sources.map(({ position }) => position) })
         const history: ChatMessage[] = window.shown.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
         const actions = offeredActions(runtime, message, actionGate)
         const messages: ChatMessage[] = [...history, said(message, asked, [
           options?.replyTarget === undefined ? undefined : await replyQuote(runtime, options.replyTarget),
           contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext,
-          window.windowed ? historyWindowNotice(window) : undefined,
+          window.windowed ? historyWindowNotice(window, offersContextRestore(actions.length) && window.deferred.length > 0 ? { kind: "restoreContext" } : undefined) : undefined,
         ])]
         const character = runtime.character
         const examples = (character.messageExamples ?? []).map(({ examples }) =>
@@ -213,6 +213,7 @@ async function respond(
         const state = await runtime.composeState(message, [], true, true)
         const planned = await planTurn({
           runtime, message, state, roles, actionGate, system, messages, signal,
+          deferredHistory: { rows: window.deferred, earlier },
           onStepResult: (result) => Effect.runPromise(Effect.try({
             try: () => terminal.recordActionResult(result),
             catch: toElizaError,
