@@ -127,7 +127,7 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
     if (answer.status >= 300) throw workflowHttpError(answer.status, answer.body)
     return answer.body
   }
-  return { service, digests, generated, wakeups, notices, request, client: workflowClient(request), routes }
+  return { host, service, digests, generated, wakeups, notices, request, client: workflowClient(request), routes }
 }
 
 type Harness = Effect.Success<ReturnType<typeof harness>>
@@ -330,8 +330,21 @@ it.live('An automation runs at its reviewed local time or records why it skipped
   try rig.service.fire({ workflowId: receipt.workflowId, armVersion: version, scheduledAt: midnight - 86_400_000 }, rig.digests.fire)
   const runs = try rig.client.executions(receipt.workflowId)
   try check(() => assert.deepStrictEqual(runs.map((found) => [found.occurrence?.status, found.finished]), [["missed", true]]))
-  const armed = rig.wakeups.get(`workflow:${receipt.workflowId}`)
+  const key = `workflow:${receipt.workflowId}`
+  const armed = rig.wakeups.get(key)
   try check(() => assert.isTrue(armed !== undefined && armed.dueAt > Date.now() && armed.metadata.armVersion === version))
+
+  const whileDown = midnight - 2 * 86_400_000
+  const due = { dueAt: whileDown, metadata: { workflowId: receipt.workflowId, armVersion: version, scheduledAt: whileDown } }
+  rig.wakeups.set(key, due)
+  const restarted = try openWorkflows(rig.host)
+  try restarted.start()
+  try check(() => assert.deepStrictEqual(rig.wakeups.get(key), due))
+  try restarted.fire(due.metadata, hostedDigests(restarted).fire)
+  const recorded = try rig.client.executions(receipt.workflowId)
+  const rearmed = rig.wakeups.get(key)
+  try check(() => assert.deepStrictEqual([recorded.map((found) => [found.occurrence?.status, found.occurrence?.scheduledAt]), (rearmed?.dueAt ?? 0) > Date.now()],
+    [[["missed", new Date(whileDown).toISOString()], ["missed", new Date(midnight - 86_400_000).toISOString()]], true]))
 })
 
 it.live('Acknowledge a page of digests only after it is stored (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Story: Review a missed digest only while its source and result are current")', effect () => {

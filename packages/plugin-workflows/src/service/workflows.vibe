@@ -1004,12 +1004,15 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return trigger === undefined ? undefined : { cron: phoneTimeTriggerCron(trigger), timeZone: trigger.timeZone }
   }
 
+  function scheduleWanted(row: DefinitionRow): boolean {
+    return scheduleOf(row) !== undefined && row.admission.active && !row.lifecycleState.removed
+  }
+
   effect function arm(row: DefinitionRow, after?: number): void!! {
     const key = scheduleKey(row)
-    const schedule = scheduleOf(row)
-    const wanted = schedule !== undefined && row.admission.active && !row.lifecycleState.removed
+    const schedule = scheduleWanted(row) ? scheduleOf(row) : undefined
     void (effect {
-      if (!wanted) {
+      if (schedule === undefined) {
         try host.scheduler.clear(key)
         return
       }
@@ -1120,8 +1123,9 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
           try launch(restarted.id)
         } else if (restarted !== row) try persist(restarted)
       }
+      const held = host.scheduler.keys catch () => []
       for (const stored of try db(store.definitions(owner))) {
-        try arm(stored.row)
+        if (!held.includes(scheduleKey(stored.row)) || !scheduleWanted(stored.row)) try arm(stored.row)
         if (stored.row.lifecycleState.removed && !stored.row.lifecycleState.cleaned) (cleanup(stored.row.id) catch () => undefined)
       }
     } catch effect (error) => try log("workflow service could not recover its runs", "start", error))
