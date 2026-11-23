@@ -301,15 +301,23 @@ module node {
     })
   }
 
+  async function lockedUnsettled(sql: Sql, filter: string, params: unknown[] = []) {
+    const { rows } = await sql.query<{ proposal_id: string; revision: number; state: unknown }>(
+      `SELECT proposal_id, revision, state FROM device_requests WHERE NOT settled${filter} ORDER BY proposal_id FOR UPDATE`, params,
+    )
+    return rows.map((row) => ({ proposalId: row.proposal_id, revision: row.revision, state: atWallTime(parsed(`request ${row.proposal_id}`, row.state)) }))
+  }
+
   export function retireAbandonedAgendaRows(adapter: IDatabaseAdapter): Promise<void> {
     return within(adapter, async (sql) => {
-      const { rows } = await sql.query<{ proposal_id: string; revision: number; state: unknown }>(
-        "SELECT proposal_id, revision, state FROM device_requests WHERE binding = 'AgendaBinding' AND NOT settled ORDER BY proposal_id FOR UPDATE",
-      )
-      for (const row of rows) {
-        await retireOffer(sql, row.proposal_id, row.revision, atWallTime(parsed(`request ${row.proposal_id}`, row.state)))
-      }
+      for (const row of await lockedUnsettled(sql, " AND binding = 'AgendaBinding'")) await retireOffer(sql, row.proposalId, row.revision, row.state)
     })
+  }
+
+  async function expireLapsedOffers(sql: Sql, filter: string, params?: unknown[]): Promise<void> {
+    for (const row of await lockedUnsettled(sql, filter, params)) {
+      if (canExpire(row.state)) await retireOffer(sql, row.proposalId, row.revision, row.state)
+    }
   }
 
   export function writeDecision(adapter: IDatabaseAdapter, { proposalId, digest, by, approved }: RequestDecision): Promise<DecisionCommit> {
@@ -416,6 +424,7 @@ module node {
   export function reviewRows(adapter: IDatabaseAdapter, by: SessionOwner, scope: ProposalReviewScope): Promise<RequestRow[]> {
     return within(adapter, async (sql) => {
       const filter = reviewFilter(scope)
+      await expireLapsedOffers(sql, filter)
       const found = await sql.query<Row>(
         `SELECT ${columns} FROM device_requests WHERE NOT settled${filter}
          UNION ALL
@@ -431,6 +440,7 @@ module node {
 
   export function conversationRows(adapter: IDatabaseAdapter, by: SessionOwner, conversationId: string, which: Settled, limit: number): Promise<RequestRow[]> {
     return within(adapter, async (sql) => {
+      await expireLapsedOffers(sql, " AND state->'origin'->>'conversationId' = $1", [conversationId])
       const found = await sql.query<Row>(
         `SELECT ${columns} FROM device_requests WHERE state->'origin'->>'conversationId' = $1 AND settled = $2 ORDER BY created_at DESC, proposal_id DESC LIMIT $3`,
         [conversationId, which === "settled", limit],

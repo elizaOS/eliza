@@ -119,7 +119,7 @@ module node {
   function observedPhase({ state, claim, providerReceipt }: Pick<RequestRow, "state" | "claim" | "providerReceipt">): ProposalState | undefined {
     switch (state.phase.tag) {
       case "Offered": return { state: canExpire(state) ? "expired" : "pending" }
-      case "Approved": return { state: "approved" }
+      case "Approved": return { state: canExpire(state) ? "expired" : "approved" }
       case "Declined": return { state: "rejected" }
       case "Expired":
       case "Retired": return { state: "expired" }

@@ -139,7 +139,12 @@ pure def sometimesLapsedApprovalCanBeDeclined(d: DeviceRequest): bool = d.phase 
 
 ### An unclaimed offer retires at its deadline or at the end of its turn
 
-Time only moves forward. An open offer past its deadline expires. A
+Time only moves forward. An open offer past its deadline expires, and never
+before it. Its record is written as expired the next time it is read: when
+the device lists its proposals, and when a turn of its conversation reads
+that conversation's requests. So the list shows a lapsed offer or approval
+as expired, never as pending or approved, and the next turn's outcome note
+names it as one that never ran. A
 standalone agenda read, which the host offers for the displayed day without
 the model, retires when its turn ends; a proposal the owner's words asked
 for stays open after its turn, until the owner decides it or its deadline
@@ -154,6 +159,7 @@ pure def canExpire(d: DeviceRequest): bool = openOffer(d.phase) and not(beforeDe
 pure def expire(d: DeviceRequest): DeviceRequest = { ...d, phase: Expired, session: S::revoke(d.session) }
 pure def canEndTurn(d: DeviceRequest): bool = openOffer(d.phase)
 pure def endTurn(d: DeviceRequest): DeviceRequest = { ...d, phase: Retired, session: S::revoke(d.session) }
+pure def stepOnlyALapsedOpenOfferExpires(before: DeviceRequest, after: DeviceRequest): bool = (after.phase == Expired and before.phase != Expired) implies (openOffer(before.phase) and not(beforeDeadline(before)))
 pure def sometimesOfferExpired(d: DeviceRequest): bool = d.phase == Expired
 pure def sometimesRetiredAtTurnEnd(d: DeviceRequest): bool = d.phase == Retired and isEnrolled(d.enrollment)
 ```
