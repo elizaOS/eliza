@@ -896,20 +896,24 @@ export function store(memory: Memory, raw: Entry, value: unknown, action?: { pro
  * cache is a convenience: `accept` never reads it. Every entry read or written is recorded as used, so that a
  * full check keeps its results while pruning older branches and profiles. A result also names the entries its
  * producer used, the runs of tools beneath it, and a hit keeps those in use too: a change to these tools asks for the
- * result again, and finds the runs still there.
+ * result again, and finds the runs still there. Work delayed by a queue reads the same entry once more on admission.
  */
-export async function remembered<T>(memory: Memory, at: Entry | Promise<Entry>, produce: (memory: Memory) => T | Promise<T>, keep: (result: T) => boolean): Promise<T> {
+export async function remembered<T>(memory: Memory, at: Entry | Promise<Entry>, produce: (memory: Memory) => T | Promise<T>,
+  keep: (result: T) => boolean, schedule?: (work: (waited: boolean) => Promise<T>) => Promise<T>): Promise<T> {
   const e = await at;
   const known = recall<{ result: T; used: string[] }>(memory, e);
   if (known !== undefined) {
     for (const name of known.used) use(memory, name);
     return known.result;
   }
-  const own: Memory = { ...memory, used: new Set() };
-  const result = await produce(own);
-  for (const name of own.used) memory.used.add(name);
-  if (keep(result)) store(memory, e, { result, used: [...own.used] });
-  return result;
+  const compute = async () => {
+    const own: Memory = { ...memory, used: new Set() };
+    const result = await produce(own);
+    for (const name of own.used) memory.used.add(name);
+    if (keep(result)) store(memory, e, { result, used: [...own.used] });
+    return result;
+  };
+  return schedule ? schedule((waited) => waited ? remembered(memory, e, produce, keep) : compute()) : compute();
 }
 
 const ENTRY = new RegExp(`^(${STAGES.join("|")})-(?:.*-)?[a-f0-9]{24}\\.json\\.(?:${formats.map(([extension]) => extension).join("|")})$`);
