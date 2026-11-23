@@ -35,9 +35,10 @@ Contacts never reach the agent, so no contact is shown or read for it.
 `mms_send` belongs to this family only so that no other family claims it: no
 form offers it, so chat never proposes an MMS. Whether an offered request may
 run without its review card is decided by device operations' `directEligible`
-and by [execution](./execution.md), never here: a latest-sender read and a
-Messages draft are reviewed on the phone first, also when the owner asked for
-exactly that sender or that draft. A reply draft in the open conversation,
+and by [execution](./execution.md), never here. A Messages draft can be sent
+from its review, so it is among what never runs directly, and a latest-sender
+read is not one of the operations that may: both are reviewed on the phone
+first, also when the owner asked for exactly that sender or that draft. A reply draft in the open conversation,
 and a read or deletion of the thread or voicemail the owner has open, are
 grounded as steps on that open selection, so they carry the owner's message
 while the turn is live whatever its action mode; every other telephony
@@ -314,4 +315,35 @@ pure def lawTheWholeSenderIsReadOnlyWhenAskedOnAPhoneThatNamesIt(scope: SenderSc
   (senderReadForm(scope, addressNegotiated) == ReadWholeSender) iff (scope == WholeSenderAsked and addressNegotiated)
 pure def lawANarrowerAskIsClarifiedFirst(addressNegotiated: bool): bool =
   senderReadForm(SenderScopeUnclear, addressNegotiated) == AskSenderScope
+```
+
+## Story: Hear what my phone did with a call, text or contact change, as far as it shows
+
+> As the owner, I want a request my phone already ran to be answered from
+> what the phone reported, so that the agent never runs it again and never
+> says it did more than the phone showed.
+
+### A settled telephony request is answered from its stored result, and only a latest-sender read in fixed words
+
+When the model proposes again a call, dial, text, draft, contact change,
+open-item read or voicemail deletion that already settled applied, it is
+told that nothing ran again and what the stored result shows, and it
+answers the owner from that result. A started call was not answered as far
+as anyone knows, and an emergency number went to the phone's own dialer for
+the owner to place; a dial opened the dial screen, and no call is known to
+be placed; a draft is in the text field and nothing was sent; a submitted
+message is not yet sent, a sent one is not delivered, and only a delivered
+one was reported delivered; a contact was saved or deleted; a voicemail was
+deleted. A SIM send is reported in its exact status and never retried
+automatically. A read is historical, never a current read, and what it
+shared is untrusted data. A latest-sender read is the one the owner hears
+in fixed words, those of [device operations](./operations.md).
+
+```quint
+type SettledTelephony = SettledCall | SettledDial | SettledSimSend | SettledDraft | SettledContactChange | SettledOpenRead
+  | SettledSenderRead | SettledVoicemailDelete
+type SettledWords = AnsweredFromResult | AnsweredInFixedWords
+pure def settledWords(settled: SettledTelephony): SettledWords = if (settled == SettledSenderRead) AnsweredInFixedWords else AnsweredFromResult
+pure def lawOnlyASenderReadIsAnsweredInFixedWords(settled: SettledTelephony): bool =
+  (settledWords(settled) == AnsweredInFixedWords) iff (settled == SettledSenderRead)
 ```
