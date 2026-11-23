@@ -128,6 +128,33 @@ pure def nameVerdict(written: bool): TargetVerdict = if (written) TargetGrounded
 pure def lawOnlyAWrittenNameIsGrounded(written: bool): bool = targetGrounded(nameVerdict(written)) iff written
 ```
 
+### A call or text to someone the owner names by a role is proposed at once, with that word as the contact query
+
+Where the phone is offered a call or a text whose target may be a contact,
+the device tool says once that a person is called or texted at once with a
+contact target, also when the owner names them by a role or relation
+("ping my brother", "ring the dentist"): the query is that word alone,
+brother for my brother and dentist for the dentist, and the phone finds
+the contact and lets the owner pick when several match. It names the call,
+the text or both, as the phone is offered them with a contact target, and
+where a contact search (`contact_show`) is offered too, it says never to
+propose that search first, since its result gives a call or text nothing
+to use. A phone offered neither is told none of it. The role word is a
+name the owner wrote, so it is grounded as any contact name is (above).
+
+```quint
+type RoleRule = CallOrTextByRole | CallByRole | TextByRole | NoRoleRule
+pure def roleRule(callsContact: bool, textsContact: bool): RoleRule =
+  if (callsContact and textsContact) CallOrTextByRole else if (callsContact) CallByRole else if (textsContact) TextByRole else NoRoleRule
+pure def searchFirstRefused(rule: RoleRule, searchOffered: bool): bool = searchOffered and rule != NoRoleRule
+pure def lawTheRoleRuleIsSaidOnlyWhereAContactTargetIsOffered(callsContact: bool, textsContact: bool): bool =
+  (roleRule(callsContact, textsContact) == NoRoleRule) iff not(callsContact or textsContact)
+pure def lawTheRoleRuleNamesBothOnlyWhereBothAreOffered(callsContact: bool, textsContact: bool): bool =
+  (roleRule(callsContact, textsContact) == CallOrTextByRole) iff (callsContact and textsContact)
+pure def lawASearchIsRefusedFirstOnlyBesideTheRoleRule(callsContact: bool, textsContact: bool, searchOffered: bool): bool =
+  searchFirstRefused(roleRule(callsContact, textsContact), searchOffered) iff (searchOffered and (callsContact or textsContact))
+```
+
 ### A whole-message call, text or dial command hands through the owner's own recipient
 
 When the whole message is a call command ("call 415-555-0100", "ring mum back
