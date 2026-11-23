@@ -180,11 +180,11 @@ it.effect('A change after a shared read moves the event to the destination day a
   const read = { proposalId: "p1", requestMessageId: "00000000-0000-4000-8000-000000000001" as UUID, operation: { type: "calendar_read_selected", target } as const,
     result: { ...record, fields: shared }, settledAt: turnStarted }
   const after = (words: string, observation: DeviceTurn["observation"] = onCalendar) => calendarProposalFamily.continueAfterRead?.(read, phoneTurn(words, observation)) ?? succeed(undefined)
-  const moved = (start: string, end: string) => ({ type: "calendar_update", target, fields: { ...shared, start, end } })
+  const moved = (start: string, end: string) => ({ operation: { type: "calendar_update", target, fields: { ...shared, start, end } } })
   assert.deepStrictEqual([try after("Reschedule this meeting for tomorrow at 10am"), try after("Move this meeting to tomorrow at 10am for 2 hours"), try after("Move this meeting to 10am")], [
     moved("2026-11-23T09:00:00.000Z", "2026-11-23T09:30:00.000Z"), moved("2026-11-23T09:00:00.000Z", "2026-11-23T11:00:00.000Z"), moved("2026-11-22T09:00:00.000Z", "2026-11-22T09:30:00.000Z"),
   ])
-  assert.deepStrictEqual(try after("Rename this to “Team sync”"), { type: "calendar_update", target, fields: { ...shared, title: "Team sync" } })
+  assert.deepStrictEqual(try after("Rename this to “Team sync”"), { operation: { type: "calendar_update", target, fields: { ...shared, title: "Team sync" } } })
   assert.deepStrictEqual([try after("Move this meeting to tomorrow at 10am or 11am"), try after("What is this meeting about?"), try after("How do I move this event to tomorrow at 3pm?"),
     try after("Rename this to Sync and move it to 3pm"), try after("Move the event to 3pm tomorrow and rename it to Standup"), try after("Don't rename it to Lunch"),
     try after("Don't call it Standup anymore, call it Sync"), try after("Move this meeting to 10am", unzonedCalendar)],

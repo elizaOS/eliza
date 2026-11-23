@@ -3,7 +3,7 @@ import type { IAgentRuntime } from "@elizaos/core"
 import type { DeviceOperationType } from "../operations.schema.vibe"
 import type { DeviceProposalFamily, DeviceTurn, ProposalForm } from "./family.vibe"
 
-export { directRequests, unoffered, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type FamilyName, type Grounding, type ProposalForm, type SwappedValue } from "./family.vibe"
+export { directRequests, unoffered, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type FamilyName, type Grounding, type ProposalForm, type ReadContinuation, type SwappedValue } from "./family.vibe"
 
 export error FamilyConflict { family: string; type: string }
 

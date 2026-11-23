@@ -10,7 +10,7 @@ module node {
   import { readTurnContext } from "../conversation/turn-context.schema.vibe"
   import { capabilitiesHeader, negotiation } from "./capabilities.vibe"
   import { latestSenderReplyFor } from "./latest-sender.vibe"
-  import { readOperation, validate } from "./operations.schema.vibe"
+  import { readOperation, validate, type CheckedOperation } from "./operations.schema.vibe"
   import { offerProposal } from "./proposal/offer.vibe"
   import { familyOf } from "./proposal/registry.vibe"
   import { openRequest, StaleDeviceRow, withReadCompletionPublication, type DeviceRequestRecord, type DeviceStoreUnavailable, type RequestEvent } from "./store.vibe"
@@ -41,6 +41,8 @@ module node {
   const failure = (status: number, error: string) => ({ status, body: { error } })
 
   type Hint = typeof Hint.Type
+  type Kept = { readonly text: string; readonly next?: unknown }
+  type FollowUp = { readonly checked?: CheckedOperation; readonly text?: string }
   type CompletionRequest = { readonly hint: Hint; readonly version?: 1 }
   type Reply = { readonly version?: 1; readonly messageId: UUID; readonly requestId: string; readonly conversationId: string; readonly inReplyTo: string; readonly text: string }
 
@@ -93,32 +95,55 @@ module node {
       return text
     }
 
-    async function continueRead(record: DeviceRequestRecord, original: Memory & { id: UUID }, hint: Hint, by: SessionOwner, header: string | undefined) {
+    function readFamily(record: DeviceRequestRecord) {
       const operation = readOperation(record.terms.operation)?.operation
       const family = operation === undefined ? undefined : familyOf(runtime, operation.type)
-      if (operation === undefined || family?.continueAfterRead === undefined) return
-      const negotiated = negotiation(true, header)
+      return operation === undefined || family === undefined ? undefined : { operation, family }
+    }
+
+    function admittedFollowUp(record: DeviceRequestRecord, next: unknown, header: string | undefined): CheckedOperation | undefined {
+      const read = readFamily(record)
+      if (next === undefined || read === undefined) return undefined
+      const checked = validate(next, negotiation(true, header), "NoBinding")
+      return checked !== undefined && read.family.types.includes(checked.operation.type) ? checked : undefined
+    }
+
+    async function followUp(record: DeviceRequestRecord, original: Memory & { id: UUID }, hint: Hint, header: string | undefined): Promise<FollowUp | undefined> {
+      const read = readFamily(record)
+      const continueAfterRead = read?.family.continueAfterRead
+      if (read === undefined || continueAfterRead === undefined) return undefined
       const context = readTurnContext(original)
       try {
-        const next = await Effect.runPromise(family.continueAfterRead(
-          { proposalId: record.proposalId, requestMessageId: original.id, operation, result: record.result, settledAt: Date.now() },
+        const next = await Effect.runPromise(continueAfterRead(
+          { proposalId: record.proposalId, requestMessageId: original.id, operation: read.operation, result: record.result, settledAt: Date.now() },
           {
-            ownerText: extractUserText(original.content.text ?? ""), message: original, negotiation: negotiated,
+            ownerText: extractUserText(original.content.text ?? ""), message: original, negotiation: negotiation(true, header),
             startedAt: original.createdAt ?? Date.now(), timeZone: context.observation?.timeZone ?? context.voiceUi?.uiTimeZone,
           },
         ))
-        const checked = next === undefined ? undefined : validate(next, negotiated, "NoBinding")
-        if (checked === undefined || !family.types.includes(checked.operation.type)) return
+        if (next?.operation === undefined) return next?.text === undefined ? undefined : { text: next.text }
+        const checked = admittedFollowUp(record, next.operation, header)
+        return checked === undefined ? undefined : { checked, ...(next.text === undefined ? {} : { text: next.text }) }
+      } catch (cause) {
+        runtime.logger.warn({ src: "device-actions", proposalId: hint.proposalId, cause: cause instanceof Error ? cause.message : String(cause) }, "The read's follow-up was not prepared")
+        return undefined
+      }
+    }
+
+    async function offerFollowUp(record: DeviceRequestRecord, next: unknown, original: Memory & { id: UUID }, hint: Hint, by: SessionOwner, header: string | undefined) {
+      const checked = admittedFollowUp(record, next, header)
+      if (checked === undefined) return
+      try {
         await Effect.runPromise(offerProposal({
-          runtime, by, negotiation: negotiated, message: original, conversationId: hint.conversationId, requestId: hint.requestId,
+          runtime, by, negotiation: negotiation(true, header), message: original, conversationId: hint.conversationId, requestId: hint.requestId,
         }, checked, completableRead(checked.opType)))
       } catch (cause) {
-        runtime.logger.warn({ src: "device-actions", proposalId: hint.proposalId, cause: cause instanceof Error ? cause.message : String(cause) }, "The edit after a delivered read was not offered")
+        runtime.logger.warn({ src: "device-actions", proposalId: hint.proposalId, cause: cause instanceof Error ? cause.message : String(cause) }, "The follow-up after a delivered read was not offered")
       }
     }
 
     async function deliver(record: DeviceRequestRecord, { hint, version }: CompletionRequest, by: SessionOwner, header: string | undefined) {
-      const kept = await runtime.getCache<{ text: string }>(cacheKey(hint))
+      const kept = await runtime.getCache<Kept>(cacheKey(hint))
       if (kept === undefined) return failure(409, "completion_reply_missing")
       const original = await originalMessage(hint)
       const messageId = replyId(hint)
@@ -143,7 +168,7 @@ module node {
         }
         return true
       })
-      if (published) await continueRead(record, original, hint, by, header)
+      if (published && kept.next !== undefined) await offerFollowUp(record, kept.next, original, hint, by, header)
       return { status: 200, body: { reply: {
         ...(version === undefined ? {} : { version }),
         messageId, requestId: hint.requestId, conversationId: hint.conversationId, inReplyTo: hint.inReplyTo, text: kept.text,
@@ -159,9 +184,12 @@ module node {
       running.set(hint.proposalId, cancelled)
       const turn = AbortSignal.any([signal, cancelled.signal])
       try {
-        const text = await infer(record, claimed, await originalMessage(hint),
+        const original = await originalMessage(hint)
+        const next = await followUp(record, original, hint, header)
+        const text = next?.text ?? await infer(record, claimed, original,
           AbortSignal.any([turn, AbortSignal.timeout(Math.max(0, completionDeadline(claimed) - Date.now()))]))
-        if (!await runtime.setCache(cacheKey(hint), { text: runtime.redactSecrets(text) })) throw new CompletionFailed("The reply was not kept")
+        const kept: Kept = { text: runtime.redactSecrets(text), ...(next?.checked === undefined ? {} : { next: next.checked.operation }) }
+        if (!await runtime.setCache(cacheKey(hint), kept)) throw new CompletionFailed("The reply was not kept")
         const prepared = await send(record.machine, { type: "prepareCompletion" }, by)
         return prepared === undefined ? failure(409, "completion_closed") : deliver(record, request, by, header)
       } catch (cause) {

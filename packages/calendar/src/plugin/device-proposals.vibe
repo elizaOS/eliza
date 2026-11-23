@@ -399,5 +399,8 @@ export const calendarProposalFamily: DeviceProposalFamily = {
   ground: (proposed, turn) => succeed(groundCalendar(proposed.operation, turn)),
   proposedText: proposedCalendarText,
   settledText: settledCalendarText,
-  continueAfterRead: (read, original) => succeed(continueCalendar(read, original)),
+  continueAfterRead: (read, original) => {
+    const operation = continueCalendar(read, original)
+    return succeed(operation === undefined ? undefined : { operation })
+  },
 }

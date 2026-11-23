@@ -63,3 +63,109 @@ pure def sometimesRestoredInactive(l: Lifecycle): bool = not(l.removed) and not(
 Metadata mutations have a separate index. For an untyped definition,
 their exact replay binds expected version, name and description and
 preserves active state. Typed workflows use full-spec save.
+
+## Story: Change the workflow I named in my own words
+
+> As the owner, I want a chat request that names a workflow to create,
+> rename or remove exactly the one I named, and to be asked first when my
+> words name it only in part.
+
+### A whole-message workflow command binds its operation and its names to the owner's words
+
+The owner's own words in the request the host bound to the turn, or the
+message's own text without its envelopes, are a whole-message command when
+they are, apart from a greeting, please, a can or would you, a closing
+please or for me and the closing punctuation, exactly one of: create, make,
+add, set up or build a (new) workflow called, named or titled a name, or
+start a new workflow called one; rename the workflow X to Y, or rename the X
+workflow to Y; delete or remove the workflow X, or the X workflow; list,
+show or what are my workflows, or what workflows do I have. A name is one
+to six words of at most 80 characters, optionally quoted, without its own
+full stop; a name with a clause word (that, which, to, and, then, every, at,
+for, not and the like), a name that only describes a workflow ("the new
+one", "this", "the latest") or a pronoun clause ("the one I just made") is
+no name, and then the words are no command. A change the planner proposes
+on a turn with a command runs only as that command, with the command's
+names and the owner's words as its instruction; the planner's workflow ID
+is kept only to choose among same-named workflows. A different change, or a
+change on a list command, is refused with nothing changed. A read is never
+bound.
+
+```quint
+type WorkflowCommand = CreateCommand | RenameCommand | RemoveCommand | ListCommand | NoCommand
+type ProposedWorkflowChange = ProposedCreate | ProposedRename | ProposedRemove | ProposedOtherChange | ProposedRead
+type CommandBinding = RunAsProposed | RunAsCommand | RefuseConflict
+pure def commandMatches(command: WorkflowCommand, proposed: ProposedWorkflowChange): bool =
+  (command == CreateCommand and proposed == ProposedCreate) or (command == RenameCommand and proposed == ProposedRename)
+    or (command == RemoveCommand and proposed == ProposedRemove)
+pure def bindToCommand(command: WorkflowCommand, proposed: ProposedWorkflowChange): CommandBinding =
+  if (proposed == ProposedRead or command == NoCommand) RunAsProposed
+  else if (commandMatches(command, proposed)) RunAsCommand
+  else RefuseConflict
+pure def lawAReadIsNeverBound(command: WorkflowCommand): bool = bindToCommand(command, ProposedRead) == RunAsProposed
+pure def lawAListCommandRefusesEveryChange(proposed: ProposedWorkflowChange): bool =
+  proposed != ProposedRead implies bindToCommand(ListCommand, proposed) == RefuseConflict
+pure def lawAnotherChangeIsRefused(command: WorkflowCommand, proposed: ProposedWorkflowChange): bool =
+  (command != NoCommand and proposed != ProposedRead and not(commandMatches(command, proposed))) implies bindToCommand(command, proposed) == RefuseConflict
+```
+
+### A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name
+
+A name is compared after NFKC folding, lowercasing, dropping quotes and
+collapsing spaces. It names a workflow in full when it is that workflow's
+name, or the same once the, my, workflow(s) and automation(s) are set aside
+on both sides; it names it in part when it is whole words of the name,
+with a plural only after a word of four or more letters. The first of the
+two full tiers with a match wins. One full match is the workflow; several
+are ambiguous unless the planner's ID is one of them. A planner ID read
+beside a planner's name must agree with it, or nothing changes; beside the
+owner's own words, a name that names no workflow in full falls back to the
+ID only when the ID's workflow answers the name. One partial match is the
+workflow, except that a remove or rename asks the owner first and does
+nothing in the turn. Several partial matches are ambiguous, and no match
+lists the workflows. A restore looks among removed workflows only, and
+every other operation among current ones, by ID as by name: an ID that
+names no workflow there is read as a name. Same-named workflows are told
+apart by their on state and creation time in the owner's zone: the turn's
+observed zone, else the zone the phone's interface reported, else the
+agent's TIMEZONE setting, else the host's, else UTC.
+
+```quint
+type WorkflowResolution = RefResolved | RefAmbiguous | RefConfirmFirst | RefNotFound | RefMismatch | RefMissing
+pure def resolveWorkflow(idFound: bool, nameGiven: bool, referenced: bool, ownerWords: bool, idAgrees: bool,
+  fullMatches: int, idAmongFull: bool, partialMatches: int, strict: bool): WorkflowResolution =
+  if (idFound and not(nameGiven)) RefResolved
+  else if (idFound and not(ownerWords)) (if (idAgrees) RefResolved else RefMismatch)
+  else if (not(referenced)) RefMissing
+  else if (fullMatches == 1) RefResolved
+  else if (fullMatches > 1) (if (idFound and idAmongFull) RefResolved else RefAmbiguous)
+  else if (idFound and not(idAgrees)) RefMismatch
+  else if (idFound and not(strict)) RefResolved
+  else if (partialMatches == 1) (if (strict) RefConfirmFirst else RefResolved)
+  else if (partialMatches > 1) RefAmbiguous
+  else RefNotFound
+pure val fullMatchesValues = Set(0, 1, 2)
+pure val partialMatchesValues = Set(0, 1, 2)
+pure def lawAPartNeverRemovesOrRenames(ownerWords: bool, idAgrees: bool, idAmongFull: bool): bool =
+  resolveWorkflow(false, true, true, ownerWords, idAgrees, 0, idAmongFull, 1, true) == RefConfirmFirst
+pure def lawSameNamedWorkflowsNeedAChoice(ownerWords: bool, idAgrees: bool, partialMatches: int, strict: bool): bool =
+  resolveWorkflow(false, true, true, ownerWords, idAgrees, 2, false, partialMatches, strict) == RefAmbiguous
+pure def lawAMispairedPlannerIdChangesNothing(fullMatches: int, idAmongFull: bool, partialMatches: int, strict: bool): bool =
+  resolveWorkflow(true, true, true, false, false, fullMatches, idAmongFull, partialMatches, strict) == RefMismatch
+```
+
+### A workflow the owner names never shares its name
+
+A create that carries the owner's own name for it is refused with nothing
+created when a current workflow already has that name; a name the drafting
+model chose takes the next free number instead. A rename to a name another
+current workflow has is refused with nothing changed.
+
+```quint
+type CreatedName = OwnerChosenName | DraftedName
+type NamingOutcome = KeepsName | TakesNumber | NameRefused
+pure def createdName(source: CreatedName, taken: bool): NamingOutcome =
+  if (not(taken)) KeepsName else if (source == OwnerChosenName) NameRefused else TakesNumber
+pure def lawAnOwnerNameIsNeverNumbered(taken: bool): bool = createdName(OwnerChosenName, taken) != TakesNumber
+pure def lawAFreeNameIsKept(source: CreatedName): bool = createdName(source, false) == KeepsName
+```

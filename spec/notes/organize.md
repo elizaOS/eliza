@@ -101,3 +101,24 @@ pure def lawOverlongFolderNameRefused(units: int, hasNul: bool): bool = units > 
 pure def lawDuplicateFolderNamesBreakTheList(count: int, uniqueIds: bool, namesAdmitted: bool): bool =
   not(folderListAdmitted(count, uniqueIds, false, namesAdmitted))
 ```
+
+### A proposed folder is one the device sent, or a new name the owner said
+
+A move or a filter names a folder only from the folder list the device sent
+with the turn, by its name there; with no list, or a name the list does not
+have, nothing is proposed, and taking a note out of its folder names none.
+A new folder's name is words the owner said in this message. A move is of
+the phone note open in Notes, as its [read](./read.md) targets it.
+
+```quint
+type FolderUse = ListedFolder | NoFolderNamed | NewFolderName
+pure def folderGrounded(folderUse: FolderUse, listSent: bool, inDeviceList: bool, inOwnerWords: bool): bool =
+  if (folderUse == ListedFolder) listSent and inDeviceList
+  else if (folderUse == NewFolderName) inOwnerWords
+  else true
+pure def lawAnUnlistedFolderIsNeverProposed(listSent: bool, inOwnerWords: bool): bool =
+  not(folderGrounded(ListedFolder, listSent, false, inOwnerWords)) and not(folderGrounded(ListedFolder, false, true, inOwnerWords))
+pure def lawANewFolderIsNamedByTheOwner(listSent: bool, inDeviceList: bool): bool =
+  not(folderGrounded(NewFolderName, listSent, inDeviceList, false))
+pure def lawNoFolderNeedsNoList(inDeviceList: bool, inOwnerWords: bool): bool = folderGrounded(NoFolderNamed, false, inDeviceList, inOwnerWords)
+```
