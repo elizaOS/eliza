@@ -303,6 +303,7 @@ pure def loseExecutor(c: Command): Command = { ...c, receipt: D::loseExecutor(c.
 pure def canResolve(c: Command, lookup: D::LookupResult): bool = c.phase == Running and D::canResolve(c.receipt, lookup)
 pure def resolve(c: Command, lookup: D::LookupResult): Command = { ...c, receipt: D::resolve(c.receipt, lookup) }
 pure def canElapse(c: Command, elapsed: Millis): bool = D::canElapse(c.receipt, elapsed)
+pure val eval_refuse_canElapse = { elapsed: -1 }
 pure def elapse(c: Command, elapsed: Millis): Command = {
   val work = c.schedule
   { ...c, receipt: D::elapse(c.receipt, elapsed), schedule: match work {
@@ -385,6 +386,25 @@ pure def sometimesUpgradePaidAfterWaiting(c: Command): bool = c.kind == Sub::Upg
 pure def sometimesUpgradeInvoiceVoided(c: Command): bool = c.phase == Failed and c.receipt.settlement == D::Succeeded
 pure def sometimesDowngradeScheduled(c: Command): bool = c.kind == Sub::DowngradeCommand and c.phase == Applied
 pure def sometimesRefusedByTheProvider(c: Command): bool = c.phase == Failed and c.receipt.settlement == D::Refused
+
+pure val eval_witness_sometimesUpgradeAwaitingPayment = (
+  ("review", { ...Sub::initial, status: Sub::Active, subscriptionId: "sub1", customer: Sub::PinnedCustomer({ customerId: "cus1" }), planKey: PlusMonthly, periodStart: 0, periodEnd: 2592000000, revision: 1 }, Sub::UpgradeCommand, ProMonthly, "q1", 4667, true, { actorId: "user1", agentId: "org1", connector: "subscription_schedule" }),
+  ("confirm", { actorId: "user1", agentId: "org1", connector: "subscription_update" }, { ...Sub::initial, status: Sub::Active, subscriptionId: "sub1", customer: Sub::PinnedCustomer({ customerId: "cus1" }), planKey: PlusMonthly, periodStart: 0, periodEnd: 2592000000, revision: 1 }, Sub::UpgradeCommand, "cmd1", "q1", 1, "", "d1", true),
+  ("send", { actorId: "user1", agentId: "org1", connector: "subscription_update" }, 1),
+  ("elapse", 2592000000, { actorId: "user1", agentId: "org1", connector: "subscription_update" }),
+  ("resolve", D::EffectSeen, { actorId: "user1", agentId: "org1", connector: "subscription_update" }),
+  ("finish", UpgradeInvoiceOpen, 0, { actorId: "user1", agentId: "org1", connector: "subscription_schedule" })
+)
+
+pure val eval_witness_sometimesDowngradeScheduled = (
+  ("review", { ...Sub::initial, status: Sub::Active, subscriptionId: "sub1", customer: Sub::PinnedCustomer({ customerId: "cus1" }), planKey: ProMonthly, periodStart: 0, periodEnd: 2592000000, revision: 2 }, Sub::DowngradeCommand, PlusMonthly, "q1", 0, true, { actorId: "user1", agentId: "org1", connector: "subscription_update" }),
+  ("recordScheduleReview", ExistingSchedule({ scheduleId: "sched1" }), { actorId: "user1", agentId: "org1", connector: "subscription_schedule" }),
+  ("confirm", { actorId: "user1", agentId: "org1", connector: "subscription_schedule" }, { ...Sub::initial, status: Sub::Active, subscriptionId: "sub1", customer: Sub::PinnedCustomer({ customerId: "cus1" }), planKey: ProMonthly, periodStart: 0, periodEnd: 2592000000, revision: 2 }, Sub::DowngradeCommand, "cmd1", "q1", 2, "", "d2", true),
+  ("send", { actorId: "user1", agentId: "org1", connector: "subscription_schedule" }, 1),
+  ("loseExecutor", { actorId: "user1", agentId: "org1", connector: "subscription_schedule" }),
+  ("resolve", D::EffectSeen, { actorId: "user1", agentId: "org1", connector: "subscription_update" }),
+  ("finish", NoUpgradeInvoice, 4, { actorId: "user1", agentId: "org1", connector: "subscription_update" })
+)
 ```
 
 ### A command holds the slot from its confirmation until it ends, and every effect names it
