@@ -3109,8 +3109,8 @@ function eachCheck() {
 
   test("owner generation mirrors the same artifact as the whole tree and checks its dependency closure", async () => {
     const root = toolchain(scratch({
-      "package.json": PACKAGE["package.json"],
-      "packages/target/package.json": JSON.stringify({ name: "@repo/target" }),
+      "package.json": JSON.stringify({ ...JSON.parse(PACKAGE["package.json"]), specOwners: { target: "packages/plugin-target" } }),
+      "packages/plugin-target/package.json": JSON.stringify({ name: "@repo/target" }),
       "packages/other/package.json": JSON.stringify({ name: "@repo/other" }),
       "spec/index.md": "# Project",
       "spec/target/index.md": ruleSpec('import lib.* from "../lib"\npure val targetValue = baseValue'),
@@ -3127,7 +3127,7 @@ function eachCheck() {
     linkDuringGeneration("install-during-full-generation");
     const all = await runCli(script, root, "gen");
     assert.equal(all.status, 0, all.stdout + all.stderr);
-    const target = path.join(root, "packages/target/gen");
+    const target = path.join(root, "packages/plugin-target/gen");
     const outputs = () => fs.readdirSync(target).sort().map((name) => [name, fs.readFileSync(path.join(target, name), "utf8")]);
     const expected = outputs();
     const unrelated = path.join(root, "packages/other/gen/other.ts");

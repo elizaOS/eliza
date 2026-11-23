@@ -1,8 +1,8 @@
 // The generator on a copy of test/fixtures that nothing else reads or writes, in the system's temporary
 // directory. The copy needs no install: fixtures/modules, its `node_modules`, declares what the fixtures import.
-import { cpSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { afterAll, expect, it } from "vitest";
 import { type Component, generator, watched } from "../emit.ts";
 
@@ -123,6 +123,35 @@ it("links a component to its spec model and renders it from the generated initia
   expect(component("Receipt").stories[1]).toEqual({ id: "kit-receipt--model", name: "Model", kind: "model", args: { order: { status: "Draft", units: 0 } } });
   expect(read("kit-receipt.stories.tsx")).toContain('import { initial } from "../../gen/index.ts";');
   expect(read("kit-receipt.stories.tsx")).toContain("export const Model = { args: { ...base, order: initial } };");
+
+  const workspace = join(root, "mapped-owner");
+  const ui = join(workspace, "packages/ui");
+  const model = readFileSync(join(root, "gen/index.ts"), "utf8");
+  const mapped = 'import type { Order } from "../../../gen/workflow.ts";\n' + model
+    .replace(/^export (?:type Status|interface Order) .*\n/gm, "")
+    .replace("units: 0", "units: 9");
+  const receipt = readFileSync(join(root, "src/Receipt.tsx"), "utf8");
+  const files = {
+    "package.json": "{}",
+    "packages/ui/package.json": readFileSync(join(root, "package.json"), "utf8"),
+    "packages/ui/tsconfig.json": readFileSync(join(root, "tsconfig.json"), "utf8"),
+    "packages/ui/src/Receipt.tsx": receipt.replace("../gen/index.ts", "../../../gen/workflow.ts").replace("spec/index.md", "spec/workflow/index.md"),
+    "spec/workflow/index.md": "# Workflows",
+    "gen/workflow.ts": model,
+    "packages/plugin-workflows/package.json": '{"name":"@fixture/plugin-workflows"}',
+    "packages/plugin-workflows/gen/workflow.ts": mapped,
+  };
+  for (const [file, text] of Object.entries(files)) {
+    const path = join(workspace, file);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, text);
+  }
+  const generate = generator({ root: ui });
+  expect(component("Receipt", generate()).stories[1].args).toEqual({ order: { status: "Draft", units: 0 } });
+  expect(generate().written).toEqual([]);
+  writeFileSync(join(workspace, "package.json"), JSON.stringify({ specOwners: { workflow: "packages/plugin-workflows" } }));
+  expect(component("Receipt", generate()).stories[1].args).toEqual({ order: { status: "Draft", units: 9 } });
+  expect(readFileSync(join(ui, "generated/stories/kit-receipt.stories.tsx"), "utf8")).toContain('import { initial } from "../../../plugin-workflows/gen/workflow.ts";');
 });
 
 it("leaves a story to the hand-written file that has one of its name", () => {
@@ -153,7 +182,7 @@ it("rewrites only what a change touches, and removes what a deleted component le
   edit("src/Tag.tsx", (text) => text.replace('lg: "l" }', 'lg: "l", xl: "x" }'));
   expect(run()).toMatchObject({ written: ["kit-tag.stories.tsx", "catalog.json", ".cache/manifest.json"], removed: [], analyzed: 1 });
   expect(stories("Tag", run())).toContain("prop kit-tag--size-xl");
-  expect(["src/Tag.tsx", "tsconfig.json", "generated/stories/kit-tag.stories.tsx", "node_modules/react/index.ts", ".cache/Tag.tsx"].filter(watched(root))).toEqual(["src/Tag.tsx", "tsconfig.json"]);
+  expect(["src/Tag.tsx", "tsconfig.json", "package.json", "generated/stories/kit-tag.stories.tsx", "node_modules/react/index.ts", ".cache/Tag.tsx"].filter(watched(root))).toEqual(["src/Tag.tsx", "tsconfig.json", "package.json"]);
 
   // A type reached through a path alias is an input, and so is the tsconfig that names the alias.
   edit("src/shades.ts", (text) => text.replace('"red"', '"crimson"'));

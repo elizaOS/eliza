@@ -5,6 +5,17 @@
   "engines": {
     "node": ">=26"
   },
+  "specOwners": {
+    "assistant": "packages/plugin-assistant",
+    "browser": "packages/plugin-browser",
+    "calendar": "packages/plugin-calendar",
+    "files": "packages/plugin-files",
+    "inbox": "packages/plugin-inbox",
+    "localInference": "packages/plugin-localinference",
+    "maps": "packages/plugin-maps",
+    "notes": "packages/plugin-notes",
+    "workflow": "packages/plugin-workflows"
+  },
   "scripts": {
     "dev": "turbo run dev //#studio",
     "studio": "node vibestack/spec.ts studio",
