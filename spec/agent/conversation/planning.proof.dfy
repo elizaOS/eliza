@@ -15,6 +15,21 @@ lemma lawOnlyAllowedRegisteredActionsAreOffered_ensures(registered: seq<string>,
   assert "REPLY" in messageServiceActions;
 }
 
+lemma lawTheSearchIsOfferedLikeAnyAllowedAction_ensures(registered: seq<string>, allowed: seq<string>, formless: seq<string>)
+  ensures (lawTheSearchIsOfferedLikeAnyAllowedAction(registered, allowed, formless) == true)
+{
+  if conversationSearch in registered && conversationSearch in allowed && conversationSearch !in formless {
+    var permitted := ProofLib.Filter((set_x: string) => (set_x in allowed), registered);
+    var advertised := ProofLib.Filter((set_x: string) => !((set_x in messageServiceActions)), permitted);
+    var visible := ProofLib.Filter((set_x: string) => !((set_x in formless)), advertised);
+    assert visible == offered(registered, allowed, formless);
+    assert conversationSearch !in messageServiceActions;
+    ProofLib.FilterMember((set_x: string) => (set_x in allowed), registered, conversationSearch);
+    ProofLib.FilterMember((set_x: string) => !((set_x in messageServiceActions)), permitted, conversationSearch);
+    ProofLib.FilterMember((set_x: string) => !((set_x in formless)), advertised, conversationSearch);
+  }
+}
+
 lemma lawTheLatestFailureIsReported_ensures(steps: seq<PlanStep>, earlier: PlanStep)
   ensures (lawTheLatestFailureIsReported(steps, earlier) == true)
 {

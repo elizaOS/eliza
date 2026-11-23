@@ -1,10 +1,10 @@
-// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/planning.md, "The model may search what this conversation said, and a windowed history asks it to search before it answers that something was not said"; spec/core/context.md, "A search of the conversation finds what it holds as written, else what best shares the words of the query"
 import {
-  type Action, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
+  type Action, type ActionResult, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type HistorySource, type IAgentRuntime, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
-  executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
+  executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, searchHistory, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
-import { hostNoteLabels } from "../../gen/agent__conversation__planning.ts"
+import { conversationSearch, hostNoteLabels, noticeAsksToSearch } from "../../gen/agent__conversation__planning.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
 import { textForTurn } from "./heard.vibe"
@@ -62,6 +62,18 @@ const none: Action = {
   handler: async () => ({ success: true }),
 }
 
+const search: Action = {
+  name: conversationSearch,
+  description: "Search this conversation's earlier messages, shown or not, for a phrase or for a subject's main words. Answers with up to five messages and who said each.",
+  parameters: [{ name: "query", required: true, description: "The phrase, or the subject's main words, to look for.", schema: { type: "string" } }],
+  validate: async () => true,
+  handler: (runtime, message, _state, options) => {
+    const parameters = options?.parameters
+    const query = typeof parameters === "object" && parameters !== null && "query" in parameters && typeof parameters.query === "string" ? parameters.query : ""
+    return searchConversation(runtime, message, query)
+  },
+}
+
 export function ownerMessageService(
   runtime: AgentRuntime,
   roles: readonly RoleGateRole[],
@@ -69,7 +81,7 @@ export function ownerMessageService(
   accountFailure: AccountFailureSince = () => undefined,
   launchZone?: string,
 ): IMessageService {
-  for (const action of [reply, ignore, none])
+  for (const action of [reply, ignore, none, search])
     runtime.registerAction(action)
   return {
     shouldRespond: (_runtime, message) => ({ shouldRespond: Boolean(message.content.text?.trim()), skipEvaluation: true, reason: "direct_message" }),
@@ -81,11 +93,40 @@ export function ownerMessageService(
 
 const unreadable = "[This message's stored text could not be read back.]"
 
-async function spoken(runtime: AgentRuntime, memory: Memory): Promise<string> {
+async function spoken(runtime: IAgentRuntime, memory: Memory): Promise<string> {
   if (memory.entityId === runtime.agentId && readSystemNotice(memory.content.systemNotice) !== undefined) return ""
   const read = await storedText(runtime.adapter, memory).then((text) => ({ text }), () => undefined)
   if (read === undefined) return unreadable
   return memory.entityId === runtime.agentId ? textForTurn(memory, read.text) : read.text
+}
+
+interface Said extends HistorySource {
+  readonly position: number
+}
+
+async function sourcesOf(runtime: IAgentRuntime, message: Memory, newestFirst: readonly Memory[]): Promise<Said[]> {
+  return (await Promise.all(newestFirst.toReversed().map(async (previous, position) => {
+    const content = previous.id === message.id ? "" : await spoken(runtime, previous)
+    return content ? [{ id: previous.id ?? "", fromUser: previous.entityId !== runtime.agentId, text: content, position }] : []
+  }))).flat()
+}
+
+function turnWindow(sources: readonly Said[], asked: string, earlier: number, readCount: number) {
+  return windowHistory(sources, asked, { earlier, readCount, positions: sources.map(({ position }) => position) })
+}
+
+async function searchConversation(runtime: IAgentRuntime, message: Memory, query: string): Promise<ActionResult> {
+  const stored = await runtime.getMemories({ tableName: "messages", roomId: message.roomId, orderBy: "createdAt", orderDirection: "desc" })
+  const recent = stored.slice(0, historyReadCount)
+  const sources = await sourcesOf(runtime, message, recent)
+  const window = turnWindow(sources, message.content.text ?? "", stored.length - recent.length, recent.length)
+  const inView = new Set([...window.shown, ...window.recalled].map(({ id }) => id))
+  const found = searchHistory([...await sourcesOf(runtime, message, stored.slice(historyReadCount)), ...sources], query, ({ id }) => inView.has(id))
+  const asked = JSON.stringify(query)
+  const text = found.match === "MatchedAsWritten" ? `These messages of this conversation hold ${asked}, oldest first.`
+    : found.match === "MatchedByWords" ? `No message of this conversation holds ${asked} as written; these best share its words, oldest first.`
+    : `No message of this conversation holds ${asked} or shares enough of its words.`
+  return { success: true, text, data: { messages: found.matches.map(({ fromUser, text: said }) => ({ role: fromUser ? "user" : "assistant", text: said })) } }
 }
 
 function partOf(media: Media): ContentPart {
@@ -179,17 +220,15 @@ async function respond(
       try {
         signal.throwIfAborted()
         const recent = await runtime.getMemories({ tableName: "messages", roomId: message.roomId, count: historyReadCount, orderBy: "createdAt", orderDirection: "desc" })
-        const sources = (await Promise.all(recent.slice().reverse().map(async (previous, position) => {
-          const content = previous.id === message.id ? "" : await spoken(runtime, previous)
-          return content ? [{ id: previous.id ?? "", fromUser: previous.entityId !== runtime.agentId, text: content, position }] : []
-        }))).flat()
+        const sources = await sourcesOf(runtime, message, recent)
         const earlier = recent.length < historyReadCount ? 0 : await runtime.countMemories(message.roomId, false, "messages") - recent.length
-        const window = windowHistory(sources, asked, { earlier, readCount: recent.length, positions: sources.map(({ position }) => position) })
+        const window = turnWindow(sources, asked, earlier, recent.length)
         const history: ChatMessage[] = window.shown.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
         const actions = offeredActions(runtime, message, actionGate)
+        const searchOffered = actions.some(({ name }) => name === conversationSearch)
         const messages: ChatMessage[] = [...history, said(message, asked, [
           contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext,
-          window.windowed ? historyWindowNotice(window) : undefined,
+          window.windowed ? historyWindowNotice(window, noticeAsksToSearch(window.windowed, searchOffered) ? conversationSearch : undefined) : undefined,
         ])]
         const character = runtime.character
         const examples = (character.messageExamples ?? []).map(({ examples }) =>

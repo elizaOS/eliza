@@ -1,5 +1,5 @@
-// spec/core/context.md, "Story: Keep a long conversation within reach on a host with no reviewer"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"
-import { shownFrom, windowBoundary } from "../../gen/core__context.ts"
+// spec/core/context.md, "Story: Keep a long conversation within reach on a host with no reviewer"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/context.md, "A search of the conversation finds what it holds as written, else what best shares the words of the query"
+import { historyMatch, matchesShown, shownFrom, windowBoundary, type HistoryMatch } from "../../gen/core__context.ts"
 
 export const HISTORY_WINDOW_MAX_SOURCES = 40
 export const HISTORY_WINDOW_KEEP_SOURCES = 20
@@ -9,7 +9,6 @@ export const HISTORY_CONTINUITY_SOURCES = 10
 const RECALL_SOURCES = 3
 const RECALL_HOLDERS = 2
 const RECALL_REQUEST_WORDS = 40
-const WORD_MATCHES = 5
 
 const STANDING_WORDING =
   /\b(?:always|never|from now on|going forward|in (?:the )?future|every time|each time|whenever|remember (?:that|to|my)|don['’]?t (?:ever|forget)|do not (?:ever|forget)|i prefer|call me|my name is|i(?:['’]m| am) allergic|unless i)\b/i
@@ -35,7 +34,7 @@ export interface HistoryWindow<S extends HistorySource> {
 
 export interface HistorySearch<S extends HistorySource> {
   readonly matches: readonly S[]
-  readonly byWords: boolean
+  readonly match: HistoryMatch
 }
 
 const wordsOf = (text: string): string[] => text.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? []
@@ -140,12 +139,9 @@ export function windowHistory<S extends HistorySource>(sources: readonly S[], re
   }
 }
 
-export function searchHistory<S extends HistorySource>(candidates: readonly S[], query: string, inView: (source: S) => boolean): HistorySearch<S> {
-  const needle = query.toLowerCase()
-  const literal = needle.trim() ? candidates.filter(({ text }) => text.toLowerCase().includes(needle)) : []
-  if (literal.length > 0) return { matches: literal, byWords: false }
+function wordMatches(candidates: readonly HistorySource[], query: string): number[] {
   const words = queryWords(query)
-  if (words.length < 2) return { matches: [], byWords: false }
+  if (words.length < 2) return []
   const texts = candidates.map(({ text }) => wordsOf(text))
   const weight = new Map(words.map((word) => {
     const holders = texts.filter((text) => hasWord(text, word)).length
@@ -154,21 +150,29 @@ export function searchHistory<S extends HistorySource>(candidates: readonly S[],
   let total = 0
   for (const value of weight.values()) total += value
   let best = 0
-  const scored = candidates.flatMap((source, index) => {
-    const shared = words.filter((word) => hasWord(texts[index], word))
+  const scored = texts.flatMap((text, index) => {
+    const shared = words.filter((word) => hasWord(text, word))
     let score = 0
     for (const word of shared) score += weight.get(word) ?? 0
     if (shared.length < 2 || score < total / 2) return []
     best = Math.max(best, score)
-    return [{ source, index, score }]
+    return [{ index, score }]
   })
-  const matches = scored
-    .filter(({ score }) => score >= best - 1e-9)
-    .sort((left, right) => Number(inView(left.source)) - Number(inView(right.source)) || right.index - left.index)
-    .slice(0, WORD_MATCHES)
-    .sort((left, right) => left.index - right.index)
-    .map(({ source }) => source)
-  return { matches, byWords: matches.length > 0 }
+  return scored.filter(({ score }) => score >= best - 1e-9).map(({ index }) => index)
+}
+
+export function searchHistory<S extends HistorySource>(candidates: readonly S[], query: string, inView: (source: S) => boolean): HistorySearch<S> {
+  const needle = query.trim().toLowerCase()
+  const literal = needle ? candidates.flatMap(({ text }, index) => text.toLowerCase().includes(needle) ? [index] : []) : []
+  const byWords = literal.length > 0 ? [] : wordMatches(candidates, query)
+  const match = historyMatch(literal.length, byWords.length)
+  const found = match === "MatchedAsWritten" ? literal : byWords
+  const matches = found
+    .toSorted((left, right) => Number(inView(candidates[left])) - Number(inView(candidates[right])) || right - left)
+    .slice(0, matchesShown(found.length))
+    .toSorted((left, right) => left - right)
+    .map((index) => candidates[index])
+  return { matches, match }
 }
 
 export function historyWindowNotice(window: { readonly deferred: readonly unknown[]; readonly recalled: readonly HistorySource[] }, readThrough?: string): string {
@@ -178,9 +182,9 @@ export function historyWindowNotice(window: { readonly deferred: readonly unknow
   const held = window.recalled.length > 0 ? "the messages shown and the recalled exchanges" : "the messages shown"
   const read = readThrough === undefined
     ? ` Answer from ${held} when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), say that the earlier part of this conversation is not in view rather than guessing or denying it was said.`
-    : ` Answer from ${held} when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), read first through ${readThrough}: search the subject's main words, or read a known reference. Do not reply that you do not know, do not have or will check something before such a read. When the read finds nothing, say what you looked for and that this conversation does not hold it.`
+    : ` Answer from ${held} when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), read first through ${readThrough}: search the subject's main words. Do not reply that you do not know, do not have or will check something before such a read. When the read finds nothing, say what you looked for and that this conversation does not hold it.`
   const exchanges = window.recalled.length > 0
     ? `\n\nRecalled earlier exchanges, oldest first, said in this conversation before the messages shown and not in this turn:\n${window.recalled.map(({ fromUser, text }) => `${fromUser ? "user" : "assistant"}: ${JSON.stringify(text)}`).join("\n")}`
     : ""
-  return `${window.deferred.length} earlier messages and the recorded outcomes of their requests are not shown. The conversation holds only the most recent ones.${recalled} They were deferred by position, not reviewed, and that alone is no reason to read them.${read}${exchanges}`
+  return `${window.deferred.length} earlier messages are not shown. The conversation holds only the most recent ones.${recalled} They were deferred by position, not reviewed, and that alone is no reason to read them.${read}${exchanges}`
 }

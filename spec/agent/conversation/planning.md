@@ -276,6 +276,31 @@ pure def actionNoteSent(actionOffered: bool, noted: bool): bool = actionOffered 
 pure def lawOnlyAnOfferedActionNotesTheMessage(noted: bool): bool = not(actionNoteSent(false, noted))
 ```
 
+### The model may search what this conversation said, and a windowed history asks it to search before it answers that something was not said
+
+The message service registers `SEARCH_CONVERSATION` beside `REPLY`,
+`IGNORE` and `NONE`. Unlike them it is offered as a tool, like any action
+the launch allows, on every turn whether or not the history is windowed, so
+the tools stay the same bytes. It takes one query and answers with the
+messages [core's search](../../core/context.md) finds among every message of
+this conversation the history would read, each with who said it: never a
+host notice, the person's latest message or another conversation. When the
+history is windowed and the search is offered, the window notice asks the
+model to search the subject's main words before it answers that it does not
+know or have something, and to say what it looked for when the search finds
+nothing; otherwise it asks the model to say that the earlier part of the
+conversation is not in view rather than guessing or denying it was said.
+
+```quint
+pure val conversationSearch = "SEARCH_CONVERSATION"
+pure def noticeAsksToSearch(windowed: bool, searchOffered: bool): bool = windowed and searchOffered
+pure def lawTheNoticeAsksToSearchOnlyWhileTheSearchIsOffered(windowed: bool): bool = not(noticeAsksToSearch(windowed, false))
+pure def lawAnUnwindowedHistoryAsksNothing(searchOffered: bool): bool = not(noticeAsksToSearch(false, searchOffered))
+pure def lawTheSearchIsOfferedLikeAnyAllowedAction(registered: Set[str], allowed: Set[str], formless: Set[str]): bool =
+  (registered.contains(conversationSearch) and allowed.contains(conversationSearch) and not(formless.contains(conversationSearch)))
+    implies offered(registered, allowed, formless).contains(conversationSearch)
+```
+
 ### The model reads what was said in the conversation, in a window taken once for the whole turn
 
 A host notice the agent process stored in the conversation (a message of
