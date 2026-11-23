@@ -42,7 +42,7 @@ jobs:
 
   verify:
     name: ${{ matrix.name }}
-    needs: simulate
+    needs: vibestack-precompute-simulations
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     strategy:
@@ -67,7 +67,7 @@ jobs:
           TASK: ${{ matrix.tasks }}
           JOB: ${{ matrix.name }}
         run: |
-          hash=$(node vibestack/spec.ts tasks "$TASK" --only --dry=json | jq -er --arg task "$TASK" '
+          hash=$(node vibestack/spec.ts tasks "$TASK" --only --dry=json --cache=local:w | jq -er --arg task "$TASK" '
             .tasks | select(length == 1) | .[0]
             | select(.taskId == $task and .resolvedTaskDefinition.cache == true and .resolvedTaskDefinition.outputs == [])
             | .hash
@@ -228,7 +228,16 @@ jobs:
         if: always() && steps.setup.outputs.turbo-cache-key != '' && steps.closed-pr-cache.outputs.skip != 'true'
         run: |
           [[ -d .turbo/cache ]] || exit 0
-          cat .turbo/runs/*.json 2>/dev/null | jq -r '.tasks[] | select(.cache.status == "HIT") | .hash' | while read -r hash; do find .turbo/cache -name "$hash*" -exec touch {} +; done
+          shopt -s nullglob
+          summaries=(.turbo/runs/*.json)
+          if (( ${#summaries[@]} )); then
+            jq -r '
+              .tasks[] | select(.cache.status == "HIT")
+              | .hash | select(type == "string" and test("^[a-f0-9]{16}$"))
+              | ".turbo/cache/\(.)" as $entry
+              | $entry + (".tar.zst", "-meta.json", "-manifest.json")
+            ' "${summaries[@]}" | xargs -r touch -c --
+          fi
           find .turbo/cache -type f -mtime +7 -delete
           for archive in .turbo/cache/*.tar.zst; do
             metadata="${archive%.tar.zst}-meta.json"
@@ -269,7 +278,7 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
 
-  simulate:
+  vibestack-precompute-simulations:
     name: simulate-${{ matrix.shard }}
     runs-on: ubuntu-latest
     strategy:
