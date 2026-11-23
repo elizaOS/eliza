@@ -90,6 +90,7 @@ it.effect('Build and register only the plugins my host selected: a parent pnpm w
       "ai/eliza/plugins/agent/runtime/AndroidRuntimeDirectories.java",
       "ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java",
       "ai/eliza/plugins/securestore/nativeonly/CloudDeviceAccount.java",
+      "ai/eliza/plugins/securestore/nativeonly/MailReadRoutes.java",
       "ai/eliza/plugins/securestore/nativeonly/PasswordBackupApproval.java",
       "ai/eliza/plugins/securestore/nativeonly/CloudPasswordBackup.java",
       "ai/eliza/plugins/securestore/google/NativeGoogleAuthorization.java",
