@@ -57,6 +57,36 @@ pure val negotiatedValues = Set(nothingNegotiated, { ...nothingNegotiated, searc
   { searchCapability: true, tabsCapability: true, findCapability: true, historyCapability: true, newTabCapability: false })
 ```
 
+### Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs
+
+Closing every open tab is a tab close that names `all`. It needs
+`browser.tabs.close-all.v1` beside `browser.tabs.v1`; a phone without it is
+never sent it, so a request to close several tabs is refused rather than
+narrowed to the tab that is showing. A close that names one tab and every
+tab is refused. The phone lists the tabs it will close on that one review
+card, counting private tabs without naming them, and closes exactly those
+tabs or nothing; the agent never sees the list. Where the phone cannot list
+them for the proposal, or no tab is open, the owner gets a notice instead of
+a card, and only a close-all card that listed its tabs in the latest review
+may be approved.
+
+```quint
+type TabCloseForm = CloseShowing | CloseNamed | CloseEvery
+type CloseAllReview = CloseAllCard | CloseAllNotice
+pure def closeFormOffered(form: TabCloseForm, negotiated: Negotiated, closeAllNegotiated: bool): bool =
+  controlOffered(TabCloseControl, negotiated) and (form != CloseEvery or closeAllNegotiated)
+pure def closeAllReview(listed: bool, tabs: int): CloseAllReview = if (listed and tabs > 0) CloseAllCard else CloseAllNotice
+pure def closeAllApprovable(listedInLatestReview: bool, tabs: int): bool = closeAllReview(listedInLatestReview, tabs) == CloseAllCard
+pure val formValues = Set(CloseShowing, CloseNamed, CloseEvery)
+pure val tabsValues = Set(0, 1, 8)
+pure def lawClosingEveryTabNeedsItsOwnForm(negotiated: Negotiated): bool = not(closeFormOffered(CloseEvery, negotiated, false))
+pure def lawClosingEveryTabNeedsTheTabsCapability(closeAllNegotiated: bool): bool = not(closeFormOffered(CloseEvery, nothingNegotiated, closeAllNegotiated))
+pure def lawOneTabFormsNeedOnlyTheTabsCapability(form: TabCloseForm, negotiated: Negotiated): bool =
+  form != CloseEvery implies closeFormOffered(form, negotiated, false) == controlOffered(TabCloseControl, negotiated)
+pure def lawAnUnlistedCloseAllIsNeverACard(listed: bool, tabs: int): bool = (not(listed) or tabs <= 0) implies closeAllReview(listed, tabs) == CloseAllNotice
+pure def lawOnlyAListedCardIsApproved(listed: bool, tabs: int): bool = closeAllApprovable(listed, tabs) implies (listed and tabs > 0)
+```
+
 ### A control is reviewed only on the unlocked phone, and closing a tab always waits for that review
 
 A control is reviewed only where the owner sees the phone unlocked and on a
