@@ -220,7 +220,7 @@ pure val gValues = fValues
 pure val hostValues = Set("login.example", "other.example")
 pure val pathValues = Set("/callback", "/other")
 pure def lawAnExtraHostOrPathNeverAdmits(f: CallbackFilter, host: str, path: str): bool =
-  (f.hosts.exclude(Set(host)).size() > 0 or f.paths.exclude(Set(path)).size() > 0) implies not(callbackFilterAdmits(f, host, path))
+  (f.hosts.exists(other => other != host) or f.paths.exists(other => other != path)) implies not(callbackFilterAdmits(f, host, path))
 pure def lawFactsOfTwoFiltersNeverCombine(f: CallbackFilter, g: CallbackFilter, host: str, path: str): bool =
   (not(sameValues(f.hosts, Set(host))) and not(g.autoVerify)) implies not(manifestHasCallback(List(f, g), host, path))
 ```
