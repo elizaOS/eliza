@@ -12,6 +12,7 @@
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/os": "workspace:*",
     "effect": "4.1.1",

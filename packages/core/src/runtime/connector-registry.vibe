@@ -1,7 +1,9 @@
-// spec/core/concurrentConnectors.md, "Story: Retain captured transports during registry replacement"; spec/core/concurrentConnectors.md, "Shared descriptors expose distinct capabilities to independent calls"
+// spec/core/concurrentConnectors.md, "Story: Retain captured transports during registry replacement"; spec/core/concurrentConnectors.md, "Shared descriptors expose distinct capabilities to independent calls"; spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"
 import { foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.vibe"
+import type { PseudonymSession } from "../security/pii-pseudonymizer.vibe"
+import type { SecretSwapSession } from "../security/secret-swap.vibe"
 import { sanitizeOutboundText } from "../security/outbound-sanitize.vibe"
 import { ensureAgentVoice } from "../security/voice-gate.vibe"
 import { getTrajectoryContext } from "../trajectory-context.vibe"
@@ -252,22 +254,29 @@ export effect function sendMessageToTarget(
 
   const voicedContent = try ensureAgentVoice(tables.runtime, content, { source })
   try foreign(() => Promise.resolve())
-  const secretSession = getTrajectoryContext()?.secretSwapSession
+  const turn = getTrajectoryContext()
   const outboundContent = typeof voicedContent.text === "string"
     ? {
       ...voicedContent,
       text: guardOutboundEnvelopeText(
         tables.runtime,
         try sanitizeOutboundText(
-          secretSession
-            ? secretSession.redactRestoredSecretValues(voicedContent.text)
-            : voicedContent.text,
+          restoredOutboundText(turn?.piiSwapSession, turn?.secretSwapSession, voicedContent.text),
         ),
         "sendMessageToTarget",
       ),
     }
     : voicedContent
   return try foreign(() => handler(tables.runtime, target, outboundContent))
+}
+
+function restoredOutboundText(
+  pii: PseudonymSession | undefined,
+  secrets: SecretSwapSession | undefined,
+  text: string,
+): string {
+  const named = pii ? pii.restoreText(text) : text
+  return secrets ? secrets.redactRestoredSecretValues(named) : named
 }
 
 effect function requireConnectorHook<K extends keyof MessageConnector>(

@@ -22,6 +22,7 @@ export interface CloudStreamEvent {
   readonly utteranceId?: unknown;
   readonly code?: unknown;
   readonly data?: unknown;
+  readonly interrupted?: unknown;
 }
 
 export interface CloudSpeechStarted {
