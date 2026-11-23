@@ -59,6 +59,13 @@ module node {
     forOwner: "Your phone can't do that from chat right now.",
   }
 
+  function coached({ code, forModel }: Refusal): ActionResult {
+    return {
+      success: false, text: forModel, transcriptVisibility: "internal",
+      data: { code, coachingFailure: true, proposalCreated: false, executed: false, retryable: true, executionStatus: "not_started" },
+    }
+  }
+
   function refused({ code, forModel, forOwner }: Refusal): ActionResult {
     return {
       success: false, text: forModel, userFacingText: forOwner, verifiedUserFacing: true,
@@ -223,9 +230,9 @@ module node {
     const prepared = preparedOf(runtime, input)
     const proposed = readOperation(prepared)
     const family = proposed === undefined ? undefined : familyOf(runtime, proposed.operation.type)
-    if (proposed === undefined || family === undefined) return refused(notOffered)
+    if (proposed === undefined || family === undefined) return coached(notOffered)
     const withheld = withheldFor(runtime, turn, prepared).refusal
-    if (withheld !== undefined) return refused(withheld)
+    if (withheld !== undefined) return withheld === notOffered ? coached(withheld) : refused(withheld)
     const grounded = await Effect.runPromise(family.ground(proposed, turn))
     const admitted = grounded.kind === "Grounded" && family.types.includes(grounded.operation.type) ? turn.admit(grounded.operation) : undefined
     const reply = proposalReply(true, "FormAvailable", grounded.kind === "Grounded" ? "FamilyGrounded" : "FamilyRefused", admitted !== undefined)
