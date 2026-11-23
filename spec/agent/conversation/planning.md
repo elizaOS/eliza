@@ -97,6 +97,23 @@ pure def lawARefusalBeforeDispatchStaysReported(steps: List[PlanStep], earlier: 
   earlier.outcome == Rejected implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
 ```
 
+### A coaching response stays in the planner transcript
+
+A tool can ask the planner to correct its call. An unsuccessful result
+marked as internal coaching and carrying no effect receipt goes back to
+the planner and does not appear among the owner's action outcomes.
+The call still uses a planning step. A result that records an effect
+remains an action outcome.
+
+```quint
+pure def plannerOnlyCoaching(internal: bool, coaching: bool, success: bool, hasReceipt: bool): bool =
+  internal and coaching and not(success) and not(hasReceipt)
+pure def lawCoachingNeverHidesReceipts(internal: bool, coaching: bool, success: bool): bool =
+  not(plannerOnlyCoaching(internal, coaching, success, true))
+pure def lawOrdinaryRefusalsRemainOutcomes(internal: bool): bool =
+  not(plannerOnlyCoaching(internal, false, false, false))
+```
+
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
 
 The shell reads the model's text as a `Cue` only when the whole of it is

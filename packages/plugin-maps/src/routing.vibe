@@ -58,6 +58,12 @@ const ownerChannels: ReadonlySet<unknown> = new Set([undefined, "DM", "VOICE_DM"
 export const choiceActions = { route: "MAPS_ROUTE", select: "MAPS_SELECT", save: "MAPS_SAVE", "navigation-start": "MAPS_NAVIGATION_START" } as const
 export type ChoiceOperation = keyof typeof choiceActions
 
+export const mapsSelectionHandlePattern = /^maps_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/u
+
+export function isMapsSelectionHandle(id: string | undefined): boolean {
+  return id !== undefined && mapsSelectionHandlePattern.test(id)
+}
+
 export interface PlaceChoice {
   readonly operation: ChoiceOperation
   readonly field: "originPlaceId" | "destinationPlaceId" | "placeId"
