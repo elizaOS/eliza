@@ -363,6 +363,16 @@ function providers(notes: NotesCollection): Provider[] {
   return [savedNotes, namedNotes, namedNoteRouting]
 }
 
+function noteTargetParameters(
+  { title = "Exact first-line label.", query = "Unique text the note contains." }: { title?: string; query?: string } = {},
+): Pick<NonNullable<ViewCapability["params"]>, "id" | "title" | "query"> {
+  return {
+    id: { type: "string", pattern: noteIdPattern.source, description: "Stable note ID." },
+    title: { type: "string", minLength: 1, maxLength: 240, description: title },
+    query: { type: "string", minLength: 1, maxLength: 20_000, description: query },
+  }
+}
+
 export const NOTES_CAPABILITIES: ViewCapability[] = [
   { id: "get-notes-trash", description: "Read recoverably deleted notes from Notes Trash." },
   { id: "restore-note", description: "Restore one deleted note with its original ID and exact content.", params: {
@@ -372,11 +382,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   { id: "get-notes", description: "List notes, optionally narrowed by text they contain.", params: {
     query: { type: "string", minLength: 1, maxLength: 20_000, description: "Optional unique note text." },
   } },
-  { id: "get-note", description: "Read one note by ID, exact first-line label or unique text.", params: {
-    id: { type: "string", pattern: noteIdPattern.source, description: "Stable note ID." },
-    title: { type: "string", minLength: 1, maxLength: 240, description: "Exact first-line label." },
-    query: { type: "string", minLength: 1, maxLength: 20_000, description: "Unique text the note contains." },
-  } },
+  { id: "get-note", description: "Read one note by ID, exact first-line label or unique text.", params: noteTargetParameters() },
   { id: "create-note", description: "Create a durable note from one authored content field and an optional rich format.", params: {
     content: { type: "string", required: true, maxLength: 20_241, description: "Exact note text; empty only when format carries authored text." },
     format: { type: "object", description: "Optional lossless rich format: kind text, list, voice or link, and JSON data." },
@@ -385,20 +391,14 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     creationId: { type: "string", maxLength: 200, description: "A client's own ID for this one creation; a repeat returns the note it made." },
   } },
   { id: "update-note", description: "Replace a note's content, format or color, or apply one authored edit, at the revision of the snapshot it was prepared from.", params: {
-    id: { type: "string", pattern: noteIdPattern.source, description: "Stable note ID." },
-    title: { type: "string", minLength: 1, maxLength: 240, description: "Exact first-line label of the note to update." },
-    query: { type: "string", minLength: 1, maxLength: 20_000, description: "Unique existing text of the note to update." },
+    ...noteTargetParameters({ title: "Exact first-line label of the note to update.", query: "Unique existing text of the note to update." }),
     content: { type: "string", maxLength: 20_241, description: "Replacement complete note content." },
     format: { type: "object", description: "Replacement rich format; omitted keeps it." },
     authoredEdit: { type: "object", description: "One authored edit or checklist append." },
     color: { type: "string", enum: ["yellow", "green", "rose", "slate"], description: "Replacement color." },
     expectedRevision: { type: "integer", required: true, minimum: 0, description: "Revision of the snapshot this edit was prepared from." },
   } },
-  { id: "delete-note", description: "Move one note to Trash by ID, exact first-line label or unique text.", params: {
-    id: { type: "string", pattern: noteIdPattern.source, description: "Stable note ID." },
-    title: { type: "string", minLength: 1, maxLength: 240, description: "Exact first-line label." },
-    query: { type: "string", minLength: 1, maxLength: 20_000, description: "Unique text the note contains." },
-  } },
+  { id: "delete-note", description: "Move one note to Trash by ID, exact first-line label or unique text.", params: noteTargetParameters() },
   { id: "clear-notes", description: "Move every note to Trash after the owner confirmed it, at the current revision.", params: {
     confirm: { type: "boolean", required: true, enum: [true], description: "True only after the owner confirmed deleting every note." },
     expectedRevision: { type: "integer", required: true, minimum: 0, description: "Current notes revision from the latest snapshot." },

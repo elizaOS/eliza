@@ -30,18 +30,22 @@ module node {
 }
 import { digest } from node
 
-effect function bound(store: ProviderStore, backend: Backend, key: string, environment?: Readonly<Record<string, string>>) {
+effect function bound(store: ProviderStore | undefined, backend: Backend, key: string, environment?: Readonly<Record<string, string>>) {
   const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend, ...(environment === undefined ? {} : { environment }) })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
   const binding = try bindModels(parsed.launch, parsed.authority)
-  const runtime = try Effect.try(() => new AgentRuntime({ agentId: store.agentId, character: { name: "Eliza", bio: [] } }))
-  try Effect.try(() => runtime.registerDatabaseAdapter(store.adapter))
+  const runtime = try Effect.try(() => new AgentRuntime({ agentId: store?.agentId, character: { name: "Eliza", bio: [] } }))
+  if (store !== undefined) try Effect.try(() => runtime.registerDatabaseAdapter(store.adapter))
   return { binding, runtime }
 }
 
-effect function cloudAgent(store: ProviderStore, cloud: CloudFake, large = "large") {
+effect function cloudAgent(store: ProviderStore | undefined, cloud: CloudFake, large = "large") {
   const made = try bound(store, { kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
   registerCloudModels(made.runtime, made.binding, { baseUrl: cloud.origin, small: "small", large, image: "vision" })
   return made
+}
+
+effect function refusedCloudAgent(cloud: CloudFake) {
+  return try cloudAgent(undefined, cloud)
 }
 
 function completions(cloud: CloudFake): number {
@@ -97,8 +101,7 @@ it.effect('An outage or a dropped connection is retried on the next registration
 
 it.effect('A rate limit ends the call, blocks the next one without reaching the cloud, and funding is not retried (spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text")', effect () => {
   const cloud = try cloudFake(deviceKey)
-  const store = try providerStore()
-  const limited = try cloudAgent(store, cloud)
+  const limited = try refusedCloudAgent(cloud)
   const retryAt = Date.now() + 60_000
   try Effect.sync(() => cloud.script(rateLimited(retryAt)))
   const ended = try refusalOf(limited.runtime, { prompt: "Limited." })
@@ -108,19 +111,19 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   assert.strictEqual(completions(cloud), 1)
   const view = try limited.binding.read()
   assert.deepStrictEqual([view.accountState, view.blocked, view.lastCloudFailure?.retryAt], ["limit_reached", true, retryAt])
-  const unfunded = try cloudAgent(store, cloud)
+  const unfunded = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const denied = try refusalOf(unfunded.runtime, { prompt: "Unfunded." })
   assert.strictEqual(denied?.code, "MODEL_FUNDING_AUTHORITY_FAILED")
   assert.strictEqual(completions(cloud), 2)
   assert.strictEqual((try unfunded.binding.read()).accountState, "insufficient_credits")
-  const spent = try cloudAgent(store, cloud)
+  const spent = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(allowanceExhausted(Date.now() + 86_400_000)))
   const exhausted = try refusalOf(spent.runtime, { prompt: "Allowance spent." })
   assert.strictEqual(exhausted?.code, "MODEL_FUNDING_AUTHORITY_FAILED")
   assert.strictEqual(completions(cloud), 3)
   assert.strictEqual((try spent.binding.read()).accountState, "insufficient_credits")
-  const replaced = try cloudAgent(store, cloud)
+  const replaced = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.acceptKey("rotated-device-key"))
   const invalid = try refusalOf(replaced.runtime, { prompt: "Old key." })
   assert.strictEqual(invalid?.status, 401)

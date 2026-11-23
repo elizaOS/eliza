@@ -1,4 +1,4 @@
-// spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open", "Story: Stop hearing when I leave", "Story: Learn when something keeps going wrong"
+// spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Stop hearing when I leave"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"
 module node {
   import { Effect } from "effect"
   import { type AgentEventService, Service, type IAgentRuntime, type NotificationService, type ServiceClass } from "@elizaos/core"
