@@ -7,6 +7,7 @@ import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
 import { scriptedOAuthProvider } from "./support/oauth.ts"
 import { type Handler, loopback, loopbackTls, pinnedLookup } from "./support/servers.ts"
+import { DatabaseAdapter } from "../src/database.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 
 module traceBoundary {
@@ -3784,6 +3785,14 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
     spelled: manager.getProvider(" GOOGLE ")?.provider,
     elsewhere: getConnectorAccountManager(other).getProvider("google") ?? null,
   }
+  // spec/core/connectorHandoff.md, "Backend replacement preserves facade identity and memoizes each current adapter"
+  const device = try Effect.try(() => new AgentRuntime({ character: createCharacter({ name: "Device" }) }))
+  try Effect.try(() => device.registerDatabaseAdapter(Object.create(DatabaseAdapter.prototype)))
+  const onDevice = getConnectorAccountManager(device)
+  const deviceBot = try host(() => onDevice.upsertAccount("slack", { label: "Device" }, "device-bot"))
+  const deviceAccounts = try host(() => onDevice.listAccounts("slack"))
+  const deviceFlow = try host(() => onDevice.getStorage().createOAuthFlow({ id: "device-flow", provider: "slack", state: "device-state", status: "pending", createdAt: 1, updatedAt: 1 }))
+  const unsupported = { accounts: deviceAccounts.map((account) => [account.accountKey, account.id === deviceBot.id]), flow: [deviceFlow.id, deviceFlow.status] }
   const facade = manager.getStorage()
   // spec/core/accountValues.md, "Normalization preserves explicit values and applies only documented defaults"
   const team = try host(() => manager.upsertAccount("slack", { label: "", role: "SERVICE", purpose: ["messaging", " "] }, " team-bot "))
@@ -3792,6 +3801,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const workVerifier = work.codeVerifier ?? ""
   const started = {
     managers,
+    unsupported,
     team: [team.id, team.provider, team.label, team.role, team.purpose, team.accessGate, team.status],
     storedBeforeProvider: [...storedBeforeProvider],
     flow: [work.provider, work.status, work.accountId, work.redirectUri, work.authUrl?.startsWith("https://accounts.google.test/o/oauth2/auth?"), work.authUrl?.includes(`state=${work.state}`), workVerifier.length],
@@ -3951,6 +3961,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
         spelled: "google",
         elsewhere: null,
       },
+      unsupported: { accounts: [["device-bot", true]], flow: ["device-flow", "pending"] },
       team: ["team-bot", "slack", "", "AGENT", ["messaging"], "open", "connected"],
       storedBeforeProvider: [{ id: work.id, status: "pending", authUrl: null }],
       flow: ["google", "pending", "user-1", "https://agent.test/oauth/callback", true, true, 43],

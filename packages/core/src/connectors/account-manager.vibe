@@ -2,7 +2,7 @@
 import { errorText } from "../utils/errors.vibe"
 import { randomUuid } from "../utils/uuid.vibe"
 import { absentText, normalizedAccountRole } from "../../gen/core__accountValues.effect.vibe"
-import { compareMemoryIds } from "../database.vibe"
+import { compareMemoryIds, DatabaseAdapter } from "../database.vibe"
 import { asLegacy, Foreign, foreign, foreignSync, promised, runDetached, runDetachedSync, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
@@ -846,7 +846,7 @@ effect function deleteDatabaseAccount(storage: DatabaseConnectorAccountStorage, 
 
 effect function findDatabaseOwnerBinding(storage: DatabaseConnectorAccountStorage, lookup: ConnectorOwnerBindingLookup) {
   const adapter = storage.adapter
-  const find = adapter.findConnectorOwnerBinding
+  const find = supportedMethod(adapter, "findConnectorOwnerBinding")
   if (typeof find !== "function") return null
   return try foreign(() =>
     find.call(adapter, {
@@ -859,8 +859,8 @@ effect function findDatabaseOwnerBinding(storage: DatabaseConnectorAccountStorag
 
 function persistsOAuthFlows(adapter: ConnectorAccountDatabaseAdapter): boolean {
   return (
-    typeof adapter.getOAuthFlowState === "function"
-    && typeof adapter.updateOAuthFlowState === "function"
+    supportedMethod(adapter, "getOAuthFlowState") !== undefined
+    && supportedMethod(adapter, "updateOAuthFlowState") !== undefined
   )
 }
 
@@ -870,7 +870,7 @@ effect function createDatabaseOAuthFlow(storage: DatabaseConnectorAccountStorage
     oauthFallback.deleteExpiredOAuthFlows(Date.now())
   }
   try foreign(() => oauthFallback.createOAuthFlow(flow))
-  const createState = adapter.createOAuthFlowState
+  const createState = supportedMethod(adapter, "createOAuthFlowState")
   if (typeof createState !== "function") {
     return cloneFlow(flow)
   }
@@ -895,7 +895,7 @@ effect function getDatabaseOAuthFlow(storage: DatabaseConnectorAccountStorage, p
   const { adapter, oauthFallback } = storage
   const normalizedProvider = normalizeProvider(provider)
   const fallback = try foreign(() => oauthFallback.getOAuthFlow(normalizedProvider, flowIdOrState))
-  const getState = adapter.getOAuthFlowState
+  const getState = supportedMethod(adapter, "getOAuthFlowState")
   if (typeof getState !== "function") {
     return fallback
   }
@@ -930,7 +930,7 @@ effect function updateDatabaseOAuthFlow(
   const { adapter, oauthFallback } = storage
   const normalizedProvider = normalizeProvider(provider)
   const fallback = try foreign(() => oauthFallback.updateOAuthFlow(normalizedProvider, flowIdOrState, patch))
-  const updateState = adapter.updateOAuthFlowState
+  const updateState = supportedMethod(adapter, "updateOAuthFlowState")
   if (typeof updateState !== "function") {
     return fallback
   }
@@ -992,7 +992,7 @@ effect function consumeDatabaseOAuthFlow(
 ) {
   const { adapter, oauthFallback } = storage
   const normalizedProvider = normalizeProvider(provider)
-  const consumeState = adapter.consumeOAuthFlowState
+  const consumeState = supportedMethod(adapter, "consumeOAuthFlowState")
   if (typeof consumeState !== "function") {
     return try foreign(() => oauthFallback.consumeOAuthFlow(normalizedProvider, state, consumedBy))
   }
@@ -1013,7 +1013,7 @@ effect function deleteDatabaseOAuthFlow(storage: DatabaseConnectorAccountStorage
   const { adapter, oauthFallback } = storage
   const normalizedProvider = normalizeProvider(provider)
   const fallbackDeleted = try foreign(() => oauthFallback.deleteOAuthFlow(normalizedProvider, flowIdOrState))
-  const deleteState = adapter.deleteOAuthFlowState
+  const deleteState = supportedMethod(adapter, "deleteOAuthFlowState")
   if (typeof deleteState !== "function") {
     return fallbackDeleted
   }
@@ -1028,11 +1028,21 @@ function isConnectorAccountDatabaseAdapter(
   if (!value || typeof value !== "object") return false
   const candidate = value as Partial<ConnectorAccountDatabaseAdapter>
   return (
-    typeof candidate.listConnectorAccounts === "function"
-    && typeof candidate.getConnectorAccount === "function"
-    && typeof candidate.upsertConnectorAccount === "function"
-    && typeof candidate.deleteConnectorAccount === "function"
+    supportedMethod(candidate, "listConnectorAccounts") !== undefined
+    && supportedMethod(candidate, "getConnectorAccount") !== undefined
+    && supportedMethod(candidate, "upsertConnectorAccount") !== undefined
+    && supportedMethod(candidate, "deleteConnectorAccount") !== undefined
   )
+}
+
+function supportedMethod<K extends keyof ConnectorAccountDatabaseAdapter>(
+  adapter: Partial<ConnectorAccountDatabaseAdapter>,
+  name: K,
+): ConnectorAccountDatabaseAdapter[K] | undefined {
+  const method = adapter[name]
+  return typeof method === "function" && method !== Reflect.get(DatabaseAdapter.prototype, name)
+    ? method
+    : undefined
 }
 
 function stringMetadataValue(
