@@ -2,6 +2,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { ZodError } from "zod";
+import { isMapsSelectionHandle } from "./client/selection-handle.js";
 import { MapsError } from "./errors.js";
 import { getMapsService } from "./service.js";
 import {
@@ -110,8 +111,16 @@ export async function serverInteract(
         };
       }
       case "maps-get-place": {
+        const placeId = requiredText(values.placeId, "place id");
+        // The phone's selection handle names an on-screen selection, not a place.
+        if (isMapsSelectionHandle(placeId)) {
+          throw new MapsError(
+            "The Maps selection handle is not a place id; look the place up by name.",
+            { code: "MAPS_INVALID_INPUT" },
+          );
+        }
         const result = await service.getPlaceResult(
-          requiredText(values.placeId, "place id"),
+          placeId,
           provider,
           providerGeneration,
         );
