@@ -2,7 +2,7 @@
 module node {
   import { Effect } from "effect"
   import type { Action, ActionResult, IAgentRuntime, Memory, ProviderValue } from "@elizaos/core"
-  import { canExpire, openOffer, requestSettled, type DeviceRequest } from "../../../gen/agent__deviceActions.ts"
+  import { canExpire, openOffer, requestSettled, returnsOpenRequest, type DeviceRequest, type ProposalGrounding } from "../../../gen/agent__deviceActions.ts"
   import { isRefused } from "../../../gen/agent__deviceActions__capabilities.ts"
   import { completableRead } from "../../../gen/agent__deviceActions__operations.ts"
   import { proposeDeviceAction as declared } from "../../../gen/agent__plugins__profile.ts"
@@ -65,14 +65,19 @@ module node {
     return (phase.tag === "Receipted" && phase.reported === "ReportedApplied") || (phase.tag === "Reviewed" && phase.reviewed === "ReviewedApplied")
   }
 
-  function sameOperationOpen(turn: DeviceTurn, operation: DeviceOperation): Effect.Effect<DeviceRequestRecord | undefined, DeviceStoreUnavailable> {
+  function groundingOf(reviewed: boolean | undefined): ProposalGrounding {
+    return reviewed === true ? "GroundedForReview" : "GroundedAsAsked"
+  }
+
+  function sameOperationOpen(turn: DeviceTurn, operation: DeviceOperation, reviewed: boolean): Effect.Effect<DeviceRequestRecord | undefined, DeviceStoreUnavailable> {
     const wanted = bindingHash(operation)
     return Effect.flatMap(conversationRequests(turn.runtime.adapter, turn.by, turn.conversationId, unchecked), (rows): Effect.Effect<DeviceRequestRecord | undefined, DeviceStoreUnavailable> => {
       const now = Date.now()
       const open = rows.find(({ state, terms }) => {
         const kept = readOperation(terms.operation)?.operation
         return !requestSettled(state.phase) && !(openOffer(state.phase) && now >= state.session.expiresAt) &&
-          terms.binding === "NoBinding" && kept !== undefined && bindingHash(kept) === wanted
+          terms.binding === "NoBinding" && kept !== undefined &&
+          returnsOpenRequest(groundingOf(terms.reviewed), groundingOf(reviewed), bindingHash(kept) === wanted)
       })
       return open === undefined ? Effect.succeed(undefined) : openRequest(turn.runtime.adapter, open.proposalId)
     })
@@ -124,7 +129,7 @@ module node {
         return {
           success: true, effectReceipts: proposalEffectReceipts(proposalId, operation, replayed),
           text: `Durable device proposal state: ${pending}. This tool performed no device operation; the owner reviews it on the phone. Do not report it as done.`,
-          userFacingText: family?.proposedText(operation) ?? "Review this request on your phone before it can run.", verifiedUserFacing: true,
+          userFacingText: family?.proposedText(operation, record.terms.reviewed === true) ?? "Review this request on your phone before it can run.", verifiedUserFacing: true,
           data: { proposalId, state: pending, executed: false, awaitingDeviceReview: true },
         }
       }
@@ -144,9 +149,10 @@ module node {
     const admitted: CheckedOperation | undefined = family.types.includes(grounded.operation.type) ? turn.admit(grounded.operation) : undefined
     if (admitted === undefined) return refused(unavailable)
     turn.signal.throwIfAborted()
-    const open = await Effect.runPromise(sameOperationOpen(turn, admitted.operation))
+    const reviewed = grounded.reviewed === true
+    const open = await Effect.runPromise(sameOperationOpen(turn, admitted.operation, reviewed))
     if (open !== undefined) return reported(family, open, true)
-    const offer = await Effect.runPromise(offerProposal(turn, admitted, completesReads(turn) && completableRead(admitted.opType)))
+    const offer = await Effect.runPromise(offerProposal(turn, admitted, completesReads(turn) && completableRead(admitted.opType), undefined, reviewed))
     switch (offer.kind) {
       case "refused": return refused(unavailable)
       case "kept": return reported(family, offer.record, true)
