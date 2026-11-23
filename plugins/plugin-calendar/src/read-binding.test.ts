@@ -428,6 +428,7 @@ describe("Calendar operation bindings", () => {
     for (const request of [
       "Can you find me a free hour tomorrow afternoon?",
       "Cool. Can you find me a free hour tomorrow sometime where I could actually go pick up those groceries in the afternoon?",
+      "Can you find a free hour tomorrow afternoon where I can actually go pick up these groceries?",
     ]) {
       expect(await route(request, {})).toEqual({
         name: "CALENDAR_PROPOSE_TIMES",
@@ -446,6 +447,7 @@ describe("Calendar operation bindings", () => {
       "Find a 30-minute opening tomorrow between noon and five p.m. for a run after work.",
       "Find me a free hour tomorrow when I can pick up groceries with Carson in the afternoon.",
       "Find me a free hour tomorrow afternoon, then book it.",
+      "Can you find a free hour tomorrow afternoon where I can pick up these groceries and create an event?",
     ]) {
       expect(await route(nonliteral, {})).toBeUndefined();
     }

@@ -51,9 +51,14 @@ const day = String.raw`(?:today|tomorrow|(?:the )?day after tomorrow|\d{4}-\d{2}
 const leadingDay = new RegExp(`^(${day}) (.+)$`, "u");
 const trailingDay = new RegExp(`^(.+?) (${day})$`, "u");
 // A first-person errand can explain the request without adding a Calendar
-// filter. It must precede an explicit afternoon and name a simple object.
+// filter. The same request must still name an afternoon and a simple object.
+const errandPurpose = String.raw`(?:when|where) i (?:can|could) (?:actually )?(?:go )?(?:get|buy|pick up|shop for) ([\p{L}\p{M}]+(?: [\p{L}\p{M}]+){0,4})`;
 const afternoonErrand = new RegExp(
-  String.raw`^(${day}) (?:sometime )?(?:when|where) i (?:can|could) (?:actually )?(?:go )?(?:get|buy|pick up|shop for) ([\p{L}\p{M}]+(?: [\p{L}\p{M}]+){0,4}) in the afternoon$`,
+  String.raw`^(${day}) (?:sometime )?${errandPurpose} in the afternoon$`,
+  "u",
+);
+const errandAfterAfternoon = new RegExp(
+  String.raw`^(${day}) (?:in the )?afternoon ${errandPurpose}$`,
   "u",
 );
 const betweenTimes = /^between (.+) and (.+)$/u;
@@ -157,7 +162,9 @@ export function parseScopedCalendarSlotWindow(
 
   const leading = leadingDay.exec(input.window);
   const trailing = trailingDay.exec(input.window);
-  const errand = afternoonErrand.exec(input.window);
+  const errand =
+    afternoonErrand.exec(input.window) ??
+    errandAfterAfternoon.exec(input.window);
   if (errand && purposeConstraint.test(errand[2])) return;
   const date = parseExplicitLocalDate(
     errand?.[1] ?? leading?.[1] ?? trailing?.[2] ?? "",
