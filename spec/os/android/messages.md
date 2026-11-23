@@ -94,6 +94,16 @@ pure def stepDispatchNeedsApproval(before: SmsReview, after: SmsReview): bool =
 pure def sometimesCancelledBeforeDispatch(s: SmsReview): bool = s.result == SendCancelled and s.cancelAcknowledged
 pure def sometimesDeclinedInTheDialog(s: SmsReview): bool = s.result == SendCancelled and not(s.retired)
 pure def sometimesResultSurvivesRetirement(s: SmsReview): bool = s.result == SendSubmitted and s.retired
+pure val eval_witness_sometimesResultSurvivesRetirement = (
+  ("beginReview", "op1", NativeDialog, TextMessage, PluginRegistered,
+    { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }),
+  ("finishLookup", NoRecord, NoAnswer),
+  ("presentReview", false, 1),
+  "approveReview",
+  ("dispatchApproved", false, true, true),
+  "retireReview",
+  ("reportDispatch", SendSubmitted)
+)
 pure def sometimesComposerSendDispatched(s: SmsReview): bool = s.source == OwnerComposer and s.phase == NativeDispatched
 ```
 
