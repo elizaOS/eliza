@@ -21,7 +21,7 @@ import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
 import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
 import { profile } from "./testing/profile.ts";
-import { isolatedInstalls } from "./selftests/install.ts";
+import { hostedCachedFixture, installChromium, isolatedInstalls } from "./selftests/install.ts";
 import { PACKED, toolShards } from "./selftests/tools.ts";
 import { bigNumberInteger } from "./gen/types.ts";
 import { canonical, check as conformanceCheck, ConformanceError, departure, replay as replayTrace } from "./conformance.ts";
@@ -282,6 +282,7 @@ pure def selected(which: bool): Set[Field] = {
   });
 
   test("the explore stage finds a page that breaks a property, keeps the trace, replays it first, and drops it once fixed", { skip: !["linux-x64", "linux-arm64", "darwin-arm64"].includes(`${process.platform}-${process.arch}`) }, async () => {
+    if (process.env.TURBO_HASH && hostedCachedFixture()) await installChromium(true);
     const remember: Parameters<typeof explore>[1] = (_fingerprint, run) => run();
     const page = (script: string) => `<!doctype html><html><head><title>Page</title></head><body><button>Go</button>${script}</body></html>`;
     const server = 'import http from "node:http"; import fs from "node:fs";\nconst app = http.createServer((_, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(fs.readFileSync("index.html")); });\napp.listen(0, "127.0.0.1", () => console.log(`Local: http://localhost:${app.address().port}/`));\n';
@@ -3677,7 +3678,12 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "packages/app/package.json"), JSON.stringify({ name: "app" }));
     fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
     fs.symlinkSync(path.dirname(script), path.join(root, "vibestack"), "dir");
-    const prepare = (hosted: boolean, job = "verify", ...tasks: string[]) => exec(process.execPath, [script, "gen", "--install", ...tasks], root, { ...process.env, GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job, TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
+    const install = (env: NodeJS.ProcessEnv, ...tasks: string[]) => exec(process.execPath, [script, "gen", "--install", ...tasks], root, { ...process.env, TURBO_CACHE: "local:rw", TURBO_TOKEN: "", ...env });
+    const prepare = (hosted: boolean, job = "verify", ...tasks: string[]) => install({ GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job }, ...tasks);
+    const nightly = {
+      GITHUB_ACTIONS: "true", GITHUB_JOB: "vibestack-nightly-check", GITHUB_REPOSITORY: "owner/project", GITHUB_WORKSPACE: root,
+      GITHUB_WORKFLOW_REF: "owner/project/.github/workflows/fuzz.yml@refs/heads/main", npm_command: "install", npm_lifecycle_event: "prepare",
+    };
     for (const hosted of [false, true]) {
       const invalid = await prepare(hosted);
       assert.equal(invalid.status, 0, invalid.stderr);
@@ -3696,12 +3702,20 @@ function theCommandLine() {
       assert.notEqual(missing.status, 0, "a failed prerequisite fails ordinary installs");
       assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
     }
+    const missing = await install(nightly, ...prerequisites);
+    assert.notEqual(missing.status, 0, "a failed prerequisite also fails nightly installs");
+    fs.writeFileSync(path.join(root, "owner-source"), "nightly owner");
+    const deferred = await install(nightly, ...prerequisites);
+    assert.equal(deferred.status, 0, deferred.stderr);
+    assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "nightly owner");
+    assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    const nested = await install({ ...nightly, GITHUB_WORKSPACE: path.dirname(root) });
+    assert.equal(nested.status, 0, nested.stderr);
+    assert.equal((await import(path.join(root, "gen/value.ts") + "?nested")).answer, 43);
+    fs.rmSync(path.join(root, "gen/value.ts"));
     fs.writeFileSync(path.join(root, "owner-source"), "external owner");
     const packable = ["--skip-gen-on-pack", ...prerequisites];
-    const packed = await exec(process.execPath, [script, "gen", "--install", ...packable], root, {
-      ...process.env, GITHUB_ACTIONS: "true", GITHUB_JOB: "verify",
-      npm_command: "pack", npm_lifecycle_event: "prepare", TURBO_CACHE: "local:rw", TURBO_TOKEN: "",
-    });
+    const packed = await install({ GITHUB_ACTIONS: "true", GITHUB_JOB: "verify", npm_command: "pack", npm_lifecycle_event: "prepare" }, ...packable);
     assert.equal(packed.status, 0, packed.stderr);
     assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "external owner");
     assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));

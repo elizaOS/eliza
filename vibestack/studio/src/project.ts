@@ -149,12 +149,15 @@ export const readTree = trusted(function readTree(root: string): { specs: SpecVi
   } catch (e) { return { specs, review: [], problem: (e as Error).message }; }
 }, [Error]);
 
+let pageBuild: Promise<unknown> | undefined;
+
 /**
  * The page, built: from a source checkout, Vite builds it again when anything it is built from is newer than the
  * build; a packaged studio ships it built.
  */
 export async function buildPage(): Promise<void> {
   if (EXT !== ".ts") return;
+  while (pageBuild) await pageBuild;
   const studio = path.join(import.meta.dirname, "..");
   const built = fs.statSync(path.join(PUBLIC, "index.html"), { throwIfNoEntry: false })?.mtimeMs ?? 0;
   const newest = (dir: string): number => fs.readdirSync(dir, { withFileTypes: true }).reduce((n, e) => e.name === "node_modules" ? n
@@ -162,8 +165,12 @@ export async function buildPage(): Promise<void> {
   const inputs = [path.join(studio, "src"), path.join(studio, "gen"), path.join(studio, "vite.config.ts"), path.join(TOOLS, "design"),
     path.dirname(fileURLToPath(import.meta.resolve("@repo/ui"))), fileURLToPath(import.meta.resolve("@repo/design-system/tokens.json"))];
   if (inputs.every((f) => (fs.statSync(f).isDirectory() ? newest(f) : fs.statSync(f).mtimeMs) < built)) return;
-  const { build } = await import("vite");
-  await build({ configFile: path.join(studio, "vite.config.ts") });
+  pageBuild = import("vite").then(({ build }) => build({ configFile: path.join(studio, "vite.config.ts") }));
+  try {
+    await pageBuild;
+  } finally {
+    pageBuild = undefined;
+  }
 }
 
 /**

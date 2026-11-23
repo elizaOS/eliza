@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `500cb8d`](https://github.com/lalalune/vibestack/commit/500cb8d59a0699aeab8aa016fe9bd1a43152a589).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `513c748`](https://github.com/lalalune/vibestack/commit/513c748aa6b593c392035c58fe66b7685acd0beb).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -324,7 +324,8 @@ again during the run. The template install generates locally with `gen --if-vali
 The install command runs its listed root prerequisite tasks together before generation.
 The three tool selftest jobs in `ci.yml` run only the listed `//#build` task and generate their scratch
 projects on demand. The packaged CLI test rebuilds from a clean copy of the
-workspace. Other GitHub Actions jobs use the same strict root
+workspace. The nightly check builds the tools during install and generates the
+application in its nightly task graph. Other GitHub Actions jobs use the same strict root
 `gen` task as verification, so a successful install warms the task cache. A failed generation leaves the
 remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
@@ -472,15 +473,17 @@ Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
 tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job, the
 lockfile and the commit. A job tries both key layouts for its own name and current lockfile, then tries the current
-layout for another lockfile. Each entry is named by the tools and inputs that produced it, so a job reads only the
-entries that still apply.
+layout for another lockfile. Selftest jobs on pull requests first try an archive for that pull request and lockfile.
+A successful replay of the entire fixture task can reuse that archive when setup leaves the cached evaluator intact.
+Each entry is named by the tools and inputs that produced it, so a job reads only the entries that still apply.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
 The default branch's `verify` job publishes the pnpm store after the frozen
 install. All jobs can restore it by the same lockfile key. This cache holds
 public packages only because fork pull requests can read it.
-Verification and release install both Chromium executables. In CI and nightly
-runs, shard A needs full Chromium for Bombadil. The other self-test shards
+Verification and release install the headless shell for Playwright and full
+Chromium for Bombadil. In CI, shard A installs full Chromium when its Bombadil
+journey runs. Its nightly job installs it during setup. The other tool shards
 run without a browser.
 CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache, only those a job
 of the same name saved.
