@@ -16,7 +16,7 @@ import { abandonedProof, ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, typ
 import { bin, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
+import { traceInstallation, cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
@@ -124,6 +124,7 @@ async function* generating(memory: Memory, specs: Spec[], output = memory.root, 
 async function withStableInstallation<T>(attempt: () => Promise<T>): Promise<T> {
   for (let retries = 0; ; retries++) {
     try { return await steady(attempt); } catch (error) {
+      if (error instanceof InstallationChanged) traceInstallation("retry", { retries, location: error.stack?.split("\n").slice(1, 8) });
       if (!(error instanceof InstallationChanged) || retries === 2) throw error;
     }
   }
@@ -160,7 +161,13 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
     const results: Result[] = [];
     let diverged = false;
     const report = (result: Result) => {
-      if (results.length < reported.length) diverged ||= !isDeepStrictEqual(result, reported[results.length]);
+      if (results.length < reported.length) {
+        if (!diverged && !isDeepStrictEqual(result, reported[results.length])) {
+          const old = reported[results.length];
+          traceInstallation("row-diverged", { index: results.length, oldStage: old.stage, newStage: result.stage, oldOk: old.ok, newOk: result.ok, oldWhere: old.where, newWhere: result.where, oldHash: sha(JSON.stringify(old)), newHash: sha(JSON.stringify(result)) });
+          diverged = true;
+        }
+      }
       else if (!diverged && log) {
         reported.push(result);
         log(result);

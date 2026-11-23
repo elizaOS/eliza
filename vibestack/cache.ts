@@ -152,7 +152,11 @@ function publishChecked(complete = false) {
   const check = checking.getStore();
   if (!check) return;
   if (complete) includePrograms(check);
-  const replaced = [...check.verify].some((program) => !program.unchanged());
+  const replaced = [...check.verify].some((program) => {
+    if (program.unchanged()) return false;
+    traceInstallation("publication", { tool: program.exe, previouslyChanged: check.changed, pending: check.pending.size, complete });
+    return true;
+  });
   if (replaced || check.changed) {
     check.changed = true;
     check.pending.clear();
@@ -345,13 +349,31 @@ function launcherInputs(exe: string, packageDir: string, exists: (file: string) 
 }
 
 type Stamps = Iterable<readonly [string, string]>;
+const traced = new Map<string, number>();
+export function traceInstallation(kind: string, fields: Record<string, unknown>) {
+  const directory = process.env.RUNNER_TEMP;
+  const count = traced.get(kind) ?? 0;
+  if (!directory || count >= 32) return;
+  traced.set(kind, count + 1);
+  try {
+    const record = { at: Date.now(), pid: process.pid, parent: process.ppid, cwd: process.cwd(), kind, ...fields };
+    fs.mkdirSync(path.join(directory, "measurement"), { recursive: true });
+    fs.appendFileSync(path.join(directory, "measurement/identity.ndjson"), JSON.stringify(record) + "\n");
+  } catch {}
+}
 const fileStamp = (file: string, follow = true) => {
   const stat = (follow ? fs.statSync : fs.lstatSync)(file, { bigint: true, throwIfNoEntry: false });
   return stat ? `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}` : "";
 };
 const sameFiles = (files: Stamps, links: Stamps) => {
-  for (const [file, stamp] of files) if (fileStamp(file) !== stamp) return false;
-  for (const [file, stamp] of links) if (fileStamp(file, false) !== stamp) return false;
+  for (const [items, follow] of [[files, true], [links, false]] as const) for (const [file, expected] of items) {
+    const actual = fileStamp(file, follow);
+    if (actual !== expected) {
+      const stat = (follow ? fs.statSync : fs.lstatSync)(file, { bigint: true, throwIfNoEntry: false });
+      traceInstallation("different-stat", { file, follow, expected, actual, linksNow: String(stat?.nlink), location: new Error().stack?.split("\n").slice(2, 8) });
+      return false;
+    }
+  }
   return true;
 };
 const isStamps = (value: unknown): value is [string, string][] => Array.isArray(value) && value.every((entry) =>
@@ -590,7 +612,10 @@ export function evaluatorForCheck(root: string): string | undefined {
 
 export function stableInstallation(same: boolean) {
   const scope = checking.getStore();
-  if (!same && scope) scope.changed = true;
+  if (!same && scope) {
+    traceInstallation("verifier-changed", { location: new Error().stack?.split("\n").slice(2, 8) });
+    scope.changed = true;
+  }
   return same;
 }
 
