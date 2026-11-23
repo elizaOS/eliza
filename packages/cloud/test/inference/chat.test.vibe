@@ -174,7 +174,7 @@ describe("WP5 Inference: chat completions", () => {
           [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
         idempotencyForwarded: false,
         planningForwarded: planning,
-        refusedByProvider: [429, "rate_limited", "7"],
+        refusedByProvider: [429, "rate_limited", "4"],
         unreadable: [502, "provider_invalid_response", undefined],
         rejectedByProvider: [[400, "invalid_request", undefined], ["context_length_exceeded", "messages", undefined]],
         providerAuthFailed: [[503, "provider_unavailable", "5"], [undefined, undefined, undefined]],
