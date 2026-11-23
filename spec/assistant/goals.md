@@ -78,3 +78,68 @@ pure def sometimesAnsweredOnTrack(s: Goal): bool = s.status == GoalActive and s.
 pure def sometimesPausedWithoutCheckins(s: Goal): bool = s.status == GoalPaused and s.cadence != NoCadence
 pure def sometimesResumedWithoutTheDismissedSlot(s: Goal): bool = s.status == GoalActive and s.dismissedSlots.contains(1) and s.liveSlots.contains(2)
 ```
+
+## Story: Save the goal I asked for, once
+
+> As an owner, I want a goal I ask for saved, unless I already work
+> towards that same goal, and never folded into another goal whose title
+> only contains its words.
+
+### A new goal is refused only when an active goal has the same title
+
+Titles are compared without case and without the spaces around them. A
+title that is part of a longer one names another goal: "Run a marathon"
+is saved beside "Run a half marathon". A paused, archived or satisfied
+goal never stops a new goal with its title.
+
+```quint
+pure def duplicatesGoal(status: GoalStatus, title: str, requested: str): bool = status == GoalActive and title == requested
+pure def lawOnlyAnActiveGoalIsADuplicate(status: GoalStatus, title: str): bool = duplicatesGoal(status, title, title) iff status == GoalActive
+pure def lawADifferentTitleIsNeverADuplicate(status: GoalStatus, title: str, requested: str): bool = title != requested implies not(duplicatesGoal(status, title, requested))
+```
+
+## Story: Review how my goals are going
+
+> As an owner, I want to ask how a goal is going, or how all my goals did
+> this week, and hear it from my own check-in answers, with nothing about
+> them changed.
+
+### A review reads one named goal's latest answer, or groups every active goal by how it is going, and changes nothing
+
+A review of a named goal gives its status, its latest check-in answer
+and when it came, and how many check-ins were answered in the last seven
+days. With no goal named, the weekly review groups every active goal by
+its latest answer: on track, at risk, needing attention, or not answered
+yet; a paused, archived or satisfied goal is left out. An answer older
+than the goal's cadence allows, two days for a daily goal, ten for a
+weekly one and seven for a goal without a cadence, no longer says how it
+is going: the goal has gone quiet and needs attention, whatever that
+answer said, in the review and in a brief alike. A name that matches no
+goal, or several, reviews none and says so. A weekly review that finds no
+active goal answers with the owner's open to-dos, waiting reminders and
+active routines instead.
+
+```quint
+type ReviewGroup = GroupOnTrack | GroupAtRisk | GroupNeedsAttention | GroupUnanswered | NotInReview
+pure val reviewLookbackMs = 604800000
+pure def staleAfterMs(cadence: Cadence): int =
+  if (cadence == DailyCadence) 172800000 else if (cadence == WeeklyCadence) 864000000 else 604800000
+pure def answerFresh(cadence: Cadence, answeredAt: int, now: int): bool = answeredAt <= now and now - answeredAt <= staleAfterMs(cadence)
+pure def reviewGroup(status: GoalStatus, answer: ReviewState, fresh: bool): ReviewGroup =
+  if (status != GoalActive) NotInReview
+  else if (answer == ReviewIdle) GroupUnanswered
+  else if (not(fresh)) GroupNeedsAttention
+  else if (answer == OnTrack) GroupOnTrack
+  else if (answer == AtRisk) GroupAtRisk
+  else GroupNeedsAttention
+pure def answeredRecently(at: int, now: int): bool = at <= now and now - at <= reviewLookbackMs
+pure def lawOnlyActiveGoalsAreReviewed(status: GoalStatus, answer: ReviewState, fresh: bool): bool = (reviewGroup(status, answer, fresh) == NotInReview) iff status != GoalActive
+pure def lawAFreshAnswerGroupsTheGoal(answer: ReviewState): bool =
+  (reviewGroup(GoalActive, answer, true) == GroupOnTrack iff answer == OnTrack) and (reviewGroup(GoalActive, answer, true) == GroupAtRisk iff answer == AtRisk)
+  and (reviewGroup(GoalActive, answer, true) == GroupNeedsAttention iff answer == NeedsAttention) and (reviewGroup(GoalActive, answer, true) == GroupUnanswered iff answer == ReviewIdle)
+pure def lawAQuietGoalNeedsAttention(answer: ReviewState): bool =
+  answer != ReviewIdle implies reviewGroup(GoalActive, answer, false) == GroupNeedsAttention
+pure def lawAnAnswerPastItsCadenceIsNotFresh(cadence: Cadence, answeredAt: int, now: int): bool =
+  now - answeredAt > staleAfterMs(cadence) implies not(answerFresh(cadence, answeredAt, now))
+pure def lawAnAnswerOlderThanAWeekIsNotRecent(at: int, now: int): bool = now - at > reviewLookbackMs implies not(answeredRecently(at, now))
+```

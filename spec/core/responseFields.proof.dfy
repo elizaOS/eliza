@@ -126,7 +126,7 @@ lemma handleFieldOutcome_ensures(f: FieldDispatch, name: string, handlerResult: 
     // A preemption is only installed by a returned effect, whose callback completed, so the field is handled.
     if after.preemption.PreemptedField? {
       assert handlerResult.HandlerReturned?;
-      assert after.preemption.field == name;
+      assert after.preemption.part == name;
     }
   }
 }

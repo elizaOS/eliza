@@ -5,6 +5,7 @@ import { Stdio } from "effect/Stdio"
 import { AGENT_EXIT_CODES, exitCode, readLaunch, LaunchCredentialMissing } from "./host/launch.vibe"
 import { LaunchDocumentRejected } from "./host/launch.schema.vibe"
 import { startAgent, AgentBootFailed } from "./host/process.vibe"
+import { configureMobileDns } from "./host/mobile-dns.vibe"
 import { bundledPluginMap, BundleEntryRefused, type BundledEntry } from "./plugins/profile.vibe"
 import type { ModuleContext, ModuleFactory } from "./host/module.vibe"
 import type { ServiceClass } from "@elizaos/core"
@@ -88,6 +89,7 @@ function residentModules<R>(cli: AgentCli<R>, host: ResidentHost): ReadonlyMap<s
 let released: number | undefined
 
 effect function serve<R>(cli: AgentCli<R>) {
+  configureMobileDns() catch effect () => { throw new AgentBootFailed({ phase: "Config" }) }
   const input = try readLaunch()
   const hostModules = residentModules(cli, { stateDirectory: input.stateDirectory })
   const runtimeServices = cli.runtimeServices?.({ stateDirectory: input.stateDirectory })

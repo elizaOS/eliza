@@ -1,4 +1,4 @@
-// spec/agent/plugins/bundle.md, "A built bundle's manifest is readable for its own bytes"; spec/agent/plugins/bundle.md, "A manifest is never read for other bundle bytes"; spec/agent/plugins/bundle.md, "Profile groups name only bundled plugins, each in one group"
+// spec/agent/plugins/bundle.md, "A manifest is read only for its own bundle bytes and only when it is one a build could write"; spec/agent/plugins/bundle.md, "Profile groups name only bundled plugins, each in one group"
 import { profilesWellFormed } from "../../gen/agent__plugins__bundle.ts"
 
 const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))

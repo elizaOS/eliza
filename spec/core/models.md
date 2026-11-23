@@ -152,3 +152,58 @@ pure def lawAMissingCountIsNeverZero(c: ProviderCount): bool = c == CountMissing
 pure def lawUsageNeedsAReportedPromptCount(prompt: ProviderCount): bool = usageLogged(prompt) implies prompt != CountMissing
 pure def lawEveryToolSentIsLogged(sent: int): bool = sent >= 0 implies toolsLogged(sent) == sent
 ```
+
+## Story: Get a whole answer from a busy provider
+
+> As the owner, I want what the agent extracts from my words, such as a
+> reminder, to come back whole, so that neither a setting nor a provider
+> that is busy for a moment loses my request.
+
+### A model call takes no output cap from settings
+
+The sampling settings merge under a call from `<model type>_<SETTING>`, then
+`DEFAULT_<SETTING>`, for temperature, top-p, top-k, min-p, seed and the
+repetition, frequency and presence penalties. No setting caps output:
+`<model type>_MAX_TOKENS` and `DEFAULT_MAX_TOKENS` are not read, so a call
+that names no cap reaches its adapter without one and gets the model's own
+maximum.
+
+```quint
+type ModelSetting = MaxTokensSetting | TemperatureSetting | TopPSetting | TopKSetting | MinPSetting | SeedSetting | RepetitionPenaltySetting | FrequencyPenaltySetting | PresencePenaltySetting
+pure def mergedFromSettings(setting: ModelSetting): bool = setting != MaxTokensSetting
+pure val settingValues = Set(MaxTokensSetting, TemperatureSetting, TopPSetting, SeedSetting, PresencePenaltySetting)
+pure def lawNoSettingCapsOutput(setting: ModelSetting): bool = setting == MaxTokensSetting implies not(mergedFromSettings(setting))
+pure def lawSamplingSettingsStillMerge(setting: ModelSetting): bool = setting != MaxTokensSetting implies mergedFromSettings(setting)
+```
+
+### An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more
+
+The extractor pipeline's first pass and its repair pass each have one
+re-send. A pass whose call is refused with a 429 waits for the refusal's own
+retry time or hint, at most five seconds and five seconds when it names
+none, and sends the same call once more; the wait ends with the turn's
+cancellation. Spent credit, a permanent quota and a used-up period
+allowance get no re-send, nor does a rate limit named only in prose; a
+second refusal and every other failure propagate unchanged. Both passes
+carry the caller's provider options, such as the reasoning hint
+`eliza.thinking`, and none when the caller gives none.
+
+```quint
+type ExtractorRefusal = { status: int, hinted: bool, hintMs: int, spent: bool, period: bool }
+pure val extractorResendMaxMs = 5000
+pure def extractorResendWait(refusal: ExtractorRefusal): int =
+  if (refusal.status != 429 or refusal.spent or refusal.period) -1
+  else if (not(refusal.hinted) or refusal.hintMs > extractorResendMaxMs) extractorResendMaxMs
+  else if (refusal.hintMs < 0) 0
+  else refusal.hintMs
+pure val refusalValues = Set(
+  { status: 429, hinted: true, hintMs: 1200, spent: false, period: false },
+  { status: 429, hinted: true, hintMs: 59000, spent: false, period: false },
+  { status: 429, hinted: false, hintMs: 0, spent: false, period: false },
+  { status: 429, hinted: true, hintMs: 1200, spent: true, period: false },
+  { status: 429, hinted: true, hintMs: 1200, spent: false, period: true },
+  { status: 503, hinted: false, hintMs: 0, spent: false, period: false })
+pure def lawAnExtractorWaitsAtMostFiveSeconds(refusal: ExtractorRefusal): bool = extractorResendWait(refusal) <= extractorResendMaxMs
+pure def lawOnlyATemporaryRateLimitIsSentAgain(refusal: ExtractorRefusal): bool =
+  extractorResendWait(refusal) >= 0 implies (refusal.status == 429 and not(refusal.spent) and not(refusal.period))
+```

@@ -1,12 +1,12 @@
-// spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
+// spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { ModelType, ServiceType, type IAgentRuntime, type NotificationService, type ReminderPresentation, type Service, type UUID } from "@elizaos/core"
+import { ModelType, ServiceType, type IAgentRuntime, type Memory, type NotificationService, type ReminderPresentation, type Service, type UUID } from "@elizaos/core"
 import type { ScheduledTasksApi } from "@elizaos/agent"
+import { sentAgain, type DeliveryEnd } from "../gen/assistant__reminderEscalation.effect.vibe"
 
 export error SchedulerUnavailable { reason: string }
 export error ModelUnavailable { reason: string }
-export error DeliveryFailed { reason: string }
-/** @public */
+export error DeliveryFailed { reason: string; ending: DeliveryEnd }
 export error RecordUnreadable { key: string }
 
 export type TaskTrigger =
@@ -33,6 +33,11 @@ export interface TaskRow {
   readonly revision: number
 }
 
+export interface TaskEdit {
+  readonly promptInstructions?: string
+  readonly trigger?: TaskTrigger
+}
+
 export type TaskVerb =
   | { readonly tag: "SnoozeFor"; readonly minutes: number }
   | { readonly tag: "Skip" }
@@ -56,18 +61,19 @@ export interface Presented {
   readonly kind: string
   readonly roomId: UUID | undefined
   readonly presentation: ReminderPresentation
+  readonly conversationOnly?: boolean
 }
 
 export service Scheduler {
   create(task: AssistantTask): { readonly created: boolean; readonly task: TaskRow }!SchedulerUnavailable
   answer(taskId: string, verb: TaskVerb, key: string): VerbAnswer!SchedulerUnavailable
-  retrigger(taskId: string, trigger: TaskTrigger, key: string): VerbAnswer!SchedulerUnavailable
+  edit(taskId: string, change: TaskEdit, key: string): VerbAnswer!SchedulerUnavailable
   find(taskId: string): (TaskRow | undefined)!SchedulerUnavailable
   list(): (readonly TaskRow[])!SchedulerUnavailable
 }
 
 export service Model {
-  complete(system: string, prompt: string, maxTokens: number): string!ModelUnavailable
+  complete(system: string, prompt: string): string!ModelUnavailable
 }
 
 export service Presenter {
@@ -91,6 +97,8 @@ export service Approvals {
 export interface CalendarEventFacts {
   readonly title: string
   readonly startAt: number
+  readonly endAt?: number
+  readonly location?: string
   readonly synced: boolean
   readonly metadataValid: boolean
   readonly providerEditedAt: string | undefined
@@ -149,6 +157,11 @@ export effect function writeRecord(key: string, value: unknown) {
   try orDie(store.set(key, JSON.stringify(value)))
 }
 
+export effect function removeRecord(key: string) {
+  const store = try KeyValueStore.KeyValueStore
+  try orDie(store.remove(key))
+}
+
 export function isAgentScheduledTasks(service: Service | null): service is ScheduledTasksApi {
   return service !== null && ["create", "deliverKind", "get", "list", "applyVerb"].every((name) => typeof Reflect.get(service, name) === "function")
 }
@@ -178,9 +191,9 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
       const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "verb", verb }, { tag: "Keyed", key }), catch: unavailable })
       return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
     },
-    effect retrigger(taskId, trigger, key) {
+    effect edit(taskId, change, key) {
       const tasks = try agentScheduler(runtime)
-      const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "edit", edit: { trigger } }, { tag: "Keyed", key }), catch: unavailable })
+      const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "edit", edit: change }, { tag: "Keyed", key }), catch: unavailable })
       return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
     },
     effect find(taskId) {
@@ -196,9 +209,9 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
 
 function runtimeModel(runtime: IAgentRuntime): Model.Shape {
   return {
-    effect complete(system, prompt, maxTokens) {
+    effect complete(system, prompt) {
       const text = try tryPromise({
-        try: () => runtime.useModel(ModelType.TEXT_SMALL, { system, prompt, maxTokens }),
+        try: () => runtime.useModel(ModelType.TEXT_SMALL, { system, prompt }),
         catch: (cause) => new ModelUnavailable({ reason: cause instanceof Error ? cause.message : String(cause) }),
       })
       if (typeof text !== "string") throw new ModelUnavailable({ reason: "The model returned no text" })
@@ -208,28 +221,38 @@ function runtimeModel(runtime: IAgentRuntime): Model.Shape {
 }
 
 function runtimePresenter(runtime: IAgentRuntime): Presenter.Shape {
-  const failed = (cause: unknown) => new DeliveryFailed({ reason: cause instanceof Error ? cause.message : String(cause) })
+  const failed = (ending: DeliveryEnd) => (cause: unknown) => new DeliveryFailed({ reason: cause instanceof Error ? cause.message : String(cause), ending })
   return {
-    effect present({ taskId, kind, roomId, presentation }) {
-      const notifications = runtime.getService<NotificationService>(ServiceType.NOTIFICATION)
-      if (notifications === null) throw new DeliveryFailed({ reason: "No notification service is registered" })
-      try tryPromise({
-        try: () => notifications.notify({
-          title: presentation.title, body: presentation.body, category: "reminder", source: "personal-assistant",
-          groupKey: taskId, data: { taskId, kind },
-        }),
-        catch: failed,
-      })
+    effect present({ taskId, kind, roomId, presentation, conversationOnly }) {
+      if (conversationOnly === true && roomId === undefined) throw new DeliveryFailed({ reason: "The reminder has no conversation to post in", ending: "NothingSent" })
+      if (conversationOnly !== true) {
+        const notifications = runtime.getService<NotificationService>(ServiceType.NOTIFICATION)
+        if (notifications === null) throw new DeliveryFailed({ reason: "No notification service is registered", ending: "NothingSent" })
+        try tryPromise({
+          try: () => notifications.notify({
+            title: presentation.title, body: presentation.body, category: "reminder", source: "personal-assistant",
+            groupKey: taskId, data: { taskId, kind },
+          }),
+          catch: failed("AcceptanceUnknown"),
+        })
+      }
       if (roomId === undefined) return
       try tryPromise({
         try: () => runtime.createMemory({
           entityId: runtime.agentId, agentId: runtime.agentId, roomId,
           content: { text: presentation.chatText, source: "reminder", reminderPresentation: presentation },
         }, "messages"),
-        catch: failed,
+        catch: failed(conversationOnly === true ? "NothingSent" : "AcceptanceUnknown"),
       })
     },
   }
+}
+
+export effect function presentOnce(presented: Presented) {
+  const shown = (try Presenter).present(presented) catch (failed) => failed
+  return shown instanceof DeliveryFailed && sentAgain(shown.ending)
+    ? { kind: "retry", afterMs: 60_000, reason: shown.reason } satisfies DeliveryAnswer
+    : { kind: "delivered" } satisfies DeliveryAnswer
 }
 
 module node {
@@ -302,6 +325,15 @@ export function runtimeLayer(runtime: IAgentRuntime) {
 }
 
 export type AssistantPorts = KeyValueStore.KeyValueStore | Scheduler | Model | Presenter | Facts | Approvals | Calendar
+
+export function requestOf(message: Memory) {
+  return {
+    messageId: message.id ?? "", text: typeof message.content.text === "string" ? message.content.text : "", roomId: message.roomId,
+    askedAt: typeof message.createdAt === "number" && Number.isSafeInteger(message.createdAt) ? message.createdAt : undefined,
+  }
+}
+
+export type OwnerRequest = ReturnType<typeof requestOf>
 
 export function onAgent<A, E>(runtime: IAgentRuntime, program: A!E!AssistantPorts): Promise<A> {
   return runPromise(Effect.provide(program, runtimeLayer(runtime)))

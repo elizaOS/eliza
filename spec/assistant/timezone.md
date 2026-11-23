@@ -85,3 +85,34 @@ pure def lawHostTravelNeverOverridesTheTick(facts: ClockFacts): bool =
 pure def lawClockIsNeverMissing(facts: ClockFacts): bool =
   facts.hostZone != "" implies ownerClockZone(facts) != ""
 ```
+
+### A phone reminder or Clock alarm uses the zone the phone reported for this turn
+
+A Clock set is proposed only on the zone the turn's nonsensitive screen
+reported, so the alarm the owner reviews rings at the wall time they asked
+for; a set in any other zone offers nothing. A stated local reminder time
+is placed in that zone, and a wall time the zone skips or repeats is
+refused rather than moved. An empty repeat is a one-off alarm and carries
+no days. A proposed reminder's time is shown to the owner in its repeat
+zone, else in the zone the phone reported for this turn, else in UTC, named
+every way, never in a zone guessed for the owner. A new reminder's pending
+or settled result also gives the model its due and alert instants in UTC
+and, when the phone reported a zone this turn, their wall times in that
+zone, named, to repeat as they are.
+
+```quint
+pure def phoneZoneGrounded(sensitive: bool, observedZone: str, proposedZone: str): bool =
+  not(sensitive) and observedZone != "" and observedZone == proposedZone
+pure def localDueGrounded(phoneZoneKnown: bool, wallTimeExists: bool, wallTimeRepeats: bool): bool =
+  phoneZoneKnown and wallTimeExists and not(wallTimeRepeats)
+pure def reminderShownZone(repeatZone: str, phoneZone: str): str = if (repeatZone != "") repeatZone else if (phoneZone != "") phoneZone else "UTC"
+pure val observedZoneValues = Set("", "Europe/Berlin", "America/New_York")
+pure val proposedZoneValues = Set("", "Europe/Berlin", "UTC")
+pure val repeatZoneValues = Set("", "Europe/Berlin")
+pure val phoneZoneValues = Set("", "America/New_York")
+pure def lawAClockSetNeverPicksItsOwnZone(sensitive: bool, observedZone: str, proposedZone: str): bool =
+  phoneZoneGrounded(sensitive, observedZone, proposedZone) implies (proposedZone == observedZone and proposedZone != "")
+pure def lawAShownTimeAlwaysNamesItsZone(repeatZone: str, phoneZone: str): bool = reminderShownZone(repeatZone, phoneZone) != ""
+pure def lawAShownZoneIsNeverGuessed(repeatZone: str, phoneZone: str): bool =
+  reminderShownZone(repeatZone, phoneZone) == repeatZone or reminderShownZone(repeatZone, phoneZone) == phoneZone or reminderShownZone(repeatZone, phoneZone) == "UTC"
+```

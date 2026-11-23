@@ -58,8 +58,11 @@ pure def leadsToRequestSettles(s: FileRequest, later: FileRequest): bool =
 
 ### The view's reload never retires the request
 
-Entering Files starts a new view and its reload; leaving ends the view.
-Replacing the shown rows retires a request made from them. A reload reply
+Entering Files starts a new view and its reload; leaving ends the view
+and clears the filter results it showed. Rows replace the shown ones only
+while the view is active, so a filter that finishes after the owner left
+shows nothing on the next visit. Replacing the shown rows retires a
+request made from them. A reload reply
 only records whether the list loaded; it never changes the request's
 stage, view or rows, so a file can open while the list is still loading.
 
@@ -137,4 +140,25 @@ pure def listingEmpty(metadataKnown: bool, partial: bool, failed: bool, anyRows:
   listingComplete(metadataKnown, partial, failed) and not(anyRows)
 pure def lawUnknownMetadataClaimsNothing(partial: bool, failed: bool, anyRows: bool): bool =
   not(listingComplete(false, partial, failed)) and not(listingEmpty(false, partial, failed, anyRows))
+```
+
+### Downloads is the Download folder with its folders, and a missing one is empty
+
+Downloads lists the Download folder itself: its files and its folders.
+When the device has no Download folder, Downloads is a complete, empty
+listing rather than a failure; a Download folder that is there and cannot
+be read claims nothing. A new folder made in Downloads first creates the
+Download folder when it is not there.
+
+```quint
+type DownloadFolder = DownloadFolderListed | DownloadFolderAbsent | DownloadFolderUnreadable
+pure def downloadsKnown(folder: DownloadFolder, metadataKnown: bool): bool =
+  if (folder == DownloadFolderAbsent) true else if (folder == DownloadFolderUnreadable) false else metadataKnown
+pure def downloadsCreatesParent(folder: DownloadFolder): bool = folder == DownloadFolderAbsent
+pure def lawAbsentDownloadsIsEmpty(metadataKnown: bool): bool =
+  listingEmpty(downloadsKnown(DownloadFolderAbsent, metadataKnown), false, false, false)
+pure def lawUnreadableDownloadsClaimsNothing(metadataKnown: bool, partial: bool, failed: bool): bool =
+  not(listingComplete(downloadsKnown(DownloadFolderUnreadable, metadataKnown), partial, failed))
+pure def lawOnlyAnAbsentDownloadFolderIsCreated(folder: DownloadFolder): bool =
+  downloadsCreatesParent(folder) iff folder == DownloadFolderAbsent
 ```

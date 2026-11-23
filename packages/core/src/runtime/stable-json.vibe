@@ -1,0 +1,62 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind"
+module stable {
+  export class UnstableJsonFault extends TypeError {}
+
+  /** @throws {TypeError} */
+  export function stableStringifyValue(value: unknown, seen: WeakSet<object>): string {
+    if (value === null) {
+      return "null"
+    }
+
+    const type = typeof value
+    if (type === "string" || type === "number" || type === "boolean") {
+      return JSON.stringify(value)
+    }
+
+    if (type === "bigint") {
+      throw new UnstableJsonFault("Cannot stable stringify BigInt values as JSON")
+    }
+
+    if (type === "undefined" || type === "function" || type === "symbol") {
+      return ""
+    }
+
+    if (seen.has(value as object)) {
+      throw new UnstableJsonFault("Cannot stable stringify circular structures")
+    }
+    seen.add(value as object)
+
+    if (Array.isArray(value)) {
+      const serialized = `[${
+        value
+          .map((item) => {
+            const serialized = stableStringifyValue(item, seen)
+            return serialized === "" ? "null" : serialized
+          })
+          .join(",")
+      }]`
+      seen.delete(value)
+      return serialized
+    }
+
+    const record = value as Record<string, unknown>
+    const keys = Object.keys(record).sort((left, right) => left < right ? -1 : left > right ? 1 : 0)
+    let serialized = ""
+    for (const key of keys) {
+      const entry = stableStringifyValue(record[key], seen)
+      if (entry === "") continue
+      serialized += `${serialized ? "," : ""}${JSON.stringify(key)}:${entry}`
+    }
+    seen.delete(value as object)
+    return `{${serialized}}`
+  }
+
+  /** @throws {TypeError} */
+  export function stableJson(value: unknown): string {
+    const serialized = stableStringifyValue(value, new WeakSet())
+    return serialized === "" ? "null" : serialized
+  }
+}
+import { stableJson, UnstableJsonFault } from stable
+
+export { stableJson, UnstableJsonFault }

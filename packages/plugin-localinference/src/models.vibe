@@ -1,4 +1,4 @@
-// spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "Only a model in the curated catalog is downloaded, and only when it is not already present"; spec/localInference/models.md, "A download is installed only when every file matches its published digest"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"; spec/localInference/models.md, "Removing a model first unloads it and clears every slot that named it"; spec/localInference/textAndEmbeddings.md, "Text is generated only by the active model once it is ready"; spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"
+// spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "Only a model in the curated catalog is downloaded, and only when it is not already present"; spec/localInference/models.md, "A download is installed only when every file matches its published digest"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"; spec/localInference/models.md, "Removing a model first unloads it and clears every slot that named it"; spec/localInference/models.md, "A model whose files cannot be read is reported unreadable, never as absent"; spec/localInference/textAndEmbeddings.md, "Text is generated only by the active model once it is ready"; spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"
 import { HttpClient, HttpClientRequest } from "effect/http"
 import {
   Machine, Rejected, allSlots, assignModel, assignedTo, assignmentsUnreadable, canAssignModel, decodeState, enabled, initial, installed, machine, modelOf, withInstall,
@@ -30,15 +30,13 @@ export error DownloadFailed { model: string; reason: string }
 
 export error AssignmentsUnreadable { path: string }
 
-export error ModelStoreUnavailable { reason: string }
-
 interface InstalledFile {
   readonly path: string
   readonly sha256: string
   readonly bytes: number
 }
 
-const installNames = { NotInstalled: "absent", Downloading: "downloading", Installed: "installed" } as const satisfies Record<InstallPhase, string>
+const installNames = { NotInstalled: "absent", Downloading: "downloading", Installed: "installed", Unreadable: "unreadable" } as const satisfies Record<InstallPhase, string>
 const statusNames = { ActiveIdle: "idle", ActiveLoading: "loading", ActiveReady: "ready", ActiveFailed: "failed" } as const satisfies Record<ActiveStatus, string>
 
 export interface ModelView {
@@ -54,6 +52,7 @@ export interface ModelsView {
   readonly models: readonly ModelView[]
   readonly active: { readonly model: string | null; readonly status: typeof statusNames[ActiveStatus]; readonly servesText: boolean }
   readonly assignmentsReadable: boolean
+  readonly unreadable: string | null
 }
 
 export interface LocalModelsApi {
@@ -79,6 +78,22 @@ const decodeManifest = Schema.decodeUnknownEffect(Schema.fromJsonString(BundleMa
 
 type Recorded = AssignmentRecord["assignments"]
 
+type Read<A> = { readonly kind: "read"; readonly value: A } | { readonly kind: "absent" } | { readonly kind: "unreadable"; readonly code: string }
+
+function unreadableCode(failure: PlatformError.PlatformError): string | undefined {
+  const reason = failure.reason
+  if (reason._tag === "NotFound") return undefined
+  const cause: unknown = reason.cause
+  return typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string" ? cause.code : reason._tag
+}
+
+effect function read<A>(work: A!PlatformError.PlatformError) {
+  return (map(work, (value): Read<A> => ({ kind: "read", value })) catch (failure: PlatformError.PlatformError): Read<A> => {
+    const code = unreadableCode(failure)
+    return code === undefined ? { kind: "absent" } : { kind: "unreadable", code }
+  })
+}
+
 function withRecorded(state: LocalModels, recorded: Recorded, catalog: Catalog): LocalModels {
   return allSlots.reduce((current, slot) => {
     const name = recorded[slotNames[slot]]
@@ -102,9 +117,25 @@ effect function machineOf(start: LocalModels) {
 
 const failed = (model: CatalogModel, reason: string) => new DownloadFailed({ model: model.name, reason })
 
-effect function readRecordText(fs: FileSystem.FileSystem, file: string) {
-  if (!(fs.exists(file) catch () => false)) return undefined
-  return (fs.readFileString(file) catch () => "")
+effect function presence(fs: FileSystem.FileSystem, path: Path.Path, directory: string, list: readonly InstalledFile[]) {
+  for (const file of list) {
+    const info = try read(fs.stat(path.join(directory, file.path)))
+    if (info.kind !== "read") return info
+    if (Number(info.value.size) !== file.bytes) return { kind: "absent" } satisfies Read<never>
+  }
+  return { kind: "read", value: list } satisfies Read<readonly InstalledFile[]>
+}
+
+effect function digestOf(fs: FileSystem.FileSystem, file: string) {
+  const digest = sha256()
+  try Stream.runForEach(fs.stream(file), (chunk) => sync(() => digest.update(chunk)))
+  return digest.hex()
+}
+
+effect function writeAtomically(fs: FileSystem.FileSystem, file: string, value: object) {
+  const temporary = `${file}.tmp`
+  try fs.writeFileString(temporary, JSON.stringify(value, null, 2) + "\n")
+  try fs.rename(temporary, file)
 }
 
 effect function fetchPlan(http: HttpClient.HttpClient, model: CatalogModel) {
@@ -124,6 +155,28 @@ effect function fetchPlan(http: HttpClient.HttpClient, model: CatalogModel) {
   return { files: published, evalsPassed: manifest.evals.textEval.passed }
 }
 
+effect function fetchFile(stores: { readonly fs: FileSystem.FileSystem; readonly path: Path.Path; readonly http: HttpClient.HttpClient }, model: CatalogModel, file: PublishedFile, directory: string) {
+  const { fs, path, http } = stores
+  const target = path.join(directory, file.path)
+  const partial = `${target}.part`
+  fs.makeDirectory(path.dirname(target), { recursive: true }) catch effect () => { throw failed(model, "the model directory cannot be created") }
+  const response = (http.execute(HttpClientRequest.get(file.url)) catch effect () => { throw failed(model, `${file.path} is unreachable`) })
+  if (response.status !== 200) throw failed(model, `${file.path} answered ${response.status}`)
+  const digest = sha256()
+  let bytes = 0
+  const counted = Stream.tap(response.stream, (chunk: Uint8Array) => sync(() => {
+    digest.update(chunk)
+    bytes += chunk.byteLength
+  }))
+  Stream.run(counted, fs.sink(partial)) catch effect () => { throw failed(model, `${file.path} did not arrive whole`) }
+  if (digest.hex() !== file.sha256) {
+    fs.remove(partial) catch () => undefined
+    return undefined
+  }
+  fs.rename(partial, target) catch effect () => { throw failed(model, `${file.path} cannot be stored`) }
+  return { path: file.path, sha256: file.sha256, bytes } satisfies InstalledFile
+}
+
 export effect function openLocalModels(stateDirectory: string, catalog: Catalog = curatedModels) {
   const fs = try FileSystem.FileSystem
   const path = try Path.Path
@@ -133,52 +186,57 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
   const modelsDirectory = path.join(root, "models")
   const installedFile = path.join(root, "installed.json")
   const assignmentsFile = path.join(root, "assignments.json")
-  fs.makeDirectory(modelsDirectory, { recursive: true }) catch effect (cause) => { throw new ModelStoreUnavailable({ reason: String(cause) }) }
+  const store = try read(fs.makeDirectory(modelsDirectory, { recursive: true }))
 
   const files = new Map<CatalogId, readonly InstalledFile[]>()
+  const kept = new Map<CatalogId, { readonly evalsPassed: boolean; readonly files: readonly InstalledFile[] }>()
   const fibers = new Map<CatalogId, Fiber.Fiber<void, never>>()
   let loading: Fiber.Fiber<void, never> | undefined = undefined
   const lock = Semaphore.makeUnsafe(1)
   const directoryOf = (model: CatalogModel) => model.source.kind === "pinned" ? modelsDirectory : path.join(modelsDirectory, model.name)
 
-  effect function present(directory: string, list: readonly InstalledFile[]) {
-    for (const file of list) {
-      const info = (fs.stat(path.join(directory, file.path)) catch () => undefined)
-      if (info === undefined || Number(info.size) !== file.bytes) return false
-    }
-    return true
-  }
+  const readText = (file: string) => read(fs.readFileString(file))
 
-  effect function digestOf(file: string) {
-    const digest = sha256()
-    try Stream.runForEach(fs.stream(file), (chunk) => sync(() => digest.update(chunk)))
-    return digest.hex()
-  }
-
-  effect function writeAtomically(file: string, value: object) {
-    const temporary = `${file}.tmp`
-    try fs.writeFileString(temporary, JSON.stringify(value, null, 2) + "\n")
-    try fs.rename(temporary, file)
-  }
-
-  const installedText = try readRecordText(fs, installedFile)
-  const installedRecord = installedText === undefined ? { version: 1 as const, models: [] } : Option.getOrUndefined(decodeInstalled(installedText))
+  const installedText = store.kind === "unreadable" ? store : try readText(installedFile)
+  const storeUnreadable = installedText.kind === "unreadable" ? installedText.code : undefined
+  let unreadable = storeUnreadable
+  const installedRecord = installedText.kind === "read" ? Option.getOrUndefined(decodeInstalled(installedText.value)) : installedText.kind === "absent" ? { version: 1 as const, models: [] } : undefined
   let start = initial
+  if (storeUnreadable !== undefined) {
+    for (const model of Object.values(catalog)) start = withInstall(model.id, start, "Unreadable", false)
+    try logWarning("The local model store cannot be read, so every model is reported unreadable", { directory: modelsDirectory, code: storeUnreadable })
+  }
   for (const entry of installedRecord?.models ?? []) {
-    if (!(try present(directoryOf(catalog[entry.id]), entry.files))) continue
+    const found = try presence(fs, path, directoryOf(catalog[entry.id]), entry.files)
+    if (found.kind === "absent") continue
+    if (found.kind === "unreadable") {
+      start = withInstall(entry.id, start, "Unreadable", false)
+      kept.set(entry.id, { evalsPassed: entry.evalsPassed, files: entry.files })
+      unreadable ??= found.code
+      try logWarning("An installed model cannot be read and is reported unreadable", { model: catalog[entry.id].name, code: found.code })
+      continue
+    }
     start = withInstall(entry.id, start, "Installed", entry.evalsPassed)
     files.set(entry.id, entry.files)
   }
-  const assignmentsText = try readRecordText(fs, assignmentsFile)
-  const recorded = assignmentsText === undefined ? {} : Option.getOrUndefined(Option.map(decodeAssignments(assignmentsText), (record) => record.assignments))
+  const assignmentsText = storeUnreadable === undefined ? try readText(assignmentsFile) : installedText
+  const recorded = assignmentsText.kind === "absent" ? {} : assignmentsText.kind === "read" ? Option.getOrUndefined(Option.map(decodeAssignments(assignmentsText.value), (record) => record.assignments)) : undefined
   start = installedRecord !== undefined && recorded !== undefined ? withRecorded(start, recorded, catalog) : assignmentsUnreadable(start)
   const models = try machineOf(try orDie(decodeState(start)))
 
+  const keptSlots = (state: LocalModels): Recorded => Object.fromEntries(Object.entries(recorded ?? {}).filter(([, name]) => {
+    const model = typeof name === "string" ? modelNamed(name, catalog) : undefined
+    return model !== undefined && modelOf(state, model.id).install === "Unreadable"
+  }))
+
   effect function persist() {
     const state = try models.get()
-    const record = [...files].filter(([id]) => installed(state, id)).map(([id, list]) => ({ id, evalsPassed: modelOf(state, id).evalsPassed, files: list }))
-    try orDie(writeAtomically(installedFile, { version: 1, models: record }))
-    if (state.assignmentsReadable) try orDie(writeAtomically(assignmentsFile, { version: 1, assignments: recordOf(state, catalog) }))
+    const record = [
+      ...[...files].filter(([id]) => installed(state, id)).map(([id, list]) => ({ id, evalsPassed: modelOf(state, id).evalsPassed, files: list })),
+      ...[...kept].filter(([id]) => modelOf(state, id).install === "Unreadable").map(([id, entry]) => ({ id, ...entry })),
+    ]
+    if (storeUnreadable === undefined) try orDie(writeAtomically(fs, installedFile, { version: 1, models: record }))
+    if (state.assignmentsReadable) try orDie(writeAtomically(fs, assignmentsFile, { version: 1, assignments: { ...keptSlots(state), ...recordOf(state, catalog) } }))
   }
 
   effect function changed(event: Event) {
@@ -200,27 +258,6 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
     return { model, directory, files: (files.get(id) ?? []).map((file) => path.join(directory, file.path)) }
   }
 
-  effect function fetchFile(model: CatalogModel, file: PublishedFile, directory: string) {
-    const target = path.join(directory, file.path)
-    const partial = `${target}.part`
-    fs.makeDirectory(path.dirname(target), { recursive: true }) catch effect () => { throw failed(model, "the model directory cannot be created") }
-    const response = (http.execute(HttpClientRequest.get(file.url)) catch effect () => { throw failed(model, `${file.path} is unreachable`) })
-    if (response.status !== 200) throw failed(model, `${file.path} answered ${response.status}`)
-    const digest = sha256()
-    let bytes = 0
-    const counted = Stream.tap(response.stream, (chunk: Uint8Array) => sync(() => {
-      digest.update(chunk)
-      bytes += chunk.byteLength
-    }))
-    Stream.run(counted, fs.sink(partial)) catch effect () => { throw failed(model, `${file.path} did not arrive whole`) }
-    if (digest.hex() !== file.sha256) {
-      fs.remove(partial) catch () => undefined
-      return undefined
-    }
-    fs.rename(partial, target) catch effect () => { throw failed(model, `${file.path} cannot be stored`) }
-    return { path: file.path, sha256: file.sha256, bytes } satisfies InstalledFile
-  }
-
   effect function discard(model: CatalogModel) {
     const directory = directoryOf(model)
     if (model.source.kind === "bundle") {
@@ -238,7 +275,7 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
     const directory = directoryOf(model)
     const fetched: InstalledFile[] = []
     for (const file of plan.files) {
-      const got = try fetchFile(model, file, directory)
+      const got = try fetchFile({ fs, path, http }, model, file, directory)
       if (got === undefined) {
         try change({ type: "finishDownload", modelId: model.id, digestMatches: false, evalsPassed: false })
         try discard(model)
@@ -259,14 +296,19 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
   }
 
   effect function adoptStaged(model: CatalogModel) {
-    if (model.source.kind !== "pinned" || installed(try models.get(), model.id)) return
+    if (model.source.kind !== "pinned" || modelOf(try models.get(), model.id).install !== "NotInstalled") return
     const directory = directoryOf(model)
     const verified: InstalledFile[] = []
     for (const file of model.source.files) {
       const target = path.join(directory, file.path)
       const info = (fs.stat(target) catch () => undefined)
       if (info === undefined) return
-      if ((digestOf(target) catch () => "") !== file.sha256) {
+      const digest = (digestOf(fs, target) catch () => undefined)
+      if (digest === undefined) {
+        try logWarning("A staged model file cannot be read and stays absent", { model: model.name, file: file.path })
+        return
+      }
+      if (digest !== file.sha256) {
         try logWarning("A staged model does not match its published digest and stays absent", { model: model.name, file: file.path })
         return
       }
@@ -305,6 +347,7 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
         }),
         active: { model: active, status: statusNames[state.activeStatus], servesText: localTextModel(state.active, state.activeStatus) !== "" },
         assignmentsReadable: state.assignmentsReadable,
+        unreadable: unreadable ?? null,
       } satisfies ModelsView
     },
     effect download(id) {
@@ -361,8 +404,8 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
       if (catalog[id].source.kind === "bundle") (fs.remove(directory, { recursive: true }) catch () => undefined)
     }),
     repairAssignments: () => lock.withPermits(1)(effect {
-      const text = try readRecordText(fs, assignmentsFile)
-      const repaired = text === undefined ? {} : Option.getOrUndefined(Option.map(decodeAssignments(text), (record) => record.assignments))
+      const text = try readText(assignmentsFile)
+      const repaired = text.kind === "absent" ? {} : text.kind === "read" ? Option.getOrUndefined(Option.map(decodeAssignments(text.value), (record) => record.assignments)) : undefined
       if (repaired === undefined) throw new AssignmentsUnreadable({ path: assignmentsFile })
       let state = try models.send({ type: "assignmentsRepaired" })
       for (const slot of allSlots) {
