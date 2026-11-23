@@ -137,6 +137,13 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   assert.deepStrictEqual([at(deleted.data, "deleted"), at(deleted.data, "targetEvent", "id"), at(deleted.data, "targetEvent", "metadata", "etag")], [true, id, changedEtag])
   assert.deepStrictEqual([at(deleted.effectReceipts?.[0], "operation"), at(deleted.effectReceipts?.[0], "resource", "kind"), at(deleted.effectReceipts?.[0], "resource", "version")], ["calendar.event.delete", "calendar.event", `deleted:${changedEtag}`])
   assert.strictEqual(at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length"), 0)
+
+  const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
+  assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
+  const pointDay = try runCalendarAction(host, { ...ask, id: "message-4b" }, { ...dentist, isAllDay: true, startAt: "2030-03-04T00:00:00Z", endAt: "2030-03-04T00:00:00Z" })
+  assert.deepStrictEqual([pointDay.success, pointDay.text, at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length")],
+    [false, "A new event needs a title and a start before its end.", 0])
+
   const replacement = try runCalendarAction(host, { ...ask, id: "delete-replay-replacement" }, { ...dentist, title: "Dentist moved" })
   const replacementId = at(replacement.data, "event", "id")
   const replayDelete = try deleteTurn("named-delete", "Delete Dentist moved", { query: "Dentist moved", ...march })
@@ -157,12 +164,6 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
     const removed = try deleteTurn(`delete-${title}`, words, { eventId: targetId })
     assert.deepEqual([made.success, removed.success, at(removed.data, "targetEvent", "id"), try host.find(String(targetId))], [true, true, targetId, undefined])
   }
-
-  const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
-  assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
-  const pointDay = try runCalendarAction(host, { ...ask, id: "message-4b" }, { ...dentist, isAllDay: true, startAt: "2030-03-04T00:00:00Z", endAt: "2030-03-04T00:00:00Z" })
-  assert.deepStrictEqual([pointDay.success, pointDay.text, at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length")],
-    [false, "A new event needs a title and a start before its end.", 0])
 
   const google = googleCalendar()
   try host.register(google.port)
