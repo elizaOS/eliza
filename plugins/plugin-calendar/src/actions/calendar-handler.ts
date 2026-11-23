@@ -2737,12 +2737,13 @@ export function ownerNamedCalendarEvent(
   userTexts: ReadonlyArray<string | null | undefined>,
   reference?: string,
 ): boolean {
-  const title = normalizeText(event.title);
   const words = (text: string) =>
     normalizeText(text)
       .split(/[^\p{L}\p{N}]+/u)
       .filter((word) => word.length > 0);
-  const titleWords = ` ${words(event.title).join(" ")} `;
+  const named = words(event.title).join(" ");
+  if (!named) return false;
+  const titleWords = ` ${named} `;
   const referenceWords = ` ${reference === undefined ? "" : words(reference).join(" ")} `;
   if (referenceWords.trim() && !titleWords.includes(referenceWords)) {
     const extra = referenceWords.replace(titleWords, " ").trim();
@@ -2753,16 +2754,19 @@ export function ownerNamedCalendarEvent(
     )
       return false;
   }
-  return (
-    title.length > 0 &&
-    userTexts.some(
-      (text) =>
-        typeof text === "string" &&
-        ` ${normalizeText(text).replace(/[^\p{L}\p{N}]+/gu, " ")} `.includes(
-          ` ${title.replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `,
-        ),
-    )
-  );
+  const denseTitle =
+    /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(named);
+  return userTexts.some((text) => {
+    if (typeof text !== "string") return false;
+    const spoken = words(text).join(" ");
+    if (` ${spoken} `.includes(titleWords)) return true;
+    if (!denseTitle) return false;
+    const target =
+      /^(?:(?:请|請)\s*)?(?:删除|刪除)\s*(.+)$/u.exec(spoken)?.[1] ??
+      /^(.+?)\s*を\s*削除して(?:ください)?$/u.exec(spoken)?.[1] ??
+      /^(.+?)\s*(?:을|를)\s*(?:삭제해줘|삭제해\s*주세요)$/u.exec(spoken)?.[1];
+    return target === named;
+  });
 }
 
 /**

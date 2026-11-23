@@ -3541,6 +3541,36 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(await augustEvents()).toHaveLength(0);
   });
 
+  // Chinese and Japanese put no space between words, and Korean joins a
+  // particle to the word, so a whole title there has no space around it. A
+  // title in a script that spaces its words still needs a word edge.
+  it.each([
+    ["25", "歯医者", "歯医者を削除して", "歯医者", 0],
+    ["26", "牙医预约", "删除牙医预约", "牙医预约", 0],
+    ["27", "치과", "치과를 삭제해줘", "치과", 0],
+    ["28", "Dentist", "Delete the dentistry booking", "Dentist", 1],
+    ["29", "歯医者", "小児歯医者を削除して", "歯医者", 1],
+    ["30", "牙医预约", "删除儿童牙医预约", "牙医预约", 1],
+  ])(
+    "reads a whole title written without spaces as the event named (%s: %s)",
+    async (id, title, text, query, left) => {
+      await service.createCalendarEventMutation(INTERNAL_URL, {
+        ...originalEvent,
+        title,
+        idempotencyKey: `unspaced-title-${id}`,
+      });
+      const result = await runChat(id, text, {
+        subaction: "delete_event",
+        query,
+        details: { timeZone: "UTC", ...WINDOW },
+      });
+      expect(result?.data?.missing ?? [], text).toEqual(
+        left === 0 ? [] : ["delete confirmation"],
+      );
+      expect(await augustEvents()).toHaveLength(left);
+    },
+  );
+
   // v617 on the owner's Pixel (2026-11-20, America/New_York): with Contacts in
   // front in direct-request mode, "add an event called v617 check tomorrow at
   // 3pm" ran CALENDAR_CREATE_EVENT and replied with an applied receipt for
