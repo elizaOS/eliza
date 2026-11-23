@@ -192,16 +192,18 @@ failure when the agent exits with code 77. A frame that fits the backend
 passes the launch verdict.
 
 ```quint
-pure def lawReadyLaunchMatchesAgentVerdict(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool =
-  match startVerdict(d, cred, worker) {
-  | LaunchReady(r) => {
-    val doc = r.launch.document
-    val expected = if (not(Launch::frameAdmitted(f))) Launch::LaunchRefused({ cause: Launch::Config })
-      else if (Launch::needsCredential(doc.backend) and not(Launch::credentialFits(doc.backend, f.credential))) Launch::LaunchRefused({ cause: Launch::Credential })
-      else Launch::LaunchAdmitted
-    Launch::documentAdmitted(doc) and Launch::launchVerdict(doc, f) == expected
+pure def lawReadyLaunchMatchesAgentVerdict(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool = {
+  val verdict = startVerdict(d, cred, worker)
+  match verdict {
+    | LaunchReady(r) => {
+      val doc = r.launch.document
+      val expected = if (not(Launch::frameAdmitted(f))) Launch::LaunchRefused({ cause: Launch::Config })
+        else if (Launch::needsCredential(doc.backend) and not(Launch::credentialFits(doc.backend, f.credential))) Launch::LaunchRefused({ cause: Launch::Credential })
+        else Launch::LaunchAdmitted
+      Launch::documentAdmitted(doc) and Launch::launchVerdict(doc, f) == expected
+    }
+    | _ => true
   }
-  | _ => true
 }
 pure val workerValues = Set(RP::NoLaunchWorker, RP::NamedWorker({ runtimeDir: "files/worker", executable: "worker", sha256: "w1" }))
 pure val credValues = {
