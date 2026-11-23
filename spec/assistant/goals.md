@@ -125,20 +125,20 @@ pure val reviewLookbackMs = 604800000
 pure def staleAfterMs(cadence: Cadence): int =
   if (cadence == DailyCadence) 172800000 else if (cadence == WeeklyCadence) 864000000 else 604800000
 pure def answerFresh(cadence: Cadence, answeredAt: int, now: int): bool = answeredAt <= now and now - answeredAt <= staleAfterMs(cadence)
-pure def reviewGroup(status: GoalStatus, state: ReviewState, fresh: bool): ReviewGroup =
+pure def reviewGroup(status: GoalStatus, answer: ReviewState, fresh: bool): ReviewGroup =
   if (status != GoalActive) NotInReview
-  else if (state == ReviewIdle) GroupUnanswered
+  else if (answer == ReviewIdle) GroupUnanswered
   else if (not(fresh)) GroupNeedsAttention
-  else if (state == OnTrack) GroupOnTrack
-  else if (state == AtRisk) GroupAtRisk
+  else if (answer == OnTrack) GroupOnTrack
+  else if (answer == AtRisk) GroupAtRisk
   else GroupNeedsAttention
 pure def answeredRecently(at: int, now: int): bool = at <= now and now - at <= reviewLookbackMs
-pure def lawOnlyActiveGoalsAreReviewed(status: GoalStatus, state: ReviewState, fresh: bool): bool = (reviewGroup(status, state, fresh) == NotInReview) iff status != GoalActive
-pure def lawAFreshAnswerGroupsTheGoal(state: ReviewState): bool =
-  (reviewGroup(GoalActive, state, true) == GroupOnTrack iff state == OnTrack) and (reviewGroup(GoalActive, state, true) == GroupAtRisk iff state == AtRisk)
-  and (reviewGroup(GoalActive, state, true) == GroupNeedsAttention iff state == NeedsAttention) and (reviewGroup(GoalActive, state, true) == GroupUnanswered iff state == ReviewIdle)
-pure def lawAQuietGoalNeedsAttention(state: ReviewState): bool =
-  state != ReviewIdle implies reviewGroup(GoalActive, state, false) == GroupNeedsAttention
+pure def lawOnlyActiveGoalsAreReviewed(status: GoalStatus, answer: ReviewState, fresh: bool): bool = (reviewGroup(status, answer, fresh) == NotInReview) iff status != GoalActive
+pure def lawAFreshAnswerGroupsTheGoal(answer: ReviewState): bool =
+  (reviewGroup(GoalActive, answer, true) == GroupOnTrack iff answer == OnTrack) and (reviewGroup(GoalActive, answer, true) == GroupAtRisk iff answer == AtRisk)
+  and (reviewGroup(GoalActive, answer, true) == GroupNeedsAttention iff answer == NeedsAttention) and (reviewGroup(GoalActive, answer, true) == GroupUnanswered iff answer == ReviewIdle)
+pure def lawAQuietGoalNeedsAttention(answer: ReviewState): bool =
+  answer != ReviewIdle implies reviewGroup(GoalActive, answer, false) == GroupNeedsAttention
 pure def lawAnAnswerPastItsCadenceIsNotFresh(cadence: Cadence, answeredAt: int, now: int): bool =
   now - answeredAt > staleAfterMs(cadence) implies not(answerFresh(cadence, answeredAt, now))
 pure def lawAnAnswerOlderThanAWeekIsNotRecent(at: int, now: int): bool = now - at > reviewLookbackMs implies not(answeredRecently(at, now))

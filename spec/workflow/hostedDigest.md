@@ -55,16 +55,16 @@ expiry.
 
 ```quint
 type DossierSource = NamedSource | OnlySource | ChooseSource | ReviewSourceFirst
-pure def dossierSource(named: bool, namedCurrent: bool, current: int): DossierSource =
+pure def dossierSource(named: bool, namedCurrent: bool, currentCount: int): DossierSource =
   if (named and namedCurrent) NamedSource
-  else if (not(named) and current == 1) OnlySource
-  else if (current > 1) ChooseSource
+  else if (not(named) and currentCount == 1) OnlySource
+  else if (currentCount > 1) ChooseSource
   else ReviewSourceFirst
-pure val currentValues = Set(0, 1, 2)
-pure def lawSeveralSourcesAreNeverGuessed(namedCurrent: bool, current: int): bool =
-  current > 1 implies dossierSource(false, namedCurrent, current) == ChooseSource
-pure def lawANamedSourceIsNeverReplaced(current: int): bool =
-  dossierSource(true, false, current) != NamedSource and dossierSource(true, false, current) != OnlySource
+pure val currentCountValues = Set(0, 1, 2)
+pure def lawSeveralSourcesAreNeverGuessed(namedCurrent: bool, currentCount: int): bool =
+  currentCount > 1 implies dossierSource(false, namedCurrent, currentCount) == ChooseSource
+pure def lawANamedSourceIsNeverReplaced(currentCount: int): bool =
+  dossierSource(true, false, currentCount) != NamedSource and dossierSource(true, false, currentCount) != OnlySource
 ```
 
 ### A chat dossier is one run for each owner message and answers with its finished briefing
