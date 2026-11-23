@@ -22,7 +22,8 @@ module EvmTransactionSend {
     s.phase == "prepare",
     s' = { ...s, phase: "done", response: "failure" }
   }
-  // "answered": the node returned the hash.
+  // "answered": the provider returned the hash of these signed bytes.
+  // "badAcknowledgment": a gateway returned an absent or different hash.
   // "lostAfterAccept": the node took the transaction, the answer was lost
   //   (timeout, network error, gateway 5xx).
   // "lostBeforeAccept": the request never reached the node; same client view.
@@ -32,7 +33,7 @@ module EvmTransactionSend {
   //   after the signed bytes reached the node.
   // "refused": the gateway refused to forward the bytes; nothing landed.
   action Send = {
-    nondet outcome = Set("answered", "refused", "lostAfterAccept", "lostBeforeAccept", "alreadyKnown", "gatewayErrorAfterAccept").oneOf()
+    nondet outcome = Set("answered", "refused", "lostAfterAccept", "lostBeforeAccept", "alreadyKnown", "gatewayErrorAfterAccept", "badAcknowledgment").oneOf()
     all {
       s.phase == "send", s.signed,
       if (outcome == "answered")
