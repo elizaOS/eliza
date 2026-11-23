@@ -1,7 +1,10 @@
 // spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime"
-import { assert, it } from "@effect/vitest"
+import { assert, makeMethods } from "@effect/vitest"
+import { test } from "vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { openSqlite } from "../src/index.vibe"
+
+const it = makeMethods(test)
 
 it.effect('Reopen my agent\'s SQLite database in the owning runtime (spec/sqlite/index.md, "Story: Reopen my agent\'s SQLite database in the owning runtime")', effect () => {
   provide NodeServices.layer {
