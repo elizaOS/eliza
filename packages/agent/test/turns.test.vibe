@@ -129,6 +129,37 @@ effect function send(agent: InProcess, id: string, body: object, headers?: Reado
 
 const replyOf = (answer: { readonly body: unknown }) => answer.body as Reply
 
+it.live('A reply quotes only the selected message in its own conversation and replays without a model call (spec/agent/conversation/turns.md, "A quoted reply uses only the selected message from this conversation")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud)
+  const own = try conversation(agent)
+  const foreign = try conversation(agent)
+  const selected = "Original   words\n\tkeep the spacing."
+  const privateText = "Unrelated foreign marker."
+  try Effect.sync(() => cloud.script(text("Kept."), text("Foreign."), text("Quoted."), text("No reference.")))
+  const ownReply = replyOf(try send(agent, own.id, { text: selected }))
+  const foreignReply = replyOf(try send(agent, foreign.id, { text: privateText }))
+  const ask = { text: "What did I mean there?", metadata: { replyToMessageId: ownReply.userMessageId }, clientMessageId: "quote-1" }
+  const found = try send(agent, own.id, ask)
+  const acceptedPrompt = lastTurnPrompt(cloud)
+  const beforeReplay = completions(cloud)
+  const replayed = try send(agent, own.id, ask)
+  const afterReplay = completions(cloud)
+  const ignored = try send(agent, own.id, { text: "Use the other one.", metadata: { replyToMessageId: foreignReply.userMessageId } })
+  const ignoredPrompt = lastTurnPrompt(cloud)
+  const runtime = agent.agent.runtime
+  const acceptedInput = try host("stored quoted message", () => runtime.getMemoryById(replyOf(found).userMessageId as UUID))
+  const ignoredInput = try host("stored unquoted message", () => runtime.getMemoryById(replyOf(ignored).userMessageId as UUID))
+  try Effect.try(() => {
+    assert.deepStrictEqual([found.status, ignored.status], [200, 200])
+    assert.include(acceptedPrompt, JSON.stringify(selected))
+    assert.notInclude(ignoredPrompt, "The person selected this earlier message")
+    assert.notInclude(ignoredPrompt, privateText)
+    assert.deepStrictEqual([acceptedInput?.content.inReplyTo, ignoredInput?.content.inReplyTo], [ownReply.userMessageId, undefined])
+    assert.deepStrictEqual([replayed, afterReplay], [found, beforeReplay])
+  })
+})
+
 it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix and live wait, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const state = try scratch("turns")
