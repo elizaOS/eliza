@@ -1,7 +1,9 @@
 // spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "A WAV holds every sample in order as mono PCM16 behind a 44-byte header"
 import type { CaptureAudioPort, CaptureContext, CaptureNode, ClipAudioPort, DecodedClip } from "../../src/voice/capture.vibe"
 import { browserCaptureAudio } from "../../src/voice/capture-browser.ts"
-import type { PlayerEvent, SpeechPlayer } from "../../src/voice/playback.vibe"
+import type {
+  PlayerEvent, ProgressiveSpeechSource, SpeechAudioFrame, SpeechEndFrame, SpeechMedia, SpeechMediaSource, SpeechPlayer, SpeechSourceBuffer,
+} from "../../src/voice/playback.vibe"
 
 const renderQuantum = 128
 
@@ -103,25 +105,28 @@ export function fakeCaptureAudio(options: { readonly workletFails?: boolean } = 
   }
 }
 
-export class FakePlayer implements SpeechPlayer {
+class FakeEvents<Name extends string> {
+  readonly listeners = new Map<Name, Set<() => void>>()
+
+  addEventListener(type: Name, listener: () => void): void {
+    this.listeners.set(type, (this.listeners.get(type) ?? new Set()).add(listener))
+  }
+
+  removeEventListener(type: Name, listener: () => void): void {
+    this.listeners.get(type)?.delete(listener)
+  }
+
+  emit(type: Name): void {
+    for (const listener of [...(this.listeners.get(type) ?? [])]) listener()
+  }
+}
+
+export class FakePlayer extends FakeEvents<PlayerEvent> implements SpeechPlayer {
   src = ""
   playbackRate = 1
   defaultPlaybackRate = 1
   preservesPitch = false
   paused = 0
-  readonly listeners = new Map<PlayerEvent, Set<() => void>>()
-
-  addEventListener(type: PlayerEvent, listener: () => void): void {
-    this.listeners.set(type, (this.listeners.get(type) ?? new Set()).add(listener))
-  }
-
-  removeEventListener(type: PlayerEvent, listener: () => void): void {
-    this.listeners.get(type)?.delete(listener)
-  }
-
-  emit(type: PlayerEvent): void {
-    for (const listener of [...(this.listeners.get(type) ?? [])]) listener()
-  }
 
   async play(): Promise<void> {}
 
@@ -153,4 +158,82 @@ export function fakeClipAudio(duration: number, decoded: () => void = () => unde
 
 export function tone(value: number, samples: number): Float32Array {
   return new Float32Array(samples).fill(value)
+}
+
+class FakeSourceBuffer extends FakeEvents<"updateend" | "error"> implements SpeechSourceBuffer {
+  readonly appended: number[] = []
+
+  appendBuffer(data: ArrayBuffer): void {
+    this.appended.push(data.byteLength)
+    queueMicrotask(() => this.emit("updateend"))
+  }
+}
+
+class FakeMediaSource extends FakeEvents<"sourceopen" | "error"> implements SpeechMediaSource {
+  readonly buffers: FakeSourceBuffer[] = []
+  ended = false
+
+  override addEventListener(type: "sourceopen" | "error", listener: () => void): void {
+    super.addEventListener(type, listener)
+    if (type === "sourceopen") queueMicrotask(() => this.emit("sourceopen"))
+  }
+
+  addSourceBuffer(): SpeechSourceBuffer {
+    const buffer = new FakeSourceBuffer()
+    this.buffers.push(buffer)
+    return buffer
+  }
+
+  endOfStream(): void {
+    this.ended = true
+  }
+}
+
+export function fakeSpeechMedia(): SpeechMedia & { readonly sources: FakeMediaSource[]; readonly created: string[]; readonly revoked: string[] } {
+  const sources: FakeMediaSource[] = []
+  const created: string[] = []
+  const revoked: string[] = []
+  const url = () => {
+    created.push(`blob:speech-${created.length + 1}`)
+    return created.at(-1) ?? ""
+  }
+  return {
+    sources, created, revoked,
+    stream: () => {
+      const source = new FakeMediaSource()
+      sources.push(source)
+      return { source, url: url() }
+    },
+    clipUrl: url,
+    revokeUrl: (revokedUrl) => {
+      revoked.push(revokedUrl)
+    },
+  }
+}
+
+export class FakeSpeechSource implements ProgressiveSpeechSource<SpeechAudioFrame> {
+  readonly renderedSpeed = null
+  cancelled = false
+  readonly #frames: SpeechAudioFrame[]
+  readonly #end = Promise.withResolvers<SpeechEndFrame>()
+
+  constructor(...frames: Uint8Array[]) {
+    this.#frames = frames.map((audio) => ({ type: "audio", audio }))
+  }
+
+  async open(): Promise<void> {}
+
+  pull(): Promise<SpeechAudioFrame | SpeechEndFrame> {
+    const frame = this.#frames.shift()
+    return frame === undefined ? this.#end.promise : Promise.resolve(frame)
+  }
+
+  finish(): void {
+    this.#end.resolve({ type: "done" })
+  }
+
+  async cancel(): Promise<void> {
+    this.cancelled = true
+    this.finish()
+  }
 }

@@ -5,8 +5,8 @@ import { host } from "./support/kernel.vibe"
 module node {
   import { Effect } from "effect"
   import { startCumulativeMicrophoneCapture } from "../src/voice/capture.vibe"
-  import { SegmentedSpeechPlayback, type SegmentedSpeechState } from "../src/voice/index.vibe"
-  import { FakeMicrophone, FakePlayer, fakeCaptureAudio, tone } from "./support/audio-fake.ts"
+  import { attachProgressiveSpeech, SegmentedSpeechPlayback, type SegmentedSpeechState } from "../src/voice/index.vibe"
+  import { FakeMicrophone, FakePlayer, FakeSpeechSource, fakeCaptureAudio, fakeSpeechMedia, tone } from "./support/audio-fake.ts"
 
   const turn = () => new Promise<void>((resolve) => setImmediate(resolve))
 
@@ -24,8 +24,8 @@ module node {
       onPreview: async (chunks) => { previews.push(chunks.reduce((samples, chunk) => samples + chunk.length, 0)) },
       meter: (_level, endSample) => { metered.push(endSample) },
     }))
-    microphone.say(tone(0.5, 4096))
-    await until(() => metered.at(-1) === 4096)
+    microphone.say(tone(0.5, 20_000))
+    await until(() => metered.at(-1) === 20_000)
     const offered = await capture.snapshot()
     const aliveWhileOpen = microphone.processorAlive()
     capture.close()
@@ -35,24 +35,28 @@ module node {
 
     const players: FakePlayer[] = []
     const attached: string[] = []
+    const sources: FakeSpeechSource[] = []
+    const media = fakeSpeechMedia()
     const phases: Array<SegmentedSpeechState["phase"]> = []
-    let disposed = 0
     const playback = new SegmentedSpeechPlayback({
       player: () => {
         const player = new FakePlayer()
         players.push(player)
         return player
       },
-      attach: (_player, text, { onReady }) => {
+      attach: (player, text, { onReady }) => {
         attached.push(text)
-        void turn().then(() => onReady(null))
-        return { loaded: turn().then(turn), dispose: () => { disposed += 1 } }
+        const source = new FakeSpeechSource(new Uint8Array([1, 2, 3]))
+        sources.push(source)
+        return attachProgressiveSpeech(player, source, { onReady, media })
       },
       changed: (state) => { phases.push(state.phase) },
     })
     let played = 0
     const reply = playback.speakSegments(["One.", "Two.", "Three."], () => { played += 1 })
     await until(() => phases.includes("playing"))
+    const readyAtFirstFrame = phases.includes("playing")
+    sources[0]?.finish()
     players[0]?.emit("ended")
     await until(() => phases.filter((phase) => phase === "playing").length === 2)
     playback.stop()
@@ -61,15 +65,23 @@ module node {
     await turn()
     return {
       capture: { offered, previews, aliveWhileOpen, alive: microphone.processorAlive(), metered: metered.at(-1), contextClosed: audio.opened.map(({ closed }) => closed) },
-      playback: { attached, played, paused: players.map(({ paused }) => paused), disposed, last: phases.at(-1), pending: playback.pending },
+      playback: {
+        attached, readyAtFirstFrame, played, paused: players.map(({ paused }) => paused), last: phases.at(-1), pending: playback.pending,
+        appended: media.sources.map(({ buffers }) => buffers.map(({ appended }) => appended)), ended: media.sources.map(({ ended }) => ended),
+        cancelled: sources.map(({ cancelled }) => cancelled), created: media.created, revoked: media.revoked,
+      },
     }
   }
 }
 import { recordThenSpeak } from node
 
-it.live('Record and play speech in the screen without losing a segment (spec/agent/voice/clientAudio.md, "Story: Record and play speech in the screen without losing a segment"; spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "Segments play in order once each, and Stop silences the reply at once")', () => effect {
+it.live('Record and play speech in the screen without losing a segment (spec/agent/voice/clientAudio.md, "Story: Record and play speech in the screen without losing a segment"; spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "Segments play in order once each, and Stop silences the reply at once"; spec/agent/voice/clientAudio.md, "The progressive attachment is ready at its first appended frame, or at the end without streaming")', () => effect {
   assert.deepStrictEqual(try host("record a turn, then speak a reply and stop it", () => recordThenSpeak()), {
-    capture: { offered: true, previews: [4096], aliveWhileOpen: true, alive: false, metered: 4096, contextClosed: [true] },
-    playback: { attached: ["One.", "Two."], played: 1, paused: [1, 1], disposed: 2, last: "idle", pending: false },
+    capture: { offered: true, previews: [16_000], aliveWhileOpen: true, alive: false, metered: 20_000, contextClosed: [true] },
+    playback: {
+      attached: ["One.", "Two."], readyAtFirstFrame: true, played: 1, paused: [2, 2], last: "idle", pending: false,
+      appended: [[[3]], [[3]]], ended: [true, false], cancelled: [false, true],
+      created: ["blob:speech-1", "blob:speech-2"], revoked: ["blob:speech-1", "blob:speech-2"],
+    },
   })
 })
