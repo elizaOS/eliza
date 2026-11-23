@@ -1986,6 +1986,30 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const tooMany = try gmail("/search?query=plan&maxResults=101")
     const read = try gmail("/read?messageId=msg-direct")
     const fetched = try gmail("/read?messageId=msg-trashed")
+    const managedCard = Schema.Struct({ externalId: Schema.String, from: Schema.String, subject: Schema.String, receivedAt: Schema.String, isUnread: Schema.Boolean })
+    const managedPage = Schema.Struct({
+      accountId: Schema.String, messages: Schema.Array(managedCard), nextPageToken: Schema.NullOr(Schema.String),
+      folder: Schema.optionalKey(Schema.String), q: Schema.optionalKey(Schema.String),
+    })
+    const page1 = try gmail("/triage?folder=inbox&maxResults=1")
+    const firstPage = try Schema.decodeUnknownEffect(managedPage)(page1.body)
+    const page2 = try gmail("/triage?folder=inbox&maxResults=1&pageToken=" + encodeURIComponent(firstPage.nextPageToken ?? ""))
+    const nextPage = try Schema.decodeUnknownEffect(managedPage)(page2.body)
+    const trash = try gmail("/triage?folder=trash&q=%20plan%20&counts=1")
+    const trashPage = try Schema.decodeUnknownEffect(managedPage)(trash.body)
+    const managedSearch = try Schema.decodeUnknownEffect(managedPage)(search.body)
+    const managedPreview = try Schema.decodeUnknownEffect(Schema.Struct({
+      accountId: Schema.String, historyId: Schema.NullOr(Schema.String), bodyTextAvailable: Schema.Boolean, message: managedCard,
+    }))(read.body)
+    const unknownFolder = try gmail("/triage?folder=archive")
+    const managedResponses = {
+      pages: [page1.status, page2.status, firstPage.accountId, nextPage.accountId, firstPage.folder, firstPage.q,
+        firstPage.nextPageToken !== null, nextPage.nextPageToken, [...firstPage.messages, ...nextPage.messages].map(({ externalId }) => externalId).sort()],
+      trash: [trash.status, trashPage.accountId, trashPage.folder, trashPage.q, trashPage.messages.map(({ externalId }) => externalId), trashPage.nextPageToken],
+      search: [managedSearch.accountId, managedSearch.q, managedSearch.messages.map(({ externalId }) => externalId)],
+      preview: [managedPreview.accountId, managedPreview.message.externalId, managedPreview.historyId, managedPreview.bodyTextAvailable],
+      invalid: errorOf(unknownFolder),
+    }
     const decoded = try promise(() => readMailThroughClient(cloud.url, token, "msg-direct"))
     const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => token }))
     const whole = try promise(() => client.gmailRead({ messageId: "msg-digest" }))
@@ -2112,6 +2136,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         triage: [triage.status, (triage.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, triageLimit, cards(triage)],
         search: [search.status, (search.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, (search.body as { readonly nextPageToken: string | null }).nextPageToken, cards(search)],
         tooMany: errorOf(tooMany),
+        managed: managedResponses,
         read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments, readBody.authenticationResults],
         fetched: [fetched.status, (fetched.body as { readonly authenticationResults: string | null }).authenticationResults],
         client: decoded,
@@ -2137,6 +2162,13 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         ]],
         search: [200, "1004", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
         tooMany: [400, "invalid_request"],
+        managed: {
+          pages: [200, 200, owner.userId, owner.userId, "inbox", "", true, null, ["msg-digest", "msg-direct"]],
+          trash: [200, owner.userId, "trash", "plan", ["msg-trashed"], null],
+          search: [owner.userId, "plan", ["msg-direct"]],
+          preview: [owner.userId, "msg-direct", "1001", true],
+          invalid: [400, "invalid_request"],
+        },
         read: [200, "msg-direct", ["conn-mail@example.com"], "Please review the plan.", null, "none", [{ partId: "1", name: "plan.pdf", mimeType: "application/pdf", size: pdf.length, supported: true }],
           "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org"],
         fetched: [200, null],
@@ -2526,7 +2558,7 @@ effect function calendarSetup(email: string) {
     seedCalendar(google, { id: "team@example.com", summary: "Team", accessRole: "reader", timeZone: "UTC" })
     seedEvent(google, "own@example.com", "standup", { summary: "Standup", start: { dateTime: "2026-12-01T09:00:00Z" }, end: { dateTime: "2026-12-01T09:15:00Z" } })
   })
-  return { google, cloud, headers: { authorization: `Bearer ${signed.accessToken}` } }
+  return { google, cloud, accountId: signed.user.id, headers: { authorization: `Bearer ${signed.accessToken}` } }
 }
 
 function calendarRefusal(body: unknown): ReadonlyArray<unknown> {
@@ -2538,7 +2570,7 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
   const calendarBase = "/api/v1/eliza/google/calendar"
 
   it.live("Read my calendars, a window of events and one event, refusing a window that is empty or in no time zone (spec/cloud/services/google/calendar.md, \"Story: Read my calendar for a window\")", () => scoped(effect {
-    const { cloud, headers } = try calendarSetup("calendar-reads@example.com")
+    const { cloud, accountId, headers } = try calendarSetup("calendar-reads@example.com")
     const window = "timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z"
     const calendars = try cloud.call(`${calendarBase}/calendars`, { headers })
     const feed = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Europe/Berlin`, { headers })
@@ -2548,11 +2580,14 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
     const one = try cloud.call(`${calendarBase}/events/standup`, { headers })
     const missing = try cloud.call(`${calendarBase}/events/nothere`, { headers })
     const anonymous = try cloud.call(`${calendarBase}/calendars`)
-    const events = (feed.body as { readonly events: ReadonlyArray<{ readonly externalId: string; readonly title: string; readonly etag: string | null }> }).events
+    const feedBody = try Schema.decodeUnknownEffect(Schema.Struct({
+      accountId: Schema.String, calendarId: Schema.String, syncedAt: Schema.String, nextPageToken: Schema.Null,
+      events: Schema.Array(Schema.Struct({ externalId: Schema.String, title: Schema.String, etag: Schema.NullOr(Schema.String) })),
+    }))(feed.body)
     try check(() => assert.deepStrictEqual(
       {
         calendars: [calendars.status, calendars.body],
-        feed: [feed.status, (feed.body as { readonly calendarId: string }).calendarId, events.map((event) => [event.externalId, event.title, event.etag !== null]), typeof (feed.body as { readonly syncedAt: unknown }).syncedAt],
+        feed: [feed.status, feedBody.accountId, feedBody.calendarId, feedBody.nextPageToken, feedBody.events.map((event) => [event.externalId, event.title, event.etag !== null]), typeof feedBody.syncedAt],
         refused: [reversed.status, empty.status, noZone.status, calendarRefusal(reversed.body)],
         one: [one.status, (one.body as { readonly event: { readonly externalId: string } }).event.externalId],
         missing: [missing.status, calendarRefusal(missing.body)],
@@ -2563,7 +2598,7 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
           { calendarId: "own@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Own", accessRole: "owner", read: true, write: true },
           { calendarId: "team@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Team", accessRole: "reader", read: true, write: false }
         ]],
-        feed: [200, "primary", [["standup", "Standup", true]], "string"],
+        feed: [200, accountId, "primary", null, [["standup", "Standup", true]], "string"],
         refused: [400, 400, 400, ["invalid_request", undefined, undefined]],
         one: [200, "standup"],
         missing: [404, ["not_found", undefined, undefined]],

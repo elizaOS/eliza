@@ -398,7 +398,7 @@ effect function feedRoute(context: RouteContext) {
       events.push(card)
     }
   })
-  const answer = { calendarId: query.calendarId, events, syncedAt: new Date(context.now).toISOString() }
+  const answer = { accountId: owner.userId, calendarId: query.calendarId, events, syncedAt: new Date(context.now).toISOString(), nextPageToken: null }
   if (encoder.encode(JSON.stringify(answer)).length > feedLimitBytes) throw refused("ContentTooLarge")
   return json(answer)
 }
