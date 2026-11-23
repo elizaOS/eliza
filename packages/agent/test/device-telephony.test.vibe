@@ -73,6 +73,17 @@ module node {
       type: "sms_send", recipients: ["6505715862"], body: "Are we on for dinner tonight?", subscriptionId: 1,
     })
     const unclear = await ask("Draft a text to Sam and Ana saying hi", { type: "sms_compose", query: "Sam", body: "hi" })
+    const composedNumber = await ask("I'm running late, so please let 415-555-0100 know by text", { type: "sms_compose", query: "415-555-0100", body: "I'm running late" })
+    const contactUpdate = await ask("change Bob's number to 415-555-0177", { type: "contact_update", query: "Bob", set: { phoneNumbers: ["4155550177"] } })
+    const contactDelete = await ask("delete Bob from my contacts", { type: "contact_delete", query: "Mom" })
+    const contactNoNumber = await ask("save Ana as a contact", {
+      type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["6505715862"], emailAddresses: [] },
+    })
+    const simSendToName = await ask("text Sam saying I'm late", { type: "sms_send", recipients: ["6505715862"], body: "I'm late", subscriptionId: 1 })
+    const threadReply = await ask("Draft a reply saying I'll be there soon", { type: "sms_reply_selected", body: "I'll be there soon" })
+    const draftToNobody = await ask("Draft a text to someone saying hi", { type: "sms_compose", query: "someone", body: "hi" })
+    const draftToTwoNumbers = await ask("Draft a text to 415-555 0100 0199 saying hi", { type: "sms_compose", query: "4155550100", body: "hi" })
+    const callEveryone = await ask("call everyone", { type: "phone_call", target: { kind: "contact", query: "everyone" } })
     const partial = await ask("Who sent my latest text? Only the first three digits", { type: "sms_latest_sender" })
 
     const asked = await ask("Who sent my latest text?", { type: "sms_latest_sender" })
@@ -80,9 +91,16 @@ module node {
     const delivered = senderRead === undefined ? undefined : await deliverSender(client, senderRead)
     const toThem = await ask("Draft a text to them saying I'm on my way", { type: "sms_compose", query: "6505715862", body: "I'm on my way" })
 
+    runtime.setSetting("ELIZA_SECRET_SWAP_ENABLED", true)
+    const seen = cloud.calls.length
+    const swapped = await ask("can you call 415-555-0100 when you get a sec", call("6505715862"))
+    const toldReference = cloud.calls.slice(seen).some(({ body }) =>
+      /Copy this reference verbatim as the number[^"]*__ELIZA_CONTACT_\w+__/.test(JSON.stringify(body)))
+
     return {
       handedThrough, ownerDialForm, invented, noNumber, callBack, unnamed, bodyNumber, keypad, emergency, writtenEmergency,
-      contactNumber, draft, unclear, partial, asked, delivered, toThem,
+      contactNumber, draft, unclear, composedNumber, contactUpdate, contactDelete, contactNoNumber, simSendToName, threadReply,
+      draftToNobody, draftToTwoNumbers, callEveryone, partial, asked, delivered, toThem, copyReference: { reply: swapped.reply, toldReference },
     }
   }
 }
@@ -91,8 +109,10 @@ import { proposeTool, telephonyFromChat } from node
 
 const review = "Review this request on your phone before it can run."
 const numberNotWritten = "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use."
+const numberNotSaved = "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
+const askRecipient = "Which person should receive this draft? Give one recipient."
 
-it.live(`A call, dial, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, and the sender is read only as asked (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch")`, effect () => {
+it.live(`A call, dial, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, and the sender is read only as asked (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers the owner wrote"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -123,15 +143,31 @@ it.live(`A call, dial, text or contact change goes only to the recipient the own
       operation: undefined,
     },
     writtenEmergency: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
-    contactNumber: {
-      reply: "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use.",
+    contactNumber: { reply: numberNotSaved, operation: undefined },
+    draft: { reply: review, operation: { type: "sms_compose", query: "Sam", body: "Are we on for dinner tonight?" } },
+    unclear: { reply: askRecipient, operation: undefined },
+    composedNumber: { reply: review, operation: { type: "sms_compose", query: "4155550100", body: "I'm running late" } },
+    contactUpdate: { reply: review, operation: { type: "contact_update", query: "Bob", set: { phoneNumbers: ["4155550177"] } } },
+    contactDelete: {
+      reply: "I didn't change your contacts, because that name isn't one you wrote in your message. Nothing in your contacts was changed. Tell me the contact's name as you say it.",
       operation: undefined,
     },
-    draft: { reply: review, operation: { type: "sms_compose", query: "Sam", body: "Are we on for dinner tonight?" } },
-    unclear: { reply: "Which person should receive this draft? Give one recipient.", operation: undefined },
+    contactNoNumber: { reply: numberNotSaved, operation: undefined },
+    simSendToName: {
+      reply: "I can't set that up on this phone with that recipient. Nothing was called or sent. Tell me the number to use.",
+      operation: undefined,
+    },
+    threadReply: { reply: review, operation: { type: "sms_reply_selected", body: "I'll be there soon" } },
+    draftToNobody: { reply: askRecipient, operation: undefined },
+    draftToTwoNumbers: { reply: askRecipient, operation: undefined },
+    callEveryone: {
+      reply: "I didn't set that up, because that name isn't one you wrote in your message. Nothing was called or sent. Tell me who, by their name as saved in Contacts or their number.",
+      operation: undefined,
+    },
     partial: { reply: "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable.", operation: undefined },
     asked: { reply: review, operation: { type: "sms_latest_sender", includeAddress: true } },
     delivered: "Your latest incoming SMS came from +14155550124.",
     toThem: { reply: review, operation: { type: "sms_compose", query: "+14155550124", body: "I'm on my way" } },
+    copyReference: { reply: numberNotWritten, toldReference: true },
   }))
 }, 180_000)
