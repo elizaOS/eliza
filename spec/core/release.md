@@ -4,7 +4,9 @@ The target is the existing `@elizaos/core` npm package. The export map,
 conditions, exact public declarations, data assets and observed consumer
 imports are pinned in `baseline/core-public-surface.json` and
 `baseline/core-consumers.json`. Release evidence belongs to one immutable
-candidate containing both specification and implementation inputs.
+candidate containing both specification and implementation inputs. The Node root also exports
+`privacyPlugin` and its `PrivacyMode` type for the agent launch. The
+packed consumer check imports both alongside the historical surface.
 
 ## Story: Install the replacement through existing npm entry points
 

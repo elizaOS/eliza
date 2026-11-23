@@ -110,10 +110,35 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: simulations-*
-          path: .spec-cache
-          merge-multiple: true
-      - if: steps.simulations.outcome == 'failure'
-        run: echo "::warning::The simulate shards' results did not download; this check simulates every module itself."
+          path: ${{ runner.temp }}/simulation-receipts
+      - id: import-simulations
+        if: steps.simulations.outcome == 'success'
+        continue-on-error: true
+        run: |
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          import path from "node:path";
+          const source = path.join(process.env.RUNNER_TEMP, "simulation-receipts");
+          const cache = ".spec-cache";
+          const candidates = fs.globSync("simulations-*/*", { cwd: source })
+            .filter((file) => /^simulations-\d+\/(?:action|simulate)-[a-f0-9]{24}\.json\.(?:zst|gz)$/.test(file) && fs.lstatSync(path.join(source, file)).isFile());
+          fs.mkdirSync(cache, { recursive: true });
+          let imported = 0;
+          for (const [key, files] of Map.groupBy(candidates, (file) => path.basename(file, path.extname(file)))) {
+            if (["zst", "gz"].some((codec) => fs.lstatSync(path.join(cache, `${key}.${codec}`), { throwIfNoEntry: false }))) continue;
+            const name = path.basename(files[0]);
+            const bytes = fs.readFileSync(path.join(source, files[0]));
+            if (files.slice(1).some((file) => path.basename(file) !== name || !bytes.equals(fs.readFileSync(path.join(source, file))))) {
+              console.log(`::warning::Shards disagree on ${key}; the ordinary check will recompute it.`);
+              continue;
+            }
+            fs.writeFileSync(path.join(cache, name), bytes, { flag: "wx" });
+            imported++;
+          }
+          console.log(`Imported ${imported} simulation and typecheck receipts.`);
+          JS
+      - if: steps.simulations.outcome == 'failure' || steps.import-simulations.outcome == 'failure'
+        run: echo "::warning::The shard receipts were not fully imported; the ordinary check will compute missing results."
       - id: verify-tasks
         run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
       - id: publish-tool-selftest
@@ -226,11 +251,25 @@ jobs:
           key: ${{ steps.setup.outputs.spec-cache-key }}
       - id: prune-turbo-cache
         if: always() && steps.setup.outputs.turbo-cache-key != '' && steps.closed-pr-cache.outputs.skip != 'true'
+        shell: bash
+        env:
+          FIXTURE_INVENTORY: ${{ steps.setup.outputs.fixture-turbo-inventory }}
+          FULL_REPLAY: ${{ steps.task-timings.outputs.skip-spec-cache == 'true' }}
         run: |
           [[ -d .turbo/cache ]] || exit 0
+          if [[ $FULL_REPLAY == true && -s $FIXTURE_INVENTORY ]] &&
+            find .turbo/cache -regextype posix-extended \
+              \( -type f -regex '\.turbo/cache/[0-9a-f]{16}-manifest\.json' \) -prune -o \
+              \( -type d -printf '%p %y:%m\0' -o -printf '%p %y:%m:%D:%i:%s:%C@\0' \) |
+              LC_ALL=C sort -z | cmp -s "$FIXTURE_INVENTORY" - &&
+            expired=$(find .turbo/cache -type f -mtime +7 -print -quit) && [[ -z $expired ]]; then
+            echo 'Reusing the unchanged pull request Turbo archive after a full fixture replay.'
+            exit 0
+          fi
           shopt -s nullglob
           summaries=(.turbo/runs/*.json)
           if (( ${#summaries[@]} )); then
+            set +o pipefail
             jq -r '
               .tasks[] | select(.cache.status == "HIT")
               | .hash | select(type == "string" and test("^[a-f0-9]{16}$"))
@@ -291,6 +330,7 @@ jobs:
         with:
           job: simulate-${{ matrix.shard }}
       - name: Simulate the specs whose files hash to this shard
+        id: precompute
         env:
           SHARD: ${{ matrix.shard }}
           SHARDS: 4
@@ -298,26 +338,29 @@ jobs:
           node --input-type=module <<'JS'
           import { createHash } from "node:crypto";
           import fs from "node:fs";
-          import { precomputeSimulations, readSpecs } from "./vibestack/formal.ts";
+          import path from "node:path";
+          import { prepareSimulationReceipts, readSpecs } from "./vibestack/formal.ts";
           const simulations = () => fs.existsSync(".spec-cache") ? fs.readdirSync(".spec-cache").filter((name) => name.startsWith("simulate-")) : [];
           const restored = new Set(simulations());
           const specs = readSpecs(process.cwd());
           const inShard = ({ file }) => parseInt(createHash("sha256").update(file).digest("hex").slice(0, 8), 16) % Number(process.env.SHARDS) === Number(process.env.SHARD) - 1;
           const names = specs.filter(inShard).map(({ name }) => name);
-          const results = await precomputeSimulations(process.cwd(), specs, names);
-          fs.mkdirSync(".simulations", { recursive: true });
-          const written = simulations().filter((name) => !restored.has(name));
-          for (const name of written) fs.copyFileSync(`.spec-cache/${name}`, `.simulations/${name}`);
+          const { results, seedDirectory } = await prepareSimulationReceipts(process.cwd(), specs, names, process.env.RUNNER_TEMP);
+          const transfer = seedDirectory ?? fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, "simulation-delta-"));
+          if (!seedDirectory) for (const name of simulations().filter((file) => !restored.has(file))) {
+            fs.copyFileSync(path.join(".spec-cache", name), path.join(transfer, name));
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `directory=${transfer}\n`);
           const failed = results.filter(({ ok }) => !ok);
           for (const { stage, summary, detail, where } of failed) console.log(`✗ ${stage} ${where ?? ""}: ${summary}\n${detail}`);
-          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${written.length} new entries, ${failed.length} failed`);
+          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${fs.readdirSync(transfer).length} ${seedDirectory ? "complete seed" : "new aggregate"} entries, ${failed.length} failed`);
           process.exitCode = failed.length ? 1 : 0;
           JS
-      - if: always()
+      - if: always() && steps.precompute.outputs.directory != ''
         uses: actions/upload-artifact@v7
         with:
           name: simulations-${{ matrix.shard }}
-          path: .simulations
+          path: ${{ steps.precompute.outputs.directory }}
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 1

@@ -62,8 +62,9 @@ pure def sometimesBoundWithoutBackend(s: ModelBinding): bool = s.phase == Bound 
 ### No text handler is ever served by a model on the device
 
 `TEXT_SMALL` and `TEXT_LARGE` come from the backend, `IMAGE_DESCRIPTION`
-only from the cloud, and `TEXT_EMBEDDING` only from `localInference` when
-the launch asks for local embeddings.
+from the backend too (the cloud's image model, or the own key's large
+model), and `TEXT_EMBEDDING` only from `localInference` when the launch asks
+for local embeddings.
 
 ```quint
 type ModelHandler = TextSmall | TextLarge | ImageDescription | TextEmbedding
@@ -72,7 +73,7 @@ pure def isCloud(backend: Backend): bool = match backend { | CloudBackend(_) => 
 pure def handlerSource(backend: Backend, embeddings: Embeddings, handler: ModelHandler): HandlerSource =
   if (handler == TextEmbedding) (if (embeddings == NoEmbeddings) NotRegistered else FromLocalInference)
   else if (isCloud(backend)) FromCloud
-  else if (isOwnKey(backend) and handler != ImageDescription) FromOwnKey
+  else if (isOwnKey(backend)) FromOwnKey
   else NotRegistered
 pure val backendValues = Set(NoBackend,
   CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" }),
@@ -80,8 +81,8 @@ pure val backendValues = Set(NoBackend,
 pure val embeddingsValues = Set(NoEmbeddings, LocalEmbeddings({ dimensions: 384 }))
 pure def lawNoTextHandlerFromALocalModel(backend: Backend, embeddings: Embeddings, handler: ModelHandler): bool =
   handler != TextEmbedding implies handlerSource(backend, embeddings, handler) != FromLocalInference
-pure def lawImageDescriptionOnlyFromTheCloud(backend: Backend, embeddings: Embeddings): bool =
-  handlerSource(backend, embeddings, ImageDescription) != NotRegistered iff isCloud(backend)
+pure def lawImageDescriptionOnlyFromTheBackend(backend: Backend, embeddings: Embeddings): bool =
+  handlerSource(backend, embeddings, ImageDescription) != NotRegistered iff (isCloud(backend) or isOwnKey(backend))
 ```
 
 ### A model call starts only for a handler the backend serves, with the credential the binding holds
@@ -117,7 +118,10 @@ handler classifies its HTTP failures into the same variants. Core retries
 `RefusedConnection` and `RetryEnvelope` on the second registration. A rate
 limit is core's exhausted budget, which removes the provider's remaining
 registration; a refused request is a bad request; every other refusal ends
-the call.
+the call. Both attempts of one call carry the same `Idempotency-Key`, fresh
+for each call, so a connection lost after the cloud dispatched the first
+attempt is answered `409 already_dispatched` instead of running and charging
+the generation again.
 
 ```quint
 import models as M from "../../core/models"
@@ -146,7 +150,9 @@ the token use. Any other call gets the text alone. Tool results follow the
 call that asked for them; a result no call asked for is sent as the person's
 text. An answer with neither text nor a tool call is a provider issue. A text
 request sends an output cap only when the caller or its admitted lease sets
-one. Otherwise the backend owns the output limit.
+one. Otherwise the backend owns the output limit. Every text request names
+the agent as its `prompt_cache_key`, one key for all of the agent's turns,
+so the provider serves their shared prefix from its prompt cache.
 
 ```quint
 type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }
@@ -166,6 +172,32 @@ pure def lawOnlyAToolOrSchemaCallGetsTheResult(ask: ChatAsk, answer: ChatAnswer)
   chatReturn(ask, answer) != AnswerProviderIssue implies (chatReturn(ask, answer) == AnswerResult iff wantsResult(ask))
 pure def lawToolCallsAreNeverDroppedForText(ask: ChatAsk, answer: ChatAnswer): bool =
   (answer.toolCalls > 0 and not(wantsResult(ask))) implies chatReturn(ask, answer) == AnswerText
+```
+
+### A call that asks for little or no reasoning sends the effort its model accepts, and any other call leaves the model's effort alone
+
+Planning rounds, turn evaluators and reply drafts ask for no reasoning; a
+model that reasons by default would otherwise spend the call's tokens and
+time thinking. A hint sets `reasoning_effort` only for a model known to take
+it: off is `none` for Qwen 3.8 27B, GLM 4.7 and Gemma 4 31B and `low` for
+GPT-OSS 120B, the least it accepts, and low is `low` for Qwen 3.8 27B and
+GPT-OSS 120B. The cloud names these models with a `cerebras/` prefix.
+
+```quint
+type ReasoningHint = NoReasoningHint | ReasonLittle | ReasonOff
+type ReasoningEffort = ModelDefaultEffort | EffortOf({ effort: str })
+pure val littleReasoningModels: Set[str] = Set("qwen-3.8-27b", "cerebras/qwen-3.8-27b", "gpt-oss-120b", "cerebras/gpt-oss-120b")
+pure val reasoningOffModels: Set[str] = Set("qwen-3.8-27b", "cerebras/qwen-3.8-27b", "zai-glm-4.7", "cerebras/zai-glm-4.7", "gemma-4-31b", "cerebras/gemma-4-31b")
+pure val leastLowModels: Set[str] = Set("gpt-oss-120b", "cerebras/gpt-oss-120b")
+pure def reasoningEffortFor(hint: ReasoningHint, model: str): ReasoningEffort = match hint {
+  | NoReasoningHint => ModelDefaultEffort
+  | ReasonLittle => if (littleReasoningModels.contains(model)) EffortOf({ effort: "low" }) else ModelDefaultEffort
+  | ReasonOff => if (reasoningOffModels.contains(model)) EffortOf({ effort: "none" }) else if (leastLowModels.contains(model)) EffortOf({ effort: "low" }) else ModelDefaultEffort
+}
+pure val hintValues = Set(NoReasoningHint, ReasonLittle, ReasonOff)
+pure val modelValues = Set("qwen-3.8-27b", "cerebras/qwen-3.8-27b", "cerebras/gpt-oss-120b", "gemma-4-31b", "gpt-4o", "")
+pure def lawOnlyAKnownModelIsSentAnEffort(hint: ReasoningHint, model: str): bool =
+  reasoningEffortFor(hint, model) != ModelDefaultEffort implies (hint != NoReasoningHint and littleReasoningModels.union(reasoningOffModels).union(leastLowModels).contains(model))
 ```
 
 ## Story: Keep the account state honest
