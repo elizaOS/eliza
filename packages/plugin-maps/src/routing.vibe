@@ -64,6 +64,10 @@ export function isMapsSelectionHandle(id: string | undefined): boolean {
   return id !== undefined && mapsSelectionHandlePattern.test(id)
 }
 
+export function isProviderPlaceId(id: string | undefined): boolean {
+  return id !== undefined && !isMapsSelectionHandle(id) && /^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/.test(id)
+}
+
 export interface PlaceChoice {
   readonly operation: ChoiceOperation
   readonly field: "originPlaceId" | "destinationPlaceId" | "placeId"

@@ -8,7 +8,7 @@ import { whereAnswer } from "../gen/maps__phonePosition.effect.vibe"
 import { mapsSelectionTarget } from "../gen/maps__routing.effect.vibe"
 import { messageLocation, nearbyPoint } from "./client/location.vibe"
 import type { MapsDeviceNavigation } from "./relay.vibe"
-import { answeredChoice, choiceActions, closeChoice, isMapsSelectionHandle, mapsSelectionHandlePattern, openChoice, registerMapsRouting, type ChoiceOperation, type PlaceChoice } from "./routing.vibe"
+import { answeredChoice, choiceActions, closeChoice, isMapsSelectionHandle, isProviderPlaceId, mapsSelectionHandlePattern, openChoice, registerMapsRouting, type ChoiceOperation, type PlaceChoice } from "./routing.vibe"
 import { agentSaves, type AgentSavedPlaceStore } from "./saves.vibe"
 import { agentPlace, mapsService, type MapsCloudLink, type MapsService, type PlaceResults } from "./service.vibe"
 
@@ -27,11 +27,11 @@ type Params = Readonly<Record<string, unknown>>
 type Refusal = MapsFailure | DeviceNavigationFailure
 
 type PlaceOperation = ChoiceOperation | "place"
-type PlaceArgument = { readonly name: "origin" | "destination" | "query"; readonly id: PlaceChoice["field"]; readonly required: boolean }
+type PlaceArgument = { readonly name: "origin" | "destination" | "query"; readonly id: PlaceChoice["field"]; readonly required: boolean; readonly fallback?: "query" }
 const placeArguments: Readonly<Record<PlaceOperation, readonly PlaceArgument[]>> = {
   place: [{ name: "query", id: "placeId", required: true }],
   route: [{ name: "origin", id: "originPlaceId", required: true }, { name: "destination", id: "destinationPlaceId", required: true }],
-  "navigation-start": [{ name: "destination", id: "placeId", required: true }],
+  "navigation-start": [{ name: "destination", id: "placeId", required: true, fallback: "query" }],
   select: [{ name: "query", id: "placeId", required: false }],
   save: [{ name: "query", id: "placeId", required: false }],
 }
@@ -50,20 +50,22 @@ function text(value: unknown): string | undefined {
 function preparePlaces(operation: PlaceOperation, params: Params): PreparedPlaces {
   const accepted = { ...params }
   const missing: string[] = []
-  for (const { name, id, required } of placeArguments[operation]) {
-    const named = text(params[name])
-    const hasName = named !== undefined && !isMapsSelectionHandle(named)
-    const target = mapsSelectionTarget(isMapsSelectionHandle(text(params[id])), hasName)
-    if (target === "AskPlannerForPlace") {
+  for (const { name, id, required, fallback } of placeArguments[operation]) {
+    const nameFields = fallback === undefined ? [name] : [name, fallback]
+    const handles = [id, ...nameFields].filter((field) => isMapsSelectionHandle(text(accepted[field])))
+    for (const field of handles) delete accepted[field]
+    const [handle] = handles
+    const hasName = nameFields.some((field) => text(accepted[field]) !== undefined)
+    const hasPairedId = handle !== undefined && operation !== "place" && isProviderPlaceId(text(accepted[id]))
+    if (handle !== undefined && mapsSelectionTarget(!hasPairedId, hasName) === "AskPlannerForPlace") {
       const action = operation === "place" ? "MAPS_PLACE" : choiceActions[operation]
       return { kind: "refused", result: {
         success: false, error: "MAPS_SELECTION_HANDLE", transcriptVisibility: "internal",
-        text: `The ${id} value identifies the phone's Maps screen selection. Call ${action} again with the place name or address from the conversation in ${name}. Ask the owner only if no place was named.`,
-        data: { coachingFailure: true, field: id },
+        text: `The ${handle} value identifies the phone's Maps screen selection. Call ${action} again with the place name or address from the conversation in ${name}. Ask the owner only if no place was named.`,
+        data: { coachingFailure: true, field: handle },
       } }
     }
-    if (target === "UsePlaceName") delete accepted[id]
-    if (required && params[name] === undefined) missing.push(`Missing required argument '${name}'`)
+    if (required && params[name] === undefined && !hasName && !hasPairedId) missing.push(`Missing required argument '${name}'`)
   }
   if (missing.length === 0) return { kind: "ready", params: accepted }
   return { kind: "refused", result: {
@@ -178,15 +180,16 @@ effect function resolvePlace(service: MapsService, query: string | undefined, pl
 
 effect function planRoute(service: MapsService, params: Params, ask: Ask): ActionResult!Refusal {
   const originQuery = text(params.origin)
+  const originPlaceId = text(params.originPlaceId)
   const destinationQuery = text(params.destination)
   const travelMode = travelModeOf(params.travelMode) ?? "drive"
-  if (originQuery === undefined || ownPosition.test(originQuery) || params.useCurrentLocation === true) {
+  if (params.useCurrentLocation === true || (originQuery === undefined ? !isProviderPlaceId(originPlaceId) : ownPosition.test(originQuery))) {
     return reply(false, "A route from where you are is planned on your phone from its own location. Ask me to start directions instead, and the phone will show the route for you to start.", { origin: "own-position" })
   }
   const offer = try service.offer()
   if (offer === undefined) return reply(false, "Cloud Maps is not available yet.", { code: "unconfigured" })
   if (!offer.modes.includes(travelMode)) return reply(false, `Cloud Maps does not plan ${travelMode} routes.`, { code: "unsupported" })
-  const origin = try resolvePlace(service, originQuery, text(params.originPlaceId), "starting place", ask, "originPlaceId")
+  const origin = try resolvePlace(service, originQuery, originPlaceId, "starting place", ask, "originPlaceId")
   if (origin.kind === "reply") return origin.result
   const destination = try resolvePlace(service, destinationQuery, text(params.destinationPlaceId), "destination", ask, "destinationPlaceId")
   if (destination.kind === "reply") return destination.result
