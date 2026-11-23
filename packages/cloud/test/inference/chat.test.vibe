@@ -6,7 +6,7 @@ import { parseProfile } from "../../src/profile/profile.vibe"
 import { setModelPrice } from "../../src/services/models.vibe"
 import { Store, storeLayer } from "../../src/store/store.vibe"
 import { testCloud, type TestCloud } from "../support/cloud.vibe"
-import { llmFake, replyText, upstreamModel, type LlmFake } from "../support/llm-fake.ts"
+import { llmFake, replyText, upstreamModel, usage as providerUsage, type LlmFake } from "../support/llm-fake.ts"
 import { signedCaller } from "../support/caller.vibe"
 import { testProfile } from "../support/profile.ts"
 
@@ -173,7 +173,9 @@ describe("WP5 Inference: chat completions", () => {
 
   it.live("Stream a reply in the shape clients read (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
     const { cloud, llm, key, chat } = try chatCloud()
-    const streamed = try chat({ ...request, stream: true, stream_options: { include_usage: true } })
+    const keyForRoom = "eliza-workflow-v1:" + "1".repeat(64)
+    const tools = [{ type: "function", function: { name: "CALCULATE" } }]
+    const streamed = try chat({ ...request, stream: true, stream_options: { include_usage: true }, prompt_cache_key: keyForRoom, tools, tool_choice: "auto" })
     try sync(() => llm.script({ kind: "streamWithoutUsage" }, { kind: "hang", after: 2 }))
     const withoutUsage = try chat({ ...request, stream: true })
     const hungUp = try hangUpAfterFirstBytes(cloud.url, key)
@@ -187,7 +189,9 @@ describe("WP5 Inference: chat completions", () => {
         ending: frames(text).at(-1),
         doneFrames: frames(text).filter((frame) => frame === "[DONE]").length,
         content: parsed.flatMap((chunk) => chunk.choices.map((choice) => choice.delta.content ?? "")).join(""),
-        usageChunks: parsed.filter((chunk) => chunk.usage !== undefined && chunk.usage !== null).length,
+        usageFrames: parsed.flatMap((chunk) => chunk.usage == null ? [] : [chunk.usage]),
+        lastUsage: parsed.at(-1)?.usage,
+        forwardedPlanner: [llm.bodies[0]?.prompt_cache_key, llm.bodies[0]?.tools, llm.bodies[0]?.tool_choice],
         models: [...new Set(parsed.map((chunk) => chunk.model))],
         withoutUsage: [withoutUsage.status, frames(String(withoutUsage.body)).at(-1)],
         upstream: llm.bodies.map((body) => [body.model, body.stream, body.stream_options]),
@@ -200,7 +204,9 @@ describe("WP5 Inference: chat completions", () => {
         ending: "[DONE]",
         doneFrames: 1,
         content: replyText,
-        usageChunks: 1,
+        usageFrames: [providerUsage],
+        lastUsage: providerUsage,
+        forwardedPlanner: [keyForRoom, tools, "auto"],
         models: ["test-chat"],
         withoutUsage: [200, "[DONE]"],
         upstream: [[upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }]],

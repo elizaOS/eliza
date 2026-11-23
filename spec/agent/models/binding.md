@@ -150,9 +150,9 @@ the token use. Any other call gets the text alone. Tool results follow the
 call that asked for them; a result no call asked for is sent as the person's
 text. An answer with neither text nor a tool call is a provider issue. A text
 request sends an output cap only when the caller or its admitted lease sets
-one. Otherwise the backend owns the output limit. Every text request names
-the agent as its `prompt_cache_key`, one key for all of the agent's turns,
-so the provider serves their shared prefix from its prompt cache.
+one. Otherwise the backend owns the output limit. A streamed model request
+asks for its usage. A returned usage report keeps the provider's cached input
+and reasoning counts when the provider supplies them.
 
 ```quint
 type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }
@@ -163,6 +163,8 @@ pure def chatReturn(ask: ChatAsk, answer: ChatAnswer): ChatReturn =
   if (answer.textBlank and answer.toolCalls == 0) AnswerProviderIssue
   else if (wantsResult(ask)) AnswerResult
   else AnswerText
+pure def usageAsked(streamed: bool): bool = streamed
+pure def lawOnlyAStreamRequestsUsage(streamed: bool): bool = usageAsked(streamed) iff streamed
 pure val askValues = Set({ offersTools: false, choosesTool: false, asksSchema: false }, { offersTools: true, choosesTool: false, asksSchema: false },
   { offersTools: true, choosesTool: true, asksSchema: false }, { offersTools: false, choosesTool: false, asksSchema: true })
 pure val answerValues = Set({ textBlank: true, toolCalls: 0 }, { textBlank: true, toolCalls: 1 }, { textBlank: false, toolCalls: 0 }, { textBlank: false, toolCalls: 2 })
@@ -172,6 +174,24 @@ pure def lawOnlyAToolOrSchemaCallGetsTheResult(ask: ChatAsk, answer: ChatAnswer)
   chatReturn(ask, answer) != AnswerProviderIssue implies (chatReturn(ask, answer) == AnswerResult iff wantsResult(ask))
 pure def lawToolCallsAreNeverDroppedForText(ask: ChatAsk, answer: ChatAnswer): bool =
   (answer.toolCalls > 0 and not(wantsResult(ask))) implies chatReturn(ask, answer) == AnswerText
+```
+
+### A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one
+
+Planner and evaluator requests each name the key for their own conversation
+and stage, `eliza-workflow-v1:` followed by the hex SHA-256 of the JSON array
+of the agent and room IDs with a colon and the stage name appended before
+hashing. The agent forwards a key in that scope for Qwen 3.8 27B on the
+managed Cerebras route or a direct Cerebras host. Each individual request
+has a separate idempotency key.
+
+```quint
+pure val cacheKeyModels = Set("qwen-3.8-27b", "cerebras/qwen-3.8-27b")
+pure def cacheKeySent(model: str, cerebrasRoute: bool, named: bool): bool =
+  cerebrasRoute and named and cacheKeyModels.contains(model)
+pure def lawNoKeyIsInvented(model: str, cerebrasRoute: bool): bool = not(cacheKeySent(model, cerebrasRoute, false))
+pure def lawOnlyCerebrasQwenGetsANamedKey(model: str, cerebrasRoute: bool): bool =
+  cacheKeySent(model, cerebrasRoute, true) iff (cerebrasRoute and cacheKeyModels.contains(model))
 ```
 
 ### A call that asks for little or no reasoning sends the effort its model accepts, and any other call leaves the model's effort alone

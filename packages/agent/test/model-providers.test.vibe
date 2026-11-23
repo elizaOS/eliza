@@ -2,9 +2,10 @@
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
-import { allowanceExhausted, answerJson, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
+import { conversationCache } from "../src/conversation/planning.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
 import { probeOwnKey, registerOwnKeyModels } from "../src/models/own-key-provider.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
@@ -36,7 +37,7 @@ function refusalOf(runtime: AgentRuntime, params: GenerateTextParams) {
   return host("refused model call", () => runtime.useModel(ModelType.TEXT_SMALL, params).then(() => undefined, (failure: unknown) => failure as { code?: unknown; status?: unknown; name?: unknown }))
 }
 
-it.effect('A cloud text call keeps its image parts, streams and names the agent as its prompt cache key, and an image description uses the image model (spec/agent/models/binding.md, "No text handler is ever served by a model on the device")', effect () => {
+it.effect('A cloud text call keeps its image parts, streams without inventing a prompt cache key, and an image description uses the image model (spec/agent/models/binding.md, "No text handler is ever served by a model on the device")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
   try Effect.sync(() => cloud.script(echoImages(), text("Title: A cat", "\nA cat on a mat.")))
@@ -54,7 +55,7 @@ it.effect('A cloud text call keeps its image parts, streams and names the agent 
     assert.ok(body !== null && typeof body === "object" && "model" in body)
     return [call.path, body.model, call.authorization, "max_tokens" in body ? body.max_tokens : undefined, "prompt_cache_key" in body ? body.prompt_cache_key : undefined]
   }), [
-    ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`, undefined, runtime.agentId],
+    ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`, undefined, undefined],
     ["/api/v1/chat/completions", "vision", `Bearer ${deviceKey}`, undefined, undefined],
   ])
   assert.strictEqual((try binding.read()).accountState, "usable")
@@ -193,6 +194,43 @@ it.effect('A tool call and its token use reach the caller as one result, each to
   ])
   assert.deepStrictEqual([sent.tools, sent.tool_choice, sent.reasoning_effort], [[{ type: "function", function: { name: "CALCULATE", description: "Arithmetic.", parameters } }], "auto", "none"])
   assert.strictEqual((try binding.read()).accountState, "usable")
+})
+
+it.effect('Streaming planner requests keep a scoped Cerebras key and expose cached usage (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const qwen = "cerebras/qwen-3.8-27b"
+  const { runtime } = try cloudAgent(cloud, qwen)
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: qwen }
+  const alternate = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)
+  registerOwnKeyModels(alternate.runtime, alternate.binding, own)
+  const planner = conversationCache(runtime, "room-one", "planner")
+  const evaluator = conversationCache(runtime, "room-one", "evaluator")
+  const otherRoom = conversationCache(runtime, "room-two", "planner")
+  try Effect.sync(() => cloud.script(cachedText("Four."), text("Again."), text("Evaluated."), text("Other."), text("Unnamed."), text("Raw."), text("Alternate.")))
+  const streamed = try host("streamed planning turn", () => runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
+    prompt: "What is 2+2?", stream: true, providerOptions: planner,
+    tools: [{ name: "CALCULATE", description: "Arithmetic." }],
+  }))
+  for (const providerOptions of [planner, evaluator, otherRoom, undefined]) {
+    try host("whole planning or evaluation turn", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "One more.", providerOptions }))
+  }
+  try host("raw agent ID is not a scoped cache key", () => runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: "One more.", providerOptions: { cerebras: { promptCacheKey: runtime.agentId } },
+  }))
+  try host("provider without Cerebras cache support", () => alternate.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "One more.", providerOptions: planner }))
+  const keys = cloud.calls.map((call) => (call.body as Record<string, unknown>).prompt_cache_key)
+  try Effect.try(() => {
+    assert.deepStrictEqual(streamed, {
+      text: "Four.", toolCalls: [], finishReason: "stop",
+      usage: { promptTokens: 12, completionTokens: 7, totalTokens: 19, cacheReadInputTokens: 4, reasoningTokens: 3 },
+    })
+    assert.deepStrictEqual(cloud.calls.map((call) => (call.body as Record<string, unknown>).stream_options), [
+      { include_usage: true }, undefined, undefined, undefined, undefined, undefined, undefined,
+    ])
+    assert.deepStrictEqual([keys[0] === keys[1], new Set(keys.slice(0, 4)).size, keys[4], keys[5], keys[6]], [true, 3, undefined, undefined, undefined])
+    assert.ok(keys.slice(0, 4).every((key) => typeof key === "string" && /^eliza-workflow-v1:[a-f0-9]{64}$/.test(key)))
+    assert.strictEqual(new Set(cloud.calls.map((call) => call.idempotencyKey)).size, 7)
+  })
 })
 
 it.effect('An own-key overload or timeout is a provider issue and is retried, and a validation refusal ends the call (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call")', effect () => {

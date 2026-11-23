@@ -1,8 +1,8 @@
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"
 import {
-  type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type GenerateTextParams, type GenerateTextResult,
+  type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type GenerateTextParams, type GenerateTextResult, type IAgentRuntime,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, executePlannedToolCall, ModelType, stableStringify,
+  buildPlannerToolsFromActions, executePlannedToolCall, ModelType, sha256Hex, stableStringify,
 } from "@elizaos/core"
 import {
   acknowledges, failedOpen, keepsPlanning, maxPlanSteps, nextMove, offered, openOutcomes,
@@ -168,6 +168,10 @@ function settleReply(steps: readonly PlannedStep[], prose: string | undefined): 
   return [composed, ...notices].filter((part) => part.trim()).join("\n\n")
 }
 
+export function conversationCache(runtime: IAgentRuntime, roomId: string, stage: "planner" | "evaluator"): GenerateTextParams["providerOptions"] {
+  return { cerebras: { promptCacheKey: `eliza-workflow-v1:${sha256Hex(`${JSON.stringify([runtime.agentId, roomId])}:${stage}`)}` } }
+}
+
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, state, roles, signal } = input
   const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions)
@@ -184,7 +188,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     streamed = ""
     const onStreamChunk = input.onStreamChunk
     const answered = answerOf(await runtime.useModel(ModelType.TEXT_LARGE, {
-      system: input.system, messages: conversation, reasoning: "off", signal,
+      system: input.system, messages: conversation, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
       ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
       ...(onStreamChunk === undefined ? {} : {
         stream: true,

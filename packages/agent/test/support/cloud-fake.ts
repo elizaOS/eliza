@@ -10,7 +10,7 @@ import tls from "node:tls";
 import { promisify } from "node:util";
 
 export type CloudReply =
-  | { readonly kind: "text"; readonly chunks: readonly string[] }
+  | { readonly kind: "text"; readonly chunks: readonly string[]; readonly reportsCache?: boolean }
   | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number }
   | { readonly kind: "images" }
   | { readonly kind: "drop" }
@@ -48,6 +48,7 @@ export interface CloudFake {
 }
 
 export const text = (...chunks: string[]): CloudReply => ({ kind: "text", chunks });
+export const cachedText = (...chunks: string[]): CloudReply => ({ kind: "text", chunks, reportsCache: true });
 
 export const refusal = (status: number, error: string, more: { retryable?: boolean; reason?: string; retryAt?: number | string; resetsAt?: number; retryAfterSeconds?: number } = {}): CloudReply =>
   ({
@@ -160,7 +161,10 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
     case "text": {
       const model = modelOf(body);
       const content = reply.chunks.join("");
-      const usage = { prompt_tokens: 1, completion_tokens: Math.max(1, Math.ceil(content.length / 4)), total_tokens: 1 + Math.max(1, Math.ceil(content.length / 4)) };
+      const completion = Math.max(1, Math.ceil(content.length / 4));
+      const usage = reply.reportsCache
+        ? { prompt_tokens: 12, completion_tokens: 7, total_tokens: 19, prompt_tokens_details: { cached_tokens: 4 }, completion_tokens_details: { reasoning_tokens: 3 } }
+        : { prompt_tokens: 1, completion_tokens: completion, total_tokens: 1 + completion };
       if (!streams(body)) {
         return json(response, 200, {
           id: "chatcmpl-fake", object: "chat.completion", model,
@@ -171,7 +175,11 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       for (const chunk of reply.chunks) {
         response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: chunk }, finish_reason: null }] })}\n\n`);
       }
-      response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage })}\n\n`);
+      response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`);
+      const streamOptions = typeof body === "object" && body !== null ? (body as { stream_options?: { include_usage?: boolean } }).stream_options : undefined;
+      if (streamOptions?.include_usage === true) {
+        response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [], usage })}\n\n`);
+      }
       response.end("data: [DONE]\n\n");
       return;
     }

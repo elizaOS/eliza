@@ -9,7 +9,9 @@ export interface OwnKeyModels {
 }
 
 export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, own: OwnKeyModels): void {
-  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large, ImageDescription: own.large }, maxTokensField: "max_completion_tokens" } as const
+  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large, ImageDescription: own.large }, maxTokensField: "max_completion_tokens",
+    cerebrasCache: /(?:^|\.)cerebras\.ai$/i.test(URL.parse(own.baseUrl)?.hostname ?? ""),
+  } as const
   registerTwice(runtime, "@elizaos/agent/own-key", {
     [ModelType.TEXT_SMALL]: generateText(binding, endpoint, "TextSmall"),
     [ModelType.TEXT_LARGE]: generateText(binding, endpoint, "TextLarge"),

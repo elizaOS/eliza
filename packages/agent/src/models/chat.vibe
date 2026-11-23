@@ -1,8 +1,8 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call that asks for little or no reasoning sends the effort its model accepts, and any other call leaves the model's effort alone"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A call that asks for little or no reasoning sends the effort its model accepts, and any other call leaves the model's effort alone"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { chatReturn, failureOf, outcomeOf, reasoningEffortFor, retryAtOf, type ChatAsk, type ChatReturn, type ModelHandler, type ReasoningHint } from "../../gen/agent__models__binding.effect.vibe"
+import { cacheKeySent, chatReturn, failureOf, outcomeOf, reasoningEffortFor, retryAtOf, usageAsked, type ChatAsk, type ChatReturn, type ModelHandler, type ReasoningHint } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
@@ -13,6 +13,7 @@ export interface Endpoint {
   readonly url: string
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
+  readonly cerebrasCache: boolean
 }
 
 interface Sink {
@@ -339,8 +340,8 @@ function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
     promptTokens: usage.prompt_tokens,
     completionTokens: usage.completion_tokens,
     totalTokens: usage.total_tokens,
-    ...(typeof cached === "number" && cached > 0 ? { cacheReadInputTokens: cached } : {}),
-    ...(typeof reasoning === "number" && reasoning > 0 ? { reasoningTokens: reasoning } : {}),
+    ...(typeof cached === "number" && Number.isSafeInteger(cached) && cached >= 0 ? { cacheReadInputTokens: cached } : {}),
+    ...(typeof reasoning === "number" && Number.isSafeInteger(reasoning) && reasoning >= 0 ? { reasoningTokens: reasoning } : {}),
   }
 }
 
@@ -430,7 +431,8 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
   const began = try Clock.currentTimeMillis
   const started = try binding.startCall(handler, began)
   if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil })
-  const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: sink.stream === true, ...fields }
+  const streamed = sink.stream === true
+  const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: streamed, ...(usageAsked(streamed) ? { stream_options: { include_usage: true } } : {}), ...fields }
   const answer = send(endpoint.url, binding.credential(), callKey, body, sink, ask) catch effect (failure) => {
     if (!(failure instanceof Refused)) throw failure
     const refused = try Clock.currentTimeMillis
@@ -444,10 +446,20 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
 
 const hints: Readonly<Record<NonNullable<GenerateTextParams["reasoning"]>, ReasoningHint>> = { low: "ReasonLittle", off: "ReasonOff" }
 
-function requestOf(endpoint: Endpoint, handler: ChatHandler, agentId: string, params: GenerateTextParams): object | undefined {
+function namedCacheKey(params: GenerateTextParams): string | undefined {
+  const options = params.providerOptions?.cerebras
+  if (typeof options !== "object" || options === null || !("promptCacheKey" in options)) return undefined
+  const key = options.promptCacheKey
+  return typeof key === "string" && /^eliza-workflow-v1:[a-f0-9]{64}$/.test(key) ? key : undefined
+}
+
+function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTextParams): object | undefined {
   const messages = conversation(params)
   if (messages === undefined) return undefined
   const effort = reasoningEffortFor(params.reasoning === undefined ? "NoReasoningHint" : hints[params.reasoning], endpoint.models[handler] ?? "")
+  const named = namedCacheKey(params)
+  const model = (endpoint.models[handler] ?? "").trim().toLowerCase()
+  const cacheKey = cacheKeySent(model, endpoint.cerebrasCache, named !== undefined) ? named : undefined
   const max = params.omitMaxTokens ? undefined : params.maxTokens
   const tools = toolsOf(params.tools)
   const toolChoice = toolChoiceOf(params.toolChoice)
@@ -465,7 +477,7 @@ function requestOf(endpoint: Endpoint, handler: ChatHandler, agentId: string, pa
     ...(toolChoice === undefined || tools === undefined ? {} : { tool_choice: toolChoice }),
     ...(format === undefined ? {} : { response_format: format }),
     ...(effort.tag === "EffortOf" ? { reasoning_effort: effort.effort } : {}),
-    prompt_cache_key: agentId,
+    ...(cacheKey === undefined ? {} : { prompt_cache_key: cacheKey }),
   }
 }
 
@@ -490,8 +502,8 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
 }
 
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
-  return (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
-    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, runtime.agentId, params), params, askOf(params)), returned), FetchHttpClient.layer),
+  return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
+    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, params), params, askOf(params)), returned), FetchHttpClient.layer),
     params.signal,
   )
 }
