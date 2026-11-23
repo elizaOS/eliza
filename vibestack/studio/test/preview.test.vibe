@@ -1,0 +1,60 @@
+// spec/components.md, "Story: Inspect a component and its stories"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { closePreview, ensurePreview } from "../src/preview.ts"
+import type { ComponentIndex } from "../../stories/emit.ts"
+
+module node {
+  export async function previewHtml(origin: string) {
+    const response = await fetch(origin)
+    return { status: response.status, ancestors: response.headers.get("content-security-policy") }
+  }
+
+  export async function metadata(origin: string, file: string) {
+    const response = await fetch(new URL("/@studio-preview/meta?file=" + encodeURIComponent(file), origin))
+    return { status: response.status, body: await response.json() }
+  }
+}
+import { metadata, previewHtml } from node
+
+it.live('Preview a workspace component and its metadata only from the local Studio (spec/components.md, "Story: Inspect a component and its stories")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const fs = try FileSystem.FileSystem
+      const path = try Path.Path
+      const scratch = try fs.makeTempDirectoryScoped()
+      const root = path.join(scratch, "workspace")
+      try fs.makeDirectory(path.join(root, "src"), { recursive: true })
+      const source = "src/Preview.tsx"
+      const sibling = "src/Preview.meta.ts"
+      const outside = path.join(scratch, "External.tsx")
+      try fs.writeFileString(path.join(root, source), "export function Preview() { return null }\n")
+      try fs.writeFileString(path.join(root, sibling), "export const meta = { args: {} }\n")
+      try fs.writeFileString(outside, "export function External() { return null }\n")
+      try fs.symlink(outside, path.join(root, "src/Escaped.tsx"))
+      const catalog: ComponentIndex = { version: 1, components: [{
+        id: "preview", name: "Preview", package: "fixture", title: "Preview", description: "", source: { file: source, line: 1 },
+        props: [], diagnostics: [], stories: [],
+      }] }
+      const origins = ["http://localhost:4321", "http://127.0.0.1:4321"]
+      const preview = try acquireRelease(tryPromise(() => ensurePreview(root, origins, catalog)), () => promise(() => closePreview(root)))
+      if (!preview.url) throw new Error("The embedded preview did not start")
+      const origin = preview.url
+      const html = try tryPromise(() => previewHtml(origin))
+      const ok = try tryPromise(() => metadata(origin, source))
+      const escaped = try tryPromise(() => metadata(origin, "src/Escaped.tsx"))
+      try fs.remove(path.join(root, sibling))
+      try fs.symlink(outside, path.join(root, sibling))
+      const outsideMetadata = try tryPromise(() => metadata(origin, source))
+      try Effect.try(() => assert.deepStrictEqual(
+        { html, ok, escaped, outsideMetadata },
+        {
+          html: { status: 200, ancestors: `frame-ancestors ${origins.join(" ")}` },
+          ok: { status: 200, body: { file: source, metaFile: sibling } },
+          escaped: { status: 404, body: { error: "Preview component not found" } },
+          outsideMetadata: { status: 200, body: { file: source, metaFile: null } },
+        },
+      ))
+    })
+  }
+})

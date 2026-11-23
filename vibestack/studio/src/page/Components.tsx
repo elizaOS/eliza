@@ -1,7 +1,7 @@
 // The Components & Layout Viewer: zero-config embedded preview (with Storybook and structured fallback),
 // adaptive Layout Stage + Element Inspector for model-bound/composite components, and a consolidated
 // headered Props & Controls table for isolated primitives.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Effect, ManagedRuntime } from "effect";
 import { Button, Checkbox, EmptyState, Input, cn, focusRing } from "@repo/ui";
 import { Machine, machine } from "../../gen/components.effect.vibe";
@@ -411,9 +411,15 @@ export function LivePreviewStage({
   onAction?: (prop: string, actionArgs: unknown[]) => void;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const readyRef = useRef(false);
+  const readyFrame = useRef<Window | null>(null);
   const [useStorybook, setUseStorybook] = useState(false);
   const theme = isDarkTheme() ? "dark" : "light";
+  const embedded = useMemo(() => {
+    if (preview.mode !== "embedded" || !preview.url) return undefined;
+    const url = new URL(preview.url);
+    url.searchParams.set("studioOrigin", window.location.origin);
+    return { url: url.href, origin: url.origin };
+  }, [preview.mode, preview.url]);
   const allChildren = useMemo(
     () => [target.name, ...descendantsOf(target, hierarchy).map((c) => c.name)],
     [target, hierarchy],
@@ -440,32 +446,36 @@ export function LivePreviewStage({
       inspect,
       theme,
     };
-    if (readyRef.current) {
-      iframeRef.current?.contentWindow?.postMessage({ type: "studio:preview", ...payloadRef.current }, "*");
+    const frame = iframeRef.current?.contentWindow;
+    if (embedded && frame && frame === readyFrame.current) {
+      frame.postMessage({ type: "studio:preview", ...payloadRef.current }, embedded.origin);
     }
-  }, [target.source.file, target.name, args, propNames, allChildren, inspect, theme]);
+  }, [target.source.file, target.name, args, propNames, allChildren, inspect, theme, embedded]);
+
+  const receive = useEffectEvent((ev: MessageEvent) => {
+    const frame = iframeRef.current?.contentWindow;
+    if (!embedded || !frame || ev.source !== frame || ev.origin !== embedded.origin) return;
+    const data = ev.data as { type?: string; componentName?: string; prop?: string; args?: unknown[] } | null;
+    if (!data || typeof data !== "object") return;
+    if (data.type === "studio:ready") {
+      readyFrame.current = frame;
+      frame.postMessage({ type: "studio:preview", ...payloadRef.current }, embedded.origin);
+    } else if (data.type === "studio:select" && typeof data.componentName === "string") {
+      onSelectComponent?.(data.componentName);
+    } else if (data.type === "studio:action" && typeof data.prop === "string") {
+      onAction?.(data.prop, Array.isArray(data.args) ? data.args : []);
+    }
+  });
 
   useEffect(() => {
-    if (preview.mode !== "embedded" || !preview.url) return;
-    const onMsg = (ev: MessageEvent) => {
-      if (iframeRef.current?.contentWindow && ev.source !== iframeRef.current.contentWindow) return;
-      const data = ev.data as { type?: string; componentName?: string; prop?: string; args?: unknown[] } | null;
-      if (!data || typeof data !== "object") return;
-      if (data.type === "studio:ready") {
-        readyRef.current = true;
-        iframeRef.current?.contentWindow?.postMessage({ type: "studio:preview", ...payloadRef.current }, "*");
-      } else if (data.type === "studio:select" && typeof data.componentName === "string") {
-        onSelectComponent?.(data.componentName);
-      } else if (data.type === "studio:action" && typeof data.prop === "string") {
-        onAction?.(data.prop, Array.isArray(data.args) ? data.args : []);
-      }
-    };
+    if (!embedded) return;
+    const onMsg = (ev: MessageEvent) => receive(ev);
     window.addEventListener("message", onMsg);
     return () => {
-      readyRef.current = false;
+      readyFrame.current = null;
       window.removeEventListener("message", onMsg);
     };
-  }, [preview.mode, preview.url, onSelectComponent, onAction]);
+  }, [embedded]);
 
   const frameClass = cn(
     "w-full rounded-lg border border-border bg-card transition-all duration-fast",
@@ -473,13 +483,14 @@ export function LivePreviewStage({
     viewport === "mobile" && "mx-auto max-w-sm",
   );
 
-  if (preview.mode === "embedded" && preview.url) {
+  if (embedded) {
     return (
       <div className={cn("w-full", viewport === "mobile" && "mx-auto max-w-sm")}>
         <iframe
+          key={embedded.url}
           ref={iframeRef}
           title={`${target.name}: ${story?.name ?? "Preview"}`}
-          src={preview.url}
+          src={embedded.url}
           className={frameClass}
         />
       </div>

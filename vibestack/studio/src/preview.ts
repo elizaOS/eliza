@@ -26,12 +26,24 @@ const VIRTUAL_SB_TEST = "\0virtual:studio-storybook-test";
 const servers = new Map<string, PreviewEntry>();
 let exitHooked = false;
 
-function siblingMetaFile(root: string, relFile: string): string | null {
-  const clean = relFile.replace(/^\/+/, "");
-  const stem = clean.replace(/\.[jt]sx?$/, "");
+function isWorkspaceFile(root: string, file: string): boolean {
+  if (file.includes("\\") || file.split("/").some((segment) => !segment || segment === "." || segment === "..")) return false;
+  try {
+    const workspace = fs.realpathSync(root);
+    const source = fs.realpathSync(path.resolve(workspace, file));
+    const relative = path.relative(workspace, source);
+    return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`)
+      && !path.isAbsolute(relative) && fs.statSync(source).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function siblingMetaFile(root: string, file: string): string | null {
+  const stem = file.replace(/\.[jt]sx?$/, "");
   for (const ext of [".meta.tsx", ".meta.ts"]) {
     const candidate = `${stem}${ext}`;
-    if (fs.existsSync(path.join(root, candidate))) return candidate;
+    if (isWorkspaceFile(root, candidate)) return candidate;
   }
   return null;
 }
@@ -51,7 +63,7 @@ export const isMockFunction = () => false;
 
 function hasRunnableComponents(root: string, components?: ComponentIndex): boolean {
   if (!components?.components.length) return false;
-  return components.components.some((c) => /\.[jt]sx$/.test(c.source.file) && fs.existsSync(path.join(root, c.source.file)));
+  return components.components.some((c) => /\.[jt]sx$/.test(c.source.file) && isWorkspaceFile(root, c.source.file));
 }
 
 function readProjectTokens(root: string) {
@@ -120,13 +132,24 @@ function previewHtml(root: string, reqUrl: string): string {
   ].join("\n");
 }
 
-function previewEntryCode(): string {
+function previewEntryCode(studioOrigins: readonly string[]): string {
   return `
 import React, { Component, useEffect, useState } from "react";
 import * as ReactDomClient from "react-dom/client";
 import "${VIRTUAL_THEME}";
 
 const mountRoot = ReactDomClient.createRoot || ReactDomClient.default?.createRoot;
+const requestedOrigin = new URLSearchParams(window.location.search).get("studioOrigin");
+const parentOrigin = ${JSON.stringify(studioOrigins)}.includes(requestedOrigin) ? requestedOrigin : null;
+const studioParent = window.parent === window ? null : window.parent;
+
+function notifyStudio(message) {
+  if (studioParent && parentOrigin) studioParent.postMessage(message, parentOrigin);
+}
+
+function workspaceModule(file) {
+  return "/" + file.split("/").map(encodeURIComponent).join("/");
+}
 
 const SKIP_NAMES = new Set(["PreviewApp", "PreviewBoundary", "Fragment", "Suspense", "StrictMode", "Provider", "Consumer"]);
 
@@ -179,14 +202,14 @@ function bindArgs(raw, propNames) {
   const src = raw && typeof raw === "object" ? raw : {};
   for (const [k, v] of Object.entries(src)) {
     if (v === "__fn__" || (typeof k === "string" && /^on[A-Z]/.test(k) && typeof v !== "function")) {
-      out[k] = (...a) => window.parent.postMessage({ type: "studio:action", prop: k, args: a }, "*");
+      out[k] = (...a) => notifyStudio({ type: "studio:action", prop: k, args: a });
     } else {
       out[k] = v;
     }
   }
   for (const name of propNames || []) {
     if (/^on[A-Z]/.test(name) && typeof out[name] !== "function") {
-      out[name] = (...a) => window.parent.postMessage({ type: "studio:action", prop: name, args: a }, "*");
+      out[name] = (...a) => notifyStudio({ type: "studio:action", prop: name, args: a });
     }
   }
   return out;
@@ -213,7 +236,9 @@ function PreviewApp() {
   }, [spec.theme]);
 
   useEffect(() => {
+    if (!studioParent || !parentOrigin) return;
     const onMsg = (ev) => {
+      if (ev.source !== studioParent || ev.origin !== parentOrigin) return;
       const data = ev.data;
       if (!data || typeof data !== "object" || data.type !== "studio:preview") return;
       setSpec((prev) => ({
@@ -227,7 +252,7 @@ function PreviewApp() {
       }));
     };
     window.addEventListener("message", onMsg);
-    window.parent.postMessage({ type: "studio:ready" }, "*");
+    notifyStudio({ type: "studio:ready" });
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
@@ -235,14 +260,13 @@ function PreviewApp() {
     if (!spec.file || !spec.name) return;
     let cancelled = false;
     const key = spec.file + "#" + spec.name;
-    const clean = spec.file.replace(/^\\/+/, "");
-    Promise.all([
-      import(/* @vite-ignore */ "/" + clean),
-      fetch("/@studio-preview/meta?file=" + encodeURIComponent(clean))
-        .then((r) => (r.ok ? r.json() : { metaFile: null }))
-        .then((info) => (info && info.metaFile ? import(/* @vite-ignore */ "/" + info.metaFile).catch(() => null) : null))
-        .catch(() => null),
-    ]).then(([mod, metaMod]) => {
+    fetch("/@studio-preview/meta?file=" + encodeURIComponent(spec.file)).then((response) => {
+      if (!response.ok) throw new Error("The preview component is unavailable.");
+      return response.json();
+    }).then(({ file, metaFile }) => Promise.all([
+      import(/* @vite-ignore */ workspaceModule(file)),
+      metaFile ? import(/* @vite-ignore */ workspaceModule(metaFile)).catch(() => null) : null,
+    ])).then(([mod, metaMod]) => {
       if (cancelled) return;
       const Comp = mod[spec.name] || mod.default || null;
       const metaArgs = metaMod && metaMod.meta && metaMod.meta.args && typeof metaMod.meta.args === "object" ? metaMod.meta.args : {};
@@ -270,7 +294,7 @@ function PreviewApp() {
       const hit = fiberComponentName(ev.target, known);
       ev.preventDefault();
       ev.stopPropagation();
-      if (hit) window.parent.postMessage({ type: "studio:select", componentName: hit.name }, "*");
+      if (hit) notifyStudio({ type: "studio:select", componentName: hit.name });
     };
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("click", onClick, true);
@@ -307,7 +331,7 @@ mountRoot(document.getElementById("root")).render(React.createElement(PreviewApp
 `;
 }
 
-function previewPlugin(root: string, studioRoot: string): Plugin {
+function previewPlugin(root: string, studioRoot: string, studioOrigins: readonly string[]): Plugin {
   const themeFile = path.join(root, "__studio_preview_theme.css");
   const entryId = `\0${VIRTUAL_ENTRY}`;
   return {
@@ -318,15 +342,17 @@ function previewPlugin(root: string, studioRoot: string): Plugin {
         const pathname = (req.url ?? "/").split("?")[0];
         if (pathname === "/@studio-preview/meta") {
           const file = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("file") ?? "";
-          res.statusCode = 200;
+          const available = /\.[jt]sx?$/.test(file) && isWorkspaceFile(root, file);
+          res.statusCode = available ? 200 : 404;
           res.setHeader("content-type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ metaFile: file ? siblingMetaFile(root, file) : null }));
+          res.end(JSON.stringify(available ? { file, metaFile: siblingMetaFile(root, file) } : { error: "Preview component not found" }));
           return;
         }
         if (pathname === "/" || pathname === "/index.html") {
           void server.transformIndexHtml(req.url ?? "/", previewHtml(root, req.url ?? "/")).then((html) => {
             res.statusCode = 200;
             res.setHeader("content-type", "text/html; charset=utf-8");
+            res.setHeader("content-security-policy", `frame-ancestors ${studioOrigins.join(" ") || "'none'"}`);
             res.end(html);
           }, next);
           return;
@@ -341,7 +367,7 @@ function previewPlugin(root: string, studioRoot: string): Plugin {
       return undefined;
     },
     load(id) {
-      if (id === entryId) return previewEntryCode();
+      if (id === entryId) return previewEntryCode(studioOrigins);
       if (id === themeFile) return loadThemeCss(root, studioRoot);
       if (id === VIRTUAL_SB_TEST) return STORYBOOK_TEST_SHIM;
       return undefined;
@@ -371,7 +397,7 @@ function reactAliases(root: string, studioRoot: string): Record<string, string> 
 }
 
 /** Lazily start an embedded Vite/React preview server for `root`, or return `{ url: null, mode: "none" }`. */
-export function ensurePreview(root: string, components?: ComponentIndex): Promise<PreviewInfo> {
+export function ensurePreview(root: string, studioOrigins: readonly string[], components?: ComponentIndex): Promise<PreviewInfo> {
   if (!hasRunnableComponents(root, components)) return Promise.resolve({ url: null, mode: "none" });
   const existing = servers.get(root);
   if (existing) return existing.ready;
@@ -386,7 +412,7 @@ export function ensurePreview(root: string, components?: ComponentIndex): Promis
     cacheDir: path.join(os.tmpdir(), "vibestack-studio-preview", short(root)),
     logLevel: "silent",
     appType: "custom",
-    plugins: [previewPlugin(root, studioRoot), vibelang(), react(), tailwindcss()],
+    plugins: [previewPlugin(root, studioRoot, studioOrigins), vibelang(), react(), tailwindcss()],
     resolve: { dedupe: ["react", "react-dom"], ...(alias ? { alias } : {}) },
     server: {
       host: "127.0.0.1",

@@ -181,10 +181,10 @@ export const graphOfDraft = trusted(function graphOfDraft(root: string, file: st
 }, [Error]);
 
 /** Start or reuse the embedded Vite preview server for `root`, or return `{ url: null, mode: "none" }`. */
-export async function studioPreview(root: string): Promise<PreviewInfo> {
+export async function studioPreview(root: string, studioOrigins: readonly string[]): Promise<PreviewInfo> {
   let components: ComponentIndex | undefined;
   try { components = componentsOf(root); } catch { components = undefined; }
-  return ensurePreview(root, components);
+  return ensurePreview(root, studioOrigins, components);
 }
 
 export { closePreview, simulateModule };

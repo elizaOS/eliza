@@ -384,7 +384,7 @@ effect function studio(project: Project, agents: Record<string, Agent>, tree: Pr
   return {
     snapshot,
     /** A request for this project, past the guards every request meets. */
-    handle: effect (method: string, route: string, request: HttpServerRequest.HttpServerRequest) => {
+    handle: effect (method: string, route: string, request: HttpServerRequest.HttpServerRequest, studioOrigins: readonly string[]) => {
       if (route === "/api/events") return HttpServerResponse.stream(events, { contentType: "text/event-stream", headers: { "cache-control": "no-store", connection: "keep-alive" } })
       if (method === "GET" && route === "/api/project") return json(200, try snapshot())
       // The Components view (./page/Components.tsx): absent when the project has no catalog.
@@ -394,7 +394,7 @@ effect function studio(project: Project, agents: Record<string, Agent>, tree: Pr
         return json(200, index)
       }
       if (method === "GET" && route === "/api/preview") {
-        return json(200, try tryPromise({ try: () => studioPreview(root), catch: (e) => new Refused({ status: 500, message: messageOf(e) }) }))
+        return json(200, try tryPromise({ try: () => studioPreview(root, studioOrigins), catch: (e) => new Refused({ status: 500, message: messageOf(e) }) }))
       }
       if (method !== "POST") throw new Refused({ status: 405, message: "method not allowed" })
       const body = try parseJsonBody(request)
@@ -422,6 +422,7 @@ export effect function startStudio({ projects, open = projects[0].id, port = 432
   }
   const at = "port" in server.address ? server.address.port : port
   const hosts = [`localhost:${at}`, `127.0.0.1:${at}`]
+  const studioOrigins = hosts.map((host) => `http://${host}`)
 
   const app = effect {
     const request = try HttpServerRequest.HttpServerRequest
@@ -441,7 +442,7 @@ export effect function startStudio({ projects, open = projects[0].id, port = 432
       if (url.pathname === "/api/projects") return json(200, { projects: projects.map(({ id, name }) => ({ id, name })), open })
       const live = lives.get(url.searchParams.get("project") ?? open)
       if (!live) throw new Refused({ status: 404, message: "no such project" })
-      return try live.handle(request.method, url.pathname, request)
+      return try live.handle(request.method, url.pathname, request, studioOrigins)
     } catch (e) => json(e instanceof Refused ? e.status : 400, e instanceof Refused && e.conflicts ? { error: e.message, conflicts: e.conflicts } : { error: messageOf(e) })
     return HttpServerResponse.setHeaders(response, {
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self' http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:*; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
