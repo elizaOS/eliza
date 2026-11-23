@@ -116,6 +116,22 @@ export interface BrowserSavedState {
 }
 
 /** The Capacitor API of an Android `BrowserTabHostPlugin` subclass. */
+/** One saved bookmark; `title` is absent when none was saved. */
+export interface BrowserBookmark {
+  readonly url: string;
+  readonly title?: string;
+}
+
+/** Saved bookmarks, newest first. */
+export interface BrowserBookmarkList {
+  urls: string[];
+  /**
+   * The same bookmarks with their titles. Absent from a native host that
+   * predates bookmark titles; read `urls` then.
+   */
+  entries?: BrowserBookmark[];
+}
+
 export interface BrowserTabHostPlugin {
   create(options: {
     session: string;
@@ -147,12 +163,18 @@ export interface BrowserTabHostPlugin {
     forward?: boolean;
   }): Promise<BrowserTabState>;
   clearFind(options: { session: string; id: string }): Promise<BrowserTabState>;
-  bookmarks(options: { session: string }): Promise<{ urls: string[] }>;
+  bookmarks(options: { session: string }): Promise<BrowserBookmarkList>;
   setBookmark(options: {
     session: string;
     url: string;
     saved: boolean;
-  }): Promise<{ urls: string[] }>;
+    /**
+     * Display name sealed with the address. Omitted keeps the title the address
+     * already has; blank removes it. Control characters become spaces and at
+     * most 300 characters are kept. Ignored when `saved` is false.
+     */
+    title?: string;
+  }): Promise<BrowserBookmarkList>;
   browsingState(options: { session: string }): Promise<BrowserSavedState>;
   /** Normal tabs and history only; never send private tabs. */
   saveBrowsingState(
