@@ -314,7 +314,8 @@ public final class DeviceKeyJourney {
     String leased = store.current().credentialId();
     clock.addAndGet(15 * DAY_MS);
     DeviceLease.Held renewing = lease.accessToken();
-    seen.add(take("renewedBeforeHalfLife", renewing != null && !store.current().credentialId().equals(leased) ? held() : "not renewed"));
+    seen.add(take("renewedAtHalfLife", !store.current().credentialId().equals(leased) ? held() : "not renewed"));
+    seen.add(take("oldLeaseReadEnded", renewing == null));
     seen.add(take("owedAfterRenewal", store.owed().size() == 1 && store.owed().get(0).lease() == null));
     client.settleDuties();
     seen.add(take("replacedKeyEnded", !cloud.live.containsValue(leased) && store.owed().isEmpty()));
