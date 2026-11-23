@@ -117,7 +117,7 @@ function scored(reply: typeof Score.Type): EndOfTurnScore {
 export function androidInferenceEngine(socket: string): AndroidInferenceEngine.Shape {
   return {
     load: (model) => mapError(map(ask(socket, "text", { op: "load", bundleDir: model.directory, files: model.files }, Done), () => undefined), (failure) => new EngineFailed({ capability: failure.capability, reason: failure.reason })),
-    unload: () => map(ask(socket, "text", { op: "unload" }, Done), () => undefined) catch () => undefined,
+    unload: effect () => map(ask(socket, "text", { op: "unload" }, Done), () => undefined) catch () => undefined,
     warmEmbedding: (model) => effect {
       const { request } = try embedding(model)
       try ask(socket, "embedding", { op: "warmEmbedding", ...request }, Done)
@@ -127,10 +127,10 @@ export function androidInferenceEngine(socket: string): AndroidInferenceEngine.S
       const reply = try ask(socket, "embedding", { op: "embed", ...request, text }, Vector)
       return { values: reply.embedding, space }
     },
-    speechReady: () => map(ask(socket, "synthesis", { op: "capabilities" }, Ready), (reply) => speechReadiness(true, reply.synthesis, reply.transcription)) catch () => speechReadiness(false, false, false),
+    speechReady: effect () => map(ask(socket, "synthesis", { op: "capabilities" }, Ready), (reply) => speechReadiness(true, reply.synthesis, reply.transcription)) catch () => speechReadiness(false, false, false),
     synthesize: (text) => synthesized(socket, text),
     transcribe: (audio) => map(ask(socket, "transcription", { op: "transcribe", sampleRate: audio.sampleRate, pcmBase64: floatsToBase64(audio.samples) }, Transcript), (reply) => reply.text),
-    scoreEndOfTurn: (transcript) => map(ask(socket, "endOfTurn", { op: "endOfTurn", transcript }, Score), scored) catch (failure): EndOfTurnScore => ({ available: false, reason: failure.reason }),
+    scoreEndOfTurn: effect (transcript) => map(ask(socket, "endOfTurn", { op: "endOfTurn", transcript }, Score), scored) catch (failure): EndOfTurnScore => ({ available: false, reason: failure.reason }),
   }
 }
 
