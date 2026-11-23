@@ -53,7 +53,7 @@ type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
 type StepIdentity = RequestAttempt({ key: str }) | ReceiptOperation({ key: str })
 type PlanStep = { outcome: StepOutcome, identity: StepIdentity }
 pure val maxPlanSteps = 8
-pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
+pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE", "RESTORE_CONTEXT")
 pure val unavailableNotice = "I can't do that from here, so it wasn't done."
 pure def offered(registered: Set[str], allowed: Set[str], formless: Set[str]): Set[str] =
   registered.intersect(allowed).exclude(messageServiceActions).exclude(formless)
@@ -266,6 +266,40 @@ pure def readByTheModel(row: HistoryRow): bool = not(row.fromAgent and row.hostN
 pure val rowValues = Set({ fromAgent: true, hostNotice: true }, { fromAgent: true, hostNotice: false }, { fromAgent: false, hostNotice: false })
 pure def lawAHostNoticeIsNeverTheAgentsWords(row: HistoryRow): bool = (row.fromAgent and row.hostNotice) implies not(readByTheModel(row))
 pure def lawWhatWasSaidIsRead(row: HistoryRow): bool = not(row.hostNotice) implies readByTheModel(row)
+```
+
+### A planner can restore the turn's deferred history once and runs no sibling action from that response
+
+When the planner has action tools, one fixed `RESTORE_CONTEXT` form follows
+the discovery tools, even when the turn has nothing to restore. It asks for
+a nonempty reason and accepts the scopes `history`, `providers` and `full`,
+with `full` as the default. The owner-turn planner can restore only the
+deferred dialogue already read for this conversation at the start of the
+turn. It does no live provider read. The answer quotes the captured rows
+after the existing history and says when there are older rows outside that
+read. A request with no available context, an invalid request or a second
+restore gets a corrective result. A response containing a restore runs no
+sibling action, sends no reply or cue from that response, and consumes one
+of the bounded planner calls.
+
+```quint
+type RestoreAnswer = RestoredHistory | RestoreUnavailable | RestoreInvalid
+pure def offersContextRestore(actions: int): bool = actions > 0
+pure def contextRestoreOf(validRestore: bool, deferredHistory: bool, restoredHistory: bool): RestoreAnswer =
+  if (not(validRestore)) RestoreInvalid
+  else if (deferredHistory and not(restoredHistory)) RestoredHistory
+  else RestoreUnavailable
+pure def admitsPlannerWork(restoreCalls: int): bool = restoreCalls == 0
+pure val restoreCallsValues = Set(0, 1, 2)
+pure val actionsValues = Set(0, 1, 3)
+pure def lawRestoreNeedsActionTools(actions: int): bool =
+  offersContextRestore(actions) == (actions > 0)
+pure def lawRestoredHistoryIsReadOnlyOnce(validRestore: bool, deferredHistory: bool): bool =
+  contextRestoreOf(validRestore, deferredHistory, true) != RestoredHistory
+pure def lawOnlyAValidRestoreCanReturnHistory(deferredHistory: bool, restoredHistory: bool): bool =
+  contextRestoreOf(false, deferredHistory, restoredHistory) == RestoreInvalid
+pure def lawARestoreSuppressesItsSiblingActions(restoreCalls: int): bool =
+  restoreCalls > 0 implies not(admitsPlannerWork(restoreCalls))
 ```
 
 ### A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse
