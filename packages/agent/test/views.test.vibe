@@ -95,20 +95,20 @@ it.effect('A second prepare supersedes an unclaimed navigation, waits for a clai
   const first = try views.prepare("r1", "c1", "notes")
   const second = try views.prepare("r2", "c1", "chat")
   const superseded = try first!.wait
-  const claimed = try views.claim(second!.binding)
-  const whileClaimed = try fork views.prepare("r3", "c1", "notes")
+  const claimed = try claim(agent, second!.binding)
+  const waitingPrepare = fork views.prepare("r3", "c1", "notes")
   for (let round = 0; round < 20; round += 1) try Effect.yieldNow
   try TestClock.adjust(Duration.millis(navigationBusyWaitMs))
-  const refused = try join whileClaimed
+  const whileClaimed = join waitingPrepare
   try TestClock.adjust(Duration.millis(navigationClaimLeaseMs - navigationBusyWaitMs))
   const lost = try second!.wait
   const shown = try views.shownViewOf("c1")
-  const late = try result(agent, second!.binding, claimed!, true)
+  const late = try result(agent, second!.binding, claimIdOf(claimed.body), true)
   const afterLease = try prepare(agent, "notes", "r4", "c1")
   try Effect.try(() => {
     assert.deepStrictEqual(superseded, { kind: "Superseded" })
-    assert.isString(claimed)
-    assert.isUndefined(refused)
+    assert.strictEqual(claimed.status, 200)
+    assert.isUndefined(whileClaimed)
     assert.deepStrictEqual(lost, { kind: "Unknown" })
     assert.isUndefined(shown)
     assert.deepStrictEqual(late.body, { ok: true, accepted: false })
@@ -116,11 +116,11 @@ it.effect('A second prepare supersedes an unclaimed navigation, waits for a clai
   })
 
   const fourth = bindingOf(afterLease.body)
-  const fourthClaim = try views.claim(fourth)
-  const waited = try fork views.prepare("r5", "c1", "chat")
+  const fourthClaim = try claim(agent, fourth)
+  const waited = fork views.prepare("r5", "c1", "chat")
   for (let round = 0; round < 20; round += 1) try Effect.yieldNow
-  const switched = try result(agent, fourth, fourthClaim!, true)
-  const fifth = try join waited
+  const switched = try result(agent, fourth, claimIdOf(fourthClaim.body), true)
+  const fifth = join waited
   const unclaimed = try views.prepare("r6", "c1", "notes")
   const retired = try fifth!.wait
   try TestClock.adjust(Duration.millis(navigationWaitMs))

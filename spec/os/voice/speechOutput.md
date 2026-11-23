@@ -7,8 +7,9 @@ report that make the reply start promptly. Sources are
 `SpeechOutputWarmup.java`, `SpeechLeadTrim.java`,
 `FirstWriteSpeechOutput.java`, `SpeechAudioFocus.java` and
 `SpeechAudioFocusPolicy.java` of the `voice-io` module. The cloud speech
-client (`cloudSpeech.md` beside this spec) builds on this machine; speech
-engines are the local inference package's. Audio hardware, the platform
+client (`cloudSpeech.md` beside this spec) builds on this machine and also
+holds focus while its microphone is open; speech engines are the local
+inference package's. Audio hardware, the platform
 focus request and the clock stay in the shell: it reports what it observed
 as event parameters.
 
@@ -32,8 +33,9 @@ type WarmupWorker = { workerId: int, phase: WorkerPhase, closed: bool, elapsedMs
 type Volume = FullVolume | Ducked
 type Speech = Silent | Speaking({ utteranceId: int, written: int, volume: Volume })
 type AudioMode = NormalAudio | CallAudio
-type SpeechOutput = { owner: int, workers: List[WarmupWorker], speech: Speech, mode: AudioMode }
-pure val initial: SpeechOutput = { owner: 0, workers: List(), speech: Silent, mode: NormalAudio }
+type Hold = NoHold | Holding({ volume: Volume }) | HoldPaused
+type SpeechOutput = { owner: int, workers: List[WarmupWorker], speech: Speech, mode: AudioMode, hold: Hold }
+pure val initial: SpeechOutput = { owner: 0, workers: List(), speech: Silent, mode: NormalAudio, hold: NoHold }
 pure val idValues = Set(1, 2, 3)
 pure val noWorker: WarmupWorker = { workerId: 0, phase: NothingOpened, closed: true, elapsedMs: 0 }
 pure def isSilent(speech: Speech): bool = match speech { | Silent => true | _ => false }
@@ -153,32 +155,40 @@ and reports the answer.
 
 ### A reply's speech starts only outside a call, with audio focus granted, and retires the warm-up
 
+A listener that already holds focus speaks under it, at the volume it holds,
+and a paused listener speaks nothing until focus returns.
+
 ```quint
-type OutputNotice = FirstAudio({ utteranceId: int }) | RefusedCallActive | RefusedFocusDenied | StopPlayback | AbandonFocus | DuckVolume | RestoreVolume | StopCapture
+type OutputNotice = FirstAudio({ utteranceId: int }) | RefusedCallActive | RefusedFocusDenied | RefusedFocusPaused | StopPlayback | AbandonFocus | DuckVolume | RestoreVolume
+  | StopCapture | PauseListening | ResumeListening | PermanentLoss
 type OutputStep = { state: SpeechOutput, out: List[OutputNotice] }
 pure val utteranceIdValues = Set(1, 2)
+pure def outputIf(c: bool, n: OutputNotice): List[OutputNotice] = if (c) List(n) else List()
+pure def holdVolume(h: Hold): Volume = match h { | Holding(x) => x.volume | _ => FullVolume }
 pure def canStartSpeech(s: SpeechOutput, utteranceId: int): bool = utteranceId > 0 and isSilent(s.speech)
 pure def startSpeech(s: SpeechOutput, utteranceId: int, granted: bool): OutputStep =
   if (s.mode == CallAudio) { state: s, out: List(RefusedCallActive) }
-  else if (not(granted)) { state: s, out: List(RefusedFocusDenied) }
-  else { state: { ...s, owner: 0, workers: retire(s.owner, s.workers), speech: Speaking({ utteranceId: utteranceId, written: 0, volume: FullVolume }) }, out: List() }
+  else if (s.hold == HoldPaused) { state: s, out: List(RefusedFocusPaused) }
+  else if (not(granted) and s.hold == NoHold) { state: s, out: List(RefusedFocusDenied) }
+  else { state: { ...s, owner: 0, workers: retire(s.owner, s.workers), speech: Speaking({ utteranceId: utteranceId, written: 0, volume: holdVolume(s.hold) }) }, out: List() }
 pure def sometimesSpeaking(s: SpeechOutput): bool = writtenOf(s.speech) >= 1
 ```
 
 ### A call stops the reply, the warm-up and the assistant's capture
 
 A focus loss the platform reports while the phone is in a call is reported
-as the call starting.
+as the call starting. A call also ends a listener's hold on focus.
 
 ```quint
+pure def focusHeld(s: SpeechOutput): bool = not(isSilent(s.speech)) or s.hold != NoHold
 pure def canAudioModeChanged(s: SpeechOutput, mode: AudioMode): bool = mode != s.mode
 pure def audioModeChanged(s: SpeechOutput, mode: AudioMode): OutputStep =
   if (mode == NormalAudio) { state: { ...s, mode: mode }, out: List() }
   else {
-    state: { ...s, mode: mode, owner: 0, workers: retire(s.owner, s.workers), speech: Silent },
-    out: if (isSilent(s.speech)) List(StopCapture) else List(StopPlayback, AbandonFocus, StopCapture)
+    state: { ...s, mode: mode, owner: 0, workers: retire(s.owner, s.workers), speech: Silent, hold: NoHold },
+    out: outputIf(not(isSilent(s.speech)), StopPlayback).concat(outputIf(focusHeld(s), AbandonFocus)).concat(List(StopCapture))
   }
-pure def alwaysNoSpeechDuringCall(s: SpeechOutput): bool = s.mode == CallAudio implies isSilent(s.speech)
+pure def alwaysNoSpeechDuringCall(s: SpeechOutput): bool = s.mode == CallAudio implies (isSilent(s.speech) and s.hold == NoHold)
 ```
 
 ### The first write of an utterance is reported once, and no other write is
@@ -220,39 +230,50 @@ pure def lawTrimKeepsTheOnset(firstAudible: int, preRoll: int, samples: int): bo
 }
 ```
 
-### Audio focus is held while a reply speaks and abandoned exactly when it stops
+### Audio focus is held while a reply speaks or a listener holds it, and abandoned exactly when neither does
 
 A reply ends on its own, is cancelled by its owner, or is stopped by a
-focus loss or a call; each stop abandons the focus request, so a displaced
-request never gets focus back with nothing playing.
+focus loss or a call; a listener's hold ends when it closes its microphone,
+on a permanent loss or on a call. The focus request is abandoned exactly
+when the last of them ends, so a displaced request never gets focus back
+with nothing playing or listening, and a transiently paused listener keeps
+its request so that it gets focus back.
 
 ```quint
 pure def canEndSpeech(s: SpeechOutput): bool = not(isSilent(s.speech))
-pure def endSpeech(s: SpeechOutput): OutputStep = { state: { ...s, speech: Silent }, out: List(AbandonFocus) }
+pure def endSpeech(s: SpeechOutput): OutputStep = { state: { ...s, speech: Silent }, out: outputIf(s.hold == NoHold, AbandonFocus) }
 pure def canCancelSpeech(s: SpeechOutput): bool = not(isSilent(s.speech))
-pure def cancelSpeech(s: SpeechOutput): OutputStep = { state: { ...s, speech: Silent }, out: List(StopPlayback, AbandonFocus) }
-pure def stepFocusAbandonedWhenSpeechStops(before: SpeechOutput, via: str, after: SpeechOutput, out: List[OutputNotice]): bool =
-  (not(isSilent(before.speech)) and isSilent(after.speech)) iff out.includes(AbandonFocus)
+pure def cancelSpeech(s: SpeechOutput): OutputStep = { state: { ...s, speech: Silent }, out: List(StopPlayback).concat(outputIf(s.hold == NoHold, AbandonFocus)) }
+pure def stepFocusAbandonedWhenUnused(before: SpeechOutput, via: str, after: SpeechOutput, out: List[OutputNotice]): bool =
+  (focusHeld(before) and not(focusHeld(after))) iff out.includes(AbandonFocus)
 ```
 
 ### A focus loss stops the reply and drops its unplayed audio, and a ducking loss only lowers it
 
-A regain after ducking restores the volume. A focus change while no reply
-speaks does nothing.
+A regain after ducking restores the volume, for the reply and for the
+listener that holds focus. A permanent loss is also reported as permanent,
+so that an owner that cannot go on without focus ends. A transient loss
+while a listener holds focus pauses it instead of ending its hold (below).
+A focus change while focus is not held does nothing.
 
 ```quint
 type FocusChange = FocusGain | FocusLoss | FocusLossTransient | FocusLossCanDuck
-pure def canFocusChanged(s: SpeechOutput, change: FocusChange): bool = not(isSilent(s.speech))
+pure def speechVolume(speech: Speech): Volume = match speech { | Speaking(u) => u.volume | _ => FullVolume }
+pure def heldVolume(h: Hold, speech: Speech): Volume = match h { | Holding(x) => x.volume | _ => speechVolume(speech) }
+pure def holdAt(h: Hold, v: Volume): Hold = match h { | Holding(x) => Holding({ volume: v }) | _ => h }
+pure def speechAt(speech: Speech, v: Volume): Speech = match speech { | Speaking(u) => Speaking({ utteranceId: u.utteranceId, written: u.written, volume: v }) | _ => speech }
+pure def withVolume(s: SpeechOutput, v: Volume): SpeechOutput = { ...s, hold: holdAt(s.hold, v), speech: speechAt(s.speech, v) }
+pure def canFocusChanged(s: SpeechOutput, change: FocusChange): bool = focusHeld(s)
 pure def focusChanged(s: SpeechOutput, change: FocusChange): OutputStep = {
-  val speech = s.speech
-  match speech {
-  | Speaking(u) =>
-    if (change == FocusLoss or change == FocusLossTransient) { state: { ...s, speech: Silent }, out: List(StopPlayback, AbandonFocus) }
-    else if (change == FocusLossCanDuck and u.volume == FullVolume) { state: { ...s, speech: Speaking({ utteranceId: u.utteranceId, written: u.written, volume: Ducked }) }, out: List(DuckVolume) }
-    else if (change == FocusGain and u.volume == Ducked) { state: { ...s, speech: Speaking({ utteranceId: u.utteranceId, written: u.written, volume: FullVolume }) }, out: List(RestoreVolume) }
-    else { state: s, out: List() }
-  | _ => { state: s, out: List() }
-  }
+  val stopped = outputIf(not(isSilent(s.speech)), StopPlayback)
+  if (change == FocusLoss) { state: { ...s, speech: Silent, hold: NoHold }, out: stopped.concat(List(AbandonFocus, PermanentLoss)) }
+  else if (change == FocusLossTransient and s.hold == NoHold) { state: { ...s, speech: Silent }, out: List(StopPlayback, AbandonFocus) }
+  else if (change == FocusLossTransient and s.hold == HoldPaused) { state: s, out: List() }
+  else if (change == FocusLossTransient) { state: { ...s, speech: Silent, hold: HoldPaused }, out: stopped.concat(List(PauseListening)) }
+  else if (s.hold == HoldPaused) { state: { ...s, hold: Holding({ volume: if (change == FocusLossCanDuck) Ducked else FullVolume }) }, out: List(ResumeListening) }
+  else if (change == FocusLossCanDuck and heldVolume(s.hold, s.speech) == FullVolume) { state: withVolume(s, Ducked), out: List(DuckVolume) }
+  else if (change == FocusGain and heldVolume(s.hold, s.speech) == Ducked) { state: withVolume(s, FullVolume), out: List(RestoreVolume) }
+  else { state: s, out: List() }
 }
 pure def stepStoppedSpeechDropsItsAudio(before: SpeechOutput, via: str, after: SpeechOutput, out: List[OutputNotice]): bool =
   (not(isSilent(before.speech)) and isSilent(after.speech) and via != "endSpeech") implies out.includes(StopPlayback)
@@ -260,4 +281,27 @@ pure def sometimesDucked(s: SpeechOutput): bool = {
   val speech = s.speech
   match speech { | Speaking(u) => u.volume == Ducked | _ => false }
 }
+```
+
+### A listener holds focus while its microphone is open, and a transient loss pauses it until focus returns
+
+The cloud speech session asks for the same transient, duckable focus when
+it opens its microphone, and speaks under it while it holds it. A transient
+loss then stops the reply, if one speaks, and pauses the listener without
+abandoning its request: nothing speaks or listens until focus returns,
+and the regain resumes it (lowered when the regain is a ducking one).
+Closing the microphone gives the hold up, and focus is abandoned when no
+reply speaks either.
+
+```quint
+pure def canOpenListening(s: SpeechOutput): bool = s.hold == NoHold
+pure def openListening(s: SpeechOutput, granted: bool): OutputStep =
+  if (s.mode == CallAudio) { state: s, out: List(RefusedCallActive) }
+  else if (isSilent(s.speech) and not(granted)) { state: s, out: List(RefusedFocusDenied) }
+  else { state: { ...s, hold: Holding({ volume: speechVolume(s.speech) }) }, out: List() }
+pure def canCloseListening(s: SpeechOutput): bool = s.hold != NoHold
+pure def closeListening(s: SpeechOutput): OutputStep = { state: { ...s, hold: NoHold }, out: outputIf(isSilent(s.speech), AbandonFocus) }
+pure def alwaysPausedListeningIsSilent(s: SpeechOutput): bool = s.hold == HoldPaused implies isSilent(s.speech)
+pure def sometimesListeningPaused(s: SpeechOutput): bool = s.hold == HoldPaused
+pure def sometimesListeningResumedDucked(s: SpeechOutput): bool = s.hold == Holding({ volume: Ducked }) and isSilent(s.speech)
 ```

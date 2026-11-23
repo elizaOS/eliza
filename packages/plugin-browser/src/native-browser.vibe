@@ -1,6 +1,8 @@
-// spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"
+// spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"
+import { deviceTurnFor } from "@elizaos/agent/device-actions"
 import { readViewInteractionClientId, type Action, type ActionResult, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { historyReport, type HistoryReceipt, type HistoryReport } from "../gen/browser__control.effect.vibe"
+import { browserHistoryHome } from "./contract.vibe"
 import { NATIVE_HISTORY_SUBACTIONS, isNativeHistorySubaction, observedNativeHistorySelection, type NativeHistorySelection, type NativeHistorySubaction } from "./native-command.vibe"
 
 export const BROWSER_VIEW = { viewId: "browser", capability: "browser-command" } as const
@@ -177,13 +179,17 @@ async function runHistory(runtime: IAgentRuntime, message: Memory, options: Hand
   return historyActionResult(await runPromise(program))
 }
 
+export function historyAsCommand(runtime: IAgentRuntime, message: Memory): boolean {
+  return browserHistoryHome(deviceTurnFor(runtime, message)?.capabilities, browserViewAsker(runtime) !== undefined) === "HistoryAsCommand"
+}
+
 export const browserAction: Action = {
   name: "BROWSER",
   description: `Control the page that is showing in the requesting device's own browser. Only these commands are available: ${NATIVE_HISTORY_SUBACTIONS.join(", ")}. Do not offer any other browser command through this tool. Accepted dispatch does not prove website completion.`,
   similes: [],
   examples: [],
   roleGate: { minRole: "OWNER" },
-  validate: async (runtime) => browserViewAsker(runtime) !== undefined,
+  validate: async (runtime, message) => historyAsCommand(runtime, message),
   parameters: [{
     name: "action",
     required: true,

@@ -14,7 +14,6 @@ import { gmailInboxAllows } from "./grants.vibe"
 import type { GmailInboxCapabilities, GmailInboxOperationKind, GmailInboxReceipt } from "./types.vibe"
 
 type Bag = Readonly<Record<string, unknown>>
-type PreparedInboxOperation = { readonly receipt: GmailInboxReceipt; readonly review: Bag }
 type Checked = { readonly matches: boolean; readonly checked: readonly Omit<ReviewedMailAttachment, "text">[] }
 
 const operationKinds = ["send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"] as const
@@ -81,7 +80,7 @@ export interface InboxOperationStore {
 }
 
 export interface InboxOperationClient {
-  gmailPrepareOperation(grantId: string, requestId: string, proposal: Bag): PreparedInboxOperation!MailFailure
+  gmailPrepareOperation(grantId: string, requestId: string, proposal: Bag): { readonly receipt: GmailInboxReceipt; readonly review: Bag }!MailFailure
   gmailDispatchOperation(grantId: string, requestId: string, reviewDigest: string, proposal: Bag): GmailInboxReceipt!MailFailure
   gmailOperation(grantId: string, requestId: string): GmailInboxReceipt!MailFailure
 }
@@ -221,15 +220,28 @@ export effect function journalModel(): JournalModel!! {
   }
 }
 
-function projectRecord(
-  saved: InboxOperationRecord | null,
-  state: MailState,
-  { digestOf, composerCopy, intern }: {
-    readonly digestOf: (digest: string) => number
-    readonly composerCopy: (draftId: string, proposal: Bag) => Copy
-    readonly intern: (text: string) => number
-  },
-): MailState {
+function interned() {
+  const names = new Map<string, number>()
+  function intern(text: string): number {
+    const known = names.get(text)
+    if (known !== undefined) return known
+    names.set(text, names.size + 1)
+    return names.size
+  }
+
+  const digestOf = (digest: string) => intern(`digest:${digest}`)
+  const messageOf = (receipt: GmailInboxReceipt | null) => {
+    const id = sentMessageId(receipt)
+    return id === undefined ? 0 : intern(`message:${id}`)
+  }
+  const composerCopy = (draftId: string, proposal: Bag): Copy => ({ id: intern(`draft:${draftId}`), content: intern(`content:${composerContent(proposal)}`), revision: 0 })
+  return { intern, digestOf, messageOf, composerCopy }
+}
+
+type Interned = ReturnType<typeof interned>
+
+function projectRecord(names: Interned, saved: InboxOperationRecord | null, state: MailState): MailState {
+  const { intern, digestOf, composerCopy } = names
   if (saved === null) return emptyJournal(emptyCopy, state)
   const kind = operationKind(saved.proposal) ?? "send"
   const request = state.lastRequest + 1
@@ -253,9 +265,7 @@ function projectRecord(
   }
 }
 
-type InboxReviewDependencies = Pick<InboxOperationDependencies, "capabilities" | "reviewAttachment">
-
-effect function reviewedAttachments(deps: InboxReviewDependencies, saved: InboxOperationRecord, review: Bag): Checked!(MailFailure | OutgoingAttachmentsRefused) {
+effect function reviewedAttachments(deps: InboxOperationDependencies, saved: InboxOperationRecord, review: Bag): Checked!(MailFailure | OutgoingAttachmentsRefused) {
   const listedFiles = saved.proposal.attachments ?? []
   if (!Array.isArray(listedFiles)) return { matches: false, checked: [] }
   const files = listedFiles as readonly OutgoingMailAttachment[]
@@ -296,49 +306,16 @@ function fieldsEchoed(proposal: Bag, review: Bag, kind: GmailInboxOperationKind)
     (kind !== "draft-delete" || review.permanent === true)
 }
 
-effect function verifyProviderReview(
-  deps: InboxReviewDependencies,
-  saved: InboxOperationRecord,
-  kind: GmailInboxOperationKind,
-  result: PreparedInboxOperation,
-): void!(OperationRefused | MailFailure | OutgoingAttachmentsRefused) {
-  const review = result.review
-  const attachments: Checked = composerKind(kind) ? try reviewedAttachments(deps, saved, review) : { matches: review.attachments === undefined, checked: [] }
-  const localBytes = attachments.checked.reduce((sum, file) => sum + file.size, 0)
-  const forward = forwardMatches(saved, review, localBytes, attachments.checked.length)
-  const accepted = reviewAccepted({
-    receiptMatches: result.receipt.requestId === saved.requestId && result.receipt.kind === kind && sha.test(result.receipt.reviewDigest),
-    fieldsEchoed: fieldsEchoed(saved.proposal, review, kind),
-    senderNamed: typeof review.from === "string" && review.from !== "",
-    attachmentsMatch: attachments.matches,
-    forwardMatches: forward.matches,
-    withinLimits: forward.within,
-  })
-  if (!accepted) throw refused("review-mismatch")
-}
-
 export effect function inboxOperation(deps: InboxOperationDependencies): InboxOperation!! {
+  const names = interned()
+  const { digestOf, messageOf, composerCopy } = names
   const model = try journalModel()
   const busy = try Ref.make(false)
   const key = try inboxOperationKey(deps.owner, deps.grantId)
-  const names = new Map<string, number>()
   let record: InboxOperationRecord | null = null
   let stopped = false
   try model.step({ type: "openBinding" })
 
-  function intern(text: string): number {
-    const known = names.get(text)
-    if (known !== undefined) return known
-    names.set(text, names.size + 1)
-    return names.size
-  }
-
-  const digestOf = (digest: string) => intern(`digest:${digest}`)
-  const messageOf = (receipt: GmailInboxReceipt | null) => {
-    const id = sentMessageId(receipt)
-    return id === undefined ? 0 : intern(`message:${id}`)
-  }
-  const composerCopy = (draftId: string, proposal: Bag): Copy => ({ id: intern(`draft:${draftId}`), content: intern(`content:${composerContent(proposal)}`), revision: 0 })
 
   effect function check(): void!OperationRefused {
     if (stopped || !deps.active()) throw refused("inactive")
@@ -418,8 +395,19 @@ export effect function inboxOperation(deps: InboxOperationDependencies): InboxOp
     if (kind === undefined) throw refused("invalid-proposal")
     const result = try deps.client.gmailPrepareOperation(saved.grantId, saved.requestId, saved.proposal)
     try check()
-    try verifyProviderReview(deps, saved, kind, result)
-    const { review } = result
+    const review = result.review
+    const attachments: Checked = composerKind(kind) ? try reviewedAttachments(deps, saved, review) : { matches: review.attachments === undefined, checked: [] }
+    const localBytes = attachments.checked.reduce((sum, file) => sum + file.size, 0)
+    const forward = forwardMatches(saved, review, localBytes, attachments.checked.length)
+    const accepted = reviewAccepted({
+      receiptMatches: result.receipt.requestId === saved.requestId && result.receipt.kind === kind && sha.test(result.receipt.reviewDigest),
+      fieldsEchoed: fieldsEchoed(saved.proposal, review, kind),
+      senderNamed: typeof review.from === "string" && review.from !== "",
+      attachmentsMatch: attachments.matches,
+      forwardMatches: forward.matches,
+      withinLimits: forward.within,
+    })
+    if (!accepted) throw refused("review-mismatch")
     const state = try model.state()
     const event: Event = {
       type: "observeReview", epochId: state.epoch, requestId: state.request, mailKind: state.kind, digest: digestOf(result.receipt.reviewDigest),
@@ -441,7 +429,7 @@ export effect function inboxOperation(deps: InboxOperationDependencies): InboxOp
         saved = decoded.value
       }
       if (saved !== null && (saved.owner !== deps.owner || saved.grantId !== deps.grantId || operationKind(saved.proposal) === undefined)) throw refused("invalid-record")
-      const projected = projectRecord(saved, try model.state(), { digestOf, composerCopy, intern })
+      const projected = projectRecord(names, saved, try model.state())
       const restored = decodeState(projected) catch effect () => { throw refused("invalid-record") }
       try model.restore(restored)
       record = saved

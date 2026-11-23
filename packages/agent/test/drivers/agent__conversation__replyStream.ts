@@ -1,4 +1,4 @@
-// spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
+// spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"
 import type { Driver, Options } from "../../gen/agent__conversation__replyStream.conformance.ts";
 import type { Event, Phase, ReplyStream } from "../../gen/agent__conversation__replyStream.ts";
 import { ReplyWire } from "../../src/conversation/stream.vibe";
@@ -22,6 +22,7 @@ function send(event: Event): boolean {
     case "replaceText": return wire.replace(textOf(event.units), event.provisional);
     case "restartText": return wire.restart(textOf(event.units), event.provisional);
     case "showProgress": return wire.progress(event.progress);
+    case "acknowledge": return wire.acknowledge(textOf(event.units));
     case "announceReply": return wire.ready(textOf(event.units), Array.from({ length: event.results }, () => ({ action: "CALCULATE", data: {} })));
     case "finish": return event.reply >= 1 && wire.finish({
       type: "done", fullText: textOf(event.units), messageId: "reply", userMessageId: "message", agentName: "agent", kind: event.kind,

@@ -1,4 +1,4 @@
-// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"
+// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"
 package ai.eliza.os.agent;
 
 import java.io.BufferedReader;
@@ -56,7 +56,7 @@ public final class ChannelAdapter {
       case "ask": {
         ChannelPolicy.CallerKind kind = named(ChannelPolicy.CallerKind.values(), event.get("kind"));
         String owner = text(event.get("owner")), id = text(event.get("id"));
-        return policy.ask(kind, owner, id, request(event.get("request")));
+        return policy.ask(kind, owner, id, request(event.get("request")), list(event.get("headers"), ChannelAdapter::header));
       }
       case "reply": {
         long seq = whole(event.get("seq"));
@@ -136,6 +136,12 @@ public final class ChannelAdapter {
       default -> throw new IllegalArgumentException("not a body");
     };
     return new RouteGate.Request(method, delivery, segments, query, flaws, decoded);
+  }
+
+  private static ChannelPolicy.Header header(Object value) {
+    Map<String, Object> header = object(value);
+    if (!(header.get("printable") instanceof Boolean printable)) throw new IllegalArgumentException("expected a boolean");
+    return new ChannelPolicy.Header(text(header.get("key")), named(ChannelPolicy.HeaderName.values(), header.get("name")), whole(header.get("bytes")), printable);
   }
 
   private static ChannelPolicy.Frame frame(Object value) {

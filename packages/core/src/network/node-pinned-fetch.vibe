@@ -3,8 +3,7 @@ import { Foreign, foreign, promised } from "../edge.vibe"
 import type { PinnedLookupFetchParams } from "./fetch-guard.vibe"
 
 module node {
-  import { lookup as dnsLookupCallback } from "node:dns"
-  import { lookup as dnsLookup } from "node:dns/promises"
+  import dns from "node:dns"
   import { type RequestOptions as HttpRequestOptions, type IncomingMessage, request as requestHttp } from "node:http"
   import { request as requestHttps } from "node:https"
   import { isIP, type LookupFunction } from "node:net"
@@ -22,7 +21,7 @@ module node {
   export type RequestOutcome = { readonly response: Response } | { readonly error: unknown }
 
   /** @throws {never} */
-  export const nodeLookupFn: LookupFn = (hostname, options) => dnsLookup(hostname, options)
+  export const nodeLookupFn: LookupFn = (hostname, options) => dns.promises.lookup(hostname, options)
 
   /** @throws {never} */
   export async function prepareRequest(init: RequestInit): Promise<PreparedRequest> {
@@ -145,10 +144,11 @@ module node {
   /** @throws {never} */
   export function createValidatedLookup(
     validate: (address: string, family: number) => void,
-    resolve: LookupFunction = dnsLookupCallback,
+    resolve?: LookupFunction,
   ): LookupFunction {
     return (hostname, options, callback) => {
-      resolve(hostname, { ...options, all: true }, (error, result, family) => {
+      const lookup = resolve ?? (dns.lookup as LookupFunction)
+      lookup(hostname, { ...options, all: true }, (error, result, family) => {
         if (error) {
           callback(error, [])
           return

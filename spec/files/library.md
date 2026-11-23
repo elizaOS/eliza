@@ -67,7 +67,10 @@ its bytes or text, or making an attachment of it, checks the row again
 before and after the read; a row changed or gone since is refused, and the
 owner selects again. A mail attachment holds at most 5 MiB and a chat one
 at most 20 MiB, and text is read only from a text file of at most 2 MB that
-decodes as UTF-8 without a NUL.
+decodes as UTF-8 without a NUL. Renaming a selected file renames that row
+only at the revision the selection holds, to a valid name no other row of
+its folder uses in any case, and binds the selection to the renamed
+revision, so the owner keeps reading the file they renamed.
 
 ```quint
 type SelectionRead = { present: bool, revisionMatches: bool, bytes: int, limit: int }

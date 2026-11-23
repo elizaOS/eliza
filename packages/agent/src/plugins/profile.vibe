@@ -5,6 +5,7 @@ import { approvalsModule, approvalsModuleName } from "../approvals/module.vibe"
 import { notificationsModule, notificationsModuleName } from "../notifications/module.vibe"
 import { basicActionsModule, basicActionsModuleName } from "./basic-actions.vibe"
 import { replyDraftModule, replyDraftModuleName } from "../device-actions/reply-draft.vibe"
+import { deviceActionsModule, deviceActionsModuleName } from "../device-actions/proposal/module.vibe"
 import { scheduledTasksModuleFactory, scheduledTasksModuleName } from "../schedule/scheduled-task-routes.vibe"
 import { triggersModule, triggersModuleName } from "../schedule/trigger-routes.vibe"
 import { openPromptTriggers } from "../schedule/triggers.vibe"
@@ -17,6 +18,7 @@ export const builtinModuleFactories: ReadonlyMap<string, ModuleFactory<never>> =
   [approvalsModuleName, approvalsModule],
   [notificationsModuleName, notificationsModule],
   [replyDraftModuleName, replyDraftModule],
+  [deviceActionsModuleName, deviceActionsModule],
   [scheduledTasksModuleName, scheduledTasksModuleFactory],
   [tasksModuleName, tasksModule()],
   [surfaceModuleName, surfaceModule],

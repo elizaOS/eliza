@@ -184,9 +184,12 @@ pure val providerVersionValues = Set(0, 1, 2)
 
 ### The agent admits every launch the service writes, given a launch frame with a key
 
-A ready launch, sent with an admitted frame that carries a credential, passes
-the agent's own launch verdict, so the agent never exits 78 or 77 on a start
-the service judged ready.
+A ready launch, sent with an admitted frame that carries a credential its
+backend's slot takes, passes the agent's own launch verdict, so the agent
+never exits 78 or 77 on a start the service judged ready. Discovered by
+simulation: an own-key launch framed with a provider key longer than the
+1,024 characters the own-key slot takes is refused as a credential error, so
+this holds only for a key the slot takes.
 
 A supplied own-key credential must fit the agent's own-key slot before the
 service writes or spawns the launch. The service refuses an oversized
@@ -210,7 +213,7 @@ pure def readyDocumentAdmitted(v: StartVerdict, f: Launch::LaunchFrame): bool = 
   }
 }
 pure def lawAgentAdmitsEveryReadyLaunch(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool =
-  (Launch::frameAdmitted(f) and Launch::hasCredential(f.credential)) implies readyDocumentAdmitted(startVerdict(d, cred, worker), f)
+  (Launch::frameAdmitted(f) and Launch::credentialFits(d.host.launch.backend, f.credential)) implies readyDocumentAdmitted(startVerdict(d, cred, worker), f)
 pure val workerValues = Set(RP::NoLaunchWorker, RP::NamedWorker({ runtimeDir: "files/worker", executable: "worker", sha256: "w1" }))
 pure val credValues = {
   val active = { ...C::initial, lastVersion: 1, custody: C::Active({ version: 1, credentialId: "c1", account: { userId: "user1", organizationId: "org1" }, keyExpiresAt: 1000 }) }

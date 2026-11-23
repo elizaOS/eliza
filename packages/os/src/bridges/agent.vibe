@@ -23,7 +23,7 @@ const Status = Schema.Union([
   Schema.Struct({
     ...statusFacts,
     state: Schema.Literal("failed"),
-    failure: Schema.Literals(["payload", "storage", "config", "credential", "agent", "crashed", "runtime"]),
+    failure: Schema.Literals(["payload", "storage", "config", "credential", "agent", "runtime"]),
     error: Schema.optionalKey(Schema.String),
   }),
 ])
