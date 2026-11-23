@@ -194,7 +194,7 @@ module node {
     const messages = await runtime.getMemories({ tableName: "messages", roomId, count: 10 })
     const firedText = 'Scheduled trigger "Plants" fired. Do this now: Water the plants'
     const fired = messages.find((message) => message.content.text === firedText)
-    const told = bench.cloud.calls.filter((call) => call.path.endsWith("/chat/completions")).at(-1)
+    const toldFired = bench.cloud.calls.some((call) => call.path.endsWith("/chat/completions") && JSON.stringify(call.body ?? null).includes(JSON.stringify(firedText).slice(1, -1)))
     const history = await ask<{ readonly messages: readonly { readonly role: string; readonly text: string }[] }>(bench, "GET", `/api/conversations/${chosen}/messages`)
     const found = await ask<{ readonly count: number }>(bench, "GET", `/api/conversations/messages/search?q=${encodeURIComponent("Do this now")}`)
     await runtime.deleteRoom(roomId)
@@ -205,7 +205,7 @@ module node {
     const conversations = await bench.running.runtime.getRooms(ownerOf(bench.running.runtime.agentId).world)
     return {
       chosen: created.body.deliveryConversationId === chosen, authoredByCaller: fired?.entityId === ownerOf(runtime.agentId).user,
-      firedSource: fired?.content.source, modelToldFired: JSON.stringify(told?.body ?? null).includes(JSON.stringify(firedText).slice(1, -1)),
+      firedSource: fired?.content.source, modelToldFired: toldFired,
       shown: history.body.messages.map(({ role, text }) => ({ role, text })), searchedPrompt: found.body.count,
       first: first.body.result, gone: gone.body.result,
       kept: runs.length, statuses: [...new Set(runs.map((run) => run.status))], inferences: inferences(bench.cloud) - before,
