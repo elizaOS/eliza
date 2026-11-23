@@ -1,8 +1,11 @@
-// spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/failures.md, "A failure is classified by the client's own refusal first, then by being offline, then by Cloud's code and status"
-import { cloudServiceType, type CloudLinkService } from "@elizaos/agent"
+// spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/failures.md, "A failure is classified by the client's own refusal first, then by being offline, then by Cloud's code and status"; spec/inbox/managedRead.md, "The agent offers a managed read only through its host's mail broker, and without one answers without a call"
+import { cloudServiceType, CloudLinkRequestRefused, type CloudLinkService } from "@elizaos/agent"
 import type { IAgentRuntime } from "@elizaos/core"
+import { agentOffersRead, type AgentMailPath } from "../../gen/inbox__managedRead.effect.vibe"
 import { managedGmailClient, type ManagedGmailClient, type ManagedGmailTransport } from "../client/index.vibe"
 import { AttachmentRefused, MailProtocolFailed, MailUnreachable } from "../mailbox/failures.vibe"
+
+export const managedGmailReadBrokerSetting = "ELIZA_MANAGED_GMAIL_READ_BROKER"
 
 function refusalCode(body: unknown): string {
   return typeof body === "object" && body !== null && "error" in body && typeof body.error === "string" ? body.error : ""
@@ -30,7 +33,16 @@ export function cloudLinkTransport(link: CloudLinkService): ManagedGmailTranspor
   }
 }
 
+export function agentMailPath(runtime: IAgentRuntime): AgentMailPath {
+  const broker = runtime.getSetting(managedGmailReadBrokerSetting)
+  return typeof broker === "string" && broker.trim() !== "" ? "HostMailBroker" : "NoMailBroker"
+}
+
+export function unreachableMail(error: unknown): boolean {
+  return error instanceof MailUnreachable && error.cause instanceof CloudLinkRequestRefused && error.cause.reason === "mail"
+}
+
 export function agentGmailClient(runtime: IAgentRuntime): ManagedGmailClient | undefined {
   const link = cloudLinkOf(runtime)
-  return link === undefined ? undefined : managedGmailClient(cloudLinkTransport(link))
+  return link === undefined || !agentOffersRead(agentMailPath(runtime)) ? undefined : managedGmailClient(cloudLinkTransport(link))
 }

@@ -4,7 +4,9 @@ A managed account's aggregate inbox read is a fresh read for the owner
 who asked for it, never served from a cache, and a read the managed
 route does not support is refused before anything is sent. The Cloud
 side of the read is [managed Gmail](../cloud/index.md#an-approved-connection-grants-the-owner-only-the-selected-reads); the
-device's own cached reads are [mailbox reads](./reads.md).
+device's own cached reads are [mailbox reads](./reads.md). The agent
+reads managed mail only through a broker its host provides, never through
+its [cloud link](../agent/models/binding.md).
 
 ## Story: Read my managed inbox fresh, and only for me
 
@@ -68,4 +70,28 @@ pure def alwaysUnfinishedReadHasNoMail(s: ManagedInboxRead): bool =
   (s.phase == ReadIdle or s.phase == ReadPending) implies s.returnedOwner == 0
 pure def leadsToReadFinishes(s: ManagedInboxRead, later: ManagedInboxRead): bool =
   s.phase == ReadPending implies later.phase != ReadPending
+```
+
+## Story: Hear plainly when my assistant cannot reach my mail
+
+> As the owner, I want my assistant to tell me plainly when it cannot reach
+> my mail on this device, and never to send me to reconnect Gmail when
+> reconnecting would not help.
+
+### The agent offers a managed read only through its host's mail broker, and without one answers without a call
+
+The agent's cloud link holds only the device key, which the Cloud refuses on
+every mail route, so the link never sends one. The agent reads managed
+Gmail only through a broker its host runs in the native shell and names in
+the plugin setting `ELIZA_MANAGED_GMAIL_READ_BROKER`. Without a broker the
+read action is not offered, a read asked for anyway is refused as
+`no-mail-path`, and the Gmail access check says that the assistant cannot
+reach Gmail on this device, all without any call. A read that the cloud
+link refuses as a mail route is answered the same way, never as Gmail
+access to reconnect.
+
+```quint
+type AgentMailPath = HostMailBroker | NoMailBroker
+pure def agentOffersRead(path: AgentMailPath): bool = path == HostMailBroker
+pure def lawOnlyABrokerOffersARead(path: AgentMailPath): bool = agentOffersRead(path) iff path == HostMailBroker
 ```
