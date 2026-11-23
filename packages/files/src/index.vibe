@@ -7,10 +7,8 @@ import { workspace, workspaceRoot, type DirectoryEntry, type FileEncoding } from
 export { filesProposalFamily } from "./device-proposals.vibe"
 export { normalizeWorkspacePath, workspace, workspaceRoot, WorkspaceRefused, type DirectoryEntry, type FileEncoding } from "./workspace.vibe"
 
-/** The service type other plugins resolve the agent's workspace files by. */
 export const DEVICE_FILESYSTEM_SERVICE_TYPE = "device_filesystem"
 
-/** The agent's workspace files as a runtime service: read, write and list inside `<state>/workspace`. */
 export class DeviceFilesystemService extends Service {
   static override serviceType = DEVICE_FILESYSTEM_SERVICE_TYPE
   override capabilityDescription = "Reads, writes and lists the agent's own working files inside its workspace directory"
@@ -37,13 +35,11 @@ export class DeviceFilesystemService extends Service {
   }
 }
 
-/** The registered workspace service, or undefined when this plugin is not loaded. */
 export function deviceFilesystem(runtime: IAgentRuntime): DeviceFilesystemService | undefined {
   const found: unknown = runtime.getService(DEVICE_FILESYSTEM_SERVICE_TYPE)
   return found instanceof DeviceFilesystemService ? found : undefined
 }
 
-/** The Files agent plugin: the agent's workspace files service. */
 export const plugin: Plugin = {
   name: "@elizaos/plugin-files",
   description: "The agent's own workspace files; the owner's files change only through reviewed Files device actions",

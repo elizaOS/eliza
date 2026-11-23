@@ -63,7 +63,6 @@ import { decodedImage, encoded, fittedSize, imageAdmitted, imageRefused, pageSet
 import { scanTextLayer, textLayerRefused, TextLayerRefused, type ScanTextLine } from "./scan-text-layer.vibe"
 import { composePdf, unencodable } from browser
 
-/** The document properties a scan PDF carries. */
 export interface ScanPdfMetadata {
   readonly title: string
   readonly creator: string
@@ -78,12 +77,10 @@ const pdfText: Readonly<Record<PdfRefusal, string>> = {
   "conversion-failed": "PDF conversion failed.",
 }
 
-/** A conversion the page set, the reviewed text or the output size refused before any write request. */
 export error PdfRefused { reason: PdfRefusal; message: string }
 
 const refused = (reason: PdfRefusal) => new PdfRefused({ reason, message: pdfText[reason] })
 
-/** The largest PDF handed to a destination. */
 export const SCAN_PDF_MAX_BYTES = 8 * 1024 * 1024
 
 effect function jpegPage(image: Blob): Uint8Array<ArrayBuffer>!ImageRefused {
@@ -95,7 +92,6 @@ effect function jpegPage(image: Blob): Uint8Array<ArrayBuffer>!ImageRefused {
   })
 }
 
-/** Converts the ordered image snapshot to a PDF, with each reviewed layer as invisible searchable text on its own page. */
 export effect function createScanPdf(metadata: ScanPdfMetadata, input: Blob | readonly Blob[], textLayers?: readonly (readonly ScanTextLine[])[]): Uint8Array<ArrayBuffer>!(PdfRefused | ImageRefused | TextLayerRefused) {
   const images = Array.isArray(input) ? [...input] as Blob[] : [input as Blob]
   const layers: ScanTextLine[][] | undefined = textLayers === undefined ? undefined : []
@@ -120,7 +116,6 @@ const evidence: Readonly<Record<string, PdfExportEvidence>> = {
   requested: "PdfRequested", exported: "PdfExported", unverified: "PdfUnverified",
 }
 
-/** Whether a destination's resolved status leaves the same pages free to export again. */
 export function scanExportRetryable(status: string): boolean {
   return pdfExportRetryable(evidence[status] ?? "PdfOtherOutcome")
 }
