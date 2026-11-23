@@ -196,7 +196,9 @@ is reported to `./credential.md` as `rejected` for that key's version, as an
 account read when the route was `GET /api/v1/user`, which alone may sign
 out. A `401` on a request sent with the lease is reported as `leaseRejected`
 for its access token, which only discards that token. A `401` on a request
-sent with the account session drops that session only.
+sent with the account session drops that session only. A device-key request is
+attached only with a positive credential version. Its attachment kind
+determines where the refusal is reported.
 
 ```quint
 type CredentialReport = NoReport | KeyRejected({ version: int, reason: RefusalReason, on: C::RejectedOn }) | LeaseRejected({ version: int, reason: RefusalReason }) | SessionRejected
@@ -218,8 +220,14 @@ pure val dValues = Set(noDeviceRoute, { method: Get, path: api(List("user")), au
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
 pure def lawOnlyA401WithACredentialIsReported(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
   (reportOf(attach, d, status, reason) != NoReport) iff (status == 401 and attach != Bare)
+pure def usesDeviceKey(attach: Attach): bool = match attach { | WithKey(k) => true | _ => false }
 pure def lawASession401NeverReachesTheKey(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
-  isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and keyOf(attach) >= 1)
+  isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and usesDeviceKey(attach))
+pure def lawARequestCarriesOnlyAPositiveKeyVersion(h: Holding, d: DeviceRoute): bool =
+  match attachFor(h, d) {
+    | Send(s) => usesDeviceKey(s.attach) implies keyOf(s.attach) >= 1
+    | _ => true
+  }
 ```
 
 ### A cancel disconnects only the page's own call still in flight, which then settles once as cancelled
