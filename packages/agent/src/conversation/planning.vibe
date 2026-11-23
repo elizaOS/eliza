@@ -78,6 +78,8 @@ export function offeredOnlyWhere(action: Action, home: (runtime: IAgentRuntime, 
   turnToolForms.set(action, (runtime, message) => home(runtime, message) ? { description: action.description, parameters: {} } : undefined)
 }
 
+export const turnClarifications = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => string | undefined>()
+
 export const turnFirstCalls = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => ToolCall["arguments"] | undefined>()
 
 export interface ServedElsewhere {
@@ -399,6 +401,11 @@ function settleReply(steps: readonly PlannedStep[], prose: string | undefined): 
 
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, state, roles, signal } = input
+  signal.throwIfAborted()
+  for (const action of actions) {
+    const reply = turnClarifications.get(action)?.(runtime, message)
+    if (reply !== undefined) return { reply, steps: [], streamed: "" }
+  }
   const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
   const restoreOffered = offersContextRestore(tools.length)
   if (restoreOffered) {

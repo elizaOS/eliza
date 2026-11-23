@@ -100,6 +100,7 @@ export interface DeviceProposalFamily {
   readonly guidance: (device: NegotiatedDevice) => readonly string[]
   now?(turn: DeviceTurn): string | undefined
   prepare?(operation: unknown): unknown
+  clarifyRequest?(turn: DeviceTurn): string | undefined
   wholeMessageOperation?(turn: DeviceTurn): DeviceOperation | undefined
   ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable
   proposedText(operation: DeviceOperation, pending: PendingRequest): ProposalText | undefined

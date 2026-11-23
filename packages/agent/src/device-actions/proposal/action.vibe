@@ -6,7 +6,7 @@ module node {
   import { isRefused } from "../../../gen/agent__deviceActions__capabilities.ts"
   import { completableRead, directEligible } from "../../../gen/agent__deviceActions__operations.ts"
   import { proposeDeviceAction as declared } from "../../../gen/agent__plugins__profile.ts"
-  import { turnElsewhere, turnFirstCalls, turnNotes, turnToolForms, type TurnToolForm } from "../../conversation/planning.vibe"
+  import { turnClarifications, turnElsewhere, turnFirstCalls, turnNotes, turnToolForms, type TurnToolForm } from "../../conversation/planning.vibe"
   import { gateRoles } from "../../plugins/basic-actions.vibe"
   import { bindingHash } from "../operation-schemas/telephony.vibe"
   import { deviceOperationTypes, readOperation, type DeviceOperation } from "../operations.schema.vibe"
@@ -288,6 +288,16 @@ module node {
   turnNotes.set(proposeDeviceAction, (runtime, message) => {
     const turn = deviceTurnFor(runtime, message)
     return turn === undefined || isRefused(turn.negotiation) ? undefined : messageNote(runtime, turn)
+  })
+
+  turnClarifications.set(proposeDeviceAction, (runtime, message) => {
+    const turn = deviceTurnFor(runtime, message)
+    if (turn === undefined || isRefused(turn.negotiation)) return undefined
+    for (const family of registeredFamilies(runtime)) {
+      const clarification = family.clarifyRequest?.(turn)
+      if (clarification !== undefined) return clarification
+    }
+    return undefined
   })
 
   turnFirstCalls.set(proposeDeviceAction, (runtime, message) => {
