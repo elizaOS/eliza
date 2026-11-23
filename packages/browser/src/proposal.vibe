@@ -42,7 +42,7 @@ const REFUSALS: Readonly<Record<BrowserRefusal, { readonly code: string; readonl
 }
 
 const REPLIES: Readonly<Record<RefusalReply, string>> = {
-  AskForAddress: "Tell me the address, like example.com.",
+  AskForAddress: 'Tell me the address, like "open nytimes.com".',
   SayAddressNotOpened: "I didn't open that address.",
   AskForSearchWords: 'Tell me the words to search for, like "search for weather in Paris".',
   SayOneTabAtATime: "Your phone's Browser closes one tab at a time, so nothing was closed. I can close the tab that's showing, or one you name.",
