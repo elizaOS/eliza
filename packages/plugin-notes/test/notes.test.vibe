@@ -236,8 +236,7 @@ it.live('A named move through owner chat moves both copies in one revision and r
     for (const answer of [before, accepted, replay, afterMove, refused, afterRead, checklist, beforeFragment, fragment, afterFragment])
       assert.propertyVal(answer, "status", 200)
     const bodyOf = (answer: typeof accepted) => {
-      if (!("json" in answer)) throw new Error("The owner route returned no response body")
-      return answer.json
+      return "json" in answer ? answer.json : undefined
     }
     const stateOf = (answer: typeof before) => (bodyOf(answer) as { data: NotesSnapshot }).data
     const ids = (notes: NotesSnapshot) => notes.notes.map(({ id }) => id).sort()

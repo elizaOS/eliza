@@ -113,23 +113,22 @@ it.live('Use resident Calendar and keep the other work while Contacts is open (s
     body: { text: "Yes, delete it.", metadata: { observation: { view: "contacts", revision: 5, sensitive: false } } } })
   const afterAnswer = try call(agent, { method: "GET", path: `/api/lifeops/calendar/feed?${window}` })
   const answerPlan = cloud.calls.slice(beforeAnswer).find(({ path }) => path.endsWith("/chat/completions"))
+  if (!("status" in reply) || !("status" in feed) || !("status" in deleted) || !("status" in afterDelete)
+    || !("status" in seeded) || !("status" in pending) || !("status" in confirmed) || !("status" in afterAnswer)
+    || !("status" in availability)) return try Effect.die(new Error("A signed Calendar fixture route returned no status"))
   try Effect.try(() => {
     assert.include(JSON.stringify(plan?.body), "Use CALENDAR's create_event")
-    if (!("status" in reply) || !("status" in feed)) throw new Error("A signed fixture route refused")
     assert.strictEqual(reply.status, 200)
     assert.strictEqual(feed.status, 200)
     const result = reply.json as { actionResults: readonly { action: string }[] }
     assert.includeMembers(result.actionResults.map(({ action }) => action), ["CALENDAR", "READ_EXTRA_FIXTURE"])
     assert.include(JSON.stringify(feed.json), title)
     assert.include(JSON.stringify(deletePlan?.body), "Use CALENDAR's delete_event")
-    if (!("status" in deleted) || !("status" in afterDelete)) throw new Error("A signed delete fixture route refused")
     assert.strictEqual(deleted.status, 200)
     const deletion = deleted.json as { actionResults: readonly { action: string; data: { deleted?: boolean } }[] }
     assert.isTrue(deletion.actionResults.some(({ action, data }) => action === "CALENDAR" && data.deleted === true))
     assert.strictEqual(afterDelete.status, 200)
     assert.notInclude(JSON.stringify(afterDelete.json), title)
-    if (!("status" in seeded) || !("status" in pending) || !("status" in confirmed) || !("status" in afterAnswer))
-      throw new Error("A Calendar confirmation fixture route refused")
     assert.strictEqual(seeded.status, 200)
     assert.strictEqual(pending.status, 200)
     assert.include((pending.json as { text: string }).text, "Should I delete it?")
@@ -140,11 +139,10 @@ it.live('Use resident Calendar and keep the other work while Contacts is open (s
     assert.strictEqual(afterAnswer.status, 200)
     assert.notInclude(JSON.stringify(afterAnswer.json), confirmationTitle)
     assert.notInclude(JSON.stringify(afterAnswer.json), "Unexpected event")
-    if (!("status" in availability)) throw new Error("The Calendar availability fixture route refused")
     assert.strictEqual(availability.status, 200)
     assert.include(JSON.stringify(availabilityPlan?.body), "Use CALENDAR's propose_times for that length")
     const availabilityActions = (availability.json as { actionResults: readonly { action: string; data: {
-      slots?: readonly { startAt: string; durationMinutes: number }[]; executionStatus?: string
+      slots?: readonly { startAt: string; endAt: string; durationMinutes: number; timeZone: string }[]; executionStatus?: string
     } }[] }).actionResults
     assert.includeMembers(availabilityActions.map(({ action }) => action), ["CALENDAR", "READ_EXTRA_FIXTURE"])
     const calendarSteps = availabilityActions.filter(({ action }) => action === "CALENDAR")
