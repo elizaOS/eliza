@@ -2,6 +2,7 @@ name: Android Node runtime
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches: [vibestack, develop, main]
     paths: [.github/workflows/android-node.yml, .github/patches/node-26.13.1-android-host.patch]
   push:
@@ -13,7 +14,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-node-${{ github.event.pull_request.number || github.ref }}
+  group: >-
+    android-node-${{ github.event.action == 'closed' && (github.event.pull_request.merged != true || github.run_attempt != '1') &&
+      format('close-{0}-{1}', github.run_id, github.run_attempt) ||
+      github.event_name == 'pull_request' && format('pr-{0}', github.event.number || github.run_id) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -24,6 +28,7 @@ env:
 
 jobs:
   runtime:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     name: Node 26 for ${{ matrix.abi }}
     runs-on: ubuntu-24.04
     timeout-minutes: 240
