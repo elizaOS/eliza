@@ -421,11 +421,13 @@ function linkFake() {
     async request(request) {
       bodies.push({ path: request.path, body: request.body, key: request.idempotencyKey !== undefined })
       const at = Date.now()
-      const place = (id: string, name: string, coordinate: { readonly latitude: number; readonly longitude: number }) => ({ providerId: "google", id, name, coordinate, attribution: "Google", fetchedAt: at })
+      const place = (id: string, name: string, coordinate: { readonly latitude: number; readonly longitude: number }, address?: string) => ({ providerId: "google", id, name, coordinate, ...(address === undefined ? {} : { address }), attribution: "Google", fetchedAt: at })
       switch (request.path) {
         case "/api/v1/maps/capabilities": return { kind: "answered", status: 200, body: offer }
         case "/api/v1/maps/places/search": {
           const query = (request.body as { readonly query: string }).query
+          if (query === "Golden Gate Park") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("park", "Golden Gate Park", { latitude: 37.7694, longitude: -122.4862 }, "San Francisco, CA, USA"), place("district", "Golden Gate Park", { latitude: 37.77, longitude: -122.47 }, "Golden Gate Park, San Francisco, CA, USA")] } }
+          if (query === "Starbucks") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("market", "Starbucks", ferry, "1 Market St, San Francisco, CA, USA"), place("powell", "Starbucks", here, "201 Powell St, San Francisco, CA, USA")] } }
           if (query === "pharmacy") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry)] } }
           if (query === "Ferry Building") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("ferry", "Ferry Building", ferry)] } }
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("tower", "Coit Tower", tower)] } }
@@ -450,7 +452,7 @@ function messageWith(location: unknown): Memory {
   return { entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002", content: { text: "coffee near me", metadata: { clientDevice: { context: location === undefined ? {} : { location } } } } } as unknown as Memory
 }
 
-it.live('Search near me with where my phone is now: a recent reported position searches around the phone, an old one asks the phone for its location, routes keep their alternatives and attribution, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
+it.live('Search near me with where my phone is now: a recent reported position searches around the phone, an old one asks the phone for its location, routes keep their alternatives and attribution, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask")', effect () => {
   const { link, bodies } = linkFake()
   const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => undefined, namesView: () => false })
   const runtime = {} as IAgentRuntime
@@ -466,6 +468,8 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const asked = try act("MAPS_PLACE", old, { query: "nearest pharmacy" })
   const route = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Coit Tower", travelMode: "walk" })
   const fromHere = try act("MAPS_ROUTE", recent, { origin: "here", destination: "Coit Tower" })
+  const park = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Golden Gate Park", travelMode: "walk" })
+  const chain = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Starbucks", travelMode: "walk" })
   const handoff = try act("MAPS_NAVIGATION_START", recent, { destination: "Coit Tower", travelMode: "walk" })
   const provider = try promise(() => phonePositionProvider.get(runtime, recent, {} as never))
   const routeText = route.text ?? ""
@@ -478,6 +482,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     route: [route.success, routeText.includes("Alternatives: 1. 20 min"), routeText.includes("Google Maps Platform via Eliza Cloud"), recognizedMapsCards(routeText).map((found) => found.card.kind)],
     plain: withoutMapsCards(routeText).includes("MAPSCARD"),
     fromHere: [fromHere.success, (fromHere.data as { readonly origin: string }).origin],
+    landmark: [park.success, chain.success, (chain.data as { readonly choice?: string }).choice],
     handoff: recognizedMapsCards(handoff.text ?? "")[0]?.card.kind,
     provider: provider.values,
     fenced: recognizedMapsCards(fenced).length,
@@ -489,6 +494,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     route: [true, true, true, ["route"]],
     plain: false,
     fromHere: [false, "own-position"],
+    landmark: [true, false, "destination"],
     handoff: "handoff",
     provider: { phonePositionAvailable: true },
     fenced: 0,

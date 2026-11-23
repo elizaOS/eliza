@@ -1,4 +1,4 @@
-// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"
+// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"
 import type { AgentPlugin } from "@elizaos/agent"
 import type { Action, ActionResult, IAgentRuntime, Memory, Provider } from "@elizaos/core"
 import { appendMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
@@ -7,6 +7,7 @@ import type { AgentPlaceRef, DeviceNavigationFailure, MapsDeviceNavigationStatus
 import { messageLocation, nearbyPoint } from "./client/location.vibe"
 import type { MapsDeviceNavigation } from "./relay.vibe"
 import { answeredChoice, closeChoice, openChoice, registerMapsRouting, type ChoiceOperation, type PlaceChoice } from "./routing.vibe"
+import { sameLandmark } from "../gen/maps__routing.effect.vibe"
 import { agentSaves, type AgentSavedPlaceStore } from "./saves.vibe"
 import { agentPlace, mapsService, type MapsCloudLink, type MapsService, type PlaceResults } from "./service.vibe"
 
@@ -69,6 +70,13 @@ function durationText(seconds: number): string {
   return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`
 }
 
+const streetNumber = /(?:^|,)\s*\d+\p{L}?(?:[-/]\d+)?\s+\S/u
+
+function isArea(place: Place): boolean {
+  const address = place.address?.trim()
+  return address !== undefined && address !== "" && !streetNumber.test(address)
+}
+
 function metersBetween(a: Coordinate, b: Coordinate): number {
   const radians = Math.PI / 180
   const lat = (b.latitude - a.latitude) * radians
@@ -126,7 +134,9 @@ effect function resolvePlace(service: MapsService, query: string | undefined, pl
   if (query === undefined) return { kind: "reply", result: reply(false, `Which ${role} should I use?`, { missing: role }) }
   const found: PlaceResults = try service.search(query, near, 5)
   const exact = found.places.filter((item) => item.name.toLowerCase() === query.toLowerCase())
-  const candidates = exact.length === 1 ? exact : found.places
+  const [top, ...namesakes] = exact
+  const landmark = top !== undefined && namesakes.every((other) => sameLandmark(isArea(top), isArea(other), Math.round(metersBetween(top.coordinate, other.coordinate))))
+  const candidates = landmark ? [top] : found.places
   const [first] = candidates
   if (first === undefined) return { kind: "reply", result: reply(false, `I couldn't find “${query}”.`, { query, count: 0 }) }
   if (candidates.length === 1 || near !== undefined) return { kind: "place", place: first, attribution: found.attribution }

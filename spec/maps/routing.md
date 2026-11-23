@@ -74,3 +74,23 @@ pure def lawExpiredChoiceNeverBinds(a: ChoiceAnswer): bool = a.age > choiceLifet
 pure def lawChoiceStaysInItsConversation(a: ChoiceAnswer): bool = not(a.sameConversation) implies not(choiceBinds(a))
 pure def lawPositionIsAmongTheOptions(a: ChoiceAnswer): bool = choiceBinds(a) implies a.position <= a.options
 ```
+
+### Same-named areas close together are one place, and same-named street addresses still ask
+
+When a place search for a route, a saved place or navigation finds several
+places with exactly the name asked for, Maps asks which one was meant. Two
+such places count as one landmark, and the first is used without asking,
+when neither is at a street address and they are within 5 km of each
+other: a park and the neighbourhood named after it. Branches of a chain at
+street addresses, and same-named areas farther apart, still ask.
+
+```quint
+pure val landmarkAreaMeters = 5000
+pure def sameLandmark(firstIsArea: bool, otherIsArea: bool, meters: int): bool =
+  firstIsArea and otherIsArea and meters >= 0 and meters <= landmarkAreaMeters
+pure val metersValues = Set(0, 1400, 5000, 5001, 20000)
+pure def lawStreetAddressStillAsks(otherIsArea: bool, meters: int): bool =
+  not(sameLandmark(false, otherIsArea, meters)) and not(sameLandmark(otherIsArea, false, meters))
+pure def lawFarAreasStillAsk(meters: int): bool = meters > landmarkAreaMeters implies not(sameLandmark(true, true, meters))
+pure def lawCloseAreasAreOneLandmark(meters: int): bool = (meters >= 0 and meters <= landmarkAreaMeters) implies sameLandmark(true, true, meters)
+```
