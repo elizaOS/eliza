@@ -38,6 +38,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import javax.crypto.KeyGeneratorSpi;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -114,6 +116,10 @@ public final class CloudDeviceAccountJourney {
     static Reply refused(String reason) { return json(401, new JSONObject().put("error", "authentication_required").put("reason", reason)); }
   }
 
+  private record HeldRefusal(String path, CountDownLatch received, CountDownLatch release) {
+    HeldRefusal(String path) { this(path, new CountDownLatch(1), new CountDownLatch(1)); }
+  }
+
   private static final class Cloud {
     final List<Grant> grants = new ArrayList<>();
     final List<Family> families = new ArrayList<>();
@@ -127,6 +133,7 @@ public final class CloudDeviceAccountJourney {
     boolean offerLease = true, dropNextAcknowledgment;
     String exchangeAccount = ACCOUNT, exchangeOrganization = ORGANIZATION;
     int reuses;
+    volatile HeldRefusal heldRefusal;
 
     synchronized Reply answer(String method, String path, String query, String bearer, String body, Map<String, String> headers) throws Exception {
       long now = System.currentTimeMillis();
@@ -300,7 +307,17 @@ public final class CloudDeviceAccountJourney {
       Map<String, String> headers = new LinkedHashMap<>();
       exchange.getRequestHeaders().forEach((name, values) -> headers.put(name.toLowerCase(java.util.Locale.ROOT), values.get(0)));
       String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-      Reply reply = cloud.answer(exchange.getRequestMethod(), exchange.getRequestURI().getRawPath(), exchange.getRequestURI().getRawQuery(), bearer, body, headers);
+      String path = exchange.getRequestURI().getRawPath();
+      HeldRefusal refusal = cloud.heldRefusal;
+      Reply reply;
+      if (refusal != null && refusal.path().equals(path)) {
+        cloud.heldRefusal = null;
+        refusal.received().countDown();
+        if (!refusal.release().await(30, TimeUnit.SECONDS)) throw new IOException("No new enrollment while refusal was held");
+        reply = Reply.refused("credential_revoked");
+      } else {
+        reply = cloud.answer(exchange.getRequestMethod(), path, exchange.getRequestURI().getRawQuery(), bearer, body, headers);
+      }
       if (reply.location() != null) exchange.getResponseHeaders().set("Location", reply.location());
       byte[] bytes = reply.body().getBytes(StandardCharsets.UTF_8);
       if (reply.status() == 204 || reply.status() == 302) {
@@ -400,6 +417,35 @@ public final class CloudDeviceAccountJourney {
 
   private static int status(CloudDeviceAccount account) throws Exception {
     return account.mailRequest("GET", "/api/v1/eliza/google/status", null, null, null, null).status();
+  }
+
+  private static boolean reEnrollDuringRefusal(CloudDeviceAccount account, Cloud cloud, File slots, boolean renew) throws Exception {
+    cloud.keySeconds = 60;
+    if (!signIn(account)) throw new AssertionError("Initial enrollment failed");
+    if (renew) {
+      JsonCredentialSlots secure = new JsonCredentialSlots(slots, "eliza-cloud-device-account.v1", (slot) -> 2048);
+      JSONObject credential = new JSONObject(secure.read("credential"));
+      credential.put("issuedAt", credential.getLong("expiresAt") - TimeUnit.MINUTES.toMillis(3));
+      secure.write("credential", credential.toString());
+    }
+    HeldRefusal refusal = new HeldRefusal(renew ? "/api/auth/device/renew" : "/api/auth/device/lease");
+    cloud.heldRefusal = refusal;
+    FutureTask<Boolean> oldWork = new FutureTask<>(() -> renew ? account.renewIfDue() : account.leaseAccess() != null);
+    new Thread(oldWork).start();
+    CloudDeviceAccount.MailAuthority current;
+    try {
+      if (!refusal.received().await(30, TimeUnit.SECONDS)) throw new AssertionError("The previous enrollment did not reach Cloud");
+      account.clear();
+      if (!signIn(account)) throw new AssertionError("New enrollment failed");
+      current = account.mailAuthority();
+    } finally {
+      refusal.release().countDown();
+    }
+    boolean retained = !oldWork.get(30, TimeUnit.SECONDS) && current != null && current.equals(account.mailAuthority())
+        && account.readMail(current, "/api/v1/eliza/google/status", null).status() == 200;
+    account.clear();
+    account.retryRevocation();
+    return retained;
   }
 
   public static void main(String[] arguments) throws Exception {
@@ -545,6 +591,8 @@ public final class CloudDeviceAccountJourney {
     seen.put("cookieOrOrigin", cloud.cookieOrOrigin);
     upgradeLegacyAccount(account, cloud, home, false);
     upgradeLegacyAccount(account, cloud, home, true);
+    seen.put("newEnrollmentSurvivedLateRefreshRefusal", reEnrollDuringRefusal(account, cloud, slots, false));
+    seen.put("newEnrollmentSurvivedLateRenewalRefusal", reEnrollDuringRefusal(account, cloud, slots, true));
 
     server.stop(0);
     System.out.println(new JSONObject(seen));

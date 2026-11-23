@@ -139,5 +139,7 @@ it.effect('The packaged device account keeps mail on a lease the agent never hol
     nativeSignedOut: [true, true, 0],
     nativeNeverUsedWorkerRoutes: true,
     cookieOrOrigin: false,
+    newEnrollmentSurvivedLateRefreshRefusal: true,
+    newEnrollmentSurvivedLateRenewalRefusal: true,
   }))
 }, 300_000)

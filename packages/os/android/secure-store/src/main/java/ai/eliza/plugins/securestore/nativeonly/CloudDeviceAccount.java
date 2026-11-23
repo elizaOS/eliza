@@ -590,6 +590,14 @@ public final class CloudDeviceAccount {
   return lease.has("offered") ? lease.getLong("offeredExpiresAt") : lease.getLong("refreshExpiresAt");
  }
 
+ private void retireLease(JSONObject expected, String refresh) throws Exception {
+  synchronized (LOCK) {
+   JSONObject current = stored();
+   JSONObject lease = current == null ? null : current.optJSONObject("lease");
+   if (lease != null && holdsToken(current, expected) && refresh.equals(newest(lease))) clear();
+  }
+ }
+
  private JSONObject stored() throws Exception {
   synchronized (LOCK) { return record(CREDENTIAL); }
  }
@@ -608,12 +616,12 @@ public final class CloudDeviceAccount {
    if (access != null && access.mintedBy().equals(presented) && access.expiresAt() - ACCESS_MARGIN_MS > System.currentTimeMillis())
     return access.token();
    if (newestExpiry(lease) <= System.currentTimeMillis()) {
-    clear();
+    retireLease(credential, presented);
     return null;
    }
    Exchange reply = post(canonical(credential) ? LEASE_PATH : "/api/auth/device/lease", null, presented, 200, 401);
    if (reply.status() == 401) {
-    clear();
+    retireLease(credential, presented);
     return null;
    }
    JSONObject pair = new JSONObject(reply.body());
@@ -625,7 +633,8 @@ public final class CloudDeviceAccount {
    synchronized (LOCK) {
     JSONObject current = stored();
     JSONObject held = current == null ? null : current.optJSONObject("lease");
-    if (held == null || !presented.equals(newest(held))) throw new IOException("Device account changed during a lease refresh");
+    if (held == null || !holdsToken(current, credential) || !presented.equals(newest(held)))
+     throw new IOException("Device account changed during a lease refresh");
     long presentedExpiresAt = newestExpiry(held);
     current.put("lease", new JSONObject().put("refresh", presented).put("refreshExpiresAt", presentedExpiresAt)
         .put("offered", next).put("offeredExpiresAt", nextExpiresAt));
@@ -732,14 +741,15 @@ public final class CloudDeviceAccount {
    long now = System.currentTimeMillis(), expiresAt = credential.getLong("expiresAt");
    long issuedAt = credential.optLong("issuedAt", expiresAt - MAX_CREDENTIAL_SECONDS * 1000);
    if (now < issuedAt + (expiresAt - issuedAt) / 2) return false;
+   String presented = newest(lease);
    if (newestExpiry(lease) <= now) {
-    clear();
+    retireLease(credential, presented);
     return false;
    }
    boolean canonical = canonical(credential);
-   Exchange reply = post(canonical ? RENEW : "/api/auth/device/renew", null, newest(lease), 200, 401);
+   Exchange reply = post(canonical ? RENEW : "/api/auth/device/renew", null, presented, 200, 401);
    if (reply.status() == 401) {
-    clear();
+    retireLease(credential, presented);
     return false;
    }
    JSONObject renewed = new JSONObject(reply.body());
@@ -753,8 +763,8 @@ public final class CloudDeviceAccount {
         .put("organizationId", credential.getString("organizationId")).put("issuedAt", now).put("expiresAt", now + seconds * 1000)
         .put("replaces", replaces);
     if (canonical) pending.put("credentialId", identifier(renewed, "credentialId"));
-    if (current == null || !replaces.equals(current.getString("token"))) {
-     oweRevocation(new JSONObject().put("token", token));
+    if (!holdsToken(current, credential)) {
+     oweRevocation(duty(pending));
      return false;
     }
     slots.write(ACK, pending.toString());
