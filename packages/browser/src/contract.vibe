@@ -1,5 +1,5 @@
-// spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review"
-import { closeAllApprovable, closeAllReview, closeFormOffered, controlOffered, navigationOffered, reviewAdmitted, runsUnreviewed, type BrowserControl, type Negotiated, type TabCloseForm } from "../gen/browser__control.effect.vibe"
+// spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"
+import { closeAllApprovable, closeAllReview, closeAnswer, closeFormOffered, controlOffered, navigationOffered, reviewAdmitted, runsUnreviewed, type BrowserControl, type CloseAnswer, type Negotiated, type TabCloseForm } from "../gen/browser__control.effect.vibe"
 import { BROWSER_SEARCH_QUERY_MAX } from "./grounding.vibe"
 
 /** The capability a phone advertises to run web searches from chat. */
@@ -127,6 +127,12 @@ export function browserControlFormAvailable(operation: BrowserControlOperation, 
   return form === undefined
     ? controlOffered(CONTROLS[operation.type], negotiated)
     : closeFormOffered(form, negotiated, capabilities?.includes(BROWSER_TABS_CLOSE_ALL_CAPABILITY) === true)
+}
+
+/** How a proposed tab close is answered on this phone: proposed as asked, refused with its reason where the phone closes one tab at a time, or unavailable; undefined for any other control. */
+export function browserCloseAnswer(operation: BrowserControlOperation, capabilities?: readonly string[]): CloseAnswer | undefined {
+  const form = closeForm(operation)
+  return form === undefined ? undefined : closeAnswer(form, negotiatedOf(capabilities), capabilities?.includes(BROWSER_TABS_CLOSE_ALL_CAPABILITY) === true)
 }
 
 /** The notice the owner gets in place of a close-every-tab card, from the tabs the phone listed for this proposal (`null` when it could not), or undefined when the card may be shown. */
