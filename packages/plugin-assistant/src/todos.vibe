@@ -60,12 +60,13 @@ export effect function changeTodos(input: unknown, messageId: string, text: stri
     const list = try Machine
     const before = try list.get()
     if (request.op === "list") return { success: true, text: renderTodos(before.todos, true) || "Your to-do list is empty.", data: { todos: before.todos } } satisfies ActionResult
-    const named = request.op === "create" || request.op === "clear" ? [] : namedTexts(before, request.target)
-    if (named.length > 1) {
+    const targetText = request.op === "create" || request.op === "clear" ? undefined : request.target
+    const named = targetText === undefined ? [] : namedTexts(before, targetText)
+    if (targetText !== undefined && named.length > 1) {
       const candidates = before.todos.filter((todo) => named.includes(todo.content))
       return {
-        success: false, effectReceipts: [unchangedReceipt({ operation: `todo.${request.op}`, kind: "todo", id: request.target, key: `${messageId}:${request.op}:${request.target}`, at }, "ambiguous")],
-        text: `${candidates.length} to-dos match "${request.target}", so nothing was changed. Which one did you mean: ${candidates.map((todo) => `"${todo.content}" (t-${todo.todoId})`).join(", ")}?`,
+        success: false, effectReceipts: [unchangedReceipt({ operation: `todo.${request.op}`, kind: "todo", id: targetText, key: `${messageId}:${request.op}:${targetText}`, at }, "ambiguous")],
+        text: `${candidates.length} to-dos match "${targetText}", so nothing was changed. Which one did you mean: ${candidates.map((todo) => `"${todo.content}" (t-${todo.todoId})`).join(", ")}?`,
         data: { outcome: "ambiguous", candidates: candidates.map((todo) => todo.todoId), awaitingUserInput: true },
       } satisfies ActionResult
     }
