@@ -1,6 +1,7 @@
-// spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; "Story: Read the service's own terms"
+// spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; "An external browser is a browser other than the host and the WebView shell, and the browser sign-in opens only an external browser"; "Story: Read the service's own terms"
 package ai.eliza.plugins.signin;
 
+import java.util.List;
 import java.util.Objects;
 
 /** Framework-free mirror of gen/os__signIn__readiness.ts: the same names, the same rules, epoch milliseconds. */
@@ -108,6 +109,17 @@ public final class ReadinessPolicy {
         return method.mode == device.googleMode && m.google
           && (method.mode == GoogleMode.PICKER ? m.nativeSignIn && m.serverClientId : device.appLinkVerified && device.externalBrowser);
     }
+  }
+
+  public static final String WEBVIEW_SHELL_PACKAGE = "org.chromium.webview_shell";
+
+  public static boolean externalBrowserPackage(String candidate, String hostPackage) {
+    return candidate != null && !candidate.isEmpty() && !candidate.equals(hostPackage) && !WEBVIEW_SHELL_PACKAGE.equals(candidate);
+  }
+
+  public static String browserToOpen(List<String> handlers, String defaultHandler, String hostPackage) {
+    if (handlers.contains(defaultHandler) && externalBrowserPackage(defaultHandler, hostPackage)) return defaultHandler;
+    return handlers.stream().filter(h -> externalBrowserPackage(h, hostPackage)).findFirst().orElse("");
   }
 
   public static boolean canStartMethod(Readiness readiness, DeviceFacts device, SignInMethod method) {
