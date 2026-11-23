@@ -1,11 +1,11 @@
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
   buildPlannerToolsFromActions, executePlannedToolCall, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, sleepWithAbort, stableStringify,
 } from "@elizaos/core"
 import {
-  acknowledges, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, turnNarrowed,
+  acknowledges, callRunsFirst, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, turnNarrowed,
   type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
@@ -57,6 +57,16 @@ export interface TurnToolForm {
 }
 
 export const turnToolForms = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => TurnToolForm | undefined>()
+
+export const turnFirstCalls = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => ToolCall["arguments"] | undefined>()
+
+function firstCall(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolCall | undefined {
+  const asked = actions.flatMap((action) => {
+    const params = turnFirstCalls.get(action)?.(runtime, message)
+    return params === undefined ? [] : [{ id: `first-${action.name}`, name: action.name, arguments: params }]
+  })
+  return callRunsFirst(asked.length) ? asked[0] : undefined
+}
 
 function forTurn(runtime: AgentRuntime, message: Memory, action: Action): Action {
   const form = turnToolForms.get(action)?.(runtime, message)
@@ -241,6 +251,28 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let displayed = false
   let streamed = ""
   let prose: string | undefined
+  const execute = async (call: ToolCall): Promise<ActionResult> => {
+    signal.throwIfAborted()
+    await input.onActivityStatus?.({ actionName: call.name, label: call.name })
+    const params = paramsOf(call)
+    const captured: string[] = []
+    const result = await executePlannedToolCall(runtime, {
+      message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
+      callback: async (content) => {
+        if (content.text?.trim()) captured.push(content.text)
+        return []
+      },
+    }, { id: call.id, name: call.name, params }, { abortSignal: signal })
+    await input.onStepResult?.(result)
+    steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
+    conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
+    return result
+  }
+  const first = firstCall(runtime, message, actions)
+  if (first !== undefined) {
+    conversation.push({ role: "assistant", content: null, toolCalls: [first] })
+    await execute(first)
+  }
   plan: while (true) {
     signal.throwIfAborted()
     const restartFirst = displayed
@@ -287,21 +319,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       }
       conversation.push({ role: "assistant", content: answered.text || null, toolCalls: work })
       for (const call of work) {
-        signal.throwIfAborted()
-        await input.onActivityStatus?.({ actionName: call.name, label: call.name })
-        const params = paramsOf(call)
-        const captured: string[] = []
-        const result = await executePlannedToolCall(runtime, {
-          message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
-          callback: async (content) => {
-            if (content.text?.trim()) captured.push(content.text)
-            return []
-          },
-        }, { id: call.id, name: call.name, params }, { abortSignal: signal })
-        await input.onStepResult?.(result)
-        cutOff ||= stoppedAtModelMaximum(result)
-        steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
-        conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
+        cutOff ||= stoppedAtModelMaximum(await execute(call))
         if (cutOff) break
       }
     }

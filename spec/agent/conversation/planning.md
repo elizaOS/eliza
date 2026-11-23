@@ -99,6 +99,24 @@ pure def lawAParameterTheTurnDoesNotNameKeepsItsRegisteredSchema(params: Set[str
   params.forall(p => not(narrowed.contains(p)) implies not(turnNarrowed(params, narrowed).contains(p)))
 ```
 
+### A call my whole message asked for outright runs first, without waiting on the model's choice
+
+An offered action may name, for this turn, the one call the person's whole
+message is a strict command for, such as the device tool's open of the
+address in "open example.com". When exactly one offered action names one,
+the turn runs that call as its first step, before the model is asked, with
+the person's authority as any planned call; the model then sees the call
+and its result in the turn and answers or plans on, under the same tools
+and step bound. With no such call, or more than one, the model plans as it
+always does.
+
+```quint
+pure def callRunsFirst(askedCalls: int): bool = askedCalls == 1
+pure val askedCallsValues = Set(0, 1, 2, 3)
+pure def lawOnlyOneAskedCallRunsFirst(askedCalls: int): bool = callRunsFirst(askedCalls) implies askedCalls == 1
+pure def lawTwoAskedCallsLeaveTheChoiceToTheModel(askedCalls: int): bool = askedCalls > 1 implies not(callRunsFirst(askedCalls))
+```
+
 ### The model reads what was said in the conversation, in a window taken once for the whole turn
 
 A host notice the agent process stored in the conversation (a message of

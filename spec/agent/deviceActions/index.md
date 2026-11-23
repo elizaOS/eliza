@@ -345,7 +345,12 @@ grounded operation is then validated again against the turn's negotiation
 with no binding, and only then offered, on the turn's request,
 conversation and message, for ten minutes. Each operation of a compound
 request is its own proposal: a photo kept for its review card never holds
-back the text the same message asked for.
+back the text the same message asked for. A family may name the operation
+the owner's whole message is a strict command for, as the Browser does for
+"open example.com"; where exactly one family names one and it matches an
+offered form, the tool names that proposal as the turn's call to run
+before the model's choice, and it is proposed, grounded and admitted as
+any other.
 
 ```quint
 type GroundingVerdict = FamilyGrounded | FamilyRefused

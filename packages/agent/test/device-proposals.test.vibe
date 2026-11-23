@@ -25,10 +25,11 @@ module node {
     forms: [{ types: ["create_reminder"], schema: reminderForm, guidance: "create_reminder saves a reminder the owner dictated.", offered: (turn) => turn.capabilities.includes(negotiated) }],
     guidance: () => "Reminders are saved on the owner's phone.",
     ground: (proposed, turn) => Effect.succeed<Grounding>(/\bremind\b/i.test(turn.ownerText)
-      ? { kind: "Grounded", operation: proposed.operation }
+      ? { kind: "Grounded", operation: proposed.operation, ...(/\bmaybe\b/i.test(turn.ownerText) ? { grounding: "GroundedForReview" as const } : {}) }
       : { kind: "Refused", code: "REMINDER_NOT_REQUESTED", forModel: "The owner did not ask for a reminder.", forOwner: "Tell me what to remind you of." }),
     proposedText: (operation) => ({ forOwner: `Review the reminder “${operation.type === "create_reminder" ? operation.title : ""}” on your phone.` }),
     settledText: () => ({ forOwner: "Your phone saved that reminder." }),
+    wholeMessageOperation: (turn) => turn.ownerText === "Remind me outright to buy bread" ? { type: "create_reminder", title: "Bread", dueAt } : undefined,
   }
 
   interface Turn {
@@ -128,6 +129,15 @@ module node {
     await say("Did the plants reminder go out?")
     const afterDecline = (lastCompletion(cloud).messages ?? []).at(-1)
 
+    cloud.script(toolCalls("", reminder("Stretch")), text("Okay."))
+    await say("Maybe remind me to stretch", direct)
+    const stretch = (await proposals(client)).find(titled("Stretch"))
+
+    cloud.script(text("Saved."))
+    await say("Remind me outright to buy bread")
+    const bread = (await proposals(client)).find(titled("Bread"))
+    const toldFirst = (lastCompletion(cloud).messages ?? []).at(-1)
+
     return {
       registration,
       offered: {
@@ -158,13 +168,15 @@ module node {
         status: declined?.status, neverRan: learned(afterDecline, "Rejected by the owner; it never ran."),
         uncertainUnlisted: !learned(afterDecline, mom?.id ?? "-"),
       },
+      forReview: { state: stretch?.state, carriesMessage: stretch === undefined ? undefined : "requestMessageId" in stretch.payload },
+      outright: { state: bread?.state, before: toldFirst?.role, told: learned(toldFirst, "Review the reminder “Bread” on your phone.") },
     }
   }
 }
 
 import { proposeFromChat, proposeTool } from node
 
-it.live(`An owner's chat request becomes one reviewed device proposal in its own words, a refusal offers nothing, and later turns learn what applied and what never ran (spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "Each wire type belongs to at most one proposal family, and a family offers forms only of its own types"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
+it.live(`An owner's chat request becomes one reviewed device proposal in its own words, a refusal offers nothing, and later turns learn what applied and what never ran (spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "Each wire type belongs to at most one proposal family, and a family offers forms only of its own types"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -190,5 +202,7 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
     mom: { carriesMessage: false, uncertain: "reconciliation_required" },
     reconcile: { extraField: 400, otherAttempt: 409, reviewed: 200, state: "done", review: "not_applied", repeated: 200 },
     decline: { status: 200, neverRan: true, uncertainUnlisted: true },
+    forReview: { state: "pending", carriesMessage: false },
+    outright: { state: "pending", before: "tool", told: true },
   }))
 }, 120_000)

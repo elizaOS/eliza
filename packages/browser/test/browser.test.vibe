@@ -17,7 +17,7 @@ import { browserProposalFamily } from "../src/proposal.vibe"
 import type { BrowserViewAsked, BrowserViewAsker, BrowserViewWait } from "../src/native-browser.vibe"
 import { observedTabCurrent, parseNativeHistoryCommand } from "../src/native-command.vibe"
 
-it.effect('Open only a destination the owner wrote in this message, spelled as written, or an exact link of its page (spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review")', effect () => {
+it.effect('Open only a destination the owner wrote in this message, spelled as written, or an exact link of its page (spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review")', effect () => {
   const grounded = [
     groundBrowserDestination("open example.com/docs please", "https://example.com/docs"),
     groundBrowserDestination("don't open example.com", "https://example.com/"),
@@ -39,6 +39,13 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
     spokenBrowserDestination("open example dot com"),
     directBrowserDestination("open example dot com"),
   ]
+  const world = "https://nytimes.com/section/world"
+  const marked = [
+    ["open nytimes.com/section/world.", world], ["Hey Eliza, open nytimes.com/section/world.", world], ["nytimes.com/section/world.", world],
+    ["https://example.com/path!", "https://example.com/path"], ["example.com?!", "https://example.com/"], ["example.com.", "https://example.com/"],
+  ].map(([text, proposed]) => [directBrowserDestination(text), groundBrowserDestination(text, proposed)])
+  const unmarked = ["nytimes.com/section/world", "https://example.com/a?", "Open Reddit.com!", "open example.com/a, please", "open example.com?!", "example.com?"]
+    .map((text) => directBrowserDestination(text))
   const searched = [
     directBrowserSearchQuery("search the web for cheap flights please"),
     groundBrowserSearchQuery("find me cheap   flights", "Cheap flights"),
@@ -54,6 +61,10 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
       [groundBrowserDestination("Do not open https://two.example/post?id=2.", "https://two.example/post?id=2", "Eliza", links), groundBrowserDestination("Open the second story.", "https://one.example/story")],
       [undefined, undefined])
     assert.deepStrictEqual(direct, ["https://example.com/", "https://example.com/", undefined, "https://example.com/", undefined])
+    assert.deepStrictEqual(marked, [
+      [undefined, world], [undefined, world], [undefined, world], [undefined, "https://example.com/path"], [undefined, "https://example.com/"], [undefined, "https://example.com/"],
+    ])
+    assert.deepStrictEqual(unmarked, [world, "https://example.com/a", "https://reddit.com/", "https://example.com/a", "https://example.com/", "https://example.com/"])
     assert.deepStrictEqual(searched, ["cheap flights", "cheap flights", undefined])
     assert.isTrue(browserSearchQueryMatches("\"Cheap Flights\"", searched[0]))
     assert.isTrue(browserDestinationMatches({ type: "browser_navigate", url: "example.com" }, direct[0]))
@@ -235,7 +246,7 @@ module node {
 
 import { checked, everyBrowserCapability, frontPage, offeredForms, ownerTurn, pageObservation } from node
 
-it.effect(`Ground a Browser proposal in the owner's own words or an exact page link, bind only a whole-message request, or offer nothing (spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation")`, effect () => {
+it.effect(`Ground a Browser proposal in the owner's own words or an exact page link, bind only a whole-message request, or offer nothing (spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "My whole-message open command opens the address without waiting on the model's choice"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished")`, effect () => {
   const tabsOnly = ["browser.tabs.v1"]
   const propose = effect (ownerText: string, operation: unknown, capabilities: readonly string[] = everyBrowserCapability, page?: unknown, observation: unknown = pageObservation) => {
     const grounding = try browserProposalFamily.ground(checked(operation), ownerTurn(ownerText, capabilities, page, observation))
@@ -253,6 +264,14 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     try propose("open example dot com in a new tab", navigate("https://example.com")),
     try propose("open example.com", navigate("https://evil.example/")),
     try propose("do that in the browser", navigate("https://example.com/")),
+  ]
+  const emptyTab = { type: "browser_tab_new" }
+  const tabbed = [
+    try propose("open wikipedia.org in a new tab", emptyTab),
+    try propose("open example dot com in a new tab", emptyTab),
+    try propose("open wikipedia.org in a new tab", emptyTab, tabsOnly),
+    try propose("open wikipedia.org in a new tab", { type: "browser_tab_new", private: true }),
+    try propose("open a new tab", emptyTab),
   ]
   const linked = [
     try propose("Open the second story.", navigate("https://two.example/post?id=2"), everyBrowserCapability, frontPage()),
@@ -278,6 +297,18 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     try propose("close the bbc tab", { type: "browser_tab_close", target: "bbc" }, tabsOnly),
     try propose("go back", { type: "browser_history", action: "back" }),
   ]
+  const outright = [
+    ...["open example.com in a new tab", "Hey Eliza, visit wikipedia.org.", "can you open example.com?", "example.com", "open example dot com", "don't open example.com"]
+      .map((text) => ownerTurn(text, everyBrowserCapability)),
+    ownerTurn("open example.com", []),
+  ].map((turn) => browserProposalFamily.wholeMessageOperation?.(turn))
+  const asked = try propose("open example.com in a new tab", outright[0])
+  const wikipedia = checked(navigate("https://wikipedia.org/", true)).operation
+  const told = [
+    browserProposalFamily.proposedText(wikipedia, { direct: true, timeZone: undefined })?.forOwner,
+    browserProposalFamily.proposedText(wikipedia, { direct: false, timeZone: undefined }),
+    browserProposalFamily.settledText(wikipedia, { outcome: "applied" }, undefined),
+  ]
   const runtime = {} as IAgentRuntime
   try promise(() => Promise.resolve(browserPlugin.init?.({}, runtime)))
   const again = try Effect.result(registerDeviceProposalFamily(runtime, browserProposalFamily))
@@ -286,6 +317,10 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     assert.deepStrictEqual(opened, [
       direct(navigate("https://wikipedia.org/", true)), direct(navigate("https://example.com/docs")), reviewed(navigate("https://example.com/")),
       reviewed(navigate("https://example.com/")), reviewed(navigate("https://example.com/")), notRequested, notRequested,
+    ])
+    assert.deepStrictEqual(tabbed, [
+      direct(navigate("https://wikipedia.org/", true)), reviewed(navigate("https://example.com/", true)), direct(navigate("https://wikipedia.org/")),
+      direct({ type: "browser_tab_new", private: true }), direct(emptyTab),
     ])
     assert.deepStrictEqual(linked, [
       reviewed(navigate("https://two.example/post?id=2")), reviewed(navigate("https://one.example/story")),
@@ -299,11 +334,11 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
       "DEVICE_BROWSER_CLOSE_ALL_UNAVAILABLE", direct({ type: "browser_tab_close", all: true }), direct({ type: "browser_tab_close", target: "bbc" }),
       direct({ type: "browser_history", action: "back" }),
     ])
+    assert.deepStrictEqual(told, ["Opening wikipedia.org.", undefined, undefined])
+    assert.deepStrictEqual(outright, [navigate("https://example.com/"), navigate("https://wikipedia.org/"), undefined, undefined, undefined, undefined, undefined])
+    assert.deepStrictEqual(asked, direct(navigate("https://example.com/", true)))
     assert.deepStrictEqual(offeredForms(ownerTurn("", everyBrowserCapability)), [
       "browser_navigate url newTab", "browser_search query", "browser_tab_new private", "browser_tab_switch target", "browser_tab_close target all", "browser_find text", "browser_history action",
-    ])
-    assert.deepStrictEqual(offeredForms(ownerTurn("open wikipedia.org in a new tab", everyBrowserCapability)), [
-      "browser_navigate url newTab", "browser_search query", "browser_tab_switch target", "browser_tab_close target all", "browser_find text", "browser_history action",
     ])
     assert.deepStrictEqual(offeredForms(ownerTurn("", tabsOnly)), ["browser_navigate url", "browser_tab_new private", "browser_tab_switch target", "browser_tab_close target all"])
     assert.deepStrictEqual(offeredForms(ownerTurn("", [])), [])
