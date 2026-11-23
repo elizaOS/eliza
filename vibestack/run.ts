@@ -9,8 +9,13 @@ import path from "node:path";
 const WINDOWS = process.platform === "win32";
 /** The most output a tool may write before it is stopped. */
 const OUTPUT_LIMIT = 1 << 28;
-/** How long a tool may run before it is stopped: long enough that only a tool that hangs is stopped. */
+/**
+ * How much processor time a tool and what it started may use, and how long it may run before a minute in which it uses
+ * none stops it: long enough that only a tool that loops or hangs is stopped, however busy the machine is.
+ */
 const TOOL_TIMEOUT = 60 * 60 * 1000;
+/** How often a running tool's processor time is read: each minute. */
+const WATCH = 60 * 1000;
 
 /** The executable named `name` that the PATH finds first. */
 export const onPath = (name: string) => (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
@@ -41,17 +46,29 @@ export function bin(cmd: string, root: string): string {
   throw new Error(`${cmd} is not installed; run pnpm install`);
 }
 
-/** Every process as its id, its parent's and its group's. */
-const processes = () => WINDOWS ? [] : (spawnSync("ps", ["-Ao", "pid=,ppid=,pgid="], { encoding: "utf8" }).stdout ?? "").trim().split("\n").map((line) => line.trim().split(/\s+/).map(Number));
+/** `[[days-]hours:]minutes:seconds` as seconds. */
+const seconds = (time = "0") => { const [days, clock] = time.includes("-") ? time.split("-") : ["0", time]; return Number(days) * 86400 + clock.split(":").reduce((sum, part) => sum * 60 + Number(part), 0); };
+
+/** Every process as its id, its parent's, its group's and the processor seconds it has used. */
+const processes = () => WINDOWS ? [] : (spawnSync("ps", ["-Ao", "pid=,ppid=,pgid=,time="], { encoding: "utf8" }).stdout ?? "").trim().split("\n").map((line) => {
+  const [pid, parent, group, time] = line.trim().split(/\s+/);
+  return [Number(pid), Number(parent), Number(group), seconds(time)];
+});
+
+/** The processes in `table` that `child` started, itself included. */
+function startedBy(child: ChildProcess, table: number[][]) {
+  const started = new Set([child.pid]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [pid, parent] of table) if (started.has(parent) && !started.has(pid)) { started.add(pid); grew = true; }
+  }
+  return table.filter(([pid]) => started.has(pid));
+}
 
 /** Signal the process group of `child`, and of each process in `table` that it started: a browser leaves the group of the tool that started it. */
 function signal(child: ChildProcess, name: NodeJS.Signals, table: number[][] = []) {
-  const [started, groups] = [new Set([child.pid]), new Set([child.pid])];
   const own = table.find(([pid]) => pid === process.pid)?.[2];
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const [pid, parent, group] of table) if (started.has(parent) && !started.has(pid)) { started.add(pid); if (group !== own) groups.add(group); grew = true; }
-  }
+  const groups = new Set([child.pid, ...startedBy(child, table).flatMap(([, , group]) => group === own ? [] : [group])]);
   for (const group of groups) {
     try { if (!WINDOWS && group) process.kill(-group, name); else child.kill(name); } catch { /* already exited */ }
   }
@@ -66,6 +83,12 @@ for (const name of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.once(name, 
 function endsWithTheCheck(child: ChildProcess, name: NodeJS.Signals) {
   ending.set(child, name);
   for (const over of ["close", "error"] as const) child.once(over, () => ending.delete(child));
+}
+
+export function startAttached(exe: string, args: string[], cwd: string) {
+  const child = spawn(exe, args, { cwd, stdio: "inherit", detached: !WINDOWS });
+  endsWithTheCheck(child, "SIGTERM");
+  return child;
 }
 
 /** How many programs run at once; the others wait for one to end. */
@@ -93,7 +116,14 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
       const output = { stdout: "", stderr: "" };
       let stopped: string | undefined;
       const stop = (why: string) => { stopped ??= `${name} ${why} and was stopped`; signal(child, "SIGKILL", processes()); };
-      timer = setTimeout(() => stop(`ran for more than ${TOOL_TIMEOUT / 60_000} minutes`), TOOL_TIMEOUT);
+      const minutes = TOOL_TIMEOUT / 60_000;
+      let used = 0;
+      timer = setInterval(() => {
+        const ran = Date.now() - started, before = used;
+        used = WINDOWS ? ran : 1000 * startedBy(child, processes()).reduce((sum, [, , , time]) => sum + time, 0);
+        if (used > TOOL_TIMEOUT) stop(`used more than ${minutes} minutes of processor time`);
+        else if (ran > TOOL_TIMEOUT && used <= before) stop(`ran for more than ${minutes} minutes, the last minute without the processor,`);
+      }, WATCH);
       for (const stream of ["stdout", "stderr"] as const) child[stream].setEncoding("utf8").on("data", (chunk: string) => {
         if (output[stream].length > OUTPUT_LIMIT) return;
         output[stream] += chunk;
@@ -106,7 +136,7 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
       if (input !== undefined) { child.stdin.on("error", () => {}); child.stdin.end(input); }
     });
   } finally {
-    clearTimeout(timer);
+    clearInterval(timer);
     const next = waiting.shift();
     if (next) next();
     else busy--;
