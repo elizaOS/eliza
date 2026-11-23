@@ -83,10 +83,6 @@ function nativeConnectReady(env: GoogleEnv) {
   return enabled(env) && client(env)?.id === env.GOOGLE_CLIENT_ID
 }
 
-export function nativeGoogleScopes(env: GoogleEnv) {
-  return nativeConnectReady(env) ? ["openid", "email", ...Object.values(scopeByCapability)] : []
-}
-
 effect function googleConfig(env: GoogleEnv) {
   const credentials = client(env)
   if (!credentials) throw new ConnectionUnavailable()
@@ -349,12 +345,6 @@ effect function connectNative(request: Request, env: GoogleEnv, db: Client, acco
     WHERE a.key = $1 AND a.status = 'active' AND p.provider = 'google'`, [account])
   try connectCode(env, db, account, rows[0]?.provider_subject ?? "", serverAuthCode)
   return try status(db, env, account)
-}
-
-export effect function connectSignedInGoogle(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string) {
-  const result = try exit(Effect.provide(connectCode(env, db, account, signedInSubject, serverAuthCode), providerLayer))
-  if (Exit.isFailure(result)) try annotateLogs(logWarning("native google connection not linked"), { cause: String(Cause.squash(result.cause)) })
-  return Exit.isSuccess(result)
 }
 
 effect function disconnect(db: Client, account: string) {

@@ -10,10 +10,13 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Main-process admission for the reviewed deletion Undo window over Calendar events (this
- * class's journal) and reminders (the host's reminder engine, which suspends delivery as soon as
- * a deletion is staged). Owners are a per-installation manual owner or an authenticated agent
- * owner read through {@link Owners}, never renderer-supplied authority.
+ * Main-process admission for the reviewed deletion Undo window over Calendar events, text
+ * messages, conversations, voicemail and contacts (this class's journal, one row per staged
+ * record with its kind) and reminders (the host's reminder engine, which suspends delivery as
+ * soon as a deletion is staged). Owners are a per-installation manual owner or an authenticated
+ * agent owner read through {@link Owners}, never renderer-supplied authority. A message,
+ * thread, voicemail or contact reaches {@link #stageRecord} only after its provider module
+ * inspected it as current, and its provider call at expiry goes through {@link Records}.
  *
  * <ul>
  *   <li>Each row waits {@link DeletionDeadline#WINDOW_MS} on the host's monotonic clock.</li>
@@ -23,8 +26,8 @@ import org.json.JSONObject;
  *   <li>Owner network reads ({@link Owners#identity}) happen before the coordinator lock.</li>
  * </ul>
  *
- * <p>The host supplies storage slots, clock, owner, reminder, calendar and scheduler ports and
- * keeps one instance per process. No Android types: host-tested by javac.
+ * <p>The host supplies storage slots, clock, owner, reminder, calendar, record and scheduler ports
+ * and keeps one instance per process. No Android types: host-tested by javac.
  */
 public final class DeferredDeletionCoordinator {
  /** Durable encrypted slots. Writes must commit or throw. */
@@ -55,6 +58,21 @@ public final class DeferredDeletionCoordinator {
   /** Whether a staged target deletes provider event {@code eventId} in source {@code sourceId}. */
   boolean targets(JSONObject target, long sourceId, long eventId) throws Exception;
  }
+ /**
+  * Provider calls for message, thread, voicemail and contact rows, made by each provider
+  * module ({@code MessageDeletion}, {@code ThreadDeletion}, {@code VoicemailStore},
+  * {@code ContactsEditor}) with the background authority it needs.
+  */
+ public interface Records {
+  /**
+   * Null admits the provider call; otherwise the reason the row pauses (a role or grant the
+   * module no longer holds). Called only for an admitted owner. Never answers
+   * {@code permission-required}, which only a provider call reports.
+   */
+  String refusal(String kind, JSONObject owner, JSONObject target) throws Exception;
+  /** The module's one provider call. Returns {@code {status: deleted|conflict|permission-required|unknown}}. */
+  JSONObject dispatch(String kind, JSONObject target) throws Exception;
+ }
  /** Wakes {@link #reconcile} after {@code delayMs}, replacing any earlier wake-up. */
  public interface Scheduler { void schedule(long delayMs); }
 
@@ -69,6 +87,9 @@ public final class DeferredDeletionCoordinator {
 
  /** Agent identity fields that must stay equal for the same enrolled owner across sessions. */
  static final String[] STABLE_AGENT_FIELDS = {"subjectUserId", "agentId", "installationId", "enrollmentId", "accountRef", "environment"};
+ /** Kinds a provider module stages through {@link #stageRecord}. */
+ public static final Set<String> RECORD_KINDS = new HashSet<>(Arrays.asList("message", "thread", "voicemail", "contact"));
+ private static final Set<String> KINDS = new HashSet<>(Arrays.asList("calendar", "reminder", "message", "thread", "voicemail", "contact"));
  private static final Set<String> PENDING = new HashSet<>(Arrays.asList("queued", "paused", "unknown", "dispatching"));
  static final long OWNER_CACHE_MS = 5000;
  /** How long an expired agent row waits for an unreachable owner route before it pauses. */
@@ -80,27 +101,29 @@ public final class DeferredDeletionCoordinator {
  private final Owners owners;
  private final Reminders reminders;
  private final CalendarDeletions calendarDeletions;
+ private final Records records;
  private final Scheduler scheduler;
- private final DeferredDeletionJournal calendar;
+ private final DeferredDeletionJournal journal;
  /** The last agent owner the route authenticated in this process; lets Undo skip a network read. */
  private volatile JSONObject lastAuthenticatedOwner;
 
- public DeferredDeletionCoordinator(Configuration configuration, Slots slots, Clock clock, Owners owners, Reminders reminders, CalendarDeletions calendarDeletions, Scheduler scheduler) {
+ public DeferredDeletionCoordinator(Configuration configuration, Slots slots, Clock clock, Owners owners, Reminders reminders, CalendarDeletions calendarDeletions, Records records, Scheduler scheduler) {
   this.configuration = configuration;
   this.slots = slots;
   this.clock = clock;
   this.owners = owners;
   this.reminders = reminders;
   this.calendarDeletions = calendarDeletions;
+  this.records = records;
   this.scheduler = scheduler;
-  calendar = new DeferredDeletionJournal(new DeferredDeletionJournal.Store() {
+  journal = new DeferredDeletionJournal(new DeferredDeletionJournal.Store() {
    public String read() throws Exception { return slots.read(configuration.journalSlot); }
    public void save(String value) throws Exception { slots.write(configuration.journalSlot, value); }
   });
  }
 
- /** The Calendar deletion journal (for host receipts and instrumentation). */
- public DeferredDeletionJournal calendarJournal() { return calendar; }
+ /** The deletion journal of Calendar, message, thread, voicemail and contact rows (for host receipts and instrumentation). */
+ public DeferredDeletionJournal journal() { return journal; }
 
  private JSONObject time() throws Exception { return new JSONObject().put("continuity", clock.continuity()).put("elapsed", clock.elapsed()).put("wall", clock.wall()); }
 
@@ -138,10 +161,27 @@ public final class DeferredDeletionCoordinator {
   if (!stageOwnerCurrent(owner)) throw new SecurityException("Deletion owner changed during review");
   JSONObject time = time();
   String id = operationId == null ? UUID.randomUUID().toString() : operationId;
-  JSONObject row = calendar.stage(id, owner, target, new DeletionDeadline(time.getString("continuity"), time.getLong("elapsed"), time.getLong("wall")));
+  JSONObject row = journal.stage(id, "calendar", owner, target, new DeletionDeadline(time.getString("continuity"), time.getLong("elapsed"), time.getLong("wall")));
   scheduler.schedule(0);
   return row;
  }
+
+ /**
+  * Stages a message, thread, voicemail or contact deletion that its provider module inspected as
+  * current. Nothing is deleted until the window expires; Undo before then keeps the record.
+  */
+ public synchronized JSONObject stageRecord(String kind, JSONObject target, JSONObject owner, String operationId) throws Exception {
+  if (!RECORD_KINDS.contains(kind)) throw new IllegalArgumentException("Unknown deletion kind");
+  if (!stageOwnerCurrent(owner)) throw new SecurityException("Deletion owner changed during review");
+  JSONObject time = time();
+  String id = operationId == null ? UUID.randomUUID().toString() : operationId;
+  JSONObject row = journal.stage(id, kind, owner, target, new DeletionDeadline(time.getString("continuity"), time.getLong("elapsed"), time.getLong("wall")));
+  scheduler.schedule(0);
+  return row;
+ }
+
+ /** {@link #stageRecord} for the owner's own deletion on the app's screen: the installation's manual owner and a fresh ID. */
+ public JSONObject stageRecord(String kind, JSONObject target) throws Exception { return stageRecord(kind, target, manualOwner(), null); }
 
  /** Stages a reminder deletion; the reminder engine suspends its delivery immediately. */
  public synchronized JSONObject stageReminder(JSONObject target, JSONObject owner, String operationId, JSONObject binding) throws Exception {
@@ -152,21 +192,25 @@ public final class DeferredDeletionCoordinator {
   return row;
  }
 
- /** The receipt for one operation of {@code kind} ({@code calendar} or {@code reminder}), or null. */
+ /** The receipt for one operation of {@code kind} (calendar, reminder, message, thread, voicemail or contact), or null. */
  public JSONObject receipt(String kind, String id) throws Exception {
   JSONObject time = time();
-  JSONArray rows = "calendar".equals(kind) ? calendar.list(time.getString("continuity"), time.getLong("elapsed")) : reminders.pendingDeletions();
-  for (int i = 0; i < rows.length(); i++) { JSONObject row = rows.getJSONObject(i); if (id.equals(row.getString("id"))) return row; }
+  boolean reminder = "reminder".equals(kind);
+  JSONArray rows = reminder ? reminders.pendingDeletions() : journal.list(time.getString("continuity"), time.getLong("elapsed"));
+  for (int i = 0; i < rows.length(); i++) {
+   JSONObject row = rows.getJSONObject(i);
+   if (id.equals(row.getString("id")) && (reminder || kind.equals(row.getString("kind")))) return row;
+  }
   return null;
  }
 
  /** A pending Undo window is not a deleted event and cannot be overwritten by sync. */
  public synchronized boolean calendarPending(long source, long event) throws Exception {
   JSONObject time = time();
-  JSONArray rows = calendar.list(time.getString("continuity"), time.getLong("elapsed"));
+  JSONArray rows = journal.list(time.getString("continuity"), time.getLong("elapsed"));
   for (int i = 0; i < rows.length(); i++) {
    JSONObject row = rows.getJSONObject(i);
-   if (!pendingPhase(row)) continue;
+   if (!"calendar".equals(row.getString("kind")) || !pendingPhase(row)) continue;
    JSONObject target = row.getJSONObject("target");
    if (!Long.toString(source).equals(target.optString("sourceId"))) continue;
    if (calendarDeletions.targets(target, source, event)) return true;
@@ -193,11 +237,11 @@ public final class DeferredDeletionCoordinator {
   Set<String> acknowledged = new HashSet<>();
   JSONObject time = time();
   if (withPending) {
-   // Reminder acknowledgements live in the same journal, so one read serves both kinds.
-   DeferredDeletionJournal.Snapshot snapshot = calendar.snapshot(time.getString("continuity"), time.getLong("elapsed"));
+   // Reminder acknowledgements live in the same journal, so one read serves every kind.
+   DeferredDeletionJournal.Snapshot snapshot = journal.snapshot(time.getString("continuity"), time.getLong("elapsed"));
    for (int i = 0; i < snapshot.rows.length(); i++) {
     JSONObject row = snapshot.rows.getJSONObject(i);
-    if (pendingPhase(row) && !snapshot.acknowledgements.contains("calendar:" + row.getString("id")) && visibility.visible(row.getJSONObject("owner"))) pending.put(row.put("kind", "calendar"));
+    if (pendingPhase(row) && !snapshot.acknowledgements.contains(row.getString("kind") + ":" + row.getString("id")) && visibility.visible(row.getJSONObject("owner"))) pending.put(row);
    }
    acknowledged = snapshot.acknowledgements;
   }
@@ -276,7 +320,7 @@ public final class DeferredDeletionCoordinator {
 
  private JSONObject agentOwnerOrNull() { try { return agentOwner(); } catch (Exception unavailable) { return null; } }
 
- private static JSONObject rowOwner(String kind, JSONObject row) throws Exception { return "calendar".equals(kind) ? row.getJSONObject("owner") : new JSONObject(row.getString("owner")); }
+ private static JSONObject rowOwner(String kind, JSONObject row) throws Exception { return "reminder".equals(kind) ? new JSONObject(row.getString("owner")) : row.getJSONObject("owner"); }
 
  private JSONObject agentOwnerFor(String kind, String id) {
   try {
@@ -308,7 +352,7 @@ public final class DeferredDeletionCoordinator {
 
  /** Hides an uncertain outcome's notice. Its receipt and no-replay state are retained. */
  public JSONObject dismiss(String kind, String id) throws Exception {
-  if (!"calendar".equals(kind) && !"reminder".equals(kind)) throw new IllegalArgumentException("Unknown deletion kind");
+  if (!KINDS.contains(kind)) throw new IllegalArgumentException("Unknown deletion kind");
   JSONObject agent = agentOwnerFor(kind, id);
   synchronized (this) {
    JSONObject row = receipt(kind, id);
@@ -316,7 +360,7 @@ public final class DeferredDeletionCoordinator {
    if (!undoAllowed(rowOwner(kind, row), agent)) throw new SecurityException("Deletion owner changed");
    String phase = row.getString("phase");
    if (!"unknown".equals(phase) && !"dispatching".equals(phase)) throw new IllegalStateException("Only uncertain outcomes can be dismissed");
-   calendar.acknowledge(kind, id);
+   journal.acknowledge(kind, id);
    return new JSONObject().put("status", "acknowledged");
   }
  }
@@ -327,16 +371,17 @@ public final class DeferredDeletionCoordinator {
   * authenticated earlier in this process is enough because Undo only keeps data.
   */
  public JSONObject undo(String kind, String id) throws Exception {
+  if (!KINDS.contains(kind)) throw new IllegalArgumentException("Unknown deletion kind");
   JSONObject time = time();
   JSONObject agent = agentOwnerFor(kind, id);
   synchronized (this) {
-   if ("calendar".equals(kind)) {
-    JSONArray rows = calendar.list(time.getString("continuity"), time.getLong("elapsed"));
+   if (!"reminder".equals(kind)) {
+    JSONArray rows = journal.list(time.getString("continuity"), time.getLong("elapsed"));
     for (int i = 0; i < rows.length(); i++) {
      JSONObject row = rows.getJSONObject(i);
-     if (id.equals(row.getString("id")) && undoAllowed(row.getJSONObject("owner"), agent)) return calendar.undo(id, row.getJSONObject("owner"), time.getString("continuity"), time.getLong("elapsed"));
+     if (id.equals(row.getString("id")) && kind.equals(row.getString("kind")) && undoAllowed(row.getJSONObject("owner"), agent)) return journal.undo(id, row.getJSONObject("owner"), time.getString("continuity"), time.getLong("elapsed"));
     }
-   } else if ("reminder".equals(kind)) {
+   } else {
     JSONArray rows = reminders.pendingDeletions();
     for (int i = 0; i < rows.length(); i++) {
      JSONObject row = rows.getJSONObject(i);
@@ -350,7 +395,7 @@ public final class DeferredDeletionCoordinator {
  /** Whether any row the next reconcile acts on is agent-owned, so the owner route must be read first. */
  private boolean reconcileNeedsAgent() throws Exception {
   JSONObject time = time();
-  JSONArray events = calendar.list(time.getString("continuity"), time.getLong("elapsed"));
+  JSONArray events = journal.list(time.getString("continuity"), time.getLong("elapsed"));
   for (int i = 0; i < events.length(); i++) { JSONObject row = events.getJSONObject(i); if ("queued".equals(row.optString("phase")) && agentKind(row.getJSONObject("owner"))) return true; }
   JSONArray rows = reminders.pendingDeletions();
   for (int i = 0; i < rows.length(); i++) { JSONObject row = rows.getJSONObject(i); if (("queued".equals(row.optString("phase")) || "pending".equals(row.optString("effects"))) && agentKind(new JSONObject(row.getString("owner")))) return true; }
@@ -372,15 +417,16 @@ public final class DeferredDeletionCoordinator {
    boolean failed = false;
    String continuity = time.getString("continuity");
    try {
-    JSONArray events = calendar.list(continuity, elapsed);
+    JSONArray events = journal.list(continuity, elapsed);
     for (int i = 0; i < events.length(); i++) {
      try {
       JSONObject row = events.getJSONObject(i);
       if (!"queued".equals(row.getString("phase"))) continue;
+      final String kind = row.getString("kind");
       if ("open".equals(row.getString("window"))) next = Math.min(next, row.getJSONObject("deadline").getLong("expiresElapsed") - elapsed);
       else if ("expired".equals(row.getString("window"))) {
        if (awaitingOwner(row.getJSONObject("owner"), agent, row.getJSONObject("deadline").getLong("expiresElapsed"), elapsed)) { failed = true; continue; }
-       calendar.expire(row.getString("id"), continuity, elapsed, (owner, target) -> admitted(owner, agent) ? calendarDeletions.refusal(owner, target) : "owner-changed", calendarDeletions::dispatch);
+       journal.expire(row.getString("id"), continuity, elapsed, (owner, target) -> admitted(owner, agent) ? refusal(kind, owner, target) : "owner-changed", target -> dispatch(kind, target));
       }
      } catch (Exception rowFailed) { failed = true; }
     }
@@ -411,6 +457,14 @@ public final class DeferredDeletionCoordinator {
    finally { if (next != Long.MAX_VALUE) scheduler.schedule(Math.max(1, next)); }
    return failed;
   }
+ }
+
+ private String refusal(String kind, JSONObject owner, JSONObject target) throws Exception {
+  return "calendar".equals(kind) ? calendarDeletions.refusal(owner, target) : records.refusal(kind, owner, target);
+ }
+
+ private JSONObject dispatch(String kind, JSONObject target) throws Exception {
+  return "calendar".equals(kind) ? calendarDeletions.dispatch(target) : records.dispatch(kind, target);
  }
 
  /** Schedules an immediate reconcile (process start, plugin load). */

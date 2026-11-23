@@ -218,3 +218,88 @@ pure def lawUnreadableOrInvalidReceiptSuppresses(receipt: ApprovalReceipt, reada
 pure def lawLiveOrUncertainReceiptKeepsTheNotice(receipt: ApprovalReceipt, canForget: bool): bool =
   (receipt == ReceiptLive or receipt == ReceiptUncertain) implies cleanupApprovalRoute(receipt, true, canForget) == RouteKept
 ```
+
+## Story: Get an alert and a new-mail count only as I set them up
+
+> As the owner, I want an occurrence alert to land on the channel I left it
+> on and a new-mail notice to count only mail I have not dealt with, so that
+> a host's own grouping never overrides my choices and a count never runs
+> backwards while I read.
+
+### An occurrence alert leaves the updates channel only while the owner left that channel as the host made it
+
+`NativeNotificationChannels` posts a high-priority occurrence alert on
+`eliza_notifications` unless the owner customised `eliza_updates`: Android
+older than 11, a changed importance, sound or lock-screen visibility, or a
+channel group. A host may name the groups it assigns itself
+(`setHostAssignedGroups`, empty by default); such a group alone is no
+customisation, but the owner blocking it is, so the alert stays on the
+blocked `eliza_updates` instead of escaping the group. Every other priority
+has its own fixed channel.
+
+```quint
+type ReminderPriority = PriorityUrgent | PriorityHigh | PriorityNormal | PriorityLow
+type ReminderChannel = OnAlerts | OnNotifications | OnUpdates | OnQuiet
+type UpdatesChannelFacts = {
+  present: bool, platformChoices: bool, defaultImportance: bool, publicLockscreen: bool,
+  group: str, hostAssignedGroup: bool, groupBlocked: bool, userSetImportance: bool, userSetSound: bool
+}
+pure def updatesCustomised(updates: UpdatesChannelFacts): bool =
+  updates.present and (not(updates.platformChoices) or not(updates.defaultImportance) or not(updates.publicLockscreen) or
+    (updates.group != "" and (not(updates.hostAssignedGroup) or updates.groupBlocked)) or updates.userSetImportance or updates.userSetSound)
+pure def reminderChannel(priority: ReminderPriority, occurrence: bool, updates: UpdatesChannelFacts): ReminderChannel =
+  if (priority == PriorityHigh and occurrence and updatesCustomised(updates)) OnUpdates
+  else if (priority == PriorityUrgent) OnAlerts
+  else if (priority == PriorityHigh) OnNotifications
+  else if (priority == PriorityNormal) OnUpdates
+  else OnQuiet
+pure val updatesValues: Set[UpdatesChannelFacts] = {
+  val plain = { present: true, platformChoices: true, defaultImportance: true, publicLockscreen: true, group: "", hostAssignedGroup: false, groupBlocked: false, userSetImportance: false, userSetSound: false }
+  val hosted = { ...plain, group: "alpha", hostAssignedGroup: true }
+  List(plain, hosted, { ...hosted, groupBlocked: true }, { ...plain, group: "alpha" }, { ...plain, group: "alpha", groupBlocked: true },
+    { ...plain, userSetSound: true }, { ...plain, present: false }).foldl(Set(), (acc, u) => acc.union(Set(u)))
+}
+pure def lawHostAssignedGroupAloneIsNoCustomisation(updates: UpdatesChannelFacts): bool =
+  (updates.hostAssignedGroup and not(updates.groupBlocked)) implies updatesCustomised(updates) == updatesCustomised({ ...updates, group: "" })
+pure def lawBlockedGroupKeepsTheOccurrenceAlertBlocked(updates: UpdatesChannelFacts): bool =
+  (updates.present and updates.group != "" and updates.groupBlocked) implies reminderChannel(PriorityHigh, true, updates) == OnUpdates
+pure def lawUnassignedGroupStaysTheOwnersChoice(updates: UpdatesChannelFacts): bool =
+  (updates.present and updates.group != "" and not(updates.hostAssignedGroup)) implies reminderChannel(PriorityHigh, true, updates) == OnUpdates
+pure def lawOnlyOccurrenceAlertsFollowTheOwnersChoice(priority: ReminderPriority, occurrence: bool, updates: UpdatesChannelFacts): bool =
+  (priority != PriorityHigh or not(occurrence)) implies reminderChannel(priority, occurrence, updates) == reminderChannel(priority, occurrence, { ...updates, present: false })
+```
+
+### A new-mail count counts the notices still unread, a notice the shade cap withdrew included
+
+`MailHistoryReconciliation` hands a host the count with each new-mail
+notice it posts (`Poster.post(key, count)`; the default shows none). The
+count is the ledger's notices not opened, read, deleted or denied, the new
+one included. Withdrawing the oldest shown notice to keep five in the shade
+marks it capped, and it still counts; a later read or delete withdraws it
+and removes the mark. A notice the ledger retired is no longer counted, so
+the count is a lower bound, never the mailbox's unread total.
+
+```quint
+type MailNoticePhase = MailPending | MailDispatching | MailPosted | MailUncertain | MailWithdrawn | MailOpened | MailDenied
+type MailNotice = { mailPhase: MailNoticePhase, capped: bool }
+pure def mailNoticeUnread(mail: MailNotice): bool =
+  mail.mailPhase == MailPending or mail.mailPhase == MailDispatching or mail.mailPhase == MailPosted or
+  mail.mailPhase == MailUncertain or (mail.mailPhase == MailWithdrawn and mail.capped)
+pure def unreadMailCount(notices: List[MailNotice]): int = notices.foldl(0, (total, mail) => if (mailNoticeUnread(mail)) total + 1 else total)
+pure val cappedMail: MailNotice = { mailPhase: MailWithdrawn, capped: true }
+pure val readOrDeletedMail: MailNotice = { mailPhase: MailWithdrawn, capped: false }
+pure val mailValues: Set[MailNotice] = List(
+  { mailPhase: MailPending, capped: false }, { mailPhase: MailPosted, capped: false }, { mailPhase: MailUncertain, capped: false },
+  cappedMail, readOrDeletedMail, { mailPhase: MailOpened, capped: false }, { mailPhase: MailDenied, capped: false }
+).foldl(Set(), (acc, m) => acc.union(Set(m)))
+pure val noticesValues: Set[List[MailNotice]] = List(
+  List(), List({ mailPhase: MailPosted, capped: false }), List(cappedMail, { mailPhase: MailOpened, capped: false })
+).foldl(Set(), (acc, l) => acc.union(Set(l)))
+pure def lawCappingAShownNoticeKeepsTheCount(mail: MailNotice, notices: List[MailNotice]): bool =
+  (mail.mailPhase == MailPosted or mail.mailPhase == MailUncertain) implies
+    unreadMailCount(notices.append(cappedMail)) == unreadMailCount(notices.append(mail))
+pure def lawReadOrDeletedMailIsNeverCounted(notices: List[MailNotice]): bool =
+  unreadMailCount(notices.append(readOrDeletedMail)) == unreadMailCount(notices)
+pure def lawTheNewNoticeCountsItself(notices: List[MailNotice]): bool =
+  unreadMailCount(notices.append({ mailPhase: MailPending, capped: false })) == unreadMailCount(notices) + 1
+```

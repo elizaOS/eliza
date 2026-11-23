@@ -1,0 +1,182 @@
+// spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"
+module node {
+  import variant from "@jitl/quickjs-singlefile-browser-release-sync"
+  import { newQuickJSWASMModuleFromVariant, type QuickJSDeferredPromise, type QuickJSHandle } from "quickjs-emscripten-core"
+  import { Schema } from "effect"
+
+  const MaxJsonBytes = 256_000
+  const GuestTimeMs = 2_000
+  const GuestMemoryBytes = 32 * 1024 * 1024
+  const GuestStackBytes = 256 * 1024
+  let engine: ReturnType<typeof newQuickJSWASMModuleFromVariant> | undefined
+
+  const request = Schema.Union([
+    Schema.Struct({ kind: Schema.Literal("step"), call: Schema.String, source: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("generate"), call: Schema.String, prompt: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("approval"), call: Schema.String, title: Schema.String, summary: Schema.String, operation: Schema.String, target: Schema.String, account: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("signal"), call: Schema.String, name: Schema.String, timeoutMs: Schema.optionalKey(Schema.Number) }),
+    Schema.Struct({ kind: Schema.Literal("sleep"), call: Schema.String, ms: Schema.Number }),
+  ])
+  const decode = Schema.decodeUnknownSync(request)
+  type Request = typeof request.Type
+  export type GuestCall =
+    | Exclude<Request, { readonly kind: "step" }>
+    | (Extract<Request, { readonly kind: "step" }> & { readonly compute: () => unknown })
+  export type GuestAnswer = { readonly kind: "value"; readonly value: unknown } | { readonly kind: "failed"; readonly message: string }
+
+  interface Pending {
+    readonly request: Request
+    readonly callback: QuickJSHandle | undefined
+    readonly reply: QuickJSDeferredPromise
+  }
+
+  const makeContext = `(send, input) => {
+    const stringify = JSON.stringify;
+    const parse = JSON.parse;
+    const sourceOf = Function.prototype.call.bind(Function.prototype.toString);
+    const pack = value => stringify(value ?? null);
+    const request = async (message, callback) => parse(await send(pack(message), callback));
+    return Object.freeze({
+      input: parse(input),
+      step: (call, fn) => request({kind: "step", call, source: sourceOf(fn)}, () => pack(fn())),
+      generate: (call, {prompt}) => request({kind: "generate", call, prompt}),
+      approval: (call, {title, summary, operation, target, account}) => request({kind: "approval", call, title, summary, operation, target, account}),
+      signal: (call, name, options) => request({kind: "signal", call, name, timeoutMs: options?.timeoutMs}),
+      sleep: async (call, ms) => { await request({kind: "sleep", call, ms}); },
+    });
+  }`
+  const finishProgram = `(() => {
+    const stringify = JSON.stringify;
+    return async (program, context) => stringify((await program(context)) ?? null);
+  })()`
+
+  function checkedJson(text: string): unknown {
+    if (Buffer.byteLength(text) > MaxJsonBytes) throw new Error("The workflow guest exceeded its message size")
+    return JSON.parse(text)
+  }
+
+  function packJson(value: unknown): string {
+    const text = JSON.stringify(value ?? null)
+    if (Buffer.byteLength(text) > MaxJsonBytes) throw new Error("The workflow guest exceeded its message size")
+    return text
+  }
+
+  export async function runGuest(source: string, input: unknown, call: (request: GuestCall) => Promise<GuestAnswer>): Promise<unknown> {
+    engine ??= newQuickJSWASMModuleFromVariant(variant)
+    const wasm = await engine
+    using runtime = wasm.newRuntime()
+    runtime.setMemoryLimit(GuestMemoryBytes)
+    runtime.setMaxStackSize(GuestStackBytes)
+    let remaining = GuestTimeMs
+    let deadline = 0
+    let pending: Pending | undefined
+    let servicing = false
+    using vm = runtime.newContext()
+    runtime.setInterruptHandler(() => performance.now() >= deadline)
+
+    function bounded<T>(execute: () => T): T {
+      if (remaining <= 0) throw new Error("The workflow guest exceeded its execution time")
+      const begin = performance.now()
+      deadline = begin + remaining
+      try {
+        return execute()
+      } finally {
+        remaining -= performance.now() - begin
+      }
+    }
+
+    function takePending(): Pending | undefined {
+      const message = pending
+      pending = undefined
+      return message
+    }
+
+    function readJson(handle: QuickJSHandle): unknown {
+      if (vm.typeof(handle) !== "string") throw new Error("The workflow guest returned invalid JSON")
+      return checkedJson(vm.getString(handle))
+    }
+
+    function pump(): void {
+      while (runtime.hasPendingJob()) {
+        bounded(() => {
+          using jobs = runtime.executePendingJobs(32)
+          jobs.unwrap()
+        })
+      }
+    }
+
+    function evaluatedProgram(value: QuickJSHandle): QuickJSHandle {
+      pump()
+      const state = vm.getPromiseState(value)
+      if (state.type === "pending") throw new Error("The workflow module did not finish loading")
+      if (state.type === "fulfilled" && state.notAPromise) return value.dup()
+      return vm.unwrapResult(state)
+    }
+
+    using send = vm.newFunction("request", (message, callback) => {
+      if (pending !== undefined || servicing) throw new Error("Workflow calls must run one at a time")
+      const requested = decode(readJson(message))
+      const step = requested.kind === "step"
+      if (step && (callback === undefined || vm.typeof(callback) !== "function")) throw new Error("The workflow step has no callback")
+      const reply = vm.newPromise()
+      pending = { request: requested, callback: step ? callback.dup() : undefined, reply }
+      return reply.handle
+    })
+    using inputText = vm.newString(packJson(input))
+    using create = bounded(() => vm.unwrapResult(vm.evalCode(makeContext)))
+    using context = bounded(() => vm.unwrapResult(vm.callFunction(create, vm.undefined, send, inputText)))
+    using finish = bounded(() => vm.unwrapResult(vm.evalCode(finishProgram)))
+    using loaded = bounded(() => vm.unwrapResult(vm.evalCode(source, "reviewed.mjs", { type: "module" })))
+    using namespace = evaluatedProgram(loaded)
+    using program = vm.getProp(namespace, "default")
+    if (vm.typeof(program) !== "function") throw new Error("The workflow module has no default program")
+
+    try {
+      using result = bounded(() => vm.unwrapResult(vm.callFunction(finish, vm.undefined, program, context)))
+      for (;;) {
+        pump()
+        const message = takePending()
+        const state = vm.getPromiseState(result)
+        if (message === undefined) {
+          if (state.type === "pending") throw new Error("The workflow guest is waiting for an unavailable result")
+          using value = vm.unwrapResult(state)
+          return readJson(value)
+        }
+        using reply = message.reply
+        using callback = message.callback
+        if (state.type !== "pending") {
+          using value = vm.unwrapResult(state)
+          throw new Error("The workflow guest did not wait for its context call")
+        }
+        servicing = true
+        try {
+          const requested = message.request
+          let answer: GuestAnswer
+          if (requested.kind === "step") {
+            if (callback === undefined) throw new Error("The workflow step has no callback")
+            answer = await call({ ...requested, compute: () => {
+              using value = bounded(() => vm.unwrapResult(vm.callFunction(callback, vm.undefined)))
+              return readJson(value)
+            } })
+          } else {
+            answer = await call(requested)
+          }
+          if (answer.kind === "failed") {
+            using error = vm.newError(answer.message)
+            bounded(() => reply.reject(error))
+          } else {
+            using serialized = vm.newString(packJson(answer.value))
+            bounded(() => reply.resolve(serialized))
+          }
+        } finally {
+          servicing = false
+        }
+      }
+    } finally {
+      const abandoned = takePending()
+      abandoned?.callback?.dispose()
+      abandoned?.reply.dispose()
+    }
+  }
+}
+export { runGuest, type GuestAnswer, type GuestCall } from node

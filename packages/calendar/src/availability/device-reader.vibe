@@ -1,0 +1,154 @@
+// spec/calendar/availability.md, "Story: Read the reviewed local source with its actual calendar rules"; spec/calendar/availability.md, "Enforce source identity and local freshness before reading instances"
+import { calendarReadOverflow, positiveOverlap, rowDecision, sourceAdmission, type TimeWindow } from "../../gen/calendar__availability.effect.vibe"
+import { getTimeZoneOffsetMinutes, getZonedDateParts, knownTimeZone } from "../clock.vibe"
+import type { CalendarAvailabilityEvent } from "./projection.vibe"
+
+/** A reader or picker could not be reached; the read shares nothing. */
+export error AvailabilityUnavailable { reason: string }
+
+/** One device calendar row as the provider lists it, with the host's digest of its identity. */
+export interface DeviceCalendarRow {
+  readonly id: string
+  readonly sourceRevision: string
+  readonly name: string
+  readonly account: string
+  readonly local: boolean
+  readonly freeBusyOrAbove: boolean
+}
+
+/** One expanded instance with only its calendar, bounds, all-day flag, availability, status and the owner's attendee status. */
+export interface DeviceInstanceRow {
+  readonly calendarId: string
+  readonly begin: number
+  readonly end: number
+  readonly allDay: boolean
+  readonly availability: number | null
+  readonly status: number | null
+  readonly selfAttendeeStatus: number | null
+}
+
+/** What the device says about the reading context: read permission, foreground, unlock and its zone. */
+export interface DeviceReaderContext {
+  readonly permitted: boolean
+  readonly foreground: boolean
+  readonly unlocked: boolean
+  readonly timeZone: string
+}
+
+/** The device calendar provider, as the host reaches it. */
+export interface DeviceCalendarPort {
+  readonly context: () => DeviceReaderContext
+  readonly calendars: () => readonly DeviceCalendarRow[]!AvailabilityUnavailable
+  readonly instances: (query: { readonly calendarIds: readonly string[]; readonly begin: number; readonly end: number }) =>
+    { readonly rows: readonly DeviceInstanceRow[]; readonly truncated: boolean }!AvailabilityUnavailable
+}
+
+/** A reader's answer to a source listing, as a provider reports it to the review. */
+export interface SourcesAnswer {
+  readonly status: string
+  readonly timeZone?: unknown
+  readonly calendars?: unknown
+}
+
+/** A reader's answer to an availability read, as a provider reports it to the review. */
+export interface ReadAnswer {
+  readonly status: string
+  readonly events?: unknown
+  readonly freshness?: unknown
+}
+
+/** The reviewed request a reader serves: the chosen calendars with the revisions the owner saw, the window and its zone. */
+export interface AvailabilityReadRequest {
+  readonly calendars: readonly { readonly id: string; readonly revision: string }[]
+  readonly start: string
+  readonly end: string
+  readonly timeZone: string
+}
+
+const day = 86_400_000
+const androidFree = 1
+const androidTentative = 2
+const androidCancelled = 2
+const androidDeclined = 2
+
+/** Whether two zone names follow the same rules, so an alias of the requested zone is accepted. */
+export function sameZoneRules(left: string, right: string): boolean {
+  if (left === right) return true
+  if (!knownTimeZone(left) || !knownTimeZone(right)) return false
+  const now = Date.now()
+  return Array.from({ length: 50 }, (_, index) => new Date(now + (index - 25) * 15 * day))
+    .every((at) => getTimeZoneOffsetMinutes(at, left) === getTimeZoneOffsetMinutes(at, right))
+}
+
+function contextRefusal(context: DeviceReaderContext, timeZone: string): string | undefined {
+  if (!context.permitted) return "permission-required"
+  if (!context.foreground || !context.unlocked) return "unavailable"
+  return sameZoneRules(context.timeZone, timeZone) ? undefined : "timezone-changed"
+}
+
+function civilWindow(window: TimeWindow, timeZone: string): TimeWindow | undefined {
+  const first = getZonedDateParts(new Date(window.begin), timeZone)
+  const last = getZonedDateParts(new Date(window.finish - 1), timeZone)
+  return first === undefined || last === undefined ? undefined
+    : { begin: Date.UTC(first.year, first.month - 1, first.day), finish: Date.UTC(last.year, last.month - 1, last.day) + day }
+}
+
+function representable(instant: number): boolean {
+  return Number.isSafeInteger(instant) && instant >= 0 && instant <= 253_402_300_799_999
+}
+
+function availabilityOf(value: number | null): CalendarAvailabilityEvent["availability"] {
+  return value === androidFree ? "free" : value === androidTentative ? "tentative" : "busy"
+}
+
+/** The device calendars offered for review: every source readable at free/busy level or above, for a context in the requested zone. */
+export effect function deviceAvailabilitySources(port: DeviceCalendarPort, input: { readonly timeZone: string }): SourcesAnswer!AvailabilityUnavailable {
+  const refusal = contextRefusal(port.context(), input.timeZone)
+  if (refusal !== undefined) return { status: refusal }
+  const rows = try port.calendars()
+  const calendars = rows.filter((row) => row.freeBusyOrAbove).map(({ id, name, account, sourceRevision }) => ({ id, name, account, sourceRevision }))
+  return { status: "ready", timeZone: input.timeZone, calendars }
+}
+
+/** A fresh local read of exactly the chosen sources, as occupancy-only rows, or the status that stops it before anything is shared. */
+export effect function readDeviceAvailability(port: DeviceCalendarPort, request: AvailabilityReadRequest): ReadAnswer!AvailabilityUnavailable {
+  const before = contextRefusal(port.context(), request.timeZone)
+  if (before !== undefined) return { status: before }
+  const window = { begin: Date.parse(request.start), finish: Date.parse(request.end) }
+  const civil = civilWindow(window, request.timeZone)
+  if (civil === undefined || !(window.finish > window.begin)) return { status: "unavailable" }
+  const selected = new Set(request.calendars.map((calendar) => calendar.id))
+
+  effect function admission() {
+    const rows = try port.calendars()
+    const exact = request.calendars.every((calendar) => {
+      const matches = rows.filter((row) => row.id === calendar.id)
+      return matches.length === 1 && matches[0].sourceRevision === calendar.revision && matches[0].freeBusyOrAbove
+    })
+    return sourceAdmission(exact, request.calendars.every((calendar) => rows.some((row) => row.id === calendar.id && row.local)))
+  }
+
+  const first = try admission()
+  if (first === "SourceChanged") return { status: "changed" }
+  if (first === "FreshnessUnknown") return { status: "freshness-unknown" }
+  const query = { calendarIds: [...selected], begin: Math.min(window.begin, civil.begin), end: Math.max(window.finish, civil.finish) }
+  const read = try port.instances(query)
+  const events: CalendarAvailabilityEvent[] = []
+  for (const row of read.rows) {
+    const decision = rowDecision(selected.has(row.calendarId), row.status === androidCancelled, row.selfAttendeeStatus === androidDeclined,
+      { begin: row.begin, finish: row.end })
+    if (decision === "WrongCalendar") return { status: "changed" }
+    if (decision === "BadInterval" || !representable(row.begin) || !representable(row.end)) return { status: "unavailable" }
+    if (decision === "SkippedAppointment") continue
+    const interval = { begin: row.begin, finish: row.end }
+    const member = row.allDay ? positiveOverlap(civil, interval)
+      : positiveOverlap(window, interval) || (row.begin === row.end && row.begin > window.begin && row.begin < window.finish)
+    if (!member) continue
+    events.push({ start: new Date(row.begin).toISOString(), end: new Date(row.end).toISOString(), allDay: row.allDay, availability: availabilityOf(row.availability) })
+  }
+  if (calendarReadOverflow(read.truncated, events.length)) return { status: "too-many" }
+  if ((try admission()) !== "CanQuery") return { status: "changed" }
+  const after = contextRefusal(port.context(), request.timeZone)
+  if (after !== undefined) return { status: after }
+  return { status: "ready", freshness: "local", events }
+}

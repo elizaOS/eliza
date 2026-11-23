@@ -1,5 +1,6 @@
-// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"; spec/os/android/messages.md, "Story: Delete a conversation I chose"; spec/os/android/messages.md, "Story: Name the sender of my latest text without reading it"
 import { assert, it } from "@effect/vitest"
+import { createDeferredDeletions } from "../../src/bridges/action-journal.vibe"
 import { MalformedReply, rejectionCode } from "../../src/bridges/bridge.vibe"
 import {
   InvalidMessageRequest,
@@ -22,10 +23,12 @@ module android {
   import { CapacitorException } from "@capacitor/core"
   import { mmsBindingText, smsBindingText, type MessagesNativePlugin } from "../../src/bridges/definitions/messages.ts"
   import type { PhoneNumber } from "../../src/bridges/definitions/phone.ts"
+  import type { ActionJournalPlugin } from "../../src/bridges/definitions/action-journal.ts"
 
   type Choice = "approve" | "reject" | "cancel"
   type Receipts = "none" | "sent" | "delivered" | "lost" | "failed"
   type Stored = { id: number; kind: "sms" | "mms"; thread: number; date: number; box: "inbox" | "sent" | "outbox"; read: boolean; body: string }
+  type Staged = { id: string; kind: string; target: Record<string, unknown>; phase: string; deadline: { expiresAt: number } }
 
   export interface Phone {
     unlocked: boolean
@@ -45,8 +48,11 @@ module android {
     dropped: Set<string>
     dispatched: string[]
     rows: Stored[]
+    staged: Staged[]
     deleteReply: unknown
     readReply: unknown
+    senderAddress: string
+    senderReply: unknown
     composed: string[][]
   }
 
@@ -76,8 +82,11 @@ module android {
         { id: 14, kind: "sms", thread: 1, date: 4000, box: "outbox", read: true, body: "Almost there" },
         { id: 21, kind: "sms", thread: 2, date: 500, box: "inbox", read: true, body: "Old note" },
       ],
+      staged: [],
       deleteReply: undefined,
       readReply: undefined,
+      senderAddress: "+1 (555) 010-0101",
+      senderReply: undefined,
       composed: [],
       ...changes,
     }
@@ -86,6 +95,32 @@ module android {
   /** @throws {never} */
   function sha256(bytes: Uint8Array | string): string {
     return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  function stage(phone: Phone, kind: string, target: Record<string, unknown>): Staged {
+    const row = { id: `staged-${phone.staged.length + 1}`, kind, target, phase: "queued", deadline: { expiresAt: 1700000010000 } }
+    phone.staged.push(row)
+    return row
+  }
+
+  /** @throws {never} */
+  export function androidJournal(phone: Phone): ActionJournalPlugin {
+    const unused = async (): Promise<never> => { throw new Error("Not a deletion call") }
+    return {
+      reserve: unused,
+      markApplying: unused,
+      finish: unused,
+      get: unused,
+      list: unused,
+      dismiss: unused,
+      pending: async () => ({ pending: phone.staged.map((row) => ({ ...row, window: "open" })) }),
+      undo: async ({ kind, id }) => {
+        const row = phone.staged.find((one) => one.kind === kind && one.id === id)
+        if (row !== undefined && row.phase === "queued") row.phase = "undone"
+        return { phase: row?.phase ?? "unknown" }
+      },
+    }
   }
 
   /** @throws {never} */
@@ -210,6 +245,17 @@ module android {
           .slice(0, limit)
         return { messages: rows.map(row), next: null }
       },
+      latestIncomingSender: async (options) => {
+        front()
+        if (phone.senderReply !== undefined) return phone.senderReply
+        const newest = phone.rows.filter((one) => one.kind === "sms" && one.box === "inbox").sort((x, y) => y.date - x.date || y.id - x.id)[0]
+        if (newest === undefined) return { status: "empty" }
+        if (!/^[0-9+(). -]+$/.test(phone.senderAddress)) return { status: "sender-unavailable" }
+        const digits = phone.senderAddress.replace(/[^0-9]/g, "")
+        if (options?.includeAddress !== true) return digits.length >= 4 ? { status: "found", numberEnding: digits.slice(-4) } : { status: "sender-unavailable" }
+        const number = phone.senderAddress.replace(/[(). -]/g, "")
+        return /^\+?[0-9]{2,20}$/.test(number) ? { status: "found", address: number, threadId: `thread:${newest.thread}` } : { status: "sender-unavailable" }
+      },
       markThreadRead: async ({ threadId, throughDate }) => {
         if (phone.readReply !== undefined) return phone.readReply
         if (!phone.roleHeld) return { defaultSmsApp: false, updated: 0 }
@@ -225,8 +271,14 @@ module android {
         if (found === undefined) return answer("not-found")
         if (`thread:${found.thread}` !== message.threadId || found.date !== message.date) return answer("stale")
         if (found.box === "outbox") return answer("not-settled")
-        phone.rows = phone.rows.filter((one) => one !== found)
-        return answer("deleted")
+        return { ...answer("queued"), deletion: stage(phone, "message", { ...message }) }
+      },
+      deleteThread: async (thread) => {
+        front()
+        const rows = phone.rows.filter((one) => `thread:${one.thread}` === thread.threadId && one.date <= thread.through)
+        const answer = (status: string) => ({ status, thread: { ...thread } })
+        if (rows.some((one) => one.box !== "outbox")) return { ...answer("queued"), deletion: stage(phone, "thread", { ...thread }) }
+        return answer(rows.length > 0 ? "not-settled" : "not-found")
       },
       observeMessages: async () => undefined,
       addListener: async () => ({ remove: async () => undefined }),
@@ -245,7 +297,7 @@ module android {
     while (!condition()) await new Promise((resolve) => setTimeout(resolve, 1))
   }
 }
-import { androidTelephony, device, holdDispatch, until } from android
+import { androidJournal, androidTelephony, device, holdDispatch, until } from android
 
 effect function refusal(call: () => Promise<unknown>) {
   const { cause } = try flip(tryPromise(() => call()))
@@ -430,9 +482,11 @@ it.live("Mark a conversation read only while the app holds the SMS role, and nev
   ))
 })
 
-it.live("Delete exactly the settled message I chose, and confirm only a removal Android reported (spec/os/android/messages.md, \"Story: Delete one message I chose\"; spec/os/android/messages.md, \"A deletion removes only the selected settled row and confirms only a removal Android reported\")", () => effect {
+it.live("Delete exactly the settled message or conversation I chose, hidden while its Undo window is queued and back on Undo (spec/os/android/messages.md, \"Story: Delete one message I chose\"; spec/os/android/messages.md, \"A deletion removes only the selected settled row and confirms only a removal Android reported\"; spec/os/android/messages.md, \"Story: Delete a conversation I chose\"; spec/os/android/messages.md, \"A conversation deletion removes only its settled rows up to the newest one I saw\"; spec/os/android/deletionWindow.md, \"A record waiting in its window is hidden from its list until Undo or the provider settles it\")", () => effect {
   const phone = device()
-  const client = messagesClient(androidTelephony(phone))
+  const journal = androidJournal(phone)
+  const client = messagesClient(androidTelephony(phone), journal)
+  const deletions = createDeferredDeletions(journal)
   const threads = try promise(() => client.listThreads())
   const thread = "thread:1" as ThreadId
   const first = try promise(() => client.listMessages(thread, 2))
@@ -442,37 +496,95 @@ it.live("Delete exactly the settled message I chose, and confirm only a removal 
   const ids = (rows: readonly MessageRow[]) => rows.map((row) => row.id)
   const reference = (id: string, date: number) => ({ id: id as MessageId, kind: id.startsWith("mms") ? "mms" as const : "sms" as const, threadId: thread, date })
 
-  const deleted = try promise(() => client.deleteMessage(reference("sms:11", 1000)))
-  const again = try promise(() => client.deleteMessage(reference("sms:11", 1000)))
+  const queued = try promise(() => client.deleteMessage(reference("sms:11", 1000)))
+  const hidden = ids(try promise(() => client.listMessages(thread)))
   const inSend = try promise(() => client.deleteMessage(reference("sms:14", 4000)))
   const moved = try promise(() => client.deleteMessage(reference("sms:12", 2500)))
-  phone.deleteReply = { status: "deleted", message: reference("sms:12", 2000) }
+  phone.deleteReply = { status: "queued", message: reference("sms:12", 2000), deletion: { id: "staged-9", kind: "message", deadline: { expiresAt: 1 } } }
   const otherRow = try refusal(() => client.deleteMessage(reference("sms:13", 3000)))
+  phone.deleteReply = { status: "queued", message: reference("sms:13", 3000), deletion: { id: "staged-9", kind: "thread", deadline: { expiresAt: 1 } } }
+  const otherKind = try refusal(() => client.deleteMessage(reference("sms:13", 3000)))
   phone.deleteReply = undefined
   const invalid = try refusal(() => client.deleteMessage(reference("sms:0", 1000)))
   const tooMany = try refusal(() => client.listThreads(51))
-  const remaining = ids(try promise(() => client.listMessages(thread)))
+  const kept = try promise(() => deletions.undo({ kind: "MessageRecord", id: "staged-1" }))
+  const shownAgain = ids(try promise(() => client.listMessages(thread)))
+  const conversation = try promise(() => client.deleteThread({ threadId: "thread:2" as ThreadId, through: 500 }))
+  const threadsHidden = (try promise(() => client.threadPage())).rows.map((row) => row.id)
+  phone.rows.push({ id: 41, kind: "sms", thread: 4, date: 700, box: "outbox", read: true, body: "Almost sent" })
+  const onlySends = try promise(() => client.deleteThread({ threadId: "thread:4" as ThreadId, through: 700 }))
+  const empty = try promise(() => client.deleteThread({ threadId: "thread:9" as ThreadId, through: 700 }))
+  const badThread = try refusal(() => client.deleteThread({ threadId: "9" as ThreadId, through: 1 }))
 
   const status = (result: { status: string; deleteStatus: string }) => `${result.status} ${result.deleteStatus}`
   try Effect.try(() => assert.deepStrictEqual(
     {
       threads: threads.map((row) => ("incomplete" in row ? `${row.id} incomplete ${row.reason}` : `${row.id} ${row.messageCount} ${row.unread ? "unread" : "read"}`)),
       first: ids(first), second: ids(second), page: { rows: ids(page.rows), next: page.next },
-      deleted: status(deleted), again: status(again), inSend: status(inSend), moved: status(moved), otherRow, invalid, tooMany, remaining,
+      queued, hidden, inSend: status(inSend), moved: status(moved), otherRow, otherKind, invalid, tooMany, kept, shownAgain,
+      conversation: [status(conversation), "deletion" in conversation ? conversation.deletion : null], threadsHidden,
+      onlySends: status(onlySends), empty: status(empty), badThread,
     },
     {
       threads: ["thread:1 4 unread", "thread:2 1 read", "thread:3 incomplete too-many-addresses"],
       first: ["sms:14", "mms:13"],
       second: ["sms:12", "sms:11"],
       page: { rows: ["sms:14", "mms:13", "sms:12", "sms:11"], next: null },
-      deleted: "deleted MessageDeleted",
-      again: "not-found MessageNotFound",
+      queued: {
+        status: "queued",
+        deleteStatus: "DeleteQueued",
+        message: reference("sms:11", 1000),
+        deletion: { kind: "MessageRecord", id: "staged-1", expiresAt: 1700000010000 },
+      },
+      hidden: ["sms:14", "mms:13", "sms:12"],
       inSend: "not-settled MessageNotSettled",
       moved: "stale MessageStale",
       otherRow: "malformed deleteMessage",
+      otherKind: "malformed deleteMessage",
       invalid: "request refused invalid-message",
       tooMany: "request refused invalid-limit",
-      remaining: ["sms:14", "mms:13", "sms:12"],
+      kept: { kind: "Kept" },
+      shownAgain: ["sms:14", "mms:13", "sms:12", "sms:11"],
+      conversation: ["queued DeleteQueued", { kind: "ThreadRecord", id: "staged-2", expiresAt: 1700000010000 }],
+      threadsHidden: ["thread:1", "thread:3"],
+      onlySends: "not-settled MessageNotSettled",
+      empty: "not-found MessageNotFound",
+      badThread: "request refused invalid-thread",
+    },
+  ))
+})
+
+it.live("Name the sender of my latest text by its last four digits, and whole with its thread only when asked (spec/os/android/messages.md, \"Story: Name the sender of my latest text without reading it\"; spec/os/android/messages.md, \"A sender lookup reads only the newest incoming row's address, and names it whole only when asked\")", () => effect {
+  const phone = device()
+  const client = messagesClient(androidTelephony(phone))
+  const suffix = try promise(() => client.latestIncomingSender())
+  const whole = try promise(() => client.latestIncomingSender(true))
+  phone.senderReply = { status: "found", address: "+15550100101" }
+  const addressNotAsked = try refusal(() => client.latestIncomingSender())
+  phone.senderReply = { status: "found", numberEnding: "0101", body: "Are you coming?" }
+  const extraField = try refusal(() => client.latestIncomingSender())
+  phone.senderReply = { status: "found", address: "+1555+0100101", threadId: "thread:1" }
+  const notDialable = try refusal(() => client.latestIncomingSender(true))
+  phone.senderReply = undefined
+  phone.senderAddress = "Carrier"
+  const named = try promise(() => client.latestIncomingSender(true))
+  phone.rows = phone.rows.filter((one) => one.box !== "inbox")
+  const empty = try promise(() => client.latestIncomingSender())
+  phone.unlocked = false
+  const locked = try refusal(() => client.latestIncomingSender())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { suffix, whole, addressNotAsked, extraField, notDialable, named, empty, locked, sent: phone.dispatched },
+    {
+      suffix: { status: "found", numberEnding: "0101" },
+      whole: { status: "found", address: "+15550100101", threadId: "thread:1" },
+      addressNotAsked: "malformed latestIncomingSender",
+      extraField: "malformed latestIncomingSender",
+      notDialable: "malformed latestIncomingSender",
+      named: { status: "sender-unavailable" },
+      empty: { status: "empty" },
+      locked: "rejected unavailable",
+      sent: [],
     },
   ))
 })

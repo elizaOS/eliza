@@ -1,0 +1,126 @@
+// spec/files/scan/searchablePdf.md, "Conversion keeps ordered image pages and only reviewed text becomes searchable"; spec/files/scan/searchablePdf.md, "A conversion refusal occurs before a write request"
+module browser {
+  import type { ScanTextLine } from "./scan-text-layer.vibe"
+
+  /** @throws {never} */
+  async function library() {
+    return import("pdf-lib")
+  }
+
+  export async function unencodable(layers: readonly (readonly ScanTextLine[])[]): Promise<boolean> {
+    const { PDFDocument, StandardFonts } = await library()
+    const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica)
+    for (const lines of layers) {
+      for (const line of lines) {
+        try {
+          font.encodeText(line.text)
+        } catch {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  export async function composePdf(title: string, creator: string, pages: readonly Uint8Array<ArrayBuffer>[],
+    layers: readonly (readonly ScanTextLine[])[] | undefined, signal: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+    signal.throwIfAborted()
+    const { PDFDocument, StandardFonts, pushGraphicsState, popGraphicsState, setTextRenderingMode, TextRenderingMode, setCharacterSqueeze } = await library()
+    signal.throwIfAborted()
+    const pdf = await PDFDocument.create()
+    const font = layers === undefined ? undefined : await pdf.embedFont(StandardFonts.Helvetica)
+    for (const [index, jpeg] of pages.entries()) {
+      signal.throwIfAborted()
+      const picture = await pdf.embedJpg(jpeg)
+      const page = pdf.addPage(picture.width > picture.height ? [841.89, 595.28] : [595.28, 841.89])
+      const margin = 24
+      const scale = Math.min((page.getWidth() - margin * 2) / picture.width, (page.getHeight() - margin * 2) / picture.height)
+      const width = picture.width * scale, height = picture.height * scale
+      const left = (page.getWidth() - width) / 2, bottom = (page.getHeight() - height) / 2
+      page.drawImage(picture, { x: left, y: bottom, width, height })
+      if (font === undefined || layers === undefined) continue
+      for (const line of layers[index] ?? []) {
+        signal.throwIfAborted()
+        if (line.text.trim() === "") continue
+        const size = (line.height * height) / font.heightAtSize(1, { descender: false })
+        const natural = font.widthOfTextAtSize(line.text, size)
+        if (!natural) continue
+        page.pushOperators(pushGraphicsState(), setTextRenderingMode(TextRenderingMode.Invisible), setCharacterSqueeze(((line.width * width) / natural) * 100))
+        page.drawText(line.text, { font, size, x: left + line.x * width, y: bottom + (1 - line.y - line.height) * height })
+        page.pushOperators(popGraphicsState())
+      }
+    }
+    pdf.setTitle(title)
+    pdf.setCreator(creator)
+    const bytes = new Uint8Array(await pdf.save())
+    signal.throwIfAborted()
+    return bytes
+  }
+}
+
+import { pdfExportRetryable, pdfInputAdmitted, pdfReadyForDestination, placesPdfText, type PdfExportEvidence } from "../../gen/files__scan__searchablePdf.effect.vibe"
+import { decodedImage, encoded, fittedSize, imageAdmitted, imageRefused, pageSetAdmitted, rasterOf, readBytes, ImageRefused } from "./images.vibe"
+import { scanTextLayer, textLayerRefused, TextLayerRefused, type ScanTextLine } from "./scan-text-layer.vibe"
+import { composePdf, unencodable } from browser
+
+/** The document properties a scan PDF carries. */
+export interface ScanPdfMetadata {
+  readonly title: string
+  readonly creator: string
+}
+
+export type PdfRefusal = "pages" | "unsupported-text" | "too-large" | "conversion-failed"
+
+const pdfText: Readonly<Record<PdfRefusal, string>> = {
+  pages: "Choose 1 to 20 pages, up to 64 MB total.",
+  "unsupported-text": "Searchable PDF supports English and Western European text. Correct unsupported characters or export an image-only PDF.",
+  "too-large": "PDF exceeds the 8 MB export limit.",
+  "conversion-failed": "PDF conversion failed.",
+}
+
+/** A conversion the page set, the reviewed text or the output size refused before any write request. */
+export error PdfRefused { reason: PdfRefusal; message: string }
+
+const refused = (reason: PdfRefusal) => new PdfRefused({ reason, message: pdfText[reason] })
+
+/** The largest PDF handed to a destination. */
+export const SCAN_PDF_MAX_BYTES = 8 * 1024 * 1024
+
+effect function jpegPage(image: Blob): Uint8Array<ArrayBuffer>!ImageRefused {
+  if (!imageAdmitted(image)) throw imageRefused("unsupported")
+  return try scoped(effect {
+    const bitmap = try decodedImage(image)
+    const size = fittedSize(bitmap.width, bitmap.height)
+    return try readBytes(try encoded(try rasterOf(bitmap, size.width, size.height), "image/jpeg", 0.9))
+  })
+}
+
+/** Converts the ordered image snapshot to a PDF, with each reviewed layer as invisible searchable text on its own page. */
+export effect function createScanPdf(metadata: ScanPdfMetadata, input: Blob | readonly Blob[], textLayers?: readonly (readonly ScanTextLine[])[]): Uint8Array<ArrayBuffer>!(PdfRefused | ImageRefused | TextLayerRefused) {
+  const images = Array.isArray(input) ? [...input] as Blob[] : [input as Blob]
+  const layers: ScanTextLine[][] | undefined = textLayers === undefined ? undefined : []
+  for (const lines of textLayers ?? []) layers?.push(try scanTextLayer(lines))
+  if (layers !== undefined && layers.length !== images.length) throw textLayerRefused("page-mismatch")
+  const encodable = layers === undefined || !(try tryPromise({ try: () => unencodable(layers), catch: () => refused("conversion-failed") }))
+  const admitted = pdfInputAdmitted({
+    imageCount: images.length, totalImageBytes: images.reduce((total, image) => total + image.size, 0), layersSupplied: layers !== undefined,
+    layerCount: layers?.length ?? 0, layersAdmitted: true, allTextEncodable: encodable, allImagesAdmitted: pageSetAdmitted(images), aborted: false,
+  })
+  if (!admitted) throw encodable ? refused("pages") : refused("unsupported-text")
+  const pages: Uint8Array<ArrayBuffer>[] = []
+  for (const image of images) pages.push(try jpegPage(image))
+  const placed = layers?.map((lines, page) => lines.filter((line) => placesPdfText(true, page < images.length, line.text.trim() !== "", true)))
+  const bytes = try tryPromise({ try: (signal) => composePdf(metadata.title, metadata.creator, pages, placed, signal), catch: () => refused("conversion-failed") })
+  if (!pdfReadyForDestination(true, bytes.length, false)) throw refused("too-large")
+  return bytes
+}
+
+const evidence: Readonly<Record<string, PdfExportEvidence>> = {
+  cancelled: "PdfCancelled", failed: "PdfFailed", unavailable: "PdfUnavailable", "too-large": "PdfTooLarge",
+  requested: "PdfRequested", exported: "PdfExported", unverified: "PdfUnverified",
+}
+
+/** Whether a destination's resolved status leaves the same pages free to export again. */
+export function scanExportRetryable(status: string): boolean {
+  return pdfExportRetryable(evidence[status] ?? "PdfOtherOutcome")
+}

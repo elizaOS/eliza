@@ -1,0 +1,57 @@
+// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/relay.md, "A queued command waits for the phone's current offer and survives a new offer it never reached"
+import { cloudServiceType, type AgentPlugin, type CloudLinkService } from "@elizaos/agent"
+import type { IAgentRuntime, Memory } from "@elizaos/core"
+import { createMapsPlugin } from "./plugin.vibe"
+import { conversationNavigation, mapsNavigationRelay, mapsNavigationRoute, type MapsDeviceNavigation } from "./relay.vibe"
+import type { AgentSavedPlaceStore } from "./saves.vibe"
+
+const navigations = new WeakMap<IAgentRuntime, (message: Memory) => MapsDeviceNavigation | undefined>()
+
+/** Gives the Maps actions of one runtime the phone navigation of the turn a message belongs to; the host that serves the phone relay calls it. */
+export function registerMapsNavigation(runtime: IAgentRuntime, navigation: ((message: Memory) => MapsDeviceNavigation | undefined) | undefined): void {
+  if (navigation === undefined) navigations.delete(runtime)
+  else navigations.set(runtime, navigation)
+}
+
+const savedPlaceStores = new WeakMap<IAgentRuntime, AgentSavedPlaceStore>()
+const viewRegistries = new WeakMap<IAgentRuntime, (destination: string) => boolean>()
+
+/** Gives the Maps save actions of one runtime the host's store for the assistant's saved places. */
+export function registerMapsSavedPlaces(runtime: IAgentRuntime, store: AgentSavedPlaceStore | undefined): void {
+  if (store === undefined) savedPlaceStores.delete(runtime)
+  else savedPlaceStores.set(runtime, store)
+}
+
+/** Tells the Maps routing rules of one runtime whether a destination names one of the host's views; without it a travel request is never routed. */
+export function registerMapsViews(runtime: IAgentRuntime, namesView: ((destination: string) => boolean) | undefined): void {
+  if (namesView === undefined) viewRegistries.delete(runtime)
+  else viewRegistries.set(runtime, namesView)
+}
+
+const relay = runSync(mapsNavigationRelay())
+
+const plugin = createMapsPlugin({
+  cloud: (runtime) => runtime.getService<CloudLinkService>(cloudServiceType) ?? undefined,
+  navigation: (runtime, message) => navigations.get(runtime)?.(message),
+  savedPlaces: (runtime) => savedPlaceStores.get(runtime),
+  namesView: (runtime, destination) => viewRegistries.get(runtime)?.(destination),
+})
+
+/** The Maps plugin the agent bundle loads: Cloud Maps through the owner's cloud link, the phone navigation relay among its own routes, and that relay as the navigation of each phone turn. */
+export const mapsPlugin: AgentPlugin = {
+  ...plugin,
+  routes: [mapsNavigationRoute(relay)],
+  init: async (config, runtime) => {
+    await plugin.init?.(config, runtime)
+    if (!navigations.has(runtime)) registerMapsNavigation(runtime, (message) => conversationNavigation(relay, message.roomId, () => true))
+  },
+}
+
+export default mapsPlugin
+
+export { createMapsPlugin, mapsPluginName, nearbyPlaceKind, phonePositionProvider, type MapsPluginPorts } from "./plugin.vibe"
+export { agentCloudProvider, agentPlace, mapsService, type MapsCloudLink, type MapsOffer, type MapsService, type PlaceResults, type RouteResults } from "./service.vibe"
+export { conversationNavigation, mapsNavigationPath, mapsNavigationRelay, mapsNavigationRoute, RelayRefused, type MapsDeviceNavigation, type MapsNavigationRelay, type RelayLimits, type RelayReply } from "./relay.vibe"
+export { appendMapsCard, MapsCard, mapsCardMarker, recognizedMapsCards, serializeMapsCard, withoutMapsCards, type MapsCardPlace } from "./cards.vibe"
+export { agentSaves, AgentSavedPlace, type AgentSavedPlaceStore, type AgentSaves, type SaveOutcome, type StoredSaves } from "./saves.vibe"
+export { choicePosition, registerMapsRouting, requestShape, routeOf } from "./routing.vibe"

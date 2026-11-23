@@ -80,6 +80,16 @@ public abstract class TelephonyPlugin extends Plugin {
  /** The answer when the profile does not admit this install or the phone is locked or in the background. */
  protected String unavailableMessage() { return UNAVAILABLE; }
 
+ /** The host's durable Undo window: stages an inspected record of {@code kind} for the installation's owner and returns its journal row. */
+ public interface DeletionWindow { JSONObject stage(String kind, JSONObject target) throws Exception; }
+ /** The host's Undo window, or null when it offers none; then no message, conversation or voicemail can be deleted. */
+ protected DeletionWindow deletionWindow() { return null; }
+ private DeletionWindow requireWindow(PluginCall call) {
+  DeletionWindow window = deletionWindow();
+  if (window == null) call.reject("Deleting needs the phone's Undo window", "unavailable");
+  return window;
+ }
+
  private SmsTelephonyConfiguration config;
  private final ExecutorService reader = Executors.newSingleThreadExecutor();
  private volatile boolean closed, foreground = true;
@@ -540,6 +550,12 @@ public abstract class TelephonyPlugin extends Plugin {
   fencedRead(call, "sms", "Messages", cancel -> SmsProviderReader.messages(getContext(), thread, limit, before, cursor, cancel));
  }
 
+ /** Latest incoming SMS sender metadata, without loading or disclosing message content. */
+ @PluginMethod public void latestIncomingSender(PluginCall call) {
+  if (refused(call)) return;
+  fencedRead(call, "sms", "Messages", cancel -> SmsProviderReader.latestIncomingSender(getContext(), cancel, call.getBoolean("includeAddress", false)));
+ }
+
  /**
   * Marks a conversation's received messages read, up to the newest one the owner has on screen
   * ({@code throughDate}, milliseconds), and removes its notice. Keeping read state is the default SMS
@@ -561,17 +577,53 @@ public abstract class TelephonyPlugin extends Plugin {
   });
  }
 
- /** Deletes exactly one message the owner selected and confirmed in the host UI; no radio or retry. */
+ /** Whether a deletion selected at {@code selectedGeneration} may still read the provider and stage. */
+ private boolean deletionCurrent(long selectedGeneration) {
+  return selectedGeneration==generation.get() && admitted() && unlockedForeground()
+   && getPermissionState("sms")==PermissionState.GRANTED && MmsStore.isDefaultSmsApp(getContext());
+ }
+
+ /**
+  * Stages exactly one message the owner selected and confirmed in the host UI in the host's Undo
+  * window: {@code {status: queued|not-found|stale|not-settled, message, deletion?}}. Only a settled
+  * row is staged; the window deletes it at expiry. No radio or retry.
+  */
  @PluginMethod public void deleteMessage(PluginCall call) {
   if (refused(call)) return;
   final MessageDeletion.Reference target;
   try { target=MessageDeletion.reference(call.getData()); }
   catch (IllegalArgumentException invalid) { call.reject("Invalid selected message", "invalid"); return; }
   if (!MmsStore.isDefaultSmsApp(getContext())) { call.reject("The default messaging app is required", "role-required"); return; }
+  final DeletionWindow window=requireWindow(call);
+  if (window==null) return;
   final long selectedGeneration=generation.get();
-  fencedWrite(call,"sms","Messages",cancel -> MessageDeletion.delete(getContext(),target,cancel,() ->
-    selectedGeneration==generation.get() && admitted() && unlockedForeground()
-      && getPermissionState("sms")==PermissionState.GRANTED && MmsStore.isDefaultSmsApp(getContext())));
+  fencedWrite(call,"sms","Messages",cancel -> {
+   String refusal=MessageDeletion.inspect(getContext(),target,cancel,() -> deletionCurrent(selectedGeneration));
+   if (refusal!=null) return MessageDeletion.result(target,refusal);
+   JSObject value=MessageDeletion.result(target,"queued"); value.put("deletion",window.stage("message",target.json())); return value;
+  });
+ }
+
+ /**
+  * Stages the conversation the owner selected and confirmed, up to the newest row the owner saw
+  * ({@code through}), in the host's Undo window: {@code {status: queued|not-found|not-settled, thread,
+  * deletion?}}. The window deletes only its settled rows at or before {@code through} at expiry.
+  */
+ @PluginMethod public void deleteThread(PluginCall call) {
+  if (refused(call)) return;
+  final ThreadDeletion.Reference target;
+  try { target=ThreadDeletion.reference(call.getData()); }
+  catch (IllegalArgumentException invalid) { call.reject("Invalid selected conversation", "invalid"); return; }
+  if (!MmsStore.isDefaultSmsApp(getContext())) { call.reject("The default messaging app is required", "role-required"); return; }
+  final DeletionWindow window=requireWindow(call);
+  if (window==null) return;
+  final long selectedGeneration=generation.get();
+  fencedWrite(call,"sms","Messages",cancel -> {
+   String refusal=ThreadDeletion.inspect(getContext(),target,cancel,() -> deletionCurrent(selectedGeneration));
+   JSObject value=new JSObject(); value.put("thread",target.json());
+   if (refusal!=null) { value.put("status",refusal); return value; }
+   value.put("status","queued"); value.put("deletion",window.stage("thread",target.json())); return value;
+  });
  }
 
  // ---- Incoming/outgoing change observation ----------------------------------------------------
@@ -699,12 +751,28 @@ public abstract class TelephonyPlugin extends Plugin {
   if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
   fenced(call, this::voicemailWritable, "Voicemail", cancel -> { JSObject value = new JSObject(); value.put("status", VoicemailStore.markHeard(getContext(), id)); return value; }, false);
  }
- /** Deletes one voicemail the owner chose: {@code {status: "deleted" | "unconfirmed" | "not-found"}}. Reported even if access changed meanwhile. */
+ /**
+  * Stages one voicemail the owner chose in the host's Undo window: {@code {status: "queued" |
+  * "not-found", deletion?}}. The window deletes it through its source at expiry. Reported even if
+  * access changed meanwhile.
+  */
  @PluginMethod public void deleteVoicemail(PluginCall call) {
   if (refused(call)) return;
   final long id = voicemail(call);
   if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
-  fenced(call, this::voicemailWritable, "Voicemail", cancel -> { JSObject value = new JSObject(); value.put("status", VoicemailStore.delete(getContext(), id)); return value; }, false);
+  final DeletionWindow window = requireWindow(call);
+  if (window == null) return;
+  fenced(call, this::voicemailWritable, "Voicemail", cancel -> {
+   JSObject value = new JSObject();
+   String refusal = VoicemailStore.inspectDeletion(getContext(), id);
+   if (refusal != null) { value.put("status", refusal); return value; }
+   value.put("status", "queued"); value.put("deletion", window.stage("voicemail", new JSONObject().put("id", Long.toString(id)))); return value;
+  }, false);
+ }
+ /** Whether a staged voicemail deletion may reach the provider at expiry, with or without the screen: the dialer role or the voicemail write grant. */
+ public static boolean voicemailDeletable(android.content.Context context) {
+  android.app.role.RoleManager roles = context.getSystemService(android.app.role.RoleManager.class);
+  return (roles != null && roles.isRoleHeld(android.app.role.RoleManager.ROLE_DIALER)) || context.checkSelfPermission(WRITE_VOICEMAIL) == PackageManager.PERMISSION_GRANTED;
  }
 
  private boolean voicemailWanted, voicemailObserving;

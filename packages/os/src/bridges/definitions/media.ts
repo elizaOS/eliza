@@ -245,6 +245,8 @@ export interface SelectedDocument {
   readonly name?: string;
   readonly mimeType?: string | null;
   readonly canRename?: boolean;
+  readonly size?: number;
+  readonly modified?: number;
 }
 
 export interface PdfPage {

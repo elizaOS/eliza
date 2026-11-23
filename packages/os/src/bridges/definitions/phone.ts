@@ -1,9 +1,10 @@
-// spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"
+// spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/voicemail.md, "A delete waits in the deletion window, and its row is hidden only while it is queued"; spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"
 import type { Receipt } from "../../../gen/core__receipts.ts";
 import type { Admission, ReadKind, WriteGate, WriteOutcome } from "../../../gen/os__android__bridge.ts";
 import type { PageCursor } from "../../../gen/os__android__paging.ts";
 import type { DialStatus, PlaceStatus } from "../../../gen/os__android__phone.ts";
 import type { AudioCustody, CarrierState, PcmRefusal } from "../../../gen/os__android__voicemail.ts";
+import type { StagedDeletion } from "./action-journal.ts";
 
 export type PhoneNumber = string & { readonly __brand: "PhoneNumber" };
 export type VoicemailId = string & { readonly __brand: "VoicemailId" };
@@ -191,7 +192,11 @@ export interface VoicemailPcm {
   data: string;
 }
 
-export type VoicemailWriteStatus = "marked" | "deleted" | "unconfirmed" | "not-found";
+export type VoicemailWriteStatus = "marked" | "unconfirmed" | "not-found";
+
+export type VoicemailDeletionReport =
+  | { status: "queued"; deletion: StagedDeletion; listing: VoicemailListing }
+  | { status: "not-found"; listing: VoicemailListing };
 
 export interface VoicemailWriteReport {
   written: WriteOutcome;
@@ -238,7 +243,7 @@ export interface PhoneClient {
   voicemailAudio(id: VoicemailId): Promise<VoicemailAudio>;
   voicemailPcm(id: VoicemailId): Promise<VoicemailPcm>;
   markVoicemailHeard(id: VoicemailId): Promise<VoicemailWriteReport>;
-  deleteVoicemail(id: VoicemailId): Promise<VoicemailWriteReport>;
+  deleteVoicemail(id: VoicemailId): Promise<VoicemailDeletionReport>;
   observeVoicemail(onChange: (refreshed: Promise<VoicemailListing>) => void): Promise<() => Promise<void>>;
 }
 

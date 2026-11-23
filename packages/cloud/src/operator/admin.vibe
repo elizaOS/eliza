@@ -4,6 +4,7 @@ import type { AccountStatus } from "../../gen/cloud__identity__accounts.effect.v
 import { decide, type OperatorCommand, type OperatorVerdict } from "../../gen/cloud__operator.effect.vibe"
 import { refusalBody, type Refusal } from "../http/refusal.vibe"
 import { deploymentLayer, Deployment, parseEnvironment, readProfile, specProfile } from "../profile/profile.vibe"
+import { sha256Hex } from "../shared/credential-crypto.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
 import { identityDigest, parseStoreLocation, Store, storeLayer, type StoreFailure, toText, type Tx } from "../store/store.vibe"
 import { commands as accounts } from "./accounts.vibe"
@@ -28,6 +29,12 @@ export error OperatorUsageInvalid { problem: string }
 export error OperatorRefused { refusal: Refusal }
 error SeedInvalid { problem: string }
 
+/** A JSON file a command applies, read at the command line, with the SHA-256 of its bytes. */
+export interface OperatorDocument {
+  readonly value: unknown
+  readonly digest: string
+}
+
 export interface OperatorFlags {
   values(name: string): ReadonlyArray<string>
   has(name: string): boolean
@@ -41,7 +48,8 @@ export interface OperatorCommandHandler {
   readonly repeated: ReadonlyArray<string>
   readonly switches: ReadonlyArray<string>
   readonly account?: (flags: OperatorFlags) => AccountNamed!OperatorUsageInvalid
-  readonly run: (tx: Tx, flags: OperatorFlags, now: number, verdict: RunningVerdict) => ReadonlyArray<string>!{ readonly _tag: string }!OperatorContext
+  readonly document?: string
+  readonly run: (tx: Tx, flags: OperatorFlags, now: number, verdict: RunningVerdict, document: OperatorDocument | undefined) => ReadonlyArray<string>!{ readonly _tag: string }!OperatorContext
 }
 
 interface SeedHandler {
@@ -134,7 +142,7 @@ function outcomeOf(verdict: OperatorVerdict, lines: ReadonlyArray<string>): Oper
   return verdict.tag === "Refused" ? { kind: "refused", refusal: verdict.refusal } : { kind: "done", lines }
 }
 
-effect function carryOut(handler: OperatorCommandHandler, flags: OperatorFlags) {
+effect function carryOut(handler: OperatorCommandHandler, flags: OperatorFlags, document: OperatorDocument | undefined) {
   const named = handler.account === undefined ? undefined : try handler.account(flags)
   const batch = flags.values("count")[0] ?? ""
   const now = try Clock.currentTimeMillis
@@ -142,7 +150,7 @@ effect function carryOut(handler: OperatorCommandHandler, flags: OperatorFlags) 
   const run = effect (tx: Tx) => {
     const verdict = try verdictIn(tx, handler.operatorCommand, named, flags.has("confirmed-with-owner"), batchSize.test(batch) ? Number(batch) : 0)
     if (verdict.tag === "Refused") return outcomeOf(verdict, [])
-    return outcomeOf(verdict, try handler.run(tx, flags, now, verdict.tag))
+    return outcomeOf(verdict, try handler.run(tx, flags, now, verdict.tag, document))
   }
   while (true) {
     const outcome = store.transaction(run) catch effect (failure) => {
@@ -161,9 +169,19 @@ export effect function report(outcome: OperatorOutcome): void!OperatorRefused {
   for (const line of outcome.lines) try Console.log(line)
 }
 
-export effect function operate(args: ReadonlyArray<string>, table: ReadonlyArray<OperatorCommandHandler> = commandTable()) {
+export effect function operate(args: ReadonlyArray<string>, table: ReadonlyArray<OperatorCommandHandler> = commandTable(), document?: OperatorDocument) {
   const handler = try commandOf(args, table)
-  return try carryOut(handler, try parseFlags(args.slice(handler.words.length), handler, []))
+  return try carryOut(handler, try parseFlags(args.slice(handler.words.length), handler, []), document)
+}
+
+effect function readDocument(handler: OperatorCommandHandler, flags: OperatorFlags) {
+  if (handler.document === undefined) return undefined
+  const file = try flags.required(handler.document)
+  const fs = try FileSystem.FileSystem
+  const text = fs.readFileString(file) catch effect () => { throw new OperatorUsageInvalid({ problem: `cannot read ${file}` }) }
+  const value = try Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => new OperatorUsageInvalid({ problem: `${file} is not JSON` }) })
+  const document: OperatorDocument = { value, digest: `sha256:${sha256Hex(text)}` }
+  return document
 }
 
 export effect function runOperator(command: string, rest: ReadonlyArray<string>) {
@@ -178,8 +196,9 @@ export effect function runOperator(command: string, rest: ReadonlyArray<string>)
     return undefined
   }
   if (profile === undefined) return try report(outcomeOf(decide(false, "UnreadableDatabase", handler.operatorCommand, "Unopened", false, 0), []))
+  const document = try readDocument(handler, flags)
   provide storeLayer(location), deploymentLayer(profile, environment), FetchHttpClient.layer {
-    try report(try carryOut(handler, flags))
+    try report(try carryOut(handler, flags, document))
   }
 }
 

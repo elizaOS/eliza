@@ -1,0 +1,132 @@
+// spec/maps/guidanceRecovery.md, "A maneuver is passed only on a nearby position or two clearing fixes"
+import type { Coordinate, RouteStep } from "./contracts.vibe"
+
+const radians = Math.PI / 180
+const earthRadius = 6371000
+
+function angle(a: Coordinate, b: Coordinate): number {
+  const lat = (b.latitude - a.latitude) * radians
+  const lon = (b.longitude - a.longitude) * radians
+  const h = Math.sin(lat / 2) ** 2 + Math.cos(a.latitude * radians) * Math.cos(b.latitude * radians) * Math.sin(lon / 2) ** 2
+  return 2 * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+function bearing(a: Coordinate, b: Coordinate): number {
+  const latA = a.latitude * radians
+  const latB = b.latitude * radians
+  const lon = (b.longitude - a.longitude) * radians
+  return Math.atan2(Math.sin(lon) * Math.cos(latB), Math.cos(latA) * Math.sin(latB) - Math.sin(latA) * Math.cos(latB) * Math.cos(lon))
+}
+
+function degenerate(arc: number): boolean {
+  return arc < 1e-12 || Math.PI - arc < 1e-12
+}
+
+/** Distance in meters to the nearest point on the route's bounded great-circle segments. */
+export function distanceToRoute(point: Coordinate, geometry: readonly Coordinate[]): number {
+  let nearest = Infinity
+  geometry.forEach((start, index) => {
+    const fromStart = angle(start, point)
+    nearest = Math.min(nearest, fromStart)
+    const end = geometry[index + 1]
+    if (end === undefined) return
+    const length = angle(start, end)
+    if (degenerate(length)) return
+    const deltaBearing = bearing(start, point) - bearing(start, end)
+    const along = Math.atan2(Math.sin(fromStart) * Math.cos(deltaBearing), Math.cos(fromStart))
+    if (along >= 0 && along <= length) {
+      nearest = Math.min(nearest, Math.abs(Math.asin(Math.max(-1, Math.min(1, Math.sin(fromStart) * Math.sin(deltaBearing))))))
+    }
+  })
+  return nearest * earthRadius
+}
+
+/** The parts of a route that locate a point on it. */
+export interface RouteGeometry {
+  readonly geometry: readonly Coordinate[]
+  readonly steps: readonly RouteStep[]
+  readonly durationSeconds: number
+}
+
+/** Where a point lies on a route: off-route distance, distance along it, what remains and the next two maneuvers. */
+export interface RouteProgress {
+  readonly offRouteMeters: number
+  readonly alongMeters: number
+  readonly remainingMeters: number
+  readonly remainingSeconds: number
+  readonly stepIndex: number
+  readonly maneuverAlongMeters: readonly number[]
+  readonly next?: { readonly index: number; readonly step: RouteStep; readonly distanceMeters: number }
+  readonly then?: { readonly index: number; readonly step: RouteStep }
+}
+
+interface Projection {
+  readonly distance: number
+  readonly along: number
+}
+
+function slerp(start: Coordinate, end: Coordinate, arc: number, at: number): Coordinate {
+  const a = Math.sin(arc - at) / Math.sin(arc)
+  const b = Math.sin(at) / Math.sin(arc)
+  const latA = start.latitude * radians
+  const lonA = start.longitude * radians
+  const latB = end.latitude * radians
+  const lonB = end.longitude * radians
+  const x = a * Math.cos(latA) * Math.cos(lonA) + b * Math.cos(latB) * Math.cos(lonB)
+  const y = a * Math.cos(latA) * Math.sin(lonA) + b * Math.cos(latB) * Math.sin(lonB)
+  const z = a * Math.sin(latA) + b * Math.sin(latB)
+  return { latitude: Math.atan2(z, Math.hypot(x, y)) / radians, longitude: Math.atan2(y, x) / radians }
+}
+
+function project(point: Coordinate, line: readonly Coordinate[], lengths: readonly number[], minimumAlong: number): Projection {
+  const first = line[0]
+  let best: Projection = { distance: lengths.length > 0 || first === undefined ? Infinity : angle(first, point) * earthRadius, along: 0 }
+  const consider = (candidate: Coordinate, along: number) => {
+    const distance = angle(candidate, point) * earthRadius
+    if (distance < best.distance) best = { distance, along }
+  }
+  let travelled = 0
+  lengths.forEach((length, index) => {
+    const start = line[index]
+    const end = line[index + 1]
+    if (start !== undefined && end !== undefined && travelled + length >= minimumAlong) {
+      const arc = length / earthRadius
+      if (degenerate(arc)) {
+        if (travelled >= minimumAlong) consider(start, travelled)
+        consider(end, travelled + length)
+      } else {
+        const minimum = Math.max(0, Math.min(arc, (minimumAlong - travelled) / earthRadius))
+        const fromStart = angle(start, point)
+        const deltaBearing = bearing(start, point) - bearing(start, end)
+        const nearest = Math.max(minimum, Math.min(arc, Math.atan2(Math.sin(fromStart) * Math.cos(deltaBearing), Math.cos(fromStart))))
+        for (const at of [minimum, nearest, arc]) consider(slerp(start, end, arc, at), travelled + (at / arc) * length)
+      }
+    }
+    travelled += length
+  })
+  return best
+}
+
+/** Locate a point on a route; each step's maneuver is placed where its coordinate meets the line, never behind the previous one. */
+export function routeProgress(point: Coordinate, route: RouteGeometry): RouteProgress {
+  const line = route.geometry
+  const lengths = line.slice(1).map((end, index) => angle(line[index] ?? end, end) * earthRadius)
+  const total = lengths.reduce((sum, length) => sum + length, 0)
+  const along = project(point, line, lengths, 0)
+  const starts: number[] = []
+  for (const step of route.steps) starts.push(project(step.coordinate, line, lengths, starts.at(-1) ?? 0).along)
+  const stepIndex = starts.reduce((reached, start, index) => start <= along.along + 1 ? index : reached, 0)
+  const remainingMeters = Math.max(0, total - along.along)
+  const nextStep = route.steps[stepIndex + 1]
+  const thenStep = route.steps[stepIndex + 2]
+  return {
+    offRouteMeters: along.distance,
+    alongMeters: along.along,
+    remainingMeters,
+    remainingSeconds: total > 0 ? (route.durationSeconds * remainingMeters) / total : 0,
+    stepIndex,
+    maneuverAlongMeters: starts,
+    ...(nextStep === undefined ? {} : { next: { index: stepIndex + 1, step: nextStep, distanceMeters: Math.max(0, (starts[stepIndex + 1] ?? along.along) - along.along) } }),
+    ...(thenStep === undefined ? {} : { then: { index: stepIndex + 2, step: thenStep } }),
+  }
+}

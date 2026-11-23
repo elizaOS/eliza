@@ -1,4 +1,4 @@
-// spec/core/models.md, "Story: Dispatch a complete admitted request"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"
+// spec/core/models.md, "Story: Dispatch a complete admitted request"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "A model-call log row records the request parts its prompt omits and only the token counts the provider reported"
 import { foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
@@ -12,6 +12,7 @@ import {
   TEXT_GENERATION_MODEL_TYPES,
   type TextStreamResult,
 } from "../types/model.vibe"
+import type { ModelLogUsage } from "../types/database.vibe"
 import type { JsonValue } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { assertModelOutputComplete } from "../utils/model-errors.vibe"
@@ -156,6 +157,25 @@ export function readReasoningTokensFromResponse(
     return finiteNonNegative(details.reasoningTokens)
   }
   return undefined
+}
+
+/** Provider-reported token counts of one completed call for the model-call log, keeping a count the result does not carry absent. */
+export function readTokenUsageFromResponse(response: unknown): ModelLogUsage | undefined {
+  if (typeof response !== "object" || response === null) return undefined
+  const record = response as Record<string, unknown>
+  const usage = isPlainObject(record.usage) ? record.usage : undefined
+  const count = (value: unknown) => typeof value === "number" ? finiteNonNegative(value) : undefined
+  const promptTokens = count(usage?.promptTokens)
+  if (promptTokens === undefined) return undefined
+  const completionTokens = count(usage?.completionTokens)
+  const cacheReadInputTokens = count(usage?.cacheReadInputTokens)
+  const reasoningTokens = readReasoningTokensFromResponse(response)
+  return {
+    promptTokens,
+    ...(completionTokens === undefined ? {} : { completionTokens }),
+    ...(cacheReadInputTokens === undefined ? {} : { cacheReadInputTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+  }
 }
 
 function finiteNonNegative(value: number): number | undefined {

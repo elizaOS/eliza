@@ -33,8 +33,8 @@ type AccessDenial = NoDenial | CameraAccessDenied | MicrophoneAccessDenied
 type CameraAnswer = AnswerStarted | AnswerDenied | AnswerFailed | AnswerPreviewLost
 type Work = CameraIdle | CameraControl | CameraCapture | RecordingStarting | RecordingActive | RecordingFinishing
 type RecordingResult = RecordingUnobserved | RecordingConfirmed | RecordingFailed
-type CameraView = { foreground: bool, epoch: int, phase: PreviewPhase, denied: AccessDenial, inFlight: Set[int], releasePending: bool, work: Work, workEpoch: int, finished: RecordingResult }
-pure val initial: CameraView = { foreground: false, epoch: 0, phase: PreviewOff, denied: NoDenial, inFlight: Set(), releasePending: false, work: CameraIdle, workEpoch: 0, finished: RecordingUnobserved }
+type CameraView = { foreground: bool, epoch: int, phase: PreviewPhase, denied: AccessDenial, inFlight: Set[int], releasePending: bool, work: Work, workEpoch: int, finished: RecordingResult, recordingControl: bool }
+pure val initial: CameraView = { foreground: false, epoch: 0, phase: PreviewOff, denied: NoDenial, inFlight: Set(), releasePending: false, work: CameraIdle, workEpoch: 0, finished: RecordingUnobserved, recordingControl: false }
 pure def ownsPreview(s: CameraView): bool = s.phase == PreviewStarting or s.phase == PreviewReady
 pure def canEnterView(s: CameraView): bool = not(s.foreground)
 pure def enterView(s: CameraView): CameraView = { ...s, foreground: true }
@@ -57,7 +57,8 @@ pure def releasePreview(s: CameraView): CameraView = { ...s, releasePending: fal
 pure def canStopView(s: CameraView): bool = s.foreground
 pure def stopView(s: CameraView): CameraView =
   { ...s, foreground: false, epoch: s.epoch + 1, phase: PreviewOff, releasePending: true,
-    work: if (s.work == RecordingActive) RecordingFinishing else if (s.work == CameraControl) CameraIdle else s.work }
+    work: if (s.work == RecordingActive) RecordingFinishing else if (s.work == CameraControl) CameraIdle else s.work,
+    recordingControl: false }
 pure val ticketValues = Set(1, 2, 3, 4)
 pure val previewAnswerValues = Set(AnswerStarted, AnswerDenied, AnswerFailed)
 pure val presenceValues = Set(PluginRegistered, PluginNotBuilt)
@@ -151,6 +152,56 @@ pure def sometimesControlOnReadyPreview(s: CameraView): bool = s.work == CameraC
 pure def sometimesRecording(s: CameraView): bool = s.work == RecordingActive
 ```
 
+### While a recording runs, only one zoom or torch change runs at a time
+
+A running recording holds the slot, so a capture, a second recording start
+and every other control (flash, switching the lens, focus) wait for its
+stop. A zoom or a torch change may still run beside it, one at a time; a
+recording that is starting or finalizing refuses it. Finishing the
+recording or stopping the view ends the change's claim, and a change that
+settles after a stop is stale.
+
+```quint
+type RecordingControlKind = ZoomControl | TorchControl | OtherControl
+pure def admitsWhileRecording(kind: RecordingControlKind): bool = kind == ZoomControl or kind == TorchControl
+pure def canChangeWhileRecording(s: CameraView, kind: RecordingControlKind): bool =
+  s.work == RecordingActive and not(s.recordingControl) and admitsWhileRecording(kind)
+pure def changeWhileRecording(s: CameraView, kind: RecordingControlKind): CameraView = { ...s, recordingControl: true }
+pure def canSettleRecordingControl(s: CameraView): bool = s.recordingControl
+pure def settleRecordingControl(s: CameraView): CameraView = { ...s, recordingControl: false }
+pure val kindValues = Set(ZoomControl, TorchControl, OtherControl)
+pure def alwaysRecordingControlRunsOnlyBesideARunningRecording(s: CameraView): bool =
+  s.recordingControl implies (s.work == RecordingActive and s.phase == PreviewReady and s.foreground)
+pure def stepRecordingControlIsZoomOrTorch(before: CameraView, via: str, after: CameraView): bool =
+  (not(before.recordingControl) and after.recordingControl) implies (via == "changeWhileRecording" and before.work == RecordingActive)
+pure def sometimesZoomWhileRecording(s: CameraView): bool = s.recordingControl
+```
+
+### A preview binds its photo stream only at an aspect ratio the device lists
+
+The device read lists the photo aspect ratios a preview accepts, 4:3 and
+16:9 on Android; a preview with none asks for 4:3. Any other value is
+refused as `INVALID_OPTIONS` before the camera is touched. A lens that has
+no stream at the ratio falls back to another, so the bound capture size the
+preview reports is what a capture takes, never the ratio requested.
+
+```quint
+type AspectRequest = { given: bool, ratio: str }
+type AspectChoice = AspectBound({ ratio: str }) | AspectRefused
+pure val supportedCaptureAspects: List[str] = List("4:3", "16:9")
+pure def aspectChoice(request: AspectRequest): AspectChoice =
+  if (not(request.given)) AspectBound({ ratio: "4:3" })
+  else if (supportedCaptureAspects.includes(request.ratio)) AspectBound({ ratio: request.ratio })
+  else AspectRefused
+pure val requestValues = Set({ given: false, ratio: "" }, { given: true, ratio: "4:3" }, { given: true, ratio: "16:9" }, { given: true, ratio: "1:1" }, { given: true, ratio: "" })
+pure def lawBoundAspectIsListedAndAbsenceIsFourByThree(request: AspectRequest): bool = {
+  val choice = aspectChoice(request)
+  match choice {
+    | AspectBound(b) => supportedCaptureAspects.includes(b.ratio) and (not(request.given) implies b.ratio == "4:3")
+    | AspectRefused => request.given and not(supportedCaptureAspects.includes(request.ratio)) }
+}
+```
+
 ### A recording start that still owns the view came from its ready preview
 
 The view cannot restart while a recording start is pending, so only a stop
@@ -190,7 +241,7 @@ after the bridge stopped leaves the recording unconfirmed.
 type VideoReceipt = { pathPresent: bool, durationPositive: bool, sizePositive: bool, hostReadBack: bool }
 pure def completeVideoReceipt(r: VideoReceipt): bool = r.pathPresent and r.durationPositive and r.sizePositive and r.hostReadBack
 pure def canFinishVideo(s: CameraView): bool = s.work == RecordingActive
-pure def finishVideo(s: CameraView): CameraView = { ...s, work: RecordingFinishing }
+pure def finishVideo(s: CameraView): CameraView = { ...s, work: RecordingFinishing, recordingControl: false }
 pure def canObserveVideoFinish(s: CameraView): bool = s.work == RecordingFinishing
 pure def observeVideoFinish(s: CameraView, receipt: VideoReceipt): CameraView =
   { ...s, work: CameraIdle, finished: if (completeVideoReceipt(receipt)) RecordingConfirmed else RecordingFailed }

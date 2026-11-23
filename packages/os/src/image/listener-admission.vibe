@@ -79,6 +79,8 @@ export effect function listenerPermissions(dump: string, expectedPackage: string
   return grants
 }
 
+const KEPT_GESTURES = /^(?:config_doublePressOnPowerBehavior|config_cameraDoubleTapPowerGestureEnabled|config_defaultAssistant|config_keyChordPowerVolumeDown)$|[Ee]mergency/
+
 function uncommented(xml: string): string {
   return xml.replace(/<!--(?:[^-]|-(?!-))*-->/g, "")
 }
@@ -86,7 +88,7 @@ function uncommented(xml: string): string {
 export function listenerOverlay(xml: string): ListenerOverlay {
   const body = uncommented(xml)
   const content = /^\s*(?:<\?xml version="1\.0"(?: encoding="utf-8")?\?>\s*)?<resources>\s*([\s\S]*?)<\/resources>\s*$/.exec(body)?.[1]
-  const invalid: ListenerOverlay = { roles: [], microphoneToggle: false }
+  const invalid: ListenerOverlay = { roles: [], microphoneToggle: false, powerAssistant: false, powerMenuChord: false, gesturesUntouched: false }
   if (content === undefined) return invalid
   const resource = /<(string|bool|integer)\s+name="([A-Za-z0-9_]+)"(?:\s+translatable="(?:true|false)")?\s*>([^<]*)<\/\1>/g
   const values = [...content.matchAll(resource)]
@@ -96,7 +98,14 @@ export function listenerOverlay(xml: string): ListenerOverlay {
     if (entry[1] !== "string" || role === undefined || !indicatorExemptRoles.includes(role)) return []
     return [{ role, value: (entry[3] ?? "").trim() === "" ? "RoleCleared" as const : "RoleHeld" as const }]
   })
-  return { roles: cleared, microphoneToggle: values.some((entry) => entry[1] === "bool" && entry[2] === "config_supportsMicToggle" && entry[3]?.trim() === "true") }
+  const set = (kind: string, name: string, value: string) => values.some((entry) => entry[1] === kind && entry[2] === name && entry[3]?.trim() === value)
+  return {
+    roles: cleared,
+    microphoneToggle: set("bool", "config_supportsMicToggle", "true"),
+    powerAssistant: set("integer", "config_longPressOnPowerBehavior", "5"),
+    powerMenuChord: set("integer", "config_keyChordPowerVolumeUp", "2"),
+    gesturesUntouched: !values.some((entry) => KEPT_GESTURES.test(entry[2] ?? "")),
+  }
 }
 
 export effect function listenerArtifact(path: string, maxBytes: number) {

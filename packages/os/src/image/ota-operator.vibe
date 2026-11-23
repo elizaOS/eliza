@@ -5,7 +5,7 @@ import {
   type DeviceObservation,
 } from "../../gen/os__update__operator.effect.vibe"
 import { captureCommand } from "./device.vibe"
-import { deviceTools, observeDevice, observeSlots, slotArgument, verifyStockRecovery, type DeviceTools } from "./ota-device.vibe"
+import { deviceTools, fastbootVariable, observeDevice, observeSlots, slotArgument, slotOf, verifyStockRecovery, type DeviceTools } from "./ota-device.vibe"
 import { openOperatorJournal, readOperatorJournal, readOperatorStatus, sameJournalBinding, type JournalAdoption, type JournalBinding } from "./ota-journal.vibe"
 import { OtaRefused, loadUpdate, stockRecoveryPlan, verifyCandidateOta } from "./ota-records.vibe"
 import { knownGoodRecoveryPlan, retainKnownGood } from "./ota-retention.vibe"
@@ -43,7 +43,7 @@ const extra: Readonly<Record<Command, readonly string[]>> = {
   "stock-archive": ["known-good"], "verify-stock": ["adb", "fastboot"], "retain-known-good": [],
 }
 const switches = new Set(["execute", "confirm-update", "confirm-fallback"])
-const ordinary: Timings = { recoveryMs: 2 * 60_000, bootMs: 10 * 60_000, pollMs: 1_500 }
+const ordinary: Timings = { recoveryMs: 20 * 60_000, bootMs: 20 * 60_000, pollMs: 2_000 }
 const deviceStates: Readonly<Record<DeviceObservation["tag"], string>> = {
   OnAndroid: "device", InSideload: "sideload", InRecovery: "recovery", InBootloader: "bootloader", StillBooting: "booting", Unreachable: "absent",
 }
@@ -135,7 +135,7 @@ effect function applyUpdate(args: Arguments, options: OperatorOptions) {
         if (!canBegin(session.state(), input.channel, input.fromRelease, input.toRelease, observed)) {
           throw new OtaRefused({ reason: "Booted Android is not the installed release on a known slot with enforcing SELinux" })
         }
-        try session.store(begin(session.state(), input.channel, input.fromRelease, input.toRelease, observed))
+        try session.store(begin(session.state(), input.channel, input.fromRelease, input.toRelease, observed), { observed })
       }
       const start = session.state().start
       if (start.device !== input.channel.device || start.installedBuild !== input.fromRelease.release.fingerprint ||
@@ -145,7 +145,7 @@ effect function applyUpdate(args: Arguments, options: OperatorOptions) {
       let next = nextStep(start, observed)
       if (next === "Refuse") throw new OtaRefused({ reason: "The device shows a foreign build or the original build on the wrong slot" })
       if (next === "Verify") {
-        if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed))
+        if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed), { observed })
         return { observed, next, sent: false }
       }
       if (next !== "Sideload" && next !== "Retry") return { observed, next, sent: false }
@@ -162,22 +162,25 @@ effect function applyUpdate(args: Arguments, options: OperatorOptions) {
       if (observed.tag !== "InSideload") return { observed, next: nextStep(start, observed), sent: false }
       try session.beforeWrites()
       if (!canEnterSideload(session.state(), observed)) throw new OtaRefused({ reason: "The journal cannot begin sideload" })
-      try session.store(enterSideload(session.state(), observed))
-      const sent = (deviceWrite(tool, "adb", ["sideload", packageFile], 60 * 60_000) |> map(%, () => true)) catch () => false
+      try session.store(enterSideload(session.state(), observed), { observed })
+      const failure = (deviceWrite(tool, "adb", ["sideload", packageFile], 60 * 60_000) |> map(%, (): string | undefined => undefined)) catch (refusal) => refusal._tag === "OtaRefused" ? refusal.reason.slice(0, 1024) : String(refusal)
+      const sent = failure === undefined
       if (!canTransferEnded(session.state(), sent)) throw new OtaRefused({ reason: "The journal cannot settle the observed transfer" })
-      try session.store(transferEnded(session.state(), sent))
+      try session.store(transferEnded(session.state(), sent), failure === undefined ? {} : { note: failure })
       if (!sent) throw new OtaRefused({ reason: "The OTA transfer did not complete" })
+      captureCommand(tool.adb, ["-s", tool.serial, "reboot"], 30_000) catch () => null
+      try Console.error("If recovery stays open on the device, choose Reboot system now.")
       observed = try waitFor(tool, (reading) => reading.tag === "OnAndroid", timings.bootMs, timings.pollMs)
       next = nextStep(start, observed)
       if (next === "Refuse") throw new OtaRefused({ reason: "The device booted an unexpected build or slot" })
-      if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed))
+      if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed), { observed })
       return { observed, next, sent }
     } catch effect (failure) => {
       try session.finish()
       throw failure
     }
     try session.finish()
-    return { executed: true, ...operation, state: session.state(), ota: inspected }
+    return { executed: true, ...operation, state: session.state(), events: session.history(), ota: inspected }
   })
 }
 
@@ -190,7 +193,8 @@ effect function fallbackUpdate(args: Arguments, options: OperatorOptions) {
     if (stored === undefined) throw new OtaRefused({ reason: "No OTA journal exists for fallback" })
     const observed = try observeDevice(tool)
     const slots = observed.tag === "InBootloader" ? (try observeSlots(tool, stored.start.originalSlot, stored.start.device)) : null
-    return { executed: false, observed, state: stored, slots }
+    const admitted = slots !== null && fallbackPhase(stored.phase) && slots.snapshot !== "SnapshotUnread" && fallbackAdmitted(stored.start, slots)
+    return { executed: false, observed, state: stored, slots, admitted }
   }
   return try scoped(effect {
     const session = try openOperatorJournal(journal, tool.serial, undefined, options.leaseDirectory)
@@ -206,24 +210,27 @@ effect function fallbackUpdate(args: Arguments, options: OperatorOptions) {
       }
       try session.beforeWrites()
       if (!canFallback(session.state(), slots)) throw new OtaRefused({ reason: "The journal cannot begin fallback" })
-      try session.store(fallback(session.state(), slots))
+      try session.store(fallback(session.state(), slots), { observed: slots })
       const observed = effect {
         try deviceWrite(tool, "fastboot", ["set_active", selected], 30_000)
-        try deviceWrite(tool, "fastboot", ["reboot"], 30_000)
+        if (slotOf(try fastbootVariable(tool, "current-slot")) !== state.start.originalSlot) {
+          throw new OtaRefused({ reason: "The bootloader did not switch to the original slot" })
+        }
+        captureCommand(tool.fastboot, ["-s", tool.serial, "reboot"], 30_000) catch () => null
         return try waitFor(tool, (reading) => bootRestored(state.start, reading), timings.bootMs, timings.pollMs)
       } catch effect (failure) => {
         const unknown = { tag: "Unreachable" } as const
-        if (canFallbackEnded(session.state(), unknown)) try session.store(fallbackEnded(session.state(), unknown))
+        if (canFallbackEnded(session.state(), unknown)) try session.store(fallbackEnded(session.state(), unknown), { note: failure._tag === "OtaRefused" ? failure.reason : String(failure) })
         throw failure
       }
-      if (canFallbackEnded(session.state(), observed)) try session.store(fallbackEnded(session.state(), observed))
+      if (canFallbackEnded(session.state(), observed)) try session.store(fallbackEnded(session.state(), observed), { observed })
       return observed
     } catch effect (failure) => {
       try session.finish()
       throw failure
     }
     try session.finish()
-    return { executed: true, observed: operation, state: session.state() }
+    return { executed: true, observed: operation, state: session.state(), events: session.history(), admitted: true }
   })
 }
 
@@ -239,8 +246,20 @@ export effect function otaMain(argv: readonly string[], options: OperatorOptions
       const checked = try loadUpdate(value(args, "channel"), value(args, "from"), value(args, "to"))
       return { admitted: true, installed: checked.fromRelease.release, candidate: checked.toRelease.release, executed: false }
     }
-    case "apply": return try applyUpdate(args, options)
-    case "fallback": return try fallbackUpdate(args, options)
+    case "apply": {
+      const applied = try applyUpdate(args, options)
+      if (applied.executed ? applied.state.phase !== "Verified" : applied.next === "Refuse") {
+        throw new OtaRefused({ reason: `The update is not verified: the journal is ${applied.state.phase} and the device next needs ${applied.next}; run status` })
+      }
+      return applied
+    }
+    case "fallback": {
+      const fallen = try fallbackUpdate(args, options)
+      if (!fallen.admitted || (fallen.executed && fallen.state.phase !== "RolledBack")) {
+        throw new OtaRefused({ reason: `Fallback is not done: the journal is ${fallen.state.phase}; enter the bootloader on a transferred, unconfirmed update and run status` })
+      }
+      return fallen
+    }
     case "status": {
       const tool = try using(args)
       const stored = try readOperatorStatus(value(args, "journal"), tool.serial)
@@ -256,7 +275,11 @@ export effect function otaMain(argv: readonly string[], options: OperatorOptions
       return { ...plan, knownGood: directory === undefined ? null : (knownGoodRecoveryPlan(channel, directory) catch (failure) =>
         ({ executed: false, steps: [], problems: [failure._tag === "OtaRefused" ? failure.reason : failure.message] })) }
     }
-    case "verify-stock": return try verifyStockRecovery(try using(args), value(args, "source-lock"))
+    case "verify-stock": {
+      const verified = try verifyStockRecovery(try using(args), value(args, "source-lock"))
+      if (!verified.passed) throw new OtaRefused({ reason: `Stock recovery is not verified: ${verified.problems.join("; ")}` })
+      return { ...verified, scope: "Stock build identity, SELinux and verified boot only; not hardware acceptance" }
+    }
     case "retain-known-good": return try retainKnownGood({
       channel: value(args, "channel"), record: value(args, "record"), signedTargetFiles: value(args, "signed-target-files"),
       signedImage: value(args, "signed-image"), archiveDir: value(args, "archive-dir"),

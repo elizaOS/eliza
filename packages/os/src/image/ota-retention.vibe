@@ -37,9 +37,9 @@ const decodeManifest = Schema.decodeUnknownEffect(retained)
 const utf8 = new TextEncoder()
 
 function placeholders(value: unknown): number {
-  if (typeof value === "string") return /^\s*(?:UNSET|TBD|PENDING|PLACEHOLDER|<[^>]+>)\s*$/i.test(value) ? 1 : 0
+  if (typeof value === "string") return /^\s*(?:UNSET|TODO|TBD|PENDING|<[^>]+>)\s*$/i.test(value) || /placeholder/i.test(value) ? 1 : 0
   if (value === null || typeof value !== "object") return 0
-  return Object.values(value).reduce((count: number, field: unknown) => count + placeholders(field), 0)
+  return Object.entries(value).reduce((count: number, [key, field]: [string, unknown]) => count + (key === "description" ? 0 : placeholders(field)), 0)
 }
 
 function buildKeys(fingerprint: string): BuildKeys {
@@ -78,21 +78,26 @@ export effect function retainKnownGood(options: RetainKnownGoodOptions) {
   const manifest = { schema: 1, kind: "aosp-known-good-retention", product: channel.product, device: channel.device, channel: channel.name,
     ...source, imageBooted: false, recoveryDrilled: false }
   const pinned = try decodeManifest(manifest)
-  try files.makeDirectory(archive, { mode: 0o700 })
+  const staging = try files.makeTempDirectory({ directory: path.dirname(archive), prefix: ".known-good-" })
   try Effect.onError(effect {
     const inputs = [options.record, options.signedTargetFiles, options.signedImage]
     for (const [index, part] of expected.entries()) {
       const input = inputs[index]
       if (input === undefined) throw new OtaRefused({ reason: "Recovery artifact inputs are incomplete" })
-      const target = path.join(archive, part.file)
+      const target = path.join(staging, part.file)
       try files.copyFile(input, target)
       const copied = try releaseArtifact(target)
       if (copied.sha256 !== part.sha256 || copied.sizeBytes !== part.sizeBytes) throw new OtaRefused({ reason: "Recovery bytes changed during retention" })
       try files.chmod(target, 0o444)
     }
-    try files.writeFile(path.join(archive, manifestFile), utf8.encode(`${JSON.stringify(pinned, null, 2)}\n`), { flag: "wx", mode: 0o444 })
-    try files.chmod(archive, 0o555)
-  }, () => ignore(files.remove(archive, { recursive: true, force: true })))
+    try files.writeFile(path.join(staging, manifestFile), utf8.encode(`${JSON.stringify(pinned, null, 2)}\n`), { flag: "wx", mode: 0o444 })
+    try files.chmod(staging, 0o555)
+    if (try files.exists(archive)) throw new OtaRefused({ reason: "Retain known-good bytes in a new directory" })
+    try files.rename(staging, archive)
+  }, () => ignore(effect {
+    try files.chmod(staging, 0o700)
+    try files.remove(staging, { recursive: true, force: true })
+  }))
   return { retained: true, archiveDir: archive, manifest: pinned, executed: false }
 }
 
@@ -113,5 +118,12 @@ export effect function knownGoodRecoveryPlan(channelFile: string, archive: strin
     ["adb", "-s", "SERIAL", "reboot", "bootloader"],
     ["fastboot", "-s", "SERIAL", "flashing", "unlock"],
     ["fastboot", "-s", "SERIAL", "-w", "update", locate(manifest.signedImage.file)],
-  ], notes: ["Unlocking and the update erase user data.", "The bootloader verifies the retained image against its enrolled key and rollback indexes."] }
+  ], notes: [
+    "Run the steps from the retained directory; the image is re-hashed before every plan.",
+    "Flashing unlock is refused unless OEM unlocking was enabled in the running image; unlocking and the update erase user data, and the device asks for physical confirmation.",
+    "Relock only after the retained build boots and verifies.",
+    "The device must still trust the product's AVB key; a stock-recovered device needs that key enrolled again first.",
+    "The bootloader refuses an image whose rollback index is below the device's stored index; stock recovery then applies.",
+    "This reflashes a retained signed release; it is not a signed update and records no drill.",
+  ] }
 }

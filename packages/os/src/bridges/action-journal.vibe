@@ -1,4 +1,4 @@
-// spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "An uncertain outcome is dismissed only by its owner and stays on record"; spec/os/android/deletionWindow.md, "The notice offers Undo only while Undo can still win, and never for an uncertain outcome"
+// spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "An uncertain outcome is dismissed only by its owner and stays on record"; spec/os/android/deletionWindow.md, "The notice offers Undo only while Undo can still win, and never for an uncertain outcome"; spec/os/android/deletionWindow.md, "A record waiting in its window is hidden from its list until Undo or the provider settles it"
 import { nativeCall, nativeReply, settled } from "./bridge.vibe"
 import { DELETION_NOTICE_TEXT, UNDO_TOO_LATE, parseDeletionsPending, receiptPhase, recordKindOf, undoConfirmed } from "./deletion-window.vibe"
 import type {
@@ -6,6 +6,7 @@ import type {
   ActionJournalEntry,
   ActionJournalPlugin,
   ActionJournalTarget,
+  DeferredDeletionEntry,
   DeferredDeletionKey,
   DeferredDeletionsClient,
   DismissOutcome,
@@ -139,6 +140,10 @@ effect function dismiss(plugin: ActionJournalPlugin, key: DeferredDeletionKey): 
   return (try isSuccess(Schema.decodeUnknownEffect(Acknowledged)(receipt)))
     ? { kind: "Dismissed", message: DELETION_NOTICE_TEXT.dismissed }
     : { kind: "NotDismissed", message: DELETION_NOTICE_TEXT.dismissFailed }
+}
+
+export effect function queuedDeletions(plugin: ActionJournalPlugin): readonly DeferredDeletionEntry[]!! {
+  return (effect { return (try parseDeletionsPending(try nativeCall(PLUGIN, "pending", () => plugin.pending()))).deletions }) catch () => []
 }
 
 export function createDeferredDeletions(plugin: ActionJournalPlugin = actionJournalPlugin()): DeferredDeletionsClient {

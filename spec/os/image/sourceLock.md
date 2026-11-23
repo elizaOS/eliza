@@ -168,9 +168,13 @@ pure def lawDeletedTrackedSourceNeverMatches(lock: SourceLock, facts: SourceFact
 A physical product keeps the factory vendor partition. The factory archive's
 digest and exact byte length must equal the lock's, and the lunch release's single
 `RELEASE_BOARD_API_LEVEL` and the generated vendor VINTF sepolicy version
-must both equal the lock's six-digit `vendorApiLevel`. A mismatch is
-corrected in the release configuration by the operator, never by rewriting
-the vendor manifest. A virtual device keeps no vendor partition and has none
+must both equal the lock's six-digit `vendorApiLevel`. The shell reads the
+release flag from
+`build/release/flag_values/<release>/RELEASE_BOARD_API_LEVEL.textproto` and
+the sepolicy version from
+`vendor/google_devices/<codename>/vintf/vendor/manifest.xml`, each named
+by a lowercase token. A mismatch is corrected in the release configuration
+by the operator, never by rewriting the vendor manifest. A virtual device keeps no vendor partition and has none
 of these checks.
 
 ```quint

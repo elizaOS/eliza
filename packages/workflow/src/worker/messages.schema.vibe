@@ -1,0 +1,28 @@
+// spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/workflow/sourcePublication.md, "Only the reservation owner can publish or release an incomplete write"
+/** One settled step a worker reports. */
+export const WorkerResult = Schema.Struct({ id: Schema.String, status: Schema.Literals(["completed", "skipped"]), text: Schema.String })
+/** One line a parent sends its worker, before the spec inside it is normalized. */
+export const ParentLine = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("start"), runId: Schema.String, spec: Schema.Unknown, specDigest: Schema.String, anchorAt: Schema.String,
+    values: Schema.Record(Schema.String, Schema.String), results: Schema.Array(WorkerResult), next: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), allowed: Schema.Boolean,
+    resume: Schema.optionalKey(Schema.Union([
+      Schema.Struct({ stepId: Schema.String, outcome: Schema.Literal("approved"), value: Schema.String }),
+      Schema.Struct({ stepId: Schema.String, outcome: Schema.Literal("denied") }),
+      Schema.Struct({ stepId: Schema.String, outcome: Schema.Literal("failed"), message: Schema.String }),
+    ])),
+  }),
+  Schema.Struct({ type: Schema.Literal("draft"), stepId: Schema.String, text: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("draftFailed"), stepId: Schema.String, message: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("cancel") }),
+  Schema.Struct({ type: Schema.Literal("check"), source: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("startGenerated"), runId: Schema.String, js: Schema.String, jsDigest: Schema.String, input: Schema.Unknown,
+    journal: Schema.Array(Schema.Struct({
+      call: Schema.String, digest: Schema.String, kind: Schema.Literals(["StepCall", "EffectCall", "ApprovalCall", "SignalCall", "TimerCall"]), value: Schema.Unknown,
+    })),
+  }),
+  Schema.Struct({ type: Schema.Literal("effect"), call: Schema.String, text: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("effectFailed"), call: Schema.String, message: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("checkpointed"), call: Schema.String, digest: Schema.String }),
+])

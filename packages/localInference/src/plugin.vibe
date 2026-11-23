@@ -1,0 +1,94 @@
+// spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"; spec/localInference/textAndEmbeddings.md, "The operator's embedding endpoint wins, then the hosted service when chosen, then the device"; spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"; spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/localInference/speechRoute.md, "The owner's speech key speaks first, then a usable hosted account, then this device"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { ModuleRefused, type AgentModule, type AgentPlugin, type LaunchDocument, type ModuleContext, type ModuleFactory } from "@elizaos/agent"
+import { ModelType, type IAgentRuntime } from "@elizaos/core"
+import { FetchHttpClient } from "effect/http"
+import { curatedModels, type Catalog } from "./catalog.vibe"
+import { EmbeddingRefused, embedText, embeddingsOwnedBy } from "./embeddings.vibe"
+import { InferenceEngine, type InstalledModel } from "./engine.vibe"
+import { openLocalModels, type LocalModelsApi } from "./models.vibe"
+import { localInferenceRoutes } from "./routes.vibe"
+import { SpeechInputRefused, speakLocally, transcribeLocally } from "./speech.vibe"
+
+/** The plugin's name, as load lists and the bundle manifest name it. */
+export const localInferencePluginName = "@elizaos/plugin-local-inference"
+
+/** The provider name core knows as an on-device embedding and speech provider. */
+export const localInferenceProvider = "eliza-local-inference"
+
+const localPriority = -100
+
+function settingOn(runtime: IAgentRuntime, key: string): boolean {
+  const value = runtime.getSetting(key)
+  return typeof value === "string" ? ["1", "true", "yes"].includes(value.trim().toLowerCase()) : value === true
+}
+
+function settingText(runtime: IAgentRuntime, key: string): string {
+  const value = runtime.getSetting(key)
+  return typeof value === "string" ? value.trim() : ""
+}
+
+function signalOf(params: unknown): AbortSignal | undefined {
+  if (typeof params !== "object" || params === null || !("signal" in params)) return undefined
+  return params.signal instanceof AbortSignal ? params.signal : undefined
+}
+
+function textOf(params: unknown): string | undefined {
+  if (params === null) return ""
+  if (typeof params === "string") return params
+  return typeof params === "object" && "text" in params && typeof params.text === "string" ? params.text : undefined
+}
+
+function audioOf(params: unknown): Uint8Array | undefined {
+  if (params instanceof Uint8Array) return params
+  if (typeof params !== "object" || params === null || !("audio" in params)) return undefined
+  return params.audio instanceof Uint8Array ? params.audio : params.audio instanceof ArrayBuffer ? new Uint8Array(params.audio) : undefined
+}
+
+function registerHandlers(runtime: IAgentRuntime, launch: LaunchDocument, models: LocalModelsApi, engine: InferenceEngine.Shape): void {
+  const serve = <A, E>(work: A!E!InferenceEngine, params: unknown) => runPromise(Effect.provideService(work, InferenceEngine, engine), { signal: signalOf(params) })
+  const owner = embeddingsOwnedBy({
+    operatorEndpoint: settingText(runtime, "EMBEDDING_BASE_URL") !== "" || !["", "local"].includes(settingText(runtime, "EMBEDDING_PROVIDER").toLowerCase()),
+    hostedConnected: launch.model.backend === "cloud",
+    hostedChosen: settingOn(runtime, "ELIZAOS_CLOUD_USE_EMBEDDINGS"),
+  })
+  const embedder: InstalledModel | undefined = launch.embeddings === "local" && owner === "LocalEmbeddings" ? Effect.runSync(models.embeddingModel()) : undefined
+  if (embedder !== undefined) {
+    runtime.registerModel(ModelType.TEXT_EMBEDDING, (_agent, params: unknown) => {
+      const text = textOf(params)
+      return text === undefined ? Promise.reject(new EmbeddingRefused({ reason: "malformed-input" })) : serve(embedText(models, text), params)
+    }, localInferenceProvider, localPriority, { local: true, displayModel: embedder.model.name })
+    Effect.runFork(Effect.catch(engine.warmEmbedding(embedder), (failure) => logWarning("The local embedding model could not be warmed", { model: embedder.model.name, reason: failure.reason })))
+  }
+  runtime.registerModel(ModelType.TEXT_TO_SPEECH, (_agent, params: unknown) => {
+    const text = textOf(params)
+    return text === undefined ? Promise.reject(new SpeechInputRefused({ reason: "empty-text" })) : serve(speakLocally(text), params)
+  }, localInferenceProvider, localPriority, { local: true })
+  runtime.registerModel(ModelType.TRANSCRIPTION, (_agent, params: unknown) => {
+    const audio = audioOf(params)
+    return audio === undefined ? Promise.reject(new SpeechInputRefused({ reason: "not-wav" })) : serve(transcribeLocally(audio), params)
+  }, localInferenceProvider, localPriority, { local: true })
+}
+
+/** The local inference plugin over the engine the host provides and the launch's state directory: model routes, local embeddings when the launch asks for them, and on-device speech. */
+export effect function localInferencePlugin(engine: InferenceEngine.Shape, host: Pick<ModuleContext, "launch" | "stateDirectory">, catalog: Catalog = curatedModels) {
+  const launch = host.launch
+  const opened = Effect.provide(Effect.provideService(openLocalModels(host.stateDirectory, catalog), InferenceEngine, engine), Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer))
+  const models = try (opened catch effect (failure) => { throw new ModuleRefused({ module: localInferencePluginName, reason: failure.reason }) })
+  const space = (try models.embeddingModel())?.model.embedding?.space
+  if (launch.embeddings === "local" && space !== undefined && launch.embeddingDimensions !== undefined && launch.embeddingDimensions !== space.dimensions) {
+    throw new ModuleRefused({ module: localInferencePluginName, reason: `the launch asks for ${launch.embeddingDimensions}-dimensional embeddings and the local model writes ${space.dimensions}` })
+  }
+  return {
+    name: localInferencePluginName,
+    description: "Curated models on this device, local embeddings when the launch asks for them, and on-device speech",
+    routes: localInferenceRoutes(models, engine),
+    init: (_config, runtime) => registerHandlers(runtime, launch, models, engine),
+    dispose: () => runPromise(models.close()),
+  } satisfies AgentPlugin
+}
+
+/** The agent module of the local inference plugin over the engine the host provides. */
+export function localInferenceModule(engine: InferenceEngine.Shape): ModuleFactory<never> {
+  return (context) => map(localInferencePlugin(engine, context), (plugin): AgentModule => ({ name: localInferencePluginName, plugin }))
+}

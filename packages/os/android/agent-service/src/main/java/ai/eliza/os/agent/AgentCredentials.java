@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
 package ai.eliza.os.agent;
 
 public interface AgentCredentials {
@@ -24,4 +24,6 @@ public interface AgentCredentials {
   Active current() throws Exception;
 
   String storageKey(Account account) throws Exception;
+
+  default LaunchFrame.Credential providerKey() throws Exception { return null; }
 }

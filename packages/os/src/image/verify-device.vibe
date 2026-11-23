@@ -18,6 +18,7 @@ import {
   type SelinuxReading,
 } from "../../gen/os__image__verification.effect.vibe"
 import { secureCameraPackage } from "../../gen/os__image__provisioning.effect.vibe"
+import { reviewedPrivilegedPermissions } from "../../gen/os__image__staging.effect.vibe"
 import { isDigest } from "../../gen/os__image__apk.effect.vibe"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import { AdbTimedOut, adbSerial, androidPackage, captureCommand, type AdbSerial } from "./device.vibe"
@@ -40,6 +41,7 @@ const StagedImageSchema = Schema.Struct({
   defaultPermissions: Schema.optionalKey(Schema.Array(Permission)),
   privilegedPermissions: Schema.optionalKey(Schema.Array(Permission)),
   listener: Schema.optionalKey(Schema.Boolean),
+  listenerActivated: Schema.optionalKey(Schema.Boolean),
 })
 const decodeImage = Schema.decodeUnknownOption(StagedImageSchema)
 type StagedImage = typeof StagedImageSchema.Type
@@ -214,6 +216,8 @@ effect function cameraReading(read: Read, user: string, pkg: string): CameraRead
   const cameraEnabled = try enabledSystem(read, user, secureCameraPackage)
   const gesture = line(try read("cmd", "overlay", "lookup", "--user", user, "android", "android:bool/config_cameraDoubleTapPowerGestureEnabled"))
   const gesturePackage = line(try read("cmd", "overlay", "lookup", "--user", user, "com.android.systemui", "com.android.systemui:string/config_cameraGesturePackage"))
+  const gestureSetting = line(try read("settings", "--user", user, "get", "secure", "camera_double_tap_power_gesture_disabled"))
+  const features = try read("pm", "list", "features")
   const systemHandles: string[] = []
   const launcherHandles: string[] = []
   let missing = false
@@ -225,8 +229,14 @@ effect function cameraReading(read: Read, user: string, pkg: string): CameraRead
     if (system?.includes(secureCameraActivity)) systemHandles.push(action)
     if (launcher?.some((handler) => handler.startsWith(`${pkg}/`))) launcherHandles.push(action)
   }
-  if (missing || cameraEnabled === undefined || (gesture !== "true" && gesture !== "false") || gesturePackage === undefined) return { tag: "CameraUnread" }
-  return { tag: "CameraRead", cameraEnabled, systemHandles, launcherHandles, gestureEnabled: gesture === "true", gesturePackage }
+  if (missing || cameraEnabled === undefined || (gesture !== "true" && gesture !== "false") || gesturePackage === undefined || gestureSetting === undefined || features === undefined) {
+    return { tag: "CameraUnread" }
+  }
+  return {
+    tag: "CameraRead", cameraEnabled, systemHandles, launcherHandles, gestureEnabled: gesture === "true", gesturePackage,
+    gestureNotDisabled: gestureSetting === "null" || gestureSetting === "0",
+    cameraHardware: rows(features).includes("feature:android.hardware.camera.any"),
+  }
 }
 
 function userScope(raw: string | undefined, user: string): string | undefined {
@@ -279,14 +289,15 @@ function privilegeReading(raw: string | undefined, user: string): PrivilegeReadi
   return raw === undefined || flags === undefined ? { tag: "PrivilegeUnread" } : { tag: "PrivilegeRead", privilegedApp: flags.includes("PRIVILEGED"), granted: grantedFor(raw, user) }
 }
 
-effect function listenerReading(read: Read, user: string, parent: string): ListenerReading!! {
+effect function listenerReading(read: Read, user: string, parent: string, activated: boolean): ListenerReading!! {
   const pkg = `${parent}.sense`
   const system = try enabledSystem(read, user, pkg)
   const dump = try read("dumpsys", "package", pkg)
   const flags = flagsOf(dump, "flags")
   const privateFlags = flagsOf(dump, "privateFlags")
   const indicator = line(try read("device_config", "get", "privacy", "camera_mic_icons_enabled"))
-  const hotword = line(try read("getprop", "ro.hotword.detection_service_required"))
+  const hotwordOutput = try read("getprop", "ro.hotword.detection_service_required")
+  const hotword = hotwordOutput?.trim() === "" ? "unset" : line(hotwordOutput)
   const processes = try read("ps", "-AZ", "-o", "LABEL,NAME")
   const matches = rows(processes ?? "").map((row) => row.split(/\s+/)).filter((parts) => parts.at(-1) === pkg)
   const domain = /^u:r:([^:]+):s\d(?:[:].*)?$/.exec(matches.length === 1 ? matches[0]?.[0] ?? "" : "")?.[1]
@@ -298,14 +309,14 @@ effect function listenerReading(read: Read, user: string, parent: string): Liste
     if (output?.trim()) roleHolder = true
   }
   if (rolesUnread || system === undefined || dump === undefined || flags === undefined || privateFlags === undefined ||
-      (indicator !== "true" && indicator !== "false" && indicator !== "null") || (hotword !== "true" && hotword !== "false") || domain === undefined) {
+      (indicator !== "true" && indicator !== "false" && indicator !== "null") || (hotword !== "true" && hotword !== "false" && hotword !== "unset") || domain === undefined) {
     return { tag: "ListenerUnread" }
   }
   return {
     tag: "ListenerRead",
     privilegedSystemPackage: system && flags.includes("PERSISTENT") && privateFlags.includes("PRIVILEGED"),
     granted: grantedFor(dump, user),
-    indicatorKept: indicator !== "false" && hotword === "true" && !roleHolder,
+    indicatorKept: indicator !== "false" && (!activated || hotword === "true") && !roleHolder,
     domain,
   }
 }
@@ -343,6 +354,9 @@ export effect function verifyImage(options: VerifyImageOptions) {
   const pkg = try androidPackage(expected.packageName)
   const user = options.user
   const privileges = expected.privilegedPermissions ?? []
+  if (expected.privilegedPermissions !== undefined && (privileges.length === 0 || privileges.some((name) => !reviewedPrivilegedPermissions.includes(name)))) {
+    throw new ImageExpectationRefused({ reason: "Privileged permissions, when named, are reviewed ones" })
+  }
   if (expected.apkPath.includes("/priv-app/") !== (privileges.length > 0)) {
     throw new ImageExpectationRefused({ reason: "Only a descriptor with privileged permissions may expect a priv-app APK" })
   }
@@ -362,7 +376,7 @@ export effect function verifyImage(options: VerifyImageOptions) {
   const camera = try cameraReading(read, user, pkg)
   const boot = options.target === "cuttlefish" ? { tag: "BootUnread" as const } : bootOf(line(try read("getprop", "ro.boot.verifiedbootstate")))
   const slotSuffix = options.target === "cuttlefish" ? undefined : line(try read("getprop", "ro.boot.slot_suffix"))
-  const listener: ListenerReading = expected.listener === true ? try listenerReading(read, user, pkg) : { tag: "ListenerUnread" }
+  const listener: ListenerReading = expected.listener === true ? try listenerReading(read, user, pkg, expected.listenerActivated === true) : { tag: "ListenerUnread" }
   const final = try sample(read, user, expected)
   const home = `${pkg}/${expected.homeActivity ?? `${pkg}.MainActivity`}`
 

@@ -1,12 +1,13 @@
 // spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last"; spec/agent/plugins/profile.md, "A refused plan loads nothing more"; spec/agent/plugins/profile.md, "The product plugin must be in the bundle"; spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"
-// spec/agent/access/routes.md, "A list is loaded whole or not at all"
+// spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/agent/voice/clientAudio.md, "A live session recognises each segment once, from its speech start through the speech end or close that ends it, and at most four sessions are open"
 import { AgentRuntime, logger, type Character, type IMessageService, type RuntimeSettings, type UUID } from "@elizaos/core"
 import type { BootFailure, LaunchPolicy } from "../../gen/agent__host__launch.ts"
 import { Machine, cloudLinkPlugin, machine, overlaps, privacyPlugin, storagePlugin, type PlanFailure, type PlanPhase, type ProcessValue, type WorkerLaunch } from "../../gen/agent__plugins__profile.effect.vibe"
 import type { LocalRoute } from "../access/routes.vibe"
 import { pluginRouteListAccepted } from "../access/router.vibe"
 import { builtinModuleFactories } from "../plugins/profile.vibe"
-import { ModuleRefused, actionNames, routePrefixes, type AgentPlugin, type ModuleContext, type ModuleFactory } from "./module.vibe"
+import { liveAsrRoutes } from "../voice/live-asr.vibe"
+import { ModuleRefused, actionNames, routePrefix, routePrefixes, type AgentPlugin, type ModuleContext, type ModuleFactory } from "./module.vibe"
 
 export type WorkerPin =
   | { readonly kind: "none" }
@@ -120,14 +121,16 @@ effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
   }) catch effect (rejected) => {
     throw new PlanNotAdmitted({ phase: rejected.state.phase })
   }
-  const routes: LocalRoute[] = []
+  const voiceRoutes = liveAsrRoutes(runtime)
+  const routes: LocalRoute[] = [...voiceRoutes]
+  const voicePrefixes = [...new Set(voiceRoutes.map(({ path }) => routePrefix(path)))]
   let state = try settled(plan, "load list")
   while (state.next < state.order.length) {
     const name = state.order[state.next]
     const plugin = try planned(name, input, sources)
     const actions = try register(runtime, plugin)
     routes.push(...(plugin.routes ?? []))
-    const owned = name === storagePlugin ? [...routePrefixes(plugin), ...(input.hostRoutes ?? [])] : routePrefixes(plugin)
+    const owned = name === storagePlugin ? [...routePrefixes(plugin), ...(input.hostRoutes ?? []), ...voicePrefixes] : routePrefixes(plugin)
     try orDie(plan.send({ type: "registerNext", actions, routes: owned }))
     state = try settled(plan, name)
   }

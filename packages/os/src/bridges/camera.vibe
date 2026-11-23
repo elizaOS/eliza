@@ -1,4 +1,4 @@
-// spec/os/android/camera.md, "Story: See the live view I opened"; spec/os/android/camera.md, "Story: Capture with the camera only from the live view"; spec/os/android/camera.md, "Only Android's explicit permission refusal counts as a denial"; spec/os/android/camera.md, "A recording is confirmed only by a complete bridge receipt that the host read back"
+// spec/os/android/camera.md, "Story: See the live view I opened"; spec/os/android/camera.md, "Story: Capture with the camera only from the live view"; spec/os/android/camera.md, "Only Android's explicit permission refusal counts as a denial"; spec/os/android/camera.md, "A recording is confirmed only by a complete bridge receipt that the host read back"; spec/os/android/camera.md, "While a recording runs, only one zoom or torch change runs at a time"; spec/os/android/camera.md, "A preview binds its photo stream only at an aspect ratio the device lists"
 import type { Admission } from "../../gen/os__android__bridge.ts"
 import {
   answerOf,
@@ -8,6 +8,8 @@ import {
   canRearmView,
   canReleasePreview,
   canReserveWork,
+  canChangeWhileRecording,
+  canSettleRecordingControl,
   canStartView,
   canStopView,
   completeVideoReceipt,
@@ -20,6 +22,7 @@ import {
   type Event,
   type GrantRead,
   type PreviewPhase,
+  type RecordingControlKind,
   type Work,
 } from "../../gen/os__android__camera.effect.vibe"
 import { nativeCall, nativeReply, settled, type BridgeUnavailable, type NativeRejection } from "./bridge.vibe"
@@ -30,6 +33,7 @@ import type {
   CameraKeepOutcome,
   CameraKeepPort,
   CameraPlugin,
+  CameraRecordingControl,
   CameraRecordingOutcome,
   CameraRecordingReceipt,
   CameraRecordingStart,
@@ -72,7 +76,13 @@ export const CAMERA_PERMISSION_DENIED = "CAMERA_PERMISSION_DENIED"
 export const MICROPHONE_DENIED = "MICROPHONE_DENIED"
 export const PREVIEW_STOPPED = "PREVIEW_STOPPED"
 
+/** The viewfinder controls a session admits beside a running recording. */
+export const RECORDING_CONTROLS = ["zoom", "torch"] as const satisfies readonly CameraRecordingControl[]
+
+const RECORDING_CONTROL_KIND: Readonly<Record<CameraRecordingControl, RecordingControlKind>> = { zoom: "ZoomControl", torch: "TorchControl" }
+
 schema Resolution { width: number; height: number }
+schema CaptureAspect = "4:3" | "16:9"
 schema Device {
   deviceId: string
   label: string
@@ -82,6 +92,7 @@ schema Device {
   maxZoom: number
   supportedResolutions: Resolution[]
   supportedFrameRates: number[]
+  supportedCaptureAspectRatios?: CaptureAspect[]
 }
 schema Devices { devices: Device[] }
 schema Preview {
@@ -231,7 +242,7 @@ export interface CameraSession {
   current(token: number): boolean;
   start(retry?: boolean): Promise<CameraStartOutcome>;
   stop(): Promise<void>;
-  control(task: () => Promise<unknown>): Promise<CameraControlOutcome>;
+  control(task: () => Promise<unknown>, kind?: CameraRecordingControl): Promise<CameraControlOutcome>;
   startRecording(): Promise<CameraRecordingStart>;
   finishRecording(): Promise<CameraRecordingOutcome>;
   exclusive<T>(task: (token: number) => Promise<T>): Promise<CameraExclusive<T>>;
@@ -255,6 +266,7 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
   const registered = options.registered ?? (() => cameraRegistered())
   let view: CameraView = initial
   let finishing: Deferred.Deferred<CameraRecordingOutcome> | undefined
+  let recordingControlRun = 0
   const releases = Semaphore.makeUnsafe(1)
   const machine = Effect.runSync(machineOver(() => sync(() => view), (next) => sync(() => {
     view = next
@@ -339,7 +351,17 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
     return { status: "unavailable", reason: "failed", error: answer.kind === "rejected" ? answer.rejection : undefined }
   }
 
-  effect function control(task: () => Promise<unknown>): CameraControlOutcome!! {
+  effect function recordingControl(task: () => Promise<unknown>, kind: RecordingControlKind): CameraControlOutcome!! {
+    const token = (try send({ type: "changeWhileRecording", kind })).epoch
+    const claim = ++recordingControlRun
+    const ran = try isSuccess(tryPromise(() => task()))
+    if (claim === recordingControlRun && ownsTicket(view, token) && canSettleRecordingControl(view)) try send({ type: "settleRecordingControl" })
+    return !ownsTicket(view, token) ? "stale" : ran ? "done" : "failed"
+  }
+
+  effect function control(task: () => Promise<unknown>, kind: CameraRecordingControl | undefined): CameraControlOutcome!! {
+    const during: RecordingControlKind = kind === undefined ? "OtherControl" : RECORDING_CONTROL_KIND[kind]
+    if (canChangeWhileRecording(view, during)) return try recordingControl(task, during)
     if (!canReserveWork(view, "CameraControl")) return "skipped"
     const token = (try send({ type: "reserveWork", work: "CameraControl" })).workEpoch
     const ran = try isSuccess(tryPromise(() => task()))
@@ -389,7 +411,7 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
     return {
       phase: phaseOf(view.phase),
       denied: deniedOf(view.denied),
-      controlBusy: view.work === "CameraControl",
+      controlBusy: view.work === "CameraControl" || view.recordingControl,
       capturing: view.work === "CameraCapture",
       recording: view.work === "RecordingActive",
       recordingStarting: view.work === "RecordingStarting",
@@ -417,7 +439,7 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
       return view.work === "CameraCapture"
     },
     get controlBusy() {
-      return view.work === "CameraControl"
+      return view.work === "CameraControl" || view.recordingControl
     },
     get busy() {
       return view.work !== "CameraIdle"
@@ -428,7 +450,7 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
     current: (token) => ownsTicket(view, token),
     start: (retry = false) => run(start(retry)),
     stop: () => run(stop()),
-    control: (task) => run(control(task)),
+    control: (task, kind) => run(control(task, kind)),
     startRecording: () => run(startRecording()),
     finishRecording: () => run(finishRecording()),
     exclusive: (task) => run(exclusive(task)),

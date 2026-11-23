@@ -1,0 +1,51 @@
+// spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"; spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"; spec/localInference/speechRoute.md, "The owner's speech key speaks first, then a usable hosted account, then this device"
+import type { VectorSpace } from "../gen/localInference__textAndEmbeddings.effect.vibe"
+import type { CatalogModel } from "./catalog.vibe"
+import type { Pcm } from "./wav.ts"
+
+export type { Pcm }
+
+/** What the engine is asked to do. */
+export type Capability = "text" | "embedding" | "synthesis" | "transcription" | "endOfTurn"
+
+/** The engine cannot serve a capability now: nothing is loaded, or the native host is absent. */
+export error EngineUnavailable { capability: Capability; reason: string }
+
+/** The engine took a request and failed it. */
+export error EngineFailed { capability: Capability; reason: string }
+
+/** An installed model as the engine loads it: its catalog entry, its directory and its verified files. */
+export interface InstalledModel {
+  readonly model: CatalogModel
+  readonly directory: string
+  readonly files: readonly string[]
+}
+
+/** One embedding the engine computed and the vector space it reports for it. */
+export interface EngineVector {
+  readonly values: readonly number[]
+  readonly space: VectorSpace
+}
+
+/** An end-of-turn score, or why none could be computed. */
+export type EndOfTurnScore =
+  | { readonly available: true; readonly complete: boolean; readonly probability: number }
+  | { readonly available: false; readonly reason: string }
+
+/** Which of the always-packaged speech engines are ready on this device. */
+export interface SpeechReadiness {
+  readonly synthesis: boolean
+  readonly transcription: boolean
+}
+
+/** The on-device inference engine the host provides; interrupting a call cancels it in the engine. */
+export service InferenceEngine {
+  load(model: InstalledModel): void!EngineFailed
+  unload(): void!!
+  warmEmbedding(model: InstalledModel): void!(EngineUnavailable | EngineFailed)
+  embed(model: InstalledModel, text: string): EngineVector!(EngineUnavailable | EngineFailed)
+  speechReady(): SpeechReadiness!!
+  synthesize(text: string): Pcm!(EngineUnavailable | EngineFailed)
+  transcribe(audio: Pcm): string!(EngineUnavailable | EngineFailed)
+  scoreEndOfTurn(transcript: string): EndOfTurnScore!!
+}

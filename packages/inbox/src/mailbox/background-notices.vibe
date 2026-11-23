@@ -1,0 +1,290 @@
+// spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"; spec/inbox/backgroundNotices.md, "A pending tap opens only the current grant and ordinary opening spends it first"; spec/inbox/backgroundNotices.md, "Ask rechecks the exact reviewed subject and snippet before consumption"
+import { askFailure, enabled, initial, machineOver, noticeHasIdentity, type AskFailure, type AskPhase, type Event, type MailExcerpt, type NoticeTap } from "../../gen/inbox__backgroundNotices.effect.vibe"
+
+/** What the native background check reports; it never claims a check that did not happen. */
+export type MailBackgroundState =
+  | "web-unavailable" | "unavailable" | "disabled" | "waiting" | "watching-new-mail" | "catching-up"
+  | "history-expired" | "unsupported" | "retrying" | "grant-unavailable" | "capacity-reached"
+
+/** The native background check's status record. */
+export interface MailBackgroundStatus {
+  readonly status: MailBackgroundState
+  readonly lastSyncAt?: number
+  readonly incompleteCatchup?: boolean
+  readonly uncertainNotices?: number
+  readonly deniedNotices?: number
+  readonly notificationsAllowed?: boolean
+  readonly grantId?: string
+}
+
+/** A captured notice tap that native has verified again; it carries counts only, never mail. */
+export interface MailNoticeTap {
+  readonly token: string
+  readonly grantId: string
+  readonly credentialId: string
+  readonly userId: string
+  readonly generation: string
+  readonly question?: boolean
+  readonly messageId?: string
+  readonly threadId?: string
+}
+
+/** The selection the foreground shows; native verifies this owner and grant with Cloud itself. */
+export interface MailBackgroundSelection {
+  readonly credentialId: string
+  readonly grantId: string
+  readonly userId: string
+  readonly organizationId: string
+}
+
+/** A failure of the host's native notice bridge. */
+export error NoticeBridgeFailed { cause: unknown }
+
+/** The host's native bridge, registered under its own installed plugin name. */
+export interface MailBackgroundNative {
+  configure(input: MailBackgroundSelection): MailBackgroundStatus!NoticeBridgeFailed
+  withdraw(input: { readonly grantId?: string }): void!NoticeBridgeFailed
+  status(): MailBackgroundStatus!NoticeBridgeFailed
+  pending(): Partial<MailNoticeTap>!NoticeBridgeFailed
+  releaseQuestion(token: string): void!NoticeBridgeFailed
+  consume(token: string): void!NoticeBridgeFailed
+  notificationSettings(): void!NoticeBridgeFailed
+  readonly notices: Stream.Stream<void, NoticeBridgeFailed>
+}
+
+/** How the renderer reaches the bridge: lazily, only where it runs natively, announcing each configuration change. */
+export interface MailBackgroundOptions {
+  readonly native: () => MailBackgroundNative
+  readonly available: boolean
+  readonly changed?: () => void
+}
+
+/** The renderer half of the background new-mail check; nothing here reads mail. */
+export interface MailBackground {
+  configure(selection: MailBackgroundSelection | null): void!NoticeBridgeFailed
+  withdraw(grantId?: string): void!NoticeBridgeFailed
+  retire(grantId: string): { readonly settled: void!! }!!
+  status(): MailBackgroundStatus!!
+  notificationSettings(): void!NoticeBridgeFailed
+  pending(): (MailNoticeTap | null)!NoticeBridgeFailed
+  consume(token: string): void!NoticeBridgeFailed
+  releaseQuestion(token: string): void!NoticeBridgeFailed
+  readonly notices: Stream.Stream<void>
+}
+
+/** A pending tap only when every identity field is present; anything else is no tap. */
+export function readMailNoticeTap(value: Partial<MailNoticeTap> | null | undefined): MailNoticeTap | null {
+  if (value === null || value === undefined) return null
+  const { token, grantId, credentialId, userId, generation } = value
+  if (typeof token !== "string" || typeof grantId !== "string" || typeof credentialId !== "string" || typeof userId !== "string" || typeof generation !== "string") return null
+  if (!noticeHasIdentity({ tokenText: token, grantText: grantId, credentialText: credentialId, userText: userId, generationText: generation })) return null
+  return {
+    token, grantId, credentialId, userId, generation,
+    ...(value.question === true ? { question: true } : {}),
+    ...(typeof value.messageId === "string" ? { messageId: value.messageId } : {}),
+    ...(typeof value.threadId === "string" ? { threadId: value.threadId } : {}),
+  }
+}
+
+/** The background bridge over the host's native module; every call is a safe no-op where the module is unavailable. */
+export function createMailBackground(options: MailBackgroundOptions): MailBackground {
+  const changed = sync(() => options.changed?.())
+  const announce = Effect.ignore(changed)
+
+  effect function withdraw(grantId?: string): void!NoticeBridgeFailed {
+    if (!options.available) return
+    try options.native().withdraw(grantId === undefined ? {} : { grantId })
+    try announce
+  }
+
+  return {
+    effect configure(selection) {
+      if (!options.available) return
+      const native = options.native()
+      try ensuring(selection === null || selection.grantId === "" ? native.withdraw({}) : Effect.asVoid(native.configure(selection)), announce)
+    },
+    withdraw,
+    effect retire(grantId) {
+      const first = Effect.as(withdraw(grantId), true) catch () => false
+      return { settled: first ? Effect.void : Effect.ignore(withdraw(grantId)) }
+    },
+    effect status() {
+      if (!options.available) return { status: "web-unavailable" } satisfies MailBackgroundStatus
+      return options.native().status() catch () => ({ status: "unavailable" }) satisfies MailBackgroundStatus
+    },
+    effect notificationSettings() {
+      if (options.available) try options.native().notificationSettings()
+    },
+    effect pending() {
+      if (!options.available) return null
+      return readMailNoticeTap(try options.native().pending())
+    },
+    effect consume(token) {
+      if (options.available) try options.native().consume(token)
+    },
+    effect releaseQuestion(token) {
+      if (options.available) try options.native().releaseQuestion(token)
+    },
+    notices: options.available
+      ? Stream.unwrap(Effect.map(Effect.sync(() => options.native()), (native) => Stream.catch(native.notices, () => Stream.empty)))
+      : Stream.empty,
+  }
+}
+
+/** The subject and snippet of the exact message a notice was about, at the history it was read. */
+export interface NoticeExcerpt {
+  readonly messageId: string
+  readonly threadId: string
+  readonly historyId: string
+  readonly subject: string
+  readonly snippet: string
+}
+
+/** A fresh read of the tapped message: the exact one, another one, or a definite failure. */
+export type NoticeRead =
+  | { readonly kind: "exact"; readonly excerpt: NoticeExcerpt }
+  | { readonly kind: "wrong" }
+  | { readonly kind: "unavailable" }
+
+/** What the owner did with the reviewed excerpt. */
+export type NoticeReview =
+  | { readonly kind: "confirmed"; readonly question: string }
+  | { readonly kind: "cancelled"; readonly explicitDismissal: boolean }
+
+/** What a tap flow needs from the foreground: its scope, grants, the exact read, the owner's review and the composer. */
+export interface NoticeTapPorts {
+  readonly background: MailBackground
+  readonly foregroundUnlocked: () => boolean
+  readonly ownerMatches: (tap: MailNoticeTap) => boolean
+  readonly scopeCurrent: (tap: MailNoticeTap) => boolean
+  readonly askReady: () => boolean
+  readableGrant(tap: MailNoticeTap): boolean!!
+  readMessage(tap: MailNoticeTap): NoticeRead!!
+  review(excerpt: NoticeExcerpt): NoticeReview!!
+  readonly safeQuestion: (question: string) => boolean
+  readonly cancelled: () => boolean
+  openInbox(grantId: string): void!!
+  compose(tap: MailNoticeTap, excerpt: NoticeExcerpt, question: string): boolean!!
+}
+
+/** How a tap ended: the Inbox list opened, a question placed in the composer, or closed, with why an Ask failed. */
+export interface NoticeTapOutcome {
+  readonly phase: AskPhase
+  readonly failure: AskFailure
+}
+
+/** One notice tap's flow over its model: each step is taken only where the rules allow it. */
+export interface NoticeTapSession {
+  step(event: Event): (NoticeTap | undefined)!!
+  state(): NoticeTap!!
+}
+
+/** A notice tap flow starting idle. */
+export effect function noticeTapSession(): NoticeTapSession!! {
+  const kept = try Ref.make<NoticeTap>(initial)
+  const flow = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+  return {
+    effect step(event) {
+      if (!enabled(try flow.get(), event)) return undefined
+      return try orDie(flow.send(event))
+    },
+    state: () => flow.get(),
+  }
+}
+
+/** Handles one pending notice tap: it opens only the current grant's Inbox, or asks about the exact reviewed message, and sends nothing. */
+export effect function openNoticeTap(ports: NoticeTapPorts): NoticeTapOutcome!! {
+  const flow = try noticeTapSession()
+  const ids = new Map<string, number>()
+  const id = (text: string) => {
+    const known = ids.get(text) ?? ids.size + 1
+    ids.set(text, known)
+    return known
+  }
+  const excerptOf = (excerpt: NoticeExcerpt): MailExcerpt =>
+    ({ message: id(`m:${excerpt.messageId}`), thread: id(`t:${excerpt.threadId}`), providerHistory: id(`h:${excerpt.historyId}`), subject: excerpt.subject, snippet: excerpt.snippet })
+
+  effect function send(event: Event): NoticeTap!! {
+    return (try flow.step(event)) ?? (try flow.state())
+  }
+
+  let confirming = false
+  effect function finish(): NoticeTapOutcome!! {
+    const state = try flow.state()
+    return { phase: state.phase, failure: askFailure(confirming, state) }
+  }
+
+  if (!ports.foregroundUnlocked()) return { phase: "IdleTap", failure: "NoAskFailure" }
+  try send({ type: "readPending" })
+  const tap = ports.background.pending() catch () => null
+  const accepted = try send({
+    type: "acceptPending",
+    tapEvidence: {
+      validIdentity: tap !== null && (tap.question !== true || (tap.messageId !== undefined && tap.threadId !== undefined)),
+      sameOwner: tap !== null && ports.ownerMatches(tap),
+      scopeCurrent: tap !== null && ports.scopeCurrent(tap),
+      asks: tap?.question === true,
+    },
+  })
+  if (tap === null || accepted.phase !== "ReadingGrants") return try finish()
+  const live: MailNoticeTap = tap
+
+  const checked = try send({ type: "checkGrants", grantEvidence: { scopeCurrent: ports.scopeCurrent(live), readableGrant: try ports.readableGrant(live), askReady: ports.askReady() } })
+
+  effect function consumeAndFinish(question: { readonly excerpt: NoticeExcerpt; readonly text: string } | null): NoticeTapOutcome!! {
+    const acknowledged = Effect.as(ports.background.consume(live.token), true) catch () => false
+    const scopeCurrent = ports.scopeCurrent(live)
+    const composed = acknowledged && scopeCurrent && question !== null ? try ports.compose(live, question.excerpt, question.text) : question === null
+    const done = try send({ type: "finishConsume", consumeEvidence: { acknowledged, scopeCurrent, composerSucceeded: composed } })
+    if (done.phase === "OpenedList") try ports.openInbox(live.grantId)
+    return try finish()
+  }
+
+  if (checked.phase === "ConsumingTap") return try consumeAndFinish(null)
+  if (checked.phase !== "ReadingMail") return try finish()
+
+  const first = try ports.readMessage(live)
+  const opened = try send({
+    type: "openAsk",
+    mailEvidence: {
+      scopeCurrent: ports.scopeCurrent(live),
+      initialReply: first.kind === "exact" ? "ExactMail" : first.kind === "wrong" ? "WrongMail" : "UnavailableMail",
+      reviewable: first.kind === "exact" && first.excerpt.messageId === live.messageId && first.excerpt.threadId === live.threadId &&
+        (first.excerpt.subject.trim() !== "" || first.excerpt.snippet.trim() !== ""),
+    },
+  })
+  if (opened.phase === "OpenedList") {
+    try ports.openInbox(live.grantId)
+    return try finish()
+  }
+  if (opened.phase !== "ReviewingAsk" || first.kind !== "exact") return try finish()
+  const reviewed = first.excerpt
+
+  for (;;) {
+    const answer = try ports.review(reviewed)
+    if (answer.kind === "cancelled") {
+      const closed = try send({ type: "cancelAsk", explicitDismissal: answer.explicitDismissal })
+      if (closed.releaseRequested) ports.background.releaseQuestion(live.token) catch () => undefined
+      return try finish()
+    }
+    confirming = true
+    const confirmed = try send({ type: "confirmAsk", scopeCurrent: ports.scopeCurrent(live), safeDraft: answer.question.trim() !== "" && ports.safeQuestion(answer.question) })
+    if (confirmed.phase !== "RecheckingAsk") continue
+    const again = try ports.readMessage(live)
+    const pendingAgain = ports.background.pending() catch () => null
+    if (ports.cancelled()) try send({ type: "cancelAsk", explicitDismissal: false })
+    const rechecked = try send({
+      type: "finishRecheck",
+      scopeCurrent: ports.scopeCurrent(live),
+      question: {
+        sameToken: pendingAgain !== null && pendingAgain.token === live.token,
+        questionTap: pendingAgain?.question === true,
+        sameGeneration: pendingAgain !== null && pendingAgain.generation === live.generation,
+        reviewed: excerptOf(reviewed),
+        fresh: again.kind === "exact" ? excerptOf(again.excerpt) : { ...excerptOf(reviewed), message: 0 },
+      },
+    })
+    if (rechecked.phase !== "ConsumingTap") return try finish()
+    return try consumeAndFinish({ excerpt: reviewed, text: answer.question })
+  }
+}

@@ -2,7 +2,7 @@
 
 The operator runs a deployment through the `elizaos-cloud` command line only;
 there is no HTTP admin route. The commands are `migrate`, `client
-register|disable`, `grants mint|disable|revoke`, `prices set|refresh|check`,
+register|update|apply|disable`, `grants mint|disable|revoke`, `prices set|refresh|check`,
 `credits add --organization <id> --amount <µUSD> --request <id>` and
 `account delete|devices|revoke-devices --user <id>`; `serve` belongs to
 `deployment`. The organization or user named resolves to its one account
@@ -26,7 +26,11 @@ count or by the operator's own identifiers.
 
 Each command goes through the spec that owns its record. `client register`
 registers a client or replaces its registration
-(`nativeClients/registry`), so a repeated seed changes nothing. `grants
+(`nativeClients/registry`), so a repeated seed changes nothing. `client apply
+--file <path>` applies a reviewed registration file in either environment, as
+`RegisterClient`, writes only what changed and prints its receipt
+(`nativeClients/registry`, "Story: Apply my app's registration from its
+reviewed file"). `grants
 revoke --reason <text> (--grant-id <id>… | --code <code>…)` ends each grant
 (`billing/grantCodes` `revokeGrant`), and with `--code` also disables the
 code. `prices refresh` reads the provider's catalogue price of each model the

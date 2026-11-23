@@ -1,0 +1,137 @@
+// spec/inbox/grants.md, "Read is asked for first, changes are one consent, and a reconnect keeps what the account holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/grants.md, "Cached mail and unsent reviews belong to the grant that read or prepared them"
+import {
+  accountReadable, actionGrant, capabilityWithdrawn, consentCapabilities, grantTier, modifyCapabilities, readCacheDropped, readKeyed,
+  requestedCapabilities, requiredCapability, serverAllows,
+  type GmailCapability, type GrantRequest, type MailboxAction, type ReadIdentity,
+} from "../../gen/inbox__grants.effect.vibe"
+import type { GmailAccount, GmailInboxCapabilities, GmailMailboxAction } from "./types.vibe"
+
+/** The Cloud capability that grants reading the mailbox. */
+export const GMAIL_READ_CAPABILITY = "google.gmail.triage"
+/** The Cloud capability every consent asks for to link the right account. */
+export const GOOGLE_IDENTITY_CAPABILITY = "google.basic_identity"
+
+const capabilityNames = {
+  GoogleIdentity: GOOGLE_IDENTITY_CAPABILITY,
+  GmailRead: GMAIL_READ_CAPABILITY,
+  GmailSend: "google.gmail.send",
+  GmailDrafts: "google.gmail.drafts",
+  GmailMailbox: "google.gmail.mailbox",
+} as const satisfies Record<GmailCapability, string>
+
+const capabilityOrder: readonly GmailCapability[] = ["GoogleIdentity", "GmailRead", "GmailSend", "GmailDrafts", "GmailMailbox"]
+
+const heldNames: ReadonlyMap<string, GmailCapability> = new Map<string, GmailCapability>([
+  ...capabilityOrder.map((capability) => [capabilityNames[capability], capability] as const),
+  ["google.gmail.manage", "GmailMailbox"],
+])
+
+/** The change capabilities the modify step asks for together. */
+export const GMAIL_MODIFY_CAPABILITIES: readonly string[] = capabilityOrder.filter((capability) => modifyCapabilities.includes(capability)).map((capability) => capabilityNames[capability])
+/** Every Gmail capability a reconnect may carry over from an existing grant. */
+export const GMAIL_CAPABILITIES: readonly string[] = capabilityOrder.map((capability) => capabilityNames[capability])
+
+/** One of the two incremental consent steps. */
+export type GmailGrantStep = "read" | "modify"
+/** How much of Gmail an account's grant allows. */
+export type GmailGrantTier = "none" | "readonly" | "modify"
+/** A consent a client may start: the two steps, or one change capability. */
+export type GmailGrantRequest = "read" | "modify" | "send" | "drafts" | "mailbox"
+/** What an approved mailbox change may do now. */
+export type GmailActionGrant = "granted" | "upgrade" | "unreadable"
+
+const requestOf = { read: "AskRead", modify: "AskModify", send: "AskSend", drafts: "AskDrafts", mailbox: "AskMailbox" } as const satisfies Record<GmailGrantRequest, GrantRequest>
+
+const actionOf = {
+  send: "ActSend", "draft-create": "ActDraftCreate", "draft-replace": "ActDraftReplace", "draft-delete": "ActDraftDelete",
+  archive: "ActArchive", unarchive: "ActUnarchive", trash: "ActTrash", untrash: "ActUntrash",
+  "mark-read": "ActMarkRead", "mark-unread": "ActMarkUnread", star: "ActStar", unstar: "ActUnstar",
+} as const satisfies Record<GmailMailboxAction, MailboxAction>
+
+const tierNames = { NoTier: "none", ReadOnlyTier: "readonly", ModifyTier: "modify" } as const
+
+const actionGrantNames = { ChangeGranted: "granted", ChangeNeedsUpgrade: "upgrade", AccountUnreadable: "unreadable" } as const
+
+function held(granted: readonly string[]): GmailCapability[] {
+  return [...new Set(granted.flatMap((name) => heldNames.get(name) ?? []))]
+}
+
+function named(capabilities: readonly GmailCapability[]): string[] {
+  return capabilityOrder.filter((capability) => capabilities.includes(capability)).map((capability) => capabilityNames[capability])
+}
+
+function grantOf(account: GmailAccount | null | undefined) {
+  return {
+    connected: account?.connected === true,
+    hasConnection: typeof account?.connectionId === "string" && account.connectionId !== "",
+    held: held(account?.grantedCapabilities ?? []),
+  }
+}
+
+/** The Cloud capabilities one consent step asks for; modify extends read. */
+export function gmailCapabilitiesFor(step: GmailGrantStep): string[] {
+  return named(requestedCapabilities(requestOf[step]))
+}
+
+/** The capabilities a consent names: the request and every Gmail capability the account already holds. */
+export function gmailConsentCapabilities(permission: GmailGrantRequest, granted: readonly string[] = []): string[] {
+  return named(consentCapabilities(requestOf[permission], held(granted)))
+}
+
+/** The Cloud capability an approved mailbox change needs. */
+export function requiredGmailCapability(kind: GmailMailboxAction): string {
+  return capabilityNames[requiredCapability(actionOf[kind])]
+}
+
+/** Whether the account is connected, names its connection and holds the read grant. */
+export function gmailReadable(account: GmailAccount | null | undefined): account is GmailAccount {
+  return account !== null && account !== undefined && accountReadable(grantOf(account))
+}
+
+/** How much of Gmail the account's grant allows. */
+export function gmailGrantTier(account: GmailAccount | null | undefined): GmailGrantTier {
+  return tierNames[grantTier(grantOf(account))]
+}
+
+/** Whether the server's current per-account capabilities allow this change. */
+export function gmailInboxAllows(caps: GmailInboxCapabilities | null | undefined, kind: GmailMailboxAction): boolean {
+  if (caps === null || caps === undefined) return false
+  return serverAllows({ sendAllowed: caps.send, draftsAllowed: caps.providerDrafts, mailboxAllowed: caps.mailboxMutations }, actionOf[kind])
+}
+
+/** Whether any modify-step change is still unavailable for the selected account. */
+export function gmailModifyIncomplete(caps: GmailInboxCapabilities | null | undefined): boolean {
+  return caps === null || caps === undefined || !caps.send || !caps.providerDrafts || !caps.mailboxMutations
+}
+
+/** Whether an approved change may be prepared now, needs the single modify consent, or cannot be made. */
+export function gmailActionGrant(account: GmailAccount | null | undefined, kind: GmailMailboxAction): GmailActionGrant {
+  return actionGrantNames[actionGrant(grantOf(account), actionOf[kind])]
+}
+
+function identityOf(sessionId: string | null | undefined, account: GmailAccount | null | undefined): ReadIdentity {
+  return { session: sessionId ?? "", connection: account?.connectionId ?? "", readable: gmailReadable(account) }
+}
+
+/** The read-cache identity of a session and account, or null when nothing may be shown. */
+export function gmailReadCacheKey(sessionId: string | null | undefined, account: GmailAccount | null | undefined): string | null {
+  const identity = identityOf(sessionId, account)
+  return readKeyed(identity) ? JSON.stringify([identity.session, identity.connection, GMAIL_READ_CAPABILITY]) : null
+}
+
+/** A session and the account it reads. */
+export interface GmailGrantView {
+  readonly sessionId: string | null
+  readonly account: GmailAccount | null | undefined
+}
+
+/** What a re-read of the account list invalidates: cached mail, and the change capabilities withdrawn since. */
+export function gmailGrantChange(before: GmailGrantView, after: GmailGrantView): { readonly dropReadCache: boolean; readonly withdrawn: readonly string[] } {
+  const prior = identityOf(before.sessionId, before.account)
+  const next = identityOf(after.sessionId, after.account)
+  const dropReadCache = readCacheDropped(prior, next)
+  const heldBefore = held(before.account?.grantedCapabilities ?? [])
+  const heldAfter = readKeyed(next) ? held(after.account?.grantedCapabilities ?? []) : []
+  const withdrawn = capabilityOrder.filter((capability) => capabilityWithdrawn(heldBefore, heldAfter, dropReadCache, capability))
+  return { dropReadCache, withdrawn: withdrawn.map((capability) => capabilityNames[capability]) }
+}

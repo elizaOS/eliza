@@ -1,7 +1,8 @@
-// spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/signing.md, "An unmapped APK, APEX or verified-boot key refuses signing"; spec/os/image/signing.md, "The update package is built only after every re-signed APK and APEX verifies with a release certificate"
+// spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/signing.md, "An unmapped APK, APEX or verified-boot key refuses signing"; spec/os/image/signing.md, "The update package is built only after every re-signed APK and APEX verifies with a release certificate"; spec/os/image/signing.md, "Every certificate signing uses is pinned: the release and platform keys by the channel and descriptor, every other one by the enrollment"; spec/os/image/signing.md, "Under managed signing the key directory holds no private key file, and every key handed to avbtool is a public key that encodes to its reviewed metadata"
 import {
-  bootChainAdmitted, channelSigningProblems, keyStoreAdmitted, signingPlanAdmitted, unmappedKeys, updatePackageAdmitted,
-  type PackageCheck,
+  bootChainAdmitted, certificatePinFor, certificatesPinned, channelSigningProblems, keyStoreAdmitted, managedKeyFilesAdmitted, signingPlanAdmitted,
+  unmappedKeys, updatePackageAdmitted,
+  type CertificateUse, type PackageCheck,
 } from "../../gen/os__image__signing.effect.vibe"
 import { deviceName } from "../../gen/os__image__product.effect.vibe"
 import { isDigest } from "../../gen/os__image__apk.effect.vibe"
@@ -17,7 +18,7 @@ import { verifySource, type VerifySourceOptions } from "./source-lock.vibe"
 
 export { generate, decrypt } from "./key-ceremony.vibe"
 export { encodeAvbPublicKey, loadKeyManifest } from "./signing-keys.vibe"
-export { channelDistributionProblems, compatibilityRecord, releaseDescriptorProblems, releaseRecordProblems } from "./signing-record.vibe"
+export { channelDistributionProblems, compatibilityRecord, qualificationGateProblems, releaseDescriptorProblems, releaseRecordProblems, type GateReview } from "./signing-record.vibe"
 
 module node {
   import { Buffer } from "node:buffer"
@@ -117,6 +118,53 @@ export effect function parseArgs(argv: readonly string[]) {
   if (organization === undefined || !/^[\w .,&'-]{1,64}$/.test(organization)) throw new SigningRefused({ reason: "Supply a plain organization name for release keys" })
   const parsed: GenerateOptions = { output, passphraseFile, manifest, organization, testKeys, ...(only === undefined ? {} : { only }) }
   return parsed
+}
+
+const pathText = Schema.String.check(Schema.isMinLength(1))
+const pinnedFile = Schema.Struct({ file: pathText, sha256: digest })
+const decodeSignRequest = Schema.decodeUnknownEffect(Schema.Struct({
+  descriptor: pathText, product: pathText, channel: pathText, keyManifest: pathText, keysDir: pathText, releasetools: pathText,
+  targetFiles: pathText, targetFilesSha256: digest, out: pathText,
+  source: Schema.Struct({
+    profile: Schema.Struct({ name: pathText, file: pathText, sha256: digest }), sourceRoot: pathText,
+    factory: Schema.optionalKey(pathText), boardConfiguration: Schema.optionalKey(pathText), vendorManifest: Schema.optionalKey(pathText),
+    patches: Schema.optionalKey(Schema.Array(Schema.Struct({ name: pathText, manifestFile: pathText, manifestSha256: digest, patchFile: pathText }))),
+  }),
+  keyMap: Schema.Record(Schema.String, Schema.String),
+  apexKeys: Schema.optionalKey(Schema.Record(Schema.String, Schema.Struct({ container: Schema.String, payload: Schema.String }))),
+  apksigner: Schema.optionalKey(pathText),
+  managed: Schema.optionalKey(Schema.Struct({ pkcs11Config: pathText, avbSigningHelper: pathText, payloadSigner: pathText,
+    payloadSignerSignatureSize: Schema.Number, payloadSignerArgs: Schema.optionalKey(Schema.Array(Schema.String)) })),
+  incrementalFrom: Schema.optionalKey(pinnedFile),
+}), { onExcessProperty: "error" })
+const decodeRecordRequest = Schema.decodeUnknownEffect(Schema.Struct({
+  unsignedTargetFiles: pathText, signedTargetFiles: pathText, ota: pathText, channel: pathText, out: pathText,
+  certificates: Schema.Record(Schema.String, digest),
+  inputs: Schema.Struct({ unsignedTargetFilesSha256: digest, productDescriptorSha256: digest, sourceLockSha256: digest, signingMode: Schema.Literals(["managed", "key-files"]) }),
+  incrementalFrom: Schema.optionalKey(pinnedFile),
+  androidRelease: Schema.optionalKey(label),
+}), { onExcessProperty: "error" })
+
+/** The signing options an untrusted JSON request names, refused unless every field is the shape `signRelease` takes. */
+export effect function signReleaseRequest(raw: unknown, dryRun: boolean) {
+  const request = try mapError(decodeSignRequest(raw), (cause) => new SigningRefused({ reason: `Invalid signing request: ${cause.message}` }))
+  const options: SignReleaseOptions = { ...request, dryRun }
+  return options
+}
+
+/** Writes the compatibility record of already signed outputs that an untrusted JSON request names, into a new owner-only file. */
+export effect function writeReleaseRecord(raw: unknown) {
+  const files = try FileSystem.FileSystem
+  const request = try mapError(decodeRecordRequest(raw), (cause) => new SigningRefused({ reason: `Invalid release record request: ${cause.message}` }))
+  const { model: channel } = try releaseChannel((try readSigningJson(request.channel)).value)
+  const record = try compatibilityRecord({
+    unsignedTargetFiles: request.unsignedTargetFiles, signedTargetFiles: request.signedTargetFiles, ota: request.ota, channel,
+    certificates: request.certificates, inputs: request.inputs,
+    ...(request.incrementalFrom === undefined ? {} : { incrementalFrom: request.incrementalFrom }),
+    ...(request.androidRelease === undefined ? {} : { androidRelease: request.androidRelease }),
+  })
+  try files.writeFile(request.out, rowText.encode(`${JSON.stringify(record, null, 2)}\n`), { mode: 0o600, flag: "wx" })
+  return { written: request.out, record }
 }
 
 function refused(cause: unknown): SigningRefused {
@@ -239,6 +287,14 @@ export effect function signRelease(options: SignReleaseOptions) {
     ![managed.pkcs11Config, managed.avbSigningHelper, managed.payloadSigner, ...(managed.payloadSignerArgs ?? [])].every((value) => shlex.test(value)))) {
     throw new SigningRefused({ reason: "Invalid managed signing paths, arguments, or signature size" })
   }
+  if (managed !== undefined) {
+    for (const file of [managed.pkcs11Config, managed.avbSigningHelper, managed.payloadSigner]) {
+      const info = path.isAbsolute(file) ? (files.stat(file) catch () => undefined) : undefined
+      if (info?.type !== "File" || (file !== managed.pkcs11Config && (info.mode & 0o111) === 0)) {
+        throw new SigningRefused({ reason: "Managed signing needs an absolute token configuration and executable signing helpers" })
+      }
+    }
+  }
   const dest = path.resolve(options.out)
   const parent = try files.realPath(path.dirname(dest))
   const output = path.join(parent, path.basename(dest))
@@ -292,15 +348,19 @@ export effect function signRelease(options: SignReleaseOptions) {
     requiredCertificates.add(map.container)
     apex.set(pkg.name, map)
   }
+  const uses: CertificateUse[] = []
   for (const key of requiredCertificates) {
     const row = keys.get(key)
     if (row?.kind !== "x509-pk8") throw new SigningRefused({ reason: `Missing enrolled certificate for ${key}` })
     const observed = try publicFile(path.join(dir, `${key}.x509.pem`))
     const { sha256: hex, testOnly } = try Effect.try({ try: () => certificate(observed), catch: refused })
-    if (row.certificateSha256 !== undefined && row.certificateSha256 !== hex) throw new SigningRefused({ reason: `Certificate bytes differ from enrollment for ${key}` })
+    uses.push({ key, pin: certificatePinFor(key, row.certificateSha256 !== undefined), matches: row.certificateSha256 === undefined || row.certificateSha256 === hex })
     if (managed === undefined) try ownerKey(path.join(dir, `${key}.pk8`))
     marker = marker || testOnly
     certificates.set(key, hex)
+  }
+  if (!certificatesPinned(uses)) {
+    throw new SigningRefused({ reason: `Enrol and match the certificate digest of ${uses.filter((use) => use.pin === "NotPinned" || !use.matches).map((use) => use.key).join(", ")}` })
   }
   if (!isDigest(channel.otaCertificate) || channel.otaCertificate.tag !== "Sha256" || review.descriptor.platformCertificate.tag !== "Sha256" ||
       certificates.get("releasekey") !== channel.otaCertificate.hex || certificates.get("platform") !== review.descriptor.platformCertificate.hex) {
@@ -321,9 +381,29 @@ export effect function signRelease(options: SignReleaseOptions) {
   const avb = try readAvb(keys.get(verifiedKey), avbFile, path.join(dir, descriptor.avb.publicKeyMetadata))
   if ((try Effect.try({ try: () => sha256(avb), catch: refused })) !== descriptor.avb.publicKeySha256) throw new SigningRefused({ reason: "Verified-boot key differs from the reviewed descriptor" })
   for (const [name, mapped] of apex) payloads.set(name, try readAvb(keys.get(mapped.payload), path.join(dir, `${mapped.payload}.pem`), path.join(dir, `${mapped.payload}.avbpubkey`)))
+  if (managed !== undefined) {
+    const publicEncodes = effect (file: string, expected: Uint8Array | undefined) => {
+      const bytes = try publicFile(file)
+      if (expected === undefined || !new TextDecoder().decode(bytes.subarray(0, 64)).startsWith("-----BEGIN PUBLIC KEY-----")) return false
+      const encoded = Effect.try({ try: () => avbKey(bytes), catch: refused }) catch () => new Uint8Array()
+      return encoded.length === expected.length && encoded.every((byte, i) => byte === expected[i])
+    }
+    let payloadKeysPublic = true
+    for (const [name, mapped] of apex) payloadKeysPublic = (try publicEncodes(path.join(dir, `${mapped.payload}.pem`), payloads.get(name))) && payloadKeysPublic
+    const managedKeys = {
+      privateKeyFiles: (try files.readDirectory(dir)).filter((name) => name.endsWith(".pk8")).length,
+      verifiedBootKeyPublic: try publicEncodes(avbFile, avb),
+      payloadKeysPublic,
+    }
+    if (!managedKeyFilesAdmitted(managedKeys)) throw new SigningRefused({ reason: "Managed signing keeps no private key file and hands avbtool only public keys that encode to their reviewed metadata" })
+  }
   const previous = options.incrementalFrom
   if (previous !== undefined && (try releaseArtifact(previous.file)).sha256 !== previous.sha256) throw new SigningRefused({ reason: "Previous target files differ from their reviewed digest" })
   const tools = try files.realPath(options.releasetools)
+  for (const tool of ["sign_target_files_apks", "ota_from_target_files"]) {
+    const info = files.stat(path.join(tools, tool)) catch () => undefined
+    if (info?.type !== "File" || (info.mode & 0o111) === 0) throw new SigningRefused({ reason: `Releasetools has no executable ${tool}` })
+  }
   const signingMode = managed === undefined ? "key-files" as const : "managed" as const
   const distributionProblems = channelDistributionProblems(channelDocument, marker)
   return try scoped(effect {
@@ -356,7 +436,7 @@ export effect function signRelease(options: SignReleaseOptions) {
     const apexHelper = managed === undefined || apex.size === 0 ? [] : ["--avb_apex_extra_args", `--signing_helper_with_files ${managed.avbSigningHelper}`]
     const sign: Operation = { tool: path.join(tools, "sign_target_files_apks"), args: ["-p", path.dirname(tools), ...token, "-o", "-d", dir, ...apkArgs, ...apexArgs, ...apexHelper, ...boot,
       "--package_key", otaKey, ...signerArgs, unsigned, signed] }
-    const pack: Operation = { tool: path.join(tools, "ota_from_target_files"), args: ["-p", path.dirname(tools), "-k", otaKey, ...signerArgs,
+    const pack: Operation = { tool: path.join(tools, "ota_from_target_files"), args: ["-p", path.dirname(tools), ...token, "-k", otaKey, ...signerArgs,
       ...(previous === undefined ? [] : ["-i", previous.file]), signed, ota] }
     const commands = [sign, pack]
     if (options.dryRun === true) return { ran: false, dryRun: true, commands, signingMode, distributionProblems, record: null }
@@ -366,7 +446,7 @@ export effect function signRelease(options: SignReleaseOptions) {
     try execute(pack)
     const record = try compatibilityRecord({ unsignedTargetFiles: unsigned, signedTargetFiles: signed, ota, channel, certificates: Object.fromEntries(certificates),
       inputs: { unsignedTargetFilesSha256: input.sha256, productDescriptorSha256: release.sha256, sourceLockSha256: verifiedSource.lock.digest, signingMode },
-      ...(previous === undefined ? {} : { incrementalFrom: previous }) })
+      androidRelease: descriptor.device.androidRelease, ...(previous === undefined ? {} : { incrementalFrom: previous }) })
     try files.writeFile(path.join(scratch, "avb_pkmd.bin"), avb, { mode: 0o600, flag: "wx" })
     try files.writeFile(path.join(scratch, "release-record.json"), rowText.encode(`${JSON.stringify(record, null, 2)}\n`), { mode: 0o600, flag: "wx" })
     try files.makeDirectory(output, { mode: 0o700 })

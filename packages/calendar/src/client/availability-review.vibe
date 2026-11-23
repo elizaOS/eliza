@@ -1,0 +1,170 @@
+// spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/reviewedReads.md, "Availability publishes only a reviewed projection with matching fresh readback"; spec/calendar/availability.md, "Choose a bounded interval and accept occupancy-only rows"
+import { shareAvailability } from "../../gen/calendar__reviewedReads.effect.vibe"
+import { AvailabilityEventRow, AvailabilitySourceRow, AvailabilityUnavailable, CALENDAR_AVAILABILITY_MAX_BUSY, CALENDAR_AVAILABILITY_MAX_CALENDARS,
+  calendarAvailability, describeAvailabilityResult, sameAvailabilityResult, validateCalendarAvailabilityOperation, type AvailabilityReadRequest,
+  type CalendarAvailabilityEvent, type CalendarAvailabilityOperation, type CalendarAvailabilityResult, type ReadAnswer,
+  type SourcesAnswer } from "../availability/index.vibe"
+import { deviceTimeZone } from "../clock.vibe"
+
+/** One calendar the device can read; its name and account are shown to the owner only. */
+export interface AvailabilitySource {
+  readonly id: string
+  readonly name: string
+  readonly account: string
+  readonly sourceRevision: string
+}
+
+/** The most readable sources one review offers; more fails closed rather than hiding calendars. */
+export const AVAILABILITY_MAX_SOURCES = 64
+/** Attempts to list calendars while focus returns after a permission prompt. */
+export const SOURCE_LIST_ATTEMPTS = 4
+/** The wait between source-list attempts, in milliseconds. */
+export const SOURCE_LIST_RETRY_MS = 300
+
+/** The reader a review reads through: read access, the source list for a zone, and a read of the chosen sources. */
+export interface AvailabilityProvider {
+  readonly requestReadAccess: () => { readonly status: string }!AvailabilityUnavailable
+  readonly availabilitySources: (input: { readonly timeZone: string }) => SourcesAnswer!AvailabilityUnavailable
+  readonly readAvailability: (input: AvailabilityReadRequest) => ReadAnswer!AvailabilityUnavailable
+}
+
+/** The owner's foreground review: a choice of calendars, null when cancelled, and an explicit approval of the exact result. */
+export interface AvailabilityReview {
+  readonly chooseCalendars: (sources: readonly AvailabilitySource[], operation: CalendarAvailabilityOperation) => (readonly string[] | null)!AvailabilityUnavailable
+  readonly confirmResult: (result: CalendarAvailabilityResult, chosen: readonly AvailabilitySource[]) => boolean!AvailabilityUnavailable
+}
+
+/** The reviewed context: whether it is still the one reviewed, the zone it states, the device's zone and the pause between source-list attempts. */
+export interface AvailabilityContext {
+  readonly current: () => boolean
+  readonly contextTimeZone: string | undefined
+  readonly deviceTimeZone?: () => string
+  readonly pause?: (milliseconds: number) => void!!
+}
+
+/** What a review tells the owner, with the shared result only when it succeeded. */
+export type AvailabilityOutcome = {
+  readonly status: "succeeded" | "failed"
+  readonly summary: string
+  readonly foregroundResult?: CalendarAvailabilityResult
+}
+
+/** A provider source list or row set that is not an admitted one. */
+export error AvailabilityProviderValue { problem: string }
+
+error ReviewStopped { outcome: AvailabilityOutcome }
+error ContextChanged
+
+/** Waits the given time; interrupting the review ends it early. */
+export effect function abortablePause(milliseconds: number): void!! {
+  try sleep(Duration.millis(milliseconds))
+}
+
+function label(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() !== "" && !value.includes("\0") ? value.trim().slice(0, 200) : fallback
+}
+
+/** The sources a provider listed; a malformed or duplicate identity, or more than the offer limit, fails closed. */
+export effect function parseAvailabilitySources(value: unknown): AvailabilitySource[]!AvailabilityProviderValue {
+  if (!Array.isArray(value) || value.length > AVAILABILITY_MAX_SOURCES) throw new AvailabilityProviderValue({ problem: "Too many readable calendars for one review" })
+  const rows = try mapError(Schema.decodeUnknownEffect(Schema.Array(AvailabilitySourceRow))(value),
+    () => new AvailabilityProviderValue({ problem: "Invalid Calendar source identity" }))
+  if (new Set(rows.map((row) => row.id)).size !== rows.length) throw new AvailabilityProviderValue({ problem: "Invalid Calendar source identity" })
+  return rows.map((row) => ({ id: row.id, name: label(row.name, "Unnamed calendar"), account: label(row.account, "This phone"), sourceRevision: row.sourceRevision }))
+}
+
+/** A provider's occupancy-only rows; a row carrying anything besides its interval, all-day flag and availability is refused. */
+export effect function parseAvailabilityEvents(value: unknown): CalendarAvailabilityEvent[]!AvailabilityProviderValue {
+  if (!Array.isArray(value) || value.length > CALENDAR_AVAILABILITY_MAX_BUSY) throw new AvailabilityProviderValue({ problem: "Calendar availability exceeds the reviewed event bound" })
+  const rows = try mapError(Schema.decodeUnknownEffect(Schema.Array(AvailabilityEventRow), { onExcessProperty: "error" })(value),
+    () => new AvailabilityProviderValue({ problem: "Invalid Calendar availability provider row" }))
+  return rows.map(({ start, end, allDay, availability }) => ({ start, end, allDay, availability }))
+}
+
+const nothing = " Nothing was shared."
+const failed = (summary: string): AvailabilityOutcome => ({ status: "failed", summary: summary + nothing })
+const zoneChanged = "This availability check used a different time zone. Ask again from this phone."
+const denied = "Calendar access was not allowed, so no calendar was read."
+
+function readFailure(status: string): AvailabilityOutcome {
+  if (status === "freshness-unknown" || status === "stale") return failed("Calendar freshness could not be verified, so your availability is unknown.")
+  if (status === "permission-required") return failed(denied)
+  if (status === "changed") return failed("A chosen calendar changed on this phone. Review the availability check again.")
+  if (status === "timezone-changed") return failed(zoneChanged)
+  if (status === "too-many") return failed(`These calendars have more than ${CALENDAR_AVAILABILITY_MAX_BUSY} events in this window. Ask about a shorter time or choose fewer calendars.`)
+  return failed("Calendars could not be read right now.")
+}
+
+/** A bounded foreground free/busy read: list, owner choice, a fresh local read, owner confirmation, and a second read that must match before anything is shared. */
+export effect function executeCalendarAvailability(provider: AvailabilityProvider, value: unknown, context: AvailabilityContext,
+  review: AvailabilityReview): AvailabilityOutcome!! {
+  const zoneNow = context.deviceTimeZone ?? deviceTimeZone
+  const pause = context.pause ?? abortablePause
+  const stopped = (outcome: AvailabilityOutcome) => new ReviewStopped({ outcome })
+  effect function stable(): void!ContextChanged {
+    if (!context.current()) throw new ContextChanged()
+  }
+
+  const run = effect {
+    const operation = try mapError(validateCalendarAvailabilityOperation(value), () => new ReviewStopped({ outcome: failed("This availability request is not one this phone can review.") }))
+    const sameZone = () => context.contextTimeZone === operation.timeZone && zoneNow() === operation.timeZone
+    try stable()
+    if (!sameZone()) throw stopped(failed(zoneChanged))
+    const permission = try provider.requestReadAccess()
+    try stable()
+    if (permission.status !== "granted") throw stopped(failed(denied))
+    let listed = try provider.availabilitySources({ timeZone: operation.timeZone })
+    try stable()
+    for (let attempt = 1; listed.status === "unavailable" && attempt < SOURCE_LIST_ATTEMPTS; attempt++) {
+      try pause(SOURCE_LIST_RETRY_MS)
+      try stable()
+      listed = try provider.availabilitySources({ timeZone: operation.timeZone })
+      try stable()
+    }
+    if (listed.status === "permission-required") throw stopped(failed(denied))
+    if (listed.status === "timezone-changed") throw stopped(failed(zoneChanged))
+    if (listed.status !== "ready") throw stopped(failed("Calendars are unavailable right now."))
+    if (listed.timeZone !== operation.timeZone || !sameZone()) throw stopped(failed(zoneChanged))
+    const sources = try parseAvailabilitySources(listed.calendars)
+    if (sources.length === 0) throw stopped(failed("No readable calendars were found on this phone."))
+    const chosenIds = try review.chooseCalendars(sources, operation)
+    if (chosenIds === null) throw stopped(failed("Availability check cancelled. No calendar was read."))
+    try stable()
+    const ids = chosenIds
+    if (ids.length < 1 || ids.length > CALENDAR_AVAILABILITY_MAX_CALENDARS || new Set(ids).size !== ids.length) throw stopped(failed("That calendar choice cannot be read."))
+    const chosen = ids.flatMap((id) => sources.filter((source) => source.id === id))
+    if (chosen.length !== ids.length) throw stopped(failed("A chosen calendar was not offered."))
+    const request: AvailabilityReadRequest = {
+      calendars: chosen.map((source) => ({ id: source.id, revision: source.sourceRevision })),
+      start: operation.start, end: operation.end, timeZone: operation.timeZone,
+    }
+
+    effect function read() {
+      const answer = try provider.readAvailability(request)
+      try stable()
+      if (answer.status !== "ready") throw stopped(readFailure(answer.status))
+      if (answer.freshness !== "local") throw stopped(readFailure("freshness-unknown"))
+      if (!sameZone()) throw stopped(failed(zoneChanged))
+      const rows = try parseAvailabilityEvents(answer.events)
+      return try mapError(calendarAvailability(operation, chosen.length, rows), () => new ReviewStopped({ outcome: failed("Calendars could not be read right now.") }))
+    }
+
+    const reviewed = try read()
+    const confirmed = try review.confirmResult(reviewed, chosen)
+    if (!confirmed) throw stopped(failed("Availability check cancelled."))
+    try stable()
+    const latest = try read()
+    const evidence = {
+      zoneMatches: sameZone(), exactChosenSources: true, freshLocal: true,
+      sameReviewedProjection: sameAvailabilityResult(latest, reviewed), stillCurrent: context.current(), confirmed,
+    }
+    if (!evidence.sameReviewedProjection) throw stopped(failed("Your calendar changed during this review. Review the availability check again."))
+    if (!shareAvailability(evidence)) throw stopped(failed("The phone, calendars or connection changed before this availability check finished."))
+    return { status: "succeeded", summary: describeAvailabilityResult(reviewed), foregroundResult: reviewed } satisfies AvailabilityOutcome
+  }
+
+  return run catch (error) => match (error) {
+    when ReviewStopped: error.outcome;
+    default: failed("The phone, calendars or connection changed before this availability check finished.");
+  }
+}

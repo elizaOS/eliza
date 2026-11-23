@@ -1,0 +1,75 @@
+// spec/localInference/models.md, "Only a model in the curated catalog is downloaded, and only when it is not already present"; spec/localInference/textAndEmbeddings.md, "Vectors are compared only within one vector space"
+import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/core/protocol"
+import { catalog, initial, modelOf, type ModelRole } from "../gen/localInference__models.effect.vibe"
+import type { VectorSpace } from "../gen/localInference__textAndEmbeddings.effect.vibe"
+
+/** A curated model, named by its key in the spec's catalog. */
+export type CatalogId = "model1" | "model2"
+
+/** One published file of a model and the digest its bytes must match. */
+export interface PublishedFile {
+  readonly path: string
+  readonly url: string
+  readonly sha256: string
+}
+
+/** Where a model's files and its evaluation record are published. */
+export type ModelSource =
+  | { readonly kind: "bundle"; readonly manifestUrl: string; readonly fileBase: string }
+  | { readonly kind: "pinned"; readonly files: readonly PublishedFile[] }
+
+/** The vector space an embedding model writes, as the spec compares it and as core labels its vectors. */
+export interface EmbeddingSpace {
+  readonly space: VectorSpace
+  readonly spaceId: string
+}
+
+/** A curated model: its public name, its role, where it is published, and for an embedding model the space it writes. */
+export interface CatalogModel {
+  readonly id: CatalogId
+  readonly name: string
+  readonly role: ModelRole
+  readonly source: ModelSource
+  readonly embedding?: EmbeddingSpace
+}
+
+const eliza1Bundle = "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/e2b"
+const bgeRevision = "d32f8c040ea3b516330eeb75b72bcc2d3a780ab7"
+const bgeFile = "bge-small-en-v1.5-f16.gguf"
+
+/** A catalog of models by the spec's catalog keys. */
+export type Catalog = Readonly<Record<CatalogId, CatalogModel>>
+
+/** The curated catalog by the spec's catalog keys; each role is the one the spec gives the key. */
+export const curatedModels: Catalog = {
+  model1: {
+    id: "model1",
+    name: "eliza-1-2b",
+    role: modelOf(initial, "model1").role,
+    source: { kind: "bundle", manifestUrl: `${eliza1Bundle}/eliza-1.manifest.json`, fileBase: eliza1Bundle },
+  },
+  model2: {
+    id: "model2",
+    name: "bge-small-en-v1.5",
+    role: modelOf(initial, "model2").role,
+    source: {
+      kind: "pinned",
+      files: [{
+        path: bgeFile,
+        url: `https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/${bgeRevision}/${bgeFile}`,
+        sha256: "f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999",
+      }],
+    },
+    embedding: { space: { spaceModel: "BAAI/bge-small-en-v1.5", dimensions: 384, pooling: "ClsPooling" }, spaceId: BGE_SMALL_VECTOR_SPACE },
+  },
+}
+
+/** Whether a value names a curated model by its catalog key. */
+export function isCatalogId(value: string): value is CatalogId {
+  return catalog.includes(value) && Object.hasOwn(curatedModels, value)
+}
+
+/** The model of a catalog a public name refers to. */
+export function modelNamed(name: string, models: Catalog = curatedModels): CatalogModel | undefined {
+  return Object.values(models).find((model) => model.name === name)
+}

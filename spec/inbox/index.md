@@ -10,6 +10,7 @@ managed Gmail [read](../cloud/index.md#an-approved-connection-grants-the-owner-o
 
 | Area | Specifications |
 | --- | --- |
-| Reading | [Mailbox reads and caches](./reads.md), [managed inbox read](./managedRead.md) |
-| Writing | [Drafts and provider review](./drafts.md) |
+| Access | [Incremental Gmail grants](./grants.md), [mail failures and disconnect](./failures.md) |
+| Reading | [Mailbox reads and caches](./reads.md), [managed inbox read](./managedRead.md), [read state](./readState.md), [inert display](./display.md) |
+| Writing | [Drafts and provider review](./drafts.md), [outgoing mail and its review](./outgoing.md), [hand-offs with the agent](./handoff.md) |
 | Notices | [Background notices](./backgroundNotices.md) |

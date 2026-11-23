@@ -1,0 +1,219 @@
+// spec/notes/organize.md, "Story: Organize my notes only where I can see it"; spec/notes/organize.md, "Recording is offered with its own capability or with the full organize set"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly"; spec/notes/organize.md, "A folder is named by a bounded name that is unique in the device's list"
+import {
+  filterTextAdmitted, folderListAdmitted, folderNameAdmitted, organizeChangesSavedNotes, organizeContextAllowed, organizeOffered,
+  organizeRunsDirectly, type OrganizeKind, type OrganizeScreen,
+} from "../gen/notes__organize.effect.vibe"
+import { isNoteKind } from "./format.vibe"
+import { NotesTargetSchema, type NotesTarget } from "./selected-read.vibe"
+import type { NoteFormat } from "./types.vibe"
+
+/** The organize capability: filters, folders, moves and restores. */
+export const NOTES_ORGANIZE_CAPABILITY = "notes.organize.v1"
+/** Voice recording alone, with no folders and no local Notes record. */
+export const NOTES_RECORD_CAPABILITY = "notes.record.v1"
+/** The local Notes record capability the organize set pairs with. */
+export const NOTES_LOCAL_RECORD_CAPABILITY = "notes.local-record.v1"
+/** The canonical Notes list filter capability. */
+export const NOTES_LIST_FILTER_CAPABILITY = "notes.list-filter.v1"
+/** The message metadata key a host sends its folder list under. */
+export const NOTE_FOLDERS_METADATA_KEY = "notesFolders"
+
+/** One organize operation the agent may propose to the device. */
+export type NotesOrganizeOperation =
+  | { readonly type: "notes_filter"; readonly text?: string; readonly folder?: string; readonly kind?: NoteFormat["kind"] }
+  | { readonly type: "notes_list_filter"; readonly text?: string; readonly kind?: NoteFormat["kind"] }
+  | { readonly type: "notes_move"; readonly target: NotesTarget; readonly folder: string | null }
+  | { readonly type: "notes_folder_create"; readonly name: string }
+  | { readonly type: "notes_restore"; readonly noteId: string }
+  | { readonly type: "notes_record"; readonly action: "start" | "stop" }
+
+/** The wire type of an organize operation. */
+export type NotesOrganizeType = NotesOrganizeOperation["type"]
+
+/** What the device shows while a proposal waits: its view, whether the screen is sensitive or locked, and its selection. */
+export interface NotesDeviceContext {
+  readonly view: string
+  readonly sensitive?: boolean
+  readonly selectedObject?: { readonly kind: string; readonly id: string; readonly revision?: string } | null
+}
+
+/** One folder of the device's list. */
+export interface NoteFolder {
+  readonly id: string
+  readonly name: string
+}
+
+/** An organize operation that breaks its contract. */
+export error NotesOrganizeRefused { reason: string }
+
+const kindOf = {
+  notes_filter: "FilterNotes", notes_list_filter: "FilterCanonicalList", notes_move: "MoveNote",
+  notes_folder_create: "CreateFolder", notes_restore: "RestoreNote", notes_record: "RecordVoice",
+} as const satisfies Record<NotesOrganizeType, OrganizeKind>
+
+/** Every organize operation type. */
+export const NOTES_ORGANIZE_TYPES: readonly NotesOrganizeType[] = ["notes_filter", "notes_list_filter", "notes_move", "notes_folder_create", "notes_restore", "notes_record"]
+
+/** Whether a value is an organize operation type. */
+export function isNotesOrganizeType(value: unknown): value is NotesOrganizeType {
+  return typeof value === "string" && Object.hasOwn(kindOf, value)
+}
+
+/** Whether the device's advertised capabilities offer this operation. */
+export function notesOrganizeOffered(type: NotesOrganizeType, capabilities: readonly string[] | undefined): boolean {
+  const names = new Set(capabilities ?? [])
+  return organizeOffered(kindOf[type], {
+    recordCap: names.has(NOTES_RECORD_CAPABILITY), organizeCap: names.has(NOTES_ORGANIZE_CAPABILITY),
+    localRecordCap: names.has(NOTES_LOCAL_RECORD_CAPABILITY), listFilterCap: names.has(NOTES_LIST_FILTER_CAPABILITY),
+  })
+}
+
+/** Whether the canonical Notes list owns the device's presentation, with its opaque revision. */
+export function canonicalNotesListShown(context: NotesDeviceContext): boolean {
+  const selection = context.selectedObject
+  return context.sensitive !== true && context.view === "notes" && selection !== undefined && selection !== null
+    && selection.kind === "canonical-note-source" && selection.id === "notes"
+    && !["accountId", "sourceRevision", "occurrenceId", "timingVersion"].some((key) => key in selection)
+    && typeof selection.revision === "string" && /^(0|[1-9]\d*)$/.test(selection.revision) && Number.isSafeInteger(Number(selection.revision))
+}
+
+function screenOf(view: string): OrganizeScreen {
+  return view === "home" ? "HomeScreen" : view === "notes" ? "NotesScreen" : "OtherScreen"
+}
+
+/** Whether the device's current screen may review or run this operation. */
+export function notesOrganizeContextAllowed(context: NotesDeviceContext, type: NotesOrganizeType): boolean {
+  return organizeContextAllowed(kindOf[type], screenOf(context.view), context.sensitive === true, canonicalNotesListShown(context))
+}
+
+/** Whether the operation may run without a separate review: only filters and recording the owner's own current message asked for. */
+export function notesOrganizeRunsDirectly(type: NotesOrganizeType, boundToOwnerMessage: boolean, workflowBound: boolean): boolean {
+  return organizeRunsDirectly(kindOf[type], boundToOwnerMessage, workflowBound)
+}
+
+/** Whether the operation changes saved notes and so is reviewed first. */
+export function notesOrganizeChangesSavedNotes(type: NotesOrganizeType): boolean {
+  return organizeChangesSavedNotes(kindOf[type])
+}
+
+/** A folder name with each run of whitespace collapsed and trimmed, or undefined when it is not 1 to 40 units without NUL. */
+export function notesFolderName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const name = value.replace(/\s+/gu, " ").trim()
+  return folderNameAdmitted(name.length, name.includes("\0")) ? name : undefined
+}
+
+const folderKey = (name: string) => name.normalize("NFKC").toLowerCase()
+const folderIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
+
+/** The folder list a message carries; undefined when the host sent none or one that breaks the contract, never an empty list. */
+export function readNoteFolders(metadata: unknown): NoteFolder[] | undefined {
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata) || !(NOTE_FOLDERS_METADATA_KEY in metadata)) return undefined
+  const list: unknown = metadata[NOTE_FOLDERS_METADATA_KEY]
+  if (!Array.isArray(list)) return undefined
+  const folders = list.flatMap((row: unknown) => {
+    if (typeof row !== "object" || row === null || !("id" in row) || !("name" in row) || typeof row.id !== "string") return []
+    const name = notesFolderName(row.name)
+    return name === undefined || !folderIdPattern.test(row.id) ? [] : [{ id: row.id, name }]
+  })
+  const admitted = folderListAdmitted(list.length, new Set(folders.map((folder) => folder.id)).size === list.length,
+    new Set(folders.map((folder) => folderKey(folder.name))).size === list.length, folders.length === list.length)
+  return admitted ? folders : undefined
+}
+
+/** The folder a name addresses, ignoring case, width and spacing. */
+export function findNoteFolder(folders: readonly NoteFolder[], name: string): NoteFolder | undefined {
+  const wanted = notesFolderName(name)
+  return wanted === undefined ? undefined : folders.find((folder) => folderKey(folder.name) === folderKey(wanted))
+}
+
+/** The folder a note is in. */
+export function noteFolderId(format: NoteFormat | undefined): string | undefined {
+  const id = format?.data.folderId
+  return typeof id === "string" ? id : undefined
+}
+
+effect function filterText(value: unknown): (string | undefined)!NotesOrganizeRefused {
+  if (value === undefined) return undefined
+  if (typeof value !== "string" || value.trim() === "" || !filterTextAdmitted(value.length, value.includes("\0"))) throw new NotesOrganizeRefused({ reason: "Invalid Notes text" })
+  return value.trim()
+}
+
+effect function folderName(value: unknown): string!NotesOrganizeRefused {
+  const name = notesFolderName(value)
+  if (name === undefined) throw new NotesOrganizeRefused({ reason: "Invalid folder name" })
+  return name
+}
+
+effect function only(operation: object, keys: readonly string[]): void!NotesOrganizeRefused {
+  if (Object.keys(operation).some((key) => !keys.includes(key))) throw new NotesOrganizeRefused({ reason: "Unexpected Notes field" })
+}
+
+const decodeTarget = Schema.decodeUnknownEffect(NotesTargetSchema, { onExcessProperty: "error" })
+
+/** An untrusted organize operation checked field by field; names are normalized and nothing is truncated. */
+export effect function decodeNotesOrganizeOperation(value: unknown): NotesOrganizeOperation!NotesOrganizeRefused {
+  if (typeof value !== "object" || value === null || Array.isArray(value) || !("type" in value)) throw new NotesOrganizeRefused({ reason: "Invalid Notes operation" })
+  const field = (key: string): unknown => key in value ? Reflect.get(value, key) : undefined
+  switch (value.type) {
+    case "notes_filter":
+    case "notes_list_filter": {
+      const listFilter = value.type === "notes_list_filter"
+      try only(value, listFilter ? ["type", "text", "kind"] : ["type", "text", "folder", "kind"])
+      const kind = field("kind")
+      if (kind !== undefined && !isNoteKind(kind)) throw new NotesOrganizeRefused({ reason: "Invalid note kind" })
+      const text = try filterText(field("text"))
+      const folder = listFilter || field("folder") === undefined ? undefined : try folderName(field("folder"))
+      if (text === undefined && folder === undefined && kind === undefined) throw new NotesOrganizeRefused({ reason: "Empty Notes filter" })
+      const narrowed = { ...(text === undefined ? {} : { text }), ...(kind === undefined ? {} : { kind }) }
+      return listFilter ? { type: "notes_list_filter", ...narrowed } : { type: "notes_filter", ...narrowed, ...(folder === undefined ? {} : { folder }) }
+    }
+    case "notes_move": {
+      try only(value, ["type", "target", "folder"])
+      if (!("folder" in value)) throw new NotesOrganizeRefused({ reason: "Missing folder" })
+      const target = try mapError(decodeTarget(field("target")), () => new NotesOrganizeRefused({ reason: "Invalid note target" }))
+      return { type: "notes_move", target, folder: field("folder") === null ? null : try folderName(field("folder")) }
+    }
+    case "notes_folder_create":
+      try only(value, ["type", "name"])
+      return { type: "notes_folder_create", name: try folderName(field("name")) }
+    case "notes_restore": {
+      try only(value, ["type", "noteId"])
+      const id = field("noteId")
+      if (typeof id !== "string" || id.length > 128 || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(id)) throw new NotesOrganizeRefused({ reason: "Invalid note identity" })
+      return { type: "notes_restore", noteId: id }
+    }
+    case "notes_record": {
+      try only(value, ["type", "action"])
+      const action = field("action")
+      if (action !== "start" && action !== "stop") throw new NotesOrganizeRefused({ reason: "Invalid recording action" })
+      return { type: "notes_record", action }
+    }
+    default:
+      throw new NotesOrganizeRefused({ reason: "Unsupported Notes operation" })
+  }
+}
+
+const kindLabels = { text: "Notes", list: "Checklists", voice: "Voice notes", link: "Links" } as const satisfies Record<NoteFormat["kind"], string>
+
+/** The review card for one operation: the change itself and nothing else. */
+export function describeNotesOrganizeOperation(operation: NotesOrganizeOperation): { title: string; description: string } {
+  switch (operation.type) {
+    case "notes_filter":
+    case "notes_list_filter":
+      return {
+        title: "Show notes",
+        description: [
+          operation.text === undefined ? "" : `“${operation.text}”`,
+          operation.kind === undefined ? "" : kindLabels[operation.kind],
+          operation.type === "notes_filter" && operation.folder !== undefined ? `In ${operation.folder}` : "",
+        ].filter((part) => part !== "").join(" · "),
+      }
+    case "notes_move": return { title: "Move note", description: operation.folder === null ? "To no folder" : `To ${operation.folder}` }
+    case "notes_folder_create": return { title: "New folder", description: operation.name }
+    case "notes_restore": return { title: "Restore note", description: "From Recently deleted" }
+    case "notes_record": return operation.action === "start"
+      ? { title: "Record voice note", description: "In Notes" }
+      : { title: "Stop recording", description: "Save as a voice note" }
+  }
+}

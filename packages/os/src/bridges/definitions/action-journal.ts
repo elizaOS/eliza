@@ -1,4 +1,4 @@
-// spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "Story: Respect the owner when the session changes"; spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"
+// spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "Story: Respect the owner when the session changes"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"
 import type { DeletionHold, DeletionKind } from "../../../gen/os__android__deferredDeletion.ts";
 import type { DeletionNotice, DeletionPhase, WindowState } from "../../../gen/os__android__deletionWindow.ts";
 
@@ -64,7 +64,9 @@ export interface JournalFinish extends ActionJournalTarget {
   readonly result?: Readonly<Record<string, unknown>>;
 }
 
-export type DeletionRecordKind = "calendar" | "reminder";
+export type DeletionRecordKind = "calendar" | "reminder" | "message" | "thread" | "voicemail" | "contact";
+
+export type StagedRecordKind = Extract<DeletionRecordKind, "message" | "thread" | "voicemail" | "contact">;
 
 export interface DeferredDeletionKey {
   readonly kind: DeletionKind;
@@ -77,6 +79,11 @@ export interface DeferredDeletionEntry extends DeferredDeletionKey {
   readonly hold: DeletionHold;
   readonly expiresAt: number | null;
   readonly title: string | null;
+  readonly record: string | null;
+}
+
+export interface StagedDeletion extends DeferredDeletionKey {
+  readonly expiresAt: number;
 }
 
 export interface DeletedRecordOrigin {

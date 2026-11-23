@@ -1,0 +1,91 @@
+// spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"
+const NonBlank = Schema.String.check(Schema.makeFilter((value) => value.trim() !== ""))
+const NullableNonBlank = Schema.NullOr(NonBlank)
+const Instant = NonBlank.check(Schema.makeFilter((value) => Number.isFinite(Date.parse(value))))
+
+/** One calendar the Cloud's managed Google connection lists. */
+export const ManagedGoogleCalendar = Schema.Struct({
+  calendarId: NonBlank,
+  summary: NonBlank,
+  description: NullableNonBlank,
+  primary: Schema.Boolean,
+  accessRole: NonBlank,
+  backgroundColor: NullableNonBlank,
+  foregroundColor: NullableNonBlank,
+  timeZone: NullableNonBlank,
+  selected: Schema.Boolean,
+})
+
+/** One attendee of a managed Google event. */
+export const ManagedGoogleAttendee = Schema.Struct({
+  email: NullableNonBlank,
+  displayName: NullableNonBlank,
+  responseStatus: NullableNonBlank,
+  self: Schema.Boolean,
+  organizer: Schema.Boolean,
+  optional: Schema.Boolean,
+})
+
+/** One event of a managed Google calendar feed. */
+export const ManagedGoogleEvent = Schema.Struct({
+  externalId: NonBlank,
+  calendarId: NonBlank,
+  title: Schema.String,
+  description: Schema.String,
+  location: Schema.String,
+  status: NonBlank,
+  startAt: Instant,
+  endAt: Instant,
+  isAllDay: Schema.Boolean,
+  timezone: NullableNonBlank,
+  htmlLink: NullableNonBlank,
+  conferenceLink: NullableNonBlank,
+  organizer: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
+  metadata: Schema.Record(Schema.String, Schema.Unknown),
+  attendees: Schema.Array(ManagedGoogleAttendee),
+})
+
+/** One complete page of a managed Google calendar feed. */
+export const ManagedGoogleFeed = Schema.Struct({
+  calendarId: NonBlank,
+  events: Schema.Array(ManagedGoogleEvent),
+  syncedAt: Instant,
+  nextPageToken: Schema.optionalKey(Schema.Null),
+  truncated: Schema.optionalKey(Schema.Literal(false)),
+})
+
+/** A listed managed Google calendar. */
+export type ManagedGoogleCalendar = typeof ManagedGoogleCalendar.Type
+
+/** A managed Google event as the Cloud sends it. */
+export type ManagedGoogleEvent = typeof ManagedGoogleEvent.Type
+
+/** One managed Google calendar's events in a window. */
+export interface ManagedGoogleCalendarFeed {
+  readonly calendarId: string
+  readonly events: readonly ManagedGoogleEvent[]
+  readonly syncedAt: string
+}
+
+/** A Cloud managed Calendar reply that is not the shape it must have. */
+export error ManagedGoogleWireInvalid
+
+const decodeCalendars = Schema.decodeUnknownEffect(Schema.Array(ManagedGoogleCalendar))
+const decodeFeed = Schema.decodeUnknownEffect(ManagedGoogleFeed)
+
+/** The calendars of a Cloud managed Google listing, each listed once. */
+export effect function parseManagedGoogleCalendars(data: unknown): readonly ManagedGoogleCalendar[]!ManagedGoogleWireInvalid {
+  const calendars = decodeCalendars(data) catch effect () => { throw new ManagedGoogleWireInvalid() }
+  if (new Set(calendars.map((calendar) => calendar.calendarId)).size !== calendars.length) throw new ManagedGoogleWireInvalid()
+  return calendars
+}
+
+/** The complete feed of exactly one requested managed Google calendar, each event listed once and never ending before it starts. */
+export effect function parseManagedGoogleCalendarFeed(value: unknown, calendarId: string): ManagedGoogleCalendarFeed!ManagedGoogleWireInvalid {
+  const feed = decodeFeed(value) catch effect () => { throw new ManagedGoogleWireInvalid() }
+  const exact = feed.calendarId === calendarId
+    && feed.events.every((event) => event.calendarId === calendarId && Date.parse(event.endAt) >= Date.parse(event.startAt))
+    && new Set(feed.events.map((event) => event.externalId)).size === feed.events.length
+  if (!exact) throw new ManagedGoogleWireInvalid()
+  return { calendarId, events: feed.events, syncedAt: feed.syncedAt }
+}

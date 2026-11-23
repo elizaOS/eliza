@@ -82,8 +82,7 @@ export effect function loadUpdate(channelFile: string, installed: string, candid
 
 export effect function verifyCandidateOta(file: string, candidate: ReleaseRecord) {
   const artifact = try releaseArtifact(file)
-  if (artifact.sha256 !== candidate.artifacts.ota.sha256 ||
-      (candidate.artifacts.ota.sizeBytes !== undefined && artifact.sizeBytes !== candidate.artifacts.ota.sizeBytes)) {
+  if (artifact.sha256 !== candidate.artifacts.ota.sha256 || artifact.sizeBytes !== candidate.artifacts.ota.sizeBytes) {
     throw new OtaRefused({ reason: "Selected OTA bytes differ from the signed release record" })
   }
   return artifact
@@ -135,7 +134,13 @@ export effect function stockRecoveryPlan(channelFile: string, sourceLockFile: st
       ["fastboot", "-s", "SERIAL", "reboot-bootloader"],
       ["fastboot", "-s", "SERIAL", "-w", "update", image],
     ],
-    notes: ["Use a new directory to extract the verified archive.", "Unlocking and the update erase user data.", "Run verify-stock after boot before relocking."],
+    notes: [
+      "Use a new directory to extract the verified archive.",
+      "Flashing unlock is refused unless OEM unlocking was enabled in the running image; a device that no longer boots cannot enable it, so the drill checks it first.",
+      "Unlocking and the update erase user data, and the device asks for physical confirmation.",
+      "Run verify-stock after boot before relocking.",
+      "This restores the stock image; it is not a signed update or rollback of the product.",
+    ],
     executed: false,
   }
 }

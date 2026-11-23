@@ -1,0 +1,160 @@
+// spec/maps/routing.md, "A plain Maps request of the owner's own chat turn goes to the Maps action for its shape"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"
+import { containsResourceAddress, registerDirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { choiceBinds, mapsRouteOf, type RequestShape, type RoutedTo } from "../gen/maps__routing.effect.vibe"
+import type { AgentPlaceRef } from "./client/device-navigation.vibe"
+
+const courtesy = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`
+const travelMode = String.raw`(?:driving|walking|cycling|bike|transit)`
+const directionsNoun = String.raw`(?:(?:${travelMode}\s+)?directions|(?:a\s+|the\s+)?(?:${travelMode}\s+)?route)`
+const bareDirectionsNoun = String.raw`(?:(?:${travelMode}\s+)?directions|${travelMode}\s+route)`
+const notAPlace = String.raw`(?!(?:assemble|fix|set\s*up|make|bake|cook|install|use|do|build|repair|configure|connect|clean|change|create|write|solve|reset|update|apply|start|finish|play|draw|prepare|replace|remove|open|turn|run|register|sign|log|download|upload|edit|format|cancel|enable|disable|add|plant|grow|knit|sew|paint|wire|mount|hang|unlock|pair|sync|export|import|get(?!\s+(?:to|there|home|back)\b))\b)`
+const destinationWords = String.raw`(?:to\s+${notAPlace}\S|from\s+${notAPlace}\S.*?\s+to\s+${notAPlace}\S)`
+const end = String.raw`(?:,?\s+(?:please|for\s+me))*\s*[.!?]*\s*$`
+const directionsRequest = new RegExp([
+  String.raw`^\s*${courtesy}${bareDirectionsNoun}\s+${destinationWords}`,
+  String.raw`^\s*${courtesy}(?:get|give|show|find|pull\s+up)\s+(?:me\s+)?(?:(?:the|some)\s+)?${directionsNoun}\s+${destinationWords}`,
+].join("|"), "iu")
+const placeOnMapRequest = new RegExp(String.raw`^\s*${courtesy}(?:show|find|locate|pin|put)\s+(?:me\s+)?\S.*?\s+on\s+(?:the\s+|a\s+)?maps?\s*[.!?]?\s*$`, "iu")
+const travelToRequest = new RegExp(String.raw`^\s*${courtesy}(?:(?:take|bring|get)\s+me|navigate(?:\s+me)?|how\s+(?:do|can|would|should)\s+(?:i|we)\s+get|how\s+to\s+get|what(?:'s|’s|\s+is)\s+the\s+(?:best|fastest|quickest)\s+way\s+to\s+get)\s+to\s+${notAPlace}(?!(?:the\s+)?(?:next|previous|last|first|top|bottom|end|beginning|start|middle|same|other|point|know|sleep)\b)(\S.{0,79}?)${end}`, "iu")
+const goToRequest = new RegExp(String.raw`^\s*${courtesy}(?:let(?:'s|’s|\s+us)\s+)?go\s+to\s+(\S.{0,79}?)${end}`, "iu")
+const goToNotAPlace = /^(?:(?:my|your|our|his|her|their|its|this|that|these|those)\b|(?:next|previous|prev|last|first|top|bottom|end|beginning|start|middle|same|other|point|sleep|bed|definition|declaration|implementation|references?|symbol|usages?|line|page|slide|chapter|section|step|level|tab|item|row|column|cell|sheet|folder|file|message|email|thread|inbox|chat|settings?|preferences|google|gmail|youtube|facebook|instagram|twitter|reddit|wikipedia|amazon|netflix|spotify|github|slack|discord|whatsapp|tiktok|linkedin|chrome|safari|firefox|outlook|today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b)/iu
+const streetAddress = /^\d+[a-z]?\s+\S+(?:\s+\S+)*\s+(?:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|way|ct|court|pl|place|sq|square|pkwy|parkway|hwy|highway)\b/iu
+const properName = /^\p{Lu}[\p{Ll}'’]/u
+const appDestination = /\b(?:page|screen|tab|menu|view|section|step|level|folder|file|settings?|options?|line|slide|chapter|stage|part|item|message|email|thread|inbox|chat|conversation|document|doc|link|website|site)$/iu
+const compoundRequest = /\b(?:then|if|unless|when|once)\b/iu
+const addressWithLocality = /^\d+[a-z]?\s+[^,]+(?:,\s*[\p{Lu}\d][\p{L}\d.'’ -]*)+$/u
+const notAPlaceKind = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`
+const findVerb = String.raw`(?:(?:find|show|locate|get|search\s+for|look\s+(?:for|up))\s+(?:me\s+)?|where(?:'s|’s|\s+is|\s+are)\s+|what(?:'s|’s|\s+is)\s+)`
+const placeKind = String.raw`(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}`
+const nearby = String.raw`(?:near\s+(?:me|here|by)|nearby|around\s+here|close\s+by)`
+const notAThere = String.raw`(?!(?:anyone|anybody|someone|somebody|no\s?one|nobody|one|(?:a|any)\s+(?:way|chance|reason|problem|issue|bug|error|difference|need|point))\b)`
+const nearestRequest = new RegExp(String.raw`^\s*${courtesy}${findVerb}?(?:(?:the|a|my)\s+)?(?:nearest|closest)\s+${notAPlaceKind}[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,4}${end}`, "iu")
+const nearMeRequest = new RegExp([
+  String.raw`^\s*${courtesy}${findVerb}${placeKind}\s+${nearby}${end}`,
+  String.raw`^\s*${courtesy}(?:is|are)\s+there\s+${notAThere}${placeKind}\s+${nearby}${end}`,
+  String.raw`^\s*${courtesy}where\s+(?:can|could|should|do)\s+(?:i|we)\s+(?:get|find|buy|grab)\s+${placeKind}\s+${nearby}${end}`,
+  String.raw`^\s*${courtesy}(?:any|some)\s+[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}\s+${nearby}${end}`,
+  String.raw`^\s*${courtesy}(?!(?:stay|sit|come|be|keep|stand|get|move|go|walk|park|i|i'm|i’m|im|you|he|she|they|we|it|is|are|was|were)\b)${placeKind}\s+near\s+me${end}`,
+].join("|"), "iu")
+const kindNearNamedRequest = new RegExp(String.raw`^\s*${courtesy}(?:${findVerb}|(?:is|are)\s+there\s+${notAThere})(${placeKind})\s+(?:near|around|close\s+to|next\s+to)\s+((?:the\s+)?\p{Lu}[\p{L}\p{N}'’&.-]*(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${end}`, "u")
+const ownPosition = /^(?:me|here|us|by|my\s+(?:location|position|current\s+location)|where\s+(?:i|we)\s+(?:am|are))$/iu
+const choiceReply = /^\s*(?:(?:yes|yeah|yep|ok(?:ay)?|sure|um+|uh+|so|hmm+|let'?s\s+(?:go\s+with|do)|i\s+(?:meant?|want|mean)|go\s+with|pick|choose|use|take)[,\s]+)*(?:(?:the|number|no\.?|#|option|item)\s*)*(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th|one|two|three|four|five|six|seven|eight|nine|ten|last|top|\d{1,2})(?:\s+(?:one|option|place|result|choice))?(?:[,\s]+(?:one|please|thanks|thank\s+you))*\s*[.!?]*\s*$/iu
+const ordinals: Readonly<Record<string, number>> = {
+  first: 1, "1st": 1, one: 1, second: 2, "2nd": 2, two: 2, third: 3, "3rd": 3, three: 3, fourth: 4, "4th": 4, four: 4, fifth: 5, "5th": 5, five: 5,
+  sixth: 6, "6th": 6, six: 6, seventh: 7, "7th": 7, seven: 7, eighth: 8, "8th": 8, eight: 8, ninth: 9, "9th": 9, nine: 9, tenth: 10, "10th": 10, ten: 10, top: 1,
+}
+const maxRequestLength = 160
+
+/** The operations that ask "which one did you mean?", and the action each continues through. */
+export const choiceActions = { route: "MAPS_ROUTE", select: "MAPS_SELECT", save: "MAPS_SAVE", "navigation-start": "MAPS_NAVIGATION_START" } as const
+/** An operation that asks "which one did you mean?". */
+export type ChoiceOperation = keyof typeof choiceActions
+
+/** An open "which one did you mean?" question of one conversation, with the parameters that asked it. */
+export interface PlaceChoice {
+  readonly operation: ChoiceOperation
+  readonly field: "originPlaceId" | "destinationPlaceId" | "placeId"
+  readonly options: readonly AgentPlaceRef[]
+  readonly params: Readonly<Record<string, unknown>>
+  readonly askedAt: number
+}
+
+const choices = new WeakMap<IAgentRuntime, Map<string, PlaceChoice>>()
+
+function roomChoices(runtime: IAgentRuntime): Map<string, PlaceChoice> {
+  const known = choices.get(runtime)
+  if (known !== undefined) return known
+  const made = new Map<string, PlaceChoice>()
+  choices.set(runtime, made)
+  return made
+}
+
+/** Opens a question in the conversation, replacing any earlier one. */
+export function openChoice(runtime: IAgentRuntime, roomId: string, choice: PlaceChoice): void {
+  roomChoices(runtime).set(roomId, choice)
+}
+
+/** The position, from 1, that a short reply names among `count` options, or undefined. */
+export function choicePosition(reply: string, count: number): number | undefined {
+  if (reply.length > 60) return undefined
+  const word = choiceReply.exec(reply)?.[1]?.toLowerCase()
+  if (word === undefined || (word === "one" && /\bthe\s+one\b/iu.test(reply))) return undefined
+  return word === "last" ? count : /^\d+$/u.test(word) ? Number(word) : ordinals[word]
+}
+
+/** The open question this owner turn answers and the place it chose; answering closes the question, and any other turn leaves it to the planner. */
+export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: number): { readonly choice: PlaceChoice; readonly place: AgentPlaceRef } | undefined {
+  const open = roomChoices(runtime).get(message.roomId)
+  const reply = typeof message.content.text === "string" ? message.content.text : ""
+  if (open === undefined) return undefined
+  const position = choicePosition(reply, open.options.length) ?? 0
+  if (!choiceBinds({ open: true, sameConversation: true, age: Math.floor(now - open.askedAt), position, options: open.options.length })) return undefined
+  const place = open.options[position - 1]
+  return place === undefined ? undefined : { choice: open, place }
+}
+
+/** Closes the conversation's open question once it is answered. */
+export function closeChoice(runtime: IAgentRuntime, roomId: string): void {
+  roomChoices(runtime).delete(roomId)
+}
+
+function compound(destination: string): boolean {
+  return compoundRequest.test(destination) || (destination.includes(",") && !addressWithLocality.test(destination))
+}
+
+function goToPlace(destination: string): boolean {
+  const name = destination.replace(/^the\s+/iu, "")
+  return !goToNotAPlace.test(name) && (streetAddress.test(name) || (properName.test(name) && (name !== destination || /\s/u.test(name))))
+}
+
+/** The shape of a short request and what a routing decision needs to know about its destination. */
+export function requestShape(text: string, openChoiceAnswered: boolean): { readonly shape: RequestShape; readonly destination?: string } {
+  if (openChoiceAnswered) return { shape: "ChoiceReply" }
+  if (text.length > maxRequestLength) return { shape: "OtherRequest" }
+  if (directionsRequest.test(text)) return { shape: "DirectionsRequest" }
+  if (placeOnMapRequest.test(text)) return { shape: "PlaceOnMap" }
+  const travel = travelToRequest.exec(text)?.[1]?.trim()
+  if (travel !== undefined && travel !== "") return { shape: "TravelTo", destination: travel }
+  const goTo = goToRequest.exec(text)?.[1]?.trim()
+  if (goTo !== undefined && goToPlace(goTo)) return { shape: "GoToNamedPlace", destination: goTo }
+  if (nearestRequest.test(text) || nearMeRequest.test(text)) return { shape: "NearbyKind" }
+  const named = kindNearNamedRequest.exec(text.replace(/^(\s*)(\p{Lu})/u, (_, space: string, first: string) => space + first.toLowerCase()))
+  if (named?.[2] !== undefined && !ownPosition.test(named[2].trim())) return { shape: "KindNearNamedPlace", destination: named[2].trim() }
+  return { shape: "OtherRequest" }
+}
+
+/** Where a turn goes: the routing rules decide from the request's shape, its turn and its destination. */
+export function routeOf(text: string, message: Memory | undefined, openChoiceAnswered: boolean, namesView: (destination: string) => boolean): RoutedTo {
+  const { shape, destination } = requestShape(text, openChoiceAnswered)
+  return mapsRouteOf({
+    ownerTurn: message?.content.source === "client_chat" && (message.content.channelType === "DM" || message.content.channelType === "VOICE_DM"),
+    shape,
+    compound: destination !== undefined && compound(destination),
+    webAddress: destination !== undefined && containsResourceAddress(destination),
+    appDestination: destination !== undefined && appDestination.test(destination),
+    namesView: destination !== undefined && namesView(destination),
+  })
+}
+
+const routedActions: Record<Exclude<RoutedTo, "ToPlanner" | "ToChoice">, readonly string[]> = {
+  ToDirections: ["MAPS_ROUTE", "MAPS_NAVIGATION_START"],
+  ToShowPlace: ["MAPS_SELECT", "MAPS_PLACE"],
+  ToTravel: ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
+  ToPlaceSearch: ["MAPS_PLACE", "MAPS_NAVIGATION_START"],
+}
+
+/** Registers the Maps turn-routing rules of one runtime; a destination that names one of the host's views stays view navigation. */
+export function registerMapsRouting(runtime: IAgentRuntime, namesView: (destination: string) => boolean): void {
+  const rule = (id: string, actionNames: readonly string[], matches: (text: string, message?: Memory) => boolean) =>
+    registerDirectActionRoutingRule(runtime, { id, actionNames, replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: ["domain:maps"], contexts: ["maps"], matches })
+  for (const [routed, actionNames] of Object.entries(routedActions)) {
+    rule(`maps.${routed}`, actionNames, (text, message) => routeOf(text, message, false, namesView) === routed)
+  }
+  for (const [operation, actionName] of Object.entries(choiceActions)) {
+    rule(`maps.place-choice.${operation}`, [actionName], (text, message) => {
+      if (message === undefined) return false
+      const answered = answeredChoice(runtime, message, Date.now())
+      return answered?.choice.operation === operation && routeOf(text, message, true, namesView) === "ToChoice"
+    })
+  }
+}

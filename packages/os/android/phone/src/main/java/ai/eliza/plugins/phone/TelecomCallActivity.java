@@ -14,6 +14,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Canvas;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
@@ -31,6 +32,8 @@ import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.CancellationSignal;
+import android.os.OperationCanceledException;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.ContactsContract;
@@ -41,8 +44,10 @@ import android.telecom.VideoProfile;
 import android.telephony.PhoneNumberUtils;
 import android.text.TextUtils;
 import android.util.Log;
+import android.util.Size;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -64,6 +69,9 @@ import java.util.concurrent.Executors;
 public abstract class TelecomCallActivity extends Activity {
     /** The screen's accessibility title, for example the product name. It is not drawn. */
     protected abstract String title();
+
+    /** A host can omit Hold from its call controls without changing Telecom capability. */
+    protected boolean showHoldControl() { return true; }
 
     private static final String TAG = "TelecomCallActivity";
     private static final int SECONDARY = 0xFFA8A8A8;
@@ -91,6 +99,9 @@ public abstract class TelecomCallActivity extends Activity {
     private String numberWhenNamed;
     /** Contact names by call ID and number. An empty name is a lookup that found none or is running. */
     private final Map<String, String> names = new HashMap<>();
+    private final Map<String, Bitmap> photos = new HashMap<>();
+    private final Map<String, CancellationSignal> contactReads = new HashMap<>();
+    private int contactEpoch;
     private ExecutorService lookups;
     private LinearLayout content;
     private TextView secondary, digits;
@@ -130,9 +141,9 @@ public abstract class TelecomCallActivity extends Activity {
 
     /** Who a call is with: a name when one is known, and the number as the owner would write it. */
     private static final class Caller {
-        final String name, number;
+        final String name, number; final Bitmap photo;
 
-        Caller(String name, String number) { this.name = name; this.number = number; }
+        Caller(String name, String number, Bitmap photo) { this.name = name; this.number = number; this.photo = photo; }
 
         String shown() { return name != null ? name : number != null ? number : "Unknown"; }
     }
@@ -176,6 +187,7 @@ public abstract class TelecomCallActivity extends Activity {
 
     @Override public void onStart() {
         super.onStart();
+        clearContactReads();
         started = true;
         TelecomCallService.observe(changed);
         render();
@@ -183,6 +195,7 @@ public abstract class TelecomCallActivity extends Activity {
 
     @Override public void onStop() {
         started = false;
+        clearContactReads();
         stopClock();
         tones.stop();
         toneHandler.removeCallbacksAndMessages(null);
@@ -191,6 +204,7 @@ public abstract class TelecomCallActivity extends Activity {
     }
 
     @Override public void onDestroy() {
+        clearContactReads();
         if (lookups != null) lookups.shutdownNow();
         super.onDestroy();
     }
@@ -229,7 +243,7 @@ public abstract class TelecomCallActivity extends Activity {
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         for (Iterator<String> keys = names.keySet().iterator(); keys.hasNext(); ) {
             String key = keys.next();
-            if (!ids.contains(key.substring(0, key.indexOf('\n')))) keys.remove();
+            if (!ids.contains(key.substring(0, key.indexOf('\n')))) { CancellationSignal read = contactReads.remove(key); if (read != null) read.cancel(); photos.remove(key); keys.remove(); }
         }
         // The keypad and its digits belong to one active call; they close when it is held or replaced.
         if (!id.equals(keypadCall)) {
@@ -244,9 +258,9 @@ public abstract class TelecomCallActivity extends Activity {
         int phoneRoutes = audio == null ? 0 : audio.getSupportedRouteMask() & CallAudioState.ROUTE_WIRED_OR_EARPIECE;
         TelecomCallPresentation.Controls controls = TelecomCallPresentation.controls(state, audio != null,
             audio != null && (audio.getSupportedRouteMask() & CallAudioState.ROUTE_SPEAKER) != 0 && phoneRoutes != 0,
-            details != null && details.can(Call.Details.CAPABILITY_HOLD));
+            showHoldControl() && details != null && details.can(Call.Details.CAPABILITY_HOLD));
         StringBuilder shown = new StringBuilder().append(id).append('\n').append(state).append('\n').append(keypadOpen)
-            .append('\n').append(caller.name).append('\n').append(caller.number)
+            .append('\n').append(caller.name).append('\n').append(caller.number).append('\n').append(System.identityHashCode(caller.photo))
             .append('\n').append(controls.mute && audio.isMuted())
             .append('\n').append(controls.speaker ? audio.getRoute() + "/" + phoneRoutes : "")
             .append('\n').append(controls.hold);
@@ -291,12 +305,22 @@ public abstract class TelecomCallActivity extends Activity {
         }
         // A network that sends the number as the caller's name has named nobody.
         if (name != null && (name.equals(raw) || name.equals(number))) name = null;
-        if (name == null && telephone) {
+        Bitmap photo = null;
+        boolean mayRead = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
+        if (!mayRead && (!names.isEmpty() || !photos.isEmpty())) clearContactReads();
+        if (telephone && mayRead) {
             String key = id + '\n' + raw;
-            if (names.containsKey(key)) name = clean(names.get(key));
-            else if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) lookUp(key, raw);
+            if (!names.containsKey(key)) lookUp(key, raw);
+            if (name == null) name = clean(names.get(key));
+            photo = photos.get(key);
         }
-        return new Caller(name, number);
+        return new Caller(name, number, photo);
+    }
+
+    private void clearContactReads() {
+        contactEpoch++;
+        for (CancellationSignal signal : contactReads.values()) signal.cancel();
+        contactReads.clear(); names.clear(); photos.clear();
     }
 
     static String clean(String value) {
@@ -305,19 +329,56 @@ public abstract class TelecomCallActivity extends Activity {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    /** Reads the contact's name off the main thread, once per call and number, then shows it. */
+    /** Caller photos/names stay off the main thread and belong to the same call, number and visit. */
     private void lookUp(String key, String number) {
         names.put(key, "");
+        String id = key.substring(0, key.indexOf('\n'));
+        Call expected = TelecomCallService.call(id);
+        int epoch = contactEpoch;
+        CancellationSignal signal = new CancellationSignal(); contactReads.put(key, signal);
         if (lookups == null) lookups = Executors.newSingleThreadExecutor();
         ContentResolver resolver = getApplicationContext().getContentResolver();
         lookups.execute(() -> {
-            String found = contactName(resolver, number);
+            ContactIdentity found = contactIdentity(resolver, number, signal);
             runOnUiThread(() -> {
-                if (found == null || isDestroyed() || !names.containsKey(key)) return;
-                names.put(key, found);
-                if (started) render();
+                if (found == null || isDestroyed() || !started || epoch != contactEpoch || signal.isCanceled()
+                        || contactReads.get(key) != signal || !names.containsKey(key) || TelecomCallService.call(id) != expected
+                        || checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return;
+                Call.Details details = expected == null ? null : expected.getDetails();
+                Uri handle = details == null ? null : details.getHandle();
+                if (handle == null || !number.equals(clean(handle.getSchemeSpecificPart()))) return;
+                contactReads.remove(key); names.put(key, found.name == null ? "" : found.name);
+                if (found.photo != null) photos.put(key, found.photo);
+                render();
             });
         });
+    }
+
+    static final class ContactIdentity {
+        final String name; final Bitmap photo;
+        ContactIdentity(String name, Bitmap photo) { this.name = name; this.photo = photo; }
+    }
+
+    /** Contacts thumbnails only; framework thumbnail decoding bounds the requested output size. */
+    static ContactIdentity contactIdentity(ContentResolver resolver, String number, CancellationSignal signal) {
+        Uri lookup = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number));
+        String name = null; Uri photo = null;
+        try (Cursor cursor = resolver.query(lookup, new String[] {ContactsContract.PhoneLookup.DISPLAY_NAME, ContactsContract.PhoneLookup.PHOTO_THUMBNAIL_URI}, null, null, null, signal)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                name = clean(cursor.getString(0));
+                String value = clean(cursor.getString(1));
+                if (value != null) { Uri uri = Uri.parse(value); if ("content".equals(uri.getScheme()) && ContactsContract.AUTHORITY.equals(uri.getAuthority())) photo = uri; }
+            }
+        } catch (OperationCanceledException cancelled) { return null; }
+        catch (SecurityException | IllegalArgumentException unavailable) { return new ContactIdentity(null, null); }
+        if (signal.isCanceled()) return null;
+        Bitmap image = null;
+        if (photo != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try { image = resolver.loadThumbnail(photo, new Size(128, 128), signal); }
+            catch (OperationCanceledException cancelled) { return null; }
+            catch (java.io.IOException | SecurityException | IllegalArgumentException unavailable) { /* A missing photo keeps the name/initials. */ }
+        }
+        return new ContactIdentity(name, image);
     }
 
     static String contactName(ContentResolver resolver, String number) {
@@ -445,12 +506,17 @@ public abstract class TelecomCallActivity extends Activity {
             }
         } else {
             digits = null;
-            TextView avatar = line(36, Color.WHITE);
-            avatar.setBackground(shape(GradientDrawable.OVAL, NEUTRAL, 0));
-            avatar.setTypeface(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-                ? Typeface.create(Typeface.DEFAULT, 600, false)
-                : Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            avatar.setText(TelecomCallPresentation.initials(caller.name, caller.number != null));
+            String initials = TelecomCallPresentation.initials(caller.name, caller.number != null);
+            View avatar;
+            if (caller.photo != null || initials.isEmpty()) {
+                ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                if (caller.photo != null) image.setImageBitmap(caller.photo);
+                else { image.setImageDrawable(new Glyph(Glyph.PERSON, Color.WHITE, dp(48))); image.setScaleType(ImageView.ScaleType.CENTER); }
+                image.setBackground(shape(GradientDrawable.OVAL, NEUTRAL, 0)); image.setClipToOutline(true); image.setOutlineProvider(ViewOutlineProvider.BACKGROUND); avatar = image;
+            } else {
+                TextView text = line(36, Color.WHITE); text.setBackground(shape(GradientDrawable.OVAL, NEUTRAL, 0));
+                text.setTypeface(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? Typeface.create(Typeface.DEFAULT, 600, false) : Typeface.create("sans-serif-medium", Typeface.NORMAL)); text.setText(initials); avatar = text;
+            }
             avatar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             content.addView(avatar, new LinearLayout.LayoutParams(dp(112), dp(112)));
             TextView name = line(34, Color.WHITE);
@@ -559,7 +625,7 @@ public abstract class TelecomCallActivity extends Activity {
 
     /** The control icons, drawn in a 24-unit box and scaled to the requested size. */
     private static final class Glyph extends Drawable {
-        static final int PHONE = 0, HANG_UP = 1, MUTE = 2, KEYPAD = 3, SPEAKER = 4, HOLD = 5;
+        static final int PHONE = 0, HANG_UP = 1, MUTE = 2, KEYPAD = 3, SPEAKER = 4, HOLD = 5, PERSON = 6;
         private final int kind, size;
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -614,6 +680,9 @@ public abstract class TelecomCallActivity extends Activity {
                     canvas.drawCircle(12, 20.5f, 1.6f, fill);
                     break;
                 case SPEAKER: speaker(canvas); break;
+                case PERSON:
+                    stroke.setStrokeWidth(1.9f); canvas.drawCircle(12, 7.5f, 3.5f, stroke);
+                    path.reset(); path.moveTo(4.5f, 21); path.cubicTo(4.5f, 12.5f, 19.5f, 12.5f, 19.5f, 21); canvas.drawPath(path, stroke); break;
                 default:
                     canvas.drawRoundRect(6.5f, 5, 10.5f, 19, 1.2f, 1.2f, fill);
                     canvas.drawRoundRect(13.5f, 5, 17.5f, 19, 1.2f, 1.2f, fill);

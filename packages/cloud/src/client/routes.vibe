@@ -1,9 +1,9 @@
 // spec/cloud/client.md, "Story: Use the cloud from the device as configured"
 import type { AuthClass, DeviceRoute, HttpMethod, RouteLookup, Segment } from "../../gen/cloud__client.ts"
-import { admitsHeader as tableAdmitsHeader, baseHeaders, deviceRoutes, idempotencyKey, ifMatch, routeFor } from "../../gen/cloud__client.effect.vibe"
+import { admitsHeader as tableAdmitsHeader, baseHeaders, deviceRoutes, idempotencyKey, ifMatch, renewedCredential, routeFor } from "../../gen/cloud__client.effect.vibe"
 
 export type { AuthClass, DeviceRoute, HttpMethod, RouteLookup, Segment }
-export { baseHeaders, deviceRoutes, idempotencyKey, ifMatch }
+export { baseHeaders, deviceRoutes, idempotencyKey, ifMatch, renewedCredential }
 
 type SegmentParam<S extends string> = S extends `:${infer Name}` ? Name : never
 
@@ -83,6 +83,7 @@ export const routesByName = {
   mobileToken: on("Post", "/api/v1/app-auth/mobile/token"),
   mobileAck: on("Post", "/api/v1/app-auth/mobile/ack"),
   mobileGoogle: on("Post", "/api/v1/app-auth/mobile/google"),
+  mobileRenew: on("Post", "/api/v1/app-auth/mobile/renew"),
   currentKeyRevoke: on("Delete", "/api/v1/api-keys/current"),
   plans: on("Get", "/api/v1/subscriptions/plans"),
   entitlementKeys: on("Get", "/api/v1/subscription/entitlement-keys"),

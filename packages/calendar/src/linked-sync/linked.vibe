@@ -1,0 +1,119 @@
+// spec/calendar/linkedReconcile.md, "The current checkpoint distinguishes clean, changed, missing and conflicting readings"; spec/calendar/linkedReconcile.md, "A push retains its operation and uses the exact provider preconditions"
+import { LinkRecord, SemanticEvent } from "./wire.schema.vibe"
+
+/** A durable link between one resident event and its provider copy. */
+export type LinkedCalendarEventRecord = typeof LinkRecord.Type
+/** The fields two-way sync compares and writes. */
+export type LinkedCalendarSemanticEvent = typeof SemanticEvent.Type
+/** Where a link is in its reconciliation. */
+export type LinkedCalendarState = LinkedCalendarEventRecord["state"]
+/** The provider write a dirty link still owes. */
+export type LinkedCalendarOperation = NonNullable<LinkedCalendarEventRecord["pendingOperation"]>
+/** The fields of a link a checkpoint may change. */
+export type LinkedCalendarPatch = Partial<Pick<LinkedCalendarEventRecord, "providerEventId" | "providerEtag" | "localRevision"
+  | "lastCommonSemanticHash" | "state" | "pendingOperation" | "idempotencyKey" | "lastErrorCode" | "lastErrorMessage">>
+
+/** The resident event at the revision it was read. */
+export interface LinkedCalendarLocalSnapshot {
+  readonly eventId: string
+  readonly revision: string
+  readonly event: LinkedCalendarSemanticEvent
+}
+
+/** The provider event at the etag it was read. */
+export interface LinkedCalendarProviderSnapshot {
+  readonly eventId: string
+  readonly etag: string | null
+  readonly event: LinkedCalendarSemanticEvent
+}
+
+/** The sync was paused, cancelled, or its owner, connection or selection changed. */
+export error CalendarSyncAborted { reason: string }
+/** The sync refused to act and changed nothing. */
+export error CalendarSyncRefused { message: string }
+/** The provider definitely did not accept a write, or its precondition no longer held. */
+export error ProviderRefused { outcome: "not_accepted" | "precondition_failed"; code: string; message: string }
+/** The provider's answer to a write or read is unknown or could not be verified. */
+export error ProviderUncertain { message: string }
+/** The resident calendar refused a compare-and-set write. */
+export error LocalRefused { message: string }
+
+/** A provider calendar reached through exact event identity and etag preconditions. */
+export interface LinkedCalendarProviderPort {
+  get(record: LinkedCalendarEventRecord): (LinkedCalendarProviderSnapshot | null)!(ProviderUncertain | CalendarSyncAborted)
+  create(record: LinkedCalendarEventRecord, event: LinkedCalendarSemanticEvent): LinkedCalendarProviderSnapshot!(ProviderRefused | ProviderUncertain | CalendarSyncAborted)
+  update(record: LinkedCalendarEventRecord, event: LinkedCalendarSemanticEvent): LinkedCalendarProviderSnapshot!(ProviderRefused | ProviderUncertain | CalendarSyncAborted)
+  delete(record: LinkedCalendarEventRecord): void!(ProviderRefused | ProviderUncertain | CalendarSyncAborted)
+}
+
+/** The host's resident calendar, written only by compare and set on the revision read. */
+export interface LinkedCalendarLocalPort {
+  get(eventId: string): Promise<LinkedCalendarLocalSnapshot | null>
+  applyProviderEvent(eventId: string, event: LinkedCalendarSemanticEvent, expectedRevision: string): Promise<LinkedCalendarLocalSnapshot>
+  delete(eventId: string, expectedRevision: string): Promise<void>
+  restore?(eventId: string, event: LinkedCalendarSemanticEvent, previousRevision: string): Promise<LinkedCalendarLocalSnapshot>
+}
+
+/** Where link checkpoints are kept: each save compares the link as it was read. */
+export interface LinkedCalendarCheckpointStore {
+  save(record: LinkedCalendarEventRecord, patch: LinkedCalendarPatch): LinkedCalendarEventRecord!(CalendarSyncRefused | CalendarSyncAborted)
+}
+
+function canonicalTime(value: string, allDay: boolean, normalize: boolean): string {
+  if (!normalize || allDay) return value
+  const stamp = Date.parse(value)
+  return Number.isFinite(stamp) ? new Date(stamp).toISOString() : value
+}
+
+function semanticText(event: LinkedCalendarSemanticEvent, normalize: boolean): string {
+  return JSON.stringify({
+    title: event.title.trim(),
+    description: event.description.trim(),
+    location: event.location.trim(),
+    startAt: canonicalTime(event.startAt, event.isAllDay, normalize),
+    endAt: canonicalTime(event.endAt, event.isAllDay, normalize),
+    timeZone: event.isAllDay ? null : event.timeZone,
+    ...(event.isAllDay ? { isAllDay: true } : {}),
+    attendees: event.attendees.map((attendee) => ({ email: attendee.email.trim().toLowerCase(), optional: attendee.optional }))
+      .sort((left, right) => left.email < right.email ? -1 : left.email > right.email ? 1 : 0),
+    deleted: event.deleted === true,
+    ...(event.recurrence?.length ? { recurrence: event.recurrence.map((line) => line.trim()).sort() } : {}),
+  })
+}
+
+/** The canonical text two-way sync compares: body, times in UTC, attendees and recurrence. */
+export function linkedCalendarSemanticText(event: LinkedCalendarSemanticEvent): string {
+  return semanticText(event, true)
+}
+
+/** The pre-normalization text older checkpoints hashed, still read until their next clean save. */
+export function legacySemanticText(event: LinkedCalendarSemanticEvent): string {
+  return semanticText(event, false)
+}
+
+module browser {
+  export async function sha256(text: string): Promise<string> {
+    const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
+    return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("")
+  }
+  export function randomId(): string {
+    return crypto.randomUUID()
+  }
+}
+import { sha256, randomId } from browser
+export { randomId }
+
+/** The SHA-256 hex digest of a text, failing as a refusal where the platform cannot hash. */
+export effect function digestText(text: string): string!CalendarSyncRefused {
+  return try tryPromise({ try: () => sha256(text), catch: () => new CalendarSyncRefused({ message: "Calendar sync could not hash an event. Nothing changed." }) })
+}
+
+/** The checkpoint hash of an event's semantic content. */
+export effect function linkedCalendarSemanticDigest(event: LinkedCalendarSemanticEvent): string!CalendarSyncRefused {
+  return try digestText(linkedCalendarSemanticText(event))
+}
+
+/** Whether a stored checkpoint hash names this content, in the current or the older canonical form. */
+export effect function matchesCheckpoint(hash: string | null, event: LinkedCalendarSemanticEvent, current: string): boolean!CalendarSyncRefused {
+  return hash === current || (hash !== null && hash === try digestText(legacySemanticText(event)))
+}

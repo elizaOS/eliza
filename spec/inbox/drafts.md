@@ -91,6 +91,9 @@ subject, body, attachments, forward attachments and reply source against
 the composer. A changed or replaced composer discards the unsent review.
 An absent composer blocks confirmation while the review stays saved.
 Delete has its own permanent-delete review and needs no active composer.
+A mailbox label change (archive, Trash, read state or star) is reviewed
+at the message history it was loaded at, needs no composer and carries no
+forwarded original.
 
 A fresh confirmation checks current operation capability, composer
 binding and reviewed forward capability. Acknowledged durable reservation
@@ -100,7 +103,7 @@ caller can only read its receipt. The attached session epoch fences
 callback and dispatch authority.
 
 ```quint
-type MailKind = NoMail | CreateMail | ReplaceMail | DeleteMail | SendMail
+type MailKind = NoMail | CreateMail | ReplaceMail | DeleteMail | SendMail | LabelMail
 type MailPhase = EmptyJournal | PreparingMail | ReviewingMail | ReservedMail | DispatchUnknown | ObservedUnknown | SucceededMail | RefusedMail
 type MailReceipt = PreparedReceipt | UnknownReceipt | SuccessReceipt | RefusalReceipt
 type Reservation = ReservationAck | ReservationLost | ReservationFailed
@@ -116,7 +119,7 @@ pure val digestValues = Set(1, 2)
 pure val revisionValues = Set(0, 1, 2)
 pure val messageValues = Set(0, 1, 2)
 pure val epochIdValues = Set(1, 2, 3)
-pure val mailKindValues = Set(CreateMail, ReplaceMail, DeleteMail, SendMail)
+pure val mailKindValues = Set(CreateMail, ReplaceMail, DeleteMail, SendMail, LabelMail)
 pure def needsComposer(mailKind: MailKind): bool = mailKind == CreateMail or mailKind == ReplaceMail or mailKind == SendMail
 pure def sameComposed(before: Copy, shown: Copy): bool = hasCopy(before) and before.id == shown.id and before.content == shown.content
 pure val weight_openBinding = 4
@@ -136,9 +139,9 @@ pure def canShowComposer(s: MailState): bool = s.attached
 pure def showComposer(s: MailState, copy: Copy): MailState = { ...s, composer: copy }
 pure def canPrepareMail(s: MailState, mailKind: MailKind, requestId: int, revision: int, fromForward: bool, capability: bool): bool =
   s.attached and s.phase == EmptyJournal and capability and requestId > s.lastRequest and
-  (needsComposer(mailKind) or mailKind == DeleteMail) and
+  (needsComposer(mailKind) or mailKind == DeleteMail or mailKind == LabelMail) and
   (not(needsComposer(mailKind)) or hasCopy(s.composer)) and
-  (not(mailKind == DeleteMail) or not(fromForward)) and
+  (not(mailKind == DeleteMail or mailKind == LabelMail) or not(fromForward)) and
   (not(mailKind == ReplaceMail or mailKind == DeleteMail) or revision > 0)
 pure def prepareMail(s: MailState, mailKind: MailKind, requestId: int, revision: int, fromForward: bool, capability: bool): MailState =
   { ...s, phase: PreparingMail, kind: mailKind, request: requestId, lastRequest: requestId, captured: s.composer, remoteRevision: revision, forwarded: fromForward }
@@ -237,6 +240,23 @@ pure def stepReceiptReadNeverReserves(before: MailState, via: str, after: MailSt
 pure def stepOldBindingCannotChangeJournal(before: MailState, via: str, after: MailState): bool =
   via == "retireBinding" implies after.phase == before.phase and after.request == before.request and after.dispatchEpoch == 0
 pure def sometimesCanonicalSuccess(s: MailState): bool = s.phase == SucceededMail
+```
+
+### The owner may cancel a review that was never dispatched
+
+A review still being prepared or awaiting confirmation may be cancelled by
+the owner, or discarded when the grant it was prepared under is withdrawn,
+whether or not its binding is still attached. Nothing was reserved, so
+nothing is sent and no receipt is lost. A reserved, dispatched or observed
+operation is never cancelled this way: it keeps its receipt until it is
+abandoned after an exact prepared read or retired as terminal.
+
+```quint
+pure def canCancelReview(s: MailState): bool = s.phase == PreparingMail or s.phase == ReviewingMail
+pure def cancelReview(s: MailState): MailState = emptyJournal(emptyCopy, s)
+pure def stepCancelledReviewWasNeverReserved(before: MailState, via: str, after: MailState): bool =
+  via == "cancelReview" implies before.dispatches == 0 and before.dispatchEpoch == 0 and after.phase == EmptyJournal
+pure def sometimesReviewCancelled(s: MailState): bool = s.phase == EmptyJournal and s.lastRequest > 0 and s.localReference == 0
 ```
 
 ### A provider reference is adopted only after exact readback and local acknowledgement

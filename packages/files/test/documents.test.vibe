@@ -1,0 +1,172 @@
+// spec/files/sourceReferences.md, "Story: Keep a source link and reopen the exact document I reviewed"; spec/files/scan/links.md, "Story: Review links in my scanned text and open the one I choose"; spec/files/archive.md, "Story: Download exactly the files I selected"; spec/files/pdfInterpretation.md, "Story: Interpret the complete attachment only while it is still authorized"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { fileArchive, mediaDownloads, type SelectedMedia } from "../src/documents/archive.vibe"
+import { blobOf, readBytes } from "../src/documents/images.vibe"
+import { interpretPdf, loadDocumentRuntime, PdfInterpretationFailed, type ParsedPage, type PdfPorts } from "../src/documents/pdf-interpretation.vibe"
+import { scanLinkReview, scannedLinks } from "../src/documents/scan-links.vibe"
+import { copyScanTextLayers, scanTextLayer } from "../src/documents/scan-text-layer.vibe"
+import {
+  admitSourceReopen, documentSourceOf, recordingRevision, recordingSourceOf, retainedSourceReferences, reviewMailAttachment, sourceKeepSet,
+  sourceProvesPast, summarySourceOf, webSourceOf,
+} from "../src/documents/source-links.vibe"
+
+const pdfBytes = new TextEncoder().encode("%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n")
+const base64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
+const reason = <A, E extends { readonly reason: string }>(plan: A!E) => map(Effect.flip(plan), (error) => error.reason)
+const check = (assertion: () => void) => Effect.try(assertion)
+
+it.effect('Keep a source link and reopen the exact document I reviewed (spec/files/sourceReferences.md, "Story: Keep a source link and reopen the exact document I reviewed")', effect () => {
+  const reviewed = try reviewMailAttachment({ name: "lease.pdf", mimeType: "application/pdf", dataBase64: base64(pdfBytes) })
+  const reference = `a1:${"c".repeat(64)}`
+  const link = documentSourceOf({ version: 1, name: reviewed.name, mimeType: reviewed.mimeType, sha256: reviewed.sha256, size: reviewed.size, reference, extra: true })
+  const live = { link: link!, mimeType: "application/pdf", bytes: Uint8Array.from(pdfBytes), accessible: true, approved: true, currentGeneration: true, focused: true }
+  const changed = Uint8Array.from(pdfBytes)
+  changed[changed.length - 2] = 0x20
+  const text = try reviewMailAttachment({ name: "empty.txt", mimeType: "text/plain", dataBase64: "" })
+  const revision = try recordingRevision({ id: "note", body: "x" })
+  try check(() => {
+    assert.deepEqual(link, { version: 1, name: "lease.pdf", mimeType: "application/pdf", sha256: reviewed.sha256, size: pdfBytes.length, reference })
+    assert.deepEqual(documentSourceOf({ ...link, reference: "a1:short" }), { version: 1, name: "lease.pdf", mimeType: "application/pdf", sha256: reviewed.sha256, size: pdfBytes.length })
+    assert.equal(documentSourceOf({ ...link, size: 5 * 1024 * 1024 + 1 }), undefined)
+    assert.equal(documentSourceOf({ ...link, name: "a/b.pdf" }), undefined)
+    assert.deepEqual(text, { name: "empty.txt", mimeType: "text/plain", size: 0, sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", text: "" })
+    assert.deepEqual(retainedSourceReferences([{ documentSource: link }, { documentSource: link }, { documentSource: { ...link, reference: `b1:${"0".repeat(36)}` } }]), [reference])
+    assert.match(revision, /^[a-f0-9]{64}$/)
+    assert.deepEqual(recordingSourceOf({ kind: "recording", version: 1, name: "Call", noteId: "n1", revision }), { kind: "recording", version: 1, name: "Call", noteId: "n1", revision })
+    assert.equal(webSourceOf({ kind: "web-page", version: 1, name: "Bank", url: "https://user:pw@bank.example/" }), undefined)
+    assert.equal(webSourceOf({ kind: "web-page", version: 1, name: "Sign in", url: "https://example.com/login" }, (url) => url.endsWith("/login")), undefined)
+    const page = summarySourceOf({ kind: "web-page", version: 1, name: "Docs", url: "https://example.com/ab" })
+    assert.equal(page !== undefined && sourceProvesPast(page), false)
+    assert.equal(sourceProvesPast(link!), true)
+  })
+  assert.deepEqual(try admitSourceReopen(live), link)
+  assert.equal(try reason(admitSourceReopen({ ...live, bytes: changed })), "changed")
+  assert.equal(try reason(admitSourceReopen({ ...live, currentGeneration: false })), "not-current")
+  assert.equal(try reason(reviewMailAttachment({ name: "lease.png", mimeType: "image/png", dataBase64: base64(pdfBytes) })), "content-mismatch")
+  assert.equal(try reason(reviewMailAttachment({ name: "lease.pdf", mimeType: "application/pdf", dataBase64: "not base64!" })), "invalid-attachment")
+  assert.deepEqual(try sourceKeepSet([reference, reference]), [reference])
+  assert.equal(try reason(sourceKeepSet([reference, "b1:" + "0".repeat(36)])), "invalid-keep-set")
+})
+
+it.effect('Review links in my scanned text and open the one I choose (spec/files/scan/links.md, "Story: Review links in my scanned text and open the one I choose")', effect () => {
+  const opened: string[] = []
+  let active = true
+  const review = try scanLinkReview(effect (url) => {
+    opened.push(url)
+    return true
+  }, () => active)
+  const shown = try review.update("Visit www.Example.com/menu, (https://a.example/x) and https://a.example/x again; http:///bad https://u:p@x.example")
+  try check(() => {
+    assert.deepEqual(shown.urls, ["https://www.example.com/menu", "https://a.example/x"])
+    assert.deepEqual(scannedLinks(Array.from({ length: 12 }, (_, n) => `https://s${n}.example`).join(" ")).length, 10)
+    assert.deepEqual(scannedLinks("x".repeat(100_001)), [])
+  })
+  assert.equal((try review.open("https://elsewhere.example/")).status, "NoLinkStatus")
+  assert.equal((try review.open("https://a.example/x")).status, "LinkOpened")
+  active = false
+  assert.equal((try review.open("https://a.example/x")).status, "LinkOpened")
+  assert.deepEqual(opened, ["https://a.example/x"])
+  assert.equal((try review.update("no links")).status, "NoLinkStatus")
+})
+
+it.effect('Save the reviewed text beside the image of its own page (spec/files/scan/searchablePdf.md, "Story: Save the reviewed text beside the image of its own page")', effect () => {
+  const line = { text: "Total\t12", x: 0.1, y: 0.2, width: 0.5, height: 0.05, confidence: 91 }
+  assert.deepEqual(try scanTextLayer([line]), [{ text: "Total\t12", x: 0.1, y: 0.2, width: 0.5, height: 0.05 }])
+  assert.equal(try reason(scanTextLayer([{ ...line, x: 0.6 }])), "invalid-line")
+  assert.equal(try reason(scanTextLayer([{ ...line, text: "a\nb" }])), "invalid-line")
+  assert.equal(try reason(copyScanTextLayers([[line]], 2)), "page-mismatch")
+  assert.deepEqual(try copyScanTextLayers([null, []], 2), [null, []])
+})
+
+effect function zipNames(file: Blob) {
+  const bytes = try orDie(readBytes(file))
+  const view = new DataView(bytes.buffer)
+  const names: string[] = []
+  for (let at = 0; at + 30 <= bytes.length && view.getUint32(at, true) === 0x04034b50;) {
+    const size = view.getUint32(at + 18, true), length = view.getUint16(at + 26, true)
+    names.push(new TextDecoder().decode(bytes.subarray(at + 30, at + 30 + length)))
+    at += 30 + length + size
+  }
+  return names
+}
+
+it.effect('Download exactly the files I selected (spec/files/archive.md, "Story: Download exactly the files I selected")', effect () => {
+  const media: SelectedMedia[] = [
+    { source: "video", name: "clip.MP4", mimeType: "video/mp4", bytes: Uint8Array.from([1, 2, 3]) },
+    { source: "photo", name: "photo.jpg", mimeType: "image/jpeg", bytes: Uint8Array.from([4]) },
+  ]
+  const controls = { matches: true, visible: true, delivered: [] as { name: string; type: string }[] }
+  const downloads = try mediaDownloads({
+    read: effect (sources) => media.filter((item) => sources.includes(item.source)).sort((a, b) => sources.indexOf(a.source) - sources.indexOf(b.source)),
+    reread: effect () => controls.matches,
+    ownerCurrent: () => true,
+    visible: () => controls.visible,
+    deliver: effect (file, name) => { controls.delivered.push({ name, type: file.type }) },
+  })
+  assert.deepEqual(try downloads.download(["video", "photo"]), { kind: "requested", name: "Download.zip" })
+  assert.deepEqual(try downloads.download(["photo"]), { kind: "requested", name: "photo.jpg" })
+  controls.matches = false
+  assert.deepEqual(try downloads.download(["video"]), { kind: "refused" })
+  controls.matches = true
+  controls.visible = false
+  assert.deepEqual(try downloads.download(["video"]), { kind: "refused" })
+  assert.deepEqual(try downloads.download(["video", "video"]), { kind: "refused" })
+  assert.deepEqual(controls.delivered, [{ name: "Download.zip", type: "application/zip" }, { name: "photo.jpg", type: "image/jpeg" }])
+  const archive = try fileArchive([{ path: "Docs/", bytes: new Uint8Array() }, { path: "Docs/ü.txt", bytes: Uint8Array.from([9]) }])
+  assert.deepEqual(try zipNames(archive), ["Docs/", "Docs/ü.txt"])
+  assert.equal(try reason(fileArchive([{ path: "../x", bytes: new Uint8Array() }])), "unsafe-path")
+  assert.deepEqual(try zipNames(blobOf([], "application/zip")), [])
+})
+
+const held = { ownerCurrent: true, notAborted: true, outboundAllowed: true, exactAuthority: true, ambientAttribution: false }
+
+function pdfPorts(pages: readonly Partial<ParsedPage>[], vision: readonly (string | undefined)[], scope = () => held): PdfPorts {
+  const page = (n: number): ParsedPage => ({
+    width: 612, height: 792, nativeText: "", nativePositionedText: [], operatorCount: 1, hasVisualContent: false,
+    render: effect () => "data:image/png;base64,iVBORw0KGgo=", ...pages[n - 1],
+  })
+  return {
+    open: effect () => ({ pageCount: pages.length, page: effect (n) => page(n) }),
+    describe: effect (_url, prompt) => {
+      const answer = vision[Number(/PDF page (\d+)/.exec(prompt)?.[1]) - 1]
+      if (answer === undefined) throw new PdfInterpretationFailed({ reason: "transcription-unavailable" })
+      return answer
+    },
+    scope,
+    lifecycle: effect () => {},
+  }
+}
+
+it.effect('Interpret the complete attachment only while it is still authorized (spec/files/pdfInterpretation.md, "Story: Interpret the complete attachment only while it is still authorized"; spec/files/pdfInterpretation.md, "Story: Load only the reviewed document runtime")', effect () => {
+  const two = try interpretPdf("application/pdf", pdfBytes, pdfPorts([{ nativeText: "Lease  \n" }, { operatorCount: 0 }], ["Lease terms", "[BLANK PAGE]"]), 7,
+    effect (document) => document.pages.map((page) => [page.pageNumber, page.method, page.text]))
+  assert.deepEqual(two, [[1, "native+vision", "Lease\n\n[Rendered-page transcription and visual context]\nLease terms"],
+    [2, "blank", "[Rendered-page transcription and visual context]\n[BLANK PAGE]"]])
+  const refusal = <A>(plan: A!PdfInterpretationFailed) => map(Effect.flip(plan), ({ reason, pageNumber }) => [reason, pageNumber])
+  const mapper = effect () => "mapped"
+  assert.deepEqual(try refusal(interpretPdf("application/pdf", pdfBytes, pdfPorts([{ nativeText: "x" }], ["[BLANK PAGE]"]), 1, mapper)), ["page-failed", 1])
+  assert.deepEqual(try refusal(interpretPdf("application/pdf", pdfBytes, pdfPorts([{}, {}], ["ok", undefined]), 1, mapper)), ["transcription-unavailable", 2])
+  assert.deepEqual(try refusal(interpretPdf("application/pdf", pdfBytes, pdfPorts([{}], ["ok"], () => ({ ...held, ownerCurrent: false })), 1, mapper)), ["owner-lost", undefined])
+  assert.deepEqual(try refusal(interpretPdf("text/plain", pdfBytes, pdfPorts([{}], ["ok"]), 1, mapper)), ["unsupported", undefined])
+  assert.deepEqual(try refusal(interpretPdf("application/pdf", new TextEncoder().encode("hello"), pdfPorts([{}], ["ok"]), 1, mapper)), ["invalid-pdf", undefined])
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const commit = "a".repeat(40)
+    try scoped(effect {
+      const root = try files.makeTempDirectoryScoped({ prefix: "document-runtime-" })
+      const artifact = path.join(root, "runtime.mjs")
+      const source = ["pdfService", "imageDescription", "resolveAuthority", "nativeSlot", "callerAttribution"].map((name) => `export function ${name}() {}`).join("\n")
+      try files.writeFileString(artifact, source)
+      const { sha256 } = try reviewMailAttachment({ name: "runtime.txt", mimeType: "text/plain", dataBase64: base64(new TextEncoder().encode(source)) })
+      try files.writeFileString(`${artifact}.json`, JSON.stringify({ schema: 1, commit, canvas: "0.1.80", sha256 }))
+      const runtime = try loadDocumentRuntime({ path: artifact, expectedCommit: commit, expectedCanvas: "0.1.80" })
+      assert.deepEqual(Object.keys(runtime).sort(), ["callerAttribution", "imageDescription", "nativeSlot", "pdfService", "resolveAuthority"])
+      const wrong = map(Effect.flip(loadDocumentRuntime({ path: artifact, expectedCommit: "b".repeat(40), expectedCanvas: "0.1.80" })), (error) => "reason" in error ? error.reason : "io")
+      assert.equal(try wrong, "artifact-refused")
+      try files.writeFileString(artifact, source + "\n")
+      assert.equal(try map(Effect.flip(loadDocumentRuntime({ path: artifact, expectedCommit: commit, expectedCanvas: "0.1.80" })), (error) => "reason" in error ? error.reason : "io"), "artifact-refused")
+    })
+  }
+})

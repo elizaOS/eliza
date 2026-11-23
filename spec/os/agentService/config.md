@@ -150,6 +150,38 @@ pure def lawLaunchNamesOnlyTheActiveKeysAccount(d: AgentData, cred: C::DeviceCre
 }
 ```
 
+### Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none
+
+The device key authenticates the person to their own cloud and is sent to
+no other origin. A cloud launch carries the active key; an own-key launch
+carries the provider key the consumer's credential source holds for the
+owner, and with none it carries no credential, so the agent refuses it as
+a credential error (`Launch::needsCredential`); a launch with no backend
+carries none. A newer device key is pushed only to a running cloud launch.
+Sources: develop's `NativeProviderSlot.java` and
+`NativeProviderAdmission.java`, which keep the provider key apart from the
+Cloud credential.
+
+```quint
+type FramedKey = DeviceKey({ version: int }) | ProviderKey({ version: int }) | NoFramedKey
+pure def framedKey(d: AgentData, cred: C::DeviceCredential, providerVersion: int): FramedKey = {
+  val b = d.host.launch.backend
+  if (needsAccount(b) and C::activeVersion(cred) >= 1) DeviceKey({ version: C::activeVersion(cred) })
+  else if (not(needsAccount(b)) and Launch::needsCredential(b) and providerVersion >= 1) ProviderKey({ version: providerVersion })
+  else NoFramedKey
+}
+pure def framesDeviceKey(k: FramedKey): bool = match k { | DeviceKey(_) => true | _ => false }
+pure def lawOnlyACloudLaunchIsFramedWithTheDeviceKey(d: AgentData, cred: C::DeviceCredential, providerVersion: int): bool =
+  framesDeviceKey(framedKey(d, cred, providerVersion)) implies needsAccount(d.host.launch.backend)
+pure def lawOwnKeyLaunchIsFramedWithTheProviderKeyOrNone(d: AgentData, cred: C::DeviceCredential, providerVersion: int): bool = {
+  val b = d.host.launch.backend
+  val ownKeyLaunch = not(needsAccount(b)) and Launch::needsCredential(b)
+  ownKeyLaunch
+    implies framedKey(d, cred, providerVersion) == (if (providerVersion >= 1) ProviderKey({ version: providerVersion }) else NoFramedKey)
+}
+pure val providerVersionValues = Set(0, 1, 2)
+```
+
 ### The agent admits every launch the service writes, given a launch frame with a key
 
 A ready launch, sent with an admitted frame that carries a credential, passes

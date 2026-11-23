@@ -230,6 +230,36 @@ pure def lawNewVersionKeepsTheNoticeButNotItsBinding(route: WorkflowNoticeRoute,
     (approvalNoticeId(route, proposal) == approvalNoticeId(other, proposal) and approvalNoticeBinding(route, proposal) != approvalNoticeBinding(other, proposal))
 ```
 
+### An approval notice's title is part of its receipt, and a call that names no title means the configured one
+
+A host may post an approval with its own title (`NoticeCoordinator.postApproval`
+and `resumeApproval` with a title; none means the configured title), and
+decides what that title may reveal. The receipt's digest covers the
+identity, the binding and the title, so a later post or resume of the same
+approval matches it only with the same title. A recheck that knows no
+title, such as a suspension or a status read, matches what Android shows:
+the shown title has to reproduce the recorded digest.
+
+```quint
+type ApprovalNoticeDigest = { digestId: ApprovalNoticeId, digestBinding: ApprovalNoticeBinding, digestTitle: str }
+pure def approvalTitle(configured: str, named: str): str = if (named == "") configured else named
+pure def approvalDigest(route: WorkflowNoticeRoute, proposal: str, title: str): ApprovalNoticeDigest =
+  { digestId: approvalNoticeId(route, proposal), digestBinding: approvalNoticeBinding(route, proposal), digestTitle: title }
+pure def approvalCallMatches(recorded: ApprovalNoticeDigest, route: WorkflowNoticeRoute, proposal: str, configured: str, named: str): bool =
+  recorded == approvalDigest(route, proposal, approvalTitle(configured, named))
+pure def approvalShownMatches(recorded: ApprovalNoticeDigest, route: WorkflowNoticeRoute, proposal: str, shown: str): bool =
+  recorded == approvalDigest(route, proposal, shown)
+pure val configuredValues = Set("Approval needed", "Review")
+pure val namedValues = Set("", "Review", "Pay 12")
+pure val renamedValues = namedValues
+pure def lawUnnamedTitleIsTheConfiguredOne(configured: str): bool = approvalTitle(configured, "") == configured
+pure def lawAnotherTitleIsAnotherNotice(route: WorkflowNoticeRoute, proposal: str, configured: str, named: str, renamed: str): bool =
+  approvalTitle(configured, named) != approvalTitle(configured, renamed) implies
+    not(approvalCallMatches(approvalDigest(route, proposal, approvalTitle(configured, named)), route, proposal, configured, renamed))
+pure def lawTheShownTitleConfirmsItsOwnReceipt(route: WorkflowNoticeRoute, proposal: str, configured: str, named: str): bool =
+  approvalShownMatches(approvalDigest(route, proposal, approvalTitle(configured, named)), route, proposal, approvalTitle(configured, named))
+```
+
 ### An approval notice is offered or kept only while its approval is pending
 
 A new approval notice is offered only while its approval is `Pending`. When

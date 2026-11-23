@@ -1,0 +1,42 @@
+// spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"; spec/localInference/textAndEmbeddings.md, "Vectors are compared only within one vector space"; spec/localInference/textAndEmbeddings.md, "The operator's embedding endpoint wins, then the hosted service when chosen, then the device"
+import { identifyEmbeddingVector } from "@elizaos/core/protocol"
+import { embeddingOwner, vectorsComparable, type EmbeddingOwner } from "../gen/localInference__textAndEmbeddings.effect.vibe"
+import { InferenceEngine } from "./engine.vibe"
+import type { LocalModelsApi } from "./models.vibe"
+
+/** An embedding the local provider refuses rather than answer with another model or in another space. */
+export error EmbeddingRefused { reason: "no-model" | "malformed-input" | "other-space" | "invalid-vector" }
+
+/** What decides who serves embeddings: an operator's endpoint, and whether the hosted service is connected and chosen. */
+export interface EmbeddingChoice {
+  readonly operatorEndpoint: boolean
+  readonly hostedConnected: boolean
+  readonly hostedChosen: boolean
+}
+
+/** Who serves embeddings for this choice. */
+export function embeddingsOwnedBy(choice: EmbeddingChoice): EmbeddingOwner {
+  return embeddingOwner(choice.operatorEndpoint, choice.hostedConnected, choice.hostedChosen)
+}
+
+function unitLength(values: readonly number[]): number[] | undefined {
+  const scale = values.reduce((largest, value) => Math.max(largest, Math.abs(value)), 0)
+  if (!Number.isFinite(scale) || scale === 0) return undefined
+  const scaled = values.map((value) => value / scale)
+  const norm = Math.sqrt(scaled.reduce((sum, value) => sum + value * value, 0))
+  return scaled.map((value) => value / norm)
+}
+
+/** Embeds text with the model assigned to embeddings, as a unit vector labelled with that model's vector space. */
+export effect function embedText(models: LocalModelsApi, text: string) {
+  const engine = try InferenceEngine
+  const model = try models.embeddingModel()
+  const embedding = model?.model.embedding
+  if (model === undefined || embedding === undefined) throw new EmbeddingRefused({ reason: "no-model" })
+  if (!text.isWellFormed()) throw new EmbeddingRefused({ reason: "malformed-input" })
+  const vector = try engine.embed(model, text)
+  if (!vectorsComparable(embedding.space, vector.space)) throw new EmbeddingRefused({ reason: "other-space" })
+  const unit = vector.values.length === embedding.space.dimensions && vector.values.every(Number.isFinite) ? unitLength(vector.values) : undefined
+  if (unit === undefined) throw new EmbeddingRefused({ reason: "invalid-vector" })
+  return try Effect.try({ try: () => identifyEmbeddingVector(unit, embedding.spaceId), catch: () => new EmbeddingRefused({ reason: "invalid-vector" }) })
+}

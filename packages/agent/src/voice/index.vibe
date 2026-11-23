@@ -1,4 +1,4 @@
-// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/clientAudio.md, "Story: Dictate into my draft without losing my own words"
+// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/clientAudio.md, "Story: Dictate into my draft without losing my own words"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"
 export {
   buildVoiceTurnSignal, isNonSpeechVoiceTranscript, mayBecomeNonSpeechVoiceTranscript, scoreEndOfTurnHeuristic, shouldRespondToVoiceTurn,
   type BuildVoiceTurnSignalContext, type HeardBody, type ReplyWindow, type ShouldRespondContext, type VoiceTurnSignal, type VoiceTurnSpeakerAttribution,
@@ -10,7 +10,7 @@ export {
 } from "./recorded-transcription.vibe"
 export type {
   CaptureEvents, CapturePort, ClockPort, EndOfTurnPort, HeardAnswer, HeardPort, RecognizerPort, SpeakerEvents, SpeakerPort, TurnPort,
-  VoiceReply, VoiceSessionPorts, VoiceTurn, VoiceUi,
+  VoiceReply, VoiceReplyAction, VoiceSessionPorts, VoiceTurn, VoiceUi,
 } from "./ports.vibe"
 export {
   CLOUD_FIRST_SPEECH_CHARS, CLOUD_SPEECH_REQUEST_CHARS, CloudSpeechFailed, CloudSpeechStopped, CloudSpeechWordTooLong,
@@ -25,3 +25,5 @@ export {
 } from "./capture.vibe"
 export { browserCaptureAudio, browserClipAudio } from "./capture-browser.ts"
 export { attachProgressiveSpeech, speakerPortOf } from "./playback.vibe"
+export { parseVoiceUiContext, type VoiceUiContext } from "../conversation/turn-context.schema.vibe"
+export { defaultVoiceProfile, type StopReport, type VoiceProfile } from "../../gen/agent__voice__session.effect.vibe"

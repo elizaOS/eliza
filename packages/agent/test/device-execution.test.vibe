@@ -320,3 +320,21 @@ it.live('An unknown result stays unknown until the owner confirms a review the j
   assert.deepStrictEqual(try phase(rig, "uncertain"), { tag: "Reviewed", reviewed: "ReviewedUnresolved" })
   assert.strictEqual(rig.device.calls.length, 1)
 })
+
+it.live('A journal write that committed but lost its answer counts once and the operation still runs once (spec/agent/deviceActions/execution.md, "A lost journal write answer needs an exact readback")', effect () => {
+  const rig = try rigged("device-execution-lost-write")
+  let losses = 1
+  const device = try deviceFor(rig, (journal) => ({
+    ...journal,
+    edit: async (proposalId, expectedRevision, next) => {
+      const kept = await journal.edit(proposalId, expectedRevision, next)
+      losses -= 1
+      if (losses >= 0) throw new Error("The journal answer was lost")
+      return kept
+    },
+  }))
+  const proposal = try offered(rig, "proposal-lost")
+  const approved = try host("approve while a journal answer is lost", () => device.execution.approve(proposal, reviewed))
+  assert.deepStrictEqual([approved, rig.device.calls.length], [{ kind: "settled", result: { tag: "Applied" }, synced: true }, 1])
+  assert.deepStrictEqual(try phase(rig, "proposal-lost"), { tag: "Receipted", reported: "ReportedApplied" })
+})

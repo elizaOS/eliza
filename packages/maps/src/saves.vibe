@@ -1,0 +1,141 @@
+// spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"
+import type { EffectReceipt } from "@elizaos/core"
+import { agentChangesLimit, agentPlacesLimit, saveCommitted, saveCourse } from "../gen/maps__savedPlaces.effect.vibe"
+import { boundedText, MapsFailure } from "./client/contracts.vibe"
+import { AgentPlaceRef } from "./client/device-navigation.vibe"
+
+module node {
+  /** @throws {never} */
+  export async function sha256(text: string): Promise<string> {
+    const bytes = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
+    return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("")
+  }
+  /** @throws {never} */
+  export function mutationId(): string {
+    return globalThis.crypto.randomUUID()
+  }
+  /** @throws {never} */
+  export function isoTime(at: number): string {
+    return new Date(at).toISOString()
+  }
+}
+import { isoTime, mutationId, sha256 } from node
+
+/** The owner's saved-places document as the host keeps it: its text and the revision a write must match. */
+export interface StoredSaves {
+  readonly revision: number
+  readonly text: string
+}
+
+/** Where the assistant keeps each owner's saved places: a read, and a write that succeeds only against the revision it read. */
+export interface AgentSavedPlaceStore {
+  read(ownerEntityId: string): (StoredSaves | undefined)!MapsFailure
+  write(ownerEntityId: string, expectedRevision: number | undefined, text: string): boolean!MapsFailure
+}
+
+const Label = Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 120)))
+
+/** One place the assistant saved for its owner. */
+export const AgentSavedPlace = Schema.Struct({ id: Schema.String, ownerEntityId: Schema.String, place: AgentPlaceRef, label: Label, createdAt: Schema.String, updatedAt: Schema.String })
+/** One place the assistant saved for its owner. */
+export type AgentSavedPlace = typeof AgentSavedPlace.Type
+
+const Change = Schema.Struct({ key: Schema.String, digest: Schema.String, mutationId: Schema.String, committedAt: Schema.String, result: AgentSavedPlace })
+type Change = typeof Change.Type
+const Saves = Schema.Struct({ version: Schema.Literal(1), ownerEntityId: Schema.String, savedPlaces: Schema.Array(AgentSavedPlace), changes: Schema.Array(Change) })
+type Saves = typeof Saves.Type
+const decodeSaves = Schema.decodeUnknownEffect(Schema.fromJsonString(Saves))
+
+/** What a save reports: the place, whether it repeated an earlier outcome, and the current state when a later change superseded it. */
+export interface SaveOutcome {
+  readonly savedPlace: AgentSavedPlace
+  readonly replayed: boolean
+  readonly commitId: string
+  readonly committedAt: string
+  readonly key: string
+  readonly currentlyApplied: boolean
+  readonly current: AgentSavedPlace | null
+  readonly receipt: EffectReceipt
+}
+
+const storage = (message: string) => new MapsFailure({ code: "storage", message })
+const maxAttempts = 16
+
+function applied(change: Change, saves: Saves): boolean {
+  const current = saves.savedPlaces.find((saved) => saved.id === change.result.id)
+  return current !== undefined && JSON.stringify(current) === JSON.stringify(change.result)
+}
+
+/** The assistant's saved places over the host's store: each save is committed once against the revision it read, and a repeated key repeats its first outcome. */
+export function agentSaves(store: AgentSavedPlaceStore) {
+  effect function load(ownerEntityId: string): { readonly revision: number | undefined; readonly saves: Saves }!MapsFailure {
+    const stored = try store.read(ownerEntityId)
+    if (stored === undefined) return { revision: undefined, saves: { version: 1, ownerEntityId, savedPlaces: [], changes: [] } }
+    const saves = try mapError(decodeSaves(stored.text), () => storage("Saved places could not be read. Existing data has not been replaced."))
+    if (saves.ownerEntityId !== ownerEntityId) throw storage("Saved-place owner binding is invalid.")
+    return { revision: stored.revision, saves }
+  }
+
+  effect function save(ownerEntityId: string, place: AgentPlaceRef, label?: string, idempotencyKey?: string): SaveOutcome!MapsFailure {
+    const name = label?.trim() || place.name
+    if (!boundedText(name, 120)) throw new MapsFailure({ code: "invalid-response", message: "A saved-place name is required." })
+    const explicit = idempotencyKey?.trim()
+    if (explicit !== undefined && (explicit === "" || explicit.length > 200)) throw new MapsFailure({ code: "invalid-response", message: "The idempotency key is invalid." })
+    const digest = try mapError(tryPromise(() => sha256(JSON.stringify({ place, label: name }))), () => storage("Saved places could not be read."))
+    const key = explicit ?? `maps-save:${digest}`
+    const id = `maps-place:${try mapError(tryPromise(() => sha256(JSON.stringify([ownerEntityId, place.provider, place.providerPlaceId]))), () => storage("Saved places could not be read."))}`
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const { revision, saves } = try load(ownerEntityId)
+      const prior = saves.changes.find((change) => change.key === key)
+      const existing = saves.savedPlaces.find((saved) => saved.id === id)
+      const course = saveCourse({
+        known: prior !== undefined, sameRequest: prior?.digest === digest, explicitKey: explicit !== undefined,
+        currentlyApplied: prior !== undefined && applied(prior, saves), existingPlace: existing !== undefined,
+        places: saves.savedPlaces.length, changes: saves.changes.length,
+      })
+      if (course === "RefuseKeyReuse") throw new MapsFailure({ code: "unsupported", message: "The idempotency key belongs to a different saved-place change." })
+      if (course === "RefuseFull") throw storage(`Saved-place storage is full for this owner: at most ${agentPlacesLimit} places and ${agentChangesLimit} changes.`)
+      const now = try Clock.currentTimeMillis
+      if (course === "ReplaySave" && prior !== undefined) {
+        const current = saves.savedPlaces.find((saved) => saved.id === prior.result.id) ?? null
+        const receiptId = `maps:save:${prior.mutationId}:replay:${mutationId()}`
+        return {
+          savedPlace: prior.result, replayed: true, commitId: prior.mutationId, committedAt: prior.committedAt, key, currentlyApplied: applied(prior, saves), current,
+          receipt: {
+            receiptId, operation: "maps.saved-place.save", resource: { kind: "maps.saved-place", id: prior.result.id }, artifacts: [],
+            idempotency: { key, replayed: true }, observedAt: isoTime(Math.max(now, Date.parse(prior.committedAt) + 1)), outcome: "noop",
+            reason: applied(prior, saves) ? "Reused the previously committed saved place." : "Replayed a historical save that a later change superseded.",
+          },
+        }
+      }
+      const latest = saves.changes.at(-1)?.committedAt
+      const committedAt = isoTime(Math.max(now, latest === undefined ? 0 : Date.parse(latest) + 1))
+      const commit = mutationId()
+      const savedPlace: AgentSavedPlace = { id, ownerEntityId, place, label: name, createdAt: existing?.createdAt ?? committedAt, updatedAt: committedAt }
+      const next: Saves = {
+        version: 1, ownerEntityId,
+        savedPlaces: existing === undefined ? [...saves.savedPlaces, savedPlace] : saves.savedPlaces.map((saved) => saved.id === id ? savedPlace : saved),
+        changes: [...saves.changes.filter((change) => change !== prior), { key, digest, mutationId: commit, committedAt, result: savedPlace }],
+      }
+      const written = try store.write(ownerEntityId, revision, JSON.stringify(next))
+      if (!saveCommitted(course, written)) continue
+      return {
+        savedPlace, replayed: false, commitId: commit, committedAt, key, currentlyApplied: true, current: savedPlace,
+        receipt: {
+          receiptId: `maps:save:${commit}`, operation: "maps.saved-place.save", resource: { kind: "maps.saved-place", id }, artifacts: [],
+          idempotency: { key, replayed: false }, observedAt: committedAt, outcome: "applied", commit: { kind: "durable", id: commit, committedAt },
+        },
+      }
+    }
+    throw storage("Saved-place persistence remained contended.")
+  }
+
+  effect function list(ownerEntityId: string): (readonly AgentSavedPlace[])!MapsFailure {
+    return (try load(ownerEntityId)).saves.savedPlaces
+  }
+
+  return { save, list }
+}
+
+/** The assistant's saved places. */
+export type AgentSaves = ReturnType<typeof agentSaves>

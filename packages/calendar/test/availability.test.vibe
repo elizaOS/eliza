@@ -1,0 +1,148 @@
+// spec/calendar/availability.md, "Story: Share only the occupied time in my reviewed calendars"; spec/calendar/availability.md, "Story: Read the reviewed local source with its actual calendar rules"
+import { assert, it } from "@effect/vitest"
+import { calendarAvailability, deviceAvailabilitySources, documentAvailability, expandDocumentCalendar, readDeviceAvailability, sameAvailabilityResult,
+  validateCalendarAvailabilityResult, type DeviceCalendarPort, type DeviceCalendarRow, type DeviceInstanceRow,
+  occurrenceId } from "../src/availability/index.vibe"
+import type { CalendarRow } from "../src/series/index.vibe"
+import { executeCalendarAvailability, type AvailabilityProvider, type AvailabilityReview } from "../src/client/availability-review.vibe"
+
+const zone = "America/Los_Angeles"
+const operation = { type: "calendar_availability", start: "2026-03-08T00:00:00.000Z", end: "2026-03-10T00:00:00.000Z", timeZone: zone } as const
+const at = (text: string) => Date.parse(text)
+const home: DeviceCalendarRow = { id: "home", sourceRevision: "a".repeat(64), name: "Home", account: "Phone", local: true, freeBusyOrAbove: true }
+const work: DeviceCalendarRow = { id: "work", sourceRevision: "b".repeat(64), name: "Work", account: "Synced", local: false, freeBusyOrAbove: true }
+const row = (begin: string, end: string, extra: Partial<DeviceInstanceRow> = {}): DeviceInstanceRow =>
+  ({ calendarId: "home", begin: at(begin), end: at(end), allDay: false, availability: 0, status: 1, selfAttendeeStatus: 1, ...extra })
+
+const reason = <A>(plan: A!{ readonly reason: string }) => map(Effect.flip(plan), (error) => error.reason)
+
+function device(rows: DeviceInstanceRow[], calendars: DeviceCalendarRow[] = [home, work]) {
+  const state = { rows, calendars, truncated: false, listings: 0, hiddenListings: 0, zone }
+  const port: DeviceCalendarPort = {
+    context: () => ({ permitted: true, foreground: state.listings++ >= state.hiddenListings, unlocked: true, timeZone: state.zone }),
+    calendars: () => Effect.succeed(state.calendars),
+    instances: (query) => Effect.succeed({
+      rows: state.rows.filter((instance) => instance.begin < query.end && instance.end > query.begin || instance.calendarId !== "home"),
+      truncated: state.truncated,
+    }),
+  }
+  return { state, port }
+}
+
+it.effect('Share only the occupied time in my reviewed calendars (spec/calendar/availability.md, "Story: Share only the occupied time in my reviewed calendars")', effect () => {
+  const rows = [
+    { start: "2026-03-09T17:00:00.000Z", end: "2026-03-09T18:00:00.000Z", allDay: false, availability: "tentative" },
+    { start: "2026-03-08T00:00:00.000Z", end: "2026-03-09T00:00:00.000Z", allDay: true, availability: "busy" },
+    { start: "2026-03-09T17:00:00.000Z", end: "2026-03-09T18:00:00.000Z", allDay: false, availability: "busy" },
+    { start: "2026-03-09T17:00:00.000Z", end: "2026-03-09T18:00:00.000Z", allDay: false, availability: "busy" },
+    { start: "2026-03-09T12:00:00.000Z", end: "2026-03-09T13:00:00.000Z", allDay: false, availability: "free" },
+    { start: "2026-03-09T09:00:00.000Z", end: "2026-03-09T09:00:00.000Z", allDay: false, availability: "busy" },
+    { start: "2026-03-10T00:00:00.000Z", end: "2026-03-10T01:00:00.000Z", allDay: false, availability: "busy" },
+  ]
+  const result = try calendarAvailability(operation, 1, rows)
+  const meeting = { start: "2026-03-09T17:00:00.000Z", end: "2026-03-09T18:00:00.000Z", allDay: false }
+  assert.deepStrictEqual(result, {
+    version: 1, kind: "calendar_availability", window: { start: operation.start, end: operation.end, timeZone: zone }, calendarCount: 1, status: "busy",
+    busy: [
+      { start: "2026-03-08T08:00:00.000Z", end: "2026-03-09T07:00:00.000Z", allDay: true, tentative: false },
+      { ...meeting, tentative: false }, { ...meeting, tentative: false }, { ...meeting, tentative: true },
+    ],
+    transparentIgnored: 1,
+  })
+  assert.isTrue(sameAvailabilityResult(try validateCalendarAvailabilityResult(operation, structuredClone(result)), result))
+  assert.strictEqual(try reason(validateCalendarAvailabilityResult(operation, { ...result, busy: [...result.busy].reverse() })), "invalid_result")
+  assert.strictEqual(try reason(validateCalendarAvailabilityResult(operation, { ...result, status: "free" })), "invalid_result")
+  assert.strictEqual(try reason(calendarAvailability(operation, 1, [...rows, { start: "2026-04-02T10:00:00.000Z", end: "2026-04-02T09:00:00.000Z", allDay: false, availability: "busy" }])), "invalid_row")
+  assert.strictEqual(try reason(calendarAvailability(operation, 1, [{ ...rows[0], title: "Dentist" }])), "invalid_row")
+  assert.strictEqual(try reason(calendarAvailability(operation, 1, Array.from({ length: 201 }, () => rows[0]))), "too_many")
+  assert.strictEqual(try reason(calendarAvailability(operation, 17, rows)), "invalid_count")
+  assert.strictEqual(try reason(calendarAvailability({ ...operation, end: "2026-03-16T00:00:00.001Z" }, 1, rows)), "invalid_operation")
+  assert.strictEqual(try reason(calendarAvailability({ ...operation, timeZone: "Mars/Olympus" }, 1, rows)), "invalid_operation")
+  const free = try calendarAvailability(operation, 2, [rows[4]])
+  assert.deepStrictEqual([free.status, free.busy, free.transparentIgnored], ["free", [], 1])
+
+  const { state, port } = device([row("2026-03-09T17:00:00.000Z", "2026-03-09T18:00:00.000Z")], [home])
+  state.hiddenListings = 2
+  const provider: AvailabilityProvider = {
+    requestReadAccess: () => Effect.succeed({ status: "granted" }),
+    availabilitySources: (input) => deviceAvailabilitySources(port, input),
+    readAvailability: (input) => readDeviceAvailability(port, input),
+  }
+  const shown: unknown[] = []
+  let changeDuringReview = false
+  const review: AvailabilityReview = {
+    chooseCalendars: (sources) => {
+      shown.push(sources)
+      return Effect.succeed(["home"])
+    },
+    confirmResult: (reviewed) => {
+      shown.push(reviewed)
+      if (changeDuringReview) state.rows.push(row("2026-03-09T20:00:00.000Z", "2026-03-09T21:00:00.000Z"))
+      return Effect.succeed(true)
+    },
+  }
+  const context = { current: () => true, contextTimeZone: zone, deviceTimeZone: () => zone, pause: () => Effect.void }
+  const shared = try executeCalendarAvailability(provider, operation, context, review)
+  assert.deepStrictEqual(shown[0], [{ id: "home", name: "Home", account: "Phone", sourceRevision: home.sourceRevision }])
+  assert.strictEqual(shared.status, "succeeded")
+  assert.deepStrictEqual(shared.foregroundResult?.busy, [{ ...meeting, tentative: false }])
+  assert.strictEqual(shared.summary, "Shared 1 busy time from 1 calendar you chose. No event titles or details were shared.")
+  changeDuringReview = true
+  const changed = try executeCalendarAvailability(provider, operation, context, review)
+  assert.deepStrictEqual(changed, { status: "failed", summary: "Your calendar changed during this review. Review the availability check again. Nothing was shared." })
+  changeDuringReview = false
+  const otherZone = try executeCalendarAvailability(provider, operation, { ...context, deviceTimeZone: () => "UTC" }, review)
+  assert.strictEqual(otherZone.summary, "This availability check used a different time zone. Ask again from this phone. Nothing was shared.")
+  const cancelled = try executeCalendarAvailability(provider, operation, context, { ...review, chooseCalendars: () => Effect.succeed(null) })
+  assert.strictEqual(cancelled.summary, "Availability check cancelled. No calendar was read. Nothing was shared.")
+  const moved = try executeCalendarAvailability(provider, operation, { ...context, current: () => false }, review)
+  assert.strictEqual(moved.status, "failed")
+})
+
+it.effect('Read the reviewed local source with its actual calendar rules (spec/calendar/availability.md, "Story: Read the reviewed local source with its actual calendar rules")', effect () => {
+  const request = { calendars: [{ id: "home", revision: home.sourceRevision }], start: operation.start, end: operation.end, timeZone: zone }
+  const { state, port } = device([
+    row("2026-03-09T17:00:00.000Z", "2026-03-09T18:00:00.000Z", { availability: null }),
+    row("2026-03-09T19:00:00.000Z", "2026-03-09T20:00:00.000Z", { status: 2 }),
+    row("2026-03-09T21:00:00.000Z", "2026-03-09T22:00:00.000Z", { selfAttendeeStatus: 2 }),
+    row("2026-03-09T00:00:00.000Z", "2026-03-10T00:00:00.000Z", { allDay: true, availability: 2 }),
+  ])
+  assert.deepStrictEqual(try readDeviceAvailability(port, request), { status: "ready", freshness: "local", events: [
+    { start: "2026-03-09T17:00:00.000Z", end: "2026-03-09T18:00:00.000Z", allDay: false, availability: "busy" },
+    { start: "2026-03-09T00:00:00.000Z", end: "2026-03-10T00:00:00.000Z", allDay: true, availability: "tentative" },
+  ] })
+  assert.deepStrictEqual(try readDeviceAvailability(port, { ...request, timeZone: "US/Pacific" }), try readDeviceAvailability(port, request))
+  assert.deepStrictEqual(try readDeviceAvailability(port, { ...request, calendars: [{ id: "work", revision: work.sourceRevision }] }), { status: "freshness-unknown" })
+  assert.deepStrictEqual(try readDeviceAvailability(port, { ...request, calendars: [{ id: "home", revision: "c".repeat(64) }] }), { status: "changed" })
+  state.rows.push(row("2026-03-09T03:00:00.000Z", "2026-03-09T04:00:00.000Z", { calendarId: "work", status: 2 }))
+  assert.deepStrictEqual(try readDeviceAvailability(port, request), { status: "changed" })
+  state.rows.pop()
+  state.truncated = true
+  assert.deepStrictEqual(try readDeviceAvailability(port, request), { status: "too-many" })
+  state.truncated = false
+  state.zone = "UTC"
+  assert.deepStrictEqual(try readDeviceAvailability(port, request), { status: "timezone-changed" })
+
+  const at = (iso: string) => Date.parse(iso)
+  const row = (fields: Pick<CalendarRow, "id" | "begin" | "end"> & Partial<CalendarRow>): CalendarRow =>
+    ({ calendarId: "home", title: "Standup", body: "", location: "", revision: "r1", ...fields })
+  const weekly = row({ id: "standup", begin: at("2026-03-02T17:00:00.000Z"), end: at("2026-03-02T17:30:00.000Z"), allDay: false,
+    timeZone: zone, repeat: "weekly", excluded: [at("2026-03-16T16:00:00.000Z")] })
+  const moved = row({ id: occurrenceId("standup", at("2026-03-23T16:00:00.000Z")), begin: at("2026-03-24T18:00:00.000Z"), end: at("2026-03-24T18:30:00.000Z"),
+    allDay: false, repeat: "none", seriesId: "standup", occurrenceBegin: at("2026-03-23T16:00:00.000Z") })
+  const weekdays = row({ id: "gym", begin: at("2026-03-06T00:00:00.000Z"), end: at("2026-03-07T00:00:00.000Z"), allDay: true, repeat: "weekdays" })
+  const month = { start: "2026-03-01T00:00:00.000Z", end: "2026-04-01T00:00:00.000Z" }
+  const standups = expandDocumentCalendar([weekly, moved], month)?.rows.map((found) => [found.id, new Date(found.begin).toISOString()])
+  assert.deepStrictEqual(standups, [
+    [occurrenceId("standup", at("2026-03-02T17:00:00.000Z")), "2026-03-02T17:00:00.000Z"],
+    [occurrenceId("standup", at("2026-03-09T16:00:00.000Z")), "2026-03-09T16:00:00.000Z"],
+    [moved.id, "2026-03-24T18:00:00.000Z"], [occurrenceId("standup", at("2026-03-30T16:00:00.000Z")), "2026-03-30T16:00:00.000Z"],
+  ])
+  const week = { start: "2026-03-06T00:00:00.000Z", end: "2026-03-11T00:00:00.000Z" }
+  assert.deepStrictEqual(expandDocumentCalendar([weekdays], week)?.rows.map((found) => new Date(found.begin).toISOString().slice(0, 10)),
+    ["2026-03-06", "2026-03-09", "2026-03-10"])
+  const crowded = Array.from({ length: 201 }, (_, index) =>
+    row({ id: `e${index}`, begin: at("2026-03-09T10:00:00.000Z"), end: at("2026-03-09T11:00:00.000Z"), allDay: false, repeat: "none" }))
+  assert.deepStrictEqual(documentAvailability(crowded, week), { status: "too-many" })
+  assert.strictEqual(expandDocumentCalendar([weekly], month, 0), undefined)
+})

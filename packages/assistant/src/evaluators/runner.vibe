@@ -1,0 +1,197 @@
+// spec/assistant/evaluatorRunner.md, "Story: Prepare the evaluator batch without blocking peer callbacks"; spec/assistant/evaluatorRunner.md, "Incremental post-turn input takes precedence over current message scope"; spec/assistant/evaluatorRunner.md, "Gates finish before provider composition and preparation finishes before inference"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorRunner.md, "A single merged call serves fresh sections and local output survives model failure"; spec/assistant/evaluatorRunner.md, "Ordered processors continue after failure with no progress acknowledgment"
+import {
+  ModelType, hashStableJson,
+  type ActionResult, type EvaluatorRunOptions, type EvaluatorRunResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type State,
+} from "@elizaos/core"
+import {
+  Machine, canAdvanceSection, canOpenBatch, evaluatorInput, fresh, laneAt, machine,
+  type Candidate, type EvaluatorInput, type Evaluators, type GateResult, type PrepareResult,
+} from "../../gen/assistant__evaluatorRunner.effect.vibe"
+import { commitEvaluatorProgress, evidenceOf, sourceOf, stageEvaluatorOutput, stagedOutput, type ProgressScope } from "./progress.vibe"
+
+/** One run of the evaluators registered for a turn. */
+export interface EvaluatorRun {
+  readonly runtime: IAgentRuntime
+  readonly message: Memory
+  readonly state?: State
+  readonly options: EvaluatorRunOptions
+  readonly evaluators: readonly RegisteredEvaluator[]
+  readonly postTurn: boolean
+}
+
+interface Entry {
+  readonly evaluator: RegisteredEvaluator
+  readonly candidate: Candidate
+  readonly staged: { readonly output: string; readonly binding: string } | undefined
+}
+
+type Errors = EvaluatorRunResult["errors"]
+
+const reason = (cause: unknown) => cause instanceof Error ? cause.message : String(cause)
+const bytesOf = (text: string) => new TextEncoder().encode(text).length
+const priorityOf = (evaluator: { readonly priority?: number }) => typeof evaluator.priority === "number" && Number.isFinite(evaluator.priority) ? evaluator.priority : 100
+
+function incrementalFor(runtime: IAgentRuntime, evaluator: RegisteredEvaluator): boolean {
+  const incremental = evaluator.incremental
+  return typeof incremental === "function" ? incremental(runtime) : incremental === true
+}
+
+function scopeOf(run: EvaluatorRun, evaluator: RegisteredEvaluator): ProgressScope {
+  return { agentId: run.runtime.agentId, roomId: run.message.roomId, entityId: run.message.entityId, evaluator: evaluator.name, schemaVersion: 1 }
+}
+
+/** The entries of one batch in the captured order: priority, with 100 by default, then locale name order, then original position. */
+export function orderedEntries(evaluators: readonly RegisteredEvaluator[]): Array<{ readonly evaluator: RegisteredEvaluator; readonly position: number; readonly nameOrder: number }> {
+  const names = [...new Set(evaluators.map((evaluator) => evaluator.name))].sort((a, b) => a.localeCompare(b))
+  return evaluators.map((evaluator, position) => ({ evaluator, position, nameOrder: names.indexOf(evaluator.name) + 1 }))
+    .sort((a, b) => priorityOf(a.evaluator) - priorityOf(b.evaluator) || a.nameOrder - b.nameOrder || a.position - b.position)
+}
+
+const mergedSystem = "Answer every section below. Reply with one JSON object whose keys are the section names and whose values are each section's output, and nothing else."
+
+effect function runBatch(run: EvaluatorRun, route: EvaluatorInput, evaluators: readonly RegisteredEvaluator[], errors: Errors) {
+  const entries: Entry[] = []
+  for (const { evaluator, nameOrder } of orderedEntries(evaluators)) {
+    const staged = route === "IncrementalEvidence" ? (stagedOutput(scopeOf(run, evaluator)) catch () => undefined) : undefined
+    entries.push({
+      evaluator, staged: staged === undefined ? undefined : { output: staged.output, binding: staged.binding },
+      candidate: { evaluatorRef: entries.length + 1, name: evaluator.name, priority: priorityOf(evaluator), nameOrder, processorCount: evaluator.processors?.length ?? 0, stagedPayload: staged?.payload ?? 0 },
+    })
+  }
+  const results: ActionResult[] = []
+  const candidates = entries.map((entry) => entry.candidate)
+  provide machine() {
+    const batch = try Machine
+    const send = (event: Parameters<Machine.Shape["send"]>[0]) => orDie(batch.send(event))
+    if (!canOpenBatch(try batch.get(), route, false, candidates)) return { lanes: [] as Evaluators["lanes"], results }
+    let state = try send({ type: "openBatch", route, background: false, candidates })
+    const context = { runtime: run.runtime, message: run.message, state: run.state, options: run.options }
+    const gates = try.allSettled entries.map((entry) => entry.staged !== undefined ? Effect.succeed(true)
+      : tryPromise({ try: () => entry.evaluator.shouldRun(context), catch: reason }))
+    for (const [position, gate] of gates.entries()) {
+      if (laneAt(state, position).phase !== "GatePending") continue
+      const decision: GateResult = Exit.isSuccess(gate) ? (gate.value ? "AcceptGate" : "DeclineGate") : "FailGate"
+      if (decision === "FailGate") errors.push({ evaluatorName: entries[position]?.evaluator.name ?? "", error: "shouldRun failed", retryable: true })
+      state = try send({ type: "settleGate", position, decision })
+    }
+    state = try send({ type: "closeGates" })
+    if (state.phase === "FinishedBatch") return { lanes: state.lanes, results }
+    const providers = [...new Set(entries.flatMap((entry) => entry.evaluator.providers ?? []))]
+    const composed = run.state ?? (tryPromise({ try: () => run.runtime.composeState(run.message, providers), catch: reason }) catch () => undefined)
+    state = try send({ type: "completeComposition", ok: composed !== undefined })
+    if (composed === undefined) return { lanes: state.lanes, results }
+    const prepared: unknown[] = []
+    const prompts: string[] = []
+    const resolvedOutput: Array<string | undefined> = []
+    const preparations = try.allSettled entries.map((entry) => tryPromise({ try: async () => entry.evaluator.prepare === undefined ? undefined : await entry.evaluator.prepare({ ...context, state: composed }), catch: reason }))
+    for (const [position, entry] of entries.entries()) {
+      if (laneAt(state, position).phase !== "PreparePending") continue
+      const preparation = preparations[position]
+      let outcome: PrepareResult = "PrepareFailure"
+      let payload = 0
+      let binding = entry.staged?.binding ?? ""
+      if (preparation !== undefined && Exit.isSuccess(preparation)) {
+        prepared[position] = preparation.value
+        const promptContext = { ...context, state: composed, prepared: preparation.value }
+        const local = entry.staged === undefined && (entry.evaluator.resolveOutputWhen?.(promptContext) ?? false)
+        const resolved = local ? (Effect.try({ try: () => entry.evaluator.resolveOutput?.(promptContext), catch: reason }) catch () => undefined) : undefined
+        const prompt = entry.staged !== undefined || local ? "" : (Effect.try({ try: () => entry.evaluator.prompt(promptContext), catch: reason }) catch () => undefined)
+        if (local) {
+          resolvedOutput[position] = resolved === undefined ? undefined : JSON.stringify(resolved)
+          outcome = "PrepareResolved"
+          payload = resolvedOutput[position] === undefined ? 0 : bytesOf(resolvedOutput[position] ?? "")
+        } else if (prompt !== undefined) {
+          prompts[position] = prompt
+          outcome = "PrepareModel"
+        }
+        if (entry.staged === undefined) binding = hashStableJson({ evaluator: entry.evaluator.name, prompt: prompts[position] ?? "", resolved: resolvedOutput[position] ?? null })
+      }
+      if (outcome === "PrepareFailure") errors.push({ evaluatorName: entry.evaluator.name, error: "prepare failed", retryable: true })
+      state = try send({ type: "settlePreparation", position, preparation: outcome, payload, binding })
+    }
+    state = try send({ type: "closePreparation" })
+    let sections: Readonly<Record<string, unknown>> = {}
+    if (state.phase === "InferringBatch") {
+      const asked = entries.filter((_, position) => fresh(laneAt(state, position)))
+      const prompt = asked.map((entry) => `## ${entry.evaluator.name}\nOutput schema: ${JSON.stringify(entry.evaluator.schema)}\n${prompts[entries.indexOf(entry)] ?? ""}`).join("\n\n")
+      const answered = tryPromise({ try: () => run.runtime.useModel(ModelType.TEXT_LARGE, { system: mergedSystem, prompt, responseFormat: { type: "json_object" } }), catch: reason }) catch () => undefined
+      const parsed = typeof answered === "string" ? (Effect.try({ try: () => JSON.parse(answered) as unknown, catch: reason }) catch () => undefined) : undefined
+      const ok = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      if (ok) sections = parsed as Record<string, unknown>
+      else errors.push({ evaluatorName: asked.map((entry) => entry.evaluator.name).join(","), error: "The merged evaluator call returned no output", retryable: true })
+      state = try send({ type: "settleModel", ok })
+    }
+    while (state.phase === "ApplyingBatch") {
+      const position = state.cursor
+      if (position >= state.lanes.length) {
+        state = try send({ type: "closeBatch" })
+        break
+      }
+      const lane = laneAt(state, position)
+      if (canAdvanceSection(state)) {
+        state = try send({ type: "advanceSection" })
+        continue
+      }
+      const entry = entries[position]
+      if (entry === undefined) break
+      const promptContext = { ...context, state: composed, prepared: prepared[position] }
+      const raw = entry.staged?.output ?? resolvedOutput[position] ?? (Object.hasOwn(sections, entry.evaluator.name) ? JSON.stringify(sections[entry.evaluator.name]) : undefined)
+      const source = lane.candidate.stagedPayload > 0 ? "staged" : lane.resolved > 0 ? "resolved" : "model"
+      const value = raw === undefined ? undefined : (Effect.try({ try: () => JSON.parse(raw) as unknown, catch: reason }) catch () => undefined)
+      const output = value === undefined ? undefined
+        : entry.evaluator.parse === undefined ? value
+        : (Effect.try({ try: () => entry.evaluator.parse?.(value, { ...promptContext, outputSource: source }) ?? undefined, catch: reason }) catch () => undefined)
+      const modelPayload = source === "model" && raw !== undefined && state.model === "ModelSucceeded" ? bytesOf(raw) : 0
+      state = try send({ type: "admitSection", modelPayload, parsed: output !== undefined && output !== null })
+      if (laneAt(state, position).phase !== "ParsedLane") {
+        errors.push({ evaluatorName: entry.evaluator.name, error: "The evaluator's section is missing or invalid" })
+        continue
+      }
+      const scope = scopeOf(run, entry.evaluator)
+      const extraction = run.options.extraction
+      const stagedNow = route !== "IncrementalEvidence" || extraction === undefined ? route !== "IncrementalEvidence"
+        : (try stageEvaluatorOutput(scope, extraction.messages.map(sourceOf),
+          evidenceOf(extraction.evidenceId, run.message, extraction.messages.filter((message) => extraction.changedMessageIds.includes(message.id ?? "")), [], extraction.removedMessageIds),
+          raw ?? "", laneAt(state, position).binding)).kind === "kept"
+      state = try send({ type: "beginProcessors", durable: stagedNow })
+      if (laneAt(state, position).phase !== "ProcessingLane") continue
+      const processors = [...(entry.evaluator.processors ?? [])].map((processor, index) => ({ processor, index }))
+        .sort((a, b) => priorityOf(a.processor) - priorityOf(b.processor) || a.index - b.index)
+      let failures = 0
+      for (const { processor } of processors) {
+        const done = tryPromise({ try: () => processor.process({ ...promptContext, output, evaluatorName: entry.evaluator.name }), catch: reason }) catch (failed) => failed
+        const ok = typeof done !== "string" && done?.success !== false
+        if (typeof done === "string") errors.push({ evaluatorName: entry.evaluator.name, processorName: processor.name, error: done })
+        else if (done !== undefined) results.push(done)
+        if (!ok) failures += 1
+        state = try send({ type: "settleProcessor", ok })
+      }
+      const committed = route !== "IncrementalEvidence" ? true
+        : (try commitEvaluatorProgress(scope, failures === 0, 0)).kind === "kept"
+      state = try send({ type: "finishSection", durable: committed })
+    }
+    return { lanes: state.lanes, results }
+  }
+}
+
+/** Runs the evaluators of a turn in batches by input route, each under the runner's rules, and reports what each did. */
+export effect function runEvaluators(run: EvaluatorRun) {
+  const routes = new Map<EvaluatorInput, RegisteredEvaluator[]>()
+  for (const evaluator of run.evaluators) {
+    const route = evaluatorInput(run.postTurn, incrementalFor(run.runtime, evaluator), evaluator.inputScope === "current_message")
+    routes.set(route, [...(routes.get(route) ?? []), evaluator])
+  }
+  const errors: Errors = []
+  const results: ActionResult[] = []
+  const active: string[] = []
+  const processed: string[] = []
+  for (const [route, evaluators] of routes) {
+    const batch = try runBatch(run, route, evaluators, errors)
+    results.push(...batch.results)
+    for (const lane of batch.lanes) {
+      if (lane.phase !== "GateSkipped" && lane.phase !== "GateFailed") active.push(lane.candidate.name)
+      if (lane.phase === "SettledLane") processed.push(lane.candidate.name)
+    }
+  }
+  return { skipped: active.length === 0, activeEvaluators: active, processedEvaluators: processed, results, errors } satisfies EvaluatorRunResult
+}

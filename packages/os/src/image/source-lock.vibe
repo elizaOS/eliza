@@ -369,6 +369,16 @@ export effect function verifyDeviceSource(options: VerifySourceOptions) {
   if (lock.device.tag !== "PhysicalDevice") throw new SourceLockRefused({ reason: "Device source verification requires a physical profile" })
   return try verifySource(input)
 }
+/** The release board API flag file of a release configuration, relative to the source root, or undefined for a malformed configuration name. */
+export function boardConfigurationPath(releaseConfig: string): string | undefined {
+  return /^[a-z0-9_]+$/.test(releaseConfig) ? `build/release/flag_values/${releaseConfig}/RELEASE_BOARD_API_LEVEL.textproto` : undefined
+}
+
+/** The generated stock vendor VINTF manifest of a device codename, relative to the source root, or undefined for a malformed codename. */
+export function vendorManifestPath(codename: string): string | undefined {
+  return /^[a-z0-9_]+$/.test(codename) ? `vendor/google_devices/${codename}/vintf/vendor/manifest.xml` : undefined
+}
+
 export effect function assertStockVendorApi(options: VerifySourceOptions) {
   const checked = try verifyDeviceSource(options)
   if (Source.stockVendorProblems(checked.state.lock.device, checked.state.read).length > 0) throw new SourceLockRefused({ reason: "The stock vendor archive or board/VINTF API differs from its source pin" })

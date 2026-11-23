@@ -1,0 +1,112 @@
+// spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"; spec/calendar/managedFeed.md, "An event's change time is the provider's edit time, never the refresh time"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { providerTimestamps } from "../feed/cache.vibe"
+import { calendarHost, type CalendarApprovalRecord, type CalendarApprovalRow, type CalendarApprovals, type CalendarHost, type CalendarLedgerOutcome } from "./host.vibe"
+import type { CalendarEvent } from "../model.vibe"
+import type { CalendarAccount, CalendarProviderPort } from "./providers.vibe"
+
+/** The service type the Calendar plugin registers its host under. */
+export const calendarServiceType = "calendar"
+/** The service type the owner approval queue runs approved calendar changes through. */
+export const calendarApprovalExecutorServiceType = "calendar_approval_executor"
+const ownerApprovalsServiceType = "owner_approvals"
+
+function filed(value: unknown): value is { readonly id: string; readonly state: string } {
+  return typeof value === "object" && value !== null && "id" in value && typeof value.id === "string" && "state" in value && typeof value.state === "string"
+}
+
+function approvalsOf(runtime: IAgentRuntime): CalendarApprovals | undefined {
+  const found: unknown = runtime.getService(ownerApprovalsServiceType)
+  if (typeof found !== "object" || found === null || !("request" in found) || typeof found.request !== "function") return undefined
+  const request = found.request.bind(found)
+  return {
+    request: async (row: CalendarApprovalRow) => {
+      const reply: unknown = await request(row)
+      if (!filed(reply)) throw new Error("The approval queue answered without a request id")
+      return reply
+    },
+  }
+}
+
+/** What a check-in reads of one event: its title and start, whether it is a provider copy, and the clocks its change is read from. */
+export interface CalendarEventFacts {
+  readonly title: string
+  readonly startAt: number
+  readonly synced: boolean
+  readonly metadataValid: boolean
+  readonly providerEditedAt: string | undefined
+  readonly providerCreatedAt: string | undefined
+  readonly copyUpdatedAt: number
+}
+
+function eventFacts(event: CalendarEvent): CalendarEventFacts {
+  const metadata = event.metadata
+  const timestamps = typeof metadata === "object" && metadata !== null && !Array.isArray(metadata) ? providerTimestamps(metadata) : undefined
+  return {
+    title: event.title,
+    startAt: Date.parse(event.startAt),
+    synced: event.provider !== "eliza",
+    metadataValid: timestamps?.valid ?? false,
+    providerEditedAt: timestamps?.editedAt,
+    providerCreatedAt: timestamps?.createdAt,
+    copyUpdatedAt: Date.parse(event.updatedAt),
+  }
+}
+
+/** The Calendar plugin's runtime service: the calendar host over the agent's durable cache. */
+export class CalendarService extends Service {
+  static override serviceType = calendarServiceType
+  override capabilityDescription = "The owner's calendars: the resident calendar, connected providers, reads and ledgered changes"
+  readonly host: CalendarHost
+
+  constructor(runtime: IAgentRuntime, host: CalendarHost) {
+    super(runtime)
+    this.host = host
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    const host = await runPromise(calendarHost({ cache: runtime, agentId: runtime.agentId, approvals: () => approvalsOf(runtime) }))
+    return new CalendarService(runtime, host)
+  }
+
+  async eventsBetween(window: { readonly startAt: number; readonly endAt: number }): Promise<readonly CalendarEventFacts[]> {
+    const found = await runPromise(this.host.search({ timeMin: window.startAt, timeMax: window.endAt }))
+    if (found === undefined) return []
+    if (!found.complete) throw new Error(`The calendar could not read every listed source: ${found.unavailable.join(", ")}`)
+    return found.events.map(eventFacts)
+  }
+
+  register(port: CalendarProviderPort): Promise<void> {
+    return runPromise(this.host.register(port))
+  }
+
+  bindAccount(account: CalendarAccount | undefined): Promise<void> {
+    return runPromise(this.host.bindAccount(account))
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+/** The executor the owner approval queue hands an approved calendar change to. */
+export class CalendarApprovalExecutorService extends Service {
+  static override serviceType = calendarApprovalExecutorServiceType
+  override capabilityDescription = "Runs an owner-approved calendar change once through the calendar mutation ledger"
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new CalendarApprovalExecutorService(runtime))
+  }
+
+  async execute(record: CalendarApprovalRecord): Promise<CalendarLedgerOutcome> {
+    const calendar = await this.runtime.getServiceLoadPromise(calendarServiceType)
+    if (!(calendar instanceof CalendarService)) {
+      return { result: "ChangeRetryable", text: "The calendar is not running yet.", failure: { code: "CALENDAR_SERVICE_UNAVAILABLE", retryable: true, acceptance: "not_accepted" } }
+    }
+    return runPromise(calendar.host.executeApproval(record))
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}

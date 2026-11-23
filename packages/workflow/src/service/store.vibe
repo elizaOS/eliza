@@ -1,0 +1,317 @@
+// spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"
+import type { Lifecycle } from "../../gen/workflow__lifecycle.effect.vibe"
+import type { Workflow as Admission } from "../../gen/workflow__admission.effect.vibe"
+import type { WakeupRun } from "../../gen/workflow__execution.effect.vibe"
+import type { ApprovalRun } from "../../gen/workflow__approvals.effect.vibe"
+import type { GeneratedRun } from "../../gen/workflow__generated.effect.vibe"
+import type { PhoneScheduledOccurrence, PhoneWorkflowSpec } from "../contract/phone.vibe"
+import type { DigestSourceRecord, DigestSpec } from "../contract/digest.vibe"
+import type { WorkflowDeviceOperation } from "../contract/device.vibe"
+
+/** The store could not be read or written; the outcome of a write is unknown. */
+export error WorkflowStoreUnavailable { step: string; cause: unknown }
+
+/** One stored workflow definition. */
+export interface DefinitionRow {
+  readonly id: string
+  readonly owner: string
+  readonly admission: Admission
+  readonly lifecycleState: Lifecycle
+  readonly revisions: readonly Revision[]
+  readonly name: string
+  readonly description: string
+  readonly spec: PhoneWorkflowSpec
+  readonly specDigest: string
+  readonly origin: "view" | "digest" | "generated"
+  readonly generated?: GeneratedDefinition
+  readonly hostedDigest?: DigestSpec
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly armedVersion: number
+}
+/** The generated code of an untyped definition: its source, compiled module, check and review. */
+export interface GeneratedDefinition {
+  readonly source: string
+  readonly sourceDigest: string
+  readonly js: string
+  readonly jsDigest: string
+  readonly compilerRevision: string
+  readonly calls: readonly { readonly id: string; readonly method: string }[]
+  readonly reviewedDigest: string
+  readonly reviewedVersion: number
+}
+/** One saved version of a definition, kept so the owner can list and restore it. */
+export interface Revision {
+  readonly version: number
+  readonly spec: PhoneWorkflowSpec
+  readonly specDigest: string
+  readonly name: string
+  readonly description: string
+  readonly createdAt: string
+  readonly reason: string
+  readonly generated?: GeneratedDefinition
+}
+/** One step's settled result inside a run. */
+export interface StepResult { readonly id: string; readonly status: "completed" | "skipped"; readonly text: string }
+/** One approval gate of a device step. */
+export interface ApprovalRow {
+  readonly nodeId: string
+  readonly iteration: number
+  readonly requestDigest: string
+  readonly title: string
+  readonly summary: string
+  readonly operation: string
+  readonly target: string
+  readonly account: string
+  readonly request: WorkflowDeviceOperation
+  readonly expiresAt: number
+  readonly machine: ApprovalRun
+  readonly decidedBy?: string
+  readonly decidedAt?: string
+}
+/** One run event as the receipt reports it. */
+export interface RunEvent { readonly type: string; readonly timestamp: string; readonly nodeId?: string }
+/** One stored run, including occurrences recorded without running. */
+export interface RunRow {
+  readonly id: string
+  readonly workflowId: string
+  readonly owner: string
+  readonly version: number
+  readonly serial: number
+  readonly submissionId?: string
+  readonly input: Readonly<Record<string, unknown>>
+  readonly spec: PhoneWorkflowSpec
+  readonly specDigest: string
+  readonly execution: WakeupRun
+  readonly status: string
+  readonly finished: boolean
+  readonly startedAt: string
+  readonly stoppedAt?: string
+  readonly output?: unknown
+  readonly error?: string
+  readonly anchorAt: string
+  readonly occurrence?: PhoneScheduledOccurrence
+  readonly missedOccurrenceAt?: string
+  readonly values: Readonly<Record<string, string>>
+  readonly results: readonly StepResult[]
+  readonly next: number
+  readonly allowed: boolean
+  readonly approvals: readonly ApprovalRow[]
+  readonly events: readonly RunEvent[]
+  readonly cancellationRequestedAt?: string
+  readonly hostedDigest?: Readonly<Record<string, unknown>>
+  readonly waitingSignal?: string
+  readonly generated?: GeneratedRun
+  readonly journalValues?: Readonly<Record<string, unknown>>
+  readonly js?: string
+  readonly jsDigest?: string
+  readonly waitDigest?: string
+  readonly signals?: readonly { readonly name: string; readonly payload: unknown; readonly receivedAt: string; readonly receivedBy: string }[]
+}
+/** One retained mutation receipt, by its mutation id. */
+export interface ReceiptRow { readonly mutationId: string; readonly owner: string; readonly kind: "typed" | "metadata" | "lifecycle" | "digest" | "generated"; readonly data: Readonly<Record<string, unknown>> }
+/** One digest result row with its delivery cursor. */
+export interface DigestResultRow { readonly cursor: number; readonly runId: string; readonly workflowId: string; readonly result: Readonly<Record<string, unknown>> }
+
+const schema = `
+CREATE TABLE IF NOT EXISTS workflow_definitions (id text PRIMARY KEY, owner text NOT NULL, revision integer NOT NULL CHECK (revision > 0), data jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS workflow_runs (id text PRIMARY KEY, workflow_id text NOT NULL, owner text NOT NULL, finished boolean NOT NULL, created_at bigint NOT NULL, data jsonb NOT NULL);
+CREATE INDEX IF NOT EXISTS workflow_runs_by_workflow ON workflow_runs (workflow_id, created_at, id);
+CREATE TABLE IF NOT EXISTS workflow_receipts (mutation_id text PRIMARY KEY, owner text NOT NULL, kind text NOT NULL, data jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS workflow_digest_sources (owner text NOT NULL, id text NOT NULL, data jsonb NOT NULL, PRIMARY KEY (owner, id));
+CREATE TABLE IF NOT EXISTS workflow_digest_results (cursor bigserial PRIMARY KEY, owner text NOT NULL, run_id text NOT NULL UNIQUE, workflow_id text NOT NULL, data jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS workflow_digest_clients (owner text NOT NULL, client_id text NOT NULL, cursor bigint NOT NULL, PRIMARY KEY (owner, client_id));
+`
+
+module node {
+  /** One SQL statement runner inside a transaction. */
+  export interface WorkflowQuery {
+    query<R>(text: string, params?: unknown[]): Promise<{ rows: R[]; affectedRows?: number }>
+  }
+  /** The database the workflow store keeps its rows in: one transaction per call. */
+  export interface WorkflowSql {
+    transaction<A>(work: (sql: WorkflowQuery) => Promise<A>): Promise<A>
+  }
+
+  export interface Stored<A> { readonly revision: number; readonly row: A }
+
+  function parsed<A>(value: unknown): A {
+    return (typeof value === "string" ? JSON.parse(value) : value) as A
+  }
+
+  export function migrate(sql: WorkflowSql, statements: string): Promise<void> {
+    return sql.transaction(async (q) => {
+      for (const statement of statements.split(";").map((text) => text.trim()).filter((text) => text !== "")) await q.query(statement)
+    })
+  }
+
+  export function definitions<A>(sql: WorkflowSql, owner: string): Promise<Stored<A>[]> {
+    return sql.transaction(async (q) => {
+      const found = await q.query<{ revision: number; data: unknown }>("SELECT revision, data FROM workflow_definitions WHERE owner = $1 ORDER BY id", [owner])
+      return found.rows.map((row) => ({ revision: row.revision, row: parsed<A>(row.data) }))
+    })
+  }
+
+  export function definition<A>(sql: WorkflowSql, id: string): Promise<Stored<A> | undefined> {
+    return sql.transaction(async (q) => {
+      const found = await q.query<{ revision: number; data: unknown }>("SELECT revision, data FROM workflow_definitions WHERE id = $1", [id])
+      const row = found.rows[0]
+      return row === undefined ? undefined : { revision: row.revision, row: parsed<A>(row.data) }
+    })
+  }
+
+  async function putReceipt(q: WorkflowQuery, receipt: { mutationId: string; owner: string; kind: string; data: unknown } | undefined): Promise<void> {
+    if (receipt === undefined) return
+    await q.query("INSERT INTO workflow_receipts (mutation_id, owner, kind, data) VALUES ($1, $2, $3, $4::jsonb)", [receipt.mutationId, receipt.owner, receipt.kind, JSON.stringify(receipt.data)])
+  }
+
+  export function writeDefinition(
+    sql: WorkflowSql, id: string, owner: string, read: number, next: unknown,
+    receipt?: { mutationId: string; owner: string; kind: string; data: unknown },
+  ): Promise<"written" | "stale"> {
+    return sql.transaction(async (q) => {
+      const data = JSON.stringify(next)
+      const result = read === 0
+        ? await q.query("INSERT INTO workflow_definitions (id, owner, revision, data) VALUES ($1, $2, 1, $3::jsonb) ON CONFLICT (id) DO NOTHING", [id, owner, data])
+        : await q.query("UPDATE workflow_definitions SET revision = revision + 1, data = $3::jsonb WHERE id = $1 AND revision = $2", [id, read, data])
+      if (result.affectedRows !== 1) return "stale"
+      await putReceipt(q, receipt)
+      return "written"
+    })
+  }
+
+  export function receipt<A>(sql: WorkflowSql, mutationId: string): Promise<{ owner: string; kind: string; data: A } | undefined> {
+    return sql.transaction(async (q) => {
+      const found = await q.query<{ owner: string; kind: string; data: unknown }>("SELECT owner, kind, data FROM workflow_receipts WHERE mutation_id = $1", [mutationId])
+      const row = found.rows[0]
+      return row === undefined ? undefined : { owner: row.owner, kind: row.kind, data: parsed<A>(row.data) }
+    })
+  }
+
+  export function runs<A>(sql: WorkflowSql, filter: { workflowId?: string; unfinished?: boolean; owner: string }): Promise<A[]> {
+    return sql.transaction(async (q) => {
+      const found = await q.query<{ data: unknown }>(
+        `SELECT data FROM workflow_runs WHERE owner = $1 AND ($2::text IS NULL OR workflow_id = $2) AND ($3::boolean IS NULL OR finished = NOT $3) ORDER BY created_at, id`,
+        [filter.owner, filter.workflowId ?? null, filter.unfinished ?? null],
+      )
+      return found.rows.map((row) => parsed<A>(row.data))
+    })
+  }
+
+  export function run<A>(sql: WorkflowSql, id: string): Promise<A | undefined> {
+    return sql.transaction(async (q) => {
+      const found = await q.query<{ data: unknown }>("SELECT data FROM workflow_runs WHERE id = $1", [id])
+      const row = found.rows[0]
+      return row === undefined ? undefined : parsed<A>(row.data)
+    })
+  }
+
+  export function admitRun(
+    sql: WorkflowSql, definition: { id: string; read: number; next: unknown }, created: { id: string; workflowId: string; owner: string; at: number; data: unknown },
+  ): Promise<"written" | "stale"> {
+    return sql.transaction(async (q) => {
+      const moved = await q.query("UPDATE workflow_definitions SET revision = revision + 1, data = $3::jsonb WHERE id = $1 AND revision = $2", [definition.id, definition.read, JSON.stringify(definition.next)])
+      if (moved.affectedRows !== 1) return "stale"
+      await q.query("INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ($1, $2, $3, false, $4, $5::jsonb)",
+        [created.id, created.workflowId, created.owner, created.at, JSON.stringify(created.data)])
+      return "written"
+    })
+  }
+
+  export function insertRun(sql: WorkflowSql, created: { id: string; workflowId: string; owner: string; at: number; finished: boolean; data: unknown }): Promise<boolean> {
+    return sql.transaction(async (q) => {
+      const result = await q.query("INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ($1, $2, $3, $4, $5, $6::jsonb) ON CONFLICT (id) DO NOTHING",
+        [created.id, created.workflowId, created.owner, created.finished, created.at, JSON.stringify(created.data)])
+      return result.affectedRows === 1
+    })
+  }
+
+  export function writeRun(sql: WorkflowSql, id: string, finished: boolean, data: unknown, digest?: { owner: string; runId: string; workflowId: string; result: unknown }): Promise<void> {
+    return sql.transaction(async (q) => {
+      await q.query("UPDATE workflow_runs SET finished = $2, data = $3::jsonb WHERE id = $1", [id, finished, JSON.stringify(data)])
+      if (digest === undefined) return
+      await q.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [JSON.stringify(["workflow.hosted-results", digest.owner])])
+      const existing = await q.query<{ data: unknown }>("SELECT data FROM workflow_digest_results WHERE run_id = $1", [digest.runId])
+      const prior = existing.rows[0] === undefined ? undefined : parsed<{ status?: unknown }>(existing.rows[0].data)
+      if (prior === undefined) {
+        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, JSON.stringify(digest.result)])
+      } else if (prior.status === "cancelled" && (digest.result as { status?: unknown }).status === "failed") {
+        await q.query("DELETE FROM workflow_digest_results WHERE run_id = $1", [digest.runId])
+        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, JSON.stringify(digest.result)])
+      }
+    })
+  }
+
+  export function sources<A>(sql: WorkflowSql, owner: string): Promise<A[]> {
+    return sql.transaction(async (q) => {
+      const found = await q.query<{ data: unknown }>("SELECT data FROM workflow_digest_sources WHERE owner = $1 ORDER BY id", [owner])
+      return found.rows.map((row) => parsed<A>(row.data))
+    })
+  }
+
+  export function saveSource(sql: WorkflowSql, owner: string, id: string, data: unknown): Promise<void> {
+    return sql.transaction(async (q) => {
+      await q.query("INSERT INTO workflow_digest_sources (owner, id, data) VALUES ($1, $2, $3::jsonb) ON CONFLICT (owner, id) DO UPDATE SET data = EXCLUDED.data", [owner, id, JSON.stringify(data)])
+    })
+  }
+
+  export function digestPage(sql: WorkflowSql, owner: string, clientId: string, limit: number): Promise<{ cursor: number; data: unknown }[]> {
+    return sql.transaction(async (q) => {
+      const client = await q.query<{ cursor: string | number }>("SELECT cursor FROM workflow_digest_clients WHERE owner = $1 AND client_id = $2", [owner, clientId])
+      const after = Number(client.rows[0]?.cursor ?? 0)
+      const found = await q.query<{ cursor: string | number; data: unknown }>("SELECT cursor, data FROM workflow_digest_results WHERE owner = $1 AND cursor > $2 ORDER BY cursor LIMIT $3", [owner, after, limit])
+      return found.rows.map((row) => ({ cursor: Number(row.cursor), data: parsed<unknown>(row.data) }))
+    })
+  }
+
+  export function acknowledgeDigest(sql: WorkflowSql, owner: string, clientId: string, cursor: number, runId: string): Promise<boolean> {
+    return sql.transaction(async (q) => {
+      const row = await q.query<{ cursor: string | number }>("SELECT cursor FROM workflow_digest_results WHERE owner = $1 AND cursor = $2 AND run_id = $3", [owner, cursor, runId])
+      if (row.rows.length !== 1) return false
+      await q.query(
+        `INSERT INTO workflow_digest_clients (owner, client_id, cursor) VALUES ($1, $2, $3)
+         ON CONFLICT (owner, client_id) DO UPDATE SET cursor = GREATEST(workflow_digest_clients.cursor, EXCLUDED.cursor)`, [owner, clientId, cursor])
+      return true
+    })
+  }
+}
+
+import {
+  acknowledgeDigest, admitRun, definition, definitions, digestPage, insertRun, migrate, receipt, run, runs, saveSource, sources, writeDefinition, writeRun,
+  type Stored, type WorkflowSql,
+} from node
+export type { Stored, WorkflowQuery, WorkflowSql } from node
+
+effect function stored<A>(step: string, call: () => Promise<A>): A!WorkflowStoreUnavailable {
+  return try tryPromise({ try: () => call(), catch: (cause) => new WorkflowStoreUnavailable({ step, cause }) })
+}
+
+/** The workflow store over one database. */
+export function workflowStore(sql: WorkflowSql) {
+  return {
+    migrate: () => stored("create workflow tables", () => migrate(sql, schema)),
+    definitions: (owner: string) => stored("list workflows", () => definitions<DefinitionRow>(sql, owner)),
+    definition: (id: string) => stored("read a workflow", () => definition<DefinitionRow>(sql, id)),
+    writeDefinition: (id: string, owner: string, read: number, next: DefinitionRow, mutation?: ReceiptRow) =>
+      stored("write a workflow", () => writeDefinition(sql, id, owner, read, next, mutation)),
+    receipt: (mutationId: string) => stored("read a receipt", () => receipt<Readonly<Record<string, unknown>>>(sql, mutationId)),
+    runs: (filter: { readonly owner: string; readonly workflowId?: string; readonly unfinished?: boolean }) => stored("list runs", () => runs<RunRow>(sql, filter)),
+    run: (id: string) => stored("read a run", () => run<RunRow>(sql, id)),
+    admitRun: (stored_: { readonly id: string; readonly read: number; readonly next: DefinitionRow }, created: RunRow, at: number) =>
+      stored("admit a run", () => admitRun(sql, stored_, { id: created.id, workflowId: created.workflowId, owner: created.owner, at, data: created })),
+    insertRun: (created: RunRow, at: number) =>
+      stored("record an occurrence", () => insertRun(sql, { id: created.id, workflowId: created.workflowId, owner: created.owner, at, finished: created.finished, data: created })),
+    writeRun: (next: RunRow, digest?: { readonly owner: string; readonly runId: string; readonly workflowId: string; readonly result: unknown }) =>
+      stored("write a run", () => writeRun(sql, next.id, next.finished, next, digest)),
+    sources: (owner: string) => stored("list digest sources", () => sources<DigestSourceRecord>(sql, owner)),
+    saveSource: (owner: string, source: DigestSourceRecord) => stored("save a digest source", () => saveSource(sql, owner, source.id, source)),
+    digestPage: (owner: string, clientId: string, limit: number) => stored("read digest results", () => digestPage(sql, owner, clientId, limit)),
+    acknowledgeDigest: (owner: string, clientId: string, cursor: number, runId: string) =>
+      stored("acknowledge digest results", () => acknowledgeDigest(sql, owner, clientId, cursor, runId)),
+  }
+}
+
+/** The workflow store over one database. */
+export type WorkflowStore = ReturnType<typeof workflowStore>
+/** A stored definition with the revision it was read at. */
+export type StoredDefinition = Stored<DefinitionRow>

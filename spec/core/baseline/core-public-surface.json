@@ -49016,6 +49016,86 @@
               "signature": "export interface X402ValidationResult { valid: boolean; error?: { status: number; message: string; details?: unknown; }; }"
             }
           ]
+        },
+        {
+          "name": "HISTORY_CONTINUITY_SOURCES",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "HISTORY_WINDOW_KEEP_SOURCES",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "HISTORY_WINDOW_MAX_SOURCES",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "HISTORY_WINDOW_STANDING_SOURCES",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "historyWindowNotice",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "searchHistory",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "windowHistory",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "HistoryReview",
+          "typeOnly": true,
+          "declarations": []
+        },
+        {
+          "name": "HistorySearch",
+          "typeOnly": true,
+          "declarations": []
+        },
+        {
+          "name": "HistorySource",
+          "typeOnly": true,
+          "declarations": []
+        },
+        {
+          "name": "HistoryWindow",
+          "typeOnly": true,
+          "declarations": []
+        },
+        {
+          "name": "SECRET_SWAP_STABLE_REFERENCES_SETTING",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "createSecretSwapStableKey",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "pseudonymSaltFromStableKey",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "ModelLogTool",
+          "typeOnly": true,
+          "declarations": []
+        },
+        {
+          "name": "ModelLogUsage",
+          "typeOnly": true,
+          "declarations": []
         }
       ]
     },
@@ -80175,6 +80255,16 @@
               "signature": "export interface X402ValidationResult { valid: boolean; error?: { status: number; message: string; details?: unknown; }; }"
             }
           ]
+        },
+        {
+          "name": "ModelLogTool",
+          "typeOnly": true,
+          "declarations": []
+        },
+        {
+          "name": "ModelLogUsage",
+          "typeOnly": true,
+          "declarations": []
         }
       ]
     },

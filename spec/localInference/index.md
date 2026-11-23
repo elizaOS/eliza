@@ -16,4 +16,5 @@ models from here.
 | Downloading, installing, assigning and activating models | [Models](./models.md) |
 | Text generation and embeddings | [Text and embeddings](./textAndEmbeddings.md) |
 | Speaking replies on the device | [Speech output](./speechOutput.md) |
+| Choosing the route a reply is heard on, and falling back to the device | [Speech route](./speechRoute.md) |
 | Consent, redaction and sharing of transcripts | [Transcript privacy](./transcriptPrivacy.md) |

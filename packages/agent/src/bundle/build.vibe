@@ -1,4 +1,4 @@
-// spec/agent/plugins/bundle.md, "Story: Ship one agent bundle whose contents and actions are known"; spec/agent/plugins/bundle.md, "A build is refused unless every input that emitted bytes comes from a named package inside the source root, at least one did, and the entry imports nothing but Node built-ins"; spec/agent/plugins/bundle.md, "An excluded package never ships"; spec/agent/plugins/bundle.md, "A build pins the workflow worker's digest exactly when it carries the workflow plugin"; spec/agent/plugins/bundle.md, "A manifest is read only for its own bundle bytes and only when it is one a build could write"
+// spec/agent/plugins/bundle.md, "Story: Ship one agent bundle whose contents and actions are known"; spec/agent/plugins/bundle.md, "A build is refused unless every input that emitted bytes comes from a named package inside the source root, at least one did, and the entry imports nothing but Node built-ins"; spec/agent/plugins/bundle.md, "An excluded package never ships"; spec/agent/plugins/bundle.md, "A build pins the workflow worker's digest exactly when it carries the workflow plugin"; spec/agent/plugins/bundle.md, "A manifest is read only for its own bundle bytes and only when it is one a build could write"; spec/agent/plugins/bundle.md, "Profile groups name only bundled plugins, each in one group"; spec/agent/plugins/bundle.md, "A variant's load list is its core, view and, on an AOSP image, AOSP-only plugins in group order, then the optional plugins the product chose"
 module node {
   import { spawn } from "node:child_process"
   import { createHash, randomUUID } from "node:crypto"
@@ -11,7 +11,7 @@ module node {
   import { Schema } from "effect"
   import { build, parseAst, type Plugin } from "vite"
   import {
-    buildVerdict, excludedPackages, inputDisposition, localInferencePlugin, manifestReadable, packageRows, pluginsWellFormed,
+    buildVerdict, excludedPackages, inputDisposition, localInferencePlugin, manifestReadable, packageRows, pluginsWellFormed, profilesWellFormed,
     workflowPlugin, type Build, type BuildVerdict, type BundleInput, type BundleManifest as ManifestFacts, type ExternalImport,
     type ListedAction, type LoadSmoke, type PayloadFile, type WorkerDigest,
   } from "../../gen/agent__plugins__bundle.ts"
@@ -19,15 +19,17 @@ module node {
   import { createDeviceStorageSnapshot } from "../storage/index.vibe"
   import { migrations } from "../storage/schema.vibe"
   import { agentCliModule, bundleEntrySource } from "./entry.vibe"
-  import { readManifest, type BundleManifest } from "./manifest.schema.vibe"
+  import { groupLists, readManifest, type BundleManifest, type ProfileGroups } from "./manifest.schema.vibe"
   import { admitPayload, BundleManifestUnreadable, BundleRefused } from "./payload.vibe"
 
   export interface BuildAgentBundle {
     readonly plugins: readonly string[]
     readonly productPlugin?: string
+    readonly profiles?: ProfileGroups
     readonly outDir: string
     readonly sourceCommit: string
     readonly sourceRoot?: string
+    readonly entry?: string
   }
 
   interface SourceInput {
@@ -218,10 +220,10 @@ module node {
   }
 
   export async function buildFrom(options: BuildAgentBundle, moduleUrl: string): Promise<BundleManifest> {
-    const { plugins, productPlugin, sourceCommit } = options
+    const { plugins, productPlugin, profiles, sourceCommit } = options
     const product: ProductPlugin = productPlugin === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: productPlugin }
-    if (!pluginsWellFormed([...plugins], product)) {
-      throw new BundleRefused({ verdict: "InputsMalformed", detail: JSON.stringify({ plugins, productPlugin }) })
+    if (!pluginsWellFormed([...plugins], product) || (profiles !== undefined && !profilesWellFormed(groupLists(profiles), [...plugins]))) {
+      throw new BundleRefused({ verdict: "InputsMalformed", detail: JSON.stringify({ plugins, productPlugin, profiles }) })
     }
     if (!/^[a-f0-9]{40}$/.test(sourceCommit)) throw new Error("The bundle requires a pinned source commit")
     const sourceRoot = await realpath(options.sourceRoot ?? process.cwd())
@@ -233,11 +235,12 @@ module node {
     const externals: ExternalImport[] = []
     const fromSource = agentCliModule.endsWith(".vibe")
     const entry = bundleEntrySource({ plugins, productPlugin })
+    const consumerEntry = options.entry === undefined ? undefined : await realpath(resolve(sourceRoot, options.entry))
     const shell: Plugin = {
       name: "eliza-agent-bundle",
       enforce: "pre",
       resolveId(id) {
-        if (id === entryId) return entryId
+        if (id === entryId) return consumerEntry ?? entryId
         const excluded = excludedPackages.find((name) => id === name || id.startsWith(`${name}/`))
         return excluded === undefined ? null : `${excludedPrefix}${excluded}`
       },
@@ -340,6 +343,7 @@ module node {
         localInference,
         ...(facts.workflowWorker.tag === "WorkerSha256" ? { workflowWorkerSha256: facts.workflowWorker.sha256 } : {}),
         actions: actions.map(({ name, origin }) => origin.tag === "PromotedFrom" ? { name, umbrella: origin.umbrella } : { name }),
+        ...(profiles === undefined ? {} : { profiles: groupLists(profiles) }),
       }
       await writeFile(join(staging, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n")
       const written = await readBundleManifest(staging)
@@ -349,7 +353,11 @@ module node {
   }
 }
 import { buildFrom, type BuildAgentBundle } from node
+import { variantLoadList, type DeviceVariant } from "../../gen/agent__plugins__bundle.ts"
+import { groupLists, type BundleManifest } from "./manifest.schema.vibe"
 export { readBundleManifest, type BuildAgentBundle } from node
+export { ProfileGroups, type BundleManifest } from "./manifest.schema.vibe"
+export type { DeviceVariant } from "../../gen/agent__plugins__bundle.ts"
 export {
   admitPayload, BundleManifestUnreadable, BundleRefused, excludedPackages, fileAdmitted, fileExtension, modelWeightExtensions,
   payloadFile, type BuildVerdict, type PayloadAdmission, type PayloadFile,
@@ -357,4 +365,10 @@ export {
 
 export function buildAgentBundle(options: BuildAgentBundle) {
   return buildFrom(options, import.meta.url)
+}
+
+/** The load list a device variant's launch names for a bundle: its core, view and, on an AOSP image, AOSP-only plugins, then the chosen optional ones. */
+export function residentLoadList(manifest: BundleManifest, variant: DeviceVariant, chosen: readonly string[] = []): string[] {
+  if (manifest.profiles === undefined) return []
+  return variantLoadList(groupLists(manifest.profiles), variant, [...new Set(chosen)])
 }

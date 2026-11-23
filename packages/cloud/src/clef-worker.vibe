@@ -1,9 +1,12 @@
 // spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"
 import type { Client } from "pg"
 import { SecureRandom } from "effect/crypto"
-import { decisionAccountLimit, decisionOrganizationLimit } from "../gen/cloud.ts"
+import { decisionAccountLimit, decisionContinuationLimit, decisionDailyLimit, decisionFundingOf } from "../gen/cloud.effect.vibe"
+import { isPaid, planRpm } from "./billing/plans.vibe"
+import { readPolicy } from "./billing/policy.vibe"
+import { foreign, toInt, type Tx } from "./store/connection.vibe"
 import { WorkerResponse } from "./worker-platform.ts"
-import { limitedBody } from "./inference.vibe"
+import { limitedBody } from "./worker-platform.ts"
 import { accountTransaction, authQuery, rateLimit, RateLimited } from "./identity-store.vibe"
 import {
   CLEF_DECISION_TIMEOUT_MS, CLEF_NO_CHOICE, CLEF_ASK_THRESHOLD, CLEF_TURN_COMPLETE_THRESHOLD,
@@ -81,15 +84,51 @@ function decision(request: ClefDecisionRequest, raw: unknown) {
 }
 
 const unavailable = (reason: "disabled" | "provider_error") => WorkerResponse.json({ status: "unavailable", reason }, { status: 503 })
+const scopeHeader = "X-Clef-Rate-Limit-Scope"
+export type Scope = "organization-day" | "subscription-minute"
+
+export error DecisionLimited { scope: Scope }
+
+function workerTx(db: Client): Tx {
+  return {
+    query: (sql, params = []) => foreign("query", async () => (await db.query(sql, [...params])).rows),
+    script: (sql) => foreign("script", async () => { await db.query(sql) })
+  }
+}
+
+effect function funding(db: Client, organization: string, now: number) {
+  const tx = workerTx(db)
+  const policy = readPolicy(tx, organization, now) catch () => undefined
+  const subscribedRpm = policy !== undefined && policy.source === "subscription" && isPaid(policy.planKey) ? planRpm(policy.planKey, "StandardRequests") : 0
+  const added = tx.query("SELECT COALESCE(SUM(amount), 0) AS total FROM credit_entries WHERE organization_id = $1 AND kind = 'add'", [organization]) catch () => []
+  return decisionFundingOf(subscribedRpm, toInt(added[0]?.total ?? 0))
+}
 
 effect function admit(db: Client, account: string) {
+  const { rows: found } = try authQuery<{ organization_id: string }>(db, "SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [account])
+  const organization = found[0]?.organization_id
+  if (!organization) return undefined
+  const decided = try funding(db, organization, Date.now())
   return try accountTransaction(db, effect {
-    const { rows } = try authQuery<{ organization_id: string }>(db, "SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [account])
-    const organization = rows[0]?.organization_id
-    if (!organization) return false
+    const { rows } = try authQuery<{ organization_id: string }>(db, "SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active' FOR UPDATE", [account])
+    if (rows[0]?.organization_id !== organization) return undefined
     try rateLimit(db, decisionAccountLimit.name, account, decisionAccountLimit.limit, decisionAccountLimit.windowMs / 1000)
-    try rateLimit(db, decisionOrganizationLimit.name, organization, decisionOrganizationLimit.limit, decisionOrganizationLimit.windowMs / 1000)
-    return true
+    const daily = decisionDailyLimit(decided)
+    const withinDay = effect {
+      try rateLimit(db, daily.name, organization, daily.limit, daily.windowMs / 1000)
+      return true
+    } catch effect (failure) => {
+      if (!(failure instanceof RateLimited)) throw failure
+      return false
+    }
+    if (withinDay) return "organization-day" as Scope
+    if (decided.tag !== "SubscribedDecisionFunding") throw new DecisionLimited({ scope: "organization-day" })
+    const continuation = decisionContinuationLimit(decided.rpm)
+    rateLimit(db, continuation.name, organization, continuation.limit, continuation.windowMs / 1000) catch effect (failure) => {
+      if (failure instanceof RateLimited) throw new DecisionLimited({ scope: "subscription-minute" })
+      throw failure
+    }
+    return "subscription-minute" as Scope
   })
 }
 
@@ -109,19 +148,20 @@ export async function clefRequest(request: Request, env: ClefEnv, db: Client, ac
   if (Option.isNone(decoded)) return WorkerResponse.json({ error: "invalid_decision" }, { status: 400 })
   const binding = env.AI
   if (!binding) return unavailable("disabled")
+  let scope: Scope | undefined
   try {
-    if (!await Effect.runPromise(Effect.provide(admit(db, account), SecureRandom.layerWebCrypto))) {
-      return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
-    }
+    scope = await Effect.runPromise(Effect.provide(admit(db, account), SecureRandom.layerWebCrypto))
   } catch (error) {
+    if (error instanceof DecisionLimited) return WorkerResponse.json({ error: "rate_limited" }, { status: 429, headers: { [scopeHeader]: error.scope } })
     if (error instanceof RateLimited) return WorkerResponse.json({ error: "rate_limited" }, { status: 429 })
     return unavailable("provider_error")
   }
+  if (scope === undefined) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
   try {
     const answer = await Effect.runPromise(Effect.timeout(Effect.tryPromise(() =>
       binding.run(modelId, { model, ...question(decoded.value) })), providerDeadlineMs), { signal: request.signal })
     const found = decision(decoded.value, answer)
-    return found ? WorkerResponse.json(found) : unavailable("provider_error")
+    return found ? WorkerResponse.json(found, { headers: { [scopeHeader]: scope } }) : unavailable("provider_error")
   } catch {
     return unavailable("provider_error")
   }

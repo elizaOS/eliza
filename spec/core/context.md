@@ -86,3 +86,53 @@ pure def providerSelectionAllowed(hasIndex: bool, bodyLoaded: bool, uniqueSource
 pure def lawUnloadedProviderCannotBeReviewed(hasIndex: bool, uniqueSources: bool, currentIdentity: bool, reviewComplete: bool): bool =
   not(providerSelectionAllowed(hasIndex, false, uniqueSources, currentIdentity, reviewComplete))
 ```
+
+## Story: Keep a long conversation within reach on a host with no reviewer
+
+> As the owner, I want to continue a task after a long conversation without
+> unrelated old messages crowding out what this request needs, so that every
+> turn stays fast and still sees the facts and instructions it depends on.
+
+A host where no history reviewer runs, such as the phone, still bounds the history each model call carries. Once more than `maxSources` originals follow the reviewed boundary, the boundary moves to the first user message at or after the newest multiple of `maxSources - keepSources` that leaves `keepSources` originals after it. It depends only on how many originals there are and where the user messages are, so between two moves the history shown only grows at its end and a provider can reuse the prompt prefix. The boundary starts on a user message, so a reply is never shown without its request. It is a deferral by position, never a review: the deferred originals keep every byte, stay readable through the history references, and the model is told how many are not shown. User messages worded as standing instructions, and up to three earlier exchanges that share distinctive words with the current request, stay in view. Word and wording matches are external judgments of the shell.
+
+### A host with no reviewer defers old history by position, in fixed steps from a user message
+
+```quint
+pure def windowBoundary(count: int, userPositions: List[int], reviewed: int, maxSources: int, keepSources: int): int = {
+  val stride = maxSources - keepSources
+  val stepped = if (stride < 1 or count < keepSources) 0 else ((count - keepSources) / stride) * stride
+  val boundary = userPositions.foldl(count, (found, position) => if (position >= stepped and position < found) position else found)
+  if (count - reviewed <= maxSources or boundary <= reviewed) reviewed else boundary
+}
+pure def shownFrom(count: int, boundary: int, exchangeStart: int, maxSources: int, continuitySources: int): int = {
+  val bounded = if (exchangeStart < count - maxSources) count - maxSources else exchangeStart
+  val continuityStart = if (count < continuitySources) 0 else count - continuitySources
+  val start = if (bounded < continuityStart) bounded else continuityStart
+  if (start < boundary) start else boundary
+}
+pure val userPositionsValues = Set(List(), List(0), List(0, 2), List(1, 3, 5), List(0, 2, 4, 6))
+pure val maxSourcesValues = Set(4)
+pure val keepSourcesValues = Set(2)
+pure val continuitySourcesValues = Set(0, 2)
+pure def lawShortHistoryIsNotWindowed(count: int, userPositions: List[int], reviewed: int, maxSources: int, keepSources: int): bool =
+  count - reviewed <= maxSources implies windowBoundary(count, userPositions, reviewed, maxSources, keepSources) == reviewed
+pure def lawWindowNeverMovesBack(count: int, userPositions: List[int], reviewed: int, maxSources: int, keepSources: int): bool =
+  windowBoundary(count, userPositions, reviewed, maxSources, keepSources) >= reviewed
+pure def lawEverythingPastTheBoundaryIsShown(count: int, boundary: int, exchangeStart: int, maxSources: int, continuitySources: int): bool =
+  shownFrom(count, boundary, exchangeStart, maxSources, continuitySources) <= boundary
+pure def lawRecentContinuityIsShown(count: int, boundary: int, exchangeStart: int, maxSources: int, continuitySources: int): bool =
+  shownFrom(count, boundary, exchangeStart, maxSources, continuitySources) <= (if (count < continuitySources) 0 else count - continuitySources)
+```
+
+### A note about one request leaves the view with that request
+
+An interruption note or a read-continuation record describes one request. When that request is a known original and neither it nor the interrupted reply is shown, the note is not shown either; a note bound to no known request stays inline.
+
+```quint
+pure def noteShown(requestKnown: bool, requestShown: bool, replyShown: bool): bool =
+  not(requestKnown) or requestShown or replyShown
+pure def lawNoteLeavesWithItsRequest(requestShown: bool, replyShown: bool): bool =
+  (not(requestShown) and not(replyShown)) implies not(noteShown(true, requestShown, replyShown))
+pure def lawUnboundNoteStaysInline(requestShown: bool, replyShown: bool): bool =
+  noteShown(false, requestShown, replyShown)
+```

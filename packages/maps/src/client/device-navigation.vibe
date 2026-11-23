@@ -1,0 +1,573 @@
+// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/navigation.md, "A route sheet retains a destination while its owner is attached"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer"; spec/maps/navigationService.md, "Pending native startup, confirmed startup and a live permission prompt keep distinct authority"; spec/maps/navigationService.md, "A retired native acknowledgement cannot stop the successor"; spec/maps/relay.md, "A lapsed lease redelivers the same command a bounded number of times, and the phone runs it at most once"; spec/maps/sessionReroute.md, "Only the owner's Start begins a session, and a reroute keeps its route until the same session's new route arrives"
+import { admitRelay, commandBudget, initial as noDirections, machineOver as directionsOver, type Directions, type Travel } from "../../gen/maps__navigation.effect.vibe"
+import { initial as noSession, machineOver as sessionOver, type GuidedSession } from "../../gen/maps__sessionReroute.effect.vibe"
+import { initial as noGuidance, machineOver as navigationOver, type Event as NavigationEvent, type Navigation, type StopReason } from "../../gen/maps__navigationService.effect.vibe"
+import { boundedText, Coordinate, MapsFailure, place as validPlace, TravelMode, type Place, type ProviderConfig, type ResultState, type Route } from "./contracts.vibe"
+import type { Position } from "./location.vibe"
+import { navigationFix } from "./navigation-fix.vibe"
+
+module browser {
+  /** @throws {never} */
+  export function sessionId(): string {
+    return globalThis.crypto.randomUUID().replaceAll("-", "")
+  }
+  /** @throws {never} */
+  export function offerId(): string {
+    return globalThis.crypto.randomUUID()
+  }
+}
+import { offerId, sessionId } from browser
+
+/** What the phone reports after an agent navigation request. */
+export type MapsDeviceNavigationState = "selected" | "navigating" | "stopped" | "awaiting-location" | "awaiting-confirmation"
+
+/** Length and time of the route the phone planned; never the phone's position. */
+export interface MapsDeviceRouteSummary {
+  readonly durationSeconds: number
+  readonly distanceMeters: number
+  readonly traffic: "none" | "approximated" | "live"
+}
+
+/** The phone's answer to an agent navigation request. */
+export const MapsDeviceNavigationStatus = Schema.Struct({
+  state: Schema.Literals(["selected", "navigating", "stopped", "awaiting-location", "awaiting-confirmation"]),
+  placeName: Schema.optionalKey(Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 300)))),
+  travelMode: Schema.optionalKey(TravelMode),
+  route: Schema.optionalKey(Schema.Struct({
+    durationSeconds: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+    distanceMeters: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+    traffic: Schema.Literals(["none", "approximated", "live"]),
+  })),
+})
+/** The phone's answer to an agent navigation request. */
+export type MapsDeviceNavigationStatus = typeof MapsDeviceNavigationStatus.Type
+
+/** The agent's provider-neutral place as the phone receives it. */
+export const AgentPlaceRef = Schema.Struct({
+  provider: Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,63}$/i)),
+  providerPlaceId: Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 512))),
+  name: Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 300))),
+  coordinates: Coordinate,
+  formattedAddress: Schema.optionalKey(Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 1000)))),
+  categories: Schema.optionalKey(Schema.Array(Schema.String)),
+})
+/** The agent's provider-neutral place as the phone receives it. */
+export type AgentPlaceRef = typeof AgentPlaceRef.Type
+
+/** One navigation request the agent sends the phone. */
+export const DeviceNavigationOperation = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("select"), place: AgentPlaceRef }),
+  Schema.Struct({ kind: Schema.Literal("start"), request: Schema.Struct({ destination: AgentPlaceRef, travelMode: TravelMode }) }),
+  Schema.Struct({ kind: Schema.Literals(["reroute", "stop"]) }),
+])
+/** One navigation request the agent sends the phone. */
+export type DeviceNavigationOperation = typeof DeviceNavigationOperation.Type
+
+/** The refusal codes the phone reports for an agent navigation request. */
+export const DeviceNavigationMapsCode = Schema.Literals([
+  "MAPS_DEVICE_UNAVAILABLE", "MAPS_INVALID_INPUT", "MAPS_NOT_FOUND", "MAPS_UNSUPPORTED_REGION", "MAPS_AUTH_EXPIRED", "MAPS_NOT_ENTITLED",
+  "MAPS_PROVIDER_CHANGED", "MAPS_PROVIDER_REJECTED", "MAPS_RATE_LIMITED", "MAPS_BUDGET_EXHAUSTED", "MAPS_PROVIDER_UNAVAILABLE",
+  "MAPS_PROVIDER_NETWORK", "MAPS_PROVIDER_TIMEOUT", "MAPS_MALFORMED_RESPONSE",
+])
+/** A refusal code the phone reports. */
+export type DeviceNavigationMapsCode = typeof DeviceNavigationMapsCode.Type
+
+/** A typed refusal from the phone; the phone never reports a state it is not in. */
+export error DeviceNavigationFailure { code: DeviceNavigationMapsCode; message: string }
+
+const unavailable = (message: string) => new DeviceNavigationFailure({ code: "MAPS_DEVICE_UNAVAILABLE", message })
+const invalidInput = (message: string) => new DeviceNavigationFailure({ code: "MAPS_INVALID_INPUT", message })
+const cancelledOnPhone = () => unavailable("The Maps request was cancelled on the phone.")
+
+/** A phone Maps failure as the agent's typed code, without inventing a state. */
+export function deviceNavigationFailure(error: MapsFailure): DeviceNavigationFailure {
+  const coded = (code: DeviceNavigationMapsCode) => new DeviceNavigationFailure({ code, message: error.message })
+  switch (error.code) {
+    case "cancelled": return cancelledOnPhone()
+    case "unauthorized": return coded(/subscription|balance|choose a plan/i.test(error.message) ? "MAPS_NOT_ENTITLED"
+      : /account changed/i.test(error.message) ? "MAPS_PROVIDER_CHANGED" : /refused/i.test(error.message) ? "MAPS_PROVIDER_REJECTED" : "MAPS_AUTH_EXPIRED")
+    case "rate-limited": return coded(/allowance/i.test(error.message) ? "MAPS_BUDGET_EXHAUSTED" : "MAPS_RATE_LIMITED")
+    case "unsupported": return coded(/no route/i.test(error.message) ? "MAPS_NOT_FOUND" : /choose an actual origin/i.test(error.message) ? "MAPS_INVALID_INPUT" : "MAPS_UNSUPPORTED_REGION")
+    case "offline": return coded("MAPS_PROVIDER_NETWORK")
+    case "timeout": return coded("MAPS_PROVIDER_TIMEOUT")
+    case "invalid-response": return coded("MAPS_MALFORMED_RESPONSE")
+    case "unconfigured":
+    case "unavailable": return coded("MAPS_PROVIDER_UNAVAILABLE")
+    default: return unavailable(error.message)
+  }
+}
+
+/** The navigation session the Maps screen holds, from the owner's Start to End, including a replan and arrival. */
+export interface ActiveGuidance {
+  readonly session: number
+  readonly routeId: string
+  readonly placeName: string
+  readonly travelMode: TravelMode
+  readonly fix?: Position
+  readonly rerouting: boolean
+  readonly arrived: boolean
+}
+
+/** What the screen shows that an agent request reads: provider, selection, route, sheet revision and mode. */
+export interface NavigationSnapshot {
+  readonly provider: ProviderConfig
+  readonly selection: ResultState<Place | null>
+  readonly route: ResultState<Route | null>
+  readonly revision: number
+  readonly mode: TravelMode
+}
+
+/** The screen's own reroute publication for its active guidance. */
+export interface RoutePlanReceipt {
+  readonly session: number
+  readonly route?: Route
+  readonly error?: MapsFailure
+}
+
+/** The Maps screen operations an agent request uses; guidance still needs the owner's own Start. */
+export interface MapsNavigationSurface {
+  present(): boolean!!
+  snapshot(): NavigationSnapshot | undefined
+  showPlace(place: Place, resolveDetails: boolean): void!MapsFailure
+  showDirections(place: Place, travelMode: TravelMode, resolveDetails: boolean): void!MapsFailure
+  locationGranted(): boolean!!
+  locate(): Position!MapsFailure
+  planFrom(origin: Coordinate): void!MapsFailure
+  guidance(): ActiveGuidance | null
+  reroute(from: Coordinate): (RoutePlanReceipt | undefined)!MapsFailure
+  stop(): void!MapsFailure
+}
+
+/** The Cloud Maps installation an agent request belongs to. */
+export interface NavigationOwner {
+  readonly providerId: string
+  readonly attribution: string
+  current(): boolean
+}
+
+const travel: Record<TravelMode, Travel> = { drive: "Drive", walk: "Walk", bicycle: "Bicycle", transit: "Transit" }
+const agentCloudProvider = "eliza-cloud"
+
+/** The phone side of an agent's navigation requests over the reviewed Maps screen: one request at a time, a newer one cancelling the older, and guidance only after the owner's own Start. */
+export effect function deviceMapsNavigation(surface: MapsNavigationSurface, owner: NavigationOwner, fixTimeout: Duration.Input = "15 seconds") {
+  const kept = try Ref.make<Directions>(noDirections)
+  const directions = try directionsOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+  const sessionKept = try Ref.make<GuidedSession>(noSession)
+  const sessions = try sessionOver(() => Ref.get(sessionKept), (next) => Ref.set(sessionKept, next))
+  const running = try Ref.make<{ readonly stop: Effect.Effect<void> } | undefined>(undefined)
+  const routeNumbers = new Map<string, number>()
+
+  effect function current(): void!DeviceNavigationFailure {
+    if (!owner.current()) throw new DeviceNavigationFailure({ code: "MAPS_PROVIDER_CHANGED", message: "The Maps account on the phone changed. Nothing was changed on the map." })
+  }
+
+  effect function exclusive<A>(work: A!DeviceNavigationFailure): A!DeviceNavigationFailure {
+    const previous = try Ref.getAndSet(running, undefined)
+    if (previous !== undefined) try previous.stop
+    try current()
+    const fiber = fork work
+    const held = { stop: Fiber.interrupt(fiber) }
+    try Ref.set(running, held)
+    const done = try Fiber.await(fiber)
+    try Ref.update(running, (now) => now === held ? undefined : now)
+    if (done._tag === "Success") return done.value
+    const failure = Exit.findErrorOption(done)
+    throw failure._tag === "Some" ? failure.value : cancelledOnPhone()
+  }
+
+  effect function destination(value: AgentPlaceRef): { readonly place: Place; readonly resolveDetails: boolean }!DeviceNavigationFailure {
+    const cloud = value.provider === agentCloudProvider || value.provider === owner.providerId
+    if (!cloud && value.provider !== "coordinates") throw invalidInput("The phone can show only Cloud Maps places or coordinates.")
+    const at = try Clock.currentTimeMillis
+    const shown = validPlace({
+      providerId: owner.providerId, id: cloud ? value.providerPlaceId : "coordinates", name: value.name.trim(), coordinate: value.coordinates,
+      ...(value.formattedAddress === undefined ? {} : { address: value.formattedAddress }), attribution: owner.attribution, fetchedAt: at,
+    }, owner.providerId) catch effect () => { throw invalidInput("The place is invalid.") }
+    return { place: shown, resolveDetails: cloud }
+  }
+
+  effect function presented(): Extract<ProviderConfig, { readonly status: "configured" }>!DeviceNavigationFailure {
+    const shown = try surface.present()
+    try current()
+    if (!shown) throw unavailable("Open Maps on the phone to continue. Nothing was changed on the map.")
+    const provider = surface.snapshot()?.provider
+    if (provider === undefined || provider.status !== "configured" || provider.providerId !== owner.providerId) throw unavailable("Cloud Maps is not connected on the phone.")
+    return provider
+  }
+
+  effect function selected(shown: Place): Place!DeviceNavigationFailure {
+    const selection = surface.snapshot()?.selection
+    if (selection?.phase === "ready" && selection.value?.id === shown.id && selection.value.providerId === shown.providerId) return selection.value
+    if (selection?.phase === "error" && selection.error !== null) throw deviceNavigationFailure(selection.error)
+    if (selection?.phase === "empty") throw new DeviceNavigationFailure({ code: "MAPS_NOT_FOUND", message: "Cloud Maps has no such place." })
+    throw unavailable("The place could not be shown on the phone.")
+  }
+
+  effect function notGuiding(message: string): void!DeviceNavigationFailure {
+    if (surface.guidance() !== null) throw invalidInput(message)
+  }
+
+  effect function freshFix(): (Position | undefined)!DeviceNavigationFailure {
+    const located = try exit(timeoutOption(surface.locate(), fixTimeout))
+    if (located._tag === "Failure" || located.value._tag === "None") return undefined
+    const fix = located.value.value
+    return fix
+  }
+
+  effect function select(value: AgentPlaceRef): MapsDeviceNavigationStatus!DeviceNavigationFailure {
+    return try exclusive(effect {
+      const { place, resolveDetails } = try destination(value)
+      try notGuiding("Navigation is active on the phone. End it before selecting another place.")
+      try presented()
+      try notGuiding("Navigation started on the phone. End it before selecting another place.")
+      try mapError(surface.showPlace(place, resolveDetails), deviceNavigationFailure)
+      try current()
+      return { state: "selected", placeName: (try selected(place)).name } satisfies MapsDeviceNavigationStatus
+    })
+  }
+
+  effect function start(request: { readonly destination: AgentPlaceRef; readonly travelMode: TravelMode }): MapsDeviceNavigationStatus!DeviceNavigationFailure {
+    return try exclusive(effect {
+      const travelMode = request.travelMode
+      const { place, resolveDetails } = try destination(request.destination)
+      try notGuiding("Navigation is already active on the phone. End it before starting another route.")
+      const provider = try presented()
+      try notGuiding("Navigation started on the phone. End it before starting another route.")
+      if (!provider.capabilities.modes.includes(travelMode)) throw new DeviceNavigationFailure({ code: "MAPS_UNSUPPORTED_REGION", message: `Cloud Maps does not plan ${travelMode} routes.` })
+      const planned = directions.send({ type: "startPlan", plan: {
+        ownerId: 1, destination: place.id, travel: travel[travelMode], providerReady: true, modeSupported: true, validReference: true,
+      } }) catch effect () => { throw invalidInput("Navigation is already active on the phone. End it before starting another route.") }
+      const ticket = planned.ticket
+      try mapError(surface.showDirections(place, travelMode, resolveDetails), deviceNavigationFailure)
+      try current()
+      const exact = try selected(place)
+      const status = { placeName: exact.name, travelMode }
+      const revision = surface.snapshot()?.revision
+      const granted = try surface.locationGranted()
+      try current()
+      if (!granted) return { state: "awaiting-location", ...status } satisfies MapsDeviceNavigationStatus
+      const fix = try freshFix()
+      try current()
+      const shown = surface.snapshot()
+      if (surface.guidance() !== null || shown?.revision !== revision || shown?.mode !== travelMode) {
+        if ((try directions.get()).phase === "AwaitingFix") try orDie(directions.send({ type: "selectionChanges" }))
+        throw unavailable("Maps changed on the phone while location was pending. The current route was kept.")
+      }
+      const checkedAt = try Clock.currentTimeMillis
+      const received = directions.send({ type: "receiveFix", ticket, fix: navigationFix(fix, checkedAt), alreadyGranted: granted }) catch () => undefined
+      if (received === undefined || fix === undefined) return { state: "awaiting-location", ...status } satisfies MapsDeviceNavigationStatus
+      try mapError(surface.planFrom(fix.coordinate), deviceNavigationFailure)
+      try current()
+      const routed = surface.snapshot()?.route
+      if (routed?.phase === "error" && routed.error !== null) throw deviceNavigationFailure(routed.error)
+      const value = routed?.phase === "ready" ? routed.value : null
+      const reaches = value !== null && value.mode === travelMode && value.to.latitude === exact.coordinate.latitude && value.to.longitude === exact.coordinate.longitude
+      const settled = try orDie(directions.send({ type: "planSettles", ticket, result: { route: reaches ? planned.ticket : 0, destination: reaches ? place.id : "", travel: travel[travelMode] } }))
+      if (settled.phase !== "Confirm" || value === null) throw unavailable("The route could not be planned on the phone.")
+      return {
+        state: "awaiting-confirmation", ...status,
+        route: { durationSeconds: Math.round(value.durationSeconds), distanceMeters: Math.round(value.distanceMeters), traffic: value.traffic },
+      } satisfies MapsDeviceNavigationStatus
+    })
+  }
+
+  effect function reroute(): MapsDeviceNavigationStatus!DeviceNavigationFailure {
+    return try exclusive(effect {
+      const active = surface.guidance()
+      if (active === null) throw invalidInput("No navigation is active on the phone.")
+      if (active.arrived) throw invalidInput("The phone has already arrived at the destination.")
+      if (active.rerouting) throw unavailable("The phone is already planning a new route.")
+      const held = try sessions.get()
+      if (held.phase !== "SessionGuiding" || held.session !== active.session) throw unavailable("Navigation on the phone changed before it could be replanned.")
+      const now = try Clock.currentTimeMillis
+      const fix = navigationFix(active.fix, now)
+      const started = sessions.send({ type: "startSessionReroute", fix }) catch () => undefined
+      if (started === undefined || active.fix === undefined) throw unavailable("The phone has no fresh, precise location fix, so it kept the current route.")
+      const prepared = (try directions.get()).phase === "Guiding" ? (directions.send({ type: "startReroute", fix }) catch () => undefined) : undefined
+      effect function settle(route: number, sameSession: boolean): void!! {
+        try orDie(sessions.send({ type: "sessionRerouteSettles", ticket: started.ticket, route, sameSession }))
+        if (prepared !== undefined) try orDie(directions.send({ type: "rerouteSettles", ticket: prepared.ticket, route, sameSession }))
+      }
+      const reply = mapError(surface.reroute(active.fix.coordinate), deviceNavigationFailure) catch effect (error) => {
+        try settle(0, false)
+        throw error
+      }
+      try current()
+      const next = surface.guidance()
+      const sameSession = next !== null && next.session === active.session && reply !== undefined && reply.session === active.session
+      const replanned = sameSession && next !== null && reply?.route !== undefined ? routeNumber(next.routeId) : 0
+      try settle(replanned, sameSession)
+      if (next === null || next.session !== active.session) throw unavailable("Navigation ended on the phone before the new route was ready.")
+      if (reply?.error !== undefined) throw deviceNavigationFailure(reply.error)
+      if (reply === undefined || next.rerouting) throw unavailable("The phone kept the previous route.")
+      return { state: "navigating", placeName: active.placeName, travelMode: active.travelMode } satisfies MapsDeviceNavigationStatus
+    })
+  }
+
+  function routeNumber(routeId: string): number {
+    const known = routeNumbers.get(routeId)
+    if (known !== undefined) return known
+    routeNumbers.set(routeId, routeNumbers.size + 1)
+    return routeNumbers.size
+  }
+
+  effect function stop(): MapsDeviceNavigationStatus!DeviceNavigationFailure {
+    return try exclusive(effect {
+      const active = surface.guidance()
+      try mapError(surface.stop(), deviceNavigationFailure)
+      if ((try directions.get()).phase !== "Idle") try orDie(directions.send({ type: "stop" }))
+      if ((try sessions.get()).phase !== "NoSession") try orDie(sessions.send({ type: "sessionEnds" }))
+      return { state: "stopped", ...(active === null ? {} : { placeName: active.placeName, travelMode: active.travelMode }) } satisfies MapsDeviceNavigationStatus
+    })
+  }
+
+  return {
+    select,
+    start,
+    reroute,
+    stop,
+    directions: directions.get,
+    session: sessions.get,
+    guidanceStarted: effect (active: ActiveGuidance) => {
+      const before = try sessions.get()
+      if (before.phase !== "NoSession") try orDie(sessions.send({ type: "sessionEnds" }))
+      const next = sessions.send({ type: "ownerStarts", session: active.session, route: routeNumber(active.routeId) }) catch (rejected) => rejected.state
+      return next.phase === "SessionGuiding" && next.session === active.session
+    },
+    guidanceEnded: effect () => {
+      if ((try sessions.get()).phase !== "NoSession") try orDie(sessions.send({ type: "sessionEnds" }))
+      if ((try directions.get()).phase !== "Idle") try orDie(directions.send({ type: "stop" }))
+    },
+    confirmed: effect () => {
+      const next = directions.send({ type: "confirmGuidance" }) catch (rejected) => rejected.state
+      return next.active
+    },
+    sheetChanged: effect () => {
+      directions.send({ type: "selectionChanges" }) catch (rejected) => rejected.state
+    },
+    retire: effect () => {
+      const previous = try Ref.getAndSet(running, undefined)
+      if (previous !== undefined) try previous.stop
+      if ((try directions.get()).owner > 0) try orDie(directions.send({ type: "retire" }))
+    },
+  }
+}
+
+/** The phone side of agent navigation requests. */
+export type DeviceMapsNavigation = Effect.Success<ReturnType<typeof deviceMapsNavigation>>
+
+/** Why the native navigation bridge did not answer. */
+export error NavigationBridgeFailed { operation: string }
+
+/** The host's native screen-off navigation service: an ongoing notification that keeps the session alive and reports its own Stop. */
+export interface NavigationBridge {
+  availability(): { readonly background: boolean }!NavigationBridgeFailed
+  listen(sessionId: string, stopped: (reason: string) => void): (() => void)!NavigationBridgeFailed
+  start(input: { readonly sessionId: string; readonly title: string; readonly text: string }): void!NavigationBridgeFailed
+  update(input: { readonly sessionId: string; readonly title: string; readonly text: string }): { readonly active: boolean }!NavigationBridgeFailed
+  stop(input: { readonly sessionId: string }): { readonly stopped: boolean }!NavigationBridgeFailed
+}
+
+interface NativeSession {
+  readonly id: string
+  readonly owner: number
+  title: string
+  text: string
+  started: boolean
+  stopped: boolean
+  remove?: () => void
+}
+
+/** Screen-off guidance for the route the owner started: confirmed only by the device, kept while the native session or a permission prompt holds it, and never resumed on its own. */
+export effect function backgroundNavigation(bridge: NavigationBridge, onEnded: (reason: "notification" | "lost" | "arrived") => void) {
+  const kept = try Ref.make<Navigation>(noGuidance)
+  const machine = try navigationOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+  const routes = new Map<string, number>()
+  let session: NativeSession | undefined
+
+  effect function send(event: NavigationEvent): Navigation!! {
+    return machine.send(event) catch effect () => try machine.get()
+  }
+
+  effect function release(): void!! {
+    const ending = session
+    session = undefined
+    if (ending === undefined) return
+    const wasStopped = ending.stopped
+    ending.stopped = true
+    ending.remove?.()
+    if (!wasStopped) try ignore(bridge.stop({ sessionId: ending.id }))
+  }
+
+  effect function follow(next: Navigation): void!! {
+    if (next.phase !== "LiveGuidance" || next.background === "NoBackground") try release()
+  }
+
+  effect function lose(owned: NativeSession, reason: StopReason): void!! {
+    try serialize(effect {
+      if (session !== owned || owned.stopped) return
+      if (reason === "NotificationStop") owned.stopped = true
+      const next = try send({ type: "loseBackground", owner: owned.owner, reason })
+      try follow(next)
+      if (next.phase === "NoGuidance") try sync(() => onEnded(reason === "NotificationStop" ? "notification" : "lost"))
+    })
+  }
+
+  effect function push(owned: NativeSession): void!! {
+    const answer = try exit(bridge.update({ sessionId: owned.id, title: owned.title, text: owned.text }))
+    if (answer._tag === "Failure" || !answer.value.active) try lose(owned, "ServiceLost")
+  }
+
+  effect function reserve(owned: NativeSession): boolean!! {
+    const available = try exit(bridge.availability())
+    const admitted = available._tag === "Success" && available.value.background
+    const reserved = admitted && try serialize(effect {
+      const now = try machine.get()
+      if (session !== owned || now.generation !== owned.owner || now.background !== "Reserving") return false
+      try send({ type: "reserveBackground", owner: owned.owner })
+      return true
+    })
+    const listening = reserved
+      ? try exit(bridge.listen(owned.id, (reason) => { runFork(lose(owned, reason === "notification" ? "NotificationStop" : "ServiceLost")) }))
+      : undefined
+    if (listening !== undefined && listening._tag === "Success") owned.remove = listening.value
+    const shown = { title: owned.title, text: owned.text }
+    const started = listening !== undefined && listening._tag === "Success" && session === owned
+      ? (try exit(bridge.start({ sessionId: owned.id, ...shown })))._tag === "Success"
+      : false
+    return try serialize(effect {
+      if (session !== owned || owned.stopped) {
+        if (started) try ignore(bridge.stop({ sessionId: owned.id }))
+        owned.remove?.()
+        return false
+      }
+      owned.started = started
+      const next = try send({ type: "finishBackground", owner: owned.owner, nativeStarted: started })
+      try follow(next)
+      if (next.phase === "NoGuidance") try sync(() => onEnded("lost"))
+      if (started && (owned.title !== shown.title || owned.text !== shown.text)) fork.detached push(owned)
+      return next.background === "ScreenOff"
+    })
+  }
+
+  effect function start(routeId: string, title: string, text: string): boolean!! {
+    const owned = try serialize(effect {
+      try release()
+      const route = routes.get(routeId) ?? routes.size + 1
+      routes.set(routeId, route)
+      const before = try machine.get()
+      const next = try send({ type: "startGuidance", route, selected: true })
+      if (next.generation === before.generation) return undefined
+      const fresh: NativeSession = { id: sessionId(), owner: next.generation, title, text, started: false, stopped: false }
+      session = fresh
+      return fresh
+    })
+    return owned === undefined ? false : try reserve(owned)
+  }
+
+  effect function update(title: string, text: string): void!! {
+    const owned = session
+    if (owned === undefined || owned.stopped || (owned.title === title && owned.text === text)) return
+    owned.title = title
+    owned.text = text
+    if (owned.started) fork.detached push(owned)
+  }
+
+  effect function transition(event: NavigationEvent): Navigation!! {
+    return try serialize(effect {
+      const next = try send(event)
+      try follow(next)
+      return next
+    })
+  }
+
+  return {
+    state: machine.get,
+    changes: machine.changes,
+    start,
+    update,
+    hide: () => transition({ type: "hideGuidance" }),
+    show: () => transition({ type: "showGuidance" }),
+    leave: () => transition({ type: "leaveMaps" }),
+    select: () => transition({ type: "selectMaps" }),
+    end: () => transition({ type: "endGuidance" }),
+    providerRetires: () => transition({ type: "providerRetires" }),
+    arrive: effect (exactRoute: boolean, usableFix: boolean) => {
+      const next = try transition({ type: "arrive", owner: (try machine.get()).generation, exactRoute, usableFix })
+      if (next.phase === "Arrival") try sync(() => onEnded("arrived"))
+      return next
+    },
+    watchFailed: effect () => try transition({ type: "watchFailed", owner: (try machine.get()).generation }),
+    permissionHold: effect (locationPrompt: boolean, controllerPrompt: boolean) =>
+      try transition({ type: "observePermissionHold", owner: (try machine.get()).generation, locationPrompt, controllerPrompt }),
+  }
+}
+
+/** The screen-off navigation of one Maps screen. */
+export type BackgroundNavigation = Effect.Success<ReturnType<typeof backgroundNavigation>>
+
+/** Why the relay to the agent host stopped. */
+export error RelayUnavailable { reason: string }
+
+/** The agent host's relay endpoint, called with the phone's own device credential. */
+export type RelayRequest = (body: Readonly<Record<string, unknown>>) => unknown!RelayUnavailable
+
+/** What the phone needs to answer relayed requests for the current Maps controller. */
+export interface MapsRelayHost<Owner extends object> {
+  current(): Owner | undefined
+  execute(owner: Owner, operation: DeviceNavigationOperation): MapsDeviceNavigationStatus!DeviceNavigationFailure
+  connected(value: boolean, offerId: string): void
+}
+
+const RelayReply = Schema.Struct({
+  protocol: Schema.Literal(1),
+  request: Schema.NullOr(Schema.Struct({ id: Schema.String.check(Schema.isPattern(/^[a-f0-9-]{36}$/i)), expiresAt: Schema.Finite, operation: Schema.Unknown })),
+})
+const decodeReply = Schema.decodeUnknownEffect(RelayReply)
+const decodeOperation = Schema.decodeUnknownEffect(DeviceNavigationOperation)
+
+/** Offers this phone's navigation to the agent only during its authenticated turn: each relayed request runs at most once, a redelivered one is never run again, and its one receipt is never retried. */
+export effect function withMapsNavigationRelay<A, E, R, Owner extends object>(host: MapsRelayHost<Owner>, request: RelayRequest, conversationId: string, send: A!E!R): A!E!R {
+  const navigation = host.current()
+  if (navigation === undefined) return try send
+  const offer = offerId()
+  const phase = (name: "open" | "poll" | "retire") => request({ phase: name, conversationId, offerId: offer })
+  const opened = try exit(flatMap(phase("open"), decodeReply))
+  if (opened._tag === "Failure" || opened.value.request !== null) {
+    try ignore(phase("retire"))
+    return try send
+  }
+  try sync(() => host.connected(true, offer))
+  const delivered = new Set<string>()
+
+  effect function answer(id: string, raw: unknown, expiresAt: number): void!RelayUnavailable {
+    const now = try Clock.currentTimeMillis
+    const live = host.current() === navigation
+    const admitted = admitRelay({ protocol: 1, currentOffer: true, currentOwner: live, requestIdValid: true, alreadyDelivered: delivered.has(id), expiresIn: Math.floor(expiresAt - now) })
+    if (delivered.has(id)) return
+    if (!admitted) throw new RelayUnavailable({ reason: "The relayed request was not admitted." })
+    delivered.add(id)
+    const result: Readonly<Record<string, unknown>> = effect {
+      const operation = decodeOperation(raw) catch effect () => { throw invalidInput("The navigation request is invalid.") }
+      const status = try timeoutOption(host.execute(navigation, operation), commandBudget(Math.floor(expiresAt - now)))
+      if (status._tag === "None") throw unavailable("The Maps request timed out on the phone.")
+      if (host.current() !== navigation) throw new DeviceNavigationFailure({ code: "MAPS_PROVIDER_CHANGED", message: "The Maps account on the phone changed." })
+      return { status: status.value }
+    } catch (failure) => ({ failed: { code: failure.code, message: failure.message.trim().slice(0, 300) } })
+    try request({ phase: "result", conversationId, offerId: offer, id, ...result })
+  }
+
+  const receive = effect {
+    while (host.current() === navigation) {
+      const reply = try flatMap(phase("poll"), (value) => mapError(decodeReply(value), () => new RelayUnavailable({ reason: "Maps navigation protocol changed." })))
+      if (reply.request !== null) try answer(reply.request.id, reply.request.operation, reply.request.expiresAt)
+    }
+  }
+  const receiving = fork receive
+  return try ensuring(send, effect {
+    try Fiber.interrupt(receiving)
+    try sync(() => host.connected(false, offer))
+    try ignore(phase("retire"))
+  })
+}

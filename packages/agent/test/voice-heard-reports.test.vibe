@@ -14,7 +14,7 @@ const spoken: HeardReport = { reply: 1, conversationId, messageId, heardText: " 
 
 module node {
   import { Effect } from "effect"
-  import { Machine, machine, spoken, type Event, type ReportOutcome } from "../gen/agent__voice__session.effect.vibe"
+  import { Machine, defaultVoiceProfile, machine, spoken, type Event, type ReportOutcome } from "../gen/agent__voice__session.effect.vibe"
   import type { ClockPort, HeardAnswer, HeardPort } from "../src/voice/ports.vibe"
   import { createHeardReports, type HeardReport } from "../src/voice/heard-reports.vibe"
 
@@ -25,7 +25,7 @@ module node {
     const read = () => Effect.runSync(holder.get())
     const send = (event: Event) => Effect.runSync(Effect.result(holder.send(event)))._tag === "Success"
     const events: Event[] = [
-      { type: "start", mode: "ConversationMode", duplex: "FullDuplex" },
+      { type: "start", mode: "ConversationMode", duplex: "FullDuplex", profile: defaultVoiceProfile },
       { type: "captureOpened" }, { type: "speechStarted" }, { type: "speechEnded" },
       { type: "finalTranscript", heard: spoken }, { type: "longGapElapsed", epoch: 1 },
       { type: "sendTurn" }, { type: "replyStarted", segments: 2 },

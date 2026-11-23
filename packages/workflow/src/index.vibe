@@ -1,0 +1,61 @@
+// spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "Story: Run my workflows only in the pinned worker"
+import type { IAgentRuntime } from "@elizaos/core"
+import type { AgentPlugin } from "@elizaos/agent"
+import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowStatusProvider } from "./agent.vibe"
+import { workflowRoutes } from "./routes.vibe"
+import { runtimeWorkflowHost, WORKFLOW_SCHEDULE_TASK } from "./runtime.vibe"
+import { hostedDigests } from "./service/digests.vibe"
+import { generatedWorkflows } from "./service/generated.vibe"
+import { openWorkflows } from "./service/workflows.vibe"
+import type { WorkflowInstance } from "./agent.vibe"
+
+/** The package name the bundle pins the workflow worker for. */
+export const workflowPluginName = "@elizaos/plugin-workflow"
+
+let current: WorkflowInstance | undefined
+
+effect function open(runtime: IAgentRuntime) {
+  const service = try openWorkflows(runtimeWorkflowHost(runtime))
+  const digests = hostedDigests(service)
+  const instance: WorkflowInstance = { service, digests, generated: generatedWorkflows(service) }
+  try sync(() => runtime.registerTaskWorker({
+    name: WORKFLOW_SCHEDULE_TASK,
+    execute: async (_runtime, _options, task) => {
+      await runPromise(service.fire(task.metadata ?? {}, digests.fire))
+      return { preserveTask: true }
+    },
+  }))
+  try service.start()
+  return instance
+}
+
+/** The reviewed workflows plugin: typed authoring, exact admission, approvals, schedules while the agent runs, and hosted digests. */
+export const workflowPlugin: AgentPlugin = {
+  name: workflowPluginName,
+  description: "Reviewed typed workflows: authoring, admission by exact version, device-step approvals, local-time schedules while the agent runs, and hosted digests.",
+  actions: [workflowAction],
+  providers: [workflowStatusProvider, activeWorkflowsProvider],
+  routes: workflowRoutes(() => current),
+  init: async (_config, runtime) => {
+    const instance = await runPromise(open(runtime))
+    workflowInstances.set(runtime, instance)
+    current = instance
+  },
+  dispose: async (runtime) => {
+    const instance = workflowInstances.get(runtime)
+    if (instance === undefined) return
+    await runPromise(instance.service.stop())
+    runtime.unregisterTaskWorker(WORKFLOW_SCHEDULE_TASK)
+    workflowInstances.delete(runtime)
+    if (current === instance) current = undefined
+  },
+}
+
+export default workflowPlugin
+export { openWorkflows, phoneWorkflowCatalog, PHONE_CATALOG_REVISION, PHONE_COMPILER_REVISION, WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
+export { hostedDigests } from "./service/digests.vibe"
+export { generatedWorkflows, generatedDraftPrompt } from "./service/generated.vibe"
+export { type WorkflowHost, type WorkflowWorkerPort, type WorkflowDevicePort, type WorkflowNotice, type WorkflowScheduler, type WorkflowNativeDigests } from "./service/host.vibe"
+export { WORKFLOW_DEVICE_SERVICE, WORKFLOW_NATIVE_DIGEST_SERVICE, WORKFLOW_SCHEDULE_TASK, WORKFLOW_WORKER_SERVICE, runtimeWorkflowHost } from "./runtime.vibe"
+export type { WorkflowSql, WorkflowQuery } from "./service/store.vibe"
+export type { ManagedGoogleReads } from "./service/google.vibe"

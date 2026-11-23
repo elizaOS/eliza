@@ -33,7 +33,7 @@ schema Row { path: string; status: "copied" | "moved" | "unchanged" | "trashed" 
 const Answer = Schema.Struct(answered)
 const Volumes = Schema.Struct({ ...answered, volumes: Schema.optionalKey(Schema.Array(Volume)) })
 const Listing = Schema.Struct({ ...answered, entries: Schema.optionalKey(Schema.Array(Entry)), truncated: Schema.optionalKey(Schema.Boolean) })
-const Category = Schema.Struct({ ...answered, entries: Schema.optionalKey(Schema.Array(Entry)), count: Schema.optionalKey(Schema.Int), truncated: Schema.optionalKey(Schema.Boolean), folders: Schema.optionalKey(Schema.Array(Folder)) })
+const Category = Schema.Struct({ ...answered, entries: Schema.optionalKey(Schema.Array(Entry)), count: Schema.optionalKey(Schema.Int), bytes: Schema.optionalKey(Schema.Int), truncated: Schema.optionalKey(Schema.Boolean), folders: Schema.optionalKey(Schema.Array(Folder)) })
 const Reviewed = Schema.Struct({ ...answered, reviewed: Schema.optionalKey(Schema.Array(Schema.String)) })
 const Outcomes = Schema.Struct({ ...answered, outcomes: Schema.optionalKey(Schema.Array(Row)) })
 const Placed = Schema.Struct({ ...answered, path: Schema.optionalKey(Schema.String) })

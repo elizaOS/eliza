@@ -1,0 +1,116 @@
+// spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/agent/access/routes.md, "Story: Admit only the routes a product lists"
+import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
+import { WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
+import type { hostedDigests } from "./service/digests.vibe"
+import type { generatedWorkflows } from "./service/generated.vibe"
+
+/** The workflow service and digest routes a runtime opened, or undefined before the plugin initialized. */
+export type WorkflowRouteTarget = () => { readonly service: WorkflowService; readonly digests: ReturnType<typeof hostedDigests>; readonly generated: ReturnType<typeof generatedWorkflows> } | undefined
+
+type Method = "GET" | "POST" | "PUT"
+type Answer = { readonly status: number; readonly body: object }
+type Opened = NonNullable<ReturnType<WorkflowRouteTarget>>
+type Handle = (input: RouteInput, opened: Opened) => object!WorkflowRefused
+
+function refusal(error: WorkflowRefused): Answer {
+  const { status, message, code, workflowId, submissionId, mutationId, expectedVersionId } = error
+  return {
+    status,
+    body: {
+      error: message, ...(code === undefined ? {} : { code }), ...(workflowId === undefined ? {} : { workflowId }), ...(submissionId === undefined ? {} : { submissionId }),
+      ...(mutationId === undefined ? {} : { mutationId }), ...(expectedVersionId === undefined ? {} : { expectedVersionId }),
+    },
+  }
+}
+
+function routeOver(target: WorkflowRouteTarget) {
+  return (method: Method, path: string, handle: Handle, options: { readonly maxBodyBytes?: number; readonly status?: number; readonly query?: LocalRoute["query"] } = {}): LocalRoute => ({
+    method, path, ...(options.maxBodyBytes === undefined ? {} : { maxBodyBytes: options.maxBodyBytes }), ...(options.query === undefined ? {} : { query: options.query }),
+    handler: (input) => {
+      const opened = target()
+      if (opened === undefined) return { status: 503, body: { error: "Workflows are starting" } }
+      return runPromise(Effect.catch(map(handle(input, opened), (body): Answer => ({ status: options.status ?? 200, body })), (error) => succeed(refusal(error))))
+    },
+  })
+}
+
+const param = (input: RouteInput, name: string) => input.parameters.get(name) ?? ""
+
+module browser {
+  import { Stream } from "effect"
+
+  export function eventStreamResponse(events: Stream.Stream<object, unknown>): Response {
+    const encoder = new TextEncoder()
+    const frames = Stream.map(events, (event) => encoder.encode(`event: workflow\ndata: ${JSON.stringify(event)}\n\n`))
+    return new Response(Stream.toReadableStream(Stream.catch(frames, () => Stream.empty)), {
+      headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store" },
+    })
+  }
+}
+import { eventStreamResponse } from browser
+
+function eventsRoute(target: WorkflowRouteTarget): LocalRoute {
+  return {
+    method: "GET", path: "/api/workflow/executions/{id}/events", stream: true,
+    handler: async (input) => {
+      const opened = target()
+      if (opened === undefined) return { status: 503, body: { error: "Workflows are starting" } }
+      const runId = param(input, "id")
+      const found = await runPromise(Effect.result(opened.service.execution(runId)))
+      if (Result.isFailure(found)) return refusal(found.failure)
+      return eventStreamResponse(opened.service.runEvents(runId))
+    },
+  }
+}
+
+/** Every route the workflow plugin serves under /api/workflow, each answering only what the status advertises. */
+export function workflowRoutes(target: WorkflowRouteTarget): LocalRoute[] {
+  const id = (input: RouteInput) => param(input, "id")
+  const route = routeOver(target)
+  return [
+    route("GET", "/api/workflow/status", (_input, { service }) => succeed(service.status())),
+    route("GET", "/api/workflow/phone/catalog", (_input, { service }) => succeed(service.catalog())),
+    route("POST", "/api/workflow/phone/generate", (input, { service }) => service.generate(input.body), { maxBodyBytes: 75_000 }),
+    route("POST", "/api/workflow/phone/validate", (input, { service }) => service.validate(input.body), { maxBodyBytes: 70_000 }),
+    route("POST", "/api/workflow/phone/workflows", (input, { service }) => service.save(input.body), { maxBodyBytes: 70_000 }),
+    route("GET", "/api/workflow/phone/mutations/{mutationId}", (input, { service }) => service.saveReceipt(param(input, "mutationId"))),
+    route("POST", "/api/workflow/workflows/{id}/phone-spec", (input, { service }) => service.save(input.body, id(input)), { maxBodyBytes: 70_000 }),
+    route("GET", "/api/workflow/workflows", (_input, { service }) => map(service.list(false), (workflows) => ({ workflows }))),
+    route("GET", "/api/workflow/removed-workflows", (_input, { service }) => map(service.list(true), (workflows) => ({ workflows }))),
+    route("GET", "/api/workflow/workflows/{id}", (input, { service }) => service.detail(id(input))),
+    route("POST", "/api/workflow/workflows/generate", (input, { generated }) => generated.draft(input.body), { maxBodyBytes: 8000 }),
+    route("POST", "/api/workflow/workflows", (input, { generated }) => generated.save(input.body), { maxBodyBytes: 80_000, status: 201 }),
+    route("PUT", "/api/workflow/workflows/{id}", (input, { generated }) => generated.save(input.body, id(input)), { maxBodyBytes: 80_000 }),
+    route("GET", "/api/workflow/workflows/{id}/source", (input, { generated }) => generated.source(id(input))),
+    route("POST", "/api/workflow/workflows/{id}/review", (input, { generated }) => generated.review(id(input), input.body)),
+    route("GET", "/api/workflow/generated/mutations/{mutationId}", (input, { generated }) => generated.saveReceipt(param(input, "mutationId"))),
+    route("POST", "/api/workflow/workflows/{id}/activate", (input, { service }) => service.activation(id(input), input.body, true)),
+    route("POST", "/api/workflow/workflows/{id}/deactivate", (input, { service }) => service.activation(id(input), input.body, false)),
+    route("POST", "/api/workflow/workflows/{id}/metadata", (input, { service }) => service.metadata(id(input), input.body)),
+    route("GET", "/api/workflow/workflows/{id}/metadata-mutations/{mutationId}", (input, { service }) => service.metadataReceipt(id(input), param(input, "mutationId"))),
+    route("POST", "/api/workflow/workflows/{id}/lifecycle", (input, { service }) => service.lifecycle(id(input), input.body)),
+    route("GET", "/api/workflow/workflows/{id}/lifecycle-mutations/{mutationId}", (input, { service }) => service.lifecycleReceipt(id(input), param(input, "mutationId"))),
+    route("POST", "/api/workflow/workflows/{id}/run", (input, { service }) => service.run(id(input), input.body)),
+    route("GET", "/api/workflow/workflows/{id}/submissions/{submissionId}", (input, { service }) => service.submission(id(input), param(input, "submissionId"))),
+    route("GET", "/api/workflow/workflows/{id}/executions", (input, { service }) => service.executions(id(input))),
+    route("GET", "/api/workflow/executions/{id}", (input, { service }) => service.execution(id(input))),
+    route("POST", "/api/workflow/executions/{id}/cancel", (input, { service }) => service.cancel(id(input)), { status: 202 }),
+    route("GET", "/api/workflow/executions/{id}/approvals", (input, { service }) => service.approvals(id(input))),
+    route("POST", "/api/workflow/executions/{id}/approvals/{nodeId}/{iteration}",
+      (input, { service }) => service.decide(id(input), param(input, "nodeId"), /^\d{1,9}$/.test(param(input, "iteration")) ? Number(param(input, "iteration")) : -1, input.body), { status: 202 }),
+    route("GET", "/api/workflow/executions/{id}/phone-review", (input, { service }) => service.phoneReview(id(input))),
+    route("POST", "/api/workflow/executions/{id}/signals/{signal}", (input, { service }) => service.signal(id(input), param(input, "signal"), input.body), { status: 202 }),
+    eventsRoute(target),
+    route("GET", "/api/workflow/hosted/live-accounts", (_input, { digests }) => digests.liveAccounts()),
+    route("POST", "/api/workflow/hosted/live-calendars", (input, { digests }) => digests.liveCalendars(input.body), { maxBodyBytes: 2000 }),
+    route("GET", "/api/workflow/hosted/sources", (_input, { digests }) => digests.sources()),
+    route("POST", "/api/workflow/hosted/sources", (input, { digests }) => digests.saveSource(input.body), { maxBodyBytes: 20_000 }),
+    route("POST", "/api/workflow/hosted/sources/revoke", (input, { digests }) => digests.revokeSource(input.body)),
+    route("POST", "/api/workflow/hosted/dossier", (input, { digests }) => digests.dossier(input.body), { maxBodyBytes: 2000 }),
+    route("GET", "/api/workflow/hosted/loops", (_input, { digests }) => digests.loops()),
+    route("POST", "/api/workflow/hosted/loops", (input, { digests }) => digests.saveLoop(input.body)),
+    route("GET", "/api/workflow/hosted/results", (input, { digests }) => digests.results(input.query),
+      { query: [{ key: "clientId", accepts: { kind: "pattern", pattern: "[A-Za-z0-9][A-Za-z0-9_-]{0,127}" } }] }),
+    route("POST", "/api/workflow/hosted/results/ack", (input, { digests }) => digests.acknowledge(input.body)),
+  ]
+}

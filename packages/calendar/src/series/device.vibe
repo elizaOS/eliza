@@ -1,0 +1,185 @@
+// spec/calendar/seriesScope.md, "Transfer only the admitted target to the device calendar"; spec/calendar/seriesScope.md, "An uncertain delete holds its event until a complete read settles it"
+import { blockedByWrite, deleteOutcome, deleteScope, inspectPublishes, localInlineEdit, manualInspectionRoute, readClearsHold,
+  type CalendarWriteKind, type DeleteReply, type InspectStatus, type OpenSelection } from "../../gen/calendar__seriesScope.effect.vibe"
+
+/** A device calendar row as the renderer projects it: the exact event ID, the occurrence begin, and what decides inline editing. */
+export interface DeviceRow {
+  readonly id: string
+  readonly calendarId: string
+  readonly title: string
+  readonly body: string
+  readonly location: string
+  readonly begin: number
+  readonly end: number
+  readonly allDay: boolean
+  readonly recurring: boolean
+  readonly local: boolean
+  readonly appAccount: boolean
+  readonly complexTiming: boolean
+}
+
+/** The exact target a device inspection admitted, sent as is to the scoped removal. */
+export interface DeviceTicket {
+  readonly eventId: string
+  readonly sourceId: string
+  readonly sourceRevision: string
+  readonly eventRevision: string
+}
+
+/** What an ordinary or deletion inspection of a device row answered. */
+export type DeviceInspection =
+  | { readonly status: "ready"; readonly eventId?: string; readonly sourceId?: string; readonly sourceRevision: string; readonly eventRevision: string }
+  | { readonly status: "external" | "changed" }
+
+/** What the device calendar answered to a scoped removal it was invoked for. */
+export type DeviceRemoval = "queued" | "deleted" | "conflict" | "cancelled" | "unknown" | "refused"
+
+/** The device bridge failed, before or after the mutation was invoked. */
+export error DeviceBridgeFault { invoked: boolean }
+
+/** A device calendar read and the evidence it carries for settling a held write. */
+export interface DeviceRead {
+  readonly accepted: boolean
+  readonly cause: "requested" | "forced" | "ordinary"
+  readonly complete: boolean
+  readonly eventIds: readonly string[]
+  readonly begin: number
+  readonly end: number
+}
+
+/** How the host reaches the device calendar; native inspection and review enforce their own permission, ticket and provider identity. */
+export interface DeviceCalendarPort {
+  inspect(row: DeviceRow): DeviceInspection!DeviceBridgeFault
+  inspectDeletion(row: DeviceRow, scope: "series" | undefined): DeviceInspection!DeviceBridgeFault
+  removeScoped(ticket: DeviceTicket): DeviceRemoval!DeviceBridgeFault
+  openExternal(target: { readonly id: string; readonly begin: number; readonly end: number }): void!DeviceBridgeFault
+}
+
+/** The renderer's current owner, open row and inspection generation. */
+export interface DeviceSession {
+  readonly owner: () => string
+  readonly openRow: () => string | undefined
+  readonly generation: () => number
+}
+
+/** What a manual device deletion or guarded save led to. */
+export type DeviceWriteResult =
+  | { readonly status: "busy" | "ignored" | "external" | "refresh" }
+  | { readonly status: "sent"; readonly reply: DeviceRemoval | DeviceSave | "fault"; readonly applied: boolean; readonly uncertain: boolean }
+
+/** What an inline save through the device calendar answered. */
+export type DeviceSave = "saved" | "conflict" | "unknown"
+
+/** The device deletion router: one Calendar save at a time, inspected targets sent exactly, and an uncertain write held until a covering read. */
+export interface DeviceCalendar {
+  selectForAgent(row: DeviceRow): (DeviceTicket | undefined)!!
+  remove(row: DeviceRow, pickedSeries: boolean): DeviceWriteResult!!
+  edit(row: DeviceRow, save: DeviceSave!DeviceBridgeFault): DeviceWriteResult!!
+  observeRead(read: DeviceRead): boolean!!
+  held(): (string | undefined)!!
+}
+
+interface Captured {
+  readonly owner: string
+  readonly generation: number
+  readonly openRow: string | undefined
+}
+
+interface Hold {
+  readonly eventId: string
+  readonly kind: CalendarWriteKind
+  readonly begin: number
+}
+
+function selections(captured: Captured, active: Captured): { readonly captured: OpenSelection; readonly active: OpenSelection } {
+  const same = (equal: boolean) => equal ? 1 : 2
+  return {
+    captured: { owner: 1, generation: 1, openRow: 1 },
+    active: { owner: same(active.owner === captured.owner), generation: same(active.generation === captured.generation),
+      openRow: same(active.openRow !== undefined && active.openRow === captured.openRow) },
+  }
+}
+
+function inspectStatus(inspection: DeviceInspection): InspectStatus {
+  return inspection.status === "ready" ? "TargetReady" : inspection.status === "external" ? "ExternalTarget" : "TargetChanged"
+}
+
+const replies: Readonly<Record<DeviceRemoval, DeleteReply>> = {
+  queued: "QueuedReply", deleted: "DeletedReply", conflict: "ConflictReply", cancelled: "CancelledReply", unknown: "UnknownReply", refused: "OtherRefusal",
+}
+
+/** A device deletion router over the host's bridge and the renderer's session. */
+export effect function deviceCalendar(port: DeviceCalendarPort, session: DeviceSession): DeviceCalendar!! {
+  const writes = try Ref.make<{ readonly saving: boolean; readonly hold: Hold | undefined }>({ saving: false, hold: undefined })
+  const capture = (row: DeviceRow): Captured => ({ owner: session.owner(), generation: session.generation(), openRow: row.id })
+  const active = (): Captured => ({ owner: session.owner(), generation: session.generation(), openRow: session.openRow() })
+
+  effect function guarded(row: DeviceRow, kind: CalendarWriteKind, run: (captured: Captured) => DeviceWriteResult!!): DeviceWriteResult!! {
+    const state = try Ref.get(writes)
+    const held = state.hold === undefined ? 0 : state.hold.eventId === row.id ? 1 : 2
+    if (blockedByWrite(state.saving, 1, held)) return { status: "busy" }
+    try Ref.update(writes, (now) => ({ ...now, saving: true }))
+    const result = try ensuring(run(capture(row)), Ref.update(writes, (now) => ({ ...now, saving: false })))
+    if (result.status === "sent" && result.uncertain) try Ref.update(writes, (now) => ({ ...now, hold: { eventId: row.id, kind, begin: row.begin } }))
+    return result
+  }
+
+  effect function adopt(captured: Captured, reply: DeleteReply, wire: DeviceRemoval | "fault"): DeviceWriteResult!! {
+    const outcome = deleteOutcome(session.owner() === captured.owner, reply)
+    return { status: "sent", reply: wire, applied: outcome.deletedEvidence, uncertain: outcome.markUncertain }
+  }
+
+  return {
+    effect selectForAgent(row) {
+      const captured = capture(row)
+      const ordinary = port.inspect(row) catch (): DeviceInspection => ({ status: "changed" })
+      const inspected = ordinary.status === "ready" ? ordinary : port.inspectDeletion(row, undefined) catch (): DeviceInspection => ({ status: "changed" })
+      const { captured: before, active: now } = selections(captured, active())
+      if (inspected.status !== "ready" || !inspectPublishes(before, now, true)) return undefined
+      return { eventId: inspected.eventId ?? row.id, sourceId: row.calendarId, sourceRevision: inspected.sourceRevision, eventRevision: inspected.eventRevision }
+    },
+    remove: (row, pickedSeries) => guarded(row, "DeleteWrite", effect (captured) => {
+      const scope = deleteScope(row.recurring, pickedSeries) === "EntireSeries" ? "series" : undefined
+      const inspected = port.inspectDeletion(row, scope) catch (): DeviceInspection => ({ status: "changed" })
+      const { captured: before, active: now } = selections(captured, active())
+      const route = manualInspectionRoute(before, now, inspectStatus(inspected))
+      if (route === "IgnoreInspection") return { status: "ignored" }
+      if (route === "RefreshRows" || inspected.status !== "ready") return { status: "refresh" }
+      if (route === "OpenExternal") {
+        port.openExternal({ id: row.id, begin: row.begin, end: row.end }) catch () => undefined
+        return { status: "external" }
+      }
+      if (inspected.eventId === undefined || inspected.sourceId === undefined) return { status: "refresh" }
+      const ticket: DeviceTicket = { eventId: inspected.eventId, sourceId: inspected.sourceId, sourceRevision: inspected.sourceRevision, eventRevision: inspected.eventRevision }
+      return try (port.removeScoped(ticket) |> Effect.matchEffect(%, {
+        onSuccess: (reply) => adopt(captured, replies[reply], reply),
+        onFailure: (fault) => adopt(captured, fault.invoked ? "AfterBridgeFault" : "BeforeBridgeFault", "fault"),
+      }))
+    }),
+    effect edit(row, save) {
+      if (!localInlineEdit(row.local, row.appAccount, row.recurring, row.allDay, row.complexTiming)) {
+        port.openExternal({ id: row.id, begin: row.begin, end: row.end }) catch () => undefined
+        return { status: "external" }
+      }
+      return try guarded(row, "EditWrite", effect (captured) => {
+        const sameOwner = session.owner() === captured.owner
+        return try (save |> Effect.matchEffect(%, {
+          onSuccess: (reply) => succeed<DeviceWriteResult>({ status: "sent", reply, applied: sameOwner && reply === "saved",
+            uncertain: reply === "unknown" && deleteOutcome(sameOwner, "UnknownReply").markUncertain }),
+          onFailure: (fault) => adopt(captured, fault.invoked ? "AfterBridgeFault" : "BeforeBridgeFault", "fault"),
+        }))
+      })
+    },
+    effect observeRead(read) {
+      const state = try Ref.get(writes)
+      const hold = state.hold
+      if (hold === undefined || !readClearsHold(hold.kind, read.accepted, read.cause !== "ordinary", read.complete, read.eventIds.includes(hold.eventId),
+        hold.begin, read.begin, read.end)) return false
+      try Ref.update(writes, (now) => ({ ...now, hold: undefined }))
+      return true
+    },
+    effect held() {
+      return (try Ref.get(writes)).hold?.eventId
+    },
+  }
+}

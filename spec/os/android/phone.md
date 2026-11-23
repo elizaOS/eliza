@@ -6,7 +6,9 @@ the telephony plugin of `plugins/plugin-native-messages/android`). A host
 that holds the dialer role subclasses `TelecomCallService`, Android's
 `InCallService`, which keeps the calls Android reports and their ongoing-call
 notices; the call screen acts only on the Telecom call it names, never on a
-number it rebuilt. A caller's name is [contacts](./contacts.md)'s; voicemail
+number it rebuilt. A caller's name, and the names beside the calls of a
+recents page, are [contacts](./contacts.md)'s display-only lookup; the call
+log's own cached name is shown only when that lookup names nobody. Voicemail
 is [voicemail](./voicemail.md)'s. The operations `PhoneDial` and `PhoneCall`,
 their shape checks and the capabilities `phone.dial.v1` and `phone.call.v1`
 are the agent's ([operations](../../agent/deviceActions/operations.md),

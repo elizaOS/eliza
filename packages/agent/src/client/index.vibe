@@ -1,4 +1,4 @@
-// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused", "A stream is sent at most once and only in its generation"
+// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused", "A stream is sent at most once and only in its generation"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"
 module node {
   import { Effect, Schema } from "effect"
   import type { Delivery, Event, RetryAdvice, Route, StatusReport } from "../../gen/agent__client__runtimeClient.effect.vibe"
@@ -486,3 +486,4 @@ export { createSurfaceClient, SurfaceProtocol, SurfaceTransport, type SurfaceCli
 export { TASK_ID_PATTERN } from "@elizaos/core/task-events"
 
 export { TurnController, ConversationRecord, InvalidConversation, findStoppedUserTurn, type ClientMessageId, type HistoryMessage, type StopResult, type StoppedConversationTurn, type TurnMessage, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult, type TurnTransport } from "./turn-controller.vibe"
+export { decodeLocationObservation, decodeObservation, decodeVoiceUiContext, encodeTurnContext, Observation, ObservationDropped, parseVoiceUiContext, VoiceUiContext, VoiceUiContextInvalid, type LocationObservation, type TurnContext } from "../conversation/turn-context.schema.vibe"

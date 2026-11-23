@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
@@ -39,10 +39,10 @@ public final class DeviceKeyJourney {
   private static final long DAY_MS = 86_400_000L;
 
   private static final class Grant1 {
-    final String challenge, state;
+    final String challenge, state, renewedFrom;
     int asks;
     String credentialId, secret;
-    Grant1(String challenge, String state) { this.challenge = challenge; this.state = state; }
+    Grant1(String challenge, String state, String renewedFrom) { this.challenge = challenge; this.state = state; this.renewedFrom = renewedFrom; }
   }
 
   private static final class FakeCloud {
@@ -51,6 +51,9 @@ public final class DeviceKeyJourney {
     final Map<String, String> live = new ConcurrentHashMap<>();
     final List<String> revoked = new CopyOnWriteArrayList<>();
     final List<String> proofs = new CopyOnWriteArrayList<>();
+    final List<String> renewedHeaders = new CopyOnWriteArrayList<>();
+    final List<String> renewBearers = new CopyOnWriteArrayList<>();
+    final Map<String, String> successors = new ConcurrentHashMap<>();
     final AtomicInteger issued = new AtomicInteger(), tokenAsks = new AtomicInteger(), revokeAsks = new AtomicInteger(), refreshes = new AtomicInteger();
     volatile boolean offline;
     final HttpServer server;
@@ -81,8 +84,17 @@ public final class DeviceKeyJourney {
         case "POST " + DeviceKeyClient.CONNECT -> {
           if (!SESSION.equals(bearer(x))) { answer(x, 401, "{\"error\":\"authentication_required\"}"); return; }
           String code = "emac_" + issued.incrementAndGet();
-          codes.put(code, new Grant1(CredentialJson.text(body, "codeChallenge"), CredentialJson.text(body, "state")));
+          codes.put(code, new Grant1(CredentialJson.text(body, "codeChallenge"), CredentialJson.text(body, "state"), null));
           answer(x, 200, "{\"code\":\"" + code + "\",\"expiresAt\":\"" + iso(now + 300_000) + "\"}");
+        }
+        case "POST " + DeviceKeyClient.RENEW -> {
+          renewBearers.add(bearer(x));
+          String predecessor = live.get(bearer(x));
+          if (predecessor == null) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
+          String code = "emac_" + issued.incrementAndGet();
+          codes.put(code, new Grant1(CredentialJson.text(body, "codeChallenge"), CredentialJson.text(body, "state"), predecessor));
+          answer(x, 200, "{\"code\":\"" + code + "\",\"codeType\":\"mobile_app_auth_code\",\"expiresAt\":\"" + iso(now + 300_000)
+            + "\",\"expiresIn\":300,\"renewableUntil\":\"" + iso(now + 180 * DAY_MS) + "\"}");
         }
         case "POST " + DeviceKeyClient.TOKEN -> {
           tokenAsks.incrementAndGet();
@@ -106,14 +118,22 @@ public final class DeviceKeyJourney {
           boolean known = codes.values().stream().anyMatch(g -> credentialId.equals(g.credentialId) && CredentialJson.text(body, "secret").equals(g.secret));
           if (!known) { answer(x, 401, "{\"error\":\"credential_proof_invalid\"}"); return; }
           live.put(CredentialJson.text(body, "secret"), credentialId);
+          codes.values().stream().filter(g -> credentialId.equals(g.credentialId) && g.renewedFrom != null).forEach(g -> successors.put(g.renewedFrom, credentialId));
           answer(x, 200, "{\"status\":\"acknowledged\",\"credentialId\":\"" + credentialId + "\",\"expiresAt\":\"" + iso(now + 30 * DAY_MS) + "\"}");
         }
         case "DELETE " + DeviceKeyClient.REVOKE -> {
           revokeAsks.incrementAndGet();
           if (offline) { answer(x, 503, "{\"error\":\"service_unavailable\"}"); return; }
+          String named = x.getRequestHeaders().getFirst(DeviceKeyClient.RENEWED_CREDENTIAL);
+          renewedHeaders.add(named == null ? "" : named);
           String credentialId = live.remove(bearer(x));
           if (credentialId == null) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
           revoked.add(credentialId);
+          String successor = successors.get(credentialId);
+          if (successor != null && !(successor.equals(named) && live.containsValue(successor))) {
+            live.values().removeIf(successor::equals);
+            revoked.add(successor);
+          }
           x.sendResponseHeaders(204, -1);
         }
         case "GET " + DeviceKeyClient.USER -> {
@@ -355,8 +375,35 @@ public final class DeviceKeyJourney {
     }
   }
 
+  private String renewal() throws Exception {
+    List<String> seen = new ArrayList<>();
+    seen.add(take("signedIn", signIn()));
+    String first = store.current().credentialId();
+    seen.add(take("notYetDue", client.renewKey(BINDING).name()));
+    seen.add(take("renewAsksBeforeDue", cloud.renewBearers.size()));
+    clock.addAndGet(21 * DAY_MS);
+    String predecessorKey = store.current().value();
+    seen.add(take("renewed", client.renewKey(BINDING).name()));
+    seen.add(take("askedWithTheActiveKey", cloud.renewBearers.equals(List.of(predecessorKey))));
+    CredentialReader.Credential successor = store.current();
+    seen.add(take("heldAfterRenewal", successor.version() + "/" + successor.credentialId() + "/" + successor.account().userId()));
+    seen.add(take("owedNamesSuccessor", store.owed().size() == 1 && store.owed().get(0).successor().equals(successor.credentialId())));
+    client.settleDuties();
+    seen.add(take("revokedAfterRenewal", String.join(",", cloud.revoked)));
+    seen.add(take("successorLive", client.user(successor.value()) instanceof DeviceKeyClient.Answer.Answered<Account>));
+    seen.add(take("firstReplaced", !first.equals(successor.credentialId())));
+    store.signOut();
+    client.settleDuties();
+    seen.add(take("renewedHeaders", String.join(",", cloud.renewedHeaders.stream().map(h -> h.isEmpty() ? "none" : h).toList())));
+    seen.add(take("revokedAfterSignOut", String.join(",", cloud.revoked)));
+    seen.add(CredentialJson.quote("notices") + ":[" + String.join(",", notices) + "]");
+    cloud.server.stop(0);
+    return "{" + String.join(",", seen) + "}";
+  }
+
   public static void main(String[] args) throws Exception {
     if (args.length == 1 && args[0].equals("browser")) System.out.println(browserReturn());
+    else if (args.length == 1 && args[0].equals("renewal")) System.out.println(new DeviceKeyJourney().renewal());
     else System.out.println(new DeviceKeyJourney().run());
     System.exit(0);
   }

@@ -1,4 +1,4 @@
-// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"
+// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"
 import type { Content } from "@elizaos/core"
 import { parseViewInteractionClientId } from "@elizaos/core/view-interaction"
 import {
@@ -24,6 +24,13 @@ const SelectedObject = Schema.Struct({
   timingVersion: Schema.optionalKey(Schema.Literal(2)),
 })
 const CalendarDay = Schema.Struct({ date: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/)), timeZone: ZoneName })
+const between = (minimum: number, maximum: number) => Schema.Number.check(Schema.isBetween({ minimum, maximum }))
+const Location = Schema.Struct({
+  latitude: between(-90, 90),
+  longitude: between(-180, 180),
+  accuracyMeters: Schema.optionalKey(between(0, 1_000_000)),
+  capturedAt: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: maxSafeInteger })),
+})
 
 export const Observation = Schema.Struct({
   view: Name,
@@ -32,6 +39,7 @@ export const Observation = Schema.Struct({
   timeZone: Schema.optionalKey(ZoneName),
   selectedObject: Schema.optionalKey(SelectedObject),
   calendarDay: Schema.optionalKey(CalendarDay),
+  location: Schema.optionalKey(Location),
 })
 
 export const VoiceUiContext = Schema.Struct({
@@ -46,6 +54,8 @@ export const VoiceUiContext = Schema.Struct({
 
 export type Observation = typeof Observation.Type
 export type VoiceUiContext = typeof VoiceUiContext.Type
+/** The phone's last known position as a turn's observation carries it. */
+export type LocationObservation = typeof Location.Type
 type SelectedObject = typeof SelectedObject.Type
 
 export interface TurnContext {
@@ -58,10 +68,11 @@ export error VoiceUiContextInvalid { facts: VoiceUiFacts | undefined }
 
 type Decided<A, F> = { readonly kind: "carried"; readonly value: A } | { readonly kind: "refused"; readonly facts: F | undefined }
 
-const observationKeys: ReadonlySet<string> = new Set(["view", "revision", "sensitive", "timeZone", "selectedObject", "calendarDay"])
+const observationKeys: ReadonlySet<string> = new Set(["view", "revision", "sensitive", "timeZone", "selectedObject", "calendarDay", "location"])
 const strict = { onExcessProperty: "error" } as const
 const selectedObjectOf = Schema.decodeUnknownOption(SelectedObject, strict)
 const calendarDayOf = Schema.decodeUnknownOption(CalendarDay, strict)
+const locationOf = Schema.decodeUnknownOption(Location, strict)
 const isName = Schema.is(Name)
 const isZoneName = Schema.is(ZoneName)
 
@@ -105,10 +116,20 @@ function canonical(observation: Observation): Observation {
     ...(observation.timeZone === undefined ? {} : { timeZone: observation.timeZone }),
     ...(observation.selectedObject === undefined ? {} : { selectedObject: canonicalSelection(observation.selectedObject) }),
     ...(observation.calendarDay === undefined ? {} : { calendarDay: { date: observation.calendarDay.date, timeZone: observation.calendarDay.timeZone } }),
+    ...(observation.location === undefined ? {} : { location: canonicalLocation(observation.location) }),
   }
 }
 
-function withoutCalendarDay({ calendarDay: _day, ...observation }: Observation): Observation {
+function canonicalLocation(location: LocationObservation): LocationObservation {
+  return {
+    latitude: location.latitude,
+    longitude: location.longitude,
+    ...(location.accuracyMeters === undefined ? {} : { accuracyMeters: location.accuracyMeters }),
+    capturedAt: location.capturedAt,
+  }
+}
+
+function withoutOptionalFields({ calendarDay: _day, location: _location, ...observation }: Observation): Observation {
   return observation
 }
 
@@ -119,20 +140,22 @@ function utf8Bytes(observation: Observation) {
 function decideObservation(input: unknown): Decided<Observation, ObservationFacts> {
   const fields = table(input)
   if (fields === undefined) return { kind: "refused", facts: undefined }
-  const { view, revision, sensitive, timeZone, selectedObject, calendarDay } = fields
+  const { view, revision, sensitive, timeZone, selectedObject, calendarDay, location } = fields
   const sensitivity: Sensitivity | undefined = sensitive === undefined ? "SensitivityUnstated" : sensitive === true ? "Sensitive" : sensitive === false ? "NotSensitive" : undefined
   const counted = typeof revision === "number" && Number.isInteger(revision) ? revision : undefined
   const selection = selectedObject === undefined ? undefined : Option.getOrUndefined(selectedObjectOf(selectedObject))
   const stated = calendarDay === undefined ? undefined : Option.getOrUndefined(calendarDayOf(calendarDay))
   const day = stated !== undefined && civilDate(stated.date) && knownZone(stated.timeZone) ? stated : undefined
-  const withoutDay = canonical({
+  const position = location === undefined ? undefined : Option.getOrUndefined(locationOf(location))
+  const core = canonical({
     view: isName(view) ? view : "",
     revision: counted ?? 0,
     sensitive: sensitive === true,
     ...(knownZone(timeZone) ? { timeZone } : {}),
     ...(selection === undefined ? {} : { selectedObject: selection }),
   })
-  const observation = day === undefined ? withoutDay : canonical({ ...withoutDay, calendarDay: day })
+  const withDay = day === undefined ? core : canonical({ ...core, calendarDay: day })
+  const observation = position === undefined ? withDay : canonical({ ...withDay, location: position })
   const facts: ObservationFacts = {
     unknownField: Object.keys(fields).some((key) => !observationKeys.has(key)) || sensitivity === undefined || counted === undefined,
     view: isName(view) ? { tag: "View", viewName: view } : { tag: "MalformedView" },
@@ -142,8 +165,11 @@ function decideObservation(input: unknown): Decided<Observation, ObservationFact
     selection: selectedObject === undefined ? "NoSelectedRecord" : selection === undefined ? "MalformedRecord" : "SelectedRecord",
     day: calendarDay === undefined ? { tag: "NoDay" }
       : day === undefined ? { tag: "MalformedDay" }
-      : { tag: "Day", dayZone: day.timeZone, dayBytes: utf8Bytes(observation) - utf8Bytes(withoutDay) },
-    bytesWithoutDay: utf8Bytes(withoutDay),
+      : { tag: "Day", dayZone: day.timeZone, dayBytes: utf8Bytes(withDay) - utf8Bytes(core) },
+    location: location === undefined ? { tag: "NoLocation" }
+      : position === undefined ? { tag: "MalformedLocation" }
+      : { tag: "Located", locationBytes: utf8Bytes(observation) - utf8Bytes(withDay) },
+    coreBytes: utf8Bytes(core),
   }
   switch (observationOutcome(facts)) {
     case "ContextCarried": return { kind: "carried", value: observation }
@@ -197,10 +223,23 @@ export effect function decodeObservation(input: unknown) {
   return decided.value
 }
 
+/** Decodes the phone's last known position as an observation's `location` field accepts it, or fails as a dropped observation. */
+export effect function decodeLocationObservation(input: unknown) {
+  const position = Option.getOrUndefined(locationOf(input))
+  if (position === undefined) throw new ObservationDropped({ facts: undefined })
+  return canonicalLocation(position)
+}
+
 export effect function decodeVoiceUiContext(input: unknown, clientId?: string) {
   const decided = decideVoiceUi(input, clientId)
   if (decided.kind === "refused") throw new VoiceUiContextInvalid({ facts: decided.facts })
   return decided.value
+}
+
+/** Decodes a voice view context the way a turn's boundary does, or `null` when any stated field is refused. */
+export function parseVoiceUiContext(value: unknown): VoiceUiContext | null {
+  const decided = decideVoiceUi(value, undefined)
+  return decided.kind === "carried" ? decided.value : null
 }
 
 export function readTurnContext(message: { readonly content: Content | { readonly metadata: unknown } }): TurnContext {
@@ -216,7 +255,7 @@ export function readTurnContext(message: { readonly content: Content | { readonl
 export function encodeTurnContext(context: TurnContext, peer: { readonly optionalFields: boolean }): TurnContext {
   const { observation, voiceUi } = context
   return {
-    ...(observation === undefined ? {} : { observation: canonical(peer.optionalFields ? observation : withoutCalendarDay(observation)) }),
+    ...(observation === undefined ? {} : { observation: canonical(peer.optionalFields ? observation : withoutOptionalFields(observation)) }),
     ...(voiceUi === undefined ? {} : { voiceUi }),
   }
 }

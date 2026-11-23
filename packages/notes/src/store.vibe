@@ -1,0 +1,162 @@
+// spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection"; spec/notes/trash.md, "An erase that may or may not have committed never reports success"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"
+import { canonicalDocument, eraseOutcome, notesSchemaVersion, type EraseCommit } from "../gen/notes__trash.effect.vibe"
+import { committedRevision, importSettled, importStep } from "../gen/notes__records.effect.vibe"
+import { emptyNotesDocument, snapshotOf, type Change, type NotesDocument } from "./collection.vibe"
+import { importPriorDocument, type PriorDocumentText } from "./prior.vibe"
+import { noteLimits, StoredDocument } from "./records.schema.vibe"
+import type { NotesSnapshot } from "./types.vibe"
+
+module edge {
+  function canonical(value: unknown): string {
+    if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]"
+    if (value !== null && typeof value === "object") {
+      const record = value as Record<string, unknown>
+      return "{" + Object.keys(record).filter((key) => record[key] !== undefined).sort()
+        .map((key) => JSON.stringify(key) + ":" + canonical(record[key])).join(",") + "}"
+    }
+    return JSON.stringify(value) ?? "null"
+  }
+  /** @throws {never} */
+  export function sameJson(a: unknown, b: unknown): boolean {
+    try {
+      return canonical(a) === canonical(b)
+    } catch {
+      return false
+    }
+  }
+  /** @throws {never} */
+  export function plain(value: unknown): unknown {
+    try {
+      return JSON.parse(JSON.stringify(value))
+    } catch {
+      return undefined
+    }
+  }
+}
+import { plain, sameJson } from edge
+
+/** Where the collection document is kept: the agent's own owner-scoped storage. */
+export interface NotesStorage {
+  get(): Promise<unknown>
+  set(document: unknown): Promise<boolean>
+}
+
+/** The stored collection could not be read, or a commit's outcome is unknown; nothing is reported as done. */
+export error NotesUnavailable { code: "NOTES_STORE_UNAVAILABLE" | "NOTES_COMMIT_UNCONFIRMED"; reason: string; cause?: unknown }
+
+/** A finished request: its value, the snapshot after it, and whether it changed the collection. */
+export interface Committed<A> {
+  readonly value: A
+  readonly snapshot: NotesSnapshot
+  readonly changed: boolean
+  readonly mutation: string
+}
+
+/** The serialized store over the authoritative copy: every read and transaction starts from what storage holds. */
+export interface NotesStore {
+  read(): NotesDocument!NotesUnavailable
+  transact<A, E>(work: (document: NotesDocument) => Change<A>!E, hasAudio?: (value: A) => boolean): Committed<A>!(E | NotesUnavailable)
+  ready(): boolean!!
+}
+
+const decodeStored = Schema.decodeUnknownOption(StoredDocument, { onExcessProperty: "error" })
+
+effect function foreign<A>(reason: string, call: () => Promise<A>): A!NotesUnavailable {
+  return try tryPromise({ try: () => call(), catch: (cause) => new NotesUnavailable({ code: "NOTES_STORE_UNAVAILABLE", reason, cause }) })
+}
+
+effect function decode(raw: unknown): NotesDocument!NotesUnavailable {
+  if (raw === undefined || raw === null) return emptyNotesDocument
+  const stored = decodeStored(raw)
+  if (Option.isNone(stored)) throw new NotesUnavailable({ code: "NOTES_STORE_UNAVAILABLE", reason: "The stored Notes document needs review; nothing was read." })
+  const value = stored.value
+  if (!canonicalDocument(value.schemaVersion, true, true, true, value.trash.length) || value.schemaVersion !== notesSchemaVersion) {
+    throw new NotesUnavailable({ code: "NOTES_STORE_UNAVAILABLE", reason: "The stored Notes document has another schema; nothing was read." })
+  }
+  return {
+    schemaVersion: 1,
+    revision: value.revision,
+    notes: value.notes.map((note) => ({ ...note })),
+    trash: value.trash.map((entry) => ({ note: { ...entry.note }, deletedAt: entry.deletedAt })),
+    creations: { ...value.creations },
+    recordingCleanup: value.recordingCleanup.map((entry) => ({ ...entry })),
+    ...(value.imported === undefined ? {} : { imported: { ...value.imported } }),
+  }
+}
+
+/** Where the earlier Notes document of this agent is read from, once, and the instant an import is stamped with. */
+export interface PriorImport {
+  read(): Promise<PriorDocumentText | undefined>
+  readonly at: string!NotesUnavailable
+}
+
+/** A store over the given storage, one request at a time, importing the earlier document when nothing was ever saved. */
+export function notesStore(storage: NotesStorage, prior?: PriorImport): NotesStore {
+  const lock = Semaphore.makeUnsafe(1)
+  let storeReady = true
+
+  effect function imported(source: PriorImport): NotesDocument!NotesUnavailable {
+    const found = try foreign("read the earlier Notes document", () => source.read())
+    const document = found === undefined ? undefined
+      : try (importPriorDocument(found, try source.at) catch () => undefined)
+    switch (importStep("NothingSaved", found === undefined ? "PriorAbsent" : document === undefined ? "PriorInvalid" : "PriorValid")) {
+      case "KeepCollection":
+      case "StartEmpty":
+        return emptyNotesDocument
+      case "ImportNeedsReview":
+        throw new NotesUnavailable({ code: "NOTES_STORE_UNAVAILABLE", reason: "The earlier Notes document needs review; nothing was imported and Notes did not start empty." })
+      case "ImportPrior": {
+        if (document === undefined) return emptyNotesDocument
+        const outcome = try commit(document)
+        if (!importSettled(outcome === "CommitSaved", outcome === "CommitUnknownApplied")) {
+          storeReady = false
+          throw new NotesUnavailable({ code: "NOTES_COMMIT_UNCONFIRMED", reason: "The earlier Notes could not be confirmed as imported. Read Notes again." })
+        }
+        return document
+      }
+    }
+  }
+
+  effect function read(): NotesDocument!NotesUnavailable {
+    const raw = try foreign("read the Notes document", () => storage.get())
+    const document = (raw === undefined || raw === null) && prior !== undefined ? try imported(prior) : try decode(raw)
+    storeReady = true
+    return document
+  }
+
+  effect function commit(next: NotesDocument): EraseCommit!! {
+    const encoded = plain(next)
+    const kept = try (tryPromise(() => storage.set(encoded)) catch () => false)
+    const readback = try (tryPromise(() => storage.get()) catch () => undefined)
+    if (kept && sameJson(readback, encoded)) return "CommitSaved"
+    return sameJson(readback, encoded) ? "CommitUnknownApplied" : "CommitUnknownNotApplied"
+  }
+
+  effect function transact<A, E>(work: (document: NotesDocument) => Change<A>!E, hasAudio?: (value: A) => boolean): Committed<A>!(E | NotesUnavailable) {
+    const before = try read()
+    const change = try work(before)
+    if (change.next === undefined) return { value: change.value, snapshot: snapshotOf(before), changed: false, mutation: change.mutation }
+    const next: NotesDocument = { ...change.next, revision: committedRevision(before.revision, true) }
+    if (next.trash.length > noteLimits.trash) throw new NotesUnavailable({ code: "NOTES_STORE_UNAVAILABLE", reason: "Notes Trash is full; erase entries before deleting more." })
+    const outcome = eraseOutcome(try commit(next), hasAudio?.(change.value) ?? false)
+    storeReady = outcome.storeReady
+    if (!outcome.reportedSuccess) {
+      throw new NotesUnavailable({ code: "NOTES_COMMIT_UNCONFIRMED", reason: "The Notes change may or may not have been saved. Read Notes again before retrying." })
+    }
+    return { value: change.value, snapshot: snapshotOf(next), changed: true, mutation: change.mutation }
+  }
+
+  return {
+    read: () => lock.withPermits(1)(read()),
+    transact: (work, hasAudio) => lock.withPermits(1)(transact(work, hasAudio)),
+    ready: () => sync(() => storeReady),
+  }
+}
+
+/** The Notes document kept in the agent's cache under one key. */
+export function cacheStorage(cache: { getCache<T>(key: string): Promise<T | undefined>; setCache<T>(key: string, value: T): Promise<boolean> }, key = "notes-document"): NotesStorage {
+  return {
+    get: () => cache.getCache<unknown>(key),
+    set: (document) => cache.setCache(key, document),
+  }
+}

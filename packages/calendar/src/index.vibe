@@ -1,0 +1,68 @@
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"
+import type { IAgentRuntime, Plugin } from "@elizaos/core"
+import { calendarAction, calendarActionName, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
+import type { CalendarHost } from "./plugin/host.vibe"
+import { linkedCalendarRoutes } from "./plugin/linked-routes.vibe"
+import { calendarRoutes, type CalendarRoute } from "./plugin/routes.vibe"
+import { CalendarApprovalExecutorService, CalendarService, calendarApprovalExecutorServiceType, calendarServiceType } from "./plugin/service.vibe"
+
+export type * from "./model.vibe"
+export { sameSourceKey, sourceKeyId, utcInstant } from "./model.vibe"
+export {
+  CalendarLedgerUnavailable, CalendarPreflightRefused, CalendarWriteNotAccepted, CalendarWriteUnconfirmed, calendarMutationLedger, receiptMatches,
+  type CalendarMutationFailure, type CalendarMutationInspection, type CalendarMutationLedger, type CalendarMutationOperation, type CalendarMutationOutcome,
+  type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest, type CalendarMutationTarget,
+  type CalendarPreflight, type CalendarReconciliation,
+} from "./mutations/ledger.vibe"
+export { fieldsSpanValid, providerMutationPort, recurrenceFits, reviewDigest, type CalendarProviders } from "./mutations/provider-port.vibe"
+export {
+  CalendarSourceUnavailable, eventInWindow, eventVersion, holdsFields, residentCalendar, residentSource,
+  type CalendarAccount, type CalendarProviderPort, type CalendarWindowRead,
+} from "./plugin/providers.vibe"
+export {
+  calendarHost, ledgerOutcome,
+  type CalendarApprovalRecord, type CalendarApprovalRow, type CalendarApprovals, type CalendarChangeRequest, type CalendarChangeResult,
+  type CalendarFound, type CalendarHost, type CalendarHostOptions, type CalendarLedgerOutcome, type CalendarSearch, type CalendarSearchResult,
+} from "./plugin/host.vibe"
+export { cacheKeyValueStore, cacheStoreLayer, type CalendarCache } from "./plugin/runtime-store.vibe"
+export { calendarRoutes, type CalendarRoute, type CalendarRouteInput, type CalendarRouteReply } from "./plugin/routes.vibe"
+export { calendarAction, calendarActionName, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk }
+export { CalendarApprovalExecutorService, CalendarService, calendarApprovalExecutorServiceType, calendarServiceType }
+export type { CalendarEventFacts } from "./plugin/service.vibe"
+export { linkedCalendarRoutes, type LinkedRouteContext } from "./plugin/linked-routes.vibe"
+export { RecurrenceRecord, ScopeMismatch, WriteScopeRecord, type CalendarRecurrence, type CalendarWriteScope } from "./series/index.vibe"
+export { ResidentNeedsReview, importPriorResident } from "./plugin/providers.vibe"
+
+/** The package name the agent bundle loads this plugin under. */
+export const calendarPluginName = "@elizaos/plugin-calendar"
+
+/** The Calendar plugin as the agent registers it, with the local routes its owner's client calls. */
+export type CalendarPlugin = Plugin & { readonly routes: readonly CalendarRoute[] }
+
+/** A Calendar plugin: its runtime services, the Calendar action and context provider, and its owner routes. */
+export function calendarPlugin(): CalendarPlugin {
+  let started: IAgentRuntime | undefined
+  async function host(): Promise<CalendarHost | undefined> {
+    if (started === undefined) return undefined
+    const found = await started.getServiceLoadPromise(calendarServiceType)
+    return found instanceof CalendarService ? found.host : undefined
+  }
+  return {
+    name: calendarPluginName,
+    description: "The owner's calendars: reads from the active account, and reviewed changes run once through the calendar mutation ledger",
+    services: [CalendarService, CalendarApprovalExecutorService],
+    actions: [calendarAction],
+    providers: [calendarProvider],
+    routes: [...calendarRoutes(host), ...linkedCalendarRoutes(async () => {
+      const held = await host()
+      return held === undefined || started === undefined ? undefined : { host: held, cache: started, agentId: started.agentId }
+    })],
+    init: (_config, runtime) => {
+      started = runtime
+    },
+  }
+}
+
+/** The plugin the agent bundle loads from this package. */
+export const plugin = calendarPlugin()
+export default plugin

@@ -1,0 +1,74 @@
+// spec/localInference/speechOutput.md, "Story: Speak a reply without cutting off what is playing"; spec/localInference/speechOutput.md, "A prepared reply is published into the playback slot only if it may take it"; spec/localInference/speechOutput.md, "A busy or cancelled publication leaves what is playing untouched"; spec/localInference/speechOutput.md, "Only a replacing, uncancelled reply interrupts what was playing"; spec/localInference/speechOutput.md, "Story: Start streamed speech without needless connections"; spec/localInference/speechOutput.md, "Bootstrap runs consent, session and socket in order, reusing the connection when it can"
+import { Machine as SpeechOutputMachine, machine, type Playback } from "../gen/localInference__speechOutput.effect.vibe"
+
+export { SpeechOutputMachine }
+export type { Playback }
+
+/** The device's speech output, kept in memory for the life of the process. */
+export const speechOutput = () => machine()
+
+/** The one playback slot: what it holds now, and how a published clip takes it, interrupting what played. */
+export interface PlaybackSlot<C> {
+  current(): Playback!!
+  play(clip: C): void!!
+}
+
+/** What became of a reply: played into an empty slot, played over what it interrupted, refused while something played, or cancelled. */
+export type Publication = "played" | "interrupted" | "busy" | "cancelled"
+
+/** One of the three requests that start streamed speech, in order. */
+export type BootstrapRequest = "consent" | "session" | "socket"
+
+/** Whether a bootstrap request goes over the connection already open or needs a new one. */
+export type Connection = "reuse" | "open"
+
+/** Prepares a reply off the playback path and publishes it into the slot only if it may take it; a prepared reply that was cancelled never plays. */
+export effect function publishReply<C, E, R>(slot: PlaybackSlot<C>, prepare: C!E!R, options: { readonly replace: boolean }) {
+  const output = try SpeechOutputMachine
+  let admitted = false
+  const settle = effect {
+    if (!admitted || (try output.get()).publication.publishPhase !== "PublishAdmitted") return
+    try Effect.ignore(output.send({ type: "cancelSpeech" }))
+    try Effect.ignore(output.send({ type: "publishSpeech" }))
+  }
+  const published = effect {
+    admitted = try (map(output.send({ type: "admitSpeech", replace: options.replace }), () => true) catch () => false)
+    if (!admitted) return "busy" satisfies Publication
+    const clip = try prepare
+    uninterruptible {
+      try Effect.ignore(output.send({ type: "changePlayback", kind: try slot.current() }))
+      const after = (try orDie(output.send({ type: "publishSpeech" }))).publication
+      if (after.publishPhase === "Published") {
+        try slot.play(clip)
+        return (after.interrupted ? "interrupted" : "played") satisfies Publication
+      }
+      return (after.publishPhase === "PublishBusy" ? "busy" : "cancelled") satisfies Publication
+    }
+  }
+  return try onExit(published, (exit) => Exit.isSuccess(exit) ? Effect.void : settle)
+}
+
+/** Cancels the reply being prepared, so it settles without playing. */
+export effect function cancelReply() {
+  const output = try SpeechOutputMachine
+  try Effect.ignore(output.send({ type: "cancelSpeech" }))
+}
+
+/** Sends consent, session and the socket upgrade in order, each on a new connection only where the protocol needs one, and stops on the first failure. */
+export effect function bootstrapStreamedSpeech<E, R>(protocol: { readonly http1: boolean; readonly keepAlive: boolean }, send: (request: BootstrapRequest, connection: Connection) => void!E!R) {
+  provide machine() {
+    const output = try SpeechOutputMachine
+    try orDie(output.send({ type: "startBootstrap", http1: protocol.http1, keepAlive: protocol.keepAlive }))
+    const requests: readonly BootstrapRequest[] = ["consent", "session", "socket"]
+    const run = effect {
+      for (const request of requests) {
+        const before = (try output.get()).bootstrap.connections
+        const sent = try orDie(output.send({ type: "sendBootstrapRequest" }))
+        try send(request, sent.bootstrap.connections > before ? "open" : "reuse")
+        try orDie(output.send({ type: "completeBootstrapRequest" }))
+      }
+    }
+    try onExit(run, (exit) => Exit.isSuccess(exit) ? Effect.void : Effect.ignore(output.send({ type: "stopBootstrap" })))
+    return (try output.get()).bootstrap.connections
+  }
+}

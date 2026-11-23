@@ -1,0 +1,88 @@
+// spec/inbox/readState.md, "Story: Change a message's read state once, and never repeat a change I did not ask for"; spec/inbox/readState.md, "One change per message is in flight, and an unconfirmed automatic change is not sent again"
+import { changeDecision, enabled, initial, machineOver, type ChangeSettle, type Event, type ReadStateView } from "../../gen/inbox__readState.effect.vibe"
+import { freshRequestId } from "./digest.vibe"
+import { MailProtocolFailed, type MailFailure } from "./failures.vibe"
+import type { GmailInboxReceipt } from "./types.vibe"
+
+/** The two reviewed calls a read-state change makes. */
+export interface GmailReadStateClient {
+  gmailPrepareOperation(grantId: string, requestId: string, proposal: Readonly<Record<string, unknown>>): { readonly receipt: GmailInboxReceipt; readonly review: Readonly<Record<string, unknown>> }!MailFailure
+  gmailDispatchOperation(grantId: string, requestId: string, reviewDigest: string, proposal: Readonly<Record<string, unknown>>): GmailInboxReceipt!MailFailure
+}
+
+/** One loaded message and the read state the owner chose for it. */
+export interface ReadStateChange {
+  readonly messageId: string
+  readonly expectedHistoryId: string
+  readonly unread: boolean
+}
+
+/** What one read-state request did. */
+export type MailReadStateOutcome =
+  | { readonly status: "busy" }
+  | { readonly status: "skipped" }
+  | { readonly status: "unconfirmed" }
+  | { readonly status: "failed"; readonly error: MailFailure }
+  | { readonly status: "changed"; readonly unread: boolean; readonly historyId: string | null }
+
+const mismatch = () => new MailProtocolFailed({ code: "invalid-response", status: 0, reason: "" })
+
+/** Marks one loaded message read or unread through its reviewed operation, dispatched once; null when Gmail's result was not confirmed. */
+export effect function setGmailReadState(client: GmailReadStateClient, grantId: string, input: ReadStateChange) {
+  const requestId = try freshRequestId()
+  const kind = input.unread ? "mark-unread" : "mark-read"
+  const proposal = { kind, messageId: input.messageId, expectedHistoryId: input.expectedHistoryId }
+  const prepared = try client.gmailPrepareOperation(grantId, requestId, proposal)
+  const review = prepared.review
+  if (prepared.receipt.requestId !== requestId || prepared.receipt.kind !== kind || prepared.receipt.state !== "prepared" ||
+    review.kind !== kind || review.messageId !== input.messageId || review.expectedHistoryId !== input.expectedHistoryId) throw mismatch()
+  const receipt = try client.gmailDispatchOperation(grantId, requestId, prepared.receipt.reviewDigest, proposal)
+  if (receipt.requestId !== requestId || receipt.kind !== kind) throw mismatch()
+  const result = receipt.providerResult
+  if (receipt.state !== "succeeded" || result === null || result.messageId !== input.messageId || result.unread !== input.unread) return null
+  return { unread: input.unread, historyId: typeof result.historyId === "string" ? result.historyId : null }
+}
+
+/** The read-state changes of one mailbox view: one in flight per message, and no repeat of an unconfirmed automatic change. */
+export interface MailReadStateGuard {
+  set(client: GmailReadStateClient, grantId: string, input: ReadStateChange, explicit: boolean): MailReadStateOutcome!!
+  clear(): void!!
+  step(event: Event): (ReadStateView | undefined)!!
+  state(): ReadStateView!!
+}
+
+/** A read-state guard for one mailbox view. */
+export effect function mailReadStateGuard(): MailReadStateGuard!! {
+  const kept = try Ref.make(initial)
+  const view = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+
+  effect function step(event: Event): (ReadStateView | undefined)!! {
+    if (!enabled(try view.get(), event)) return undefined
+    return try orDie(view.send(event))
+  }
+
+  effect function settle(key: string, settlement: ChangeSettle): void!! {
+    try step({ type: "settleChange", key, settlement })
+  }
+
+  return {
+    step,
+    state: () => view.get(),
+    effect set(client, grantId, input, explicit) {
+      const key = JSON.stringify([grantId, input.messageId])
+      const now = try view.get()
+      const decision = changeDecision(now.inFlight, now.unconfirmed, key, explicit)
+      if (decision === "ChangeBusy") return { status: "busy" } satisfies MailReadStateOutcome
+      if (decision === "ChangeSkipped") return { status: "skipped" } satisfies MailReadStateOutcome
+      try step({ type: "beginChange", key, explicit })
+      const attempt = onInterrupt(setGmailReadState(client, grantId, input), () => settle(key, "ChangeFailed"))
+      const outcome: MailReadStateOutcome = Effect.map(attempt, (changed): MailReadStateOutcome =>
+        changed === null ? { status: "unconfirmed" } : { status: "changed", ...changed }) catch (error) => ({ status: "failed", error })
+      try settle(key, outcome.status === "changed" ? "ChangeConfirmed" : outcome.status === "unconfirmed" ? "ChangeUnconfirmed" : "ChangeFailed")
+      return outcome
+    },
+    effect clear() {
+      try step({ type: "forgetKeys" })
+    },
+  }
+}

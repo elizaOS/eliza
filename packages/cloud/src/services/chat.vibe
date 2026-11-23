@@ -1,4 +1,4 @@
-// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/shared/metering.md, "A call reaches its provider only after its hold is durably marked dispatched"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A request needs an active account and sufficient funding for its quote"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/shared/metering.md, "A call reaches its provider only after its hold is durably marked dispatched"
 import { hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
 import { laneFor } from "../billing/policy.vibe"
 import { refused } from "../http/refusal.vibe"

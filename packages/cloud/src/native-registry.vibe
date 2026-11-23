@@ -1,4 +1,4 @@
-// spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
+// spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"; spec/cloud/deployment.md, "A Worker serves only after the server's own start checks pass and its bindings agree with its profile"
 import {
   assetStatements, clientCheck, defaultCredentialTtl, registryValid,
   type Registration, type ReturnUrl
@@ -102,6 +102,25 @@ export function mobileRegistration(env: NativeRegistryEnv, clientId: string | nu
   }
   const registration = directory.entries.find((item) => item.clientId === clientId)
   return registration ? { kind: "registered", registration } as const : invalidClient
+}
+
+/** The registrations the Worker-only routes read from their binding: absent when unbound, null when unreadable. */
+export function legacyRegistrations(env: NativeRegistryEnv): ReadonlyArray<Registration> | null | undefined {
+  if (env.NATIVE_CLIENT_REGISTRY === undefined) return undefined
+  return registry(env)?.entries ?? null
+}
+
+function returnLine(url: ReturnUrl): string {
+  return url.origin + url.path
+}
+
+/** One registration as a fixed-order text, equal exactly when the registrations are. */
+export function registrationText(r: Registration): string {
+  return [
+    r.clientId, r.environment, r.displayName, r.androidPackage, r.certFingerprints.join(","),
+    returnLine(r.signInReturn), returnLine(r.billingReturn), r.connectReturn.tag === "ConnectsTo" ? returnLine(r.connectReturn.url) : "",
+    String(r.credentialTtl), String(r.nativeGoogle), String(r.enabled)
+  ].join("\n")
 }
 
 export function nativeBackupGoogle(env: NativeRegistryEnv, client: Registration) {

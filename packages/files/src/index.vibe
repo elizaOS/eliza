@@ -1,0 +1,51 @@
+// spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"
+import { Service, resolveStateDir, type IAgentRuntime, type Plugin } from "@elizaos/core"
+import { workspace, workspaceRoot, type DirectoryEntry, type FileEncoding } from "./workspace.vibe"
+
+export { normalizeWorkspacePath, workspace, workspaceRoot, WorkspaceRefused, type DirectoryEntry, type FileEncoding } from "./workspace.vibe"
+
+/** The service type other plugins resolve the agent's workspace files by. */
+export const DEVICE_FILESYSTEM_SERVICE_TYPE = "device_filesystem"
+
+/** The agent's workspace files as a runtime service: read, write and list inside `<state>/workspace`. */
+export class DeviceFilesystemService extends Service {
+  static override serviceType = DEVICE_FILESYSTEM_SERVICE_TYPE
+  override capabilityDescription = "Reads, writes and lists the agent's own working files inside its workspace directory"
+  readonly files = workspace(workspaceRoot(resolveStateDir()))
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new DeviceFilesystemService(runtime))
+  }
+
+  read(path: string, encoding: FileEncoding = "utf8"): Promise<string> {
+    return runPromise(this.files.read(path, encoding))
+  }
+
+  write(path: string, content: string, encoding: FileEncoding = "utf8"): Promise<void> {
+    return runPromise(this.files.write(path, content, encoding))
+  }
+
+  list(path: string): Promise<readonly DirectoryEntry[]> {
+    return runPromise(this.files.list(path))
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+/** The registered workspace service, or undefined when this plugin is not loaded. */
+export function deviceFilesystem(runtime: IAgentRuntime): DeviceFilesystemService | undefined {
+  const found: unknown = runtime.getService(DEVICE_FILESYSTEM_SERVICE_TYPE)
+  return found instanceof DeviceFilesystemService ? found : undefined
+}
+
+/** The Files agent plugin: the agent's workspace files service. */
+export const plugin: Plugin = {
+  name: "@elizaos/plugin-files",
+  description: "The agent's own workspace files; the owner's files change only through reviewed Files device actions",
+  services: [DeviceFilesystemService],
+  actions: [],
+}
+
+export default plugin

@@ -1,0 +1,268 @@
+// spec/calendar/mutationLedger.md, "Story: Run a reviewed Calendar change at most once and know what happened"; spec/calendar/mutationLedger.md, "A claim takes a fresh token only from an approved or retryable request"; spec/calendar/mutationLedger.md, "Only the live claim's token can record a receipt, and a stale token changes no row"; spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"; spec/calendar/mutationLedger.md, "Reconciliation settles an ambiguous attempt from evidence or the owner's word"; spec/calendar/mutationLedger.md, "A replay needs a durable receipt, and a recorded receipt never changes"
+import type { CalendarWriteScope } from "../series/document.vibe"
+import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { Machine, awaitingReconciliation, stored, type MutationLedger } from "../../gen/calendar__mutationLedger.effect.vibe"
+import { sameSourceKey, type CalendarEvent, type CalendarEventFields, type CalendarSourceKey } from "../model.vibe"
+import { FailureRecord, ReceiptRow, RequestRow } from "./records.schema.vibe"
+
+/** The three reviewed Calendar changes. */
+export type CalendarMutationOperation = "schedule_event" | "modify_event" | "cancel_event"
+
+/** The exact event a modify or cancel was reviewed against, with the provider version it saw. */
+export interface CalendarMutationTarget {
+  readonly source: CalendarSourceKey
+  readonly eventId: string
+  readonly expectedVersion: string
+}
+
+/** The reviewed change, bound to the account that approved it. */
+export type CalendarMutationPayload =
+  | { readonly action: "schedule_event"; readonly account: string; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null }
+  | { readonly action: "modify_event"; readonly account: string; readonly target: CalendarMutationTarget; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields }
+  | { readonly action: "cancel_event"; readonly account: string; readonly target: CalendarMutationTarget; readonly scope: CalendarWriteScope }
+
+/** One reviewed change under its approval id, with the digest of the payload the owner reviewed. */
+export interface CalendarMutationRequest {
+  readonly id: string
+  readonly digest: string
+  readonly payload: CalendarMutationPayload
+}
+
+/** What the provider confirmed for an applied change, read back through the same calendar. */
+export interface CalendarMutationReceipt {
+  readonly operation: CalendarMutationOperation
+  readonly source: CalendarSourceKey
+  readonly eventId: string
+  readonly providerVersion: string
+  readonly event: CalendarEvent | null
+  readonly target: CalendarEvent | null
+  readonly acceptedAt: string
+}
+
+/** Why an attempt did not apply, and whether running it again may. */
+export interface CalendarMutationFailure {
+  readonly code: string
+  readonly message: string
+  readonly retryable: boolean
+}
+
+/** The change was refused before any provider call. */
+export error CalendarPreflightRefused { failure: CalendarMutationFailure }
+/** The provider definitely did not apply the change. */
+export error CalendarWriteNotAccepted { failure: CalendarMutationFailure }
+/** The provider's outcome is unknown, or its answer could not be confirmed. */
+export error CalendarWriteUnconfirmed { failure: CalendarMutationFailure }
+/** The ledger's durable rows could not be read or written. */
+export error CalendarLedgerUnavailable { id: string; reason: string }
+
+/** What a preflight read before the change: the target as it is now, for a modify or a cancel. */
+export interface CalendarPreflight {
+  readonly target: CalendarEvent | null
+}
+
+/** How the ledger reaches the calendar: a read-only preflight, then the one provider call. */
+export interface CalendarMutationPort {
+  preflight(request: CalendarMutationRequest): CalendarPreflight!CalendarPreflightRefused
+  execute(request: CalendarMutationRequest, preflight: CalendarPreflight): CalendarMutationReceipt!(CalendarWriteNotAccepted | CalendarWriteUnconfirmed)
+}
+
+/** What one run of a reviewed change came to. */
+export type CalendarMutationOutcome =
+  | { readonly kind: "succeeded"; readonly receipt: CalendarMutationReceipt; readonly replayed: boolean }
+  | { readonly kind: "retryable"; readonly failure: CalendarMutationFailure }
+  | { readonly kind: "invalidated"; readonly failure: CalendarMutationFailure }
+  | { readonly kind: "blocked"; readonly reason: "in_flight" | "ambiguous" }
+  | { readonly kind: "confirmed" }
+
+/** The evidence that settles an ambiguous attempt. */
+export type CalendarReconciliation =
+  | { readonly kind: "not_delivered" }
+  | { readonly kind: "owner_confirmed" }
+  | { readonly kind: "receipt"; readonly receipt: CalendarMutationReceipt }
+
+/** The ledger's rows of one reviewed change and what reconciliation may still do with it. */
+export interface CalendarMutationInspection {
+  readonly state: MutationLedger
+  readonly receipt: CalendarMutationReceipt | undefined
+  readonly failure: CalendarMutationFailure | undefined
+  readonly awaitingReconciliation: boolean
+}
+
+const unknownOutcome: CalendarMutationFailure = {
+  code: "CALENDAR_MUTATION_OUTCOME_UNKNOWN",
+  message: "The calendar change was sent and its outcome is unknown.",
+  retryable: false,
+}
+const changedRequest: CalendarMutationFailure = {
+  code: "CALENDAR_MUTATION_REQUEST_CHANGED",
+  message: "This approval id already holds a different reviewed change.",
+  retryable: false,
+}
+const unreadable = (id: string, reason: string) => new CalendarLedgerUnavailable({ id, reason })
+type Rows = KeyValueStore.KeyValueStore
+
+function rowKey(id: string, row: "state" | "request" | "receipt" | "failure"): string {
+  return `calendar.mutation.${encodeURIComponent(id)}.${row}`
+}
+
+function targetOf(payload: CalendarMutationPayload): { readonly source: CalendarSourceKey; readonly eventId: string | undefined } {
+  return payload.action === "schedule_event" ? { source: payload.source, eventId: undefined } : { source: payload.target.source, eventId: payload.target.eventId }
+}
+
+/** Whether a receipt describes exactly this change: its operation, its calendar and, for a modify or cancel, its event. */
+export function receiptMatches(payload: CalendarMutationPayload, receipt: CalendarMutationReceipt): boolean {
+  const { source, eventId } = targetOf(payload)
+  return receipt.operation === payload.action && sameSourceKey(receipt.source, source) && receipt.eventId.trim() !== ""
+    && (eventId === undefined || receipt.eventId === eventId)
+    && (payload.action === "cancel_event" ? receipt.event === null
+      : receipt.event !== null && (payload.action === "schedule_event" || payload.scope === "instance" ? receipt.event.id === receipt.eventId : receipt.event.id !== ""))
+}
+
+effect function readRow<S extends Schema.Constraint>(id: string, row: "request" | "receipt" | "failure", schema: S) {
+  const store = try KeyValueStore.KeyValueStore
+  const raw = try mapError(store.get(rowKey(id, row)), () => unreadable(id, `the ${row} row could not be read`))
+  if (raw === undefined) return undefined
+  return try mapError(Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(raw), () => unreadable(id, `the ${row} row is not one the ledger wrote`))
+}
+
+effect function writeRow(id: string, row: "request" | "receipt" | "failure", value: unknown) {
+  const store = try KeyValueStore.KeyValueStore
+  try mapError(store.set(rowKey(id, row), JSON.stringify(value)), () => unreadable(id, `the ${row} row could not be written`))
+}
+
+/** A ledger of reviewed Calendar changes kept in the KeyValueStore, one approval and attempt pair per change. */
+export effect function calendarMutationLedger() {
+  const live = try Ref.make(new Set<string>())
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+
+  effect function within<A, E, R>(id: string, body: (machine: Machine.Shape) => A!E!R) {
+    provide Layer.orDie(stored(rowKey(id, "state"))) {
+      const machine = try Machine
+      const current = try machine.get()
+      if (current.attempt === "Executing" && !(try Ref.get(live)).has(id)) try orDie(machine.send({ type: "restartAndInspect" }))
+      return try body(machine)
+    }
+  }
+
+  effect function durableReceipt(id: string, state: MutationLedger) {
+    const row = try readRow(id, "receipt", ReceiptRow)
+    if (row === undefined || row.token !== state.attemptReceipt) throw unreadable(id, "the succeeded attempt has no durable receipt")
+    return row.receipt
+  }
+
+  effect function storedOutcome(id: string, state: MutationLedger): (CalendarMutationOutcome | undefined)!CalendarLedgerUnavailable!Rows {
+    switch (state.attempt) {
+      case "Succeeded": return { kind: "succeeded", receipt: try durableReceipt(id, state), replayed: true }
+      case "Ambiguous": return state.approval === "Done" ? { kind: "confirmed" } : { kind: "blocked", reason: "ambiguous" }
+      case "Executing": return { kind: "blocked", reason: "in_flight" }
+      case "Invalidated": return { kind: "invalidated", failure: (try readRow(id, "failure", FailureRecord)) ?? changedRequest }
+      case "Absent":
+      case "FailedRetryable": return undefined
+    }
+  }
+
+  effect function settleUnknown(id: string, machine: Machine.Shape, failure: CalendarMutationFailure): CalendarMutationOutcome!CalendarLedgerUnavailable!Rows {
+    if ((try machine.get()).attempt === "Executing") try orDie(machine.send({ type: "recordUnknown" }))
+    try writeRow(id, "failure", failure)
+    try Ref.update(live, (held) => new Set([...held].filter((other) => other !== id)))
+    return { kind: "blocked", reason: "ambiguous" }
+  }
+
+  effect function dispatch(request: CalendarMutationRequest, port: CalendarMutationPort, machine: Machine.Shape, preflight: CalendarPreflight, token: number): CalendarMutationOutcome!CalendarLedgerUnavailable!Rows {
+    const id = request.id
+    const answered = map(port.execute(request, preflight), (receipt) => ({ kind: "receipt" as const, receipt }))
+      catch (error) => ({ kind: error._tag, failure: error.failure })
+    try Ref.update(live, (held) => new Set([...held].filter((other) => other !== id)))
+    if (answered.kind === "receipt") {
+      if (!receiptMatches(request.payload, answered.receipt)) return try settleUnknown(id, machine, { ...unknownOutcome, code: "CALENDAR_MUTATION_RECEIPT_UNBOUND" })
+      try writeRow(id, "receipt", { token, receipt: answered.receipt })
+      try orDie(machine.send({ type: "recordReceipt", token }))
+      return { kind: "succeeded", receipt: answered.receipt, replayed: false }
+    }
+    if (answered.kind === "CalendarWriteNotAccepted") {
+      try orDie(machine.send({ type: "recordRefusal" }))
+      const failure = { ...answered.failure, retryable: true }
+      try writeRow(id, "failure", failure)
+      return { kind: "retryable", failure }
+    }
+    return try settleUnknown(id, machine, answered.failure)
+  }
+
+  effect function attempt(request: CalendarMutationRequest, port: CalendarMutationPort, machine: Machine.Shape): CalendarMutationOutcome!CalendarLedgerUnavailable!Rows {
+    const id = request.id
+    const known = try storedOutcome(id, try machine.get())
+    if (known !== undefined) return known
+    const first = try readRow(id, "request", RequestRow)
+    if (first === undefined) try writeRow(id, "request", { digest: request.digest, payload: request.payload })
+    else if (first.digest !== request.digest) {
+      try writeRow(id, "failure", changedRequest)
+      try orDie(machine.send({ type: "invalidateBeforeClaim" }))
+      return { kind: "invalidated", failure: changedRequest }
+    }
+    const preflight = port.preflight(request) catch effect (refused) => {
+      try writeRow(id, "failure", refused.failure)
+      if (!refused.failure.retryable) try orDie(machine.send({ type: "invalidateBeforeClaim" }))
+      return undefined
+    }
+    if (preflight === undefined) {
+      const failure = (try readRow(id, "failure", FailureRecord)) ?? changedRequest
+      return failure.retryable ? { kind: "retryable", failure } : { kind: "invalidated", failure }
+    }
+    const claimed = try orDie(machine.send({ type: "claim" }))
+    try Ref.update(live, (held) => new Set([...held, id]))
+    return try onExit(dispatch(request, port, machine, preflight, claimed.token),
+      (exit) => Exit.isSuccess(exit) ? Effect.void : orDie(settleUnknown(id, machine, unknownOutcome)))
+  }
+
+  effect function run(request: CalendarMutationRequest, port: CalendarMutationPort): CalendarMutationOutcome!CalendarLedgerUnavailable!Rows {
+    return try within(request.id, (machine) => attempt(request, port, machine))
+  }
+
+  effect function inspection(id: string, machine: Machine.Shape): CalendarMutationInspection!CalendarLedgerUnavailable!Rows {
+    const state = try machine.get()
+    return {
+      state,
+      receipt: state.attemptReceipt === 0 ? undefined : try durableReceipt(id, state),
+      failure: try readRow(id, "failure", FailureRecord),
+      awaitingReconciliation: awaitingReconciliation(state),
+    }
+  }
+
+  effect function inspect(id: string): CalendarMutationInspection!CalendarLedgerUnavailable!Rows {
+    return try within(id, (machine) => inspection(id, machine))
+  }
+
+  effect function settle(id: string, evidence: CalendarReconciliation, machine: Machine.Shape): CalendarMutationOutcome!CalendarLedgerUnavailable!Rows {
+    const state = try machine.get()
+    if (!awaitingReconciliation(state)) return (try storedOutcome(id, state)) ?? { kind: "retryable", failure: (try readRow(id, "failure", FailureRecord)) ?? changedRequest }
+    if (evidence.kind === "not_delivered") {
+      try orDie(machine.send({ type: "confirmNonDelivery" }))
+      const failure: CalendarMutationFailure = { code: "CALENDAR_MUTATION_NOT_DELIVERED", message: "Reconciliation showed the change did not reach the calendar.", retryable: true }
+      try writeRow(id, "failure", failure)
+      return { kind: "retryable", failure }
+    }
+    if (evidence.kind === "owner_confirmed") {
+      try orDie(machine.send({ type: "confirmWithoutReceipt" }))
+      return { kind: "confirmed" }
+    }
+    const request = try readRow(id, "request", RequestRow)
+    const matches = request !== undefined && receiptMatches(request.payload, evidence.receipt)
+    if (matches) try writeRow(id, "receipt", { token: state.token, receipt: evidence.receipt })
+    try orDie(machine.send({ type: "reconcileReceipt", matchesOperation: matches }))
+    return matches ? { kind: "succeeded", receipt: evidence.receipt, replayed: false } : { kind: "blocked", reason: "ambiguous" }
+  }
+
+  effect function reconcile(id: string, evidence: CalendarReconciliation): CalendarMutationOutcome!CalendarLedgerUnavailable!Rows {
+    return try within(id, (machine) => settle(id, evidence, machine))
+  }
+
+  return {
+    run: (request: CalendarMutationRequest, port: CalendarMutationPort) => serialize(run(request, port)),
+    inspect: (id: string) => serialize(inspect(id)),
+    reconcile: (id: string, evidence: CalendarReconciliation) => serialize(reconcile(id, evidence)),
+  }
+}
+
+/** The ledger a Calendar host runs reviewed changes through. */
+export type CalendarMutationLedger = Effect.Success<ReturnType<typeof calendarMutationLedger>>

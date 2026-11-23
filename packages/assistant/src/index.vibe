@@ -1,0 +1,111 @@
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"
+import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider } from "@elizaos/core"
+import type { AgentPlugin } from "@elizaos/agent"
+import { checkinKind, deliverCheckin } from "./checkin.vibe"
+import { dossierRoutes } from "./dossier.vibe"
+import { runEvaluators, type EvaluatorRun } from "./evaluators/runner.vibe"
+import { deliverFollowupTick, followupTickCron, followupTickKind } from "./followups.vibe"
+import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvider } from "./goals.vibe"
+import { Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind } from "./reminders.vibe"
+import { deliverRoutine, routineKind, routineRoutes } from "./routines.vibe"
+import { ownerClockAt, ownerTimezoneEvaluator } from "./timezone.vibe"
+import { currentTodosProvider, todosAction } from "./todos.vibe"
+
+export { heardReply, replyKind, proven, turnResults, type Attempt, type Proven, type ReplyKind, type TurnResult, type WorkPhase } from "./replies.vibe"
+export { runtimeLayer, onAgent, type AssistantPorts } from "./host.vibe"
+export { runEvaluators, orderedEntries, type EvaluatorRun } from "./evaluators/runner.vibe"
+export { restoreEarlier, evidenceRows, type Restoration } from "./evaluators/pages.vibe"
+export { followupTick, type TickReport } from "./followups.vibe"
+export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
+
+/** The name the agent loads this plugin by. */
+export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
+
+type Deliverer = (task: TaskRow) => DeliveryAnswer!unknown!AssistantPorts
+
+const deliverers: ReadonlyArray<readonly [string, Deliverer]> = [
+  [reminderKind, deliverReminder],
+  [goalCheckinKind, deliverGoalCheckin],
+  [routineKind, deliverRoutine],
+  [checkinKind, deliverCheckin],
+  [followupTickKind, () => deliverFollowupTick()],
+]
+
+effect function scheduleStandingTasks() {
+  const zone = try ownerClockAt(try Clock.currentTimeMillis)
+  const scheduler = try Scheduler
+  try scheduler.create({
+    kind: checkinKind, ownerVisible: true, promptInstructions: "Morning check-in",
+    trigger: { kind: "cron", expression: "0 8 * * *", tz: zone }, metadata: { checkin: "morning" }, idempotencyKey: "checkin:morning",
+  })
+  try scheduler.create({
+    kind: followupTickKind, ownerVisible: false, promptInstructions: "Follow up on approvals left open",
+    trigger: { kind: "cron", expression: followupTickCron, tz: zone }, metadata: {}, idempotencyKey: "followups:tick",
+  })
+}
+
+/** Registers how the assistant's scheduled tasks reach the owner, and keeps the morning check-in scheduled. */
+export class PersonalAssistantService extends Service {
+  static override serviceType = "personal-assistant"
+  override capabilityDescription = "Delivers the owner's reminders, goal check-ins, routines and daily check-in at the owner's local time"
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    const tasks = await runtime.getServiceLoadPromise(scheduledTasksServiceType)
+    if (!isAgentScheduledTasks(tasks)) throw new TypeError("The agent's scheduled-tasks service cannot deliver the assistant's tasks")
+    for (const [kind, deliver] of deliverers) tasks.deliverKind(kind, (task) => onAgent(runtime, deliver(task)))
+    await onAgent(runtime, scheduleStandingTasks())
+    return new PersonalAssistantService(runtime)
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+/** Runs the evaluators of a turn under the runner's rules, with their durable progress kept in the agent's store. */
+export class PersonalAssistantEvaluators extends Service {
+  static override serviceType = "personal-assistant-evaluators"
+  override capabilityDescription = "Runs registered evaluators in batches by input route, with durable incremental progress"
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new PersonalAssistantEvaluators(runtime)
+  }
+
+  run(run: Omit<EvaluatorRun, "runtime">): Promise<EvaluatorRunResult> {
+    return onAgent(this.runtime, runEvaluators({ ...run, runtime: this.runtime }))
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+const ownerClockProvider: Provider = {
+  name: "PERSONAL_ASSISTANT_CLOCK",
+  description: "The zone the owner's reminders and check-ins follow now.",
+  dynamic: true,
+  private: true,
+  get: async (runtime) => {
+    const zone = await onAgent(runtime, effect { return try ownerClockAt(try Clock.currentTimeMillis) })
+    return { text: `Owner time zone: ${zone}. Name reminder and check-in times on this clock.`, values: { ownerTimeZone: zone }, data: { zone } }
+  },
+}
+
+let running: IAgentRuntime | undefined
+
+/** The personal assistant: reminders, goals, to-dos, routines, the daily check-in and the owner's clock. */
+export const personalAssistantPlugin = {
+  name: personalAssistantPluginName,
+  description: "Personal assistance: reminders, time zones, check-ins, goals, to-dos and routines, kept in the owner's agent.",
+  init: (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    running = runtime
+  },
+  actions: [ownerRemindersAction, ownerGoalsAction, todosAction],
+  providers: [ownerRemindersProvider, ownerGoalsProvider, currentTodosProvider, ownerClockProvider],
+  evaluators: [ownerTimezoneEvaluator],
+  services: [PersonalAssistantService, PersonalAssistantEvaluators],
+  routes: [...routineRoutes(() => running), ...dossierRoutes(() => running)],
+} satisfies AgentPlugin
+
+export default personalAssistantPlugin

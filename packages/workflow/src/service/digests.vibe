@@ -1,0 +1,354 @@
+// spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "Reconciliation preserves equivalent bytes and replaces only the matching cancellation"; spec/workflow/hostedDigest.md, "Parse the complete page before durable writes and bind its acknowledgement to its final incoming row"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"
+import * as A from "../../gen/workflow__admission.effect.vibe"
+import * as L from "../../gen/workflow__lifecycle.effect.vibe"
+import * as X from "../../gen/workflow__execution.effect.vibe"
+import { providerDigestCursor } from "../../gen/workflow__hostedDigest.effect.vibe"
+import {
+  DIGEST_MISSED_TEXT, DIGEST_OVERLAP_TEXT, DIGEST_PAGE_LIMIT, DIGEST_PAUSED_TEXT, DIGEST_SOURCE_UNAVAILABLE_TEXT, HOSTED_TEMPLATE_VERSION,
+  digestCron, digestId, digestKeys, digestOccurrenceMissed, digestPhoneSpec, digestRecord, digestSourceState, digestSourceType, digestText, validateDigestSpec, DigestRefused,
+  type DigestSourceRecord, type DigestSpec, type HostedNativeSelection,
+} from "../contract/digest.vibe"
+import { phoneWorkflowBytes, workflowSha, workflowUuid } from "../contract/phone.vibe"
+import type { DefinitionRow, RunRow } from "./store.vibe"
+import { assertHostedGoogleSource, liveGoogleAccounts, liveGoogleCalendars, readHostedGoogleSource, validateHostedGoogleSelection } from "./google.vibe"
+import { PHONE_COMPILER_REVISION, versionId, WorkflowRefused, type WorkflowService } from "./workflows.vibe"
+
+type Bag = Record<string, unknown>
+const nativeKeys = ["provider", "ownerId", "agentId", "installationId", "enrollmentId", "sourceId", "revision"]
+
+effect function refused<A>(call: A!DigestRefused): A!WorkflowRefused {
+  return try mapError(call, (error) => new WorkflowRefused({ status: error.status, message: error.message, ...(error.code === undefined ? {} : { code: error.code }) }))
+}
+
+effect function nativeSelection(value: unknown): HostedNativeSelection!WorkflowRefused {
+  const v = try refused(digestRecord(value))
+  if (v.provider !== "native" || Object.keys(v).some((key) => !nativeKeys.includes(key))) throw new WorkflowRefused({ status: 400, message: "Invalid native source" })
+  const text = (field: unknown) => refused(digestText(field, 256))
+  const revision = try text(v.revision)
+  if (!/^[a-f0-9]{64}$/.test(revision)) throw new WorkflowRefused({ status: 400, message: "Invalid native source revision" })
+  return {
+    provider: "native", ownerId: try text(v.ownerId), agentId: try text(v.agentId), installationId: try text(v.installationId), enrollmentId: try text(v.enrollmentId),
+    sourceId: try text(v.sourceId), revision,
+  }
+}
+
+/** The hosted digest routes over the opened workflow service. */
+export function hostedDigests(service: WorkflowService) {
+  const { host, store, owner, lock, now, db } = service
+
+  effect function sourceOf(id: string): DigestSourceRecord!WorkflowRefused {
+    const found = (try db(store.sources(owner))).find((source) => source.id === id)
+    if (found === undefined) throw new WorkflowRefused({ status: 404, message: "Digest source not found" })
+    return found
+  }
+
+  effect function sources() {
+    return { sources: (try db(store.sources(owner))).map(({ text: _text, ...metadata }) => metadata) }
+  }
+
+  effect function saveSource(input: unknown) {
+    const v = try refused(digestRecord(input))
+    try refused(digestKeys(v, ["id", "kind", "label", "text", "observedAt", "expiresAt", "confirmed", "live"]))
+    const kind = v.kind
+    if (v.confirmed !== true || (kind !== "tasks" && kind !== "calendar" && kind !== "email" && kind !== "notes")) throw new WorkflowRefused({ status: 400, message: "Review and confirm the exact snapshot" })
+    const id = try refused(digestId(v.id))
+    const notSaved = { code: "HOSTED_SOURCE_NOT_SAVED", mutationId: id }
+    const liveProvider = typeof v.live === "object" && v.live !== null && "provider" in v.live ? v.live.provider : undefined
+    const live = v.live === undefined ? undefined : liveProvider === "google" ? try validateHostedGoogleSelection(v.live) : try nativeSelection(v.live)
+    if (live !== undefined && ((live.provider === "native" ? kind !== "tasks" : live.kind !== kind) || v.text !== undefined)) {
+      throw new WorkflowRefused({ status: 400, message: "Live source must match selected kind and cannot include snapshot text" })
+    }
+    const observedAt = try refused(digestText(v.observedAt, 40))
+    const expiresAt = try refused(digestText(v.expiresAt, 40))
+    const fields = {
+      id, kind, label: try refused(digestText(v.label, 200)),
+      text: live === undefined ? try refused(digestText(v.text, 12000)) : "Fresh selected-account read is resolved only at the scheduled occurrence.",
+      ...(live === undefined ? {} : { live }), observedAt, expiresAt,
+    } satisfies Omit<DigestSourceRecord, "revision" | "revoked">
+    if (phoneWorkflowBytes(fields) > 15000) throw new WorkflowRefused({ status: 400, message: "Encoded snapshot exceeds the reviewed byte bound" })
+    const source: DigestSourceRecord = { ...fields, revision: try workflowSha(fields), revoked: false }
+    return try lock(effect {
+      const prior = (try db(store.sources(owner))).find((candidate) => candidate.id === id)
+      if (prior !== undefined) {
+        if (prior.revision !== source.revision) throw new WorkflowRefused({ status: 409, message: "Snapshot identity conflict" })
+        const { text: _text, ...metadata } = prior
+        return { source: metadata }
+      }
+      const at = try now
+      const observed = Date.parse(observedAt)
+      const expires = Date.parse(expiresAt)
+      const changed = () => new WorkflowRefused({ status: 409, message: "Selected source permission changed before saving", ...notSaved })
+      if (live?.provider === "native") {
+        const native = host.nativeDigests
+        if (native === undefined) throw changed()
+        try mapError(native.grant(live, expires), changed)
+      }
+      if (live?.provider === "google") {
+        const google = host.google
+        if (google === undefined) throw changed()
+        try mapError(assertHostedGoogleSource(google, live), changed)
+      }
+      if (!Number.isFinite(observed) || !Number.isFinite(expires) || observed > at + 60000 || observed < at - 7 * 86400000 || expires <= at || expires > observed + 7 * 86400000) {
+        throw new WorkflowRefused({ status: 400, message: "Source must have a valid explicit freshness window of at most seven days", ...notSaved })
+      }
+      try db(store.saveSource(owner, source))
+      const { text: _text, ...metadata } = source
+      return { source: metadata }
+    })
+  }
+
+  effect function revokeSource(input: unknown) {
+    const body = try refused(digestRecord(input))
+    try refused(digestKeys(body, ["id", "confirmed"]))
+    if (body.confirmed !== true) throw new WorkflowRefused({ status: 400, message: "Confirm source revocation" })
+    const id = try refused(digestId(body.id))
+    return try lock(effect {
+      const source = try sourceOf(id)
+      try db(store.saveSource(owner, { ...source, revoked: true }))
+      return { id, revoked: true }
+    })
+  }
+
+  effect function digestDefinitions(): { readonly row: DefinitionRow; readonly spec: DigestSpec }[]!WorkflowRefused {
+    return (try db(store.definitions(owner))).flatMap((stored) => stored.row.origin === "digest" && stored.row.hostedDigest !== undefined ? [{ row: stored.row, spec: stored.row.hostedDigest }] : [])
+  }
+
+  effect function loops() {
+    const all = try db(store.sources(owner))
+    const at = try now
+    return {
+      loops: (try digestDefinitions()).filter(({ spec }) => spec.manualOnly !== true).map(({ row, spec }) => {
+        const source = all.find((candidate) => candidate.id === spec.sourceId)
+        return {
+          id: row.id, versionId: versionId(row.admission.version), name: row.name, spec, active: row.admission.active, removed: row.lifecycleState.removed,
+          sourceState: source === undefined ? "revoked" : digestSourceState(source, at),
+        }
+      }),
+    }
+  }
+
+  effect function digestMutation(mutationId: string, spec: DigestSpec, source: DigestSourceRecord, workflowId?: string, expectedVersionId?: string) {
+    const phone = digestPhoneSpec(spec, source)
+    const specDigest = try workflowSha(phone)
+    const prior = try db(store.receipt(mutationId))
+    if (prior !== undefined) {
+      if (prior.owner !== owner || prior.kind !== "digest" || prior.data.specDigest !== specDigest || prior.data.workflowId !== (workflowId ?? prior.data.workflowId)) {
+        throw new WorkflowRefused({ status: 409, message: "This save identity was used for another change", code: "WORKFLOW_TYPED_NOT_APPLIED", mutationId })
+      }
+      return prior.data.receipt as Bag
+    }
+    const at = new Date(try now).toISOString()
+    if (workflowId === undefined) {
+      const id = try workflowUuid()
+      const fresh: DefinitionRow = {
+        id, owner, admission: A.initial, lifecycleState: { ...L.initial, owner, version: 1 }, revisions: [], name: phone.name, description: phone.description, spec: phone, specDigest,
+        origin: "digest", hostedDigest: spec, createdAt: at, updatedAt: at, armedVersion: 0,
+      }
+      const defined = try service.admitted(fresh, { type: "defineWorkflow", typed: false, timed: true, scheduleMatches: true })
+      const enabled = spec.enabled ? try service.admitted({ ...fresh, admission: defined }, { type: "changeActivation", form: "ExactRequest", expected: defined.version, enable: true }) : defined
+      const receipt = { mutationId, workflowId: id, operation: "create", previousVersionId: null, versionId: versionId(enabled.version), specDigest, compilerRevision: PHONE_COMPILER_REVISION, appliedAt: at }
+      const next = { ...fresh, admission: enabled }
+      try service.writeDefinition(undefined, next, { mutationId, owner, kind: "digest", data: { specDigest, workflowId: id, receipt } })
+      try service.arm(next)
+      return receipt
+    }
+    const current = try service.definitionOf(workflowId)
+    if (current.row.origin !== "digest" || current.row.lifecycleState.removed || versionId(current.row.admission.version) !== expectedVersionId) {
+      throw new WorkflowRefused({ status: 409, message: "Digest changed before saving", code: "WORKFLOW_TYPED_NOT_APPLIED", workflowId, mutationId, ...(expectedVersionId === undefined ? {} : { expectedVersionId }) })
+    }
+    const edited = try service.admitted(current.row, { type: "editWorkflow" })
+    const changed: DefinitionRow = { ...current.row, admission: edited, spec: phone, specDigest, hostedDigest: spec, name: phone.name, description: phone.description, updatedAt: at }
+    const settled = edited.active !== spec.enabled ? try service.admitted(changed, { type: "changeActivation", form: "ExactRequest", expected: edited.version, enable: spec.enabled }) : edited
+    const receipt = { mutationId, workflowId, operation: "edit", previousVersionId: expectedVersionId, versionId: versionId(settled.version), specDigest, compilerRevision: PHONE_COMPILER_REVISION, appliedAt: at }
+    const next = { ...changed, admission: settled }
+    try service.writeDefinition(current, next, { mutationId, owner, kind: "digest", data: { specDigest, workflowId, receipt } })
+    try service.arm(next)
+    return receipt
+  }
+
+  effect function saveLoop(input: unknown) {
+    const body = try refused(digestRecord(input))
+    try refused(digestKeys(body, ["spec", "id", "expectedVersionId", "mutationId", "confirmed"]))
+    if (body.confirmed !== true) throw new WorkflowRefused({ status: 400, message: "Review and confirm recurring model execution" })
+    const mutationId = try refused(digestId(body.mutationId))
+    const id = body.id === undefined ? undefined : try refused(digestId(body.id))
+    const expected = body.expectedVersionId === undefined ? undefined : try refused(digestId(body.expectedVersionId))
+    const spec = try refused(validateDigestSpec(body.spec))
+    if (spec.manualOnly === true) throw new WorkflowRefused({ status: 400, message: "Use explicit dossier execution for manual source reads" })
+    return try lock(effect {
+      const source = try sourceOf(spec.sourceId)
+      if (source.revision !== spec.sourceRevision) throw new WorkflowRefused({ status: 409, message: "Reviewed snapshot revision changed" })
+      if (source.live?.provider === "google" && spec.enabled) {
+        const google = host.google
+        if (google === undefined || source.revoked || Date.parse(source.expiresAt) <= (try now)) throw new WorkflowRefused({ status: 409, message: "Selected Google source is unavailable" })
+        try assertHostedGoogleSource(google, source.live)
+      }
+      if (source.live?.provider === "native" && spec.enabled) {
+        const native = host.nativeDigests
+        if (native === undefined || source.revoked || Date.parse(source.expiresAt) <= (try now)) throw new WorkflowRefused({ status: 409, message: "Native source grant expired or revoked" })
+        const grant = try mapError(native.grant(source.live, Date.parse(source.expiresAt)), () => new WorkflowRefused({ status: 409, message: "Native source grant expired or revoked" }))
+        if (grant.timeZone !== spec.timeZone) throw new WorkflowRefused({ status: 409, message: "Review a native source grant for this schedule time zone" })
+      }
+      return { receipt: try digestMutation(mutationId, spec, source, id, expected) }
+    })
+  }
+
+  function provenance(spec: DigestSpec, source: DigestSourceRecord, scheduledAt: number): Bag {
+    return {
+      template: spec.template, templateVersion: HOSTED_TEMPLATE_VERSION, scheduledAt: new Date(scheduledAt).toISOString(),
+      source: { id: source.id, revision: source.revision, kind: source.kind, label: source.label, observedAt: source.observedAt, expiresAt: source.expiresAt, type: digestSourceType(source) },
+    }
+  }
+
+  effect function record(row: DefinitionRow, spec: DigestSpec, source: DigestSourceRecord, scheduledAt: number, output: Bag): void!WorkflowRefused {
+    const at = try now
+    const stamp = new Date(at).toISOString()
+    const entry: RunRow = {
+      id: `${row.id}-o${scheduledAt}`, workflowId: row.id, owner, version: row.admission.version, serial: 0, input: {}, spec: row.spec, specDigest: row.specDigest,
+      execution: X.initial, status: "finished", finished: true, startedAt: stamp, stoppedAt: stamp, anchorAt: new Date(scheduledAt).toISOString(),
+      ...(output.status === "missed" ? { missedOccurrenceAt: new Date(scheduledAt).toISOString() } : {}),
+      output: { scheduledAt: new Date(scheduledAt).toISOString(), ...output }, values: {}, results: [], next: 0, allowed: false, approvals: [], events: [],
+      hostedDigest: provenance(spec, source, scheduledAt),
+    }
+    if (try db(store.insertRun(entry, at))) try service.persist(entry)
+  }
+
+  effect function liveText(source: DigestSourceRecord, at: number): string!WorkflowRefused {
+    const lapsed = () => new WorkflowRefused({ status: 409, message: DIGEST_SOURCE_UNAVAILABLE_TEXT })
+    const live = source.live
+    if (live === undefined) return source.text
+    if (live.provider === "native") {
+      const native = host.nativeDigests
+      if (native === undefined) throw lapsed()
+      return try mapError(native.read(live, at), lapsed)
+    }
+    const google = host.google
+    if (google === undefined) throw lapsed()
+    const read = try mapError(readHostedGoogleSource(google, live, at), lapsed)
+    return JSON.stringify({ kind: source.kind, label: source.label, observedAt: new Date(at).toISOString(), expiresAt: source.expiresAt, sourceType: digestSourceType(source), content: read })
+  }
+
+  effect function runSpec(row: DefinitionRow, spec: DigestSpec, source: DigestSourceRecord, at: number) {
+    if (source.live === undefined) return row
+    const text = try liveText(source, at)
+    const phone = source.live.provider === "native" ? digestPhoneSpec(spec, { ...source, text })
+      : { ...row.spec, steps: row.spec.steps.map((step) => step.id === "source" && step.operation === "supplied_text" ? { ...step, text } : step) }
+    return { ...row, spec: phone, specDigest: try workflowSha(phone) }
+  }
+
+  effect function fire(row: DefinitionRow, armVersion: number, scheduledAt: number): void!WorkflowRefused {
+    const spec = row.hostedDigest
+    if (spec === undefined || spec.manualOnly === true || armVersion !== row.admission.version || !row.admission.active || row.lifecycleState.removed) return
+    const at = try now
+    const source = (try db(store.sources(owner))).find((candidate) => candidate.id === spec.sourceId)
+    if (source === undefined || source.revision !== spec.sourceRevision || (try workflowSha(digestPhoneSpec(spec, source))) !== row.specDigest) {
+      return try logWarning("digest source integrity changed", { workflowId: row.id })
+    }
+    if (host.nextCron(digestCron(spec), scheduledAt - 60000, spec.timeZone) !== scheduledAt) return
+    const runs = try db(store.runs({ owner, workflowId: row.id }))
+    if (runs.some((candidate) => candidate.hostedDigest?.scheduledAt === new Date(scheduledAt).toISOString())) return
+    const state = digestSourceState(source, at)
+    if (state !== "current") {
+      try record(row, spec, source, scheduledAt, { status: "unavailable", sourceState: state, paused: true, text: DIGEST_PAUSED_TEXT[state] })
+      try lock(effect {
+        const current = try service.definitionOf(row.id)
+        if (!current.row.admission.active) return
+        const paused = try service.admitted(current.row, { type: "changeActivation", form: "ExactRequest", expected: current.row.admission.version, enable: false })
+        const next = { ...current.row, admission: paused, hostedDigest: { ...spec, enabled: false } }
+        try service.writeDefinition(current, next)
+        try service.arm(next)
+      })
+      return
+    }
+    if (digestOccurrenceMissed(scheduledAt, at)) return try record(row, spec, source, scheduledAt, { status: "missed", text: DIGEST_MISSED_TEXT })
+    if (runs.some((candidate) => !candidate.finished)) return try record(row, spec, source, scheduledAt, { status: "overlap", text: DIGEST_OVERLAP_TEXT })
+    if (host.worker === undefined) return
+    const runnable = (runSpec(row, spec, source, at) catch effect () => {
+      try record(row, spec, source, scheduledAt, { status: "unavailable", text: DIGEST_SOURCE_UNAVAILABLE_TEXT })
+      return undefined
+    })
+    if (runnable === undefined) return
+    const submitted = try submitWith(runnable, `digest:${armVersion}:${scheduledAt}`, armVersion, provenance(spec, source, scheduledAt))
+    if (submitted.fresh) try service.launch(submitted.run.id)
+  }
+
+  effect function submitWith(row: DefinitionRow, submissionId: string, expected: number, hostedDigest: Bag) {
+    const submitted = try service.submit(row.id, submissionId, expected, {}, { hostedDigest })
+    if (!submitted.fresh || row.specDigest === submitted.run.specDigest) return submitted
+    const bound = { ...submitted.run, spec: row.spec, specDigest: row.specDigest }
+    try service.persist(bound)
+    return { ...submitted, run: bound }
+  }
+
+  effect function dossier(input: unknown) {
+    const body = try refused(digestRecord(input))
+    try refused(digestKeys(body, ["sourceId", "sourceRevision", "mutationId", "confirmed"]))
+    if (body.confirmed !== true) throw new WorkflowRefused({ status: 400, message: "Confirm this on-demand model execution" })
+    const sourceId = try refused(digestId(body.sourceId))
+    const sourceRevision = try refused(digestText(body.sourceRevision, 64))
+    const mutationId = try refused(digestId(body.mutationId))
+    const native = host.nativeDigests
+    if (native === undefined || host.worker === undefined) throw new WorkflowRefused({ status: 503, message: "Native digest sources are unavailable on this agent" })
+    const definitionKey = try workflowSha(["native-dossier-definition", owner, sourceId, sourceRevision, HOSTED_TEMPLATE_VERSION, PHONE_COMPILER_REVISION])
+    const prepared = try lock(effect {
+      const source = try sourceOf(sourceId)
+      if (source.revision !== sourceRevision || source.live?.provider !== "native") throw new WorkflowRefused({ status: 409, message: "Dossier source binding changed" })
+      const existing = try db(store.receipt(definitionKey))
+      if (existing === undefined && (source.revoked || Date.parse(source.expiresAt) <= (try now))) throw new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" })
+      const grant = existing === undefined ? try mapError(native.grant(source.live, Date.parse(source.expiresAt)), () => new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" })) : undefined
+      const spec: DigestSpec = existing === undefined
+        ? { version: 1, template: "morning", sourceId, sourceRevision, timeZone: grant?.timeZone ?? "UTC", localTime: "08:00", enabled: false, manualOnly: true }
+        : (try service.definitionOf(String(existing.data.workflowId))).row.hostedDigest ?? { version: 1, template: "morning", sourceId, sourceRevision, timeZone: "UTC", localTime: "08:00", enabled: false, manualOnly: true }
+      const receipt = try digestMutation(definitionKey, spec, source)
+      return { workflowId: String(receipt.workflowId), spec, source }
+    })
+    const definition = try service.definitionOf(prepared.workflowId)
+    const at = try now
+    const prior = A.readSubmission(try service.project(definition.row), owner, mutationId)
+    if (prior.reply === "ExistingRun") return { execution: service.runView(try service.runOf(`${definition.row.id}-r${prior.replyRun}`)) }
+    const runnable = try runSpec(definition.row, prepared.spec, prepared.source, at)
+    const submitted = try submitWith(runnable, mutationId, definition.row.admission.version, provenance(prepared.spec, prepared.source, at))
+    if (submitted.fresh) try service.launch(submitted.run.id)
+    return { execution: service.runView(submitted.run) }
+  }
+
+  effect function results(query: ReadonlyMap<string, string>) {
+    const clientId = try refused(digestId(query.get("clientId")))
+    const page = try db(store.digestPage(owner, clientId, DIGEST_PAGE_LIMIT))
+    const entries: Bag[] = []
+    let bytes = 100
+    for (const row of page) {
+      const entry = { cursor: row.cursor, ...(row.data as Bag) }
+      const size = phoneWorkflowBytes(entry) + 1
+      if (entries.length > 0 && bytes + size > 1_000_000) break
+      entries.push(entry)
+      bytes += size
+    }
+    return { entries }
+  }
+
+  effect function acknowledge(input: unknown) {
+    const body = try refused(digestRecord(input))
+    try refused(digestKeys(body, ["clientId", "cursor", "runId"]))
+    const clientId = try refused(digestId(body.clientId))
+    const runId = try refused(digestId(body.runId))
+    const cursor = body.cursor
+    if (typeof cursor !== "number" || !Number.isSafeInteger(cursor) || cursor < 1) throw new WorkflowRefused({ status: 400, message: "Invalid result cursor" })
+    const accepted = try db(store.acknowledgeDigest(owner, clientId, cursor, runId))
+    if (!accepted) throw new WorkflowRefused({ status: 404, message: "Result not found" })
+    return { acknowledged: providerDigestCursor(0, cursor, accepted) }
+  }
+
+  return {
+    sources, saveSource, revokeSource, loops, saveLoop, dossier, results, acknowledge, fire,
+    effect liveAccounts() {
+      const google = host.google
+      return { accounts: google === undefined ? [] : try liveGoogleAccounts(google) }
+    },
+    effect liveCalendars(input: unknown) {
+      const google = host.google
+      if (google === undefined) throw new WorkflowRefused({ status: 409, message: "Managed Google is unavailable on this agent" })
+      return try liveGoogleCalendars(google, input)
+    },
+  }
+}

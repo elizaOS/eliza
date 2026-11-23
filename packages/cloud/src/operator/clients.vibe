@@ -1,10 +1,12 @@
-// spec/cloud/operator.md, "Story: Operate the deployment without reading secrets"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
-import { defaultCredentialTtl, type Registration, type ReturnUrl } from "../../gen/cloud__nativeClients__registry.effect.vibe"
+// spec/cloud/operator.md, "Story: Operate the deployment without reading secrets"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"; spec/cloud/nativeClients/registry.md, "Story: Apply my app's registration from its reviewed file"
+import { applyAction, defaultCredentialTtl, fileCheck, withRegistration, type ApplyAction, type Registration, type ReturnUrl } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import { millisPerDay } from "../../gen/cloud__shared__types.effect.vibe"
-import { decodeRegistration, disableClient, readClient, registerClient, updateClient } from "../native-clients/registry.vibe"
+import { decodeRegistration, disableClient, readClient, readRegistry, registerClient, updateClient } from "../native-clients/registry.vibe"
+import { registrationText } from "../native-registry.vibe"
 import { Deployment } from "../profile/profile.vibe"
+import { sha256Hex } from "../shared/credential-crypto.vibe"
 import type { Tx } from "../store/store.vibe"
-import type { OperatorCommandHandler, OperatorFlags } from "./admin.vibe"
+import type { OperatorCommandHandler, OperatorDocument, OperatorFlags } from "./admin.vibe"
 
 error ClientFlagsInvalid { problem: string }
 error ClientUnknown { clientId: string }
@@ -23,7 +25,7 @@ interface RegistrationInput {
   readonly enabled: boolean
 }
 
-const SeedClients = Schema.Array(Schema.Struct({
+const ClientEntry = Schema.Struct({
   clientId: Schema.String,
   displayName: Schema.String,
   androidPackage: Schema.String,
@@ -32,8 +34,37 @@ const SeedClients = Schema.Array(Schema.Struct({
   billingReturn: Schema.String,
   connectReturn: Schema.optionalKey(Schema.String),
   credentialTtlDays: Schema.optionalKey(Schema.Int),
-  nativeGoogle: Schema.optionalKey(Schema.Boolean)
-}))
+  nativeGoogle: Schema.optionalKey(Schema.Boolean),
+  enabled: Schema.optionalKey(Schema.Boolean)
+})
+const SeedClients = Schema.Array(ClientEntry)
+const RegistrationFile = Schema.Struct({
+  environment: Schema.Literals(["production", "staging"]),
+  clients: Schema.Array(ClientEntry)
+})
+
+/** What `client apply` did to one client of the file. */
+export interface ClientReceipt {
+  readonly clientId: string
+  readonly action: "registered" | "updated" | "unchanged"
+  readonly registration: string
+}
+
+/** The audit receipt `client apply` prints: where it applied which file, when, and what each client became. */
+export interface ApplyReceipt {
+  readonly receipt: "client-apply"
+  readonly environment: "production" | "staging"
+  readonly database: string
+  readonly file: string
+  readonly appliedAt: number
+  readonly clients: ReadonlyArray<ClientReceipt>
+}
+
+const receiptAction: Readonly<Record<ApplyAction, ClientReceipt["action"]>> = {
+  AppliedNew: "registered",
+  AppliedChanged: "updated",
+  AppliedSame: "unchanged"
+}
 
 const valued = ["client-id", "display-name", "android-package", "sign-in-return", "billing-return", "connect-return", "credential-ttl-days"] as const
 const repeated = ["cert"] as const
@@ -128,9 +159,21 @@ effect function disableFromFlags(tx: Tx, flags: OperatorFlags, now: number) {
   return [`disabled ${clientId}`]
 }
 
+effect function entryRegistration(entry: typeof ClientEntry.Type, environment: "production" | "staging") {
+  const { credentialTtlDays, nativeGoogle, enabled, ...rest } = entry
+  const input: RegistrationInput = {
+    ...rest,
+    environment,
+    credentialTtlMs: try ttlMs(credentialTtlDays),
+    nativeGoogle: nativeGoogle ?? false,
+    enabled: enabled ?? true
+  }
+  return try decodeRegistration(input)
+}
+
 type SeedClientFailure =
   | ClientFlagsInvalid
-  | Effect.Error<ReturnType<typeof decodeRegistration>>
+  | Effect.Error<ReturnType<typeof entryRegistration>>
   | Effect.Error<ReturnType<typeof registerClient>>
 
 export effect function seedClients(tx: Tx, entries: unknown, now: number): string[]!SeedClientFailure!Deployment {
@@ -141,22 +184,43 @@ export effect function seedClients(tx: Tx, entries: unknown, now: number): strin
   const environment = try served()
   const registered: string[] = []
   for (const entry of parsed) {
-    const { credentialTtlDays, nativeGoogle, ...rest } = entry
-    const input: RegistrationInput = {
-      ...rest,
-      environment,
-      credentialTtlMs: try ttlMs(credentialTtlDays),
-      nativeGoogle: nativeGoogle ?? false,
-      enabled: true
-    }
-    const registration = try registerClient(tx, try decodeRegistration(input), now)
+    const registration = try registerClient(tx, try entryRegistration(entry, environment), now)
     registered.push(registration.clientId)
   }
   return registered
 }
 
+effect function applyFile(tx: Tx, _flags: OperatorFlags, now: number, _verdict: unknown, document: OperatorDocument | undefined) {
+  if (document === undefined) throw new ClientFlagsInvalid({ problem: "client apply needs --file" })
+  const file = try Effect.mapError(
+    Schema.decodeUnknownEffect(RegistrationFile, { onExcessProperty: "error" })(document.value),
+    (error) => new ClientFlagsInvalid({ problem: `registration file: ${error.message}` })
+  )
+  const deployment = try Deployment
+  const environment = deployment.environment
+  const wire = (value: "production" | "staging") => value === "production" ? "Production" as const : "Staging" as const
+  const checked = fileCheck(wire(file.environment), wire(environment), file.clients.map((entry) => entry.clientId))
+  if (checked === "FileForOtherEnvironment") throw new ClientFlagsInvalid({ problem: `the file registers ${file.environment} clients and this command serves ${environment}` })
+  if (checked === "FileRepeatsClient") throw new ClientFlagsInvalid({ problem: "the file names a client id more than once" })
+  try tx.query("LOCK TABLE native_clients IN SHARE ROW EXCLUSIVE MODE")
+  let registry: ReadonlyArray<Registration> = try readRegistry(tx)
+  const clients: ClientReceipt[] = []
+  for (const entry of file.clients) {
+    const registration = try entryRegistration(entry, environment)
+    const action = applyAction([...registry], registration)
+    if (action !== "AppliedSame") try registerClient(tx, registration, now)
+    registry = withRegistration([...registry], registration)
+    clients.push({ clientId: registration.clientId, action: receiptAction[action], registration: `sha256:${sha256Hex(registrationText(registration))}` })
+  }
+  const receipt: ApplyReceipt = {
+    receipt: "client-apply", environment, database: deployment.settings.databaseIdentity, file: document.digest, appliedAt: now, clients
+  }
+  return [JSON.stringify(receipt)]
+}
+
 export const commands: ReadonlyArray<OperatorCommandHandler> = [
   { words: ["client", "register"], operatorCommand: "RegisterClient", valued, repeated, switches, run: registerFromFlags },
   { words: ["client", "update"], operatorCommand: "RegisterClient", valued, repeated, switches, run: updateFromFlags },
+  { words: ["client", "apply"], operatorCommand: "RegisterClient", valued: ["file"], repeated: [], switches: [], document: "file", run: applyFile },
   { words: ["client", "disable"], operatorCommand: "DisableClient", valued: ["client-id"], repeated: [], switches: [], run: disableFromFlags }
 ]

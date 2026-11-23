@@ -1,9 +1,9 @@
 // spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "Only a reversible local operation bound to the owner's current message may run without a review"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran"
 import {
-  mayRunDirectly as runsDirectly, operationNeed, receiptOutcome as admission, validate as admitted,
+  mayRunDirectly as runsDirectly, operationNeed, proposalVersion, receiptOutcome as admission, validate as admitted,
   type DeviceReceipt as ReceiptFacts, type FailureCode, type OperationType, type ReadBinding, type ReportedOutcome, type ResultEvidence, type Settlement,
 } from "../../gen/agent__deviceActions__operations.effect.vibe"
-import type { Need, Negotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
+import { capabilityName, type Need, type Negotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 import type { ReceiptOutcome } from "../../gen/agent__deviceActions.effect.vibe"
 import type { FamilySchemas, OperationOf, OperationSchema } from "./operation-schemas/family.vibe"
 import { personalFamilies } from "./operation-schemas/personal.schema.vibe"
@@ -48,11 +48,32 @@ export function readOperation(input: unknown): CheckedOperation | undefined {
   return { operation: operation.value, opType, versionTwo, need: operationNeed(opType, versionTwo) }
 }
 
+/** Decodes an untrusted value as an operation of one wire type, or `undefined` when it is not exactly one. */
+export function operationOf<T extends DeviceOperationType>(input: unknown, type: T): Extract<DeviceOperation, { type: T }> | undefined {
+  const checked = readOperation(input)
+  return checked?.operation.type === type ? checked.operation as Extract<DeviceOperation, { type: T }> : undefined
+}
+
+/** The typed result a device reports for one wire type, or `never` for an operation that carries none. */
+export type OperationResultOf<T extends DeviceOperationType> = (typeof families)[T] extends { readonly result: Schema.Decoder<infer R> } ? R : never
+
+/** Decodes an untrusted result for an operation by that operation's own result schema, or `undefined` when it has none or does not match. */
+export function readResult<T extends DeviceOperationType>(operation: Extract<DeviceOperation, { type: T }>, input: unknown): OperationResultOf<T> | undefined {
+  const reader = readers.get(operation.type)
+  return reader?.result === undefined ? undefined : Option.getOrUndefined(reader.result(input)) as OperationResultOf<T> | undefined
+}
+
+/** The device's capability names one checked operation needs: all of `required`, and one of `oneOf` when it lists any. */
+export function capabilityNamesOf(checked: CheckedOperation): { readonly required: readonly string[]; readonly oneOf: readonly string[] } {
+  return { required: checked.need.required.map(capabilityName), oneOf: checked.need.oneOf.map(capabilityName) }
+}
+
 export function validate(input: unknown, negotiation: Negotiation, binding: ReadBinding): CheckedOperation | undefined {
   const checked = readOperation(input)
-  return checked !== undefined && admitted({ opType: checked.opType, versionTwo: checked.versionTwo, binding, shapeValid: true }, negotiation)
-    ? checked
-    : undefined
+  if (checked === undefined) return undefined
+  const proposal = { opType: checked.opType, versionTwo: checked.versionTwo, binding, shapeValid: true }
+  const versionTwo = proposalVersion(proposal, negotiation)
+  return admitted(proposal, negotiation) ? { ...checked, versionTwo, need: operationNeed(checked.opType, versionTwo) } : undefined
 }
 
 export function mayRunDirectly(checked: CheckedOperation, binding: ReadBinding, boundToCurrentMessage: boolean): boolean {
@@ -93,7 +114,7 @@ function evidenceOf(checked: CheckedOperation, receipt: DeviceReceipt): { readon
   const decoded = reader?.result === undefined ? Option.none() : reader.result(receipt.result)
   const shown = reader === undefined || reader.schema.result === undefined || Option.isNone(decoded)
     ? undefined
-    : reader.schema.evidence(decoded.value, checked.operation, { operationId: receipt.operationId })
+    : reader.schema.evidence(decoded.value, checked.operation, { operationId: receipt.operationId, versionTwo: checked.versionTwo })
   return shown === undefined
     ? { evidence: { tag: "InvalidResult" }, result: undefined }
     : { evidence: { tag: "ValidResult", shows: shown.shows, nothingSubmitted: shown.nothingSubmitted }, result: Option.getOrUndefined(decoded) }

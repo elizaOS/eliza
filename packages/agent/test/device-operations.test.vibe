@@ -4,6 +4,7 @@ import type { ViewProfile } from "../gen/agent__deviceActions__capabilities.effe
 import { wireType, type OperationType } from "../gen/agent__deviceActions__operations.effect.vibe"
 import { negotiation, openViewAllowed, readViewProfileChange, viewProfileWire } from "../src/device-actions/capabilities.vibe"
 import { deviceOperationTypes, mayRunDirectly, notDispatchedCode, readOperation, receiptOutcome, validate } from "../src/device-actions/operations.schema.vibe"
+import * as renderer from "../src/device-actions/operations.vibe"
 
 const everyOperation = {
   CalendarCreateLocal: true, CalendarReadNext: true, CalendarCreate: true, CalendarReadSelected: true, CalendarUpdate: true, CalendarDelete: true,
@@ -15,7 +16,7 @@ const everyOperation = {
   PhotoLibrarySearch: true, PhotoLibraryInspect: true, PhotoLibrarySelect: true, PhotoLibraryReview: true,
   PhotosFilter: true, PhotosOpen: true, PhotosAlbumCreate: true, PhotosShare: true,
   SmsSend: true, MmsSend: true, PhoneDial: true, PhoneCall: true, ContactCreate: true, ContactUpdate: true, ContactDelete: true, SmsCompose: true, SmsReplySelected: true,
-  MessagesReadSelected: true, VoicemailReadSelected: true, VoicemailDeleteSelected: true, ClockHandoff: true,
+  MessagesReadSelected: true, VoicemailReadSelected: true, VoicemailDeleteSelected: true, SmsLatestSender: true, ClockHandoff: true,
   ReadSelectedNotes: true, ReadCalendarRange: true, ReadSelectedReminders: true, PostNotification: true, SpeakText: true,
   CreateNote: true, CreateReminder: true, OpenView: true, BrowserNavigate: true,
 } as const satisfies Record<OperationType, true>
@@ -73,6 +74,11 @@ it('Propose only operations the device can check: one schema per wire type of th
   assert.isFalse(checked !== undefined && mayRunDirectly(checked, "NoBinding", false))
   const handoff = validate(alarm, v1, "NoBinding")
   assert.isFalse(handoff !== undefined && mayRunDirectly(handoff, "NoBinding", true))
+  const record = { type: "notes_record", action: "start" }
+  assert.deepStrictEqual(validate(record, negotiation(true, "notes.record.v1"), "NoBinding")?.need, { required: ["NotesRecordV1"], oneOf: [] })
+  assert.strictEqual(validate(record, notes, "NoBinding")?.versionTwo, false)
+  assert.isUndefined(validate(record, negotiation(true, "notes.organize.v1"), "NoBinding"))
+  assert.isUndefined(validate(filter, negotiation(true, "notes.record.v1"), "NoBinding"))
 })
 
 it('Learn exactly what the device did: a receipt settles only on evidence that agrees with it, an invalid result is refused, and only a not-dispatched failure settles that nothing ran (spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did")', () => {
@@ -104,4 +110,39 @@ it('Learn exactly what the device did: a receipt settles only on evidence that a
   assert.strictEqual(outcome(notes, { outcome: "applied", operationId: "op-2" }), "ReportedApplied")
   assert.strictEqual(outcome(notes, { outcome: "applied", operationId: "op-2", result: {} }), "refused")
   assert.strictEqual(outcome(notes, { outcome: "failed", code: "NOTES_LOCKED" }), "ReportedUnknown")
+})
+
+it('A renderer reads operations, results and the latest-sender answer from the browser entry, and its binding digest matches the agent\'s (spec/agent/deviceActions/operations.md, "A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports")', () => {
+  const dial = renderer.operationOf({ type: "phone_dial", target: { kind: "number", number: "+15551234567" } }, "phone_dial")
+  const checked = renderer.readOperation({ type: "sms_latest_sender" })
+  assert.isDefined(checked)
+  if (checked === undefined || checked.operation.type !== "sms_latest_sender") return
+  const found = { kind: "sms-latest-sender", status: "found", numberEnding: "4567" }
+  assert.deepStrictEqual({
+    dial: dial?.target,
+    notDial: renderer.operationOf({ type: "sms_latest_sender" }, "phone_dial"),
+    needs: renderer.capabilityNamesOf(checked),
+    result: renderer.readResult(checked.operation, found),
+    wrongForm: renderer.readResult(checked.operation, { ...found, extra: true }),
+    reply: renderer.latestSenderReplyFor(found),
+    whole: renderer.latestSenderReplyFor({ kind: "sms-latest-sender", status: "found", address: "+15551234567" }),
+    empty: renderer.latestSenderReplyFor({ kind: "sms-latest-sender", status: "empty" }),
+    other: renderer.latestSenderReplyFor({ kind: "phone-dial", status: "handed-off", handler: null, contact: false }),
+    suffixGuidance: renderer.latestSenderGuidance(renderer.negotiation(true, "sms.latest-sender.v1")).includes("suffix only"),
+    draftGuidance: renderer.latestSenderGuidance(renderer.negotiation(true, "sms.latest-sender.v2")).includes("sms_compose"),
+    digests: [renderer.bindingHash({}), renderer.bindingHash(["Café ☕", "𝄞"])],
+  }, {
+    dial: { kind: "number", number: "+15551234567" },
+    notDial: undefined,
+    needs: { required: [], oneOf: ["sms.latest-sender.v1", "sms.latest-sender.v2"] },
+    result: found,
+    wrongForm: undefined,
+    reply: "Your latest incoming SMS came from the number ending in 4567.",
+    whole: "Your latest incoming SMS came from +15551234567.",
+    empty: "There are no incoming SMS messages on this phone.",
+    other: undefined,
+    suffixGuidance: true,
+    draftGuidance: true,
+    digests: ["44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a", "8164d545310d674864d9c03d58f655b9181710f373d0d1ec64fe7b23c5e5ae0c"],
+  })
 })

@@ -2,8 +2,10 @@
 
 What the phone app reads from and changes in Android's voicemail provider:
 the carrier state, a page of voicemail rows, a request for a voicemail's
-audio, its speech-ready PCM, and the owner's "heard" and delete. The sources are
-`VoicemailStore.java` and `VoicemailPcm.java` of the native messages plugin.
+audio, its speech-ready PCM, the owner's "heard", and the owner's delete,
+which waits in the [deletion journal](./deferredDeletion.md) so that it can
+be undone. The sources are `VoicemailStore.java` and `VoicemailPcm.java` of
+the native messages plugin.
 Each operation passes the device check of [the bridge](./bridge.md); the
 capability names it serves, `voicemail.read.v1` (list, audio, PCM, heard) and
 `voicemail.delete.v1` (delete), are the agent's
@@ -100,9 +102,8 @@ the audio.
 
 ```quint
 type PcmRefusal = PcmTooLong | PcmUndecodable
-type VoicemailWrite = MarkHeard | DeleteRow
 type FetchSend = SentToSource | NoSourceToAsk
-type VoicemailReply = FetchRequested({ id: int }) | FetchFailed({ id: int }) | Wrote({ id: int, change: VoicemailWrite, written: WriteOutcome }) | PcmReturned({ id: int, samples: int }) | PcmRefused({ id: int, reason: PcmRefusal })
+type VoicemailReply = FetchRequested({ id: int }) | FetchFailed({ id: int }) | Wrote({ id: int, written: WriteOutcome }) | PcmReturned({ id: int, samples: int }) | PcmRefused({ id: int, reason: PcmRefusal })
 type VoicemailStep = { state: Voicemail, out: List[VoicemailReply] }
 pure val idValues = Set(1, 2, 3)
 pure def canRequestAudio(s: Voicemail, facts: HostFacts, id: int): bool = deviceAllows(facts) and hasRow(s.rows, id) and rowAt(s.rows, id).audio == AudioNotAsked
@@ -143,31 +144,54 @@ pure def lawReturnedPcmIsWholeAndFitsItsWav(id: int, decode: PcmDecode): bool = 
 
 ## Story: Change a voicemail only as the provider confirms it
 
-> As an owner, I want "heard" and delete to change my list only when the
-> provider committed the change and read it back, so that a voicemail is
-> never shown as deleted while it is still there.
+> As an owner, I want "heard" to change my list only when the provider
+> committed the change and read it back, and a delete to wait ten seconds
+> for Undo and remove the voicemail only as the provider confirms, so that a
+> voicemail is never shown as deleted while it is still there.
 
-### Heard and delete change the list only when the provider applied them
+### Heard changes the list only when the provider applied it, and only a refresh removes a row
 
 The shell turns the provider's answer into a bridge `ProviderReply`. A
-voicemail from this app's own carrier client is marked deleted and asked to
-sync, which removes it from the carrier and then from the phone; another
-source's row is deleted through the provider, which keeps it deleted for
-that source.
+voicemail from this app's own carrier client is marked heard and asked to
+sync. A row leaves the list only when a refresh no longer lists it.
 
 ```quint
-pure def canWriteRow(s: Voicemail, facts: HostFacts, id: int, change: VoicemailWrite, reply: ProviderReply): bool =
+pure def canWriteRow(s: Voicemail, facts: HostFacts, id: int, reply: ProviderReply): bool =
   deviceAllows(facts) and gateAllowsWrite(s.gate) and hasRow(s.rows, id)
-pure def writeRow(s: Voicemail, facts: HostFacts, id: int, change: VoicemailWrite, reply: ProviderReply): VoicemailStep = {
+pure def writeRow(s: Voicemail, facts: HostFacts, id: int, reply: ProviderReply): VoicemailStep = {
   val written = writeOutcome(reply)
-  val rows = if (written != Applied) s.rows else if (change == DeleteRow) s.rows.select(r => r.id != id) else s.rows.listMap(r => if (r.id == id) { ...r, heard: true } else r)
-  { state: { ...s, rows: rows, gate: gateOnOutcome(gateOnDispatch(s.gate), written) }, out: List(Wrote({ id: id, change: change, written: written })) }
+  val rows = if (written != Applied) s.rows else s.rows.listMap(r => if (r.id == id) { ...r, heard: true } else r)
+  { state: { ...s, rows: rows, gate: gateOnOutcome(gateOnDispatch(s.gate), written) }, out: List(Wrote({ id: id, written: written })) }
 }
 pure def stepLocalChangesNeedAnAppliedWrite(before: Voicemail, via: str, after: Voicemail, out: List[VoicemailReply]): bool =
   via != "refresh" implies (
-    after.rows.every(r => (r.heard and not(rowAt(before.rows, r.id).heard)) implies out.includes(Wrote({ id: r.id, change: MarkHeard, written: Applied }))) and
-    before.rows.every(r => hasRow(after.rows, r.id) or out.includes(Wrote({ id: r.id, change: DeleteRow, written: Applied }))))
+    after.rows.every(r => (r.heard and not(rowAt(before.rows, r.id).heard)) implies out.includes(Wrote({ id: r.id, written: Applied }))) and
+    before.rows.every(r => hasRow(after.rows, r.id)))
 pure def sometimesHeardRowRemains(s: Voicemail): bool = s.rows.some(r => r.heard)
+```
+
+### A delete waits in the deletion window, and its row is hidden only while it is queued
+
+The owner's confirmed delete is staged as a voicemail record exactly where a
+write could start: the voicemail grant on the phone with telephony, a listed
+row and an idle gate. Staging writes nothing to the provider and leaves the
+gate and the rows as they are; the list leaves out each row whose deletion
+is queued. At expiry the journal's provider call deletes the row as Android
+allows its source: a voicemail from this app's own carrier client is marked
+deleted and asked to sync, which removes it from the carrier and then from
+the phone; another source's row is deleted through the provider, which
+keeps it deleted for that source. Only a row Android no longer lists is
+deleted; a marked row still listed is uncertain.
+
+```quint
+pure def canStageDelete(s: Voicemail, facts: HostFacts, id: int): bool = canWriteRow(s, facts, id, NoReply)
+pure def stageDelete(s: Voicemail, facts: HostFacts, id: int): Voicemail = s
+pure def shownRows(rows: List[VoicemailRow], queued: List[int]): List[VoicemailRow] = rows.select(r => not(queued.includes(r.id)))
+pure val queuedValues = Set(List(), List(1), List(2, 3))
+pure def lawAQueuedDeleteHidesOnlyItsRow(rows: List[VoicemailRow], queued: List[int]): bool =
+  shownRows(rows, queued).every(r => rows.includes(r) and not(queued.includes(r.id))) and
+  rows.every(r => queued.includes(r.id) or shownRows(rows, queued).includes(r))
+pure def stepStagingADeleteChangesNothing(before: Voicemail, via: str, after: Voicemail): bool = via == "stageDelete" implies after == before
 ```
 
 ### An uncertain write blocks the next write until an explicit refresh that began after it

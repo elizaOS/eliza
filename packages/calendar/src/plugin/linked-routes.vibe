@@ -1,0 +1,218 @@
+// spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"; spec/calendar/linkedSync.md, "Report sync only after a current control and mapping readback"; spec/calendar/linkedSync.md, "Story: Pause, resume or recover without replacing a newer sync decision"; spec/calendar/linkedSync.md, "A control transition checks revision and writes its receipt atomically"; spec/calendar/linkedSync.md, "Story: Keep a link local or move it to the selected destination only while sync is drained"; spec/calendar/linkedSync.md, "A mapping edit commits only while paused with no admitted dispatch, against the exact revision"
+import {
+  chooseLinkDestination, destinationWritable, linkedCalendarControl, type CalendarLinkStorage, type LinkedCalendarCandidate, type LinkedCalendarControl,
+  type LinkedCalendarDestination, type LinkedCalendarDestinationCheck, type LinkedCalendarMapping, type LinkedCalendarRecoveryOutcome,
+} from "../linked-sync/index.vibe"
+import { digestText } from "../linked-sync/linked.vibe"
+import type { CalendarSummary } from "../model.vibe"
+import type { CalendarHost } from "./host.vibe"
+import { eventVersion } from "./providers.vibe"
+import type { CalendarRoute, CalendarRouteInput, CalendarRouteReply } from "./routes.vibe"
+import { cacheKeyValueStore, type CalendarCache } from "./runtime-store.vibe"
+
+/** What the linked-control routes need from the running plugin: its calendar host, the agent's durable cache and the agent. */
+export interface LinkedRouteContext {
+  readonly host: CalendarHost
+  readonly cache: CalendarCache
+  readonly agentId: string
+}
+
+/** The resident sync worker the routes hand a resumed or recovered destination to; without one, recovery stays unresolved. */
+export interface LinkedSyncWorker {
+  readonly bootstrap?: (destination: LinkedCalendarDestination) => Promise<void>
+  readonly recoverDispatch?: (linkId: string, destination: LinkedCalendarDestination, dispatchedAt: string | null) =>
+    Promise<{ readonly linkExact: boolean; readonly outcome: LinkedCalendarRecoveryOutcome }>
+  readonly dispatchRunning?: (linkId: string) => boolean
+}
+
+const base = "/api/lifeops/calendar"
+const Text = Schema.String.check(Schema.makeFilter((text) => text.trim() !== "" && text.length <= 1024))
+const Revision = Schema.Number.check(Schema.makeFilter((value) => Number.isSafeInteger(value) && value >= 0))
+const Destination = Schema.Struct({ connectorAccountId: Text, providerCalendarId: Text })
+const reviewed = { expectedRevision: Revision, idempotencyKey: Text, review: Schema.optionalKey(Text) }
+const ControlBody = Schema.Union([
+  Schema.Struct({ operation: Schema.Literals(["pause", "resume"]), ...reviewed }),
+  Schema.Struct({ operation: Schema.Literal("recover"), dispatchReference: Text, ...reviewed }),
+  Schema.Struct({ operation: Schema.Literal("select"), destination: Schema.NullOr(Destination), ...reviewed }),
+])
+const LinkBody = Schema.Struct({ localEventId: Text, connectorAccountId: Text, providerCalendarId: Text, expectedLocalRevision: Text, idempotencyKey: Text })
+const Mapping = Schema.Struct({
+  linkId: Text, localEventId: Text, destination: Schema.NullOr(Destination), providerEventId: Schema.NullOr(Schema.String), handoffKey: Schema.String,
+  localOnly: Schema.Boolean, staged: Schema.Boolean, state: Schema.Literals(["clean", "dirty", "conflicted", "quarantined", "paused", "local_only"]),
+})
+const EditBody = Schema.Struct({ expectedRevision: Revision, reviewed: Mapping, destination: Schema.optionalKey(Schema.NullOr(Destination)) })
+const decodeControl = Schema.decodeUnknownOption(ControlBody, { onExcessProperty: "error" })
+const decodeLink = Schema.decodeUnknownOption(LinkBody, { onExcessProperty: "error" })
+const decodeEdit = Schema.decodeUnknownOption(EditBody, { onExcessProperty: "error" })
+
+const refused = (status: number, code: string, error: string): CalendarRouteReply => ({ status, body: { code, error } })
+const unavailable = refused(503, "CALENDAR_UNAVAILABLE", "The calendar is not running.")
+const invalid = (what: string) => refused(400, "LINKED_CALENDAR_REQUEST_INVALID", `The ${what} request is not one calendar sync accepts.`)
+
+function wire(control: LinkedCalendarControl) {
+  return {
+    revision: control.revision, paused: control.paused, destination: control.destination,
+    pendingDispatch: control.pendingLinkId === null ? null : { linkId: control.pendingLinkId, reference: control.pendingDispatchReference },
+    conflicts: control.conflictCount,
+  }
+}
+
+function failed(error: { readonly _tag: string; readonly code?: string; readonly message: string }): CalendarRouteReply {
+  return error._tag === "LinkedControlUncertain"
+    ? refused(503, "LINKED_CALENDAR_CONTROL_UNCERTAIN", error.message)
+    : refused(409, error.code ?? "LINKED_CALENDAR_CONTROL_REFUSED", error.message)
+}
+
+function candidateOf(row: CalendarSummary): LinkedCalendarCandidate {
+  return { connectorAccountId: row.connectorAccountId, providerCalendarId: row.calendarId, side: row.side, accessRole: row.accessRole,
+    primary: row.primary, accountEmail: row.accountEmail }
+}
+
+async function checkDestination(held: LinkedRouteContext, destination: LinkedCalendarDestination): Promise<LinkedCalendarDestinationCheck> {
+  const account = await runPromise(held.host.active())
+  const rows = (await runPromise(held.host.calendars())) ?? []
+  const row = rows.find((found) => found.provider === "google" && found.connectorAccountId === destination.connectorAccountId
+    && found.calendarId === destination.providerCalendarId)
+  return {
+    ownerSource: row?.side === "owner", writable: row?.accessRole === "owner" || row?.accessRole === "writer",
+    sameSource: row !== undefined, sameSelectionVersion: row !== undefined,
+    approvedEmail: row !== undefined && account !== undefined && row.connectorAccountId === account.accountId,
+  }
+}
+
+effect function storageOver(cache: CalendarCache) {
+  const store = try cacheKeyValueStore(cache)
+  effect function readSlot(slot: string) {
+    const raw = try store.get(slot)
+    return raw === undefined ? null : try Effect.try({ try: (): unknown => JSON.parse(raw), catch: () => new Error(`The calendar sync slot ${slot} is not JSON`) })
+  }
+  const storage: CalendarLinkStorage = {
+    read: (slot) => runPromise(readSlot(slot)),
+    compareExchange: (slot, expected, value) => runPromise(effect {
+      const now = try readSlot(slot)
+      if (JSON.stringify(now) !== JSON.stringify(expected ?? null)) return { status: "conflict" as const }
+      try store.set(slot, JSON.stringify(value))
+      return { status: "saved" as const }
+    }),
+  }
+  return storage
+}
+
+/** The owner routes for linked sync: read and change the sync control, choose its destination, and link, disconnect or rebind events. */
+export function linkedCalendarRoutes(context: () => Promise<LinkedRouteContext | undefined>, worker: LinkedSyncWorker = {}): readonly CalendarRoute[] {
+  const controls = new WeakMap<CalendarHost, Promise<Effect.Success<ReturnType<typeof linkedCalendarControl>>>>()
+
+  function controlFor(held: LinkedRouteContext) {
+    const known = controls.get(held.host)
+    if (known !== undefined) return known
+    const made = runPromise(effect {
+      const storage = try storageOver(held.cache)
+      return try linkedCalendarControl({
+        agentId: held.agentId, storage,
+        authority: () => true,
+        verifyDestination: (destination) => checkDestination(held, destination),
+        recoverDispatch: worker.recoverDispatch ?? (async () => ({ linkExact: false, outcome: "unresolved" as const })),
+        bootstrap: worker.bootstrap ?? (async () => undefined),
+        ...(worker.dispatchRunning === undefined ? {} : { dispatchRunning: worker.dispatchRunning }),
+      })
+    })
+    controls.set(held.host, made)
+    return made
+  }
+
+  async function withControl(run: (held: LinkedRouteContext, control: Effect.Success<ReturnType<typeof linkedCalendarControl>>) => Promise<CalendarRouteReply>) {
+    const held = await context()
+    if (held === undefined || (await runPromise(held.host.active())) === undefined) return held === undefined ? unavailable : refused(409, "CALENDAR_NO_ACCOUNT", "No calendar account is active.")
+    return run(held, await controlFor(held))
+  }
+
+  async function settle<A>(run: A!{ readonly _tag: string; readonly code?: string; readonly message: string }, reply: (value: A) => CalendarRouteReply) {
+    const result = await runPromise(Effect.result(run))
+    return Result.isFailure(result) ? failed(result.failure) : reply(result.success)
+  }
+
+  async function edit(input: CalendarRouteInput, operation: "retain_local" | "rebind") {
+    return withControl(async (_held, control) => {
+      const body = decodeEdit(input.body)
+      const linkId = input.parameters.get("linkId") ?? ""
+      if (Option.isNone(body) || body.value.reviewed.linkId !== linkId || (operation === "rebind" && (body.value.destination ?? null) === null)) {
+        return invalid(operation === "rebind" ? "rebind" : "disconnect")
+      }
+      return settle(control.editMapping({ operation, linkId, expectedRevision: body.value.expectedRevision, reviewed: body.value.reviewed,
+        destination: operation === "rebind" ? body.value.destination ?? null : null }), (now) => ({ status: 200, body: wire(now) }))
+    })
+  }
+
+  return [
+    { method: "GET", path: `${base}/sync-control`, handler: () => withControl(async (_held, control) =>
+      settle(control.read(), (now) => ({ status: 200, body: wire(now) }))) },
+    { method: "GET", path: `${base}/sync-control/report`, query: [{ key: "expectedRevision", accepts: { kind: "any" } }],
+      handler: (input) => withControl(async (_held, control) => {
+        const expected = Number(input.query.get("expectedRevision"))
+        if (!Number.isSafeInteger(expected) || expected < 0) return invalid("sync report")
+        const report = await runPromise(control.report(expected))
+        return { status: 200, body: { report } }
+      }) },
+    { method: "POST", path: `${base}/sync-control`, maxBodyBytes: 4096, handler: (input) => withControl(async (_held, control) => {
+      const body = decodeControl(input.body)
+      if (Option.isNone(body)) return invalid("sync control")
+      return settle(control.commit(body.value), (done) => ({ status: 200, body: { ...wire(done.control), receipt: done.receipt } }))
+    }) },
+    { method: "GET", path: `${base}/sync-control/destinations`, handler: () => withControl(async (held, control) => {
+      const rows = ((await runPromise(held.host.calendars())) ?? []).filter((row) => row.provider === "google")
+      const account = await runPromise(held.host.active())
+      const approved = rows.find((row) => account !== undefined && row.connectorAccountId === account.accountId)?.accountEmail ?? null
+      return settle(control.read(), (now) => {
+        const candidates = rows.map(candidateOf)
+        const chosen = chooseLinkDestination(now.destination, candidates, approved)
+        return { status: 200, body: { revision: now.revision, choice: chosen.choice, destination: chosen.destination, candidates } }
+      })
+    }) },
+    { method: "GET", path: `${base}/links`, query: [{ key: "view", accepts: { kind: "any" } }], handler: (input) => withControl(async (held, control) => {
+      const known = await runPromise(Effect.result(control.mappings()))
+      if (Result.isFailure(known)) return failed(known.failure)
+      if (input.query.get("view") !== "events") return { status: 200, body: { links: known.success } }
+      const links: object[] = []
+      for (const link of known.success) {
+        const found = await runPromise(held.host.find(link.localEventId))
+        links.push({ ...link, event: found === undefined ? null
+          : { title: found.event.title, startAt: found.event.startAt, endAt: found.event.endAt, isAllDay: found.event.isAllDay, location: found.event.location } })
+      }
+      return { status: 200, body: { links } }
+    }) },
+    { method: "POST", path: `${base}/links`, maxBodyBytes: 4096, handler: (input) => withControl(async (held, control) => {
+      const body = decodeLink(input.body)
+      if (Option.isNone(body)) return invalid("link")
+      const request = body.value
+      const destination = { connectorAccountId: request.connectorAccountId, providerCalendarId: request.providerCalendarId }
+      const linkId = `linked-calendar:${await runPromise(digestText(JSON.stringify([held.agentId, request.idempotencyKey])))}`
+      const current = await runPromise(Effect.result(control.read()))
+      if (Result.isFailure(current)) return failed(current.failure)
+      const selected = current.success.destination
+      if (selected === null || selected.connectorAccountId !== destination.connectorAccountId || selected.providerCalendarId !== destination.providerCalendarId) {
+        return refused(409, "LINKED_CALENDAR_DESTINATION_NOT_SELECTED", "Link events only to the calendar chosen for sync.")
+      }
+      if (!destinationWritable(await checkDestination(held, destination))) {
+        return refused(403, "LINKED_CALENDAR_DESTINATION_UNVERIFIED", "That calendar is not one this account can write to.")
+      }
+      const known = await runPromise(Effect.result(control.mappings()))
+      if (Result.isFailure(known)) return failed(known.failure)
+      const replay = known.success.find((mapping) => mapping.linkId === linkId)
+      if (replay !== undefined) {
+        return replay.localEventId === request.localEventId ? { status: 200, body: { link: replay, replayed: true } }
+          : refused(409, "LINKED_CALENDAR_OPERATION_KEY_CONFLICT", "This link key was already used for another event.")
+      }
+      if (known.success.some((mapping) => mapping.localEventId === request.localEventId)) {
+        return refused(409, "LINKED_CALENDAR_EVENT_ALREADY_LINKED", "This event is already linked.")
+      }
+      const local = await runPromise(held.host.find(request.localEventId))
+      if (local === undefined || local.source.provider !== "eliza") return refused(404, "LINKED_CALENDAR_EVENT_NOT_FOUND", "That event is not in the resident calendar.")
+      if (eventVersion(local.event) !== request.expectedLocalRevision) return refused(409, "LINKED_CALENDAR_EVENT_CHANGED", "The event changed since it was shown.")
+      const mapping: LinkedCalendarMapping = { linkId, localEventId: request.localEventId, destination, providerEventId: null,
+        handoffKey: `linked-calendar:handoff:${linkId}`, localOnly: false, staged: true, state: "dirty" }
+      return settle(control.recordMapping(mapping), () => ({ status: 201, body: { link: mapping, replayed: false } }))
+    }) },
+    { method: "POST", path: `${base}/links/{linkId}/disconnect`, maxBodyBytes: 8192, handler: (input) => edit(input, "retain_local") },
+    { method: "POST", path: `${base}/links/{linkId}/rebind`, maxBodyBytes: 8192, handler: (input) => edit(input, "rebind") },
+  ]
+}

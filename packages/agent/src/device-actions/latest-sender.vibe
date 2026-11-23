@@ -1,0 +1,42 @@
+// spec/agent/deviceActions/operations.md, "A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it"
+import { Option } from "effect"
+import type { Negotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
+import { senderAnswer, senderGuidance, type SenderRead } from "../../gen/agent__deviceActions__operations.effect.vibe"
+import { readLatestSender, type LatestSenderResult } from "./operation-schemas/telephony.vibe"
+
+function readOf(result: LatestSenderResult): SenderRead {
+  if ("address" in result) return "SenderAddress"
+  if ("numberEnding" in result) return "SenderEnding"
+  switch (result.status) {
+    case "empty": return "InboxEmpty"
+    case "sender-unavailable": return "SenderNotDialable"
+    case "unavailable": return "SenderUnreadable"
+  }
+}
+
+/** The owner-facing answer to an approved latest-sender read, written from the result alone. */
+export function latestSenderReply(result: LatestSenderResult): string {
+  switch (senderAnswer(readOf(result))) {
+    case "SaysAddress": return "address" in result ? `Your latest incoming SMS came from ${result.address}.` : ""
+    case "SaysEnding": return "numberEnding" in result ? `Your latest incoming SMS came from the number ending in ${result.numberEnding}.` : ""
+    case "SaysNoMessages": return "There are no incoming SMS messages on this phone."
+    case "SaysNoNumber": return "The latest incoming SMS has no readable phone number."
+    case "SaysReadFailed": return "I couldn’t read the latest incoming SMS right now."
+  }
+}
+
+/** The fixed answer for a stored device result when it is a latest-sender result, or `undefined` for any other result. */
+export function latestSenderReplyFor(result: unknown): string | undefined {
+  const decoded = readLatestSender(result)
+  return Option.isSome(decoded) ? latestSenderReply(decoded.value) : undefined
+}
+
+/** What the model is told about proposing a latest-sender read on a device with this negotiation. */
+export function latestSenderGuidance(negotiation: Negotiation): string {
+  switch (senderGuidance(negotiation)) {
+    case "AddressThenDraft":
+      return "Use sms_latest_sender for an owner asking who sent the latest SMS. The read returns one real sender address. If the owner then asks you to draft a text to them, propose sms_compose with that exact number and the requested body, so the draft opens in Messages for the owner to edit and send; never give only hypothetical copy."
+    case "SuffixOnly":
+      return "Use sms_latest_sender for an explicit question about who sent the newest incoming SMS on the owner's phone. It proposes a reviewed read of one sender number suffix only. It cannot search historical messages, query MMS, or read any message body. Do not use a cloud inbox or the open-thread read for this request."
+  }
+}

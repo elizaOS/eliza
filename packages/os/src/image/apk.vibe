@@ -588,6 +588,25 @@ export function parseXmlTree(tree: string, options: { readonly decodeAttribute?:
   return root
 }
 
+/** One AAPT attribute value as Android reads it: the raw string, the quoted string, a typed boolean as true or false, or another typed value in decimal. */
+export function parseAaptAttributeValue(encoded: string): string {
+  const raw = /\(Raw: "([^"]*)"\)\s*$/.exec(encoded)?.[1]
+  if (raw !== undefined) return raw
+  const quoted = /^"([^"]*)"/.exec(encoded)?.[1]
+  if (quoted !== undefined) return quoted
+  const typed = /^\(type (0x[0-9a-f]+)\)(0x[0-9a-f]+)$/i.exec(encoded)
+  if (typed === null) return encoded.trim()
+  if ((typed[1] ?? "").toLowerCase() === "0x12") return (typed[2] ?? "").toLowerCase() === "0x0" ? "false" : "true"
+  return String(Number.parseInt(typed[2] ?? "", 16))
+}
+
+/** The runner and target package of each `instrumentation` element directly under a test APK's `manifest`. */
+export function instrumentationDeclarations(tree: string): { readonly name: string; readonly targetPackage: string }[] {
+  const manifests = parseXmlTree(tree, { decodeAttribute: parseAaptAttributeValue }).children.filter((node) => node.name === "manifest")
+  return manifests.flatMap((manifest) => manifest.children.filter((node) => node.name === "instrumentation"))
+    .map((node) => ({ name: node.attrs.name ?? "", targetPackage: node.attrs.targetPackage ?? "" }))
+}
+
 function descendants(node: ManifestNode): ManifestNode[] {
   return node.children.flatMap((child) => [child, ...descendants(child)])
 }

@@ -1,0 +1,126 @@
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"
+import type { CalendarEvent, CalendarFeed, CalendarSourceHealth, CalendarSummary, ConnectorSide } from "../model.vibe"
+import type { CalendarMutationReceipt } from "../mutations/ledger.vibe"
+import type { CalendarWriteScope } from "../series/document.vibe"
+import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
+
+/** Which feed to read: a window, an optional calendar and the zone the request is about. */
+export interface CalendarFeedRequest {
+  readonly side?: ConnectorSide
+  readonly grantId?: string
+  readonly calendarId?: string
+  readonly timeMin?: string
+  readonly timeMax?: string
+  readonly timeZone?: string
+}
+
+/** The next upcoming event in the active account's calendars, and the window it was read from. */
+export interface CalendarNextEventContext {
+  readonly event: CalendarEvent | null
+  readonly readScope: { readonly selection: "next_event"; readonly timeMin: string; readonly timeMax: string; readonly exhaustive: false }
+  readonly calendarFeedState: CalendarFeed["state"]
+  readonly calendarSources: readonly CalendarSourceHealth[]
+  readonly startsAt: string | null
+  readonly startsInMinutes: number | null
+  readonly attendeeCount: number
+  readonly attendeeNames: readonly string[]
+  readonly location: string | null
+  readonly timeReference: { readonly asOf: string; readonly timeZone: string }
+}
+
+/** A new event, one-off or repeating, exactly as the owner reviewed it, with the key that makes its retry the same create. */
+export interface CalendarCreateRequest {
+  readonly title: string
+  readonly description?: string
+  readonly location?: string
+  readonly startAt: string
+  readonly endAt: string
+  readonly isAllDay?: boolean
+  readonly timeZone?: string
+  readonly calendarId?: string
+  readonly recurrence?: CalendarRecurrence
+  readonly idempotencyKey: string
+}
+
+/** An edit of one event, or of this and following or all of its series, at the provider version the owner saw. */
+export interface CalendarUpdateRequest {
+  readonly title?: string
+  readonly notes?: string
+  readonly location?: string
+  readonly startAt?: string
+  readonly endAt?: string
+  readonly isAllDay?: boolean
+  readonly timeZone?: string
+  readonly calendarId?: string
+  readonly recurrenceScope?: CalendarWriteScope
+  readonly expectedProviderVersion: string
+  readonly idempotencyKey: string
+}
+
+/** A deletion of one event, or of this and following or all of its series, at the provider version the owner saw. */
+export interface CalendarDeleteRequest {
+  readonly calendarId?: string
+  readonly grantId?: string
+  readonly side?: ConnectorSide
+  readonly recurrenceScope?: CalendarWriteScope
+  readonly expectedProviderVersion: string
+  readonly idempotencyKey: string
+  readonly cancellationMode: "organizer_cancel" | "decline_invitation" | "remove_private_copy"
+}
+
+/** What a change answered: the event as read back with its receipt, the deletion, or the approval it waits in. */
+export type CalendarChangeReply =
+  | { readonly event: CalendarEvent; readonly receipt: CalendarMutationReceipt }
+  | { readonly deleted: true; readonly event: CalendarEvent | null; readonly receipt: CalendarMutationReceipt }
+  | { readonly approvalRequestId: string }
+  | { readonly confirmed: true }
+
+/** The transport a client host gives the calendar API: one authenticated JSON request to the agent. */
+export type CalendarFetch = <T>(path: string, init?: RequestInit) => Promise<T>
+
+/** The owner client's calendar methods over the agent's calendar routes. */
+export interface CalendarApi {
+  getLifeOpsCalendarFeed(options?: CalendarFeedRequest, request?: Pick<RequestInit, "signal">): Promise<CalendarFeed>
+  getLifeOpsCalendars(options?: Pick<CalendarFeedRequest, "side" | "grantId">, request?: Pick<RequestInit, "signal">): Promise<{ readonly calendars: readonly CalendarSummary[] }>
+  getLifeOpsNextCalendarEventContext(options?: CalendarFeedRequest): Promise<CalendarNextEventContext>
+  createLifeOpsCalendarEvent(data: CalendarCreateRequest): Promise<CalendarChangeReply>
+  updateLifeOpsCalendarEvent(eventId: string, patch: CalendarUpdateRequest): Promise<CalendarChangeReply>
+  deleteLifeOpsCalendarEvent(eventId: string, options: CalendarDeleteRequest): Promise<CalendarChangeReply>
+}
+
+const base = "/api/lifeops/calendar"
+
+function query(values: Readonly<Record<string, string | undefined>>): string {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(values)) if (value !== undefined) params.set(key, value)
+  const text = params.toString()
+  return text === "" ? "" : `?${text}`
+}
+
+async function required(value: string | undefined, sentence: string): Promise<string> {
+  if (value === undefined || value.trim() === "") throw new Error(sentence)
+  return value
+}
+
+/** The calendar API bound to one host's authenticated fetch. */
+export function createCalendarApi(fetch: CalendarFetch): CalendarApi {
+  return {
+    getLifeOpsCalendarFeed: (options = {}, request) => fetch<CalendarFeed>(`${base}/feed${query({ ...options })}`, request?.signal ? { signal: request.signal } : undefined),
+    getLifeOpsCalendars: (options = {}, request) => fetch(`${base}/calendars${query({ ...options })}`, request?.signal ? { signal: request.signal } : undefined),
+    getLifeOpsNextCalendarEventContext: (options = {}) => fetch<CalendarNextEventContext>(`${base}/next-context${query({ ...options })}`),
+    createLifeOpsCalendarEvent: async (data) => {
+      await required(data.idempotencyKey, "Calendar event creation requires a stable idempotencyKey.")
+      return fetch<CalendarChangeReply>(`${base}/events`, { method: "POST", body: JSON.stringify(data) })
+    },
+    updateLifeOpsCalendarEvent: async (eventId, patch) => {
+      await required(patch.expectedProviderVersion, "Calendar event update requires expectedProviderVersion.")
+      await required(patch.idempotencyKey, "Calendar event update requires a stable idempotencyKey.")
+      return fetch<CalendarChangeReply>(`${base}/events/${encodeURIComponent(eventId)}`, { method: "PATCH", body: JSON.stringify(patch) })
+    },
+    deleteLifeOpsCalendarEvent: async (eventId, options) => {
+      await required(options.expectedProviderVersion, "Calendar event deletion requires expectedProviderVersion.")
+      await required(options.idempotencyKey, "Calendar event deletion requires a stable idempotencyKey.")
+      return fetch<CalendarChangeReply>(`${base}/events/${encodeURIComponent(eventId)}${query({ ...options })}`, { method: "DELETE" })
+    },
+  }
+}

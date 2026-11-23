@@ -1,0 +1,226 @@
+// spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/navigationService.md, "Location events require the live watch attempt and cleanup preserves failures"
+import { finishWatch, nextWatch } from "../../gen/maps__navigationService.effect.vibe"
+import { nearbyPositionUsable } from "../../gen/maps__phonePosition.effect.vibe"
+import { Coordinate, MapsFailure } from "./contracts.vibe"
+import { reportableWatchFix } from "./navigation-fix.vibe"
+
+module browser {
+  /** @throws {never} */
+  export function permissionRequestId(): string {
+    return globalThis.crypto.randomUUID()
+  }
+}
+import { permissionRequestId } from browser
+
+/** One location fix from the device. */
+export interface Position {
+  readonly coordinate: Coordinate
+  readonly accuracyMeters: number
+  readonly timestamp: number
+  readonly precision: "precise" | "approximate" | "unknown"
+  readonly headingDegrees?: number
+  readonly speedMetersPerSecond?: number
+}
+
+/** The host's permission and lifecycle boundary for the location watch; a controller never discovers a device. */
+export interface MapsLocation {
+  awaitingPermission(): boolean
+  start(oneShot: boolean, onFix: (position: Position) => void, onError: (error: MapsFailure) => void): void!MapsFailure
+  stop(): void!MapsFailure
+}
+
+/** The phone's last known position as it travels with a message: degrees, an optional accuracy radius and when the fix was taken. */
+export const PhoneLocation = Schema.Struct({
+  latitude: Coordinate.fields.latitude,
+  longitude: Coordinate.fields.longitude,
+  accuracyMeters: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1_000_000 }))),
+  capturedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+})
+/** The phone's last known position as it travels with a message. */
+export type PhoneLocation = typeof PhoneLocation.Type
+
+const strict = { onExcessProperty: "error" } as const
+const decodePhoneLocation = Schema.decodeUnknownOption(PhoneLocation, strict)
+const MessageLocation = Schema.Struct({ clientDevice: Schema.Struct({ context: Schema.Struct({ location: Schema.Unknown }) }) })
+const decodeMessageLocation = Schema.decodeUnknownOption(MessageLocation)
+
+/** A reported phone position, rounded to about a meter, or undefined when the value is not one. */
+export function phoneLocation(value: unknown): PhoneLocation | undefined {
+  const read = decodePhoneLocation(value)
+  if (read._tag === "None") return undefined
+  const round = (degrees: number) => Math.round(degrees * 1e5) / 1e5
+  const { accuracyMeters, ...fix } = read.value
+  return { ...fix, latitude: round(fix.latitude), longitude: round(fix.longitude), ...(accuracyMeters === undefined ? {} : { accuracyMeters: Math.round(accuracyMeters) }) }
+}
+
+/** The position the phone reported with the message whose metadata this is, or undefined. */
+export function messageLocation(metadata: unknown): PhoneLocation | undefined {
+  const read = decodeMessageLocation(metadata)
+  return read._tag === "Some" ? phoneLocation(read.value.clientDevice.context.location) : undefined
+}
+
+/** The reported position as a search point when it is recent enough to describe where the phone is now. */
+export function nearbyPoint(location: PhoneLocation | undefined, now: number): Coordinate | undefined {
+  if (location === undefined) return undefined
+  const usable = nearbyPositionUsable({
+    present: true,
+    age: now - location.capturedAt,
+    hasAccuracy: location.accuracyMeters !== undefined,
+    accuracy: Math.round(location.accuracyMeters ?? 0),
+  })
+  return usable ? { latitude: location.latitude, longitude: location.longitude } : undefined
+}
+
+/** Why the native location bridge did not answer. */
+export error LocationBridgeFailed { operation: string }
+
+/** The platform's location permission and the precision it grants. */
+export interface LocationPermission {
+  readonly location: "granted" | "denied" | "prompt"
+  readonly accuracy?: "precise" | "approximate" | "none"
+}
+
+/** One fix as the native bridge reports it. */
+export interface NativeFix {
+  readonly coords: {
+    readonly latitude: number
+    readonly longitude: number
+    readonly accuracy: number
+    readonly timestamp: number
+    readonly heading?: number | null
+    readonly speed?: number | null
+  }
+}
+
+/** The host's native location plugin; each listener registration returns how to remove it. */
+export interface LocationBridge {
+  checkPermissions(): LocationPermission!LocationBridgeFailed
+  requestPermissions(requestId?: string): LocationPermission!LocationBridgeFailed
+  cancelPermissionRequest(requestId: string): void!LocationBridgeFailed
+  watchPosition(options: { readonly accuracy: "high"; readonly minInterval: number; readonly minDistance: number }): { readonly watchId: string }!LocationBridgeFailed
+  clearWatch(watchId: string): void!LocationBridgeFailed
+  onFix(listener: (fix: NativeFix) => void): (void!LocationBridgeFailed)!LocationBridgeFailed
+  onError(listener: (error: { readonly code: string }) => void): (void!LocationBridgeFailed)!LocationBridgeFailed
+}
+
+/** What the location watch needs of its platform: whether it is native, whether location exists, and the page's visibility. */
+export interface LocationPlatform {
+  isNative(): boolean
+  available(): boolean
+  hidden(): boolean
+  visible(): void!!
+}
+
+interface WatchSession {
+  aborted: boolean
+  readonly removals: Array<void!LocationBridgeFailed>
+  watchId?: string
+  requestId?: string
+  release?: () => void
+}
+
+/** One location watch per Maps controller: listeners attach before the high-accuracy watch, a retired attempt's late listener or watch is cleared, a grant received while hidden waits for the screen, and cleanup failures are reported. */
+export effect function nativeMapsLocation(bridge: LocationBridge, platform: LocationPlatform) {
+  let session: WatchSession | undefined
+  let admitting = false
+  let prompting = false
+  let generation = 0
+
+  effect function stop(): void!MapsFailure {
+    generation++
+    const current = session
+    session = undefined
+    if (current === undefined) return
+    current.aborted = true
+    current.release?.()
+    const cleanup = [
+      ...current.removals,
+      ...(current.requestId !== undefined && !platform.isNative() ? [bridge.cancelPermissionRequest(current.requestId)] : []),
+      ...(current.watchId !== undefined ? [bridge.clearWatch(current.watchId)] : []),
+    ]
+    const settled = try all(cleanup.map((work) => exit(work)))
+    if (settled.some((ended) => ended._tag === "Failure")) throw new MapsFailure({ code: "unavailable", message: "Location cleanup could not be confirmed." })
+  }
+
+  effect function start(oneShot: boolean, onFix: (position: Position) => void, onError: (error: MapsFailure) => void): void!MapsFailure {
+    if (admitting) throw new MapsFailure({ code: "unavailable", message: "A location permission or start request is still settling." })
+    if (!platform.available()) throw new MapsFailure({ code: "unavailable", message: "Native location is unavailable in this build." })
+    admitting = true
+    try ensuring(effect {
+      const ticket = generation + 1
+      try stop()
+      if (generation !== ticket) return
+      const current: WatchSession = { aborted: false, removals: [] }
+      session = current
+      const active = () => session === current && !current.aborted
+      const report = (error: MapsFailure) => {
+        if (!active()) return
+        onError(error)
+        runFork(Effect.catch(stop(), (failure) => sync(() => onError(failure))))
+      }
+      effect {
+        let permission = try bridge.checkPermissions()
+        const already = permission.location === "granted"
+        if (!already) {
+          prompting = true
+          current.requestId = platform.isNative() ? undefined : permissionRequestId()
+          permission = try bridge.requestPermissions(current.requestId)
+          current.requestId = undefined
+        }
+        const next = nextWatch({ sameAttempt: active(), admittedSetup: true, bridgeAvailable: platform.available(), cleanupConfirmed: true,
+          permissionGranted: permission.location === "granted", justPrompted: !already, hidden: platform.hidden() })
+        if (next === "HoldForForeground") {
+          try race(platform.visible(), callback<void>((resume) => { current.release = () => resume(Effect.void) }))
+          current.release = undefined
+        }
+        prompting = false
+        if (!active() || next === "RefuseWatch") return
+        if (next === "DenyWatch") throw new MapsFailure({ code: "permission-denied", message: "Location permission was not granted. You can choose an origin manually." })
+        const precision = permission.accuracy === "precise" || permission.accuracy === "approximate" ? permission.accuracy : "unknown"
+        const removeFixes = try bridge.onFix((fix) => {
+          if (!active()) return
+          const coords = fix.coords
+          const heading = coords.heading
+          const speed = coords.speed
+          const position: Position = {
+            coordinate: { latitude: coords.latitude, longitude: coords.longitude }, accuracyMeters: coords.accuracy, timestamp: coords.timestamp, precision,
+            ...(typeof heading === "number" && Number.isFinite(heading) && heading >= 0 && heading <= 360 && typeof speed === "number" && Number.isFinite(speed) && speed > 0.5 ? { headingDegrees: heading % 360 } : {}),
+            ...(typeof speed === "number" && Number.isFinite(speed) && speed >= 0 ? { speedMetersPerSecond: speed } : {}),
+          }
+          const now = Date.now()
+          if (reportableWatchFix(position, true, now)) {
+            onFix(position)
+            if (oneShot) runFork(Effect.catch(stop(), (failure) => sync(() => onError(failure))))
+          } else if (!reportableWatchFix({ ...position, timestamp: now }, true, now)) {
+            report(new MapsFailure({ code: "invalid-response", message: "The location fix is invalid." }))
+          }
+        })
+        if (!active()) return try removeFixes
+        current.removals.push(removeFixes)
+        const removeErrors = try bridge.onError((error) => report(new MapsFailure({
+          code: error.code === "PERMISSION_DENIED" ? "permission-denied" : "unavailable",
+          message: "Location is unavailable. Check device location settings or choose an origin manually.",
+        })))
+        if (!active()) return try removeErrors
+        current.removals.push(removeErrors)
+        const watch = try bridge.watchPosition({ accuracy: "high", minInterval: 1000, minDistance: 0 })
+        if (finishWatch(active(), true) === "ClearLateWatch") try bridge.clearWatch(watch.watchId)
+        else current.watchId = watch.watchId
+      } catch effect (failure) => {
+        if (!active()) return
+        const refused = failure instanceof MapsFailure ? failure : new MapsFailure({ code: "unavailable", message: "Location could not start." })
+        onError(refused)
+        stop() catch () => undefined
+      }
+    }, sync(() => {
+      prompting = false
+      admitting = false
+    }))
+  }
+
+  return {
+    awaitingPermission: () => prompting && session !== undefined && !session.aborted,
+    start,
+    stop,
+  } satisfies MapsLocation
+}

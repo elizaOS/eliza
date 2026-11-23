@@ -1,0 +1,169 @@
+// spec/core/context.md, "Story: Keep a long conversation within reach on a host with no reviewer"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"
+import { shownFrom, windowBoundary } from "../../gen/core__context.ts"
+
+/** Most originals a host without a reviewer keeps inline before it defers a batch. */
+export const HISTORY_WINDOW_MAX_SOURCES = 40
+/** Originals left inline directly after a batch is deferred. */
+export const HISTORY_WINDOW_KEEP_SOURCES = 20
+/** Deferred user messages kept inline because their wording reads as standing. */
+export const HISTORY_WINDOW_STANDING_SOURCES = 12
+/** Most recent originals always shown, whatever the boundary. */
+export const HISTORY_CONTINUITY_SOURCES = 10
+
+const RECALL_SOURCES = 3
+const RECALL_HOLDERS = 2
+const RECALL_REQUEST_WORDS = 40
+const WORD_MATCHES = 5
+
+const STANDING_WORDING =
+  /\b(?:always|never|from now on|going forward|in (?:the )?future|every time|each time|whenever|remember (?:that|to|my)|don['’]?t (?:ever|forget)|do not (?:ever|forget)|i prefer|call me|my name is|i(?:['’]m| am) allergic|unless i)\b/i
+
+/** One original of a conversation, in chronological order, as the history window reads it. */
+export interface HistorySource {
+  readonly id: string
+  readonly fromUser: boolean
+  readonly text: string
+}
+
+/** A boundary a reviewer or an earlier window recorded: the originals before `reviewedCount` are deferred except `retainedIds`. */
+export interface HistoryReview {
+  readonly reviewedCount: number
+  readonly retainedIds: readonly string[]
+}
+
+/** What one turn shows of a conversation and what it defers, with the boundary to record for the next turn. */
+export interface HistoryWindow<S extends HistorySource> {
+  readonly shown: readonly S[]
+  readonly deferred: readonly S[]
+  readonly recalled: readonly S[]
+  readonly review: HistoryReview
+  readonly windowed: boolean
+}
+
+/** Search results over a conversation: literal matches when any exist, otherwise the best matches by shared words. */
+export interface HistorySearch<S extends HistorySource> {
+  readonly matches: readonly S[]
+  readonly byWords: boolean
+}
+
+const wordsOf = (text: string): string[] => text.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? []
+
+const hasWord = (message: readonly string[], word: string): boolean =>
+  message.some((own) => {
+    if (own === word) return true
+    const [short, long] = own.length < word.length ? [own, word] : [word, own]
+    return short.length >= 4 && long.length - short.length <= 3 && long.startsWith(short)
+  })
+
+const queryWords = (text: string): string[] => [...new Set(wordsOf(text).filter((word) => word.length >= 3))]
+
+function validReview(sources: readonly HistorySource[], review: HistoryReview | undefined): HistoryReview {
+  if (review === undefined || !Number.isSafeInteger(review.reviewedCount) || review.reviewedCount < 0 || review.reviewedCount > sources.length)
+    return { reviewedCount: 0, retainedIds: [] }
+  const prefix = new Set(sources.slice(0, review.reviewedCount).map(({ id }) => id))
+  return review.retainedIds.every((id) => prefix.has(id)) ? review : { reviewedCount: 0, retainedIds: [] }
+}
+
+function exchangeStart(sources: readonly HistorySource[]): number {
+  let start = sources.length - 1
+  while (start > 0 && !sources[start].fromUser) start--
+  while (start > 0 && sources[start - 1].fromUser) start--
+  return Math.max(start, 0)
+}
+
+function recall(sources: readonly HistorySource[], shown: ReadonlySet<number>, request: string): number[] {
+  const words = queryWords(request)
+  if (words.length > RECALL_REQUEST_WORDS) return []
+  const texts = sources.map(({ text }) => wordsOf(text))
+  const distinctive = words.filter((word) => {
+    let holders = 0
+    for (const text of texts) if (hasWord(text, word) && ++holders > RECALL_HOLDERS) return false
+    return holders > 0
+  })
+  if (distinctive.length < 2) return []
+  const matched = texts
+    .map((text, index) => ({ index, shared: shown.has(index) ? 0 : distinctive.filter((word) => hasWord(text, word)).length }))
+    .filter(({ shared }) => shared >= 2)
+    .sort((left, right) => right.shared - left.shared || right.index - left.index)
+    .slice(0, RECALL_SOURCES)
+  const recalled = new Set<number>()
+  for (const { index } of matched) {
+    recalled.add(index)
+    const partner = sources[index].fromUser ? index + 1 : index - 1
+    if (sources[partner] !== undefined && sources[partner].fromUser !== sources[index].fromUser && !shown.has(partner))
+      recalled.add(partner)
+  }
+  return [...recalled]
+}
+
+/** Bounds a conversation's history for a host where no reviewer runs, keeping standing instructions and the exchanges the request's words point at. */
+export function windowHistory<S extends HistorySource>(sources: readonly S[], request: string, previous?: HistoryReview): HistoryWindow<S> {
+  const prior = validReview(sources, previous)
+  const userPositions = sources.flatMap((source, index) => source.fromUser ? [index] : [])
+  const boundary = windowBoundary(sources.length, userPositions, prior.reviewedCount, HISTORY_WINDOW_MAX_SOURCES, HISTORY_WINDOW_KEEP_SOURCES)
+  const windowed = boundary > prior.reviewedCount
+  const retained = new Set(prior.retainedIds)
+  if (windowed) {
+    const standing = sources
+      .slice(prior.reviewedCount, boundary)
+      .filter((source) => source.fromUser && STANDING_WORDING.test(source.text))
+      .slice(-HISTORY_WINDOW_STANDING_SOURCES)
+    for (const source of standing) retained.add(source.id)
+  }
+  const from = shownFrom(sources.length, boundary, exchangeStart(sources), HISTORY_WINDOW_MAX_SOURCES, HISTORY_CONTINUITY_SOURCES)
+  const visible = new Set<number>()
+  sources.forEach((source, index) => {
+    if (index >= from || retained.has(source.id)) visible.add(index)
+  })
+  const recalled = new Set(windowed ? recall(sources, visible, request) : [])
+  return {
+    shown: sources.filter((_, index) => visible.has(index) || recalled.has(index)),
+    deferred: sources.filter((_, index) => !visible.has(index) && !recalled.has(index)),
+    recalled: sources.filter((_, index) => recalled.has(index)),
+    review: { reviewedCount: boundary, retainedIds: sources.slice(0, boundary).filter(({ id }) => retained.has(id)).map(({ id }) => id) },
+    windowed,
+  }
+}
+
+/** Finds originals for a history search: a case-insensitive literal match, or, when none exists, the newest best matches by weighted shared words with those not in view first. */
+export function searchHistory<S extends HistorySource>(candidates: readonly S[], query: string, inView: (source: S) => boolean): HistorySearch<S> {
+  const needle = query.toLowerCase()
+  const literal = needle.trim() ? candidates.filter(({ text }) => text.toLowerCase().includes(needle)) : []
+  if (literal.length > 0) return { matches: literal, byWords: false }
+  const words = queryWords(query)
+  if (words.length < 2) return { matches: [], byWords: false }
+  const texts = candidates.map(({ text }) => wordsOf(text))
+  const weight = new Map(words.map((word) => {
+    const holders = texts.filter((text) => hasWord(text, word)).length
+    return [word, holders ? Math.log(1 + texts.length / holders) : 0] as const
+  }))
+  let total = 0
+  for (const value of weight.values()) total += value
+  let best = 0
+  const scored = candidates.flatMap((source, index) => {
+    const shared = words.filter((word) => hasWord(texts[index], word))
+    let score = 0
+    for (const word of shared) score += weight.get(word) ?? 0
+    if (shared.length < 2 || score < total / 2) return []
+    best = Math.max(best, score)
+    return [{ source, index, score }]
+  })
+  const matches = scored
+    .filter(({ score }) => score >= best - 1e-9)
+    .sort((left, right) => Number(inView(left.source)) - Number(inView(right.source)) || right.index - left.index)
+    .slice(0, WORD_MATCHES)
+    .sort((left, right) => left.index - right.index)
+    .map(({ source }) => source)
+  return { matches, byWords: matches.length > 0 }
+}
+
+/** The notice a windowed turn carries after its transcript: how many originals are not shown, why, and when to read them through `readThrough`, the host's history read. */
+export function historyWindowNotice(window: { readonly deferred: readonly unknown[]; readonly recalled: readonly unknown[] }, readThrough?: string): string {
+  const recalled = window.recalled.length > 0
+    ? " The conversation holds the most recent ones, preceded by up to three earlier exchanges matched to this request by its words; others on the same subject may be unread."
+    : " The conversation holds only the most recent ones."
+  const read = readThrough === undefined
+    ? " When the messages shown do not hold what the request needs (an earlier item, \"as before\", \"like last time\", an unresolved \"it\" or \"that\", something said, given or done earlier), say that the earlier part of this conversation is not in view rather than guessing or denying it was said."
+    : ` Answer from the messages shown when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), read first through ${readThrough}: search the subject's main words, or read a known reference. Do not reply that you do not know, do not have or will check something before such a read. When the read finds nothing, say what you looked for and that this conversation does not hold it.`
+  return `${window.deferred.length} earlier messages and the recorded outcomes of their requests are not shown.${recalled} They were deferred by position, not reviewed, and that alone is no reason to read them.${read}`
+}

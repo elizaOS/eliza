@@ -35,9 +35,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * The address book of the AOSP telephony profile: bounded same-profile reads through
  * {@link ContactsCatalog} while the phone is unlocked with the host in front; contact creation and
  * edits handed to the system Contacts editor, which owns the account choice and the save
- * ({@link #create}, {@link #edit}); and, for a host whose manifest holds WRITE_CONTACTS, the owner's
+ * ({@link #create}, {@link #edit}); for a host whose manifest holds WRITE_CONTACTS, the owner's
  * own saves and deletions from the host's screen through {@link ContactsEditor} ({@link #get},
- * {@link #save}, {@link #remove}), each bound to the version of the contact that was read.
+ * {@link #save}, {@link #remove}), each bound to the version of the contact that was read, a
+ * deletion staged in the host's Undo window ({@link #deletionWindow}); and display-only names for
+ * the numbers a Phone, Messages or call screen shows ({@link #resolveNames}).
  *
  * A host subclasses this under its own plugin name (declaring the {@code contacts} permission alias
  * for READ_CONTACTS, and for WRITE_CONTACTS too when it offers in-app saves) and decides {@link #admitted()} natively, from facts an ordinary install cannot
@@ -61,6 +63,16 @@ public abstract class AddressBookPlugin extends Plugin {
   /** The answer for a request made after the activity is gone. */
   protected String closedMessage() {
     return CLOSED;
+  }
+
+  /** The host's durable Undo window: stages an inspected record of {@code kind} for the installation's owner and returns its journal row. */
+  public interface DeletionWindow {
+    org.json.JSONObject stage(String kind, org.json.JSONObject target) throws Exception;
+  }
+
+  /** The host's Undo window, or null when it offers none; then no contact can be removed. */
+  protected DeletionWindow deletionWindow() {
+    return null;
   }
 
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -335,7 +347,11 @@ public abstract class AddressBookPlugin extends Plugin {
     work(call, false, cancel -> new ContactsEditor(getContext()).save(id, version, draft));
   }
 
-  /** Deletes the contact the owner chose, read at {@code version}. See {@link ContactsEditor#remove} for the answer. */
+  /**
+   * Stages the removal of the contact the owner chose, read at {@code version}, in the host's Undo
+   * window: {@code {status: queued|not-found|stale|failed, deletion?}}. The window runs
+   * {@link ContactsEditor#remove} at expiry; Undo before then leaves the contact untouched.
+   */
   @PluginMethod
   public void remove(PluginCall call) {
     if (!mayWrite(call)) return;
@@ -344,7 +360,42 @@ public abstract class AddressBookPlugin extends Plugin {
       call.reject("Invalid contact request", "invalid");
       return;
     }
-    work(call, false, cancel -> new ContactsEditor(getContext()).remove(id, version));
+    DeletionWindow window = deletionWindow();
+    if (window == null) {
+      call.reject("Removing a contact needs the phone's Undo window", "unavailable");
+      return;
+    }
+    work(call, false, cancel -> {
+      JSObject out = new JSObject();
+      String refusal = new ContactsEditor(getContext()).inspectRemoval(id, version, cancel);
+      if (refusal != null) {
+        out.put("status", refusal);
+        return out;
+      }
+      out.put("status", "queued");
+      out.put("deletion", window.stage("contact", new org.json.JSONObject().put("id", id).put("version", version)));
+      return out;
+    });
+  }
+
+  /**
+   * Names for the numbers a screen shows ({@code numbers}: 1 to 50 distinct dial-shaped strings):
+   * see {@link ContactNames#resolve}. A read, cancelled and dropped like every other.
+   */
+  @PluginMethod
+  public void resolveNames(PluginCall call) {
+    if (!readable()) {
+      call.reject("Contacts access is unavailable", "unavailable");
+      return;
+    }
+    final List<String> numbers;
+    try {
+      numbers = ContactNames.numbers(call.getArray("numbers"));
+    } catch (Exception invalid) {
+      call.reject("Invalid numbers", "invalid");
+      return;
+    }
+    work(call, true, cancel -> ContactNames.resolve(getContext().getContentResolver(), numbers, cancel));
   }
 
   /** The first enabled, exported system activity other than this app that handles the intent; null when none. */

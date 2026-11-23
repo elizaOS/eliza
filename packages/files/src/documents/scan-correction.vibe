@@ -1,0 +1,264 @@
+// spec/files/scan/correction.md, "Correction admits only a supported image and a valid convex selection"; spec/files/scan/correction.md, "A preview belongs to its current corners and active review"; spec/files/scan/correction.md, "Only adoption can replace the selected page and discard its text"
+import { admitsDecode, admitsDecodedImage, allowsCorners, canAdoptCorrection, initial, machineOver, replacementAllowed, type Correction, type Selection } from "../../gen/files__scan__correction.effect.vibe"
+import { decodedImage, encoded, fittedSize, imageAdmitted, imageRefused, rasterOf, ImageRefused, type Raster } from "./images.vibe"
+
+/** A normalized corner, with a top-left origin. */
+export interface ScanCorner { readonly x: number; readonly y: number }
+/** Clockwise corners starting at the top left. */
+export type ScanCorners = readonly [ScanCorner, ScanCorner, ScanCorner, ScanCorner]
+
+/** The full page, as the dialog starts. */
+export const fullPageCorners = (): ScanCorners => [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }]
+
+export type CornerRefusal = "outside" | "folded" | "too-small"
+
+const cornerText: Readonly<Record<CornerRefusal, string>> = {
+  outside: "Keep all four corners inside the image.",
+  folded: "Keep corners in clockwise order without crossing the page edges.",
+  "too-small": "Select a larger page area.",
+}
+
+/** A corner selection that is not a convex, clockwise, large enough page. */
+export error CornersRefused { reason: CornerRefusal; message: string }
+
+function selectionOf(corners: readonly ScanCorner[]): Selection {
+  const normalizedFour = corners.length === 4 && corners.every((p) => typeof p === "object" && p !== null && Number.isFinite(p.x)
+    && Number.isFinite(p.y) && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1)
+  if (!normalizedFour) return { normalizedFour, positiveTurns: false, minimumEdges: false, minimumArea: false }
+  let area = 0, positiveTurns = true, minimumEdges = true
+  for (let i = 0; i < 4; i++) {
+    const a = corners[i], b = corners[(i + 1) % 4], c = corners[(i + 2) % 4]
+    area += a.x * b.y - b.x * a.y
+    positiveTurns &&= (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) > 0.0001
+    minimumEdges &&= Math.hypot(b.x - a.x, b.y - a.y) >= 0.02
+  }
+  return { normalizedFour, positiveTurns, minimumEdges, minimumArea: area >= 0.02 }
+}
+
+/** Whether these corners are a valid convex selection. */
+export function scanCornersAdmitted(corners: readonly ScanCorner[]): boolean {
+  return allowsCorners(selectionOf(corners))
+}
+
+/** Checks the selection before any decode. */
+export effect function validateScanCorners(corners: readonly ScanCorner[]): void!CornersRefused {
+  const selection = selectionOf(corners)
+  if (allowsCorners(selection)) return
+  const reason: CornerRefusal = !selection.normalizedFour ? "outside" : selection.positiveTurns && selection.minimumEdges ? "too-small" : "folded"
+  throw new CornersRefused({ reason, message: cornerText[reason] })
+}
+
+type Point = { readonly x: number; readonly y: number }
+
+function homography(p: readonly Point[]) {
+  const [p0, p1, p2, p3] = p
+  const dx1 = p1.x - p2.x, dx2 = p3.x - p2.x, dx3 = p0.x - p1.x + p2.x - p3.x
+  const dy1 = p1.y - p2.y, dy2 = p3.y - p2.y, dy3 = p0.y - p1.y + p2.y - p3.y
+  const det = dx1 * dy2 - dx2 * dy1
+  const g = (dx3 * dy2 - dx2 * dy3) / det, h = (dx1 * dy3 - dx3 * dy1) / det
+  return { g, h, a: p1.x - p0.x + g * p1.x, b: p3.x - p0.x + h * p3.x, d: p1.y - p0.y + g * p1.y, e: p3.y - p0.y + h * p3.y, x0: p0.x, y0: p0.y }
+}
+
+function warpRow(y: number, source: Uint8ClampedArray, sw: number, sh: number, out: Uint8ClampedArray, ow: number, oh: number, m: ReturnType<typeof homography>) {
+  const v = y / (oh - 1)
+  for (let x = 0; x < ow; x++) {
+    const u = x / (ow - 1), den = m.g * u + m.h * v + 1
+    const sx = Math.max(0, Math.min(sw - 1, (m.a * u + m.b * v + m.x0) / den))
+    const sy = Math.max(0, Math.min(sh - 1, (m.d * u + m.e * v + m.y0) / den))
+    const left = Math.floor(sx), top = Math.floor(sy), right = Math.min(left + 1, sw - 1), bottom = Math.min(top + 1, sh - 1)
+    const fx = sx - left, fy = sy - top, at = (y * ow + x) * 4
+    for (let c = 0; c < 3; c++) {
+      out[at + c] = (source[(top * sw + left) * 4 + c] * (1 - fx) + source[(top * sw + right) * 4 + c] * fx) * (1 - fy)
+        + (source[(bottom * sw + left) * 4 + c] * (1 - fx) + source[(bottom * sw + right) * 4 + c] * fx) * fy
+    }
+    out[at + 3] = 255
+  }
+}
+
+effect function pixelsOf(raster: Raster): Uint8ClampedArray!ImageRefused {
+  return try Effect.try({ try: () => raster.pixels(), catch: () => imageRefused("unavailable") })
+}
+
+/** Corrects a page's perspective to the selected corners as a JPEG within the shared bounds; interruption stops it between rows. */
+export effect function correctScanPage(image: Blob, input: readonly ScanCorner[]): Blob!(CornersRefused | ImageRefused) {
+  const corners = input.map((p) => ({ x: p.x, y: p.y }))
+  try validateScanCorners(corners)
+  if (!admitsDecode(selectionOf(corners), { supported: imageAdmitted(image), bytes: image.size, width: 0, height: 0 }, false)) throw imageRefused("unsupported")
+  const source = try scoped(effect {
+    const bitmap = try decodedImage(image)
+    if (!admitsDecodedImage({ supported: true, bytes: image.size, width: bitmap.width, height: bitmap.height })) throw imageRefused("too-many-pixels")
+    const size = fittedSize(bitmap.width, bitmap.height, undefined, 2)
+    return try rasterOf(bitmap, size.width, size.height)
+  })
+  const points = corners.map((p) => ({ x: p.x * (source.width - 1), y: p.y * (source.height - 1) }))
+  const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y)
+  const size = fittedSize((distance(points[0], points[1]) + distance(points[3], points[2])) / 2,
+    (distance(points[0], points[3]) + distance(points[1], points[2])) / 2, undefined, 2)
+  const output = try rasterOf(undefined, size.width, size.height)
+  const pixels = try pixelsOf(source)
+  const result = output.blank()
+  const transform = homography(points)
+  for (let y = 0; y < output.height; y++) {
+    if (y % 32 === 0) try yieldNow
+    warpRow(y, pixels, source.width, source.height, result, output.width, output.height, transform)
+  }
+  try Effect.try({ try: () => output.put(result), catch: () => imageRefused("conversion-failed") })
+  return try encoded(output, "image/jpeg", 0.92)
+}
+
+const cross = (a: Point, b: Point, c: Point) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+const polygonArea = (p: readonly Point[]) => Math.abs(p.reduce((s, a, i) => s + a.x * p[(i + 1) % p.length].y - p[(i + 1) % p.length].x * a.y, 0)) / 2
+
+function hull(input: readonly Point[]): Point[] {
+  const points = [...input].sort((a, b) => a.x - b.x || a.y - b.y)
+  const chain = (list: readonly Point[]) => list.reduce<Point[]>((out, p) => {
+    while (out.length > 1 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop()
+    out.push(p)
+    return out
+  }, [])
+  return [...chain(points).slice(0, -1), ...chain([...points].reverse()).slice(0, -1)]
+}
+
+function quadrilateral(points: readonly Point[], w: number, h: number): ScanCorners | undefined {
+  const outline = hull(points), full = polygonArea(outline)
+  if (full <= 0) return undefined
+  while (outline.length > 4) {
+    let smallest = Infinity, index = 0
+    for (let i = 0; i < outline.length; i++) {
+      const loss = Math.abs(cross(outline[(i + outline.length - 1) % outline.length], outline[i], outline[(i + 1) % outline.length]))
+      if (loss < smallest) { smallest = loss; index = i }
+    }
+    outline.splice(index, 1)
+  }
+  if (outline.length !== 4 || polygonArea(outline) / full < 0.9) return undefined
+  let first = 0
+  for (let i = 1; i < 4; i++) if (outline[i].x + outline[i].y < outline[first].x + outline[first].y) first = i
+  const corners = [...outline.slice(first), ...outline.slice(0, first)].map((p) => ({ x: p.x / (w - 1), y: p.y / (h - 1) }))
+  return scanCornersAdmitted(corners) ? corners as unknown as ScanCorners : undefined
+}
+
+/** A conservative page outline suggestion from local contrast, or undefined; it is never an applied crop. */
+export effect function detectScanEdges(image: Blob): (ScanCorners | undefined)!ImageRefused {
+  const raster = try scaledImage320(image)
+  const pixels = try pixelsOf(raster)
+  const w = raster.width, h = raster.height, n = w * h, gray = new Uint8Array(n), border: number[] = []
+  for (let i = 0; i < n; i++) {
+    gray[i] = Math.round(0.2126 * pixels[i * 4] + 0.7152 * pixels[i * 4 + 1] + 0.0722 * pixels[i * 4 + 2])
+    if (i < w || i >= n - w || i % w === 0 || i % w === w - 1) border.push(gray[i])
+  }
+  border.sort((a, b) => a - b)
+  const background = border[Math.floor(border.length / 2)]
+  const candidates: { corners: ScanCorners; size: number }[] = []
+  for (const direction of [1, -1]) {
+    const seen = new Uint8Array(n), queue = new Int32Array(n)
+    for (let start = 0; start < n; start++) {
+      if (start % 2048 === 0) try yieldNow
+      if (seen[start] || direction * (gray[start] - background) < 30) continue
+      let head = 0, tail = 1, touches = false
+      queue[0] = start
+      seen[start] = 1
+      const edge: Point[] = []
+      while (head < tail) {
+        const at = queue[head++], x = at % w, y = Math.floor(at / w)
+        if (x === 0 || x === w - 1 || y === 0 || y === h - 1) touches = true
+        let outer = false
+        for (const next of [x ? at - 1 : -1, x < w - 1 ? at + 1 : -1, y ? at - w : -1, y < h - 1 ? at + w : -1]) {
+          if (next < 0 || direction * (gray[next] - background) < 30) { outer = true; continue }
+          if (!seen[next]) { seen[next] = 1; queue[tail++] = next }
+        }
+        if (outer) edge.push({ x, y })
+      }
+      if (touches || tail < n * 0.15 || tail / Math.max(polygonArea(hull(edge)), Number.MIN_VALUE) < 0.7) continue
+      const corners = quadrilateral(edge, w, h)
+      if (corners !== undefined) candidates.push({ corners, size: tail })
+    }
+  }
+  candidates.sort((a, b) => b.size - a.size)
+  if (candidates.length === 0 || (candidates.length > 1 && candidates[1].size > candidates[0].size * 0.5)) return undefined
+  return candidates[0].corners
+}
+
+effect function scaledImage320(image: Blob): Raster!ImageRefused {
+  return try scoped(effect {
+    const bitmap = try decodedImage(image)
+    const size = fittedSize(bitmap.width, bitmap.height, 320, 2)
+    return try rasterOf(bitmap, size.width, size.height)
+  })
+}
+
+/** The parent operation a correction returns its page to; it owns the page slot, limits and abort. */
+export interface CorrectionParent {
+  readonly current: () => boolean
+  readonly replace: (page: Blob) => boolean!!
+  readonly documentBytesWith: (page: Blob) => number
+}
+
+/** One page's correction review: a preview bound to its corners, released on cancel, written only by adoption. */
+export effect function correctionReview(page: Blob, hasText: boolean, parent: CorrectionParent) {
+  const state = try Ref.make<Correction>(initial)
+  const corners = try Ref.make<ScanCorners>(fullPageCorners())
+  const preview = try Ref.make<Blob | undefined>(undefined)
+  const review = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+  try orDie(review.send({ type: "loadPage", hasText }))
+  try orDie(review.send({ type: "openCorrection" }))
+
+  effect function owner(): number!! {
+    return (try review.get()).generation
+  }
+
+  effect function settle(next: Correction): Correction!! {
+    if (!next.previewUrl) try Ref.set(preview, undefined)
+    return next
+  }
+
+  effect function move(next: ScanCorners) {
+    try review.send({ type: "changeCorners" })
+    try Ref.set(corners, next)
+    return try settle(try review.get())
+  }
+
+  effect function detect() {
+    try review.send({ type: "detectCorners" })
+    const ownerId = try owner()
+    const found = detectScanEdges(page) catch () => undefined
+    const next = try orDie(review.send({ type: "settleDetection", ownerId, found: found !== undefined }))
+    if (found !== undefined) try Ref.set(corners, found)
+    return try settle(next)
+  }
+
+  effect function generate() {
+    try review.send({ type: "generatePreview" })
+    try Ref.set(preview, undefined)
+    const ownerId = try owner()
+    const chosen = try Ref.get(corners)
+    const produced = correctScanPage(page, chosen) catch () => undefined
+    try orDie(review.send({ type: "settlePreview", ownerId, produced: produced !== undefined }))
+    try Ref.set(preview, produced)
+    return produced
+  }
+
+  effect function adopt() {
+    const corrected = try Ref.get(preview)
+    if (corrected === undefined || !canAdoptCorrection(try review.get())) throw imageRefused("unavailable")
+    const pageAdmitted = imageAdmitted(corrected)
+    const completeBytes = parent.documentBytesWith(corrected)
+    const allowed = replacementAllowed(parent.current(), pageAdmitted, completeBytes)
+    const replaced = allowed && try parent.replace(corrected)
+    try review.send({ type: "adoptCorrection", parentCurrent: replaced, pageAdmitted, completeBytes })
+    try Ref.set(preview, undefined)
+    return replaced
+  }
+
+  effect function cancel(): void!! {
+    review.send({ type: "cancelCorrection" }) catch () => undefined
+    try Ref.set(preview, undefined)
+  }
+
+  return {
+    state: () => review.get(),
+    corners: () => Ref.get(corners),
+    preview: () => Ref.get(preview),
+    reset: () => move(fullPageCorners()),
+    move, detect, generate, adopt, cancel,
+  }
+}

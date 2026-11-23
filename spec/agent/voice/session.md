@@ -40,18 +40,20 @@ type TurnEnd = NoEnd | ReplyPlayed | ReplyCut | TurnAborted | ReplyBroke | TurnF
 type ReportOutcome = ReportAnswered({ verdict: T::HeardVerdict }) | ReportUnavailable | ReportRejected
 type ReportPhase = ReportDue | ReportPosting | ReportSettled({ outcome: ReportOutcome })
 type HeardReceipt = { reply: int, attempts: int, phase: ReportPhase, nothingHeard: bool }
+type StopReport = StopReportsHeard | StopReportsNone
+type VoiceProfile = { shortGapMs: int, longGapMs: int, bargeInHoldMs: int, stopReport: StopReport }
 type VoiceSession = { life: SessionLife, mode: InputMode, duplex: Duplex, capture: CaptureState, utterance: Utterance,
   epoch: int, hasText: bool, turn: TurnStage, cause: SubmitCause, sent: int, bargeIn: bool, reply: int,
-  segments: int, played: int, lastEnd: TurnEnd, receipts: List[HeardReceipt], drafts: int }
+  segments: int, played: int, lastEnd: TurnEnd, receipts: List[HeardReceipt], drafts: int, profile: VoiceProfile }
 pure val initial: VoiceSession = { life: Idle, mode: ConversationMode, duplex: HalfDuplex, capture: CaptureClosed,
   utterance: NoUtterance, epoch: 0, hasText: false, turn: NoTurn, cause: NoSubmit, sent: 0, bargeIn: false, reply: 0,
-  segments: 0, played: 0, lastEnd: NoEnd, receipts: List(), drafts: 0 }
+  segments: 0, played: 0, lastEnd: NoEnd, receipts: List(), drafts: 0, profile: defaultVoiceProfile }
 pure def isRunning(life: SessionLife): bool = life == Starting or life == Live
 pure def halted(life: SessionLife, s: VoiceSession): VoiceSession =
   { ...cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s), life: life, utterance: NoUtterance, hasText: false, epoch: s.epoch + 1 }
-pure def canStart(s: VoiceSession): bool = not(isRunning(s.life)) and s.capture == CaptureClosed
-pure def start(s: VoiceSession, mode: InputMode, duplex: Duplex): VoiceSession =
-  { ...s, life: Starting, mode: mode, duplex: duplex, capture: CaptureOpening, cause: NoSubmit }
+pure def canStart(s: VoiceSession, profile: VoiceProfile): bool = not(isRunning(s.life)) and s.capture == CaptureClosed and profileAdmitted(profile)
+pure def start(s: VoiceSession, mode: InputMode, duplex: Duplex, profile: VoiceProfile): VoiceSession =
+  { ...s, life: Starting, mode: mode, duplex: duplex, capture: CaptureOpening, cause: NoSubmit, profile: profile }
 pure def canCaptureOpened(s: VoiceSession): bool = s.capture == CaptureOpening
 pure def captureOpened(s: VoiceSession): VoiceSession =
   if (isRunning(s.life)) { ...s, capture: CaptureOpen, life: Live } else { ...s, capture: CaptureClosing }
@@ -62,7 +64,9 @@ pure def captureFailed(s: VoiceSession): VoiceSession = { ...halted(if (isRunnin
 pure def canReopenCapture(s: VoiceSession): bool = isRunning(s.life) and s.turn == NoTurn and s.capture == CaptureClosed
 pure def reopenCapture(s: VoiceSession): VoiceSession = { ...s, capture: CaptureOpening }
 pure def canStop(s: VoiceSession): bool = isRunning(s.life)
-pure def stop(s: VoiceSession): VoiceSession = { ...halted(Idle, s), capture: if (s.capture == CaptureOpen) CaptureClosing else s.capture }
+pure def stop(s: VoiceSession): VoiceSession =
+  { ...halted(Idle, s), capture: if (s.capture == CaptureOpen) CaptureClosing else s.capture,
+    receipts: if (s.profile.stopReport == StopReportsNone) s.receipts else halted(Idle, s).receipts }
 pure val weight_captureOpened = 4
 pure val weight_captureClosed = 4
 pure def alwaysTheSessionOwnsItsCapture(s: VoiceSession): bool =
@@ -73,6 +77,37 @@ pure def alwaysAHeldMicrophoneStaysClosedDuringItsTurn(s: VoiceSession): bool =
   (s.turn == AwaitingClose implies (s.duplex == HalfDuplex and s.capture == CaptureClosing)) and
   ((s.duplex == HalfDuplex and s.turn != NoTurn and s.turn != AwaitingClose) implies s.capture == CaptureClosed)
 pure def sometimesAFailedCaptureEndsTheSession(s: VoiceSession): bool = s.life == Failed and s.capture == CaptureClosed
+```
+
+### A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default
+
+The consumer chooses a `VoiceProfile` at Start, `{shortGapMs, longGapMs,
+bargeInHoldMs, stopReport}`; a profile out of bounds refuses Start, and the
+profile holds until the next Start. Every gap and hold rule below reads
+its value from the session's profile. The default is the upstream session;
+an open-microphone product may use no gaps, a shorter hold and no report
+on Stop (`{0, 0, 400, StopReportsNone}`).
+
+```quint
+pure val maxLongGapMs = 10000
+pure val maxBargeInHoldMs = 5000
+pure val defaultVoiceProfile: VoiceProfile = { shortGapMs: 300, longGapMs: 1200, bargeInHoldMs: 700, stopReport: StopReportsHeard }
+pure def profileAdmitted(p: VoiceProfile): bool =
+  p.shortGapMs >= 0 and p.shortGapMs <= p.longGapMs and p.longGapMs <= maxLongGapMs and
+  p.bargeInHoldMs >= 0 and p.bargeInHoldMs <= maxBargeInHoldMs
+pure val profileValues = Set(defaultVoiceProfile,
+  { shortGapMs: 0, longGapMs: 0, bargeInHoldMs: 400, stopReport: StopReportsNone },
+  { shortGapMs: 500, longGapMs: 100, bargeInHoldMs: 700, stopReport: StopReportsHeard })
+pure val pValues = Set(defaultVoiceProfile,
+  { shortGapMs: 300, longGapMs: 1200, bargeInHoldMs: 700, stopReport: StopReportsNone },
+  { shortGapMs: 0, longGapMs: 0, bargeInHoldMs: 400, stopReport: StopReportsNone },
+  { shortGapMs: 500, longGapMs: 100, bargeInHoldMs: 700, stopReport: StopReportsHeard })
+pure def alwaysTheProfileIsWithinItsBounds(s: VoiceSession): bool = profileAdmitted(s.profile)
+pure def lawTheDefaultProfileIsTheUpstreamSession(p: VoiceProfile): bool =
+  p == defaultVoiceProfile implies (p.shortGapMs == shortGapMs and p.longGapMs == longGapMs and p.bargeInHoldMs == bargeInHoldMs and p.stopReport == StopReportsHeard)
+pure def stepTheProfileChangesOnlyAtStart(before: VoiceSession, via: str, after: VoiceSession): bool =
+  after.profile != before.profile implies via == "start"
+pure def sometimesAnOpenMicSession(s: VoiceSession): bool = isRunning(s.life) and s.profile.longGapMs == 0 and s.profile.stopReport == StopReportsNone
 ```
 
 ### New speech advances the utterance epoch, so an answer asked for an older utterance changes nothing
@@ -100,13 +135,14 @@ pure def stepTheEpochOnlyAdvances(before: VoiceSession, via: str, after: VoiceSe
 
 ### Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits
 
-Once the final transcript is accepted, a 300 ms short gap starts one query
+Once the final transcript is accepted, the profile's short gap (300 ms by
+default) starts one query
 for the utterance's text with whitespace collapsed, never audio, through
 the local inference route; text of no units or over 4,096 is not sent,
 never truncated. The query's 600 ms deadline ends before the long gap.
 Complete submits at once; incomplete, unavailable, a reply of another
-shape, a failed request and a missed deadline wait. Silence for the long
-gap, counted from the speech end, submits whatever the query said, and a
+shape, a failed request and a missed deadline wait. Silence for the
+profile's long gap (1,200 ms by default), counted from the speech end, submits whatever the query said, and a
 later answer is refused. A half-duplex submission starts closing the
 microphone; a full-duplex one is ready to send at once.
 
@@ -227,7 +263,8 @@ pure def sometimesDictationDrafts(s: VoiceSession): bool = isRunning(s.life) and
 ### A barge-in is confirmed only by an accepted transcript or a 700 ms hold
 
 In full duplex, speech while a reply is pending or playing is a candidate:
-the reply keeps playing. An accepted final transcript or a 700 ms hold
+the reply keeps playing. An accepted final transcript or a hold of the
+profile's length (700 ms by default)
 confirms it: the reply stops, a pending turn is aborted through the turn
 abort route, and the speech becomes the next utterance. A rejected
 transcript drops the candidate. Partial transcripts confirm nothing.
@@ -235,9 +272,9 @@ transcript drops the candidate. Partial transcripts confirm nothing.
 ```quint
 pure val bargeInHoldMs = 700
 pure def canBargeInHeld(s: VoiceSession, heldMs: int): bool =
-  s.bargeIn and (s.utterance == Hearing or s.utterance == AwaitingFinal) and heldMs >= bargeInHoldMs
+  s.bargeIn and (s.utterance == Hearing or s.utterance == AwaitingFinal) and heldMs >= s.profile.bargeInHoldMs
 pure def bargeInHeld(s: VoiceSession, heldMs: int): VoiceSession = cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s)
-pure val heldMsValues = Set(0, 699, 700)
+pure val heldMsValues = Set(0, 399, 400, 699, 700)
 pure def alwaysACandidateInterruptsASentTurn(s: VoiceSession): bool =
   s.bargeIn implies (s.duplex == FullDuplex and (s.turn == AwaitingReply or s.turn == Playing))
 pure def sometimesABargeInCutsTheReply(s: VoiceSession): bool = s.lastEnd == ReplyCut and s.utterance != NoUtterance
@@ -253,8 +290,8 @@ pure def sometimesABargeInAbortsAPendingTurn(s: VoiceSession): bool = s.lastEnd 
 ### A reply plays segment by segment, and a cut or broken one reserves one report
 
 A reply with no speech segments ends the turn at once; each segment plays
-once, in order. A failed turn ends it. A barge-in or Stop while the reply
-plays, or a segment that fails after some played, reserves exactly one
+once, in order. A failed turn ends it. A barge-in while the reply plays,
+a Stop while it plays when the profile reports on Stop, or a segment that fails after some played, reserves exactly one
 report for that reply: the text of the played segments, or nothing heard
 when none had (a failure before any played reports nothing and keeps the
 stored reply whole). The report is keyed by the reply and kept until it
@@ -286,6 +323,8 @@ pure def alwaysOneReportPerPlayedReply(s: VoiceSession): bool =
     (s.turn == Playing implies r.reply < s.reply))
 pure def sometimesAReplyPlaysWhole(s: VoiceSession): bool = s.lastEnd == ReplyPlayed and s.reply > 0
 pure def sometimesABrokenReplyIsReported(s: VoiceSession): bool = s.lastEnd == ReplyBroke and s.receipts.length() > 0
+pure def stepStopReportsOnlyWhenTheProfileAsks(before: VoiceSession, via: str, after: VoiceSession): bool =
+  (via == "stop" and before.profile.stopReport == StopReportsNone) implies after.receipts == before.receipts
 ```
 
 ### A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct

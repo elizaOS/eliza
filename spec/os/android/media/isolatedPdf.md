@@ -231,3 +231,34 @@ pure def sometimesPreviewRendered(s: PdfViewer): bool = s.preview == PreviewRend
 pure def sometimesPreviewBesideViewer(s: PdfViewer): bool = s.preview == PreviewWaiting and s.stage == ViewerPending
 pure def sometimesPreviewFailed(s: PdfViewer): bool = s.preview == PreviewFailed
 ```
+
+### A selected PDF's copy serves its next page only while the provider reports the same size and time
+
+The read-only copy of the selection rendered last is kept for its next
+pages. Before each render the shell reads the provider's size and
+last-modified time; the kept copy is reused only for the same selection,
+while both are known and unchanged and the copy still has that size.
+Otherwise the bytes are copied again, within the same 20 MiB limit, and a
+provider that reports neither gets a fresh copy for every page. At most one
+copy is kept: rendering another selection, a failed render or forgetting
+the selection removes it, and a copy left by an ended process is removed
+when the registry starts.
+
+```quint
+type PdfSourceStamp = { size: int, modified: int }
+type KeptPdfCopy = { held: bool, selection: int, size: int, modified: int }
+pure val noKeptCopy: KeptPdfCopy = { held: false, selection: 0, size: -1, modified: -1 }
+pure def stampKnown(stamp: PdfSourceStamp): bool = stamp.size > 0 and stamp.modified > 0
+pure def copyReusable(kept: KeptPdfCopy, selection: int, stamp: PdfSourceStamp, copyLength: int): bool =
+  kept.held and kept.selection == selection and stampKnown(stamp) and kept.size == stamp.size and kept.modified == stamp.modified and copyLength == stamp.size
+pure def copyAfterRender(selection: int, stamp: PdfSourceStamp, rendered: bool): KeptPdfCopy =
+  if (rendered and stampKnown(stamp)) { held: true, selection: selection, size: stamp.size, modified: stamp.modified } else noKeptCopy
+pure val keptValues = Set(noKeptCopy, { held: true, selection: 1, size: 10, modified: 7 }, { held: true, selection: 2, size: 10, modified: 7 })
+pure val stampValues = Set({ size: 10, modified: 7 }, { size: 10, modified: 8 }, { size: 11, modified: 7 }, { size: -1, modified: -1 })
+pure val selectionValues = Set(1, 2)
+pure val copyLengthValues = Set(10, 11)
+pure def lawAReusedCopyMatchesWhatTheProviderReportsNow(kept: KeptPdfCopy, selection: int, stamp: PdfSourceStamp, copyLength: int): bool =
+  copyReusable(kept, selection, stamp, copyLength) implies (stampKnown(stamp) and kept.selection == selection and copyLength == stamp.size)
+pure def lawOnlyAKnownStampAfterARenderKeepsACopy(selection: int, stamp: PdfSourceStamp, rendered: bool): bool =
+  copyAfterRender(selection, stamp, rendered).held implies (rendered and stampKnown(stamp))
+```

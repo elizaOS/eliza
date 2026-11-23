@@ -1,4 +1,4 @@
-// spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"; spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/reset.md, "Story: Erase the app's data only after I confirm"
+// spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"; spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/os/android/reset.md, "Story: Erase the app's data only after I confirm"
 import { assert, it } from "@effect/vitest"
 import { MalformedReply } from "../../src/bridges/bridge.vibe"
 import {
@@ -10,6 +10,8 @@ import {
   deletionNoticeSignature,
   deletionReviewRefusal,
   deletionWindow,
+  hiddenRecords,
+  parseStagedDeletion,
   pendingDeletionNotices,
   reminderDeletionRefusal,
   reviewDeadline,
@@ -174,7 +176,7 @@ it.live("A reviewed deletion keeps Undo for ten seconds on its review clock, and
   const changedClock = claimDeletion(queued, "owner-1", { ...clock, continuity: "boot-2" }, "ClaimUndo")
 
   const row = (phase: "Queued" | "Paused" | "Dispatching" | "Undone" | "UnknownOutcome", window: "WindowOpen" | "WindowExpired" | "ClockChanged", id: string) =>
-    ({ kind: "CalendarEvent" as const, id, phase, window, hold: "NotHeld" as const, expiresAt: deadline.expiresAt, title: id === "untitled" ? null : `Event ${id}` })
+    ({ kind: "CalendarEvent" as const, id, phase, window, hold: "NotHeld" as const, expiresAt: deadline.expiresAt, title: id === "untitled" ? null : `Event ${id}`, record: null })
   const rows = [row("Queued", "WindowOpen", "a"), row("Queued", "WindowExpired", "b"), row("Queued", "ClockChanged", "c"), row("Paused", "WindowExpired", "d"), row("Dispatching", "WindowExpired", "e"), row("UnknownOutcome", "WindowExpired", "untitled"), row("Undone", "WindowOpen", "g")]
   const notices = rows.map(deletionNoticeOf)
   const shown = pendingDeletionNotices(rows).map((one) => one.id)
@@ -244,9 +246,9 @@ it.live("Undo keeps a staged deletion only while it can still win, and an uncert
     {
       first: {
         deletions: [
-          { id: "standup", kind: "CalendarEvent", phase: "Queued", window: "WindowOpen", hold: "NotHeld", expiresAt: 1_800_000_010_000, title: "Standup" },
-          { id: "pills", kind: "ReminderOccurrence", phase: "Queued", window: "WindowOpen", hold: "NotHeld", expiresAt: 1_800_000_010_000, title: "Take pills" },
-          { id: "lost-1", kind: "CalendarEvent", phase: "Queued", window: "WindowOpen", hold: "NotHeld", expiresAt: 1_800_000_010_000, title: "Dentist" },
+          { id: "standup", kind: "CalendarEvent", phase: "Queued", window: "WindowOpen", hold: "NotHeld", expiresAt: 1_800_000_010_000, title: "Standup", record: null },
+          { id: "pills", kind: "ReminderOccurrence", phase: "Queued", window: "WindowOpen", hold: "NotHeld", expiresAt: 1_800_000_010_000, title: "Take pills", record: null },
+          { id: "lost-1", kind: "CalendarEvent", phase: "Queued", window: "WindowOpen", hold: "NotHeld", expiresAt: 1_800_000_010_000, title: "Dentist", record: null },
         ],
         deletedOrigins: [],
       },
@@ -262,6 +264,49 @@ it.live("Undo keeps a staged deletion only while it can still win, and an uncert
       calls: ["undo calendar:standup", "undo reminder:pills", "undo calendar:lost-1", "dismiss reminder:pills", "dismiss calendar:lost-1"],
     },
   ))
+})
+
+it.live("A deleted message, conversation, voicemail or contact is hidden from its list only while its window is queued, and its staging names its own kind (spec/os/android/deletionWindow.md, \"A record waiting in its window is hidden from its list until Undo or the provider settles it\"; spec/os/android/deferredDeletion.md, \"Story: Undo a deleted message, conversation, voicemail or contact\"; spec/os/android/deferredDeletion.md, \"A message, conversation, voicemail or contact is staged only while Android still holds it as I reviewed it\")", () => effect {
+  const phone = device()
+  const deletions = createDeferredDeletions(androidJournal(phone))
+  phone.pendingReply = {
+    pending: [
+      { id: "op-1", kind: "message", phase: "queued", window: "open", target: { id: "sms:11", kind: "sms", threadId: "thread:1", date: 1000 } },
+      { id: "op-2", kind: "thread", phase: "queued", window: "expired", target: { threadId: "thread:2", through: 500 } },
+      { id: "op-3", kind: "voicemail", phase: "queued", window: "clock-changed", target: { id: "13" } },
+      { id: "op-4", kind: "contact", phase: "paused", blocked: "role-required", target: { id: "1", version: "a".repeat(64) } },
+      { id: "op-5", kind: "contact", phase: "undone", target: { id: "2", version: "b".repeat(64) } },
+      { id: "op-6", kind: "calendar", phase: "queued", window: "open", target: { id: "event-1" } },
+    ],
+  }
+  const { deletions: entries } = try promise(() => deletions.pending())
+  const hidden = {
+    message: [...hiddenRecords(entries, "message")],
+    thread: [...hiddenRecords(entries, "thread")],
+    voicemail: [...hiddenRecords(entries, "voicemail")],
+    contact: [...hiddenRecords(entries, "contact")],
+  }
+  const staged = try parseStagedDeletion("ElizaTelephony", "deleteThread", "thread", { id: "op-2", kind: "thread", deadline: { expiresAt: 5 } })
+  const otherKind = try flip(parseStagedDeletion("ElizaTelephony", "deleteThread", "thread", { id: "op-2", kind: "message", deadline: { expiresAt: 5 } }))
+  const undone = try promise(() => deletions.undo({ kind: "ContactRecord", id: "op-5" }))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      kinds: entries.map((entry) => entry.kind), records: entries.map((entry) => entry.record), holds: entries.map((entry) => entry.hold),
+      hidden, titles: entries.map((entry) => deletionNoticeOf(entry)?.title ?? null), staged, otherKind: otherKind instanceof MalformedReply, calls: phone.calls,
+    },
+    {
+      kinds: ["MessageRecord", "ThreadRecord", "VoicemailRecord", "ContactRecord", "ContactRecord", "CalendarEvent"],
+      records: ["sms:11", "thread:2", "13", "1", "2", null],
+      holds: ["NotHeld", "NotHeld", "NotHeld", "HeldProviderDeclined", "NotHeld", "NotHeld"],
+      hidden: { message: ["sms:11"], thread: ["thread:2"], voicemail: [], contact: [] },
+      titles: ["Selected message", "Selected conversation", "Selected voicemail", "Selected contact", null, "Selected calendar"],
+      staged: { kind: "ThreadRecord", id: "op-2", expiresAt: 5 },
+      otherKind: true,
+      calls: ["undo contact:op-5"],
+    },
+  ))
+  try Effect.try(() => assert.deepStrictEqual(undone, { kind: "NotKept", message: DELETION_NOTICE_TEXT.undoUnconfirmed }))
 })
 
 it.live("The action journal reserves an operation once and tells the caller to dispatch, reconcile or rest (spec/os/android/deferredDeletion.md, \"Story: Keep one winner between Undo and the provider\")", () => effect {

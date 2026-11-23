@@ -1,9 +1,9 @@
-// spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard"; spec/agent/voice/session.md, "Story: Show which phase the voice session is in"
+// spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard"; spec/agent/voice/session.md, "Story: Show which phase the voice session is in"; spec/agent/voice/session.md, "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
 module browser {
   import { Effect } from "effect"
   import {
-    Machine, enabled, endOfTurnDeadlineMs, longGapMs, machine, shortGapMs, shownPhase, turnAccepted, voiceChannelType,
-    type Duplex, type EndOfTurnReply, type Event, type InputMode, type VoiceSession as SessionState,
+    Machine, defaultVoiceProfile, enabled, endOfTurnDeadlineMs, machine, shownPhase, turnAccepted, voiceChannelType,
+    type Duplex, type EndOfTurnReply, type Event, type InputMode, type VoiceProfile, type VoiceSession as SessionState,
   } from "../../gen/agent__voice__session.effect.vibe"
   import { createHeardReports } from "./heard-reports.vibe"
   import { endOfTurnText, heardTurnFor } from "./heuristics.vibe"
@@ -39,8 +39,8 @@ module browser {
     get state() { return Effect.runSync(this.#machine.get()) }
     get phase() { return shownPhase(this.state) }
 
-    start(mode: InputMode, duplex: Duplex): void {
-      this.#send({ type: "start", mode, duplex })
+    start(mode: InputMode, duplex: Duplex, profile: VoiceProfile = defaultVoiceProfile): void {
+      this.#send({ type: "start", mode, duplex, profile })
     }
 
     stop(): void {
@@ -140,6 +140,7 @@ module browser {
     #waitForGap(epoch: number, endedAt: number): void {
       const clock = this.ports.clock
       const afterGap = (ms: number) => Math.max(0, endedAt + ms - clock.now())
+      const { shortGapMs, longGapMs } = this.state.profile
       clock.after(afterGap(longGapMs), () => this.#send({ type: "longGapElapsed", epoch }))
       clock.after(afterGap(shortGapMs), () => {
         const { text, units } = endOfTurnText(this.#text)

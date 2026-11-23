@@ -1,10 +1,14 @@
 // spec/cloud/shared/metering.md, "Story: Never overdraw an account"; spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/billing/funds.md, "Story: Spend only money the account has"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"
 import { assert, describe, it } from "@effect/vitest"
+import { drainProviderEvents, webhookPath } from "../src/billing/provider-events.vibe"
+import { observeSubscription, reconcileSubscription } from "../src/billing/subscriptions.vibe"
 import { addCredits, stepFunds } from "../src/billing/funds.vibe"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { holdRows, markDispatched, periodRows, renderHoldKey, reserve, settle, sweepHolds, type HoldOwner, type HoldKey } from "../src/shared/metering.vibe"
 import { stepRow } from "../src/store/rows.vibe"
 import { Store } from "../src/store/store.vibe"
+import { signedCaller } from "./support/caller.vibe"
+import { createStripeFake, type SignedEvent } from "./support/fakes/stripe.ts"
 import { manualClock, shiftedClock } from "./support/clock.ts"
 import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
 
@@ -269,151 +273,77 @@ describe("WP0 Foundation: metering and funds", () => {
   }))
 })
 
-module node {
-  import Stripe from "stripe"
-  import { billingRequest, stripeWebhook } from "../src/billing.vibe"
-  import { openBackupDatabase } from "./support/password-backup.ts"
-
-  export async function reconcileManagedCheckout() {
-    const fixture = await openBackupDatabase()
-    const original = globalThis.fetch
-    try {
-      const first = Math.floor(Date.now() / 1000) - 60
-      const last = first + 2_592_000
-      for (const owner of ["new", "legacy"]) {
-        await fixture.db.query("INSERT INTO organizations (id, name, created_at) VALUES ($1, $1, 1)", [owner])
-        await fixture.db.query("INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $1, 'active', $2, 1, 1)", [owner, owner + "@fixture.test"])
-        await fixture.db.query("INSERT INTO cloud_checkout_customers VALUES ($1, $2, $3)", [owner, "cus_" + owner, owner === "new" ? "cs_new" : null])
-      }
-      await fixture.db.query("INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,updated_at) VALUES ('legacy',$1,7,'active','plus_monthly','cus_legacy','sub_legacy',$2,1)",
-        [JSON.stringify({ customerId: "cus_legacy", subscriptionId: "sub_legacy", planKey: "plus_monthly", status: "active", periodEnd: last * 1000 }), last * 1000])
-      let matched = false
-      let renewalState: "plan-change" | "failed" | "paid" = "plan-change"
-      let refunded = false
-      let dispute: "needs_response" | "won" = "needs_response"
-      let providerCalls = 0
-      const price = {
-        id: "price_fixture", product: { id: "product_fixture", active: true, livemode: false }, livemode: false,
-        active: true, type: "recurring", currency: "usd", unit_amount: 3000, billing_scheme: "per_unit", transform_quantity: null,
-        recurring: { interval: "month", interval_count: 1, usage_type: "licensed", trial_period_days: null },
-      }
-      globalThis.fetch = async (input, init) => {
-        const request = new Request(input, init)
-        const url = new URL(request.url)
-        providerCalls += 1
-        if (url.hostname !== "api.stripe.com") throw new Error("Unrecognized fixture provider")
-        if (url.pathname === "/v1/subscriptions") {
-          const customer = url.searchParams.get("customer")
-          const suffix = customer === "cus_new" ? "new" : "legacy"
-          return Response.json({ data: [{
-            id: "sub_" + suffix, customer, livemode: false, created: first,
-            status: suffix === "new" && renewalState === "failed" ? "past_due" : "active", latest_invoice: "in_" + suffix,
-            cancel_at_period_end: false, items: { has_more: false, data: [{ id: "si_fixture", price, quantity: 1, current_period_start: first, current_period_end: last }] },
-          }], has_more: false })
-        }
-        if (url.pathname === "/v1/prices/price_fixture") return Response.json(price)
-        if (url.pathname.startsWith("/v1/invoices/in_")) {
-          const id = url.pathname.split("/").at(-1) ?? ""
-          const suffix = id.slice(3)
-          const owner = { id, customer: "cus_" + suffix, livemode: false, parent: { subscription_details: { subscription: "sub_" + suffix } } }
-          if (renewalState === "paid" && suffix === "new")
-            return Response.json({ ...owner, status: "paid", amount_paid: 3000, currency: "usd", billing_reason: "subscription_cycle",
-              lines: { data: [{ pricing: { price_details: { price: price.id } }, parent: { subscription_item_details: { subscription_item: "si_fixture", proration: false } },
-                quantity: 1, period: { start: first, end: last } }] } })
-          return Response.json({ ...owner, status: "open", attempted: true, attempt_count: 1, billing_reason: "subscription_update" })
-        }
-        if (url.pathname === "/v1/invoice_payments")
-          return Response.json({ data: [{ amount_paid: 3000, payment: { type: "charge", charge: "ch_fixture" } }], has_more: false })
-        if (url.pathname === "/v1/charges/ch_fixture")
-          return Response.json({ id: "ch_fixture", customer: "cus_new", livemode: false, paid: true, captured: true, currency: "usd", amount_refunded: refunded ? 3000 : 0, disputed: true })
-        if (url.pathname === "/v1/disputes")
-          return Response.json({ data: [{ status: dispute }], has_more: false })
-        if (url.pathname === "/v1/checkout/sessions/cs_new")
-          return Response.json({ id: "cs_new", client_reference_id: "new", customer: "cus_new", livemode: false, mode: "subscription",
-            status: "complete", payment_status: "paid", subscription: matched ? "sub_new" : "sub_foreign",
-            line_items: { has_more: false, data: [{ price, quantity: 1 }] } })
-        throw new Error("Unexpected Stripe fixture request: " + url.pathname)
-      }
-      const env = {
-        STRIPE_SECRET_KEY: "fixture", STRIPE_WEBHOOK_SECRET: "fixture", STRIPE_PRICE_ID: "price_fixture", STRIPE_PRODUCT_ID: "product_fixture",
-        STRIPE_PLAN: "plus_monthly" as const, CLOUD_ENVIRONMENT: "staging" as const, WEB_ORIGIN: "https://fixture.test",
-      }
-      const read = async (owner: string): Promise<unknown> => {
-        const response = await billingRequest(new Request("https://fixture.test/api/v1/billing/subscription"), env, fixture.db, owner)
-        return { status: response.status, body: await response.json() }
-      }
-      const signing = new Stripe(env.STRIPE_SECRET_KEY)
-      const deliver = async (eventType: string, object: object) => {
-        const payload = JSON.stringify({ id: "evt_" + eventType, type: eventType, livemode: false, data: { object } })
-        const signature = signing.webhooks.generateTestHeaderString({ payload, secret: env.STRIPE_WEBHOOK_SECRET })
-        const request = new Request("https://fixture.test/api/v1/billing/webhook", {
-          method: "POST", headers: { "stripe-signature": signature }, body: payload
-        })
-        return (await stripeWebhook(request, new TextEncoder().encode(payload), env, fixture.db)).status
-      }
-      const mappedDispute = (stage: "created" | "closed") => deliver("charge.dispute." + stage, { object: "dispute", charge: "ch_fixture" })
-      const unknownStatuses = [
-        await deliver("refund.created", { object: "refund", charge: "ch_foreign" }),
-        await mappedDispute("created"),
-        await deliver("charge.refunded", { object: "charge", id: "ch_foreign", customer: "cus_foreign" })
-      ]
-      const unknownProviderCalls = providerCalls
-      const unrelated = await read("new")
-      matched = true
-      const paid = await read("new")
-      const legacy = await read("legacy")
-      const beforeRenewal = await fixture.db.query("SELECT key FROM allowance_periods")
-      renewalState = "failed"
-      const failed = await read("new")
-      const dunning = async () => (await fixture.db.query("SELECT status,dunning_started_at,dunning_ends_at FROM subscriptions WHERE key='new'")).rows[0]
-      const firstDunning = await dunning()
-      renewalState = "plan-change"
-      const planChange = await read("new")
-      const afterPlanChange = await dunning()
-      renewalState = "paid"
-      const disputedRenewal = await read("new")
-      const beforeResolution = (await fixture.db.query("SELECT key FROM allowance_periods")).rows
-      dispute = "won"
-      const resolved = await mappedDispute("closed")
-      const replay = await mappedDispute("closed")
-      const paidReplay = await read("new")
-      const rows = await fixture.db.query("SELECT key,status,provider_subscription_id,state->>'lastRenewalInvoice' AS renewal FROM subscriptions ORDER BY key")
-      const allowances = await fixture.db.query("SELECT key FROM allowance_periods")
-      const allowanceStatus = async () => (await fixture.db.query("SELECT status FROM allowance_periods WHERE key = 'invoice/in_new'")).rows
-      dispute = "needs_response"
-      const reopened = await mappedDispute("created")
-      const disputeClawback = await allowanceStatus()
-      dispute = "won"
-      const restored = await mappedDispute("closed")
-      const disputeRestore = await allowanceStatus()
-      refunded = true
-      const mappedRefund = await deliver("refund.updated", { object: "refund", charge: "ch_fixture" })
-      const seen = await fixture.db.query("SELECT charge_id,customer_id FROM cloud_stripe_charge_owners")
-      const refundClawback = await allowanceStatus()
-      return { unrelated, paid, legacy, disputedRenewal, paidReplay, beforeRenewal: beforeRenewal.rows, rows: rows.rows, allowances: allowances.rows,
-        failed, planChange, stableDunning: firstDunning?.status === "dunning" && afterPlanChange?.status === "dunning" &&
-          firstDunning.dunning_started_at === afterPlanChange.dunning_started_at && firstDunning.dunning_ends_at === afterPlanChange.dunning_ends_at,
-        unknownStatuses, unknownProviderCalls, beforeResolution, deliveries: [resolved, replay, reopened, restored, mappedRefund], owners: seen.rows, outcomes: [disputeClawback, disputeRestore, refundClawback] }
-    } finally {
-      globalThis.fetch = original
-      await fixture.close()
-    }
-  }
-}
-import { reconcileManagedCheckout } from node
-
-it.live('Follow the verified Checkout and scope shared charge events (spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/providerEvents.md, "Each event type has one owner, and an event of any other type is done at its first handling")', () => effect {
-  const result = try tryPromise(() => reconcileManagedCheckout())
-  const entitled = { status: 200, body: { status: "active", canManage: true, canCheckout: false } }
-  const unpaid = { status: 200, body: { status: "inactive", canManage: true, canCheckout: false } }
-  try check(() => assert.deepStrictEqual(result, {
-    unrelated: { status: 200, body: { status: "inactive", canManage: true, canCheckout: false } },
-    paid: entitled, legacy: entitled, paidReplay: entitled, beforeRenewal: [],
-    failed: unpaid, planChange: unpaid, disputedRenewal: unpaid, stableDunning: true,
-    rows: [{ key: "legacy", status: "active", provider_subscription_id: "sub_legacy", renewal: "" },
-      { key: "new", status: "active", provider_subscription_id: "sub_new", renewal: "in_new" }],
-    allowances: [{ key: "invoice/in_new" }], unknownStatuses: [204, 204, 204], unknownProviderCalls: 0, beforeResolution: [],
-    deliveries: [204, 204, 204, 204, 204], owners: [{ charge_id: "ch_fixture", customer_id: "cus_new" }],
-    outcomes: [[{ status: "clawed_back" }], [{ status: "open" }], [{ status: "clawed_back" }]],
+it.live('Follow the verified Checkout and scope shared charge events (spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/providerEvents.md, "Each event type has one owner, and an event of any other type is done at its first handling")', () => scoped(effect {
+  const stripe = try sync(() => createStripeFake())
+  const cloud = try testCloud({ stripe })
+  const owner = try signedCaller(cloud, "verified-checkout")
+  const legacy = try signedCaller(cloud, "legacy-checkout")
+  const path = "/api/v1/subscriptions/checkout"
+  const OpenCheckout = Schema.Struct({ sessionId: Schema.String })
+  const buildCheckout = (headers: Readonly<Record<string, string>>, idempotencyKey: string) =>
+    cloud.call(path, { headers, json: { planKey: "plus_monthly", presentation: "shared", idempotencyKey } })
+  const confirm = (sessionId: string, headers: Readonly<Record<string, string>>) =>
+    cloud.call(path + "/confirm", { headers, json: { sessionId } })
+  const opened = try buildCheckout(owner.headers, "verified-checkout-current")
+  const { sessionId } = try Schema.decodeUnknownEffect(OpenCheckout)(opened.body)
+  const completed = try sync(() => stripe.completeSession(sessionId))
+  if (completed.kind !== "paid") return try Effect.die("The provider fixture did not pay for Checkout")
+  const refused = try confirm(sessionId, legacy.headers)
+  const beforeConfirm = try sql(cloud, "SELECT status FROM subscriptions WHERE key=$1", [owner.organizationId])
+  const confirmed = try confirm(sessionId, owner.headers)
+  const confirmedAgain = try confirm(sessionId, owner.headers)
+  const legacyOpened = try buildCheckout(legacy.headers, "verified-checkout-legacy")
+  const legacySession = (try Schema.decodeUnknownEffect(OpenCheckout)(legacyOpened.body)).sessionId
+  const old = try sync(() => stripe.completeSession(legacySession))
+  const legacyConfirmed = try confirm(legacySession, legacy.headers)
+  const legacyState = { customerId: old.subscription.customer, subscriptionId: old.subscription.id,
+    planKey: "plus_monthly", status: "active", periodEnd: old.subscription.current_period_end * 1000 }
+  try sql(cloud, "UPDATE subscriptions SET state=$2::jsonb WHERE key=$1", [legacy.organizationId, JSON.stringify(legacyState)])
+  const now = try Clock.currentTimeMillis
+  const recovered = try cloud.inside(cloud.store.transaction(effect (tx) => {
+    const checked = try observeSubscription(tx, legacy.organizationId)
+    return try reconcileSubscription(tx, legacy.organizationId, checked, now)
   }))
-})
+  const refresh = (at: number, status: "active" | "past_due", latestInvoice: "PlanChangeInvoice" | "PeriodInvoiceFailed") =>
+    cloud.inside(cloud.store.transaction(effect (tx) => {
+      const checked = try observeSubscription(tx, owner.organizationId)
+      return try reconcileSubscription(tx, owner.organizationId, { ...checked, status, latestInvoice, payment: undefined }, at)
+    }))
+  const failed = try refresh(now + 1_000, "past_due", "PeriodInvoiceFailed")
+  const planChange = try refresh(now + 2_000, "active", "PlanChangeInvoice")
+
+  const deliver = effect (event: SignedEvent) => {
+    const json: unknown = try Effect.try(() => JSON.parse(event.raw))
+    const answer = try cloud.call(webhookPath, { json, headers: { "stripe-signature": event.header } })
+    try cloud.inside(drainProviderEvents(try Clock.currentTimeMillis))
+    return [answer.status, answer.body]
+  }
+  const allowanceKey = "renewal/staging/" + completed.invoice.id
+  const allowance = () => sql(cloud, "SELECT status FROM allowance_periods WHERE key=$1 AND organization_id=$2", [allowanceKey, owner.organizationId])
+  const beforeUnknown = try allowance()
+  const upstreamBefore = cloud.fakes.seen.length
+  const unknown = try deliver(try sync(() => stripe.signedEvent("refund.created", { object: "refund", charge: "ch_foreign" })))
+  const ignored = cloud.fakes.seen.length === upstreamBefore
+  const withdrawal = try sync(() => stripe.disputeCharge(completed.charge.id))
+  const dispute = try deliver(try sync(() => stripe.signedEvent("charge.dispute.funds_withdrawn", withdrawal)))
+  const clawed = try allowance()
+  const restoredDispute = try sync(() => stripe.resolveDispute(withdrawal.id, "won"))
+  const returned = try deliver(try sync(() => stripe.signedEvent("charge.dispute.funds_reinstated", restoredDispute)))
+  const restored = try allowance()
+  const refund = try sync(() => stripe.refundCharge(completed.charge.id))
+  const refundEvent = try sync(() => stripe.signedEvent("charge.refunded", refund))
+  const refundDelivery = try deliver(refundEvent)
+  const refundReplay = try deliver(refundEvent)
+  const afterRefund = try allowance()
+  const otherAllowance = try sql(cloud, "SELECT status FROM allowance_periods WHERE organization_id=$1", [legacy.organizationId])
+  const queued = [200, { received: true, queued: true }]
+  try check(() => {
+    assert.deepStrictEqual([refused.status, beforeConfirm, confirmed.status, confirmedAgain.body, legacyConfirmed.status, recovered.status],
+      [404, [{ status: "none" }], 200, confirmed.body, 200, "Active"])
+    assert.deepStrictEqual([failed.status, planChange.status, planChange.dunning], ["Dunning", "Dunning", failed.dunning])
+    assert.deepStrictEqual([unknown, dispute, returned, refundDelivery, refundReplay, ignored],
+      [queued, queued, queued, queued, [200, { received: true, duplicate: true }], true])
+    assert.deepStrictEqual([beforeUnknown, clawed, restored, afterRefund, otherAllowance],
+      [[{ status: "open" }], [{ status: "clawed_back" }], [{ status: "open" }], [{ status: "clawed_back" }], [{ status: "open" }]])
+  })
+}), 90_000)

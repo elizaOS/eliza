@@ -3,52 +3,13 @@ import { answerAt, connectedOnCloud, pageHeaders, payerPath, readOf, type Page, 
 import type { ReturnPurpose } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import { Refused } from "../http/refusal.vibe"
 import type { Route, RouteContext } from "../http/routes.vibe"
-import { forwardScriptHash, pageFile, pageSlots, type PageSlot, type PageTemplate } from "../pages/forward-script.ts"
+import { forwardScriptHash, pageFile, pageSlots, styleHashes, type PageSlot, type PageTemplate } from "../pages/forward-script.ts"
+import { PageTemplates } from "../pages/templates.vibe"
 import { Deployment, rowOf } from "../profile/profile.vibe"
-import { Store } from "../store/store.vibe"
+import { Store } from "../store/connection.vibe"
 import { readRegistry } from "./registry.vibe"
 
-module node {
-  import { createHash } from "node:crypto"
-  import { readFile } from "node:fs/promises"
-
-  export interface Template {
-    readonly source: string
-    readonly styleHashes: ReadonlyArray<string>
-  }
-
-  const templates = new Map<string, Promise<Template | undefined>>()
-
-  /** @throws {unknown} */
-  async function source(root: URL, file: string): Promise<string | undefined> {
-    for (const base of ["pages/", "dist/pages/"]) {
-      const text = await readFile(new URL(base + file, root), "utf8").catch(() => undefined)
-      if (text !== undefined) return text
-    }
-    const { renderPages } = await import("../pages/render.tsx")
-    return renderPages("").find((page) => page.fileName === file)?.source
-  }
-
-  /** @throws {unknown} */
-  async function load(root: URL, file: string): Promise<Template | undefined> {
-    const text = await source(root, file)
-    if (text === undefined) return undefined
-    const styles = [...text.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((found) => `'sha256-${createHash("sha256").update(found[1] ?? "").digest("base64")}'`)
-    return { source: text, styleHashes: styles }
-  }
-
-  /** @throws {unknown} */
-  export function pageTemplate(root: URL, file: string): Promise<Template | undefined> {
-    const known = templates.get(file) ?? load(root, file)
-    templates.set(file, known)
-    return known
-  }
-}
-import { pageTemplate, type Template } from node
-
 error PageTemplateMissing { file: string }
-
-const packageRoot = new URL("../../", import.meta.url)
 
 const returnPurpose: Readonly<Record<Exclude<PagePurpose, "ConnectedPage">, ReturnPurpose>> = {
   SignInPage: "SignInPurpose",
@@ -79,10 +40,11 @@ function shown(page: Page): Shown {
   }
 }
 
-function contentPolicy(page: Page, template: Template): string {
+function contentPolicy(page: Page, source: string): string {
   const headers = pageHeaders(page)
+  const hashes = styleHashes(source)
   const script = headers.script === "PinnedScript" ? ` script-src '${forwardScriptHash}';` : ""
-  const style = template.styleHashes.length === 0 ? "" : ` style-src ${template.styleHashes.join(" ")};`
+  const style = hashes.length === 0 ? "" : ` style-src ${hashes.join(" ")};`
   return `default-src 'none';${script}${style} base-uri 'none'; form-action ${headers.formAction}; frame-ancestors ${headers.frameAncestors}`
 }
 
@@ -91,9 +53,10 @@ effect function pageResponse(answer: PageAnswer) {
   const { page } = answer
   const { template, slots } = shown(page)
   const file = try sync(() => pageFile(template))
-  const loaded = try tryPromise({ try: () => pageTemplate(packageRoot, file), catch: () => new PageTemplateMissing({ file }) })
+  const templates = try PageTemplates
+  const loaded = try tryPromise({ try: () => templates.read(file), catch: () => new PageTemplateMissing({ file }) })
   if (loaded === undefined) throw new PageTemplateMissing({ file })
-  const html = Object.entries(slots).reduce((text, [slot, value]) => text.replaceAll(pageSlots[slot as PageSlot], escaped(value)), loaded.source)
+  const html = Object.entries(slots).reduce((text, [slot, value]) => text.replaceAll(pageSlots[slot as PageSlot], escaped(value)), loaded)
   const headers = pageHeaders(page)
   return HttpServerResponse.text(html, {
     contentType: "text/html; charset=utf-8",

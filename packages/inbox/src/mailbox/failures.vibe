@@ -1,0 +1,103 @@
+// spec/inbox/failures.md, "A failure is classified by the client's own refusal first, then by being offline, then by Cloud's code and status"; spec/inbox/failures.md, "An offline or unavailable change never claims that nothing changed"; spec/inbox/failures.md, "A disconnect is asked for once and then read back"; spec/inbox/outgoing.md, "A saved attachment of any type is a checked byte copy, never opened"
+import {
+  changeMayHaveLanded, changeSaysNothingChanged, classifyFailure, disconnectOutcome,
+  type CloudCode, type DisconnectOutcome, type FailureKind, type FailureSource, type ReadBack,
+} from "../../gen/inbox__failures.effect.vibe"
+import type { GmailAccount } from "./types.vibe"
+
+/** Cloud answered with a refusal (`http`, its status and refusal code) or with a body this client could not read. */
+export error MailProtocolFailed { code: "invalid-response" | "http"; status: number; reason: string }
+
+/** The request did not reach Cloud, or its answer was lost. */
+export error MailUnreachable { cause: unknown }
+
+/** This client refused a file's bytes, name or size; a retry would get the same file. */
+export error AttachmentRefused { detail: string }
+
+/** Every way a managed Gmail request fails. */
+export type MailFailure = MailProtocolFailed | MailUnreachable | AttachmentRefused
+
+/** The two contexts whose failures say different things. */
+export type GmailFailureContext = "read" | "operation"
+
+/** What the owner is told a failed request means. */
+export type GmailFailureKind = "offline" | "revoked" | "stale" | "gone" | "unavailable" | "refused" | "rejected"
+
+const kindNames = {
+  OfflineFailure: "offline", RevokedFailure: "revoked", StaleFailure: "stale", GoneFailure: "gone",
+  UnavailableFailure: "unavailable", RefusedFailure: "refused", RejectedFailure: "rejected",
+} as const satisfies Record<FailureKind, GmailFailureKind>
+
+const kindOfName = new Map(Object.entries(kindNames).map(([kind, name]) => [name, kind as FailureKind]))
+
+const cloudCodes: ReadonlyMap<string, CloudCode> = new Map<string, CloudCode>([
+  ["google_reauth_required", "ReauthCode"],
+  ["stale_revision", "StaleCode"],
+  ["not_found", "NotFoundCode"],
+])
+
+/** Whether a failure is this client's own refusal of a file. */
+export function attachmentRefused(error: unknown): error is AttachmentRefused {
+  return error instanceof AttachmentRefused || (typeof error === "object" && error !== null && "_tag" in error && error._tag === "AttachmentRefused")
+}
+
+/** The transport code, HTTP status and Cloud refusal code of a protocol failure, or null for any other failure. */
+export function protocolFailure(error: unknown): { readonly code: "invalid-response" | "http"; readonly status: number; readonly reason?: string } | null {
+  if (!(error instanceof MailProtocolFailed)) return null
+  return { code: error.code, status: error.status, ...(error.reason === "" ? {} : { reason: error.reason }) }
+}
+
+function sourceOf(error: unknown): FailureSource {
+  if (attachmentRefused(error)) return { tag: "AttachmentRefusal" }
+  if (error instanceof MailProtocolFailed) {
+    if (error.code === "invalid-response") return { tag: "UnreadableAnswer" }
+    return { tag: "CloudRefusal", status: error.status, code: error.reason === "" ? "NoCloudCode" : cloudCodes.get(error.reason) ?? "OtherCode" }
+  }
+  if (error instanceof MailUnreachable) return { tag: "ConnectionLost" }
+  return { tag: "OtherFault" }
+}
+
+/** Classifies a failed Gmail read or reviewed change; `online` is the device's own connectivity. */
+export function classifyGmailFailure(error: unknown, context: GmailFailureContext, online: boolean): GmailFailureKind {
+  return kindNames[classifyFailure(sourceOf(error), context === "read" ? "ReadContext" : "OperationContext", online)]
+}
+
+/** Whether a failed change may say that nothing was changed. */
+export function failureSaysNothingChanged(kind: GmailFailureKind): boolean {
+  const modelled = kindOfName.get(kind)
+  return modelled !== undefined && changeSaysNothingChanged(modelled)
+}
+
+/** Whether a failed change may still have reached Gmail, so its receipt must be checked. */
+export function failureMayHaveLanded(kind: GmailFailureKind): boolean {
+  const modelled = kindOfName.get(kind)
+  return modelled !== undefined && changeMayHaveLanded(modelled)
+}
+
+/** A downloaded attachment that failed this client's checks, or that Cloud called too large, is a refusal of that file. */
+export function attachmentReadFailure<E>(error: E): E | AttachmentRefused {
+  const failure = protocolFailure(error)
+  return failure?.code === "invalid-response" || (failure?.code === "http" && failure.status === 413)
+    ? new AttachmentRefused({ detail: "The attachment does not match its type or is too large" })
+    : error
+}
+
+/** The outcome of one explicit disconnect and its read-back. */
+export type GmailDisconnectOutcome = "disconnected" | "still-connected" | "unconfirmed"
+
+const outcomeNames = { Disconnected: "disconnected", StillConnected: "still-connected", DisconnectUnconfirmed: "unconfirmed" } as const satisfies Record<DisconnectOutcome, GmailDisconnectOutcome>
+
+/** The two calls a disconnect makes. */
+export interface GmailDisconnectClient {
+  disconnectGmail(connectionId: string): void!MailFailure
+  gmailAccounts(): GmailAccount[]!MailFailure
+}
+
+/** Asks Cloud once to disconnect the account, then reads the account list back; never retried. */
+export effect function disconnectGmailAccount(client: GmailDisconnectClient, connectionId: string) {
+  const requestAnswered = Effect.as(client.disconnectGmail(connectionId), true) catch () => false
+  const accounts: GmailAccount[] | null = client.gmailAccounts() catch () => null
+  const readBack: ReadBack = accounts === null ? "ListUnreadable"
+    : accounts.some((account) => account.connectionId === connectionId && account.connected) ? "ListShowsConnected" : "ListShowsDisconnected"
+  return { outcome: outcomeNames[disconnectOutcome(requestAnswered, readBack)], accounts }
+}

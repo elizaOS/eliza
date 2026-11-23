@@ -1,7 +1,9 @@
-// spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"
+// spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"
 import { assert, it } from "@effect/vitest"
 import type { Memory, UUID } from "@elizaos/core"
-import { held, insufficientCredits, text, type CloudFake } from "./support/cloud-fake.ts"
+import { held, insufficientCredits, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { Scratch } from "./support/scratch.ts"
 import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
@@ -13,6 +15,7 @@ interface Reply {
   readonly userMessageId: string
   readonly actionResults: readonly unknown[]
   readonly failureKind?: string
+  readonly action?: { readonly kind: string; readonly validatedCard: boolean; readonly verbatimAsked: boolean }
 }
 
 module node {
@@ -162,4 +165,46 @@ it.live('The boundary refuses a malformed body, client id or voice view context,
       unavailable: { status: 503, body: { error: "INFERENCE_UNAVAILABLE" } },
       stored: 0,
     }))
+}, 120_000)
+
+const planning = 'spec/agent/conversation/planning.md'
+
+it.live(`An allowed action runs as a tool, its result grounds the reply, a failure the turn proved is reported, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const { id } = try conversation(agent)
+
+  try Effect.sync(() => cloud.script(toolCalls("Let me check.", { name: "CALCULATE", arguments: { expression: "3847 * 292" } }), text("That is 1,123,324.")))
+  const solved = replyOf(try send(agent, id, { text: "What is 3847 times 292?" }))
+  const [asked, grounded] = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).slice(-2).map(({ body }) => body as { tools?: { function?: { name?: string } }[]; messages: { role: string; content?: unknown }[] })
+
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!")))
+  const failed = replyOf(try send(agent, id, { text: "Add two plus two." }))
+
+  try Effect.sync(() => cloud.script(text("One sec."), text("One second is 1,000 milliseconds.")))
+  const duration = replyOf(try send(agent, id, { text: "How long is a second?" }))
+
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "12 * 3" } }), text("It is 36.")))
+  const spoken = replyOf(try send(agent, id, { text: "Read me the number for 12 times 3.", channelType: "VOICE_DM" }))
+
+  try Effect.try(() => assert.deepStrictEqual({
+    offered: asked?.tools?.map((tool) => tool.function?.name),
+    toolResult: grounded?.messages.some(({ role, content }) => role === "tool" && typeof content === "string" && content.includes("1123324")),
+    solved: solved.text,
+    actions: solved.actionResults.map((entry) => (entry as { action: string }).action),
+    failureReported: failed.text.startsWith("Done!") && failed.text.length > "Done!".length,
+    duration: duration.text,
+    labels: { text: solved.action, voice: spoken.action },
+  }, {
+    offered: ["CALCULATE"],
+    toolResult: true,
+    solved: "That is 1,123,324.",
+    actions: ["CALCULATE"],
+    failureReported: true,
+    duration: "One second is 1,000 milliseconds.",
+    labels: { text: undefined, voice: { kind: "CALCULATE", validatedCard: false, verbatimAsked: true } },
+  }))
 }, 120_000)
