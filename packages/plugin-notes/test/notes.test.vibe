@@ -4,7 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { negotiation, validate, type DeviceOperation, type DeviceTurn, type EarlierRequest } from "@elizaos/agent/device-actions"
 import type { LocalRoute } from "@elizaos/agent/routes"
 import { bindIncomingMessagePersistence, stringToUuid, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
-import { notesPlugin, notesRoutes } from "../src/agent.vibe"
+import { notesModule, notesModuleName, notesPlugin, notesRoutes } from "../src/agent.vibe"
 import { notesDeviceFamily } from "../src/device-proposals.vibe"
 import { namedNoteReadEvaluator, notesRequestEffectField } from "../src/request-effect.vibe"
 import { createNotesClient, noteScheduleText, recordNoteOriginFor } from "../src/client.vibe"
@@ -18,7 +18,9 @@ import { NotesReadRefused, selectedNotes, type NotesAuthority, type NotesClaim, 
   type NotesReadPorts, type NotesTarget } from "../src/selected-read.vibe"
 import { notesCollection, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
 import type { NotesStorage } from "../src/store.vibe"
-import type { StickyNote } from "../src/types.vibe"
+import type { NotesSnapshot, StickyNote } from "../src/types.vibe"
+import { call, cloudFake, deviceKey, startInProcess } from "../../agent/test/support/kernel.vibe"
+import { text as modelText, toolCalls } from "../../agent/test/support/cloud-fake.ts"
 
 const day = 86_400_000
 const start = Date.parse("2026-11-20T10:00:00.000Z")
@@ -179,6 +181,64 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(try code(notes.update({ id: camp.value.note.id }, { authoredEdit: oversized }, camp.snapshot.revision)), "NOTES_VALIDATION_FAILED")
   assert.equal((try notes.snapshot()).revision, camp.snapshot.revision)
 })
+
+it.live('A named move through owner chat moves both copies in one revision and requires a write request (spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/agent/conversation/planning.md, "The live owner turn classifies a Notes write from its original conversation before dispatch")', effect () => {
+  const model = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: model.origin }, load: [notesModuleName], allowed: ["REPLY", "IGNORE", "NONE", "NOTES_MOVE"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map([[notesModuleName, { name: notesModuleName, description: "Notes hosted module" }]]),
+    modules: new Map([[notesModuleName, notesModule]]),
+  })
+  for (let copy = 0; copy < 2; copy += 1) {
+    const created = try call(agent, { method: "POST", path: "/api/notes/interact", body: {
+      capability: "create-note", params: { content: "Packing\nBatteries", forceNew: true },
+    } })
+    assert.propertyVal(created, "status", 200)
+  }
+  const state = () => call(agent, { method: "GET", path: "/api/notes/state" })
+  const before = try state()
+  const opened = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
+  if (!("json" in opened) || opened.status !== 201) return try Effect.die(new Error(`Conversation did not open: ${JSON.stringify(opened)}`))
+  const { conversation: { id } } = opened.json as { conversation: { id: string } }
+  const path = `/api/conversations/${id}/messages`
+  const metadata = { notesFolders: [{ id: "travel", name: "Travel" }] }
+  const request = { text: "Move my Packing note to Travel.", metadata, clientMessageId: "named-move" }
+  const move = (folder: string | null) => toolCalls("", { name: "NOTES_MOVE", arguments: { content: "Packing", folder } })
+  try sync(() => model.script(
+    move("Travel"), modelText('{"notesRequestEffect":{"classification":"mutation_requested","operations":["update"]}}'),
+    modelText("I moved the Packing note to Travel."),
+  ))
+  const accepted = try call(agent, { method: "POST", path, body: request })
+  const replay = try call(agent, { method: "POST", path, body: request })
+  const afterMove = try state()
+  try sync(() => model.script(
+    move(null), modelText('{"notesRequestEffect":{"classification":"read_only","operations":["get"]}}'),
+    modelText("Nothing changed."), modelText('{"grounded":true,"claims":[]}'),
+  ))
+  const refused = try call(agent, { method: "POST", path, body: { text: "Read my Packing note.", metadata } })
+  const afterRead = try state()
+  try Effect.try(() => {
+    for (const answer of [before, accepted, replay, afterMove, refused, afterRead]) assert.propertyVal(answer, "status", 200)
+    const bodyOf = (answer: typeof accepted) => {
+      if (!("json" in answer)) throw new Error("The owner route returned no response body")
+      return answer.json
+    }
+    const stateOf = (answer: typeof before) => (bodyOf(answer) as { data: NotesSnapshot }).data
+    const ids = (notes: NotesSnapshot) => notes.notes.map(({ id }) => id).sort()
+    const start = stateOf(before)
+    const moved = stateOf(afterMove)
+    assert.strictEqual(start.notes.length, 2)
+    assert.deepStrictEqual(ids(moved), ids(start))
+    assert.strictEqual(moved.revision, start.revision + 1)
+    assert.deepStrictEqual(moved.notes.map(({ format }) => format?.data.folderId), ["travel", "travel"])
+    assert.deepStrictEqual(stateOf(afterRead), moved)
+    const messageId = (answer: typeof accepted) => (bodyOf(answer) as { messageId: string }).messageId
+    assert.strictEqual(messageId(accepted), messageId(replay))
+    const refusedActions = (bodyOf(refused) as { actionResults: Array<{ data: { executionStatus?: string } }> }).actionResults
+    assert.deepStrictEqual(refusedActions.map(({ data }) => data.executionStatus), ["not_started"])
+  })
+}, 120_000)
 
 it.effect('Restore a deleted note exactly, at the revision the owner saw (spec/notes/trash.md, "Story: Recover a deleted note")', effect () => {
   const f = fixture()
