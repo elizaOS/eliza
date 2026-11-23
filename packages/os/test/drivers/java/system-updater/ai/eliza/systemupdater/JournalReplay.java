@@ -42,6 +42,22 @@ public final class JournalReplay {
             }
             checked++;
         }
+        Path files = Files.createTempDirectory("system-update-files");
+        String withdrawn = "b".repeat(64);
+        for (String name : new String[]{digest + ".zip", digest + ".payload", withdrawn + ".zip",
+                withdrawn + ".payload", withdrawn + ".partial", "journal"}) Files.writeString(files.resolve(name), name);
+        UpdateChannel.keepOnly(files.toFile(), digest);
+        try (var kept = Files.list(files)) {
+            if (kept.count() != 3 || !Files.exists(files.resolve(digest + ".payload"))) {
+                throw new AssertionError("A withdrawn candidate's files outlived the journal");
+            }
+        }
+        UpdateChannel.keepOnly(files.toFile(), "");
+        try (var kept = Files.list(files)) {
+            if (!kept.map(Path::getFileName).map(Path::toString).toList().equals(java.util.List.of("journal"))) {
+                throw new AssertionError("A settled journal kept its candidate's files");
+            }
+        }
         System.out.println("PASS " + checked + " production journal states");
     }
 }

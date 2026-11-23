@@ -8,7 +8,9 @@ on develop) and the decisions its single job makes around it
 (`UpdateRunner.java`, `UpdateChannel.java`, `PackageVerifier.java`,
 `EngineInstaller.java`). The shell writes each journal state atomically and
 reads it back before it calls Android, so a process death never repeats an
-apply or a restart. Whether the image includes the updater, and its
+apply or a restart. Each job deletes the package, payload and partial files
+of every candidate except the one an unsettled journal names, so a settled
+or withdrawn candidate never keeps the storage the next update needs. Whether the image includes the updater, and its
 enrollment overlay (manifest URL, hosts, product, device, OTA certificate),
 belong to `image/product.md`; boot checks of SELinux, the bootloader and
 verified boot belong to `update/operator.md`, never to the device.
