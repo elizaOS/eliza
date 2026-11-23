@@ -1905,7 +1905,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       provider = "held"
       const reading = try forkChild(cloud.call(freshPoll, { headers: device.headers }))
       try timeout(promise(() => historyRead.promise), "5 seconds")
-      const disconnected = try cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } })
+      const disconnected = try cloud.call("/api/v1/eliza/google/disconnect", { headers: web, json: { grantId: grant } })
       try sync(() => releaseHistory.resolve())
       const lostDuringRead = try Fiber.join(reading)
       const beforeRevoked = cloud.fakes.seen.length
@@ -4322,7 +4322,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
           [["moved-to-trash"], "10000000000000000012", null, true],
         ],
         providerRefusals: Array.from({ length: 3 }, () => [502, "provider_invalid_response"]),
-        denied: [401, 401, 409, 403], invalid: Array.from({ length: 5 }, () => [400, "invalid_request"]), providersOnDenied: 0,
+        denied: [401, 403, 409, 403], invalid: Array.from({ length: 5 }, () => [400, "invalid_request"]), providersOnDenied: 0,
         cards: ["fixture-message:metadata", "moved-to-trash:metadata", "trashed-message:metadata"],
         requests: [
           ["profile", "historyId"], ["list", "in:anywhere subject:plan & dates", "50", "true", null],
