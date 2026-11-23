@@ -43,7 +43,7 @@ async function runOne(runtime: AgentRuntime, evaluator: RegisteredEvaluator, mes
   } else {
     const modelType = evaluator.modelType?.trim().toUpperCase() ?? ModelType.TEXT_SMALL
     if (!isTextGenerationModelType(modelType)) throw new Error(`Unsupported evaluator model type: ${evaluator.modelType}`)
-    raw = outputOf(await runtime.useModel(modelType, { prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, signal }))
+    raw = outputOf(await runtime.useModel(modelType, { prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, reasoning: "off", signal }))
   }
   const output = evaluator.parse === undefined ? raw : evaluator.parse(raw, { ...prompted, outputSource: resolved ? "resolved" : "model" })
   if (output === null || output === undefined) return

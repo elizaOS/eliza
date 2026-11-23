@@ -174,6 +174,32 @@ pure def lawToolCallsAreNeverDroppedForText(ask: ChatAsk, answer: ChatAnswer): b
   (answer.toolCalls > 0 and not(wantsResult(ask))) implies chatReturn(ask, answer) == AnswerText
 ```
 
+### A call that asks for little or no reasoning sends the effort its model accepts, and any other call leaves the model's effort alone
+
+Planning rounds, turn evaluators and reply drafts ask for no reasoning; a
+model that reasons by default would otherwise spend the call's tokens and
+time thinking. A hint sets `reasoning_effort` only for a model known to take
+it: off is `none` for Qwen 3.8 27B, GLM 4.7 and Gemma 4 31B and `low` for
+GPT-OSS 120B, the least it accepts, and low is `low` for Qwen 3.8 27B and
+GPT-OSS 120B. The cloud names these models with a `cerebras/` prefix.
+
+```quint
+type ReasoningHint = NoReasoningHint | ReasonLittle | ReasonOff
+type ReasoningEffort = ModelDefaultEffort | EffortOf({ effort: str })
+pure val littleReasoningModels: Set[str] = Set("qwen-3.8-27b", "cerebras/qwen-3.8-27b", "gpt-oss-120b", "cerebras/gpt-oss-120b")
+pure val reasoningOffModels: Set[str] = Set("qwen-3.8-27b", "cerebras/qwen-3.8-27b", "zai-glm-4.7", "cerebras/zai-glm-4.7", "gemma-4-31b", "cerebras/gemma-4-31b")
+pure val leastLowModels: Set[str] = Set("gpt-oss-120b", "cerebras/gpt-oss-120b")
+pure def reasoningEffortFor(hint: ReasoningHint, model: str): ReasoningEffort = match hint {
+  | NoReasoningHint => ModelDefaultEffort
+  | ReasonLittle => if (littleReasoningModels.contains(model)) EffortOf({ effort: "low" }) else ModelDefaultEffort
+  | ReasonOff => if (reasoningOffModels.contains(model)) EffortOf({ effort: "none" }) else if (leastLowModels.contains(model)) EffortOf({ effort: "low" }) else ModelDefaultEffort
+}
+pure val hintValues = Set(NoReasoningHint, ReasonLittle, ReasonOff)
+pure val modelValues = Set("qwen-3.8-27b", "cerebras/qwen-3.8-27b", "cerebras/gpt-oss-120b", "gemma-4-31b", "gpt-4o", "")
+pure def lawOnlyAKnownModelIsSentAnEffort(hint: ReasoningHint, model: str): bool =
+  reasoningEffortFor(hint, model) != ModelDefaultEffort implies (hint != NoReasoningHint and littleReasoningModels.union(reasoningOffModels).union(leastLowModels).contains(model))
+```
+
 ## Story: Keep the account state honest
 
 > As the owner, I want to see why my agent cannot answer, from what the

@@ -1,8 +1,8 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call that asks for little or no reasoning sends the effort its model accepts, and any other call leaves the model's effort alone"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { chatReturn, failureOf, outcomeOf, retryAtOf, type ChatAsk, type ChatReturn, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
+import { chatReturn, failureOf, outcomeOf, reasoningEffortFor, retryAtOf, type ChatAsk, type ChatReturn, type ModelHandler, type ReasoningHint } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
@@ -443,9 +443,12 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
   return answer
 }
 
-function requestOf(endpoint: Endpoint, agentId: string, params: GenerateTextParams): object | undefined {
+const hints: Readonly<Record<NonNullable<GenerateTextParams["reasoning"]>, ReasoningHint>> = { low: { tag: "ReasonLittle" }, off: { tag: "ReasonOff" } }
+
+function requestOf(endpoint: Endpoint, handler: ChatHandler, agentId: string, params: GenerateTextParams): object | undefined {
   const messages = conversation(params)
   if (messages === undefined) return undefined
+  const effort = reasoningEffortFor(params.reasoning === undefined ? { tag: "NoReasoningHint" } : hints[params.reasoning], endpoint.models[handler] ?? "")
   const max = params.omitMaxTokens ? undefined : params.maxTokens
   const tools = toolsOf(params.tools)
   const toolChoice = toolChoiceOf(params.toolChoice)
@@ -462,6 +465,7 @@ function requestOf(endpoint: Endpoint, agentId: string, params: GenerateTextPara
     ...(tools === undefined ? {} : { tools }),
     ...(toolChoice === undefined || tools === undefined ? {} : { tool_choice: toolChoice }),
     ...(format === undefined ? {} : { response_format: format }),
+    ...(effort.tag === "EffortOf" ? { reasoning_effort: effort.effort } : {}),
     prompt_cache_key: agentId,
   }
 }
@@ -489,7 +493,7 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
 /** Serves a text handler: the reply text, or one result with tool calls, finish reason and token use when the call offers tools or asks for a schema. */
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
-    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, runtime.agentId, params), params, askOf(params)), returned), FetchHttpClient.layer),
+    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, runtime.agentId, params), params, askOf(params)), returned), FetchHttpClient.layer),
     params.signal,
   )
 }

@@ -182,7 +182,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     streamed = ""
     const onStreamChunk = input.onStreamChunk
     const answered = answerOf(await runtime.useModel(ModelType.TEXT_LARGE, {
-      system: input.system, messages: conversation, signal,
+      system: input.system, messages: conversation, reasoning: "off", signal,
       ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
       ...(onStreamChunk === undefined ? {} : {
         stream: true,

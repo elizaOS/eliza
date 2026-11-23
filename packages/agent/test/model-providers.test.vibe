@@ -22,9 +22,9 @@ effect function bound(backend: Backend, key: string) {
   return { binding, runtime }
 }
 
-effect function cloudAgent(cloud: CloudFake) {
+effect function cloudAgent(cloud: CloudFake, large = "large") {
   const made = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
-  registerCloudModels(made.runtime, made.binding, { baseUrl: cloud.origin, small: "small", large: "large", image: "vision" })
+  registerCloudModels(made.runtime, made.binding, { baseUrl: cloud.origin, small: "small", large, image: "vision" })
   return made
 }
 
@@ -159,9 +159,9 @@ it.effect('The own-key backend answers text and image description, classifies it
   assert.strictEqual(lineBreak._tag, "LaunchFrameRejected")
 })
 
-it.effect('A tool call and its token use reach the caller as one result, and each tool result follows the call that asked for it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
+it.effect('A tool call and its token use reach the caller as one result, each tool result follows the call that asked for it, and a planning round asks its model for no reasoning (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call that asks for little or no reasoning sends the effort its model accepts, and any other call leaves the model\'s effort alone")', effect () => {
   const cloud = try cloudFake(deviceKey)
-  const { runtime, binding } = try cloudAgent(cloud)
+  const { runtime, binding } = try cloudAgent(cloud, "cerebras/qwen-3.8-27b")
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
     choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "CALCULATE", arguments: "{\"expression\":\"2+2\"}" } }] }, finish_reason: "tool_calls" }],
     usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: { cached_tokens: 4 } },
@@ -170,6 +170,7 @@ it.effect('A tool call and its token use reach the caller as one result, and eac
   const result = try host("tool call", () => runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
     tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }],
     toolChoice: "auto",
+    reasoning: "off",
     messages: [
       { role: "user", content: "What is 2+2?" },
       { role: "tool", toolCallId: "orphan", content: "stale" },
@@ -182,7 +183,7 @@ it.effect('A tool call and its token use reach the caller as one result, and eac
     text: "", toolCalls: [{ id: "call-1", name: "CALCULATE", arguments: { expression: "2+2" } }], finishReason: "tool_calls",
     usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17, cacheReadInputTokens: 4 },
   })
-  const sent = cloud.calls.at(-1)?.body as { messages: Array<{ role: string } & Record<string, unknown>>; tools: unknown; tool_choice: unknown }
+  const sent = cloud.calls.at(-1)?.body as { messages: Array<{ role: string } & Record<string, unknown>>; tools: unknown; tool_choice: unknown; reasoning_effort: unknown }
   assert.deepStrictEqual(sent.messages.filter((message) => message.role !== "system"), [
     { role: "user", content: "What is 2+2?" },
     { role: "user", content: "[tool result]\nstale" },
@@ -190,7 +191,7 @@ it.effect('A tool call and its token use reach the caller as one result, and eac
     { role: "tool", tool_call_id: "call-0", content: "2" },
     { role: "user", content: "And now?" },
   ])
-  assert.deepStrictEqual([sent.tools, sent.tool_choice], [[{ type: "function", function: { name: "CALCULATE", description: "Arithmetic.", parameters } }], "auto"])
+  assert.deepStrictEqual([sent.tools, sent.tool_choice, sent.reasoning_effort], [[{ type: "function", function: { name: "CALCULATE", description: "Arithmetic.", parameters } }], "auto", "none"])
   assert.strictEqual((try binding.read()).accountState, "usable")
 })
 
