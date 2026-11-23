@@ -38,9 +38,8 @@ describe("TransferAction.transfer native value", () => {
   function transferOn(chain: SupportedChain, amount: string) {
     const signTransaction = vi.fn(async (_params: { value?: bigint }) => "0x02" as const);
     const walletClient = {
-      account: ACCOUNT,
+      account: { ...ACCOUNT, signTransaction },
       prepareTransactionRequest: async (params: unknown) => params,
-      signTransaction,
       sendRawTransaction: async () => "0xabc" as const,
     };
     const walletProvider = {

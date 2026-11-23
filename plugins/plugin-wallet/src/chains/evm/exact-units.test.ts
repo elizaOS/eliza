@@ -18,10 +18,9 @@ function stubWalletProvider() {
     chains: { base },
     getChainConfigs: () => base,
     getWalletClient: () => ({
-      account: { address: ACCOUNT },
+      account: { address: ACCOUNT, type: "local", signTransaction },
       getAddresses: async () => [ACCOUNT],
       prepareTransactionRequest: async (params: unknown) => params,
-      signTransaction,
       sendRawTransaction: async () => "0xhash",
     }),
     getPublicClient: () => ({ readContract: async () => 6 }),
