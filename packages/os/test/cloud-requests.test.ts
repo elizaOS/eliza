@@ -74,6 +74,11 @@ describe("Reach my account's cloud services without holding my key", () => {
       mailAfterRevokedLease: "SIGN_IN_REQUIRED",
       bearers: "lease/key,key",
       leaseReuses: 0,
+      replyFromPreviousEnrollment: "SIGN_IN_REQUIRED",
+      sameOwnerReEnrolledAtNewVersion: true,
+      replyFromBeforeRenewal: "SIGN_IN_REQUIRED",
+      sameOwnerRenewedAtNewVersion: true,
+      readAfterRenewal: "200",
     });
   });
 

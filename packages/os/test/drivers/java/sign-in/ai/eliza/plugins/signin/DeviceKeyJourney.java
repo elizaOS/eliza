@@ -31,6 +31,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class DeviceKeyJourney {
   private static final String SESSION = "eliza_session_journey";
@@ -66,6 +67,7 @@ public final class DeviceKeyJourney {
     final AtomicInteger issued = new AtomicInteger(), tokenAsks = new AtomicInteger(), revokeAsks = new AtomicInteger(), refreshes = new AtomicInteger();
     final AtomicInteger ackAsks = new AtomicInteger();
     final AtomicInteger rotations = new AtomicInteger(), reused = new AtomicInteger(), secrets = new AtomicInteger();
+    final AtomicReference<Runnable> beforeMailReply = new AtomicReference<>();
     final List<Family> families = new CopyOnWriteArrayList<>();
     final Map<String, Renewal> renewals = new ConcurrentHashMap<>();
     final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>();
@@ -228,6 +230,8 @@ public final class DeviceKeyJourney {
           if (live.containsKey(bearer)) { mailBearers.add("key"); answer(x, 403, "{\"error\":\"forbidden\",\"reason\":\"device_key_not_allowed\"}"); return; }
           if (!leaseAccess(bearer, now)) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
           mailBearers.add("lease");
+          Runnable before = beforeMailReply.getAndSet(null);
+          if (before != null) before.run();
           answer(x, 200, "{\"events\":[]}");
         }
         case "GET /api/v1/models" -> {
@@ -398,8 +402,7 @@ public final class DeviceKeyJourney {
       cloud.dropNextRotation = true;
       seen.add(take("mailAfterLostRotation", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
       CloudRequests managed = CloudRequests.forMailReads(cache.toFile());
-      var mailAuthority = custody.mailAuthority();
-      if (mailAuthority == null) throw new IllegalStateException("The acknowledged lease did not give its owner a read scope");
+      var mailAuthority = requireMailAuthority(custody);
       var stale = new CloudRequests.MailAuthority(mailAuthority.account(), mailAuthority.version() + 1);
       seen.add(take("mailWithStaleAuthority", outcome(managed.readMail(origin, custody, stale, feed, Map.of()))));
       seen.add(take("mailWithUnknownQuery", outcome(managed.readMail(origin, custody, mailAuthority, feed + "?unexpected=1", Map.of()))));
@@ -410,6 +413,25 @@ public final class DeviceKeyJourney {
       seen.add(take("mailAfterRevokedLease", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
       seen.add(take("bearers", String.join(",", cloud.mailBearers) + "/" + String.join(",", cloud.modelBearers)));
       seen.add(take("leaseReuses", cloud.reused.get()));
+
+      if (!"SIGNED_IN".equals(signIn())) throw new IllegalStateException("Could not restore the original test account");
+      var previous = requireMailAuthority(custody);
+      cloud.beforeMailReply.set(() -> {
+        store.signOut();
+        if (!"SIGNED_IN".equals(signIn())) throw new IllegalStateException("Could not re-enroll the original test account");
+      });
+      seen.add(take("replyFromPreviousEnrollment", outcome(managed.readMail(origin, custody, previous, feed, Map.of()))));
+      var reEnrolled = requireMailAuthority(custody);
+      seen.add(take("sameOwnerReEnrolledAtNewVersion", previous.account().equals(reEnrolled.account()) && previous.version() < reEnrolled.version()));
+
+      cloud.beforeMailReply.set(() -> {
+        clock.addAndGet(16 * DAY_MS);
+        client.renewIfDue();
+      });
+      seen.add(take("replyFromBeforeRenewal", outcome(managed.readMail(origin, custody, reEnrolled, feed, Map.of()))));
+      var renewed = requireMailAuthority(custody);
+      seen.add(take("sameOwnerRenewedAtNewVersion", reEnrolled.account().equals(renewed.account()) && reEnrolled.version() < renewed.version()));
+      seen.add(take("readAfterRenewal", outcome(managed.readMail(origin, custody, renewed, feed, Map.of()))));
       cloud.server.stop(0);
       return "{" + String.join(",", seen) + "}";
     } finally {
@@ -417,6 +439,12 @@ public final class DeviceKeyJourney {
         for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(file);
       }
     }
+  }
+
+  private static CloudRequests.MailAuthority requireMailAuthority(CloudRequests.Custody custody) {
+    var scope = custody.mailAuthority();
+    if (scope == null) throw new IllegalStateException("The original test owner has no mail scope");
+    return scope;
   }
 
   private String signIn() {
