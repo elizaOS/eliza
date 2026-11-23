@@ -3869,12 +3869,14 @@ module node {
       const beforeBaseline = Date.now()
       const baseline = await decision(await arrival(ownDevice))
       const afterBaseline = Date.now()
+      const callerHash = createHash("sha256").update(ownDevice.authorization.slice("Bearer ".length)).digest("hex")
+      const admission = (await fixture.db.query<{ count: string }>("SELECT state->>'count' AS count FROM rate_windows WHERE key = $1",
+        [`device-key|${callerHash}`])).rows[0]?.count
       const cursor = baseline.body.cursor
       const emptyArrival = await decision(await arrival(ownDevice, cursor))
       mailArrived = true
       const freshArrival = await decision(await arrival(ownDevice, cursor))
       const organization = (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id
-      const callerHash = createHash("sha256").update(ownDevice.authorization.slice("Bearer ".length)).digest("hex")
       const binding = Buffer.from(JSON.stringify(["cloud-google-inbox-arrival-v1", api, owner.account.id, organization, grant, "device", callerHash]))
       const sealed = Buffer.from(cursor, "hex")
       const open = createDecipheriv("aes-256-gcm", Buffer.from(key, "hex"), sealed.subarray(0, 12))
@@ -3926,6 +3928,7 @@ module node {
       const cancelled = await arrival(ownDevice, cursor, false, abortArrival.signal)
       const arrivalResult = {
         baseline: [baseline.status, baseline.cache, baseline.body.arrived, !cursor.includes("10000000000000000001") && cursor.length > 20, webBaseline.status, webBaseline.body.arrived],
+        deviceAdmissionCount: Number(admission),
         polling: [emptyArrival.body.cursor === cursor, emptyArrival.body.arrived, freshArrival.body.cursor === cursor, freshArrival.body.arrived],
         denied: [webNoGrant, replayAcrossCredentials, foreignArrival, anonymousArrival, fabricatedArrival, expiredArrival, providerRevokedArrival, malformedHistory, deviceRevokedArrival].map(({ status }) => status),
         compatibilityRefusals,
@@ -4104,7 +4107,7 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Read complete mail text, open the selected named attachment and watch for new mail (spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately")', () => effect {
+it.live('Read complete mail text, open the selected named attachment and watch for new mail (spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
   try check(() => assert.deepStrictEqual(
     {
@@ -4124,6 +4127,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
     {
       arrivals: {
         baseline: [200, "no-store", false, true, 200, false],
+        deviceAdmissionCount: 1,
         polling: [true, false, true, true],
         denied: [400, 409, 409, 401, 409, 404, 409, 502, 401],
         compatibilityRefusals: [404, 401, 409, true],
