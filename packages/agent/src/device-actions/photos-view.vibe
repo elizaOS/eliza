@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
+// spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only where that branch accepts exactly what its forms accept"
 import { negotiatedHas, type Negotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 import { shownPhotoTarget } from "../../gen/agent__deviceActions__operations.effect.vibe"
 import { photosVerdict, type PhotoNaming, type SurfaceVerdict } from "../../gen/agent__deviceActions__surfaces.effect.vibe"
@@ -32,7 +32,7 @@ export function photosViewGuidance(negotiation: Negotiation): readonly string[] 
   if (!negotiatedHas(negotiation, "PhotosLibraryV1") || !negotiatedHas(negotiation, "PhotosViewV1")) return []
   const base = "photos_filter narrows the phone Photos grid behind a clearable chip and returns only how many items it shows; photos_open opens one item in the Photos viewer; both run directly only when the owner's current message asked for them. photos_album_create and photos_share are reviewed by the owner in Photos; a share then opens Android's share sheet, and review_opened proves neither a created album nor a share."
   return negotiatedHas(negotiation, "PhotosViewSelectedV1")
-    ? [base, "photos_album_create and photos_share with selected true use the one item the owner has open in the Photos viewer instead of ids. Use it when the owner says this photo, this video or the open one; the phone shows that item in the review.", returnedIdsGuidance]
+    ? [base, "photos_album_create and photos_share take selected instead of ids when the owner says this photo, this video or the open one; the phone shows that item in the review.", returnedIdsGuidance]
     : [base, returnedIdsGuidance]
 }
 

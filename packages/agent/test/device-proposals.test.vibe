@@ -170,6 +170,7 @@ module node {
       size: JSON.stringify(sent).length,
       stated: sharedRules.map((rule) => [rule, description.split(rule).length - 1]),
       capabilitiesNamed: alphaPhone.filter((name) => JSON.stringify(sent).includes(name)),
+      fieldsWritten: typesOf(forms).filter((type) => description.includes(`${type} {`)),
       sameBytes: JSON.stringify(offered[0]) === JSON.stringify(sent),
       shape: { forms: forms.length, branches: branches.length, sameTypes: JSON.stringify(typesOf(forms)) === JSON.stringify(typesOf(branches)) },
       everyFormSampled: forms.every((form) => [false, true].every((all) => accepts(union, sample(form, all)))),
@@ -353,7 +354,7 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
   }))
 }, 120_000)
 
-it.live(`The device tool an Alpha phone is sent states each rule once, names no capability and shares a branch only where it accepts exactly what the forms accept (spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
+it.live(`The device tool an Alpha phone is sent states each rule once, names no capability and shares a branch only where that branch accepts exactly what its forms accept (spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only where that branch accepts exactly what its forms accept"; spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -368,6 +369,7 @@ it.live(`The device tool an Alpha phone is sent states each rule once, names no 
     assert.deepStrictEqual(observed, {
       stated: sharedRules.map((rule) => [rule, 1]),
       capabilitiesNamed: [],
+      fieldsWritten: [],
       sameBytes: true,
       shape: { forms: 23, branches: 17, sameTypes: true },
       everyFormSampled: true,
