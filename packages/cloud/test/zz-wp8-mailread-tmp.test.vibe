@@ -9,7 +9,7 @@ import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/go
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
-import { signedCaller } from "./support/caller.vibe"
+import { leasedCaller } from "./support/caller.vibe"
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -43,7 +43,7 @@ describe("WP8 tmp", () => {
       fakes.mount("/google/", mountGoogleToken(google))
       fakes.mount("/google/api/", gmailReads(mailbox))
     } })
-    const { bearer: token, organizationId, userId } = try signedCaller(cloud, "mail")
+    const { bearer: token, organizationId, userId } = try leasedCaller(cloud, "mail")
     const owner: Owner = { organizationId, userId }
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage"), ...scopeFor("google.gmail.drafts")]
     const refreshToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-mail", email: "conn-mail@example.com", scopes }))
