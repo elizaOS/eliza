@@ -125,7 +125,11 @@ jobs:
       - id: verify-tasks
         run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
       - name: Report Turbo task timings
+        id: task-timings
         if: ${{ !cancelled() }}
+        env:
+          RESTORED_FIXTURE_EVALUATOR: ${{ steps.setup.outputs.spec-evaluator-restored == 'true' && steps.verify-tasks.outcome == 'success' }}
+          TASK: ${{ matrix.tasks }}
         run: |
           for report in .turbo/runs/*.json; do
             [[ -f "$report" ]] || continue
@@ -146,6 +150,19 @@ jobs:
                 ""
             ' "$report" >> "$GITHUB_STEP_SUMMARY" || echo "::warning::Could not read the Turbo run summary"
           done
+          [[ $RESTORED_FIXTURE_EVALUATOR == true ]] || exit 0
+          shopt -s nullglob
+          reports=(.turbo/runs/*.json)
+          (( ${#reports[@]} )) || exit 0
+          jq -es --arg task "$TASK" '
+            map(select(.version == "1" and any(.tasks[]?; .taskId == $task)))
+            | length == 1 and
+              (.[0] | .execution.exitCode == 0 and .execution.attempted == 1 and .execution.cached == 1 and
+                (.tasks | length == 1 and (.[0] | .taskId == $task and .cache.status == "HIT" and
+                  .execution.exitCode == 0 and .resolvedTaskDefinition.outputs == [])))
+          ' "${reports[@]}" >/dev/null || exit 0
+          echo 'skip-spec-cache=true' >> "$GITHUB_OUTPUT"
+          echo 'Skipping the spec cache upload after a full fixture replay.'
       - id: superseded-spec-cache
         if: >-
           cancelled() && matrix.name == 'verify' && steps.verify-tasks.conclusion == 'cancelled' &&
@@ -160,7 +177,9 @@ jobs:
           [[ $tip =~ ^[0-9a-f]{40}$ && $ref == "$GITHUB_REF" && $tip != "$GITHUB_SHA" ]] || exit 0
           echo 'skip=true' >> "$GITHUB_OUTPUT"
           echo "Skipping the spec cache upload for superseded commit $GITHUB_SHA."
-      - if: always() && steps.setup.outputs.spec-cache-key != '' && steps.superseded-spec-cache.outputs.skip != 'true'
+      - if: >-
+          always() && steps.setup.outputs.spec-cache-key != '' &&
+          steps.superseded-spec-cache.outputs.skip != 'true' && steps.task-timings.outputs.skip-spec-cache != 'true'
         uses: actions/cache/save@v6
         with:
           path: ${{ steps.setup.outputs.spec-cache-path }}
