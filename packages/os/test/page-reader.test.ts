@@ -525,7 +525,7 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     expect(text(frame.text)).not.toContain("Partner words");
     let unanswered: unknown;
     const hung = handle({ type: "command", id: "hung-1", command: { subaction: "snapshot", id: "2" } }, { send: (value) => { unanswered = value; } }, () => true);
-    expect(await send({ type: "command", id: "raw-2", command: { subaction: "snapshot", id: "1" } })).toMatchObject({ ok: true });
+    expect(await send({ type: "command", id: "read-3", command: { subaction: "snapshot", id: "1", taskContext } })).toMatchObject({ ok: true });
     await hung;
     expect(unanswered).toMatchObject({ id: "hung-1", ok: false, error: { kind: "UNCERTAIN_OUTCOME" } });
   });
