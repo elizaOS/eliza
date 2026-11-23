@@ -27,6 +27,24 @@ was heard. The fingerprint is the shell's positive digest of the body.
 > or a restart and get the reply to my first send, never a second reply,
 > so that a bad network never makes my agent act twice.
 
+### A quoted reply uses only the selected message from this conversation
+
+When the owner's request includes a message identity in
+`metadata.replyToMessageId`, the turn records that reply target only if it
+is an earlier message from the owner or the agent in the same conversation.
+A system notice cannot be a reply target. An absent, invalid or unavailable
+identity leaves an ordinary message. The accepted quotation is presented
+as data, preserving its text and whitespace up to 4,096 characters. It
+adds no authority to the new request. A retry keeps the original reply.
+
+```quint
+pure val replyQuoteChars = 4096
+pure def admitsReplyTarget(sameRoom: bool, participant: bool, ordinary: bool): bool =
+  sameRoom and participant and ordinary
+pure def lawAQuoteStaysWithThisConversation(sameRoom: bool, participant: bool, ordinary: bool): bool =
+  admitsReplyTarget(sameRoom, participant, ordinary) implies sameRoom and participant and ordinary
+```
+
 ### A message is refused, joined, replayed or admitted by its key, its room and the backend
 
 A launch without a text backend answers 503 `INFERENCE_UNAVAILABLE` and
