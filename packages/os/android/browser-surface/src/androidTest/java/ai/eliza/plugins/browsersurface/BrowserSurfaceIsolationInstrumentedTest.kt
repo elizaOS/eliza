@@ -28,6 +28,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.spec.GCMParameterSpec
 import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -91,6 +92,16 @@ class BrowserSurfaceIsolationInstrumentedTest {
             reopened.change(urlA, true, "old title")
             assertTrue(preferences.edit().putString(BrowserBookmarkStore.KEY, sealer().seal(legacy)).commit())
             assertEquals(listOf(urlA to null), reopened.entries().map { it.url to it.title })
+
+            val titled = JSONArray().put(JSONObject().put("url", urlA).put("title", "saved on Develop")).toString()
+            val sealedTitled = sealer().seal(titled)
+            assertTrue(preferences.edit().putString(BrowserBookmarkStore.KEY, sealedTitled).commit())
+            assertEquals(listOf(urlA to "saved on Develop"), reopened.entries().map { it.url to it.title })
+            assertEquals(sealedTitled, preferences.getString(BrowserBookmarkStore.KEY, null))
+            reopened.change(urlA, true)
+            assertEquals(legacy, sealer().open(preferences.getString(BrowserBookmarkStore.KEY, null)!!))
+            assertEquals(listOf(urlA to "saved on Develop"), reopened.entries().map { it.url to it.title })
+
             reopened.change(urlA, true, "new title")
             assertTrue(preferences.edit().putString(BrowserBookmarkStore.KEY, "damaged").commit())
             val damaged = preferences.all

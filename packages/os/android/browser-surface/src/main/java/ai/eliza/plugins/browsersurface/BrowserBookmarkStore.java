@@ -77,8 +77,14 @@ public final class BrowserBookmarkStore {
     ArrayList<Entry> result = new ArrayList<>();
     ArrayList<String> seen = new ArrayList<>();
     for (int i = 0; i < rows.length(); i++) {
-      if (!(rows.get(i) instanceof String url) || !valid(url) || seen.contains(url)) throw new IllegalStateException();
+      Object row = rows.get(i);
       Object title = titles.opt(i);
+      if (titles.length() == 0 && row instanceof JSONObject titled) {
+        row = titled.opt("url");
+        title = titled.opt("title");
+        if (!(title instanceof String)) throw new IllegalStateException();
+      }
+      if (!(row instanceof String url) || !valid(url) || seen.contains(url)) throw new IllegalStateException();
       if (title == null || title == JSONObject.NULL) result.add(new Entry(url, null));
       else if (title instanceof String value && value.equals(normalizedTitle(value))) result.add(new Entry(url, value));
       else throw new IllegalStateException();

@@ -183,7 +183,10 @@ format. Optional sealed titles name the exact sealed address record they
 describe, in the same order. An earlier build can still open the addresses.
 After an earlier build writes a new sealed address record, old titles are
 ignored. Titles in a matching record must be well formed. A title record
-that cannot be opened makes the list damaged.
+that cannot be opened makes the list damaged. Earlier records can also
+contain titles beside their addresses in the same sealed list. A read keeps
+those titles. The next successful change writes the address-only format
+with separate sealed titles.
 
 ```quint
 type BookmarkTitles = NoTitles | OlderTitles | DamagedTitles | CurrentTitles({ names: List[BookmarkName] })
