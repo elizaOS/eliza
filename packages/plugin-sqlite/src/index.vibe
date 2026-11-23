@@ -41,13 +41,8 @@ module node {
   export function bindSqliteOwner(database: DatabaseSync, agentId: string): void {
     database.prepare("INSERT INTO eliza_sqlite_owner (singleton, agent_id) VALUES (1, ?)").run(agentId)
   }
-
-  export function applySqliteVersion(database: DatabaseSync, migration: SqliteMigration): void {
-    database.exec(migration.sql)
-    database.exec("PRAGMA user_version = " + migration.revision)
-  }
 }
-import { openSqliteFile, sqliteVersion, sqliteOwner, bindSqliteOwner, applySqliteVersion } from node
+import { openSqliteFile, sqliteVersion, sqliteOwner, bindSqliteOwner } from node
 
 export effect function openSqlite(path: string, agentId: string, lease: SqliteLease, migrations: readonly SqliteMigration[]) {
   const database = try Effect.try({ try: () => openSqliteFile(path), catch: () => new SqliteFailure({ reason: "database could not be opened exclusively" }) })
@@ -71,7 +66,13 @@ export effect function openSqlite(path: string, agentId: string, lease: SqliteLe
     }
     for (const migration of migrations.slice(version)) {
       if (!mayApplySqliteMigration(version, desired, migration.revision)) throw new SqliteFailure({ reason: "migration is out of order" })
-      try Effect.try({ try: () => applySqliteVersion(database, migration), catch: () => new SqliteFailure({ reason: "migration failed" }) })
+      try Effect.try({
+        try: () => {
+          database.exec(migration.sql)
+          database.exec("PRAGMA user_version = " + migration.revision)
+        },
+        catch: () => new SqliteFailure({ reason: "migration failed" }),
+      })
       version = migration.revision
     }
     try Effect.try({ try: () => database.exec("COMMIT"), catch: () => new SqliteFailure({ reason: "could not commit database preparation" }) })
