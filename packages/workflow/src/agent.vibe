@@ -2,7 +2,7 @@
 import type { Action, ActionResult, EffectReceipt, HandlerCallback, IAgentRuntime, Memory, Provider } from "@elizaos/core"
 import { createdName, type ProposedWorkflowChange } from "../gen/workflow__lifecycle.effect.vibe"
 import { workflowSha, workflowUuid } from "./contract/phone.vibe"
-import { commandBinding, normalizeWorkflowName, ownerWords, resolveWorkflowReference, type WorkflowReferenceRefused, type WorkflowView } from "./request.vibe"
+import { commandBinding, normalizeWorkflowName, ownerWords, ownerZone, resolveWorkflowReference, type ReferenceOptions, type WorkflowReferenceRefused, type WorkflowView } from "./request.vibe"
 import { WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
 import type { hostedDigests } from "./service/digests.vibe"
 import type { generatedWorkflows } from "./service/generated.vibe"
@@ -24,10 +24,7 @@ const NO_NOTIFICATION = " It can’t send you a notification: when it is on, eac
 const NOTIFY_REQUEST = /\b(?:remind\w*|notif\w*|alert\w*|(?:ping|tell|text|message|messag|email|e-mail|nudge|warn|buzz|call|sms|dm)(?:s|es|ed|ing)?\s+me|(?:let|lets|letting)\s+me\s+know|(?:send|sends|sending|sent)\s+me|push\s+(?:notification|alert|message)s?|wake\s+me)\b/i
 
 type Bag = Record<string, unknown>
-interface Reading {
-  readonly ownerWords: boolean
-  readonly timeZone: string | undefined
-}
+type Reading = Pick<ReferenceOptions, "ownerWords" | "timeZone">
 
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined
@@ -57,12 +54,6 @@ async function respond(callback: HandlerCallback | undefined, result: ActionResu
     : { ...result, effectReceipts: undefined }
   if (callback !== undefined) await callback({ text: settled.text ?? "", action: "WORKFLOW" })
   return settled
-}
-
-function observedZone(message: Memory): string | undefined {
-  const metadata = message.content.metadata
-  const observation = typeof metadata === "object" && metadata !== null && "observation" in metadata ? metadata.observation : undefined
-  return typeof observation === "object" && observation !== null && "timeZone" in observation && typeof observation.timeZone === "string" ? observation.timeZone : undefined
 }
 
 function proposedChange(op: WorkflowOp): ProposedWorkflowChange {
@@ -281,7 +272,7 @@ export const workflowAction: Action = {
     const workflowId = text(params.workflowId)
     const asked: Bag = bound ? { ...names, instruction: words, ...(workflowId === undefined ? {} : { workflowId }) } : params
     const request = bound ? words : typeof message.content.text === "string" ? message.content.text : ""
-    const outcome = await runPromise(Effect.result(perform(instance, op, asked, request, { ownerWords: bound, timeZone: observedZone(message) })))
+    const outcome = await runPromise(Effect.result(perform(instance, op, asked, request, { ownerWords: bound, timeZone: ownerZone(runtime, message) })))
     if (!Result.isFailure(outcome)) return respond(callback, outcome.success)
     const failure = outcome.failure
     if (failure._tag === "WorkflowReferenceRefused") {

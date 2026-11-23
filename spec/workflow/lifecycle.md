@@ -123,8 +123,12 @@ owner's own words, a name that names no workflow in full falls back to the
 ID only when the ID's workflow answers the name. One partial match is the
 workflow, except that a remove or rename asks the owner first and does
 nothing in the turn. Several partial matches are ambiguous, and no match
-lists the workflows. An unknown ID is read as a name. A restore looks among
-removed workflows only; every other operation among current ones.
+lists the workflows. A restore looks among removed workflows only, and
+every other operation among current ones, by ID as by name: an ID that
+names no workflow there is read as a name. Same-named workflows are told
+apart by their on state and creation time in the owner's zone: the turn's
+observed zone, else the zone the phone's interface reported, else the
+agent's TIMEZONE setting, else the host's, else UTC.
 
 ```quint
 type WorkflowResolution = RefResolved | RefAmbiguous | RefConfirmFirst | RefNotFound | RefMismatch | RefMissing

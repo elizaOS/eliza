@@ -1,5 +1,6 @@
 // spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"
-import { incomingMessagePersistenceSnapshot, unwrapUserMessageText, type Memory } from "@elizaos/core"
+import { incomingMessagePersistenceSnapshot, unwrapUserMessageText, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { readTurnContext } from "@elizaos/agent"
 import { bindToCommand, resolveWorkflow, type CommandBinding, type ProposedWorkflowChange, type WorkflowCommand } from "../gen/workflow__lifecycle.effect.vibe"
 import type { WorkflowRefused, WorkflowService } from "./service/workflows.vibe"
 
@@ -64,12 +65,13 @@ module edge {
   }
 
   /** @throws {never} */
-  export function nameMatchTier(stored: string, reference: string): "full" | "partial" | undefined {
+  export function nameMatchTier(stored: string, reference: string): "exact" | "bare" | "partial" | undefined {
     const name = normalizeWorkflowName(stored)
     const given = normalizeWorkflowName(reference)
     if (!name || !given) return undefined
+    if (name === given) return "exact"
     const query = withoutFiller(given)
-    if (name === given || withoutFiller(name) === query) return "full"
+    if (withoutFiller(name) === query) return "bare"
     const plural = /\p{L}{4,}$/u.test(query) ? "(?:e?s)?" : ""
     const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     try {
@@ -80,19 +82,41 @@ module edge {
   }
 
   /** @throws {never} */
-  export function createdOn(createdAt: string, timeZone: string | undefined): string | undefined {
+  export function createdOn(createdAt: string, timeZone: string): string | undefined {
     const at = Date.parse(createdAt)
     if (!Number.isFinite(at)) return undefined
     try {
-      return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: timeZone ?? "UTC" }).format(at)
+      return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone }).format(at)
     } catch {
       return undefined
     }
   }
-}
-import { authoredWorkflowRequest, createdOn, nameMatchTier, normalizeWorkflowName, type AuthoredWorkflowRequest } from edge
 
-export { authoredWorkflowRequest, normalizeWorkflowName, type AuthoredWorkflowRequest }
+  function validZone(value: unknown): string | undefined {
+    const zone = typeof value === "string" ? value.trim() : ""
+    if (zone === "") return undefined
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: zone })
+      return zone
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function firstValidZone(observed: string | undefined, shown: string | undefined, setting: unknown): string {
+    let system: string | undefined
+    try {
+      system = Intl.DateTimeFormat().resolvedOptions().timeZone
+    } catch {
+      system = undefined
+    }
+    return validZone(observed) ?? validZone(shown) ?? validZone(setting) ?? validZone(system) ?? "UTC"
+  }
+}
+import { authoredWorkflowRequest, createdOn, firstValidZone, nameMatchTier, normalizeWorkflowName, type AuthoredWorkflowRequest } from edge
+
+export { normalizeWorkflowName }
 
 export type WorkflowView = {
   readonly id: string; readonly name: string; readonly active: boolean; readonly versionId: string; readonly createdAt: string; readonly updatedAt: string
@@ -105,7 +129,12 @@ export interface ReferenceOptions {
   readonly removed: boolean
   readonly strict: boolean
   readonly ownerWords: boolean
-  readonly timeZone: string | undefined
+  readonly timeZone: string
+}
+
+export function ownerZone(runtime: IAgentRuntime, message: Memory): string {
+  const { observation, voiceUi } = readTurnContext(message)
+  return firstValidZone(observation?.timeZone, voiceUi?.uiTimeZone, runtime.getSetting("TIMEZONE"))
 }
 
 export effect function ownerWords(message: Memory): string!! {
@@ -132,7 +161,7 @@ export function commandBinding(words: string, proposed: ProposedWorkflowChange):
   return { binding: bindToCommand(command === undefined ? "NoCommand" : commands[command.op], proposed), names: commandNames(command) }
 }
 
-function quoted(workflows: readonly WorkflowView[], timeZone: string | undefined): string {
+function quoted(workflows: readonly WorkflowView[], timeZone: string): string {
   const counts = new Map<string, number>()
   for (const workflow of workflows) counts.set(normalizeWorkflowName(workflow.name), (counts.get(normalizeWorkflowName(workflow.name)) ?? 0) + 1)
   return workflows.map((workflow) => {
@@ -152,15 +181,18 @@ export effect function resolveWorkflowReference(
   service: WorkflowService, reference: { readonly workflowId?: string; readonly workflowName?: string }, options: ReferenceOptions,
 ): WorkflowView!(WorkflowRefused | WorkflowReferenceRefused) {
   const { workflowId, workflowName } = reference
-  const loaded = workflowId === undefined ? undefined : (try (service.detail(workflowId) catch effect (refused) => {
+  const detailed = workflowId === undefined ? undefined : (try (service.detail(workflowId) catch effect (refused) => {
     if (refused.status !== 404) throw refused
     return undefined
   })) as WorkflowView | undefined
+  const loaded = detailed?.removed === options.removed ? detailed : undefined
   const all = (try service.list(options.removed)) as WorkflowView[]
   const source = workflowName ?? workflowId
   const tiered = source === undefined ? [] : all.map((workflow) => ({ workflow, tier: nameMatchTier(workflow.name, source) }))
-  const full = tiered.filter(({ tier }) => tier === "full").map(({ workflow }) => workflow)
-  const partial = tiered.filter(({ tier }) => tier === "partial").map(({ workflow }) => workflow)
+  const inTier = (wanted: "exact" | "bare" | "partial") => tiered.filter(({ tier }) => tier === wanted).map(({ workflow }) => workflow)
+  const exact = inTier("exact")
+  const full = exact.length > 0 ? exact : inTier("bare")
+  const partial = inTier("partial")
   const named = workflowName !== undefined && options.ownerWords
   const chosen = loaded !== undefined && !named ? loaded
     : full.length === 1 ? full[0]
