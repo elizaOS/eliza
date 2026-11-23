@@ -15,22 +15,22 @@ export effect function filesReviews(runner: FilesAgentRunner, capabilities: read
   const pins = try Ref.make(new Map<string, Pin>())
   const latest = try Ref.make(new Map<string, number>())
 
-  effect function bound(op: FilesAgentOperation): FilesPathOperation | undefined {
-    const shown = filesShownTarget(op) ? try (runner.shownPaths(op.shown) catch () => undefined) : undefined
+  effect function bound(op: FilesAgentOperation): (FilesPathOperation | undefined)!! {
+    const shown = filesShownTarget(op) ? (runner.shownPaths(op.shown) catch () => undefined) : undefined
     const resolution = { positions: filesShownTarget(op) ? op.shown.length : 0, resolvedPaths: shown?.length ?? 0, resultsShown: shown !== undefined }
     if (!cardShown(filesForm(op).form, resolution)) return undefined
     const source: unknown = filesShownTarget(op) ? { ...Object.fromEntries(Object.entries(op).filter(([key]) => key !== "shown")), paths: shown } : op
-    const target = try (decodeFilesOperation(source) catch () => undefined)
+    const target = (decodeFilesOperation(source) catch () => undefined)
     if (target === undefined || filesShownTarget(target)) return undefined
     if (!filesNeedsIdentity(target)) return target
-    const identities: readonly FilesIdentity[] | undefined = try (runner.reviewedIdentities(target.paths) catch () => undefined)
+    const identities: readonly FilesIdentity[] | undefined = (runner.reviewedIdentities(target.paths) catch () => undefined)
     if (identities === undefined || !identitiesReady(filesForm(target).kind, target.paths.length, identities.length)) return undefined
-    const reviewed = try (decodeFilesOperation({ ...target, reviewed: identities }) catch () => undefined)
+    const reviewed = (decodeFilesOperation({ ...target, reviewed: identities }) catch () => undefined)
     return reviewed !== undefined && !filesShownTarget(reviewed) ? reviewed : undefined
   }
 
   effect function review(proposalId: string, digest: string, input: unknown): FilesReviewItem!! {
-    const op = try (decodeFilesOperation(input) catch () => undefined)
+    const op = (decodeFilesOperation(input) catch () => undefined)
     if (op === undefined || !filesOperationAdmitted(op, capabilities)) {
       return { proposalId, kind: "notice", notice: op === undefined ? "This action isn't available on this phone." : "This Files action was not negotiated with this agent." }
     }
@@ -49,7 +49,7 @@ export effect function filesReviews(runner: FilesAgentRunner, capabilities: read
     return { proposalId, kind: "card", operation, ...describeFilesOperation(operation) }
   }
 
-  effect function approved(proposalId: string, digest: string): FilesPathOperation | undefined {
+  effect function approved(proposalId: string, digest: string): (FilesPathOperation | undefined)!! {
     const pinned = (try Ref.get(pins)).get(proposalId)
     return pinned?.digest === digest ? pinned.operation : undefined
   }

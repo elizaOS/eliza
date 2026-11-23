@@ -1,4 +1,4 @@
-// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything"; spec/files/localOcr.md, "Completed OCR uses validated text and positions and stays scoped to its review"
+// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything"; spec/files/localOcr.md, "Completed OCR uses validated text and positions and stays scoped to its review"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/library.md, "A workflow attachment and its receipt commit together, and a replay returns the receipt without saving again"; spec/files/library.md, "A workflow reads its Files source whole and unchanged, or not at all"; spec/files/library.md, "An imported folder arrives whole under a name not yet used, or not at all"; spec/files/localOcr.md, "One exact worker reply advances the next local OCR action"; spec/files/localOcr.md, "Image admission is bounded before recognition and every decoded bitmap closes"
 module browser {
   /** A worker script served from memory that answers the local OCR protocol, or fails on its first message. */
   export function engineUrl(failing: boolean): string {
@@ -12,6 +12,10 @@ module browser {
       }`
     return URL.createObjectURL(new Blob([script], { type: "text/javascript" }))
   }
+
+  export function unsupportedImage(): Blob {
+    return new Blob(["GIF89a"], { type: "image/gif" })
+  }
 }
 import { assert, it } from "@effect/vitest"
 import { FilesVolume } from "../src/storage/volume.vibe"
@@ -20,13 +24,13 @@ import { importLibraryFile, libraryVolume, librarySelections } from "../src/stor
 import { importLibraryFolder, saveWorkflowAttachment, workflowFiles } from "../src/storage/library-workflow.vibe"
 import { recognizeLocalText, type OcrProgress } from "../src/documents/local-ocr.vibe"
 import { encoded, rasterOf } from "../src/documents/images.vibe"
-import { engineUrl } from browser
+import { engineUrl, unsupportedImage } from browser
 
 const bytes = (text: string) => new TextEncoder().encode(text) as Uint8Array<ArrayBuffer>
 const reason = <A, E extends { readonly reason: string }>(plan: A!E) => map(Effect.flip(plan), (error) => error.reason)
-const status = <A, E extends { readonly status: string }>(plan: A!E) => map(Effect.flip(plan), (error) => error.status)
+const status = <A, E extends { readonly status: string }, R>(plan: A!E!R) => map(Effect.flip(plan), (error) => error.status)
 
-it.effect('Keep my browser files and change each only as I last saw it (spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row")', effect () => {
+it.effect('Keep my browser files and change each only as I last saw it (spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it")', effect () => {
   const tab = indexedLibrary(`files-library-${Date.now()}`)
   try Effect.provide(effect {
     const volume = try FilesVolume
@@ -54,6 +58,7 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
 
     const inTrash = try volume.trashList()
     assert.deepEqual(inTrash.map(({ name, origin }) => ({ name, origin })), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
+    assert.deepEqual([try status(volume.query({ folder: ".Trash-files" })), try status(volume.rename(".Trash-files", "Journal"))], ["invalid", "invalid"])
     assert.deepEqual((try volume.list("")).entries.map((entry) => entry.name), ["Download"])
     try importLibraryFile("Download", { name: "lease.pdf", mimeType: "application/pdf", bytes: bytes("newer") })
     assert.deepEqual(try volume.restore([inTrash[0].id]), [{ path: inTrash[0].id, status: "restored", to: "Download/lease (1).pdf" }])
@@ -61,7 +66,12 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
     assert.equal(try status(volume.emptyTrash(["x"], false)), "confirmation-required")
 
     const store = try LibraryStore
+    const expiring = (try volume.trash({ paths: ["Download/lease (1).pdf"] }))[0]
+    assert.equal(expiring.status, "trashed")
+    try TestClock.adjust("31 days")
+    assert.deepEqual(try volume.trashList(), [])
     const rows = try store.rows()
+    assert.equal(rows.some((row) => row.name === expiring.to || row.name === `${expiring.to}.json`), false)
     const notes = rows.find((row) => row.name === "notes.txt")
     const lease = rows.find((row) => row.name === "lease.pdf")
     assert.equal(try map(Effect.flip(store.commit(deletePlan([{ id: notes?.id ?? "", expectedRevision: notes?.revision ?? "" }, { id: lease?.id ?? "", expectedRevision: "stale" }], true))), (failure) => failure._tag), "LibraryRefused")
@@ -69,7 +79,7 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
   }, libraryVolume()).pipe(Effect.provide(tab))
 })
 
-it.effect('Let a workflow save and read my browser files without repeating or half-reading anything (spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything"; spec/files/library.md, "A workflow attachment and its receipt commit together, and a replay returns the receipt without saving again"; spec/files/library.md, "A workflow reads its Files source whole and unchanged, or not at all"; spec/files/library.md, "An imported folder arrives whole under a name not yet used, or not at all")', effect () => {
+it.effect('Let a workflow save and read my browser files without repeating or half-reading anything (spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything")', effect () => {
   const tab = indexedLibrary(`files-workflow-${Date.now()}`)
   try Effect.provide(effect {
     const volume = try FilesVolume
@@ -99,9 +109,9 @@ it.effect('Let a workflow save and read my browser files without repeating or ha
   }, libraryVolume()).pipe(Effect.provide(tab))
 })
 
-it.effect('Recognize a scan on the device and keep it to its review (spec/files/localOcr.md, "Completed OCR uses validated text and positions and stays scoped to its review"; spec/files/localOcr.md, "One exact worker reply advances the next local OCR action"; spec/files/localOcr.md, "Image admission is bounded before recognition and every decoded bitmap closes")', effect () => {
+it.effect('Recognize a scan on the device and keep it to its review (spec/files/localOcr.md, "Completed OCR uses validated text and positions and stays scoped to its review")', effect () => {
   const image = try orDie(encoded(try orDie(rasterOf(undefined, 40, 20)), "image/png"))
-  const config = { workerUrl: engineUrl(false), assetsUrl: "/ocr/", language: "eng" }
+  const config = { workerUrl: try Effect.try(() => engineUrl(false)), assetsUrl: "/ocr/", language: "eng" }
   const progress: OcrProgress[] = []
   const recognized = try recognizeLocalText(config, image, (value) => { progress.push(value) }, true)
   assert.equal(recognized.text, "Total 12")
@@ -109,6 +119,6 @@ it.effect('Recognize a scan on the device and keep it to its review (spec/files/
   assert.equal(recognized.lines?.[0]?.text, "Total 12")
   assert.deepEqual(progress, [{ status: "recognizing text", progress: 1 }])
   assert.equal(try reason(recognizeLocalText(config, image, () => {}, false, () => false)), "not-current")
-  assert.equal(try reason(recognizeLocalText({ ...config, workerUrl: engineUrl(true) }, image)), "engine-start")
-  assert.equal(try reason(recognizeLocalText(config, new Blob(["GIF89a"], { type: "image/gif" }))), "unsupported")
+  assert.equal(try reason(recognizeLocalText({ ...config, workerUrl: try Effect.try(() => engineUrl(true)) }, image)), "engine-start")
+  assert.equal(try reason(recognizeLocalText(config, try Effect.try(unsupportedImage))), "unsupported")
 })

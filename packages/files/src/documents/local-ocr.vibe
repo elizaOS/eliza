@@ -142,7 +142,7 @@ effect function layoutLines(blocks: unknown, width: number, height: number): Sca
       }
     }
   }
-  return try scanTextLayer(lines)
+  return try mapError(scanTextLayer(lines), (failure) => refused(failure.reason === "invalid-line" ? "invalid-position" : "invalid-result"))
 }
 
 /** Recognizes the text of one admitted image on the device; interrupting it terminates the worker at once. */

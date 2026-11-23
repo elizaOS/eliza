@@ -12,7 +12,6 @@
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/os": "workspace:*",
     "effect": "4.1.1",
@@ -27,7 +26,6 @@
     "@effect/platform-node": "4.1.1",
     "@effect/vitest": "4.1.1",
     "@types/node": "catalog:",
-    "playwright": "catalog:",
     "typescript": "catalog:",
     "vibelang": "0.0.13",
     "vibelang-vite": "0.0.13",
