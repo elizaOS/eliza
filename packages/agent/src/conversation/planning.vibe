@@ -165,7 +165,8 @@ function errorText(error: ActionResult["error"]): string | undefined {
 function toolMessage(result: ActionResult): string {
   const summary = {
     success: result.success,
-    text: result.userFacingText ?? result.text,
+    text: result.text ?? result.userFacingText,
+    ...(result.userFacingText === undefined || result.userFacingText === result.text ? {} : { userFacingText: result.userFacingText }),
     error: errorText(result.error),
     effects: (result.effectReceipts ?? []).map(({ operation, outcome, resource }) => ({ operation, outcome, resource: resource.kind })),
     data: result.data,
