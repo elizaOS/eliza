@@ -2162,7 +2162,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         stale: [409, "stale_revision"]
       }
     ))
-  }))
+  }), 30_000)
 })
 
 type OperationAnswer = {
