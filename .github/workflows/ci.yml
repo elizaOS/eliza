@@ -110,10 +110,37 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: simulations-*
-          path: .spec-cache
-          merge-multiple: true
-      - if: steps.simulations.outcome == 'failure'
-        run: echo "::warning::The simulate shards' results did not download; this check simulates every module itself."
+          path: ${{ runner.temp }}/simulation-receipts
+      - id: import-simulations
+        if: steps.simulations.outcome == 'success'
+        continue-on-error: true
+        env:
+          SIMULATION_RECEIPTS: ${{ runner.temp }}/simulation-receipts
+        run: &import-simulation-receipts |
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          import path from "node:path";
+          const source = process.env.SIMULATION_RECEIPTS;
+          const cache = ".spec-cache";
+          const candidates = fs.globSync(["*", "simulations-*/*"], { cwd: source })
+            .filter((file) => /^(?:simulations-\d+\/)?(?:action|simulate)-[a-f0-9]{24}\.json\.(?:zst|gz)$/.test(file) && fs.lstatSync(path.join(source, file)).isFile());
+          fs.mkdirSync(cache, { recursive: true });
+          let imported = 0;
+          for (const [key, files] of Map.groupBy(candidates, (file) => path.basename(file, path.extname(file)))) {
+            if (["zst", "gz"].some((codec) => fs.lstatSync(path.join(cache, `${key}.${codec}`), { throwIfNoEntry: false }))) continue;
+            const name = path.basename(files[0]);
+            const bytes = fs.readFileSync(path.join(source, files[0]));
+            if (files.slice(1).some((file) => path.basename(file) !== name || !bytes.equals(fs.readFileSync(path.join(source, file))))) {
+              console.log(`::warning::Shards disagree on ${key}; the ordinary check will recompute it.`);
+              continue;
+            }
+            fs.writeFileSync(path.join(cache, name), bytes, { flag: "wx" });
+            imported++;
+          }
+          console.log(`Imported ${imported} simulation and typecheck receipts.`);
+          JS
+      - if: steps.simulations.outcome == 'failure' || steps.import-simulations.outcome == 'failure'
+        run: echo "::warning::The shard receipts were not fully imported; the ordinary check will compute missing results."
       - id: verify-tasks
         run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
       - id: publish-tool-selftest
@@ -233,14 +260,18 @@ jobs:
         run: |
           [[ -d .turbo/cache ]] || exit 0
           if [[ $FULL_REPLAY == true && -s $FIXTURE_INVENTORY ]] &&
-            find .turbo/cache -printf '%D:%i:%s:%C@ %p\0' | cmp -s "$FIXTURE_INVENTORY" - &&
-            [[ -z $(find .turbo/cache -type f -mtime +7 -print -quit) ]]; then
+            find .turbo/cache -regextype posix-extended \
+              \( -type f -regex '\.turbo/cache/[0-9a-f]{16}-manifest\.json' \) -prune -o \
+              \( -type d -printf '%p %y:%m\0' -o -printf '%p %y:%m:%D:%i:%s:%C@\0' \) |
+              LC_ALL=C sort -z | cmp -s "$FIXTURE_INVENTORY" - &&
+            expired=$(find .turbo/cache -type f -mtime +7 -print -quit) && [[ -z $expired ]]; then
             echo 'Reusing the unchanged pull request Turbo archive after a full fixture replay.'
             exit 0
           fi
           shopt -s nullglob
           summaries=(.turbo/runs/*.json)
           if (( ${#summaries[@]} )); then
+            set +o pipefail
             jq -r '
               .tasks[] | select(.cache.status == "HIT")
               | .hash | select(type == "string" and test("^[a-f0-9]{16}$"))
@@ -300,34 +331,93 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           job: simulate-${{ matrix.shard }}
+      - id: simulation-cache
+        env:
+          LOCK_HASH: ${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}
+          SHARD_LAYOUT: ${{ strategy.job-total }}-${{ matrix.shard }}
+        run: echo "prefix=simulation-shard-v1-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH-$SHARD_LAYOUT-" >> "$GITHUB_OUTPUT"
+      - id: restore-simulation-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/cached-simulation-receipts
+          key: ${{ steps.simulation-cache.outputs.prefix }}restore
+          restore-keys: ${{ steps.simulation-cache.outputs.prefix }}
+      - name: Import receipts from a previous run
+        if: steps.restore-simulation-cache.outputs.cache-matched-key != ''
+        continue-on-error: true
+        env:
+          SIMULATION_RECEIPTS: ${{ runner.temp }}/cached-simulation-receipts
+        run: *import-simulation-receipts
       - name: Simulate the specs whose files hash to this shard
+        id: precompute
         env:
           SHARD: ${{ matrix.shard }}
-          SHARDS: 4
+          SHARDS: ${{ strategy.job-total }}
+          CACHE_PREFIX: ${{ steps.simulation-cache.outputs.prefix }}
+          RESTORED_KEY: ${{ steps.restore-simulation-cache.outputs.cache-matched-key }}
         run: |
           node --input-type=module <<'JS'
           import { createHash } from "node:crypto";
           import fs from "node:fs";
-          import { precomputeSimulations, readSpecs } from "./vibestack/formal.ts";
-          const simulations = () => fs.existsSync(".spec-cache") ? fs.readdirSync(".spec-cache").filter((name) => name.startsWith("simulate-")) : [];
-          const restored = new Set(simulations());
+          import path from "node:path";
+          import { prepareSimulationReceipts, readSpecs } from "./vibestack/formal.ts";
+          const aggregate = (name) => /^simulate-[a-f0-9]{24}\.json\.(?:zst|gz)$/.test(name);
+          const simulations = () => fs.globSync("simulate-*.json.*", { cwd: ".spec-cache" })
+            .filter((name) => aggregate(name) && fs.lstatSync(path.join(".spec-cache", name)).isFile());
+          const digest = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+          const restored = new Map();
+          for (const name of simulations()) {
+            try { restored.set(name, digest(path.join(".spec-cache", name))); } catch { }
+          }
           const specs = readSpecs(process.cwd());
           const inShard = ({ file }) => parseInt(createHash("sha256").update(file).digest("hex").slice(0, 8), 16) % Number(process.env.SHARDS) === Number(process.env.SHARD) - 1;
           const names = specs.filter(inShard).map(({ name }) => name);
-          const results = await precomputeSimulations(process.cwd(), specs, names);
-          fs.mkdirSync(".simulations", { recursive: true });
-          const written = simulations().filter((name) => !restored.has(name));
-          for (const name of written) fs.copyFileSync(`.spec-cache/${name}`, `.simulations/${name}`);
+          const { results, seedDirectory, partialDirectory } = await prepareSimulationReceipts(process.cwd(), specs, names, process.env.RUNNER_TEMP);
+          const checkpoint = seedDirectory ?? partialDirectory;
+          let transfer = checkpoint ?? fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, "simulation-delta-"));
+          if (!checkpoint) {
+            for (const name of simulations()) if (!restored.has(name)) {
+              fs.copyFileSync(path.join(".spec-cache", name), path.join(transfer, name));
+            }
+          } else {
+            const contents = fs.readdirSync(checkpoint).sort().map((name) => [name, digest(path.join(checkpoint, name))]);
+            if (contents.some(([name, hash]) => aggregate(name) && restored.get(name) !== hash)) {
+              const fingerprint = createHash("sha256").update(JSON.stringify(contents)).digest("hex");
+              const prefix = `${process.env.CACHE_PREFIX}${fingerprint}-`;
+              if (!process.env.RESTORED_KEY.startsWith(prefix)) {
+                const key = `${prefix}${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
+                const directory = path.join(process.env.RUNNER_TEMP, "cached-simulation-receipts");
+                try {
+                  fs.rmSync(directory, { recursive: true, force: true });
+                  fs.renameSync(checkpoint, directory);
+                  transfer = directory;
+                  fs.appendFileSync(process.env.GITHUB_OUTPUT, `cache-key=${key}\n`);
+                } catch (error) {
+                  console.log(`::warning::Could not stage the simulation cache: ${error.message}`);
+                }
+              }
+            }
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `directory=${transfer}\n`);
           const failed = results.filter(({ ok }) => !ok);
           for (const { stage, summary, detail, where } of failed) console.log(`✗ ${stage} ${where ?? ""}: ${summary}\n${detail}`);
-          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${written.length} new entries, ${failed.length} failed`);
+          const kind = seedDirectory ? "complete seed" : partialDirectory ? "partial seed" : "new aggregate";
+          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${fs.readdirSync(transfer).length} ${kind} entries, ${failed.length} failed`);
           process.exitCode = failed.length ? 1 : 0;
           JS
-      - if: always()
+      - if: ${{ !cancelled() && steps.precompute.outputs.cache-key != '' }}
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          key: ${{ steps.precompute.outputs.cache-key }}
+          path: ${{ runner.temp }}/cached-simulation-receipts
+      - if: always() && steps.precompute.outputs.directory != ''
         uses: actions/upload-artifact@v7
         with:
           name: simulations-${{ matrix.shard }}
-          path: .simulations
+          path: ${{ steps.precompute.outputs.directory }}
+          compression-level: 0
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 1

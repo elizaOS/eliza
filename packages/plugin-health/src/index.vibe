@@ -1,0 +1,38 @@
+// spec/health/index.md, "Story: Review recorded sleep and device activity"
+import {
+  countsAsScreenUse,
+  intervalCoverage,
+  observationsFor,
+  validHealthWindow,
+  type HealthObservation,
+  type HealthWindow,
+  type ObservationKind,
+  type ScreenSignal,
+} from "../gen/health.effect.vibe"
+
+export error HealthReadFailed { reason: string }
+export error InvalidHealthWindow
+
+export service HealthConnector {
+  observations(ownerId: string, window: HealthWindow, kind: ObservationKind): HealthObservation[]!HealthReadFailed
+}
+
+export interface IntervalSummary {
+  readonly observations: readonly HealthObservation[]
+  readonly coveredMs: number
+}
+
+export effect function summarizeIntervals(ownerId: string, window: HealthWindow, kind: ObservationKind): IntervalSummary!HealthReadFailed | InvalidHealthWindow!HealthConnector {
+  if (!Number.isSafeInteger(window.fromMs) || !Number.isSafeInteger(window.untilMs) || !validHealthWindow(window)) {
+    throw new InvalidHealthWindow()
+  }
+  if (ownerId === "") return { observations: [], coveredMs: 0 }
+  const connector = try HealthConnector
+  const observations = observationsFor(try connector.observations(ownerId, window, kind), ownerId, window, kind)
+  const spans = observations.map(({ span }) => span).sort((left, right) => left.fromMs - right.fromMs)
+  return { observations, coveredMs: intervalCoverage(spans, window) }
+}
+
+export function screenSignalIsActive(signal: ScreenSignal) {
+  return countsAsScreenUse(signal)
+}

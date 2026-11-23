@@ -7,6 +7,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { installedPackages } from "./cache.ts";
 import { toolScripts, toolsCode } from "./cache.ts";
+import { chromiumForExplore } from "./chromium.ts";
 import { bin, exec, startGroup } from "./run.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 import { appScript, COLOUR, COUNTEREXAMPLES, DRIVERS, filesUnder, indent, isTestFile, manifest, packageFiles, packageManager, servedAt, TRACES, type Remember, type Reported } from "./util.ts";
@@ -170,23 +171,15 @@ export function explored(status: number, stdout: string, stderr: string, replay:
   return { kind: "failed", why: /stalled/i.test(tail) ? "the browser stalled while Bombadil explored the page" : `Bombadil could not ${replay ? "replay the trace" : "explore the page"} (exit ${status})`, output: tail };
 }
 
-/** Playwright's Chromium for Bombadil, unless CHROME names a browser already; without either, Bombadil looks for Chrome itself. */
-async function chromium(): Promise<NodeJS.ProcessEnv> {
-  if (process.env.CHROME) return {};
-  try {
-    const executable = (await import("playwright")).chromium.executablePath();
-    return fs.existsSync(executable) ? { CHROME: executable } : {};
-  } catch {
-    return {};
-  }
-}
-
 /** One `bombadil browser test` of `origin`: a bounded exploration, or the replay of a saved trace. */
 async function bombadil(root: string, origin: string, how: { seconds: number } | { reproduce: string }, output: string): Promise<Explored> {
   const specification = fs.existsSync(path.join(root, SPECIFICATION)) ? [SPECIFICATION] : [];
   const args = ["browser", "test", origin, ...specification, "--headless", "--no-sandbox", "--instrument-javascript=", "--output-path", output, "--output-path-overwrite",
     ...("seconds" in how ? ["--time-limit", `${how.seconds}s`, "--exit-on-violation"] : ["--reproduce", how.reproduce])];
-  const r = await exec(bin("bombadil", root), args, root, { ...process.env, NO_COLOR: "1", ...await chromium() });
+  let browser: NodeJS.ProcessEnv;
+  try { browser = await chromiumForExplore(); }
+  catch (error) { return { kind: "failed", why: error instanceof Error ? error.message : String(error), output: "" }; }
+  const r = await exec(bin("bombadil", root), args, root, { ...process.env, NO_COLOR: "1", ...browser });
   return r.stopped ? { kind: "failed", why: r.stopped, output: `${r.stdout}${r.stderr}`.trim().split("\n").slice(-40).join("\n") } : explored(r.status, r.stdout, r.stderr, "reproduce" in how);
 }
 

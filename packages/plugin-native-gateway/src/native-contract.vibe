@@ -1,0 +1,190 @@
+// spec/nativeGateway/index.md, "Story: Connect to the gateway I chose and isolate its replies"
+import type { PluginListenerHandle } from "@capacitor/core";
+
+export type JsonPrimitive = string | number | boolean | null;
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+
+export interface GatewayEndpoint {
+
+  stableId: string;
+
+  name: string;
+
+  host: string;
+
+  port: number;
+
+  lanHost?: string;
+
+  tailnetDns?: string;
+
+  gatewayPort?: number;
+
+  canvasPort?: number;
+
+  tlsEnabled: boolean;
+
+  tlsFingerprintSha256?: string;
+
+  isLocal: boolean;
+}
+
+export interface GatewayDiscoveryOptions {
+
+  wideAreaDomain?: string;
+
+  timeout?: number;
+}
+
+export interface GatewayDiscoveryResult {
+
+  gateways: GatewayEndpoint[];
+
+  status: string;
+}
+
+export interface GatewayDiscoveryEvent {
+
+  type: "found" | "lost" | "updated";
+
+  gateway: GatewayEndpoint;
+}
+
+export interface GatewayConnectOptions {
+
+  url: string;
+
+  token?: string;
+
+  password?: string;
+
+  clientName?: string;
+
+  clientVersion?: string;
+
+  sessionKey?: string;
+
+  role?: string;
+
+  scopes?: string[];
+}
+
+export interface GatewayConnectResult {
+
+  connected: boolean;
+
+  sessionId?: string;
+
+  protocol?: number;
+
+  methods?: string[];
+
+  events?: string[];
+
+  role?: string;
+
+  scopes?: string[];
+}
+
+export interface GatewaySendOptions {
+
+  method: string;
+
+  params?: JsonObject;
+}
+
+export interface GatewaySendResult {
+
+  ok: boolean;
+
+  payload?: JsonValue;
+
+  error?: {
+    code: string;
+    message: string;
+    details?: JsonValue;
+  };
+}
+
+export interface GatewayEvent {
+
+  event: string;
+
+  payload?: JsonValue;
+
+  seq?: number;
+}
+
+export interface GatewayMessageEvent {
+
+  data: JsonValue;
+}
+
+export interface GatewayStateEvent {
+
+  state: "connecting" | "connected" | "disconnected" | "reconnecting";
+
+  reason?: string;
+
+  code?: number;
+}
+
+export interface GatewayErrorEvent {
+
+  message: string;
+
+  code?: string;
+
+  willRetry: boolean;
+}
+
+export interface GatewayPlugin {
+
+  startDiscovery(
+    options?: GatewayDiscoveryOptions,
+  ): Promise<GatewayDiscoveryResult>;
+
+  stopDiscovery(): Promise<void>;
+
+  getDiscoveredGateways(): Promise<GatewayDiscoveryResult>;
+
+  connect(options: GatewayConnectOptions): Promise<GatewayConnectResult>;
+
+  disconnect(): Promise<void>;
+
+  isConnected(): Promise<{ connected: boolean }>;
+
+  send(options: GatewaySendOptions): Promise<GatewaySendResult>;
+
+  getConnectionInfo(): Promise<{
+    url: string | null;
+    sessionId: string | null;
+    protocol: number | null;
+    role: string | null;
+  }>;
+
+  addListener(
+    eventName: "gatewayEvent",
+    listenerFunc: (event: GatewayEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "stateChange",
+    listenerFunc: (event: GatewayStateEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "error",
+    listenerFunc: (event: GatewayErrorEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "discovery",
+    listenerFunc: (event: GatewayDiscoveryEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  removeAllListeners(): Promise<void>;
+}

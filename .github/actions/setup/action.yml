@@ -136,7 +136,10 @@ runs:
       shell: bash
       run: |
         inventory=$(mktemp)
-        if find .turbo/cache -printf '%D:%i:%s:%C@ %p\0' > "$inventory"; then
+        if find .turbo/cache -regextype posix-extended \
+          \( -type f -regex '\.turbo/cache/[0-9a-f]{16}-manifest\.json' \) -prune -o \
+          \( -type d -printf '%p %y:%m\0' -o -printf '%p %y:%m:%D:%i:%s:%C@\0' \) |
+          LC_ALL=C sort -z > "$inventory"; then
           echo "path=$inventory" >> "$GITHUB_OUTPUT"
         fi
     - id: gen-seed
@@ -225,7 +228,13 @@ runs:
           } >> "$GITHUB_OUTPUT"
         fi
         if [[ $PUBLISH_GEN_SEED == true ]]; then export TURBO_RUN_SUMMARY=true; fi
-        pnpm install --frozen-lockfile
+        install=(install --frozen-lockfile)
+        if [[ $GITHUB_ACTIONS == true && $GITHUB_JOB == vibestack-precompute-simulations &&
+              $GITHUB_WORKSPACE == "$PWD" && $GITHUB_WORKFLOW_REF == "$GITHUB_REPOSITORY/.github/workflows/ci.yml@"* ]] &&
+          jq -e '.scripts.prepare == "node vibestack/spec.ts gen --install --skip-gen-on-pack //#build"' package.json >/dev/null; then
+          install=(--filter-prod '{.}...' "${install[@]}" --prod)
+        fi
+        pnpm "${install[@]}"
     - id: publish-gen-seed
       if: inputs.verification == 'true' && steps.gen-seed.outputs.prefix != ''
       continue-on-error: true
@@ -321,11 +330,14 @@ runs:
     - name: Install Chromium
       if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest' && !startsWith(inputs.job, 'simulate-')
       run: |
-        node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
-        import { hostedCachedFixture, installChromium } from "./vibestack/selftests/install.ts";
-        const [fullOnly, cacheVerification] = process.argv.slice(2);
-        if (fullOnly !== "true" || cacheVerification !== "true" || !hostedCachedFixture()) {
-          await installChromium(fullOnly === "true");
+        node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.job == 'verify' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
+        import { installChromium, prepareChromiumShell } from "./vibestack/chromium.ts";
+        import { hostedCachedFixture } from "./vibestack/selftests/install.ts";
+        const [fullOnly, verify, cacheVerification] = process.argv.slice(2);
+        if (fullOnly === "true") {
+          if (cacheVerification !== "true" || !hostedCachedFixture()) await installChromium("full");
+        } else if (verify !== "true" || cacheVerification !== "true" || !await prepareChromiumShell()) {
+          await installChromium("both");
         }
         JS
       shell: bash

@@ -1,0 +1,42 @@
+{
+  "name": "@elizaos/capacitor-talkmode",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Runs voice conversations with live transcription, chat orchestration, and spoken replies.",
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "@capacitor/core": "8.4.0",
+    "@elizaos/os": "workspace:*",
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaosCapacitorTalkmode"
+    }
+  },
+  "files": [
+    "dist",
+    "ios/Sources",
+    "*.podspec"
+  ]
+}

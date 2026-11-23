@@ -13,7 +13,7 @@ import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvid
 import { Facts, Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind } from "./reminders.vibe"
 import { deliverRoutine, deliverRoutineNudge, ownerRoutinesAction, ownerRoutinesProvider, routineKind, routineNudgeKind, routineRoutes } from "./routines.vibe"
-import { ownerClockAt, stateOwnerZone, statedZone } from "./timezone.vibe"
+import { ownerCalendarZone, ownerClockAt, stateOwnerZone, statedZone } from "./timezone.vibe"
 import { currentTodosProvider, todosAction } from "./todos.vibe"
 import { ownerTravelEvaluator } from "./travel.vibe"
 
@@ -23,6 +23,8 @@ export { runEvaluators, orderedEntries, type EvaluatorRun } from "./evaluators/r
 export { restoreEarlier, evidenceRows, type Restoration } from "./evaluators/pages.vibe"
 export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
+export { BriefSources, PriorityModel, ownerBrief, rankOwnerEntries } from "./owner-brief.vibe"
+export { BillEvidencePort, keepObservedBill, findBillReceipt } from "./bill-evidence.vibe"
 export { reminderProposalFamily } from "./device-proposals.vibe"
 
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
@@ -65,6 +67,11 @@ export class PersonalAssistantService extends Service {
     for (const [kind, deliver] of deliverers) tasks.deliverKind(kind, (task) => onAgent(runtime, deliver(task)))
     await onAgent(runtime, scheduleStandingTasks())
     return new PersonalAssistantService(runtime)
+  }
+
+  /** The zone the owner's calendar reads: the zone the owner stated, else the agent's. */
+  ownerCalendarZone(): Promise<string> {
+    return onAgent(this.runtime, ownerCalendarZone())
   }
 
   override stop(): Promise<void> {

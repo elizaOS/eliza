@@ -22,7 +22,8 @@ import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
 import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
 import { profile } from "./testing/profile.ts";
-import { hostedCachedFixture, installChromium, isolatedInstalls } from "./selftests/install.ts";
+import { installChromium } from "./chromium.ts";
+import { hostedCachedFixture, isolatedInstalls } from "./selftests/install.ts";
 import { PACKED, toolShards } from "./selftests/tools.ts";
 import { bigNumberInteger } from "./gen/types.ts";
 import { canonical, check as conformanceCheck, ConformanceError, departure, replay as replayTrace } from "./conformance.ts";
@@ -283,7 +284,7 @@ pure def selected(which: bool): Set[Field] = {
   });
 
   test("the explore stage finds a page that breaks a property, keeps the trace, replays it first, and drops it once fixed", { skip: !["linux-x64", "linux-arm64", "darwin-arm64"].includes(`${process.platform}-${process.arch}`) }, async () => {
-    if (process.env.TURBO_HASH && hostedCachedFixture()) await installChromium(true);
+    if (process.env.TURBO_HASH && hostedCachedFixture()) await installChromium("full");
     const remember: Parameters<typeof explore>[1] = (_fingerprint, run) => run();
     const page = (script: string) => `<!doctype html><html><head><title>Page</title></head><body><button>Go</button>${script}</body></html>`;
     const server = 'import http from "node:http"; import fs from "node:fs";\nconst app = http.createServer((_, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(fs.readFileSync("index.html")); });\napp.listen(0, "127.0.0.1", () => console.log(`Local: http://localhost:${app.address().port}/`));\n';
@@ -666,7 +667,8 @@ export const driver = {
     const prepare = (project: string, names = selected) => withFormalCache(cache, () => prepareSimulationReceipts(project, readSpecs(project), names, seedParent));
     const invalid = ruleSpec("pure val bad = unknownValue");
     const first = scratch({ ...sources, "spec/untouched.md": invalid });
-    const { results: cold, seedDirectory: coldSeed } = await prepare(first);
+    const { results: cold, seedDirectory: coldSeed, partialDirectory: coldPartial } = await prepare(first);
+    assert.equal(coldPartial, undefined);
     assert.deepEqual([...new Set(cold.map((row) => row.where))], ["spec/other.md", "spec/counter.md"]);
     assert.ok(cold.every((row) => row.ok) && cold.some((row) => row.stage === "sometimes"), JSON.stringify(cold));
     assert.ok(cold.some((row) => row.stage === "replay" && row.where === "spec/counter.md"), JSON.stringify(cold));
@@ -688,11 +690,26 @@ export const driver = {
     assert.ok(!fs.existsSync(path.join(same, "gen/traces")), "ordinary check reused every simulation action");
     assert.ok(receipts.every((file) => fs.existsSync(path.join(cache, file))));
 
-    const changed = scratch({ ...sources, "spec/base.md": sources["spec/base.md"].replace("= 2", "= -1") });
-    const rejected = await prepare(changed, ["counter"]);
-    assert.ok(rejected.results.some((row) => row.stage === "always" && !row.ok && row.detail.includes("initial")), JSON.stringify(rejected));
+    const changedSources = { ...sources, "spec/base.md": sources["spec/base.md"].replace("= 2", "= -1") };
+    const changed = scratch(changedSources);
+    const rejected = await prepare(changed);
+    assert.ok(rejected.results.some((row) => row.where === "spec/counter.md" && row.stage === "always" && !row.ok && row.detail.includes("initial")), JSON.stringify(rejected));
+    assert.ok(rejected.results.some((row) => row.where === "spec/other.md" && row.stage === "replay" && row.ok), JSON.stringify(rejected));
     assert.equal(rejected.seedDirectory, undefined);
-    assert.equal(fs.readdirSync(seedParent).length, 1);
+    const partial = rejected.partialDirectory;
+    assert.ok(partial);
+    const partialNames = fs.readdirSync(partial);
+    assert.deepEqual([partialNames.filter(isActionEntry).length, partialNames.filter((name) => name.startsWith("simulate-")).length, partialNames.length], [4, 2, 6]);
+    assert.equal(fs.readdirSync(seedParent).length, 2);
+    fs.rmSync(changed, { recursive: true, force: true });
+
+    const mixed = scratch(changedSources);
+    fs.cpSync(partial, path.join(mixed, ".spec-cache"), { recursive: true });
+    const received = await run(mixed);
+    assert.deepEqual(received.results.filter(({ stage }) => ["always", "sometimes", "replay"].includes(stage)),
+      [...rejected.results].sort((a, b) => a.where!.localeCompare(b.where!)));
+    assert.ok(received.failed.includes("always"), received.text);
+    assert.ok(!fs.existsSync(path.join(mixed, "gen/traces")), "the ordinary check reused the mixed simulation receipts");
 
     const typecheck = names.find(isActionEntry);
     assert.ok(typecheck);
@@ -4625,6 +4642,13 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
     `globalThis["queueMicrotask"](later);`,
     "// eslint-disable-next-line no-undef -- a global the page defines",
   ]), ["6 code/comments", "7 code/comments", "8 code/comments", "9 code/comments", "10 code/effects", "11 code/effects", "12 code/effects", "13 no-console", "14 code/effects", "15 code/effects"]);
+  assert.deepEqual([...new Set(await found("apps/app/src/probe.vibe", [
+    "const clock = { setTimeout: () => undefined }",
+    "const capture = { setTimeout: globalThis.setTimeout }",
+    "const { setTimeout: schedule } = globalThis",
+    'const computed = globalThis["setTimeout"]',
+    "const shorthand = { setTimeout }",
+  ]))], ["2 code/effects", "3 code/effects", "4 code/effects", "5 code/effects"]);
   assert.deepEqual(await found("apps/app/src/probe.vibe", [
     "module bridge {",
     "  /**",

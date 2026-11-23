@@ -1,0 +1,38 @@
+{
+  "name": "@elizaos/native-activity-tracker",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "macOS activity-tracker native helper (Swift) plus a small TypeScript driver that spawns and line-parses the collector process.",
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "typecheck": "vibelang --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "@effect/platform-node": "4.1.1",
+    "@effect/vitest": "4.1.1",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "native/macos/activity-collector.swift"
+  ]
+}

@@ -1,0 +1,33 @@
+// spec/nativeSettings/index.md, "Story: Adjust the device settings from the local overlay"
+import { System } from "@elizaos/os/bridges/system"
+import type { ControlReading, SystemClient, SystemVolumeStream } from "@elizaos/os/bridges/definitions/system"
+import { settingsLevelAllowed, settingsOutcome, type ControlLimit } from "../gen/nativeSettings.effect.vibe"
+
+export { systemClient } from "@elizaos/os/bridges/system"
+
+export error DeviceSettingRefused { requestedLevel: number }
+
+function observedLevel(reading: ControlReading, requestedLevel: number): boolean {
+  return reading.kind === "reported" && reading.level === requestedLevel
+}
+
+export effect function applyBrightness(requestedLevel: number, device: SystemClient = System) {
+  const settings = try tryPromise(() => device.getDeviceSettings())
+  const limits: ControlLimit = { maxLevel: 255, canWrite: settings.canWriteSettings }
+  if (!Number.isSafeInteger(requestedLevel) || !settingsLevelAllowed(limits, requestedLevel)) {
+    throw new DeviceSettingRefused({ requestedLevel })
+  }
+  const changed = try tryPromise(() => device.setScreenBrightness({ brightness: requestedLevel / limits.maxLevel }))
+  return settingsOutcome(limits, requestedLevel, observedLevel(changed.reading, requestedLevel), false)
+}
+
+export effect function applyVolume(stream: SystemVolumeStream, requestedLevel: number, device: SystemClient = System) {
+  const settings = try tryPromise(() => device.getDeviceSettings())
+  const selected = settings.volumes.find((entry) => entry.stream === stream)
+  const limits: ControlLimit = { maxLevel: selected?.max ?? 0, canWrite: selected !== undefined }
+  if (!Number.isSafeInteger(requestedLevel) || !settingsLevelAllowed(limits, requestedLevel)) {
+    throw new DeviceSettingRefused({ requestedLevel })
+  }
+  const changed = try tryPromise(() => device.setVolume({ stream, volume: requestedLevel }))
+  return settingsOutcome(limits, requestedLevel, observedLevel(changed.reading, requestedLevel), false)
+}

@@ -1,0 +1,5 @@
+// spec/nativePasswords/index.md, "Story: Manage saved passwords without revealing them to the application renderer"
+import { passwordsPlugin } from "@elizaos/os/bridges/passwords"
+export { createPasswordsClient, createTransferClient, passwordsPlugin, passwordTransferPlugin } from "@elizaos/os/bridges/passwords"
+export type * from "@elizaos/os/bridges/definitions/passwords"
+export const ElizaPasswords = passwordsPlugin()

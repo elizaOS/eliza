@@ -1,0 +1,52 @@
+// spec/nativeAppblocker/index.md, "Story: Block only the apps I selected for a chosen interval"
+import type { AppBlockerPlugin } from "./native-contract.vibe"
+
+export type * from "./native-contract.vibe"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { AppBlockerPlugin } from "./native-contract.vibe"
+
+  export const native = registerPlugin<AppBlockerPlugin>("ElizaAppBlocker")
+}
+import { native } from capacitor
+
+export const AppBlocker = native
+
+import { nativeReply } from "@elizaos/os/bridges/bridge"
+import { mayStartAppBlock, type AppBlockEngine, type AppBlockInterval } from "../gen/nativeAppblocker.effect.vibe"
+
+const BlockStatus = Schema.Struct({
+  engine: Schema.Literals(["family-controls", "usage-stats-overlay", "none"]),
+  permissionStatus: Schema.Literals(["granted", "denied", "not-determined", "not-applicable"]),
+  capabilities: Schema.Struct({ canBlockApps: Schema.Boolean }),
+})
+const BlockResult = Schema.Struct({
+  success: Schema.Boolean,
+  expiresAt: Schema.optionalKey(Schema.String),
+  endsAt: Schema.NullOr(Schema.String),
+  error: Schema.optionalKey(Schema.String),
+  blockedCount: Schema.Int,
+})
+
+export error AppBlockSelectionRefused
+
+export effect function applyAppBlock(options: Parameters<AppBlockerPlugin["blockApps"]>[0], port: AppBlockerPlugin = AppBlocker) {
+  const status = try nativeReply("ElizaAppBlocker", "getStatus", BlockStatus, () => port.getStatus())
+  const engine: AppBlockEngine = status.engine === "family-controls" ? "FamilyControls" :
+    status.engine === "usage-stats-overlay" ? "UsageOverlay" : "NoAppBlock"
+  const granted = status.permissionStatus === "granted" && status.capabilities.canBlockApps
+  const grant = { usageAllowed: granted, overlayAllowed: granted, familyAllowed: granted }
+  const installedIds = [...new Set(options.packageNames ?? [])].filter((value) => value.trim() !== "")
+  const pickedTokens = [...new Set(options.appTokens ?? [])].filter((value) => value.trim() !== "")
+  const nowMs = try Clock.currentTimeMillis
+  const delta = (options.durationMinutes ?? 0) * 60000
+  if (options.durationMinutes != null && (!Number.isSafeInteger(delta) || delta <= 0 || !Number.isSafeInteger(nowMs + delta))) {
+    throw new AppBlockSelectionRefused()
+  }
+  const interval: AppBlockInterval = options.durationMinutes == null ? { tag: "IndefiniteAppBlock" } : { tag: "TimedAppBlock", deadline: nowMs + delta }
+  if (!mayStartAppBlock(engine, grant, { installedIds, pickedTokens }, interval, nowMs)) throw new AppBlockSelectionRefused()
+  return try nativeReply("ElizaAppBlocker", "blockApps", BlockResult, () => port.blockApps({
+    packageNames: installedIds, appTokens: pickedTokens, durationMinutes: options.durationMinutes ?? null,
+  }))
+}
