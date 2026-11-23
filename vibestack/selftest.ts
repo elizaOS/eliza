@@ -3845,31 +3845,52 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
   test("a check that is interrupted, or that exits, ends each tool it started and what the tool started, in its process group or out of it, as it ends a tool that writes too much", { skip: process.platform === "win32" }, async () => {
     const root = scratch({
       "short-watchdog.ts": read("vibestack/run.ts")
-        .replace(/^const TOOL_TIMEOUT = .*;$/m, "const TOOL_TIMEOUT = 500;")
         .replace(/^const WATCH = .*;$/m, "const WATCH = 100;"),
       "inherited-output.mjs": `import { spawn } from "node:child_process";
-import fs from "node:fs";
 const mode = process.argv[2];
-const helper = spawn(process.execPath, ["-e", 'setTimeout(() => require("node:fs").writeFileSync(process.argv[1], "done"), 12000)', "finished-" + mode], {
+const helper = spawn(process.execPath, ["hold-output.mjs", mode, String(process.pid)], {
   stdio: ["ignore", process.stdout, process.stderr], detached: mode === "detached",
 });
-helper.once("spawn", () => { fs.writeFileSync("helper-" + mode, String(helper.pid)); process.exit(0); });
+helper.once("spawn", () => process.exit(0));
+`,
+      "hold-output.mjs": `import fs from "node:fs";
+const [mode, parent] = process.argv.slice(2);
+const marker = "helper-" + mode;
+fs.writeFileSync(marker + ".tmp", JSON.stringify([Number(parent), process.pid]));
+fs.renameSync(marker + ".tmp", marker);
+setTimeout(() => fs.writeFileSync("finished-" + mode, "done"), 60_000);
 `,
       "watchdog-check.mjs": `import assert from "node:assert/strict";
 import fs from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { exec } from "./short-watchdog.ts";
-await Promise.all(["same-group", "detached"].map(async mode => {
-  try {
-    const result = await exec(process.execPath, ["inherited-output.mjs", mode], import.meta.dirname);
-    assert.ok(fs.existsSync("helper-" + mode), "the writer started");
-    assert.ok(result.stopped, "the watchdog ended the command");
-    assert.ok(!fs.existsSync("finished-" + mode), "the command returned while its inherited pipe was still held");
-  } finally {
-    if (fs.existsSync("helper-" + mode) && !fs.existsSync("finished-" + mode)) {
-      try { process.kill(Number(fs.readFileSync("helper-" + mode)), "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
-    }
+const modes = ["same-group", "detached"];
+const helper = (mode) => fs.existsSync("helper-" + mode) ? JSON.parse(fs.readFileSync("helper-" + mode, "utf8")) : undefined;
+const running = (pid) => {
+  try { process.kill(pid, 0); return true; } catch (error) { if (error.code !== "ESRCH") throw error; return false; }
+};
+const ready = () => modes.every(mode => { const pids = helper(mode); return pids && !running(pids[0]) && running(pids[1]); });
+const originalNow = Date.now;
+const finished = Promise.all(modes.map(mode => exec(process.execPath, ["inherited-output.mjs", mode], import.meta.dirname)));
+try {
+  const deadline = performance.now() + 30_000;
+  while (!ready() && performance.now() < deadline) await delay(50);
+  assert.ok(ready(), "both writers started and their parents were reaped");
+  Date.now = () => originalNow() + 61 * 60_000;
+  const results = await Promise.race([finished, delay(20_000, undefined, { ref: false })]);
+  assert.ok(results, "the watchdog released both inherited pipes");
+  for (const [index, mode] of modes.entries()) {
+    assert.ok(results[index].stopped, mode + ": the watchdog ended the command");
+    assert.ok(!fs.existsSync("finished-" + mode), mode + ": the command returned while its inherited pipe was still held");
   }
-}));
+} finally {
+  Date.now = originalNow;
+  for (const mode of modes) {
+    const pids = helper(mode);
+    if (!pids || fs.existsSync("finished-" + mode)) continue;
+    try { process.kill(pids[1], "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+  }
+}
 `,
       "tool.mjs": 'import { spawn } from "node:child_process";\nimport fs from "node:fs";\nconst started = [false, true].map((detached) => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached }).pid);\nfs.writeFileSync(process.argv[2], `${process.pid} ${started.join(" ")} `);\nsetInterval(() => {}, 1000);\nconst flood = () => { while (process.stdout.write("x".repeat(1 << 20))); process.stdout.once("drain", flood); };\nif (process.argv[3]) flood();\n',
       "check.mjs": `import { exec } from ${JSON.stringify(path.join(project, "vibestack/run.ts"))};\nvoid exec(process.execPath, ["tool.mjs", process.argv[2]], import.meta.dirname);\nprocess.stdin.once("data", () => process.exit(3));\n`,
