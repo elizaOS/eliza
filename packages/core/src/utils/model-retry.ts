@@ -9,6 +9,7 @@
  * graph as the model-error classifiers, and never a message substring.
  */
 
+import { MODEL_PROVIDER_RESENDS } from "../types/model.js";
 import { readHttpStatus } from "./model-errors.js";
 
 /**
@@ -150,6 +151,27 @@ export function providerRateLimitRetryAt(
 		if (Number.isFinite(deadline) && deadline > now) return deadline;
 	}
 	return undefined;
+}
+
+/**
+ * How many times the provider adapter re-sent the request this error ended:
+ * the largest {@link MODEL_PROVIDER_RESENDS} on any node of the wrapped error
+ * graph, or 0.
+ */
+export function providerResendCount(error: unknown): number {
+	let count = 0;
+	for (const node of retryEvidenceNodes(error)) {
+		const resends = (node as { [MODEL_PROVIDER_RESENDS]?: unknown })[
+			MODEL_PROVIDER_RESENDS
+		];
+		if (typeof resends === "number" && resends > count) count = resends;
+	}
+	return count;
+}
+
+/** True when the provider adapter already re-sent the request this error ended. */
+export function providerAlreadyResent(error: unknown): boolean {
+	return providerResendCount(error) > 0;
 }
 
 /**

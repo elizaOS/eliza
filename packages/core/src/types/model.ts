@@ -634,6 +634,16 @@ export const MODEL_PROVIDER_ATTEMPTS: unique symbol = Symbol.for(
 	"eliza.modelProviderAttempts",
 );
 
+/**
+ * On a provider error: how many times the provider adapter re-sent the
+ * request inside this model call before the error ended it. When another
+ * registration's 429 ends the call, dispatch carries the largest count of the
+ * call's failed attempts onto that error.
+ */
+export const MODEL_PROVIDER_RESENDS: unique symbol = Symbol.for(
+	"eliza.modelProviderResends",
+);
+
 /** Exact dispatched registration, not a provider-wide or cross-call blacklist. */
 export interface ModelProviderAttempt {
 	modelType: string;

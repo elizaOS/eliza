@@ -988,8 +988,9 @@ export async function generateStage1Decision(
       return await sendRecordedStage1(params);
     } catch (error) {
       // error-policy:J2 A chat turn waits out a temporary rate limit once and
-      // re-sends the same request, and re-sends once a request whose tool call
-      // the provider could not parse; every other failure propagates unchanged.
+      // re-sends the same request (not one the provider adapter already
+      // re-sent), and re-sends once a request whose tool call the provider
+      // could not parse; every other failure propagates unchanged.
       // The refusal is recorded as its own failed attempt and spends none of
       // the empty-output retry budget: no answer came back to be judged.
       if (!toolCallParseResendUsed && isProviderToolCallParseFailure(error)) {

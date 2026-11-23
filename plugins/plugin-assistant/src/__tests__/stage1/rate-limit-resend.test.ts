@@ -10,6 +10,7 @@ import { join } from "node:path";
 import {
   AgentRuntime,
   ChannelType,
+  MODEL_PROVIDER_RESENDS,
   ModelType,
   runWithStreamingContext,
   type State,
@@ -33,7 +34,7 @@ const directReply = {
   result: { responseContent: { text: REPLY } },
 };
 
-const rateLimited = (fields: Record<string, unknown> = {}) =>
+const rateLimited = (fields: Record<PropertyKey, unknown> = {}) =>
   Object.assign(new Error("Too Many Requests"), { status: 429, ...fields });
 /** The typed wait the Cloud gateway attaches to its 429. */
 const reportedWait = (retryAfterMs: number, scope?: string) => ({
@@ -46,7 +47,10 @@ const reportedWait = (retryAfterMs: number, scope?: string) => ({
 /** A provider that answers a token-bucket 429 with a whole-minute header. */
 const minuteHeader = { responseHeaders: { "retry-after": "60" } };
 
-/** Failures that a wait of seconds cannot clear, or that are not rate limits. */
+/**
+ * Failures that a wait of seconds cannot clear, that are not rate limits, or
+ * that the provider adapter already re-sent.
+ */
 const NOT_RESENT: Array<[string, Error]> = [
   [
     "spent credit",
@@ -57,6 +61,10 @@ const NOT_RESENT: Array<[string, Error]> = [
     Object.assign(new Error("token quota exceeded"), { status: 429 }),
   ],
   ["a used-up period allowance", rateLimited(reportedWait(10, "period"))],
+  [
+    "a refusal the provider adapter already re-sent",
+    rateLimited({ [MODEL_PROVIDER_RESENDS]: 3 }),
+  ],
   [
     "a rate limit named only in prose",
     new Error("subscription rate limit reached: session limit hit"),
