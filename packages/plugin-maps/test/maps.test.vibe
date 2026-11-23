@@ -23,6 +23,8 @@ import { mapsNavigationRelay } from "../src/relay.vibe"
 import { nearbyPlaceKind, routeOf } from "../src/routing.vibe"
 import type { AgentSavedPlaceStore } from "../src/saves.vibe"
 import type { MapsCloudLink } from "../src/service.vibe"
+import { call, cloudFake as ownerCloudFake, deviceKey, startInProcess, stream } from "../../agent/test/support/kernel.vibe"
+import { text as modelText, toolCalls } from "../../agent/test/support/cloud-fake.ts"
 
 const ferry = { latitude: 37.7955, longitude: -122.3937 }
 const tower = { latitude: 37.8024, longitude: -122.4058 }
@@ -554,6 +556,60 @@ function linkFake() {
   }
   return { link, bodies }
 }
+
+it.live('See the map result and hear the rest of the answer (spec/maps/chatCards.md, "Story: See the map result and hear the rest of the answer"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other")', effect () => {
+  const model = try ownerCloudFake(deviceKey)
+  const { link, bodies } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const agent = try startInProcess({
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: model.origin }, load: [plugin.name], allowed: ["REPLY", "IGNORE", "NONE", "MAPS_PLACE"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map([[plugin.name, plugin]]),
+  })
+  const opened = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
+  if (!("json" in opened) || opened.status !== 201) return try Effect.die(new Error(`Conversation did not open: ${JSON.stringify(opened)}`))
+  const { conversation: { id } } = opened.json as { conversation: { id: string } }
+  const path = `/api/conversations/${id}/messages`
+  const offered = { text: "Find Coit Tower and tell me how many places matched.", channelType: "VOICE_DM", clientMessageId: "maps-card" }
+  const extra = "I found one matching place."
+  const found = { name: "MAPS_PLACE", arguments: { query: "Coit Tower" } }
+
+  try sync(() => model.script(toolCalls("", found), modelText(extra)))
+  const original = try call(agent, { method: "POST", path, body: offered })
+  const replay = try call(agent, { method: "POST", path, body: offered })
+
+  try sync(() => model.script(toolCalls("", found), modelText(extra)))
+  const streamed = try stream(agent, { method: "POST", path: `${path}/stream`, body: { ...offered, clientMessageId: "maps-card-stream" } })
+  const beforeLocation = bodies.length
+  const needsLocation = "The phone needs a precise fix."
+  try sync(() => model.script(
+    toolCalls("", { name: "MAPS_PLACE", arguments: { query: "pharmacy", useCurrentLocation: true } }),
+    modelText(needsLocation),
+    modelText(JSON.stringify({ grounded: true, claims: [{ quote: needsLocation, change: "None", receiptId: null, failedResult: null, supported: true }] })),
+  ))
+  const refused = try call(agent, { method: "POST", path, body: { text: "Find a pharmacy near me." } })
+
+  try Effect.try(() => {
+    assert.propertyVal(original, "status", 200)
+    assert.propertyVal(replay, "status", 200)
+    assert.propertyVal(refused, "status", 200)
+    assert.strictEqual(streamed.status, 200)
+    if (!("json" in original) || !("json" in replay) || !("json" in refused)) throw new Error("Missing owner reply")
+    const reply = original.json as { text: string; messageId: string; action: { kind: string; validatedCard: boolean } }
+    const frames = streamed.text.split("\n\n").flatMap((part) => part.startsWith("data: ") ? [JSON.parse(part.slice(6)) as { type: string; fullText?: string }] : [])
+    assert.deepStrictEqual(frames.filter(({ type }) => type === "done").map(({ fullText }) => fullText), [reply.text])
+    const repeated = replay.json as { text: string; messageId: string }
+    assert.deepStrictEqual([repeated.text, repeated.messageId], [reply.text, reply.messageId])
+    assert.deepStrictEqual(recognizedMapsCards(reply.text).map(({ card }) => [card.kind, card.kind === "places" ? card.attribution : undefined]), [["places", "Google"]])
+    assert.isFalse(reply.text.includes("```"))
+    assert.isTrue(withoutMapsCards(reply.text).endsWith(extra))
+    assert.strictEqual(reply.action.kind, "MAPS_PLACE")
+    assert.isTrue(reply.action.validatedCard)
+    assert.deepStrictEqual(recognizedMapsCards((refused.json as { text: string }).text).map(({ card }) => card.kind), ["locate"])
+    assert.strictEqual(bodies.length, beforeLocation)
+    assert.strictEqual(bodies.filter(({ path }) => path === "/api/v1/maps/places/search").length, 2)
+  })
+}, 120_000)
 
 function locateCard(result: { readonly text?: string }) {
   const card = recognizedMapsCards(result.text ?? "")[0]?.card
