@@ -104,8 +104,7 @@ module node {
     chmodSync(directory, 0o700)
   }
 
-  export function replaceLock(directory: string): void {
-    const pid = spawnSync(process.execPath, ["-e", ""]).pid
+  export function replaceLock(directory: string, pid = spawnSync(process.execPath, ["-e", ""]).pid): void {
     const staged = join(directory, "replacement.lock")
     writeFileSync(staged, JSON.stringify({ pid, owner: "replacement" }), { mode: 0o600 })
     renameSync(staged, join(directory, "tasks.sqlite.lock"))
@@ -178,6 +177,10 @@ it.effect('Task storage opens only under verified custody and serves only authen
   const taken = try outcome(store.create(try support("task", () => task("task-2"))))
   try store.close()
   const closedStatus = try store.storageStatus()
+  try support("a lock left by an earlier run under this pid", () => replaceLock(directory, process.pid))
+  const afterCrash = try storeIn(directory, key)
+  const reclaimed = try outcome(afterCrash.open(account))
+  try afterCrash.close()
 
   try support("non-private directory", () => openPermissions(directory))
   const notPrivate = try outcome((try storeIn(directory, key)).open(account))
@@ -222,12 +225,12 @@ it.effect('Task storage opens only under verified custody and serves only authen
   try reading.close()
 
   try Effect.try(() => assert.deepStrictEqual({
-    before, wrongLength, afterRefusal, missing, lockHeld, read: read?.task, current: current?.task.id, taken, closedStatus,
+    before, wrongLength, afterRefusal, missing, lockHeld, read: read?.task, current: current?.task.id, taken, closedStatus, reclaimed,
     notPrivate, copied, otherAccount, fenced, replacementRead, lost, refusedRead,
   }, {
     before: "deferred", wrongLength: "StorageUnavailable", afterRefusal: { status: "unavailable", wroteNothing: true },
     missing: "StorageUnavailable", lockHeld: "StorageUnavailable", read: first.task, current: "task-1", taken: "SlotTaken",
-    closedStatus: "unavailable", notPrivate: "StorageUnavailable",
+    closedStatus: "unavailable", reclaimed: undefined, notPrivate: "StorageUnavailable",
     copied: { foreign: "Corrupt", evidence: "Corrupt", torn: "Corrupt", current: "Corrupt", slot: "Corrupt", own: "task-1" },
     otherAccount: "StorageUnavailable", fenced: { status: "unavailable", read: "StorageUnavailable" }, replacementRead: "task-1",
     lost: { write: "OutcomeUnknown", next: "StorageUnavailable" }, refusedRead: "ReadRefused",
