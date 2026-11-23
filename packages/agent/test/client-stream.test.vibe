@@ -8,8 +8,9 @@ import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProces
 import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-reader.vibe"
 
 module node {
-  import type { Action } from "@elizaos/core"
+  import { sleepWithAbort, type Action } from "@elizaos/core"
   import type { EffectReceipt } from "@elizaos/core/protocol"
+  import { turnFirstCalls } from "../src/conversation/planning.vibe"
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
   import type { AgentPlugin } from "../src/host/module.vibe"
 
@@ -20,14 +21,23 @@ module node {
     readonly seen: readonly string[]
   }
 
+  const agendaRead: Action = {
+    name: "AGENDA_READ", description: "Reads the owner's agenda.", contexts: ["general", "agenda"],
+    tags: ["capability:read"],
+    validate: async () => true,
+    handler: async (_runtime, message) => {
+      if (message.content.text?.startsWith("Open my agenda for next month")) await sleepWithAbort(850)
+      return { success: true, text: "Nothing booked." }
+    },
+  }
+
   export const agendaApp: AgentPlugin = {
     name: "agenda-app", description: "An app whose one action reads the owner's agenda",
-    init: async (_config, runtime) => { runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" }) },
-    actions: [{
-      name: "AGENDA_READ", description: "Reads the owner's agenda.", contexts: ["general", "agenda"],
-      tags: ["capability:read"],
-      validate: async () => true, handler: async () => ({ success: true, text: "Nothing booked." }),
-    }],
+    init: async (_config, runtime) => {
+      runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" })
+      turnFirstCalls.set(agendaRead, (_runtime, { content }) => content.text?.startsWith("Open my agenda for ") ? {} : undefined)
+    },
+    actions: [agendaRead],
   }
 
   export const privateEffectPayload = "private-fixture-effect-payload"
@@ -267,7 +277,7 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
 
 const planning = "spec/agent/conversation/planning.md"
 
-it.live(`Hear that the agent heard me once before it works, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
+it.live(`Hear that the agent heard me while work is pending, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; ${planning}, "A directly routed call acknowledges once if it is still running after 400 milliseconds")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -307,8 +317,19 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
   try Effect.sync(() => cloud.script(text("Sure.")))
   const assentWithoutWork = try turn("Remember that I like tea")
 
+  try Effect.sync(() => cloud.script(text("Nothing booked."), text("Nothing booked."), text("Nothing booked.")))
+  const directFast = try turn("Open my agenda for this morning")
+  const directSlow = try turn("Open my agenda for next month")
+  const directQuiet = try turn("Open my agenda for next month without an acknowledgment")
+  try Effect.sync(() => cloud.script(toolCalls("Let me check.", agenda), text("Friday is open.")))
+  const modelQuiet = try turn("Check my availability without a cue")
+
   const done = (reply: string) => ({ kind: "Done", text: reply, failureKind: undefined, keyed: true })
-  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork }, {
+  const direct = (acknowledgments: string[]) => ({
+    done: done("Nothing booked."), asked: 1, acknowledgments, tools: ["tool:AGENDA_READ:Using Agenda"],
+    acknowledgedBeforeTools: acknowledgments.length === 0, cueLeftTheText: true, sameWhenSplit: true,
+  })
+  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork, directFast, directSlow, directQuiet, modelQuiet }, {
     instruction: {
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
@@ -320,5 +341,12 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
     },
     answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    directFast: direct([]),
+    directSlow: direct(["acknowledgment:One sec."]),
+    directQuiet: direct([]),
+    modelQuiet: {
+      done: done("Friday is open."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
   }))
 }, 120_000)
