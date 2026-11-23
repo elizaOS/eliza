@@ -25,9 +25,10 @@ it says the reminder is important or urgent.
 
 A plan's due time is a duration, an instant with its offset, a wall time
 on a day of the owner's clock, a day alone, which comes at 09:00 that day
-as a deadline "by the 20th" does, or a repeat at a wall time every day or
-on the weekdays the owner named. A repeat keeps the owner's clock and
-follows it when they state a new zone.
+as a deadline "by the 20th" does, a repeat at a wall time every day or
+on the weekdays the owner named, or a repeat on an interval ("every two
+hours"). A repeat keeps the owner's clock and follows it when they state a
+new zone.
 
 ```quint
 type ReminderPhase = NoReminderIntent | IntentPending | IntentReady | IntentRejected | IntentCancelled | ReminderSaved
@@ -123,6 +124,27 @@ pure def firstAlert(savedAlert: DeliveryChoice, hasConversation: bool): DueNotic
   if (savedAlert != SecondChoice) NotifiesPhone else if (hasConversation) ConversationOnly else Unannounced
 pure def lawASilentReminderNeverNotifiesThePhone(hasConversation: bool): bool = firstAlert(SecondChoice, hasConversation) != NotifiesPhone
 pure def lawAnAlertingReminderNotifiesThePhone(hasConversation: bool): bool = firstAlert(FirstChoice, hasConversation) == NotifiesPhone
+```
+
+### A reminder repeats on an interval only when the interval divides the hour or the day evenly
+
+An interval is whole minutes, from five minutes to a day. One shorter
+than an hour must divide the hour, and a longer one must be whole hours
+that divide the day, so every firing keeps its place on the owner's clock:
+every 5, 6, 10, 12, 15, 20 or 30 minutes, or every 1, 2, 3, 4, 6, 8, 12 or
+24 hours. The first firing comes one interval after the request. Any other
+interval saves nothing, and the reply names the intervals that repeat.
+
+```quint
+pure val everyMinutesValues = Set(0, 4, 5, 7, 20, 45, 60, 90, 120, 300, 1440, 2880)
+pure def intervalRepeats(everyMinutes: int): bool =
+  if (everyMinutes < 5 or everyMinutes > 1440) false
+  else if (everyMinutes < 60) 60 % everyMinutes == 0
+  else everyMinutes % 60 == 0 and 1440 % everyMinutes == 0
+pure def lawAnIntervalUnderFiveMinutesNeverRepeats(everyMinutes: int): bool = everyMinutes < 5 implies not(intervalRepeats(everyMinutes))
+pure def lawAnIntervalLongerThanADayNeverRepeats(everyMinutes: int): bool = everyMinutes > 1440 implies not(intervalRepeats(everyMinutes))
+pure def lawAnIntervalOfHoursIsWholeHours(everyMinutes: int): bool =
+  (everyMinutes >= 60 and intervalRepeats(everyMinutes)) implies everyMinutes % 60 == 0
 ```
 
 ### A reminder is high priority only when the owner's message says so
@@ -280,6 +302,49 @@ named, and keeps its time, delivery choices and escalation plan.
 pure def renameAdmitted(matches: int, newTitle: str): bool = matches == 1 and newTitle != ""
 pure def lawOnlyOneNamedReminderIsRenamed(matches: int, newTitle: str): bool = renameAdmitted(matches, newTitle) implies matches == 1
 pure def lawABlankTitleNeverRenames(matches: int): bool = not(renameAdmitted(matches, ""))
+```
+
+## Story: Answer or put off a reminder I keep
+
+> As an owner, I want to mark a reminder done, dismiss it, acknowledge
+> it, skip its next occurrence, or snooze it for some minutes, until
+> tonight or until tomorrow morning.
+
+### A skip passes over one occurrence of a repeating reminder, and a reminder that does not repeat is not skipped
+
+Each of these names its reminder among the live ones as [names](./names.md)
+says. Skipping a repeating reminder settles the occurrence it waits for, or the
+one that just fired, and the reminder comes again at the occurrence after
+it ([scheduled tasks](../agent/schedule/scheduledTasks.md)). A reminder
+that comes once has no later occurrence, so a skip changes nothing and the
+reply says to dismiss it instead.
+
+```quint
+pure def skipAdmitted(named: int, repeats: bool): bool = named == 1 and repeats
+pure def lawAOneOffReminderIsNeverSkipped(named: int): bool = not(skipAdmitted(named, false))
+pure def lawASkipNamesOneReminder(named: int, repeats: bool): bool = skipAdmitted(named, repeats) implies named == 1
+```
+
+### A snooze until tonight comes at 20:00, and one until tomorrow morning at 08:00, on the owner's clock
+
+A snooze lasts the minutes the owner gave, ten when they gave none, or
+until a named time: tonight is the next 20:00 on the owner's clock, today
+when it is still ahead and tomorrow otherwise, and tomorrow morning is
+08:00 on the next day.
+
+```quint
+pure val tonightMinute = 1200
+pure val morningMinute = 480
+pure val minuteOfDayValues = Set(0, 479, 480, 1199, 1200, 1439)
+pure def minutesUntilTonight(minuteOfDay: int): int =
+  if (minuteOfDay < tonightMinute) tonightMinute - minuteOfDay else tonightMinute + 1440 - minuteOfDay
+pure def minutesUntilTomorrowMorning(minuteOfDay: int): int = 1440 - minuteOfDay + morningMinute
+pure def lawTonightIsAheadAndWithinADay(minuteOfDay: int): bool =
+  (minuteOfDay >= 0 and minuteOfDay < 1440) implies (minutesUntilTonight(minuteOfDay) > 0 and minutesUntilTonight(minuteOfDay) <= 1440)
+pure def lawTonightLandsAtTwenty(minuteOfDay: int): bool =
+  (minuteOfDay >= 0 and minuteOfDay < 1440) implies (minuteOfDay + minutesUntilTonight(minuteOfDay)) % 1440 == tonightMinute
+pure def lawTomorrowMorningIsTheNextDayAtEight(minuteOfDay: int): bool =
+  minuteOfDay + minutesUntilTomorrowMorning(minuteOfDay) == 1440 + morningMinute
 ```
 
 ## Story: Propose a reminder or alarm on my phone only as I asked

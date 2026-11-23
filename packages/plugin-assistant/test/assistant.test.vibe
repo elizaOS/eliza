@@ -193,7 +193,7 @@ it.effect('Move the reminder I just saved: a delay counts from my message, secon
   }
 })
 
-it.effect('Hear and rename the reminders I keep: a list changes nothing, a rename changes only the title of the one reminder named, and a day or a repeat is kept on my clock (spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"; spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked")', effect () => {
+it.effect('Hear, rename, skip and snooze the reminders I keep: a list changes nothing, a rename changes only the title of the one reminder named, a day, a repeat or an even interval is kept on my clock, a few words name one reminder, only a repeating one is skipped, and a snooze lasts until tonight or tomorrow morning (spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"; spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/reminders.md, "A reminder repeats on an interval only when the interval divides the hour or the day evenly"; spec/assistant/reminders.md, "Story: Answer or put off a reminder I keep"; spec/assistant/reminders.md, "A skip passes over one occurrence of a repeating reminder, and a reminder that does not repeat is not skipped"; spec/assistant/reminders.md, "A snooze until tonight comes at 20:00, and one until tomorrow morning at 08:00, on the owner\'s clock"; spec/assistant/names.md, "A title that is the name wins, and otherwise the titles that hold the name\'s words are the candidates")', effect () => {
   const seen = ports()
   seen.answers.push(check({}), check({ clock: "owner_local" }), check({ clock: "owner_local" }))
   provide portsLayer(seen) {
@@ -222,6 +222,30 @@ it.effect('Hear and rename the reminders I keep: a list changes nothing, a renam
         ["Stand-up", { kind: "cron", expression: "30 7 * * 1,5", tz: "America/New_York" }],
         ["Pay the rent", { kind: "once", atIso: "2026-11-25T14:00:00.000Z" }],
       ],
+    })
+    seen.answers.push(check({ clock: "owner_local" }), check({ clock: "owner_local" }))
+    const everyTwoHours = reminderReply(try createReminder({ ...asked("l7"), plan: { ...plan, title: "Drink water", due: { kind: "every", minutes: 120 } }, text: "remind me every two hours to drink water" }))
+    const uneven = reminderReply(try createReminder({ ...asked("l8"), plan: { ...plan, title: "Stretch", due: { kind: "every", minutes: 45 } }, text: "remind me every 45 minutes to stretch" }))
+    const answers = [
+      try answerReminder({ op: "skip", target: "water" }, "l9"),
+      try answerReminder({ op: "skip", target: "the dentist" }, "l10"),
+      try answerReminder({ op: "snooze", target: "dentist", until: "tonight" }, "l11"),
+      try answerReminder({ op: "snooze", target: "rent", until: "tomorrow_morning" }, "l12"),
+      try answerReminder({ op: "complete", target: "the" }, "l13"),
+    ]
+    try equal({
+      said: [everyTwoHours.text, uneven.data?.outcome],
+      trigger: rowsOf(seen, reminderKind).find((row) => row.promptInstructions === "Drink water")?.trigger,
+      answers: answers.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]),
+      snoozedUntil: seen.verbs.flatMap(({ verb }) => verb.tag === "SnoozeUntil" ? [new Date(verb.until).toISOString()] : []),
+    }, {
+      said: ['I\'ll remind you: "Drink water" every 2 hours (America/New_York).', "REMINDER_INTERVAL_UNSUPPORTED"],
+      trigger: { kind: "cron", expression: "0 0/2 * * *", tz: "America/New_York" },
+      answers: [
+        [true, 'Skipped the next occurrence of "Drink water".'], [false, "REMINDER_NOT_REPEATING"], [true, 'Snoozed "Call the dentist" until 8:00 PM.'],
+        [true, 'Snoozed "Pay the rent" until Nov 23, 8:00 AM.'], [false, "ambiguous"],
+      ],
+      snoozedUntil: ["2026-11-23T01:00:00.000Z", "2026-11-23T13:00:00.000Z"],
     })
   }
 })
