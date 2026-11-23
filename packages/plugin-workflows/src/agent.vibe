@@ -1,5 +1,6 @@
-// spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"
-import type { Action, ActionResult, EffectReceipt, HandlerCallback, IAgentRuntime, Memory, Provider } from "@elizaos/core"
+// spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/index.md, "A chat change follows the owner's own command and refuses a different operation"
+import { extractUserText, incomingMessagePersistenceSnapshot, unwrapUserMessageText, type Action, type ActionResult, type EffectReceipt, type HandlerCallback, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+import { chatBinding } from "../gen/workflow.effect.vibe"
 import { workflowSha, workflowUuid } from "./contract/phone.vibe"
 import { WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
 import type { hostedDigests } from "./service/digests.vibe"
@@ -66,6 +67,54 @@ effect function resolve(service: WorkflowService, params: Bag): View!WorkflowRef
   const found = all.filter((workflow) => normalizeName(workflow.name) === wanted)
   if (found.length !== 1) throw new WorkflowRefused({ status: found.length === 0 ? 404 : 409, message: found.length === 0 ? `No workflow is named “${name}”.` : `More than one workflow is named “${name}”.`, code: "WORKFLOW_REFERENCE_AMBIGUOUS" })
   return found[0]
+}
+
+const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
+const END = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`
+const NAME = String.raw`(?:"([^"]{1,80})"|“([^”]{1,80})”|'([^']{1,80})'|‘([^’]{1,80})’|([\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?))`
+const NAMED = String.raw`(?:(?:the|my)\s+)?(?:workflow\s+(?:called\s+|named\s+)?${NAME}|${NAME}\s+workflow)`
+const NOT_A_NAME = /\b(?:that|which|who|to|and|then|also|but|or|if|when|whenever|unless|every|each|daily|weekly|at|on|for|with|from|after|before|until|not|don['’]?t|never)\b/iu
+const OWNER_COMMANDS = {
+  create: new RegExp(String.raw`${COURTESY}(?:create|make|add|set\s+up|build|start)\s+(?:(?:a|an|another|one)\s+)?(?:new\s+)?workflow\s+(?:called|named|titled)\s+${NAME}${END}`, "iu"),
+  rename: new RegExp(String.raw`${COURTESY}rename\s+${NAMED}\s+to\s+${NAME}${END}`, "iu"),
+  remove: new RegExp(String.raw`${COURTESY}(?:delete|remove)\s+${NAMED}${END}`, "iu"),
+  list: new RegExp(String.raw`${COURTESY}(?:(?:list|show(?:\s+me)?|what\s+are)\s+(?:(?:all\s+)?(?:of\s+)?(?:my|the)\s+)?workflows|what\s+workflows\s+do\s+i\s+have)${END}`, "iu"),
+} as const
+type OwnerCommand = { readonly op: keyof typeof OWNER_COMMANDS; readonly params: Bag }
+
+function commandName(groups: readonly (string | undefined)[]): string | undefined {
+  const quoted = groups.slice(0, 4).find((group) => group !== undefined)
+  const name = (quoted ?? groups[4]?.replace(/[.]+$/u, ""))?.trim()
+  if (name === undefined || name === "" || /^(?:the|my|a|an|workflows?)$/iu.test(name)) return undefined
+  return quoted === undefined && NOT_A_NAME.test(name) ? undefined : name
+}
+
+function ownerCommand(words: string): OwnerCommand | undefined {
+  const request = words.trim()
+  if (request === "" || request.length > 200) return undefined
+  const created = OWNER_COMMANDS.create.exec(request)
+  if (created !== null) {
+    const name = commandName(created.slice(1, 6))
+    return name === undefined ? undefined : { op: "create", params: { name, instruction: request } }
+  }
+  const renamed = OWNER_COMMANDS.rename.exec(request)
+  if (renamed !== null) {
+    const workflowName = commandName(renamed.slice(1, 6)) ?? commandName(renamed.slice(6, 11))
+    const name = commandName(renamed.slice(11, 16))
+    return workflowName === undefined || name === undefined ? undefined : { op: "rename", params: { workflowName, name } }
+  }
+  const removed = OWNER_COMMANDS.remove.exec(request)
+  if (removed !== null) {
+    const workflowName = commandName(removed.slice(1, 6)) ?? commandName(removed.slice(6, 11))
+    return workflowName === undefined ? undefined : { op: "remove", params: { workflowName } }
+  }
+  return OWNER_COMMANDS.list.test(request) ? { op: "list", params: {} } : undefined
+}
+
+effect function ownerWords(message: Memory): string!! {
+  const bound = Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null
+  if (bound === null) return ""
+  return bound === undefined ? extractUserText(unwrapUserMessageText(message)) : unwrapUserMessageText(bound)
 }
 
 function unusedName(name: string, taken: ReadonlySet<string>): string {
@@ -248,11 +297,15 @@ export const workflowAction: Action = {
   validate: async (runtime) => workflowInstances.has(runtime),
   handler: async (runtime, message, _state, options, callback) => {
     const instance = workflowInstances.get(runtime)
-    const params = parametersOf(options)
-    const op = WORKFLOW_OPS.find((candidate) => candidate === params.action)
+    const proposed = parametersOf(options)
+    const op = WORKFLOW_OPS.find((candidate) => candidate === proposed.action)
     if (instance === undefined) return respond(callback, notApplied("WORKFLOW_UNAVAILABLE", "Workflows are unavailable on this agent."))
     if (op === undefined) return respond(callback, notApplied("WORKFLOW_ACTION_INVALID", `Provide action=${WORKFLOW_OPS.join("|")}.`))
     const request = typeof message.content.text === "string" ? message.content.text : ""
+    const command = READ_OPS.includes(op) ? undefined : ownerCommand(await runPromise(ownerWords(message)))
+    const binding = chatBinding({ reads: READ_OPS.includes(op), ownerCommand: command !== undefined, sameOperation: command?.op === op })
+    if (binding === "ConflictingChange") return respond(callback, notApplied("WORKFLOW_REQUEST_CONFLICT", "The proposed workflow operation differs from the owner’s request. Nothing was changed.", "I left your workflows unchanged."))
+    const params = binding === "OwnerCommandChange" && command !== undefined ? command.params : proposed
     const outcome = await runPromise(Effect.result(perform(instance, op, params, request)))
     if (!Result.isFailure(outcome)) return respond(callback, outcome.success)
     const failure = outcome.failure
