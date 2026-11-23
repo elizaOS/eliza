@@ -6,6 +6,7 @@ export const SOURCE_WAIT_MS = 5000
 export error SourceRefused { reason: string }
 
 module node {
+  import { Effect } from "effect"
   import { constants } from "node:fs"
   import { lstat, mkdir, open, readFile, realpath, rename, rm, rmdir, stat } from "node:fs/promises"
   import { randomUUID } from "node:crypto"
@@ -127,7 +128,7 @@ module node {
   export async function waitForPeer(file: string, bytes: Uint8Array, deadline: number): Promise<boolean> {
     while (Date.now() < deadline) {
       if (await existing(file, bytes) === "exact") return true
-      await new Promise((done) => setTimeout(done, 50))
+      await Effect.runPromise(Effect.sleep(50))
     }
     return await existing(file, bytes) === "exact"
   }

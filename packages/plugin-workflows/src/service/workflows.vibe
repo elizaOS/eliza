@@ -18,7 +18,7 @@ import { WORKFLOW_ENGINE, WORKFLOW_PHONE_SPEC_METADATA_KEY } from "../client/wor
 import { workflowRunDeepLink } from "../client/notices.vibe"
 import { TYPED_STEPS_NODE, type ParentMessage, type WorkerMessage, type WorkerResume } from "../worker/protocol.vibe"
 import type { GeneratedEntry, GeneratedWait } from "../worker/engine.vibe"
-import { WorkflowStoreUnavailable, workflowStore, type ApprovalRow, type DefinitionRow, type ReceiptRow, type RunEvent, type RunRow, type StoredDefinition } from "./store.vibe"
+import { type WorkflowStoreUnavailable, workflowStore, type ApprovalRow, type DefinitionRow, type ReceiptRow, type RunEvent, type RunRow, type StoredDefinition } from "./store.vibe"
 import type { WorkflowHost, WorkflowWorkerConnection } from "./host.vibe"
 
 export const PHONE_CATALOG_REVISION = "phone-workflow-catalog-6"
@@ -777,7 +777,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
           type: "start", runId: starting.id, spec: starting.spec, specDigest: starting.specDigest, anchorAt: starting.anchorAt, values: starting.values, results: starting.results, next: starting.next, allowed: starting.allowed,
           ...(resume === undefined ? {} : { resume }),
         })
-      let current = starting
+      let current: typeof starting
       for (;;) {
         const message = try connection.next
         const effectCall = generated && message?.type === "needsEffect" ? message : undefined

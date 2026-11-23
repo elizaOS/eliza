@@ -94,7 +94,7 @@ export effect function workflowIntentStore(owner: WorkflowIntentOwner, backend: 
     })
     try Ref.update(epoch, (value) => value + 1)
     try Ref.set(cached, entries)
-    try sync(() => { try { options.onChange?.() } catch {} })
+    try sync(() => { try { options.onChange?.() } catch { return } })
   }
 
   return {

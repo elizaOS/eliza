@@ -20,7 +20,7 @@ import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKin
 import { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
 import { changeTodos, currentTodos } from "../src/todos.vibe"
 import { stateTravel } from "../src/travel.vibe"
-import { ports, portsLayer, rowsOf, type Ports } from "./support/ports.vibe"
+import { ports, portsLayer, rowsOf } from "./support/ports.vibe"
 
 const check = (answer: object) => JSON.stringify({ requested: true, clock: "utc", destination: null, alert: "alert", important: false, ...answer })
 const plan = { title: "Call the dentist", due: { kind: "in", minutes: 20 }, destination: null, alert: null }

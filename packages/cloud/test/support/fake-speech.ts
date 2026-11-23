@@ -5,6 +5,11 @@ import type { Duplex } from "node:stream";
 import type { FakeAnswer, FakeHandler, FakeRequest, FakeServer } from "./fakes.ts";
 import { secrets } from "./profile.ts";
 
+const textField = (form: FormData, name: string): string | null => {
+  const value = form.get(name);
+  return typeof value === "string" ? value : null;
+};
+
 export type BatchScript =
   | { readonly kind: "answer" }
   | { readonly kind: "refuse"; readonly status: number; readonly retryAfterSeconds?: number }
@@ -184,7 +189,7 @@ export function speechFake(): SpeechFake {
       const form = await formOf(request);
       const file = form.get("file");
       if (!(file instanceof Blob)) return { status: 400, body: { error: "file missing" } };
-      transcribed.push({ audio: new Uint8Array(await file.arrayBuffer()), mimeType: file.type, model: String(form.get("model")), language: form.get("language") === null ? null : String(form.get("language")) });
+      transcribed.push({ audio: new Uint8Array(await file.arrayBuffer()), mimeType: file.type, model: String(textField(form, "model")), language: textField(form, "language") });
       if (scripted !== undefined) return scripted;
       const words = spokenTranscript.split(" ").map((word, index) => ({ word, start: index * 0.4, end: index * 0.4 + 0.3 }));
       return { status: 200, body: { text: spokenTranscript, duration: transcriptDurationSeconds, words } };

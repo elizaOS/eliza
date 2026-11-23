@@ -1,6 +1,6 @@
 // spec/maps/navigationService.md, "Location events require the live watch attempt and cleanup preserves failures"
 import { finishWatch, nextWatch } from "../../gen/maps__navigationService.effect.vibe"
-import { Coordinate, MapsFailure } from "./contracts.vibe"
+import { type Coordinate, MapsFailure } from "./contracts.vibe"
 import { reportableWatchFix } from "./navigation-fix.vibe"
 
 module browser {
@@ -11,7 +11,6 @@ module browser {
 }
 import { permissionRequestId } from browser
 
-/** One location fix from the device. */
 export interface Position {
   readonly coordinate: Coordinate
   readonly accuracyMeters: number
@@ -21,23 +20,19 @@ export interface Position {
   readonly speedMetersPerSecond?: number
 }
 
-/** The host's permission and lifecycle boundary for the location watch; a controller never discovers a device. */
 export interface MapsLocation {
   awaitingPermission(): boolean
   start(oneShot: boolean, onFix: (position: Position) => void, onError: (error: MapsFailure) => void): void!MapsFailure
   stop(): void!MapsFailure
 }
 
-/** Why the native location bridge did not answer. */
 export error LocationBridgeFailed { operation: string }
 
-/** The platform's location permission and the precision it grants. */
 export interface LocationPermission {
   readonly location: "granted" | "denied" | "prompt"
   readonly accuracy?: "precise" | "approximate" | "none"
 }
 
-/** One fix as the native bridge reports it. */
 export interface NativeFix {
   readonly coords: {
     readonly latitude: number
@@ -49,7 +44,6 @@ export interface NativeFix {
   }
 }
 
-/** The host's native location plugin; each listener registration returns how to remove it. */
 export interface LocationBridge {
   checkPermissions(): LocationPermission!LocationBridgeFailed
   requestPermissions(requestId?: string): LocationPermission!LocationBridgeFailed
@@ -60,7 +54,6 @@ export interface LocationBridge {
   onError(listener: (error: { readonly code: string }) => void): (void!LocationBridgeFailed)!LocationBridgeFailed
 }
 
-/** What the location watch needs of its platform: whether it is native, whether location exists, and the page's visibility. */
 export interface LocationPlatform {
   isNative(): boolean
   available(): boolean
@@ -76,7 +69,6 @@ interface WatchSession {
   release?: () => void
 }
 
-/** One location watch per Maps controller: listeners attach before the high-accuracy watch, a retired attempt's late listener or watch is cleared, a grant received while hidden waits for the screen, and cleanup failures are reported. */
 export effect function nativeMapsLocation(bridge: LocationBridge, platform: LocationPlatform) {
   let session: WatchSession | undefined
   let admitting = false

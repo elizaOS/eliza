@@ -94,7 +94,7 @@ effect function settle(channel: WorkerChannel, start: WorkerStart): void!WorkerS
   const anchor = Date.parse(start.anchorAt)
   for (let index = start.next; index < start.spec.steps.length; index++) {
     const step = start.spec.steps[index]
-    let value = ""
+    let value: string
     if (!allowed) {
       const skipped: WorkerStepResult = { id: step.id, status: "skipped", text: "" }
       results.push(skipped)

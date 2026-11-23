@@ -78,7 +78,7 @@ export effect function readHostedGoogleSource(google: ManagedGoogleReads, input:
   const selection = try assertHostedGoogleSource(google, input)
   const span = selection.windowHours * 3_600_000
   const items: Bag[] = []
-  let truncated = false
+  let truncated: boolean
   if (selection.kind === "email") {
     const page = try call(() => google.gmailSearch({ query: `in:inbox after:${Math.floor((at - span) / 1000)}`, maxResults: selection.maxItems }))
     if (page.messages.length > selection.maxItems) return try unavailable()

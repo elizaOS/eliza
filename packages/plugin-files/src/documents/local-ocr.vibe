@@ -62,7 +62,7 @@ import {
   admitsOcrBitmap, admitsOcrBlob, admittedOcrResult, canEndOcrWorker, canSettleOcrReply, exposesOcrProgress, exposesReviewedOcr, initial, machineOver,
   type OcrImageType, type OcrJob, type OcrReply, type OcrReplyKind, type OcrStep,
 } from "../../gen/files__localOcr.effect.vibe"
-import { decodedImage, encoded, fittedSize, imageRefused, rasterOf, readBytes, ImageRefused } from "./images.vibe"
+import { decodedImage, encoded, fittedSize, imageRefused, rasterOf, readBytes, type ImageRefused } from "./images.vibe"
 import { scanTextLayer, type ScanTextLine } from "./scan-text-layer.vibe"
 import { localUrl, openWorker, type WorkerPort } from browser
 

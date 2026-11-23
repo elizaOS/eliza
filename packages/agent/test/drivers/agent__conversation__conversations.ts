@@ -91,7 +91,7 @@ async function storedMessages(w: World, record: ConversationRecord): Promise<Arr
     .flatMap((memory) => memory.id === undefined ? [] : [memory as Memory & { id: UUID }]);
 }
 
-const sourceOf = (memory: Memory) => (memory.metadata as { forkSourceMessageId?: unknown } | undefined)?.forkSourceMessageId;
+const sourceOf = (memory: Memory) => (memory.metadata as { forkSourceMessageId?: string } | undefined)?.forkSourceMessageId;
 
 async function send(event: Event): Promise<"accepted" | "refused"> {
   const w = await current();
@@ -178,7 +178,7 @@ async function observe(): Promise<Conversations> {
     };
   }))))).flat().sort((a, b) => a.id - b.id);
   const logs = (await Promise.all(held.map(async (record) => (await w.runtime.adapter.getLogs({ roomId: record.roomId })).map((row) => {
-    const prompt = String((row.body as { prompt?: unknown }).prompt ?? "");
+    const prompt = String((row.body as { prompt?: string }).prompt ?? "");
     return { at: row.createdAt.getTime(), row: { conversationId: record.seq, body: prompt === notice ? { tag: "Redacted" } : { tag: "Said", text: prompt } } satisfies LogRow };
   })))).flat().sort((a, b) => a.at - b.at).map(({ row }) => row);
   const forks = (await Promise.all(held.map(async (record) => (await forkRecords(w.runtime, record)).map((kept): Fork => ({

@@ -6,7 +6,6 @@ export const WorkerRequest = globalThis.Request
 export const WorkerHeaders = globalThis.Headers
 export const workerFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
 
-/** Reads a request body, answering null when it is longer than the limit. */
 export async function limitedBody(request: Pick<Request, "body">, limit: number): Promise<Uint8Array | null> {
   const reader = request.body?.getReader()
   if (!reader) return new Uint8Array()
@@ -50,7 +49,6 @@ function safeInteger(text: string): number {
   return Number(value)
 }
 
-/** The pg type parsers the server's own pool uses, reading int8 as a safe JavaScript number. */
 export const safeIntegerTypes = {
-  getTypeParser: (oid: number, format?: string) => oid === 20 ? safeInteger : types.getTypeParser(oid, format as "text")
+  getTypeParser: (oid: number, format?: string): ((text: string) => unknown) => oid === 20 ? safeInteger : types.getTypeParser(oid, format as "text") as (text: string) => unknown
 }

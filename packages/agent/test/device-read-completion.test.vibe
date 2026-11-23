@@ -322,7 +322,7 @@ module node {
       execute: async () => { calls++; return { kind: "applied", result } },
       readBack: async () => undefined,
     })
-    let firstSync = true
+    let firstSync: boolean
     try {
       const deadline = Date.now() + 25_000
       while (offered === undefined) {

@@ -15,7 +15,7 @@ export const driver: Driver & AsyncDisposable = {
   },
   async dispatch(key: string, event: Event, by?: unknown) {
     const { service } = await open();
-    return outcome(service.lifecycleStep(id(key), event, String(by ?? "")));
+    return outcome(service.lifecycleStep(id(key), event, String(by as string | undefined ?? "")));
   },
   async observe(key: string) {
     const { service } = await open();

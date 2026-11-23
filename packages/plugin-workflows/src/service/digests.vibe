@@ -5,7 +5,7 @@ import * as X from "../../gen/workflow__execution.effect.vibe"
 import { providerDigestCursor } from "../../gen/workflow__hostedDigest.effect.vibe"
 import {
   DIGEST_MISSED_TEXT, DIGEST_OVERLAP_TEXT, DIGEST_PAGE_LIMIT, DIGEST_PAUSED_TEXT, DIGEST_SOURCE_UNAVAILABLE_TEXT, HOSTED_TEMPLATE_VERSION,
-  digestCron, digestId, digestKeys, digestOccurrenceMissed, digestPhoneSpec, digestRecord, digestSourceState, digestSourceType, digestText, validateDigestSpec, DigestRefused,
+  digestCron, digestId, digestKeys, digestOccurrenceMissed, digestPhoneSpec, digestRecord, digestSourceState, digestSourceType, digestText, validateDigestSpec, type DigestRefused,
   type DigestSourceRecord, type DigestSpec, type HostedNativeSelection,
 } from "../contract/digest.vibe"
 import { phoneWorkflowBytes, validatePhoneWorkflowSpec, workflowSha, workflowUuid } from "../contract/phone.vibe"

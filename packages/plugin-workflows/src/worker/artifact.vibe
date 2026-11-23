@@ -16,6 +16,7 @@ module node {
   import { builtinModules } from "node:module"
   import { copyFile, lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises"
   import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+  import type { Node as SyntaxNode } from "typescript"
 
   export interface WorkerIdentity { readonly sourceStampSha256: string; readonly lockSha256: string }
   export interface WorkerManifest extends WorkerIdentity { readonly version: 1; readonly compiler?: unknown; readonly files: Readonly<Record<string, string>> }
@@ -44,9 +45,7 @@ module node {
 
   async function noSymlinks(path: string): Promise<boolean> {
     for (let current = resolve(path); ; current = dirname(current)) {
-      try {
-        if ((await lstat(current)).isSymbolicLink()) return false
-      } catch {}
+      if (await lstat(current).then((info) => info.isSymbolicLink(), () => false)) return false
       if (dirname(current) === current) return true
     }
   }
@@ -152,7 +151,9 @@ module node {
     for (const candidate of [path, `${path}.js`, join(path, "index.js")]) {
       try {
         if ((await lstat(candidate)).isFile()) return await realpath(candidate)
-      } catch {}
+      } catch {
+        continue
+      }
     }
     return undefined
   }
@@ -196,8 +197,8 @@ module node {
       const text = await readFile(current, "utf8")
       const loads = new Map<string, { specifier: string; mode: ModuleMode }>()
       const commonJs = current.endsWith(".cjs")
-      const visit = (node: import("typescript").Node): void => {
-        let argument: import("typescript").Node | undefined
+      const visit = (node: SyntaxNode): void => {
+        let argument: SyntaxNode | undefined
         let mode: ModuleMode = "import"
         if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) argument = node.moduleSpecifier
         if (ts.isCallExpression(node)) {

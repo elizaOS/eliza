@@ -1,7 +1,7 @@
 // spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/approvals.md, "One caller at a time holds the execution lock, and only the canonical decision is reported"; spec/workflow/authoring.md, "A save receipt identifies the reviewed bytes and compiler"
 import {
   assertPhoneWorkflowCapabilities, parsePhoneScheduledOccurrence, parsePhoneWorkflowCatalog, parsePhoneWorkflowSaveReceipt, phoneWorkflowBytes,
-  validatePhoneWorkflowSpec, workflowSha, workflowUuid, PhoneWorkflowSpecError,
+  validatePhoneWorkflowSpec, workflowSha, workflowUuid, type PhoneWorkflowSpecError,
   type PhoneDeviceTarget, type PhoneStep, type PhoneWorkflowCatalog, type PhoneWorkflowSaveExpectation, type PhoneWorkflowSaveReceipt, type PhoneWorkflowSpec,
 } from "../contract/phone.vibe"
 import { parseWorkflowPhoneReview, type WorkflowDeviceScopeError, type WorkflowPhoneReview } from "../contract/device.vibe"

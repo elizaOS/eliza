@@ -35,7 +35,7 @@ import { apply, canPrune, classifyRow, listed, machineOver, initial as fresh, ty
 import { chatLimit, mailLimit, selectionReadable, textLimit } from "../../gen/files__library.effect.vibe"
 import { batchMax, validSelection, type FileOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
 import { fileArchive } from "../documents/archive.vibe"
-import { baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry } from "./model.vibe"
+import { downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry } from "./model.vibe"
 import { allocateLibraryId, deletePlan, insertPlan, LibraryStore, LIBRARY_ROOT, childrenOf, placePlan, subtreeOf, type LibraryRow } from "./library.vibe"
 import { FilesVolume, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
 

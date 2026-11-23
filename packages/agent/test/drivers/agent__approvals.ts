@@ -25,10 +25,10 @@ const expiries = new Map<string, number>();
 const revisions = new Map<string, string>();
 
 const executor: CalendarApprovalExecutor = {
-  execute: async (request) => {
+  execute: (request) => {
     ledger.calls++;
     const outcome: LedgerOutcome = { result: ledger.result, text: `Calendar change ${request.id}: ${ledger.result}` };
-    return outcome;
+    return Promise.resolve(outcome);
   },
 };
 
@@ -59,7 +59,7 @@ async function stored(): Promise<Queue> {
 async function remember(): Promise<void> {
   const held = await stored();
   for (const record of await Effect.runPromise(queue!.list({ phases: { tag: "AllPhases" }, limit: 500 }))) {
-    revisions.set(`${record.id}#${held.rows[`$${record.id}`]!.revision}`, record.revision);
+    revisions.set(`${record.id}#${held.rows[`$${record.id}`].revision}`, record.revision);
   }
 }
 

@@ -121,7 +121,7 @@ const emailSend = [
 const explicitAddress = /[^\s@<>()"',;]+@[^\s@<>()"',;]+\.[a-z]{2,}/i
 const ownerOnly = /\b(?:to\s+me|to\s+myself|e-?mail\s+me|e-?mail\s+myself|send\s+me|mail\s+me|me\s+an?\s+e-?mail)\b/i
 const subject = /\b(?:remind(?:er)?\s+(?:me\s+)?(?:to|about)|(?:a|the)\s+(?:note|notification|reminder)\s+(?:to|about|saying|that\s+says)|notes?\s+(?:about|on|mentioning|containing|that\s+mention|mentions?)|notify\s+me\s+(?:to|about)|(?:titled|called|named|labell?ed))\s+[^.;:!?\n,]*?(?=[.;:!?\n,]|\s+(?:and\s+)?then\b|$)/gi
-const invisible = /[­​-‍⁠﻿]/g
+const invisible = /[\u00ad\u200b-\u200d\u2060\ufeff]/g
 const benign = /\bring\s+the\s+changes\b|\bcall\s+(?:me|him|her|them|us|it)\s+out\b(?!\s+of\b)|\bmessage\s+me\s+(?:with\s+)?(?:an?|the|my)\s+(?:\w+\s+)?notifications?\b/gi
 const lookalikes: Readonly<Record<string, string>> = {
   а: "a", в: "b", е: "e", ё: "e", к: "k", м: "m", н: "h", о: "o", р: "p", с: "c", т: "t", у: "y", х: "x", і: "i", ї: "i", ј: "j", ѕ: "s", ԁ: "d", ɡ: "g", ӏ: "l",

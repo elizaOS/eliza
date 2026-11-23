@@ -6,7 +6,7 @@ import { negotiation } from "./capabilities.vibe"
 import { enrollmentId } from "./enrollment.vibe"
 import { capabilityNamesOf, validate } from "./operations.schema.vibe"
 import { devicePayload, type WorkflowScope } from "./proposal-review.vibe"
-import { DeviceStoreUnavailable, ProposalIdTaken, enrollment, offerRequest, openRequest, requestSnapshot, retireRequest, workflowAuthority } from "./store.vibe"
+import { type DeviceStoreUnavailable, ProposalIdTaken, enrollment, offerRequest, openRequest, requestSnapshot, retireRequest, workflowAuthority } from "./store.vibe"
 
 export type WorkflowStep = WorkflowScope
 

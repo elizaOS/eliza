@@ -1,12 +1,11 @@
 // spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/reviewedReads.md, "Availability publishes only a reviewed projection with matching fresh readback"; spec/calendar/availability.md, "Choose a bounded interval and accept occupancy-only rows"
 import { shareAvailability } from "../../gen/calendar__reviewedReads.effect.vibe"
-import { AvailabilityEventRow, AvailabilitySourceRow, AvailabilityUnavailable, CALENDAR_AVAILABILITY_MAX_BUSY, CALENDAR_AVAILABILITY_MAX_CALENDARS,
+import { AvailabilityEventRow, AvailabilitySourceRow, type AvailabilityUnavailable, CALENDAR_AVAILABILITY_MAX_BUSY, CALENDAR_AVAILABILITY_MAX_CALENDARS,
   calendarAvailability, describeAvailabilityResult, sameAvailabilityResult, validateCalendarAvailabilityOperation, type AvailabilityReadRequest,
   type CalendarAvailabilityEvent, type CalendarAvailabilityOperation, type CalendarAvailabilityResult, type ReadAnswer,
   type SourcesAnswer } from "../availability/index.vibe"
 import { deviceTimeZone } from "../clock.vibe"
 
-/** One calendar the device can read; its name and account are shown to the owner only. */
 export interface AvailabilitySource {
   readonly id: string
   readonly name: string
@@ -14,27 +13,21 @@ export interface AvailabilitySource {
   readonly sourceRevision: string
 }
 
-/** The most readable sources one review offers; more fails closed rather than hiding calendars. */
 export const AVAILABILITY_MAX_SOURCES = 64
-/** Attempts to list calendars while focus returns after a permission prompt. */
 export const SOURCE_LIST_ATTEMPTS = 4
-/** The wait between source-list attempts, in milliseconds. */
 export const SOURCE_LIST_RETRY_MS = 300
 
-/** The reader a review reads through: read access, the source list for a zone, and a read of the chosen sources. */
 export interface AvailabilityProvider {
   readonly requestReadAccess: () => { readonly status: string }!AvailabilityUnavailable
   readonly availabilitySources: (input: { readonly timeZone: string }) => SourcesAnswer!AvailabilityUnavailable
   readonly readAvailability: (input: AvailabilityReadRequest) => ReadAnswer!AvailabilityUnavailable
 }
 
-/** The owner's foreground review: a choice of calendars, null when cancelled, and an explicit approval of the exact result. */
 export interface AvailabilityReview {
   readonly chooseCalendars: (sources: readonly AvailabilitySource[], operation: CalendarAvailabilityOperation) => (readonly string[] | null)!AvailabilityUnavailable
   readonly confirmResult: (result: CalendarAvailabilityResult, chosen: readonly AvailabilitySource[]) => boolean!AvailabilityUnavailable
 }
 
-/** The reviewed context: whether it is still the one reviewed, the zone it states, the device's zone and the pause between source-list attempts. */
 export interface AvailabilityContext {
   readonly current: () => boolean
   readonly contextTimeZone: string | undefined
@@ -42,20 +35,17 @@ export interface AvailabilityContext {
   readonly pause?: (milliseconds: number) => void!!
 }
 
-/** What a review tells the owner, with the shared result only when it succeeded. */
 export type AvailabilityOutcome = {
   readonly status: "succeeded" | "failed"
   readonly summary: string
   readonly foregroundResult?: CalendarAvailabilityResult
 }
 
-/** A provider source list or row set that is not an admitted one. */
 export error AvailabilityProviderValue { problem: string }
 
 error ReviewStopped { outcome: AvailabilityOutcome }
 error ContextChanged
 
-/** Waits the given time; interrupting the review ends it early. */
 export effect function abortablePause(milliseconds: number): void!! {
   try sleep(Duration.millis(milliseconds))
 }
@@ -64,7 +54,6 @@ function label(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() !== "" && !value.includes("\0") ? value.trim().slice(0, 200) : fallback
 }
 
-/** The sources a provider listed; a malformed or duplicate identity, or more than the offer limit, fails closed. */
 export effect function parseAvailabilitySources(value: unknown): AvailabilitySource[]!AvailabilityProviderValue {
   if (!Array.isArray(value) || value.length > AVAILABILITY_MAX_SOURCES) throw new AvailabilityProviderValue({ problem: "Too many readable calendars for one review" })
   const rows = try mapError(Schema.decodeUnknownEffect(Schema.Array(AvailabilitySourceRow))(value),
@@ -73,7 +62,6 @@ export effect function parseAvailabilitySources(value: unknown): AvailabilitySou
   return rows.map((row) => ({ id: row.id, name: label(row.name, "Unnamed calendar"), account: label(row.account, "This phone"), sourceRevision: row.sourceRevision }))
 }
 
-/** A provider's occupancy-only rows; a row carrying anything besides its interval, all-day flag and availability is refused. */
 export effect function parseAvailabilityEvents(value: unknown): CalendarAvailabilityEvent[]!AvailabilityProviderValue {
   if (!Array.isArray(value) || value.length > CALENDAR_AVAILABILITY_MAX_BUSY) throw new AvailabilityProviderValue({ problem: "Calendar availability exceeds the reviewed event bound" })
   const rows = try mapError(Schema.decodeUnknownEffect(Schema.Array(AvailabilityEventRow), { onExcessProperty: "error" })(value),
@@ -95,7 +83,6 @@ function readFailure(status: string): AvailabilityOutcome {
   return failed("Calendars could not be read right now.")
 }
 
-/** A bounded foreground free/busy read: list, owner choice, a fresh local read, owner confirmation, and a second read that must match before anything is shared. */
 export effect function executeCalendarAvailability(provider: AvailabilityProvider, value: unknown, context: AvailabilityContext,
   review: AvailabilityReview): AvailabilityOutcome!! {
   const zoneNow = context.deviceTimeZone ?? deviceTimeZone

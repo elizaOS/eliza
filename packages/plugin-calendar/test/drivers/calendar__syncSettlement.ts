@@ -25,11 +25,11 @@ let foreground: Foreground | undefined;
 const running = new Map<number, Running>();
 
 const storage: CalendarLinkStorage = {
-  read: async (slot) => structuredClone(slots.get(slot) ?? null),
-  async compareExchange(slot, expected, value) {
-    if (JSON.stringify(slots.get(slot) ?? null) !== JSON.stringify(expected)) return { status: "conflict" };
+  read: (slot) => Promise.resolve(structuredClone(slots.get(slot) ?? null)),
+  compareExchange(slot, expected, value) {
+    if (JSON.stringify(slots.get(slot) ?? null) !== JSON.stringify(expected)) return Promise.resolve({ status: "conflict" });
     slots.set(slot, structuredClone(value));
-    return { status: "saved" };
+    return Promise.resolve({ status: "saved" });
   },
 };
 

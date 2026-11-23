@@ -67,7 +67,7 @@ export class FakeAudioContext implements CaptureContext<FakeMicrophone> {
   readonly audioWorklet = {
     addModule: async (url: string): Promise<void> => {
       if (this.workletFails) throw new Error("worklet refused")
-      await import(/* @vite-ignore */ url)
+      await import(url)
     },
   }
 
@@ -83,12 +83,14 @@ export class FakeAudioContext implements CaptureContext<FakeMicrophone> {
     }
   }
 
-  async resume(): Promise<void> {
+  resume(): Promise<void> {
     this.resumed = true
+    return Promise.resolve()
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
     this.closed = true
+    return Promise.resolve()
   }
 }
 
@@ -145,13 +147,13 @@ export function fakeClipAudio(duration: number, decoded: () => void = () => unde
   const rendered: number[] = []
   return {
     rendered,
-    decode: async () => {
+    decode: () => {
       decoded()
-      return { duration }
+      return Promise.resolve({ duration })
     },
-    render: async (_clip, length) => {
+    render: (_clip, length) => {
       rendered.push(length)
-      return new Float32Array(length)
+      return Promise.resolve(new Float32Array(length))
     },
   }
 }
@@ -232,8 +234,9 @@ export class FakeSpeechSource implements ProgressiveSpeechSource<SpeechAudioFram
     this.#end.resolve({ type: "done" })
   }
 
-  async cancel(): Promise<void> {
+  cancel(): Promise<void> {
     this.cancelled = true
     this.finish()
+    return Promise.resolve()
   }
 }

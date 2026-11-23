@@ -8,7 +8,7 @@ import {
   sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceHealth, type CalendarSourceKey, type CalendarSourceStatus, type CalendarSummary,
 } from "../model.vibe"
 import {
-  calendarMutationLedger, CalendarLedgerUnavailable,
+  calendarMutationLedger, type CalendarLedgerUnavailable,
   type CalendarAnswerScope, type CalendarInvitationResponse, type CalendarMutationOutcome, type CalendarMutationPayload, type CalendarMutationRequest,
 } from "../mutations/ledger.vibe"
 import { invitationChangeOf, providerMutationPort, reviewDigest } from "../mutations/provider-port.vibe"
@@ -20,16 +20,13 @@ import { lookupMatches } from "./lookup.vibe"
 import { managedGoogleCalendar } from "./managed-provider.vibe"
 import { cacheKeyValueStore, type CalendarCache } from "./runtime-store.vibe"
 
-/** The approval queue's name for a change: an answer is a modify, and a decline is a cancel, as the queue knows them. */
 export type CalendarApprovalAction = "schedule_event" | "modify_event" | "cancel_event"
 
-/** The approval queue's name for a reviewed change. */
 export function approvalAction(payload: CalendarMutationPayload): CalendarApprovalAction {
   if (payload.action !== "respond_invitation") return payload.action
   return payload.response === "declined" ? "cancel_event" : "modify_event"
 }
 
-/** The approval a provider change waits in, as the agent's owner approval queue takes it. */
 export interface CalendarApprovalRow {
   readonly id: string
   readonly subjectUserId: string
@@ -40,26 +37,22 @@ export interface CalendarApprovalRow {
   readonly expiresAt: string
 }
 
-/** The owner approval queue a provider change is filed in. */
 export interface CalendarApprovals {
   request(row: CalendarApprovalRow): Promise<{ readonly id: string; readonly state: string }>
 }
 
-/** An approval the owner resolved, as the queue hands it to the calendar executor. */
 export interface CalendarApprovalRecord {
   readonly id: string
   readonly action: string
   readonly payload: Readonly<Record<string, unknown>>
 }
 
-/** What the queue records for a calendar change it handed to the executor. */
 export interface CalendarLedgerOutcome {
   readonly result: "ChangeSucceeded" | "ChangeInvalidated" | "ChangeRetryable" | "ChangeUnconfirmed"
   readonly text: string
   readonly failure?: { readonly code: string; readonly retryable: boolean; readonly acceptance: "not_accepted" | "unknown" }
 }
 
-/** A read across the active account's listed calendars. */
 export interface CalendarSearch {
   readonly timeMin: number
   readonly timeMax: number
@@ -67,7 +60,6 @@ export interface CalendarSearch {
   readonly calendarId?: string
 }
 
-/** What a read found, whether every listed calendar answered completely, and how each calendar it read answered. */
 export interface CalendarSearchResult {
   readonly account: CalendarAccount
   readonly events: readonly CalendarEvent[]
@@ -78,38 +70,32 @@ export interface CalendarSearchResult {
   readonly timeMax: string
 }
 
-/** An event the action found by id, with the calendar it was read from. */
 export interface CalendarFound {
   readonly event: CalendarEvent
   readonly source: CalendarSourceKey
 }
 
-/** A change the owner asked for: what it is, whether it waits for the owner's review, whether the owner asked to tell the attendees, and the request that asked. */
 export type CalendarChangeRequest =
   | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly reviewFirst?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "respond"; readonly target: CalendarFound; readonly scope: CalendarAnswerScope; readonly response: CalendarInvitationResponse; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
 
-/** What a change came to: applied now through the ledger, queued for approval, or refused before anything ran; a change of an existing event says whom it tells. */
 export type CalendarChangeResult =
   | { readonly kind: "ran"; readonly request: CalendarMutationRequest; readonly outcome: CalendarMutationOutcome; readonly notice: AttendeeNotice }
   | { readonly kind: "queued"; readonly request: CalendarMutationRequest; readonly approvalId: string; readonly notice: AttendeeNotice }
   | { readonly kind: "refused"; readonly reason: CalendarRefusal }
 
-/** Why a change was refused before anything ran. */
 export type CalendarRefusal =
   | "no_account" | "foreign_account" | "not_writable" | "no_provider" | "approvals_unavailable"
   | "organizer_unknown" | "not_invitee" | "invitee_edit" | "answers_unsupported" | "answer_scope" | "deletes_unsupported"
 
-/** A delete the Calendar action asked the owner to confirm in chat: the event, the request that asked, and when. */
 interface CalendarDeleteQuestion {
   readonly eventId: string
   readonly askedIn: string
   readonly askedAt: number
 }
 
-/** What a calendar host needs from the agent: its durable cache, its id, the owner approval queue when it runs, and the private broker of the managed Google calendar when the host names one. */
 export interface CalendarHostOptions {
   readonly cache: CalendarCache
   readonly agentId: string
@@ -136,7 +122,6 @@ function byStart(left: CalendarEvent, right: CalendarEvent): number {
   return Date.parse(left.startAt) - Date.parse(right.startAt) || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
 }
 
-/** The outcome sentence and failure the approval queue records for a ledger outcome. */
 export function ledgerOutcome(outcome: CalendarMutationOutcome): CalendarLedgerOutcome {
   switch (outcome.kind) {
     case "succeeded": return { result: "ChangeSucceeded", text: outcome.receipt.operation === "cancel_event" ? "The event was deleted." : "The calendar shows the change." }
@@ -148,7 +133,6 @@ export function ledgerOutcome(outcome: CalendarMutationOutcome): CalendarLedgerO
   }
 }
 
-/** The calendar host: the resident calendar, the providers a host registers, the active account, reads and ledgered changes. */
 export effect function calendarHost(options: CalendarHostOptions) {
   const store = try cacheKeyValueStore(options.cache)
   const rows = Layer.succeed(KeyValueStore.KeyValueStore, store)
@@ -323,5 +307,4 @@ export effect function calendarHost(options: CalendarHostOptions) {
   }
 }
 
-/** The calendar host a plugin service holds. */
 export type CalendarHost = Effect.Success<ReturnType<typeof calendarHost>>

@@ -1,6 +1,6 @@
 // spec/files/scan/correction.md, "Correction admits only a supported image and a valid convex selection"; spec/files/scan/correction.md, "A preview belongs to its current corners and active review"; spec/files/scan/correction.md, "Only adoption can replace the selected page and discard its text"
 import { admitsDecode, admitsDecodedImage, allowsCorners, canAdoptCorrection, initial, machineOver, replacementAllowed, type Correction, type Selection } from "../../gen/files__scan__correction.effect.vibe"
-import { decodedImage, encoded, fittedSize, imageAdmitted, imageRefused, rasterOf, ImageRefused, type Raster } from "./images.vibe"
+import { decodedImage, encoded, fittedSize, imageAdmitted, imageRefused, rasterOf, type ImageRefused, type Raster } from "./images.vibe"
 
 export interface ScanCorner { readonly x: number; readonly y: number }
 export type ScanCorners = readonly [ScanCorner, ScanCorner, ScanCorner, ScanCorner]

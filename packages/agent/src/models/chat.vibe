@@ -43,7 +43,7 @@ interface Hold {
 
 const unheld: Hold = { retryAt: undefined, retryAfterMs: undefined }
 
-error ShellRefused { refusal: ShellRefusal }
+export error ShellRefused { refusal: ShellRefusal }
 
 error StreamConsumerFailed { cause: unknown }
 

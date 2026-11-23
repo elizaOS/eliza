@@ -78,10 +78,10 @@ function service(adapter: IDatabaseAdapter): PromptTriggers {
   return promptTriggers({
     host: hostOver(adapter),
     facts: scheduleFacts,
-    listen: () => ({ idle: async () => undefined, stop: async () => undefined }),
+    listen: () => ({ idle: () => Promise.resolve(undefined), stop: () => Promise.resolve(undefined) }),
     delivery: {
-      resolveRoom: async (requested) =>
-        rooms.exists ? { kind: "Resolved", conversationId: requested ?? rooms.fallback } : { kind: "Missing" },
+      resolveRoom: (requested) =>
+        Promise.resolve(rooms.exists ? { kind: "Resolved", conversationId: requested ?? rooms.fallback } : { kind: "Missing" }),
       deliver: (_conversationId, _prompt, triggerId, signal) => new Promise<Delivery>((resolve) => {
         if (signal.aborted) return resolve(cancelled);
         signal.addEventListener("abort", () => resolve(cancelled), { once: true });
@@ -127,7 +127,7 @@ async function takerFor(id: string): Promise<((delivery: Delivery) => void) | un
   for (let waited = 0; waited < 2_000; waited++) {
     const taker = takers.get(id);
     if (taker !== undefined) return taker;
-    await new Promise((resolve) => setTimeout(resolve, 1));
+    await Effect.runPromise(Effect.sleep(1));
   }
   return undefined;
 }

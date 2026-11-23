@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"
 import { HttpClient } from "effect/http"
-import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import type * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { managedChangeAllowed } from "../../gen/calendar__actions.effect.vibe"
 import { brokerEventOf, type ManagedCalendarBroker, type ManagedCalendarSource } from "../feed/broker.vibe"
 import { BrokerEvent } from "../feed/broker.schema.vibe"
@@ -17,7 +17,6 @@ const decodeCache = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Reco
 const isEvent = Schema.is(BrokerEvent)
 const refusalCode = /^CALENDAR_SYNC_[A-Z_]{1,80}$/
 
-/** The managed calendar's kept events, one document in the agent's store, so a failed broker read can still show what the last good read held. */
 effect function managedCache(store: KeyValueStore.KeyValueStore): ManagedCacheStore!! {
   const serialize = (try Semaphore.make(1)).withPermits(1)
   const lost = (reason: string) => new CacheStoreFailed({ reason })
@@ -54,7 +53,6 @@ effect function managedCache(store: KeyValueStore.KeyValueStore): ManagedCacheSt
   }
 }
 
-/** What the managed Google calendar needs: the verified broker, the account it belongs to, and the agent's store for its kept events. */
 export interface ManagedCalendarOptions {
   readonly broker: ManagedCalendarBroker
   readonly owner: CalendarAccount
@@ -72,7 +70,6 @@ function semantic(fields: CalendarEventFields): Readonly<Record<string, unknown>
     ...(fields.attendees === undefined ? {} : { attendees: [...fields.attendees] }) }
 }
 
-/** The Cloud's managed Google calendar as one provider of the owner's account: broker reads kept in the agent's store, and reviewed creates and one-occurrence edits; it neither deletes, answers invitations nor emails attendees. */
 export effect function managedGoogleCalendar(options: ManagedCalendarOptions): CalendarProviderPort!!(Scope.Scope | HttpClient.HttpClient) {
   const { broker, owner } = options
   const client = try HttpClient.HttpClient

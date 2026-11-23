@@ -1,7 +1,7 @@
 // spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/workflow/runScope.md, "A relative range resolves from the run's own day and needs a device that understands it"
 import {
   isPhoneWorkflowLocalDay, isPhoneWorkflowTimeZone, phoneWorkflowCivilMidnight, phoneWorkflowLocalDay, phoneWorkflowLocalDayBounds, resolvePhoneCalendarRange,
-  SELECTED_REMINDERS_WINDOW, validatePhoneSelectedRemindersScope, validatePhoneWorkflowSpec, workflowSha, zoneOffsetMinutes,
+  type SELECTED_REMINDERS_WINDOW, validatePhoneSelectedRemindersScope, validatePhoneWorkflowSpec, workflowSha, zoneOffsetMinutes,
   type PhoneCalendarRange, type PhoneDeviceTarget, type PhoneRelativeCalendarRange, type PhoneStep, type PhoneWorkflowSpec, type PhoneWorkflowSpecError,
 } from "./phone.vibe"
 
