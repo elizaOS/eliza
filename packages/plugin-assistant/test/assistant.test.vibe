@@ -28,9 +28,9 @@ const asked = (messageId: string) => ({ plan, messageId, text: "remind me in 20 
 const outcomeOf = (result: ActionResult) => ({ success: result.success, text: result.text, outcome: result.data?.outcome })
 const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
 
-it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message")', effect () => {
+it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose, and with an alert when nobody stated one (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminders.md, "An alert nobody stated is an alert")', effect () => {
   const seen = ports()
-  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }), check({}))
+  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }), check({ alert: null }))
   provide portsLayer(seen) {
     const first = try createReminder(asked("m1"))
     const again = try createReminder(asked("m1"))
@@ -60,6 +60,36 @@ it.effect('A plan alone never saves a reminder: a message that did not ask, or a
     const late = reminderReply(try createReminder(past))
     try equal([declined, unverified, late].map(outcomeOf).map(({ outcome }) => outcome), ["OWNER_REMINDER_INTENT_MISMATCH", "OWNER_REMINDER_INTENT_UNVERIFIED", "REMINDER_TIME_PASSED"])
     try equal(rowsOf(seen, reminderKind).length, 0)
+  }
+})
+
+it.effect('An answer to "when should I remind you?" finishes the reminder that drew the question, from a later message within five minutes, and no other message does (spec/assistant/reminders.md, "Story: Answer the question a reminder I asked for drew"; spec/assistant/reminders.md, "An answer finishes only the reminder this conversation asked about, from a later message within five minutes")', effect () => {
+  const seen = ports()
+  const roomId = "room-9" as UUID
+  const gone = { kind: "at", instant: "2026-11-22T14:00:00Z" }
+  const givesATime = (answer: boolean) => JSON.stringify({ givesATime: answer })
+  const said = (messageId: string, text: string, due: object, title = "Something else") => ({ plan: { ...plan, title, due }, messageId, text, roomId })
+  provide portsLayer(seen) {
+    seen.answers.push(check({ alert: "silent", important: true }), check({ requested: false }), givesATime(false), check({ requested: false }), givesATime(true), check({ requested: false }))
+    const replies = [
+      reminderReply(try createReminder(said("q1", "remind me at 9 to call the dentist, quietly, it's important", gone, "Call the dentist"))),
+      reminderReply(try createReminder(said("q2", "what's the weather like", { kind: "in", minutes: 30 }))),
+      reminderReply(try createReminder(said("q3", "in half an hour then", { kind: "in", minutes: 30 }))),
+      reminderReply(try createReminder(said("q4", "make it an hour", { kind: "in", minutes: 60 }))),
+    ]
+    seen.answers.push(check({}), check({ requested: false }))
+    replies.push(reminderReply(try createReminder(said("q5", "remind me at 9 to water the plants", gone, "Water the plants"))))
+    seen.now += 6 * 60_000
+    replies.push(reminderReply(try createReminder(said("q6", "in ten minutes", { kind: "in", minutes: 10 }))))
+    try equal({
+      replies: replies.map((reply) => reply.success ? reply.userFacingText?.startsWith('I\'ll remind you: "Call the dentist" in 30 minutes') : reply.data?.outcome),
+      unasked: seen.answers.length,
+      rows: rowsOf(seen, reminderKind).map((row) => [row.promptInstructions, row.metadata.alert, row.metadata.priority, row.metadata.requestMessageId]),
+    }, {
+      replies: ["REMINDER_TIME_PASSED", "OWNER_REMINDER_INTENT_MISMATCH", true, "OWNER_REMINDER_INTENT_MISMATCH", "REMINDER_TIME_PASSED", "OWNER_REMINDER_INTENT_MISMATCH"],
+      unasked: 0,
+      rows: [["Call the dentist", "silent", "high", "q3"]],
+    })
   }
 })
 

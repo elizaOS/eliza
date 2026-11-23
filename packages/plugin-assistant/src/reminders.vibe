@@ -1,6 +1,6 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "Story: Move the reminder I just saved"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminders.md, "A reminder is high priority only when the owner's message says so"; spec/assistant/reminders.md, "A stated time moves a waiting reminder to that time, and a time already passed changes nothing"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"
 import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type IAgentRuntime, type Provider, type UUID } from "@elizaos/core"
-import { Machine, machine, moveAdmitted, moveToAdmitted, movedDueAt, maxMoveDelayMs, recoveredChoice, renameAdmitted, retractsRecentSave, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
+import { Machine, alertWhenUnstated, answersKeptReminder, machine, moveAdmitted, moveToAdmitted, movedDueAt, maxMoveDelayMs, recoveredChoice, renameAdmitted, retractsRecentSave, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
 import {
   Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, removeRecord, requestOf, writeRecord,
   type DeliveryAnswer, type OwnerRequest, type TaskRow, type TaskTrigger, type TaskVerb, type VerbAnswer,
@@ -124,7 +124,6 @@ export type ReminderOutcome =
   | { readonly kind: "malformed" }
   | { readonly kind: "notRequested"; readonly intent: ReminderIntent }
   | { readonly kind: "unverified"; readonly intent: ReminderIntent }
-  | { readonly kind: "askAlert"; readonly intent: ReminderIntent }
   | { readonly kind: "badTime"; readonly intent: ReminderIntent }
   | { readonly kind: "past"; readonly intent: ReminderIntent }
   | { readonly kind: "settled"; readonly intent: ReminderIntent; readonly attempts: readonly Attempt[]; readonly target: string; readonly said: string; readonly taskId: string | undefined }
@@ -135,36 +134,78 @@ const RecentSave = Schema.Struct({ taskId: Schema.String, title: Schema.String, 
 const decodeRecentSave = Schema.decodeUnknownOption(RecentSave)
 const recentSaveKey = (roomId: string) => `reminder-recent-save:${roomId}`
 
+const Choice = Schema.Literals(["UnknownChoice", "FirstChoice", "SecondChoice"])
+const KeptReminder = Schema.Struct({ messageId: Schema.String, keptAt: Schema.Number, title: Schema.String, body: Schema.String, destination: Choice, alert: Choice, important: Schema.Boolean })
+type KeptReminder = typeof KeptReminder.Type
+const decodeKept = Schema.decodeUnknownOption(KeptReminder)
+const keptKey = (roomId: string) => `reminder-awaiting-time:${roomId}`
+const decodeGivesATime = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ givesATime: Schema.Boolean })))
+
+const answerSystem = [
+  "The assistant asked the owner when to remind them, because the time it had for a reminder they asked for could not be used.",
+  "You read the owner's next message. Say whether it gives a time, a day, a delay or a repeat for that reminder.",
+  "A message that declines, changes the subject, or asks about something else gives none.",
+  'Reply with one JSON object and nothing else: {"givesATime": boolean}.',
+].join("\n")
+
+effect function keptReminderFor(request: ReminderRequest, now: number) {
+  if (request.roomId === undefined) return undefined
+  const kept = try readRecord(keptKey(request.roomId), decodeKept)
+  if (kept === undefined) return undefined
+  const sameMessage = kept.messageId === request.messageId
+  if (!answersKeptReminder(kept.keptAt, now, sameMessage, true)) {
+    if (!sameMessage) {
+      try removeRecord(keptKey(request.roomId))
+    }
+    return undefined
+  }
+  const said = (try Model).complete(answerSystem, `Reminder: ${kept.title}\nOwner's next message: ${request.text}`) catch () => ""
+  const read = decodeGivesATime(said.trim().replace(/^```(?:json)?\s*|\s*```$/gu, ""))
+  return answersKeptReminder(kept.keptAt, now, sameMessage, Option.isSome(read) && read.value.givesATime) ? kept : undefined
+}
+
 export effect function createReminder(request: ReminderRequest) {
   const planned = decodePlan(request.plan)
   if (Option.isNone(planned)) return { kind: "malformed" } satisfies ReminderOutcome
-  const plan = planned.value
   const check = try checkOriginalMessage(request.text)
   const host = try Facts
   const now = try host.now()
+  const kept = check?.requested === true ? undefined : try keptReminderFor(request, now)
+  const plan = kept === undefined ? planned.value : { ...planned.value, title: kept.title, body: kept.body }
+  const asked = kept === undefined
+    ? { requested: check?.requested ?? false, destination: choiceOf(destinationChoice, check?.destination ?? null), alert: choiceOf(alertChoice, check?.alert ?? null), important: check?.important === true }
+    : { requested: true, destination: kept.destination, alert: kept.alert, important: kept.important }
+  const verified = check !== undefined || kept !== undefined
   const zone = try ownerClockAt(now)
   provide machine() {
     const intent = try Machine
     const send = (event: Parameters<Machine.Shape["send"]>[0]) => orDie(intent.send(event))
     const plannedClock: ReminderClock = plan.due.kind === "in" || plan.due.kind === "at" ? "UtcClock" : "OwnerLocalClock"
     try send({
-      type: "proposeReminder", requested: check?.requested ?? false, plannedClock,
+      type: "proposeReminder", requested: asked.requested, plannedClock,
       extractedClock: check?.clock === "owner_local" ? "OwnerLocalClock" : "UtcClock",
-      plannedDestination: choiceOf(destinationChoice, plan.destination), extractedDestination: choiceOf(destinationChoice, check?.destination ?? null),
-      plannedAlert: choiceOf(alertChoice, plan.alert), extractedAlert: choiceOf(alertChoice, check?.alert ?? null),
-      saidHigh: check?.important === true,
+      plannedDestination: choiceOf(destinationChoice, plan.destination), extractedDestination: asked.destination,
+      plannedAlert: choiceOf(alertChoice, plan.alert), extractedAlert: asked.alert,
+      saidHigh: asked.important,
     })
-    const checked = try send(check === undefined ? { type: "checkUnavailable" } : { type: "checkRequest" })
+    const checked = try send(verified ? { type: "checkRequest" } : { type: "checkUnavailable" })
     if (checked.reminderPhase !== "IntentReady") {
-      return { kind: check === undefined ? "unverified" : "notRequested", intent: checked } satisfies ReminderOutcome
+      return { kind: verified ? "notRequested" : "unverified", intent: checked } satisfies ReminderOutcome
     }
-    const alert = recoveredChoice(checked.plannedAlert, checked.extractedAlert)
-    if (alert === "UnknownChoice") return { kind: "askAlert", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
+    const alert = alertWhenUnstated(recoveredChoice(checked.plannedAlert, checked.extractedAlert))
+    const statedDestination = recoveredChoice(checked.plannedDestination, checked.extractedDestination)
     const due = plan.due
     const when = dueTrigger(due, now, zone)
-    if (when.kind === "unreadable") return { kind: "badTime", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
-    if (when.kind === "once" && when.at <= now) return { kind: "past", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
-    const destination = destinationOf(recoveredChoice(checked.plannedDestination, checked.extractedDestination))
+    if (when.kind === "unreadable" || (when.kind === "once" && when.at <= now)) {
+      if (request.roomId !== undefined) {
+        try writeRecord(keptKey(request.roomId), {
+          messageId: request.messageId, keptAt: now, title: plan.title, body: plan.body ?? "", destination: statedDestination,
+          alert: recoveredChoice(checked.plannedAlert, checked.extractedAlert), important: checked.saidHigh,
+        } satisfies KeptReminder)
+      }
+      return { kind: when.kind === "unreadable" ? "badTime" : "past", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
+    }
+    const destination = destinationOf(statedDestination)
     const key = `reminder:${request.messageId}:${try Effect.orDie(Effect.try(() => stringToUuid(JSON.stringify([plan.title, plan.due]))))}`
     const facts = { operation: "reminder.create", kind: "reminder", id: key, key }
     const scheduler = try Scheduler
@@ -191,6 +232,7 @@ export effect function createReminder(request: ReminderRequest) {
     const settled = try send(taskId === undefined ? { type: "cancelReminder" } : { type: "saveReminder" })
     if (taskId !== undefined && request.roomId !== undefined) {
       try writeRecord(recentSaveKey(request.roomId), { taskId, title: plan.title, messageId: request.messageId, savedAt: now } satisfies typeof RecentSave.Type)
+      try removeRecord(keptKey(request.roomId))
     }
     const told = when.kind === "repeat" ? `${repeatWords(when.repeat)} (${zone})` : due.kind === "in" ? `in ${durationWords(due.minutes)}, at ${wallText(when.at, zone)}` : `at ${wallText(when.at, zone)} (${zone})`
     return { kind: "settled", intent: settled, attempts, target: "reminder:" + key, said: `I'll remind you: "${plan.title}" ${told}.`, taskId } satisfies ReminderOutcome
@@ -202,7 +244,6 @@ export function reminderReply(outcome: ReminderOutcome): ActionResult {
     case "malformed": return { success: false, text: "The reminder plan was incomplete, so no reminder was saved.", data: { outcome: "REMINDER_PLAN_INVALID" } }
     case "notRequested": return { success: false, text: "I didn't save a reminder because your message didn't ask me to remind you.", data: { outcome: "OWNER_REMINDER_INTENT_MISMATCH" } }
     case "unverified": return { success: false, text: "I couldn't confirm from your message that you asked for a reminder, so no reminder was saved.", data: { outcome: "OWNER_REMINDER_INTENT_UNVERIFIED" } }
-    case "askAlert": return { success: false, text: "Should this reminder alert you, or only keep the due time without an alert?", data: { outcome: "REMINDER_ALERT_PREFERENCE_UNRESOLVED" } }
     case "badTime": return { success: false, text: "I couldn't read that reminder time. When should I remind you?", data: { outcome: "REMINDER_TIME_INVALID" } }
     case "past": return { success: false, text: "That reminder time has already passed. When should I remind you?", data: { outcome: "REMINDER_TIME_PASSED" } }
     case "settled": return attributed(outcome.attempts, outcome.target, {

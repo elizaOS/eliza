@@ -64,6 +64,19 @@ pure def cancelReminder(s: ReminderIntent): ReminderIntent = { ...s, reminderPha
 pure def alwaysCheckedBeforeWrite(s: ReminderIntent): bool = s.writes > 0 implies (s.checked and s.requested)
 ```
 
+### An alert nobody stated is an alert
+
+The first alternative of the alert choice is an alert and the second a
+silent reminder. A reminder alerts unless the owner asked for a silent
+one: when neither the plan nor the message states the choice, it is saved
+with an alert, and the owner is not asked.
+
+```quint
+pure def alertWhenUnstated(stated: DeliveryChoice): DeliveryChoice = if (stated == UnknownChoice) FirstChoice else stated
+pure def lawAnUnstatedAlertIsAnAlert(stated: DeliveryChoice): bool =
+  alertWhenUnstated(stated) != UnknownChoice and (stated != UnknownChoice implies alertWhenUnstated(stated) == stated)
+```
+
 ### A reminder is written at most once, and a refusal writes nothing
 
 ```quint
@@ -71,7 +84,8 @@ pure def recoveredChoice(planned: DeliveryChoice, extracted: DeliveryChoice): De
 pure def canSaveReminder(s: ReminderIntent): bool = s.reminderPhase == IntentReady and s.checked and s.requested
 pure def saveReminder(s: ReminderIntent): ReminderIntent =
   { ...s, reminderPhase: ReminderSaved, writes: s.writes + 1, savedClock: s.plannedClock,
-    savedDestination: recoveredChoice(s.plannedDestination, s.extractedDestination), savedAlert: recoveredChoice(s.plannedAlert, s.extractedAlert), savedHigh: s.saidHigh }
+    savedDestination: recoveredChoice(s.plannedDestination, s.extractedDestination),
+    savedAlert: alertWhenUnstated(recoveredChoice(s.plannedAlert, s.extractedAlert)), savedHigh: s.saidHigh }
 pure def alwaysWrittenAtMostOnce(s: ReminderIntent): bool = s.writes >= 0 and s.writes <= 1 and ((s.writes == 1) == (s.reminderPhase == ReminderSaved))
 pure def alwaysRefusalWritesNothing(s: ReminderIntent): bool = (s.reminderPhase == IntentRejected or s.reminderPhase == IntentCancelled) implies s.writes == 0
 ```
@@ -86,9 +100,14 @@ pure def alwaysPlannedClockKept(s: ReminderIntent): bool = s.writes > 0 implies 
 
 ### A known delivery choice is kept, and only an unknown one is taken from the message
 
+An alert choice that the message leaves unknown too is saved as an alert.
+
 ```quint
 pure def alwaysDeliveryChoicesKept(s: ReminderIntent): bool =
-  s.writes > 0 implies (s.savedDestination == recoveredChoice(s.plannedDestination, s.extractedDestination) and s.savedAlert == recoveredChoice(s.plannedAlert, s.extractedAlert))
+  s.writes > 0 implies (s.savedDestination == recoveredChoice(s.plannedDestination, s.extractedDestination)
+    and s.savedAlert == alertWhenUnstated(recoveredChoice(s.plannedAlert, s.extractedAlert)))
+pure def sometimesSavedWithAnUnstatedAlert(s: ReminderIntent): bool =
+  s.reminderPhase == ReminderSaved and s.plannedAlert == UnknownChoice and s.extractedAlert == UnknownChoice and s.savedAlert == FirstChoice
 ```
 
 ### A reminder is high priority only when the owner's message says so
@@ -119,6 +138,39 @@ pure def sometimesSavedWithRecoveredDestination(s: ReminderIntent): bool =
   s.reminderPhase == ReminderSaved and s.plannedDestination == UnknownChoice and s.savedDestination != UnknownChoice
 pure def sometimesRejected(s: ReminderIntent): bool = s.reminderPhase == IntentRejected and s.checked
 pure def sometimesCancelledWhenReady(s: ReminderIntent): bool = s.reminderPhase == IntentCancelled and s.checked
+```
+
+## Story: Answer the question a reminder I asked for drew
+
+> As an owner, when the assistant asks me when to remind me because the
+> time it had could not be used, I want my answer to finish that reminder
+> without saying all of it again.
+
+### An answer finishes only the reminder this conversation asked about, from a later message within five minutes
+
+A reminder the owner's message asked for, whose time could not be read,
+had already passed or was an interval that does not repeat, saves nothing
+and is kept for its conversation with the title, body, delivery choices
+and priority its checked message gave. The owner's next message need not
+ask for a reminder again. It is read again, and when it gives a time for
+the kept reminder, that reminder is saved at the time the new plan
+carries, on the check of the message that asked for it. Only a later
+message than the one that drew the question finishes it, within five
+minutes of the question. A message that does not answer finishes nothing
+and leaves the kept reminder waiting, a message that itself asks for a
+reminder is a new request and discards it, and a plan alone still saves
+nothing.
+
+```quint
+pure val answerWindowMs = 300000
+pure def answersKeptReminder(keptAt: int, now: int, sameMessage: bool, givesATime: bool): bool =
+  givesATime and not(sameMessage) and now >= keptAt and now - keptAt <= answerWindowMs
+pure def lawAStaleQuestionIsNeverFinished(keptAt: int, now: int, sameMessage: bool, givesATime: bool): bool =
+  now - keptAt > answerWindowMs implies not(answersKeptReminder(keptAt, now, sameMessage, givesATime))
+pure def lawTheMessageThatDrewTheQuestionNeverFinishesIt(keptAt: int, now: int, givesATime: bool): bool =
+  not(answersKeptReminder(keptAt, now, true, givesATime))
+pure def lawAMessageThatGivesNoTimeFinishesNothing(keptAt: int, now: int, sameMessage: bool): bool =
+  not(answersKeptReminder(keptAt, now, sameMessage, false))
 ```
 
 ## Story: Take back the reminder I just saved
