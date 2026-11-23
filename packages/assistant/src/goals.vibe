@@ -1,7 +1,7 @@
 // spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/goals.md, "A new goal is refused only when an active goal has the same title"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/goals.md, "A check-in the owner dismissed never comes back for the same slot"; spec/assistant/goals.md, "The owner's answer to a fired check-in sets the goal's review state"
 import { createReminderPresentation, type Action, type ActionResult, type Provider, type UUID } from "@elizaos/core"
 import { Machine, cadenceSlots, checkinLogLimit, duplicatesGoal, stored, type Cadence, type Goal, type GoalStatus, type ReviewState } from "../gen/assistant__goals.effect.vibe"
-import { Facts, Presenter, Scheduler, SchedulerUnavailable, onAgent, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { Facts, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attempt } from "./replies.vibe"
 import { requestOf } from "./reminders.vibe"
 import { GoalRequest } from "./requests.schema.vibe"
@@ -176,9 +176,7 @@ export effect function deliverGoalCheckin(task: TaskRow) {
   const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Goal check-in"), catch: () => "unpresentable" }) catch () => undefined
   if (presentation === undefined) return { kind: "undeliverable", error: "The check-in has no text to present" } satisfies DeliveryAnswer
   const room = task.metadata.roomId
-  return try ((try Presenter).present({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
-    |> Effect.as(%, { kind: "delivered" } as DeliveryAnswer)
-    |> Effect.catch(%, (failed) => Effect.succeed({ kind: "retry", afterMs: 60_000, reason: failed.reason } as DeliveryAnswer)))
+  return try presentOnce({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
 }
 
 /** Creates, updates, deletes and checks in on the owner's goals. */

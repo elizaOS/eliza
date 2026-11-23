@@ -2,7 +2,7 @@
 import { createReminderPresentation, type Action, type ActionResult, type IAgentRuntime, type Provider } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
 import { Machine, Rejected, routineNamed, stored, type DefinitionStatus, type Event, type Routines } from "../gen/assistant__routines.effect.vibe"
-import { Facts, Presenter, Scheduler, onAgent, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { Facts, Scheduler, onAgent, presentOnce, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { requestOf } from "./reminders.vibe"
 import { appliedReceipt, attributed, failedReceipt, unchangedReceipt } from "./replies.vibe"
 import { OccurrenceAnswer, RoutineCreate, RoutineRequest, RoutineUpdate } from "./requests.schema.vibe"
@@ -149,9 +149,7 @@ export effect function deliverRoutine(task: TaskRow) {
   const title = typeof task.metadata.title === "string" && task.metadata.title.trim() !== "" ? task.metadata.title : task.promptInstructions
   const presentation = Effect.try({ try: () => createReminderPresentation(title, title, "Routine"), catch: () => "unpresentable" }) catch () => undefined
   if (presentation === undefined) return { kind: "undeliverable", error: "The routine has no text to present" } satisfies DeliveryAnswer
-  return try ((try Presenter).present({ taskId: task.taskId, kind: task.kind, roomId: undefined, presentation })
-    |> Effect.as(%, { kind: "delivered" } as DeliveryAnswer)
-    |> Effect.catch(%, (failed) => Effect.succeed({ kind: "retry", afterMs: 60_000, reason: failed.reason } as DeliveryAnswer)))
+  return try presentOnce({ taskId: task.taskId, kind: task.kind, roomId: undefined, presentation })
 }
 
 type LocalRoute = NonNullable<AgentPlugin["routes"]>[number]

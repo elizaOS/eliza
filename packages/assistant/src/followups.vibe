@@ -1,7 +1,8 @@
-// spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/followups.md, "Each tick reconciles every follow-up against its approval before any is delivered"; spec/assistant/followups.md, "A follow-up is never delivered after its tick saw the approval resolved"; spec/assistant/followups.md, "A follow-up keeps its prompt exactly until it is retired"; spec/assistant/followups.md, "Every resolved approval's follow-up is retired"
+// spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/followups.md, "Each tick reconciles every follow-up against its approval before any is delivered"; spec/assistant/followups.md, "A follow-up is never delivered after its tick saw the approval resolved"; spec/assistant/followups.md, "A follow-up keeps its prompt exactly until it is retired"; spec/assistant/followups.md, "Every resolved approval's follow-up is retired"
 import { createReminderPresentation } from "@elizaos/core"
 import { canDeliverFollowup, canReconcileFails, canReconcileTick, deliverFollowup, fresh, reconcileFails, reconcileTick, type ApprovalState, type Followup, type Followups } from "../gen/assistant__followups.effect.vibe"
-import { Approvals, Facts, Presenter, readRecord, writeRecord, type ApprovalView, type DeliveryAnswer } from "./host.vibe"
+import { sentAgain } from "../gen/assistant__reminderEscalation.effect.vibe"
+import { Approvals, DeliveryFailed, Facts, Presenter, readRecord, writeRecord, type ApprovalView, type DeliveryAnswer } from "./host.vibe"
 
 /** The scheduled-task kind of the tick that reconciles and delivers approval follow-ups. */
 export const followupTickKind = "personal-assistant.followup-tick"
@@ -75,8 +76,8 @@ export effect function followupTick() {
     const body = `An approval is still waiting for you: ${record.title}. Review it in your approvals.`
     const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Approval waiting"), catch: () => "unpresentable" }) catch () => undefined
     if (presentation === undefined) continue
-    const shown = Effect.as(presenter.present({ taskId: `followup:${record.approvalId}`, kind: followupTickKind, roomId: undefined, presentation }), true) catch () => false
-    if (!shown) continue
+    const shown = presenter.present({ taskId: `followup:${record.approvalId}`, kind: followupTickKind, roomId: undefined, presentation }) catch (failed) => failed
+    if (shown instanceof DeliveryFailed && sentAgain(shown.ending)) continue
     fired = deliverFollowup(fired, record.followupId)
     due.set(record.followupId, now + repeatAfter)
     delivered.push(record.approvalId)

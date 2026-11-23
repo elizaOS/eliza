@@ -1,7 +1,7 @@
-// spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/reminderEscalation.md, "New steps keep the quiet hours of the reminder"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"
+// spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/reminderEscalation.md, "New steps keep the quiet hours of the reminder"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"
 import { createReminderPresentation, type ActionResult, type UUID } from "@elizaos/core"
 import { configureEscalation, noEscalation, stepOutcome, type EscalationPlan, type QuietHours, type ReminderChannel } from "../gen/assistant__reminderEscalation.effect.vibe"
-import { DeliveryFailed, Facts, Presenter, Scheduler, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { Facts, Scheduler, presentOnce, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { appliedReceipt, attributed } from "./replies.vibe"
 import type { ReminderEscalation } from "./requests.schema.vibe"
 import { localMinutes } from "./time.vibe"
@@ -124,12 +124,9 @@ export effect function deliverEscalation(task: TaskRow) {
   const outcome = stepOutcome(channels[channel], record?.quiet ?? noQuiet, localMinutes(now, zone) % 1440, unanswered)
   if (outcome !== "NudgeSent") return { kind: "delivered" } satisfies DeliveryAnswer
   const body = `${task.promptInstructions.trim()} still needs your attention`
-  const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => new DeliveryFailed({ reason: "The reminder has no text to present" }) })
-    catch (failed) => failed
-  if (presentation instanceof DeliveryFailed) return { kind: "undeliverable", error: presentation.reason } satisfies DeliveryAnswer
-  const presented = (try Presenter).present({
+  const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => "unpresentable" }) catch () => undefined
+  if (presentation === undefined) return { kind: "undeliverable", error: "The reminder has no text to present" } satisfies DeliveryAnswer
+  return try presentOnce({
     taskId: reminderTaskId, kind: task.kind, roomId: typeof roomId === "string" ? roomId as UUID : undefined, presentation, conversationOnly: channel === "in_app",
-  }) catch (failed) => failed
-  if (presented instanceof DeliveryFailed) return { kind: "retry", afterMs: 60_000, reason: presented.reason } satisfies DeliveryAnswer
-  return { kind: "delivered" } satisfies DeliveryAnswer
+  })
 }

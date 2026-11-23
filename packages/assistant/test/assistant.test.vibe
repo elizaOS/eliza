@@ -78,12 +78,14 @@ it.effect('A save that failed and then succeeded is reported saved, and one that
   }
 })
 
-it.effect('A fired reminder reaches the owner as the exact presentation issued for it, and can be dismissed by its title (spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that")', effect () => {
+it.effect('A fired reminder reaches the owner once as the exact presentation issued for it, is sent again only when nothing left, and can be dismissed by its title (spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again")', effect () => {
   const seen = ports()
   seen.answers.push(check({}))
   provide portsLayer(seen) {
     try createReminder(asked("m7"))
     const [row] = rowsOf(seen, reminderKind)
+    seen.presentFailures.push("NothingSent", "AcceptanceUnknown")
+    try equal([try deliverReminder(row), try deliverReminder(row)], [{ kind: "retry", afterMs: 60_000, reason: "scripted outage" }, { kind: "delivered" }])
     const delivered = try deliverReminder(row)
     const shown = seen.presented[0]?.presentation
     const copy: unknown = try Effect.try(() => JSON.parse(JSON.stringify(shown)))

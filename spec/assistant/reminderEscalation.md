@@ -10,7 +10,8 @@ channel. A phone notification reaches the owner as the first alert did,
 with its message in the conversation; the conversation alone adds only
 the message. These are the channels the assistant reaches on the owner's
 phone, and a step on any other, such as a call or a text message, is
-refused when the owner asks for it, with the channels it can use.
+refused when the owner asks for it, with the channels it can use, so a
+reminder never texts or calls the owner.
 
 A plan may also keep quiet hours, a span of the day on the owner's clock
 in which no step notifies the phone. The zone is the owner's clock when
@@ -105,4 +106,20 @@ pure def lawAPhoneStepOutsideQuietHoursIsSent(quiet: QuietHours, minuteOfDay: in
   not(inQuietHours(quiet, minuteOfDay)) implies stepOutcome(Push, quiet, minuteOfDay, true) == NudgeSent
 pure def lawQuietHoursWrapPastMidnight(minuteOfDay: int): bool =
   inQuietHours(nightQuiet, minuteOfDay) iff (minuteOfDay >= 1320 or minuteOfDay < 420)
+```
+
+### A reminder, nudge or check-in that may have reached the owner is never sent again
+
+A delivery that failed before anything left, with no conversation to post
+in or no notification service, is tried again later. One that failed once
+the notice was handed to the phone's notifications, or after it was
+shown, may already have reached the owner: it counts as sent and is never
+sent again, so a lost answer never repeats a nudge.
+
+```quint
+type DeliveryEnd = DeliveryShown | NothingSent | AcceptanceUnknown
+pure def sentAgain(ending: DeliveryEnd): bool = ending == NothingSent
+pure def lawADeliveryThatMayHaveReachedTheOwnerIsNeverSentAgain(ending: DeliveryEnd): bool =
+  (ending == DeliveryShown or ending == AcceptanceUnknown) implies not(sentAgain(ending))
+pure def lawOnlyADeliveryThatNeverLeftIsTriedAgain(ending: DeliveryEnd): bool = sentAgain(ending) iff ending == NothingSent
 ```

@@ -1,8 +1,8 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"
 import { createReminderPresentation, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider, type UUID } from "@elizaos/core"
 import { Machine, machine, recoveredChoice, retractsRecentSave, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
 import {
-  DeliveryFailed, Facts, Model, Presenter, Scheduler, SchedulerUnavailable, onAgent, readRecord, removeRecord, writeRecord,
+  Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, removeRecord, writeRecord,
   type DeliveryAnswer, type TaskRow, type TaskVerb, type VerbAnswer,
 } from "./host.vibe"
 import { changeEscalation, scheduleEscalation } from "./escalation.vibe"
@@ -164,15 +164,12 @@ function metadataText(task: TaskRow, name: string): string {
 /** Presents a fired reminder to the owner as the exact presentation issued for it, schedules its escalation steps, and says how the delivery went. */
 export effect function deliverReminder(task: TaskRow) {
   const body = metadataText(task, "body").trim() || metadataText(task, "title").trim() || task.promptInstructions.trim()
-  const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => new DeliveryFailed({ reason: "The reminder has no text to present" }) })
-    catch (failed) => failed
-  if (presentation instanceof DeliveryFailed) return { kind: "undeliverable", error: presentation.reason } satisfies DeliveryAnswer
+  const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => "unpresentable" }) catch () => undefined
+  if (presentation === undefined) return { kind: "undeliverable", error: "The reminder has no text to present" } satisfies DeliveryAnswer
   const room = task.metadata.roomId
-  const presented = (try Presenter).present({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
-    catch (failed) => failed
-  if (presented instanceof DeliveryFailed) return { kind: "retry", afterMs: 60_000, reason: presented.reason } satisfies DeliveryAnswer
-  scheduleEscalation(task) catch () => undefined
-  return { kind: "delivered" } satisfies DeliveryAnswer
+  const answer = try presentOnce({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
+  if (answer.kind === "delivered") scheduleEscalation(task) catch () => undefined
+  return answer
 }
 
 const live = new Set(["Scheduled", "Fired", "Acknowledged"])
