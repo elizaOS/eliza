@@ -885,7 +885,7 @@ it.live('Run a scenario in a fresh Android user and keep the user when the scena
         if (command === "shell getprop sys.boot_completed") return "1"
         if (command === "shell am get-current-user") return "10"
         if (command === "shell am get-started-user-state 10") return "RUNNING_UNLOCKED"
-        return try run(...args)
+        return command === "emu avd name" ? "fixture_avd\nOK" : ""
       }
       const rebooted = try rebootAndroidFixture({ run: rebooting, serial, androidUser: 10, deviceLease, stateDir: `${work}/leases` }, { expectedAvdName: "fixture_avd", timeoutMs: 1000, pollMs: 1 })
       try Effect.try(() => assert.deepStrictEqual({
