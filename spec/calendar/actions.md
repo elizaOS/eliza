@@ -109,6 +109,36 @@ pure def lawAnEventAfterTheTripIsLeftOut(eventBegin: int, eventFinish: int, trip
   eventBegin > tripEnd implies not(tripHolds(eventBegin, eventFinish, tripStart, tripEnd))
 ```
 
+### A whole-day read names its first and last day, and code finds the midnights
+
+A search may name whole days in place of instants: `date`, the first
+civil day as YYYY-MM-DD, and `endDate`, the last day it includes, which
+is the first when left out. The read runs from the midnight that starts
+the first day to the midnight that ends the last, in the request's zone,
+so a day with a clock change is read whole. A day read that also sends
+`timeMin` or `timeMax`, sends `endDate` alone, names a date no calendar
+has, ends before it starts or covers more than 370 days is refused before
+anything is read. A search that names no day reads its instants as
+before.
+
+```quint
+type DayRead = ReadAskedWindow | ReadWholeDays | RefuseDayRead
+pure val dayReadLimit: int = 370
+pure def dayRead(dateSent: bool, endDateSent: bool, datesReal: bool, instantsSent: bool, dayCount: int): DayRead =
+  if (not(dateSent) and not(endDateSent)) ReadAskedWindow
+  else if (not(dateSent) or instantsSent or not(datesReal) or dayCount < 1 or dayCount > dayReadLimit) RefuseDayRead
+  else ReadWholeDays
+pure def lawADayReadNeverMixesWithInstants(endDateSent: bool, datesReal: bool, dayCount: int): bool =
+  dayRead(true, endDateSent, datesReal, true, dayCount) == RefuseDayRead
+pure def lawALastDayNeedsItsFirst(datesReal: bool, instantsSent: bool, dayCount: int): bool =
+  dayRead(false, true, datesReal, instantsSent, dayCount) == RefuseDayRead
+pure def lawAnUnrealDateIsNeverRead(dateSent: bool, endDateSent: bool, instantsSent: bool, dayCount: int): bool =
+  dayRead(dateSent, endDateSent, false, instantsSent, dayCount) != ReadWholeDays
+pure def lawWholeDaysAreBounded(dateSent: bool, endDateSent: bool, datesReal: bool, instantsSent: bool, dayCount: int): bool =
+  dayRead(dateSent, endDateSent, datesReal, instantsSent, dayCount) == ReadWholeDays implies dayCount >= 1 and dayCount <= dayReadLimit
+pure val dayCountValues = Set(0, 1, 370, 371)
+```
+
 ## Story: Ask when I am free and get openings from my real calendar
 
 > As the owner, I want the agent to tell me whether a whole period is

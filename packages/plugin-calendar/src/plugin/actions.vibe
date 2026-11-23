@@ -1,13 +1,15 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"
 import { readTurnContext } from "@elizaos/agent"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  chatCreateReviewed, createEndMs, deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked,
+  chatCreateReviewed, createEndMs, dayRead, deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked,
   ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { instantRead } from "../../gen/calendar__readClock.effect.vibe"
-import { buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, statedYearCreate } from "../clock.vibe"
+import {
+  addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate,
+} from "../clock.vibe"
 import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
@@ -32,6 +34,7 @@ type Subaction = typeof subactions[number]
 
 const isoInstant = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)?$/
 const wallClock = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)(?::(\d\d))?(?:\.\d{1,3})?$/
+const civilDay = /^(\d{4})-(\d\d)-(\d\d)$/
 const Instant = Schema.String.check(Schema.makeFilter((text) => isoInstant.test(text) && Number.isFinite(Date.parse(text))))
 const Words = (limit: number) => Schema.String.check(Schema.isMaxLength(limit))
 const Parameters = Schema.Struct({
@@ -39,6 +42,8 @@ const Parameters = Schema.Struct({
   query: Schema.optionalKey(Words(500)),
   timeMin: Schema.optionalKey(Instant),
   timeMax: Schema.optionalKey(Instant),
+  date: Schema.optionalKey(Words(10)),
+  endDate: Schema.optionalKey(Words(10)),
   eventId: Schema.optionalKey(Words(1024)),
   calendarId: Schema.optionalKey(Words(1024)),
   title: Schema.optionalKey(Words(500)),
@@ -95,6 +100,30 @@ function wallTimesIn(sent: Parameters, zone: string): Parameters | undefined {
   const starts = skipped.flatMap((start) => start === undefined ? [] : [start])
   if (starts.length !== skipped.length) return undefined
   return { ...read, skipStarts: starts }
+}
+
+function dayOf(sent: string | undefined): LocalDate | undefined {
+  const match = sent === undefined ? null : civilDay.exec(sent)
+  if (match === null) return undefined
+  const date = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
+  const real = addDaysToLocalDate(date, 0)
+  return real.year === date.year && real.month === date.month && real.day === date.day ? date : undefined
+}
+
+type DayWindow = { readonly kind: "none" } | { readonly kind: "refused" } | { readonly kind: "days"; readonly timeMin: number; readonly timeMax: number }
+
+function wholeDays(parameters: Parameters, zone: string): DayWindow {
+  const first = dayOf(parameters.date)
+  const last = parameters.endDate === undefined ? first : dayOf(parameters.endDate)
+  const timeMin = first === undefined ? undefined : startOfCivilDay(first, zone)
+  const timeMax = last === undefined ? undefined : startOfCivilDay(addDaysToLocalDate(last, 1), zone)
+  const days = timeMin === undefined || timeMax === undefined || timeMin < 0 ? undefined : { kind: "days" as const, timeMin, timeMax }
+  const count = days === undefined ? 0 : Math.round((days.timeMax - days.timeMin) / day)
+  switch (dayRead(parameters.date !== undefined, parameters.endDate !== undefined, days !== undefined, parameters.timeMin !== undefined || parameters.timeMax !== undefined, count)) {
+    case "ReadAskedWindow": return { kind: "none" }
+    case "RefuseDayRead": return { kind: "refused" }
+    case "ReadWholeDays": return days ?? { kind: "refused" }
+  }
 }
 
 function wallTime(event: CalendarEvent, zone: string): string {
@@ -414,7 +443,11 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
   switch (subaction) {
     case "search_events":
     case "next_event": {
-      const span = window(parameters, now, subaction === "next_event" ? 30 * day : 7 * day)
+      const days: DayWindow = subaction === "search_events" ? wholeDays(parameters, zone) : { kind: "none" }
+      if (days.kind === "refused") {
+        return failed(subaction, "A whole-day read takes date, and endDate for more days, as real YYYY-MM-DD dates at most 370 days apart, without timeMin or timeMax. Nothing was read.", { code: "CALENDAR_READ_DATE_INVALID" })
+      }
+      const span = days.kind === "days" ? { timeMin: days.timeMin, timeMax: days.timeMax } : window(parameters, now, subaction === "next_event" ? 30 * day : 7 * day)
       if (span === undefined) return failed(subaction, "That time range isn't one I can read: it must run forward and span at most 370 days.")
       const found = try host.search({ ...span, ...(parameters.query === undefined ? {} : { query: parameters.query }), ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
       if (found === undefined) return failed(subaction, "No calendar account is active right now.")
@@ -520,6 +553,8 @@ export const calendarAction: Action = {
     { name: "query", required: false, description: "Words of the event to look for: its title, notes, place or a guest. For trip_window, the place.", schema: { type: "string" } },
     { name: "timeMin", required: false, description: "Start of the range to read: ISO 8601 with an offset, or wall time without one (2030-03-04T09:00), read in the request's zone. Required for check_availability and propose_times.", schema: { type: "string" } },
     { name: "timeMax", required: false, description: "End of the range to read, written like timeMin. Required for check_availability and propose_times; a morning-only request ends no later than noon in the request's zone.", schema: { type: "string" } },
+    { name: "date", required: false, description: "For search_events over whole days: the first local day, YYYY-MM-DD. Code finds the midnights in the request's zone. Leave out timeMin and timeMax.", schema: { type: "string" } },
+    { name: "endDate", required: false, description: "For search_events over several whole days: the last day included, YYYY-MM-DD. Needs date.", schema: { type: "string" } },
     { name: "eventId", required: false, description: "The id of the event to change, from an earlier result.", schema: { type: "string" } },
     { name: "calendarId", required: false, description: "The calendar to read or write.", schema: { type: "string" } },
     { name: "title", required: false, description: "The event title, exactly as it should be saved.", schema: { type: "string" } },
