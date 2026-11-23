@@ -194,6 +194,36 @@ pure val atValues = Set(-1, 0, 1, 900000, 1350000)
 > exactly the fields I reviewed, to land in the calendar it named, and to
 > be reported done only when the calendar shows it.
 
+### A new event's guests and a change of guests are the ones the owner's words give
+
+A new event invites the guest addresses its request lists; an update adds
+the addresses its request lists and removes the guests it names, and every
+other guest stays. An address is invited only when the owner's own words
+hold it exactly; the agent never guesses or looks one up. A guest is removed
+only when the event has them and the owner's words name them, by their
+address, the part of it before "@", or a word of their name. A request that
+invites an address the owner did not write, removes a guest the owner did
+not name, or removes one the event does not have changes nothing and says
+which. The guests other than the owner are part of the reviewed fields and
+their digest, and a change reads back with exactly those guests. The
+resident calendar keeps a guest's address, never their name, and emails
+nobody.
+
+```quint
+type GuestChange = GuestsAsAsked | AddressNotWritten | GuestNotNamed | GuestNotOnEvent
+pure def guestChange(addsWritten: bool, removalsNamed: bool, removalsOnEvent: bool): GuestChange =
+  if (not(addsWritten)) AddressNotWritten
+  else if (not(removalsNamed)) GuestNotNamed
+  else if (not(removalsOnEvent)) GuestNotOnEvent
+  else GuestsAsAsked
+pure def lawAnUnwrittenAddressIsNeverInvited(removalsNamed: bool, removalsOnEvent: bool): bool =
+  guestChange(false, removalsNamed, removalsOnEvent) != GuestsAsAsked
+pure def lawAnUnnamedGuestIsNeverRemoved(addsWritten: bool, removalsOnEvent: bool): bool =
+  guestChange(addsWritten, false, removalsOnEvent) != GuestsAsAsked
+pure def lawOnlyAGuestOfTheEventIsRemoved(addsWritten: bool, removalsNamed: bool): bool =
+  guestChange(addsWritten, removalsNamed, false) != GuestsAsAsked
+```
+
 ### A write goes to the active account's writable calendar, at once only for the resident calendar
 
 A write needs the active account and a calendar that account can write.

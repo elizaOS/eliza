@@ -25,6 +25,8 @@ const owner: CalendarAccount = { agentId: "agent", ownerId: "owner", accountId: 
 const stranger: CalendarAccount = { agentId: "agent", ownerId: "owner", accountId: "other@example.com" }
 const work = { provider: "google", side: "owner", grantId: "grant", connectorAccountId: owner.accountId, calendarId: "work" } as const
 
+const guests = (addresses: readonly string[]) => addresses.map((email) => ({ email, displayName: null, responseStatus: "needsAction", self: false, organizer: false, optional: false }))
+
 function googleCalendar(answers = true) {
   const events = new Map<string, CalendarEvent>()
   const scopes: string[] = []
@@ -61,7 +63,7 @@ function googleCalendar(answers = true) {
         id: `g-${made}`, externalId: `g-${made}`, agentId: "agent", provider: "google", side: "owner", calendarId: "work",
         title: fields.title, description: fields.description, location: fields.location, status: "confirmed",
         startAt: fields.startAt, endAt: fields.endAt, isAllDay: fields.isAllDay, timezone: fields.timeZone, htmlLink: null, conferenceLink: null,
-        organizer: { self: true, email: owner.accountId }, attendees: [], metadata: { etag: `etag-${made}`, key }, syncedAt: "2030-01-01T00:00:00.000Z", updatedAt: "2030-01-01T00:00:00.000Z",
+        organizer: { self: true, email: owner.accountId }, attendees: guests(fields.attendees ?? []), metadata: { etag: `etag-${made}`, key }, syncedAt: "2030-01-01T00:00:00.000Z", updatedAt: "2030-01-01T00:00:00.000Z",
         connectorAccountId: owner.accountId, grantId: "grant",
       }
       events.set(event.id, event)
@@ -72,7 +74,8 @@ function googleCalendar(answers = true) {
       notified.push(notify)
       const found = events.get(eventId)
       if (found === undefined || found.metadata.etag !== expected) throw refuse("precondition_failed")
-      const changed = { ...found, ...fields, metadata: { ...found.metadata, etag: `${expected}+` } }
+      const { attendees, ...rest } = fields
+      const changed = { ...found, ...rest, attendees: attendees === undefined ? found.attendees : guests(attendees), metadata: { ...found.metadata, etag: `${expected}+` } }
       events.set(eventId, changed)
       return changed
     },
@@ -394,7 +397,7 @@ it.effect(`Create a repeating event through the reviewed create (spec/calendar/a
   assert.deepStrictEqual([refusal.result, refusal.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_RECURRENCE_UNSUPPORTED", 0])
 })
 
-it.effect(`Attendees hear of a change only when the owner asked and the calendar can tell them (spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat")`, effect () => {
+it.effect(`Attendees hear of a change only when the owner asked and the calendar can tell them (spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat")`, effect () => {
   const rowsKey = "calendar:kv:calendar.resident.rows.agent.resident%3Aagent"
   const planning = { id: "resident-planning", calendarId: "primary", title: "Planning", body: "", location: "", begin: Date.parse("2030-03-04T17:00:00Z"), end: Date.parse("2030-03-04T18:00:00Z"),
     revision: "r1", who: ["sam@example.com"] }
@@ -406,11 +409,24 @@ it.effect(`Attendees hear of a change only when the owner asked and the calendar
   const quiet = try runCalendarAction(host, { ...ask, id: "message-2", text: "Rename Planning to Sync" }, { subaction: "update_event", eventId: planning.id, title: "Sync", timeZone: "UTC" })
   assert.deepStrictEqual([moved.success, moved.text?.endsWith(nobody), at(moved.data, "event", "startAt"), quiet.success, quiet.text?.endsWith(nobody)],
     [true, true, "2030-03-04T19:00:00.000Z", true, false])
+  const emails = (result: { readonly data?: unknown }) => (at(result.data, "event", "attendees") as { readonly email: string | null }[] | undefined)?.map((attendee) => attendee.email)
+  const guestChange = (id: string, text: string, change: Record<string, unknown>) => runCalendarAction(host, { ...ask, id, text }, { subaction: "update_event", eventId: planning.id, timeZone: "UTC", ...change })
   const routes = calendarRoutes(async () => host)
   const patch = routes.find((row) => row.method === "PATCH" && row.path === "/api/lifeops/calendar/events/{eventId}")
   const loud = try tryPromise(() => patch === undefined ? Promise.reject(new Error("There is no update route")) : patch.handler({ parameters: new Map([["eventId", planning.id]]), query: new Map(),
     body: { title: "Loud", notifyAttendees: true, expectedProviderVersion: String(at(quiet.data, "event", "metadata", "etag")), idempotencyKey: "loud-1" } }))
   assert.deepStrictEqual([loud.status, at(loud.body, "code")], [400, "CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED"])
+  const invited = try guestChange("message-4", "Invite ana@example.com to Sync", { addGuests: ["ana@example.com"] })
+  const dropped = try guestChange("message-5", "Remove Sam from Sync", { removeGuests: ["sam"] })
+  const guessed = try guestChange("message-6", "Invite Bob to Sync", { addGuests: ["bob@example.com"] })
+  const absent = try guestChange("message-7", "Remove Alex from Sync", { removeGuests: ["Alex"] })
+  const unnamed = try guestChange("message-8", "Clean up the guest list", { removeGuests: ["ana@example.com"] })
+  assert.deepStrictEqual([emails(invited), emails(dropped), guessed.text, absent.text, unnamed.text], [["sam@example.com", "ana@example.com"], ["ana@example.com"],
+    "I won't invite bob@example.com: that exact address isn't in your request. Nothing was changed.", "Alex isn't a guest of that event. Nothing was changed.",
+    "You didn't name ana@example.com as a guest to remove. Nothing was changed."])
+  const lunch = try runCalendarAction(host, { ...ask, id: "message-9", text: "Add lunch with ana@example.com" },
+    { subaction: "create_event", title: "Lunch", startAt: "2030-03-05T19:00:00Z", endAt: "2030-03-05T20:00:00Z", attendees: ["ana@example.com"], timeZone: "UTC" })
+  assert.deepStrictEqual(emails(lunch), ["ana@example.com"])
   const selected = try runCalendarAction(host, { ...ask, id: "message-3", text: "Delete this", selected: planning.id }, { subaction: "delete_event", eventId: planning.id, notifyAttendees: true, timeZone: "UTC" })
   assert.deepStrictEqual([selected.success, selected.text], [true, "Deleted Sync."])
 })

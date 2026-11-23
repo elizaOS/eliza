@@ -1,4 +1,4 @@
-// spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/residentStore.md, "The earlier events are imported once, exactly, and never over the series rows"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"
+// spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/residentStore.md, "The earlier events are imported once, exactly, and never over the series rows"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"
 import { sha256Hex } from "@elizaos/core"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import type { CalendarEvent, CalendarEventFields, CalendarProvider, CalendarSourceKey, CalendarSummary } from "../model.vibe"
@@ -79,10 +79,17 @@ export function eventInWindow(event: CalendarEvent, timeMin: number, timeMax: nu
   return Number.isFinite(start) && Number.isFinite(end) && (end === start ? start >= timeMin && start < timeMax : start < timeMax && end > timeMin)
 }
 
-/** Whether an event holds exactly the reviewed fields, comparing instants rather than their spelling. */
+/** The addresses of an event's guests other than the owner, lower-cased, once each and in order. */
+export function guestAddresses(event: CalendarEvent): readonly string[] {
+  return [...new Set(event.attendees.flatMap((attendee) => attendee.self || attendee.email === null ? [] : [attendee.email.trim().toLowerCase()]))].sort()
+}
+
+/** Whether an event holds exactly the reviewed fields, comparing instants rather than their spelling, and its guests when the fields name them. */
 export function holdsFields(event: CalendarEvent, fields: CalendarEventFields): boolean {
+  const guests = fields.attendees === undefined ? undefined : [...new Set(fields.attendees.map((address) => address.trim().toLowerCase()))].sort()
   return event.title === fields.title && event.description === fields.description && event.location === fields.location
     && event.isAllDay === fields.isAllDay && Date.parse(event.startAt) === Date.parse(fields.startAt) && Date.parse(event.endAt) === Date.parse(fields.endAt)
+    && (guests === undefined || JSON.stringify(guests) === JSON.stringify(guestAddresses(event)))
 }
 
 const ImportReceipt = Schema.Struct({
@@ -152,7 +159,7 @@ function isResident(account: CalendarAccount, source: CalendarSourceKey): boolea
 
 function rowFields(fields: CalendarEventFields): CalendarRowFields {
   return { title: fields.title, body: fields.description, location: fields.location, begin: Date.parse(fields.startAt), end: Date.parse(fields.endAt),
-    allDay: fields.isAllDay, timeZone: fields.timeZone }
+    allDay: fields.isAllDay, timeZone: fields.timeZone, ...(fields.attendees === undefined ? {} : { who: [...fields.attendees] }) }
 }
 
 /** The agent's own calendar, one document Calendar per account in the KeyValueStore: series, overrides and exclusions, with optimistic revisions and idempotent writes. */

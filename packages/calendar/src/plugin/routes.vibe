@@ -36,13 +36,13 @@ const Key = Schema.String.check(Schema.makeFilter((key) => key.trim() !== "" && 
 const CreateBody = Schema.Struct({
   title: Schema.String, description: Schema.optionalKey(Schema.String), location: Schema.optionalKey(Schema.String),
   startAt: Instant, endAt: Instant, isAllDay: Schema.optionalKey(Schema.Boolean), timeZone: Schema.optionalKey(Schema.String),
-  calendarId: Schema.optionalKey(Schema.String), recurrence: Schema.optionalKey(RecurrenceRecord), idempotencyKey: Key,
+  calendarId: Schema.optionalKey(Schema.String), recurrence: Schema.optionalKey(RecurrenceRecord), attendees: Schema.optionalKey(Schema.Array(Schema.String)), idempotencyKey: Key,
 })
 const UpdateBody = Schema.Struct({
   title: Schema.optionalKey(Schema.String), notes: Schema.optionalKey(Schema.String), location: Schema.optionalKey(Schema.String),
   startAt: Schema.optionalKey(Instant), endAt: Schema.optionalKey(Instant), isAllDay: Schema.optionalKey(Schema.Boolean),
   timeZone: Schema.optionalKey(Schema.String), calendarId: Schema.optionalKey(Schema.String), recurrenceScope: Schema.optionalKey(WriteScopeRecord),
-  notifyAttendees: Schema.optionalKey(Schema.Boolean), expectedProviderVersion: Key, idempotencyKey: Key,
+  attendees: Schema.optionalKey(Schema.Array(Schema.String)), notifyAttendees: Schema.optionalKey(Schema.Boolean), expectedProviderVersion: Key, idempotencyKey: Key,
 })
 const RespondBody = Schema.Struct({
   responseStatus: Schema.Literals(["accepted", "tentative", "declined"]), recurrenceScope: Schema.optionalKey(Schema.Literals(["instance", "series"])),
@@ -154,7 +154,8 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         if (Option.isNone(body)) return refused(400, "CALENDAR_REQUEST_INVALID", "The event needs a title, a start, an end and an idempotency key.")
         const request = body.value
         const fields = decodeFields({ title: request.title, description: request.description ?? "", location: request.location ?? "",
-          startAt: canonical(request.startAt), endAt: canonical(request.endAt), isAllDay: request.isAllDay ?? false, timeZone: request.timeZone ?? hostZone() })
+          startAt: canonical(request.startAt), endAt: canonical(request.endAt), isAllDay: request.isAllDay ?? false, timeZone: request.timeZone ?? hostZone(),
+          ...(request.attendees === undefined ? {} : { attendees: request.attendees }) })
         if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return refused(400, "CALENDAR_FIELDS_INVALID", "The event needs a title and a start before its end.")
         const source = await runPromise(calendar.writeTarget(request.calendarId))
         if (source === undefined) return refused(403, "CALENDAR_NOT_WRITABLE", "There is no calendar this account can write.")
@@ -174,6 +175,7 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
           title: request.title ?? event.title, description: request.notes ?? event.description, location: request.location ?? event.location,
           startAt: canonical(request.startAt ?? event.startAt), endAt: canonical(request.endAt ?? event.endAt),
           isAllDay: request.isAllDay ?? event.isAllDay, timeZone: request.timeZone ?? event.timezone ?? hostZone(),
+          ...(request.attendees === undefined ? {} : { attendees: request.attendees }),
         })
         if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return refused(400, "CALENDAR_FIELDS_INVALID", "The event needs a title and a start before its end.")
         return changed(await runPromise(Effect.option(calendar.change({ kind: "update", target: found, scope: request.recurrenceScope ?? "instance", fields: fields.value,

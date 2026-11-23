@@ -1,4 +1,4 @@
-// spec/calendar/mutationLedger.md, "A replay needs a durable receipt, and a recorded receipt never changes"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
+// spec/calendar/mutationLedger.md, "A replay needs a durable receipt, and a recorded receipt never changes"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"
 import type { CalendarEvent, CalendarEventFields, CalendarSourceKey } from "../model.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 
@@ -62,6 +62,7 @@ export const FieldsRecord = Schema.Struct({
   endAt: Schema.String,
   isAllDay: Schema.Boolean,
   timeZone: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+  attendees: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isMaxLength(320), Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)))),
 })
 
 const Target = Schema.Struct({
