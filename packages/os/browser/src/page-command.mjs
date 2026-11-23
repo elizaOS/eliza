@@ -1644,6 +1644,38 @@ export function pageCommand(
         readings.set(key, result);
         return result;
       };
+      const tableColumns = new WeakMap();
+      const tableRowOf = (key) => {
+        const { node, parent: parentKey } = owners.get(key);
+        const parent = owners.get(parentKey)?.node;
+        if (!startsRow(node) || !parent ||
+            !parent.matches('article,section,[role="article"],[role="region"]') ||
+            readOwner(key).ambiguous || !groups.has(parentKey)) return undefined;
+        const table = node.closest("table");
+        if (table.parentElement.closest('article,section,[role="article"],[role="region"]') !== parent ||
+            table.parentElement.closest("table") ||
+            table.closest(excluded + ",header") ||
+            table.matches("[aria-label],[aria-labelledby],[role]")) return undefined;
+        const visibleCell = (cell) => cell.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) &&
+          cell.getClientRects().length > 0 && cell.colSpan === 1 && cell.rowSpan === 1;
+        if (!tableColumns.has(table)) {
+          const head = table.tHead;
+          const headers = Array.from(head.rows[0].cells);
+          const simple = headers.length <= 8 && head.rows.length === 1 &&
+            !table.caption && table.tBodies.length === 1 &&
+            !table.querySelector(excluded + ',table,tbody th,tfoot th,a,[role="link"],[role="button"],[tabindex],[onclick]') &&
+            headers.every((cell) => visibleCell(cell) && (!cell.scope || cell.scope === "col"));
+          const columns = simple ? headers.map(visibleLabel) : [];
+          tableColumns.set(table, columns.length && columns.every(Boolean) &&
+            new Set(columns.map((column) => column.toLowerCase())).size === columns.length ? columns : undefined);
+        }
+        const columns = tableColumns.get(table);
+        if (!columns || !node.matches("tbody > tr,tfoot > tr") ||
+            node.cells.length !== columns.length ||
+            !Array.from(node.cells).every((cell) => cell.localName === "td" && visibleCell(cell) &&
+              !cell.hasAttribute("headers") && !cell.hasAttribute("scope"))) return undefined;
+        return { parentKey, columns };
+      };
       let metadataSize = primaryHeading?.length ?? 0;
       const regions = [...groups].flatMap(([key, runs]) => {
         const fragments = runs.map((run) => withoutSecrets(run.trim())).filter(Boolean);
@@ -1651,9 +1683,16 @@ export function pageCommand(
         const metadata = readOwner(key);
         metadataSize += (metadata.heading?.length ?? 0) + (metadata.authorLabel?.length ?? 0) +
           (metadata.ancestorLabels ?? []).reduce((size, label) => size + label.length, 0);
-        return [{ key, fragments, ...metadata }];
+        const tableRow = tableRowOf(key);
+        if (tableRow) metadataSize += tableRow.parentKey.length +
+          tableRow.columns.reduce((size, column) => size + column.length, 0);
+        return [{ key, fragments, ...metadata, ...(tableRow && { tableRow }) }];
       });
       if (metadataSize > 8192 || labelNodes > 1024) return incomplete;
+      const emitted = new Set(regions.map(({ key }) => key));
+      for (const region of regions) {
+        if (region.tableRow && !emitted.has(region.tableRow.parentKey)) delete region.tableRow;
+      }
       return { complete: true, ...(primaryHeading && { primaryHeading }), regions };
     };
     const clickReadback = monitor.clickReadback;
