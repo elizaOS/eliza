@@ -8,7 +8,7 @@ export interface ReplyStreamHooks {
   readonly onPreview?: (text: string, provisional: boolean) => void
   readonly onAcknowledgment?: (text: string) => void
   readonly onStatus?: (activity: string) => void
-  readonly onTool?: (name: string, label: string) => void
+  readonly onTool?: (name: string, label: string | undefined) => void
   readonly onReady?: (fullText: string, actionResults: readonly ActionResultFrame[]) => void
 }
 
@@ -22,6 +22,8 @@ export type ReplyOutcome =
 error StreamBroken { cause: unknown }
 
 const decodeFrame = Schema.decodeUnknownOption(Schema.fromJsonString(ReplyFrame), { onExcessProperty: "error" })
+const knownTypes: ReadonlySet<string> = new Set(["token", "acknowledgment", "status", "tool", "reply_ready", "done", "error"])
+const typeOf = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ type: Schema.String })))
 const malformed: ReplyOutcome = { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame does not match the reply protocol" }
 const afterEnd: ReplyOutcome = { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame came after its terminal frame" }
 
@@ -62,6 +64,8 @@ effect function read(bytes: AsyncIterable<Uint8Array>, hooks: ReplyStreamHooks):
       refused = afterEnd
       return
     }
+    const typed = typeOf(payload)
+    if (typed._tag === "Some" && !knownTypes.has(typed.value.type)) return
     const decoded = decodeFrame(payload)
     if (decoded._tag === "None") {
       refused = malformed

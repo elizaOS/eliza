@@ -5,7 +5,7 @@ export schema AppendFrame { readonly type: "token"; readonly text: string; reado
 export schema ReplaceFrame { readonly type: "token"; readonly fullText: string; readonly provisional?: boolean }
 export schema AcknowledgmentFrame { readonly type: "acknowledgment"; readonly text: Schema.NonEmptyString }
 export schema StatusFrame { readonly type: "status"; readonly activity: string }
-export schema ToolFrame { readonly type: "tool"; readonly name: string; readonly label: Schema.NonEmptyString }
+export schema ToolFrame { readonly type: "tool"; readonly name: string; readonly label?: Schema.NonEmptyString }
 export schema ReadyFrame { readonly type: "reply_ready"; readonly fullText: string; readonly actionResults: readonly ActionResultFrame[] }
 const WaitMs = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }))
 export schema ProviderWait = WaitMs

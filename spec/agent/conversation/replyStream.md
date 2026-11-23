@@ -22,14 +22,21 @@ this one decides which frames the request writes, in which order, and
 when the stream ends. Text is UTF-16 units, as in core's
 [stream units](../../core/streamUnits.md).
 
-A reader decodes frames strictly: a frame type or field it does not know
-fails the stream as `REPLY_STREAM_PROTOCOL`. The `acknowledgment` frame
-and the tool frame's `label` are such additions, so a reader built before
-them fails a turn that runs a tool, and this route and the reader that
-decodes it (`client/stream-reader.vibe`) ship in one release. A voice
-client that speaks the reply from this stream speaks the acknowledgment
-when it arrives; the agent's own voice session posts the buffered send,
-which carries no acknowledgment.
+A reader decodes each frame type it knows strictly: a field it does not
+know, or a field of the wrong kind, fails the stream as
+`REPLY_STREAM_PROTOCOL`. A frame whose `type` it does not know is skipped
+and never ends the stream, so new information is added as a new frame
+type, which an older reader passes over; a new field on a known frame
+would still fail it. The tool frame's `label` is optional to the reader,
+so it reads an agent that writes none. Readers built before the
+`acknowledgment` frame and the tool frame's `label` decoded every frame
+type strictly and fail a turn that runs a tool against an agent that
+writes them; nothing negotiates the protocol (the on-device bridge carries
+no request headers), so this route and the reader that decodes it
+(`client/stream-reader.vibe`), both in `@elizaos/agent`, ship in one
+release. A voice client that speaks the reply from this stream speaks the
+acknowledgment when it arrives; the agent's own voice session posts the
+buffered send, which carries no acknowledgment.
 
 ## Story: See a reply as it is written
 
