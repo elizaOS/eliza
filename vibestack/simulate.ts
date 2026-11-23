@@ -457,10 +457,12 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       const retained = witnessedIn(probe.traces, witnesses.filter(({ w, run }) => !run.broken && !model.witness?.lengths.has(w)).map(({ w }) => w));
       const reached = witnesses.map(({ w, run }) => {
         const fallback = retained.get(w);
-        const candidates = run.broken ? run.traces : fallback ? [fallback] : [];
-        const goal = candidates.filter((t) => standIn(domain, t)[w](t.at(-1)?.state) === true).sort((a, b) => a.length - b.length)[0];
+        if (fallback) {
+          replay(domain, fallback, model);
+          return { w, run, goal: fallback };
+        }
+        const goal = run.broken ? run.traces.filter((t) => standIn(domain, t)[w](t.at(-1)?.state) === true).sort((a, b) => a.length - b.length)[0] : undefined;
         if (!goal && run.broken) throw new Error(`TypeScript and Quint disagree on the violation of never_${w} in the witness search: ${run.again}`);
-        if (!goal && fallback) throw new Error(`TypeScript and Quint disagree on the probe that evaluated ${w} to true`);
         return { w, run, goal };
       });
       const loops = runsOf.reduce((n, r) => n + r.loops, 0);
