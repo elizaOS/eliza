@@ -1,14 +1,14 @@
-// spec/agent/deviceActions/index.md, "Only the exact binding decides an open offer before its deadline"; spec/agent/deviceActions/index.md, "The claim commits the dispatch once, before the deadline"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "The proposal shows its read reply origin only while the offer is open"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"
+// spec/agent/deviceActions/index.md, "Only the exact binding decides an open offer before its deadline"; spec/agent/deviceActions/index.md, "The claim commits the dispatch once, before the deadline"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "The proposal shows its read reply origin only while the offer is open"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"
 module node {
   import { Effect, Schema } from "effect"
   import type { IDatabaseAdapter } from "@elizaos/core"
-  import { canExpire, showsReadReplyOrigin, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
+  import { canExpire, showsReadReplyOrigin, type DeviceRequest, type ReviewOutcome } from "../../gen/agent__deviceActions.effect.vibe"
   import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
   import type { LocalRoute, RouteInput } from "../access/routes.vibe"
   import { capabilitiesHeader, negotiation } from "./capabilities.vibe"
   import { enrollmentId, type DeviceEnrollment } from "./enrollment.vibe"
   import { receiptOutcome, validate, type CheckedOperation, type DeviceOperation, type DeviceReceipt } from "./operations.schema.vibe"
-  import { deviceReviewRows, openRequest, recordRequestClaim, recordRequestDecision, recordRequestReceipt, type DeviceRequestRecord, type RequestRow } from "./store.vibe"
+  import { deviceReviewRows, openRequest, recordRequestClaim, recordRequestDecision, recordRequestReceipt, recordRequestReview, type DeviceRequestRecord, type RequestRow } from "./store.vibe"
 
   const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
   const Decision = Schema.Struct({ digest: Digest, decision: Schema.Literals(["approve", "reject"]) })
@@ -19,19 +19,26 @@ module node {
     digest: Digest, attemptId: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)), receipt: Schema.Unknown,
   })
   const receipt = Schema.decodeUnknownOption(Receipt, { onExcessProperty: "error" })
+  const Review = Schema.Struct({ digest: Digest, attemptId: Receipt.fields.attemptId, review: Schema.Literals(["applied", "not_applied", "unresolved"]) })
+  const review = Schema.decodeUnknownOption(Review, { onExcessProperty: "error" })
+  const reviewOutcome = { applied: "ReviewedApplied", not_applied: "ReviewedNotApplied", unresolved: "ReviewedUnresolved" } as const satisfies Record<typeof Review.Type["review"], ReviewOutcome>
   const failure = (status: number, error: string) => ({ status, body: { error } })
   const wireTime = (instant: number) => new Date(instant).toISOString()
 
   export type AgendaOperation = Extract<DeviceOperation, { type: "read_calendar_range" }>
-  type ReviewedAgenda = {
-    readonly operation: AgendaOperation
+  export type RequestScope =
+    | { readonly calendarAgendaSource: { readonly sourceId: string; readonly sourceRevision: string } }
+    | { readonly workflow: { readonly workflowId: string; readonly versionId: string; readonly runId: string; readonly stepId: string; readonly specDigest: string } }
+  type ReviewedRequest = {
+    readonly operation: DeviceOperation
     readonly checked: CheckedOperation
-    readonly calendarAgendaSource: { readonly sourceId: string; readonly sourceRevision: string }
+    readonly scope: RequestScope
   }
   type Request =
     | { readonly kind: "decision"; readonly value: typeof Decision.Type }
     | { readonly kind: "claim"; readonly value: typeof Claim.Type }
     | { readonly kind: "receipt"; readonly value: typeof Receipt.Type }
+    | { readonly kind: "review"; readonly value: typeof Review.Type }
 
   type ProposalState =
     | { readonly state: "pending" | "approved" | "rejected" | "expired" }
@@ -42,42 +49,52 @@ module node {
       readonly providerReceipt?: DeviceReceipt
     } }
 
-  function reviewedAgenda(record: Pick<DeviceRequestRecord, "terms">, header: string | undefined): ReviewedAgenda | undefined {
+  function reviewedRequest(record: Pick<DeviceRequestRecord, "terms">, header: string | undefined): ReviewedRequest | undefined {
     const binding = record.terms.binding
-    if (typeof binding === "string" || binding.kind !== "AgendaBinding") return undefined
+    if (typeof binding === "string") return undefined
     const checked = validate(record.terms.operation, negotiation(true, header), binding.kind)
-    if (checked?.operation.type !== "read_calendar_range") return undefined
-    return { checked, operation: checked.operation, calendarAgendaSource: { sourceId: binding.sourceId, sourceRevision: binding.sourceRevision } }
+    if (checked === undefined) return undefined
+    switch (binding.kind) {
+      case "AgendaBinding":
+        return checked.operation.type === "read_calendar_range"
+          ? { checked, operation: checked.operation, scope: { calendarAgendaSource: { sourceId: binding.sourceId, sourceRevision: binding.sourceRevision } } }
+          : undefined
+      case "WorkflowBinding": {
+        const { kind: _kind, ...workflow } = binding
+        return { checked, operation: checked.operation, scope: { workflow } }
+      }
+    }
   }
 
-  export function agendaPayload(
-    agenda: Pick<ReviewedAgenda, "operation" | "calendarAgendaSource">,
+  /** The payload a device reviews: its installation and enrollment, the operation, and the agenda source or workflow step that bounds it. */
+  export function devicePayload(
+    request: Pick<ReviewedRequest, "operation" | "scope">,
     by: SessionOwner,
     enrollment: string,
     requestMessageId: string,
   ) {
     return {
-      action: "device_action", version: 1, installationId: by.connector, enrollmentId: enrollment, requestMessageId,
-      operation: agenda.operation, calendarAgendaSource: agenda.calendarAgendaSource,
+      action: "device_action", version: 1, installationId: by.connector, enrollmentId: enrollment,
+      ...(requestMessageId === "" ? {} : { requestMessageId }), operation: request.operation, ...request.scope,
     } as const
   }
 
-  function proposal(agenda: ReviewedAgenda, kept: DeviceRequest, by: SessionOwner, phase: ProposalState) {
+  function proposal(reviewed: ReviewedRequest, kept: DeviceRequest, by: SessionOwner, phase: ProposalState) {
     const resolved = phase.state === "pending" || phase.state === "expired" ? {} : {
       resolvedBy: by.actorId, resolutionReason: `Explicit device review:${kept.digest}`,
     }
     return {
       id: kept.proposalId, agentId: by.agentId, requestedBy: by.agentId, subjectUserId: by.actorId, action: "device_action",
       createdAt: wireTime(kept.createdAt), expiresAt: wireTime(kept.session.expiresAt), ...resolved, ...phase,
-      payload: agendaPayload(agenda, by, enrollmentId(kept), kept.origin.inReplyTo),
+      payload: devicePayload(reviewed, by, enrollmentId(kept), kept.origin.inReplyTo),
     }
   }
 
-  function sent(agenda: ReviewedAgenda, kept: DeviceRequest, by: SessionOwner, phase: ProposalState) {
-    return { status: 200, body: { digest: kept.digest, proposal: proposal(agenda, kept, by, phase) } }
+  function sent(reviewed: ReviewedRequest, kept: DeviceRequest, by: SessionOwner, phase: ProposalState) {
+    return { status: 200, body: { digest: kept.digest, proposal: proposal(reviewed, kept, by, phase) } }
   }
 
-  function observedPhase({ state, claim, providerReceipt }: RequestRow): ProposalState | undefined {
+  function observedPhase({ state, claim, providerReceipt }: Pick<RequestRow, "state" | "claim" | "providerReceipt">): ProposalState | undefined {
     switch (state.phase.tag) {
       case "Offered": return { state: canExpire(state) ? "expired" : "pending" }
       case "Approved": return { state: "approved" }
@@ -85,10 +102,11 @@ module node {
       case "Expired":
       case "Retired": return { state: "expired" }
       case "Dispatched":
-      case "Receipted": {
-        if (claim === undefined || (state.phase.tag === "Receipted" && providerReceipt === undefined)) return undefined
+      case "Receipted":
+      case "Reviewed": {
+        if (claim === undefined || (state.phase.tag !== "Dispatched" && providerReceipt === undefined)) return undefined
         const lifecycle = state.phase.tag === "Dispatched" ? "executing"
-          : state.phase.reported === "ReportedUnknown" ? "reconciliation_required" : "done"
+          : state.phase.tag === "Receipted" && state.phase.reported === "ReportedUnknown" ? "reconciliation_required" : "done"
         return {
           state: lifecycle, execution: {
             attemptId: claim.wireAttemptId, dispatchStartedAt: wireTime(state.claimedAt), providerIdempotencyKey: state.proposalId,
@@ -96,8 +114,7 @@ module node {
           },
         }
       }
-      case "Unoffered":
-      case "Reviewed": return undefined
+      case "Unoffered": return undefined
     }
   }
 
@@ -109,20 +126,29 @@ module node {
         const proposalId = input.parameters.get("id") ?? ""
         const record = await Effect.runPromise(openRequest(adapter, proposalId))
         if (record === undefined) return failure(404, "unknown_proposal")
-        const agenda = reviewedAgenda(record, input.headers.get(capabilitiesHeader))
-        if (agenda === undefined) return failure(409, "proposal_scope_refused")
+        const reviewed = reviewedRequest(record, input.headers.get(capabilitiesHeader))
+        if (reviewed === undefined) return failure(409, "proposal_scope_refused")
         const request = { proposalId, digest: event.value.digest, by }
         if (event.kind === "decision") {
           const approved = event.value.decision === "approve"
           const kept = await Effect.runPromise(recordRequestDecision(adapter, { ...request, approved }))
           return kept.kind === "decided"
-            ? sent(agenda, kept.state, by, { state: approved ? "approved" : "rejected" })
+            ? sent(reviewed, kept.state, by, { state: approved ? "approved" : "rejected" })
             : failure(409, "decision_refused")
+        }
+        if (event.kind === "review") {
+          const kept = await Effect.runPromise(recordRequestReview(adapter, {
+            ...request, attemptId: event.value.attemptId, review: reviewOutcome[event.value.review],
+          }))
+          if (kept.kind === "attempt_refused") return failure(409, "attempt_refused")
+          if (kept.kind !== "reviewed") return failure(409, "reconciliation_refused")
+          const phase = observedPhase(kept)
+          return phase === undefined ? failure(409, "reconciliation_refused") : sent(reviewed, kept.state, by, phase)
         }
         if (event.kind === "receipt") {
           const binding = record.claim
           if (binding === undefined || binding.wireAttemptId !== event.value.attemptId) return failure(409, "attempt_refused")
-          const checked = receiptOutcome(agenda.checked, event.value.receipt, proposalId)
+          const checked = receiptOutcome(reviewed.checked, event.value.receipt, proposalId)
           if (checked.kind !== "admitted") return failure(409, "receipt_refused")
           const { outcome, operationId, code } = checked.receipt
           const providerReceipt = {
@@ -134,7 +160,7 @@ module node {
             event: { type: "receipt", attemptId: binding.modelAttemptId, digest: request.digest, reportedOutcome: checked.reported },
           }))
           return kept.kind === "recorded"
-            ? sent(agenda, kept.state, by, {
+            ? sent(reviewed, kept.state, by, {
               state: checked.reported === "ReportedUnknown" ? "reconciliation_required" : "done",
               execution: {
                 attemptId: binding.wireAttemptId, dispatchStartedAt: wireTime(kept.state.claimedAt),
@@ -145,7 +171,7 @@ module node {
         }
         const kept = await Effect.runPromise(recordRequestClaim(adapter, request))
         return kept.kind === "claimed"
-          ? sent(agenda, kept.state, by, {
+          ? sent(reviewed, kept.state, by, {
             state: "executing", execution: {
               attemptId: kept.binding.wireAttemptId, dispatchStartedAt: wireTime(kept.state.claimedAt), providerIdempotencyKey: proposalId,
             },
@@ -166,12 +192,12 @@ module node {
             const rows = await Effect.runPromise(deviceReviewRows(adapter, by))
             const header = input.headers.get(capabilitiesHeader)
             const proposals = rows.flatMap((row) => {
-              const agenda = reviewedAgenda(row, header)
+              const reviewed = reviewedRequest(row, header)
               const phase = observedPhase(row)
-              if (agenda === undefined || phase === undefined) return []
+              if (reviewed === undefined || phase === undefined) return []
               const { state } = row
               return [{
-                ...proposal(agenda, state, by, phase), digest: state.digest,
+                ...proposal(reviewed, state, by, phase), digest: state.digest,
                 ...(showsReadReplyOrigin(state) ? { readReplyOrigin: { version: 1, ...state.origin } } : {}),
               }]
             })
@@ -202,8 +228,15 @@ module node {
           return parsed._tag === "Some" ? handle(input, { kind: "receipt", value: parsed.value }) : failure(400, "invalid_receipt")
         },
       },
+      {
+        method: "POST", path: "/api/client-devices/proposals/{id}/reconciliation",
+        handler: (input) => {
+          const parsed = review(input.body)
+          return parsed._tag === "Some" ? handle(input, { kind: "review", value: parsed.value }) : failure(400, "invalid_reconciliation")
+        },
+      },
     ]
   }
 }
 
-export { agendaPayload, proposalReviewRoutes, type AgendaOperation } from node
+export { devicePayload, proposalReviewRoutes, type AgendaOperation, type RequestScope } from node
