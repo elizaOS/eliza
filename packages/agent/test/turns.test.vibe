@@ -1,4 +1,4 @@
-// spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
+// spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
@@ -241,9 +241,10 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const { id } = try conversation(agent)
   const completionsSent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { tools?: { function?: { name?: string } }[]; messages: { role: string; content?: unknown }[] })
 
-  try Effect.sync(() => cloud.script(toolCalls("Let me check.", { name: "CALCULATE", arguments: { expression: "3847 * 292" } }), text("That is 1,123,324.")))
+  const calculation = { name: "CALCULATE", arguments: { expression: "3847 * 292" } }
+  try Effect.sync(() => cloud.script(toolCalls("Let me check.", calculation, calculation), toolCalls("", calculation), text("That is 1,123,324.")))
   const solved = replyOf(try send(agent, id, { text: "What is 3847 times 292?" }))
-  const [asked, grounded] = completionsSent().slice(-2)
+  const [asked, grounded, settled] = completionsSent().slice(-3)
 
   try Effect.sync(() => cloud.script(text("Home is open.")))
   try send(agent, id, { text: "Show me home.", metadata: { viewDelivery: "completed-action", viewClientId: "renderer-1" } })
@@ -280,6 +281,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     sameTools: JSON.stringify(asked?.tools) === JSON.stringify(rendered?.tools),
     declined: [typeof declined === "string" && declined.includes('"executionStatus":"not_started"') && declined.includes("did not run: answer without it or use another offered action"), unrendered.text],
     toolResult: grounded?.messages.some(({ role, content }) => role === "tool" && typeof content === "string" && content.includes("1123324")),
+    duplicate: String(grounded?.messages.at(-1)?.content).includes("DuplicateInBatch"),
+    settled: String(settled?.messages.at(-1)?.content).includes("AlreadySettled"),
     solved: solved.text,
     actions: solved.actionResults.map(({ action }) => action),
     failureReported: failed.text.startsWith("Done!") && failed.text.length > "Done!".length,
@@ -293,6 +296,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     sameTools: true,
     declined: [true, `I can't switch screens from this chat.\n\n${unavailableNotice}`],
     toolResult: true,
+    duplicate: true,
+    settled: true,
     solved: "That is 1,123,324.",
     actions: ["CALCULATE"],
     failureReported: true,

@@ -330,6 +330,33 @@ pure def lawAResendWaitsAtMostFiveSeconds(failure: CallFailure, resent: bool): b
 pure def lawAnOutputLimitOrAnotherFailureIsNeverSentAgain(resent: bool): bool = not(resends(OutputLimitReached, resent)) and not(resends(OtherFailure, resent))
 ```
 
+### An identical call runs at most once per model response, and a settled effect is never repeated in the turn
+
+Two calls with the same tool name and canonical arguments in one response
+are one operation even when the model gave them different ids. The second
+receives a tool result saying that it did not run. A later response can
+repeat an observation that declared itself read-only or whose receipts
+were all fresh no-ops or previews. It cannot repeat an identical
+successful operation or one with a non-retryable failure from its
+provenance, typed data or effect receipts. A different operation or
+corrected arguments still go through the usual admission checks.
+
+```quint
+type ToolSettlement = ToolOpen | ToolSucceeded | ToolNonretryable
+type ToolDispatch = FreshCall | DuplicateInBatch | AlreadySettled | RetryRefused
+pure def toolDispatch(seen: bool, previous: ToolSettlement): ToolDispatch =
+  if (seen) DuplicateInBatch else match previous {
+    | ToolSucceeded => AlreadySettled
+    | ToolNonretryable => RetryRefused
+    | ToolOpen => FreshCall
+  }
+pure val previousValues = Set(ToolOpen, ToolSucceeded, ToolNonretryable)
+pure def lawNoSecondCallInOneResponse(previous: ToolSettlement): bool =
+  toolDispatch(true, previous) == DuplicateInBatch
+pure def lawOnlyOpenCallsRunAcrossResponses(previous: ToolSettlement): bool =
+  (toolDispatch(false, previous) == FreshCall) == (previous == ToolOpen)
+```
+
 ### A call that stopped at the model's own output limit ends planning
 
 When the step's own call stops there, the turn answers that the reply was
