@@ -1,6 +1,7 @@
 import { domainToUnicode } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  asksToReloadBrowserPage,
   authoredBrowserDestination,
   authoredBrowserOpen,
   browserDestinationMatches,
@@ -13,6 +14,7 @@ import {
   groundBrowserSearchQuery,
   spokenBrowserDestination,
   spokenBrowserOpen,
+  withheldBrowserPageReloadRefusal,
 } from "./browser-request-grounding.ts";
 import { IANA_TLDS } from "./iana-tlds.ts";
 
@@ -1448,5 +1450,72 @@ describe("a link of the Browser page the request carried", () => {
   });
   it("grounds nothing without page links", () => {
     expect(ground("https://one.example/story", [])).toBeUndefined();
+  });
+});
+
+// Pixel, 2026-11-23: on a page the phone could not read, "summarize this page
+// in two sentences" became a Browser reload. A reload is the owner's call.
+describe("reloading a page the phone withheld", () => {
+  it.each([
+    "reload this page",
+    "Refresh",
+    "please refresh the page",
+    "can you reload it?",
+    "re-open this page",
+    "open it again",
+    "It looks stuck, reload",
+    "it isn't loading so reload it",
+    "the page won't load so please refresh",
+    "this page doesn't work so reload it",
+    "could you please refresh the page?",
+    "try reloading",
+    "hit refresh",
+  ])("the owner asks: %s", (text) => {
+    expect(asksToReloadBrowserPage(text)).toBe(true);
+  });
+  it.each([
+    "summarize this page in two sentences",
+    "what is this page about?",
+    "don't reload the page",
+    "do not refresh it, just tell me what it says",
+    "summarize it without reloading",
+    "no need to reload, just read it",
+    "please don't reload it",
+    "reload this page\nand then summarize it",
+    "summarize this article about the reopening of Notre-Dame",
+    "what is the refresh rate on this monitor page?",
+    "summarize this page about refreshing your skin",
+    "why did you reload the page?",
+  ])("the owner does not ask: %s", (text) => {
+    expect(asksToReloadBrowserPage(text)).toBe(false);
+  });
+  it("refuses a reload the owner did not ask for, saying why", () => {
+    const unreadable = withheldBrowserPageReloadRefusal(
+      { withheld: "unreadable" },
+      "summarize this page in two sentences",
+    );
+    expect(unreadable).toContain("the phone cannot read this page's text");
+    expect(unreadable).toContain("does not change that");
+    expect(unreadable).toContain("Answer the owner instead");
+    const sensitive = withheldBrowserPageReloadRefusal(
+      { withheld: "sensitive-page" },
+      "summarize this page",
+    );
+    expect(sensitive).toContain("does not share text from this page");
+    expect(sensitive).toContain("Answer the owner instead");
+  });
+  it("lets the owner's own reload run, and never refuses on a readable page", () => {
+    expect(
+      withheldBrowserPageReloadRefusal(
+        { withheld: "unreadable" },
+        "reload this page",
+      ),
+    ).toBeUndefined();
+    expect(
+      withheldBrowserPageReloadRefusal({}, "summarize this page"),
+    ).toBeUndefined();
+    expect(
+      withheldBrowserPageReloadRefusal(undefined, "summarize this page"),
+    ).toBeUndefined();
   });
 });

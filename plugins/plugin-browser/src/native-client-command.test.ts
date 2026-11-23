@@ -10,6 +10,7 @@ import {
 import {
   observedNativeHistorySelection,
   parseNativeHistoryCommand,
+  withheldPageReloadRefusal,
 } from "./native-client-command.ts";
 
 const browserTurn = (selectedObject: Record<string, unknown>) => ({
@@ -312,5 +313,139 @@ describe("dispatch-only native command results", () => {
     });
     expect(result).not.toHaveProperty("userFacingText");
     expect(result?.data).not.toHaveProperty("executionStatus");
+  });
+});
+
+// Pixel, 2026-11-23: the WebView could not read the page, and "summarize this
+// page in two sentences" was answered "I asked the browser to reload the
+// page." A reload never makes the page readable and can resubmit a form.
+describe("a reload on a page the phone withheld", () => {
+  const page = {
+    tabId: "session-1:tab-2",
+    revision: "4",
+    url: "https://news.example.com/story?id=42",
+    title: "Octopus study",
+    capturedAt: 1,
+  };
+  const turn = (text: string, browserPage: Record<string, unknown>) => {
+    const message = browserTurn({
+      kind: "browser-tab",
+      id: "session-1:tab-2",
+      revision: "4",
+    });
+    message.content.text = text;
+    Object.assign(message.content.metadata.clientDevice, { browserPage });
+    return message;
+  };
+  const unreadable = { ...page, withheld: "unreadable" };
+  const reloaded = {
+    targetId: "native-client",
+    mode: "web" as const,
+    subaction: "reload" as const,
+    value: { dispatched: true, completed: false, requiresReadback: true },
+  };
+  const run = async (
+    message: ReturnType<typeof turn>,
+    parameters: Record<string, unknown>,
+  ) => {
+    const execute = vi.fn(async () => reloaded);
+    const result = await nativeBrowserAction(
+      nativeBrowserCommands(undefined),
+    ).handler?.(
+      { getService: () => ({ execute }) } as unknown as IAgentRuntime,
+      message as never,
+      undefined,
+      { parameters } as never,
+    );
+    return { result, execute };
+  };
+
+  it("refuses a reload the owner did not ask for, before dispatch, saying why", async () => {
+    for (const withheld of [
+      unreadable,
+      { ...page, withheld: "sensitive-page" },
+    ]) {
+      const { result, execute } = await run(
+        turn("summarize this page in two sentences", withheld),
+        { action: "reload" },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        data: {
+          actionName: "BROWSER",
+          code: "BROWSER_PAGE_WITHHELD",
+          executed: false,
+        },
+      });
+      expect(result?.text).toContain("Not reloaded");
+      expect(result?.text).toContain("does not change that");
+      expect(result?.text).toContain("Answer the owner instead");
+      expect(result).not.toHaveProperty("userFacingText");
+      expect(execute).not.toHaveBeenCalled();
+    }
+    expect(
+      (
+        await run(turn("summarize this page", unreadable), {
+          action: "reload",
+        })
+      ).result?.text,
+    ).toContain("the phone cannot read this page's text");
+  });
+
+  it("refuses reopening the same page the owner did not ask for", async () => {
+    for (const url of [
+      "https://news.example.com/story?id=42",
+      "https://news.example.com/story?id=42#top",
+    ]) {
+      const { result, execute } = await run(
+        turn("what does this page say?", unreadable),
+        { action: "navigate", url },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        data: { code: "BROWSER_PAGE_WITHHELD" },
+      });
+      expect(execute).not.toHaveBeenCalled();
+    }
+    // Another address is not this policy's business.
+    expect(
+      withheldPageReloadRefusal(turn("what does this page say?", unreadable), {
+        subaction: "navigate",
+        url: "https://other.example/",
+      }),
+    ).toBeUndefined();
+    // The owner typed the address: theirs to open.
+    expect(
+      withheldPageReloadRefusal(
+        turn("open https://news.example.com/story?id=42", unreadable),
+        { subaction: "navigate", url: "https://news.example.com/story?id=42" },
+      ),
+    ).toBeUndefined();
+  });
+
+  it("still reloads when the owner asks for it", async () => {
+    for (const text of ["reload this page", "Refresh", "can you refresh it?"]) {
+      const { result, execute } = await run(turn(text, unreadable), {
+        action: "reload",
+      });
+      expect(result).toMatchObject({
+        success: true,
+        userFacingText:
+          "I asked the browser to reload the page. It may still be loading.",
+      });
+      expect(execute).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("changes nothing on a readable page", async () => {
+    const { result, execute } = await run(
+      turn("summarize this page in two sentences", {
+        ...page,
+        text: "Octopuses can taste with their arms.",
+      }),
+      { action: "reload" },
+    );
+    expect(result).toMatchObject({ success: true });
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 });

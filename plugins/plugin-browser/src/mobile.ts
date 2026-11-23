@@ -25,6 +25,7 @@ import {
 import {
   type NativeHistorySelection,
   observedNativeHistorySelection,
+  withheldPageReloadRefusal,
 } from "./native-client-command.js";
 import {
   type NativeBrowserClientTransport,
@@ -360,6 +361,20 @@ function nativeBrowserHandler(
         return { success: false, text: "Invalid scroll direction." };
       command.direction = direction;
     }
+    // A page the phone withheld stays withheld after a reload: refuse one the
+    // owner did not ask for before anything is dispatched.
+    const withheld = withheldPageReloadRefusal(message, command);
+    if (withheld)
+      return {
+        success: false,
+        text: withheld,
+        data: {
+          actionName: "BROWSER",
+          code: "BROWSER_PAGE_WITHHELD",
+          executed: false,
+          retryable: false,
+        },
+      };
     try {
       const result = await service.execute(
         command,

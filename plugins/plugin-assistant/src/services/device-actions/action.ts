@@ -16,6 +16,7 @@ import {
 import {
   containsWebAddress,
   DeviceBrowserNotRequestedError,
+  DeviceBrowserPageWithheldError,
   directBrowserOpen,
   spokenBrowserOpen,
 } from "./browser-request-grounding.ts";
@@ -2004,6 +2005,18 @@ export const proposeDeviceAction: Action = {
             operationType,
           ),
           verifiedUserFacing: true,
+          data: {
+            code: error.code,
+            proposalCreated: false,
+            executed: false,
+            retryable: false,
+          },
+        };
+      // The model answers the owner itself: the refusal says why and what to say.
+      if (error instanceof DeviceBrowserPageWithheldError)
+        return {
+          success: false,
+          text: error.message,
           data: {
             code: error.code,
             proposalCreated: false,

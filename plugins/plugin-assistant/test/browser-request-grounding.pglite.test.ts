@@ -1372,6 +1372,111 @@ it.each([
     }
   },
 );
+// Pixel, 2026-11-23: the phone could not read the page, and "summarize this
+// page in two sentences" became a Browser reload. A reload never makes the page
+// readable and can resubmit a form, so one the owner did not ask for is
+// refused before anything is queued, with the reason for the model.
+function withheldPageMetadata(withheld: "unreadable" | "sensitive-page") {
+  const { clientDevice } = browserPageMetadata([]);
+  const {
+    text: _text,
+    truncated: _truncated,
+    links: _links,
+    ...page
+  } = clientDevice.browserPage;
+  return {
+    clientDevice: { ...clientDevice, browserPage: { ...page, withheld } },
+  };
+}
+const RELOAD = { type: "browser_history", action: "reload" } as const;
+it.each(["unreadable", "sensitive-page"] as const)(
+  "refuses a reload the owner did not ask for on a %s page",
+  async (withheld) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: ["browser.history.v1"] });
+      for (const direct of [true, false]) {
+        const result = await f.run(
+          "summarize this page in two sentences",
+          false,
+          direct,
+          undefined,
+          "current",
+          RELOAD,
+          withheldPageMetadata(withheld),
+        );
+        expect(result).toMatchObject({
+          success: false,
+          data: {
+            code: "DEVICE_BROWSER_PAGE_WITHHELD",
+            proposalCreated: false,
+            executed: false,
+          },
+        });
+        expect(result.text).toContain("Not reloaded");
+        expect(result.text).toContain("Answer the owner instead");
+        expect(result).not.toHaveProperty("userFacingText");
+      }
+      expect(f.enqueue).not.toHaveBeenCalled();
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it("reloads a withheld page the owner asked to reload, and changes nothing on a readable page", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["browser.history.v1"] });
+    for (const [request, metadata] of [
+      ["reload this page", withheldPageMetadata("unreadable")],
+      ["summarize this page in two sentences", browserPageMetadata(PAGE_LINKS)],
+    ] as const)
+      expect(
+        await f.run(
+          request,
+          false,
+          true,
+          undefined,
+          "current",
+          RELOAD,
+          metadata,
+        ),
+      ).toMatchObject({
+        success: true,
+        userFacingText: "Doing that in Browser.",
+        data: { directRequest: true, approvalRequired: false },
+      });
+  } finally {
+    await f.pg.close();
+  }
+});
+it.each(["current", "stale", "missing"])(
+  "keeps a reviewed reload of a readable page unbound, as before (%s)",
+  async (custody) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: ["browser.history.v1"] });
+      expect(
+        await f.run(
+          "summarize this page in two sentences",
+          false,
+          false,
+          undefined,
+          custody,
+          RELOAD,
+          browserPageMetadata(PAGE_LINKS),
+        ),
+      ).toMatchObject({
+        success: true,
+        userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+        data: { awaitingUserInput: true, approvalRequired: true },
+      });
+      expect(f.enqueue).toHaveBeenCalledTimes(1);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
 // v612 (Pixel, Browser in front): "switch to the example.com tab" was routed
 // to the browser context, where the tab operation was not offered, and the
 // agent said it could only go back, forward or reload. Each Browser control is
