@@ -236,6 +236,7 @@ module node {
         } catch {
           send({ type: "startupFailed", ofGen: gen })
         } finally {
+          if (startup?.done === done) startup = undefined
           send({ type: "resume" })
         }
       })()
