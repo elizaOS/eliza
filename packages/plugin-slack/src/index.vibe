@@ -73,7 +73,11 @@ export effect function connectSlackAccount(runtime: IAgentRuntime, config: Slack
       if (!(try Ref.get(active))) break
       const media = tryPromise(signal => fetchRemoteMedia({ url: attachment.url, maxBytes: 20 * 1024 * 1024, signal })) catch () => undefined
       if (media === undefined) { observed.push({ tag: "SlackPartRefused" }); continue }
-      const uploaded = tryPromise(() => app.client.files.uploadV2({ channel_id: channelId, file: media.buffer, filename: media.fileName ?? attachment.filename ?? "attachment", ...(target.threadId ? { thread_ts: target.threadId } : {}) })) catch () => undefined
+      const upload = { channel_id: channelId, file: media.buffer, filename: media.fileName ?? attachment.filename ?? "attachment" }
+      const threadId = target.threadId
+      const uploaded = tryPromise(() => threadId
+        ? app.client.files.uploadV2({ ...upload, thread_ts: threadId })
+        : app.client.files.uploadV2(upload)) catch () => undefined
       const receipt = Schema.decodeUnknownEffect(UploadedSlackFiles)(uploaded) catch () => undefined
       const receiptId = receipt?.files[0]?.files[0]?.id
       if (!receiptId) { observed.push({ tag: "SlackPartUnknown" }); continue }
@@ -143,11 +147,13 @@ function slackIds(input: unknown): Set<string> {
 class SlackConnector extends Service {
   static override serviceType = "slack"
   override capabilityDescription = "Connects authorized Slack conversations to the agent"
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>) { super(runtime) }
+  constructor(runtime?: IAgentRuntime)
+  constructor(runtime: IAgentRuntime, close: () => Promise<void>)
+  constructor(runtime?: IAgentRuntime, readonly close: () => Promise<void> = () => Promise.resolve()) { super(runtime) }
   static override async start(runtime: IAgentRuntime): Promise<SlackConnector> {
     const botToken = runtime.getSetting("SLACK_BOT_TOKEN")
     const appToken = runtime.getSetting("SLACK_APP_TOKEN")
-    if (typeof botToken !== "string" || typeof appToken !== "string" || !botToken || !appToken) return new SlackConnector(runtime, async () => {})
+    if (typeof botToken !== "string" || typeof appToken !== "string" || !botToken || !appToken) return new SlackConnector(runtime)
     const connection = await runPromise(connectSlackAccount(runtime, { accountId: "default", botToken: Redacted.make(botToken), appToken: Redacted.make(appToken), channels: slackIds(runtime.getSetting("SLACK_CHANNEL_IDS")), directUsers: slackIds(runtime.getSetting("SLACK_ALLOW_FROM")), allowBots: false, dmMode: "SlackDmPairing", groupDms: false, requireMention: true }))
     return new SlackConnector(runtime, () => runPromise(connection.stop()))
   }

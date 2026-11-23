@@ -1,7 +1,7 @@
 // spec/telegram/index.md, "Only the current poller can mark its claim healthy, terminated or released"; spec/telegram/index.md, "The effective Telegram allowlist can deny all chats, and DMs default to pairing when no list is set"; spec/telegram/index.md, "An admitted command keeps its sender and a reply stays in its account, chat and topic"
 import { Input, Telegraf, type Context } from "telegraf"
 import { ChannelType, Service, checkPairingAllowed, chunkText, createUniqueUuid, fetchRemoteMedia, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
-import { initial, machineOver, telegramChatAdmission, telegramMessageDisposition, telegramReplyAddress, type TelegramChatList, type TelegramCommand, type TelegramDmPolicy, type TelegramMode } from "../gen/telegram.effect.vibe"
+import { initial, machineOver, telegramChatAdmission, telegramMessageDisposition, telegramReplyAddress, type TelegramChatList, type TelegramCommand, type TelegramDmPolicy, type TelegramInbound, type TelegramMode } from "../gen/telegram.effect.vibe"
 
 module node {
   import { createHash, randomUUID } from "node:crypto"
@@ -58,7 +58,10 @@ export effect function connectTelegramAccount(runtime: IAgentRuntime, config: Te
       const media = try tryPromise({ try: signal => fetchRemoteMedia({ url: attachment.url, maxBytes: 20 * 1024 * 1024, signal }), catch: () => new TelegramRequestFailed({ stage: "media" }) })
       files.push(try Effect.try({ try: () => Input.fromBuffer(media.buffer, media.fileName ?? attachment.filename ?? "attachment"), catch: () => new TelegramRequestFailed({ stage: "media" }) }))
     }
-    const writes = [...parts.map(part => () => bot.telegram.sendMessage(chat, part, { ...reply, link_preview_options: { is_disabled: true } })), ...files.map(file => () => bot.telegram.sendDocument(chat, file, reply))]
+    const writes: Array<() => Promise<{ message_id: number }>> = [
+      ...parts.map(part => () => bot.telegram.sendMessage(chat, part, { ...reply, link_preview_options: { is_disabled: true } })),
+      ...files.map(file => () => bot.telegram.sendDocument(chat, file, reply)),
+    ]
     const ids: string[] = []
     for (const write of writes) {
       if (activePollers.get(key.fingerprint) !== key.instanceId) break
@@ -96,7 +99,7 @@ export effect function connectTelegramAccount(runtime: IAgentRuntime, config: Te
     const namespace = `telegram:${config.accountId}`
     const topic = row.message_thread_id === undefined ? "" : String(row.message_thread_id)
     const { entityId, roomId, worldId, id } = try Effect.try(() => ({ entityId: createUniqueUuid(runtime, `${namespace}:sender:${sender}`), roomId: createUniqueUuid(runtime, `${namespace}:chat:${chat}:${topic}`), worldId: createUniqueUuid(runtime, `${namespace}:world:${chat}`), id: createUniqueUuid(runtime, `${namespace}:message:${chat}:${row.message_id}`) }))
-    const frame = { eventAccount: config.accountId, eventChat: chat, topicId: topic, eventMessageId: String(row.message_id), senderEntity: entityId, chatScope: scope, command }
+    const frame: TelegramInbound = { eventAccount: config.accountId, eventChat: chat, topicId: topic, eventMessageId: String(row.message_id), senderEntity: entityId, chatScope: scope, command }
     const disposition = telegramMessageDisposition(frame, { ...policy, pairedSender: pairing?.allowed === true }, { isOwner: false, isAdmin: false }, config.autoReply, config.passive)
     if (disposition === "TelegramIgnore") return
     const type = scope === "TelegramDirect" ? ChannelType.DM : ChannelType.GROUP
@@ -145,10 +148,12 @@ function parseChatList(input: unknown): TelegramChatList {
 class TelegramConnector extends Service {
   static override serviceType = "telegram"
   override capabilityDescription = "Connects authorized Telegram bot conversations to the agent"
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>) { super(runtime) }
+  constructor(runtime?: IAgentRuntime)
+  constructor(runtime: IAgentRuntime, close: () => Promise<void>)
+  constructor(runtime?: IAgentRuntime, readonly close: () => Promise<void> = () => Promise.resolve()) { super(runtime) }
   static override async start(runtime: IAgentRuntime): Promise<TelegramConnector> {
     const token = runtime.getSetting("TELEGRAM_BOT_TOKEN")
-    if (typeof token !== "string" || token === "") return new TelegramConnector(runtime, async () => {})
+    if (typeof token !== "string" || token === "") return new TelegramConnector(runtime)
     const mode = runtime.getSetting("TELEGRAM_DM_POLICY")
     const apiRoot = runtime.getSetting("TELEGRAM_API_ROOT")
     const connection = await runPromise(connectTelegramAccount(runtime, { accountId: "default", ownerId: runtime.agentId, token: Redacted.make(token), ...(typeof apiRoot === "string" && /^https?:\/\//.test(apiRoot) ? { apiRoot } : {}), dmPolicy: mode === "open" ? "TelegramOpen" : mode === "disabled" ? "TelegramDisabled" : mode === "allowlist" ? "TelegramAllowlist" : "TelegramPairing", accountChats: new Set(), globalChats: parseChatList(runtime.getSetting("TELEGRAM_ALLOWED_CHATS")), mode: "TelegramFull", autoReply: runtime.getSetting("TELEGRAM_AUTO_REPLY") === "true", passive: runtime.getSetting("ELIZA_LIFEOPS_PASSIVE_CONNECTORS") === "true" }))
