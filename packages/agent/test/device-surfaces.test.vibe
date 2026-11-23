@@ -191,9 +191,22 @@ module node {
           a.state.localeCompare(b.state) || JSON.stringify(a.operation).localeCompare(JSON.stringify(b.operation))),
     }
   }
+
+  export async function navigationHomes(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+    const client = deviceClient(socket, token, runtime.agentId, negotiated.join(","))
+    await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
+    const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
+    const say = async (words: string, metadata?: object) => {
+      cloud.script(text("Which view?"))
+      const reply = (await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: words, ...(metadata === undefined ? {} : { metadata }) })).json as Turn
+      const tools = offered(cloud, 1)
+      return { reply: reply.text, openView: tools.types.includes("open_view"), views: tools.views }
+    }
+    return { typed: await say("Open my files"), delivered: await say("Open my files", direct), typedAgain: await say("Open my files") }
+  }
 }
 
-import { proposeSurfaces, proposeTool } from node
+import { navigationHomes, proposeSurfaces, proposeTool } from node
 
 it.live(`Take a photo, open a view, read a Maps place, find and share photos and write a phone note only as the owner's words and screen name them (spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view is offered only without completed-action navigation, and proposed only when the installation's profile enables it"; spec/agent/deviceActions/surfaces.md, "A whole-message photo command is routed to the capture, never to opening Camera"; spec/agent/conversation/planning.md, "A route that owns the whole request withdraws the actions it replaces while its own actions are offered"; spec/agent/deviceActions/surfaces.md, "A new note is offered only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it")`, effect () => {
   const cloud = try cloudFake(deviceKey)
@@ -242,5 +255,23 @@ it.live(`Take a photo, open a view, read a Maps place, find and share photos and
       { operation: { type: "photos_share", ids: ["lib:i:41:2"] }, bound: false, state: "pending" },
       { operation: { type: "photos_share", selected: true }, bound: false, state: "pending" },
     ],
+  }))
+}, 120_000)
+
+it.live(`A device turn offers a view in one place: VIEWS where views arrive as completed actions, open_view otherwise (spec/agent/deviceActions/surfaces.md, "An app view is offered only without completed-action navigation, and proposed only when the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
+      load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
+  const observed = try host("offer device navigation", () => navigationHomes(agent.agent.runtime, socket, agent.frame.token, cloud))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    typed: { reply: "Which view?", openView: true, views: false },
+    delivered: { reply: "Which view?", openView: false, views: true },
+    typedAgain: { reply: "Which view?", openView: true, views: false },
   }))
 }, 120_000)
