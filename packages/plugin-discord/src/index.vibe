@@ -3,6 +3,16 @@ import { Client, Events, GatewayIntentBits, Partials, type Message } from "disco
 import { ChannelType, Service, checkPairingAllowed, chunkText, createUniqueUuid, fetchRemoteMedia, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
 import { initial, machineOver, discordStalenessDecision, type DiscordPolicy } from "../gen/discord.effect.vibe"
 
+module node {
+  import type { Message } from "discord.js"
+
+  /** @throws {never} */
+  export function threadOf(message: Message): { readonly parentId: string | null; readonly ownerId: string | null } | undefined {
+    return message.channel.isThread() ? { parentId: message.channel.parentId, ownerId: message.channel.ownerId } : undefined
+  }
+}
+import { threadOf } from node
+
 export interface DiscordConnection {
   readonly accountId: string
   readonly token: Redacted.Redacted<string>
@@ -32,7 +42,7 @@ export effect function connectDiscordAccount(runtime: IAgentRuntime, config: Dis
     const text = content.text?.trim() ?? ""
     const attachments = content.attachments ?? []
     if ((text === "" && attachments.length === 0) || attachments.length > 10) return { kind: "not_delivered", code: "DISCORD_INVALID_CONTENT", message: "Discord requires text or up to ten attachments." }
-    const files = []
+    const files: { attachment: Buffer; name: string }[] = []
     for (const attachment of attachments) {
       const media = try tryPromise({ try: signal => fetchRemoteMedia({ url: attachment.url, maxBytes: 8 * 1024 * 1024, signal }), catch: () => new DiscordRequestFailed({ stage: "media" }) })
       files.push({ attachment: media.buffer, name: media.fileName ?? attachment.filename ?? "attachment" })
@@ -43,7 +53,7 @@ export effect function connectDiscordAccount(runtime: IAgentRuntime, config: Dis
     const ids: string[] = []
     for (const [index, part] of parts.entries()) {
       if (!(try admission.get()).connected) break
-      const answer = tryPromise(() => channel.send({ ...(part === "" ? {} : { content: part }), ...(index === 0 && files.length > 0 ? { files } : {}), allowedMentions: { parse: [] } })) catch () => undefined
+      const answer = tryPromise((): Promise<{ id: string }> => channel.send({ ...(part === "" ? {} : { content: part }), ...(index === 0 && files.length > 0 ? { files } : {}), allowedMentions: { parse: [] } })) catch () => undefined
       if (answer === undefined || answer.id === "") break
       ids.push(answer.id)
     }
@@ -60,12 +70,12 @@ export effect function connectDiscordAccount(runtime: IAgentRuntime, config: Dis
     if (bot === null || message.author.bot || !messageService || message.system) return
     const prior = (sequence.get(message.channelId) ?? 0) + 1
     sequence.set(message.channelId, prior)
-    const thread = message.channel.isThread()
-    const channelAllowed = config.channelIds.has(message.channelId) || (thread && message.channel.parentId !== null && config.channelIds.has(message.channel.parentId))
+    const thread = threadOf(message)
+    const channelAllowed = config.channelIds.has(message.channelId) || (thread !== undefined && thread.parentId !== null && config.channelIds.has(thread.parentId))
     const pairing = message.guildId === null && config.dmMode === "DiscordDmPairing" && !config.directSenderIds.has(message.author.id) ? tryPromise(() => checkPairingAllowed(runtime, { channel: "discord", senderId: message.author.id, metadata: { username: message.author.username } })) catch () => undefined : undefined
     if (pairing?.replyMessage) send({ source: "discord", accountId: config.accountId, channelId: message.channelId }, { text: pairing.replyMessage }) catch () => undefined
-    const policy: DiscordPolicy = { dmMode: config.dmMode, groupMode: config.groupMode, guildAllowed: message.guildId !== null && (config.guildIds.size === 0 || config.guildIds.has(message.guildId)), channelListConfigured: config.channelIds.size > 0, channelAllowed, actorAllowed: config.directSenderIds.has(message.author.id), admin: false, paired: pairing?.allowed === true, channelAddressing: config.requireMention ? "DiscordRequireMention" : "DiscordDoNotRequireMention", guildAddressing: "DiscordDefaultMention", botAutoThread: config.allowAutoThreads && thread && message.channel.ownerId === bot.id }
-    const accepted = admission.send({ type: "admitDiscord", inbound: { accountId: config.accountId, epoch, channelId: message.channelId, messageId: message.id, senderId: message.author.id, scope: thread ? "DiscordThread" : message.guildId === null ? "DiscordDirect" : "DiscordGuild", inboundKind: "DiscordMessage", mentioned: message.mentions.users.has(bot.id), commandAllowed: false }, policy }, "DiscordGateway") catch () => undefined
+    const policy: DiscordPolicy = { dmMode: config.dmMode, groupMode: config.groupMode, guildAllowed: message.guildId !== null && (config.guildIds.size === 0 || config.guildIds.has(message.guildId)), channelListConfigured: config.channelIds.size > 0, channelAllowed, actorAllowed: config.directSenderIds.has(message.author.id), admin: false, paired: pairing?.allowed === true, channelAddressing: config.requireMention ? "DiscordRequireMention" : "DiscordDoNotRequireMention", guildAddressing: "DiscordDefaultMention", botAutoThread: config.allowAutoThreads && thread !== undefined && thread.ownerId === bot.id }
+    const accepted = admission.send({ type: "admitDiscord", inbound: { accountId: config.accountId, epoch, channelId: message.channelId, messageId: message.id, senderId: message.author.id, scope: thread !== undefined ? "DiscordThread" : message.guildId === null ? "DiscordDirect" : "DiscordGuild", inboundKind: "DiscordMessage", mentioned: message.mentions.users.has(bot.id), commandAllowed: false }, policy }, "DiscordGateway") catch () => undefined
     if (accepted === undefined) return
     const scope = `discord:${config.accountId}`
     const id = try Effect.try(() => createUniqueUuid(runtime, `${scope}:message:${message.id}`))
@@ -108,7 +118,7 @@ class DiscordConnector extends Service {
   static override serviceType = "discord"
   override capabilityDescription = "Connects authorized Discord bot channels to the agent"
 
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>) { super(runtime) }
+  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void> = async () => {}) { super(runtime) }
 
   static override async start(runtime: IAgentRuntime): Promise<DiscordConnector> {
     const token = runtime.getSetting("DISCORD_API_TOKEN")

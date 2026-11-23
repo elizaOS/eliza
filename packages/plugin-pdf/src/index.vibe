@@ -78,6 +78,7 @@ effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: P
     try: () => openPdf(Uint8Array.from(bytes)),
     catch: (cause) => new PdfExtractionFailed({ reason: "The PDF could not be opened.", cause }),
   })
+  const release = Effect.orElseSucceed(tryPromise(() => document.loadingTask.destroy()), () => undefined)
   return try ensuring(effect {
     const pageCount = document.numPages
     const complete = mode === "CompleteDocument"
@@ -162,7 +163,7 @@ effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: P
       try read.send({ type: "publishPdfRead", authorized: true })
       return { pageCount, pages, text: pages.map((page) => page.text).join("\n\n") } satisfies PdfDocumentExtraction
     }
-  }, tryPromise(() => document.destroy()).pipe(Effect.ignore))
+  }, release)
 }
 
 export class PdfService extends Service {

@@ -73,7 +73,11 @@ export effect function connectSlackAccount(runtime: IAgentRuntime, config: Slack
       if (!(try Ref.get(active))) break
       const media = tryPromise(signal => fetchRemoteMedia({ url: attachment.url, maxBytes: 20 * 1024 * 1024, signal })) catch () => undefined
       if (media === undefined) { observed.push({ tag: "SlackPartRefused" }); continue }
-      const uploaded = tryPromise(() => app.client.files.uploadV2({ channel_id: channelId, file: media.buffer, filename: media.fileName ?? attachment.filename ?? "attachment", ...(target.threadId ? { thread_ts: target.threadId } : {}) })) catch () => undefined
+      const filename = media.fileName ?? attachment.filename ?? "attachment"
+      const threadTs = target.threadId
+      const uploaded = tryPromise(() => threadTs
+        ? app.client.files.uploadV2({ channel_id: channelId, thread_ts: threadTs, file: media.buffer, filename })
+        : app.client.files.uploadV2({ channel_id: channelId, file: media.buffer, filename })) catch () => undefined
       const receipt = Schema.decodeUnknownEffect(UploadedSlackFiles)(uploaded) catch () => undefined
       const receiptId = receipt?.files[0]?.files[0]?.id
       if (!receiptId) { observed.push({ tag: "SlackPartUnknown" }); continue }
@@ -143,7 +147,7 @@ function slackIds(input: unknown): Set<string> {
 class SlackConnector extends Service {
   static override serviceType = "slack"
   override capabilityDescription = "Connects authorized Slack conversations to the agent"
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>) { super(runtime) }
+  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void> = async () => {}) { super(runtime) }
   static override async start(runtime: IAgentRuntime): Promise<SlackConnector> {
     const botToken = runtime.getSetting("SLACK_BOT_TOKEN")
     const appToken = runtime.getSetting("SLACK_APP_TOKEN")

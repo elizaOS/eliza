@@ -4,6 +4,20 @@ import { resolveStateDir, type Action, type IAgentRuntime, type Memory, type Plu
 import { Machine, atMostAtomic, decodeState, machine, validAtomicAmount, walletObservationMatches, type WalletIntent, type WalletRun } from "../gen/wallet.effect.vibe"
 import { claimDispatch, evmTokenBalance, openWallet, readDispatch, readSigningReservation, reserveWalletSigning, walletDigest, walletJournalDirectory, type NativeTransfer, type WalletConfiguration, type WalletCustodian } from "./custody.vibe"
 
+module node {
+  import { getConfiguredOwnerEntityIds, type IAgentRuntime } from "@elizaos/core"
+
+  /** @throws {never} */
+  export function configuredOwnerIds(runtime: IAgentRuntime): readonly string[] {
+    try {
+      return getConfiguredOwnerEntityIds(runtime)
+    } catch {
+      return []
+    }
+  }
+}
+import { configuredOwnerIds } from node
+
 export error WalletRequestInvalid { reason: string }
 export error WalletTransportFailed { cause: unknown }
 
@@ -174,7 +188,7 @@ export interface WalletOwnerDecision {
 export type WalletOwnerReviewResult = WalletDecisionOutcome
 
 export effect function bindWalletOwnerReview(runtime: IAgentRuntime, newReview: WalletOwnerReviewInput, authenticateOwner: () => Promise<string | undefined>) {
-  const ownerId = runtime.character.ownerEntityId
+  const ownerId = configuredOwnerIds(runtime)[0]
   if (ownerId === undefined || ownerId === "" || newReview.requestId.trim() === "") throw new WalletRequestInvalid({ reason: "The wallet owner or review identity is missing." })
   const owner = try tryPromise({ try: () => authenticateOwner(), catch: (cause) => new WalletTransportFailed({ cause }) })
   if (owner !== ownerId) throw new WalletRequestInvalid({ reason: "The local wallet review is available only to the authenticated owner." })
@@ -224,7 +238,7 @@ export effect function bindWalletOwnerReview(runtime: IAgentRuntime, newReview: 
 }
 
 effect function runWallet(runtime: IAgentRuntime, message: Memory, options: unknown) {
-  if (runtime.character.ownerEntityId !== message.entityId) throw new WalletRequestInvalid({ reason: "Only the configured wallet owner may use this wallet." })
+  if (!configuredOwnerIds(runtime).includes(message.entityId)) throw new WalletRequestInvalid({ reason: "Only the configured wallet owner may use this wallet." })
   const subaction = parameter(options, "subaction")
   const family = parameter(options, "chain")
   const configuration = try walletConfiguration(runtime, family)
@@ -282,7 +296,7 @@ export const walletAction: Action = {
     { name: "recipient", description: "The receiving wallet address.", requiredForSubactions: ["transfer"], schema: { type: "string" } },
     { name: "intentId", description: "The original transfer identity for reconciliation.", requiredForSubactions: ["reconcile"], schema: { type: "string" } },
   ],
-  validate: (runtime, message) => Promise.resolve(runtime.character.ownerEntityId === message.entityId),
+  validate: (runtime, message) => Promise.resolve(configuredOwnerIds(runtime).includes(message.entityId)),
   handler: (runtime, message, _state, options) => runPromise(runWallet(runtime, message, options)),
 }
 
