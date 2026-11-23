@@ -781,6 +781,9 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
     routeOf("what's the weather near Times Square", ownerTurn("x"), false, () => false),
     routeOf("find coffee near Union Square", ownerTurn("x"), false, () => false),
     routeOf("what's the weather near me", ownerTurn("x"), false, () => false),
+    routeOf("weather near me", ownerTurn("x"), false, () => false),
+    routeOf("any weather nearby", ownerTurn("x"), false, () => false),
+    routeOf("any coffee nearby", ownerTurn("x"), false, () => false),
   ]
   const receipt = (result: { readonly effectReceipts?: ReadonlyArray<{ readonly outcome: string }> }) => result.effectReceipts?.[0]?.outcome
   try Effect.try(() => assert.deepStrictEqual({
@@ -801,7 +804,7 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
       "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner",
       "ToTravel", "ToTravel", "ToPlanner", "ToPlanner",
       "ToPlaceSearch", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner",
-      "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner"],
+      "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlaceSearch"],
   }))
 })
 
