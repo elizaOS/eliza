@@ -155,6 +155,7 @@ export function validateAssets(
         "scripting",
         "storage",
         "tabs",
+        "unlimitedStorage",
         "webNavigation",
         "webRequest",
       ]) ||
