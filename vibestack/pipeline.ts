@@ -943,8 +943,7 @@ async function generateOwner(root: string, name: string) {
   }
 }
 
-const rootTurboJson = "--root-turbo-json";
-const excludedProofs = /^!(spec|(?:apps|packages)\/\*\/spec)\/\*\*\/\*\.proof\.dfy$/;
+const legacyProofInput = /^!(spec|(?:apps|packages)\/\*\/spec)\/\*\*\/\*\.proof\.dfy$/;
 
 function turboOption(args: readonly string[], name: string): { index: number; count: number; value?: string } | undefined {
   const index = args.findLastIndex((arg) => arg === name || arg.startsWith(`${name}=`));
@@ -979,74 +978,81 @@ async function sameTurboWorkspace(root: string, options: readonly string[]): Pro
   }
 }
 
-function generationNeedsUncached(root: string, scopes: readonly string[]): boolean {
-  const standalone = (dir: string): boolean => {
-    const entry = fs.lstatSync(path.join(dir, "spec"), { throwIfNoEntry: false });
-    return !!entry && (!entry.isDirectory() || specFiles(dir).length === 0);
-  };
-  try {
-    return scopes.some((scope) => {
-      if (scope === "spec") {
-        const directory = path.join(root, scope);
-        const files = specFiles(root);
-        if (files.some((file) => file.includes(".proof.dfy/"))) return true;
-        const areas = new Set(files.map((file) => file.split("/")[1]));
-        return fs.existsSync(directory) && fs.readdirSync(directory).some((name) => !areas.has(name) && owner(root, `spec/${name}/`) !== undefined);
+type LegacySpecInput = { directory: string; kind: "invalid" } | { directory: string; kind: "hidden"; models: [string, string][] };
+
+function legacySpecInputs(root: string, scopes: readonly string[]): LegacySpecInput[] {
+  const signature: LegacySpecInput[] = [];
+  for (const scope of new Set(scopes)) {
+    const [container] = scope.split("/");
+    const directory = path.join(root, container);
+    const entry = fs.lstatSync(directory, { throwIfNoEntry: false });
+    if (!entry) continue;
+    const projects = scope === "spec" ? [root] : entry.isDirectory()
+      ? fs.readdirSync(directory, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => path.join(directory, item.name))
+      : [];
+    for (const project of projects.sort()) {
+      const name = path.relative(root, path.join(project, "spec"));
+      const spec = fs.lstatSync(path.join(root, name), { throwIfNoEntry: false });
+      if (!spec) continue;
+      if (!spec.isDirectory()) {
+        signature.push({ directory: name, kind: "invalid" });
+        continue;
       }
-      const container = path.join(root, scope.split("/")[0]);
-      return !!fs.lstatSync(container, { throwIfNoEntry: false })?.isDirectory()
-        && fs.readdirSync(container, { withFileTypes: true }).some((entry) => entry.isDirectory() && standalone(path.join(container, entry.name)));
-    });
-  } catch {
-    return true;
+      try {
+        const hidden = specFiles(project).filter(inProofDirectory);
+        if (hidden.length) signature.push({ directory: name, kind: "hidden", models: hidden.map((file) => [file, digest(fs.readFileSync(path.join(project, file), "utf8"))]) });
+      } catch {
+        signature.push({ directory: name, kind: "invalid" });
+      }
+    }
   }
+  return signature;
 }
 
-function propertiesOf(object: ts.Expression | undefined, name: string): ts.PropertyAssignment[] {
-  return object && ts.isObjectLiteralExpression(object) ? object.properties.filter((property): property is ts.PropertyAssignment =>
-    ts.isPropertyAssignment(property) && ts.isStringLiteral(property.name) && property.name.text === name) : [];
+function configProperty(node: ts.Expression | undefined, name: string): ts.Expression | undefined {
+  if (!node || !ts.isObjectLiteralExpression(node)) return;
+  const matches = node.properties.filter((property): property is ts.PropertyAssignment =>
+    ts.isPropertyAssignment(property) && ts.isStringLiteral(property.name) && property.name.text === name);
+  if (matches.length === 1) return matches[0].initializer;
 }
 
-async function generationOverlay(root: string, args: string[]): Promise<{ args: string[]; directory: string } | undefined> {
-  const options = args.slice(0, args.includes("--") ? args.indexOf("--") : args.length);
-  const explicit = turboOption(options, rootTurboJson);
-  if (explicit && !explicit.value) return;
-  const selected = explicit?.value ?? process.env.TURBO_ROOT_TURBO_JSON;
-  if (selected === "") return;
-  const files = selected !== undefined ? [path.resolve(root, selected)] :
-    ["turbo.json", "turbo.jsonc"].map((name) => path.join(root, name)).filter((file) => fs.existsSync(file));
+async function legacyGenerationConfig(root: string, args: string[], env: NodeJS.ProcessEnv) {
+  const boundary = args.indexOf("--");
+  const options = boundary < 0 ? args : args.slice(0, boundary);
+  const explicit = turboOption(options, "--root-turbo-json");
+  const selected = explicit?.value ?? env.TURBO_ROOT_TURBO_JSON;
+  if ((explicit && !explicit.value) || selected === "") return;
+  const files = selected === undefined ? ["turbo.json", "turbo.jsonc"].map((name) => path.join(root, name)).filter((file) => fs.existsSync(file)) : [path.resolve(root, selected)];
   if (files.length !== 1) return;
-  const [config] = files;
+  const [file] = files;
   let text: string;
-  try { text = fs.readFileSync(config, "utf8"); } catch { return; }
-  const source = ts.parseJsonText(config, text);
-  const tasks = propertiesOf(source.statements[0]?.expression, "tasks");
-  const generation = propertiesOf(tasks.length === 1 ? tasks[0].initializer : undefined, "//#gen");
-  const task = generation.length === 1 ? generation[0].initializer : undefined;
-  if (!task || !ts.isObjectLiteralExpression(task)) return;
-  const inputs = propertiesOf(task, "inputs");
-  const paths = inputs.length === 1 ? inputs[0].initializer : undefined;
-  const cache = propertiesOf(task, "cache");
-  if (!paths || !ts.isArrayLiteralExpression(paths) || cache.length > 1 || (cache[0] && cache[0].initializer.kind !== ts.SyntaxKind.TrueKeyword)) return;
-  const scopes = paths.elements.flatMap((entry) => {
-    const scope = ts.isStringLiteral(entry) ? excludedProofs.exec(entry.text)?.[1] : undefined;
-    return scope === undefined ? [] : [scope];
-  });
-  if (!generationNeedsUncached(root, scopes) || !await sameTurboWorkspace(root, options)) return;
-  const start = cache[0]?.initializer.getStart(source) ?? task.getStart(source) + 1;
-  const end = cache[0]?.initializer.end ?? start;
-  const uncached = text.slice(0, start) + (cache.length ? "false" : '"cache": false,') + text.slice(end);
+  try { text = fs.readFileSync(file, "utf8"); } catch { return; }
+  const source = ts.parseJsonText(file, text);
+  const tasks = configProperty(source.statements[0]?.expression, "tasks");
+  const gen = configProperty(tasks, "//#gen");
+  const inputs = configProperty(gen, "inputs");
+  if (!inputs || !ts.isArrayLiteralExpression(inputs)) return;
+  const scopes = inputs.elements.flatMap((element) => ts.isStringLiteral(element) ? legacyProofInput.exec(element.text)?.slice(1) ?? [] : []);
+  const scripts = scopes.length ? packageScripts(root) : {};
+  if (scripts.gen !== "node vibestack/spec.ts gen" || scripts.pregen || scripts.postgen || !await sameTurboWorkspace(root, options)) return;
+  const layout = JSON.stringify({ version: 1, hidden: legacySpecInputs(root, scopes), layout: generationLayout(root) });
+  const input = `.cache/gen-legacy-${digest(layout)}.json`;
+  const position = inputs.getStart(source) + 1;
+  const overlay = text.slice(0, position) + `${JSON.stringify(input)},` + text.slice(position);
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-turbo-"));
-  const file = path.join(directory, path.basename(config));
-  const { index = 0, count = 0 } = explicit ?? {};
+  const config = path.join(directory, path.basename(file));
   try {
-    fs.writeFileSync(file, uncached, { mode: 0o600 });
-    return { args: [...args.slice(0, index), `${rootTurboJson}=${file}`, ...args.slice(index + count)], directory };
+    const marker = path.join(root, input);
+    if (!fs.lstatSync(marker, { throwIfNoEntry: false })?.isFile() || fs.readFileSync(marker, "utf8") !== layout) writeWhole(marker, layout);
+    fs.writeFileSync(config, overlay, { mode: 0o600 });
+    return { args: args.toSpliced(explicit?.index ?? 0, explicit?.count ?? 0, `--root-turbo-json=${config}`), directory };
   } catch (error) {
     fs.rmSync(directory, { recursive: true, force: true });
     throw error;
   }
 }
+
+const inProofDirectory = (file: string) => file.includes(".proof.dfy/");
 
 type GenerationLayout = { kind: "ordinary" | "proof-directory"; owners: [string, string | null][]; dirs: string[] } | { kind: "invalid" };
 
@@ -1055,7 +1061,7 @@ function generationLayout(root: string): GenerationLayout {
     const files = specFiles(root);
     const areas = [...new Set(files.map((file) => file.split("/")).filter((parts) => parts.length > 2).map((parts) => parts[1]))].sort();
     return {
-      kind: files.some((file) => file.split("/").some((part) => part.endsWith(".proof.dfy"))) ? "proof-directory" : "ordinary",
+      kind: files.some(inProofDirectory) ? "proof-directory" : "ordinary",
       owners: areas.map((area) => [area, owner(root, `spec/${area}/`) ?? null]),
       dirs: codeDirs(root),
     };
@@ -1134,7 +1140,7 @@ async function runTasks(root: string, args: string[]): Promise<number | null> {
   }
   const turboPackage = createRequire(bin("turbo", root)).resolve("turbo/package.json");
   const turboEntry = path.resolve(path.dirname(turboPackage), JSON.parse(fs.readFileSync(turboPackage, "utf8")).bin.turbo);
-  const overlay = await generationOverlay(root, args);
+  const overlay = await legacyGenerationConfig(root, args, env);
   try {
     const config = overlay ? undefined : generationConfig(root, args, env);
     const options = overlay?.args ?? (config ? args.toSpliced(config.index, config.count, "--root-turbo-json", config.path) : args);
