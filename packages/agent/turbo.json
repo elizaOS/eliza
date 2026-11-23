@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["//#gen", "^build"],
-      "inputs": ["$TURBO_DEFAULT$", "!test/**", "!vitest.config.ts"]
+      "inputs": ["$TURBO_EXTENDS$", "$TURBO_DEFAULT$", "!test/**", "!vitest.config.ts"]
     }
   }
 }
