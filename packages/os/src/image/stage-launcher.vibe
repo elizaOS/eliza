@@ -209,6 +209,17 @@ error OverlayWriteFailed { output: string; message: string }
 error OutputNotPublished { output: string; message: string }
 error NativeFinalizeRefused { output: string; message: string }
 
+export type {
+  StagingOptionsInvalid,
+  StagingInputUnreadable,
+  DescriptorRefused,
+  NativeArchiveInvalid,
+  StagingRefused,
+  OverlayWriteFailed,
+  OutputNotPublished,
+  NativeFinalizeRefused,
+}
+
 const MODULE = /^[A-Z][A-Za-z0-9]*$/
 const PACKAGE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
 const BRAND = /^[a-z][a-z0-9_]*$/

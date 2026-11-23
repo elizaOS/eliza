@@ -31,6 +31,8 @@ const sourceBudget = 16 * 1024 * 1024
 
 error ListenerSourceRefused { reason: string }
 
+export type { ListenerSourceRefused }
+
 effect function senseRoot() {
   const files = try FileSystem.FileSystem
   const path = try Path.Path

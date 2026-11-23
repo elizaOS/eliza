@@ -396,6 +396,17 @@ error ApkSignerUnread { apk: string; signer: SignerObservation; message: string 
 error ImageApkRefused { apk: string; refusal: ImageRefusal; blockers: readonly ReleaseBlocker[]; facts: ApkFacts; message: string }
 error IntegrityQueryRefused { message: string }
 
+export type {
+  ToolchainMissing,
+  ToolFailed,
+  ArtifactUnreadable,
+  ArtifactTooLarge,
+  ArtifactChanged,
+  ArchiveInvalid,
+  ArchiveEntryTooLarge,
+  ApkSignerUnread,
+}
+
 function isRecord(value: unknown): value is RawRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }

@@ -350,6 +350,8 @@ export type { LoadProfileOptions, PatchReference, SourceProfileRef, VerifySource
 error SourceLockReadFailed { cause: unknown }
 error SourceLockRefused { reason: string }
 
+export type { SourceLockReadFailed, SourceLockRefused }
+
 export effect function loadProfile(options: LoadProfileOptions) {
   return try tryPromise({ try: () => selectProfile(options, import.meta.url), catch: (cause) => new SourceLockReadFailed({ cause }) })
 }
