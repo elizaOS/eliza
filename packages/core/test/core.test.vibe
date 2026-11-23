@@ -2791,6 +2791,27 @@ it.live("Story: Execute due work within its owning agent, across scheduler stora
       ["TASK_TICK_FAILED", "ephemeral", "TASK_PREFLIGHT_FAILED", true, { reads: 2, totalReads: 2, cachedCalls: 0 }, 0],
     ]]))
 
+    // spec/core/taskServiceOwners.md, "An orphaned task is quarantined only after the startup grace and leaves quarantine when its worker returns or a heal succeeds"
+    let orphanNow = 0
+    const orphanService = try Effect.try(() => new TaskService(runtimeA, { now: () => orphanNow, setTimeout: () => undefined, clearTimeout: () => {} }))
+    const orphanId = try host(() => runtimeA.createTask({ name: "J07_ORPHAN_ONCE", description: "one-shot whose worker is late", tags: ["manual"], metadata: {} }))
+    const orphanRow = () => host(async () => {
+      const stored = (await runtimeA.getTasksByIds([orphanId]))[0]
+      if (!stored) throw new Error("An orphaned one-shot task must keep its row")
+      return stored
+    })
+    const orphanStates: unknown[] = []
+    for (const step of ["grace", "quarantine", "heal"]) {
+      if (step === "quarantine") orphanNow = 60_000
+      if (step === "heal") try worker(runtimeA, "J07_ORPHAN_ONCE", async () => undefined)
+      const row = try orphanRow()
+      try host(() => orphanService.runTick([row]))
+      const after = try orphanRow()
+      orphanStates.push([after.metadata?.paused ?? false, after.metadata?.orphanedNoWorker ?? false])
+    }
+    try host(() => runtimeA.deleteTask(orphanId))
+    try Effect.try(() => assert.deepStrictEqual(orphanStates, [[false, false], [true, true], [false, false]]))
+
     const owned: string[] = []
     for (const runtime of [runtimeA, runtimeB]) {
       try worker(runtime, "J07_OWNED", async (rt, _options, task) => {
