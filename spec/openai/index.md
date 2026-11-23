@@ -81,6 +81,14 @@ pure def sometimesOpenAiFallbackFinishes(s: OpenAiRun): bool = s.phase == Comple
 pure val eval_witness_sometimesOpenAiFallbackFinishes = (("beginOpenAi", { address: "primary", modelId: "text", acceptsOperation: true, acceptsSchema: true, confidential: true }, { address: "backup", modelId: "text", acceptsOperation: true, acceptsSchema: true, confidential: true }, true, true), ("failOpenAi", PrimaryOpenAi, RetryableOpenAi), ("acceptOpenAi", FallbackOpenAi, true, true))
 ```
 
+### Reported cache and reasoning token counts survive completion decoding
+
+The completion result keeps the endpoint's prompt, completion and total token
+counts. It also keeps valid nonnegative integer cache-read and reasoning
+counts when the endpoint supplies them. A reported zero is a count. An
+absent or malformed detail leaves that count absent. The rule applies to JSON
+replies and to a stream's usage frames.
+
 ### Tokenizer cache keys distinguish concrete model encodings
 
 Cache only the tokenizer selected for the resolved encoding. An
