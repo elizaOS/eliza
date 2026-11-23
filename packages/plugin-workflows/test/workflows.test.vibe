@@ -265,6 +265,22 @@ it.live('Remove a workflow only when its runs are settled and restore it safely 
   try check(() => assert.deepStrictEqual(phone.performed, []))
 })
 
+it.live('Change only the workflow I named in chat (spec/workflow/index.md, "Story: Change only the workflow I named in chat")', effect () => {
+  const rig = try harness()
+  const named = (try saved(rig, manual("Morning digest", greeting.steps))).receipt.workflowId
+  const other = (try saved(rig, manual("Evening digest", greeting.steps))).receipt.workflowId
+  const runtime = {} as IAgentRuntime
+  workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
+  const said = (text: string, parameters: JsonObject) => promise(() => workflowAction.handler(runtime, { content: { text } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
+  const command = "Please rename workflow Morning digest to “Daily brief”."
+  const conflicting = try said(command, { action: "remove", workflowId: other })
+  const renamed = try said(command, { action: "rename", workflowId: other, name: "Night brief" })
+  const [first, second] = [try rig.client.detail(named), try rig.client.detail(other)]
+  try check(() => assert.deepStrictEqual(
+    [conflicting.data?.code, renamed.success, first.name, second.name, second.removed],
+    ["WORKFLOW_REQUEST_CONFLICT", true, "Daily brief", "Evening digest", false]))
+})
+
 it.live('Decide one reviewed approval once and run its device step only as reviewed (spec/workflow/approvals.md, "Story: Decide one reviewed approval once and run its device step only as reviewed"; spec/workflow/runScope.md, "Story: A reviewed calendar read stays inside its run\'s scope")', effect () => {
   const phone: Phone = { performed: [], notes: [{ id: "n1", title: "Plan", text: "Ship it" }] }
   const rig = try harness({ phone })
