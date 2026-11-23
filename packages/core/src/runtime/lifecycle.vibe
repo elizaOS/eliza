@@ -15,7 +15,7 @@ import type { IDatabaseAdapter } from "../types/database.vibe"
 import type { Plugin, RemotePluginInstallOptions, RemotePluginInstanceHandle } from "../types/plugin.vibe"
 import type { UUID } from "../types/primitives.vibe"
 import type { RuntimeStopOptions } from "../types/runtime.vibe"
-import { processEnv, rawEnv } from "../utils/environment.vibe"
+import { rawEnv } from "../utils/environment.vibe"
 import { timerDelay } from "../utils/retry.vibe"
 import { stringToUuid } from "../utils/string-to-uuid.vibe"
 import { validateUuid, type InvalidUuidSource, randomUuid } from "../utils/uuid.vibe"
@@ -380,14 +380,7 @@ effect function stopAfterAdmissionCordon(options?: RuntimeStopOptions): void!(El
     }
   }
   try dispatch.drainDiagnostics()
-  const env = processEnv()
-  const previousFastShutdown = env.ELIZA_FAST_SHUTDOWN
-  if (fast) env.ELIZA_FAST_SHUTDOWN = "1"
-  try ensuring(stopServicesAndRetire(fast, options?.serviceStopTimeoutMs), sync(() => {
-    if (!fast) return
-    if (previousFastShutdown === undefined) delete env.ELIZA_FAST_SHUTDOWN
-    else env.ELIZA_FAST_SHUTDOWN = previousFastShutdown
-  }))
+  try stopServicesAndRetire(fast, options?.serviceStopTimeoutMs)
 }
 
 effect function stopBestEffort(options?: RuntimeStopOptions): void!LifecycleFailure!RuntimeKernel {
@@ -574,6 +567,11 @@ export effect function getStopSignal(): AbortSignal!!RuntimeKernel {
 
 export effect function isStopRequested(): boolean!!RuntimeKernel {
   return stopRequested(try runtimeState())
+}
+
+export effect function isFastStopRequested(): boolean!!RuntimeKernel {
+  const state = try runtimeState()
+  return stopRequested(state) && state.fast
 }
 
 export effect function createRunId(): UUID!! {
