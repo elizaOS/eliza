@@ -1357,7 +1357,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
           ["speech", 216, 216, "known"],
           ["speech", 288, 0, "known"],
           ["speech", 144, 144, "unknown"],
-          ["speech", 100, 250, "known"]
+          ["speech", 120, 360, "known"]
         ]
       }
     ))
