@@ -177,15 +177,33 @@ jobs:
           [[ $tip =~ ^[0-9a-f]{40}$ && $ref == "$GITHUB_REF" && $tip != "$GITHUB_SHA" ]] || exit 0
           echo 'skip=true' >> "$GITHUB_OUTPUT"
           echo "Skipping the spec cache upload for superseded commit $GITHUB_SHA."
+      - id: closed-pr-cache
+        if: >-
+          always() && github.event_name == 'pull_request' && github.run_attempt == '1' &&
+          (steps.setup.outputs.spec-cache-key != '' || steps.setup.outputs.turbo-cache-key != '')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ -n $GH_TOKEN && $GITHUB_REF =~ ^refs/pull/([1-9][0-9]*)/merge$ ]] || exit 0
+          number=${BASH_REMATCH[1]}
+          pull=$(curl --fail --silent --max-time 4 -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$number") || exit 0
+          jq -e --argjson number "$number" '
+            .number == $number and .state == "closed" and (.closed_at | type == "string")
+          ' <<< "$pull" >/dev/null 2>&1 || exit 0
+          echo 'skip=true' >> "$GITHUB_OUTPUT"
+          echo "Skipping verification cache uploads for closed PR #$number."
       - if: >-
           always() && steps.setup.outputs.spec-cache-key != '' &&
-          steps.superseded-spec-cache.outputs.skip != 'true' && steps.task-timings.outputs.skip-spec-cache != 'true'
+          steps.superseded-spec-cache.outputs.skip != 'true' && steps.task-timings.outputs.skip-spec-cache != 'true' &&
+          steps.closed-pr-cache.outputs.skip != 'true'
         uses: actions/cache/save@v6
         with:
           path: ${{ steps.setup.outputs.spec-cache-path }}
           key: ${{ steps.setup.outputs.spec-cache-key }}
       - id: prune-turbo-cache
-        if: always() && steps.setup.outputs.turbo-cache-key != ''
+        if: always() && steps.setup.outputs.turbo-cache-key != '' && steps.closed-pr-cache.outputs.skip != 'true'
         run: |
           [[ -d .turbo/cache ]] || exit 0
           cat .turbo/runs/*.json 2>/dev/null | jq -r '.tasks[] | select(.cache.status == "HIT") | .hash' | while read -r hash; do find .turbo/cache -name "$hash*" -exec touch {} +; done
