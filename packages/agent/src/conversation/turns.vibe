@@ -342,7 +342,7 @@ module node {
       okay({ fullText: text, text, agentName, messageId, userMessageId, actionResults, ...(action === undefined ? {} : { action }),
         ...(failure === undefined ? {} : failureFields(failure)), ...(taskChoices === undefined ? {} : { taskChoices }) } satisfies TurnReply)
     const replyForRequest = (body: SendAnswer["body"], headers: ReadonlyMap<string, string>): SendAnswer["body"] => {
-      if ("error" in body || body.cutOffEffect === undefined || publishesCutOffEffect(true, headers.get("x-elizaos-cut-off-effect") === "applied")) return body
+      if ("error" in body || body.cutOffEffect === undefined || publishesCutOffEffect(true, headers.get("x-eliza-device-cut-off-effect") === "applied")) return body
       const { cutOffEffect: _cutOffEffect, ...reply } = body
       return reply
     }
