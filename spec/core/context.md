@@ -172,7 +172,8 @@ Only when none does are the originals that best share its words the
 matches, marked as matched by words, so a subject searched in other words
 than it was said in is not read as never said. A search returns at most
 five matches, those not in view first, then the newest, in their original
-order.
+order, and says how many more matched and are left out, so a count or a
+list of what was said is never read from the five alone.
 
 ```quint
 type HistoryMatch = MatchedAsWritten | MatchedByWords | MatchedNothing
@@ -180,6 +181,7 @@ pure val searchMatchesShown = 5
 pure def historyMatch(literalHits: int, wordHits: int): HistoryMatch =
   if (literalHits > 0) MatchedAsWritten else if (wordHits > 0) MatchedByWords else MatchedNothing
 pure def matchesShown(hits: int): int = if (hits < 0) 0 else if (hits > searchMatchesShown) searchMatchesShown else hits
+pure def matchesLeftOut(hits: int): int = if (hits < 0) 0 else hits - matchesShown(hits)
 pure val literalHitsValues = Set(0, 1, 7)
 pure val wordHitsValues = Set(0, 2, 6)
 pure def lawWordsMatchOnlyWhatNothingHoldsAsWritten(literalHits: int, wordHits: int): bool =
@@ -187,6 +189,7 @@ pure def lawWordsMatchOnlyWhatNothingHoldsAsWritten(literalHits: int, wordHits: 
 pure def lawAMatchAsWrittenWins(literalHits: int, wordHits: int): bool =
   literalHits > 0 implies historyMatch(literalHits, wordHits) == MatchedAsWritten
 pure def lawASearchReturnsAtMostFive(hits: int): bool = matchesShown(hits) <= searchMatchesShown and matchesShown(hits) >= 0
+pure def lawEveryMatchIsShownOrCounted(hits: int): bool = hits >= 0 implies matchesShown(hits) + matchesLeftOut(hits) == hits
 ```
 
 ### A note about one request leaves the view with that request

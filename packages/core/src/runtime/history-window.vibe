@@ -1,5 +1,5 @@
 // spec/core/context.md, "Story: Keep a long conversation within reach on a host with no reviewer"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/context.md, "A search of the conversation finds what it holds as written, else what best shares the words of the query"
-import { historyMatch, matchesShown, shownFrom, windowBoundary, type HistoryMatch } from "../../gen/core__context.ts"
+import { historyMatch, matchesLeftOut, matchesShown, shownFrom, windowBoundary, type HistoryMatch } from "../../gen/core__context.ts"
 
 export const HISTORY_WINDOW_MAX_SOURCES = 40
 export const HISTORY_WINDOW_KEEP_SOURCES = 20
@@ -35,6 +35,7 @@ export interface HistoryWindow<S extends HistorySource> {
 export interface HistorySearch<S extends HistorySource> {
   readonly matches: readonly S[]
   readonly match: HistoryMatch
+  readonly leftOut: number
 }
 
 const wordsOf = (text: string): string[] => text.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? []
@@ -172,7 +173,7 @@ export function searchHistory<S extends HistorySource>(candidates: readonly S[],
     .slice(0, matchesShown(found.length))
     .toSorted((left, right) => left - right)
     .map((index) => candidates[index])
-  return { matches, match }
+  return { matches, match, leftOut: matchesLeftOut(found.length) }
 }
 
 export function historyWindowNotice(window: { readonly deferred: readonly unknown[]; readonly recalled: readonly HistorySource[] }, readThrough?: string): string {
