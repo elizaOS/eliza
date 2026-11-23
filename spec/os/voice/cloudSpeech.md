@@ -85,7 +85,9 @@ pure def sometimesKeyChangeEndedSession(s: CloudSpeech): bool = s.bound >= 1 and
 Consent and mint answer here as one; a wrong shape or a `wsUrl` off the
 deployment origin is `Misdirected`. A `401` with a credential reason goes
 to `C::rejected`; every refusal ends its request and passes on its retry
-or reset time (a `429` or `402` limit).
+or reset time (a `429` or `402` limit). The consent request comes before any
+paid admission, so the shell sends it once more after its connection was
+reset; a mint request is never sent again.
 
 ```quint
 type CloudAnswer = Answered | Misdirected | Unreachable | Refused({ refusal: Refusal })

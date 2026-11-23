@@ -168,6 +168,13 @@ refusal decided before dispatch releases the hold. An observed price above
 the quote is an adapter fault: it is charged at the quote and logged as an
 error.
 
+A geocoding call is also billed by the status its reply names. A reply
+naming a quota, a denial or a provider error (`OVER_QUERY_LIMIT`,
+`OVER_DAILY_LIMIT`, `REQUEST_DENIED`, `UNKNOWN_ERROR`) is rejected and not
+billed, even when it came with status 200. A `ZERO_RESULTS` reply is billed
+and answers no places, whether it came with status 200 or 404; any other
+reply with status 404 is `502 provider_invalid_response`.
+
 ```quint
 type CallBilling = CallBilled | CallNotBilled | CallUnclear
 type MapsOutcome = MapsAnswered | MapsRefused({ code: RefusalCode }) | ReplyLost
@@ -176,6 +183,15 @@ pure def billingOf(status: int): CallBilling =
   if (status == 200 or status == 404) CallBilled
   else if (status == 401 or status == 403 or status == 429 or status >= 500) CallNotBilled
   else CallUnclear
+pure val unbilledGeocodeStatuses = Set("OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT", "REQUEST_DENIED", "UNKNOWN_ERROR")
+pure def geocodeBillingOf(status: int, geocodeStatus: str): CallBilling =
+  if (billingOf(status) == CallBilled and unbilledGeocodeStatuses.contains(geocodeStatus)) CallNotBilled else billingOf(status)
+pure def geocodeFoundNothing(status: int, geocodeStatus: str): bool = geocodeBillingOf(status, geocodeStatus) == CallBilled and geocodeStatus == "ZERO_RESULTS"
+pure def lawAGeocodeReplyNeverBillsACallItsStatusDidNot(status: int, geocodeStatus: str): bool =
+  (geocodeBillingOf(status, geocodeStatus) == CallBilled implies billingOf(status) == CallBilled)
+  and (geocodeFoundNothing(status, geocodeStatus) implies (status == 200 or status == 404))
+pure val statusValues = Set(200, 400, 404, 429, 500)
+pure val geocodeStatusValues = Set("OK", "ZERO_RESULTS", "UNKNOWN_ERROR", "OVER_QUERY_LIMIT", "INVALID_REQUEST")
 pure def isProviderRefusal(code: RefusalCode): bool = Set(NoRoute, UnsupportedMode, UnsupportedRegion, ProviderInvalidResponse, ProviderUnavailable).contains(code)
 pure def observedWithin(quote: Micros, observed: Micros): Micros = if (observed < 0) 0 else M::minOf(observed, quote)
 pure def settlementOf(dispatched: bool, reply: MapsOutcome, quote: Micros, observed: Micros): MapsSettlement =

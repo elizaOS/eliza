@@ -1,4 +1,4 @@
-// spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"
+// spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"
 import type { FakeAnswer, FakeHandler, FakeRequest } from "./fakes.ts";
 
 export type GoogleOperation = "searchText" | "searchNearby" | "details" | "geocode" | "computeRoutes" | "createSession" | "tile" | "viewport";
@@ -9,7 +9,8 @@ export type GoogleScript =
   | { readonly kind: "empty" }
   | { readonly kind: "notJson" }
   | { readonly kind: "outage" }
-  | { readonly kind: "oversized" };
+  | { readonly kind: "oversized" }
+  | { readonly kind: "geocodeReply"; readonly status: number; readonly geocode: string };
 
 export interface GoogleMapsFake {
   readonly handler: FakeHandler;
@@ -149,6 +150,8 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
       return { status: 503, body: { error: { code: 503, status: "UNAVAILABLE" } } };
     case "oversized":
       return { status: 200, body: "x".repeat(2 * 1024 * 1024 + 1) };
+    case "geocodeReply":
+      return operation === "geocode" ? { status: script.status, body: { status: script.geocode, results: [] } } : answerOf(operation, request);
   }
 }
 

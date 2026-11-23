@@ -118,4 +118,12 @@ public final class CloudSpeechWireTest {
     require(CloudSpeechWire.hello("token", true).contains("\"extend\":true"), "extend when offered");
     require(refused(() -> CloudSpeechWire.hello("a".repeat(6145), false)), "token limit");
   }
+
+  @Test public void onlyAResetConnectionSendsConsentAgain() {
+    require(CloudSpeechWire.connectionReset(new java.net.SocketException("Connection reset")), "reset");
+    require(CloudSpeechWire.connectionReset(new java.net.SocketException("Connection reset by peer")), "reset by peer");
+    require(!CloudSpeechWire.connectionReset(new java.net.ConnectException("Connection reset")), "unconnected");
+    require(!CloudSpeechWire.connectionReset(new java.net.SocketTimeoutException("timeout")), "timeout");
+    require(!CloudSpeechWire.connectionReset(new java.io.IOException("Connection reset")), "other failure");
+  }
 }
