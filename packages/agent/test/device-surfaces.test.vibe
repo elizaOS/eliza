@@ -157,6 +157,7 @@ module node {
     cloud.script(toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), text("Okay."))
     const fromHome = await say("Make a note to buy milk")
     const homeOffer = offered(cloud, 2)
+    const homeTold = lastToolText(cloud)
     const saved = await settledAgain("Make a note to buy milk", { ...direct, ...onNotes }, propose({ type: "create_note", title: "Milk", body: "Buy milk" }), { outcome: "applied", operationId: "note-1" })
     const notesOffer = offered(cloud, 1)
     cloud.script(toolCalls("", propose({ type: "create_note", title: "Summary", body: "The page lists three deadlines in March." })), text("Okay."))
@@ -189,7 +190,7 @@ module node {
         views: navigating.note.includes("Open app views with VIEWS (mode show) on this message"), offered: navigating.views,
       },
       notes: {
-        fromHome: fromHome.includes("I couldn't prepare that on your phone."), homeOffer: homeOffer.types.includes("create_note"),
+        fromHome: { quiet: fromHome === "Okay.", told: homeTold.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW") }, homeOffer: homeOffer.types.includes("create_note"),
         toldCanonical: homeOffer.note.includes("create_note is not available on this message: the owner's Notes screen does not select the phone's own Notes, so a request to make or save a note uses the canonical NOTES service"),
         sameTools: homeOffer.tools === notesOffer.tools && homeOffer.tools === firstOffer.tools, notesNote: notesOffer.note.includes("create_note is not available"),
         notesOffer: notesOffer.types.includes("create_note"), canonical: notesOffer.description.includes("use the canonical NOTES or CALENDAR service"),
@@ -209,24 +210,41 @@ module node {
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
     const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
     const proposals = async () => ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
-    const say = async (call: { readonly name: string; readonly arguments: unknown }, metadata?: object) => {
+    const say = async (calls: readonly { readonly name: string; readonly arguments: unknown }[], metadata?: object) => {
       const before = (await proposals()).length
-      cloud.script(toolCalls("", call), text("Which view?"))
-      await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: "Open my files", ...(metadata === undefined ? {} : { metadata }) })
+      cloud.script(toolCalls("", ...calls), text("Which view?"))
+      const turn = (await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: "Open my files", ...(metadata === undefined ? {} : { metadata }) })).json as Turn
       const seen = offered(cloud, 2)
-      const told = lastToolText(cloud)
+      const asked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
+      const told = JSON.stringify(((asked.at(-1)?.body as Completion | undefined)?.messages ?? []).filter(({ role }) => role === "tool").map(({ content }) => content))
       return {
         tools: seen.tools, viewsHere: seen.note.includes("Open app views with VIEWS (mode show) on this message"),
         viewsNotHere: seen.note.includes("VIEWS cannot show a view on this message"), proposed: (await proposals()).length - before,
-        refused: told.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW") ? "open_view" : told.includes("not available for the current state") ? "VIEWS" : "none",
+        refused: [told.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW") ? ["open_view"] : [], told.includes("VIEWS_NOT_ON_THIS_MESSAGE") ? ["VIEWS"] : []].flat(),
+        reply: turn.text,
       }
     }
     const views = { name: "VIEWS", arguments: { action: "show", view: "files" } }
     const openView = propose({ type: "open_view", view: "files" })
-    const { tools: typedTools, ...typed } = await say(views)
-    const { tools: deliveredTools, ...delivered } = await say(openView, direct)
-    const { tools: againTools, ...typedAgain } = await say(openView)
-    return { sameTools: new Set([typedTools, deliveredTools, againTools]).size === 1, typed, delivered, typedAgain }
+    const { tools: typedTools, ...typed } = await say([views])
+    const { tools: deliveredTools, ...delivered } = await say([openView], direct)
+    const { tools: againTools, ...typedAgain } = await say([openView])
+    const { tools: bothTools, ...wrongHomeFirst } = await say([{ name: "VIEWS", arguments: { action: "show", view: "photos" } }, propose({ type: "open_view", view: "photos" })])
+    return { sameTools: new Set([typedTools, deliveredTools, againTools, bothTools]).size === 1, typed, delivered, typedAgain, wrongHomeFirst }
+  }
+
+  export async function unofferedDeviceTool(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+    const client = deviceClient(socket, token, runtime.agentId, negotiated.join(","))
+    await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
+    const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
+    cloud.script(text("Okay."))
+    await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: "Take a picture", metadata: direct })
+    const seen = offered(cloud, 1)
+    const proposals = ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
+    return {
+      deviceTool: seen.tools.includes(`"name":"${proposeTool}"`), views: seen.views, ranFirst: seen.ranFirst, proposed: proposals.length,
+      lead: seen.note.includes("asks for a photo now"), refusedViews: seen.note.includes("refused"), formNotes: seen.note.includes("not available on this message"),
+    }
   }
 
   export async function oneConversation(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
@@ -273,11 +291,11 @@ module node {
         captured: photo.fresh.map(({ payload }) => ({ type: payload.operation.type, bound: payload.requestMessageId === photo.userMessageId })),
         viewsRefused: photo.toolText.includes("ROUTE_REFUSED"), switched: photo.toolText.includes("Prepared the switch"),
         otherRefused: photo.toolText.includes("DEVICE_OPERATION_ROUTED"),
-        opening: photo.reply.includes("Opening Camera to take the photo."), noFailure: !photo.reply.includes("wasn't done"),
+        reply: photo.reply,
       },
       plain: { noteNotHere: plain.note.includes("create_note is not available on this message"), lead: plain.note.includes("asks for a photo now") },
       refused: {
-        noteElsewhere: { code: noteElsewhere.toolText.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW"), sent: noteElsewhere.fresh.length },
+        noteElsewhere: { code: noteElsewhere.toolText.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW"), sent: noteElsewhere.fresh.length, reply: noteElsewhere.reply },
         noSelection: { code: noSelection.toolText.includes("MAPS_SELECTION_UNAVAILABLE"), sent: noSelection.fresh.length },
         guessedId: { sent: guessedId.fresh.length, reply: guessedId.reply.includes("couldn't tell which photos you meant") },
       },
@@ -285,7 +303,7 @@ module node {
   }
 }
 
-import { navigationHomes, oneConversation, proposeSurfaces, proposeTool } from node
+import { navigationHomes, oneConversation, proposeSurfaces, proposeTool, unofferedDeviceTool } from node
 
 it.live(`Take a photo, open a view, read a Maps place, find and share photos and write a phone note only as the owner's words and screen name them (spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/deviceActions/surfaces.md, "A whole-message photo command is routed to the capture, never to opening Camera"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it")`, effect () => {
   const cloud = try cloudFake(deviceKey)
@@ -315,7 +333,7 @@ it.live(`Take a photo, open a view, read a Maps place, find and share photos and
     searched: "done", staleRevision: true,
     navigating: { sameTools: true, openView: true, views: true, offered: true },
     notes: {
-      fromHome: true, homeOffer: true, toldCanonical: true, sameTools: true, notesNote: false, notesOffer: true, canonical: true, summarized: true,
+      fromHome: { quiet: true, told: true }, homeOffer: true, toldCanonical: true, sameTools: true, notesNote: false, notesOffer: true, canonical: true, summarized: true,
       saved: { state: "done", told: true }, learned: true,
     },
     profile: { refused: true, told: true },
@@ -350,9 +368,10 @@ it.live(`A device message opens a view in one place under the same tools: VIEWS 
   const observed = try host("offer device navigation", () => navigationHomes(agent.agent.runtime, socket, agent.frame.token, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
     sameTools: true,
-    typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: "VIEWS" },
-    delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: "open_view" },
-    typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: "none" },
+    typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?" },
+    delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: ["open_view"], reply: "Which view?" },
+    typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: "Review this request on your phone before it can run." },
+    wrongHomeFirst: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: ["VIEWS"], reply: "Review this request on your phone before it can run." },
   }))
 }, 120_000)
 
@@ -375,13 +394,29 @@ it.live(`One device conversation sends the same tools on every message, whatever
     sensitive: { noteNotHere: true, viewsNotHere: true },
     photo: {
       lead: true, ranFirst: true, captured: [{ type: "camera_capture_photo", bound: true }], viewsRefused: true, switched: false, otherRefused: true,
-      opening: true, noFailure: true,
+      reply: "Opening Camera to take the photo.",
     },
     plain: { noteNotHere: true, lead: false },
     refused: {
-      noteElsewhere: { code: true, sent: 0 },
+      noteElsewhere: { code: true, sent: 0, reply: "Okay." },
       noSelection: { code: true, sent: 0 },
       guessedId: { sent: 0, reply: true },
     },
+  }))
+}, 120_000)
+
+it.live(`A message the device tool is not offered on gets no note of it: no route lead, no refusal it would not make, and nothing proposed (spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
+      load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "VIEWS"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
+  const observed = try host("device tool not offered", () => unofferedDeviceTool(agent.agent.runtime, socket, agent.frame.token, cloud))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    deviceTool: false, views: true, ranFirst: false, proposed: 0, lead: false, refusedViews: false, formNotes: false,
   }))
 }, 120_000)

@@ -94,13 +94,15 @@ or voice message of the phone's client chat) of the enrolled phone that is
 offered the capture, a message that asks for a photo now (the rule above)
 owns the whole request. The capture is the operation that message is a
 strict command for, so it is proposed as the turn's first call, before the
-model's choice ([proposals](./index.md)); the turn's device note says first
-that the message asks for a photo now; the device tool accepts no other
-operation on that message; and the [planner](../conversation/planning.md)
-refuses a call of the view navigation it replaces, so `VIEWS` never opens
-Camera instead. The tools stay as they are on every other message. Any
-other message, including one that only mentions a photo, is planned as
-usual.
+model's choice ([proposals](./index.md)); the device tool's note for the
+message says first that it asks for a photo now and to use the capture;
+the device tool accepts no other operation on that message; and the
+[planner](../conversation/planning.md) refuses a call of the view
+navigation it replaces, so `VIEWS` never opens Camera instead. Both
+refusals are of calls the message serves elsewhere, so the owner, who
+asked only for the photo, hears no failure for either. The tools stay as
+they are on every other message. Any other message, including one that
+only mentions a photo, is planned as usual.
 
 ```quint
 pure def photoCommandRouted(ownerChat: bool, captureOffered: bool, words: CameraWords): bool =
@@ -120,11 +122,15 @@ both homes of a view, `VIEWS` and, where the device negotiated it, the
 message's voice view context says views arrive as completed actions, the
 model opens a view with `VIEWS` directly, and `open_view`, which would ask
 the phone for a review it does not need, is refused before dispatch.
-Otherwise `VIEWS`, which has no renderer for the message, refuses before
-it runs, and a view is proposed with `open_view` only when the
-installation's [enabled-view profile](./capabilities.md) as it is now
-enables it, and the proposal binds that profile's revision. The device
-note tells the model which of the two serves the message. When the
+Otherwise a `VIEWS` call is refused before it runs, and a view is proposed
+with `open_view` only when the installation's
+[enabled-view profile](./capabilities.md) as it is now enables it, and
+the proposal binds that profile's revision. Either refusal is of a call
+the message serves in the other place
+([planning](../conversation/planning.md)): the model reads where, and the
+owner hears no failure for it, so a message whose model tried the wrong
+home first and then the right one reports only the right one. The device
+tool's note tells the model which of the two serves the message. When the
 installation has a profile and the device negotiated `open_view`, the
 model is told which views it enables.
 
@@ -149,8 +155,9 @@ revision) or a phone note (`note`, with its account, source revision, ID
 and revision) selected, each of a valid form. The form is offered whenever
 the device negotiated it, and a `create_note` on any other message,
 including one with no observation or a canonical Notes selection, is
-refused before dispatch: the note request belongs to the canonical Notes
-service, and the device note says so whenever the form is offered. A
+refused before dispatch as a call the message serves elsewhere: the note
+request belongs to the canonical Notes service, and the device tool's
+note says so whenever the form is offered. A
 device that did not negotiate it has the family's guidance say so instead.
 
 ```quint

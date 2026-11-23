@@ -86,14 +86,14 @@ enabled views and the browser the agent can command shape them, so the
 tools of a phone conversation are the same bytes on every message while
 those hold. What applies to one message only (which device operations its
 screen allows, the route that owns it, how its views open) reaches the
-model after the history, in the device note, and a call that message
-cannot serve is refused before dispatch. The history follows, then the
-person's latest message, and only after it what this turn adds: the
-screen context, the device outcomes of this conversation's earlier
-requests with what this message allows on the device, the task the turn
-runs for, the note that older history is not shown and the earlier
-exchanges recalled for this request, each labelled as a note from the
-agent host. A recalled exchange is never placed among the history, so
+model after the history, in the note of the offered action it concerns,
+and a call that message serves in another place is refused before
+dispatch (below). The history follows, then the person's latest message,
+and only after it what this turn adds: the screen context, the device
+outcomes of this conversation's earlier requests, the notes of offered
+actions on what this message allows, the task the turn runs for, the note
+that older history is not shown and the earlier exchanges recalled for
+this request, each labelled as a note from the agent host. A recalled exchange is never placed among the history, so
 the history a turn sends is the one the turn before it sent, followed by
 that turn's request and reply, until the window over it steps. A provider
 reuses a request's prompt cache up to its first changed byte, and the cached prefix
@@ -141,7 +141,8 @@ home changes from one message to the next, as a phone view opens with
 `VIEWS` on a message whose views are delivered as completed actions and
 with the device tool's `open_view` on any other
 ([device surfaces](../deviceActions/surfaces.md)), keeps both tools, and
-the call the message cannot serve is refused before dispatch.
+the call the message serves in the other is refused before dispatch
+(below).
 
 ```quint
 pure def turnNarrowed(params: Set[str], narrowed: Set[str]): Set[str] = params.intersect(narrowed)
@@ -200,6 +201,41 @@ pure def lawARouteRefusesOnlyWhatItReplaces(ownsWholeRequest: bool, matched: boo
   not(refusedByRoute(ownsWholeRequest, matched, routedOffered, false))
 pure def lawARouteThatDoesNotOwnTheRequestRefusesNothing(matched: bool, routedOffered: bool, replaced: bool): bool =
   not(refusedByRoute(false, matched, routedOffered, replaced))
+```
+
+### A call this message serves in another place is refused before it runs, and is no step of the turn
+
+An action whose tool is the same on every message may say, from what a
+message carries, that a call of it has another home on that message:
+`VIEWS` on a device message whose views are not delivered as completed
+actions, where the device tool's `open_view` serves it
+([device surfaces](../deviceActions/surfaces.md)), and a device operation
+the message does not allow or that a whole-message route does not own
+([proposals](../deviceActions/index.md)). The planner asks before it
+dispatches each call, after the route (above). Such a call runs nothing,
+not even its action's own check, and the model reads in its result where
+the message is served and that nothing ran, so it may take that way, ask
+or answer. Like a call a route refuses, it is no step of the turn: the
+person's request was not refused, only one way of serving it, which the
+tool offers on other messages, so the reply never reports a failure for
+it. A call the action itself refuses (one matching none of its forms, one
+its own check declines, one its handler refuses) is a step as before.
+An action may also give the turn a note on what this message allows of
+it, such as the device tool's route lead; it is sent after the person's
+latest message only while that action is offered, so it never tells the
+model of a tool, a route or a refusal the turn does not have.
+
+```quint
+type CallAdmission = Dispatched | RefusedByItsRoute | ServedElsewhere
+pure def callAdmission(routeRefuses: bool, servedElsewhere: bool): CallAdmission =
+  if (routeRefuses) RefusedByItsRoute else if (servedElsewhere) ServedElsewhere else Dispatched
+pure def isTurnStep(a: CallAdmission): bool = a == Dispatched
+pure def lawACallRefusedBeforeDispatchIsNoStep(routeRefuses: bool, servedElsewhere: bool): bool =
+  (routeRefuses or servedElsewhere) implies not(isTurnStep(callAdmission(routeRefuses, servedElsewhere)))
+pure def lawACallNothingRefusesIsDispatched(routeRefuses: bool, servedElsewhere: bool): bool =
+  not(routeRefuses or servedElsewhere) implies callAdmission(routeRefuses, servedElsewhere) == Dispatched
+pure def actionNoteSent(actionOffered: bool, noted: bool): bool = actionOffered and noted
+pure def lawOnlyAnOfferedActionNotesTheMessage(noted: bool): bool = not(actionNoteSent(false, noted))
 ```
 
 ### The model reads what was said in the conversation, in a window taken once for the whole turn

@@ -336,9 +336,11 @@ tool is the same on every message of a device conversation while the
 negotiation and the installation's views hold
 ([planning](../conversation/planning.md)), and nothing a message carries
 changes it. What depends on the message reaches the model after it, in
-the turn's device note: the whole-message route that owns it, if any; how
-views open on it; and each offered form the message does not allow, with
-why. A form may be offered and yet not available on a message: a family
+the tool's note for the message, sent only while the tool is offered
+([planning](../conversation/planning.md)): the whole-message route that
+owns it, if any, as what to use; how views open on it; and each offered
+form the message does not allow, with why. The note says what applies,
+never that a proposal was made. A form may be offered and yet not available on a message: a family
 says which of its forms depend on what the message shows, as a new phone
 note depends on the Notes screen ([surfaces](./surfaces.md)), and on a
 message a whole-message route owns only the routed forms are available.
@@ -350,12 +352,19 @@ the operation as an object or as a JSON string of one. The family of its
 wire type may first prepare it, as telephony restores the digits of a
 number the owner wrote with separators, and the operation must then match
 one of the offered forms exactly, not only by its type, and be available
-on this message. One that matches no offered form, one that is not the
-routed request's on a routed message, and one whose form this message
-does not allow are each refused before dispatch, before the family grounds
-them: the model reads which it was and that nothing was created, so it may
-correct it, ask the owner or take another way, and the owner hears that it
-could not be prepared, never a reason taken from the screen. Its family grounds
+on this message. One that matches no offered form is refused before the
+family grounds it, as a step of the turn: the model reads that nothing was
+created, so it may correct it, and the owner hears that it could not be
+prepared. One that is not the routed request's on a routed message, or
+whose form this message does not allow, is a call the message serves in
+another place: the planner refuses it before dispatch
+([planning](../conversation/planning.md)), the model reads which it was
+and that nothing was created, so it may ask the owner or take that other
+way, and it is no step of the turn, so the owner hears no failure for a
+form the tool offers only because the tool is the same on every message.
+The handler refuses it the same way if it is ever called otherwise, and
+the owner then hears that it could not be prepared, never a reason taken
+from the screen. Its family grounds
 it in the owner's words: the host-persisted text of the message, without
 its document wrapper, and none at all when that text carries an external
 envelope, so words inside a page, an email or a connector's payload never
@@ -393,6 +402,11 @@ pure def lawARoutedMessageProposesOnlyItsRoute(deviceTurn: bool, offeredForm: bo
   proposalReply(deviceTurn, formAvailability(offeredForm, true, availableNow), verdict, admitted) == RefusedBeforeDispatch
 pure def lawAGroundedProposalIsReadmitted(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict): bool =
   proposalReply(deviceTurn, availability, verdict, false) == RefusedBeforeDispatch
+pure def servedElsewhere(availability: FormAvailability): bool = availability == FormRoutedAway or availability == FormNotAvailableNow
+pure def lawAFormServedElsewhereIsNeverProposed(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict, admitted: bool): bool =
+  servedElsewhere(availability) implies proposalReply(deviceTurn, availability, verdict, admitted) == RefusedBeforeDispatch
+pure def lawAnUnmatchedOperationIsNotServedElsewhere(routedAway: bool, availableNow: bool): bool =
+  not(servedElsewhere(formAvailability(false, routedAway, availableNow)))
 ```
 
 ### Each wire type belongs to at most one proposal family, and a family offers forms only of its own types

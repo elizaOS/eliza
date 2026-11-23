@@ -1,12 +1,12 @@
-// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/deviceActions/surfaces.md, "A whole-message photo command is routed to the capture, never to opening Camera"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
+// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A whole-message photo command is routed to the capture, never to opening Camera"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
 module node {
   import { Effect } from "effect"
   import { validateSchema, type Action, type ActionContext, type ActionResult, type EffectReceipt, type IAgentRuntime, type JsonSchema, type Memory, type ProviderValue } from "@elizaos/core"
-  import { canExpire, formAvailability, proposalAnswer, proposalReply, requestSettled, returnsOpenRequest, settledApplied, type ProposalGrounding } from "../../../gen/agent__deviceActions.ts"
+  import { canExpire, formAvailability, proposalAnswer, proposalReply, requestSettled, returnsOpenRequest, servedElsewhere, settledApplied, type FormAvailability, type ProposalGrounding } from "../../../gen/agent__deviceActions.ts"
   import { isRefused } from "../../../gen/agent__deviceActions__capabilities.ts"
   import { completableRead, directEligible } from "../../../gen/agent__deviceActions__operations.ts"
   import { proposeDeviceAction as declared } from "../../../gen/agent__plugins__profile.ts"
-  import { turnFirstCalls, turnToolForms, type TurnToolForm } from "../../conversation/planning.vibe"
+  import { turnElsewhere, turnFirstCalls, turnNotes, turnToolForms, type TurnToolForm } from "../../conversation/planning.vibe"
   import { gateRoles } from "../../plugins/basic-actions.vibe"
   import { bindingHash } from "../operation-schemas/telephony.vibe"
   import { deviceOperationTypes, readOperation, type DeviceOperation } from "../operations.schema.vibe"
@@ -14,7 +14,7 @@ module node {
   import type { DeviceProposalFamily, DeviceTurn, NegotiatedDevice, ProposalForm } from "./family.vibe"
   import { carriesMessage, offerProposal, proposalId } from "./offer.vibe"
   import { proposalEffectReceipts } from "./receipts.vibe"
-  import { availableNow, familyOf, negotiatedPart, offeredForms, registeredFamilies, routedRequest } from "./registry.vibe"
+  import { availableNow, familyOf, messageNote, negotiatedPart, offeredForms, registeredFamilies, routedRequest } from "./registry.vibe"
   import { deviceTurnFor } from "./turn.vibe"
 
   export const proposeDeviceActionName = declared.name
@@ -92,15 +92,20 @@ module node {
     })
   }
 
-  function withheldFor(runtime: IAgentRuntime, turn: DeviceTurn, operation: unknown): Refusal | undefined {
+  function withheldFor(runtime: IAgentRuntime, turn: DeviceTurn, operation: unknown): { readonly availability: FormAvailability; readonly refusal?: Refusal } {
     const forms = offeredForms(runtime, turn).filter((form) => matchesForm([form], operation))
     const routed = routedRequest(runtime, turn)
-    switch (formAvailability(forms.length > 0, routed !== undefined && !forms.some((form) => routed.forms.includes(form)), forms.some((form) => availableNow(form, turn)))) {
-      case "FormNotOffered": return notOffered
-      case "FormRoutedAway": return routedAway(routed?.forms ?? [])
-      case "FormNotAvailableNow": return notNow(forms)
-      case "FormAvailable": return undefined
+    const availability = formAvailability(forms.length > 0, routed !== undefined && !forms.some((form) => routed.forms.includes(form)), forms.some((form) => availableNow(form, turn)))
+    switch (availability) {
+      case "FormNotOffered": return { availability, refusal: notOffered }
+      case "FormRoutedAway": return { availability, refusal: routedAway(routed?.forms ?? []) }
+      case "FormNotAvailableNow": return { availability, refusal: notNow(forms) }
+      case "FormAvailable": return { availability }
     }
+  }
+
+  function preparedOf(runtime: IAgentRuntime, input: unknown): unknown {
+    return familyFor(runtime, input)?.prepare?.(input) ?? input
   }
 
   function toolForm(runtime: IAgentRuntime, device: NegotiatedDevice): TurnToolForm | undefined {
@@ -215,11 +220,11 @@ module node {
   async function propose(runtime: IAgentRuntime, message: Memory, input: unknown, earlier: readonly ActionResult[]): Promise<ActionResult> {
     const turn = deviceTurnFor(runtime, message)
     if (turn === undefined || isRefused(turn.negotiation)) return refused(unbound)
-    const prepared = familyFor(runtime, input)?.prepare?.(input) ?? input
+    const prepared = preparedOf(runtime, input)
     const proposed = readOperation(prepared)
     const family = proposed === undefined ? undefined : familyOf(runtime, proposed.operation.type)
     if (proposed === undefined || family === undefined) return refused(notOffered)
-    const withheld = withheldFor(runtime, turn, prepared)
+    const withheld = withheldFor(runtime, turn, prepared).refusal
     if (withheld !== undefined) return refused(withheld)
     const grounded = await Effect.runPromise(family.ground(proposed, turn))
     const admitted = grounded.kind === "Grounded" && family.types.includes(grounded.operation.type) ? turn.admit(grounded.operation) : undefined
@@ -262,12 +267,27 @@ module node {
     return turn === undefined || isRefused(turn.negotiation) ? undefined : toolForm(runtime, negotiatedPart(turn))
   })
 
+  turnElsewhere.set(proposeDeviceAction, (runtime, message, params) => {
+    const turn = deviceTurnFor(runtime, message)
+    if (turn === undefined || isRefused(turn.negotiation)) return undefined
+    const prepared = preparedOf(runtime, operationOf(params))
+    const proposed = readOperation(prepared)
+    if (proposed === undefined || familyOf(runtime, proposed.operation.type) === undefined) return undefined
+    const { availability, refusal } = withheldFor(runtime, turn, prepared)
+    return refusal === undefined || !servedElsewhere(availability) ? undefined : { code: refusal.code, text: refusal.forModel }
+  })
+
+  turnNotes.set(proposeDeviceAction, (runtime, message) => {
+    const turn = deviceTurnFor(runtime, message)
+    return turn === undefined || isRefused(turn.negotiation) ? undefined : messageNote(runtime, turn)
+  })
+
   turnFirstCalls.set(proposeDeviceAction, (runtime, message) => {
     const turn = deviceTurnFor(runtime, message)
     if (turn === undefined || isRefused(turn.negotiation)) return undefined
     const asked = registeredFamilies(runtime).flatMap((family) => family.wholeMessageOperation?.(turn) ?? [])
     const operation = asked[0]
-    return asked.length === 1 && withheldFor(runtime, turn, operation) === undefined ? JSON.stringify({ operation }) : undefined
+    return asked.length === 1 && withheldFor(runtime, turn, operation).availability === "FormAvailable" ? JSON.stringify({ operation }) : undefined
   })
 }
 
