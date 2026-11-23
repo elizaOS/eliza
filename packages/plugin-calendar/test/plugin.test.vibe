@@ -440,6 +440,20 @@ it.effect(`Create a repeating event through the reviewed create (spec/calendar/a
   assert.deepStrictEqual([refusal.result, refusal.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_RECURRENCE_UNSUPPORTED", 0])
 })
 
+it.effect(`Change my calendar only as I asked and know it happened, at a free time and for the one event I meant (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone")`, effect () => {
+  try TestClock.setTime(Date.parse("2030-03-01T12:00:00Z"))
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
+  const ask = { by: "owner-entity", conversation: "room:owner", text: "", ownerZone: "America/Los_Angeles" }
+  const run = (id: string, parameters: Record<string, unknown>) => runCalendarAction(host, { ...ask, id }, { reviewBeforeCreate: false, ...parameters })
+  const span = (result: { readonly data?: unknown }) => [at(result.data, "event", "startAt"), at(result.data, "event", "endAt")]
+  const dentist = try run("slot-1", { subaction: "create_event", title: "Dentist", startAt: "2030-03-04T09:00" })
+  const call = try run("slot-2", { subaction: "create_event", title: "Call", startAt: "2030-03-04T11:00", durationMinutes: 30 })
+  const skipped = try run("slot-3", { subaction: "create_event", title: "Ghost", startAt: "2030-03-10T02:30" })
+  const endless = try run("slot-4", { subaction: "create_event", title: "Marathon", startAt: "2030-03-04T14:00", durationMinutes: 481 })
+  assert.deepStrictEqual([span(dentist), span(call), at(skipped.data, "code"), at(endless.data, "code")],
+    [["2030-03-04T17:00:00.000Z", "2030-03-04T18:00:00.000Z"], ["2030-03-04T19:00:00.000Z", "2030-03-04T19:30:00.000Z"], "CALENDAR_WALL_TIME_UNRESOLVED", "CALENDAR_EVENT_LENGTH_INVALID"])
+})
+
 it.effect(`Attendees hear of a change only when the owner asked and the calendar can tell them (spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat")`, effect () => {
   const rowsKey = "calendar:kv:calendar.resident.rows.agent.resident%3Aagent"
   const planning = { id: "resident-planning", calendarId: "primary", title: "Planning", body: "", location: "", begin: Date.parse("2030-03-04T17:00:00Z"), end: Date.parse("2030-03-04T18:00:00Z"),

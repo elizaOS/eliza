@@ -1,11 +1,13 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"
 import { readTurnContext } from "@elizaos/agent"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  chatCreateReviewed, deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
+  chatCreateReviewed, createEndMs, deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked,
+  ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
-import { createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, statedYearCreate } from "../clock.vibe"
+import { instantRead } from "../../gen/calendar__readClock.effect.vibe"
+import { buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, statedYearCreate } from "../clock.vibe"
 import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
@@ -28,8 +30,9 @@ const maxSpan = 370 * day
 const subactions = ["search_events", "next_event", "trip_window", "check_availability", "propose_times", "create_event", "update_event", "delete_event"] as const
 type Subaction = typeof subactions[number]
 
-const isoWithZone = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/
-const Instant = Schema.String.check(Schema.makeFilter((text) => isoWithZone.test(text) && Number.isFinite(Date.parse(text))))
+const isoInstant = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)?$/
+const wallClock = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)(?::(\d\d))?(?:\.\d{1,3})?$/
+const Instant = Schema.String.check(Schema.makeFilter((text) => isoInstant.test(text) && Number.isFinite(Date.parse(text))))
 const Words = (limit: number) => Schema.String.check(Schema.isMaxLength(limit))
 const Parameters = Schema.Struct({
   subaction: Schema.Literals(subactions),
@@ -64,6 +67,35 @@ const decodeFields = Schema.decodeUnknownOption(FieldsRecord)
 const decodeRecurrence = Schema.decodeUnknownOption(RecurrenceRecord)
 
 const canonical = (instant: string) => new Date(Date.parse(instant)).toISOString()
+
+function inZone(sent: string, zone: string): string | undefined {
+  const wall = wallClock.exec(sent)
+  const at = wall === null ? undefined
+    : buildUtcDateFromLocalParts(zone, { year: Number(wall[1]), month: Number(wall[2]), day: Number(wall[3]), hour: Number(wall[4]), minute: Number(wall[5]), second: Number(wall[6] ?? "0") }, "reject")
+  switch (instantRead(wall === null, at !== undefined)) {
+    case "InstantAsSent": return sent
+    case "InstantInRequestZone": return at?.toISOString()
+    case "InstantRefused": return undefined
+  }
+}
+
+const instantKeys = ["timeMin", "timeMax", "startAt", "endAt", "repeatUntil"] as const
+
+function wallTimesIn(sent: Parameters, zone: string): Parameters | undefined {
+  const read: { -readonly [Key in keyof Parameters]: Parameters[Key] } = { ...sent }
+  for (const key of instantKeys) {
+    const instant = read[key]
+    if (instant === undefined) continue
+    const at = inZone(instant, zone)
+    if (at === undefined) return undefined
+    read[key] = at
+  }
+  const skipped = read.skipStarts?.map((start) => inZone(start, zone))
+  if (skipped === undefined) return read
+  const starts = skipped.flatMap((start) => start === undefined ? [] : [start])
+  if (starts.length !== skipped.length) return undefined
+  return { ...read, skipStarts: starts }
+}
 
 function wallTime(event: CalendarEvent, zone: string): string {
   try {
@@ -367,12 +399,16 @@ effect function freeTime(host: CalendarHost, ask: CalendarAsk, parameters: Param
   }
 }
 
-effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Parameters): ActionResult!! {
-  const subaction = parameters.subaction
+effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): ActionResult!! {
+  const subaction = sent.subaction
   const now = try Clock.currentTimeMillis
   const zones = zonesOf(ask)
-  const zone = requestTimeZone({ ...zones, ...(parameters.timeZone === undefined ? {} : { explicit: parameters.timeZone }) })
+  const zone = requestTimeZone({ ...zones, ...(sent.timeZone === undefined ? {} : { explicit: sent.timeZone }) })
   const createZone = createTimeZone(zones)
+  const parameters = wallTimesIn(sent, subaction === "create_event" ? createZone : zone)
+  if (parameters === undefined) {
+    return failed(subaction, "One of those times is skipped or shown twice by that day's clock change, so it names no single moment. Nothing was read or changed.", { code: "CALENDAR_WALL_TIME_UNRESOLVED" })
+  }
   const askedBy = ask.by
   const askId = `${ask.id}:${subaction}`
   switch (subaction) {
@@ -402,9 +438,16 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
     case "create_event": {
       const guests = newGuests(parameters, askTextOf(ask))
       if (guests.kind === "refused") return failed(subaction, guests.text, { code: "CALENDAR_GUEST_NOT_GROUNDED" })
+      const length = parameters.endAt === undefined ? parameters.durationMinutes ?? 0 : 0
+      if (length !== 0 && !(Number.isInteger(length) && slotMinutesAllowed(length))) {
+        return failed(subaction, "A new event's length is a whole number of minutes from 5 to 480. Nothing was saved.", { code: "CALENDAR_EVENT_LENGTH_INVALID" })
+      }
+      const begin = parameters.startAt === undefined ? undefined : Date.parse(parameters.startAt)
+      const finish = begin === undefined ? undefined
+        : createEndMs(begin, parameters.endAt !== undefined, parameters.endAt === undefined ? begin : Date.parse(parameters.endAt), length, parameters.isAllDay === true)
       const fields = decodeFields({
         title: parameters.title ?? "", description: parameters.description ?? "", location: parameters.location ?? "",
-        startAt: parameters.startAt === undefined ? "" : canonical(parameters.startAt), endAt: parameters.endAt === undefined ? "" : canonical(parameters.endAt),
+        startAt: begin === undefined ? "" : new Date(begin).toISOString(), endAt: finish === undefined ? "" : new Date(finish).toISOString(),
         isAllDay: parameters.isAllDay ?? false, timeZone: createZone, ...(guests.attendees === undefined ? {} : { attendees: guests.attendees }),
       })
       if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return failed(subaction, "A new event needs a title and a start before its end.")
@@ -475,18 +518,18 @@ export const calendarAction: Action = {
   parameters: [
     { name: "subaction", required: true, description: "What to do.", schema: { type: "string", enum: [...subactions] } },
     { name: "query", required: false, description: "Words of the event to look for: its title, notes, place or a guest. For trip_window, the place.", schema: { type: "string" } },
-    { name: "timeMin", required: false, description: "Start of the range to read, ISO 8601 with an offset. Required for check_availability and propose_times.", schema: { type: "string" } },
-    { name: "timeMax", required: false, description: "End of the range to read, ISO 8601 with an offset. Required for check_availability and propose_times; a morning-only request ends no later than noon in the request's zone.", schema: { type: "string" } },
+    { name: "timeMin", required: false, description: "Start of the range to read: ISO 8601 with an offset, or wall time without one (2030-03-04T09:00), read in the request's zone. Required for check_availability and propose_times.", schema: { type: "string" } },
+    { name: "timeMax", required: false, description: "End of the range to read, written like timeMin. Required for check_availability and propose_times; a morning-only request ends no later than noon in the request's zone.", schema: { type: "string" } },
     { name: "eventId", required: false, description: "The id of the event to change, from an earlier result.", schema: { type: "string" } },
     { name: "calendarId", required: false, description: "The calendar to read or write.", schema: { type: "string" } },
     { name: "title", required: false, description: "The event title, exactly as it should be saved.", schema: { type: "string" } },
     { name: "description", required: false, description: "The event notes, exactly as they should be saved.", schema: { type: "string" } },
     { name: "location", required: false, description: "The event location, exactly as it should be saved.", schema: { type: "string" } },
-    { name: "startAt", required: false, description: "The event start, ISO 8601 with an offset.", schema: { type: "string" } },
-    { name: "endAt", required: false, description: "The event end, ISO 8601 with an offset.", schema: { type: "string" } },
+    { name: "startAt", required: false, description: "The event start: ISO 8601 with an offset, or wall time without one (2030-03-04T09:00), read in the owner's zone.", schema: { type: "string" } },
+    { name: "endAt", required: false, description: "The event end, written like startAt. Left out, a new event lasts durationMinutes, else one hour, or one day when all-day.", schema: { type: "string" } },
     { name: "isAllDay", required: false, description: "Whether the event lasts whole days.", schema: { type: "boolean" } },
     { name: "timeZone", required: false, description: "The IANA zone the owner named for this request.", schema: { type: "string" } },
-    { name: "durationMinutes", required: false, description: "For propose_times: the exact number of minutes each opening needs. Do not guess a missing length.", schema: { type: "integer", minimum: 5, maximum: 480 } },
+    { name: "durationMinutes", required: false, description: "For propose_times: the exact number of minutes each opening needs. For create_event without endAt: the event's length. Do not guess a missing length.", schema: { type: "integer", minimum: 5, maximum: 480 } },
     { name: "confirmedPastStart", required: false, description: "The owner confirmed creating an event whose start has passed.", schema: { type: "boolean" } },
     { name: "reviewBeforeCreate", required: false, description: "For a new event: false only when the owner plainly asked to save it now; true, or left out, puts it up for the owner's review first.", schema: { type: "boolean" } },
     { name: "reviewBeforeSaving", required: false, description: "For a new event: true when the owner asked to preview, review or confirm it before it is saved, or to prepare it without saving yet; it then waits for the owner's approval instead of a chat summary. Keep it when the owner adds missing details to that event. An explicit request to review takes priority.", schema: { type: "boolean" } },

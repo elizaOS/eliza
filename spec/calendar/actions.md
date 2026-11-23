@@ -286,6 +286,28 @@ pure def lawOnlyAGuestOfTheEventIsRemoved(addsWritten: bool, removalsNamed: bool
   guestChange(addsWritten, removalsNamed, false) != GuestsAsAsked
 ```
 
+### A new event with a start and no end lasts the asked minutes, else one hour
+
+A create that gives a start and no end ends after the length the request
+gives, a whole number of minutes from 5 to 480; with no length, a timed
+event lasts one hour and an all-day event one day. A stated end is kept
+as sent, and a length outside those bounds is refused before anything is
+saved.
+
+```quint
+pure val defaultEventMs: int = 3600000
+pure val allDayEventMs: int = 86400000
+pure def createEndMs(startMs: int, endGiven: bool, endMs: int, lengthMinutes: int, wholeDay: bool): int =
+  if (endGiven) endMs
+  else if (lengthMinutes > 0) startMs + lengthMinutes * 60000
+  else if (wholeDay) startMs + allDayEventMs
+  else startMs + defaultEventMs
+pure def lawAStatedEndIsKept(startMs: int, endMs: int, lengthMinutes: int, wholeDay: bool): bool =
+  createEndMs(startMs, true, endMs, lengthMinutes, wholeDay) == endMs
+pure def lawAnOpenEndedEventEndsAfterItStarts(startMs: int, endMs: int, lengthMinutes: int, wholeDay: bool): bool =
+  createEndMs(startMs, false, endMs, lengthMinutes, wholeDay) > startMs
+```
+
 ### A write goes to the active account's writable calendar, at once only for the resident calendar
 
 A write needs the active account and a calendar that account can write.

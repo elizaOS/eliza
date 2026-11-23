@@ -35,6 +35,27 @@ pure def lawOwnerZoneOtherwise(explicit: ZoneHint, client: ZoneHint, owner: Cloc
   not(explicit.present) and not(client.present) implies requestZone(explicit, client, owner) == owner
 ```
 
+### A time sent without an offset is wall time in the request's zone
+
+A time the Calendar action receives is an instant when it carries its own
+offset, and is then used as sent. Without one it is wall-clock time, read
+in the request's zone, or for a new event in the create's context zone,
+so code and not the planner applies the offset of that date. A wall time
+that the zone's clock skips, or shows twice, names no single instant: the
+request is refused and nothing is read or changed.
+
+```quint
+type InstantRead = InstantAsSent | InstantInRequestZone | InstantRefused
+pure def instantRead(carriesOffset: bool, wallTimeIsOneInstant: bool): InstantRead =
+  if (carriesOffset) InstantAsSent
+  else if (wallTimeIsOneInstant) InstantInRequestZone
+  else InstantRefused
+pure def lawAnOffsetIsUsedAsSent(wallTimeIsOneInstant: bool): bool =
+  instantRead(true, wallTimeIsOneInstant) == InstantAsSent
+pure def lawASkippedOrRepeatedWallTimeIsRefused(carriesOffset: bool): bool =
+  not(carriesOffset) implies instantRead(carriesOffset, false) == InstantRefused
+```
+
 ### Display shifts the canonical instant by the zone's offset on that date
 
 A displayed time is the stored UTC minute plus the chosen zone's offset
