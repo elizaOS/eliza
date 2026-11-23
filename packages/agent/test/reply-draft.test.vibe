@@ -18,10 +18,10 @@ effect function draft(agent: InProcess, cloud: CloudFake, body: unknown) {
   return { answer: "status" in answer ? [answer.status, answer.json] : [0, answer.refused], calls: made.length, sent: made[0]?.body }
 }
 
-it.live('Draft a reply I can edit and send myself: a refused thread, a short code and a blank last message never reach the model; an admitted thread makes one uncapped call whose answer is cleaned, cut and checked; a failed call or a rate-limited binding answers 503 (spec/agent/deviceActions/replyDraft.md, "Story: Draft a reply I can edit and send myself")', effect () => {
+it.live('Draft a reply I can edit and send myself: a refused thread, a short code and a blank last message never reach the model; an admitted thread makes one call uncapped even under a configured default cap whose answer is cleaned, cut and checked; a failed call or a rate-limited binding answers 503 (spec/agent/deviceActions/replyDraft.md, "Story: Draft a reply I can edit and send myself")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
-    launch: { load: ["@elizaos/agent/reply-draft"], backend: { kind: "cloud", origin: cloud.origin } },
+    launch: { load: ["@elizaos/agent/reply-draft"], backend: { kind: "cloud", origin: cloud.origin }, environment: { DEFAULT_MAX_TOKENS: "160" } },
     frame: { credential: { version: 1, value: deviceKey } },
   })
   const refused = { answer: [400, { error: "invalid_thread" }], calls: 0, sent: undefined }

@@ -137,7 +137,8 @@ pure def lawNoMessageUnitCanEndItsStringOrTheBlock(u: TextUnit): bool = endsStri
 
 ### The answer is one draft of at most 320 units, or none, and nothing is sent
 
-The call sets no output cap, since a model's reasoning counts inside one
+The call sets no output cap, even when a default or small-model cap
+is configured, since a model's reasoning counts inside one
 and a small cap can end the call before any reply text, and it carries the
 caller's cancellation.
 Each run of whitespace in the model's text becomes one space and
