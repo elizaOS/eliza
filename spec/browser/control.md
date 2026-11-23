@@ -19,10 +19,10 @@ A search needs `browser.search.v1`; opening, switching and closing a tab
 need `browser.tabs.v1`; find needs `browser.find.v1`; back, forward, reload
 and stop need `browser.history.v1`. A phone that did not advertise a group is
 never offered or sent its controls. Opening a typed address in a tab of its
-own needs `browser.open-new-tab.v1`: without it the phone opens the address
-in its own earlier tab, replacing that page, and a request for a new tab is
-refused rather than placed in the reused tab. A private tab is asked for
-explicitly, opens empty, and is never where an address is placed.
+own needs `browser.open-new-tab.v1`: without it the phone is never sent a
+new-tab open, and an address asked for in a new tab opens as it always has,
+in the phone's own earlier tab, replacing that page. A private tab is asked
+for explicitly, opens empty, and is never where an address is placed.
 
 ```quint
 type BrowserControl = SearchControl | TabNewControl | TabSwitchControl | TabCloseControl | FindControl | HistoryControl
@@ -111,6 +111,25 @@ pure val requestValues = Set(directHistory, { ...directHistory, boundToMessage: 
   { ...directHistory, control: SearchControl, wordsTyped: true }, { ...directHistory, control: FindControl, wordsTyped: true }, { ...directHistory, control: TabNewControl })
 ```
 
+### A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command
+
+Where the owner's enrolled phone negotiated `browser.history.v1`, back,
+forward, reload and stop are offered only as the Browser history control,
+and the BROWSER command is not offered on that turn. The BROWSER command,
+bound to the tab the turn observed, answers a history move only on a turn
+whose device negotiated no history control and whose mounted browser takes
+agent commands. Otherwise no history move is offered.
+
+```quint
+type HistoryHome = HistoryAsControl | HistoryAsCommand | NoHistoryMove
+pure def historyHome(negotiated: Negotiated, commandReachable: bool): HistoryHome =
+  if (controlOffered(HistoryControl, negotiated)) HistoryAsControl else if (commandReachable) HistoryAsCommand else NoHistoryMove
+pure def lawANegotiatedHistoryMoveIsNeverACommand(negotiated: Negotiated, commandReachable: bool): bool =
+  controlOffered(HistoryControl, negotiated) implies historyHome(negotiated, commandReachable) == HistoryAsControl
+pure def lawACommandAnswersOnlyWithoutTheControl(negotiated: Negotiated, commandReachable: bool): bool =
+  historyHome(negotiated, commandReachable) == HistoryAsCommand implies (commandReachable and not(controlOffered(HistoryControl, negotiated)))
+```
+
 ## Story: Tell me a Browser command was sent, never that the page finished
 
 > As the owner, I want to hear that my browser was asked to go back, forward
@@ -173,14 +192,40 @@ pure val typedWords: SearchWords = { readable: true, typedAsWholeWords: true, ty
 pure val wordsValues = Set(typedWords, { ...typedWords, typedAsWholeWords: false }, { ...typedWords, readable: false })
 ```
 
+### A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message
+
+A grounded search is bound to the owner's current message only when that
+whole message is the search and its words are the query; a tab switch or a
+find only when the owner typed its words in that message; a new tab, a tab
+close and a history move whenever they are grounded. Any other is offered
+unbound to the message, so the phone shows its review card before it runs:
+the phone's answer to words the model chose would tell the agent about the
+owner's tabs or page. A tab close is reviewed however it is bound.
+
+```quint
+type ProposedControl = { control: BrowserControl, wholeMessage: bool, wordsTyped: bool }
+pure def controlBound(proposed: ProposedControl): bool =
+  if (proposed.control == SearchControl) proposed.wholeMessage and proposed.wordsTyped
+  else not(needsTypedWords(proposed.control)) or proposed.wordsTyped
+pure def lawUntypedWordsAreNeverBound(proposed: ProposedControl): bool =
+  (needsTypedWords(proposed.control) and not(proposed.wordsTyped)) implies not(controlBound(proposed))
+pure def lawOnlyMyWholeMessageSearchIsBound(proposed: ProposedControl): bool =
+  (proposed.control == SearchControl and controlBound(proposed)) implies proposed.wholeMessage
+pure val typedSearch: ProposedControl = { control: SearchControl, wholeMessage: true, wordsTyped: true }
+pure val proposedValues = Set(typedSearch, { ...typedSearch, wholeMessage: false }, { ...typedSearch, wordsTyped: false }, { ...typedSearch, control: FindControl, wholeMessage: false },
+  { ...typedSearch, control: TabSwitchControl, wordsTyped: false }, { ...typedSearch, control: HistoryControl, wordsTyped: false }, { ...typedSearch, control: TabCloseControl, wordsTyped: false })
+```
+
 ### Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed
 
-A proposal to close every tab, on a phone that negotiated tab controls but
-not `browser.tabs.close-all.v1`, is refused before anything is kept, with
-the reason that this phone closes one tab at a time, so the agent can tell
-the owner and offer the tab that is showing or a tab they name. It is never
-proposed as a close of the tab that is showing. Each other close the phone
-negotiated is proposed as it was asked.
+The model may ask to close every tab wherever the phone negotiated tab
+controls, so that a request for all of them is never narrowed for want of a
+way to say it. A proposal to close every tab, on a phone that negotiated tab
+controls but not `browser.tabs.close-all.v1`, is refused before anything is
+kept, with the reason that this phone closes one tab at a time, so the agent
+can tell the owner and offer the tab that is showing or a tab they name. It
+is never proposed as a close of the tab that is showing. Each other close
+the phone negotiated is proposed as it was asked.
 
 ```quint
 type CloseAnswer = CloseProposed | CloseEveryRefused | CloseUnavailable
