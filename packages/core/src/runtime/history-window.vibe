@@ -96,20 +96,35 @@ function recall(sources: readonly HistorySource[], shown: ReadonlySet<number>, r
   return [...recalled]
 }
 
-/** What a turn read of a conversation beyond its sources: how many older originals it did not read, and a boundary a reviewer or an earlier window recorded over the sources. */
+/** What a turn read of a conversation beyond its sources: how many older stored messages it did not read, how many it read and where each source lies among them (a notice or an empty reply is read but is no source), and a boundary a reviewer or an earlier window recorded over the sources. */
 export interface HistoryRead {
   readonly earlier?: number
+  readonly readCount?: number
+  readonly positions?: readonly number[]
   readonly previous?: HistoryReview
 }
 
-/** Bounds a conversation's history for a host where no reviewer runs, keeping standing instructions in the history and recalling, apart from it, the exchanges the request's words point at. */
+function readPositions(sources: readonly HistorySource[], read: HistoryRead): { readonly positions: readonly number[]; readonly count: number } {
+  const { readCount, positions } = read
+  const valid = positions !== undefined && readCount !== undefined && Number.isSafeInteger(readCount) && positions.length === sources.length
+    && positions.every((position, index) => Number.isSafeInteger(position) && position >= (index === 0 ? 0 : positions[index - 1] + 1) && position < readCount)
+  return valid ? { positions, count: readCount } : { positions: sources.map((_, index) => index), count: sources.length }
+}
+
+/** Bounds a conversation's history for a host where no reviewer runs, keeping standing instructions in the history and recalling, apart from it, the exchanges the request's words point at. Positions count every stored message, so the boundary steps with the conversation, not with what a turn reads. */
 export function windowHistory<S extends HistorySource>(sources: readonly S[], request: string, read: HistoryRead = {}): HistoryWindow<S> {
   const prior = validReview(sources, read.previous)
   const earlier = read.earlier !== undefined && Number.isSafeInteger(read.earlier) && read.earlier > 0 ? read.earlier : 0
-  const reviewed = earlier + prior.reviewedCount
-  const userPositions = sources.flatMap((source, index) => source.fromUser ? [earlier + index] : [])
-  const count = earlier + sources.length
-  const boundary = windowBoundary(count, userPositions, reviewed, HISTORY_WINDOW_MAX_SOURCES, HISTORY_WINDOW_KEEP_SOURCES) - earlier
+  const within = readPositions(sources, read)
+  const position = (index: number) => earlier + within.positions[index]
+  const sourceAt = (stored: number) => {
+    const index = within.positions.findIndex((_, at) => position(at) >= stored)
+    return index < 0 ? sources.length : index
+  }
+  const reviewed = prior.reviewedCount === 0 ? earlier : position(prior.reviewedCount - 1) + 1
+  const userPositions = sources.flatMap((source, index) => source.fromUser ? [position(index)] : [])
+  const count = earlier + within.count
+  const boundary = sourceAt(windowBoundary(count, userPositions, reviewed, HISTORY_WINDOW_MAX_SOURCES, HISTORY_WINDOW_KEEP_SOURCES))
   const windowed = boundary > prior.reviewedCount
   const retained = new Set(prior.retainedIds)
   if (windowed) {
@@ -119,7 +134,8 @@ export function windowHistory<S extends HistorySource>(sources: readonly S[], re
       .slice(-HISTORY_WINDOW_STANDING_SOURCES)
     for (const source of standing) retained.add(source.id)
   }
-  const from = shownFrom(count, earlier + boundary, earlier + exchangeStart(sources), HISTORY_WINDOW_MAX_SOURCES, HISTORY_CONTINUITY_SOURCES) - earlier
+  const storedAt = (index: number) => index < sources.length ? position(index) : count
+  const from = sourceAt(shownFrom(count, storedAt(boundary), storedAt(exchangeStart(sources)), HISTORY_WINDOW_MAX_SOURCES, HISTORY_CONTINUITY_SOURCES))
   const visible = new Set<number>()
   sources.forEach((source, index) => {
     if (index >= from || retained.has(source.id)) visible.add(index)
