@@ -9,9 +9,11 @@ export interface ServedDatabase {
   close(): Promise<void>;
 }
 
+const everyConnection = Number.MAX_SAFE_INTEGER;
+
 export async function serveDatabase(setup?: DatabaseSetup): Promise<ServedDatabase> {
   const db = await PGlite.create();
-  const server = new PGLiteSocketServer({ db, host: "127.0.0.1", port: 0, maxConnections: 10 });
+  const server = new PGLiteSocketServer({ db, host: "127.0.0.1", port: 0, maxConnections: everyConnection });
   const close = async () => {
     try {
       await server.stop();
