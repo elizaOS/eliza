@@ -2,21 +2,16 @@
 import type { Driver, Options } from "../../gen/cloud__identity__accounts.conformance.ts";
 import type { Account, Event } from "../../gen/cloud__identity__accounts.ts";
 import { readAccount, stepAccount } from "../../src/identity/accounts.vibe";
-import { ledger, within } from "../support/ledger.ts";
+import { identityDriverLedger, within } from "../support/ledger.ts";
 
-const cloud = ledger();
-const emitted = new Map<string, unknown>();
+const cloud = identityDriverLedger();
 const account = (key: string) => `account-${key}`;
 const scoped = (key: string, organizationId: string) => `${key}/${organizationId}`;
 
 async function dispatch(key: string, event: Event) {
   const sent = event.type === "openAccount" ? { ...event, organizationId: scoped(key, event.organizationId) } : event;
   if (sent.type === "openAccount") await cloud.sql("INSERT INTO organizations (id, name, created_at) VALUES ($1, $1, 0) ON CONFLICT (id) DO NOTHING", [sent.organizationId]);
-  const done = await cloud.run(within((tx) => stepAccount(tx, account(key), sent, 0)));
-  emitted.set(key, done.kind === "done" ? done.value.out : []);
-  if (done.kind === "done") return "accepted" as const;
-  if (done.tag === "Rejected") return "refused" as const;
-  throw new Error(`the cloud failed with ${done.tag}`, { cause: done.error });
+  return cloud.dispatch(key, within((tx) => stepAccount(tx, account(key), sent, 0)), (value) => value.out);
 }
 
 async function observe(key: string): Promise<Account> {
@@ -28,13 +23,10 @@ async function observe(key: string): Promise<Account> {
 }
 
 export const driver: Driver & AsyncDisposable = {
-  reset: async () => {
-    emitted.clear();
-    await cloud.reset([]);
-  },
+  reset: () => cloud.reset([]),
   dispatch,
   observe,
-  observeOutput: (key) => emitted.get(key) ?? [],
+  observeOutput: cloud.observeOutput,
   [Symbol.asyncDispose]: () => cloud.dispose(),
 };
 
