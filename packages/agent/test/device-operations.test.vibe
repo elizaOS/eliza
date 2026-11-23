@@ -20,7 +20,7 @@ const everyOperation = {
   SmsDraft: true, PhoneKeypad: true, ContactShow: true, ContactReadSelected: true,
   ReadSelectedNotes: true, ReadCalendarRange: true, ReadSelectedReminders: true, PostNotification: true, SpeakText: true,
   CreateNote: true, CreateReminder: true, OpenView: true, BrowserNavigate: true,
-  BrowserSearch: true, BrowserTabNew: true, BrowserTabSwitch: true, BrowserTabClose: true, BrowserFind: true, BrowserHistory: true,
+  BrowserSearch: true, BrowserTabNew: true, BrowserTabSwitch: true, BrowserTabClose: true, BrowserTabsShow: true, BrowserFind: true, BrowserHistory: true,
 } as const satisfies Record<OperationType, true>
 
 const alarm = { type: "clock_handoff", action: "set", hour: 7, minute: 30, label: "Wake up", timeZone: "Europe/Berlin" } as const
