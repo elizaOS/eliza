@@ -187,7 +187,7 @@ const declarations = [
   [
     "DEVICE_BROWSER_TAB_OVERVIEW",
     "browser_tabs_show",
-    "Show the owner this phone's Browser tab list (browser.tabs.show.v1) when they ask to see, show or list their tabs, or which tabs they have. The owner reads the list on the phone; you never receive it, a title, an address or a count, so never say which tabs there are or how many: say the list is showing on the phone.",
+    "Show the owner this phone's Browser tab list (browser.tabs.show.v1) when they ask to see, show or list their tabs, or which tabs they have. The owner reads the list on the phone; you never receive it, a title, an address or a count, so never say which tabs there are or how many: say you are opening the list on the phone.",
   ],
   [
     "DEVICE_BROWSER_TAB_NEW",

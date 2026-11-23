@@ -83,18 +83,27 @@ export function asksToSeeBrowserTabs(
   text: string,
   assistantName?: string,
 ): boolean {
-  let request = text.trim().toLowerCase();
+  let request = text
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.!?]+$/, "");
   const name = assistantName?.trim().toLowerCase();
-  if (name && request.startsWith(name))
-    request = request.slice(name.length).replace(/^[\s,]+/, "");
+  request = request.replace(/^(?:(?:hey|ok|okay|hi)[\s,]+)/, "");
+  if (
+    name &&
+    request.startsWith(name) &&
+    !/[\p{L}\p{N}]/u.test(request.charAt(name.length))
+  )
+    request = request.slice(name.length).replace(/^[\s,:]+/, "");
   request = request
-    .replace(/^(?:please\s+|can you\s+|could you\s+)+/, "")
-    .replace(/[\s.!?]+$/, "")
-    .replace(/\s+please$/, "");
+    .replace(/^(?:(?:please|can you|could you|let me)[\s,]+)+/, "")
+    .replace(/[\s,]+please$/, "")
+    .replace(/[\s.!?]+$/, "");
   return (
-    /^(?:show|list|see)(?:\s+me)?(?:\s+(?:all|all of))?(?:\s+(?:my|the))?(?:\s+open)?(?:\s+browser)?\s+tabs(?:\s+(?:i\s+have\s+)?open)?(?:\s+in\s+(?:the\s+)?browser)?$/.test(
+    /^(?:show|list|see)(?:\s+me)?(?:\s+(?:all|all of))?(?:\s+(?:my|the))?(?:\s+open)?(?:\s+browser)?\s+(?:tabs|tab list)(?:\s+(?:i\s+have\s+)?open)?(?:\s+in\s+(?:the\s+)?browser)?$/.test(
       request,
     ) ||
+    /^(?:what|which)\s+are\s+my\s+open(?:\s+browser)?\s+tabs$/.test(request) ||
     /^(?:what|which)(?:\s+browser)?\s+tabs\s+(?:do\s+i\s+have|are|have\s+i\s+got)(?:\s+open)?(?:\s+in\s+(?:the\s+)?browser)?$/.test(
       request,
     )

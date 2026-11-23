@@ -1428,13 +1428,12 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     text: "browser_search opens a web search in the phone Browser when the owner asks to search the web, look something up online or google something now. query must be words the user typed in this message, copied exactly; never add, reorder or reword them. The phone builds the search with its own search engine. You receive no results and no page content; never claim what the search found.",
   },
   {
-    types: [
-      "browser_tab_new",
-      "browser_tab_switch",
-      "browser_tab_close",
-      "browser_tabs_show",
-    ],
-    text: "Browser tabs: browser_tab_new opens an empty tab and never loads an address. To open a typed address in a new tab, use one browser_navigate with newTab true (DEVICE_BROWSER_OPEN), never browser_tab_new. browser_tab_switch shows an open tab and browser_tab_close closes one, or every open tab with all true when the owner asks to close all of them; never narrow a request for several or all tabs to the one showing. The phone finds the tab and the owner picks when more than one matches. Closing a tab is always reviewed by the owner. browser_tabs_show shows the owner the phone's tab list. You never receive the list of tabs, a title or an address; never say which tabs are open.",
+    types: ["browser_tab_new", "browser_tab_switch", "browser_tab_close"],
+    text: "Browser tabs: browser_tab_new opens an empty tab and never loads an address. To open a typed address in a new tab, use one browser_navigate with newTab true (DEVICE_BROWSER_OPEN), never browser_tab_new. browser_tab_switch shows an open tab and browser_tab_close closes one, or every open tab with all true when the owner asks to close all of them; never narrow a request for several or all tabs to the one showing. The phone finds the tab and the owner picks when more than one matches. Closing a tab is always reviewed by the owner. You never receive the list of tabs, a title or an address; never say which tabs are open.",
+  },
+  {
+    types: ["browser_tabs_show"],
+    text: "browser_tabs_show shows the owner the phone's own tab list when they ask to see or list their tabs; you never receive it or a count.",
   },
   {
     types: ["browser_find"],

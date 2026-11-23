@@ -1399,6 +1399,13 @@ it.each([
     "search for cats",
   ],
   [
+    "DEVICE_BROWSER_TAB_OVERVIEW",
+    { type: "browser_tabs_show" },
+    "browser.tabs.show.v1",
+    "Doing that in Browser.",
+    "show my open tabs",
+  ],
+  [
     "DEVICE_BROWSER_PAGE_SEARCH",
     { type: "browser_find", text: "domain" },
     "browser.find.v1",

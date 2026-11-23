@@ -34,6 +34,12 @@ describe("a request to see the open Browser tabs", () => {
     "what tabs do I have open?",
     "Which tabs are open",
     "what browser tabs do I have open in the browser",
+    "show my tabs, please",
+    "Alpha: show my tabs",
+    "hey Alpha, show my tabs",
+    "let me see my tabs",
+    "show my tab list",
+    "what are my open tabs",
   ])("is recognized: %s", (text) => {
     expect(asksToSeeBrowserTabs(text, "Alpha")).toBe(true);
   });
@@ -48,6 +54,8 @@ describe("a request to see the open Browser tabs", () => {
     "don't show my tabs",
     "open example.com",
     "show tabs from yesterday's research in a note",
+    "alphashow my tabs",
+    "what tabs do I have open in chrome",
   ])("is not claimed: %s", (text) => {
     expect(asksToSeeBrowserTabs(text, "Alpha")).toBe(false);
   });
