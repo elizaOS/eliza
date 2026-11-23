@@ -39,7 +39,7 @@ export async function legacyGmailResponse(request: Request, routePath: string, e
   if (!browser && !arrival) return undefined
   const owner = await account()
   if (!owner) return undefined
-  const canonical = async () => (await db.query("SELECT 1 FROM google_connections WHERE user_id = $1 AND status <> 'Pending' LIMIT 1", [owner])).rows.length > 0
+  const canonical = async () => (await db.query("SELECT 1 FROM google_connections WHERE user_id = $1 AND status NOT IN ('Pending', 'Unconfirmed') LIMIT 1", [owner])).rows.length > 0
   if (await canonical()) return undefined
   const denied = (status: number, error: string) => HttpServerResponse.jsonUnsafe({ error }, { status, headers: { "cache-control": "no-store" } })
   if (corsFor(request, env, routePath).foreign) return denied(403, "forbidden_origin")
@@ -85,7 +85,7 @@ async function reminders(request: Request, env: LegacyBindings, db: Client) {
   const account = await inferenceAccount(request, db, env)
   if (!account) return refusal(401, "authentication_required")
   if (!request.headers.has("authorization")) return refusal(403, "device_required")
-  const unserved = await db.query(`SELECT 1 WHERE EXISTS (SELECT 1 FROM google_connections WHERE user_id = $1 AND status <> 'Pending')
+  const unserved = await db.query(`SELECT 1 WHERE EXISTS (SELECT 1 FROM google_connections WHERE user_id = $1 AND status NOT IN ('Pending', 'Unconfirmed'))
     AND NOT EXISTS (SELECT 1 FROM cloud_google_connections WHERE account_id = $1 AND calendar)`, [account])
   if (unserved.rows.length > 0) return refusal(409, "google_connection_unavailable")
   return reminderSchedule(request, env, db, account)

@@ -1065,6 +1065,9 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
       const accepted = one.status === 302 ? one : two
       const replay = one.status === 302 ? two : one
       const grantId = fragment(accepted.location).connectionId ?? ""
+      const awaiting = try cloud.call(`/api/v1/eliza/google/status?grantId=${grantId}`, { headers: caller.headers })
+      const unconfirmed = awaiting.body as { readonly connected: boolean; readonly reason: string }
+      const confirmed = try cloud.call("/api/v1/eliza/google/confirm", { json: { grantId, address: person.email }, headers: caller.headers })
       const live = try cloud.call(`/api/v1/eliza/google/status?grantId=${grantId}`, { headers: caller.headers })
       const status = live.body as { readonly connected: boolean; readonly grantedCapabilities: ReadonlyArray<string>; readonly grantedScopes: ReadonlyArray<string> }
 
@@ -1096,7 +1099,8 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
         opened: [begun.status, issued(begun).appReturn, auth.searchParams.get("scope")?.split(" "), auth.searchParams.get("code_challenge_method"), auth.searchParams.get("include_granted_scopes")],
         pending: [pending?.status, pending?.phase, pending?.organization_id, pending?.user_id, pending?.state_digest !== signed, String(pending?.verifier).startsWith("v1."), pending?.consumed_at],
         tampered: [tampered.status, tampered.location], accepted: [accepted.status, accepted.location.split("#")[0], fragment(accepted.location), grantId === pending?.key],
-        replay: [replay.status, replay.location], live: [live.status, status.connected, status.grantedCapabilities, status.grantedScopes],
+        replay: [replay.status, replay.location], awaiting: [awaiting.status, unconfirmed.connected, unconfirmed.reason], confirmed: [confirmed.status, confirmed.body],
+        live: [live.status, status.connected, status.grantedCapabilities, status.grantedScopes],
         web: [issued(noReturn).appReturn, webPage.status, webPage.location], denied: [denied.status, fragment(denied.location)],
         failed: [failed.status, fragment(failed.location), refusedReplay.status], expired: [expired.status, expired.location], withdrawn: [withdrawn.status, withdrawn.location],
         rows: rows.map((row) => [row.key, row.status, row.user_id, row.organization_id, row.subject, row.granted_scopes, row.sealed]),
@@ -1105,11 +1109,113 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
         rejected: ["401 authentication_required credential_unknown", "400 invalid_request", "400 invalid_request", "400 redirect_mismatch", "400 invalid_request"], none: [],
         opened: [200, 2, offered, "S256", "false"], pending: ["Pending", "AwaitingCallback", caller.organizationId, caller.userId, true, true, null],
         tampered: [400, ""], accepted: [302, registration.connectReturn, { state: appState, result: "connected", connectionId: grantId }, true],
-        replay: [400, ""], live: [200, true, ["google.basic_identity", "google.gmail.triage"], granted],
+        replay: [400, ""], awaiting: [200, false, "awaiting_confirmation"], confirmed: [200, { ok: true }],
+        live: [200, true, ["google.basic_identity", "google.gmail.triage"], granted],
         web: [undefined, 200, ""], denied: [302, { state: appState, result: "denied" }],
         failed: [302, { state: appState, result: "failed" }, 400], expired: [400, ""], withdrawn: [400, ""],
         rows: [[grantId, "Active", caller.userId, caller.organizationId, person.subject, granted, true]],
         closed: [6, 6], forms: Array.from({ length: 3 }, () => ["google-web-client", `https://api.staging.example.com${callback}`, true]), pkce: true
+      }))
+    }
+  }), 120_000)
+
+  it.live("Add a second Google account from the tablet, use each only after confirming its address, and disconnect one (spec/cloud/services/google/connection.md, \"Story: Add another Google account from the tablet and confirm it is mine\"; spec/cloud/services/google/connection.md, \"Story: Disconnect it\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    const start = Date.now()
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+      const { cloud, google } = try nativeCloud(undefined, native)
+      const tablet = try leasedCaller(cloud, "google-sessions")
+      const stranger = try leasedCaller(cloud, "google-sessions-stranger")
+      const second: GooglePerson = { subject: "google-second-1", email: "second@example.com", emailVerified: true }
+      type Started = { readonly sessionId: string; readonly pageUrl: string; readonly embeddable: boolean }
+      type Listed = ReadonlyArray<{ readonly connectionId: string; readonly connected: boolean; readonly reason: string; readonly identity: { readonly email: string } | null }>
+      const open = (body: unknown = {}, headers = tablet.headers) => cloud.call("/api/v1/eliza/connections/google/sessions", { json: body, headers })
+      const started = (answer: { readonly body: unknown }) => answer.body as Started
+      const ended = (id: string, headers = tablet.headers) => cloud.call(`/api/v1/eliza/connections/sessions/${id}`, { headers })
+      const withdraw = (id: string) => cloud.call(`/api/v1/eliza/connections/sessions/${id}`, { method: "DELETE", headers: tablet.headers })
+      const confirm = (grantId: string, address: string) => cloud.call("/api/v1/eliza/google/confirm", { json: { grantId, address }, headers: tablet.headers })
+      const listed = effect () => ((try cloud.call("/api/v1/eliza/google/accounts?side=owner", { headers: tablet.headers })).body as Listed)
+        .map((grant) => [grant.connectionId, grant.identity?.email, grant.connected, grant.reason])
+      const triage = (grantId: string) => cloud.call(`/api/v1/eliza/google/gmail/triage?grantId=${grantId}`, { headers: tablet.headers })
+      const visitLocal = (url: string) => tryPromise(() => visit(url))
+      const atCloud = (location: string) => {
+        const page = new URL(location)
+        return `${cloud.url}${page.pathname}${page.search}`
+      }
+      const signIn = effect (pageUrl: string) => {
+        const atGoogle = try visitLocal(pageUrl)
+        return try visitLocal(try sync(() => atCloud(atGoogle.location)))
+      }
+      const outcome = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, answer.body]
+      const everything = ["google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.manage", "google.gmail.drafts", "google.gmail.mailbox", "google.calendar.read", "google.calendar.write"]
+        .flatMap((capability) => scopeFor(capability as Parameters<typeof scopeFor>[0]))
+      try sync(() => { google.signInAs(person); google.managedScopes([...new Set(everything)]) })
+
+      const first = try open({ loginHint: person.email })
+      const page = try sync(() => new URL(started(first).pageUrl))
+      const firstPage = try signIn(started(first).pageUrl)
+      const firstEnded = try ended(started(first).sessionId)
+      const firstGrant = (firstEnded.body as { readonly grantId: string }).grantId
+      const awaiting = try listed()
+      const unusable = try triage(firstGrant)
+      const unusableCalendar = try cloud.call(`/api/v1/eliza/google/calendar/feed?grantId=${firstGrant}&timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z`, { headers: tablet.headers })
+      const keyOnly = { authorization: `Bearer ${tablet.deviceKey}` }
+      const keyConfirm = try cloud.call("/api/v1/eliza/google/confirm", { json: { grantId: firstGrant, address: person.email }, headers: keyOnly })
+      const keyAwait = try ended(started(first).sessionId, keyOnly)
+      const strangerConfirm = try cloud.call("/api/v1/eliza/google/confirm", { json: { grantId: firstGrant, address: person.email }, headers: stranger.headers })
+      const elsewhere = try confirm(firstGrant, second.email)
+      const confirmed = try confirm(firstGrant, person.email.toUpperCase())
+      const again = try confirm(firstGrant, person.email)
+
+      try sync(() => { google.signInAs(second); clock.set(start + 1000) })
+      const added = try open()
+      try signIn(started(added).pageUrl)
+      const secondEnded = try ended(started(added).sessionId)
+      const secondGrant = (secondEnded.body as { readonly grantId: string }).grantId
+      try confirm(secondGrant, second.email)
+      const both = try listed()
+      const unnamed = try cloud.call("/api/v1/eliza/google/status", { headers: tablet.headers })
+      const disconnected = try cloud.call("/api/v1/eliza/google/disconnect", { json: { grantId: secondGrant }, headers: tablet.headers })
+      const afterDisconnect = try listed()
+      try sync(() => clock.set(start + 2000))
+      const returning = try open()
+      try signIn(started(returning).pageUrl)
+      const returned = try ended(started(returning).sessionId)
+      const reconfirm = try listed()
+
+      try sync(() => { google.denyNext(); clock.set(start + 3000) })
+      const declining = try open()
+      try signIn(started(declining).pageUrl)
+      const declined = try ended(started(declining).sessionId)
+      const withdrawing = try open()
+      const withdrawn = try withdraw(started(withdrawing).sessionId)
+      const lateCallback = try signIn(started(withdrawing).pageUrl)
+      const afterWithdraw = try ended(started(withdrawing).sessionId)
+      const foreign = try ended(started(withdrawing).sessionId, stranger.headers)
+      const deviceKey = try open({}, { authorization: `Bearer ${tablet.deviceKey}` })
+      const lapsing = try open()
+      try sync(() => clock.set(start + 603_000))
+      const lapsed = try ended(started(lapsing).sessionId)
+      try check(() => assert.deepStrictEqual({
+        page: [first.status, started(first).embeddable, page.searchParams.get("login_hint"), page.searchParams.get("redirect_uri")?.endsWith("/api/v1/oauth/google/callback"), firstPage.status],
+        firstEnded: outcome(firstEnded), awaiting, unusable: [refusal(unusable), refusal(unusableCalendar)],
+        keyOnly: [refusal(keyConfirm), refusal(keyAwait)], strangerConfirm: refusal(strangerConfirm), elsewhere: refusal(elsewhere), confirmed: outcome(confirmed), again: outcome(again),
+        both, unnamed: refusal(unnamed), disconnected: disconnected.status, afterDisconnect, returned: outcome(returned), reconfirm,
+        declined: outcome(declined), withdrawn: outcome(withdrawn), lateCallback: lateCallback.status, afterWithdraw: outcome(afterWithdraw),
+        foreign: refusal(foreign), deviceKey: refusal(deviceKey), lapsed: outcome(lapsed)
+      }, {
+        page: [200, false, person.email, true, 200],
+        firstEnded: [200, { status: "allowed", address: person.email, grantId: firstGrant, granted: { mail: true, calendar: true, contacts: true } }],
+        awaiting: [[firstGrant, person.email, false, "awaiting_confirmation"]], unusable: ["409 google_reauth_required", "409 google_reauth_required"],
+        keyOnly: ["403 access_denied device_key_not_allowed", "403 access_denied device_key_not_allowed"], strangerConfirm: "404 not_found", elsewhere: "400 invalid_request",
+        confirmed: [200, { ok: true }], again: [200, { ok: true }],
+        both: [[secondGrant, second.email, true, "connected"], [firstGrant, person.email, true, "connected"]], unnamed: "400 invalid_request grant_required",
+        disconnected: 200, afterDisconnect: [[secondGrant, second.email, false, "disconnected"], [firstGrant, person.email, true, "connected"]],
+        returned: [200, { status: "allowed", address: second.email, grantId: secondGrant, granted: { mail: true, calendar: true, contacts: true } }],
+        reconfirm: [[secondGrant, second.email, false, "awaiting_confirmation"], [firstGrant, person.email, true, "connected"]],
+        declined: [200, { status: "cancelled" }], withdrawn: [200, { ok: true }], lateCallback: 400, afterWithdraw: [200, { status: "cancelled" }],
+        foreign: "404 not_found", deviceKey: "403 access_denied device_key_not_allowed", lapsed: [200, { status: "cancelled" }]
       }))
     }
   }), 120_000)

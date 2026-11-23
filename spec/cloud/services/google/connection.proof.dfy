@@ -93,13 +93,13 @@ lemma FilterTwiceKeepsLength<T>(rows: seq<T>, first: T -> bool, second: T -> boo
 
 lemma ActiveCountMatchesLaw(rows: seq<GrantView>, organization: string)
   ensures lawNoGrantIsGuessedAmongSeveral(rows, organization) ==
-    (|ProofLib.Filter((r: GrantView) => ((r.organization == organization) && r.status.Active?), rows)| > 1 ==>
+    (|ProofLib.Filter((r: GrantView) => ((r.owner == organization) && r.status.Active?), rows)| > 1 ==>
       selectGrant(rows, organization, Side.OwnerSide, GrantChoice.AnyGrant) == typed3_cloud__services__google__connection(SelectionRefused(SelectionFault.SeveralActiveGrants)))
 {}
 
 lemma GrantSelectionMatchesFilters(rows: seq<GrantView>, organization: string, side: Side, choice: GrantChoice)
   ensures selectGrant(rows, organization, side, choice) ==
-    (var held := ProofLib.Filter((r: GrantView) => ((r.organization == organization) && (!r.status.Pending?)), rows);
+    (var held := ProofLib.Filter((r: GrantView) => ((r.owner == organization) && (!r.status.Pending?)), rows);
      var active := ProofLib.Filter((r: GrantView) => r.status.Active?, held);
      var newest := Std.Collections.Seq.FoldLeft((acc: string, r: GrantView) => (if (acc == "") then r.grantId else acc), "", held);
      if (!side.OwnerSide?) then SelectionRefused(SelectionFault.SideNotOwner)
@@ -115,9 +115,9 @@ lemma GrantSelectionMatchesFilters(rows: seq<GrantView>, organization: string, s
 lemma lawNoGrantIsGuessedAmongSeveral_ensures(rows: seq<GrantView>, organization: string)
   ensures (lawNoGrantIsGuessedAmongSeveral(rows, organization) == true)
 {
-  var held := (r: GrantView) => ((r.organization == organization) && (!r.status.Pending?));
+  var held := (r: GrantView) => ((r.owner == organization) && (!r.status.Pending?));
   var active := (r: GrantView) => r.status.Active?;
-  var belongs := (r: GrantView) => ((r.organization == organization) && r.status.Active?);
+  var belongs := (r: GrantView) => ((r.owner == organization) && r.status.Active?);
   FilterTwiceKeepsLength(rows, held, active, belongs);
   ActiveCountMatchesLaw(rows, organization);
   GrantSelectionMatchesFilters(rows, organization, Side.OwnerSide, GrantChoice.AnyGrant);
@@ -142,7 +142,7 @@ lemma FirstNonemptyGrantComesFromRows(rows: seq<GrantView>)
 lemma lawASelectedGrantIsTheCallersConnection_ensures(rows: seq<GrantView>, organization: string, side: Side, choice: GrantChoice)
   ensures (lawASelectedGrantIsTheCallersConnection(rows, organization, side, choice) == true)
 {
-  var heldFilter := (r: GrantView) => ((r.organization == organization) && (!r.status.Pending?));
+  var heldFilter := (r: GrantView) => ((r.owner == organization) && (!r.status.Pending?));
   var activeFilter := (r: GrantView) => r.status.Active?;
   var held := ProofLib.Filter(heldFilter, rows);
   var active := ProofLib.Filter(activeFilter, held);
