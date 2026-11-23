@@ -110,6 +110,9 @@ it.live("Ask the agent only on the routes my app allows, and read its status wit
   const running = try promise(() => agent.getStatus())
   const health = try promise(() => agent.request({ method: "GET", path: "/api/health" }))
   const described = try promise(() => agent.request({ method: "GET", path: "/api/health", headers: { "x-eliza-device-capabilities": "notes.query.v1", "x-elizaos-client-id": "screen-1" } }))
+  const cutOff = try promise(() => agent.request({
+    method: "POST", path: "/api/conversations/messages", headers: { "x-eliza-device-cut-off-effect": "applied" },
+  }))
   const refused = try refusal(() => agent.request({ method: "DELETE", path: "/api/agent/state" }))
   const streamOnPlain = try refusal(() => agent.request({ method: "POST", path: "/api/conversations/messages/stream" }))
   phone.status = { available: true, state: "failed", failure: "storage", error: "store opened under another account", epoch: 4, requestBodyLimit: 1048576 }
@@ -122,11 +125,12 @@ it.live("Ask the agent only on the routes my app allows, and read its status wit
   const startMissing = try refusal(() => agent.start())
 
   try Effect.try(() => assert.deepStrictEqual(
-    { running, health, described, refused, streamOnPlain, failed, unnamed, review, missing, startMissing },
+    { running, health, described, cutOff, refused, streamOnPlain, failed, unnamed, review, missing, startMissing },
     {
       running: { available: true, state: "running", epoch: 3, requestBodyLimit: 1048576 },
       health: { status: 200, data: { ready: true, echo: null } },
       described: { status: 200, data: { ready: true, echo: null, headers: { "x-eliza-device-capabilities": "notes.query.v1", "x-elizaos-client-id": "screen-1" } } },
+      cutOff: { status: 200, data: { ready: true, echo: null, headers: { "x-eliza-device-cut-off-effect": "applied" } } },
       refused: "rejected RouteRefused",
       streamOnPlain: "rejected RouteRefused",
       failed: { available: true, state: "failed", failure: "storage", error: "store opened under another account", epoch: 4, requestBodyLimit: 1048576 },
