@@ -840,7 +840,7 @@ effect function admitHandler(
       return early(
         failureResult(
           action.name,
-          `Action ${action.name} is not available for the current state, so it did not run`,
+          `Action ${action.name} is not available for the current state, so it did not run: answer without it or use another offered action`,
           { executionStatus: "not_started" },
           {
             kind: "missing_capability",
