@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { AGENT_EXIT_CODES, exitClass, exitCode, parseLaunch } from "../src/host/launch.vibe"
 import { agentChild, boot, host, ready, scratch } from "./support/kernel.vibe"
-import { account, launchDocument, launchFrame, type LaunchOptions } from "./support/scratch.ts"
+import { account, launchDocument, launchFrame, writeLaunch, type LaunchOptions } from "./support/scratch.ts"
 
 const cloudBackend = { kind: "cloud" as const, origin: "https://cloud.example" }
 const ownKeyBackend = { kind: "ownKey" as const, baseUrl: "https://own.example/v1", smallModel: "small", largeModel: "large" }
@@ -125,19 +125,19 @@ it.effect('A bad frame shape exits 78: two lines, no newline, version 2, epoch 0
   const good = JSON.stringify(launchFrame())
   const frames = [`${good}\n${good}\n`, good, `${JSON.stringify({ ...launchFrame(), version: 2 })}\n`, `${JSON.stringify({ ...launchFrame(), epoch: 0 })}\n`,
     `${JSON.stringify({ ...launchFrame(), storageKey: "k".repeat(17 * 1024) })}\n`]
-  const codes = try Effect.forEach(frames, (frame) => effect {
-    const booted = try boot({ launch: {} })
+  const codes = try Effect.forEach(frames, (frame) => Effect.scoped(effect {
     const state = try scratch("launch-frame")
-    const again = try agentChild({ launchFile: booted.state.file("launch.json"), stateDir: state.path, frame, transport: { kind: "socket", path: state.file("agent.sock") } })
-    return (try host("agent exit", () => again.exited)).code
-  })
+    const launchFile = try host("launch file", () => writeLaunch(state, launchDocument()))
+    const child = try agentChild({ launchFile, stateDir: state.path, frame, transport: { kind: "socket", path: state.file("agent.sock") } })
+    return (try host("agent exit", () => child.exited)).code
+  }))
   try Effect.try(() => assert.deepStrictEqual(codes, frames.map(() => 78)))
 }, 600_000)
 
 it.effect('The argv is exactly serve --launch --state and one endpoint (spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key")', effect () => {
-  const booted = try boot({ launch: {} })
   const state = try scratch("launch-argv")
-  const bad = try agentChild({ launchFile: booted.state.file("launch.json"), stateDir: state.path, frame: launchFrame(), transport: { kind: "socket", path: "relative.sock" } })
+  const launchFile = try host("launch file", () => writeLaunch(state, launchDocument()))
+  const bad = try agentChild({ launchFile, stateDir: state.path, frame: launchFrame(), transport: { kind: "socket", path: "relative.sock" } })
   const exited = try host("agent exit", () => bad.exited)
   try Effect.try(() => assert.strictEqual(exited.code, 78))
 }, 180_000)
