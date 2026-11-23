@@ -187,7 +187,9 @@ for at most five seconds, with the retry sent at or after that hold.
 With no hint the wait is five seconds. The caller's deadline can end the
 wait earlier, in which case the call retains the refusal. The resend
 passes the current account admission again. A second wire ends the
-one-resend allowance even if it returns a different refusal.
+one-resend allowance even if it returns a different refusal. If the
+planner already resent an unparsed tool call, the backend cannot resend
+that continuation after a rate limit.
 
 ```quint
 type TurnResendAdvice = NoResendHint | ResendAt({ at: int })
