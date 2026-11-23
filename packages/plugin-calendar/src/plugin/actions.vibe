@@ -1,4 +1,4 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"
 import { readTurnContext } from "@elizaos/agent"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
@@ -208,6 +208,7 @@ function changeText(outcome: CalendarMutationOutcome, done: string): string {
 }
 
 const nobodyNotified = " The built-in calendar can't email attendees, so nobody was notified."
+const overlapsUnchecked = " Another calendar could not be read, so overlaps there were not checked."
 
 function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: string): ActionResult {
   if (result.kind === "refused") {
@@ -226,17 +227,27 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
     }[result.reason]
     return failed(subaction, text, { refusal: result.reason })
   }
+  if (result.kind === "conflict") {
+    const made = subaction === "create_event" ? "created" : "changed"
+    if (result.reason === "unread") {
+      return failed(subaction, `Nothing was ${made}: the calendar it goes on could not be read, so I can't tell whether that time is free.`, { code: "CALENDAR_WRITE_SLOT_UNREAD" })
+    }
+    const held = result.conflicts.slice(0, 5)
+    return failed(subaction, `Nothing was ${made}: that time overlaps ${held.map((event) => line(event, zone)).join("; ")}. Tell me another time, or move that first.`,
+      { code: "CALENDAR_WRITE_CONFLICT", requiresInput: true, missing: ["available time"], conflicts: held.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt, endAt: event.endAt })) })
+  }
+  const unchecked = result.overlapsUnchecked ? overlapsUnchecked : ""
   if (result.kind === "queued") {
     const silent = result.notice === "CannotNotify" ? " That calendar can't email attendees, so nobody will be notified." : ""
-    return { success: true, text: `I've asked for your approval before changing that calendar.${silent}`, data: { subaction, approvalRequestId: result.approvalId, change: result.request.payload } }
+    return { success: true, text: `I've asked for your approval before changing that calendar.${silent}${unchecked}`, data: { subaction, approvalRequestId: result.approvalId, change: result.request.payload } }
   }
   const { outcome, request } = result
   if (outcome.kind !== "succeeded") return failed(subaction, changeText(outcome, ""), { outcome: outcome.kind, requestId: request.id })
   const receipt = outcome.receipt
   const effectReceipts = [calendarEffectReceipt(request, receipt, outcome.replayed)]
-  const note = result.notice === "CannotNotify" ? nobodyNotified : ""
+  const note = `${result.notice === "CannotNotify" ? nobodyNotified : ""}${unchecked}`
   if (receipt.operation === "schedule_event" && receipt.event !== null) {
-    return { success: true, text: `Created ${line(receipt.event, zone)}.`, effectReceipts, data: { subaction, event: receipt.event, requestId: request.id } }
+    return { success: true, text: `Created ${line(receipt.event, zone)}.${unchecked}`, effectReceipts, data: { subaction, event: receipt.event, requestId: request.id } }
   }
   if (request.payload.action === "respond_invitation" && receipt.event !== null) {
     return { success: true, text: `${answered[request.payload.response]} ${line(receipt.event, zone)}.${note}`, effectReceipts,
@@ -512,7 +523,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       }
       const source = try host.writeTarget(parameters.calendarId)
       if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
-      const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: chatCreateReviewed(parameters.reviewBeforeCreate === false && parameters.reviewBeforeSaving !== true), askedBy, askId }) catch () => undefined
+      const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: chatCreateReviewed(parameters.reviewBeforeCreate === false && parameters.reviewBeforeSaving !== true), slotZone: createZone, askedBy, askId }) catch () => undefined
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, createZone)
     }
     case "update_event":
@@ -532,7 +543,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const guests: Guests = subaction === "update_event" ? changedGuests(lookup.found.event, parameters, askTextOf(ask)) : { kind: "guests" }
       if (guests.kind === "refused") return failed(subaction, guests.text, { code: "CALENDAR_GUEST_NOT_GROUNDED" })
       const asked = subaction === "update_event"
-        ? { kind: "update" as const, target: lookup.found, scope, fields: updatedFields(lookup.found, parameters, zone, guests.attendees), notifyAttendees, askedBy, askId }
+        ? { kind: "update" as const, target: lookup.found, scope, fields: updatedFields(lookup.found, parameters, zone, guests.attendees), notifyAttendees, slotZone: zone, askedBy, askId }
         : { kind: "delete" as const, target: lookup.found, scope, notifyAttendees, askedBy, askId }
       if (asked.kind === "update" && (Option.isNone(decodeFields(asked.fields)) || !fieldsSpanValid(asked.fields))) return failed(subaction, "The changed event needs a title and a start before its end.")
       const result = host.change(asked) catch () => undefined

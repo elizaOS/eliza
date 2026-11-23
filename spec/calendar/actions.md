@@ -365,6 +365,42 @@ pure def lawAnOpenEndedEventEndsAfterItStarts(startMs: int, endMs: int, lengthMi
   createEndMs(startMs, false, endMs, lengthMinutes, wholeDay) > startMs
 ```
 
+### A chat create or move that overlaps a commitment is refused, naming it
+
+A new timed event, and a change of an event's start or end, asked in chat
+is checked against the active account's calendars over its new span
+before anything is queued or changed. An event that blocks time there, as
+a free-time question counts it, and overlaps the span with positive
+length refuses the change; the reply names each such event and nothing is
+created or moved. The event being moved never blocks itself. When the
+calendar the change goes to could not be read, the change is refused,
+since its time cannot be called free. When only another calendar could
+not be read, the change goes ahead and its reply says overlaps there were
+not checked. An all-day event, a change that leaves the times alone, a
+change from the owner's client and a request the ledger already applied
+are not checked.
+
+```quint
+type WriteSlot = SlotClear | SlotUnchecked | SlotTaken | SlotUnread
+pure def slotChecked(fromChat: bool, timed: bool, movesTime: bool, alreadyApplied: bool): bool =
+  fromChat and timed and movesTime and not(alreadyApplied)
+pure def writeSlot(checked: bool, targetCalendarRead: bool, everyCalendarRead: bool, overlapping: int): WriteSlot =
+  if (not(checked)) SlotClear
+  else if (overlapping > 0) SlotTaken
+  else if (not(targetCalendarRead)) SlotUnread
+  else if (not(everyCalendarRead)) SlotUnchecked
+  else SlotClear
+pure def lawAnOverlapIsNeverWritten(targetCalendarRead: bool, everyCalendarRead: bool, overlapping: int): bool =
+  overlapping > 0 implies writeSlot(true, targetCalendarRead, everyCalendarRead, overlapping) == SlotTaken
+pure def lawAnUnreadTargetIsNeverWritten(everyCalendarRead: bool, overlapping: int): bool =
+  writeSlot(true, false, everyCalendarRead, overlapping) != SlotClear and writeSlot(true, false, everyCalendarRead, overlapping) != SlotUnchecked
+pure def lawAnAppliedRequestIsNotCheckedAgain(fromChat: bool, timed: bool, movesTime: bool): bool =
+  not(slotChecked(fromChat, timed, movesTime, true))
+pure def lawAClientChangeIsNotChecked(timed: bool, movesTime: bool, alreadyApplied: bool): bool =
+  not(slotChecked(false, timed, movesTime, alreadyApplied))
+pure val overlappingValues = Set(0, 1, 2)
+```
+
 ### A write goes to the active account's writable calendar, at once only for the resident calendar
 
 A write needs the active account and a calendar that account can write.
