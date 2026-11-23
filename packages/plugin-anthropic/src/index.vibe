@@ -1,6 +1,6 @@
 // spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"
-import { ModelType, type ChatMessage, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage } from "@elizaos/core"
-import { Cause, Exit, Queue, Schema, Stream } from "effect"
+import { ModelType, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage } from "@elizaos/core"
+import { type Cause, Exit, Queue, Schema, Stream } from "effect"
 import * as Sse from "effect/encoding/Sse"
 import { Machine, anthropicOutputBudget, anthropicSampling, anthropicTransport, machine, type AnthropicAuth, type AnthropicFinish, type AnthropicOutputCap } from "../gen/anthropic.effect.vibe"
 
@@ -106,7 +106,7 @@ function endReason(reason: string | null): AnthropicFinish {
   return "EndFailure"
 }
 
-function messageWire(message: ChatMessage) {
+function messageWire(message: NonNullable<GenerateTextParams["messages"]>[number]) {
   if (message.role === "tool") return { role: "user", content: [{ type: "tool_result", tool_use_id: message.toolCallId, content: message.content }] }
   if (message.toolCalls?.length) return {
     role: "assistant",
@@ -160,7 +160,7 @@ function tracked<T>(promise: Promise<T>): Promise<T> {
   return promise
 }
 
-effect function streamAnthropic(response: Response, run: Machine.Shape, signal?: AbortSignal) {
+effect function streamAnthropic(response: Response, run: Machine.Shape) {
   if (response.body === null || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream") {
     try Effect.ignore(tryPromise(async () => { await response.body?.cancel() }))
     throw new AnthropicFailed({ reason: "Anthropic did not return a completion event stream." })
@@ -206,15 +206,13 @@ effect function streamAnthropic(response: Response, run: Machine.Shape, signal?:
     } : undefined
     return { text, reason: terminal ?? undefined, usage }
   }
-  const result = tracked(runPromise(Effect.onExit(read, (exit) => Exit.isSuccess(exit)
-    ? Queue.end(out)
-    : Queue.fail(out, new AnthropicFailed({ reason: "Anthropic did not complete the event stream." }))), { signal }))
   return {
-    textStream: Stream.toAsyncIterable(Stream.fromQueue(out)),
-    text: tracked(result.then((finish) => finish.text)),
-    usage: tracked(result.then((finish) => finish.usage)),
-    finishReason: tracked(result.then((finish) => finish.reason)),
-  } satisfies TextStreamResult
+    kind: "live",
+    queue: out,
+    produce: Effect.onExit(read, (exit) => Exit.isSuccess(exit)
+      ? Queue.end(out)
+      : Queue.fail(out, new AnthropicFailed({ reason: "Anthropic did not complete the event stream." }))),
+  } as const
 }
 
 effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, tier: string) {
@@ -243,7 +241,7 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
           try: async (signal) => claudeEvents(model, prompt, params.signal === undefined ? signal : AbortSignal.any([signal, params.signal])),
           catch: () => new AnthropicFailed({ reason: "The Anthropic CLI could not start." }),
         })
-        return try streamAnthropic(response, run, params.signal)
+        return try streamAnthropic(response, run)
       }
       const text = try tryPromise({
         try: (signal) => claudeText(model, prompt, signal),
@@ -271,7 +269,7 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
       tool_choice: toolChoice,
       output_config: params.responseSchema === undefined ? undefined : { format: { type: "json_schema", schema: params.responseSchema } },
     }
-    if (transport === "SdkStream") return try streamAnthropic(try sdkResponse(runtime, secret, wire), run, params.signal)
+    if (transport === "SdkStream") return try streamAnthropic(try sdkResponse(runtime, secret, wire), run)
     const reply = try sdkAnswer(runtime, secret, wire)
     const text = reply.content.flatMap((part) => part.type === "text" && part.text !== undefined ? [part.text] : []).join("")
     const nativeShapeValid = !input.hasSchema || (Effect.try(() => { const parsed: unknown = JSON.parse(text); return typeof parsed === "object" && parsed !== null }) catch () => false)
@@ -283,17 +281,37 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
     if (!params.stream && calls.length === 0) return text
     const usage = reply.usage
     return {
-      textStream: (async function* () { if (text !== "") yield text })(),
-      text: Promise.resolve(text),
-      finishReason: Promise.resolve(reply.stop_reason ?? undefined),
-      usage: Promise.resolve(usage && { promptTokens: usage.input_tokens, completionTokens: usage.output_tokens, totalTokens: usage.input_tokens + usage.output_tokens, cacheReadInputTokens: usage.cache_read_input_tokens, cacheCreationInputTokens: usage.cache_creation_input_tokens }),
+      kind: "full",
+      text,
+      finishReason: reply.stop_reason ?? undefined,
+      usage: usage && { promptTokens: usage.input_tokens, completionTokens: usage.output_tokens, totalTokens: usage.input_tokens + usage.output_tokens, cacheReadInputTokens: usage.cache_read_input_tokens, cacheCreationInputTokens: usage.cache_creation_input_tokens },
       toolCalls: calls,
-    } satisfies TextStreamResult
+    } as const
   }
 }
 
 function textHandler(tier: string) {
-  return (runtime: IAgentRuntime, params: GenerateTextParams) => runPromise(inference(runtime, params, tier), { signal: params.signal })
+  return async (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | TextStreamResult> => {
+    const answer = await runPromise(inference(runtime, params, tier), { signal: params.signal })
+    if (typeof answer === "string") return answer
+    if (answer.kind === "full") {
+      const { text, usage, finishReason, toolCalls } = answer
+      return {
+        textStream: (async function* () { if (text !== "") yield text })(),
+        text: Promise.resolve(text),
+        usage: Promise.resolve(usage),
+        finishReason: Promise.resolve(finishReason),
+        toolCalls,
+      }
+    }
+    const result = tracked(runPromise(answer.produce, { signal: params.signal }))
+    return {
+      textStream: Stream.toAsyncIterable(Stream.fromQueue(answer.queue)),
+      text: tracked(result.then((finish) => finish.text)),
+      usage: tracked(result.then((finish) => finish.usage)),
+      finishReason: tracked(result.then((finish) => finish.reason)),
+    }
+  }
 }
 
 function describe(runtime: IAgentRuntime, input: ImageDescriptionParams | string) {
