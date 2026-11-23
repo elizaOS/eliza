@@ -1,4 +1,4 @@
-// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A note's title and body are saved as well-formed text";spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
 import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
 import { creationReturnsExisting, deleteByNameAllowed, idDeleteByTitle, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, revisionAdmits } from "../gen/notes__records.effect.vibe"
 import { authoredNoteText, editAuthoredNoteFormat, type AuthoredNoteEdit } from "./format.vibe"
@@ -65,7 +65,8 @@ function wellFormedPrefix(text: string, units: number): string {
   return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
 }
 
-effect function contentParts(content: string, allowBlank: boolean): { title: string; body: string }!NotesRefused {
+effect function contentParts(written: string, allowBlank: boolean): { title: string; body: string }!NotesRefused {
+  const content = written.toWellFormed()
   if (content.trim() === "" && !allowBlank) throw refused("NOTES_VALIDATION_FAILED", "content must not be empty.")
   const first = Math.max(0, content.search(/\S/u))
   const newline = content.indexOf("\n", first)
@@ -75,7 +76,8 @@ effect function contentParts(content: string, allowBlank: boolean): { title: str
   return { title, body }
 }
 
-effect function checked(note: StickyNote): StickyNote!NotesRefused {
+effect function checked(written: StickyNote): StickyNote!NotesRefused {
+  const note = { ...written, title: written.title.toWellFormed(), body: written.body.toWellFormed() }
   const authored = (note.title + note.body).trim() !== "" || authoredNoteText(note.format).trim() !== ""
   if (!noteRecordAdmitted(note.title.length, note.body.length, authored, true)) {
     throw refused("NOTES_VALIDATION_FAILED", authored ? "The note exceeds its title or body bound." : "Stored note content must not be empty.")
@@ -86,7 +88,7 @@ effect function checked(note: StickyNote): StickyNote!NotesRefused {
 export effect function createIn(document: NotesDocument, request: CreateRequest, id: string, at: Instant): Change<{ note: StickyNote; replayed: boolean }>!NotesRefused {
   const authored = authoredNoteText(request.format).trim() !== ""
   const parts = request.content !== undefined ? try contentParts(request.content, authored)
-    : request.title !== undefined ? { title: request.title, body: request.body === undefined || request.body === "" ? "" : `\n${request.body}` }
+    : request.title !== undefined ? { title: request.title.toWellFormed(), body: request.body === undefined || request.body === "" ? "" : `\n${request.body.toWellFormed()}` }
     : authored ? { title: "", body: "" }
     : try Effect.fail(refused("NOTES_VALIDATION_FAILED", "content is required."))
   const color: StickyColor = request.color ?? "yellow"
