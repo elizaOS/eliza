@@ -49073,11 +49073,6 @@
           "declarations": []
         },
         {
-          "name": "SECRET_SWAP_STABLE_REFERENCES_SETTING",
-          "typeOnly": false,
-          "declarations": []
-        },
-        {
           "name": "createSecretSwapStableKey",
           "typeOnly": false,
           "declarations": []
