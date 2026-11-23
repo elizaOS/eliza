@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretSwapSession, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -1430,6 +1430,52 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       imageFields: [imageSeen?.size, imageSeen?.negativePrompt],
       callerSignal: [(text(alpha)[5]?.params as { signal?: unknown } | undefined)?.signal === fx.caller.signal, imageSeen?.signal === fx.caller.signal],
     }
+    // spec/core/secretSession.md, "At the action boundary pseudonyms are restored before references, and local name recognition never reads this session's references"; spec/core/secretSession.md, "A map coordinate never becomes a contact reference"
+    const PHONE = "+12025550123"
+    const CARD = `[MAPSCARD]\n${JSON.stringify({ kind: "place", place: { latitude: 37.7749295, longitude: -122.4194093 } })}\n[/MAPSCARD]`
+    const secret = new SecretSwapSession()
+    const contact = secret.substituteText(PHONE)
+    const unwritten = contact.replace(/_[0-9]+__$/, "_999999__")
+    const recognizerInputs: string[] = []
+    const names = [`${contact} Alice Example`, contact, unwritten, "Alice Example"]
+    const pii = new PseudonymSession({ salt: "j03-private", recognizer: { name: "j03-gazetteer", recognize: (input: string) => {
+      recognizerInputs.push(input)
+      const value = names.find((name) => input.includes(name))
+      return Promise.resolve(value === undefined ? [] : [{ kind: "person", value, start: input.indexOf(value), end: input.indexOf(value) + value.length }])
+    } } })
+    const privateTurn: TrajectoryContext = { messageId: "turn-6", secretSwapSession: secret, piiSwapSession: pii }
+    const privateModel = try Effect.try(() => scriptedModels("j03-private", 0, { [ModelType.TEXT_LARGE]: [{ reply: "noted" }] }))
+    try host(() => runtime.registerPlugin(privateModel.plugin))
+    try host(() => Promise.resolve(runWithTrajectoryContext(privateTurn, () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: `Text ${PHONE} Alice Example ${CARD}` }, "j03-private"))))
+    answered.push(`useModel:${ModelType.TEXT_LARGE}`)
+    const privatePrompt = promptOf(privateModel.seen[0]?.params)
+    const recognizerSawReference = recognizerInputs.some((input) => input.includes("__ELIZA_"))
+    const recipients: unknown[] = []
+    try Effect.try(() => runtime.registerAction({
+      name: "J03_TEXT_CONTACT",
+      description: "Texts a phone number",
+      parameters: [{ name: "recipient", description: "The phone number", required: true, schema: { type: "string" } }],
+      validate: async () => true,
+      handler: async (_runtime, _message, _state, options) => {
+        recipients.push((options?.parameters as { recipient?: unknown } | undefined)?.recipient)
+        return { success: true, text: "sent" }
+      },
+    }))
+    try host(() => pii.learn(contact))
+    try host(() => pii.learn(unwritten))
+    const contactMessage = createMessageMemory({ id: stringToUuid("j03-private-message"), entityId: runtime.agentId, agentId: runtime.agentId, roomId: stringToUuid("j03-private-room"), content: { text: "text my contact" } })
+    const textTo = (recipient: string) => host(() => outcome(Promise.resolve(runWithTrajectoryContext(privateTurn, () =>
+      executePlannedToolCall(runtime, { message: contactMessage, activeContexts: ["general"] }, { name: "J03_TEXT_CONTACT", params: { recipient } })))))
+    const sentToContact = try textTo(pii.substituteText(contact))
+    const sentToUnwritten = try textTo(pii.substituteText(unwritten))
+    const privateAction = {
+      recognizerSawReference,
+      providerSaw: [privatePrompt.includes(contact), privatePrompt.includes(PHONE), privatePrompt.includes("Alice Example"), privatePrompt.includes(CARD)],
+      aliasesWrapReferences: pii.substituteText(contact) !== contact,
+      results: [sentToContact, sentToUnwritten].map((settled) => "value" in settled && (settled.value as { success?: unknown }).success === true),
+      recipients,
+    }
+
     runtime.setSetting("ELIZA_SECRET_SWAP_ENABLED", "false")
     runtime.setSetting("ELIZA_PII_SWAP_ENABLED", "false")
 
@@ -1518,7 +1564,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       fx.logGate.resolve()
     })
 
-    try Effect.try(() => assert.deepStrictEqual({ registrations, orderKept, failover, exhausted, terminal, pin, swaps, unicode, cancellation, streams, allowance }, {
+    try Effect.try(() => assert.deepStrictEqual({ registrations, orderKept, failover, exhausted, terminal, pin, swaps, privateAction, unicode, cancellation, streams, allowance }, {
       registrations: [["alpha", 30, true], ["alpha", 20, true], ["beta", 10, true]],
       orderKept: true,
       failover: { result: "answer from alpha 20", sameBytes: true, budgetIsFullMeasure: true },
@@ -1534,6 +1580,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
         imageFields: ["1024x1024", `no ${EMAIL}`],
         callerSignal: [true, true],
       },
+      privateAction: { recognizerSawReference: false, providerSaw: [true, false, false, true], aliasesWrapReferences: true, results: [true, false], recipients: [PHONE] },
       unicode: { providerSaw: true, reply: true, budgetCountsUtf8: true },
       cancellation: { sameTurn: true, socketClosed: [true], otherTurn: "answer in another turn", preAborted: true, handlerCalls: 10, fallbackCalls: [0, 0] },
       streams: { visible: [fx.decoded, fx.decoded], results: [RAW, RAW], revisionsPerAttempt: [1, 1], retriedSkipsFailedAttempt: 2, retriedBy: 2 },
