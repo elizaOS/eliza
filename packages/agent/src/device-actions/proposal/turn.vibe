@@ -69,7 +69,7 @@ module node {
           observation: context.observation,
           completedActionNavigation: context.voiceUi?.viewDelivery === "completed-action",
           completesReads: options.completesReads,
-          assistantName: runtime.character.name,
+          assistantName: runtime.character.name ?? "",
           get swapped() {
             return getTrajectoryContext()?.secretSwapSession?.entries ?? []
           },

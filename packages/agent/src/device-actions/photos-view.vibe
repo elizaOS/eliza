@@ -70,9 +70,9 @@ const scanned = 50
 function returnedRevisions(read: EarlierRequest): readonly NamedItem[] {
   const { operation, result } = read
   switch (operation.type) {
-    case "photo_library_search": return readResult<"photo_library_search">(operation, result)?.items ?? []
+    case "photo_library_search": return (readResult<"photo_library_search">(operation, result) as { readonly items?: readonly NamedItem[] } | undefined)?.items ?? []
     case "photo_library_inspect": {
-      const item = readResult<"photo_library_inspect">(operation, result)?.item
+      const item = (readResult<"photo_library_inspect">(operation, result) as { readonly item?: NamedItem } | undefined)?.item
       return item === undefined ? [] : [item]
     }
     case "camera_capture_photo": {
