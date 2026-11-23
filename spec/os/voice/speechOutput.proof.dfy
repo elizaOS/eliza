@@ -508,3 +508,23 @@ lemma closeListening_ensures(s: SpeechOutput)
     UnchangedWorkersKeepPhaseRules(s, closeListening(s).state);
   }
 }
+
+// A volume change leaves the workers as they were.
+lemma withVolume_ensures(s: SpeechOutput, v: Volume)
+  ensures (inv(s) ==> alwaysWarmupOnlyWhileIdle(withVolume(s, v)))
+  ensures (inv(s) ==> alwaysOnlyTheOwnerIsOpen(withVolume(s, v)))
+  ensures (inv(s) ==> alwaysWorkerIdsAreUnique(withVolume(s, v)))
+  ensures (inv(s) ==> alwaysNoSpeechDuringCall(withVolume(s, v)))
+  ensures (inv(s) ==> alwaysSpeakingHasPositiveUtteranceId(withVolume(s, v)))
+  ensures (inv(s) ==> alwaysPausedListeningIsSilent(withVolume(s, v)))
+  ensures (inv(s) ==> stepRetiredWorkerNeverStartsPlaying(s, withVolume(s, v)))
+  ensures (inv(s) ==> stepNoWriteAfterRetireOrTimeout(s, withVolume(s, v)))
+  ensures (inv(s) ==> stepOutputReleasedOnce(s, withVolume(s, v)))
+  ensures (inv(s) ==> stepFirstAudioReportedOnce(s, "withVolume", withVolume(s, v), []))
+  ensures (inv(s) ==> stepFocusAbandonedWhenUnused(s, "withVolume", withVolume(s, v), []))
+  ensures (inv(s) ==> stepStoppedSpeechDropsItsAudio(s, "withVolume", withVolume(s, v), []))
+{
+  if inv(s) {
+    UnchangedWorkersKeepPhaseRules(s, withVolume(s, v));
+  }
+}
