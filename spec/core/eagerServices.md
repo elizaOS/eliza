@@ -140,3 +140,33 @@ Every acquisition an eager job makes takes the next call identity, which is neve
 pure def alwaysEagerCallIdentitiesFresh(s: EagerServices): bool =
   s.nextCall >= 1 and s.jobs.every(j => j.callId >= 0 and j.callId < s.nextCall and (j.phase == EagerWaiting implies (j.callId > 0 and s.jobs.every(other => other.id == j.id or other.callId != j.callId))))
 ```
+
+### Four successive startup failures end the job after the scheduled waits
+
+```quint
+pure val eval_witness_sometimesFourFailuresTerminate = (
+  ("registerClass", 1, "storage"),
+  ("finishInitialization", true),
+  ("startEager", 1, "storage"),
+  ("acquireEager", 1),
+  ("failStart", 1, "start-failed"),
+  ("settleAcquire", 1),
+  ("observeAcquire", 1),
+  ("advanceClock", 2000),
+  ("wakeEager", 1),
+  ("failStart", 2, "start-failed"),
+  ("settleAcquire", 1),
+  ("observeAcquire", 1),
+  ("advanceClock", 5000),
+  ("wakeEager", 1),
+  ("failStart", 3, "start-failed"),
+  ("settleAcquire", 1),
+  ("observeAcquire", 1),
+  ("advanceClock", 10000),
+  ("wakeEager", 1),
+  ("failStart", 4, "start-failed"),
+  ("settleAcquire", 1),
+  ("observeAcquire", 1)
+)
+
+```

@@ -155,6 +155,24 @@ pure def alwaysHonestConfirmation(j: Journey): bool = D::alwaysConfirmationHasPr
 pure def alwaysDrainedRetirement(j: Journey): bool = j.kernel.strictSuccess implies j.kernel.activeTurns == 0 and not(j.reply.inFlight)
 pure def sometimesConfirmedAndRetired(j: Journey): bool = j.kernel.strictSuccess and j.reply.confirmsApplied
 pure def sometimesRejectedActionRetired(j: Journey): bool = j.kernel.strictSuccess and j.actionFailure != NoActionFailure and not(j.reply.confirmsApplied)
+pure val eval_witness_sometimesRejectedActionRetired = (
+  "beginInitialization",
+  ("completeInitialization", true),
+  ("beginTurn", List(), List()),
+  ("configureModel", "complete serialized request a",
+    List({ id: 1, provider: 1 }, { id: 2, provider: 1 }, { id: 3, provider: 2 }),
+    true, true, false, false, List("READ"), List()),
+  "admitModel",
+  "invokeModel",
+  "requestStop",
+  ("observeModel", M::RetryEnvelope),
+  "invokeModel",
+  ("observeModel", M::Answer),
+  ("rejectAction", ActionAdmissionDenied),
+  "finishTurn",
+  "finishStop",
+  "confirmRetirement"
+)
 pure def sometimesCancelledAndRetired(j: Journey): bool = j.kernel.strictSuccess and j.model.rootAborted and not(j.reply.confirmsApplied)
 pure def sometimesFailedTransportKeepsCommit(j: Journey): bool = j.phase == Completed and j.reply.transportFailed and D::committedReceipt(j.reply.receipt)
 ```
