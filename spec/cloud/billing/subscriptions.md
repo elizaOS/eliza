@@ -208,6 +208,14 @@ pure def scheduleDowngrade(s: Subscription, commandId: str, planKey: PlanKey): S
 pure def alwaysPlannedDowngradeIsLower(s: Subscription): bool = { val p = s.planned
   match p { | DowngradeAtRenewal(x) => isLive(s.status) and isDowngrade(s.planKey, x.planKey) | NoPlannedChange => true } }
 pure def sometimesDowngradeScheduled(s: Subscription): bool = s.planned != NoPlannedChange
+pure val eval_witness_sometimesDowngradeScheduled = (
+  ("pinCustomer", "cus1"),
+  ("claimCommand", CheckoutCommand, "cmd1", 1),
+  ("checkoutPaid", "cmd1", "sub1", ProMonthly, "cus1"),
+  ("reconcile", "sub1", ProviderActive, PeriodInvoicePaid, "in_1", ProMonthly, 0, 600000, false, 0),
+  ("claimCommand", DowngradeCommand, "cmd2", 2),
+  ("scheduleDowngrade", "cmd2", PlusMonthly)
+)
 ```
 
 ### The revision grows by one with every change to the subscription, and limits change only with a policy change

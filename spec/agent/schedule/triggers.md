@@ -143,6 +143,15 @@ pure def alwaysFiredOccurrencesAreNotAhead(t: Trigger): bool = t.lastFiredAt <= 
 pure def alwaysTheNextOccurrenceHasNotFired(t: Trigger): bool = (t.life == Saved and t.enabled and t.schedule != OnRuntimeEvent and not(runningScheduledOnce(t))) implies t.nextAt > t.lastFiredAt
 pure def stepAFiringRunsOrIsMissed(before: Trigger, via: str, after: Trigger): bool = via == "fire" implies (if (after.activity == Idle) after.history.nthOr(after.history.length() - 1, Ran({ source: RunNow, turn: Completed })) == Missed({ scheduledAt: before.nextAt }) else after.history == before.history)
 pure def sometimesCronRanAfterAMiss(t: Trigger): bool = t.schedule == CronSchedule and t.history.includes(Missed({ scheduledAt: 1000 })) and t.history.includes(Ran({ source: Scheduled, turn: Completed }))
+pure val eval_witness_sometimesCronRanAfterAMiss = (
+  ("create", CronSchedule, "room1", "room2", "MESSAGE_RECEIVED", 1000, true),
+  ("setEnabled", true, 1000, 0, AnyRevision),
+  ("tick", 1801001),
+  ("fire", 1802000, 1001),
+  ("tick", 1000),
+  ("fire", 3700000, 1001),
+  ("finishRun", true, Completed)
+)
 pure def sometimesMissedOnceStaysListed(t: Trigger): bool = t.life == Saved and t.schedule == OnceAt and not(t.enabled) and t.history.includes(Missed({ scheduledAt: 1000 }))
 pure val weight_create = 20
 pure val weight_setEnabled = 6
@@ -229,6 +238,15 @@ pure def finishRun(t: Trigger, roomExists: bool, turn: RunOutcome): Trigger = {
 }
 pure def sometimesOnceRemovedAfterItsRun(t: Trigger): bool = t.life == Removed and t.schedule == OnceAt and t.history.includes(Ran({ source: Scheduled, turn: Completed }))
 pure def sometimesOnceRanNowThenOnSchedule(t: Trigger): bool = t.life == Removed and t.schedule == OnceAt and t.history.includes(Ran({ source: RunNow, turn: Completed })) and t.history.includes(Ran({ source: Scheduled, turn: Completed }))
+pure val eval_witness_sometimesOnceRanNowThenOnSchedule = (
+  ("create", OnceAt, "room1", "room2", "MESSAGE_RECEIVED", 1000, true),
+  "runNow",
+  ("finishRun", true, Completed),
+  ("setEnabled", true, 1000, 0, AnyRevision),
+  ("tick", 1000),
+  ("fire", 2000, 0),
+  ("finishRun", true, Completed)
+)
 pure def sometimesFailedTurnIsAnError(t: Trigger): bool = t.history.includes(Ran({ source: RunNow, turn: Failed }))
 pure def sometimesGoneConversationFailedTheRun(t: Trigger): bool = t.history.includes(Ran({ source: RunNow, turn: RoomUnavailable }))
 ```
