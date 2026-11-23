@@ -96,7 +96,7 @@ effect function hangUpAfterFirstBytes(url: string, key: string) {
 }
 
 describe("WP5 Inference: chat completions", () => {
-  it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent and answering a provider's refusal of the request as the caller's (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
+  it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent and answering a provider's refusal of the request as the caller's and its rate limit as a rate limit (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
     const { cloud, llm, chat } = try chatCloud(true)
     const { model, messages } = request
     const unbounded = { model, messages }
@@ -159,7 +159,7 @@ describe("WP5 Inference: chat completions", () => {
           [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
         idempotencyForwarded: false,
         planningForwarded: planning,
-        refusedByProvider: [503, "provider_unavailable", "7"],
+        refusedByProvider: [429, "rate_limited", "7"],
         unreadable: [502, "provider_invalid_response", undefined],
         rejectedByProvider: [400, "invalid_request", undefined],
         providerAuthFailed: [503, "provider_unavailable", "5"],

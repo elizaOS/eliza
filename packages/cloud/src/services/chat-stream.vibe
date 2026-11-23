@@ -1,6 +1,6 @@
 // spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal"
-import { endOfFailure, failureRefusal, hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
-import { refusalBody, refused } from "../http/refusal.vibe"
+import { endOfFailure, failureRefusal, hangUpCounts, providerPause, type CompletionEnd } from "../../gen/cloud__services__inference.effect.vibe"
+import { refusalBody, refused, Refused } from "../http/refusal.vibe"
 import { maxReplyBytes, ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, readLlmObject, type LlmFailure } from "../providers/llm.vibe"
 import type { Settlement } from "../shared/metering.vibe"
 import { billedFromUsage, type TokenCounts } from "./models.vibe"
@@ -8,17 +8,17 @@ import { chunkFrame, doneFrame, errorFrame, feed, finish, isDone, segmenter } fr
 
 const frameBytes = 256 * 1024
 const chunkBytes = 16 * 1024
-const providerPause = 5_000
+const providerFailed: CompletionEnd = { tag: "ProviderFailed", report: { tag: "NoUsage" } }
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const DeltaText = Schema.Struct({ delta: Schema.optionalKey(Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) })) })
 const readDeltaText = Schema.decodeUnknownOption(DeltaText)
 
-export function providerRefusal(failure: LlmFailure, now: number) {
+export function providerRefusal(failure: LlmFailure, now: number): Refused {
   if (failure._tag === "ProviderInvalidResponse") return refused("ProviderInvalidResponse")
-  const code = failure._tag === "ProviderRefused" ? failureRefusal(endOfFailure(failure.status, false)).code : "ProviderUnavailable"
-  if (code !== "ProviderUnavailable") return refused(code)
-  return refused("ProviderUnavailable", "NoReason", now + (failure._tag === "ProviderRefused" ? failure.retryAfter ?? providerPause : providerPause))
+  const rejected = failure._tag === "ProviderRefused" ? failure : undefined
+  const end = rejected === undefined ? providerFailed : endOfFailure(rejected.status, false)
+  return new Refused({ refusal: failureRefusal(end, now + (rejected?.retryAfter ?? providerPause)) })
 }
 
 type ChatSettlement = Exclude<Settlement, { readonly kind: "release" }>

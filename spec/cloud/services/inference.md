@@ -273,10 +273,13 @@ before any byte was delivered; any other failure after dispatch (a 5xx, the
 timeout, the network, a failure mid-stream) is `ProviderFailed`. A mid-stream
 failure retains any usage report received before it. A provider
 `400` or `422` (a parameter or a strict `json_schema` it cannot serve)
-answers `400 invalid_request`, a `413` answers `413 content_too_large`, any
-other failure `503 provider_unavailable`, the only retryable one.
-Closure preserves the original hold key. A closed hold refuses a second
-settlement or release.
+answers `400 invalid_request`, a `413` answers `413 content_too_large`, a
+`429` answers `429 rate_limited`, so the agent's turn waits and sends the
+call once more instead of retrying it as an outage, and any other failure
+`503 provider_unavailable`. Only the last two are retryable, and both carry
+a retry time: the provider's `Retry-After` when it sent one, else five
+seconds from now. Closure preserves the original hold key. A closed hold
+refuses a second settlement or release.
 
 ```quint
 pure val rejectionStatuses: Set[int] = Set(400, 401, 402, 403, 404, 405, 406, 409, 410, 413, 415, 422, 429)
@@ -296,14 +299,18 @@ pure def lawEveryCallClosesItsHoldOnce(lane: M::FundingLane, quote: Micros, allo
 pure val statusValues = Set(0, 400, 413, 429, 500)
 pure def lawOnlyAnUndeliveredRejectionIsFree(status: int, delivered: bool, quoted: Mo::TokenCounts): bool =
   (chargeOf(true, endOfFailure(status, delivered), quoted) == ChargeCounts({ counts: noTokens })) iff (not(delivered) and rejectionStatuses.contains(status))
-pure def failureRefusal(end: CompletionEnd): Refusal = match end {
-  | ProviderRejected(r) => if (r.status == 400 or r.status == 422) refuse(InvalidRequest) else if (r.status == 413) refuse(ContentTooLarge) else refuse(ProviderUnavailable)
-  | _ => refuse(ProviderUnavailable)
+pure val providerPause: Millis = 5 * millisPerSecond
+pure def failureRefusal(end: CompletionEnd, retryAt: Millis): Refusal = match end {
+  | ProviderRejected(r) => if (r.status == 400 or r.status == 422) refuse(InvalidRequest) else if (r.status == 413) refuse(ContentTooLarge)
+      else if (r.status == 429) refuseUntil(RateLimited, retryAt) else refuseUntil(ProviderUnavailable, retryAt)
+  | _ => refuseUntil(ProviderUnavailable, retryAt)
 }
-pure def lawFailureRefusalsAreWellFormed(status: int, delivered: bool): bool = {
-  val r = failureRefusal(endOfFailure(status, delivered))
-  wellFormed(r) and (retryableOf(r) iff r.code == ProviderUnavailable)
+pure def lawFailureRefusalsAreWellFormed(status: int, delivered: bool, retryAt: Millis): bool = {
+  val r = failureRefusal(endOfFailure(status, delivered), retryAt)
+  wellFormed(r) and (retryableOf(r) iff (r.code == ProviderUnavailable or r.code == RateLimited))
 }
+pure def lawOnlyAnUndeliveredProviderRateLimitIsARateLimit(status: int, delivered: bool, retryAt: Millis): bool =
+  (failureRefusal(endOfFailure(status, delivered), retryAt).code == RateLimited) iff (status == 429 and not(delivered))
 ```
 
 ## Story: Stream a reply in the shape clients read
