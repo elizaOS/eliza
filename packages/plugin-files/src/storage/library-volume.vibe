@@ -31,25 +31,16 @@ module browser {
   }
 }
 import { base64, fileBlob, identityToken, shareFile, storageEstimate } from browser
-import { apply, canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
+import { apply, canPrune, classifyRow, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { chatLimit, mailLimit, selectionReadable, textLimit } from "../../gen/files__library.effect.vibe"
-import { batchMax, type FileOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
+import type { FilesOp, FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
 import { fileArchive } from "../documents/archive.vibe"
 import { downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry } from "./model.vibe"
 import { allocateLibraryId, deletePlan, insertPlan, LibraryStore, LIBRARY_ROOT, childrenOf, placePlan, subtreeOf, type LibraryRow } from "./library.vibe"
-import { checkSelection, FilesVolume, succeeded, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
+import { ANSWERS, checkErase, decodeRecord, listShown, newestFirst, refused, TRASH, trashEach, type TrashRecord } from "./trash-journal.vibe"
+import { checkSelection, FilesVolume, succeeded, type RowOutcome, type VolumeRefused } from "./volume.vibe"
 
-const TRASH = ".Trash-files"
 const WALK_LIMIT = 5_000
-const ANSWERS: Readonly<Record<FileOutcome, RowStatus>> = {
-  Invalid: "invalid", Missing: "missing", Changed: "changed", Unchanged: "unchanged", Admitted: "failed",
-  Copied: "copied", Moved: "moved", Trashed: "trashed", Failed: "failed",
-}
-schema JournalRow { phase: "Visible" | "Journaled" | "InTrash" | "MoveFailed" | "Expiring" | "Gone"; journal: boolean; resident: boolean; deletedAt: number }
-schema TrashRecord { name: string; origin: string; directory: boolean; size: number; mimeType: string; row: JournalRow }
-const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(TrashRecord))
-
-const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
 const allocateId = mapError(allocateLibraryId, (failure) => refused("unavailable", failure.message))
 const visible = (rows: readonly LibraryRow[], folderId: string) => childrenOf(rows, folderId).filter((row) => !row.name.startsWith("."))
 
@@ -307,12 +298,7 @@ export function libraryVolume(archiveName = "Files.zip") {
         for (const [index, path] of selected.entries()) outcomes.push(try transferRow(copy ? "Copy" : "Move", path, reviewed?.[index], target, destId))
         return outcomes
       },
-      trash: ({ paths: selected, reviewed }) => namespace(effect {
-        try checkSelection(selected, reviewed)
-        const outcomes: RowOutcome[] = []
-        for (const [index, path] of selected.entries()) outcomes.push(try trashRow(path, reviewed?.[index]))
-        return outcomes
-      }),
+      trash: ({ paths: selected, reviewed }) => namespace(trashEach(selected, reviewed, trashRow)),
       trashList: () => namespace(effect {
         const at = try now
         const items: TrashEntry[] = []
@@ -338,9 +324,9 @@ export function libraryVolume(archiveName = "Files.zip") {
             if (erased) try orDie(apply(pruned, { type: "completePrune", writeAcknowledged: try eraseRecord(id) }))
             continue
           }
-          if (listed(kept.row, at)) items.push({ id, name: kept.name, origin: kept.origin, directory: kept.directory, mimeType: kept.mimeType, size: kept.size, deletedAt: kept.row.deletedAt })
+          listShown(items, id, kept, at)
         }
-        return items.sort((a, b) => b.deletedAt - a.deletedAt)
+        return newestFirst(items)
       }),
       restore: (ids) => namespace(effect {
         const outcomes: RowOutcome[] = []
@@ -363,8 +349,7 @@ export function libraryVolume(archiveName = "Files.zip") {
         return outcomes
       }),
       emptyTrash: (ids, confirmed) => namespace(effect {
-        if (!confirmed) throw refused("confirmation-required", "Confirm before deleting permanently.")
-        if (ids.length < 1 || ids.length > batchMax || new Set(ids).size !== ids.length) throw refused("invalid", "Invalid name or path.")
+        try checkErase(ids, confirmed, "Invalid name or path.")
         let count = 0
         for (const data of trashDataOf(try rows())) {
           if (!ids.includes(data.name)) continue

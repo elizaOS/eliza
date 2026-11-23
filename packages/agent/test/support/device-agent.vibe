@@ -1,0 +1,17 @@
+// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
+import { deviceActionsModuleName } from "../../src/device-actions/proposal/module.vibe"
+import { builtinModuleFactories } from "../../src/plugins/profile.vibe"
+import type { AgentRuntime } from "@elizaos/core"
+import type { CloudFake } from "./cloud-fake.ts"
+import { cloudFake, deviceKey, host, startInProcess } from "./kernel.vibe"
+import type { LaunchOptions } from "./scratch.ts"
+
+export effect function deviceJourney<A>(launch: LaunchOptions, step: string, journey: (runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) => Promise<A>) {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1, load: [deviceActionsModuleName], ...launch },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
+  return try host(step, () => journey(agent.agent.runtime, socket, agent.frame.token, cloud))
+}

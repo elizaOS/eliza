@@ -1,18 +1,10 @@
 // spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
-import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { check, sql, testCloud } from "./support/cloud.vibe"
 import { signedCaller } from "./support/caller.vibe"
 import { googleMapsFake } from "./support/maps-fake.ts"
 import { osmFake } from "./support/maps-osm-fake.ts"
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
-
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
-}
 
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
   it.live("Answer a maps request once and pay for it once, keep tiles unstored and look a place up nearby first (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\"; spec/cloud/services/maps.md, \"Story: Keep maps requests within the provider's terms\")", () => scoped(effect {

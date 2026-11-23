@@ -7,23 +7,6 @@ import { noteLimits, StoredDocument } from "./records.schema.vibe"
 import type { NotesSnapshot } from "./types.vibe"
 
 module edge {
-  function canonical(value: unknown): string {
-    if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]"
-    if (value !== null && typeof value === "object") {
-      const record = value as Record<string, unknown>
-      return "{" + Object.keys(record).filter((key) => record[key] !== undefined).sort()
-        .map((key) => JSON.stringify(key) + ":" + canonical(record[key])).join(",") + "}"
-    }
-    return JSON.stringify(value) ?? "null"
-  }
-  /** @throws {never} */
-  export function sameJson(a: unknown, b: unknown): boolean {
-    try {
-      return canonical(a) === canonical(b)
-    } catch {
-      return false
-    }
-  }
   /** @throws {never} */
   export function plain(value: unknown): unknown {
     try {
@@ -33,7 +16,8 @@ module edge {
     }
   }
 }
-import { plain, sameJson } from edge
+import { plain } from edge
+import { sameJson } from "./json.vibe"
 
 export interface NotesStorage {
   get(): Promise<unknown>

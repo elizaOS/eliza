@@ -290,14 +290,24 @@ const unavailable: ProviderResult = {
   data: { savedNotes: null },
 }
 
+const ownerNotes = { position: -5, contexts: ["notes", "general", "memory"], roleGate: { minRole: "OWNER" } } satisfies Partial<Provider>
+
+type Snapshot = Effect.Success<ReturnType<NotesCollection["snapshot"]>>
+
+function namedGet(notes: NotesCollection, answer: (words: string, snapshot: Snapshot, message: Memory) => ProviderResult, fallback: () => ProviderResult): Provider["get"] {
+  return (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
+    const words = try ownerRequestText(message)
+    if (words === "") return { text: "", values: {}, data: {} } satisfies ProviderResult
+    return answer(words, try notes.snapshot(), message)
+  }, fallback))
+}
+
 function providers(notes: NotesCollection): Provider[] {
   const savedNotes: Provider = {
     name: "SAVED_NOTES",
     description: "The current records of this agent's Notes collection.",
     descriptionCompressed: "this agent's Notes records",
-    position: -5,
-    contexts: ["notes", "general", "memory"],
-    roleGate: { minRole: "OWNER" },
+    ...ownerNotes,
     get: (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
       const snapshot = try notes.snapshot()
       if (snapshot.notes.length === 0) return { text: "", values: { savedNotesAvailable: true, savedNoteCount: 0 }, data: { savedNotes: [] } } satisfies ProviderResult
@@ -319,13 +329,8 @@ function providers(notes: NotesCollection): Provider[] {
     name: "NAMED_NOTES",
     description: "Current records whose titles the owner names this turn.",
     alwaysInResponseState: true,
-    position: -5,
-    contexts: ["notes", "general", "memory"],
-    roleGate: { minRole: "OWNER" },
-    get: (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
-      const words = try ownerRequestText(message)
-      if (words === "") return { text: "", values: {}, data: {} } satisfies ProviderResult
-      const snapshot = try notes.snapshot()
+    ...ownerNotes,
+    get: namedGet(notes, (words, snapshot, message) => {
       const named = notesNamedIn(words, snapshot.notes)
       const deleted = (snapshot.trash ?? []).filter((entry) => notesNamedIn(words, [entry.note]).length > 0)
         .map((entry) => ({ noteId: entry.note.id, title: entry.note.title, deletedAt: entry.deletedAt }))
@@ -341,27 +346,30 @@ function providers(notes: NotesCollection): Provider[] {
         values: {},
         data: { namedNotes: named.map(projectNoteForModel), ...(deleted.length > 0 ? { namedDeletedNotes: deleted } : {}), notesRevision: snapshot.revision },
       } satisfies ProviderResult
-    }, () => ({ text: "Current named notes could not be read. Do not claim current note contents from history.", values: {}, data: { namedNotes: null } } satisfies ProviderResult))),
+    }, () => ({ text: "Current named notes could not be read. Do not claim current note contents from history.", values: {}, data: { namedNotes: null } } satisfies ProviderResult)),
   }
   const namedNoteRouting: Provider = {
     ...namedNotes,
     name: "NAMED_NOTE_ROUTING",
     description: "Fresh authorized exact-name availability for lean context routing.",
     alwaysInResponseState: false,
-    get: (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
-      const words = try ownerRequestText(message)
-      if (words === "") return { text: "", values: {}, data: {} } satisfies ProviderResult
-      const snapshot = try notes.snapshot()
+    get: namedGet(notes, (words, snapshot) => {
       const available = notesNamedIn(words, [...snapshot.notes, ...(snapshot.trash ?? []).map((entry) => entry.note)]).length > 0
       return {
         text: available ? "Fresh exact named-note reference available in the Notes context. Availability alone does not determine current, historical, or mixed intent." : "",
         values: {},
         data: { namedNoteMatchAvailable: available },
       } satisfies ProviderResult
-    }, () => ({ text: "Current named-note match availability is unconfirmed.", values: {}, data: { namedNoteMatchAvailable: null } } satisfies ProviderResult))),
+    }, () => ({ text: "Current named-note match availability is unconfirmed.", values: {}, data: { namedNoteMatchAvailable: null } } satisfies ProviderResult)),
   }
   return [savedNotes, namedNotes, namedNoteRouting]
 }
+
+const noteTarget = {
+  id: { type: "string", pattern: noteIdPattern.source, description: "Stable note ID." },
+  title: { type: "string", minLength: 1, maxLength: 240, description: "Exact first-line label." },
+  query: { type: "string", minLength: 1, maxLength: 20_000, description: "Unique text the note contains." },
+} satisfies ViewCapability["params"]
 
 export const NOTES_CAPABILITIES: ViewCapability[] = [
   { id: "get-notes-trash", description: "Read recoverably deleted notes from Notes Trash." },
@@ -372,11 +380,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   { id: "get-notes", description: "List notes, optionally narrowed by text they contain.", params: {
     query: { type: "string", minLength: 1, maxLength: 20_000, description: "Optional unique note text." },
   } },
-  { id: "get-note", description: "Read one note by ID, exact first-line label or unique text.", params: {
-    id: { type: "string", pattern: noteIdPattern.source, description: "Stable note ID." },
-    title: { type: "string", minLength: 1, maxLength: 240, description: "Exact first-line label." },
-    query: { type: "string", minLength: 1, maxLength: 20_000, description: "Unique text the note contains." },
-  } },
+  { id: "get-note", description: "Read one note by ID, exact first-line label or unique text.", params: noteTarget },
   { id: "create-note", description: "Create a durable note from one authored content field and an optional rich format.", params: {
     content: { type: "string", required: true, maxLength: 20_241, description: "Exact note text; empty only when format carries authored text." },
     format: { type: "object", description: "Optional lossless rich format: kind text, list, voice or link, and JSON data." },
@@ -394,11 +398,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     color: { type: "string", enum: ["yellow", "green", "rose", "slate"], description: "Replacement color." },
     expectedRevision: { type: "integer", required: true, minimum: 0, description: "Revision of the snapshot this edit was prepared from." },
   } },
-  { id: "delete-note", description: "Move one note to Trash by ID, exact first-line label or unique text.", params: {
-    id: { type: "string", pattern: noteIdPattern.source, description: "Stable note ID." },
-    title: { type: "string", minLength: 1, maxLength: 240, description: "Exact first-line label." },
-    query: { type: "string", minLength: 1, maxLength: 20_000, description: "Unique text the note contains." },
-  } },
+  { id: "delete-note", description: "Move one note to Trash by ID, exact first-line label or unique text.", params: noteTarget },
   { id: "clear-notes", description: "Move every note to Trash after the owner confirmed it, at the current revision.", params: {
     confirm: { type: "boolean", required: true, enum: [true], description: "True only after the owner confirmed deleting every note." },
     expectedRevision: { type: "integer", required: true, minimum: 0, description: "Current notes revision from the latest snapshot." },

@@ -1,4 +1,5 @@
 // spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"
+import { regexMatches } from "@elizaos/core"
 import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
 import { groundedSearch } from "../gen/browser__control.effect.vibe"
 import { closingMarkIsProse, directDestination, pageLinkDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
@@ -19,17 +20,6 @@ function compiled(source: string, flags: string): RegExp {
   } catch {
     return /(?!)/
   }
-}
-
-function matchesOf(text: string, pattern: RegExp): RegExpExecArray[] {
-  const found: RegExpExecArray[] = []
-  pattern.lastIndex = 0
-  for (let match = pattern.exec(text); match !== null; match = pattern.exec(text)) {
-    found.push(match)
-    if (match[0] === "") pattern.lastIndex += 1
-  }
-  pattern.lastIndex = 0
-  return found
 }
 
 function stripTrailingPunctuation(text: string, punctuation: string): string {
@@ -264,11 +254,11 @@ interface TypedAddress {
 }
 
 function wordsOf(text: string): Word[] {
-  return matchesOf(text, WORDS).map((match) => ({ value: match[0], index: match.index }))
+  return regexMatches(text, WORDS).map((match) => ({ value: match[0], index: match.index }))
 }
 
 function addressWords(text: string): Word[] {
-  return matchesOf(text, ADDRESS_WORD).map((match) => {
+  return regexMatches(text, ADDRESS_WORD).map((match) => {
     const value = match[1] ?? match[2] ?? ""
     return { value, index: match.index + match[0].length - value.length }
   })
@@ -328,7 +318,7 @@ function negatesOpen(text: string, at: number, assistantName: string): boolean {
   const names = patterns(assistantName)
   const before = plain(text.slice(Math.max(0, at - 500), at))
   const targets = [before.length]
-  const verbs = matchesOf(before, OPEN_VERBS)
+  const verbs = regexMatches(before, OPEN_VERBS)
   let first = verbs.length - 1
   let listed = false
   while (first > 0) {
@@ -344,7 +334,7 @@ function negatesOpen(text: string, at: number, assistantName: string): boolean {
   if (first === 0 && verbs.length > 1 && at > 500 && earliest !== undefined && earliest.index < 160) return true
   const governing = verbs[first]
   if (first >= 0 && governing !== undefined) targets.push(governing.index)
-  for (const negation of matchesOf(before, NEGATIONS)) {
+  for (const negation of regexMatches(before, NEGATIONS)) {
     const end = negation.index + negation[0].length
     if (politeQuestion(before, negation.index, end, names)) continue
     for (const target of targets) {

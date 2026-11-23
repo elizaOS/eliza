@@ -13,7 +13,8 @@ import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { migrate, Store, StoreFailure, type Tx } from "../src/store/store.vibe"
-import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { check, organization, serveOnStore, sql, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { seeded } from "./support/seeding.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
@@ -21,13 +22,11 @@ import { tokenDigest } from "../src/shared/sealing.vibe"
 import { stepRow } from "../src/store/rows.vibe"
 import { resignedEntitlement, verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
 import { decodeRegistration, disableClient, readClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
-import { seedClients } from "../src/operator/clients.vibe"
 import { deviceKey, openAccount, printed } from "./support/operator.vibe"
 import { operator } from "./support/operator.vibe"
 import { chooseFor } from "../src/services/models.vibe"
 import { forwardScript, forwardScriptHash } from "../src/pages/forward-script.ts"
 import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
-import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity-fixture.ts"
 import { connectionColumns, connectionRows, scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
@@ -35,7 +34,7 @@ import { issueSession } from "../src/identity/sessions.vibe"
 import { sealTokens } from "../src/providers/google.vibe"
 import { bearerGrant, googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
-import { gmailReads, mimeBoundaryPayload, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
+import { expectedHtmlReads, expectedMimeReads, gmailReads, htmlAtLimit, htmlOverLimit, htmlReadSummary, mimeBoundaryPayload, mimeReadSummary, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
 import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
@@ -52,7 +51,7 @@ import { accountUsable, checkEntitlement, CloudError, createCloudClient, creditF
 import { unlistedRoutes } from "../src/client/routes.vibe"
 import { refused, type Refused } from "../src/http/refusal.vibe"
 import { matchRoute, type Route } from "../src/http/routes.vibe"
-import { areas, listening, respond } from "../src/http/server.vibe"
+import { areas } from "../src/http/server.vibe"
 import { googleIdentityFake, visit, type GooglePerson } from "./support/google-identity-fake.ts"
 import { authenticatorCode } from "./support/authenticator.ts"
 import { manualClock, shiftedClock } from "./support/clock.ts"
@@ -64,14 +63,6 @@ effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A
     when Exit.Success(let value): `succeeded with ${JSON.stringify(value)}`;
     when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
   }
-}
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
-
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
 }
 
 describe("WP0 Foundation", () => {
@@ -233,14 +224,23 @@ describe("WP0 Foundation", () => {
 
 describe.todo("WP2 Native clients and pages (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")")
 
+effect function clockAt(at: number) {
+  const clock = try sync(() => manualClock())
+  try sync(() => clock.set(at))
+  return clock
+}
+
+effect function seededCloud() {
+  const cloud = try testCloud()
+  try seeded(cloud)
+  return cloud
+}
+
 describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)", () => {
   it.live("Bring me back to the app on its registered return only, and tell a payer the checkout ended (spec/cloud/returnPages.md, \"Story: Bring me back to the app when its link did not open\"; spec/cloud/returnPages.md, \"Story: Tell a payer the checkout ended\")", () => scoped(effect {
-    const cloud = try testCloud()
+    const cloud = try seededCloud()
     const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
     const now = try Clock.currentTimeMillis
-    provide deploymentLayer(profile, "staging") {
-      try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
-    }
     const web = { "x-forwarded-host": "www.staging.example.com" }
     const signIn = try cloud.call("/apps/fixture/sign-in?code=private-code&state=private-state", { headers: web })
     const html = String(signIn.body)
@@ -311,14 +311,6 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     return [answer.error, answer.reason]
   }
 
-  effect function seeded(cloud: TestCloud) {
-    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
-    const now = try Clock.currentTimeMillis
-    provide Store = cloud.store, deploymentLayer(profile, "staging") {
-      try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
-    }
-  }
-
   effect function device(cloud: TestCloud, accessToken: string, name: string) {
     const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: name } })
     const code = (connected.body as { readonly code: string }).code
@@ -329,11 +321,9 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
   }
 
   it.live("Sign a device in: connect, token twice, a wrong then the right proof, then use the key (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
-    const clock = try sync(() => manualClock())
-    try sync(() => clock.set(1_000_000))
+    const clock = try clockAt(1_000_000)
     provide Clock.Clock = clock.clock {
-    const cloud = try testCloud()
-    try seeded(cloud)
+    const cloud = try seededCloud()
     const signed = try signedIn(cloud, "devices@example.com")
     const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Ada's phone" } })
     const opened = connected.body as { readonly code: string; readonly codeType: string; readonly expiresIn: number }
@@ -418,11 +408,9 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
   }))
 
   it.live("Refuse an expired key, end this key on self-revoke, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\"; spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\")", () => scoped(effect {
-    const clock = try sync(() => manualClock())
-    try sync(() => clock.set(1_000_000))
+    const clock = try clockAt(1_000_000)
     provide Clock.Clock = clock.clock {
-    const cloud = try testCloud()
-    try seeded(cloud)
+    const cloud = try seededCloud()
     const signed = try signedIn(cloud, "keys@example.com")
     const registration = try cloud.inside(cloud.store.transaction((tx) => readClient(tx, binding.clientId)))
     if (registration === undefined) throw new Error("the fixture registration disappeared")
@@ -1022,11 +1010,7 @@ describe("WP3 Checkout (spec/cloud/billing/checkout.md, \"Story: Subscribe once,
 
 describe("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")", () => {
   effect function checkoutCaller(cloud: TestCloud, name: string) {
-    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
-    const now = try Clock.currentTimeMillis
-    provide deploymentLayer(profile, "staging") {
-      try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
-    }
+    try seeded(cloud)
     const caller = try signedCaller(cloud, name)
     try sql(cloud, "UPDATE device_grants SET client_id = 'com.example.fixture' WHERE user_id = $1", [caller.userId])
     return caller
@@ -1393,12 +1377,26 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     ))
   }), 60_000)
 })
+effect function relayCloud() {
+  try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
+  const speech = try sync(() => speechFake())
+  const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
+  try TestClock.adjust(Duration.seconds(5))
+  return { speech, cloud }
+}
+
+effect function closedPhase(cloud: TestCloud, sessionId: string) {
+  let phase: unknown = undefined
+  for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
+    try TestClock.withLive(sleep(Duration.millis(50)))
+    phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [sessionId]))[0]?.phase
+  }
+  return phase
+}
+
 describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
   it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew a window and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\")", () => scoped(effect {
-    try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
-    const speech = try sync(() => speechFake())
-    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
-    try TestClock.adjust(Duration.seconds(5))
+    const { speech, cloud } = try relayCloud()
     const caller = try signedCaller(cloud, "talker")
     const reservedPerWindow = reservedFor(60 * 100) + reservedFor(4096 * 30)
     try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * reservedPerWindow + 1_000, requestKey: "talk-funding" }))
@@ -1426,11 +1424,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     try TestClock.withLive(sleep(Duration.millis(200)))
     try TestClock.adjust(Duration.seconds(10))
     const ending = try promise(() => socket.until((received) => received.kind === "close"))
-    let phase: unknown = undefined
-    for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
-      try TestClock.withLive(sleep(Duration.millis(50)))
-      phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
-    }
+    const phase = try closedPhase(cloud, session.sessionId)
     const windows = try sql(cloud, "SELECT number, expires_at, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
     const usage = try sql(cloud, `SELECT w.number, u.quote, u.outcome,
       CASE WHEN u.hold_key = w.transcribe_hold THEN 'transcribe' ELSE 'synthesize' END AS direction
@@ -1492,10 +1486,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
   }), 60_000)
 
   it.effect("A stop that meets a renewal closes the session with every window settled, and the renewed window it never used costs nothing (spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\")", () => scoped(effect {
-    try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
-    const speech = try sync(() => speechFake())
-    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
-    try TestClock.adjust(Duration.seconds(5))
+    const { cloud } = try relayCloud()
     const caller = try signedCaller(cloud, "stopper")
     try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 4 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: "stop-funding" }))
     const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
@@ -1507,11 +1498,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     try TestClock.adjust(Duration.seconds(50))
     try sync(() => socket.send({ t: "stop" }))
     try promise(() => socket.until((received) => received.kind === "close"))
-    let phase: unknown = undefined
-    for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
-      try TestClock.withLive(sleep(Duration.millis(50)))
-      phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
-    }
+    const phase = try closedPhase(cloud, session.sessionId)
     const windows = try sql(cloud, "SELECT number, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
     const renewed = try sql(cloud, `SELECT u.charged, u.outcome FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
       WHERE w.session_id = $1 AND w.number > 1`, [session.sessionId])
@@ -1959,9 +1946,6 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const whole = try promise(() => client.gmailRead({ messageId: "msg-digest" }))
     const snippet = try promise(() => client.gmailRead({ messageId: "msg-trashed" }))
     const oversized = try gmail("/read?messageId=msg-oversized")
-    const htmlTextAtLimit = "é".repeat(256 * 1024 - 4) + "x"
-    const htmlAtLimit = `<p>${htmlTextAtLimit}</p>`
-    const htmlOverLimit = `<p>${htmlTextAtLimit}y</p>`
     try sync(() => {
       const message = { labelIds: ["TRASH"], historyId: String(mailbox.history), internalDate: now, snippet: "Preview only" }
       mailbox.messages.set("html-at-limit", { ...message, id: "html-at-limit", threadId: "html-at-limit", bodyHtml: htmlAtLimit })
@@ -1973,12 +1957,9 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       mailbox.messages.set("mime-malformed", { ...message, id: "mime-malformed", threadId: "mime-malformed", mimePayload: mimeBoundaryPayload(201, "malformed") })
     })
     const htmlReads = try promise(() => Promise.all(["html-at-limit", "html-alternative", "html-over-limit"].map((messageId) => client.gmailRead({ messageId }))))
-    const html = htmlReads.map((message, index) => [
-      message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
-      message.bodyText === [htmlTextAtLimit, "Plain alternative", htmlTextAtLimit + "y"][index],
-    ])
+    const html = htmlReadSummary(htmlReads)
     const mimeReads = try promise(() => Promise.all(["mime-at-limit", "mime-over-limit", "mime-html-only"].map((messageId) => client.gmailRead({ messageId }))))
-    const mime = mimeReads.map((message) => [message.bodyHtmlStatus, message.bodyHtml, message.bodyText, message.attachments?.map(({ name }) => name)])
+    const mime = mimeReadSummary(mimeReads)
     const mimeAttachment = try gmail("/inbox-v1/attachment?messageId=mime-over-limit&partId=2&historyId=" + mailbox.history)
     const mimeMalformed = try gmail("/read?messageId=mime-malformed")
     const capabilities = try gmail("/inbox-v1/capabilities")
@@ -2106,10 +2087,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         fetched: [200, null],
         client: ["mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org", undefined],
         text: ["msg-digest", true, "plan"],
-        html: [["available", true, true], ["too_large", null, true], ["too_large", null, true]],
-        mime: [[["available", "<p>HTML after the attachments</p>", "Complete plain text", ["first.txt", "last.txt"]],
-          ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
-          ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
+        html: expectedHtmlReads,
+        mime: [expectedMimeReads, 200, btoa("last.txt"), 502],
         oversized: [413, "content_too_large"],
         capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"],
           kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
@@ -2263,20 +2242,6 @@ effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string
     connectionId, owner, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, grantedScopes: scopes,
     tokens: { refreshToken, accessToken: `stale-${connectionId}`, expiresAt }, now: expiresAt - 1
   }))
-}
-
-effect function serveOnStore(cloud: TestCloud, routes: ReadonlyArray<Route>, edit?: ProfileEdit) {
-  const raw = try sync(() => {
-    const profile = testProfile(cloud.fakes.url)
-    return edit === undefined ? profile : edit(profile)
-  })
-  const profile = try parseProfile(raw)
-  const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
-    Layer.provideMerge(listening(0, "127.0.0.1")),
-    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
-  ))
-  const { address } = Context.get(built, HttpServer.HttpServer)
-  return "port" in address ? `http://127.0.0.1:${address.port}` : ""
 }
 
 describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
@@ -3677,7 +3642,7 @@ module node {
   import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { googleRequest } from "../src/google.vibe"
   import { CloudError, createCloudClient } from "../src/client/index.vibe"
-  import { mimeBoundaryPayload } from "./support/fakes/google-gmail.ts"
+  import { htmlAtLimit, htmlOverLimit, htmlReadSummary, mimeBoundaryPayload, mimeReadSummary } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
   import { registerClients, workerBindings } from "./support/worker.ts"
 
@@ -3789,9 +3754,6 @@ module node {
         [owner.account.id, grant, subject, "attachment-owner@example.test", encrypted])
       const wholeText = "x".repeat(8 * 1024 * 1024)
       const externalText = "é".repeat(450 * 1024)
-      const htmlTextAtLimit = "é".repeat(256 * 1024 - 4) + "x"
-      const htmlAtLimit = `<p>${htmlTextAtLimit}</p>`
-      const htmlOverLimit = `<p>${htmlTextAtLimit}y</p>`
       const bytes = Buffer.from("%PDF-local-fixture")
       const part = { partId: "1", filename: "fixture.pdf", mimeType: "application/pdf", body: { attachmentId: "fixture-attachment", size: bytes.length } }
       const unsupported = { partId: "2", filename: "fixture.html", mimeType: "text/html", body: { attachmentId: "never-fetch", size: 10 } }
@@ -4068,12 +4030,9 @@ module node {
       const mailText = [whole.message.id, whole.bodyText === wholeText, external.bodyText === externalText, snippet.bodyText,
         await readFailure("mail-oversized"), await readFailure("mail-envelope"), (await get("read?messageId=mail-malformed&grantId=" + grant, owner.access)).status]
       const htmlReads = await Promise.all(["mail-html-at-limit", "mail-html-alternative", "mail-html-over-limit"].map(readMail))
-      const html = htmlReads.map((message, index) => [
-        message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
-        message.bodyText === [htmlTextAtLimit, "Plain alternative", htmlTextAtLimit + "y"][index],
-      ])
+      const html = htmlReadSummary(htmlReads)
       const mimeReads = await Promise.all(["mail-mime-at-limit", "mail-mime-over-limit", "mail-mime-html-only"].map(readMail))
-      const mime = mimeReads.map((message) => [message.bodyHtmlStatus, message.bodyHtml, message.bodyText, message.attachments?.map(({ name }) => name)])
+      const mime = mimeReadSummary(mimeReads)
       const mimeAttachment = await get("attachment?messageId=mail-mime-over-limit&partId=2&historyId=789&grantId=" + grant, owner.access)
       const mimeFile = Schema.decodeUnknownSync(Schema.Struct({ dataBase64: Schema.String }))(await mimeAttachment.json())
       const mimeMalformed = await get("read?messageId=mail-mime-malformed&grantId=" + grant, owner.access)
@@ -4271,10 +4230,8 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       },
       text: ["mail-whole", true, true, "Preview only",
         { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, 502],
-      html: [["available", true, true], ["too_large", null, true], ["too_large", null, true]],
-      mime: [[["available", "<p>HTML after the attachments</p>", "Complete plain text", ["first.txt", "last.txt"]],
-        ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
-        ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
+      html: expectedHtmlReads,
+      mime: [expectedMimeReads, 200, btoa("last.txt"), 502],
       search: {
         pages: [
           [["fixture-message", "trashed-message"], "10000000000000000011", true, true],

@@ -2,7 +2,7 @@
 import { assert, describe, it } from "@effect/vitest"
 import { s256, secretText } from "../../src/shared/credential-crypto.vibe"
 import { authenticatorCode } from "../support/authenticator.ts"
-import { testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
+import { check, testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
 import { signedIn } from "../support/identity-fixture.ts"
 import { latestCode } from "../support/inbox.ts"
 
@@ -14,10 +14,6 @@ interface Listed {
   readonly methods: ReadonlyArray<{ readonly id: string; readonly label: string; readonly removable: boolean }>
   readonly stepUpAt: number | null
   readonly mfaAt: number | null
-}
-
-effect function check(run: () => void) {
-  try Effect.try(run)
 }
 
 function refusal(answer: Answer): string {

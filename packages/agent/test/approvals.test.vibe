@@ -6,8 +6,7 @@ import {
   calendarApprovalExecutorServiceType, OwnerApprovalsService, ownerApprovalsServiceType,
   type ApprovalRecord, type CalendarApprovalExecutor, type LedgerOutcome, type NewApproval,
 } from "../src/approvals/queue.vibe"
-import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
-import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
+import { ask, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 const executed: string[] = []
 
@@ -46,12 +45,6 @@ interface WireApproval {
   readonly state: string
   readonly revision: string
   readonly [field: string]: unknown
-}
-
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
-
-effect function ask(agent: InProcess, asked: LocalRequest) {
-  return answerOf(try call(agent, asked))
 }
 
 effect function queue(agent: InProcess) {

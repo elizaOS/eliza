@@ -115,6 +115,12 @@ export interface Reachable {
 
 const authorized = (reachable: Reachable, asked: LocalRequest): LocalRequest => ({ ...asked, token: asked.token ?? reachable.frame.token })
 
+export const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
+
+export effect function ask(reachable: Reachable, asked: LocalRequest) {
+  return answerOf(try call(reachable, asked))
+}
+
 export effect function call(reachable: Reachable, asked: LocalRequest) {
   const transport = reachable.transport
   const signed = authorized(reachable, asked)

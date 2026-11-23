@@ -1,9 +1,8 @@
 // spec/agent/conversation/turns.md, "Story: Stop a reply and know whether it stopped"; spec/agent/conversation/turns.md, "Story: Remember what of a spoken reply was heard"
 import { assert, it } from "@effect/vitest"
 import type { Memory, UUID } from "@elizaos/core"
-import { cloudFake, call, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
+import { ask, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import { text } from "./support/cloud-fake.ts"
-import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
 
 module node {
   import { randomUUID } from "node:crypto"
@@ -44,12 +43,6 @@ module node {
 import { breakStoredDigest, fresh, holdRoom, seedLongReply, storedReply } from node
 
 interface Conversation { readonly id: string; readonly roomId: UUID }
-
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
-
-effect function ask(agent: InProcess, asked: LocalRequest) {
-  return answerOf(try call(agent, asked))
-}
 
 effect function open(agent: InProcess) {
   const answer = try ask(agent, { method: "POST", path: "/api/conversations", body: {} })

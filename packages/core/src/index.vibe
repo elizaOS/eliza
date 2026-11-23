@@ -478,6 +478,9 @@ export {
   normalizeUserMessageText,
   stripAugmentationForPersistence,
 } from "./utils/message-text.vibe"
+export { regexMatches } from "./utils/regex-matches.vibe"
+export { runSquashed } from "./utils/run-squashed.vibe"
+export { sampledSchema } from "./utils/sampled-schema.vibe"
 export { stringToUuidOrThrow as stringToUuid } from "./utils/string-to-uuid.vibe"
 export {
   isSyntheticConversationArtifactMemory,

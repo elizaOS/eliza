@@ -6,19 +6,13 @@ import { landAccount } from "../src/identity/accounts.vibe"
 import { setModelPrice } from "../src/services/models.vibe"
 import { Deployment } from "../src/profile/profile.vibe"
 import { legacyGrant } from "../gen/cloud__nativeClients__deviceKeys.effect.vibe"
-import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { check, sql, testCloud, type TestCloud } from "./support/cloud.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { revokeAll } from "../src/native-clients/device-keys.vibe"
 import { accountUsable, CloudError, createCloudClient, creditFromSnapshot, type CloudClient } from "../src/client/index.vibe"
 
 import { hostFetch } from "./zz-wp9u6-fetch-tmp.ts"
 
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
-}
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 effect function entitledDevice(cloud: TestCloud, name: string, now: number, expiresAt: number) {
   const bearer = `eliza_mobile_${tokenDigest(name)}`
   const credentialId = `cred-${name}`

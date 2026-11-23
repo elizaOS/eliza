@@ -1,16 +1,12 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { assert, describe, it } from "@effect/vitest"
-import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { check, testCloud, type TestCloud } from "./support/cloud.vibe"
 import { scopeFor, storeGrant, type Owner } from "../src/services/google/grant-access.vibe"
 import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
 import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { signedCaller } from "./support/caller.vibe"
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 
 describe("WP8 G5 scratch", () => {

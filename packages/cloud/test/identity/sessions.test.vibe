@@ -1,15 +1,7 @@
 // spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/accounts.md, "Story: Attribute a referral without paying for it"
 import { assert, describe, it } from "@effect/vitest"
-import { testCloud, type TestCloud } from "../support/cloud.vibe"
+import { check, sql, testCloud } from "../support/cloud.vibe"
 import { signedIn } from "../support/identity-fixture.ts"
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
-
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
-}
 
 function bearer(token: string) {
   return { authorization: `Bearer ${token}` }

@@ -2,7 +2,7 @@
 import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type IAgentRuntime, type Provider } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
 import { Machine, Rejected, routineNamed, stored, type DefinitionStatus, type Event, type Routines } from "../gen/assistant__routines.effect.vibe"
-import { Facts, Scheduler, onAgent, presentOnce, readRecord, requestOf, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { Facts, Scheduler, onAgent, parametersOf, presentOnce, readRecord, requestOf, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { noteOwnerAnswer, routineNudgeMinutes } from "./escalation.vibe"
 import { appliedReceipt, attributed, failedReceipt, unchangedReceipt } from "./replies.vibe"
 import { OccurrenceAnswer, RoutineCreate, RoutineRequest, RoutineUpdate } from "./requests.schema.vibe"
@@ -364,11 +364,6 @@ export effect function changeRoutine(input: unknown, messageId: string) {
       return reply(answered !== undefined && !answered.refused, `${answeredWords[request.op]} "${record.title}".`, "OCCURRENCE_NOT_SHOWN")
     }
   }
-}
-
-function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
-  const given = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
-  return typeof given === "object" && given !== null ? Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null)) : {}
 }
 
 export const ownerRoutinesAction: Action = {
