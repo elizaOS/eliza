@@ -3,10 +3,12 @@
 Every change the cloud makes to the owner's mailbox, reviewed first and sent
 to Google at most once on a receipt of [the dispatch ledger](../../shared/dispatchOnce.md)
 (develop `agent-google-connector/inbox-{receipts,provider,operation-routes}.ts`).
-Routes under `/api/v1/eliza/google/gmail/inbox-v1/` (device key or session,
-grant chosen by [the connection](./connection.md)): `POST operations
+Routes under `/api/v1/eliza/google/gmail/inbox-v1/` (a session or the
+tablet's device lease, never the device key, per [request
+authentication](../../identity/requestAuth.md); grant chosen by [the
+connection](./connection.md)): `POST operations
 {grantId, requestId, proposal}`, `POST operations/:requestId/dispatch
-{grantId, reviewDigest, proposal, confirmation?}`, `GET
+{grantId, reviewDigest, proposal}`, `GET
 operations/:requestId?grantId`; ids are UUIDs. Beside them only the tablet's
 own drafts are written, by `POST gmail/drafts` and `DELETE
 gmail/drafts/:draftId` (below).
@@ -163,44 +165,40 @@ pure def stepKindIsFixed(before: Operation, after: Operation): bool = before.slo
 pure def sometimesPreparedAwaitingDispatch(o: Operation): bool = o.slot != NoKind and D::receiptStatus(o.receipt) == D::StatusPrepared
 ```
 
-### A permanent delete is dispatched only with the person's confirmation of the staged purge
+### A permanent delete is dispatched only as staged and reviewed, never with the device key
 
-A purge is prepared like any change, and its preparation also answers
-`confirmation`, a token keyed to that request id and its reviewed digest. The
-tablet shows the review to the person and sends the token with the dispatch
-only once they confirm it; a purge dispatched without the token, or with
-another, is `403 access_denied` and claims nothing. These routes refuse the
-device key the on-device agent holds, so Grace may stage a purge for the
-person but never confirm one. No other kind needs the token.
+A purge passes review only marked `confirmPermanentDelete: true` and naming
+the message at its current history id, and is dispatched like any change:
+prepared first, then claimed by a dispatch naming its reviewed digest and
+reviewed again against Google. Its routes refuse the device key the on-device
+agent holds, so Grace may stage a purge but never dispatch one. The cloud
+cannot tell whether a person tapped confirm: the tablet shows the staged
+review to the person and dispatches only on their confirmation, and that is
+the tablet's obligation, as it is for every change Grace proposes.
 
 ```quint
-type Confirmation = Unconfirmed | PersonConfirmed
-pure def needsConfirmation(kind: MailOperationKind): bool = kind == PurgeKind
-pure def confirmationHolds(proposal: Proposal, confirmation: Confirmation): bool =
-  needsConfirmation(kindOfProposal(proposal)) implies confirmation == PersonConfirmed
-pure val confirmationValues = Set(Unconfirmed, PersonConfirmed)
-pure def lawOnlyAPurgeWaitsForThePerson(proposal: Proposal): bool =
-  confirmationHolds(proposal, Unconfirmed) iff kindOfProposal(proposal) != PurgeKind
+pure def isConfirmedCurrentPurge(proposal: Proposal): bool = match proposal { | PurgeProposal(x) => x.confirmed and x.target == TargetCurrent | _ => false }
+pure def lawAPurgePassesOnlyMarkedPermanentAtItsCurrentRevision(proposal: Proposal): bool =
+  (kindOfProposal(proposal) == PurgeKind and reviewOf(proposal) == ReviewPasses) iff isConfirmedCurrentPurge(proposal)
 ```
 
 ### A prepared change is claimed only by a dispatch naming its digest, reviewed again against Google at that moment
 
 No receipt is `404 not_found`, another `reviewDigest` or kind `409
 stale_revision`; a receipt no longer prepared is answered as it stands,
-without credentials or Google; an unconfirmed purge is `403 access_denied`. A prepared one is reviewed again under the
+without credentials or Google. A prepared one is reviewed again under the
 grant's authority and claimed (committed) before Google is asked.
 
 ```quint
-pure def canDispatch(o: Operation, by: S::SessionOwner, proposal: Proposal, digest: str, authority: MailAuthority, confirmation: Confirmation): bool =
-  o.slot == KindOf({ kind: kindOfProposal(proposal) }) and digest == o.receipt.digest and confirmationHolds(proposal, confirmation)
+pure def canDispatch(o: Operation, by: S::SessionOwner, proposal: Proposal, digest: str, authority: MailAuthority): bool =
+  o.slot == KindOf({ kind: kindOfProposal(proposal) }) and digest == o.receipt.digest
   and authorityAllows(proposal, authority) and reviewOf(proposal) == ReviewPasses and D::canClaim(o.receipt, by)
-pure def dispatch(o: Operation, by: S::SessionOwner, proposal: Proposal, digest: str, authority: MailAuthority, confirmation: Confirmation): Operation = { ...o, receipt: D::claim(o.receipt, by) }
-pure def dispatchAnswer(o: Operation, proposal: Proposal, digest: str, authority: MailAuthority, confirmation: Confirmation): OperationAnswer = {
+pure def dispatch(o: Operation, by: S::SessionOwner, proposal: Proposal, digest: str, authority: MailAuthority): Operation = { ...o, receipt: D::claim(o.receipt, by) }
+pure def dispatchAnswer(o: Operation, proposal: Proposal, digest: str, authority: MailAuthority): OperationAnswer = {
   val review = reviewOf(proposal)
   if (o.receipt.session.phase == S::Absent) AnswerRefused({ refusal: refuse(NotFound) })
   else if (digest != o.receipt.digest or o.slot != KindOf({ kind: kindOfProposal(proposal) })) AnswerRefused({ refusal: refuse(StaleRevision) })
   else if (D::receiptStatus(o.receipt) != D::StatusPrepared or nowOf(o) >= o.receipt.session.expiresAt) AnswerReceipt
-  else if (not(confirmationHolds(proposal, confirmation))) AnswerRefused({ refusal: refuse(AccessDenied) })
   else if (not(authorityAllows(proposal, authority))) AnswerRefused({ refusal: authorityRefusal(proposal, authority) })
   else match review { | ReviewRefused(x) => AnswerRefused({ refusal: x.refusal }) | ReviewPasses => AnswerReceipt }
 }
@@ -286,7 +284,7 @@ pure def alwaysAResultExactlyWhenGoogleShowedTheRequestedState(o: Operation): bo
 pure def sometimesSentAsReviewed(o: Operation): bool = slotKind(o) == SendKind and o.receipt.settlement == D::Succeeded
 pure def sometimesLabelChangeShown(o: Operation): bool = o.slot != NoKind and isLabelKind(slotKind(o)) and o.receipt.settlement == D::Succeeded
 pure def sometimesDraftSavedAsReviewed(o: Operation): bool = (slotKind(o) == DraftCreateKind or slotKind(o) == DraftReplaceKind) and o.receipt.settlement == D::Succeeded
-pure def sometimesPurgedAsConfirmed(o: Operation): bool = slotKind(o) == PurgeKind and o.receipt.settlement == D::Succeeded
+pure def sometimesPurgedAsReviewed(o: Operation): bool = slotKind(o) == PurgeKind and o.receipt.settlement == D::Succeeded
 pure def sometimesUnverifiedReplyLeftUnknown(o: Operation): bool =
   o.slot != NoKind and isLabelKind(slotKind(o)) and o.receipt.session.effects == 1 and o.receipt.settlement == D::Unsettled and not(o.receipt.session.executorAlive)
 pure def sometimesRejectedByGoogle(o: Operation): bool = o.receipt.settlement == D::Refused
@@ -339,7 +337,8 @@ pure def sometimesAnsweredOutcomeUnknown(o: Operation): bool = o.slot != NoKind 
 attachments}` needs `google.gmail.drafts`; `draftId` is the tablet's id, 1 to
 256 printable characters. The message is composed as a `compose`-mode
 `draft-create` would be, with its caps and refusals, and carries
-`Message-ID: <eliza-draft-{SHA-256 hex of draftId}@message.invalid>`. Gmail's
+`Message-ID: <eliza-draft-{keyed digest of grant and draftId}@message.invalid>`,
+so the id is the cloud's alone and differs between accounts. Gmail's
 drafts holding that Message-ID are listed: with none a draft is created,
 otherwise the first is replaced in place. The answer is `{draftId}` with the
 tablet's id once the draft read back holds exactly the composed bytes, so a
@@ -360,7 +359,10 @@ pure def lawASaveNeverAddsADraftBesideOneItHolds(holding: int): bool =
 `DELETE gmail/drafts/:draftId?grantId` needs `google.gmail.drafts` and
 deletes each draft Gmail lists with the draft's Message-ID, answering `{ok:
 true}`; with none it is `404 not_found`, which the tablet takes as already
-gone.
+gone. `grantId` is required, as for a save. Unlike `draft-delete`, it needs no
+`confirmPermanentDelete` or digest: it removes only the tablet's own unsent
+writing, named by the tablet's id, the person's discard of what they are
+composing, never a draft Gmail held before.
 
 ```quint
 type DraftRemoval = DraftsRemoved | NoDraftHeld

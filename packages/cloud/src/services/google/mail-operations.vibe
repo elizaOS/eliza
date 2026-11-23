@@ -1,4 +1,4 @@
-// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/services/google/mailOperations.md, "A permanent delete is dispatched only with the person's confirmation of the staged purge"; spec/cloud/services/google/mailOperations.md, "Story: Keep the email I am writing as one draft under the tablet's name for it"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
+// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/services/google/mailOperations.md, "A permanent delete is dispatched only as staged and reviewed, never with the device key"; spec/cloud/services/google/mailOperations.md, "Story: Keep the email I am writing as one draft under the tablet's name for it"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
 import { type Rejected, type NotAState, apply, decodeState, elapse, initial, isUnknown, canReceiveReply, canResolve, receiptStatus, type Event, type LookupResult, type ProviderReply, type Receipt, type RefusalCause } from "../../../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { millisPerDay, millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
 import { draftSaveOf, removalAnswer } from "../../../gen/cloud__services__google__mailOperations.effect.vibe"
@@ -6,7 +6,7 @@ import type { SessionOwner } from "../../../gen/core__sessions.ts"
 import { refused, type Refused } from "../../http/refusal.vibe"
 import { json, jsonBody, owner as ownerOf, type CloudContext, type Route, type RouteContext, type Sweep } from "../../http/routes.vibe"
 import { requestDigest } from "../../shared/dispatch-once.vibe"
-import { keyedDigest, sameText, sha256Hex } from "../../shared/sealing.vibe"
+import { keyedDigest, sha256Hex } from "../../shared/sealing.vibe"
 import { loadRow, machineRows, stepRow, type Columns } from "../../store/rows.vibe"
 import { Store, toText, type Row, type Tx } from "../../store/connection.vibe"
 import { failureReply, googleJson, type GoogleFailure } from "../../providers/google.vibe"
@@ -127,7 +127,7 @@ const ComposeExtras = Schema.Struct({
   forwardAttachments: Schema.optionalKey(Schema.Struct({ messageId: Schema.String, historyId: Schema.String, partIds: Schema.Array(Schema.String) }))
 })
 schema PrepareBody { grantId: string; requestId: string; proposal: Schema.Unknown }
-schema DispatchBody { grantId: string; reviewDigest: string; proposal: Schema.Unknown; confirmation?: string }
+schema DispatchBody { grantId: string; reviewDigest: string; proposal: Schema.Unknown }
 const DraftSaveBody = Schema.Struct({
   grantId: Schema.String,
   draftId: Schema.String,
@@ -490,12 +490,8 @@ effect function scopeOf(context: RouteContext, grantId: string, requestId: strin
   return { owner, grantId, requestId: requestId.toLowerCase() }
 }
 
-function answer(scope: Scope, operation: Operation, now: number, review?: unknown, confirmation?: string) {
-  return json({ version: 1, receipt: wireReceipt(scope, operation, now), ...(review === undefined ? {} : { review }), ...(confirmation === undefined ? {} : { confirmation }), providerExactlyOnce: false })
-}
-
-effect function confirmationOf(scope: Scope, operation: Operation) {
-  return operation.kind === "purge" ? try keyedDigest(["purge-confirmation", rowKey(scope), operation.reviewDigest].join("\n")) : undefined
+function answer(scope: Scope, operation: Operation, now: number, review?: unknown) {
+  return json({ version: 1, receipt: wireReceipt(scope, operation, now), ...(review === undefined ? {} : { review }), providerExactlyOnce: false })
 }
 
 effect function prepareRoute(context: RouteContext) {
@@ -514,7 +510,7 @@ effect function prepareRoute(context: RouteContext) {
     const prepare = (): Event => ({ type: "prepare", digest: reviewed.digest, providerKey: { providerKind: "GmailOperation", providerId: targetKey(scope, reviewed.target) }, staleAfter, expiresAt: now + preparedFor })
     return try advance(tx, scope, reviewed.kind, [toNow(now), prepare], now)
   })
-  return answer(scope, operation, now, reviewed.review, try confirmationOf(scope, operation))
+  return answer(scope, operation, now, reviewed.review)
 }
 
 function lateLookup(reply: ProviderReply): LookupResult | undefined {
@@ -538,8 +534,6 @@ effect function dispatchRoute(context: RouteContext) {
   if (existing === undefined) throw refused("NotFound")
   if (existing.reviewDigest !== body.reviewDigest) throw refused("StaleRevision")
   if (wireState(at(existing.receipt, context.now)) !== "prepared") return answer(scope, existing, context.now)
-  const confirmation = try confirmationOf(scope, existing)
-  if (confirmation !== undefined && !sameText(body.confirmation ?? "", confirmation)) throw refused("AccessDenied")
   const reviewed = try reviewProposal(scope.owner, scope.grantId, body.proposal, scope.requestId, true)
   if (reviewed.digest !== body.reviewDigest || reviewed.kind !== existing.kind) throw refused("StaleRevision")
   const claimedAt = try Clock.currentTimeMillis
@@ -586,11 +580,12 @@ effect function lookupRoute(context: RouteContext) {
   return answer(scope, try lookupOperation(scope, context.now), context.now)
 }
 
-effect function draftOwner(context: RouteContext, draftId: string) {
+effect function tabletDraft(context: RouteContext, grantId: string, draftId: string) {
   const owner = ownerOf(context.caller)
   if (owner === undefined) throw refused("AuthenticationRequired")
-  if (!tabletDraftId.test(draftId)) throw refused("InvalidRequest")
-  return { owner, requestId: `draft-${sha256Hex(draftId)}` }
+  if (!tabletDraftId.test(draftId) || grantId.length === 0 || grantId.length > 128) throw refused("InvalidRequest")
+  const grant: Grant = try useGrant(owner, grantId, "google.gmail.drafts")
+  return { grant, requestId: `draft-${try keyedDigest(["tablet-draft", grant.connectionId, draftId].join("\n"))}` }
 }
 
 effect function draftsHolding(grant: Grant, requestId: string) {
@@ -602,8 +597,7 @@ effect function draftsHolding(grant: Grant, requestId: string) {
 
 effect function saveDraftRoute(context: RouteContext) {
   const { grantId, draftId, ...fields } = try jsonBody(context, DraftSaveBody)
-  const { owner, requestId } = try draftOwner(context, draftId)
-  const grant: Grant = try useGrant(owner, grantId, "google.gmail.drafts")
+  const { grant, requestId } = try tabletDraft(context, grantId, draftId)
   const composed = try composeMessage({ kind: "draft-create", mode: "compose", ...fields }, { from: grant.email, requestId, grant, forwarded: undefined })
   const held = try draftsHolding(grant, requestId)
   const message = { raw: composed.raw }
@@ -617,8 +611,7 @@ effect function saveDraftRoute(context: RouteContext) {
 }
 
 effect function deleteDraftRoute(context: RouteContext) {
-  const { owner, requestId } = try draftOwner(context, context.params.draftId ?? "")
-  const grant: Grant = try useGrant(owner, context.query.get("grantId") || undefined, "google.gmail.drafts")
+  const { grant, requestId } = try tabletDraft(context, context.query.get("grantId") ?? "", context.params.draftId ?? "")
   const held = try draftsHolding(grant, requestId)
   const answered = removalAnswer(held.length)
   if (answered.tag === "AnswerRefused") throw refused("NotFound")

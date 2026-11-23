@@ -2248,30 +2248,31 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       }
     ))
   }))
-  it.live("Permanently delete a message only when I confirm the purge Grace staged, never with the device key (spec/cloud/services/google/mailOperations.md, \"A permanent delete is dispatched only with the person's confirmation of the staged purge\"; spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\")", () => scoped(effect {
+  it.live("Permanently delete a message as Grace staged it, only from the tablet and never with the device key (spec/cloud/services/google/mailOperations.md, \"A permanent delete is dispatched only as staged and reviewed, never with the device key\"; spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\")", () => scoped(effect {
     const { mailbox, switches, operation, gmail, grantId, deviceKey } = try mailOperationSetup("ops-purge", ["google.gmail.purge"])
     const requestId = "4e5f6071-8293-4dae-8f20-3b4c5d6e7f80"
-    const proposal = { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1001", confirmPermanentDelete: true }
+    const staleId = "5f607182-93a4-4ebf-9031-4c5d6e7f8091"
+    const purge = (expectedHistoryId: string) => ({ kind: "purge", messageId: "msg-plan", expectedHistoryId, confirmPermanentDelete: true })
     const capabilities = try gmail("GET", `/inbox-v1/capabilities?grantId=${grantId}`)
-    const agent = try gmail("POST", "/inbox-v1/operations", { grantId, requestId, proposal }, deviceKey)
-    const unconfirmedShape = try operation("", { grantId, requestId, proposal: { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1001" } })
-    const staged = try operation("", { grantId, requestId, proposal })
-    const again = try operation("", { grantId, requestId, proposal })
-    const { receipt, confirmation } = staged.body as OperationAnswer & { readonly confirmation: string }
-    const withoutToken = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: receipt.reviewDigest, proposal })
-    const otherToken = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: receipt.reviewDigest, proposal, confirmation: "0".repeat(64) })
-    const confirmed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: receipt.reviewDigest, proposal, confirmation })
-    const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: receipt.reviewDigest, proposal })
+    const agent = try gmail("POST", "/inbox-v1/operations", { grantId, requestId, proposal: purge("1001") }, deviceKey)
+    const unmarked = try operation("", { grantId, requestId, proposal: { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1001" } })
+    const earlier = try operation("", { grantId, requestId: staleId, proposal: purge("1001") })
+    try Effect.try(() => touchMessage(mailbox, "msg-plan"))
+    const changedSince = try operation(`/${staleId}/dispatch`, { grantId, reviewDigest: (earlier.body as OperationAnswer).receipt.reviewDigest, proposal: purge("1001") })
+    const staged = try operation("", { grantId, requestId, proposal: purge("1002") })
+    const reviewDigest = (staged.body as OperationAnswer).receipt.reviewDigest
+    const agentDispatch = try gmail("POST", `/inbox-v1/operations/${requestId}/dispatch`, { grantId, reviewDigest, proposal: purge("1002") }, deviceKey)
+    const confirmed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal: purge("1002") })
+    const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal: purge("1002") })
     const offered = capabilities.body as { readonly kinds: ReadonlyArray<string>; readonly reads: ReadonlyArray<string> }
     try check(() => assert.deepStrictEqual(
       {
         offered: [offered.kinds.includes("purge"), offered.reads.includes("contacts")],
         agent: [...errorOf(agent), (agent.body as { readonly reason?: string }).reason],
-        unconfirmedShape: errorOf(unconfirmedShape),
-        staged: [staged.status, receiptOf(staged), (staged.body as OperationAnswer).review, /^[0-9a-f]{64}$/.test(confirmation)],
-        again: (again.body as { readonly confirmation?: string }).confirmation === confirmation,
-        withoutToken: errorOf(withoutToken),
-        otherToken: errorOf(otherToken),
+        unmarked: errorOf(unmarked),
+        changedSince: errorOf(changedSince),
+        staged: [staged.status, receiptOf(staged), (staged.body as OperationAnswer).review, "confirmation" in (staged.body as object)],
+        agentDispatch: [...errorOf(agentDispatch), (agentDispatch.body as { readonly reason?: string }).reason],
         confirmed: [confirmed.status, receiptOf(confirmed), (confirmed.body as OperationAnswer).receipt.providerResult],
         replayed: [replayed.status, receiptOf(replayed)],
         mailbox: [mailbox.messages.has("msg-plan"), switches.calls.filter((call) => call.method === "DELETE" && call.path === "/messages/msg-plan").length]
@@ -2279,11 +2280,10 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       {
         offered: [true, true],
         agent: [403, "access_denied", "device_key_not_allowed"],
-        unconfirmedShape: [400, "invalid_request"],
-        staged: [200, ["purge", "prepared", null, false, false], { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1001", from: "ops-ops-purge@example.com", permanent: true }, true],
-        again: true,
-        withoutToken: [403, "access_denied"],
-        otherToken: [403, "access_denied"],
+        unmarked: [400, "invalid_request"],
+        changedSince: [409, "stale_revision"],
+        staged: [200, ["purge", "prepared", null, false, false], { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1002", from: "ops-ops-purge@example.com", permanent: true }, false],
+        agentDispatch: [403, "access_denied", "device_key_not_allowed"],
         confirmed: [200, ["purge", "succeeded", null, true, true], { messageId: "msg-plan", purged: true }],
         replayed: [200, ["purge", "succeeded", null, true, true]],
         mailbox: [false, 1]
@@ -2306,16 +2306,18 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const agent = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}?grantId=${grantId}`, undefined, deviceKey)
     const discarded = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}?grantId=${grantId}`)
     const gone = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}?grantId=${grantId}`)
+    const noGrant = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}`)
     try check(() => assert.deepStrictEqual(
       {
         found: [found.status, (found.body as { readonly contacts: unknown }).contacts],
         everyone: (everyone.body as { readonly contacts: ReadonlyArray<{ readonly email: string }> }).contacts.map((contact) => contact.email),
         tooLong: errorOf(tooLong),
         saved: [first.status, first.body, repeated.status, repeated.body],
-        held: [held.length, stored.includes(`Message-ID: <eliza-draft-${sha256Hex(draftId)}@message.invalid>`), stored.includes(btoa("Are you free on Friday?")), stored.includes("filename*=UTF-8''menu.txt")],
+        held: [held.length, /Message-ID: <eliza-draft-[0-9a-f]{64}@message\.invalid>/.test(stored) && !stored.includes(sha256Hex(draftId)), stored.includes(btoa("Are you free on Friday?")), stored.includes("filename*=UTF-8''menu.txt")],
         agent: [...errorOf(agent), (agent.body as { readonly reason?: string }).reason],
         discarded: [discarded.status, discarded.body, mailbox.drafts.size],
-        gone: errorOf(gone)
+        gone: errorOf(gone),
+        noGrant: errorOf(noGrant)
       },
       {
         found: [200, [{ name: "Ada", email: "ada@example.org" }]],
@@ -2325,7 +2327,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         held: [1, true, true, true],
         agent: [403, "access_denied", "device_key_not_allowed"],
         discarded: [200, { ok: true }, 0],
-        gone: [404, "not_found"]
+        gone: [404, "not_found"],
+        noGrant: [400, "invalid_request"]
       }
     ))
   }))
