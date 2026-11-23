@@ -209,7 +209,7 @@ export async function reserveSpeechRelayAdmission(input: {
             kind === "stt" ? details.pcmBytes : details.ttsCharacters,
             details.dispatched?.[kind],
             details.outcomes?.[kind],
-            kind === "tts" ? details.ttsAccountingBasis : undefined,
+            details.accountingBasis,
           ]);
           const prior = fingerprints.get(kind);
           if (prior !== undefined && prior !== fingerprint)
@@ -224,7 +224,14 @@ export async function reserveSpeechRelayAdmission(input: {
               if (!choice) {
                 if (details.dispatched?.[kind] !== true)
                   choice = { state: "actual", amount: 0 };
-                else if (kind === "stt" && details.outcomes?.stt !== "complete")
+                // A submitted-counter basis is final for this window (it was
+                // superseded); the live stream's unconfirmed closure stays with
+                // a later window, which still takes the full STT hold.
+                else if (
+                  kind === "stt" &&
+                  details.outcomes?.stt !== "complete" &&
+                  !details.accountingBasis
+                )
                   choice = {
                     state: "conservative",
                     amount: round(
@@ -243,15 +250,12 @@ export async function reserveSpeechRelayAdmission(input: {
                   )
                     throw Error("Speech usage exceeded its paid reservation");
                   choice = {
-                    state:
-                      kind === "tts" && details.ttsAccountingBasis
-                        ? "conservative"
-                        : "actual",
+                    state: details.accountingBasis ? "conservative" : "actual",
                     amount: round(
                       quantity * rates[kind] * PLATFORM_MARKUP_MULTIPLIER,
                     ),
-                    ...(kind === "tts" && details.ttsAccountingBasis
-                      ? { basis: details.ttsAccountingBasis }
+                    ...(details.accountingBasis
+                      ? { basis: details.accountingBasis }
                       : {}),
                   };
                 }
@@ -292,9 +296,7 @@ export async function reserveSpeechRelayAdmission(input: {
                     : "unconfirmed",
               requestId,
               amountUsd: outcome.amountUsd,
-              ...("basis" in outcome && outcome.basis
-                ? { basis: outcome.basis }
-                : {}),
+              ...(outcome.basis ? { basis: outcome.basis } : {}),
             });
           })();
           pending.set(kind, attempt);

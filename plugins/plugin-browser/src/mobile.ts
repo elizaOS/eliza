@@ -25,7 +25,6 @@ import {
 import {
   type NativeHistorySelection,
   observedNativeHistorySelection,
-  withheldPageReloadRefusal,
 } from "./native-client-command.js";
 import {
   type NativeBrowserClientTransport,
@@ -37,6 +36,7 @@ import {
   nativeDeviceBrowserRoute,
   nativeDeviceBrowserStatusRoute,
 } from "./routes/native-device.js";
+import { withheldPageReloadRefusal } from "./withheld-page-reload.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,

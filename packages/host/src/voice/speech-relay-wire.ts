@@ -188,20 +188,16 @@ export type UnconfirmedSpeechRetirement = Readonly<{
 export type SpeechRetirementProof =
   | ConfirmedSpeechRetirement
   | UnconfirmedSpeechRetirement;
+interface SpeechKindSettlement {
+  requestId: string;
+  state: "actual" | "conservative";
+  amountUsd: string;
+  terminal?: true;
+  basis?: "submitted_counter_provider_unconfirmed";
+}
 export interface SpeechSettlementOutcome {
-  stt: {
-    requestId: string;
-    state: "actual" | "conservative";
-    amountUsd: string;
-    terminal?: true;
-  };
-  tts: {
-    requestId: string;
-    state: "actual" | "conservative";
-    amountUsd: string;
-    terminal?: true;
-    basis?: "submitted_counter_provider_unconfirmed";
-  };
+  stt: SpeechKindSettlement;
+  tts: SpeechKindSettlement;
 }
 export interface SpeechRetirementEvidence {
   quotaRelease?: "not_required" | "released" | "unknown";

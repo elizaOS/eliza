@@ -10,8 +10,8 @@ import {
 import {
   observedNativeHistorySelection,
   parseNativeHistoryCommand,
-  withheldPageReloadRefusal,
 } from "./native-client-command.ts";
+import { withheldPageReloadRefusal } from "./withheld-page-reload.ts";
 
 const browserTurn = (selectedObject: Record<string, unknown>) => ({
   content: {
