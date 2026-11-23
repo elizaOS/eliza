@@ -118,9 +118,21 @@ func (f *stagingFixture) run(s *PreparedStager) (*StagedPair, error) {
 func TestStagingDownloadsRecoveryFirstAndReusesVerifiedPair(t *testing.T) {
 	f := stageFixture(t)
 	s := f.newStager(t)
+	superseded := strings.Repeat("ab", 32)
+	obsolete := []string{superseded + ".apk", superseded + ".part", superseded + ".resume"}
+	for _, name := range obsolete {
+		if e := os.WriteFile(filepath.Join(f.cache, name), []byte("old release"), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
 	result, e := f.run(s)
 	if e != nil {
 		t.Fatal(e)
+	}
+	for _, name := range obsolete {
+		if _, e := os.Lstat(filepath.Join(f.cache, name)); !os.IsNotExist(e) {
+			t.Fatal("superseded artifact kept", name)
+		}
 	}
 	if result.AuthorizationID != f.id || result.Generation != 0 || len(result.Descriptor) == 0 {
 		t.Fatal("wrong pair binding")
