@@ -63,7 +63,7 @@ const left = { type: "object", additionalProperties: { type: "integer", minimum:
 const excess = (context, found) => found.length > (context.options[0]?.left?.[relative(context.cwd, context.filename).split(sep).join("/")] ?? 0) && found.forEach((problem) => context.report(problem))
 const toolDirective = (context, comment) => {
   if (comment.type !== "Block") return false
-  if (/^\*\s*(?:@throws\s+\{[^}\r\n]+\}|@public)\s*$/.test(comment.value)) return true
+  if (/^\*\s*@public\s*$/.test(comment.value)) return true
   if (comment.value.trim() !== "@vite-ignore") return false
   let node = context.sourceCode.getNodeByRangeIndex(comment.range[0])
   while (node && node.type !== "ImportExpression") node = node.parent
