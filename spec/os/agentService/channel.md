@@ -227,6 +227,22 @@ pure val eval_witness_sometimesStreamDelivering = (
   ("reply", 0, Tr::Chunk)
 )
 pure def sometimesStreamEnded(s: AgentChannel): bool = s.recent.some(o => match o { | Settled(x) => x.mode == Stream and x.outcome == End | _ => false })
+pure val eval_witness_sometimesStreamEnded = (
+  ("loadRoutes", Native, {
+    val api = Routes::Literal({ text: "api" })
+    val talk = List(api, Routes::Literal({ text: "conversations" }), Routes::Param, Routes::Literal({ text: "messages" }))
+    List({ prefixes: List(List()), id: Routes::flatParam, routes: List(
+      { method: Routes::Get, delivery: Routes::Buffered, path: List(api, Routes::Literal({ text: "status" })), query: List(), limit: Routes::AnySize },
+      { method: Routes::Post, delivery: Routes::Streamed, path: talk.append(Routes::Literal({ text: "stream" })), query: List(), limit: Routes::AtMost({ bytes: 20 }) },
+      { method: Routes::Post, delivery: Routes::Buffered, path: talk, query: List(), limit: Routes::AtMost({ bytes: 20 }) }) })
+  }),
+  ("open", 1, "token2"),
+  ("ask", Native, "screen1", "call2", { method: Routes::Post, delivery: Routes::Streamed,
+    segments: List({ text: "api", fits: List() }, { text: "conversations", fits: List() }, { text: "c1", fits: List(Routes::flatParam) }, { text: "messages", fits: List() }, { text: "stream", fits: List() }),
+    query: List(), flaws: List(), body: Routes::JsonObject({ size: 5 }) }, List()),
+  ("reply", 0, Tr::Head({ code: 200 })),
+  ("reply", 0, Tr::Complete)
+)
 pure def sometimesStreamError(s: AgentChannel): bool = lastOutcome(s).includes(Error)
 ```
 
