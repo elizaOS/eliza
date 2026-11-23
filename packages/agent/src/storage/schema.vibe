@@ -84,4 +84,5 @@ export const migrations: readonly Migration[] = [
   { kind: "Additive", sql: `ALTER TABLE device_requests ADD COLUMN wire_attempt_id uuid UNIQUE;` },
   { kind: "Additive", sql: `ALTER TABLE device_requests ADD COLUMN provider_receipt jsonb
     CHECK (provider_receipt IS NULL OR jsonb_typeof(provider_receipt) = 'object');` },
+  { kind: "Additive", sql: `ALTER TABLE device_requests ADD COLUMN reviewed boolean NOT NULL DEFAULT false;` },
 ]

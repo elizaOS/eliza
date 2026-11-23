@@ -326,12 +326,32 @@ pure def lawAGroundedProposalIsReadmitted(deviceTurn: bool, verdict: GroundingVe
   proposalReply(deviceTurn, verdict, false) == RefusedBeforeDispatch
 ```
 
+### A proposal its family grounds for review is offered without the owner's message, so the phone shows its card
+
+A family grounds an operation either as the owner asked for it or for
+review. A proposal grounded for review carries no `requestMessageId`, so
+the phone never runs it without its card, whatever the operation and the
+owner's [direct-request preference](./execution.md); its origin is still
+the owner's message, so its identity, its read completion and the outcomes
+a later turn learns are the same. An open request of the same operation is
+returned for a repeat only when it was grounded the same way.
+
+```quint
+type ProposalGrounding = GroundedAsAsked | GroundedForReview
+pure def carriesRequestMessage(grounding: ProposalGrounding): bool = grounding == GroundedAsAsked
+pure def returnsOpenRequest(kept: ProposalGrounding, proposed: ProposalGrounding, sameOperation: bool): bool = sameOperation and kept == proposed
+pure def lawAProposalForReviewCarriesNoMessage(grounding: ProposalGrounding): bool =
+  grounding == GroundedForReview implies not(carriesRequestMessage(grounding))
+pure def lawARepeatNeverReturnsADifferentlyGroundedRequest(sameOperation: bool): bool =
+  not(returnsOpenRequest(GroundedForReview, GroundedAsAsked, sameOperation)) and not(returnsOpenRequest(GroundedAsAsked, GroundedForReview, sameOperation))
+```
+
 ### A proposal's identity is its request message and its operation, so a repeat returns the same request
 
 The proposal id is derived from the owner's message and a digest of the
 grounded operation, never from the model. Proposing it again returns the
 request already kept under that id; an open request of the same conversation
-for the same operation is returned too. A request that already settled is
+for the same operation, grounded the same way, is returned too. A request that already settled is
 reported from its stored receipt and is never dispatched again.
 
 ```quint

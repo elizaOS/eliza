@@ -1,8 +1,8 @@
-// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
+// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal its family grounds for review is offered without the owner's message, so the phone shows its card"
 import type { ActionParameterSchema, IAgentRuntime, Memory, UUID } from "@elizaos/core"
-import type { Negotiation } from "../../../gen/agent__deviceActions__capabilities.effect.vibe"
+import type { Negotiation, ViewProfile } from "../../../gen/agent__deviceActions__capabilities.effect.vibe"
 import type { SessionOwner } from "../../../gen/core__sessions.effect.vibe"
-import type { Observation } from "../../conversation/turn-context.schema.vibe"
+import { readTurnContext, type Observation } from "../../conversation/turn-context.schema.vibe"
 import type { CheckedOperation, DeviceOperation, DeviceOperationType } from "../operations.schema.vibe"
 import type { DeviceStoreUnavailable } from "../store.vibe"
 
@@ -34,12 +34,13 @@ export interface DeviceTurn {
   readonly startedAt: number
   readonly timeZone: string | undefined
   readonly signal: AbortSignal
+  readonly viewProfile?: ViewProfile
   admit(operation: unknown): CheckedOperation | undefined
   earlier(types: readonly DeviceOperationType[], limit: number): (readonly EarlierRequest[])!DeviceStoreUnavailable
 }
 
 export type Grounding =
-  | { readonly kind: "Grounded"; readonly operation: DeviceOperation; readonly reviewed?: true }
+  | { readonly kind: "Grounded"; readonly operation: DeviceOperation; readonly reviewed?: boolean }
   | { readonly kind: "Refused"; readonly code: string; readonly forModel: string; readonly forOwner: string }
 
 export interface ProposalForm {
@@ -55,9 +56,13 @@ export interface DeviceProposalFamily {
   readonly forms: readonly ProposalForm[]
   guidance(turn: DeviceTurn): string | undefined
   ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable
-  proposedText(operation: DeviceOperation): string
+  proposedText(operation: DeviceOperation, reviewed: boolean): string
   settledText(operation: DeviceOperation, result: unknown): string | undefined
   continueAfterRead?(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "message" | "negotiation" | "startedAt" | "timeZone">): (DeviceOperation | undefined)!DeviceStoreUnavailable
+}
+
+export function directRequests(turn: Pick<DeviceTurn, "message">): boolean {
+  return readTurnContext(turn.message).voiceUi?.agentActionMode === "direct-request-v1"
 }
 
 export function unoffered(name: FamilyName): DeviceProposalFamily {

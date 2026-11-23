@@ -39,6 +39,7 @@ module node {
     readonly binding: Extract<ReadBinding, "NoBinding"> | BindingAuthority
     readonly boundProfile: RevisionRead
     readonly need: Need
+    readonly reviewed?: boolean
   }
 
   export interface RetainedRequestTerms extends Omit<RequestTerms, "binding"> {
@@ -78,6 +79,7 @@ module node {
   type Row = {
     proposal_id: string; revision: number; state: unknown; operation: unknown; binding: string
     binding_authority: unknown; wire_attempt_id: unknown; bound_profile: unknown; need: unknown; result: unknown; provider_receipt: unknown; created_at: number | string
+    reviewed: boolean
   }
 
   const views = {
@@ -99,7 +101,7 @@ module node {
   const decodeProviderReceipt = Schema.decodeUnknownSync(DeviceReceipt, { onExcessProperty: "error" })
   const decodeAuthority = Schema.decodeUnknownSync(Authority, { onExcessProperty: "error" })
   const decodeViews = Schema.decodeUnknownSync(Views)
-  const columns = "proposal_id, revision, state, operation, binding, binding_authority, wire_attempt_id, bound_profile, need, result, provider_receipt, created_at"
+  const columns = "proposal_id, revision, state, operation, binding, binding_authority, wire_attempt_id, bound_profile, need, result, provider_receipt, created_at, reviewed"
 
   function connection(value: object): Sql {
     if (!("query" in value) || typeof value.query !== "function") throw new TypeError("The device request store needs a SQL connection")
@@ -126,7 +128,10 @@ module node {
     }
     return {
       proposalId: row.proposal_id, revision: row.revision, state, claim,
-      terms: { operation: row.operation, binding, boundProfile: terms.boundProfile, need: { required: [...terms.need.required], oneOf: [...terms.need.oneOf] } },
+      terms: {
+        operation: row.operation, binding, boundProfile: terms.boundProfile, need: { required: [...terms.need.required], oneOf: [...terms.need.oneOf] },
+        ...(row.reviewed ? { reviewed: true } : {}),
+      },
       result: row.result, providerReceipt: row.provider_receipt === null ? undefined : decodeProviderReceipt(row.provider_receipt),
       createdAt: Number(row.created_at),
     }
@@ -181,11 +186,11 @@ module node {
         }
       }
       const inserted = await sql.query(
-        `INSERT INTO device_requests (${columns}, settled) VALUES ($1, 1, $2::jsonb, $3::jsonb, $4, $5::jsonb, NULL, $6::jsonb, $7::jsonb, NULL, NULL, $8, $9)
+        `INSERT INTO device_requests (${columns}, settled) VALUES ($1, 1, $2::jsonb, $3::jsonb, $4, $5::jsonb, NULL, $6::jsonb, $7::jsonb, NULL, NULL, $8, $9, $10)
            ON CONFLICT (proposal_id) DO NOTHING`,
         [offered.proposalId, JSON.stringify(offered), JSON.stringify(terms.operation), checked.binding,
           authority === undefined ? null : JSON.stringify(authority),
-          JSON.stringify(checked.boundProfile), JSON.stringify(checked.need), offered.createdAt, requestSettled(offered.phase)],
+          JSON.stringify(checked.boundProfile), JSON.stringify(checked.need), offered.createdAt, terms.reviewed === true, requestSettled(offered.phase)],
       )
       return inserted.affectedRows === 1 ? "seeded" : "taken"
     })

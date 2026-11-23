@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/capabilities.md, "An open-view proposal runs only on the profile revision it bound and a view the profile enables"
+// spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal its family grounds for review is offered without the owner's message, so the phone shows its card"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/capabilities.md, "An open-view proposal runs only on the profile revision it bound and a view the profile enables"
 module node {
   import { Effect, Result } from "effect"
   import { hashStableJson, stringToUuid, type UUID } from "@elizaos/core"
@@ -33,7 +33,7 @@ module node {
   }
 
   export function offerProposal(
-    turn: OfferTurn, checked: CheckedOperation, readBack: boolean, agenda?: CalendarAgendaSource,
+    turn: OfferTurn, checked: CheckedOperation, readBack: boolean, agenda?: CalendarAgendaSource, reviewed = false,
   ): Effect.Effect<ProposalOffer, DeviceStoreUnavailable> {
     return Effect.gen(function* () {
       const adapter = turn.runtime.adapter
@@ -49,6 +49,7 @@ module node {
         operation: checked.operation,
         ...(agenda === undefined ? {} : { calendarAgendaSource: agenda }),
         ...(boundProfile.tag === "ReadAt" ? { viewProfileRevision: boundProfile.revision } : {}),
+        reviewed,
       }, turn.by, enrollmentId(enrolled), turn.message.id)
       const digest = hashStableJson({ id, subjectUserId: turn.by.actorId, payload, expiresAt: new Date(expiresAt).toISOString() })
       const offered = yield* Effect.result(offerRequest(adapter, {
@@ -56,7 +57,7 @@ module node {
         origin: { requestId: turn.requestId, conversationId: turn.conversationId, inReplyTo: turn.message.id },
       }, turn.by, {
         operation: checked.operation, binding: agenda === undefined ? "NoBinding" : { kind: "AgendaBinding", ...agenda },
-        boundProfile, need: checked.need,
+        boundProfile, need: checked.need, reviewed,
       }))
       if (Result.isSuccess(offered)) return { kind: "offered", record: offered.success, digest } satisfies ProposalOffer
       switch (offered.failure._tag) {

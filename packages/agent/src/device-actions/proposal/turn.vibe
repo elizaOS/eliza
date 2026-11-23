@@ -9,6 +9,7 @@ module node {
   import { capabilitiesHeader, negotiation } from "../capabilities.vibe"
   import type { DeviceEnrollment } from "../enrollment.vibe"
   import { validate } from "../operations.schema.vibe"
+  import { viewProfile } from "../store.vibe"
   import type { DeviceTurn } from "./family.vibe"
   import { deviceOutcomesNote, earlierRequests } from "./receipts.vibe"
 
@@ -56,6 +57,7 @@ module node {
         if (by === undefined) return undefined
         const negotiated = negotiation(true, headers.get(capabilitiesHeader))
         const context = readTurnContext(message)
+        const profile = await Effect.runPromise(Effect.orElseSucceed(viewProfile(runtime.adapter), () => undefined))
         const turn: DeviceTurn = {
           runtime, by, negotiation: negotiated, message, conversationId, requestId, signal,
           capabilities: negotiated.tag === "Negotiated" ? negotiated.capabilities.map(capabilityName) : [],
@@ -68,6 +70,7 @@ module node {
           },
           startedAt: message.createdAt ?? Date.now(),
           timeZone: context.observation?.timeZone ?? context.voiceUi?.uiTimeZone,
+          ...(profile === undefined ? {} : { viewProfile: profile }),
           admit: (operation) => validate(operation, negotiated, "NoBinding"),
           earlier: (types, limit) => Effect.map(earlierRequests(runtime.adapter, by, conversationId),
             (applied) => applied.filter(({ operation }) => types.includes(operation.type)).slice(0, limit)),
