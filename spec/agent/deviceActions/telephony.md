@@ -14,7 +14,9 @@ the [Android device](../../os/index.md)'s (`os/android/phone.md`,
 anything is kept, which recipient a proposal may name and which operation is
 offered in its place. Reading numbers and names out of the owner's words stays
 in the shell (`device-actions/proposal/telephony/`), which hands these rules
-the facts it found.
+the facts it found: that reading is pattern and word matching over free text,
+which neither Quint nor a `//@` contract can state, so it is VibeLang, as the
+Browser's request grounding is.
 
 The owner's words are the host-persisted text of the current message, without
 the document wrapper. A number in them usually reaches the model only as a
@@ -30,6 +32,12 @@ an address never are.
 There is no keypad operation: a request to open the dialer with a number is a
 reviewed `phone_dial` of that number, and an empty keypad is never offered.
 Contacts never reach the agent, so no contact is shown or read for it.
+`mms_send` belongs to this family only so that no other family claims it: no
+form offers it, so chat never proposes an MMS. Whether an offered request may
+run without its review card is decided by device operations' `directEligible`
+and by [execution](./execution.md), never here: a latest-sender read and a
+Messages draft are reviewed on the phone first, also when the owner asked for
+exactly that sender or that draft.
 
 ## Story: Call or text the person I named, as I named them
 
@@ -89,11 +97,14 @@ pure def lawAnUnreadableNumberIsAskedForAgain(owned: NumberMatch): bool =
 
 A contact recipient is the name as the owner wrote it, case, punctuation and
 a possessive aside ("Maya's cell" names Maya), as whole words of the message
-once the text to send is cut out. A name made only of words every request has
-("the", "me", "call", "her number") names nobody, and digits are never a
-name. The phone resolves the name in the owner's own address book and asks
-which one when several match; a name it does not know is refused there, never
-matched to a number here.
+once the text to send is cut out. The same holds for the contact a change
+looks up (`contact_update`, `contact_delete`) and for the name it saves
+(`contact_create`, or a renaming `contact_update`). A name made only of words
+every request has ("the", "me", "you", "someone", "everyone", "no one", "call",
+"her number") names nobody, and digits are never a name. The phone resolves
+the name in the owner's own address book and asks which one when several
+match; a name it does not know is refused there, never matched to a number
+here.
 
 ```quint
 pure def nameVerdict(written: bool): TargetVerdict = if (written) TargetGrounded else ContactNotWritten
@@ -115,9 +126,9 @@ owner's name with only such words dropped; a shorter part of a full name
 that is not one number asks the owner to type it again. A SIM send takes
 numbers only, so a named recipient for it is refused for its form; a Messages
 draft names a contact or a number alike in its `query`. A command that names
-no one ("call me", "call it a day"), two people, another service ("on
-WhatsApp"), a time, or the police or an ambulance is not a command, and the
-model's recipient is grounded as above.
+no one ("call me", "call everyone", "call it a day"), two people, another
+service ("on WhatsApp"), a time, or the police or an ambulance is not a
+command, and the model's recipient is grounded as above.
 
 ```quint
 type CommandRecipient = CommandNumber | CommandName | CommandUnreadable
@@ -156,48 +167,51 @@ pure def lawOnlyAnEmergencyRequestTurnsToTheDialer(callOrDial: bool, namesServic
   emergencyVerdict(false, callOrDial, namesService, verdict) == verdict
 ```
 
-### A contact change saves only numbers the owner wrote, when the message writes any
+### A contact change saves only numbers the owner wrote
 
 A number saved under a contact's name becomes the recipient of every later
 "call" and "text" of that name, so a `contact_create` or `contact_update` that
 writes numbers is grounded like a call: each number is one the owner wrote or
 spoke in this message, in the owner's dial form, once. A message that writes
-or speaks no number has nothing to ground a number in, and the change is left
-for the owner's review of its exact digits.
+or speaks no number grounds none, so a change that writes a number from it is
+refused and nothing is saved.
 
 ```quint
-pure def contactNumbersGrounded(messageHasNumber: bool, writesNumbers: bool): bool = messageHasNumber and writesNumbers
-pure def lawAContactChangeWithNoNumberInTheMessageIsLeftForReview(writesNumbers: bool): bool =
-  not(contactNumbersGrounded(false, writesNumbers))
+pure def lawAContactNumberTheOwnerNeverWroteIsNeverSaved(swapped: bool, unreadable: bool): bool =
+  not(targetGrounded(numberVerdict(NoOwnerNumber, swapped, unreadable)))
 ```
 
 ### A refused recipient is explained truthfully, and the owner hears that nothing ran
 
 A recipient refusal offers nothing. The owner hears a sentence that is true
 whichever recipient was refused: that nothing was called or sent, or for a
-contact change that nothing was saved, and what to tell the agent instead. A
+contact change that nothing in the address book was saved or changed, and what
+to tell the agent instead. A recipient this phone cannot take in its form, and
+a contact it cannot save in its form, is refused in those same terms. A
 refused number is called missing from the message only when the message
 writes and speaks no number at all.
 
 ```quint
 type OwnerReply = NoRefusalReply | ReplyDialEmergency | ReplyRetypeNumber | ReplyRetypeSavedNumber | ReplyNumberNotSaved
-  | ReplyNoNumberWritten | ReplyRecipientForm | ReplyNameNotWritten | ReplyNumberNotWritten
+  | ReplyNoNumberWritten | ReplyRecipientForm | ReplyNameNotWritten | ReplyNumberNotWritten | ReplyContactForm | ReplyContactNameNotWritten
 pure def numberRefused(verdict: TargetVerdict): bool = verdict == NumberNotWritten or verdict == NumberCopyReference
 pure def refusalReply(verdict: TargetVerdict, contactChange: bool, messageHasNumber: bool): OwnerReply =
   if (targetGrounded(verdict)) NoRefusalReply
   else if (verdict == EmergencyDial) ReplyDialEmergency
   else if (verdict == NumberUnreadable) (if (contactChange) ReplyRetypeSavedNumber else ReplyRetypeNumber)
-  else if (numberRefused(verdict) and contactChange) ReplyNumberNotSaved
+  else if (contactChange) (if (numberRefused(verdict)) ReplyNumberNotSaved else if (verdict == ContactNotWritten) ReplyContactNameNotWritten else ReplyContactForm)
   else if (numberRefused(verdict) and not(messageHasNumber)) ReplyNoNumberWritten
   else if (verdict == RecipientForm) ReplyRecipientForm
   else if (verdict == ContactNotWritten) ReplyNameNotWritten
   else ReplyNumberNotWritten
+pure def savesNothing(reply: OwnerReply): bool =
+  reply == ReplyRetypeSavedNumber or reply == ReplyNumberNotSaved or reply == ReplyContactForm or reply == ReplyContactNameNotWritten
 pure def lawARefusalNeverSaysTheMessageHasNoNumberWhenItHasOne(verdict: TargetVerdict, contactChange: bool): bool =
   refusalReply(verdict, contactChange, true) != ReplyNoNumberWritten
-pure def lawARefusedContactNumberSaysNothingWasSaved(verdict: TargetVerdict, messageHasNumber: bool): bool = {
-  val reply = refusalReply(verdict, true, messageHasNumber)
-  (numberRefused(verdict) or verdict == NumberUnreadable) implies (reply == ReplyNumberNotSaved or reply == ReplyRetypeSavedNumber)
-}
+pure def lawARefusedContactChangeSaysNothingWasSaved(verdict: TargetVerdict, messageHasNumber: bool): bool =
+  (not(targetGrounded(verdict)) and verdict != EmergencyDial) implies savesNothing(refusalReply(verdict, true, messageHasNumber))
+pure def lawARefusedCallOrTextNeverSpeaksOfSaving(verdict: TargetVerdict, messageHasNumber: bool): bool =
+  not(savesNothing(refusalReply(verdict, false, messageHasNumber)))
 pure def lawOnlyARefusalIsExplained(verdict: TargetVerdict, contactChange: bool, messageHasNumber: bool): bool =
   (refusalReply(verdict, contactChange, messageHasNumber) == NoRefusalReply) iff targetGrounded(verdict)
 ```
@@ -217,14 +231,16 @@ reply, the recipient is the one its addressing clause names ("to Sam", "for
 the clause ends at the words that start the message ("saying", "to ask", "to
 let him know", a colon or a quote). A proposed send or draft becomes a
 Messages draft (`sms_compose`) to that recipient with the model's body, its
-`query` the name or the number's dial digits; the draft is the owner's to
+`query` the name or the number's dial form, read as above; the draft is the owner's to
 edit and send, and Android's thread is not carried, so the phone picks the
 conversation from the recipient. When the owner also asked for the draft to be
 sent ("… and send it") and the model proposed exactly that recipient, the
 model's proposal stays and its recipient is grounded as above. A reply in the
 open thread stays a reply there when the message addresses no one or the last
-sender. A recipient that is corrected, plural or unclear, or a draft that
-addresses no one, is asked about: which one person should receive it. A phone
+sender. A recipient that is corrected, plural or unclear, one that names
+nobody ("someone", "me", "everyone"), digits that are not one number ("415-555
+0100 0199"), or a draft that addresses no one, is asked about: which one person
+should receive it. A phone
 that cannot draft in Messages is told so.
 
 ```quint
@@ -249,10 +265,14 @@ pure def lawAnOpenThreadReplyStaysInItsThread(alsoSendsThere: bool, composes: bo
 ### A draft to them goes only to the whole sender address the agent just delivered
 
 "Draft a text to them" (or "to that sender", "to the last sender") goes to
-the sender of the newest applied latest-sender read of this conversation, and
-only when that read returned the whole address, the phone negotiated
-`sms.latest-sender.v2`, and the agent's reply just before the owner's message
-is that read's delivered answer. The draft's `query` is that address; it is
+the sender of the applied latest-sender read of this conversation whose
+delivered answer is the agent's reply just before the owner's message: that
+read's own completion, delivered for this owner, its reply unchanged and
+bound to the read's proposal, attempt and request message, and not past its
+completion deadline. That read must have returned the whole address, and the
+phone negotiated `sms.latest-sender.v2`. A newer read whose answer was not
+delivered, an older read, and a read past its deadline are earlier reads,
+which never address the draft. The draft's `query` is that address; it is
 never the model's number and is not grounded again. Otherwise the owner is
 told there is no current sender, and asked who last texted them or for one
 recipient.
@@ -261,8 +281,10 @@ recipient.
 type SenderSource = SenderReadJustDelivered | SenderReadEarlier | NoSenderRead
 pure def senderDraftReady(source: SenderSource, wholeAddress: bool, addressNegotiated: bool): bool =
   source == SenderReadJustDelivered and wholeAddress and addressNegotiated
-pure def lawOnlyTheSenderJustDeliveredIsDraftedTo(source: SenderSource, wholeAddress: bool, addressNegotiated: bool): bool =
-  senderDraftReady(source, wholeAddress, addressNegotiated) implies (source == SenderReadJustDelivered and wholeAddress and addressNegotiated)
+pure def lawOnlyAWholeAddressIsDraftedTo(source: SenderSource, addressNegotiated: bool): bool =
+  not(senderDraftReady(source, false, addressNegotiated))
+pure def lawAnOlderPhoneNeverAddressesADraft(source: SenderSource, wholeAddress: bool): bool =
+  not(senderDraftReady(source, wholeAddress, false))
 pure def lawAnOlderReadNeverAddressesADraft(wholeAddress: bool, addressNegotiated: bool): bool =
   not(senderDraftReady(SenderReadEarlier, wholeAddress, addressNegotiated))
 ```
