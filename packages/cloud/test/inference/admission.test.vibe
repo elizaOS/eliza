@@ -4,7 +4,7 @@ import type { Model } from "../../gen/cloud__services__models.ts"
 import { json, type Route } from "../../src/http/routes.vibe"
 import { listening, respond } from "../../src/http/server.vibe"
 import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
-import { chatBody, chatIngressPerMinute, hasImage, quote } from "../../src/services/chat-request.vibe"
+import { chatBody, chatIngressPerMinute, hasImage, providerBody, quote } from "../../src/services/chat-request.vibe"
 import { Store } from "../../src/store/store.vibe"
 import { signedCaller } from "../support/caller.vibe"
 import { manualClock } from "../support/clock.ts"
@@ -30,7 +30,8 @@ function chatProbe(reached: Array<string>): Route {
       reached.push(context.caller.kind)
       const body = try chatBody(context)
       const selected = body.model === shortModel.id ? shortModel : model
-      return json({ ...(try quote(body, selected)), image: hasImage(body) })
+      const forwarded = providerBody(body, selected.upstreamModel)
+      return json({ ...(try quote(body, selected)), image: hasImage(body), caps: [forwarded.max_tokens ?? null, forwarded.max_completion_tokens ?? null] })
     }
   }
 }
@@ -62,7 +63,7 @@ const closedSchema = {
 }
 
 describe("WP5 Inference: chat admission", () => {
-  it.live("Refuse a chat body the cloud does not accept and quote the one it does, a planning turn included (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
+  it.live("Refuse a chat body the cloud does not accept, quote the one it does, a planning turn included, and forward only the caller's cap (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\"; spec/cloud/services/inference.md, \"A request is admitted only for a live caller under its plan limit, held under the policy's lane at its quote, and otherwise refused well formed\")", () => scoped(effect {
     const cloud = try testCloud()
     const reached: Array<string> = []
     const caller = try signedCaller(cloud, "chat-admission")
@@ -111,7 +112,7 @@ describe("WP5 Inference: chat admission", () => {
     }
     try check(() => assert.deepStrictEqual(answers, {
       unsupportedField: "400 invalid_request unsupported_field",
-      planningTurn: { counts: { inputTokens: 17, outputTokens: 8 }, micros: 39, image: false },
+      planningTurn: { counts: { inputTokens: 17, outputTokens: 8 }, micros: 39, image: false, caps: [8, null] },
       emptyCacheKey: "400 invalid_request",
       emptyMessages: "400 invalid_request",
       tooManyTokens: "400 invalid_request",
@@ -119,9 +120,9 @@ describe("WP5 Inference: chat admission", () => {
       sourcelessImage: "400 invalid_request",
       openStrictSchema: "400 invalid_request",
       notJson: "400 invalid_request",
-      accepted: { counts: { inputTokens: 10, outputTokens: 64 }, micros: 166, image: true },
-      defaultOutput: { counts: { inputTokens: 10, outputTokens: 4096 }, micros: 9842, image: false },
-      shortDefaultOutput: { counts: { inputTokens: 10, outputTokens: 500 }, micros: 1212, image: false }
+      accepted: { counts: { inputTokens: 10, outputTokens: 64 }, micros: 166, image: true, caps: [null, 64] },
+      defaultOutput: { counts: { inputTokens: 10, outputTokens: 4096 }, micros: 9842, image: false, caps: [null, null] },
+      shortDefaultOutput: { counts: { inputTokens: 10, outputTokens: 500 }, micros: 1212, image: false, caps: [null, null] }
     }))
     try check(() => assert.deepStrictEqual(reached.length, 12))
   }))
