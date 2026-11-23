@@ -41,6 +41,7 @@ export default {
         "vibestack/design/cli.ts",
         "vibestack/stories/cli.ts",
         "vibestack/remote-cache.ts",
+        "vibestack/chromium.ts",
         "vibestack/*/test/*.test.ts",
         "vibestack/testing/test/fixture/*/src/*.{schema,contract}.{ts,vibe}"
       ],
