@@ -104,7 +104,8 @@ effect function runBatch(run: EvaluatorRun, route: EvaluatorInput, evaluators: r
           prompts[position] = prompt
           outcome = "PrepareModel"
         }
-        if (entry.staged === undefined) binding = hashStableJson({ evaluator: entry.evaluator.name, prompt: prompts[position] ?? "", resolved: resolvedOutput[position] ?? null })
+        if (entry.staged === undefined) binding = try orDie(Effect.try(() =>
+          hashStableJson({ evaluator: entry.evaluator.name, prompt: prompts[position] ?? "", resolved: resolvedOutput[position] ?? null })))
       }
       if (outcome === "PrepareFailure") errors.push({ evaluatorName: entry.evaluator.name, error: "prepare failed", retryable: true })
       state = try send({ type: "settlePreparation", position, preparation: outcome, payload, binding })

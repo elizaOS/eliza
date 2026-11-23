@@ -108,7 +108,8 @@ export effect function deleteRoutine(routineId: string) {
   if (record === undefined) return false
   const state = stepRoutine(routineId, { type: "deleteDefinition" }) catch () => undefined
   if (state === undefined) return false
-  (try Scheduler).answer(record.taskId, { tag: "Dismiss" }, `routine:${routineId}:delete`) catch () => undefined
+  const scheduler = try Scheduler
+  scheduler.answer(record.taskId, { tag: "Dismiss" }, `routine:${routineId}:delete`) catch () => undefined
   try writeRecord(indexKey, { ...index, routines: index.routines.filter((routine) => routine.routineId !== routineId) })
   return true
 }
@@ -122,7 +123,10 @@ export effect function answerOccurrence(routineId: string, answer: OccurrenceAns
   const record = (try routineIndex()).routines.find((routine) => routine.routineId === routineId)
   if (record === undefined) return undefined
   const event = { type: occurrenceEvents[answer.op] } as Event
-  const state = stepRoutine(routineId, event) catch (refused) => refused
+  const state = stepRoutine(routineId, event) catch effect (failure) => {
+    if (failure instanceof Rejected) return failure
+    throw failure
+  }
   if (state instanceof Rejected) return { refused: true, routine: wireRoutine(record, state.state) }
   if (answer.op === "snooze") (try Scheduler).answer(record.taskId, { tag: "SnoozeFor", minutes: 10 }, `routine:${routineId}:snooze:${state.occurrences}:${state.snoozes}`) catch () => undefined
   return { refused: false, routine: wireRoutine(record, state) }
@@ -141,7 +145,7 @@ export effect function deliverRoutine(task: TaskRow) {
   if (state.muted) return { kind: "undeliverable", error: "The routine is muted" } satisfies DeliveryAnswer
   try stepRoutine(routineId, { type: "showOccurrence" })
   const title = typeof task.metadata.title === "string" && task.metadata.title.trim() !== "" ? task.metadata.title : task.promptInstructions
-  const presentation = try (Effect.try({ try: () => createReminderPresentation(title, title, "Routine"), catch: () => "unpresentable" }) catch () => undefined)
+  const presentation = Effect.try({ try: () => createReminderPresentation(title, title, "Routine"), catch: () => "unpresentable" }) catch () => undefined
   if (presentation === undefined) return { kind: "undeliverable", error: "The routine has no text to present" } satisfies DeliveryAnswer
   return try ((try Presenter).present({ taskId: task.taskId, kind: task.kind, roomId: undefined, presentation })
     |> Effect.as(%, { kind: "delivered" } as DeliveryAnswer)

@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
-import type { IAgentRuntime, Memory } from "@elizaos/core"
+import type { IAgentRuntime, JsonObject, Memory } from "@elizaos/core"
 import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
 import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
 import { MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route } from "../src/client/contracts.vibe"
@@ -46,12 +46,16 @@ const offer = {
 
 function cloudFake() {
   const calls: string[] = []
-  const gates: { search?: Promise<void>; refuseSearch?: CloudError } = {}
+  const gates: { search?: { started: Deferred.Deferred<void>; finish: Deferred.Deferred<void> }; refuseSearch?: CloudError } = {}
   const client = {
     async mapsCapabilities() { calls.push("capabilities"); return offer },
     async mapsPlacesSearch(request: { readonly query: string }) {
       calls.push(`search:${request.query}`)
-      await gates.search
+      const search = gates.search
+      if (search !== undefined) {
+        await runPromise(Deferred.succeed(search.started, undefined))
+        await runPromise(Deferred.await(search.finish))
+      }
       if (gates.refuseSearch !== undefined) throw gates.refuseSearch
       return { providerId: "google", attribution: "Google", places: [{ providerId: "google", id: "ferry", name: "Ferry Building", coordinate: ferry, attribution: "Google", fetchedAt: Date.now() }] }
     },
@@ -79,12 +83,12 @@ it.live('Keep Cloud Maps on the account that requested it: coverage installs the
   const installed = holder.provider
   if (installed === undefined) return try Effect.die(new Error("Cloud Maps installed no provider"))
   const found = try installed.search("ferry building")
-  let release = () => {}
-  cloud.gates.search = new Promise<void>((resolve) => { release = resolve })
+  const gate = { started: try Deferred.make<void>(), finish: try Deferred.make<void>() }
+  cloud.gates.search = gate
   const inFlight = fork installed.search("coit tower")
-  try sleep("20 millis")
+  try Deferred.await(gate.started)
   try maps.bind({ session: "s2", credential: "k2", client: cloud.client })
-  release()
+  try Deferred.succeed(gate.finish, undefined)
   const fenced = try Fiber.await(inFlight)
   cloud.gates.search = undefined
   try maps.initialize()
@@ -454,7 +458,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const { link, bodies } = linkFake()
   const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => undefined, namesView: () => false })
   const runtime = {} as IAgentRuntime
-  const act = (name: string, message: Memory, parameters: Record<string, unknown>) => promise(async () => {
+  const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
     const action = plugin.actions?.find((found) => found.name === name)
     if (action === undefined) throw new Error(`${name} is not registered`)
     return await action.handler(runtime, message, undefined, { parameters })
@@ -567,7 +571,7 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
   const store = memoryStore()
   const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => store, namesView: (_runtime, destination) => destination === "settings" })
   const runtime = {} as IAgentRuntime
-  const act = (name: string, message: Memory, parameters: Record<string, unknown>) => promise(async () => {
+  const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
     const action = plugin.actions?.find((found) => found.name === name)
     if (action === undefined) throw new Error(`${name} is not registered`)
     return await action.handler(runtime, message, undefined, { parameters })

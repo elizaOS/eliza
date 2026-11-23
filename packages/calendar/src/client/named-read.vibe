@@ -106,14 +106,15 @@ export effect function executeNamedCalendarRead(provider: NamedCalendarReadProvi
   const named = capabilities.includes(CALENDAR_NAMED_READ_CAPABILITY), scoped = capabilities.includes(CALENDAR_CAPABILITY)
   if (!named || !scoped) throw new NamedReadRefused({ reason: "capability_unavailable" })
   const ownerId = numbered(`owner:${context.owner}`)
-  const target = namedCalendarReadTarget(context)
+  const selection = namedCalendarReadTarget(context)
   const request: NamedRequest = {
     calendarView: context.view === "calendar", sensitive: context.sensitive === true, namedCapability: named,
-    scopedCapability: scoped, ownSelection: target !== undefined, target: modelTarget(target),
+    scopedCapability: scoped, ownSelection: selection !== undefined, target: modelTarget(selection),
   }
-  if (target === undefined || !canStart(try reads.get(), ownerId, request)) {
+  if (selection === undefined || !canStart(try reads.get(), ownerId, request)) {
     return fail("Choose the exact matching event in Calendar before sharing it. Nothing was shared or changed.")
   }
+  const target = selection
   const exact: CalendarReadSelected = { type: "calendar_read_selected", target }
   const started = try orDie(reads.send({ type: "start", ownerId, request }))
 

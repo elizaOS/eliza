@@ -205,9 +205,9 @@ export effect function applyPatch(existing: StickyNote, patch: UpdateRequest, up
   const updated: StickyNote = { ...existing, updatedAt }
   const { textEdit, authoredEdit } = editsOf(existing, patch)
   if (authoredEdit !== undefined && textEdit === undefined) {
-    const format = try (editAuthoredNoteFormat(existing.format, authoredEdit) catch effect (error) => {
+    const format = editAuthoredNoteFormat(existing.format, authoredEdit) catch effect (error) => {
       throw refused("NOTES_EDIT_CONFLICT", `Authored note edit conflicts with its current format or text: ${error.reason}`)
-    })
+    }
     return try checked({ ...updated, format })
   }
   const rich = existing.format !== undefined && existing.format.kind !== "text"

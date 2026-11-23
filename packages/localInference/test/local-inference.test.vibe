@@ -180,7 +180,7 @@ it.effect('Embed with the assigned model in its vector space and serve speech on
       model: { backend: "none" }, embeddings: "local", embeddingDimensions: 384, callerRole: "owner",
     })
     const plugin = try localInferencePlugin(engine, { launch, stateDirectory: state }, testCatalog)
-    const runtime = new AgentRuntime({ character: { name: "Eliza", bio: [] } })
+    const runtime = try Effect.try(() => new AgentRuntime({ character: { name: "Eliza", bio: [] } }))
     try promise(() => Promise.resolve(plugin.init?.({}, runtime)))
     assert.deepStrictEqual(runtime.getModelRegistrations().map((entry) => [entry.modelType, entry.provider, entry.metadata?.displayModel]), [
       [ModelType.TEXT_EMBEDDING, localInferenceProvider, "bge-small-en-v1.5"], [ModelType.TEXT_TO_SPEECH, localInferenceProvider, undefined], [ModelType.TRANSCRIPTION, localInferenceProvider, undefined],
@@ -193,10 +193,10 @@ it.effect('Embed with the assigned model in its vector space and serve speech on
     const heard = try promise(() => runtime.getModel(ModelType.TRANSCRIPTION)!(runtime, { audio: encodeWav({ sampleRate: 16000, samples: new Float32Array(8) }) }))
     assert.strictEqual(heard, "heard 8 samples at 16000")
     assert.includeMembers(calls, ["warm bge-small-en-v1.5", "speak Your keys are on the hook."])
-    try promise(() => Promise.resolve(plugin.dispose?.(runtime)))
+    try promise(() => Promise.resolve(plugin.dispose?.()))
 
     const withoutEmbeddings = try localInferencePlugin(engine, { launch: { ...launch, embeddings: "none" }, stateDirectory: state }, testCatalog)
-    const plain = new AgentRuntime({ character: { name: "Eliza", bio: [] } })
+    const plain = try Effect.try(() => new AgentRuntime({ character: { name: "Eliza", bio: [] } }))
     try promise(() => Promise.resolve(withoutEmbeddings.init?.({}, plain)))
     assert.isUndefined(plain.getModel(ModelType.TEXT_EMBEDDING))
     const unassigned = try openLocalModels(state, testCatalog)
@@ -265,7 +265,7 @@ it.effect('Hear each reply on its admitted route, on this phone when the network
       }
       return try speaks(route, heard)
     }
-    const unavailable = <E extends { readonly _tag: string }>(work: SpeechRoute!E) => map(Effect.flip(work), (failure: E | SpeechUnavailable) =>
+    const unavailable = <E extends { readonly _tag: string }, R>(work: SpeechRoute!E!R) => map(Effect.flip(work), (failure: E | SpeechUnavailable) =>
       failure instanceof SpeechUnavailable ? { route: failure.route, failure: failure.failure, fellBackFrom: failure.fellBackFrom } : failure._tag)
 
     assert.strictEqual(try speakOnRoute(speaks), "DeviceRoute")
@@ -300,7 +300,7 @@ it.effect('Hear each reply on its admitted route, on this phone when the network
         throw failing({ code: "voice-http-429", data: { retryAfterSeconds: 2.5 } })
       }
       const late = stale
-      if (late !== undefined) misrouted.push(try (map(late(), () => "played") catch (failure) => failure._tag))
+      if (late !== undefined) misrouted.push((map(late(), () => "played") catch (failure) => failure._tag))
       return try speaks(route, heard)
     }), "DeviceRoute")
     assert.deepStrictEqual(misrouted, ["MisroutedSpeech"])

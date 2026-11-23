@@ -76,7 +76,7 @@ export function notesNamedIn(text: string, notes: readonly StickyNote[]): Sticky
 
 /** The owner's own words for this turn: the request the host bound to it, else the message's text without its envelopes. */
 export effect function ownerRequestText(message: Memory): string!! {
-  const bound = try (Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null)
+  const bound = Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null
   if (bound === null) return ""
   const source = ownerWordsSource(bound !== undefined)
   switch (source) {

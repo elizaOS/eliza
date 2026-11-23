@@ -97,12 +97,12 @@ export effect function nextSpeechRoute() {
 /** Speaks one turn on its admitted route, on this device when a network route fails before audio, and settles the turn once. */
 export effect function speakOnRoute<A, R>(attempt: SpeechAttempt<A, R>) {
   const routing = try SpeechRoutingMachine
-  const began = try (routing.send({ type: "beginTurn", nowMs: try Clock.currentTimeMillis }) catch effect () => { throw new SpeechBusy() })
+  const began = (routing.send({ type: "beginTurn", nowMs: try Clock.currentTimeMillis }) catch effect () => { throw new SpeechBusy() })
 
   effect function heardOn(route: SpeechRoute) {
     const state = try routing.get()
     if (speaking(state.turn) && audibleOf(state.turn) && routeOf(state.turn) === route) return
-    try (routing.send({ type: "audioStarted", route }) catch effect () => { throw new MisroutedSpeech({ route }) })
+    routing.send({ type: "audioStarted", route }) catch effect () => { throw new MisroutedSpeech({ route }) }
   }
 
   effect function ended(route: SpeechRoute, failure: SpeechFailure, fellBackFrom: SpeechFailure | undefined): never!SpeechUnavailable {
@@ -111,7 +111,7 @@ export effect function speakOnRoute<A, R>(attempt: SpeechAttempt<A, R>) {
   }
 
   effect function onRoute(route: SpeechRoute, fellBackFrom: SpeechFailure | undefined): A!SpeechUnavailable!R {
-    const value = try (attempt(route, () => heardOn(route)) catch effect (failed) => {
+    const value = (attempt(route, () => heardOn(route)) catch effect (failed) => {
       const failure: SpeechFailure = failed._tag === "MisroutedSpeech" ? { tag: "RequestRefused" } : failed.failure
       const state = try routing.get()
       if (route === "DeviceRoute" || audibleOf(state.turn)) return try ended(route, failure, fellBackFrom)
