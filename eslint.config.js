@@ -1,10 +1,12 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { relative, sep } from "node:path"
 import js from "@eslint/js"
 import react from "@eslint-react/eslint-plugin"
 import tailwind from "eslint-plugin-better-tailwindcss"
 import boundaries from "eslint-plugin-boundaries"
 import reactHooks from "eslint-plugin-react-hooks"
 import { defineConfig, globalIgnores } from "eslint/config"
+import { builtinRules } from "eslint/use-at-your-own-risk"
 import tseslint from "typescript-eslint"
 import vibelang from "vibelang/eslint"
 import { designSystem } from "./vibestack/design/eslint.ts"
@@ -32,6 +34,299 @@ const untyped = ["*.{js,ts}", "**/.storybook/**", "packages/design-system/**", "
 // Every React interface: Studio's page is built on the same theme (vibestack/studio/vite.config.ts).
 const tsx = ["packages/ui/**/*.{ts,tsx}", "packages/cloud/src/pages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}", "vibestack/studio/src/page/**/*.{ts,tsx}"]
 const design = "packages/design-system"
+const writing = 'AGENTS.md, "Writing code"'
+const citation = String.raw`spec\/\S+\.md, "[^"]+"`
+const suppressible = String.raw`(?!code\/|no-console\b)[\w@/-]+`
+const cited = new RegExp(String.raw`^\s*${citation}(?:; ${citation})*\s*$`)
+const suppression = new RegExp(String.raw`^ eslint-disable(?:-next-line|-line)? ${suppressible}(?:, ${suppressible})* -- \S`)
+const configs = [suppression, /^ eslint-enable\b/]
+const directives = {
+  Line: [cited, suppression, /^@ (?:backend|requires|ensures|invariant|decreases|assert|pure|type|ghost)(?: |$)/, /^\/ <reference /, /^ @vitest-environment [\w-]+$/],
+  Block: [cited, ...configs, /^\*(?:[\s*]*@(?:model|design) \S+)+[\s*]*$/],
+  Shebang: [/^/],
+}
+const inline = /^\s*(?:eslint(?:-[a-z]+)*|exported|globals?)(?:\s|$)/
+const guarded = (parser) => ({
+  meta: { name: `${parser.meta.name} with code/inline`, version: parser.meta.version },
+  parseForESLint: (text, options) => {
+    const parsed = parser.parseForESLint(text, options)
+    const loose = parsed.ast.comments.find((comment) => inline.test(comment.value) && !configs.some((form) => form.test(comment.value)))
+    if (loose) throw Object.assign(new SyntaxError(`Inline config here is only "eslint-disable[-next-line|-line] <rule>, … -- <reason>", never for code/* or no-console, and "eslint-enable" (${writing}).`), { lineNumber: loose.loc.start.line, column: loose.loc.start.column + 1 })
+    return parsed
+  },
+})
+const within = (node) => Boolean(node) && (/Function/.test(node.type) || within(node.parent))
+const documented = (context, comment) => context.options[0]?.jsdoc && comment.type === "Block" && comment.value.startsWith("*") && !within(context.sourceCode.getNodeByRangeIndex(comment.range[0]))
+const left = { type: "object", additionalProperties: { type: "integer", minimum: 1 } }
+const excess = (context, found) => found.length > (context.options[0]?.left?.[relative(context.cwd, context.filename).split(sep).join("/")] ?? 0) && found.forEach((problem) => context.report(problem))
+const comments = {
+  meta: { type: "problem", schema: [{ type: "object", properties: { jsdoc: { type: "boolean" }, left }, additionalProperties: false }] },
+  create: (context) => ({
+    Program: () => excess(context, context.sourceCode.getAllComments()
+      .filter((comment) => !directives[comment.type].some((directive) => directive.test(comment.value)) && !documented(context, comment))
+      .map((comment) => ({ loc: comment.loc, message: `No code comments: only spec citations and tool directives (${writing}).` }))),
+  }),
+}
+const uses = (names) => `:matches(Identifier[name=${names}]:not(ImportSpecifier[imported.name=${names}] > Identifier.local), MemberExpression[computed=true] > Literal.property[value=${names}])`
+const scheduling = {
+  [uses(/^use(?:Layout|Insertion)?Effect$/)]: `No effect hooks: shared state lives in the spec-backed Machine (${writing}).`,
+  [uses(/^(?:setTimeout|setInterval|setImmediate|queueMicrotask|requestAnimationFrame|requestIdleCallback)$/)]: `No timers: wait with Effect in VibeLang, or let the Machine say when (${writing}).`,
+}
+const effects = {
+  meta: { type: "problem", schema: [{ type: "object", properties: { left }, additionalProperties: false }] },
+  create: (context) => {
+    const found = []
+    return { ...Object.fromEntries(Object.entries(scheduling).map(([selector, message]) => [selector, (node) => found.push({ node, message })])), "Program:exit": () => excess(context, found) }
+  },
+}
+const consoleRule = builtinRules.get("no-console")
+const countedConsole = {
+  meta: { ...consoleRule.meta, schema: [{ type: "object", properties: { left }, additionalProperties: false }] },
+  create: (context) => {
+    const found = []
+    const visitor = consoleRule.create(Object.create(context, { report: { value: (problem) => found.push(problem) } }))
+    return { ...visitor, "Program:exit": (node) => { visitor["Program:exit"]?.(node); excess(context, found) } }
+  },
+}
+const code = { rules: { comments, effects, console: countedConsole } }
+const own = ["apps/**", "packages/**"]
+const commented = {
+  "packages/agent/src/approvals/queue.vibe": 4,
+  "packages/agent/src/client/coordination.vibe": 1,
+  "packages/agent/src/client/device-execution.vibe": 1,
+  "packages/agent/src/client/index.vibe": 1,
+  "packages/agent/src/client/stopped-turn.vibe": 1,
+  "packages/agent/src/conversation/events.vibe": 1,
+  "packages/agent/src/conversation/heard.vibe": 1,
+  "packages/agent/src/conversation/turns.vibe": 2,
+  "packages/agent/src/host/process.vibe": 1,
+  "packages/agent/src/models/chat.vibe": 6,
+  "packages/agent/src/models/cloud-link.vibe": 2,
+  "packages/agent/src/schedule/scheduled-tasks.vibe": 2,
+  "packages/agent/src/schedule/store.vibe": 3,
+  "packages/agent/src/schedule/trigger-delivery.vibe": 2,
+  "packages/agent/src/schedule/triggers.vibe": 1,
+  "packages/agent/src/tasks/surface-channel.vibe": 1,
+  "packages/agent/src/views/declarations.vibe": 1,
+  "packages/agent/src/views/host.vibe": 1,
+  "packages/agent/src/views/show-action.vibe": 1,
+  "packages/agent/src/voice/capture.worklet.mjs": 1,
+  "packages/agent/src/voice/heuristics.vibe": 1,
+  "packages/agent/src/voice/playback.vibe": 2,
+  "packages/agent/test/client-turns.test.vibe": 1,
+  "packages/agent/test/schedule-triggers.test.vibe": 2,
+  "packages/agent/test/tasks-chat.test.vibe": 1,
+  "packages/agent/test/tasks-host.test.vibe": 1,
+  "packages/agent/test/tasks-store.test.vibe": 1,
+  "packages/agent/test/turns.test.vibe": 1,
+  "packages/cloud/src/billing/entitlements.vibe": 3,
+  "packages/cloud/src/billing/grant-code.vibe": 2,
+  "packages/cloud/src/client/client.vibe": 1,
+  "packages/cloud/src/client/entitlement.vibe": 3,
+  "packages/cloud/src/client/maps.vibe": 1,
+  "packages/cloud/src/google-read.vibe": 1,
+  "packages/cloud/src/identity/code-challenges.vibe": 1,
+  "packages/cloud/src/identity/second-factor.vibe": 3,
+  "packages/cloud/src/main.vibe": 1,
+  "packages/cloud/src/native-clients/return-routes.vibe": 3,
+  "packages/cloud/src/providers/google-identity.vibe": 1,
+  "packages/cloud/src/providers/speech.vibe": 1,
+  "packages/cloud/src/providers/stripe.vibe": 1,
+  "packages/cloud/src/services/google/mail-compose.vibe": 4,
+  "packages/cloud/src/services/google/mail-read.vibe": 5,
+  "packages/cloud/src/shared/credential-crypto.vibe": 6,
+  "packages/cloud/src/shared/sealing.vibe": 3,
+  "packages/cloud/src/store/store.vibe": 4,
+  "packages/cloud/test/support/web-front.vibe": 1,
+  "packages/core/src/action-parameter-value.vibe": 2,
+  "packages/core/src/actions/extractor-pipeline.vibe": 1,
+  "packages/core/src/actions/resolve-action-args.vibe": 1,
+  "packages/core/src/actions/subaction-dispatch.vibe": 1,
+  "packages/core/src/ambient-context.vibe": 1,
+  "packages/core/src/awareness.vibe": 4,
+  "packages/core/src/canonical-json.vibe": 6,
+  "packages/core/src/catalog/generate.vibe": 8,
+  "packages/core/src/catalog/registry.vibe": 3,
+  "packages/core/src/connectors/account-manager.vibe": 21,
+  "packages/core/src/database.vibe": 19,
+  "packages/core/src/database/cache-cas.vibe": 1,
+  "packages/core/src/database/connector-json.vibe": 3,
+  "packages/core/src/database/document-list-query.vibe": 8,
+  "packages/core/src/edge.vibe": 11,
+  "packages/core/src/inference-timing.vibe": 10,
+  "packages/core/src/logger.vibe": 10,
+  "packages/core/src/media/fetch.vibe": 3,
+  "packages/core/src/media/outbound.vibe": 3,
+  "packages/core/src/meeting-artifacts.vibe": 1,
+  "packages/core/src/memory.vibe": 1,
+  "packages/core/src/messaging/interaction-parse.vibe": 1,
+  "packages/core/src/messaging/interaction-profiles.vibe": 2,
+  "packages/core/src/messaging/interaction-sessions.vibe": 1,
+  "packages/core/src/messaging/task-events.vibe": 5,
+  "packages/core/src/messaging/task-widgets.vibe": 1,
+  "packages/core/src/network/fetch-guard.vibe": 3,
+  "packages/core/src/network/node-pinned-fetch.vibe": 4,
+  "packages/core/src/network/ssrf.vibe": 4,
+  "packages/core/src/retrieval.vibe": 38,
+  "packages/core/src/runtime.vibe": 160,
+  "packages/core/src/runtime/action-gate.vibe": 2,
+  "packages/core/src/runtime/active-prompt-traces.vibe": 8,
+  "packages/core/src/runtime/components.vibe": 2,
+  "packages/core/src/runtime/connector-registry.vibe": 18,
+  "packages/core/src/runtime/context-hash.vibe": 4,
+  "packages/core/src/runtime/context-registry.vibe": 9,
+  "packages/core/src/runtime/dispatch.vibe": 2,
+  "packages/core/src/runtime/kernel.vibe": 2,
+  "packages/core/src/runtime/lifecycle.vibe": 1,
+  "packages/core/src/runtime/message-content-segments.vibe": 1,
+  "packages/core/src/runtime/message-content-storage.vibe": 1,
+  "packages/core/src/runtime/model-dispatch.vibe": 29,
+  "packages/core/src/runtime/provider-execution.vibe": 1,
+  "packages/core/src/runtime/response-handler-fields.vibe": 13,
+  "packages/core/src/runtime/room-handler-queue.vibe": 19,
+  "packages/core/src/runtime/run-terminal-owner.vibe": 7,
+  "packages/core/src/runtime/service-lifecycle.vibe": 2,
+  "packages/core/src/runtime/single-flight-memo.vibe": 1,
+  "packages/core/src/runtime/state-composition.vibe": 1,
+  "packages/core/src/runtime/store.vibe": 1,
+  "packages/core/src/runtime/trajectory-provider-attribution.vibe": 1,
+  "packages/core/src/security/confidential-inference.vibe": 7,
+  "packages/core/src/security/guarded-stream.vibe": 3,
+  "packages/core/src/security/loopback-trust.vibe": 2,
+  "packages/core/src/security/outbound-sanitize.vibe": 3,
+  "packages/core/src/security/pii-context-pack.vibe": 2,
+  "packages/core/src/security/pii-pseudonym-map-store.vibe": 3,
+  "packages/core/src/security/pii-pseudonym-map.vibe": 13,
+  "packages/core/src/security/pii-pseudonymizer.vibe": 12,
+  "packages/core/src/security/pii-scrub-seam.vibe": 1,
+  "packages/core/src/security/request-token.vibe": 1,
+  "packages/core/src/security/runtime-abort-signal.vibe": 1,
+  "packages/core/src/security/secret-swap.vibe": 15,
+  "packages/core/src/security/tool-diagnostics.vibe": 7,
+  "packages/core/src/services/hook.vibe": 2,
+  "packages/core/src/services/notification.vibe": 1,
+  "packages/core/src/services/pairing.vibe": 1,
+  "packages/core/src/services/task.vibe": 13,
+  "packages/core/src/services/trigger-scheduling.vibe": 1,
+  "packages/core/src/streaming-context.vibe": 6,
+  "packages/core/src/todo-cutover.vibe": 15,
+  "packages/core/src/trajectory-context.vibe": 1,
+  "packages/core/src/trajectory-utils.vibe": 9,
+  "packages/core/src/types/effects.vibe": 1,
+  "packages/core/src/types/provider-integrations.vibe": 5,
+  "packages/core/src/utils/async-context-manager.vibe": 2,
+  "packages/core/src/utils/atomic-json.vibe": 11,
+  "packages/core/src/utils/buffer.vibe": 10,
+  "packages/core/src/utils/crypto-compat.vibe": 9,
+  "packages/core/src/utils/deadline.vibe": 2,
+  "packages/core/src/utils/environment.vibe": 1,
+  "packages/core/src/utils/filesystem.vibe": 2,
+  "packages/core/src/utils/log-prefix.vibe": 1,
+  "packages/core/src/utils/permission-deep-links.vibe": 2,
+  "packages/core/src/utils/project-memory-scope.vibe": 3,
+  "packages/core/src/utils/retry.vibe": 1,
+  "packages/core/src/utils/state-dir.vibe": 4,
+  "packages/core/src/utils/streaming.vibe": 1,
+  "packages/core/src/utils/string-to-uuid.vibe": 1,
+  "packages/core/src/utils/task-scheduling.vibe": 1,
+  "packages/core/src/utils/text-normalize.vibe": 1,
+  "packages/core/src/utils/unicode.vibe": 5,
+  "packages/core/src/utils/uuid.vibe": 1,
+  "packages/core/src/views/completed-action-navigation.vibe": 2,
+  "packages/core/test/core.test.vibe": 1,
+  "packages/core/test/support/kernel.vibe": 1,
+  "packages/os/src/app-update/publication-boundary.vibe": 4,
+  "packages/os/src/app-update/publisher-policy.vibe": 3,
+  "packages/os/src/app-update/trust-build.vibe": 1,
+  "packages/os/src/bridges/action-journal.vibe": 1,
+  "packages/os/src/bridges/agent.vibe": 1,
+  "packages/os/src/bridges/calendar.vibe": 1,
+  "packages/os/src/bridges/camera.vibe": 3,
+  "packages/os/src/bridges/cloud.vibe": 3,
+  "packages/os/src/bridges/contacts.vibe": 3,
+  "packages/os/src/bridges/deep-links.vibe": 1,
+  "packages/os/src/bridges/deletion-window.vibe": 1,
+  "packages/os/src/bridges/files.vibe": 1,
+  "packages/os/src/bridges/location.vibe": 1,
+  "packages/os/src/bridges/media.vibe": 4,
+  "packages/os/src/bridges/messages.vibe": 5,
+  "packages/os/src/bridges/notices.vibe": 3,
+  "packages/os/src/bridges/page-source.vibe": 3,
+  "packages/os/src/bridges/passwords.vibe": 7,
+  "packages/os/src/bridges/phone.vibe": 1,
+  "packages/os/src/bridges/reminders.vibe": 1,
+  "packages/os/src/bridges/reset.vibe": 1,
+  "packages/os/src/bridges/secure-store.vibe": 1,
+  "packages/os/src/bridges/sign-in.vibe": 1,
+  "packages/os/src/bridges/surface.vibe": 2,
+  "packages/os/src/bridges/system.vibe": 2,
+  "packages/os/src/bridges/tab-host.vibe": 2,
+  "packages/os/src/bridges/voice.vibe": 6,
+  "packages/os/src/bridges/wifi.vibe": 1,
+  "packages/os/src/browser/chromium-build.vibe": 5,
+  "packages/os/src/browser/chromium.vibe": 6,
+  "packages/os/src/build/android-build.vibe": 4,
+  "packages/os/src/build/android-host.vibe": 3,
+  "packages/os/src/build/runtime-payload.vibe": 5,
+  "packages/os/src/build/source-integrity.vibe": 2,
+  "packages/os/src/cli.vibe": 2,
+  "packages/os/src/image/apk.vibe": 7,
+  "packages/os/src/image/compose-product.vibe": 9,
+  "packages/os/src/image/device.vibe": 10,
+  "packages/os/src/image/key-ceremony.vibe": 1,
+  "packages/os/src/image/provisioning.vibe": 1,
+  "packages/os/src/image/stage-launcher.vibe": 3,
+  "packages/os/test/agent-config.test.vibe": 1,
+  "packages/os/test/bridges/agent.test.vibe": 4,
+  "packages/os/test/bridges/calendar.test.vibe": 7,
+  "packages/os/test/bridges/camera.test.vibe": 4,
+  "packages/os/test/bridges/contacts.test.vibe": 4,
+  "packages/os/test/bridges/deep-links.test.vibe": 4,
+  "packages/os/test/bridges/deletion.test.vibe": 5,
+  "packages/os/test/bridges/messages.test.vibe": 5,
+  "packages/os/test/bridges/notices.test.vibe": 3,
+  "packages/os/test/bridges/phone.test.vibe": 3,
+  "packages/os/test/bridges/secure-store.test.vibe": 1,
+  "packages/os/test/bridges/sign-in.test.vibe": 5,
+  "packages/os/test/bridges/system.test.vibe": 8,
+  "packages/os/test/bridges/voice.test.vibe": 11,
+  "packages/os/test/browser-bridges.test.vibe": 2,
+  "packages/os/test/browser-reading.test.vibe": 2,
+  "packages/os/test/browser.test.vibe": 4,
+  "packages/os/test/build-android.test.vibe": 2,
+  "packages/os/test/build.test.vibe": 8,
+  "packages/os/test/cli.test.vibe": 5,
+  "packages/os/test/files.test.vibe": 3,
+  "packages/os/test/image-apk.test.vibe": 5,
+  "packages/os/test/image-product.test.vibe": 4,
+  "packages/os/test/image-provisioning.test.vibe": 9,
+  "packages/os/test/image-source.test.vibe": 1,
+  "packages/os/test/image.test.vibe": 4,
+  "packages/os/test/media.test.vibe": 5,
+  "packages/os/test/passwords.test.vibe": 3,
+  "packages/os/test/runtime-payload.test.vibe": 2,
+  "packages/os/test/wifi.test.vibe": 2
+}
+const scheduled = {
+  "packages/agent/src/access/socket.vibe": 3,
+  "packages/agent/test/client-runtime.test.vibe": 2,
+  "packages/agent/test/client-tasks.test.vibe": 1,
+  "packages/agent/test/client-turns.test.vibe": 2,
+  "packages/agent/test/device-read-completion.test.vibe": 1,
+  "packages/agent/test/events.test.vibe": 2,
+  "packages/agent/test/http.test.vibe": 2,
+  "packages/agent/test/schedule-triggers.test.vibe": 1,
+  "packages/agent/test/scheduled-tasks.test.vibe": 1,
+  "packages/agent/test/transport.test.vibe": 2,
+  "packages/agent/test/voice-recorded-transcription.test.vibe": 1,
+  "packages/core/src/runtime/provider-execution.vibe": 1,
+  "packages/core/src/services/task.vibe": 6,
+  "packages/core/src/utils/retry.vibe": 1,
+  "packages/os/src/bridges/voice.vibe": 1,
+  "packages/os/test/bridges/messages.test.vibe": 1
+}
+const consoleCounts = { "packages/core/src/logger.vibe": 3 }
+
 const unused = { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }
 const coreUnused = { ...unused, ignoreRestSiblings: true }
 
@@ -171,4 +466,9 @@ export default defineConfig(
       "no-restricted-syntax": ["error", { selector: "JSXOpeningElement[name.name=/^(input|textarea)$/]", message: "Use Input, Textarea or Checkbox from @repo/ui." }],
     },
   },
+  { files: own, ignores: ["**/*.{vibe,vibex}"], languageOptions: { parser: guarded(tseslint.parser) } },
+  { files: ["{apps,packages}/**/*.{vibe,vibex}"], languageOptions: { parser: guarded(vibelang) } },
+  { files: own, plugins: { code }, rules: { "no-console": "error", "code/comments": ["error", { left: commented }], "code/effects": ["error", { left: scheduled }] } },
+  { files: ["packages/ui/src/components/**"], ignores: ["**/*.meta.tsx"], rules: { "code/comments": ["error", { jsdoc: true, left: commented }] } },
+  { files: Object.keys(consoleCounts), rules: { "no-console": "off", "code/console": ["error", { left: consoleCounts }] } },
 )

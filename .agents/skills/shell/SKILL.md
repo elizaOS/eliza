@@ -44,18 +44,20 @@ when the spec has a sender:
 Where transitions return `{ state, out }`, `apply`, `send` and `receive`
 return that record; `get` and `changes` give the state.
 
-A shell and its test, on the order example's spec:
+A shell, `src/app.vibe`, and its test, `test/app.test.vibe`, on the order
+example's spec. `answer` needs a `Machine`, which the caller provides;
+`receive` decodes the input and applies it, so the state changes only if both
+pass; `canSubmit` is a guard of the spec, called bare. The only comment is the
+test's spec citation ([AGENTS.md, "Writing code"](../../../AGENTS.md#writing-code)):
 
 ```vibe
-// src/app.vibe
 import { Machine, NotAnEvent, Rejected, canSubmit } from "../gen/index.effect.vibe"
 
-/** What to tell the sender of an untrusted input. Needs a Machine, which the caller provides. */
 export effect function answer(input: unknown) {
   const orders = try Machine
   return effect {
-    const order = try orders.receive(input) // decodeEvent, then apply: the state changes only if both pass
-    return canSubmit(order) ? "ready to submit" : order.status // a guard of the spec, called bare
+    const order = try orders.receive(input)
+    return canSubmit(order) ? "ready to submit" : order.status
   } catch (error) => match (error) {
     when NotAnEvent: "not an event";
     when Rejected: `${error.event.type} is not allowed for a ${error.state.status} order`;
@@ -64,7 +66,6 @@ export effect function answer(input: unknown) {
 ```
 
 ```vibe
-// test/app.test.vibe
 // spec/index.md, "Story: Check out"
 import { assert, it } from "@effect/vitest"
 import { machine } from "../gen/index.effect.vibe"

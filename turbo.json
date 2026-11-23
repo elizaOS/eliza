@@ -189,6 +189,7 @@
         "vibestack-studio#test:browser"
       ],
       "inputs": [
+        "eslint.config.js",
         "vibestack/**",
         "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!vibestack/selftests/{docs,examples}.ts",

@@ -60,7 +60,9 @@ generated `lemma <fn>_ensures`: for a transition, one per `always` and `step`
 rule, each conditional on `inv` and the guard; for a law, `<law>(...) == true`.
 
 **Grammar.** A proof file holds only `lemma` declarations, each with a body,
-and `//` comments. Anything else is refused with its file and line. A lemma
+and `//` comments, which in a project's own proof file are only spec
+citations ([AGENTS.md, "Writing code"](../../../AGENTS.md#writing-code)).
+Anything else is refused with its file and line. A lemma
 runs to the next `lemma`, and its body is the brace group it ends with, after
 a complete header: the set display in `decreases {0}` or `x in {1}` is never
 a body.
