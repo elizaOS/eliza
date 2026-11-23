@@ -20,9 +20,9 @@ The default branch is the primary branch and the base for every pull request.
   before and after the change under comparable conditions. For UI changes,
   attach screenshots of the same flow and state before and after.
 - Keep the diff tidy and focused. Remove unnecessary files and dead,
-  redundant, or superseded code and legacy paths. Prose comments in code
-  are banned. Keep only required machine-readable directives in comment
-  syntax.
+  redundant, or superseded code and legacy paths. Follow the code comment
+  rule in AGENTS.md; keep only its permitted machine-readable directives
+  and generated component metadata.
 - Satisfy all Vibestack requirements and TypeScript conventions before
   merging. [Vibestack spec reference](SPEC.md) · [Required stack](AGENTS.md#the-stack) · [TypeScript conventions](AGENTS.md#typescript-best-practices)
 
@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `9865679`](https://github.com/lalalune/vibestack/commit/9865679c703e38a098e7cc749628ea198fe25868).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `f5d18d3`](https://github.com/lalalune/vibestack/commit/f5d18d3ef363c6213b5d2f98477adb33e61c97e4).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -423,7 +423,14 @@ compare screenshots.
 Asynchronous Effect programs are tested, not proved. Each `proof` line says
 how many obligations are proved and how many are simulated only.
 
-ESLint enforces package exports and the stack boundaries. Knip finds unused
+ESLint enforces package exports and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+citation or tool directive, no effect hook, timer or `console`, and no inline
+config but a reasoned `eslint-disable` of another rule. `commented` and
+`scheduled` in `eslint.config.js` give each file that still breaks them the
+count it may keep; one more fails, and cleaning a file lowers or deletes its
+entry. Eliza's native logger bridge keeps its three existing console accesses
+under the same count limit, enforced by the built-in diagnostics; new files
+and any increase fail. Knip finds unused
 files, exports and dependencies, reading `.vibe` and `.vibex` through VibeLang's
 compiler. Madge checks cycles in `.ts` and `.tsx` imports. jscpd fails on any
 duplicated block of code outside the examples and test fixtures. Their
