@@ -60,7 +60,7 @@ module node {
     const stored = (await adapter.getMemories({ roomId: record.roomId, tableName: "messages" }))
       .flatMap((memory) => memory.id === undefined ? [] : [memory as StoredMessage])
       .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    return Promise.all(stored.map(async (memory, index) => ({
+    return Promise.all(stored.map(async (memory, index): Promise<Placed> => ({
       memory,
       message: {
         id: index + 1, conversationId: sourceId, at: memory.createdAt ?? 0,
