@@ -1350,14 +1350,88 @@ describe("Google refusals and legitimately shaped answers", () => {
     ]);
   });
 
-  test("Google's 400 for a search or a route request is invalid_request", async () => {
-    const { provider } = google(() => invalidArgument("Invalid request."));
-    expect(await refusal(provider.search({ query: "casino" }))).toBe(
-      "invalid_request",
+  // Google's answer to an invalid or expired key (and other configuration
+  // faults): also a 400 INVALID_ARGUMENT, but with an ErrorInfo reason.
+  const keyRefused = (reason: string) =>
+    Response.json(
+      {
+        error: {
+          code: 400,
+          message: "API key not valid. Please pass a valid API key.",
+          status: "INVALID_ARGUMENT",
+          details: [
+            {
+              "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+              reason,
+              domain: "googleapis.com",
+              metadata: { service: "places.googleapis.com" },
+            },
+          ],
+        },
+      },
+      { status: 400 },
     );
-    expect(
-      await refusal(provider.routes({ from: CASINO, to: PORT, mode: "walk" })),
-    ).toBe("invalid_request");
+
+  test("a key Google refuses on place details is a provider fault, not the caller's", async () => {
+    for (const reason of [
+      "API_KEY_INVALID",
+      "API_KEY_EXPIRED",
+      "SERVICE_DISABLED",
+    ]) {
+      const { provider } = google(() => keyRefused(reason));
+      expect(await refusal(provider.details({ id: PLACE_ID }))).toBe(
+        "provider_invalid_response",
+      );
+    }
+  });
+
+  test("an unreadable or unexplained details 400 stays a provider fault", async () => {
+    for (const respond of [
+      () => new Response("not json", { status: 400 }),
+      () => Response.json({}, { status: 400 }),
+      () =>
+        Response.json(
+          {
+            error: { code: 400, message: "Bad", status: "FAILED_PRECONDITION" },
+          },
+          { status: 400 },
+        ),
+      () =>
+        Response.json(
+          { error: { code: 400, status: "INVALID_ARGUMENT", details: "x" } },
+          { status: 400 },
+        ),
+    ]) {
+      const { provider } = google(respond);
+      expect(await refusal(provider.details({ id: PLACE_ID }))).toBe(
+        "provider_invalid_response",
+      );
+    }
+  });
+
+  test("Google's 400 for a search, nearby or route request is never blamed on the caller", async () => {
+    // Cloud builds these requests from inputs it has already validated, so a
+    // 400 is a provider or operator fault, whether or not Google gives a reason.
+    for (const respond of [
+      () => invalidArgument("Invalid request."),
+      () => keyRefused("API_KEY_INVALID"),
+      () => keyRefused("API_KEY_EXPIRED"),
+    ]) {
+      const { provider } = google(respond);
+      expect(await refusal(provider.search({ query: "casino" }))).toBe(
+        "provider_invalid_response",
+      );
+      expect(
+        await refusal(
+          provider.reverse({ coordinate: CASINO, preferPlace: true }),
+        ),
+      ).toBe("provider_invalid_response");
+      expect(
+        await refusal(
+          provider.routes({ from: CASINO, to: PORT, mode: "walk" }),
+        ),
+      ).toBe("provider_invalid_response");
+    }
   });
 
   test("a zero-length route (proto3 omits distanceMeters 0) is a route, not a malformed answer", async () => {

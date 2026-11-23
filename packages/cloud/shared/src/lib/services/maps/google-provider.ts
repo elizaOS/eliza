@@ -173,17 +173,43 @@ function durationSeconds(value: unknown): number | undefined {
 }
 
 /**
- * A non-200 Google answer. Google's 400 (INVALID_ARGUMENT) refuses the request
- * itself, such as a place id it never issued; that is the caller's request, not
- * a malformed provider answer. Any other status stays an invalid response.
+ * Google's 400 for a place details request. Only details carries a caller
+ * value Google can refuse (the place id; Cloud builds every other Google
+ * request from inputs it has already validated), so only here is a 400 the
+ * caller's fault, and only when Google refuses the argument itself: an
+ * INVALID_ARGUMENT error with no ErrorInfo reason, as for "Not a valid Place
+ * ID". Google also answers 400 INVALID_ARGUMENT for an invalid or expired API
+ * key (reason API_KEY_INVALID, API_KEY_EXPIRED) and other configuration
+ * faults; any stated reason, or an unreadable body, stays a provider fault.
+ * https://cloud.google.com/apis/design/errors#error_info
  */
-function refusedOrInvalid(status: number): MapsServiceError {
-  return status === 400
-    ? new MapsServiceError(
-        "invalid_request",
-        "The maps provider refused this request as invalid.",
-      )
-    : invalidResponse(status);
+async function refusedPlaceId(response: Response): Promise<MapsServiceError> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return invalidResponse(response.status);
+  }
+  const error =
+    body && typeof body === "object" ? (body as { error?: unknown }).error : undefined;
+  if (!error || typeof error !== "object") return invalidResponse(response.status);
+  const { status, details } = error as { status?: unknown; details?: unknown };
+  if (status !== "INVALID_ARGUMENT") return invalidResponse(response.status);
+  if (details !== undefined) {
+    if (!Array.isArray(details)) return invalidResponse(response.status);
+    const reasoned = details.some(
+      (detail) =>
+        !detail ||
+        typeof detail !== "object" ||
+        "reason" in detail ||
+        String((detail as { "@type"?: unknown })["@type"] ?? "").endsWith("ErrorInfo"),
+    );
+    if (reasoned) return invalidResponse(response.status);
+  }
+  return new MapsServiceError(
+    "invalid_request",
+    "The maps provider refused this place id as invalid.",
+  );
 }
 
 function latLng(value: unknown): MapsCoordinate | undefined {
@@ -480,7 +506,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       reportPrice,
       this.creditPrice("search", request),
     );
-    if (response.status !== 200) throw refusedOrInvalid(response.status);
+    if (response.status !== 200) throw invalidResponse(response.status);
     const json = await responseJson(response);
     if (!json || typeof json !== "object") throw invalidResponse();
     const places = (json as { places?: unknown }).places;
@@ -539,7 +565,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
         reportPrice,
         { amountUsd: 0.032, sku: "99F9-A108-83A6", priceVersion: "google-global-2026-11-13" },
       );
-      if (response.status !== 200) throw refusedOrInvalid(response.status);
+      if (response.status !== 200) throw invalidResponse(response.status);
 
       const body = await responseJson(response);
       if (!body || typeof body !== "object" || Array.isArray(body)) throw invalidResponse();
@@ -578,10 +604,11 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       this.creditPrice("details", request),
       [200, 400, 404],
     );
-    // A place id Google no longer knows has no details; one it refuses as
-    // malformed (400 INVALID_ARGUMENT) is the request's fault.
+    // A place id Google no longer knows has no details; one it refuses as an
+    // invalid argument is the request's fault (see refusedPlaceId).
     if (response.status === 404) return null;
-    if (response.status !== 200) throw refusedOrInvalid(response.status);
+    if (response.status === 400) throw await refusedPlaceId(response);
+    if (response.status !== 200) throw invalidResponse(response.status);
     const candidate = this.placeCandidate(await responseJson(response), true);
     // Like search, details serves covered places only.
     this.requireCovered(candidate.coordinate);
@@ -647,7 +674,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       reportPrice,
       this.creditPrice("routes", request),
     );
-    if (response.status !== 200) throw refusedOrInvalid(response.status);
+    if (response.status !== 200) throw invalidResponse(response.status);
     const json = await responseJson(response);
     if (!json || typeof json !== "object") throw invalidResponse();
     const routes = (json as { routes?: unknown }).routes;
