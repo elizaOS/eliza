@@ -15,6 +15,30 @@ lemma lawOnlyAllowedRegisteredActionsAreOffered_ensures(registered: seq<string>,
   assert "REPLY" in messageServiceActions;
 }
 
+lemma lawANarrowedSchemaForAnUnregisteredParameterIsDropped_ensures(params: seq<string>, narrowed: seq<string>)
+  ensures (lawANarrowedSchemaForAnUnregisteredParameterIsDropped(params, narrowed) == true)
+{
+  var retained := ProofLib.Filter((set_x: string) => (set_x in narrowed), params);
+  assert retained == turnNarrowed(params, narrowed);
+  forall parameter | parameter in narrowed && parameter !in params
+    ensures parameter !in retained
+  {
+    ProofLib.FilterMember((set_x: string) => (set_x in narrowed), params, parameter);
+  }
+}
+
+lemma lawARegisteredParameterTheTurnNamesIsNarrowed_ensures(params: seq<string>, narrowed: seq<string>)
+  ensures (lawARegisteredParameterTheTurnNamesIsNarrowed(params, narrowed) == true)
+{
+  var retained := ProofLib.Filter((set_x: string) => (set_x in narrowed), params);
+  assert retained == turnNarrowed(params, narrowed);
+  forall parameter | parameter in params && parameter in narrowed
+    ensures parameter in retained
+  {
+    ProofLib.FilterMember((set_x: string) => (set_x in narrowed), params, parameter);
+  }
+}
+
 lemma lawTheLatestFailureIsReported_ensures(steps: seq<PlanStep>, earlier: PlanStep)
   ensures (lawTheLatestFailureIsReported(steps, earlier) == true)
 {
