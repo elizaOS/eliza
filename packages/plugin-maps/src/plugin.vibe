@@ -454,7 +454,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       if (chosen !== undefined) closeChoice(runtime, message.roomId)
       const params = chosen === undefined ? parameters(options) : { ...chosen.choice.params, [chosen.choice.field]: chosen.place.providerPlaceId }
       const ask: Ask = (field, choices, asked = params) => {
-        if (operation !== undefined) openChoice(runtime, message.roomId, { operation, field, options: choices, params: asked, askedAt: Date.now() })
+        if (operation !== undefined) openChoice(runtime, message, { operation, field, options: choices, params: asked, askedAt: Date.now() })
       }
       return settle(linked(ports, runtime, effect (service) => try work(service, try ports.navigation(runtime, message), message, params, ask, runtime)))
     }
