@@ -132,6 +132,13 @@ effect function endByLease(tx: Tx, key: string, event: { readonly type: "endForL
   return stepped !== undefined
 }
 
+export effect function cancelLegacySuccessor(tx: Tx, key: string) {
+  const row = (try tx.query("SELECT sign_in_at FROM device_grants WHERE key = $1 FOR UPDATE", [key]))[0]
+  const legacy = row?.sign_in_at !== undefined && row.sign_in_at !== null
+  return try stepGrant(tx, key, { type: "cancelLegacySuccessor", legacy },
+    (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, sealed_lease: null, updated_at: grant.now }))
+}
+
 export effect function endGrantForLeaseTheft(tx: Tx, key: string) {
   return try endByLease(tx, key, { type: "endForLeaseTheft" })
 }
