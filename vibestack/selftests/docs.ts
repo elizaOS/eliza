@@ -80,7 +80,7 @@ describe("the documents name what exists", () => {
       docs: missed(docs, () => true),
       examples: missed(examples, (file) => ![toolSource, docsSource, toolMetadata].includes(file) && /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
       tools: tools.flatMap((hashed) => missed(hashed, (file) => toolInput(file) && (hashed === packed || file !== "README.md"))),
-      packed: missed(packed, workspace),
+      packed: missed(packed, (file) => file === ".gitignore" || workspace(file)),
       readmeInFixtures: [shardA, shardB].some((hashed) => hashed.has("README.md")),
       workspaceInFixtures: [shardA, shardB].flatMap((hashed) => [...hashed].filter(workspace)),
       examplesInTools: tools.flatMap((hashed) => [...hashed]).filter((file) => /^vibestack\/examples\/(?!order\/)/.test(file)),

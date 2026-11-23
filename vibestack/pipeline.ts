@@ -12,7 +12,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { conformance, type Machine } from "./conform.ts";
 import { explore } from "./explore.ts";
-import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type Proof } from "./prove.ts";
+import { abandonedProof, ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type Proof } from "./prove.ts";
 import { bin, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
@@ -218,26 +218,34 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
       proofTexts.set(u.unit, proofText);
       let recalled!: (hit: boolean) => void;
       remembering.set(u.unit, new Promise((settle) => { recalled = settle; }));
-      const proving = (axioms: Offered[]) => remembered(memory, entry(root, "prove", [JSON.stringify({ ...u, text: undefined }), proofText ?? "", proofText === undefined ? "" : libraryFor(lib, proofText) ?? "", JSON.stringify(axioms)]),
-        (memory) => { recalled(false); return prove(memory, u, { proof: proofText === undefined ? undefined : { file: u.proofFile, text: proofText }, lib, axioms }); }, (p) => !p.errors.length);
+      const proving = (axioms: Offered[], discarded?: () => boolean) => remembered(memory, entry(root, "prove", [JSON.stringify({ ...u, text: undefined }), proofText ?? "", proofText === undefined ? "" : libraryFor(lib, proofText) ?? "", JSON.stringify(axioms)]),
+        (memory) => { recalled(false); return prove(memory, u, { proof: proofText === undefined ? undefined : { file: u.proofFile, text: proofText }, lib, axioms }, discarded); }, (p) => p !== abandonedProof && !p.errors.length);
       running.set(u.unit, (async () => {
-        const offered = proofText === undefined ? [] : u.imports.lemmas.map(({ fn }) => ({ fn }));
-        const from = offered.length ? u.imports.lemmas.map((l) => l.from) : [];
-        const settled = (await Promise.all(from.map((f) => remembering.get(f) ?? Promise.resolve(false)))).every(Boolean);
-        const first = settled ? undefined : proving(offered);
-        await Promise.allSettled([first, ...from.map((f) => running.get(f))]);
+        const imports = proofText === undefined ? [] : u.imports.lemmas;
+        const offered = imports.map(({ fn }) => ({ fn }));
+        const settled = (await Promise.all(imports.map(({ from }) => remembering.get(from) ?? Promise.resolve(false)))).every(Boolean);
+        let discarded = false;
+        const first = settled ? undefined : proving(offered, () => discarded);
         // A clause of an imported lemma is offered only if its own unit proved it, in this run; none of them is if
         // one of the lemma's failures is not one of its clauses. A lemma its unit does not generate has none.
-        const resolved = offered.length ? u.imports.lemmas.map(({ fn, def, from }) => {
-          const p = proved.get(from);
-          if (!p || p.errors.length) return undefined;
+        const resolving = Promise.all(imports.map(async ({ fn, def, from }) => {
+          const p = await running.get(from)?.catch(() => undefined);
+          if (!p || p.errors.length) {
+            discarded = true;
+            return undefined;
+          }
           const clauses = ensuresOf(p.dfy, `${def}_ensures`).map((c) => `${def}: ${c}`);
           const failed = p.unproved.filter((x) => x.startsWith(`${def}: `));
           const known = failed.every((x) => clauses.includes(x));
-          return { fn, proved: clauses.map((c) => known && !failed.includes(c)) };
-        }) : [];
-        const proof = resolved.every((r) => r?.proved.every(Boolean)) ? await (first ?? proving(offered))
-          : await proving(resolved.filter((r): r is Required<Offered> => !!r?.proved.length));
+          const clausesProved = clauses.map((c) => known && !failed.includes(c));
+          discarded ||= clausesProved.includes(false);
+          return { fn, proved: clausesProved };
+        }));
+        await Promise.allSettled(first ? [first, resolving] : [resolving]);
+        const resolved = await resolving;
+        const proof = discarded ? await proving(resolved.filter((r): r is Required<Offered> => !!r?.proved.length))
+          : await (first ?? proving(offered));
+        if (proof === abandonedProof) throw new Error(`the selected proof of ${u.unit} was abandoned`);
         proved.set(u.unit, proof);
         return proof;
       })().finally(() => recalled(true)));
