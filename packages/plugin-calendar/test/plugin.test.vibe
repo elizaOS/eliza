@@ -402,7 +402,7 @@ it.effect(`Change my calendar only as I asked and know it happened, from the own
   assert.strictEqual(at((try call("GET", "/api/lifeops/calendar/feed", { query: window })).body, "events", "length"), 0)
 })
 
-it.effect(`Create a repeating event through the reviewed create (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar")`, effect () => {
+it.effect(`Create a repeating event through the reviewed create (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty")`, effect () => {
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
   const ask = { by: "owner-entity", conversation: "room:owner", id: "message-1", text: "", ownerZone: "UTC" }
@@ -418,6 +418,9 @@ it.effect(`Create a repeating event through the reviewed create (spec/calendar/a
   const renamed = try runCalendarAction(host, ask, { subaction: "search_events", query: "piano", timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-04-01T00:00:00Z" })
   assert.deepStrictEqual([once.success, all.success, at(all.data, "event", "id"), (at(renamed.data, "events") as CalendarEvent[]).map((event) => event.title)],
     [true, true, lesson, ["Piano lesson", "Piano lesson", "Piano lesson"]])
+  const named = try runCalendarAction(host, { ...ask, id: "message-5a" },
+    { subaction: "update_event", query: "piano lesson", title: "Piano", recurrenceScope: "series", timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-04-01T00:00:00Z" })
+  assert.deepStrictEqual([named.success, at(named.data, "event", "title")], [true, "Piano"])
   const doubled = try runCalendarAction(host, { ...ask, id: "message-2" }, { ...weekly, skipStarts: ["2030-03-11T17:00:00Z", "2030-03-11T17:00:00Z"] })
   assert.strictEqual(doubled.success, false)
   const checkup = { subaction: "create_event", title: "Checkup", startAt: "2030-03-06T17:00:00Z", endAt: "2030-03-06T18:00:00Z", timeZone: "UTC" }
@@ -440,7 +443,7 @@ it.effect(`Create a repeating event through the reviewed create (spec/calendar/a
   assert.deepStrictEqual([refusal.result, refusal.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_RECURRENCE_UNSUPPORTED", 0])
 })
 
-it.effect(`Change my calendar only as I asked and know it happened, at a free time and for the one event I meant (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone")`, effect () => {
+it.effect(`Change my calendar only as I asked and know it happened, at a free time and for the one event I meant (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone")`, effect () => {
   try TestClock.setTime(Date.parse("2030-03-01T12:00:00Z"))
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
   const ask = { by: "owner-entity", conversation: "room:owner", text: "", ownerZone: "America/Los_Angeles" }
@@ -458,6 +461,17 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const unreal = try run("slot-10", { subaction: "search_events", date: "2030-02-30" })
   assert.deepStrictEqual([(at(monday.data, "events") as CalendarEvent[]).map((event) => event.title), at(monday.data, "timeMin"), at(monday.data, "timeMax"), at(mixed.data, "code"), at(unreal.data, "code")],
     [["Dentist", "Call"], "2030-03-04T08:00:00.000Z", "2030-03-05T08:00:00.000Z", "CALENDAR_READ_DATE_INVALID", "CALENDAR_READ_DATE_INVALID"])
+
+  try run("slot-11", { subaction: "create_event", title: "Reunion", startAt: "2032-06-05T18:00" })
+  const far = try run("slot-12", { subaction: "update_event", query: "reunion", title: "Class reunion" })
+  assert.deepStrictEqual([far.success, at(far.data, "event", "title")], [true, "Class reunion"])
+
+  const google = googleCalendar()
+  google.health.complete = false
+  try host.register(google.port)
+  try host.bindAccount(owner)
+  const unread = try run("slot-13", { subaction: "update_event", query: "plumber", title: "Plumber, moved" })
+  assert.strictEqual(at(unread.data, "code"), "CALENDAR_TARGET_UNREAD")
 })
 
 it.effect(`Attendees hear of a change only when the owner asked and the calendar can tell them (spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat")`, effect () => {

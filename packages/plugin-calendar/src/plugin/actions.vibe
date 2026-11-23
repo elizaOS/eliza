@@ -1,8 +1,8 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"
 import { readTurnContext } from "@elizaos/agent"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  chatCreateReviewed, createEndMs, dayRead, deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked,
+  changeTarget, chatCreateReviewed, createEndMs, dayRead, deleteAnswer, freeTimeRead, guestChange, intervalFree, lookupDaysAhead, lookupDaysBack, morningAdmission, noticeAsked,
   ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
@@ -124,6 +124,20 @@ function wholeDays(parameters: Parameters, zone: string): DayWindow {
     case "RefuseDayRead": return { kind: "refused" }
     case "ReadWholeDays": return days ?? { kind: "refused" }
   }
+}
+
+function oneOfEachSeries(events: readonly CalendarEvent[], now: number): CalendarEvent[] {
+  const series = new Map<string, CalendarEvent[]>()
+  for (const event of events) {
+    const key = `${event.provider}\n${event.calendarId}\n${event.recurringEventId ?? event.id}`
+    const held = series.get(key)
+    if (held === undefined) series.set(key, [event])
+    else held.push(event)
+  }
+  return [...series.values()].flatMap((occurrences) => {
+    const chosen = occurrences.find((event) => Date.parse(event.endAt) > now) ?? occurrences.at(-1)
+    return chosen === undefined ? [] : [chosen]
+  })
 }
 
 function wallTime(event: CalendarEvent, zone: string): string {
@@ -288,11 +302,15 @@ effect function target(host: CalendarHost, parameters: Parameters, now: number) 
     return found === undefined ? { kind: "missing" as const } : { kind: "found" as const, found }
   }
   if (parameters.query === undefined || parameters.query.trim() === "") return { kind: "missing" as const }
-  const span = window(parameters, now - day, 60 * day)
-  if (span === undefined) return { kind: "missing" as const }
-  const searched = try host.search({ ...span, query: parameters.query, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
-  const matches = searched?.events ?? []
-  if (matches.length !== 1) return { kind: "ambiguous" as const, matches }
+  const timeMin = parameters.timeMin === undefined ? Math.max(0, now - lookupDaysBack * day) : Date.parse(parameters.timeMin)
+  const timeMax = parameters.timeMax === undefined ? Math.max(timeMin, now) + lookupDaysAhead * day : Date.parse(parameters.timeMax)
+  if (!(timeMax > timeMin) || timeMin < 0) return { kind: "missing" as const }
+  const searched = try host.search({ timeMin, timeMax, query: parameters.query, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
+  if (searched === undefined) return { kind: "missing" as const }
+  const matches = oneOfEachSeries(searched.events, now)
+  const verdict = changeTarget(matches.length, searched.complete)
+  if (verdict === "TargetUnread") return { kind: "unread" as const }
+  if (verdict !== "TargetFound") return { kind: "ambiguous" as const, matches }
   const only = matches[0]
   const found = only === undefined ? undefined : try host.find(only.id, only.calendarId)
   return found === undefined ? { kind: "missing" as const } : { kind: "found" as const, found }
@@ -503,6 +521,9 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       if (lookup.kind === "ambiguous") {
         return failed(subaction, lookup.matches.length === 0 ? "I couldn't find that event." : `Which one? ${lookup.matches.slice(0, 5).map((event) => line(event, zone)).join("; ")}`,
           { candidates: lookup.matches.slice(0, 5).map((event) => ({ id: event.id, title: event.title, startAt: event.startAt })) })
+      }
+      if (lookup.kind === "unread") {
+        return failed(subaction, "Some calendars could not be read, so I can't tell whether that event is there. Nothing was changed.", { code: "CALENDAR_TARGET_UNREAD" })
       }
       if (lookup.kind === "missing") return failed(subaction, "I couldn't find that event in this account's calendars.")
       const notifyAttendees = noticeAsked(parameters.notifyAttendees === true, noticeAskedInWords(askTextOf(ask)), noticeDeclinedInWords(askTextOf(ask)))

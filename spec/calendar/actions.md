@@ -316,6 +316,33 @@ pure def lawOnlyAGuestOfTheEventIsRemoved(addsWritten: bool, removalsNamed: bool
   guestChange(addsWritten, removalsNamed, false) != GuestsAsAsked
 ```
 
+### A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty
+
+A change that names its event by words, not by id, looks from one year
+before now to five years after it unless the request gives the range, on
+the calendar named or on every listed calendar. The occurrences of one
+repeating event count as one event: the earliest that has not ended, else
+the latest. Exactly one event is the target. More than one asks which.
+None, when every calendar was read, says the event was not found. None,
+when a calendar could not be read, says that instead, since the event may
+be there, and changes nothing.
+
+```quint
+type ChangeTarget = TargetFound | TargetAmbiguous | TargetUnread | TargetMissing
+pure val lookupDaysBack: int = 365
+pure val lookupDaysAhead: int = 1825
+pure def changeTarget(matchedEvents: int, readComplete: bool): ChangeTarget =
+  if (matchedEvents == 1) TargetFound
+  else if (matchedEvents > 1) TargetAmbiguous
+  else if (not(readComplete)) TargetUnread
+  else TargetMissing
+pure def lawAnUnreadCalendarIsNeverCalledEmpty(matchedEvents: int): bool =
+  changeTarget(matchedEvents, false) != TargetMissing
+pure def lawOnlyOneMatchIsTheTarget(matchedEvents: int, readComplete: bool): bool =
+  changeTarget(matchedEvents, readComplete) == TargetFound iff matchedEvents == 1
+pure val matchedEventsValues = Set(0, 1, 2)
+```
+
 ### A new event with a start and no end lasts the asked minutes, else one hour
 
 A create that gives a start and no end ends after the length the request
