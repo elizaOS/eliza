@@ -139,7 +139,7 @@ module node {
       readonly task?: JsonObject
       readonly clientId?: string
     }
-    readonly deadline?: AbortSignal
+    readonly deadline?: { readonly signal: AbortSignal; readonly at: number }
     readonly key?: KeyedTurn
     readonly offerAgenda?: (message: Memory, signal: AbortSignal) => Promise<(() => Promise<void>) | undefined>
     readonly taskPresentation?: ChatTaskTurn
@@ -253,13 +253,15 @@ module node {
       let retireAgenda: (() => Promise<void>) | undefined
       const interrupted = async (result: MessageProcessingResult): Promise<MessageProcessingResult> => {
         if (result.responseMessages.length > 0) return result
-        const content = { text: result.responseContent?.text ?? "", failureKind: options.deadline?.aborted ? "timeout" : "aborted" }
+        const content = { text: result.responseContent?.text ?? "", failureKind: options.deadline?.signal.aborted ? "timeout" : "aborted" }
         return { ...result, responseContent: content, responseMessages: await storeReply(content) }
       }
       try {
         retireAgenda = await options.offerAgenda?.({ ...input, id: userMessageId }, signal)
         const processing: AgentTurnProcessingOptions = {
-          roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
+          roomHandlerLease: lease, abortSignal: signal,
+          ...(options.deadline === undefined ? {} : { deadlineAt: options.deadline.at }),
+          ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
           ...(options.display === undefined ? {} : { onReplyRestart: options.display.restart, onActivityStatus: ({ actionName }: { actionName: string }) => options.display?.tool(actionName) }),
           ...(options.taskPresentation === undefined ? {} : { taskContext: options.taskPresentation.context }),
         }
@@ -377,8 +379,8 @@ module node {
         if (taskPresentation?.kind === "Refused") return failure(taskPresentation.status, taskPresentation.error)
         admit(admission)
         const attached = stream === undefined ? undefined : await stream.attached
-        const deadline = AbortSignal.timeout(turnDeadlineMs)
-        const turnSignal = AbortSignal.any(attached === undefined ? [interrupt, deadline] : [interrupt, attached.signal, deadline])
+        const deadline = { at: Date.now() + turnDeadlineMs, signal: AbortSignal.timeout(turnDeadlineMs) }
+        const turnSignal = AbortSignal.any(attached === undefined ? [interrupt, deadline.signal] : [interrupt, attached.signal, deadline.signal])
         const conversationId = conversation(room)?.id
         const offerAgenda: TurnOptions["offerAgenda"] = agenda === undefined || conversationId === undefined
           ? undefined : (message, active) => agenda({ headers }, { conversationId, message, requestId: id ?? message.id ?? "" }, active)

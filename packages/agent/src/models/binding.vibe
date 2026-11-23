@@ -38,6 +38,7 @@ export interface BoundModels {
   credential(): Redacted.Redacted<string>
   startCall(handler: ModelHandler, now: number): CallStart!!
   answerCall(id: number, now: number): void!!
+  cancelCall(id: number): void!!
   refuseCall(id: number, now: number, error: CloudError): void!!
   read(): BindingView!!
   state(): ModelBinding!!
@@ -182,6 +183,9 @@ export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
     },
     answerCall: effect (id: number, now: number) => {
       try orDie(models.send({ type: "answerCall", id, now }))
+    },
+    cancelCall: effect (id: number) => {
+      try orDie(models.send({ type: "cancelCall", id }))
     },
     refuseCall: effect (id: number, now: number, error: CloudError) => {
       try orDie(models.send({ type: "refuseCall", id, now, e: error }))

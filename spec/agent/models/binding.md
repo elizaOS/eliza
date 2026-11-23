@@ -110,7 +110,7 @@ pure def stepClockNeverGoesBack(before: ModelBinding, after: ModelBinding): bool
 pure def sometimesOwnKeyAnswered(s: ModelBinding): bool = isOwnKey(s.backend) and s.nextCall >= 1 and s.calls.length() == 0 and s.accountState == Usable
 ```
 
-### Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call
+### Generic model fallback retries transient connection and provider failures
 
 The handlers read a refusal as the cloud client's `CloudError`; the own-key
 handler classifies its HTTP failures into the same variants. Core retries
@@ -136,6 +136,57 @@ pure def transient(e: C::CloudError): bool = match e { | CloudNetwork => true | 
 pure def rateLimited(e: C::CloudError): bool = match e { | CloudRateLimited(_) => true | _ => false }
 pure def lawOnlyTransientRefusalsAreRetried(e: C::CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
 pure def lawRateLimitExhaustsTheProvider(e: C::CloudError): bool = rateLimited(e) iff outcomeOf(e) == M::ExhaustedBudget
+```
+
+### One temporarily rate-limited owner model call can resend before its deadline
+
+A foreground owner turn has a live room lease, cancellation signal, and
+deadline. Its text model calls share that authority for planning,
+extraction and review. Each concrete model call may send once more when
+the first provider wire sees a typed temporary HTTP 429 before output.
+A local account cooldown, a period allowance, quota, funding, and other
+refusals give no resend. A known provider deadline can authorize waiting
+for at most five seconds, with the retry sent at or after that deadline.
+With no hint the wait is five seconds. The caller's deadline can end the
+wait earlier, in which case the call retains the refusal. The resend
+passes the current account admission again. A second wire ends the
+one-resend allowance even if it returns a different refusal.
+
+```quint
+type TurnResendAdvice = NoResendHint | ResendAt({ at: int })
+type TurnResendDecision = DoNotResend | WaitToResend({ delay: int })
+pure val maximumOwnerResendWaitMs = 5000
+pure val adviceValues = Set(NoResendHint, ResendAt({ at: 0 }), ResendAt({ at: 3000 }), ResendAt({ at: 7000 }))
+pure val wiresValues = Set(0, 1, 2, 3)
+pure val resendNowValues = Set(0, 1000, 6000)
+pure val deadlineValues = Set(0, 4000, 9000)
+pure def ownerResendDelay(advice: TurnResendAdvice, resendNow: int): int = match advice {
+  | NoResendHint => maximumOwnerResendWaitMs
+  | ResendAt(d) => if (d.at > resendNow) d.at - resendNow else 0
+}
+pure def ownerResend(advice: TurnResendAdvice, temporary: bool, wires: int, live: bool, output: bool, resendNow: int, deadline: int): TurnResendDecision = {
+  val wait = ownerResendDelay(advice, resendNow)
+  if (temporary and wires == 1 and live and not(output) and wait <= maximumOwnerResendWaitMs and resendNow + wait < deadline)
+    WaitToResend({ delay: wait })
+  else DoNotResend
+}
+pure def lawOnlyTheFirstActualRefusalCanResend(advice: TurnResendAdvice, temporary: bool, wires: int, live: bool, output: bool, resendNow: int, deadline: int): bool =
+  wires != 1 implies ownerResend(advice, temporary, wires, live, output, resendNow, deadline) == DoNotResend
+pure def lawFundingLimitsAndOtherRefusalsNeverResend(advice: TurnResendAdvice, live: bool, output: bool, resendNow: int, deadline: int): bool =
+  ownerResend(advice, false, 1, live, output, resendNow, deadline) == DoNotResend
+pure def lawTheOwnerResendWaitStaysInsideBothDeadlines(advice: TurnResendAdvice, resendNow: int, deadline: int): bool = {
+  val decision = ownerResend(advice, true, 1, true, false, resendNow, deadline)
+  match decision {
+    | DoNotResend => true
+    | WaitToResend(w) => w.delay >= 0 and w.delay <= maximumOwnerResendWaitMs and resendNow + w.delay < deadline and (match advice {
+        | NoResendHint => w.delay == maximumOwnerResendWaitMs
+        | ResendAt(d) => resendNow + w.delay >= d.at
+      })
+  }
+}
+pure def lawEndedOrVisibleCallsNeverResend(advice: TurnResendAdvice, temporary: bool, resendNow: int, deadline: int): bool =
+  ownerResend(advice, temporary, 1, false, false, resendNow, deadline) == DoNotResend
+  and ownerResend(advice, temporary, 1, true, true, resendNow, deadline) == DoNotResend
 ```
 
 ### A tool call, a structured answer and the token use reach the caller as one result
@@ -243,6 +294,19 @@ pure def lawAnswerLeavesOnlyALimitInForce(st: AccountState, t: int): bool =
   afterSuccess(st, t) == Usable or (afterSuccess(st, t) == st and limitedAt(st, t))
 pure def sometimesLimitClearedByAnAnswer(s: ModelBinding): bool =
   s.accountState == Usable and lastFailureKind(s.lastCloudFailure) == "limit_reached"
+```
+
+### An interrupted provider attempt clears its own pending call
+
+Interruption retires the attempt from the binding. It does not publish an
+account refusal or touch the current credential.
+
+```quint
+pure def canCancelCall(s: ModelBinding, id: int): bool = id >= 0
+pure def cancelCall(s: ModelBinding, id: int): ModelBinding =
+  { ...s, calls: s.calls.select(c => c.id != id) }
+pure def stepCancelPreservesAccount(before: ModelBinding, via: str, after: ModelBinding): bool =
+  via == "cancelCall" implies after.accountState == before.accountState and after.lastCloudFailure == before.lastCloudFailure
 ```
 
 ### A pushed credential replaces the key only at a higher version of the launch account, and needs no restart

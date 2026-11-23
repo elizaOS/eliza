@@ -7,6 +7,7 @@ import {
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { textForTurn } from "./heard.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
+import { withOwnerResend } from "../models/owner-resend.vibe"
 import { readTurnContext } from "./turn-context.schema.vibe"
 import { offeredActions, planTurn } from "./planning.vibe"
 import { ownerNotesAdmission } from "./notes-admission.vibe"
@@ -18,6 +19,7 @@ type ContentPart = Exclude<NonNullable<ChatMessage["content"]>, string>[number]
 export type AccountFailureSince = (since: number) => Pick<LastCloudFailure, "kind" | "retryAt"> | undefined
 export interface AgentTurnProcessingOptions extends MessageProcessingOptions {
   readonly taskContext?: string
+  readonly deadlineAt?: number
   readonly onReplyRestart?: (fullText: string) => void
 }
 
@@ -160,12 +162,15 @@ async function respond(
         const actions = await offeredActions(runtime, message, state, actionGate)
         const notesHistoryIds = new Set(recent.flatMap(({ id, entityId }) =>
           id !== undefined && (entityId === message.entityId || entityId === runtime.agentId) ? [id] : []))
+        const owner = roles.includes("OWNER")
+        const current = () => planningLive && !signal.aborted && runtime.roomHandlerQueue.ownsLease(message.roomId, lease)
         const actionContext = ownerNotesAdmission({
-          runtime, message, state, signal, owner: roles.includes("OWNER"),
+          runtime, message, state, signal, owner,
           history: history.filter((_, index) => notesHistoryIds.has(window.shown[index]?.id ?? "")),
-          current: () => planningLive && !signal.aborted && runtime.roomHandlerQueue.ownsLease(message.roomId, lease),
+          current,
         })
-        const planned = await planTurn({
+        const resend = owner && options?.deadlineAt !== undefined ? { deadline: options.deadlineAt, current } : undefined
+        const planned = await withOwnerResend(resend, () => planTurn({
           runtime, message, state, roles, actionGate, system, messages, signal, actionContext,
           onStepResult: (result) => Effect.runPromise(Effect.try({
             try: () => terminal.recordActionResult(result),
@@ -183,7 +188,7 @@ async function respond(
           } }),
           ...(options?.onPlanningAcknowledgment === undefined ? {} : { onPlanningAcknowledgment: options.onPlanningAcknowledgment }),
           ...(options?.onActivityStatus === undefined ? {} : { onActivityStatus: options.onActivityStatus }),
-        }, actions)
+        }, actions))
         planningLive = false
         signal.throwIfAborted()
         const replyText = planned.reply

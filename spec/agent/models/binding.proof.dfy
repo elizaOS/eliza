@@ -9,6 +9,7 @@ lemma startCall_ensures(s: ModelBinding, handler: ModelHandler, now: int)
   ensures (inv(s) ==> canStartCall(s, handler, now) ==> stepBindingFixedOnceBound(s, startCall(s, handler, now)))
   ensures (inv(s) ==> canStartCall(s, handler, now) ==> stepClockNeverGoesBack(s, startCall(s, handler, now)))
   ensures (inv(s) ==> canStartCall(s, handler, now) ==> stepNoCallBeforeRetryAt(s, "startCall", startCall(s, handler, now)))
+  ensures (inv(s) ==> canStartCall(s, handler, now) ==> stepCancelPreservesAccount(s, "startCall", startCall(s, handler, now)))
   ensures (inv(s) ==> canStartCall(s, handler, now) ==> stepPushKeepsCallsAndOtherStates(s, "startCall", startCall(s, handler, now)))
 {
   if inv(s) && canStartCall(s, handler, now) {
@@ -38,6 +39,7 @@ lemma refuseCall_ensures(s: ModelBinding, id: int, now: int, e: cloud__client_Cl
   ensures (inv(s) ==> canRefuseCall(s, id) ==> stepBindingFixedOnceBound(s, refuseCall(s, id, now, e)))
   ensures (inv(s) ==> canRefuseCall(s, id) ==> stepClockNeverGoesBack(s, refuseCall(s, id, now, e)))
   ensures (inv(s) ==> canRefuseCall(s, id) ==> stepNoCallBeforeRetryAt(s, "refuseCall", refuseCall(s, id, now, e)))
+  ensures (inv(s) ==> canRefuseCall(s, id) ==> stepCancelPreservesAccount(s, "refuseCall", refuseCall(s, id, now, e)))
   ensures (inv(s) ==> canRefuseCall(s, id) ==> stepPushKeepsCallsAndOtherStates(s, "refuseCall", refuseCall(s, id, now, e)))
 {
   if inv(s) && canRefuseCall(s, id) {
@@ -58,6 +60,7 @@ lemma answerCall_ensures(s: ModelBinding, id: int, now: int)
   ensures (inv(s) ==> canAnswerCall(s, id) ==> stepBindingFixedOnceBound(s, answerCall(s, id, now)))
   ensures (inv(s) ==> canAnswerCall(s, id) ==> stepClockNeverGoesBack(s, answerCall(s, id, now)))
   ensures (inv(s) ==> canAnswerCall(s, id) ==> stepNoCallBeforeRetryAt(s, "answerCall", answerCall(s, id, now)))
+  ensures (inv(s) ==> canAnswerCall(s, id) ==> stepCancelPreservesAccount(s, "answerCall", answerCall(s, id, now)))
   ensures (inv(s) ==> canAnswerCall(s, id) ==> stepPushKeepsCallsAndOtherStates(s, "answerCall", answerCall(s, id, now)))
 {
   if inv(s) && canAnswerCall(s, id) {

@@ -1,4 +1,4 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Generic model fallback retries transient connection and provider failures"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
@@ -60,7 +60,7 @@ it.effect('A cloud text call keeps its image parts, streams, and an image descri
   assert.strictEqual((try binding.read()).accountState, "usable")
 })
 
-it.effect('An outage or a dropped connection is retried on the next registration and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call")', effect () => {
+it.effect('An outage or a dropped connection is retried on the next registration and the answer clears the account state (spec/agent/models/binding.md, "Generic model fallback retries transient connection and provider failures")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
   try Effect.sync(() => cloud.script(unavailable(1), text("after outage"), dropped(), text("after drop"), unavailable(1), unavailable(1), unavailable(1), unavailable(1)))
@@ -107,7 +107,7 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   assert.strictEqual((try replaced.binding.read()).accountState, "credential_invalid")
 })
 
-it.live('A caller abort ends the call without an account failure (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call")', effect () => {
+it.live('A caller abort ends the call without an account failure (spec/agent/models/binding.md, "Generic model fallback retries transient connection and provider failures")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
   try Effect.sync(() => cloud.script({ kind: "hang" }))
@@ -121,6 +121,7 @@ it.live('A caller abort ends the call without an account failure (spec/agent/mod
   assert.strictEqual(completions(cloud), 1)
   const view = try binding.read()
   assert.deepStrictEqual([view.accountState, view.lastCloudFailure], ["usable", undefined])
+  assert.deepStrictEqual((try binding.state()).calls, [])
 })
 
 it.effect('The own-key backend answers text only, classifies its refusals into the same states, probes its key and holds only a key its slot accepts (spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts")', effect () => {
@@ -192,7 +193,7 @@ it.effect('A tool call and its token use reach the caller as one result, and eac
   assert.strictEqual((try binding.read()).accountState, "usable")
 })
 
-it.effect('An own-key overload or timeout is a provider issue and is retried, and a validation refusal ends the call (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call")', effect () => {
+it.effect('An own-key overload or timeout is a provider issue and is retried, and a validation refusal ends the call (spec/agent/models/binding.md, "Generic model fallback retries transient connection and provider failures")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }
   const made = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
