@@ -58,7 +58,11 @@ const processTable = (output: string) => output.trim().split("\n").filter(Boolea
   const [pid, parent, group, time] = line.trim().split(/\s+/);
   return [Number(pid), Number(parent), Number(group), seconds(time)];
 });
-const processes = () => WINDOWS ? [] : processTable(spawnSync("ps", psArgs, { encoding: "utf8", timeout: ACCOUNTING_TIMEOUT, killSignal: "SIGKILL" }).stdout ?? "");
+function processes() {
+  if (WINDOWS) return [];
+  const snapshot = spawnSync("ps", psArgs, { encoding: "utf8", timeout: ACCOUNTING_TIMEOUT, killSignal: "SIGKILL" });
+  return snapshot.status === 0 && !snapshot.error ? processTable(snapshot.stdout) : [];
+}
 
 const execFileAsync = promisify(execFile);
 async function readCounters(command: string, args: string[], signal: AbortSignal) {
@@ -162,10 +166,12 @@ export async function toolCpuSeconds(children: ChildProcess[], signal?: AbortSig
   });
 }
 
-const watched = new Map<ChildProcess, (reading: CpuReading | undefined, signal: AbortSignal) => Promise<void>>();
+type CpuRetry = { confirm: () => Promise<CpuReading | undefined>; cleanupTable: () => number[][] };
+type CpuWatcher = (reading: CpuReading | undefined, retry: CpuRetry) => Promise<void>;
+const watched = new Map<ChildProcess, CpuWatcher>();
 let watchTimer: NodeJS.Timeout | undefined;
 let polling: AbortController | undefined;
-function watchCpu(child: ChildProcess, check: (reading: CpuReading | undefined, signal: AbortSignal) => Promise<void>) {
+function watchCpu(child: ChildProcess, check: CpuWatcher) {
   watched.set(child, check);
   watchTimer ??= setInterval(async () => {
     if (polling) return;
@@ -173,8 +179,15 @@ function watchCpu(child: ChildProcess, check: (reading: CpuReading | undefined, 
     polling = cycle;
     try {
       const jobs = [...watched];
-      const readings = WINDOWS ? [] : await toolCpuSeconds(jobs.map(([job]) => job), cycle.signal);
-      await Promise.all(jobs.flatMap(([job, report], index) => watched.has(job) ? [report(readings[index], cycle.signal)] : []));
+      const children = jobs.map(([job]) => job);
+      const readings = WINDOWS ? [] : await toolCpuSeconds(children, cycle.signal);
+      let confirmed: ReturnType<typeof toolCpuSeconds> | undefined;
+      let table: ReturnType<typeof processes> | undefined;
+      const cleanupTable = () => table ??= processes();
+      await Promise.all(jobs.flatMap(([job, report], index) => watched.has(job) ? [report(readings[index], {
+        confirm: async () => (await (confirmed ??= toolCpuSeconds(children, cycle.signal)))[index],
+        cleanupTable,
+      })] : []));
     } finally { polling = undefined; }
   }, WATCH);
   return () => {
@@ -241,7 +254,7 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
       endsWithTheCheck(child, "SIGTERM");
       const output = { stdout: "", stderr: "" };
       let stopped: string | undefined;
-      const stop = (why: string) => { stopped ??= `${name} ${why} and was stopped`; signal(child, "SIGKILL", processes()); };
+      const stop = (why: string, table = processes()) => { stopped ??= `${name} ${why} and was stopped`; signal(child, "SIGKILL", table); };
       const minutes = TOOL_TIMEOUT / 60_000;
       let lastComplete: { seconds: number; since: number } | undefined;
       let observedAt = started;
@@ -259,7 +272,7 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
           }
         }
       };
-      unwatch = watchCpu(child, async (reading, signal) => {
+      unwatch = watchCpu(child, async (reading, retry) => {
         const now = Date.now(), ran = now - started;
         const sample: CpuReading | undefined = WINDOWS ? { seconds: ran / 1000, complete: true } : reading;
         observe(sample, now);
@@ -268,12 +281,12 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
         const over = (sample?.seconds ?? 0) * 1000 > TOOL_TIMEOUT;
         const idle = ran > TOOL_TIMEOUT && lastComplete !== undefined && now - lastComplete.since >= WATCH;
         if (!over && !idle && now - observedAt <= TOOL_TIMEOUT) return;
-        const confirmed = WINDOWS ? sample : (await toolCpuSeconds([child], signal))[0];
+        const confirmed = WINDOWS ? sample : await retry.confirm();
         if (!watched.has(child)) return;
         observe(confirmed, Date.now());
-        if (over && confirmed && confirmed.seconds * 1000 > TOOL_TIMEOUT) stop(`used more than ${minutes} minutes of processor time`);
-        else if (idle && confirmed?.complete && confirmed.seconds === sample?.seconds) stop(`ran for more than ${minutes} minutes, the last minute without the processor,`);
-        else if (Date.now() - observedAt > TOOL_TIMEOUT) stop(`had no complete processor accounting or measurable progress for ${minutes} minutes`);
+        if (over && confirmed && confirmed.seconds * 1000 > TOOL_TIMEOUT) stop(`used more than ${minutes} minutes of processor time`, retry.cleanupTable());
+        else if (idle && confirmed?.complete && confirmed.seconds === sample?.seconds) stop(`ran for more than ${minutes} minutes, the last minute without the processor,`, retry.cleanupTable());
+        else if (Date.now() - observedAt > TOOL_TIMEOUT) stop(`had no complete processor accounting or measurable progress for ${minutes} minutes`, retry.cleanupTable());
       });
       for (const stream of ["stdout", "stderr"] as const) child[stream].setEncoding("utf8").on("data", (chunk: string) => {
         if (output[stream].length > OUTPUT_LIMIT) return;
