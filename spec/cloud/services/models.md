@@ -1,7 +1,8 @@
 # Chat models and their prices
 
 A model is offered by the deployment profile (`id`, one `provider`, the
-`upstreamModel` sent to it and whether it reads images) and priced by the
+`upstreamModel` sent to it, whether it reads images, and its verified
+maximum output tokens when configured) and priced by the
 operator's price table in µUSD per 1,000 tokens for each side, with no
 fallback provider and no alias. `./inference.md` quotes, admits and settles
 with these definitions; reading the profile and the table is the shell's.
@@ -22,13 +23,14 @@ Anything else is refused `400 model_unavailable` before admission.
 ```quint
 import types.* from "../shared/types"
 import numbers as Num from "../../core/numbers"
-type ProfiledModel = { id: str, provider: str, upstreamModel: str, vision: bool }
+type OutputDefault = NoOutputDefault | OutputDefaultOf({ tokens: int })
+type ProfiledModel = { id: str, provider: str, upstreamModel: str, vision: bool, defaultMaxTokens: OutputDefault }
 type PriceRow = { modelId: str, inputPer1K: Micros, outputPer1K: Micros }
-type Model = { id: str, provider: str, upstreamModel: str, vision: bool, inputPer1K: Micros, outputPer1K: Micros }
+type Model = { id: str, provider: str, upstreamModel: str, vision: bool, defaultMaxTokens: OutputDefault, inputPer1K: Micros, outputPer1K: Micros }
 type ModelChoice = Chosen({ model: Model }) | Unavailable
 pure val maxPer1K: Micros = 10000000
 pure val modelRefusal: Refusal = refuse(ModelUnavailable)
-pure val noProfiledModel: ProfiledModel = { id: "", provider: "", upstreamModel: "", vision: false }
+pure val noProfiledModel: ProfiledModel = { id: "", provider: "", upstreamModel: "", vision: false, defaultMaxTokens: NoOutputDefault }
 pure val noPriceRow: PriceRow = { modelId: "", inputPer1K: 0, outputPer1K: 0 }
 pure def isValidPrice(per1K: Micros): bool = per1K > 0 and per1K <= maxPer1K
 pure def isPricedRow(row: PriceRow): bool = isValidPrice(row.inputPer1K) and isValidPrice(row.outputPer1K)
@@ -44,12 +46,12 @@ pure def chooseModel(profile: List[ProfiledModel], prices: List[PriceRow], id: s
   val rows = pricesOf(prices, id)
   val row = rows.nthOr(0, noPriceRow)
   if (not(offeredOnce(profile, id)) or rows.length() != 1 or not(isPricedRow(row)) or (hasImage and not(offer.vision))) Unavailable
-  else Chosen({ model: { id: offer.id, provider: offer.provider, upstreamModel: offer.upstreamModel, vision: offer.vision, inputPer1K: row.inputPer1K, outputPer1K: row.outputPer1K } })
+  else Chosen({ model: { id: offer.id, provider: offer.provider, upstreamModel: offer.upstreamModel, vision: offer.vision, defaultMaxTokens: offer.defaultMaxTokens, inputPer1K: row.inputPer1K, outputPer1K: row.outputPer1K } })
 }
 pure def isChosen(c: ModelChoice): bool = match c { | Chosen(x) => true | Unavailable => false }
 pure val idValues = Set("m1", "m2", "m3")
 pure val hasImageValues = Set(true, false)
-pure val profileValues = Set(List(), List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: true }), List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false }, { id: "m2", provider: "p2", upstreamModel: "u2", vision: true }), List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false }, { id: "m1", provider: "p2", upstreamModel: "u2", vision: true }), List({ id: "m2", provider: "", upstreamModel: "u2", vision: true }))
+pure val profileValues = Set(List(), List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: true, defaultMaxTokens: OutputDefaultOf({ tokens: 4096 }) }), List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: NoOutputDefault }, { id: "m2", provider: "p2", upstreamModel: "u2", vision: true, defaultMaxTokens: OutputDefaultOf({ tokens: 8192 }) }), List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: NoOutputDefault }, { id: "m1", provider: "p2", upstreamModel: "u2", vision: true, defaultMaxTokens: NoOutputDefault }), List({ id: "m2", provider: "", upstreamModel: "u2", vision: true, defaultMaxTokens: NoOutputDefault }))
 pure val pricesValues = Set(List(), List({ modelId: "m1", inputPer1K: 3, outputPer1K: 15 }), List({ modelId: "m1", inputPer1K: 0, outputPer1K: 15 }, { modelId: "m2", inputPer1K: 1, outputPer1K: 2 }), List({ modelId: "m3", inputPer1K: 1, outputPer1K: 1 }), List({ modelId: "m1", inputPer1K: 0, outputPer1K: 15 }, { modelId: "m1", inputPer1K: 3, outputPer1K: 15 }))
 pure def lawChosenModelIsPricedAndFits(profile: List[ProfiledModel], prices: List[PriceRow], id: str, hasImage: bool): bool = {
   val choice = chooseModel(profile, prices, id, hasImage)

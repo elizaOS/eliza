@@ -21,13 +21,27 @@ effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknow
   return try cloud.store.transaction((tx) => tx.query(text, params))
 }
 
-effect function chatCloud() {
-  const llm: LlmFake = try sync(() => llmFake())
-  const cloud = try testCloud({ mount: (fakes) => fakes.mount("/llm/", llm.handler) })
-  const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+effect function chatCloud(additionalOffers = false) {
+  const secondUpstream = "upstream-wide"
+  const llm: LlmFake = try sync(() => llmFake([upstreamModel, secondUpstream]))
+  const edit = (profile: ReturnType<typeof testProfile>) => {
+    if (!additionalOffers) return profile
+    const staging = profile.environments.staging
+    const inference = {
+      ...staging.inference,
+      models: [...staging.inference.models,
+        { id: "wide-chat", provider: "llm", upstreamModel: secondUpstream, vision: true, defaultMaxTokens: 8192 },
+        { id: "legacy-chat", provider: "llm", upstreamModel: upstreamModel, vision: true }],
+    }
+    return { ...profile, environments: { ...profile.environments, staging: { ...staging, inference } } }
+  }
+  const cloud = try testCloud({ edit, mount: (fakes) => fakes.mount("/llm/", llm.handler) })
+  const profile = try parseProfile(try sync(() => edit(testProfile(cloud.fakes.url))))
   const settings = profile.environments.staging.inference
   if (settings === undefined) return try Effect.die("the test profile offers no inference")
-  try cloud.store.transaction((tx) => setModelPrice(tx, settings, { modelId: "test-chat", inputPer1K: 1000, outputPer1K: 2000 }))
+  for (const offer of settings.models) {
+    try cloud.store.transaction((tx) => setModelPrice(tx, settings, { modelId: offer.id, inputPer1K: 1000, outputPer1K: 2000 }))
+  }
   const { bearer: key } = try signedCaller(cloud, "owner")
   provide Store = cloud.store {
     try addCredits({ organizationId: "org-owner", amount: 1_000_000, requestKey: "operator-1" })
@@ -83,28 +97,37 @@ effect function hangUpAfterFirstBytes(url: string, key: string) {
 
 describe("WP5 Inference: chat completions", () => {
   it.live("Answer a chat completion once and charge it once (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")", () => scoped(effect {
-    const { cloud, llm, chat } = try chatCloud()
+    const { cloud, llm, chat } = try chatCloud(true)
+    const { model, messages } = request
+    const unbounded = { model, messages }
+    const missingDefault = try chat({ ...unbounded, model: "legacy-chat" })
+    const holdsBeforeAdmission = try sql(cloud, "SELECT phase FROM holds", [])
     const unknownModel = try chat({ ...request, model: "missing-chat" })
     const { bearer: broke } = try signedCaller(cloud, "broke")
     const unfunded = try chat(request, {}, broke)
     const callsBeforeAdmission = llm.bodies.length
-    const whole = try chat(request, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
-    const again = try chat(request, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
+    const whole = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
+    const again = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
     try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }))
     const refusedByProvider = try chat(request)
     const unreadable = try chat(request)
+    const legacy = try chat({ ...request, model: "legacy-chat", max_completion_tokens: 64 })
+    const wide = try chat({ ...unbounded, model: "wide-chat", stream: true })
     const answer = whole.body as { readonly model: string; readonly choices: ReadonlyArray<{ readonly message: { readonly content: string } }> }
+    const usage = try settledCount(cloud, "org-owner", 5)
     const holds = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = 'org-owner' ORDER BY phase", [])
     const funds = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = 'org-owner'", [])
-    const usage = try usageRows(cloud, "org-owner")
     const brokeUsage = try usageRows(cloud, "org-broke")
     try check(() => assert.deepStrictEqual(
       {
+        missingDefault: [status(missingDefault), holdsBeforeAdmission.length],
         unknownModel: status(unknownModel),
+        legacy: legacy.status,
+        wide: [wide.status, frames(String(wide.body)).at(-1)],
         unfunded: status(unfunded),
         callsBeforeAdmission,
         whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], status(again)],
-        upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens]),
+        upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens, body.max_completion_tokens]),
         idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
         refusedByProvider: status(refusedByProvider),
         unreadable: status(unreadable),
@@ -114,18 +137,22 @@ describe("WP5 Inference: chat completions", () => {
         balance: Number(funds[0]?.credit_balance)
       },
       {
+        missingDefault: [[400, "model_unavailable", undefined], 0],
         unknownModel: [400, "model_unavailable", undefined],
+        legacy: 200,
+        wide: [200, "[DONE]"],
         unfunded: [402, "insufficient_credits", undefined],
         callsBeforeAdmission: 0,
         whole: [200, "test-chat", replyText, "no-store", [409, "already_dispatched", undefined]],
-        upstream: [[upstreamModel, false, 16], [upstreamModel, false, 16], [upstreamModel, false, 16]],
+        upstream: [[upstreamModel, false, 4096, undefined], [upstreamModel, false, 16, undefined],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
         idempotencyForwarded: false,
         refusedByProvider: [503, "provider_unavailable", "7"],
         unreadable: [502, "provider_invalid_response", undefined],
-        usage: [["known", 50, 31], ["known", 50, 0], ["unknown", 50, 50]],
+        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 166, 31], ["known", 19673, 31]],
         brokeUsage: [],
-        holds: ["settled", "settled", "settled"],
-        balance: 1_000_000 - 31 - 50
+        holds: ["settled", "settled", "settled", "settled", "settled"],
+        balance: 1_000_000 - 31 * 3 - 50
       }
     ))
   }), 90_000)

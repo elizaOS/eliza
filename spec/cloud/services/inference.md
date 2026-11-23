@@ -77,16 +77,26 @@ pure def holdStage(a: Arrival, model: Mo::Model, counts: Mo::TokenCounts, fundin
         hold: M::reserve(M::initial, inferenceHoldKey(a.organization, a.requestId), quote, lane, funding.allowanceAvailable, funding.creditAvailable, a.now) } })
   }
 }
+pure def quoteStage(a: Arrival, model: Mo::Model, outputTokens: int, funding: Funding): CompletionAdmission = {
+  val counts = quoteCounts(a.body.inputChars, outputTokens)
+  if (Mo::countsInBound(counts)) holdStage(a, model, counts, funding) else RefusedAt({ stage: AtQuote, refusal: refuse(InvalidRequest) })
+}
+pure def afterModel(a: Arrival, model: Mo::Model, funding: Funding): CompletionAdmission = {
+  val limit = outputLimit(a.body.maxCompletionTokens, a.body.maxTokens, model.defaultMaxTokens)
+  match limit {
+    | NoAsk => RefusedAt({ stage: AtModel, refusal: Mo::modelRefusal })
+    | AskFor(x) => quoteStage(a, model, x.tokens, funding)
+  }
+}
 pure def afterAuth(a: Arrival, catalog: Catalog, funding: Funding): CompletionAdmission = {
   val plan = checkOf(a.planWindow, planLimit(planOf(a.policy)))
-  val counts = quoteCounts(a.body)
   val choice = Mo::chooseModel(catalog.profile, catalog.prices, a.body.model, hasImage(a.body))
   if (a.policy == E::PolicyUnavailable) RefusedAt({ stage: AtPlanLimit, refusal: E::policyRefusal })
   else if (not(R::admitsAll(plan, a.now))) RefusedAt({ stage: AtPlanLimit, refusal: R::groupRefusal(plan, a.now) })
   else if (not(bodyAccepted(a.body))) RefusedAt({ stage: AtBody, refusal: bodyRefusal(a.body) })
   else match choice {
     | Unavailable => RefusedAt({ stage: AtModel, refusal: Mo::modelRefusal })
-    | Chosen(m) => if (Mo::countsInBound(counts)) holdStage(a, m.model, counts, funding) else RefusedAt({ stage: AtQuote, refusal: refuse(InvalidRequest) })
+    | Chosen(m) => afterModel(a, m.model, funding)
   }
 }
 pure def admitCompletion(a: Arrival, catalog: Catalog, funding: Funding): CompletionAdmission = {
@@ -120,8 +130,8 @@ pure val bodyValues: Set[ChatBody] = Set(textBody, { ...textBody, parts: List(Te
   { ...textBody, model: "m9" }, { ...textBody, maxTokens: AskFor({ tokens: 9 }), maxCompletionTokens: AskFor({ tokens: 3000000 }) })
 pure val otherBodyValues: Set[ChatBody] = bodyValues
 pure val catalogValues: Set[Catalog] = {
-  val seeing = { profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: true }), prices: List({ modelId: "m1", inputPer1K: 3, outputPer1K: 15 }) }
-  Set({ profile: List(), prices: List() }, seeing, { ...seeing, profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false }) })
+  val seeing = { profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: true, defaultMaxTokens: Mo::OutputDefaultOf({ tokens: 4096 }) }), prices: List({ modelId: "m1", inputPer1K: 3, outputPer1K: 15 }) }
+  Set({ profile: List(), prices: List() }, seeing, { ...seeing, profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: Mo::NoOutputDefault }) })
 }
 pure val fundingValues: Set[Funding] = Set({ allowanceAvailable: 0, creditAvailable: 0 }, { allowanceAvailable: 0, creditAvailable: 20 }, { allowanceAvailable: 5, creditAvailable: 5 }, { allowanceAvailable: 0, creditAvailable: -1 })
 ```
@@ -130,17 +140,23 @@ pure val fundingValues: Set[Funding] = Set({ allowanceAvailable: 0, creditAvaila
 
 The quote counts a token per four input characters, rounded up, and the
 output the request allows: `max_completion_tokens`, else `max_tokens`, else
-500. A side that is negative or over `Mo::maxTokensPerSide` is refused
+the selected upstream model’s configured maximum generation length. The
+provider receives the resulting cap for both whole replies and streams. A
+model with no configured maximum requires a caller cap. An uncapped request
+for it is refused `400 model_unavailable` before any hold or provider call.
+A side that is negative or over `Mo::maxTokensPerSide` is refused
 `400 invalid_request`. A fresh server request id names no hold, so
 `M::admission` is asked about `M::initial` and never replays. Refusals of the
 rate limiter, `requestAuth` and metering pass through unchanged.
 
 ```quint
-pure val defaultOutputTokens: int = 500
 pure def tokensOf(chars: CharCount): int = if (chars <= 0) 0 else (chars + 3) / 4
-pure def askOr(ask: TokenAsk, fallback: int): int = match ask { | AskFor(x) => x.tokens | NoAsk => fallback }
-pure def quoteCounts(b: ChatBody): Mo::TokenCounts =
-  { inputTokens: tokensOf(b.inputChars), outputTokens: askOr(b.maxCompletionTokens, askOr(b.maxTokens, defaultOutputTokens)) }
+pure def outputLimit(maxCompletionTokens: TokenAsk, maxTokens: TokenAsk, defaultMaxTokens: Mo::OutputDefault): TokenAsk =
+  if (maxCompletionTokens != NoAsk) maxCompletionTokens
+  else if (maxTokens != NoAsk) maxTokens
+  else match defaultMaxTokens { | OutputDefaultOf(x) => AskFor({ tokens: x.tokens }) | NoOutputDefault => NoAsk }
+pure def quoteCounts(chars: CharCount, outputTokens: int): Mo::TokenCounts =
+  { inputTokens: tokensOf(chars), outputTokens: outputTokens }
 pure val charsValues = Set(-1, 0, 1, 4, 5, 8000000, 8000001)
 pure def lawEveryInputCharacterIsQuoted(chars: CharCount): bool = chars >= 0 implies (tokensOf(chars) * 4 >= chars and tokensOf(chars) * 4 < chars + 4)
 pure def lawAnAdmittedCallIsHeldAtItsQuote(ingress: R::Window, auth: RA::Admission, policy: E::PolicyAnswer, planWindow: R::Window, body: ChatBody, catalog: Catalog, funding: Funding): bool = {
@@ -261,7 +277,7 @@ settlement or release.
 pure val rejectionStatuses: Set[int] = Set(400, 401, 402, 403, 404, 405, 406, 409, 410, 413, 415, 422, 429)
 pure def endOfFailure(status: int, delivered: bool): CompletionEnd =
   if (not(delivered) and rejectionStatuses.contains(status)) ProviderRejected({ status: status }) else ProviderFailed({ report: NoUsage })
-pure val pricedModel: Mo::Model = { id: "m1", provider: "p1", upstreamModel: "u1", vision: false, inputPer1K: 3, outputPer1K: 15 }
+pure val pricedModel: Mo::Model = { id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: Mo::NoOutputDefault, inputPer1K: 3, outputPer1K: 15 }
 pure def lawEveryCallClosesItsHoldOnce(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, dispatched: bool, end: CompletionEnd, quoted: Mo::TokenCounts, creditFree: Micros): bool = {
   val held = M::reserve(M::initial, inferenceHoldKey("o1", "r1"), quote, lane, allowanceAvailable, creditAvailable, 0)
   val sent = if (dispatched) M::markDispatched(held, 0) else held

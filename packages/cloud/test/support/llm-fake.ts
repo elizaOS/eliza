@@ -101,7 +101,7 @@ function answerFor(script: LlmScript, cut: () => void): FakeAnswer {
   }
 }
 
-export function llmFake(): LlmFake {
+export function llmFake(models: ReadonlyArray<string> = [upstreamModel]): LlmFake {
   const bodies: Array<Readonly<Record<string, unknown>>> = [];
   const headers: Array<Readonly<Record<string, string | string[] | undefined>>> = [];
   const queue: LlmScript[] = [];
@@ -123,7 +123,7 @@ export function llmFake(): LlmFake {
       const body = JSON.parse(request.body) as Record<string, unknown>;
       bodies.push(body);
       headers.push(request.headers);
-      if (body.model !== upstreamModel) return { status: 404, body: { error: { type: "invalid_request_error", message: "unknown model" } } };
+      if (typeof body.model !== "string" || !models.includes(body.model)) return { status: 404, body: { error: { type: "invalid_request_error", message: "unknown model" } } };
       return answerFor(queue.shift() ?? { kind: body.stream === true ? "stream" : "whole" }, cut);
     },
     bodies,
