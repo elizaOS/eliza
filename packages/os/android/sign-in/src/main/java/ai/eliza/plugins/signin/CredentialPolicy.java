@@ -149,6 +149,23 @@ public final class CredentialPolicy {
 
   public static boolean isSignedIn(State s) { return activeVersion(s) >= 1; }
 
+  public record MailLeaseUpgrade(int version, Account account) {}
+
+  public static MailLeaseUpgrade mailLeaseUpgrade(State s) {
+    return s.custody() instanceof Custody.Active active && s.lease() instanceof Lease.NoLease
+      ? new MailLeaseUpgrade(active.version(), active.account()) : null;
+  }
+
+  public static boolean mailLeaseUpgradeAdmits(State s, MailLeaseUpgrade expected) {
+    return expected != null && expected.equals(mailLeaseUpgrade(s));
+  }
+
+  public static boolean mailLeaseUpgradeMayAcknowledge(State s, MailLeaseUpgrade expected) {
+    return mailLeaseUpgradeAdmits(s, expected) && s.attempt() instanceof Attempt.Acknowledging pending
+      && expected.account().equals(pending.account()) && pending.lease() instanceof LeaseOffer.Offered offered
+      && offered.refreshExpiresAt() > s.now() && pending.lapsesAt() > s.now();
+  }
+
   static boolean isRenewal(Attempt p) {
     return p instanceof Attempt.Renewing || p instanceof Attempt.Acknowledging k && k.lease() instanceof LeaseOffer.Renewal;
   }

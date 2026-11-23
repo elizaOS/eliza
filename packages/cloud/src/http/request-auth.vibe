@@ -1,7 +1,7 @@
 // spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
 // spec/cloud/identity/sessions.md, "Logout ends only the presented family, and a second logout changes nothing"; spec/cloud/identity/sessions.md, "A mail or calendar route admits a session or a device lease, and refuses the device key"
 import { admitPrincipal, admitRequest, decodeState, elapse, offeredGeneration, sessionRefusal, accessEnd, type RequestAccountStatus, type RequestAdmission, type RouteClass } from "../../gen/cloud__identity__sessions.effect.vibe"
-import { bearerToken, leaseAccessPattern, useOfferedAccess } from "../identity/sessions.vibe"
+import { bearerToken, leaseAccessPattern, useOfferedPair } from "../identity/sessions.vibe"
 import { inspectKey } from "../native-clients/grants.vibe"
 import { refused, Refused } from "./refusal.vibe"
 import { admit, minute } from "../shared/rate-limit.vibe"
@@ -118,9 +118,14 @@ effect function leaseCaller(token: string, routeClass: RouteClass, countRequest:
   if (countRequest) try admit({ subject: digest, scope: "device-key", limit: deviceKeyPerMinute, widthMs: minute })
   const store = try Store
   return try store.transaction(effect (tx) => {
-    const row = (try tx.query(
-      "SELECT s.key, s.state, s.access_digest = $1 AS current, s.user_id, s.grant_key, a.organization_id, a.status, a.sessions_revoked_before, a.device_epoch AS account_epoch, g.phase AS grant_phase, g.device_epoch AS grant_epoch FROM sessions s JOIN accounts a ON a.key = s.user_id LEFT JOIN device_grants g ON g.key = s.grant_key WHERE s.kind = 'device_lease' AND (s.access_digest = $1 OR s.offered_access_digest = $1) FOR UPDATE OF s",
+    const userId = toText((try tx.query(
+      "SELECT a.key FROM accounts a JOIN sessions s ON s.user_id = a.key WHERE s.kind = 'device_lease' AND (s.access_digest = $1 OR s.offered_access_digest = $1) FOR UPDATE OF a",
       [digest]
+    ))[0]?.key)
+    if (userId === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+    const row = (try tx.query(
+      "SELECT s.key, s.state, s.access_digest = $1 AS current, s.grant_key, a.organization_id, a.status, a.sessions_revoked_before, a.device_epoch AS account_epoch, g.phase AS grant_phase, g.device_epoch AS grant_epoch FROM sessions s JOIN accounts a ON a.key = s.user_id LEFT JOIN device_grants g ON g.key = s.grant_key WHERE s.kind = 'device_lease' AND s.user_id = $2 AND (s.access_digest = $1 OR s.offered_access_digest = $1) FOR UPDATE OF s",
+      [digest, userId]
     ))[0]
     if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
     const now = try Clock.currentTimeMillis
@@ -134,11 +139,11 @@ effect function leaseCaller(token: string, routeClass: RouteClass, countRequest:
     try verdict(admitPrincipal({ accountStatus: status(row), credential: { tag: "LeasePrincipal" } }, routeClass, now))
     const sessionKey = toText(row.key) ?? ""
     if (presented !== family.generation) {
-      useOfferedAccess(tx, sessionKey, family.generation, epoch, now) catch effect () => { throw refused("ServiceUnavailable") }
+      useOfferedPair(tx, sessionKey, family.generation, epoch, "OfferedAccess", now) catch effect () => { throw refused("ServiceUnavailable") }
     }
     return {
       kind: "lease",
-      userId: toText(row.user_id) ?? "",
+      userId,
       organizationId: toText(row.organization_id) ?? "",
       sessionKey,
       grantKey: toText(row.grant_key) ?? "",

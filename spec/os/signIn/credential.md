@@ -394,17 +394,60 @@ pure val msValues = Set(60000, 1000000, 3600000)
 pure def sometimesSignedOutWhileKeyStillOwed(s: DeviceCredential): bool = s.custody == SignedOut and s.duties.some(d => d.tries == startAttempts)
 ```
 
+### A mail lease upgrade can only replace the active key for the same account
+
+The host offers `upgradeMailLease` only when the user chooses to sign in
+again for mail and calendar. The device binds the attempt to its current key
+version, user and organization. It uses the existing browser sign-in to check
+the account and ends the attempt if the browser returns a different account.
+Neither the owner nor the key version comes from the renderer. A new key can
+replace the old one only after acknowledgement of a pending grant for that
+same owner with an unexpired lease offer. The host can cancel its current
+upgrade with `cancelMailLeaseUpgrade`. A cancelled or stale attempt
+cannot replace the key. A rejected pending grant is retired through the
+existing revoke duties. The previous key continues to serve its routes.
+
+```quint
+type MailLeaseUpgrade = { version: int, account: Account }
+pure def mailLeaseUpgradeAdmits(s: DeviceCredential, expected: MailLeaseUpgrade): bool =
+  expected.version >= 1 and activeVersion(s) == expected.version and accountOf(s) == expected.account and s.lease == NoLease
+pure def mailLeaseUpgradeMayAcknowledge(s: DeviceCredential, expected: MailLeaseUpgrade): bool = {
+  val pending = s.attempt
+  mailLeaseUpgradeAdmits(s, expected) and (match pending {
+    | Acknowledging(p) => p.account == expected.account and p.lapsesAt > s.now and offerLapse(p.lease) > s.now
+    | _ => false
+  })
+}
+pure def mailLeaseUpgradeAcknowledged(s: DeviceCredential, expected: MailLeaseUpgrade, attempt: int, credentialId: str, keyExpiresAt: Millis): CredentialStep =
+  if (mailLeaseUpgradeMayAcknowledge(s, expected) and canAcknowledged(s, attempt, credentialId, keyExpiresAt))
+    acknowledged(s, attempt, credentialId, keyExpiresAt)
+  else { state: if (canSignInEnded(s, attempt)) signInEnded(s, attempt) else s, out: List() }
+pure def lawMailLeaseUpgradeKeepsTheOwner(s: DeviceCredential, expected: MailLeaseUpgrade, attempt: int, credentialId: str, keyExpiresAt: Millis): bool = {
+  val after = mailLeaseUpgradeAcknowledged(s, expected, attempt, credentialId, keyExpiresAt)
+  accountOf(after.state) == accountOf(s) and (after.out != List() implies leaseVersionOf(after.state.lease) >= 1)
+}
+pure val expectedValues = Set({ version: 1, account: { userId: "u1", organizationId: "o1" } },
+  { version: 2, account: { userId: "u1", organizationId: "o2" } })
+```
+
 ### A restart keeps the custody, a key awaiting acknowledgement and every duty, and forgets only work in flight
 
 An exchange or renewal without a stored key, the account session and the
 lease's access token are lost with the process; the cloud never makes an
 unacknowledged key usable. A stored key awaiting acknowledgement is asked
 about again, and the lease is kept for its refresh secret.
+The device keeps a marker with an explicit mail upgrade. The upgrade does
+not resume on restart. An outstanding browser callback cannot be adopted,
+and any stored pending grant from that upgrade is retired before reuse.
 
 ```quint
 pure def restLease(l: DeviceLease): DeviceLease = match l { | Lease(x) => Lease({ ...x, accessExpiresAt: 0, refresh: NotRefreshing }) | NoLease => NoLease }
 pure def restart(s: DeviceCredential): DeviceCredential =
   { ...s, attempt: if (pendingVersion(s) >= 1) s.attempt else NoAttempt, session: NoSession, lease: restLease(s.lease), duties: s.duties.listMap(d => { ...d, tries: startAttempts }) }
+pure def restartMailLeaseUpgrade(s: DeviceCredential, markedAttempt: int): DeviceCredential = {
+  val restored = restart(s)
+  if (canSignInEnded(restored, markedAttempt)) signInEnded(restored, markedAttempt) else restored
+}
 pure def stepRestartKeepsCustody(before: DeviceCredential, via: str, after: DeviceCredential): bool =
   via == "restart" implies (after.custody == before.custody and after.generation == before.generation and pendingVersion(after) == pendingVersion(before)
     and after.duties.length() == before.duties.length() and leaseVersionOf(after.lease) == leaseVersionOf(before.lease))

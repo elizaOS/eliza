@@ -67,6 +67,7 @@ public final class CloudDeviceAccount {
  public record MailResponse(int status, String body) {
   @Override public String toString() { return "CloudDeviceAccount.MailResponse(" + status + ")"; }
  }
+ public enum LeaseUpgradeStatus { NOT_REQUIRED, REQUIRED, SIGN_IN_PENDING, ACKNOWLEDGMENT_PENDING }
  private record Access(String token, long expiresAt, String mintedBy) {
   @Override public String toString() { return "CloudDeviceAccount.Access"; }
  }
@@ -200,7 +201,6 @@ public final class CloudDeviceAccount {
  }
 
  private boolean keepDeviceKey(JSONObject response, String snapshot) throws Exception {
-  JSONObject pending = new JSONObject(snapshot);
   String secret = response.getString("secret");
   String credentialId = identifier(response, "credentialId");
   String accountId = identifier(response.getJSONObject("user"), "id"), organizationId = identifier(response, "organizationId");
@@ -211,16 +211,7 @@ public final class CloudDeviceAccount {
   JSONObject offered = response.optJSONObject("lease");
   if (offered != null) key.put("lease", new JSONObject().put("refresh", leaseRefresh(offered, "refresh"))
       .put("refreshExpiresAt", now + leaseSeconds(offered, "refreshExpiresIn", MAX_LEASE_SECONDS) * 1000));
-  synchronized (LOCK) {
-   if (snapshot.equals(slots.read(PENDING)) && pendingActive(pending)) {
-    slots.write(ACK, key.toString());
-    slots.remove(PENDING);
-   } else {
-    oweRevocation(duty(key));
-    return false;
-   }
-  }
-  return finishAcknowledgment();
+  return stageCredential(key, snapshot);
  }
 
  public void cancelNativeGoogle(NativeGoogleAttempt attempt) throws Exception {
@@ -237,7 +228,50 @@ public final class CloudDeviceAccount {
  }
 
  public Uri begin() throws Exception {
-  JSONObject pending = beginPending("browser", PENDING_MS);
+  return browserStart(beginPending("browser", PENDING_MS));
+ }
+
+ // spec/os/signIn/browserReturn.md, "Story: Reconnect a signed-in device for mail and calendar"
+ public LeaseUpgradeStatus leaseUpgradeStatus() throws Exception {
+  synchronized (LOCK) {
+   JSONObject current = stored();
+   if (current == null || current.optJSONObject("lease") != null) return LeaseUpgradeStatus.NOT_REQUIRED;
+   JSONObject acknowledgment = record(ACK);
+   if (acknowledgment != null && holdsToken(current, acknowledgment.optJSONObject("upgradeFrom"))) {
+    return LeaseUpgradeStatus.ACKNOWLEDGMENT_PENDING;
+   }
+   JSONObject pending = record(PENDING);
+   if (pending != null && pendingActive(pending) && matchesUpgrade(current, pending.optJSONObject("upgrade"))) {
+    return LeaseUpgradeStatus.SIGN_IN_PENDING;
+   }
+   return sessionOf(current) == null ? LeaseUpgradeStatus.NOT_REQUIRED : LeaseUpgradeStatus.REQUIRED;
+  }
+ }
+
+ public Uri beginLeaseUpgrade() throws Exception {
+  synchronized (LOCK) {
+   LeaseUpgradeStatus status = leaseUpgradeStatus();
+   if (status == LeaseUpgradeStatus.SIGN_IN_PENDING) return browserStart(record(PENDING));
+   if (status != LeaseUpgradeStatus.REQUIRED || slots.read(ACK) != null) {
+    throw new IllegalStateException("An existing device account without a mail lease is required");
+   }
+   JSONObject current = stored();
+   JSONObject pending = newPending("browser", PENDING_MS)
+       .put("upgrade", new JSONObject().put("credential", digest(current.getString("token"))));
+   slots.write(PENDING, pending.toString());
+   return browserStart(pending);
+  }
+ }
+
+ public void cancelLeaseUpgrade(Uri start) throws Exception {
+  synchronized (LOCK) {
+   JSONObject pending = record(PENDING);
+   if (pending != null && pending.optJSONObject("upgrade") != null && start != null
+       && pending.getString("state").equals(start.getQueryParameter("device_state"))) slots.remove(PENDING);
+  }
+ }
+
+ private Uri browserStart(JSONObject pending) throws Exception {
   return manageAccount().buildUpon().appendQueryParameter("device_challenge", challenge(pending))
       .appendQueryParameter("device_state", pending.getString("state")).build();
  }
@@ -245,19 +279,26 @@ public final class CloudDeviceAccount {
  private JSONObject beginPending(String method, long duration) throws Exception {
   synchronized (LOCK) {
    if (credential() != null) throw new IllegalStateException("Sign out before adding another device account");
-   JSONObject pending = new JSONObject().put("method", method).put("verifier", randomValue()).put("state", randomValue())
-       .put("expiresAt", System.currentTimeMillis() + duration);
+   JSONObject pending = newPending(method, duration);
    slots.write(PENDING, pending.toString());
    return pending;
   }
+ }
+
+ private static JSONObject newPending(String method, long duration) throws JSONException {
+  return new JSONObject().put("method", method).put("verifier", randomValue()).put("state", randomValue())
+      .put("expiresAt", System.currentTimeMillis() + duration);
  }
 
  URI passwordBackupOrigin() { return cloud; }
  Uri passwordBackupCallback() { return callback; }
 
  private static String challenge(JSONObject pending) throws Exception {
-  byte[] verifier = pending.getString("verifier").getBytes(StandardCharsets.US_ASCII);
-  return base64Url(MessageDigest.getInstance("SHA-256").digest(verifier));
+  return digest(pending.getString("verifier"));
+ }
+
+ private static String digest(String proof) throws Exception {
+  return base64Url(MessageDigest.getInstance("SHA-256").digest(proof.getBytes(StandardCharsets.US_ASCII)));
  }
 
  public boolean handles(Uri data) { return matchesCallback(callback, data); }
@@ -304,16 +345,45 @@ public final class CloudDeviceAccount {
       .put("issuedAt", now).put("expiresAt", now + seconds * 1000);
   if (offered != null) credential.put("lease", new JSONObject().put("refresh", leaseRefresh(offered, "refresh"))
       .put("refreshExpiresAt", now + leaseSeconds(offered, "refreshExpiresIn", MAX_LEASE_SECONDS) * 1000));
+  return stageCredential(credential, snapshot);
+ }
+
+ private boolean stageCredential(JSONObject credential, String snapshot) throws Exception {
+  JSONObject pending = new JSONObject(snapshot);
   synchronized (LOCK) {
-   if (snapshot.equals(slots.read(PENDING)) && pendingActive(pending)) {
-    slots.write(ACK, credential.toString());
-    slots.remove(PENDING);
-   } else {
+   if (!snapshot.equals(slots.read(PENDING)) || !pendingActive(pending)) {
     oweRevocation(duty(credential));
     return false;
    }
+   JSONObject upgrade = pending.optJSONObject("upgrade");
+   if (upgrade != null) {
+    JSONObject current = stored();
+    if (!matchesUpgrade(current, upgrade) || credential.optJSONObject("lease") == null
+        || !sameOwner(current, credential) || holdsToken(current, credential)) {
+     if (!holdsToken(current, credential)) oweRevocation(duty(credential));
+     slots.remove(PENDING);
+     return false;
+    }
+    credential.put("upgradeFrom", duty(current));
+   }
+   slots.write(ACK, credential.toString());
+   slots.remove(PENDING);
   }
   return finishAcknowledgment();
+ }
+
+ private static boolean matchesUpgrade(JSONObject current, JSONObject upgrade) throws Exception {
+  return current != null && upgrade != null && current.optJSONObject("lease") == null
+      && upgrade.getString("credential").equals(digest(current.getString("token")));
+ }
+
+ private static boolean sameOwner(JSONObject current, JSONObject offered) throws JSONException {
+  return current.getString("accountId").equals(offered.getString("accountId"))
+      && current.getString("organizationId").equals(offered.getString("organizationId"));
+ }
+
+ private static boolean holdsToken(JSONObject current, JSONObject other) throws JSONException {
+  return current != null && other != null && current.getString("token").equals(other.getString("token"));
  }
 
  private static String leaseRefresh(JSONObject document, String key) throws Exception {
@@ -342,9 +412,19 @@ public final class CloudDeviceAccount {
 
  public boolean finishAcknowledgment() throws Exception {
   final String pending;
-  synchronized (LOCK) { pending = slots.read(ACK); }
-  if (pending == null) return false;
-  JSONObject credential = new JSONObject(pending);
+  final JSONObject credential;
+  final JSONObject upgradeFrom;
+  synchronized (LOCK) {
+   pending = slots.read(ACK);
+   if (pending == null) return false;
+   credential = new JSONObject(pending);
+   upgradeFrom = credential.optJSONObject("upgradeFrom");
+   if (upgradeFrom != null && holdsToken(stored(), credential)) {
+    oweRevocation(upgradeFrom);
+    slots.remove(ACK);
+    return true;
+   }
+  }
   String token = credential.getString("token");
   if (!opaque(token)) throw new IOException("Invalid pending device credential");
   String credentialId = credential.optString("credentialId", "");
@@ -352,11 +432,29 @@ public final class CloudDeviceAccount {
       ? post("/api/auth/device/ack", null, token, 204, 401, 410).status() == 204
       : post(ACKNOWLEDGE, new JSONObject().put("credentialId", credentialId).put("secret", token), null, 200, 400, 401, 410).status() == 200;
   synchronized (LOCK) {
-   if (!pending.equals(slots.read(ACK))) return false;
-   if (acknowledged) promote(credential);
+   if (!pending.equals(slots.read(ACK))) {
+    if (acknowledged && upgradeFrom != null && !holdsToken(stored(), credential)) oweRevocation(duty(credential));
+    return false;
+   }
+   if (acknowledged) {
+    if (upgradeFrom == null) promote(credential);
+    else acknowledged = promoteUpgrade(credential, upgradeFrom);
+   }
    slots.remove(ACK);
    return acknowledged;
   }
+ }
+
+ private boolean promoteUpgrade(JSONObject credential, JSONObject upgradeFrom) throws Exception {
+  JSONObject current = stored();
+  if (!holdsToken(current, upgradeFrom) || !sameOwner(current, credential)) {
+   oweRevocation(duty(credential));
+   return false;
+  }
+  credential.remove("upgradeFrom");
+  slots.write(CREDENTIAL, credential.toString());
+  oweRevocation(upgradeFrom);
+  return true;
  }
 
  private void promote(JSONObject acknowledged) throws Exception {
@@ -381,22 +479,26 @@ public final class CloudDeviceAccount {
  }
 
  public Session session() throws Exception {
-  synchronized (LOCK) {
-   String stored = slots.read(CREDENTIAL);
-   if (stored == null) return null;
-   JSONObject credential = new JSONObject(stored);
-   String token = credential.getString("token");
-   if (!opaque(token) || credential.getLong("expiresAt") <= System.currentTimeMillis()) return null;
-   return new Session(token, identifier(credential, "accountId"), identifier(credential, "organizationId"));
-  }
+  return sessionOf(stored());
+ }
+
+ private static Session sessionOf(JSONObject credential) throws Exception {
+  if (credential == null) return null;
+  String token = credential.getString("token");
+  if (!opaque(token) || credential.getLong("expiresAt") <= System.currentTimeMillis()) return null;
+  return new Session(token, identifier(credential, "accountId"), identifier(credential, "organizationId"));
  }
 
  public void clear() throws Exception {
   synchronized (LOCK) {
    slots.remove(PENDING);
    for (String slot : List.of(ACK, CREDENTIAL)) {
-    String stored = slots.read(slot);
-    if (stored != null) oweRevocation(duty(new JSONObject(stored)));
+    JSONObject held = record(slot);
+    if (held != null) {
+     oweRevocation(duty(held));
+     JSONObject upgradeFrom = held.optJSONObject("upgradeFrom");
+     if (upgradeFrom != null) oweRevocation(upgradeFrom);
+    }
     slots.remove(slot);
    }
   }
@@ -465,10 +567,12 @@ public final class CloudDeviceAccount {
  }
 
  private JSONObject stored() throws Exception {
-  synchronized (LOCK) {
-   String stored = slots.read(CREDENTIAL);
-   return stored == null ? null : new JSONObject(stored);
-  }
+  synchronized (LOCK) { return record(CREDENTIAL); }
+ }
+
+ private JSONObject record(String slot) throws Exception {
+  String stored = slots.read(slot);
+  return stored == null ? null : new JSONObject(stored);
  }
 
  public String leaseAccess() throws Exception {

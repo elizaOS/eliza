@@ -250,6 +250,7 @@ public final class DeviceKeyClient {
   private Exchange acknowledge(Pending pending) {
     for (int ask = 0; ask < ASKS; ask++) {
       if (ask > 0 && !rest(ask)) return Exchange.UNANSWERED;
+      if (!store.maySendAcknowledgement(pending)) return Exchange.SUPERSEDED;
       Answer<Acknowledgement> answer = ack(pending.credentialId(), pending.value());
       if (answer instanceof Answer.Answered<Acknowledgement> answered)
         return store.acknowledged(pending.attempt(), pending.credentialId(), answered.value().expiresAt()) == Outcome.ACCEPTED ? Exchange.SIGNED_IN : Exchange.SUPERSEDED;

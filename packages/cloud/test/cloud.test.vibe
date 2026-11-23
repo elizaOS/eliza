@@ -646,11 +646,15 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const grantPhase = try sql(cloud, "SELECT phase FROM device_grants WHERE credential_id = $1", [sleeping.credential.credentialId])
     const woken = pairOf(try rotate(sleepingLease.refresh))
     const mailAfterExpiry = try mail(woken.access)
-    const heirMinted = try renew(woken.refresh)
+    const nextLease = pairOf(try rotate(woken.refresh))
+    const offeredAt = try Clock.currentTimeMillis
+    try sync(() => clock.set(offeredAt + nextLease.accessExpiresIn * 1000 + 1))
+    const heirMinted = try renew(nextLease.refresh)
+    const renewedLease = (try sql(cloud, "SELECT s.state->>'generation' AS generation, s.offered_refresh_digest IS NULL AS settled FROM sessions s JOIN device_grants d ON d.key = s.grant_key WHERE d.credential_id = $1", [sleeping.credential.credentialId]))[0]
     const heir = heirMinted.body as { readonly credentialId: string; readonly secret: string }
     const heirAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: heir.credentialId, secret: heir.secret } })
     const heirKey = try cloud.call("/api/v1/user", { headers: bearer(heir.secret) })
-    const moved = pairOf(try rotate(woken.refresh))
+    const moved = pairOf(try rotate(nextLease.refresh))
     const mailOnMoved = try mail(moved.access)
     const now = try Clock.currentTimeMillis
     try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
@@ -660,11 +664,11 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const liveLeases = try sql(cloud, "SELECT key FROM sessions WHERE kind = 'device_lease' AND user_id = $1 AND live", [signed.user.id])
     try check(() => assert.deepStrictEqual({
       expired: [expiredKey.status, ...refusal(expiredKey.body), grantPhase[0]?.phase, mailAfterExpiry.status],
-      renewedFromExpired: [heirMinted.status, heirAck.status, heirKey.status, mailOnMoved.status],
+      renewedFromExpired: [heirMinted.status, Number(renewedLease?.generation), renewedLease?.settled, heirAck.status, heirKey.status, mailOnMoved.status],
       revoked: [renewAfterRevoke.status, ...refusal(renewAfterRevoke.body), rotateAfterRevoke.status, ...refusal(rotateAfterRevoke.body), mailAfterRevoke.status, ...refusal(mailAfterRevoke.body), liveLeases.length]
     }, {
       expired: [401, "authentication_required", "credential_expired", "expired", 200],
-      renewedFromExpired: [200, 200, 200, 200],
+      renewedFromExpired: [200, 3, true, 200, 200, 200],
       revoked: [401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 0]
     }))
     }

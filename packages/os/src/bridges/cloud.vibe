@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "A cancel disconnects only the page's own call still in flight, which then settles once as cancelled"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
+// spec/os/signIn/cloudRequests.md, "A cancel disconnects only the page's own call still in flight, which then settles once as cancelled"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
 import { replyLimit } from "../../gen/os__signIn__cloudRequests.ts"
 import { type BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, rejectionCode, settled } from "./bridge.vibe"
 import type { BodyGrantId, CloudClient, CloudFailure, CloudReply, CloudRequest, ElizaCloudPlugin, ExternalLinkOptions } from "./definitions/cloud.ts"
@@ -55,6 +55,7 @@ const Failure = Schema.Literals([
   "body-too-large",
   "header-refused",
   "sign-in-required",
+  "mail-lease-upgrade-required",
   "reauth-required",
   "reply-too-large",
   "network",

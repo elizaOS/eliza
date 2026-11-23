@@ -3,6 +3,7 @@ package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
+import ai.eliza.plugins.signin.CredentialPolicy.MailLeaseUpgrade;
 import ai.eliza.plugins.signin.DeviceKeyClient.Acknowledgement;
 import ai.eliza.plugins.signin.DeviceKeyClient.Answer;
 import ai.eliza.plugins.signin.DeviceKeyClient.Binding;
@@ -117,8 +118,25 @@ public final class DeviceCustody implements SignInCustody {
     }
   }
 
+  @Override public MailLeaseUpgrade mailLeaseUpgrade(Environment environment) {
+    return CredentialPolicy.mailLeaseUpgrade(authority(environment).store().state());
+  }
+
+  @Override public int beginMailLeaseUpgrade(Environment environment, MailLeaseUpgrade expected) throws Refused {
+    try {
+      int attempt = authority(environment).store().beginMailLeaseUpgrade(expected);
+      if (attempt == 0) throw new Refused(Failure.REJECTED);
+      return attempt;
+    } catch (DeviceCredentialStore.StorageFailure unstored) {
+      throw new Refused(Failure.UNAVAILABLE);
+    }
+  }
+
   @Override public void signInEnded(Environment environment, int attempt) {
-    authority(environment).store().signInEnded(attempt);
+    Authority authority = authority(environment);
+    boolean upgrade = authority.store().isMailLeaseUpgrade(attempt);
+    authority.store().signInEnded(attempt);
+    if (upgrade) DUTIES.execute(authority.client()::settleDuties);
   }
 
   @Override public Proof connect(int attempt, Environment environment, String accessToken) throws Refused {
@@ -136,10 +154,13 @@ public final class DeviceCustody implements SignInCustody {
   @Override public String redeem(int attempt, Environment environment, Proof proof) throws Refused {
     Authority authority = authority(environment);
     Exchange exchange;
+    boolean upgrade = authority.store().isMailLeaseUpgrade(attempt);
     try {
       exchange = authority.client().exchange(attempt, binding(environment), new DeviceKeyClient.Proof(proof.code(), proof.state(), proof.verifier()));
     } catch (DeviceCredentialStore.StorageFailure unstored) {
       throw new Refused(Failure.UNAVAILABLE);
+    } finally {
+      if (upgrade) DUTIES.execute(authority.client()::settleDuties);
     }
     switch (exchange) {
       case SIGNED_IN -> {

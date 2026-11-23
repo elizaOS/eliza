@@ -35,7 +35,7 @@ public final class CloudRequests {
   public record Failed(Failure failure) implements Outcome {}
 
   public enum Failure {
-    NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED, REPLY_TOO_LARGE, NETWORK, NAME_IN_USE, CANCELLED;
+    NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, MAIL_LEASE_UPGRADE_REQUIRED, REAUTH_REQUIRED, REPLY_TOO_LARGE, NETWORK, NAME_IN_USE, CANCELLED;
     static Failure of(Refusal refusal) {
       return switch (refusal) {
         case NO_ORIGIN -> NO_ORIGIN;
@@ -43,6 +43,7 @@ public final class CloudRequests {
         case BODY_TOO_LARGE -> BODY_TOO_LARGE;
         case HEADER_REFUSED -> HEADER_REFUSED;
         case SIGN_IN_REQUIRED -> SIGN_IN_REQUIRED;
+        case MAIL_LEASE_UPGRADE_REQUIRED -> MAIL_LEASE_UPGRADE_REQUIRED;
         case REAUTH_REQUIRED -> REAUTH_REQUIRED;
       };
     }
@@ -92,9 +93,11 @@ public final class CloudRequests {
   private Outcome sent(Call call, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body) {
     DeviceCredentialStore store = custody.credentials();
     CredentialReader.Credential key = store.current();
-    int version = key == null ? 0 : key.version();
+    CredentialPolicy.State snapshot = store.state();
+    int active = CredentialPolicy.activeVersion(snapshot);
+    int version = key == null || key.version() != active ? 0 : active;
     CloudRequestPolicy.Origin origin = CloudRequestPolicy.originOf(apiOrigin);
-    boolean leaseHeld = !(store.state().lease() instanceof CredentialPolicy.Lease.NoLease);
+    boolean leaseHeld = CredentialPolicy.leaseVersionOf(snapshot.lease()) >= 1;
     Planned planned = policy.plan(new Holding(version, false, false, leaseHeld, false), origin, method, target, headers, body);
     String session = null;
     DeviceLease.Held lease = null;
@@ -103,8 +106,10 @@ public final class CloudRequests {
       planned = policy.plan(new Holding(version, session != null, session != null, leaseHeld, false), origin, method, target, headers, body);
     } else if (planned.plan() instanceof RefreshLeaseFirst) {
       lease = custody.lease().accessToken();
-      boolean stillHeld = !(store.state().lease() instanceof CredentialPolicy.Lease.NoLease);
-      planned = policy.plan(new Holding(version, false, false, stillHeld, lease != null), origin, method, target, headers, body);
+      CredentialPolicy.State current = store.state();
+      int leaseVersion = CredentialPolicy.leaseVersionOf(current.lease());
+      boolean bound = lease != null && lease.version() == leaseVersion && CredentialPolicy.leaseUsable(current);
+      planned = policy.plan(new Holding(CredentialPolicy.activeVersion(current), false, false, leaseVersion >= 1, bound), origin, method, target, headers, body);
     }
     Attach attach;
     switch (planned.plan()) {
