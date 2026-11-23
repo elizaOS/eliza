@@ -3,49 +3,31 @@ import { sourceFreshness } from "../../gen/workflow__hostedDigest.effect.vibe"
 import { missedOccurrence, missedWindowMs } from "../../gen/core__occurrenceWindow.effect.vibe"
 import { isPhoneWorkflowTimeZone, type PhoneWorkflowSpec } from "./phone.vibe"
 
-/** An occurrence admitted more than this long after its scheduled time is missed. */
 export const DIGEST_RUN_WINDOW_MS = missedWindowMs
-/** The occurrences the agent records without running them. */
 export const DIGEST_NOT_RUN_STATUSES = ["missed", "overlap", "unavailable"] as const
-/** A status the agent records without running the occurrence. */
 export type DigestNotRunStatus = (typeof DIGEST_NOT_RUN_STATUSES)[number]
-/** The record of a scheduled digest that came due while the agent was not running. */
 export const DIGEST_MISSED_TEXT = "The scheduled time was missed. No backlog was executed."
-/** The record of an occurrence skipped because an earlier one is still active. */
 export const DIGEST_OVERLAP_TEXT = "An earlier occurrence is still active. This occurrence did not run."
-/** The records of a schedule paused because its source lapsed. */
 export const DIGEST_PAUSED_TEXT: Readonly<Record<"expired" | "revoked", string>> = {
   expired: "Source expired. This schedule is paused until you renew the source. No fresh phone data was read.",
   revoked: "Source revoked. This schedule is paused until you review a new source. No fresh phone data was read.",
 }
-/** The record of an occurrence whose reviewed source is not current. */
 export const DIGEST_SOURCE_UNAVAILABLE_TEXT = "The reviewed source is revoked or expired. No fresh phone data was read."
-/** The metadata key marking an agent-owned digest workflow. */
 export const HOSTED_DIGEST_METADATA_KEY = "elizaHostedDigestV1"
-/** The template version every digest result names. */
 export const HOSTED_TEMPLATE_VERSION = "hosted-digest-1"
-/** The default and maximum reviewed source lifetime in hours. */
 export const DIGEST_SOURCE_MAX_HOURS = 168
-/** A bound source shows its renewal notice in its final 24 hours. */
 export const DIGEST_RENEWAL_WINDOW_MS = 24 * 3_600_000
-/** Results a device retains per scope. */
 export const DIGEST_RETAINED_RESULTS = 100
-/** The most results one page carries. */
 export const DIGEST_PAGE_LIMIT = 50
 
-/** A digest template. */
 export type DigestTemplate = "morning" | "evening"
-/** A source's freshness. */
 export type DigestSourceState = "current" | "expired" | "revoked"
-/** A live native phone selection a digest reads at run time. */
 export interface HostedNativeSelection {
   readonly provider: "native"; readonly ownerId: string; readonly agentId: string; readonly installationId: string; readonly enrollmentId: string; readonly sourceId: string; readonly revision: string
 }
-/** A live Google selection a digest reads through the cloud connector. */
 export interface HostedLiveSelection {
   readonly provider: "google"; readonly accountId: string; readonly accountRevision: string; readonly kind: "email" | "calendar"; readonly windowHours: number; readonly maxItems: number; readonly calendarId?: string
 }
-/** A reviewed digest preset. */
 export interface DigestSpec {
   readonly version: 1
   readonly template: DigestTemplate
@@ -56,7 +38,6 @@ export interface DigestSpec {
   readonly enabled: boolean
   readonly manualOnly?: true
 }
-/** A reviewed source as the agent keeps it. */
 export interface DigestSourceRecord {
   readonly id: string
   readonly revision: string
@@ -69,21 +50,17 @@ export interface DigestSourceRecord {
   readonly live?: HostedNativeSelection | HostedLiveSelection
 }
 
-/** A digest request failed the preset contract. */
 export error DigestRefused { status: number; message: string; code?: string }
 
-/** True for a status the agent records without running the occurrence. */
 export function isDigestNotRunStatus(status: unknown): status is DigestNotRunStatus {
   return typeof status === "string" && (DIGEST_NOT_RUN_STATUSES as readonly string[]).includes(status)
 }
 
-/** Revocation wins; a source expires at its expiry instant. */
 export function digestSourceState(source: { readonly revoked: boolean; readonly expiresAt: string }, now: number): DigestSourceState {
   const freshness = sourceFreshness(source.revoked, Date.parse(source.expiresAt), now)
   return freshness === "SourceRevoked" ? "revoked" : freshness === "SourceExpired" ? "expired" : "current"
 }
 
-/** True when an occurrence admitted at `now` is outside its run window. */
 export function digestOccurrenceMissed(scheduledAt: number, now: number): boolean {
   return missedOccurrence(scheduledAt, now)
 }
@@ -92,31 +69,26 @@ effect function refuse(message: string, status = 400): never!DigestRefused {
   throw new DigestRefused({ status, message })
 }
 
-/** A wire object, or a refusal naming it. */
 export effect function digestRecord(value: unknown): Record<string, unknown>!DigestRefused {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return try refuse("Expected digest object")
   return value as Record<string, unknown>
 }
 
-/** Refuses a field outside `keys`. */
 export effect function digestKeys(value: Record<string, unknown>, keys: readonly string[]): void!DigestRefused {
   if (Object.keys(value).some((key) => !keys.includes(key))) try refuse("Unexpected digest field")
 }
 
-/** Bounded nonblank digest text. */
 export effect function digestText(value: unknown, maximum: number): string!DigestRefused {
   if (typeof value !== "string" || value.trim() === "" || value.length > maximum || value.includes("\0")) return try refuse("Invalid digest text")
   return value
 }
 
-/** An opaque digest identity. */
 export effect function digestId(value: unknown): string!DigestRefused {
   const id = try digestText(value, 128)
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) return try refuse("Invalid digest identity")
   return id
 }
 
-/** Parses a reviewed digest preset. */
 export effect function validateDigestSpec(value: unknown): DigestSpec!DigestRefused {
   const v = try digestRecord(value)
   try digestKeys(v, ["version", "template", "sourceId", "sourceRevision", "timeZone", "localTime", "enabled", "manualOnly"])
@@ -133,7 +105,6 @@ export effect function validateDigestSpec(value: unknown): DigestSpec!DigestRefu
   }
 }
 
-/** The daily cron of a digest preset. */
 export function digestCron(spec: Pick<DigestSpec, "localTime">): string {
   const [hour, minute] = spec.localTime.split(":").map(Number)
   return `${minute} ${hour} * * *`
@@ -148,12 +119,10 @@ function nativeInstruction(spec: DigestSpec): string {
   return `Write a concise conversational ${spec.manualOnly === true ? "dossier" : "morning brief"} for the owner using only the selected Calendar events and reminders supplied here. ${nativeRules}`
 }
 
-/** The kind of read a source names in a result's provenance. */
 export function digestSourceType(source: Pick<DigestSourceRecord, "live">): string {
   return source.live === undefined ? "explicit_snapshot" : source.live.provider === "native" ? "live_selected_native_read" : "live_selected_google_read"
 }
 
-/** The typed specification a digest preset runs, derived from its reviewed source. */
 export function digestPhoneSpec(spec: DigestSpec, source: DigestSourceRecord): PhoneWorkflowSpec {
   const native = source.live?.provider === "native"
   const name = spec.manualOnly === true ? "On-demand dossier" : spec.template === "morning" ? "Morning digest" : native ? "Evening brief" : "Evening task summary"
@@ -180,7 +149,6 @@ export function digestPhoneSpec(spec: DigestSpec, source: DigestSourceRecord): P
   }
 }
 
-/** The submission identity of Run now for one missed record, or undefined when the record id cannot form one. */
 export function missedRunNowMutationId(runId: string): string | undefined {
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,100}$/.test(runId) ? `missed-run-now-${runId}` : undefined
 }

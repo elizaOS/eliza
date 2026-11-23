@@ -12,14 +12,12 @@ import { WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
 import type { hostedDigests } from "./service/digests.vibe"
 import type { generatedWorkflows } from "./service/generated.vibe"
 
-/** The service instances a runtime opened for the workflow plugin. */
 export interface WorkflowInstance {
   readonly service: WorkflowService
   readonly digests: ReturnType<typeof hostedDigests>
   readonly generated: ReturnType<typeof generatedWorkflows>
 }
 
-/** The workflow instances by runtime, filled when the plugin initializes and emptied when it is disposed. */
 export const workflowInstances = new WeakMap<object, WorkflowInstance>()
 
 const WORKFLOW_OPS = ["list", "search", "get", "create", "modify", "rename", "activate", "deactivate", "remove", "restore_removed", "run", "dossier", "cancel_run", "executions", "revisions", "restore", "eval_samples"] as const
@@ -292,7 +290,6 @@ effect function perform(
   }
 }
 
-/** The WORKFLOW chat action: inspect, run, pause, rename, remove and restore reviewed workflows, and draft text-only ones. */
 export const workflowAction: Action = {
   name: "WORKFLOW",
   contexts: ["general", "automation", "tasks", "agent_internal"],
@@ -364,7 +361,6 @@ effect function statusText(service: WorkflowService): string!WorkflowRefused {
   return `Current workflows (${workflows.length}):\n${lines.join("\n")}`
 }
 
-/** The owner's workflows with their on state and last run, for automation turns. */
 export const workflowStatusProvider: Provider = {
   name: "workflow_status",
   contexts: ["automation", "connectors"],
@@ -381,7 +377,6 @@ export const workflowStatusProvider: Provider = {
   },
 }
 
-/** The owner's saved workflows with IDs, narrowed to a search when the message asks about workflows. */
 export const activeWorkflowsProvider: Provider = {
   name: "ACTIVE_WORKFLOWS",
   description: "User's active workflows with IDs and descriptions",

@@ -25,16 +25,12 @@ import { encodedUnits, json } from edge
 
 export { json }
 
-/** A rich format that is not bounded plain JSON of a known kind. */
 export error NoteFormatRefused { field: string; reason: string }
 
-/** An authored edit that no longer matches the note's current format or text. */
 export error AuthoredEditRefused { reason: string }
 
-/** One authored entry with its original index and, for a checklist, its checked state. */
 export type AuthoredNotePart = { index: number; text: string; done?: boolean }
 
-/** The authored text of a rich note, per kind, without speakers, audio, sources or attachments. */
 export type AuthoredNoteContent = {
   items?: AuthoredNotePart[]
   lines?: AuthoredNotePart[]
@@ -43,7 +39,6 @@ export type AuthoredNoteContent = {
   clips?: string[]
 }
 
-/** A replacement bound to the entry's index and exact text, or one new unchecked checklist item. */
 export type AuthoredNoteEdit =
   | {
     action?: "replace"
@@ -55,7 +50,6 @@ export type AuthoredNoteEdit =
   }
   | { field: "checklist"; action: "append"; text: string }
 
-/** The text of one selected note for an explicitly requested copy, share or export. */
 export interface NoteShareText {
   title: string
   text: string
@@ -122,20 +116,17 @@ function checkFormat(value: unknown): FormatCheck {
   return { format: { kind, data } }
 }
 
-/** The format as an exact bounded copy, or undefined where it is not one. */
 export function parseNoteFormat(value: unknown): NoteFormat | undefined {
   const checked = checkFormat(value)
   return "format" in checked ? checked.format : undefined
 }
 
-/** The format as an exact bounded copy, failing with the field that breaks it. */
 export effect function decodeNoteFormat(value: unknown): NoteFormat!NoteFormatRefused {
   const checked = checkFormat(value)
   if ("format" in checked) return checked.format
   throw new NoteFormatRefused({ field: checked.field, reason: checked.reason })
 }
 
-/** Whether a value names one of the four format kinds. */
 export function isNoteKind(value: unknown): value is NoteFormat["kind"] {
   return typeof value === "string" && kinds.has(value)
 }
@@ -153,7 +144,6 @@ function strings(data: JsonObject, field: string): string[] | undefined {
   return Array.isArray(rows) ? rows.filter((item): item is string => typeof item === "string") : undefined
 }
 
-/** The exact authored fields of a rich note; never speaker IDs, audio, source or attachment handles. */
 export function projectAuthoredNoteContent(format: NoteFormat | undefined): AuthoredNoteContent | undefined {
   if (format === undefined) return undefined
   const data = format.data
@@ -177,7 +167,6 @@ export function projectAuthoredNoteContent(format: NoteFormat | undefined): Auth
   }
 }
 
-/** The authored strings of a rich note, one per line, for search and blank checks. */
 export function authoredNoteText(format: NoteFormat | undefined): string {
   const value = projectAuthoredNoteContent(format)
   if (value === undefined) return ""
@@ -198,7 +187,6 @@ const editTargets = {
   "link-clip": { kind: "link", key: "clips", check: false },
 } as const
 
-/** The format after one authored edit: a replacement of the exact indexed text, or one appended unchecked item. */
 export effect function editAuthoredNoteFormat(format: NoteFormat | undefined, edit: AuthoredNoteEdit): NoteFormat!AuthoredEditRefused {
   if (edit.action === "append") {
     if (format === undefined || format.kind !== "list" || !Array.isArray(format.data.items)) {
@@ -239,7 +227,6 @@ function stringField(data: JsonObject, key: string): string {
   return typeof value === "string" ? value : ""
 }
 
-/** A selected note's stored text by kind; a voice note's audio is never included and a missing transcript is said. */
 export function noteShareText(note: StickyNote): NoteShareText {
   const title = note.title.trim() === "" ? "Note" : note.title
   const data = note.format?.data ?? {}
