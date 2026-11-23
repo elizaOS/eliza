@@ -1322,16 +1322,22 @@ function eachCheckB() {
     assert.ok(said("sometimes", /\bsave in .* never happened/), text);
   });
 
-  test("tables keyed by integers and variants, getOr, nthOr, removeAt, structural == and a mapped append are simulated, replayed and proved", async () => {
+  test("tables keyed by integers and variants, getOr, nthOr, removeAt, structural == and a mapped append are compiled, simulated, replayed and proved", async () => {
     const root = fixtures(["hall"]);
     const { failed, said, text } = await run(root);
     assert.deepEqual(failed, ["review"], text);
     assert.ok(said("proof", /^hall\.ts: all \d+ obligations proved/), text);
+    const compiled = await tool("tsc", ["--ignoreConfig", "--noEmit", "--target", "es2023", "--module", "nodenext", "--strict", "--skipLibCheck", path.join(root, "gen/hall.ts")], project);
+    assert.ok(compiled.ok, compiled.out);
     const hall = await import(path.join(root, "gen/hall.ts"));
     // A seat equal to a booked one, though another object, is booked already.
     const booked = hall.step(hall.initial, { type: "book", row: 1, kind: "Adult" });
     assert.equal(hall.enabled(booked, { type: "book", row: 1, kind: "Adult" }), false);
-    assert.deepEqual(hall.parseState(booked), { booked: [{ row: 1, kind: "Adult" }], byRow: { 1: 1 }, byKind: { Adult: 1 } });
+    const parsed = hall.parseState(booked);
+    assert.deepEqual(parsed, { booked: [{ row: 1, kind: "Adult" }], byRow: { 1: 1 }, byKind: { Adult: 1 } });
+    parsed.byRow[1] = 2;
+    parsed.byKind.Adult = 2;
+    assert.deepEqual([booked.byRow, booked.byKind], [{ 1: 1 }, { Adult: 1 }]);
     for (const x of [{ ...booked, byRow: { "01": 1 } }, { ...booked, byRow: { $1: 1 } }, { ...booked, byKind: { Senior: 1 } }])
       assert.equal(hall.parseState(x), undefined, JSON.stringify(x));
   });
