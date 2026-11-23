@@ -42,11 +42,12 @@ public final class ChannelPolicy {
   public record Frame(FrameKind kind, long number) {
     public static Frame of(FrameKind kind) { return new Frame(kind, 0); }
   }
-  public record Entry(long seq, String id, String owner, Mode mode, long epoch, long delivered) {}
+  public record Entry(long seq, String id, String owner, Mode mode, long epoch, long delivered, boolean acknowledged) {}
 
-  public sealed interface Out permits Refused, Accepted, Delivered, Settled {}
+  public sealed interface Out permits Refused, Accepted, Acknowledged, Delivered, Settled {}
   public record Refused(String id, FailCode code) implements Out {}
   public record Accepted(String id, long seq) implements Out {}
+  public record Acknowledged(String id, long seq) implements Out {}
   public record Delivered(String id, long seq, long index) implements Out {}
   public record Settled(String id, long seq, Mode mode, Outcome outcome) implements Out {}
 
@@ -168,7 +169,7 @@ public final class ChannelPolicy {
 
   private Step admitEntry(String id, String owner, Mode mode) {
     long seq = nextSeq++;
-    pending.add(new Entry(seq, id, owner, mode, servingEpoch(), 0));
+    pending.add(new Entry(seq, id, owner, mode, servingEpoch(), 0, false));
     return emit(List.of(new Accepted(id, seq)));
   }
 
@@ -183,8 +184,8 @@ public final class ChannelPolicy {
         default -> settle(entry, Outcome.ERROR);
       };
       case WATCH -> switch (frame.kind()) {
-        case AGENT_EVENT -> deliver(entry);
-        case SUBSCRIBED -> Step.QUIET;
+        case AGENT_EVENT -> entry.acknowledged() ? deliver(entry) : settle(entry, Outcome.END);
+        case SUBSCRIBED -> entry.acknowledged() ? Step.QUIET : acknowledge(entry);
         default -> settle(entry, Outcome.END);
       };
     };
@@ -216,8 +217,14 @@ public final class ChannelPolicy {
     return id == null || id.isEmpty() || pending.stream().anyMatch(entry -> entry.id().equals(id));
   }
 
+  private Step acknowledge(Entry entry) {
+    Entry next = new Entry(entry.seq(), entry.id(), entry.owner(), entry.mode(), entry.epoch(), entry.delivered(), true);
+    pending.set(pending.indexOf(entry), next);
+    return emit(List.of(new Acknowledged(entry.id(), entry.seq())));
+  }
+
   private Step deliver(Entry entry) {
-    Entry next = new Entry(entry.seq(), entry.id(), entry.owner(), entry.mode(), entry.epoch(), entry.delivered() + 1);
+    Entry next = new Entry(entry.seq(), entry.id(), entry.owner(), entry.mode(), entry.epoch(), entry.delivered() + 1, entry.acknowledged());
     pending.set(pending.indexOf(entry), next);
     return emit(List.of(new Delivered(entry.id(), entry.seq(), next.delivered())));
   }

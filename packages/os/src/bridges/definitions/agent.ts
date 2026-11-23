@@ -60,6 +60,7 @@ export type AgentStreamEnd = { id: string } & (
 );
 
 export type AgentEvent = { id: string } & (
+  | { kind: "subscribed" }
   | { kind: "event"; index: number; event: Record<string, unknown> }
   | { kind: "end" }
   | { kind: "failed"; code: AgentFailCode }

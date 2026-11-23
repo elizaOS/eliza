@@ -47,6 +47,7 @@ public final class AgentChannel {
     void chunk(String id, long index, byte[] data);
     void event(String id, long index, JSONObject event);
     void settled(String id, Outcome outcome, byte[] body);
+    default void subscribed(String id) { }
     default void eventData(String id, String data) { }
   }
 
@@ -267,7 +268,8 @@ public final class AgentChannel {
 
   private void dispatch(Live call, Step step, Frame frame) {
     for (Out out : step.out()) {
-      if (out instanceof Delivered delivered) deliver(call, delivered.index(), frame);
+      if (out instanceof ChannelPolicy.Acknowledged) call.listener.subscribed(call.id);
+      else if (out instanceof Delivered delivered) deliver(call, delivered.index(), frame);
       else if (out instanceof Settled settled) {
         live.remove(call.seq);
         call.end();

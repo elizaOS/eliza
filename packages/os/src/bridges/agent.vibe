@@ -41,6 +41,7 @@ const StreamEnd = Schema.Union([
   Schema.Struct(failed),
 ])
 const AgentEvent = Schema.Union([
+  Schema.Struct({ id: Schema.String, kind: Schema.Literal("subscribed") }),
   Schema.Struct({ ...delivered, kind: Schema.Literal("event"), event: Schema.Record(Schema.String, Schema.Unknown) }),
   Schema.Struct({ id: Schema.String, kind: Schema.Literal("end") }),
   Schema.Struct(failed),

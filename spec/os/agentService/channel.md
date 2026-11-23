@@ -41,10 +41,10 @@ type CallerKind = Renderer | Native
 type Topic = Voice | View | Notices
 type Mode = Plain | Stream | Watch({ topic: Topic })
 type Launch = NotServing | Serving({ epoch: int })
-type Entry = { seq: int, id: str, owner: str, mode: Mode, epoch: int, delivered: int }
+type Entry = { seq: int, id: str, owner: str, mode: Mode, epoch: int, delivered: int, acknowledged: bool }
 type FailCode = NotReady | RouteRefused | TooLarge | IdInUse | TopicInUse | Busy | Restarted | Broken
 type Outcome = Response({ status: int }) | End | Error | Aborted | Failed({ code: FailCode })
-type ChannelOut = Refused({ id: str, code: FailCode }) | Accepted({ id: str, seq: int }) | Delivered({ id: str, seq: int, index: int }) | Settled({ id: str, seq: int, mode: Mode, outcome: Outcome })
+type ChannelOut = Refused({ id: str, code: FailCode }) | Accepted({ id: str, seq: int }) | Acknowledged({ id: str, seq: int }) | Delivered({ id: str, seq: int, index: int }) | Settled({ id: str, seq: int, mode: Mode, outcome: Outcome })
 type SecretRootToken = str
 type AgentChannel = { renderer: Routes::RouteGate, native: Routes::RouteGate, launch: Launch, lastEpoch: int, rootToken: SecretRootToken, nextSeq: int, pending: List[Entry], recent: List[ChannelOut] }
 type ChannelStep = { state: AgentChannel, out: List[ChannelOut] }
@@ -91,7 +91,7 @@ pure def refusalOf(s: AgentChannel, kind: CallerKind, id: str, request: Routes::
   else headerRefusal(headers)
 }
 pure def admitEntry(id: str, owner: str, mode: Mode, s: AgentChannel): ChannelStep =
-  emit(List(Accepted({ id: id, seq: s.nextSeq })), { ...s, nextSeq: s.nextSeq + 1, pending: s.pending.append({ seq: s.nextSeq, id: id, owner: owner, mode: mode, epoch: servingEpoch(s), delivered: 0 }) })
+  emit(List(Accepted({ id: id, seq: s.nextSeq })), { ...s, nextSeq: s.nextSeq + 1, pending: s.pending.append({ seq: s.nextSeq, id: id, owner: owner, mode: mode, epoch: servingEpoch(s), delivered: 0, acknowledged: false }) })
 pure def ask(s: AgentChannel, kind: CallerKind, owner: str, id: str, request: Routes::Request, headers: List[RC::RequestHeader]): ChannelStep = {
   val refused = refusalOf(s, kind, id, request, headers)
   if (refused.length() > 0) emit(List(Refused({ id: id, code: refused.nthOr(0, NotReady) })), s)
@@ -160,16 +160,21 @@ the shell enforces, arrives as `lost` and ends a call that is still pending.
 
 ```quint
 import transport as Tr from "../../agent/access/transport"
-type Reaction = Deliver | Settle({ outcome: Outcome }) | Drop
+type Reaction = Deliver | Acknowledge | Settle({ outcome: Outcome }) | Drop
 pure def plainReaction(frame: Tr::Frame): Reaction = match frame { | Result(r) => Settle({ outcome: Response({ status: r.status }) }) | _ => Settle({ outcome: Failed({ code: Broken }) }) }
 pure def streamReaction(frame: Tr::Frame): Reaction = match frame { | Head(h) => Deliver | Chunk => Deliver | Complete => Settle({ outcome: End }) | _ => Settle({ outcome: Error }) }
-pure def watchReaction(frame: Tr::Frame): Reaction =
-  if (frame == Tr::AgentEvent) Deliver else if (frame == Tr::Subscribed) Drop else Settle({ outcome: End })
-pure def reactionOf(mode: Mode, frame: Tr::Frame): Reaction = match mode { | Plain => plainReaction(frame) | Stream => streamReaction(frame) | Watch(w) => watchReaction(frame) }
+pure def watchReaction(acknowledged: bool, frame: Tr::Frame): Reaction =
+  if (frame == Tr::Subscribed) (if (acknowledged) Drop else Acknowledge)
+  else if (frame == Tr::AgentEvent and acknowledged) Deliver
+  else Settle({ outcome: End })
+pure def reactionOf(e: Entry, frame: Tr::Frame): Reaction = {
+  val mode = e.mode
+  match mode { | Plain => plainReaction(frame) | Stream => streamReaction(frame) | Watch(w) => watchReaction(e.acknowledged, frame) }
+}
 pure def lostOutcome(mode: Mode): Outcome = match mode { | Plain => Failed({ code: Broken }) | Stream => Error | Watch(w) => End }
 pure val modeValues = Set(Plain, Stream, Watch({ topic: Voice }), Watch({ topic: View }))
 pure def isWatch(mode: Mode): bool = match mode { | Watch(w) => true | _ => false }
-pure val noEntry: Entry = { seq: -1, id: "", owner: "", mode: Plain, epoch: 0, delivered: 0 }
+pure val noEntry: Entry = { seq: -1, id: "", owner: "", mode: Plain, epoch: 0, delivered: 0, acknowledged: false }
 pure def entryAt(seq: int, s: AgentChannel): Entry = s.pending.select(e => e.seq == seq).nthOr(0, noEntry)
 pure def settledOut(e: Entry, ending: Outcome): ChannelOut = Settled({ id: e.id, seq: e.seq, mode: e.mode, outcome: ending })
 pure def react(seq: int, s: AgentChannel, r: Reaction): ChannelStep = {
@@ -177,11 +182,12 @@ pure def react(seq: int, s: AgentChannel, r: Reaction): ChannelStep = {
   if (e.seq < 0) { state: s, out: List() }
   else match r {
     | Deliver => emit(List(Delivered({ id: e.id, seq: seq, index: e.delivered + 1 })), { ...s, pending: s.pending.listMap(o => if (o.seq == seq) { ...o, delivered: o.delivered + 1 } else o) })
+    | Acknowledge => emit(List(Acknowledged({ id: e.id, seq: seq })), { ...s, pending: s.pending.listMap(o => if (o.seq == seq) { ...o, acknowledged: true } else o) })
     | Settle(x) => emit(List(settledOut(e, x.outcome)), { ...s, pending: s.pending.select(o => o.seq != seq) })
     | Drop => { state: s, out: List() }
   }
 }
-pure def reply(s: AgentChannel, seq: int, frame: Tr::Frame): ChannelStep = react(seq, s, reactionOf(entryAt(seq, s).mode, frame))
+pure def reply(s: AgentChannel, seq: int, frame: Tr::Frame): ChannelStep = react(seq, s, reactionOf(entryAt(seq, s), frame))
 pure def lost(s: AgentChannel, seq: int): ChannelStep = react(seq, s, Settle({ outcome: lostOutcome(entryAt(seq, s).mode) }))
 pure val seqValues = Set(0, 1, 2, 7)
 pure val frameValues = Set(Tr::Result({ status: 200 }), Tr::Refusal, Tr::Head({ code: 200 }), Tr::Chunk, Tr::Complete, Tr::CompleteFailed, Tr::Subscribed, Tr::AgentEvent)
@@ -287,13 +293,32 @@ pure def sometimesFeedsFull(s: AgentChannel): bool = s.recent.some(o => match o 
 
 ### A subscription's events arrive in order to its owner, and it ends once with End or Restarted
 
-Each agent `event` frame is delivered with the next index, to the owner
-that subscribed; the agent's `subscribed` confirmation only answers the
-caller. The agent ending the feed, an abort by its owner or a lost
+The first agent `subscribed` frame acknowledges the feed to its owner.
+Queue admission alone leaves it awaiting confirmation. Duplicate
+confirmations produce no output. Each subsequent agent `event` frame is
+delivered with the next index to that owner. A frame that attempts event
+delivery before confirmation closes the feed. The agent ending the feed,
+an abort by its owner or a lost
 connection ends it with `End`; a retired launch ends it with
 `Failed(Restarted)`. Both go through the rules of a pending call.
 
 ```quint
+pure def stepOnlyNewWatchIsAcknowledged(before: AgentChannel, via: str, after: AgentChannel, out: List[ChannelOut]): bool =
+  out.every(o => match o {
+    | Acknowledged(a) => {
+      val opening = entryAt(a.seq, before)
+      val opened = entryAt(a.seq, after)
+      via == "reply" and isWatch(opening.mode) and not(opening.acknowledged) and
+        opened == { ...opening, acknowledged: true } and a.id == opening.id
+    }
+    | Delivered(d) => {
+      val e = entryAt(d.seq, before)
+      isWatch(e.mode) implies e.acknowledged
+    }
+    | _ => true
+  })
+pure def sometimesWatchAcknowledged(s: AgentChannel): bool =
+  s.recent.some(o => match o { | Acknowledged(a) => isWatch(entryAt(a.seq, s).mode) | _ => false })
 pure def sometimesEventsDelivered(s: AgentChannel): bool = s.pending.some(e => e.mode == Watch({ topic: View }) and e.delivered >= 2)
 pure def sometimesSubscriptionRestarted(s: AgentChannel): bool = s.recent.some(o => match o { | Settled(x) => isWatch(x.mode) and x.outcome == Failed({ code: Restarted }) | _ => false })
 pure def sometimesSubscriptionClosed(s: AgentChannel): bool = s.recent.some(o => match o { | Settled(x) => x.mode == Watch({ topic: Voice }) and x.outcome == End | _ => false })

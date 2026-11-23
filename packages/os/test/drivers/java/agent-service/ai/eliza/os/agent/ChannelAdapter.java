@@ -159,7 +159,7 @@ public final class ChannelAdapter {
     List<String> pending = new ArrayList<>();
     for (ChannelPolicy.Entry entry : policy.pending())
       pending.add("{\"seq\":" + entry.seq() + ",\"id\":" + quote(entry.id()) + ",\"owner\":" + quote(entry.owner()) + ",\"mode\":" + mode(entry.mode())
-        + ",\"epoch\":" + entry.epoch() + ",\"delivered\":" + entry.delivered() + "}");
+        + ",\"epoch\":" + entry.epoch() + ",\"delivered\":" + entry.delivered() + ",\"acknowledged\":" + entry.acknowledged() + "}");
     return "{\"renderer\":" + gate(policy.gate(ChannelPolicy.CallerKind.RENDERER)) + ",\"native\":" + gate(policy.gate(ChannelPolicy.CallerKind.NATIVE))
       + ",\"launch\":" + launch + ",\"lastEpoch\":" + policy.lastEpoch() + ",\"rootToken\":" + quote(policy.rootToken()) + ",\"nextSeq\":" + policy.nextSeq()
       + ",\"pending\":[" + String.join(",", pending) + "],\"recent\":" + outs(policy.recent()) + "}";
@@ -206,6 +206,8 @@ public final class ChannelAdapter {
         written.add("{\"tag\":\"Refused\",\"id\":" + quote(refused.id()) + ",\"code\":" + quote(tag(refused.code())) + "}");
       else if (out instanceof ChannelPolicy.Accepted accepted)
         written.add("{\"tag\":\"Accepted\",\"id\":" + quote(accepted.id()) + ",\"seq\":" + accepted.seq() + "}");
+      else if (out instanceof ChannelPolicy.Acknowledged acknowledged)
+        written.add("{\"tag\":\"Acknowledged\",\"id\":" + quote(acknowledged.id()) + ",\"seq\":" + acknowledged.seq() + "}");
       else if (out instanceof ChannelPolicy.Delivered delivered)
         written.add("{\"tag\":\"Delivered\",\"id\":" + quote(delivered.id()) + ",\"seq\":" + delivered.seq() + ",\"index\":" + delivered.index() + "}");
       else if (out instanceof ChannelPolicy.Settled settled)
