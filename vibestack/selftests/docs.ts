@@ -18,14 +18,36 @@ const examplesSource = "vibestack/selftests/examples.ts";
 const toolMetadata = "vibestack/selftests/tools.ts";
 const EXAMPLES = "vibestack/examples";
 
-test("the prove skill lists everything the proof library declares", () => {
+function proofLibraryDeclarationsAreDocumented() {
   const skill = read(".agents/skills/prove/SKILL.md");
   const declared = [...fs.readFileSync(LIB_FILE, "utf8").matchAll(/^\s*(?:ghost )?(?:lemma|function|predicate) (\w+)/gm)].map((m) => m[1]);
   assert.ok(declared.length > 30, "vibestack/proof/lib.dfy declares its lemmas one to a line");
   assert.deepEqual(declared.filter((name) => !skill.includes(`\`${name}\``)), []);
-});
+}
+
+async function checkStandaloneExampleCacheInputs(root: string, turbo: string, append: (file: string, text?: string) => () => void) {
+  let previousExampleKeys = await exampleCheckKeys(root, turbo);
+  const examplesChangedBy = async (edit: () => void) => {
+    const before = previousExampleKeys;
+    edit();
+    previousExampleKeys = await exampleCheckKeys(root, turbo);
+    return [...previousExampleKeys].filter(([name, key]) => before.get(name) !== key).map(([name]) => name).sort();
+  };
+  const order = path.join(EXAMPLES, "order");
+  const exampleChanges = [
+    await examplesChangedBy(append(toolSource, "\n")),
+    await examplesChangedBy(append(docsSource, "\n")),
+    await examplesChangedBy(append(path.join(order, "src/app.vibe"), "\n")),
+    await examplesChangedBy(append(path.join(order, "pnpm-lock.yaml"), "\n")),
+    await examplesChangedBy(append("vibestack/run.ts", "\n")),
+    await examplesChangedBy(append(examplesSource, "\n")),
+  ];
+  const exampleNames = fs.readdirSync(path.join(root, EXAMPLES)).sort();
+  assert.deepEqual(exampleChanges, [[], [], ["order"], ["order"], exampleNames, exampleNames]);
+}
 
 describe("the documents name what exists", () => {
+  test("the prove skill lists everything the proof library declares", proofLibraryDeclarationsAreDocumented);
   const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".agents/skills").filter((file) => file.endsWith(".md"))];
   const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
   const within = (dir: string) => fs.existsSync(path.join(project, dir)) ? fs.readdirSync(path.join(project, dir), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `${dir}/${e.name}`) : [];
@@ -194,24 +216,7 @@ describe("the documents name what exists", () => {
     const selftests = (ids: string[]) => ids.filter((id) => /^\/\/#(?:selftest:|build$|test$)/.test(id));
     assert.deepEqual(selftests(await changedBy(append(docsSource, "\n"))), ["//#selftest:docs"]);
     assert.deepEqual(selftests(await changedBy(append(examplesSource, "\n"))), ["//#selftest:docs", "//#selftest:examples"]);
-    let previousExampleKeys = await exampleCheckKeys(root, turbo);
-    const examplesChangedBy = async (edit: () => void) => {
-      const before = previousExampleKeys;
-      edit();
-      previousExampleKeys = await exampleCheckKeys(root, turbo);
-      return [...previousExampleKeys].filter(([name, key]) => before.get(name) !== key).map(([name]) => name).sort();
-    };
-    const order = path.join(EXAMPLES, "order");
-    const exampleChanges = [
-      await examplesChangedBy(append(toolSource, "\n")),
-      await examplesChangedBy(append(docsSource, "\n")),
-      await examplesChangedBy(append(path.join(order, "src/app.vibe"), "\n")),
-      await examplesChangedBy(append(path.join(order, "pnpm-lock.yaml"), "\n")),
-      await examplesChangedBy(append("vibestack/run.ts", "\n")),
-      await examplesChangedBy(append(examplesSource, "\n")),
-    ];
-    const exampleNames = fs.readdirSync(path.join(root, EXAMPLES)).sort();
-    assert.deepEqual(exampleChanges, [[], [], ["order"], ["order"], exampleNames, exampleNames]);
+    await checkStandaloneExampleCacheInputs(root, turbo, append);
     previousPlan = await plan();
     const readme = await changedBy(append("README.md"));
     assert.deepEqual({
