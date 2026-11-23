@@ -88,35 +88,42 @@ public abstract class PackageInstallCoordinator {
   private int install(File file,UpdateJournal.Identity identity,String plan,long generation,UpdateJournal.FreshnessCheck fresh) throws Exception {
     DevicePolicyManager policy=context.getSystemService(DevicePolicyManager.class);
     if(policy==null||!policy.isDeviceOwnerApp(context.getPackageName()))throw new IOException("Device-owner installation authority unavailable");
-    holdAgent(plan,identity);
     PackageInstaller installer=context.getPackageManager().getPackageInstaller();
     PackageInstaller.SessionParams params=new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
     params.setAppPackageName(target);params.setSize(file.length());
     if(Build.VERSION.SDK_INT>=31)params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
-    int id=installer.createSession(params);
-    try(PackageInstaller.Session session=installer.openSession(id)) {
-      try(InputStream input=new FileInputStream(file);OutputStream output=session.openWrite("base.apk",0,file.length())) {
-        MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buffer=new byte[65536];int count;long size=0;
-        while((count=input.read(buffer))!=-1){size+=count;if(size>file.length())throw new IOException("APK changed during session write");output.write(buffer,0,count);digest.update(buffer,0,count);}
-        if(size!=file.length()||!identity.digest.equals(hex(digest.digest())))throw new IOException("Session APK integrity mismatch");
-        session.fsync(output);
+    int id=0;
+    try {
+      holdAgent(plan,identity);
+      id=installer.createSession(params);
+      try(PackageInstaller.Session session=installer.openSession(id)) {
+        try(InputStream input=new FileInputStream(file);OutputStream output=session.openWrite("base.apk",0,file.length())) {
+          MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buffer=new byte[65536];int count;long size=0;
+          while((count=input.read(buffer))!=-1){size+=count;if(size>file.length())throw new IOException("APK changed during session write");output.write(buffer,0,count);digest.update(buffer,0,count);}
+          if(size!=file.length()||!identity.digest.equals(hex(digest.digest())))throw new IOException("Session APK integrity mismatch");
+          session.fsync(output);
+        }
+        Intent intent=new Intent(context,callbackReceiver).setAction(callbackAction)
+          .putExtra("transaction",plan).putExtra("expectedSession",id);
+        int callbackFlags=PendingIntent.FLAG_UPDATE_CURRENT;
+        if(Build.VERSION.SDK_INT>=31)callbackFlags|=PendingIntent.FLAG_MUTABLE;
+        PendingIntent callback=PendingIntent.getBroadcast(context,id,intent,callbackFlags);
+        if(fresh==null)journal.recoveringWithAction(plan,id,()->session.commit(callback.getIntentSender()));
+        else journal.committingWithAction(plan,id,generation,fresh,()->session.commit(callback.getIntentSender()));
       }
-      Intent intent=new Intent(context,callbackReceiver).setAction(callbackAction)
-        .putExtra("transaction",plan).putExtra("expectedSession",id);
-      int callbackFlags=PendingIntent.FLAG_UPDATE_CURRENT;
-      if(Build.VERSION.SDK_INT>=31)callbackFlags|=PendingIntent.FLAG_MUTABLE;
-      PendingIntent callback=PendingIntent.getBroadcast(context,id,intent,callbackFlags);
-      if(fresh==null)journal.recoveringWithAction(plan,id,()->session.commit(callback.getIntentSender()));
-      else journal.committingWithAction(plan,id,generation,fresh,()->session.commit(callback.getIntentSender()));
       return id;
     } catch(Exception failure) {
       // A throw from Session.commit does not prove the platform refused it, and
       // abandoning could race an install already under way. A session never
-      // handed off, including one refused as stale, is abandoned here and leaves
-      // the plan VERIFIED; after a handoff, readback abandons it only once the
-      // platform has reported it uncommitted for long enough, since a sealed
-      // session reads uncommitted while the platform verifies it, and decides the rest.
-      if(!(failure instanceof UpdateJournal.HandoffFailed))try{installer.abandonSession(id);}catch(Exception ignored){}
+      // handed off, including one refused as stale, is abandoned here, its hold
+      // is given back and the plan stays VERIFIED; after a handoff, readback
+      // abandons it only once the platform has reported it uncommitted for long
+      // enough, since a sealed session reads uncommitted while the platform
+      // verifies it, and decides the rest.
+      if(!(failure instanceof UpdateJournal.HandoffFailed)) {
+        if(id>0)try{installer.abandonSession(id);}catch(Exception ignored){}
+        try{journal.releaseUnhandedHold(plan);}catch(Exception release){failure.addSuppressed(release);}
+      }
       try{reconcilePending(context,target,journal,observationBudgetMs);}catch(Exception reconciliation){failure.addSuppressed(reconciliation);}
       throw failure;
     }

@@ -668,6 +668,17 @@ function firstById<T extends { id: string }>(
   return byId
 }
 
+function boundEntityId(binding: MeetingArtifactEntityBinding | undefined): string | undefined {
+  switch (binding?.status) {
+    case "active":
+      return binding.entityId ?? undefined
+    case "merged":
+      return binding.mergedIntoEntityId ?? binding.entityId ?? undefined
+    default:
+      return undefined
+  }
+}
+
 export function meetingArtifactToTranscriptSegments(
   artifact: MeetingArtifact,
 ): TranscriptSegment[] {
@@ -681,7 +692,7 @@ export function meetingArtifactToTranscriptSegments(
       id: span.id,
       speakerLabel: speaker?.name?.displayName ?? span.speakerId,
       speakerEntityId: speaker?.entityBindingId
-        ? (bindingsById.get(speaker.entityBindingId)?.entityId ?? undefined)
+        ? boundEntityId(bindingsById.get(speaker.entityBindingId))
         : undefined,
       startMs: span.startMs,
       endMs: span.endMs,

@@ -156,9 +156,11 @@ and revision) selected, each of a valid form. The form is offered whenever
 the device negotiated it, and a `create_note` on any other message,
 including one with no observation or a canonical Notes selection, is
 refused before dispatch as a call the message serves elsewhere: the note
-request belongs to the canonical Notes service, and the device tool's
-note says so whenever the form is offered. A
-device that did not negotiate it has the family's guidance say so instead.
+request belongs to the canonical Notes service. The device tool's
+description says so whenever the form is offered, the tool's note on such
+a message says only that the form is not available on it, and the refusal
+says where the request belongs. A device that did not negotiate it has the
+family's guidance say so instead.
 
 ```quint
 pure def noteAvailable(notesView: bool, sensitive: bool, phoneNotesSelected: bool): bool = notesView and not(sensitive) and phoneNotesSelected

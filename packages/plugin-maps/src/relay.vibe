@@ -89,6 +89,7 @@ const failureText: Partial<Record<DeviceNavigationMapsCode, string>> = {
 
 function phoneLine(code: DeviceNavigationMapsCode, message: string | undefined): string {
   const line = message?.trim() ?? ""
+  // eslint-disable-next-line no-control-regex -- A device refusal is displayed as one line without C0 controls or DEL.
   if (line !== "" && line.length <= 300 && !/[\u0000-\u001f\u007f]/.test(line)) return line
   return failureText[code] ?? "The phone could not complete this Maps request. Check Maps on the phone."
 }

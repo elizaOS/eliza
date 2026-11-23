@@ -9,11 +9,12 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
+import ts from "typescript";
 import type { Model } from "./gen.ts";
 import { conformance, type Machine } from "./conform.ts";
 import { explore } from "./explore.ts";
 import { abandonedProof, ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type Proof } from "./prove.ts";
-import { bin, run, startAttached } from "./run.ts";
+import { bin, exec, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
 import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, collectGarbage, evaluatorForCheck, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
@@ -928,6 +929,107 @@ async function generateOwner(root: string, name: string) {
   }
 }
 
+const rootTurboJson = "--root-turbo-json";
+const excludedProofs = /^!(spec|(?:apps|packages)\/\*\/spec)\/\*\*\/\*\.proof\.dfy$/;
+
+function turboOption(args: readonly string[], name: string): { index: number; count: number; value?: string } | undefined {
+  const index = args.findLastIndex((arg) => arg === name || arg.startsWith(`${name}=`));
+  if (index < 0) return;
+  const separate = args[index] === name;
+  const value = separate ? args[index + 1] : args[index].slice(name.length + 1);
+  return { index, count: separate ? 2 : 1, value: value && (!separate || !value.startsWith("-")) ? value : undefined };
+}
+
+async function sameTurboWorkspace(root: string, options: readonly string[]): Promise<boolean> {
+  const cwd = turboOption(options, "--cwd");
+  if (!cwd) return true;
+  if (!cwd.value) return false;
+  try {
+    const workspace = fs.realpathSync(root);
+    const directory = projectRoot(cwd.value, root);
+    const relative = path.relative(workspace, directory);
+    if (!relative) return true;
+    if (path.isAbsolute(relative) || relative.split(path.sep)[0] === ".." || options.includes("--skip-infer")) return false;
+    let member: string | undefined;
+    for (let at = directory; path.relative(workspace, at); at = path.dirname(at)) {
+      if ([".git", "pnpm-workspace.yaml"].some((file) => fs.existsSync(path.join(at, file)))) return false;
+      if (!member && fs.existsSync(path.join(at, "package.json"))) member = at;
+    }
+    if (!member) return true;
+    const listed = await exec("pnpm", ["list", "--recursive", "--depth", "-1", "--json"], root);
+    const projects: unknown = listed.status === 0 ? JSON.parse(listed.stdout) : undefined;
+    return Array.isArray(projects) && projects.some((project: unknown) =>
+      typeof project === "object" && project !== null && "path" in project && project.path === member);
+  } catch {
+    return false;
+  }
+}
+
+function generationNeedsUncached(root: string, scopes: readonly string[]): boolean {
+  const standalone = (dir: string): boolean => {
+    const entry = fs.lstatSync(path.join(dir, "spec"), { throwIfNoEntry: false });
+    return !!entry && (!entry.isDirectory() || specFiles(dir).length === 0);
+  };
+  try {
+    return scopes.some((scope) => {
+      if (scope === "spec") {
+        const directory = path.join(root, scope);
+        const areas = new Set(specFiles(root).map((file) => file.split("/")[1]));
+        return fs.existsSync(directory) && fs.readdirSync(directory).some((name) => !areas.has(name) && owner(root, `spec/${name}/`) !== undefined);
+      }
+      const container = path.join(root, scope.split("/")[0]);
+      return !!fs.lstatSync(container, { throwIfNoEntry: false })?.isDirectory()
+        && fs.readdirSync(container, { withFileTypes: true }).some((entry) => entry.isDirectory() && standalone(path.join(container, entry.name)));
+    });
+  } catch {
+    return true;
+  }
+}
+
+function propertiesOf(object: ts.Expression | undefined, name: string): ts.PropertyAssignment[] {
+  return object && ts.isObjectLiteralExpression(object) ? object.properties.filter((property): property is ts.PropertyAssignment =>
+    ts.isPropertyAssignment(property) && ts.isStringLiteral(property.name) && property.name.text === name) : [];
+}
+
+async function generationOverlay(root: string, args: string[]): Promise<{ args: string[]; directory: string } | undefined> {
+  const options = args.slice(0, args.includes("--") ? args.indexOf("--") : args.length);
+  const explicit = turboOption(options, rootTurboJson);
+  if (explicit && !explicit.value) return;
+  const files = explicit?.value ? [path.resolve(root, explicit.value)] :
+    ["turbo.json", "turbo.jsonc"].map((name) => path.join(root, name)).filter((file) => fs.existsSync(file));
+  if (files.length !== 1) return;
+  const [config] = files;
+  let text: string;
+  try { text = fs.readFileSync(config, "utf8"); } catch { return; }
+  const source = ts.parseJsonText(config, text);
+  const tasks = propertiesOf(source.statements[0]?.expression, "tasks");
+  const generation = propertiesOf(tasks.length === 1 ? tasks[0].initializer : undefined, "//#gen");
+  const task = generation.length === 1 ? generation[0].initializer : undefined;
+  if (!task || !ts.isObjectLiteralExpression(task)) return;
+  const inputs = propertiesOf(task, "inputs");
+  const paths = inputs.length === 1 ? inputs[0].initializer : undefined;
+  const cache = propertiesOf(task, "cache");
+  if (!paths || !ts.isArrayLiteralExpression(paths) || cache.length > 1 || (cache[0] && cache[0].initializer.kind !== ts.SyntaxKind.TrueKeyword)) return;
+  const scopes = paths.elements.flatMap((entry) => {
+    const scope = ts.isStringLiteral(entry) ? excludedProofs.exec(entry.text)?.[1] : undefined;
+    return scope === undefined ? [] : [scope];
+  });
+  if (!generationNeedsUncached(root, scopes) || !await sameTurboWorkspace(root, options)) return;
+  const start = cache[0]?.initializer.getStart(source) ?? task.getStart(source) + 1;
+  const end = cache[0]?.initializer.end ?? start;
+  const uncached = text.slice(0, start) + (cache.length ? "false" : '"cache": false,') + text.slice(end);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-turbo-"));
+  const file = path.join(directory, path.basename(config));
+  const { index = 0, count = 0 } = explicit ?? {};
+  try {
+    fs.writeFileSync(file, uncached, { mode: 0o600 });
+    return { args: [...args.slice(0, index), `${rootTurboJson}=${file}`, ...args.slice(index + count)], directory };
+  } catch (error) {
+    fs.rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function runTasks(root: string, args: string[]): Promise<number | null> {
   const fingerprint = path.join(root, ".cache", "toolchain.json");
   const text = JSON.stringify(await steady(toolchainFingerprint)) + "\n";
@@ -942,11 +1044,16 @@ async function runTasks(root: string, args: string[]): Promise<number | null> {
   }
   const turboPackage = createRequire(bin("turbo", root)).resolve("turbo/package.json");
   const turboEntry = path.resolve(path.dirname(turboPackage), JSON.parse(fs.readFileSync(turboPackage, "utf8")).bin.turbo);
-  const child = spawn(process.execPath, [turboEntry, "run", ...args], { cwd: root, env, stdio: "inherit" });
-  return new Promise((resolve, reject) => {
-    child.once("error", reject);
-    child.once("exit", resolve);
-  });
+  const overlay = await generationOverlay(root, args);
+  try {
+    const child = spawn(process.execPath, [turboEntry, "run", ...(overlay?.args ?? args)], { cwd: root, env, stdio: "inherit" });
+    return await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", resolve);
+    });
+  } finally {
+    if (overlay) fs.rmSync(overlay.directory, { recursive: true, force: true });
+  }
 }
 
 /** The `spec` command, on `process.argv`. */
@@ -961,8 +1068,9 @@ export async function main(argv = process.argv.slice(2)) {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
     if (installing) {
       const hosted = process.env.GITHUB_ACTIONS === "true";
-      const fixture = hosted && process.env.GITHUB_JOB === "vibestack-fixture-selftests";
-      const prerequisites = installTasks.filter((task) => !fixture || task === "//#build");
+      const job = hosted ? process.env.GITHUB_JOB : undefined;
+      const fixture = job === "vibestack-fixture-selftests";
+      const prerequisites = job === "simulate" ? [] : installTasks.filter((task) => !fixture || task === "//#build");
       if (prerequisites.length) {
         const code = await runTasks(root, prerequisites);
         if (code !== 0) { process.exitCode = code ?? 1; return; }
@@ -972,7 +1080,7 @@ export async function main(argv = process.argv.slice(2)) {
       const nightlyCheck = preparing && hosted && process.env.npm_command === "install"
         && process.env.GITHUB_JOB === "vibestack-nightly-check" && process.env.GITHUB_WORKSPACE === root
         && process.env.GITHUB_WORKFLOW_REF?.startsWith(`${process.env.GITHUB_REPOSITORY}/.github/workflows/fuzz.yml@`);
-      if (fixture || packingTools || nightlyCheck) return;
+      if (fixture || job === "simulate" || packingTools || nightlyCheck) return;
       [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
     }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {

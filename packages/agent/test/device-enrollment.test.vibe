@@ -25,8 +25,11 @@ effect function booted(persistMemory: boolean, state?: Scratch) {
   return try startInProcess({ launch: { callerRole: "owner", persistMemory }, ...(state === undefined ? {} : { state }) })
 }
 
-effect function device(reachable: Reachable, agentId: string, asked: Asked, deviceKey: string | null = key, deviceId: string = agentId) {
-  const headers: Record<string, string> = deviceKey === null ? {} : { "x-eliza-device-id": deviceId, "x-eliza-device-key": deviceKey }
+effect function device(reachable: Reachable, agentId: string, asked: Asked, deviceKey: string | null = key, deviceId: string = agentId, capabilities?: string) {
+  const headers: Record<string, string> = {
+    ...(deviceKey === null ? {} : { "x-eliza-device-id": deviceId, "x-eliza-device-key": deviceKey }),
+    ...(capabilities === undefined ? {} : { "x-eliza-device-capabilities": capabilities }),
+  }
   const found = try call(reachable, { ...asked, headers })
   return "status" in found ? { status: found.status, json: found.json as Record<string, unknown> } : try die(new Error(found.refused))
 }
@@ -85,7 +88,7 @@ it.live('Enroll my device under its own key, read its context and revoke it for 
   )
 }, 180_000)
 
-it.live('The agent offers its whole vocabulary and changes the view profile only against the revision the device read (spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read")', effect () => {
+it.live('The agent offers its whole vocabulary and changes the view profile only against the revision the device read (spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views")', effect () => {
   const running = try booted(false)
   const agentId = running.agent.status.agentId
   const profileChange = (expectedRevision: string | null, views: readonly string[]): Asked => ({
@@ -118,4 +121,15 @@ it.live('The agent offers its whole vocabulary and changes the view profile only
   const next = changed.json.profile as { revision: string; views: string[] }
   assert.deepStrictEqual([changed.status, next.views, read.json.profile], [200, ["home"], next])
   assert.notStrictEqual(next.revision, profile.revision)
+
+  const telephony = "views.telephony.v1"
+  const phoneViews = ["phone", "messages", "contacts"]
+  const offeredTo = (json: Record<string, unknown>) => phoneViews.filter((view) => (json.supportedViews as string[]).includes(view))
+  const withoutViews = try device(running, agentId, profileChange(next.revision, ["home", "phone"]))
+  const plainRead = try device(running, agentId, readProfile)
+  const phoneRead = try device(running, agentId, readProfile, key, agentId, telephony)
+  const enabled = try device(running, agentId, profileChange(next.revision, ["home", "phone", "messages"]), key, agentId, telephony)
+  assert.deepStrictEqual(
+    [withoutViews.status, offeredTo(plainRead.json), offeredTo(phoneRead.json), enabled.status, (enabled.json.profile as { views: string[] }).views],
+    [400, [], phoneViews, 200, ["home", "messages", "phone"]])
 }, 180_000)

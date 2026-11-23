@@ -73,6 +73,7 @@ export effect function checkOutgoingAttachments(
   }
 }
 
+// eslint-disable-next-line no-control-regex -- Attachment file names reject path separators, C0 controls, and DEL.
 const unsafeName = /[\\/\x00-\x1f\x7f]/
 const mediaType = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
 

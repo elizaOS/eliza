@@ -64,6 +64,8 @@ func (d *ArtifactDownloader) Download(directory, address, digest string, length,
 	return d.transport.DownloadArtifact(directory, address, digest, length, reserveBytes)
 }
 
+const artifactResumeTempPrefix = "artifact_tmp"
+
 type artifactResume struct {
 	URLHash string
 	ETag    string
@@ -396,7 +398,7 @@ func writeArtifactResume(name string, state artifactResume) error {
 		return e
 	}
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), "artifact_tmp") {
+		if strings.HasPrefix(entry.Name(), artifactResumeTempPrefix) {
 			st, e := entry.Info()
 			if e != nil || !st.Mode().IsRegular() {
 				return errors.New("unsafe artifact temporary file")
@@ -406,7 +408,7 @@ func writeArtifactResume(name string, state artifactResume) error {
 			}
 		}
 	}
-	file, e := os.CreateTemp(dir, "artifact_tmp")
+	file, e := os.CreateTemp(dir, artifactResumeTempPrefix)
 	if e != nil {
 		return e
 	}

@@ -114,7 +114,9 @@ export function groupByFolder(entries: readonly StorageEntry[], counted?: readon
     .sort((a, b) => b.latest.modified - a.latest.modified || a.folder.localeCompare(b.folder))
 }
 
+// eslint-disable-next-line no-control-regex -- File names reject path separators, C0 controls, and DEL.
 const invalidNameCharacter = /[/\\\u0000-\u001f\u007f]/
+// eslint-disable-next-line no-control-regex -- File filter text excludes exactly the C0 control range.
 const filterControlCharacter = /[\u0000-\u001f]/
 
 export function validName(value: unknown): string | undefined {

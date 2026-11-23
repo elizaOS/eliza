@@ -2,7 +2,7 @@
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { hashStableJson, type Memory } from "@elizaos/core"
 import {
-  Machine, canCapture, canCommitProgress, canFinishReconciliation, canPrepareReconciliation, canRetireProgress, canRetireReducers, canStageOutput, staleObserved, stored,
+  Machine, canCapture, canCommitProgress, canStageOutput, stored,
   type Evidence, type EvaluatorProgress, type ProgressFailure, type SourceRevision,
 } from "../../gen/assistant__evaluatorProgress.effect.vibe"
 

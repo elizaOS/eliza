@@ -2,6 +2,7 @@
 import { linkKept, textMismatch } from "../../gen/inbox__display.effect.vibe"
 import type { GmailLink } from "./types.vibe"
 
+// eslint-disable-next-line no-control-regex -- Displayed link labels replace each consecutive run of C0 controls and DEL.
 const controls = /[\x00-\x1f\x7f]+/g
 const closing = ".,;:!?)]}>"
 

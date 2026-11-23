@@ -34,6 +34,11 @@ public final class ReadinessLawCheck {
   private static final List<GoogleMode> MODES = List.of(GoogleMode.PICKER, GoogleMode.BROWSER);
   private static final List<Boolean> BOOLS = List.of(false, true);
   private static final List<Long> ASKED = List.of(0L, 1L, 21_000_000L, 21_500_000L, 30_000L);
+  private static final String HOST = "ai.example.phone";
+  private static final List<String> PACKAGES = List.of("", HOST, ReadinessPolicy.WEBVIEW_SHELL_PACKAGE, "com.android.chrome", "org.mozilla.firefox", "android");
+  private static final List<List<String>> HANDLERS = List.of(List.of(), List.of(ReadinessPolicy.WEBVIEW_SHELL_PACKAGE),
+    List.of(HOST, ReadinessPolicy.WEBVIEW_SHELL_PACKAGE), List.of(ReadinessPolicy.WEBVIEW_SHELL_PACKAGE, "com.android.chrome"),
+    List.of("com.android.chrome", "org.mozilla.firefox"));
 
   private static void emit(String fn, Object result, String... args) {
     System.out.println("{\"fn\":\"" + fn + "\",\"args\":[" + String.join(",", args) + "],\"result\":" + result + "}");
@@ -71,6 +76,10 @@ public final class ReadinessLawCheck {
   private static String reading(CloudReading r) {
     return r.tag == ReadingTag.NO_READING ? "{\"tag\":\"NoReading\"}" : r.tag == ReadingTag.CLIENT_UNREGISTERED ? "{\"tag\":\"ClientUnregistered\"}"
       : "{\"tag\":\"MethodsRead\"," + methods(r.methods) + "}";
+  }
+
+  private static String list(List<String> values) {
+    return "[" + String.join(",", values.stream().map(ReadinessLawCheck::q).toList()) + "]";
   }
 
   private static String plan(StatusPlan p) { return "{\"serveNow\":" + p.serveNow + ",\"measure\":" + p.measure + "}"; }
@@ -147,6 +156,12 @@ public final class ReadinessLawCheck {
             }
           }
         }
+      }
+    }
+    for (String candidate : PACKAGES) {
+      emit("externalBrowserPackage", ReadinessPolicy.externalBrowserPackage(candidate, HOST), q(candidate), q(HOST));
+      for (List<String> handlers : HANDLERS) {
+        emit("browserToOpen", q(ReadinessPolicy.browserToOpen(handlers, candidate, HOST)), list(handlers), q(candidate), q(HOST));
       }
     }
     for (boolean registered : BOOLS) for (int status : new int[] {0, 200, 404, 503}) for (boolean wellFormed : BOOLS) {

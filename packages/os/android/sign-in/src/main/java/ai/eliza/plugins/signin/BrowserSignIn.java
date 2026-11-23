@@ -225,8 +225,9 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
     for (ResolveInfo handler : packages.queryIntentActivities(view, PackageManager.MATCH_DEFAULT_ONLY)) {
       if (handler.activityInfo != null) handlers.add(handler.activityInfo.packageName);
     }
-    return BrowserReturnPolicy.externalBrowser(chosen == null || chosen.activityInfo == null ? null : chosen.activityInfo.packageName,
-      handlers, context.getPackageName());
+    String browser = ReadinessPolicy.browserToOpen(handlers, chosen == null || chosen.activityInfo == null ? "" : chosen.activityInfo.packageName,
+      context.getPackageName());
+    return browser.isEmpty() ? null : browser;
   }
 
   static boolean appLinkVerified(Context context, Environment environment) {

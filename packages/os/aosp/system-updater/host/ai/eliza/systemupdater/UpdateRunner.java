@@ -110,6 +110,9 @@ final class UpdateRunner {
                 UpdateJournal idle = current.cancelUnapplied();
                 store.write(current, idle); current = idle;
             }
+            UpdateChannel.keepOnly(directory, current.phase == UpdateJournal.Phase.IDLE
+                    || current.phase == UpdateJournal.Phase.COMPLETE
+                    || current.phase == UpdateJournal.Phase.SOURCE_RETAINED ? "" : current.packageSha256);
             if (candidate == null) {
                 finish(run, current.phase == UpdateJournal.Phase.REBOOT_READY
                         ? heldOfferStatus(null) : "No newer system update was offered");

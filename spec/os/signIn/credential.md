@@ -66,8 +66,8 @@ the same one-time code and PKCE verifier, and the cloud answers the same
 credential from its sealed copy until it is acknowledged. There is no
 device request-id replay. An acknowledgement may come up to the code's
 five-minute deadline later, so a key awaiting it may live that much past
-the expiry the token answer gave. A key awaiting its acknowledgement always
-names its credential.
+the expiry the token answer gave. It retains the nonempty credential id
+from that token answer until the attempt ends.
 
 ```quint
 pure val ackWindow: Millis = 5 * millisPerMinute

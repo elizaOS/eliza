@@ -23,7 +23,6 @@ import { EventType } from "../types/events.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { Service } from "../types/service.vibe"
 import { BatchQueue, disposeBatchQueue, startBatchQueue } from "../utils/batch-queue.vibe"
-import { rawEnv } from "../utils/environment.vibe"
 
 interface PiiScrubQueueItem {
   content: string
@@ -314,7 +313,7 @@ effect function finishStop(scrub: Scrub) {
     }
   }
   const remaining = queue.size
-  const fastShutdown = rawEnv("ELIZA_FAST_SHUTDOWN") === "1"
+  const fastShutdown = runtime.isFastStopRequested?.() === true
   if (fastShutdown) queue.clear()
   try disposeBatchQueue(queue, runtime, { flushHighPriority: !fastShutdown })
   runtime.logger.info({ src: SRC, agentId: runtime.agentId, remainingItems: remaining }, "Stopped")

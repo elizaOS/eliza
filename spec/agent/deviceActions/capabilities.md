@@ -39,7 +39,7 @@ type Capability =
   | MessagesReadV1 | PhoneDialV1 | PhoneCallV1 | ContactsWriteV1 | VoicemailReadV1 | VoicemailDeleteV1
   | SmsLatestSenderV1 | SmsLatestSenderV2 | NotesRecordV1 | PhotosViewSelectedV1 | CameraLibraryIdV1
   | SmsComposeV2 | ContactsWriteV2 | ContactsShowV1 | ContactsReadV1 | ContactsLookupV1 | PhoneKeypadV1
-  | BrowserSearchV1 | BrowserTabsV1 | BrowserTabsCloseAllV1 | BrowserFindV1 | BrowserHistoryV1 | BrowserOpenNewTabV1 | FilesShownTargetV1
+  | BrowserSearchV1 | BrowserTabsV1 | BrowserTabsCloseAllV1 | BrowserFindV1 | BrowserHistoryV1 | BrowserOpenNewTabV1 | FilesShownTargetV1 | TelephonyViewsV1
 pure def capabilityName(c: Capability): str = match c {
   | CalendarLocalEventV1 => "calendar.local-event.v1" | CalendarCreateV1 => "calendar.create.v1" | CalendarNextReadV1 => "calendar.next-read.v1"
   | CalendarAgendaReadV1 => "calendar.agenda-read.v1" | CalendarAvailabilityReadV1 => "calendar.availability-read.v1"
@@ -57,7 +57,7 @@ pure def capabilityName(c: Capability): str = match c {
   | ContactsReadV1 => "contacts.read.v1" | ContactsLookupV1 => "contacts.lookup.v1" | PhoneKeypadV1 => "phone.keypad.v1"
   | BrowserSearchV1 => "browser.search.v1" | BrowserTabsV1 => "browser.tabs.v1" | BrowserTabsCloseAllV1 => "browser.tabs.close-all.v1"
   | BrowserFindV1 => "browser.find.v1" | BrowserHistoryV1 => "browser.history.v1" | BrowserOpenNewTabV1 => "browser.open-new-tab.v1"
-  | FilesShownTargetV1 => "files.shown-target.v1"
+  | FilesShownTargetV1 => "files.shown-target.v1" | TelephonyViewsV1 => "views.telephony.v1"
 }
 pure val allCapabilities: Set[Capability] = Set(
   CalendarLocalEventV1, CalendarCreateV1, CalendarNextReadV1, CalendarAgendaReadV1, CalendarAvailabilityReadV1, CalendarNamedReadV1,
@@ -67,7 +67,7 @@ pure val allCapabilities: Set[Capability] = Set(
   PhoneCallV1, ContactsWriteV1, VoicemailReadV1, VoicemailDeleteV1, SmsLatestSenderV1, SmsLatestSenderV2, NotesRecordV1,
   PhotosViewSelectedV1, CameraLibraryIdV1, SmsComposeV2, ContactsWriteV2, ContactsShowV1, ContactsReadV1, ContactsLookupV1,
   PhoneKeypadV1, BrowserSearchV1, BrowserTabsV1, BrowserTabsCloseAllV1, BrowserFindV1, BrowserHistoryV1,
-  BrowserOpenNewTabV1, FilesShownTargetV1)
+  BrowserOpenNewTabV1, FilesShownTargetV1, TelephonyViewsV1)
 pure def isCapabilityName(name: str): bool = allCapabilities.exists(c => capabilityName(c) == name)
 pure def lawTheVocabularyListsEveryCapability(c: Capability): bool = allCapabilities.contains(c)
 pure def lawNoTwoCapabilitiesShareAName(a: Capability, b: Capability): bool = capabilityName(a) == capabilityName(b) implies a == b
@@ -193,6 +193,7 @@ profile as it is; other views get a fresh revision.
 
 ```quint
 type DeviceView = HomeView | NotesView | RemindersView | BrowserView | CalendarView | FilesView | PhotosView | CameraView | MapsView | InboxView | SettingsView | WorkflowsView
+  | PhoneView | MessagesView | ContactsView
 type ProfileRevision = str
 type ViewProfile = NoProfile | Profile({ revision: ProfileRevision, views: Set[DeviceView] })
 type RevisionRead = NoRevisionRead | ReadAt({ revision: ProfileRevision })
@@ -213,18 +214,41 @@ pure def lawSameViewsKeepTheRevision(p: ViewProfile, views: Set[DeviceView], fre
   unchangedViews(p, views) implies revisionOf(setViewProfile(p, views, fresh)) == revisionOf(p)
 ```
 
+### Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views
+
+The Phone, Messages and Contacts views are listed among the views the agent
+supports, and a profile change may enable them, only on a request that
+negotiated `views.telephony.v1`. A change that names one of them without it
+is refused and changes nothing. Every other view is offered on every request.
+
+```quint
+pure def telephonyView(view: DeviceView): bool = view == PhoneView or view == MessagesView or view == ContactsView
+pure val allViews: Set[DeviceView] = Set(HomeView, NotesView, RemindersView, BrowserView, CalendarView, FilesView, PhotosView, CameraView,
+  MapsView, InboxView, SettingsView, WorkflowsView, PhoneView, MessagesView, ContactsView)
+pure def offeredViews(n: Negotiation): Set[DeviceView] = if (negotiatedHas(n, TelephonyViewsV1)) allViews else allViews.filter(v => not(telephonyView(v)))
+pure def viewsOffered(n: Negotiation, views: Set[DeviceView]): bool = views.subseteq(offeredViews(n))
+pure def lawATelephonyViewIsOfferedOnlyUnderItsCapability(n: Negotiation, view: DeviceView): bool =
+  (telephonyView(view) and offeredViews(n).contains(view)) implies negotiatedHas(n, TelephonyViewsV1)
+pure def lawEveryOtherViewIsOffered(n: Negotiation, view: DeviceView): bool = not(telephonyView(view)) implies offeredViews(n).contains(view)
+pure def lawATelephonyViewIsEnabledOnlyUnderItsCapability(n: Negotiation, views: Set[DeviceView]): bool =
+  (viewsOffered(n, views) and views.exists(v => telephonyView(v))) implies negotiatedHas(n, TelephonyViewsV1)
+```
+
 ### An open-view proposal runs only on the profile revision it bound and a view the profile enables
 
 A proposal to open a view binds the profile revision current when it was
 made, none on a device without a profile. Deciding or claiming it checks the
 profile again: a changed revision, a view no longer enabled, or a bound
-revision on a device without a profile refuses it.
+revision on a device without a profile refuses it. A device without a
+profile may open every view except Phone, Messages and Contacts, which only
+a profile enables.
 
 ```quint
-pure def viewEnabled(p: ViewProfile, view: DeviceView): bool = match p { | Profile(x) => x.views.contains(view) | NoProfile => true }
+pure def viewEnabled(p: ViewProfile, view: DeviceView): bool = match p { | Profile(x) => x.views.contains(view) | NoProfile => not(telephonyView(view)) }
 pure def openViewAdmitted(p: ViewProfile, bound: RevisionRead, view: DeviceView): bool = bound == revisionOf(p) and viewEnabled(p, view)
 pure val boundValues: Set[RevisionRead] = Set(NoRevisionRead, ReadAt({ revision: "r1" }), ReadAt({ revision: "r2" }))
 pure def lawAProposalOnTheCurrentProfileIsAdmitted(p: ViewProfile, view: DeviceView): bool = viewEnabled(p, view) implies openViewAdmitted(p, revisionOf(p), view)
 pure def lawAStaleBindingIsRefused(p: ViewProfile, bound: RevisionRead, view: DeviceView): bool = bound != revisionOf(p) implies not(openViewAdmitted(p, bound, view))
 pure def lawADisabledViewIsRefused(p: ViewProfile, bound: RevisionRead, view: DeviceView): bool = not(viewEnabled(p, view)) implies not(openViewAdmitted(p, bound, view))
+pure def lawNoProfileOpensATelephonyView(bound: RevisionRead, view: DeviceView): bool = telephonyView(view) implies not(openViewAdmitted(NoProfile, bound, view))
 ```
