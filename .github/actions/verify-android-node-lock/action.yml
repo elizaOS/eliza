@@ -1,0 +1,73 @@
+name: Verify published Android Node lock
+description: Check both published runtimes when their lock or verifier changes.
+runs:
+  using: composite
+  steps:
+    - id: changed
+      shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      run: |
+        if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && git fetch --no-tags --depth=1 origin "$BASE_SHA" &&
+          git diff --quiet "$BASE_SHA" HEAD -- .github/actions/verify-android-node-lock/action.yml packages/os/aosp/runtime/node.lock.json packages/os/android/android-runtime-inventory.mjs; then
+          exit 0
+        fi
+        echo 'verify=true' >> "$GITHUB_OUTPUT"
+    - if: steps.changed.outputs.verify == 'true'
+      uses: actions/setup-node@v6
+      with:
+        node-version: '26'
+    - if: steps.changed.outputs.verify == 'true'
+      name: Verify the two released ABI archives and producer manifests
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        node --input-type=module <<'JS'
+        import assert from 'node:assert/strict';
+        import { execFileSync } from 'node:child_process';
+        import { createHash } from 'node:crypto';
+        import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+        import { tmpdir } from 'node:os';
+        import { join } from 'node:path';
+        import { isAndroidExecutableForAbi } from './packages/os/android/android-runtime-inventory.mjs';
+
+        const lock = JSON.parse(readFileSync('packages/os/aosp/runtime/node.lock.json', 'utf8'));
+        const { version, ndk, apiLevel, buildCommit, sourceSha256, entries } = lock;
+        const sha256 = /^[0-9a-f]{64}$/;
+        assert.ok(Array.isArray(entries) && entries.length === 2, 'Pin both released Android Node ABIs');
+        assert.match(version, /^26\.\d+\.\d+$/);
+        assert.match(ndk, /^\d+\.\d+\.\d+$/);
+        assert.ok(Number.isSafeInteger(apiLevel) && apiLevel > 0, 'Invalid Android API level');
+        assert.match(buildCommit, /^[0-9a-f]{40}$/);
+        assert.match(sourceSha256, sha256);
+        assert.deepEqual(entries.map(entry => entry.abi).sort(), ['arm64-v8a', 'x86_64']);
+
+        const repo = 'elizaOS/eliza';
+        const tag = `android-node-v${version}-ndk-${ndk}`;
+        const assetName = abi => `node-v${version}-android-${abi}.zip`;
+        for (const entry of entries) {
+          assert.match(entry.sha256, sha256);
+          assert.match(entry.archiveSha256, sha256);
+          assert.equal(entry.url, `https://github.com/${repo}/releases/download/${tag}/${assetName(entry.abi)}`);
+        }
+        const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+        const archiveDir = mkdtempSync(join(tmpdir(), 'android-node-lock-'));
+        try {
+          for (const { abi, sha256, archiveSha256 } of entries) {
+            const name = assetName(abi);
+            execFileSync('gh', ['release', 'download', tag, '--repo', repo, '--pattern', name, '--dir', archiveDir], { stdio: 'inherit' });
+            const archive = join(archiveDir, name);
+            assert.equal(hash(readFileSync(archive)), archiveSha256, `${abi} archive digest does not match the lock`);
+            const manifest = JSON.parse(execFileSync('unzip', ['-p', archive, 'manifest.json'], { encoding: 'utf8', maxBuffer: 64 * 1024 }));
+            assert.deepEqual({
+              schema: manifest.schema, abi: manifest.abi, version: manifest.version, ndk: manifest.ndk,
+              apiLevel: manifest.apiLevel, buildCommit: manifest.buildCommit, sourceSha256: manifest.sourceSha256, sha256: manifest.sha256,
+            }, { schema: 1, abi, version, ndk, apiLevel, buildCommit, sourceSha256, sha256 });
+            const binary = execFileSync('unzip', ['-p', archive, 'libeliza_node.so'], { maxBuffer: 512 * 1024 * 1024 });
+            assert.ok(isAndroidExecutableForAbi(binary, abi), `${abi} archive contains the wrong executable`);
+            assert.equal(hash(binary), sha256, `${abi} executable digest does not match the lock`);
+          }
+        } finally { rmSync(archiveDir, { recursive: true, force: true }); }
+        console.log('Both released Android Node ABIs match the runtime lock.');
+        JS
