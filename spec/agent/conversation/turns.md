@@ -222,6 +222,29 @@ pure def lawOnlyARateLimitCarriesAWait(ended: ReplyKind, now: int): bool = provi
 pure def lawAWaitEndsAtTheRetryTime(ended: ReplyKind, now: int): bool = providerWaitMs(ended, now) > 0 implies now + providerWaitMs(ended, now) == retryAtIn(ended)
 ```
 
+### An interrupted reply keeps proof of an applied effect
+
+An abort, timeout or named account failure stores `cutOffEffect: "applied"`
+on its reply if an action in this turn supplied an applied receipt with a
+durable or provider-accepted commit made during the turn. A receipt marked
+as replayed, a receipt undone by a recorded rollback and a Calendar
+approval request provide no proof of an applied change. The marker is
+absent when the turn was cut before the receipt arrived or is recovered
+after a restart with no stored reply.
+
+A message POST with the request header `x-elizaos-cut-off-effect: applied`
+gets the stored marker on its buffered or streamed reply. The header does
+not change the key, content, or outcome of a turn. An initial answer, a
+joined request and a same-key replay each honor their own header. No
+receipt identifier or action payload is disclosed by the marker.
+
+```quint
+pure def carriesCutOffEffect(interrupted: bool, confirmedApplied: bool): bool =
+  interrupted and confirmedApplied
+pure def publishesCutOffEffect(stored: bool, negotiated: bool): bool =
+  stored and negotiated
+```
+
 ### After a restart a repeat replays the stored reply, and a turn the restart cut is never run again
 
 A restart loses every running turn and every five-minute receipt; the
