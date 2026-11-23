@@ -338,7 +338,7 @@ function clauseOf(text: string, phone: string | undefined, startedAt: number, na
   const field = fieldChangeIn(text)
   const title = field === undefined ? newTitle(text) : undefined
   const said = field?.value ?? title
-  const rest = [said, name].reduce((left, value) => value === undefined || value === "" ? left : left.split(value).join(" "), text).replace(eventNoun, " ")
+  const rest = [said, name].reduce<string>((left, value) => value === undefined || value === "" ? left : left.split(value).join(" "), text).replace(eventNoun, " ")
   const ending = said === undefined ? endMarker.exec(text) : null
   const marker = said === undefined && ending === null ? destinationMarker.exec(text) : null
   const shifted = said === undefined && marker === null && ending === null ? statedShift(rest) : undefined
