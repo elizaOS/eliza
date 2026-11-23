@@ -23,7 +23,7 @@ const toolMessageLimit = 4_000
 const answerNow = "Note from the agent host, not the person: no further work will run in this turn. Answer the person's latest message now with what this turn holds."
 const restoreContext: ToolDefinition = {
   name: "RESTORE_CONTEXT",
-  description: "Read only context that a notice in this request names as deferred. Use history for earlier dialogue, providers for deferred provider evidence, or full (default) for all available context. Without a notice nothing is deferred. Call this alone before planning effects. Other calls in the same response do not run. This does not read current saved records or perform an action.",
+  description: "Restore only context named in this request’s deferral notice. Scope defaults to full. Call alone before actions. Sibling calls do not run. Use live tools for current saved records.",
   parameters: {
     type: "object",
     properties: {
