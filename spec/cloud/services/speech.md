@@ -16,9 +16,9 @@ then `requestAuth` on a key-or-session route (`speechEntry`), the deployment's
 capability gate, the plan's standard request limit (`speechLimit`), the body
 (`ttsCheck` or `sttCheck`), the quote, `M::admission` on a fresh hold, the
 standing check and `M::markDispatched` that metering requires, the provider,
-and one `settlementOf`. A request id is minted per request, so a resent
-request is a new paid request; an `Idempotency-Key` sent with it is ignored.
-Wire names (`withTimestamps`, `duration_ms`, the 0.7 to 1.2 decimal speed)
+and one `settlementOf`. A synthesis sent with an `Idempotency-Key` is held
+under that key and what it speaks, so a retry of it is never paid twice; a
+transcription's request id is minted per request. Wire names (`withTimestamps`, `duration_ms`, the 0.7 to 1.2 decimal speed)
 and the NDJSON and multipart codecs are the Effect Schemas of
 `src/services/speech.schema.ts`.
 
@@ -234,7 +234,22 @@ pure def lawALongerRecordingNeverCostsLess(profile: SpeechProfile, shorter: Mill
 > charged once, nothing when it never reached the provider or the provider
 > refused it, so that a failed request costs me nothing it did not use.
 
-### Each batch request holds once under its organization and a request id the cloud mints, and spends one request of the plan's standard limit
+### Each batch request holds once under its organization and its request id, and spends one request of the plan's standard limit
+
+A transcription's request id is minted per request, so a resent recording
+is a new paid request and an `Idempotency-Key` sent with it is ignored. A
+synthesis sent without an `Idempotency-Key` is minted an id the same way.
+One sent with a key of 1 to 128 of `A-Z`, `a-z`, `0-9`, `_` and `-` is held
+under that key joined with a digest of what it speaks, each part as
+resolved from the profile: its text, context, voice, model, format, pace,
+normalization and timing. Any other key is refused `400 invalid_request`.
+The same key with other words, another voice or other options is a new paid
+request. A synthesis whose hold already exists, a retry after a lost
+answer, is spoken again and moves no money: the first request's settlement
+stands. It is spoken again only while that hold is dispatched or has been
+charged; one released, or settled at nothing because the provider refused
+it, is refused `409 idempotency_conflict` with no provider call, since
+nothing paid for it.
 
 ```quint
 pure def speechHoldKey(organization: str, requestId: str): HoldKey = { service: MeteredSpeech, caller: organization, requestId: requestId, part: WholeRequest }
@@ -242,6 +257,17 @@ pure def speechLimit(plan: P::PlanKey): R::RateLimit = R::perMinute(P::planRateL
 pure def lawSpeechSharesTheStandardLimitAndNoHold(plan: P::PlanKey, organization: str, other: str, requestId: str): bool =
   R::validLimit(speechLimit(plan)) and speechLimit(plan).name == P::planRateLimitName(P::StandardRequests)
     and (speechHoldKey(organization, requestId) == speechHoldKey(other, requestId) implies organization == other)
+type SynthesisCourse = SpeakFresh | SpeakAgain | RefuseSpeechRepeat
+pure def synthesisCourseOf(replayed: bool, earlier: M::Hold): SynthesisCourse =
+  if (not(replayed)) SpeakFresh
+  else if (earlier.phase == M::Dispatched or (earlier.phase == M::Settled and earlier.charged + earlier.uncollected > 0)) SpeakAgain
+  else RefuseSpeechRepeat
+pure val earlierValues: Set[M::Hold] = Set(M::initial, { ...M::initial, phase: M::Reserved, quote: 9, reserved: 9 }, { ...M::initial, phase: M::Dispatched, quote: 9, reserved: 9 },
+  { ...M::initial, phase: M::Settled, quote: 9, reserved: 9, charged: 9 }, { ...M::initial, phase: M::Settled, quote: 9, reserved: 9 }, { ...M::initial, phase: M::Released, quote: 9, reserved: 9 })
+pure def lawOnlyAFreshSynthesisHolds(replayed: bool, earlier: M::Hold): bool =
+  (synthesisCourseOf(replayed, earlier) == SpeakFresh iff not(replayed))
+    and (synthesisCourseOf(replayed, earlier) == SpeakAgain implies (earlier.phase == M::Dispatched or earlier.phase == M::Settled))
+    and (earlier.phase == M::Released implies synthesisCourseOf(replayed, earlier) != SpeakAgain)
 ```
 
 ### A dispatched request is charged nothing when the provider refused it, what it measured when it answered, and its quote when the reply was unclear; one never dispatched is charged nothing
