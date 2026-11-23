@@ -258,12 +258,8 @@ pure def publish(s: Transport, conn: int): Wire = { state: s, out: List(Write({ 
 pure def alwaysAtMostTwoFeeds(s: Transport): bool = feedCount(s) <= feedLimit
 pure def sometimesTwoFeeds(s: Transport): bool = feedCount(s) == feedLimit
 pure def sometimesBusyRefused(s: Transport): bool = s.exchanges.some(e => e.stage == Ended({ end: Busy }))
-pure val eval_witness_sometimesBusyRefused = (
-  ("listen", LoopbackHttp),
-  ("accept", 1), ("receive", 1, EventsSubscribe),
-  ("accept", 2), ("receive", 2, EventsSubscribe),
-  ("accept", 3), ("receive", 3, EventsSubscribe)
-)
+pure val eval_witness_sometimesTwoFeeds = (("listen", PrivateSocket), ("accept", 1), ("receive", 1, EventsSubscribe), ("accept", 2), ("receive", 2, EventsSubscribe))
+pure val eval_witness_sometimesBusyRefused = (("listen", PrivateSocket), ("accept", 1), ("receive", 1, EventsSubscribe), ("accept", 2), ("receive", 2, EventsSubscribe), ("accept", 3), ("receive", 3, EventsSubscribe))
 ```
 
 ## Story: Close the listeners once
