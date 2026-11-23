@@ -326,15 +326,36 @@ pure def sometimesCancelledAfterClaim(d: DeviceRequest): bool = d.completion == 
 ### A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation
 
 `PROPOSE_DEVICE_ACTION` is offered to the model only on an owner turn the
-enrolled device sent, with a negotiation that was not refused, and only with
-the forms the operation families registered for this turn. The turn is live
+enrolled device sent, with a negotiation that was not refused, and with
+every form the operation families registered that the negotiation offers,
+in a fixed order: the families as they registered, each with its forms in
+its own order. Its description is the tool's own guidance, then the
+guidance of each of those forms and of each family that offers one, as
+the negotiation and the installation's enabled views decide it. So the
+tool is the same on every message of a device conversation while the
+negotiation and the installation's views hold
+([planning](../conversation/planning.md)), and nothing a message carries
+changes it. What depends on the message reaches the model after it, in
+the turn's device note: the whole-message route that owns it, if any; how
+views open on it; and each offered form the message does not allow, with
+why. A form may be offered and yet not available on a message: a family
+says which of its forms depend on what the message shows, as a new phone
+note depends on the Notes screen ([surfaces](./surfaces.md)), and on a
+message a whole-message route owns only the routed forms are available.
+The turn is live
 from the owner's message until its reply ends and only while it is not
 aborted: work that still holds it afterwards has no device turn, and the
 offer checks it again just before the request is kept. The model may write
 the operation as an object or as a JSON string of one. The family of its
 wire type may first prepare it, as telephony restores the digits of a
 number the owner wrote with separators, and the operation must then match
-one of the offered forms exactly, not only by its type. Its family grounds
+one of the offered forms exactly, not only by its type, and be available
+on this message. One that matches no offered form, one that is not the
+routed request's on a routed message, and one whose form this message
+does not allow are each refused before dispatch, before the family grounds
+them: the model reads which it was and that nothing was created, so it may
+correct it, ask the owner or take another way, and the owner hears that it
+could not be prepared, never a reason taken from the screen. Its family grounds
 it in the owner's words: the host-persisted text of the message, without
 its document wrapper, and none at all when that text carries an external
 envelope, so words inside a page, an email or a connector's payload never
@@ -347,24 +368,31 @@ conversation and message, for ten minutes. Each operation of a compound
 request is its own proposal: a photo kept for its review card never holds
 back the text the same message asked for. A family may name the operation
 the owner's whole message is a strict command for, as the Browser does for
-"open example.com"; where exactly one family names one and it matches a
-form the tool offers this turn (only the routed forms while a
-[whole-message route](./surfaces.md) owns the request), the tool names
-that proposal as the turn's call to run
+"open example.com" and the surfaces do for "take a picture"; where exactly
+one family names one and it matches a form available on this message
+(only the routed forms while a [whole-message route](./surfaces.md) owns
+the request), the tool names that proposal as the turn's call to run
 before the model's choice, and it is proposed, grounded and admitted as
 any other.
 
 ```quint
 type GroundingVerdict = FamilyGrounded | FamilyRefused
 type ProposalReply = ProposalOffered | RefusedBeforeDispatch
-pure def proposalReply(deviceTurn: bool, offeredForm: bool, verdict: GroundingVerdict, admitted: bool): ProposalReply =
-  if (deviceTurn and offeredForm and verdict == FamilyGrounded and admitted) ProposalOffered else RefusedBeforeDispatch
-pure def lawOnlyAnOwnerTurnOfTheEnrolledDeviceProposes(offeredForm: bool, verdict: GroundingVerdict, admitted: bool): bool =
-  proposalReply(false, offeredForm, verdict, admitted) == RefusedBeforeDispatch
-pure def lawOnlyAnOfferedFormIsProposed(deviceTurn: bool, verdict: GroundingVerdict, admitted: bool): bool =
-  proposalReply(deviceTurn, false, verdict, admitted) == RefusedBeforeDispatch
-pure def lawAGroundedProposalIsReadmitted(deviceTurn: bool, offeredForm: bool, verdict: GroundingVerdict): bool =
-  proposalReply(deviceTurn, offeredForm, verdict, false) == RefusedBeforeDispatch
+type FormAvailability = FormNotOffered | FormRoutedAway | FormNotAvailableNow | FormAvailable
+pure def formAvailability(offeredForm: bool, routedAway: bool, availableNow: bool): FormAvailability =
+  if (not(offeredForm)) FormNotOffered else if (routedAway) FormRoutedAway else if (not(availableNow)) FormNotAvailableNow else FormAvailable
+pure def proposalReply(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict, admitted: bool): ProposalReply =
+  if (deviceTurn and availability == FormAvailable and verdict == FamilyGrounded and admitted) ProposalOffered else RefusedBeforeDispatch
+pure def lawOnlyAnOwnerTurnOfTheEnrolledDeviceProposes(availability: FormAvailability, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(false, availability, verdict, admitted) == RefusedBeforeDispatch
+pure def lawOnlyAnOfferedFormIsProposed(deviceTurn: bool, routedAway: bool, availableNow: bool, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(deviceTurn, formAvailability(false, routedAway, availableNow), verdict, admitted) == RefusedBeforeDispatch
+pure def lawAFormThisMessageDoesNotAllowIsRefusedBeforeDispatch(deviceTurn: bool, offeredForm: bool, routedAway: bool, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(deviceTurn, formAvailability(offeredForm, routedAway, false), verdict, admitted) == RefusedBeforeDispatch
+pure def lawARoutedMessageProposesOnlyItsRoute(deviceTurn: bool, offeredForm: bool, availableNow: bool, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(deviceTurn, formAvailability(offeredForm, true, availableNow), verdict, admitted) == RefusedBeforeDispatch
+pure def lawAGroundedProposalIsReadmitted(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict): bool =
+  proposalReply(deviceTurn, availability, verdict, false) == RefusedBeforeDispatch
 ```
 
 ### Each wire type belongs to at most one proposal family, and a family offers forms only of its own types
@@ -464,14 +492,15 @@ When the family refuses and no request is kept for the exact operation,
 nothing is kept: the model learns why in its own words, the owner hears the
 family's own sentence verbatim, and the result is marked
 `executionStatus: "not_started"`, which [planning](../conversation/planning.md)
-records as `Rejected`. An operation that is not an offered form, or that the
-negotiation no longer admits, is refused the same way.
+records as `Rejected`. An operation that is not an offered form, that this
+message does not allow, or that the negotiation no longer admits, is
+refused the same way.
 
 ```quint
-pure def lawAGroundingRefusalOffersNothing(deviceTurn: bool, offeredForm: bool, admitted: bool, keptSettled: bool, sameOperationOpen: bool): bool =
-  proposalAnswer(proposalReply(deviceTurn, offeredForm, FamilyRefused, admitted), false, keptSettled, sameOperationOpen) != OfferedNew
-pure def lawAnUnheldRefusalIsAnswered(deviceTurn: bool, offeredForm: bool, admitted: bool, keptSettled: bool): bool =
-  proposalAnswer(proposalReply(deviceTurn, offeredForm, FamilyRefused, admitted), false, keptSettled, false) == AnsweredRefused
+pure def lawAGroundingRefusalOffersNothing(deviceTurn: bool, availability: FormAvailability, admitted: bool, keptSettled: bool, sameOperationOpen: bool): bool =
+  proposalAnswer(proposalReply(deviceTurn, availability, FamilyRefused, admitted), false, keptSettled, sameOperationOpen) != OfferedNew
+pure def lawAnUnheldRefusalIsAnswered(deviceTurn: bool, availability: FormAvailability, admitted: bool, keptSettled: bool): bool =
+  proposalAnswer(proposalReply(deviceTurn, availability, FamilyRefused, admitted), false, keptSettled, false) == AnsweredRefused
 ```
 
 ### A read's follow-up is offered only after its reply was delivered, as its own family continued it

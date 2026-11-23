@@ -11,7 +11,7 @@ import { readReplyId, readReplyKey } from "../../read-completion.vibe"
 import { readLatestSender, smsComposeTarget, type SmsComposeOperation } from "../../operation-schemas/telephony.vibe"
 import type { DeviceOperation, DeviceOperationType } from "../../operations.schema.vibe"
 import { DeviceStoreUnavailable, openRequest } from "../../store.vibe"
-import type { DeviceProposalFamily, DeviceTurn, EarlierRequest, Grounding, ProposalForm, ProposalText } from "../family.vibe"
+import type { DeviceProposalFamily, DeviceTurn, EarlierRequest, Grounding, NegotiatedDevice, ProposalForm, ProposalText } from "../family.vibe"
 import { samePhoneNumber, withDialNumber, writesDialNumber } from "../telephony/dial-number.vibe"
 import { groundTelephonyTarget, swappedPhoneReferences, telephonyTargetRefusalReply } from "../telephony/grounding.vibe"
 import { writesContactName } from "../telephony/names.vibe"
@@ -61,10 +61,10 @@ function form(type: DeviceOperationType, properties: Record<string, ActionParame
   }
 }
 
-const has = (turn: DeviceTurn, capability: Capability) => negotiatedHas(turn.negotiation, capability)
-const offeredWith = (...capabilities: readonly Capability[]) => (turn: DeviceTurn) => capabilities.some((capability) => has(turn, capability))
-const offeredWithAll = (capabilities: readonly Capability[], unless?: Capability) => (turn: DeviceTurn) =>
-  capabilities.every((capability) => has(turn, capability)) && (unless === undefined || !has(turn, unless))
+const has = (device: NegotiatedDevice, capability: Capability) => negotiatedHas(device.negotiation, capability)
+const offeredWith = (...capabilities: readonly Capability[]) => (device: NegotiatedDevice) => capabilities.some((capability) => has(device, capability))
+const offeredWithAll = (capabilities: readonly Capability[], unless?: Capability) => (device: NegotiatedDevice) =>
+  capabilities.every((capability) => has(device, capability)) && (unless === undefined || !has(device, unless))
 
 const referenceGuidance = "Phone numbers in the owner's message appear to you as contact references (__ELIZA_CONTACT_…__), never as digits. To call, dial or text that number, copy its whole reference verbatim as the number, every character and underscore; a country code such as +1 before it is allowed. Never write digits for a number you only saw as a reference: they are invented, and the proposal is refused."
 const targetGuidance = "A target is {kind: number, number} or {kind: contact, query: the contact name as the owner said it}; the phone resolves a contact locally and its number is never returned."
@@ -386,13 +386,13 @@ function settledText(operation: DeviceOperation, result: unknown): ProposalText 
   return { forModel: shown === undefined ? lead : `${lead} ${shown}` }
 }
 
-function familyGuidance(turn: DeviceTurn): string {
-  const keypad = has(turn, "PhoneKeypadV1")
+function familyGuidance(device: NegotiatedDevice): string {
+  const keypad = has(device, "PhoneKeypadV1")
   const notes = [
     routeGuidance,
-    ...(!keypad && has(turn, "PhoneDialV1") ? [dialerGuidance] : []),
-    ...(!keypad && (has(turn, "PhoneDialV1") || has(turn, "PhoneCallV1")) ? [emergencyGuidance] : []),
-    ...(offeredWith("SmsLatestSenderV1", "SmsLatestSenderV2")(turn) ? [latestSenderGuidance(turn.negotiation)] : []),
+    ...(!keypad && has(device, "PhoneDialV1") ? [dialerGuidance] : []),
+    ...(!keypad && (has(device, "PhoneDialV1") || has(device, "PhoneCallV1")) ? [emergencyGuidance] : []),
+    ...(offeredWith("SmsLatestSenderV1", "SmsLatestSenderV2")(device) ? [latestSenderGuidance(device.negotiation)] : []),
   ]
   return notes.join(" ")
 }

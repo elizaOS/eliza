@@ -92,10 +92,15 @@ pure val wordsValues = Set(
 Opening the Camera view takes no photo, so on an owner chat turn (a direct
 or voice message of the phone's client chat) of the enrolled phone that is
 offered the capture, a message that asks for a photo now (the rule above)
-owns the whole request: the turn's device tool offers only the capture and
-says so first, and the [planner](../conversation/planning.md) withdraws the
-view navigation it would otherwise offer. Any other message, including one
-that only mentions a photo, is planned as usual.
+owns the whole request. The capture is the operation that message is a
+strict command for, so it is proposed as the turn's first call, before the
+model's choice ([proposals](./index.md)); the turn's device note says first
+that the message asks for a photo now; the device tool accepts no other
+operation on that message; and the [planner](../conversation/planning.md)
+refuses a call of the view navigation it replaces, so `VIEWS` never opens
+Camera instead. The tools stay as they are on every other message. Any
+other message, including one that only mentions a photo, is planned as
+usual.
 
 ```quint
 pure def photoCommandRouted(ownerChat: bool, captureOffered: bool, words: CameraWords): bool =
@@ -106,45 +111,53 @@ pure def lawNoRouteWithoutTheCapture(ownerChat: bool, words: CameraWords): bool 
 pure def lawOnlyAnOwnerChatIsRouted(captureOffered: bool, words: CameraWords): bool = not(photoCommandRouted(false, captureOffered, words))
 ```
 
-### An app view is offered only without completed-action navigation, and proposed only when the installation's profile enables it
+### An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it
 
-When the turn's voice view context says views arrive as completed actions,
-the model opens a view with `VIEWS` directly and is never offered
-`open_view`, which would ask the phone for a review it does not need; one
-proposed anyway is not an offered form. Otherwise a view is proposed only
-when the installation's [enabled-view profile](./capabilities.md) as it is
-now enables it, and the proposal binds that profile's revision. When the
-installation has a profile, the model is told which views it enables.
-`VIEWS` is offered on a device turn only with completed-action
-navigation, so a device turn never offers a view in two places, nor
-`VIEWS` where it could not show one.
+How views are delivered is stated anew with each message: the phone leaves
+it out while its screen is sensitive. So a device conversation's tools keep
+both homes of a view, `VIEWS` and, where the device negotiated it, the
+`open_view` form, and each message opens a view in one of them. When the
+message's voice view context says views arrive as completed actions, the
+model opens a view with `VIEWS` directly, and `open_view`, which would ask
+the phone for a review it does not need, is refused before dispatch.
+Otherwise `VIEWS`, which has no renderer for the message, refuses before
+it runs, and a view is proposed with `open_view` only when the
+installation's [enabled-view profile](./capabilities.md) as it is now
+enables it, and the proposal binds that profile's revision. The device
+note tells the model which of the two serves the message. When the
+installation has a profile and the device negotiated `open_view`, the
+model is told which views it enables.
 
 ```quint
-pure def openViewOffered(completedNavigation: bool): bool = not(completedNavigation)
+type ViewHome = ViewsShows | OpenViewProposes
+pure def viewHome(completedNavigation: bool): ViewHome = if (completedNavigation) ViewsShows else OpenViewProposes
+pure def openViewAvailable(completedNavigation: bool): bool = viewHome(completedNavigation) == OpenViewProposes
+pure def viewsShowsOnDevice(completedNavigation: bool): bool = viewHome(completedNavigation) == ViewsShows
 pure def openViewVerdict(profileEnables: bool): SurfaceVerdict = if (profileEnables) SurfaceGrounded else SurfaceRefused
-pure def lawCompletedNavigationOffersNoView(completedNavigation: bool): bool = completedNavigation implies not(openViewOffered(completedNavigation))
-pure def viewsOfferedOnDevice(completedNavigation: bool): bool = completedNavigation
-pure def lawADeviceTurnOffersAViewInOnePlace(completedNavigation: bool): bool =
-  not(viewsOfferedOnDevice(completedNavigation) and openViewOffered(completedNavigation))
+pure def lawCompletedNavigationProposesNoView(completedNavigation: bool): bool = completedNavigation implies not(openViewAvailable(completedNavigation))
+pure def lawAMessageOpensAViewInOnePlace(completedNavigation: bool): bool =
+  viewsShowsOnDevice(completedNavigation) != openViewAvailable(completedNavigation)
 pure def lawADisabledViewIsNeverProposed(profileEnables: bool): bool = not(profileEnables) implies openViewVerdict(profileEnables) == SurfaceRefused
 ```
 
-### A new note is offered only while the owner's Notes screen selects the phone's own Notes
+### A new note is proposed only while the owner's Notes screen selects the phone's own Notes
 
-`create_note` writes to the phone's own Notes store, so it is offered only
-when the turn's observation shows the Notes view on a screen that is not
-sensitive with a phone note source (`note-source`, its ID and revision) or
-a phone note (`note`, with its account, source revision, ID and revision)
-selected, each of a valid form. On any other turn, including one with no
-observation or a canonical Notes selection, a note request belongs to the
-canonical Notes service, and whenever this family's guidance reaches the
-model it is told so.
+`create_note` writes to the phone's own Notes store, so it is available
+only on a message whose observation shows the Notes view on a screen that
+is not sensitive with a phone note source (`note-source`, its ID and
+revision) or a phone note (`note`, with its account, source revision, ID
+and revision) selected, each of a valid form. The form is offered whenever
+the device negotiated it, and a `create_note` on any other message,
+including one with no observation or a canonical Notes selection, is
+refused before dispatch: the note request belongs to the canonical Notes
+service, and the device note says so whenever the form is offered. A
+device that did not negotiate it has the family's guidance say so instead.
 
 ```quint
-pure def noteOffered(notesView: bool, sensitive: bool, phoneNotesSelected: bool): bool = notesView and not(sensitive) and phoneNotesSelected
+pure def noteAvailable(notesView: bool, sensitive: bool, phoneNotesSelected: bool): bool = notesView and not(sensitive) and phoneNotesSelected
 pure def lawANoteNeedsThePhoneNotesSelected(notesView: bool, sensitive: bool, phoneNotesSelected: bool): bool =
-  noteOffered(notesView, sensitive, phoneNotesSelected) implies (notesView and phoneNotesSelected)
-pure def lawASensitiveScreenOffersNoNote(notesView: bool, phoneNotesSelected: bool): bool = not(noteOffered(notesView, true, phoneNotesSelected))
+  noteAvailable(notesView, sensitive, phoneNotesSelected) implies (notesView and phoneNotesSelected)
+pure def lawASensitiveScreenProposesNoNote(notesView: bool, phoneNotesSelected: bool): bool = not(noteAvailable(notesView, true, phoneNotesSelected))
 ```
 
 ### A new note runs without its card only when its title and body are the owner's own words
