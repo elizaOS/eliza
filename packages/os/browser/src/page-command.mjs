@@ -1665,7 +1665,8 @@ export function pageCommand(
           const headers = Array.from(head.rows[0].cells);
           const simple = headers.length <= 8 && head.rows.length === 1 &&
             !table.caption && table.tBodies.length === 1 &&
-            !table.querySelector(excluded + ',table,tbody th,tfoot th,a,[role="link"],[role="button"],[tabindex],[onclick]') &&
+            !table.querySelector(labelExcluded + ",table,tbody th,tfoot th,[tabindex],[onclick]") &&
+            !Array.from(table.querySelectorAll("td[rowspan]")).some((cell) => cell.rowSpan !== 1) &&
             headers.every((cell) => visibleCell(cell) && (!cell.scope || cell.scope === "col"));
           const columns = simple ? headers.map(visibleLabel) : [];
           tableColumns.set(table, columns.length && columns.every(Boolean) &&

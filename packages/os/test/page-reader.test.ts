@@ -330,6 +330,13 @@ describe('The WebView runs the page reader Chromium runs (spec/os/browser/pageCo
     ]);
     expect(witnessedRows.every(({ key }) => key !== owningSection?.key)).toBe(true);
     await tab.evaluate(() => {
+      const previousCell = document.querySelector("#line-items tbody td");
+      if (previousCell instanceof HTMLTableCellElement) previousCell.rowSpan = 2;
+    });
+    expect((await rows()).some(({ tableRow }) => tableRow !== undefined)).toBe(false);
+    await tab.evaluate(() => {
+      const previousCell = document.querySelector("#line-items tbody td");
+      if (previousCell instanceof HTMLTableCellElement) previousCell.rowSpan = 1;
       const column = document.querySelector("#line-items th");
       if (column instanceof HTMLElement) column.style.visibility = "hidden";
     });
