@@ -7,7 +7,6 @@ public final class HealthPolicy {
   public static final int RESTART_STRIKES = 3;
   public static final int BUSY_RESTART_TICKS = 3;
   public static final int ABSENCE_REFUSALS = 2;
-  public static final int RESTART_BUDGET = 5;
   public static final long STABLE_RUN_MS = 300_000L;
   private static final long[] RESTART_DELAYS_MS = { 1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 32_000L, 60_000L };
 
