@@ -67,7 +67,6 @@ runs:
     # or cancelled verification of a superseded default-branch push. A job tries both key layouts for this lockfile first.
     # Each entry is named by the tools and inputs that produced it. A selftest-* job holds the selftest's tool runs,
     # which no other job adds to, and any other job the spec caches of the projects, which no selftest-* job checks.
-    # A simulate-* job starts from the spec cache verify saved, which holds every simulation its last check used.
     - id: spec-cache
       if: inputs.verification == 'true' && inputs.cache-verification == 'true'
       shell: bash

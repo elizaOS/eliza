@@ -126,13 +126,16 @@ jobs:
         uses: ./.github/actions/setup
         with:
           job: ${{ matrix.name }}
-      - if: matrix.name == 'verify'
+      - id: simulations
+        if: matrix.name == 'verify'
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           pattern: simulations-*
           path: .spec-cache
           merge-multiple: true
+      - if: steps.simulations.outcome == 'failure'
+        run: echo "::warning::The simulate shards' results did not download; this check simulates every module itself."
       - id: verify-tasks
         run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
       - name: Report Turbo task timings
@@ -259,21 +262,27 @@ jobs:
         run: |
           node --input-type=module <<'JS'
           import { createHash } from "node:crypto";
+          import fs from "node:fs";
           import { precomputeSimulations, readSpecs } from "./vibestack/formal.ts";
+          const simulations = () => fs.existsSync(".spec-cache") ? fs.readdirSync(".spec-cache").filter((name) => name.startsWith("simulate-")) : [];
+          const restored = new Set(simulations());
           const specs = readSpecs(process.cwd());
           const inShard = ({ file }) => parseInt(createHash("sha256").update(file).digest("hex").slice(0, 8), 16) % Number(process.env.SHARDS) === Number(process.env.SHARD) - 1;
           const names = specs.filter(inShard).map(({ name }) => name);
           const results = await precomputeSimulations(process.cwd(), specs, names);
+          fs.mkdirSync(".simulations", { recursive: true });
+          const written = simulations().filter((name) => !restored.has(name));
+          for (const name of written) fs.copyFileSync(`.spec-cache/${name}`, `.simulations/${name}`);
           const failed = results.filter(({ ok }) => !ok);
           for (const { stage, summary, detail, where } of failed) console.log(`✗ ${stage} ${where ?? ""}: ${summary}\n${detail}`);
-          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${failed.length} failed`);
+          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${written.length} new entries, ${failed.length} failed`);
           process.exitCode = failed.length ? 1 : 0;
           JS
       - if: always()
         uses: actions/upload-artifact@v7
         with:
           name: simulations-${{ matrix.shard }}
-          path: .spec-cache/simulate-*
+          path: .simulations
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 1
