@@ -304,9 +304,11 @@ refresh or `RenewKey`, before any new renewal, so a lost reply never strands
 the device. A renewal the cloud refuses ends as a refused sign-in does; one
 refused without a credential reason, or whose reply was lost, keeps the
 active key and the lease, and the next lease refresh or daily job asks
-again. The cloud answers a renewal asked again before the acknowledgement
-with the same key (`nativeClients/deviceKeys`), so asking again never leaves
-a second key behind.
+again. The cloud answers a renewal asked again with the same lease refresh
+before the acknowledgement with the same key, on both its servers, and one
+asked with a newer refresh while that key waits without a credential reason
+(`nativeClients/deviceKeys`), so asking again never leaves a second key
+behind.
 Starting a renewal changes nothing else: the active key, the duties and the
 account session stay as they were until the successor is acknowledged.
 

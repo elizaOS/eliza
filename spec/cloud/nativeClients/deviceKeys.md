@@ -522,17 +522,24 @@ pure def sometimesRenewedKeyLive(g: Grant): bool = isLive(g) and isRenewal(g)
 pure def sometimesRenewalAwaitingAcknowledgement(g: Grant): bool = g.phase == Exchanged and isRenewal(g)
 ```
 
-### Renewing again before the acknowledgement answers the same successor, so a lost or doubled renewal never mints a second key
+### A renewal answered again leaves its waiting successor as it was and mints no key
 
 While a key's renewed successor waits for its acknowledgement and its code
 deadline has not passed, a renewal by the same lease, while the person's
 device epoch is still the one it was issued under, answers that successor
-again from its sealed copy, with the same credential and secret, and mints
-nothing. The shell reads the key being replaced under its row lock before it
-looks for the successor, so two renewals at once answer one key, and the
-second acknowledgement of that key answers as a repeat, never
-`credential_revoked`. Only after the deadline does a renewal mint a new
-successor.
+again with the same credential and secret, and mints nothing. This model
+holds one grant, so it checks only that answering again changes nothing and
+mints no key; that the shell answers the waiting successor instead of
+minting a second one is the shell's obligation, which no model check sees,
+and the renewal journeys of both servers test it. The Node server answers
+from the successor's sealed copy; the Worker's `POST /api/auth/device/renew`
+derives the secret from the presented lease refresh and the successor's
+key, and answers a renewal by a different refresh while a successor waits
+`409 renewal_pending`, with no credential reason, so the device keeps its
+key and asks again later. Each reads the key being replaced under its row
+lock before it looks for the successor, so two renewals at once answer one
+key, and at most one successor of a key can be acknowledged. Only after the
+deadline does a renewal mint a new successor.
 
 ```quint
 pure def isRenewalOf(g: Grant, fromKey: str): bool = g.origin == Renewed({ fromKey: fromKey })

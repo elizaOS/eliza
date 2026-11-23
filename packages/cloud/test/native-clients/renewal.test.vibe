@@ -1,4 +1,4 @@
-// spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/deviceKeys.md, "Renewing again before the acknowledgement answers the same successor, so a lost or doubled renewal never mints a second key"
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/deviceKeys.md, "A renewal answered again leaves its waiting successor as it was and mints no key"
 import { assert, describe, it } from "@effect/vitest"
 import { seedClients } from "../../src/operator/clients.vibe"
 import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
@@ -100,7 +100,7 @@ describe("Device key renewal through the lease (spec/cloud/nativeClients/deviceK
     }
   }))
 
-  it.live("Renewing again before the acknowledgement answers the same successor, two renewals at once answer one key, and its second acknowledgement is a repeat (spec/cloud/nativeClients/deviceKeys.md, \"Renewing again before the acknowledgement answers the same successor, so a lost or doubled renewal never mints a second key\")", () => scoped(effect {
+  it.live("Renewing again before the acknowledgement answers the same successor, two renewals at once answer one key, and its second acknowledgement is a repeat (spec/cloud/nativeClients/deviceKeys.md, \"A renewal answered again leaves its waiting successor as it was and mints no key\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(start))
     provide Clock.Clock = clock.clock {
@@ -108,8 +108,7 @@ describe("Device key renewal through the lease (spec/cloud/nativeClients/deviceK
     try seeded(cloud)
     const signed = try signedIn(cloud, "twice@example.com")
     const tablet = try signedInTablet(cloud, signed.accessToken)
-    const first = (try renew(cloud, tablet.refresh)).body as Key
-    const lost = (try renew(cloud, tablet.refresh)).body as Key
+    const [first, lost] = (try Effect.all([renew(cloud, tablet.refresh), renew(cloud, tablet.refresh)], { concurrency: "unbounded" })).map((answer) => answer.body as Key)
     const together = try Effect.all([renew(cloud, tablet.refresh), renew(cloud, tablet.refresh)], { concurrency: "unbounded" })
     const beforeAck = [try usable(cloud, tablet.key.secret), try usable(cloud, first.secret)]
     const acks = try Effect.all([acknowledge(cloud, first), acknowledge(cloud, lost)], { concurrency: "unbounded" })
