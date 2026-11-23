@@ -1,4 +1,4 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A host may shorten how long a rate limit holds the account, never past the provider's retry time"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A host may shorten how long a rate limit holds the account, never past the provider's retry time"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams } from "@elizaos/core"
@@ -7,9 +7,19 @@ import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
 import { probeOwnKey, registerOwnKeyModels } from "../src/models/own-key-provider.vibe"
+import { conversationCache } from "../src/conversation/planning.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
 import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
 import { launchDocument, launchFrame, type Backend } from "./support/scratch.ts"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  export function digest(text: string): string {
+    return createHash("sha256").update(text).digest("hex")
+  }
+}
+import { digest } from node
 
 effect function bound(backend: Backend, key: string, environment?: Readonly<Record<string, string>>) {
   const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend, ...(environment === undefined ? {} : { environment }) })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
@@ -207,7 +217,7 @@ it.effect('An own-key overload or timeout is a provider issue and is retried, an
   assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), "max_completion_tokens" in (bodies[0] ?? {}), bodies[2]?.max_completion_tokens], [0.2, ["\n\n"], false, false, 256])
 })
 
-it.effect('A host hold shortens a rate limit and the refusal carries the time left, a parse failure is not retried, and a thinking hint reaches only a model that documents it (spec/agent/models/binding.md, "A host may shorten how long a rate limit holds the account, never past the provider\'s retry time"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
+it.effect('A host hold shortens a rate limit and the refusal carries the time left, a parse failure is not retried, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A host may shorten how long a rate limit holds the account, never past the provider\'s retry time"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const held = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey, { OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS: "2" })
   registerCloudModels(held.runtime, held.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
@@ -226,13 +236,18 @@ it.effect('A host hold shortens a rate limit and the refusal carries the time le
 
   const hinted = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
   registerCloudModels(hinted.runtime, hinted.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
-  try Effect.sync(() => cloud.script(text("off"), text("low"), text("other")))
+  const room = "00000000-0000-4000-8000-0000000000aa"
+  const planner = conversationCache(hinted.runtime, room, "planner")
+  try Effect.sync(() => cloud.script(text("off"), text("low"), text("other"), text("keyed"), text("unkeyed")))
   try host("thinking off on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Draft.", providerOptions: { eliza: { thinking: "off" } } }))
   try host("thinking low on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Plan.", providerOptions: { eliza: { thinking: "low" } } }))
   try host("thinking low elsewhere", () => hinted.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: { eliza: { thinking: "low" } } }))
-  const sent = cloud.calls.slice(-3).map((call) => call.body as Record<string, unknown>)
-  assert.deepStrictEqual(sent.map((body) => [body.reasoning_effort, "max_tokens" in body, JSON.stringify(body).includes("thinking")]),
-    [["none", false, false], ["low", false, false], [undefined, false, false]])
+  try host("planner key on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Plan.", providerOptions: planner }))
+  try host("planner key elsewhere", () => hinted.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: planner }))
+  const sent = cloud.calls.slice(-5).map((call) => call.body as Record<string, unknown>)
+  assert.deepStrictEqual(sent.map((body) => [body.reasoning_effort, "max_tokens" in body, JSON.stringify(body).includes("thinking"), body.prompt_cache_key]),
+    [["none", false, false, undefined], ["low", false, false, undefined], [undefined, false, false, undefined],
+      [undefined, false, false, `eliza-workflow-v1:${digest(`${JSON.stringify([hinted.runtime.agentId, room])}:planner`)}`], [undefined, false, false, undefined]])
 
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "qwen-3.8-27b", large: "large" }
   const ownKey = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)
@@ -243,5 +258,7 @@ it.effect('A host hold shortens a rate limit and the refusal carries the time le
   const afterParse = [completions(cloud) - calls, (try ownKey.binding.read()).accountState]
   try host("own key off cerebras", () => ownKey.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: { eliza: { thinking: "low" } } }))
   assert.deepStrictEqual([unparsed?.code, unparsed?.status, ...afterParse], ["PROVIDER_TOOL_CALL_PARSE_FAILED", 400, 1, "provider_issue"])
-  assert.strictEqual((cloud.calls.at(-1)?.body as Record<string, unknown>).reasoning_effort, undefined)
+  try Effect.sync(() => cloud.script(text("not on cerebras either")))
+  try host("own key qwen off cerebras", () => ownKey.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: planner }))
+  assert.deepStrictEqual(cloud.calls.slice(-2).map((call) => [(call.body as Record<string, unknown>).reasoning_effort, (call.body as Record<string, unknown>).prompt_cache_key]), [[undefined, undefined], [undefined, undefined]])
 })

@@ -233,6 +233,25 @@ pure def lawNoCapUnlessTheCallerNamesOne(omit: bool): bool = capSent(NoCapAsked,
 pure def lawOmittingDropsTheCap(asked: CapAsk): bool = capSent(asked, true) == NoCapAsked
 ```
 
+### A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one
+
+A caller names its conversation's prompt cache key in
+`providerOptions.cerebras.promptCacheKey`. It is sent as
+`prompt_cache_key` only on the routes that take reasoning hints (the cloud,
+and an own-key endpoint whose host is `cerebras.ai` or under it) and only
+for `qwen-3.8-27b`, read as the hint rule reads the id, so the cloud's
+`cerebras/qwen-3.8-27b` sends it too. Any other model or endpoint sends no
+key, and a call whose caller names none sends none: the provider then
+chooses its own cache affinity.
+
+```quint
+pure def cacheKeySent(family: ReasoningFamily, cerebrasRoute: bool, named: bool): bool =
+  named and cerebrasRoute and family == QwenReasoning
+pure def lawNoKeyIsInvented(family: ReasoningFamily, cerebrasRoute: bool): bool = not(cacheKeySent(family, cerebrasRoute, false))
+pure def lawOnlyQwenOnACerebrasRouteSendsTheKey(family: ReasoningFamily, cerebrasRoute: bool): bool =
+  cacheKeySent(family, cerebrasRoute, true) iff (cerebrasRoute and family == QwenReasoning)
+```
+
 ## Story: Keep the account state honest
 
 > As the owner, I want to see why my agent cannot answer, from what the
