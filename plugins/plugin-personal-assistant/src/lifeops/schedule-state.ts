@@ -28,12 +28,7 @@ import type {
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import type { LifeOpsScheduleInsightRecord } from "./repository.js";
-import {
-  addDaysToLocalDate,
-  buildUtcDateFromLocalParts,
-  getLocalDateKey,
-  getZonedDateParts,
-} from "./time.js";
+import { getLocalDateKey, getZonedDateParts } from "./time.js";
 export const SCHEDULE_OBSERVATION_BUCKET_MINUTES = 30;
 export const SCHEDULE_OBSERVATION_LOOKBACK_MS = 48 * 60 * 60 * 1000;
 export const SCHEDULE_CLOUD_SYNC_TTL_MS = 15 * 60 * 1000;
@@ -89,28 +84,24 @@ function bucketIso(
   if (parsed === null) {
     return null;
   }
+  // Step from the instant itself. Rebuilding the bucket from local wall-clock
+  // parts resolves a repeated fall-back hour to its earlier instant, so a
+  // time near or inside the repeated hour moved by an hour.
   const date = new Date(parsed);
   const parts = getZonedDateParts(date, timezone);
-  const totalMinutes = parts.hour * 60 + parts.minute;
   const bucketSize = SCHEDULE_OBSERVATION_BUCKET_MINUTES;
-  const roundedMinutes =
-    mode === "floor"
-      ? Math.floor(totalMinutes / bucketSize) * bucketSize
-      : mode === "ceil"
-        ? Math.ceil(totalMinutes / bucketSize) * bucketSize
-        : Math.round(totalMinutes / bucketSize) * bucketSize;
-  const dayDelta = Math.floor(roundedMinutes / (24 * 60));
-  const minutesOfDay = ((roundedMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
-  const dateOnly = addDaysToLocalDate(parts, dayDelta);
-  const bucketed = buildUtcDateFromLocalParts(timezone, {
-    year: dateOnly.year,
-    month: dateOnly.month,
-    day: dateOnly.day,
-    hour: Math.floor(minutesOfDay / 60),
-    minute: minutesOfDay % 60,
-    second: 0,
-  });
-  return bucketed.toISOString();
+  const minutesIntoBucket = parts.minute % bucketSize;
+  const floorMs =
+    parsed -
+    (minutesIntoBucket * 60 + parts.second) * 1000 -
+    date.getUTCMilliseconds();
+  const roundUp =
+    mode === "ceil"
+      ? minutesIntoBucket > 0
+      : mode === "nearest" && minutesIntoBucket * 2 >= bucketSize;
+  return new Date(
+    roundUp ? floorMs + bucketSize * 60_000 : floorMs,
+  ).toISOString();
 }
 function isAsleepState(state: LifeOpsCircadianState): boolean {
   return state === "sleeping" || state === "napping";
@@ -859,8 +850,13 @@ export function mergeScheduleObservations(args: {
       firstActiveAt,
     },
   });
+  // Stored meal-window starts are floored to the observation bucket, and the
+  // insight opens an in-progress window at `now`. Compare against the floored
+  // `now` so the current bucket's window still counts as the next meal.
+  const mealHorizonMs =
+    parseIsoMs(bucketIso(now.toISOString(), args.timezone, "floor")) ?? nowMs;
   const mealWindowStartFromObservation =
-    mealWindow && isFutureIsoAt(mealWindow.windowStartAt, nowMs)
+    mealWindow && isFutureIsoAt(mealWindow.windowStartAt, mealHorizonMs)
       ? mealWindow.windowStartAt
       : null;
   const mealWindowStartFromSnapshot =
@@ -868,7 +864,7 @@ export function mergeScheduleObservations(args: {
       ? pickFutureSnapshotValue(
           relevant,
           (snapshot) => snapshot.nextMealWindowStartAt,
-          nowMs,
+          mealHorizonMs,
         )
       : null;
   const mealWindowSource: "observation" | "snapshot" | null =

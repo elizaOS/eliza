@@ -262,7 +262,7 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
       opts.channelIds?.length
     )
       throw unavailable(
-        "Use a Gmail query for this source; account and channel ids cannot override its owner.",
+        "Use MESSAGE_SEARCH_INBOX with a native Gmail query, such as in:sent for sent mail. Omit worldIds and channelIds; this Gmail source is bound to its owner.",
       );
     const parts = [query || "in:inbox"];
     if (opts.unreadOnly) parts.push("is:unread");

@@ -33,6 +33,8 @@ const LINKEDIN_RESPONSE_MAX_BYTES = 1024 * 1024;
 // Defensive work bound, not a provider maximum. The shared media downloader's
 // 25 MiB ceiling needs at most seven of LinkedIn's documented 4 MiB parts.
 const LINKEDIN_VIDEO_MAX_UPLOAD_PARTS = 16;
+const LINKEDIN_AD_ACCOUNT_PAGE_SIZE = 100;
+const LINKEDIN_AD_ACCOUNT_MAX_PAGES = 200;
 
 async function bufferLinkedInResponse(response: Response, signal: AbortSignal): Promise<Response> {
   const contentLength = response.headers.get("content-length");
@@ -248,7 +250,6 @@ interface LinkedInErrorBody {
 interface LinkedInCollection<T> {
   elements?: T[];
   metadata?: { nextPageToken?: string | null };
-  paging?: { start?: number; count?: number };
 }
 
 interface LinkedInAdAccount {
@@ -706,17 +707,47 @@ export const linkedinAdsProvider: AdProvider = {
   async listAdAccounts(
     credentials: AdAccountCredentials,
   ): Promise<Array<{ id: string; name: string }>> {
-    const { body } = await linkedinRequest<LinkedInCollection<LinkedInAdAccount>>(
-      "/adAccounts",
-      credentials,
-      {
-        rawQuery: "q=search&search=(status:(values:List(ACTIVE)))&pageSize=1000",
-      },
-    );
-    return (body.elements ?? []).map((account) => ({
-      id: String(account.id),
-      name: account.name || String(account.id),
-    }));
+    const accounts: Array<{ id: string; name: string }> = [];
+    const seenAccounts = new Set<string>();
+    const seenCursors = new Set<string>();
+    let pageToken: string | undefined;
+    for (let page = 0; page < LINKEDIN_AD_ACCOUNT_MAX_PAGES; page++) {
+      const cursorQuery =
+        pageToken === undefined ? "" : `&pageToken=${encodeURIComponent(pageToken)}`;
+      const { body } = await linkedinRequest<LinkedInCollection<LinkedInAdAccount>>(
+        "/adAccounts",
+        credentials,
+        {
+          rawQuery: `q=search&search=(status:(values:List(ACTIVE)))&pageSize=${LINKEDIN_AD_ACCOUNT_PAGE_SIZE}${cursorQuery}`,
+        },
+      );
+      const elements = body.elements ?? [];
+      for (const account of elements) {
+        const id = String(account.id);
+        if (seenAccounts.has(id)) {
+          throw new ElizaError("LinkedIn repeated an ad account page", {
+            code: "LINKEDIN_AD_ACCOUNT_PAGINATION_STALLED",
+            context: { page, accountId: id },
+          });
+        }
+        seenAccounts.add(id);
+        accounts.push({ id, name: account.name || id });
+      }
+      const nextPageToken = body.metadata?.nextPageToken;
+      if (!nextPageToken) return accounts;
+      if (seenCursors.has(nextPageToken)) {
+        throw new ElizaError("LinkedIn repeated an ad account pagination cursor", {
+          code: "LINKEDIN_AD_ACCOUNT_PAGINATION_STALLED",
+          context: { page },
+        });
+      }
+      seenCursors.add(nextPageToken);
+      pageToken = nextPageToken;
+    }
+    throw new ElizaError("LinkedIn ad account listing did not terminate", {
+      code: "LINKEDIN_AD_ACCOUNT_PAGINATION_UNBOUNDED",
+      context: { pages: LINKEDIN_AD_ACCOUNT_MAX_PAGES },
+    });
   },
 
   async createCampaign(

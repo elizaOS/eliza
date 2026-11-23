@@ -91,7 +91,7 @@
     "platformDetails": {
       "browser": "Graceful unsupported fallback.",
       "ios": true,
-      "node": "macOS uses the Electrobun EventKit dylib instead.",
+      "node": "No Node implementation. On macOS the agent-side calendar plugin reaches Apple Calendar through the EventKit dylib located by src/macos-bridge-policy.ts.",
       "android": "Explicit host-configured CalendarProvider adapter through the ./android ESM entrypoint."
     }
   }

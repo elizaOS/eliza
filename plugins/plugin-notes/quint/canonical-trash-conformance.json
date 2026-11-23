@@ -22,6 +22,7 @@
         "NotesStore keeps another note when an edit by id passes through its text",
         "NotesStore keeps another note when a new draft's first save matches its text",
         "NotesStore create-note with forceNew keeps the other note through interact",
+        "NotesStore create-note with a creationId replays only that creation",
         "NotesStore serializes concurrent writes without losing a mutation",
         "NotesStore scopes default stores per agent and shares serialization for duplicate runtime construction",
         "NotesStore keeps unscoped workbench state outside the agent-scoped durable store",
@@ -85,6 +86,7 @@
         "canonical Notes Trash retention commits expired recording work when the opted-in service restarts",
         "canonical Notes Trash retention requires the current owner and current collection review for Empty",
         "canonical Notes Trash retention retains exact recording work until a trusted host confirms the erase",
+        "canonical Notes Trash retention lets the Notes client erase Trash and finish recording cleanup through the owner routes",
         "canonical Notes Trash retention refuses an audio claim shared by a retained note",
         "canonical Notes Trash retention keeps erase blocked by an ambiguous retained audioId reference",
         "canonical Notes Trash retention keeps erase blocked by an ambiguous retained recordingId reference",
@@ -99,7 +101,11 @@
         "canonical Notes Trash retention keeps the durable receipt truthful after cancellation during committed success",
         "canonical Notes Trash retention keeps the durable receipt truthful after cancellation during lost acknowledgement",
         "canonical Notes Trash retention keeps the durable receipt truthful after cancellation during failed readback",
-        "canonical Notes Trash retention keeps the durable receipt truthful after cancellation during mismatched readback"
+        "canonical Notes Trash retention keeps the durable receipt truthful after cancellation during mismatched readback",
+        "host-registered recording cleanup verifier retires a receipt only after the registered host service confirms it",
+        "host-registered recording cleanup verifier keeps the receipt when no host verifier is registered or it lacks the method",
+        "host-registered recording cleanup verifier keeps the receipt when a registered host answers with anything but true",
+        "host-registered recording cleanup verifier prefers the constructor verifier over a registered host service"
       ]
     },
     {

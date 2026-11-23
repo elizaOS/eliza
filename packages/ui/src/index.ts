@@ -326,7 +326,6 @@ export { PageLoadingState } from "./components/composites/page-panel/content-sta
 export { PagePanel } from "./components/composites/page-panel/index.js";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor.js";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel.js";
-export { DesktopTabBar } from "./components/DesktopTabBar.js";
 export { AppsPageView } from "./components/pages/AppsPageView.js";
 export { LauncherSurface } from "./components/pages/LauncherSurface.js";
 export { PluginPageFrame } from "./components/pages/PluginPageFrame.js";
@@ -411,7 +410,6 @@ export { StartupFailureView } from "./components/shell/StartupFailureView.js";
 export { StartupScreen } from "./components/shell/StartupScreen.js";
 export { StartupShell } from "./components/shell/StartupShell.js";
 export { SystemWarningBanner } from "./components/shell/SystemWarningBanner.js";
-export { TrayLauncher } from "./components/shell/TrayLauncher.js";
 export { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows.js";
 export { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces.js";
 export { VoiceCaptureHud } from "./components/shell/VoiceCaptureHud.js";
@@ -878,7 +876,6 @@ export {
 } from "./hooks/useAvailableViews.js";
 export { useBugReportState } from "./hooks/useBugReport.hooks.js";
 export { useContextMenu } from "./hooks/useContextMenu.js";
-export { useDesktopTabs } from "./hooks/useDesktopTabs.js";
 export { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal.js";
 export { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut.js";
 export { useVoiceChat } from "./hooks/useVoiceChat.js";
@@ -1061,27 +1058,9 @@ export {
   startRendererServiceHost,
 } from "./platform/renderer-services.js";
 export {
-  deleteRuntimeCredentialRecord,
-  storeRuntimeCredential,
-} from "./platform/runtime-credential-store.js";
-export {
   configureRuntimeManagement,
   type LocalRuntimeManagementRequest,
 } from "./platform/runtime-management.js";
-export {
-  inspectSshHost,
-  requestSshRuntime,
-  startSshRuntime,
-  stopSshRuntime,
-} from "./platform/ssh-runtime.js";
-export {
-  removeSshRuntime,
-  resumePendingSshRuntimeCleanups,
-  retrySshRuntimeCleanup,
-  type SshRuntimeCleanupResult,
-  type SshRuntimeLifecycleDependencies,
-  setupSshRuntime,
-} from "./platform/ssh-runtime-lifecycle.js";
 export {
   clearStandaloneBottomReclaim,
   installStandaloneBottomReclaim,
@@ -1181,11 +1160,6 @@ export {
   describeStoppedDedicatedCloudAgent,
   isTerminalDedicatedCloudAgentErrorState,
 } from "./state/dedicated-cloud-agent-error.js";
-export {
-  type DesktopLauncherEntry,
-  type DesktopLauncherIconId,
-  setDesktopLauncherEntries,
-} from "./state/desktop-tray-launcher.js";
 export {
   browserDocumentDraftSlot,
   compareExchangeDraftStore,
@@ -1328,7 +1302,6 @@ export {
 export { useAppShellState } from "./state/useAppShellState.js";
 export { useCharacterState } from "./state/useCharacterState.js";
 export { useChatCallbacks } from "./state/useChatCallbacks.js";
-export { getChatOverlayHotkey } from "./state/useChatOverlayHotkey.js";
 export { useChatState } from "./state/useChatState.js";
 export { useCloudState } from "./state/useCloudState.js";
 export { useDataLoaders } from "./state/useDataLoaders.js";
@@ -1448,7 +1421,6 @@ export {
   loadContextInspectorView,
   loadConversationsSidebar,
   loadDatabasePageView,
-  loadDesktopWorkspaceSection,
   loadDeveloperWorkspace,
   loadFilesView,
   loadLiveMeetingPage,

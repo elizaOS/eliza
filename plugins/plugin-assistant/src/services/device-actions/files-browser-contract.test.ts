@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { deviceOperationSupportedByCapabilities } from "./contract.ts";
+import { deviceActionForCapabilities, proposeDeviceAction } from "./action.ts";
+import {
+  deviceOperationFormSupported,
+  deviceOperationSupportedByCapabilities,
+} from "./contract.ts";
 import {
   describeFilesOperation,
   FILES_CAPABILITY,
   FILES_DIRECT_TYPES,
   FILES_OPERATION_SCHEMAS,
   FILES_OPERATION_TYPES,
+  FILES_SHOWN_TARGET_CAPABILITY,
   filesContextAllowed,
   filesNeedsIdentity,
+  filesShownTarget,
   isFilesOperation,
   validateFilesOperation,
 } from "./files-browser-contract.ts";
@@ -161,7 +167,73 @@ describe("files.browser.v1 operations", () => {
       "files_share",
       "files_trash",
       "files_move",
+      // The same three by shown positions (files.shown-target.v1).
+      "files_share",
+      "files_trash",
+      "files_move",
       "files_folder_create",
     ]);
+  });
+  it("names files to share, move or trash by their shown positions", () => {
+    for (const op of [
+      { type: "files_share", shown: [1, 3] },
+      { type: "files_move", shown: [2], dest: "Documents" },
+      { type: "files_trash", shown: [1] },
+    ]) {
+      const valid = validateFilesOperation(op);
+      expect(valid).toEqual(op);
+      expect(validateFilesOperation(valid)).toEqual(valid);
+      expect(filesShownTarget(valid)).toBe(true);
+      // Identities bind only after the phone resolves the positions to paths.
+      expect(filesNeedsIdentity(valid)).toBe(false);
+      expect(deviceOperationFormSupported(valid, [FILES_CAPABILITY])).toBe(
+        false,
+      );
+      expect(
+        deviceOperationFormSupported(valid, [
+          FILES_CAPABILITY,
+          FILES_SHOWN_TARGET_CAPABILITY,
+        ]),
+      ).toBe(true);
+    }
+    expect(
+      deviceOperationFormSupported({ type: "files_trash", paths: ["a"] }, [
+        FILES_CAPABILITY,
+      ]),
+    ).toBe(true);
+    expect(filesShownTarget({ type: "files_open", shown: 1 })).toBe(false);
+    for (const bad of [
+      { type: "files_share", shown: [] },
+      { type: "files_share", shown: [0] },
+      { type: "files_share", shown: [1, 1] },
+      { type: "files_share", shown: 1 },
+      { type: "files_share", shown: [1], paths: ["a"] },
+      { type: "files_trash", shown: [1], reviewed: ["a".repeat(43)] },
+      { type: "files_move", shown: [1] },
+      { type: "files_folder_create", parent: "", name: "a", shown: [1] },
+    ])
+      expect(() => validateFilesOperation(bad)).toThrow();
+    expect(
+      describeFilesOperation({ type: "files_trash", shown: [1, 2] }),
+    ).toEqual({
+      title: "Move 2 items to Trash",
+      description: "Items 1, 2 in the results shown",
+    });
+  });
+  it("offers shown positions on a share, move or trash only with files.shown-target.v1", () => {
+    const shownTypes = (capabilities: string[]) =>
+      (
+        deviceActionForCapabilities(
+          proposeDeviceAction,
+          capabilities,
+        ).parameters?.find((parameter) => parameter.name === "operation")
+          ?.schema.anyOf ?? []
+      )
+        .filter((branch) => branch.properties?.shown)
+        .flatMap((branch) => branch.properties?.type?.enum ?? []);
+    expect(shownTypes([FILES_CAPABILITY])).toEqual(["files_open"]);
+    expect(
+      shownTypes([FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY]),
+    ).toEqual(["files_open", "files_share", "files_trash", "files_move"]);
   });
 });

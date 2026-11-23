@@ -37,6 +37,12 @@ export interface MapsPlacesCard {
   places: MapsCardPlace[];
   nextCursor: string | null;
   attribution: string | null;
+  /**
+   * The named place the search was made around ("pharmacy near the Ferry
+   * Building"). A surface that searches again searches around it, not around
+   * its viewport or the phone, so it shows the places the reply listed.
+   */
+  near?: MapsCardPlace;
 }
 
 export interface MapsRouteCard {
@@ -73,6 +79,16 @@ export interface MapsLocateCard {
   kind: "locate";
   intent: "place-near" | "route-origin";
   prompt: string;
+  /**
+   * What the device searches for around its own position: the search of a
+   * `place-near` card, or a `route-origin` destination that is a kind of place
+   * (nearest pharmacy) and was therefore not resolved without a position.
+   */
+  query?: string;
+  /** The resolved destination of a `route-origin` card. */
+  destination?: MapsCardPlace;
+  /** The travel mode the user asked for on a `route-origin` card. */
+  travelMode?: TravelMode;
 }
 
 export type MapsCard =

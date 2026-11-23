@@ -7,6 +7,7 @@
 import type { Memory, ProviderDataRecord } from "@elizaos/core";
 import {
   extractUserText,
+  incomingMessagePersistenceSnapshot,
   TOOL_DIAGNOSTIC_MASK,
   unwrapUserMessageText,
 } from "@elizaos/core";
@@ -34,10 +35,10 @@ export function toActionData<T extends object>(data: T): ProviderDataRecord {
  * tj-ff1cb328f785fb "friday one").
  */
 export function messageText(message: Memory): string {
-  const unwrapped = extractUserText(unwrapUserMessageText(message));
-  if (unwrapped) return unwrapped;
-  const text = (message.content as Record<string, unknown> | undefined)?.text;
-  return typeof text === "string" ? text : "";
+  const original = incomingMessagePersistenceSnapshot(message);
+  return original
+    ? unwrapUserMessageText(original)
+    : extractUserText(unwrapUserMessageText(message));
 }
 
 export function detailString(

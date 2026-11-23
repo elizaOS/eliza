@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "plugins/plugin-mcp/src/service.ts",
+    "plugins/plugin-mcp/src/utils/selection.ts",
+    "plugins/plugin-mcp/__tests__/tool-compatibility-argument-validation.test.ts",
+    "plugins/plugin-mcp/quint/check-mcp-argument-compatibility.mjs"
+  ],
+  "conformance": "plugins/plugin-mcp/quint/check-mcp-argument-compatibility.mjs",
+  "bounds": "One call_tool request for the tool explicit of fixtures/schema-dialect-server.mjs (a [string, integer] pair with minItems and maxItems 2 and additionalProperties false) under one of three providers (no rewrite, the Anthropic rewrite that removes additionalProperties, the Google rewrite that removes minItems, maxItems and additionalProperties) and one of three argument shapes (a valid pair, a one-item pair that breaks only minItems, a valid pair with an extra key that breaks only additionalProperties) that the model returns on every attempt. The conformance script replays all nine generated cases through the registered MCP action on a SQLite runtime with a real stdio MCP server, and compares the argument prompts the model answered, whether the server received the arguments, and which keywords the prompt's schema hides and restates. The OpenAI rewrites, the planner path that passes its own arguments, and other schema keywords are not replayed. Under weak fairness of the answer step the action returns. Explicit stuttering lets it stop before that, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "mcp-argument-compatibility",
+      "main": "McpArgumentCompatibility",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "InvalidRefused",
+        "OnlyValidSent",
+        "PromptRewritten",
+        "RulesKept",
+        "TypeOK",
+        "ValidSentFirst"
+      ],
+      "temporal": ["Returns", "ReturnsWithoutFairness"],
+      "maxSteps": 5,
+      "samples": 2000,
+      "temporalChecks": [
+        {
+          "property": "Returns",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled answer step eventually runs (weak fairness). This checks that the action then returns, not how long the model takes to answer."
+          ]
+        },
+        {
+          "property": "ReturnsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The model may never answer, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

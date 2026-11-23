@@ -111,24 +111,6 @@ export async function handleImageDescription(
   let promptText: string | undefined;
   const modelName = getImageDescriptionModel(runtime);
   logger.log(`[ELIZAOS_CLOUD] Using IMAGE_DESCRIPTION model: ${modelName}`);
-  const configuredMaxTokens = (
-    getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS", "") ?? ""
-  ).trim();
-  const maxTokens = configuredMaxTokens === "" ? undefined : Number(configuredMaxTokens);
-  if (
-    maxTokens !== undefined &&
-    (!/^[1-9]\d*$/.test(configuredMaxTokens) ||
-      !Number.isSafeInteger(maxTokens) ||
-      maxTokens <= 0)
-  ) {
-    throw new ElizaError(
-      "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS must be a positive safe integer",
-      {
-        code: "ELIZAOS_CLOUD_IMAGE_OUTPUT_BUDGET_INVALID",
-        context: { received: configuredMaxTokens },
-      }
-    );
-  }
 
   if (typeof params === "string") {
     imageUrl = params;
@@ -154,11 +136,11 @@ export async function handleImageDescription(
   const operationHeaders = nativeApplicationOperationHeaders(runtime);
 
   try {
+    // No output cap: the model's own maximum bounds a description.
     const requestBody: Record<string, unknown> = {
       model: modelName,
       messages: messages,
     };
-    if (maxTokens !== undefined) requestBody.max_tokens = maxTokens;
 
     // On 429, honour the upstream's `retryAfter` instead of retrying on a
     // hardcoded backoff. Hardcoded retries inside the rate-limit window add

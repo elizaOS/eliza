@@ -3,7 +3,7 @@
  * Shared by the agent API and @elizaos/plugin-mcp spawn path.
  */
 
-import { lookup as dnsLookup } from "node:dns/promises";
+import dns from "node:dns";
 import net from "node:net";
 import {
 	isBlockedHostname,
@@ -270,7 +270,7 @@ async function resolveMcpRemoteUrlRejection(
 
 	let addresses: Array<{ address: string }>;
 	try {
-		const resolved = await dnsLookup(hostname, { all: true });
+		const resolved = await dns.promises.lookup(hostname, { all: true });
 		addresses = Array.isArray(resolved) ? resolved : [resolved];
 	} catch {
 		// error-policy:J3 DNS failures become an explicit configuration rejection;

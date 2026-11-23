@@ -5,8 +5,7 @@ import { cachedDynamicImport } from "./app-module-cache";
  * path. main() kicks the download off before the storage-bridge hydration
  * awaits so the chunk fetch overlaps the native Preferences round-trips
  * instead of serializing after them, then awaits the shared promise where the
- * platform actually consumes the module (mobile QA harnesses, the desktop
- * fused-wake registration).
+ * platform actually consumes the module (the mobile QA harnesses).
  *
  * Resolves `null` on a load failure: a voice-chunk fetch error (e.g. a stale
  * index.html pointing at a purged hash during a redeploy) must never gate
@@ -21,8 +20,8 @@ export function startVoiceModuleLoad(
   return cachedDynamicImport("voice-bootstrap", importer).catch(
     (error: unknown) => {
       // error-policy:J4 designed degrade — the app mounts without the voice
-      // harnesses / fused-wake bridge rather than white-screening on a chunk
-      // load failure; the warn is the observable signal.
+      // harnesses rather than white-screening on a chunk load failure; the
+      // warn is the observable signal.
       console.warn("[boot] voice-bootstrap chunk unavailable", error);
       return null;
     },

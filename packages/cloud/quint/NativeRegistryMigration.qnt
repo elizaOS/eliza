@@ -135,3 +135,21 @@ module NativeRegistryRelease {
   run wrongIdentityRefusedTest = init.then(importForRelease).then(configure(true, false, true)).expect(not(admitted))
   run invalidMarkerRefusedTest = init.then(importForRelease).then(corruptMarker).expect(not(admitted))
 }
+
+// A package rename updates callback routing only, after the canonical sibling
+// is verified. Existing login aliases and credentials remain untouched.
+module NativeCallbackPackageRepair {
+  var canonical: bool
+  var matched: bool
+  var callback: str
+  var credentials: int
+  var aliases: int
+  action init = all { canonical' = false, matched' = false, callback' = "legacy", credentials' = 2, aliases' = 2 }
+  action inspect(c: bool, m: bool): bool = all { canonical' = c, matched' = m, callback' = callback, credentials' = credentials, aliases' = aliases }
+  action repair = all { callback' = if (canonical and matched and callback == "legacy") "canonical" else callback, canonical' = canonical, matched' = matched, credentials' = credentials, aliases' = aliases }
+  action step = any { { nondet c = Bool.oneOf(); nondet m = Bool.oneOf(); inspect(c, m) }, repair }
+  val safety = credentials == 2 and aliases == 2 and callback.in(Set("legacy", "canonical"))
+  run repairedTwiceTest = init.then(inspect(true, true)).then(repair).then(repair).expect(callback == "canonical" and safety)
+  run unverifiedUnchangedTest = init.then(inspect(false, true)).then(repair).expect(callback == "legacy" and safety)
+  run otherAppUnchangedTest = init.then(inspect(true, false)).then(repair).expect(callback == "legacy" and safety)
+}

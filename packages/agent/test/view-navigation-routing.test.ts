@@ -2,6 +2,7 @@ import {
   getDirectActionRoutingRules,
   type IAgentRuntime,
   type Memory,
+  namesViewNavigationTarget,
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +10,7 @@ import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   resolveEligibleDirectActionRoutes,
 } from "../../../plugins/plugin-assistant/src/services/message/stage1-evaluators.ts";
+import { mapsPlugin } from "../../../plugins/plugin-maps/src/plugin.ts";
 import { viewsAction } from "../src/actions/views.ts";
 import {
   closeRuntimeViewRegistry,
@@ -335,5 +337,149 @@ describe("registered view navigation exposure", () => {
     const m = message("Open Workflows.");
     delete m.content.metadata;
     expect(rule.matches("Open Workflows.", m)).toBe(false);
+  });
+});
+
+describe("view names for plugin place routes", () => {
+  // plugin-maps asks this before taking "take me to X" as travel to a place.
+  it.each([
+    "settings",
+    "Settings",
+    "the settings page",
+    "my files",
+    "home",
+    "Workflows",
+    "the browser app",
+    "camera.",
+  ])("names a registered view: %s", (target) => {
+    expect(namesViewNavigationTarget(fixture(), target)).toBe(true);
+  });
+  it.each([
+    "Coit Tower",
+    "the Ferry Building",
+    "Golden Gate Park",
+    "the nearest pharmacy",
+    "settings tower",
+  ])("does not name a view: %s", (target) => {
+    expect(namesViewNavigationTarget(fixture(), target)).toBe(false);
+  });
+  it("counts a developer view, which is listed only in developer mode", () => {
+    const r = fixture();
+    expect(namesViewNavigationTarget(r, "logs")).toBe(true);
+  });
+  it("is unknown without a host view registry", () => {
+    const runtime = {} as IAgentRuntime;
+    expect(namesViewNavigationTarget(runtime, "settings")).toBeUndefined();
+  });
+});
+
+describe("go-to commands beside the Maps place routes", () => {
+  // plugin-maps routes "go to Coit Tower" to Maps; every "go to <view>" must
+  // still be view navigation and nothing else.
+  async function withMapsAndPhoneViews() {
+    const r = fixture();
+    (r as { contexts?: unknown }).contexts = { tryRegister: () => true };
+    await registerPluginViews(
+      r,
+      {
+        name: "test-phone-views",
+        views: [
+          ["calendar", "Calendar"],
+          ["maps", "Maps"],
+          ["photos", "Photos"],
+          ["notes", "Notes"],
+        ].map(([id, label]) => ({
+          id,
+          label,
+          path: `/${id}`,
+          bundleUrl: `/${id}.js`,
+        })),
+      } as never,
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    await mapsPlugin.init?.({}, r);
+    return r;
+  }
+  const mapsRoutes = (r: IAgentRuntime, text: string) =>
+    getDirectActionRoutingRules(r)
+      .filter(
+        (rule) =>
+          rule.id.startsWith("maps.") && rule.matches(text, message(text)),
+      )
+      .map((rule) => rule.id);
+
+  it.each([
+    "go to calendar",
+    "Go to Calendar.",
+    "go to the calendar",
+    "go to my calendar",
+    "go to the browser",
+    "go to Browser",
+    "go to maps",
+    "go to Maps",
+    "go to Photos",
+    "go to photos",
+    "go to settings",
+    "go to Settings",
+    "go to Notes",
+    "go to Workflows",
+    "Can you go to the Calendar?",
+    "go home",
+  ])("%s still navigates to the view", async (text) => {
+    const r = await withMapsAndPhoneViews();
+    expect((await eligible(r, text)).map((x) => x.action.name)).toEqual([
+      "VIEWS_SHOW",
+    ]);
+    expect(mapsRoutes(r, text)).toEqual([]);
+  });
+
+  it("leaves a lowercase two-word view name to view navigation", async () => {
+    const r = await withMapsAndPhoneViews();
+    expect(namesViewNavigationTarget(r, "cloud apps")).toBe(true);
+    expect(mapsRoutes(r, "go to cloud apps")).toEqual([]);
+  });
+
+  it("leaves a view that is unavailable here to view navigation", async () => {
+    // Camera is an Android-only native view, so no route is eligible on this
+    // host; it is still a view name and never a place.
+    const r = await withMapsAndPhoneViews();
+    expect(mapsRoutes(r, "go to the Camera")).toEqual([]);
+  });
+
+  it.each([
+    "go to Coit Tower",
+    "go to the Ferry Building",
+    "go to 1 Market St, San Francisco",
+    "go to coit tower",
+    "go to the ferry building",
+    "go to SFO",
+    "go to Starbucks",
+  ])("%s is a place for Maps, not a view", async (text) => {
+    const r = await withMapsAndPhoneViews();
+    expect(await eligible(r, text)).toEqual([]);
+    expect(mapsRoutes(r, text)).toEqual(["maps.go-to-place"]);
+  });
+
+  it.each([
+    "go to the top",
+    "go to page 3",
+    "go to the next slide",
+    "go to example.com",
+    "go to sleep",
+    "go to bed",
+    "go to my inbox",
+    "go to the previous one",
+    "go to line 40",
+    "go to definition",
+    "go to work",
+    "go to great lengths",
+    "go to the right place",
+    "go to Sam",
+    "go to Notion",
+    "go to PDF",
+  ])("%s is neither a view nor a place", async (text) => {
+    const r = await withMapsAndPhoneViews();
+    expect(await eligible(r, text)).toEqual([]);
+    expect(mapsRoutes(r, text)).toEqual([]);
   });
 });

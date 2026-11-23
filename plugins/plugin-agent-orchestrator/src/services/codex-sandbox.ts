@@ -86,7 +86,7 @@ export function detectLandlockAvailability(
   opts: LandlockProbeOptions = {},
 ): LandlockAvailability {
   const env = opts.env ?? process.env;
-  const override = env.ELIZA_CODEX_ACP_LANDLOCK ?? env.ELIZA_CODEX_LANDLOCK;
+  const override = env.ELIZA_CODEX_ACP_LANDLOCK;
   if (override?.trim()) {
     const normalized = override.trim();
     if (SETTING_OFF.test(normalized)) return "unavailable";

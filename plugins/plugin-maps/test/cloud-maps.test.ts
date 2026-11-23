@@ -132,6 +132,35 @@ describe("ElizaCloudMapsAdapter", () => {
       { query, limit: 20 },
     ]);
   });
+  it("asks for the closest places only from a Cloud that ranks by distance", async () => {
+    const places = () =>
+      Response.json({
+        providerId: "eliza-cloud-osm",
+        attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+        places: [],
+      });
+    const nearest = {
+      query: "pharmacy",
+      near: CASINO,
+      rank: "distance",
+    } as const;
+    const older = cloud(places);
+    await older.adapter.searchPlaces(nearest);
+    expect(older.requests[0]?.body).toEqual({
+      query: "pharmacy",
+      near: CASINO,
+      limit: 10,
+    });
+    const ranking = cloud(places, {
+      coverage: () => ({
+        ...COVERAGE,
+        capabilities: { ...COVERAGE.capabilities, distanceRank: true },
+      }),
+    });
+    await ranking.adapter.searchPlaces(nearest);
+    expect(ranking.requests[0]?.body).toEqual({ ...nearest, limit: 10 });
+  });
+
   it("searches through POST bodies with the API key and maps device places", async () => {
     const { adapter, requests } = cloud(() =>
       Response.json({
@@ -328,6 +357,29 @@ describe("ElizaCloudMapsAdapter", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("names an unreachable Cloud in plain words, not the transport's message", async () => {
+    const adapter = new ElizaCloudMapsAdapter({
+      apiKey: "eliza_test_key",
+      baseUrl: "https://api.example.test",
+      testTransport: {
+        fetchImpl: async () => Response.json(COVERAGE),
+        pinnedFetchImpl: async () => {
+          throw new TypeError("fetch failed: ECONNRESET 10.0.0.1:443");
+        },
+        lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    const error = await adapter
+      .searchPlaces({ query: "Casino" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(MapsError);
+    expect(error).toMatchObject({
+      code: "MAPS_PROVIDER_NETWORK",
+      message:
+        "Eliza Cloud Maps could not be reached from this device. Try again.",
+    });
   });
 
   it("refuses a 401 whose code is not a string with a typed error", async () => {
@@ -549,6 +601,32 @@ describe("Cloud provider binding", () => {
     // A served mode is answered from the cache without another read.
     await route("walk").catch(() => undefined);
     expect(capabilityReads).toHaveLength(2);
+  });
+
+  it("keeps Cloud's place categories, dropping unusable labels, and reads none as empty", async () => {
+    const answers = [
+      ["Casino", "Landmark", "Casino", "", 7, "x".repeat(81)],
+      "Casino",
+      undefined,
+    ];
+    const { adapter } = cloud((request) =>
+      Response.json({
+        providerId: "eliza-cloud-osm",
+        attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+        ...(request.path.endsWith("/search")
+          ? { places: [{ ...PLACE, categories: answers[0] }] }
+          : { place: { ...PLACE, categories: answers.shift() } }),
+      }),
+    );
+    const page = await adapter.searchPlaces({ query: "Casino", limit: 5 });
+    expect(page.places[0]?.categories).toEqual(["Casino", "Landmark"]);
+    expect((await adapter.getPlace("N1234"))?.categories).toEqual([
+      "Casino",
+      "Landmark",
+    ]);
+    // A malformed list does not refuse the place; an absent one reads as none.
+    expect((await adapter.getPlace("N1234"))?.categories).toEqual([]);
+    expect((await adapter.getPlace("N1234"))?.categories).toEqual([]);
   });
 
   it("accepts the opaque place ids of Cloud's configured geocoder", async () => {

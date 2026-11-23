@@ -581,15 +581,16 @@ export class McpService extends Service {
       return { items: response?.tools ?? [], nextCursor: response?.nextCursor };
     });
     const tools = discovered.flatMap((tool) => {
-      const processedTool = { ...tool };
       if (tool.inputSchema) {
         if (!this.compatibilityInitialized) {
           this.initializeToolCompatibility();
         }
         try {
-          processedTool.inputSchema = this.applyToolCompatibility(
-            tool.inputSchema as JSONSchema7
-          ) as typeof tool.inputSchema;
+          // Keep the server's schema: model arguments are validated against
+          // it. The provider rewrite only shapes the argument prompt
+          // (utils/selection.ts); running it here rejects an unbounded schema
+          // or rewrite before the tool is listed.
+          this.applyToolCompatibility(tool.inputSchema as JSONSchema7);
         } catch (error) {
           if (!isElizaError(error) || error.code !== MCP_TOOL_SCHEMA_UNBOUNDED) {
             throw error;
@@ -608,7 +609,7 @@ export class McpService extends Service {
           return [];
         }
       }
-      return [processedTool];
+      return [tool];
     });
     return tools;
   }

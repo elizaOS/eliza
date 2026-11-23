@@ -1,8 +1,65 @@
 import { buildPlannerToolsFromActions, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleResponseHandler, normalizeNativeTools } from "../src/models/text";
+import { handleResponseHandler, handleTextLarge, normalizeNativeTools } from "../src/models/text";
 
 afterEach(() => vi.restoreAllMocks());
+
+describe("Cloud thinking-low hint (extractor calls)", () => {
+  it.each([
+    ["qwen-3.8-27b", undefined, "low", "low"],
+    ["qwen-3.8-27b", undefined, undefined, "high"],
+    ["gpt-oss-120b", undefined, "low", "low"],
+    ["gpt-oss-120b", undefined, undefined, "high"],
+    ["gemma-4-31b", undefined, "low", "high"],
+    ["gpt-5-mini", undefined, "low", undefined],
+    ["qwen-3.8-27b", "high", "low", "high"],
+    ["qwen-3.8-27b", "medium", "low", "medium"],
+    ["qwen-3.8-27b", "none", "low", "none"],
+  ] as const)(
+    "%s with pin %s and thinking %s sends effort %s",
+    async (model, pin, thinking, expected) => {
+      const settings: Record<string, string | undefined> = {
+        ELIZAOS_CLOUD_API_KEY: "synthetic-test-key",
+        ELIZAOS_CLOUD_LARGE_MODEL: model,
+        ELIZAOS_CLOUD_REASONING_EFFORT: pin,
+      };
+      const runtime = {
+        character: { name: "Reasoning test", bio: [] },
+        getSetting: (key: string) => settings[key],
+        emitEvent: vi.fn(),
+      } as unknown as IAgentRuntime;
+      const requests: Record<string, unknown>[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return Response.json({
+          id: "synthetic-response",
+          choices: [
+            {
+              message: { role: "assistant", content: '{"mode":"respond"}' },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
+        });
+      });
+      await handleTextLarge(runtime, {
+        prompt: "Plan the synthetic reminder. Return ONLY a JSON object.",
+        responseFormat: { type: "json_object" },
+        providerOptions: thinking ? { eliza: { thinking } } : {},
+        stream: false,
+      } as never);
+      expect(requests).toHaveLength(1);
+      if (expected === undefined) {
+        expect(requests[0]).not.toHaveProperty("reasoning_effort");
+      } else {
+        expect(requests[0].reasoning_effort).toBe(expected);
+      }
+      expect(JSON.stringify(requests[0])).not.toContain('"thinking"');
+      expect(requests[0]).not.toHaveProperty("max_tokens");
+      expect(requests[0]).not.toHaveProperty("max_completion_tokens");
+    }
+  );
+});
 
 describe("Cerebras Cloud reasoning controls", () => {
   it.each([

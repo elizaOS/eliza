@@ -368,9 +368,7 @@ export class VisionService extends Service {
     // mirrors the documented MAX_MEMORY_USAGE_MB setting (default 2000 MB);
     // `0`/invalid disables the local RSS guard so only arbiter pressure pauses.
     const memoryCapMb = Number(
-      this.runtime.getSetting("MAX_MEMORY_USAGE_MB") ??
-        this.runtime.getSetting("VISION_MAX_MEMORY_USAGE_MB") ??
-        2000,
+      this.runtime.getSetting("MAX_MEMORY_USAGE_MB") ?? 2000,
     );
     this.describeBackpressure = new DescribeBackpressureController({
       memoryCapBytes:
@@ -396,85 +394,51 @@ export class VisionService extends Service {
             ? String(value)
             : undefined;
     };
-    const getBooleanSetting = (
-      primaryKey: string,
-      secondaryKey: string,
-      defaultValue: boolean,
-    ): boolean => {
-      const raw =
-        getSettingString(primaryKey) ?? getSettingString(secondaryKey);
+    const getBooleanSetting = (key: string, defaultValue: boolean): boolean => {
+      const raw = getSettingString(key);
       if (raw === undefined) return defaultValue;
       return raw.trim().toLowerCase() === "true";
     };
-    const primaryCaptureInterval = getSettingString("SCREEN_CAPTURE_INTERVAL");
-    const captureIntervalSetting =
-      primaryCaptureInterval ||
-      getSettingString("VISION_SCREEN_CAPTURE_INTERVAL");
-    const captureIntervalSettingName = primaryCaptureInterval
-      ? "SCREEN_CAPTURE_INTERVAL"
-      : "VISION_SCREEN_CAPTURE_INTERVAL";
 
     return {
       ...this.DEFAULT_CONFIG,
-      cameraName:
-        getSettingString("CAMERA_NAME") ||
-        getSettingString("VISION_CAMERA_NAME"),
+      cameraName: getSettingString("CAMERA_NAME"),
       pixelChangeThreshold:
-        Number(
-          runtime.getSetting("PIXEL_CHANGE_THRESHOLD") ||
-            runtime.getSetting("VISION_PIXEL_CHANGE_THRESHOLD"),
-        ) || this.DEFAULT_CONFIG.pixelChangeThreshold,
+        Number(runtime.getSetting("PIXEL_CHANGE_THRESHOLD")) ||
+        this.DEFAULT_CONFIG.pixelChangeThreshold,
       // Read through the same helper as face recognition so a boolean stored
       // in character settings counts the same as the env-file string.
       enableObjectDetection: getBooleanSetting(
         "ENABLE_OBJECT_DETECTION",
-        "VISION_ENABLE_OBJECT_DETECTION",
         false,
       ),
-      enablePoseDetection: getBooleanSetting(
-        "ENABLE_POSE_DETECTION",
-        "VISION_ENABLE_POSE_DETECTION",
-        false,
-      ),
+      enablePoseDetection: getBooleanSetting("ENABLE_POSE_DETECTION", false),
       enableFaceRecognition: getBooleanSetting(
         "ENABLE_FACE_RECOGNITION",
-        "VISION_ENABLE_FACE_RECOGNITION",
         false,
       ),
       tfUpdateInterval:
-        Number(
-          runtime.getSetting("TF_UPDATE_INTERVAL") ||
-            runtime.getSetting("VISION_TF_UPDATE_INTERVAL"),
-        ) || this.DEFAULT_CONFIG.tfUpdateInterval,
+        Number(runtime.getSetting("TF_UPDATE_INTERVAL")) ||
+        this.DEFAULT_CONFIG.tfUpdateInterval,
       vlmUpdateInterval:
-        Number(
-          runtime.getSetting("VLM_UPDATE_INTERVAL") ||
-            runtime.getSetting("VISION_VLM_UPDATE_INTERVAL"),
-        ) || this.DEFAULT_CONFIG.vlmUpdateInterval,
+        Number(runtime.getSetting("VLM_UPDATE_INTERVAL")) ||
+        this.DEFAULT_CONFIG.vlmUpdateInterval,
       tfChangeThreshold:
-        Number(
-          runtime.getSetting("TF_CHANGE_THRESHOLD") ||
-            runtime.getSetting("VISION_TF_CHANGE_THRESHOLD"),
-        ) || this.DEFAULT_CONFIG.tfChangeThreshold,
+        Number(runtime.getSetting("TF_CHANGE_THRESHOLD")) ||
+        this.DEFAULT_CONFIG.tfChangeThreshold,
       vlmChangeThreshold:
-        Number(
-          runtime.getSetting("VLM_CHANGE_THRESHOLD") ||
-            runtime.getSetting("VISION_VLM_CHANGE_THRESHOLD"),
-        ) || this.DEFAULT_CONFIG.vlmChangeThreshold,
+        Number(runtime.getSetting("VLM_CHANGE_THRESHOLD")) ||
+        this.DEFAULT_CONFIG.vlmChangeThreshold,
       visionMode:
         (getSettingString("VISION_MODE") as VisionMode) ||
         this.DEFAULT_CONFIG.visionMode,
-      // `||` (not `??`) preserves the existing alias precedence: an empty
-      // primary reaches the legacy alias, while a whitespace-only primary is
-      // truthy and therefore suppresses the alias exactly as before.
       screenCaptureInterval: resolveCaptureIntervalMs(
-        captureIntervalSetting,
+        getSettingString("SCREEN_CAPTURE_INTERVAL"),
         DEFAULT_SCREEN_CAPTURE_INTERVAL_MS,
-        captureIntervalSettingName,
+        "SCREEN_CAPTURE_INTERVAL",
       ),
       ocrEnabled: getBooleanSetting(
         "OCR_ENABLED",
-        "VISION_OCR_ENABLED",
         this.DEFAULT_CONFIG.ocrEnabled ?? true,
       ),
     };

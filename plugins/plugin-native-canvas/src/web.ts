@@ -1,5 +1,5 @@
 /**
- * Web/Electrobun bridge for the `ElizaCanvas` Capacitor plugin — the reference
+ * Web bridge for the `ElizaCanvas` Capacitor plugin — the reference
  * implementation the iOS (Swift) and Android (Kotlin) native bridges must
  * match behaviourally. Backs multi-layer 2D drawing with per-layer
  * `<canvas>` elements (composited as absolute-positioned DOM siblings so

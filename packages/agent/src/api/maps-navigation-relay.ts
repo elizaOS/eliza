@@ -7,12 +7,45 @@ import {
   type DeviceCredential,
   getDeviceActionTurn,
 } from "@elizaos/plugin-assistant";
+import type { DeviceNavigationMapsCode } from "@elizaos/plugin-maps/client/device-navigation";
 import { MapsError, type MapsErrorCode } from "@elizaos/plugin-maps/errors";
 import type {
   MapsDeviceNavigation,
   MapsDeviceNavigationStatus,
 } from "@elizaos/plugin-maps/navigation";
 import { MapsService } from "@elizaos/plugin-maps/service";
+
+/**
+ * Every code a phone reports for a refused navigation request
+ * (`deviceNavigationFailure`). A code missing here turns a phone's accurate
+ * refusal ("allowance used up") into an invalid result.
+ */
+export const MAPS_NAVIGATION_FAILURE_CODES = [
+  "MAPS_DEVICE_UNAVAILABLE",
+  "MAPS_INVALID_INPUT",
+  "MAPS_NOT_FOUND",
+  "MAPS_UNSUPPORTED_REGION",
+  "MAPS_AUTH_EXPIRED",
+  "MAPS_NOT_ENTITLED",
+  "MAPS_PROVIDER_CHANGED",
+  "MAPS_PROVIDER_REJECTED",
+  "MAPS_RATE_LIMITED",
+  "MAPS_BUDGET_EXHAUSTED",
+  "MAPS_PROVIDER_UNAVAILABLE",
+  "MAPS_PROVIDER_NETWORK",
+  "MAPS_PROVIDER_TIMEOUT",
+  "MAPS_MALFORMED_RESPONSE",
+] as const satisfies readonly DeviceNavigationMapsCode[];
+// Compile-time: the list names every code the phone reports.
+const everyPhoneCode: [
+  Exclude<
+    DeviceNavigationMapsCode,
+    (typeof MAPS_NAVIGATION_FAILURE_CODES)[number]
+  >,
+] extends [never]
+  ? true
+  : never = true;
+void everyPhoneCode;
 
 type Operation =
   | { kind: "select"; place: Parameters<MapsDeviceNavigation["select"]>[0] }
@@ -57,23 +90,28 @@ function relayFor(runtime: IAgentRuntime): Relay {
     offer.pending?.finish(unavailable());
   const relay: Relay = { maps, offers: new Map() };
   relays.set(runtime, relay);
-  const dispatch = async (operation: Operation) => {
+  /** This turn's phone offer while the phone is polling and has no request in hand. */
+  const liveOffer = async () => {
     const turn = getDeviceActionTurn();
     if (!turn || turn.runtime !== runtime || !turn.replyConversation)
-      throw unavailable();
+      return null;
     const context = await new DeviceActionService(runtime).context(
       turn.credential,
     );
     const offer = relay.offers.get(context.scope);
-    if (
-      !turn.active ||
-      relays.get(runtime) !== relay ||
-      !offer ||
-      offer.conversationId !== turn.replyConversation.id ||
-      Date.now() - offer.seenAt > 2_000 ||
-      offer.pending
-    )
-      throw unavailable();
+    return turn.active &&
+      relays.get(runtime) === relay &&
+      offer &&
+      offer.conversationId === turn.replyConversation.id &&
+      Date.now() - offer.seenAt <= 2_000 &&
+      !offer.pending
+      ? { offer, turn }
+      : null;
+  };
+  const dispatch = async (operation: Operation) => {
+    const live = await liveOffer();
+    if (!live) throw unavailable();
+    const { offer, turn } = live;
     return new Promise<MapsDeviceNavigationStatus>((resolve, reject) => {
       const timeout = setTimeout(() => pending.finish(unavailable()), 30_000);
       const pending: Pending = {
@@ -95,6 +133,9 @@ function relayFor(runtime: IAgentRuntime): Relay {
     });
   };
   maps.registerDeviceNavigation({
+    // MAPS_NAVIGATE starts navigation on the phone only while it reports it
+    // can take a request; without this answer it always returned a link.
+    available: async () => (await liveOffer()) !== null,
     select: (place) => dispatch({ kind: "select", place }),
     start: (request) => dispatch({ kind: "start", request }),
     reroute: () => dispatch({ kind: "reroute" }),
@@ -112,12 +153,61 @@ function keys(value: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(value).some((key) => !allowed.includes(key)))
     throw new DeviceActionError("Invalid navigation fields");
 }
+/**
+ * The phone's own account of a refusal, such as "Open Maps on the phone to continue", is
+ * shown when it is one bounded line; otherwise a reply names what the code means.
+ */
+const FAILURE_TEXT: Partial<Record<MapsErrorCode, string>> = {
+  MAPS_DEVICE_UNAVAILABLE:
+    "Maps could not be shown on the phone right now. Nothing was changed on the map.",
+  MAPS_INVALID_INPUT: "The phone could not use that place or travel mode.",
+  MAPS_NOT_FOUND: "Cloud Maps on the phone found no such place or route.",
+  MAPS_UNSUPPORTED_REGION:
+    "Cloud Maps on the phone does not plan that route here.",
+  MAPS_PROVIDER_CHANGED:
+    "The Maps account on the phone changed. Nothing was changed on the map.",
+  MAPS_BUDGET_EXHAUSTED:
+    "The Maps allowance for this period is used up. Nothing was changed on the map.",
+  MAPS_PROVIDER_REJECTED:
+    "Cloud refused this Maps request. Nothing was changed on the map.",
+};
+function failureMessage(code: MapsErrorCode, message: unknown): string {
+  if (
+    typeof message === "string" &&
+    message.trim() &&
+    message.length <= 300 &&
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: a phone line is plain text
+    !/[\u0000-\u001f\u007f]/.test(message)
+  )
+    return message.trim();
+  return (
+    FAILURE_TEXT[code] ??
+    "The phone could not complete this Maps request. Check Maps on the phone."
+  );
+}
+
 function status(
   value: unknown,
   operation: Operation,
 ): MapsDeviceNavigationStatus {
   const body = object(value);
-  keys(body, ["state", "placeName", "travelMode"]);
+  keys(body, ["state", "placeName", "travelMode", "route"]);
+  if (body.route !== undefined) {
+    const route = object(body.route);
+    keys(route, ["durationSeconds", "distanceMeters", "traffic"]);
+    if (
+      body.state !== "awaiting-confirmation" ||
+      typeof route.durationSeconds !== "number" ||
+      !Number.isFinite(route.durationSeconds) ||
+      route.durationSeconds < 0 ||
+      typeof route.distanceMeters !== "number" ||
+      !Number.isFinite(route.distanceMeters) ||
+      route.distanceMeters < 0 ||
+      typeof route.traffic !== "string" ||
+      !["none", "approximated", "live"].includes(route.traffic)
+    )
+      throw new DeviceActionError("Invalid navigation route");
+  }
   const states =
     operation.kind === "select"
       ? ["selected"]
@@ -264,28 +354,16 @@ export async function handleMapsNavigationRelay(
   offer.seenAt = Date.now();
   if (body.failed !== undefined && body.status === undefined) {
     const failure = object(body.failed);
-    keys(failure, ["code"]);
-    const codes: MapsErrorCode[] = [
-      "MAPS_DEVICE_UNAVAILABLE",
-      "MAPS_INVALID_INPUT",
-      "MAPS_NOT_FOUND",
-      "MAPS_UNSUPPORTED_REGION",
-      "MAPS_AUTH_EXPIRED",
-      "MAPS_NOT_ENTITLED",
-      "MAPS_PROVIDER_CHANGED",
-      "MAPS_RATE_LIMITED",
-      "MAPS_PROVIDER_UNAVAILABLE",
-      "MAPS_PROVIDER_NETWORK",
-      "MAPS_PROVIDER_TIMEOUT",
-      "MAPS_MALFORMED_RESPONSE",
-    ];
-    if (!codes.includes(failure.code as MapsErrorCode))
+    keys(failure, ["code", "message"]);
+    if (
+      !(MAPS_NAVIGATION_FAILURE_CODES as readonly string[]).includes(
+        failure.code as string,
+      )
+    )
       throw new DeviceActionError("Invalid navigation failure");
+    const code = failure.code as MapsErrorCode;
     pending.finish(
-      new MapsError(
-        "The phone could not complete this Maps request. Check Maps on the phone.",
-        { code: failure.code as MapsErrorCode },
-      ),
+      new MapsError(failureMessage(code, failure.message), { code }),
     );
   } else if (body.failed === undefined)
     pending.finish(status(body.status, pending.operation));

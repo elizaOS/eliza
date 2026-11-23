@@ -853,7 +853,6 @@ const rawPersonalAssistantPlugin: Plugin = {
       tags: ["gmail", "email", "calendar", "lifeops", "connections"],
       relatedActions: ["CONNECTOR", "INBOX", "CALENDAR"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
     {
       id: "family-operations",
@@ -874,7 +873,6 @@ const rawPersonalAssistantPlugin: Plugin = {
       tags: ["family", "coparenting", "agreement", "calendar", "school"],
       relatedActions: ["OWNER_AGREEMENT_KNOWLEDGE", "CALENDAR"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
   events: {

@@ -2,9 +2,13 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
+  existsSync,
+  globSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -78,13 +82,34 @@ describe("Docker runtime dependency closure", () => {
     expect(output.replace(/<[^>]+>/g, "")).toBe("const answer = 42;");
   });
 
-  it("emits the JavaScript dependencies required by shipped plugins and UI exports", () => {
+  it("emits the shipped runtime dependencies from Docker's manifest-only stage", () => {
+    const repo = fileURLToPath(new URL("../../..", import.meta.url));
+    const dockerfile = readFileSync(
+      new URL("../deploy/Dockerfile.ci", import.meta.url),
+      "utf8",
+    );
+    const copy = dockerfile.match(/^COPY --parents ([\s\S]*?)\n  \.\/$/m)?.[1];
+    expect(copy).toBeDefined();
+
+    const root = realpathSync(
+      mkdtempSync(path.join(os.tmpdir(), "docker-manifest-stage-")),
+    );
+    roots.push(root);
+    const patterns = (copy ?? "")
+      .replaceAll("\\", " ")
+      .replaceAll("${APP_CORE_DIR}", "packages/app")
+      .trim()
+      .split(/\s+/);
+    for (const input of globSync(patterns, { cwd: repo })) {
+      const target = path.join(root, input);
+      mkdirSync(path.dirname(target), { recursive: true });
+      copyFileSync(path.join(repo, input), target);
+    }
+
     const names = execFileSync(
       process.execPath,
       [
-        fileURLToPath(
-          new URL("./collect-docker-runtime-deps.ts", import.meta.url),
-        ),
+        path.join(root, "packages/app/scripts/collect-docker-runtime-deps.ts"),
         "--names",
       ],
       { encoding: "utf8" },
@@ -95,6 +120,66 @@ describe("Docker runtime dependency closure", () => {
     expect(names).toContain("@capacitor/core");
     expect(names).toContain("@radix-ui/react-tooltip");
     expect(names).not.toContain("@capacitor/cli");
+  }, 30_000);
+
+  it("prunes unlinked plugin directories in the Node-only image stage", () => {
+    const pluginNames = [
+      "plugin-knowledge",
+      "plugin-personal-assistant",
+      "plugin-pdf",
+      "plugin-telegram",
+      "plugin-x",
+      "plugin-native-activity-tracker",
+    ];
+    const root = realpathSync(
+      workspace({
+        agent: { name: "@elizaos/agent" },
+        app: { name: "@elizaos/app", type: "module" },
+      }),
+    );
+    writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({
+        type: "module",
+        workspaces: ["packages/*", "plugins/*"],
+      }),
+    );
+    for (const name of [...pluginNames, "plugin-files"]) {
+      const dir = path.join(root, "plugins", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name: `@elizaos/${name}` }),
+      );
+    }
+    for (const name of ["@node-rs/argon2", "jose"]) {
+      const dir = path.join(root, "node_modules", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name }));
+    }
+    const repo = fileURLToPath(new URL("../../..", import.meta.url));
+    const linker = "packages/app/scripts/link-docker-local-app-packages.ts";
+    for (const input of [
+      linker,
+      "packages/app/scripts/collect-docker-runtime-deps.ts",
+      "packages/app/scripts/lib/repo-root.ts",
+      "packages/scripts/lib/workspaces.ts",
+      "packages/scripts/lib/repository-file-integrity.ts",
+      "packages/scripts/rm-path-recursive.ts",
+    ]) {
+      const destination = path.join(root, input);
+      mkdirSync(path.dirname(destination), { recursive: true });
+      copyFileSync(path.join(repo, input), destination);
+    }
+
+    execFileSync(process.execPath, [linker, "--prune-unlinked-plugins"], {
+      cwd: root,
+      env: { ...process.env, PATH: root },
+    });
+    expect(existsSync(path.join(root, "plugins", "plugin-files"))).toBe(false);
+    expect(
+      realpathSync(path.join(root, "node_modules/@elizaos/plugin-knowledge")),
+    ).toBe(path.join(root, "plugins", "plugin-knowledge"));
   });
 
   it("includes transitive and cyclic runtime dependencies once, without development or optional dependencies", () => {

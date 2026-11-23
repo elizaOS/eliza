@@ -5,6 +5,7 @@ import {
   type ContextEvent,
   type ContextObject,
   conversationClientUserMemoryId,
+  historicalRequestSourceIds,
   type IAgentRuntime,
   type Memory,
   normalizeEffectReceipt,
@@ -29,6 +30,104 @@ const owner = {
   name: "CALENDAR_NEXT_EVENT",
   historicalObservationOperations: ["calendar.event.next.read"],
 } as Action;
+/** The template a legend's encoding prints after `marker`: a word, or a
+ * bracketed list such as [operation,[resourceKind,resourceId],outcome] read
+ * as nested name lists. */
+function legendTemplate(encoding: string, marker: string): unknown {
+  const start = encoding.indexOf(marker) + marker.length;
+  expect(start).toBeGreaterThanOrEqual(marker.length);
+  if (encoding[start] !== "[") return /^\w+/.exec(encoding.slice(start))?.[0];
+  let depth = 0;
+  for (let at = start; at < encoding.length; at++) {
+    if (encoding[at] === "[") depth++;
+    else if (encoding[at] === "]" && --depth === 0)
+      return JSON.parse(
+        encoding
+          .slice(start, at + 1)
+          .replace(",...", "")
+          .replace(/\w+/g, '"$&"'),
+      );
+  }
+  throw new Error(`legend has no ${marker} template`);
+}
+/** A [shape,values] receipt read with the legend's receipt template and the
+ * detail its shape adds; [resourceKind,resourceId] is resource's kind and id. */
+function decodeReceipt(encoding: string, [shape, values]: [number, unknown[]]) {
+  const [, base] = legendTemplate(encoding, "receipt=") as [string, unknown[]];
+  const fields =
+    shape === 0 ? base : [...base, legendTemplate(encoding, `${shape} adds `)];
+  expect(fields).toHaveLength(values.length);
+  return Object.fromEntries(
+    fields.map((field, at) => {
+      if (typeof field === "string") return [field, values[at]];
+      const children = field as string[];
+      const parent = /^[a-z]+/.exec(children[0])?.[0] ?? "";
+      expect(["resource", "commit", "failure"]).toContain(parent);
+      expect(values[at]).toHaveLength(children.length);
+      return [
+        parent,
+        Object.fromEntries(
+          children.map((child, index) => [
+            child[parent.length].toLowerCase() + child.slice(parent.length + 1),
+            (values[at] as unknown[])[index],
+          ]),
+        ),
+      ];
+    }),
+  );
+}
+
+/** The fields a later step reads, written independently of the wire. */
+function slimRecord(
+  record: {
+    requestSourceEventId: string;
+    scope: string;
+    outcomes: {
+      actionName: string;
+      success: boolean;
+      receipt: ReturnType<typeof normalizeEffectReceipt>;
+    }[];
+  },
+  context: ContextObject,
+) {
+  const rollback = record.outcomes.some(
+    ({ receipt }) => receipt.outcome === "rolled_back",
+  );
+  return {
+    requestSourceEventId: `history:${historicalRequestSourceIds(context).get(record.requestSourceEventId)}`,
+    scope: record.scope,
+    outcomes: record.outcomes.map(({ actionName, success, receipt }) => ({
+      actionName,
+      success,
+      receipt: {
+        ...(rollback ? { receiptId: receipt.receiptId } : {}),
+        operation: receipt.operation,
+        resource: { kind: receipt.resource.kind, id: receipt.resource.id },
+        ...(receipt.artifacts.length
+          ? {
+              artifacts: receipt.artifacts.map(
+                ({ kind, id }: { kind: string; id: string }) => ({ kind, id }),
+              ),
+            }
+          : {}),
+        outcome: receipt.outcome,
+        ...(receipt.outcome === "noop" ? { reason: receipt.reason } : {}),
+        ...(receipt.outcome === "applied"
+          ? {
+              commit:
+                receipt.commit.id === receipt.resource.id
+                  ? { kind: receipt.commit.kind }
+                  : { kind: receipt.commit.kind, id: receipt.commit.id },
+            }
+          : {}),
+        ...(receipt.outcome === "failed" ? { failure: receipt.failure } : {}),
+        ...(receipt.outcome === "rolled_back"
+          ? { rollback: receipt.rollback }
+          : {}),
+      },
+    })),
+  };
+}
 function result(receipt: unknown = read, extra = {}) {
   return {
     actionName: owner.name,
@@ -191,7 +290,7 @@ it("accepts persisted JSON object-key reordering but rejects extra fields, dupli
     expect(historicalReceiptGroups([input], [owner]).observations).toEqual([]);
 });
 
-it("retains observation admission and complete ordered mutation receipts after JSONB storage and model rendering", async () => {
+it("retains observation admission and every ordered mutation outcome a later step reads after JSONB storage and model rendering", async () => {
   const database = new PGlite();
   try {
     await database.exec(
@@ -395,7 +494,7 @@ it("retains observation admission and complete ordered mutation receipts after J
           if (!segment.label?.startsWith("runtime:historical_")) continue;
           const body = JSON.parse(segment.content.trim());
           if (segment.label === "runtime:historical_receipt_encoding") {
-            legends.set(body.id, { ...body, decodedReceipts: [] });
+            legends.set(body.id, body);
             continue;
           }
           if (!segment.label.startsWith("runtime:historical_effects")) continue;
@@ -403,58 +502,30 @@ it("retains observation admission and complete ordered mutation receipts after J
             decoded.push(body);
             continue;
           }
-          const table = Array.isArray(body)
-            ? legends.get(body[0])
-            : { ...body, decodedReceipts: [] };
+          const table = Array.isArray(body) ? legends.get(body[0]) : body;
           expect(table).toBeDefined();
-          expect(table.columns).toEqual(["requestSourceEventId", "outcomes"]);
+          const [key, [columns]] = legendTemplate(table.encoding, "row=") as [
+            string,
+            [string[]],
+          ];
+          expect(key).toBe("requestSourceEventId");
           const rows = Array.isArray(body) ? [body[1]] : body.rows;
           for (const [requestSourceEventId, outcomes] of rows) {
-            const completeOutcomes = outcomes.map((columns: unknown[]) =>
+            const completeOutcomes = outcomes.map((values: unknown[]) =>
               Object.fromEntries(
-                table.receiptColumns.map((column: string, index: number) => {
-                  let value = columns[index];
-                  if (column === "receipt" && table.receiptShapes) {
-                    const encoded = value as unknown[];
-                    if (encoded.length === 1) {
-                      value = table.decodedReceipts[Number(encoded[0])];
-                    } else {
-                      const shape = table.receiptShapes[Number(encoded[0])];
-                      const values = encoded[1] as unknown[];
-                      value = Object.fromEntries(
-                        shape.map(
-                          (
-                            field: string | [string, string[]],
-                            fieldIndex: number,
-                          ) => {
-                            if (typeof field === "string")
-                              return [field, values[fieldIndex]];
-                            sawNestedShape = true;
-                            expect([
-                              "resource",
-                              "idempotency",
-                              "commit",
-                              "failure",
-                              "rollback",
-                            ]).toContain(field[0]);
-                            const childValues = values[fieldIndex] as unknown[];
-                            expect(childValues).toHaveLength(field[1].length);
-                            return [
-                              field[0],
-                              Object.fromEntries(
-                                field[1].map((key, childIndex) => [
-                                  key,
-                                  childValues[childIndex],
-                                ]),
-                              ),
-                            ];
-                          },
-                        ),
-                      );
-                    }
-                    table.decodedReceipts.push(value);
-                  }
-                  return [column, value];
+                columns.map((column, index) => {
+                  const value = values[index];
+                  // A shaped receipt is [shape, values]; any other is an object.
+                  if (column !== "receipt" || !Array.isArray(value))
+                    return [column, value];
+                  const receipt = decodeReceipt(
+                    table.encoding,
+                    value as [number, unknown[]],
+                  );
+                  sawNestedShape ||= Object.values(receipt).some(
+                    (field) => typeof field === "object" && field !== null,
+                  );
+                  return [column, receipt];
                 }),
               ),
             );
@@ -465,13 +536,18 @@ it("retains observation admission and complete ordered mutation receipts after J
             });
           }
         }
-        if (shape === "stored" || shape === "future-child")
-          expect(sawNestedShape).toBe(true);
-        if (shape === "future-top" || shape === "malformed")
-          expect(sawNestedShape).toBe(false);
-        // JSON equality additionally proves original ordered object keys, arrays,
-        // null idempotency keys, empty artifacts and every source/occurrence.
-        expect(JSON.stringify(decoded)).toBe(JSON.stringify(canonical));
+        // Only normalized receipts are written slim; the opaque, future and
+        // malformed shapes stay exactly as stored.
+        expect(sawNestedShape).toBe(shape === "stored");
+        // JSON equality additionally proves ordered object keys, arrays and
+        // every source/occurrence of the projection a later step reads.
+        expect(JSON.stringify(decoded)).toBe(
+          JSON.stringify(
+            shape === "stored"
+              ? canonical.map((record) => slimRecord(record, wireContext))
+              : canonical,
+          ),
+        );
         expect(wireContext).toEqual(contextBefore);
       }
     }
