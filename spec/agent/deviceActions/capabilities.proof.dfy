@@ -67,6 +67,7 @@ lemma lawTheVocabularyListsEveryCapability_ensures(c: Capability)
     case BrowserHistoryV1 => assert allCapabilities[46] == c;
     case BrowserOpenNewTabV1 => assert allCapabilities[47] == c;
     case FilesShownTargetV1 => assert allCapabilities[48] == c;
+    case TelephonyViewsV1 => assert allCapabilities[49] == c;
   }
 }
 
@@ -102,5 +103,32 @@ lemma lawEitherClockVersionRunsAnOrdinaryHandoff_ensures(n: Negotiation)
     assert Capability.ClockHandoffV1 in need.oneOf && Capability.ClockHandoffV1 in n.capabilities;
   } else if negotiatedHas(n, Capability.ClockHandoffV2) {
     assert Capability.ClockHandoffV2 in need.oneOf && Capability.ClockHandoffV2 in n.capabilities;
+  }
+}
+
+// A view other than Phone, Messages and Contacts is listed, and the filter that leaves out the telephony views keeps it.
+lemma lawEveryOtherViewIsOffered_ensures(n: Negotiation, view: DeviceView)
+  ensures (lawEveryOtherViewIsOffered(n, view) == true)
+{
+  if !telephonyView(view) && !negotiatedHas(n, Capability.TelephonyViewsV1) {
+    match view {
+      case HomeView => assert allViews[0] == view;
+      case NotesView => assert allViews[1] == view;
+      case RemindersView => assert allViews[2] == view;
+      case BrowserView => assert allViews[3] == view;
+      case CalendarView => assert allViews[4] == view;
+      case FilesView => assert allViews[5] == view;
+      case PhotosView => assert allViews[6] == view;
+      case CameraView => assert allViews[7] == view;
+      case MapsView => assert allViews[8] == view;
+      case InboxView => assert allViews[9] == view;
+      case SettingsView => assert allViews[10] == view;
+      case WorkflowsView => assert allViews[11] == view;
+      case PhoneView => assert allViews[12] == view;
+      case MessagesView => assert allViews[13] == view;
+      case ContactsView => assert allViews[14] == view;
+    }
+    var p := (v: DeviceView) => !(telephonyView(v));
+    ProofLib.FilterMember(p, allViews, view);
   }
 }
