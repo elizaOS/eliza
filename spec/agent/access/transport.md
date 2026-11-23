@@ -41,7 +41,7 @@ read while the listener is closing.
 
 ```quint
 import resources as RS from "../host/resources"
-type RouteClass = MessageRoute | SpeechRoute | PlainRoute
+type RouteClass = MessageRoute | SpeechRoute | RunRoute | PlainRoute
 type Call = { route: RouteClass, bodyBytes: int }
 type Inbound = Unreadable | HttpRequest(Call) | HttpRequestStream(Call) | EventsSubscribe
 type Frame = Result({ status: int }) | Refusal | Head({ code: int }) | Chunk | Complete | CompleteFailed | Subscribed | AgentEvent
@@ -56,7 +56,7 @@ type Opening = { stage: Stage, out: List[Effect] }
 pure val initial: Transport = { listeners: RS::initial, exchanges: List() }
 pure val connValues = Set(1, 2, 3)
 pure val statusValues = Set(200, 404)
-pure val inboundValues = Set(Unreadable, EventsSubscribe, HttpRequest({ route: PlainRoute, bodyBytes: 512 }), HttpRequest({ route: PlainRoute, bodyBytes: 3000000 }), HttpRequest({ route: MessageRoute, bodyBytes: 3000000 }), HttpRequestStream({ route: SpeechRoute, bodyBytes: 512 }), HttpRequestStream({ route: PlainRoute, bodyBytes: 3000000 }))
+pure val inboundValues = Set(Unreadable, EventsSubscribe, HttpRequest({ route: PlainRoute, bodyBytes: 512 }), HttpRequest({ route: PlainRoute, bodyBytes: 3000000 }), HttpRequest({ route: MessageRoute, bodyBytes: 3000000 }), HttpRequest({ route: RunRoute, bodyBytes: 512 }), HttpRequestStream({ route: SpeechRoute, bodyBytes: 512 }), HttpRequestStream({ route: PlainRoute, bodyBytes: 3000000 }))
 pure def isLive(st: Stage): bool = match st { | Ended(x) => false | _ => true }
 pure def isDispatched(st: Stage): bool = isLive(st) and st != Reading
 pure def known(s: Transport, conn: int): bool = s.exchanges.some(e => e.conn == conn)
@@ -125,8 +125,10 @@ pure def sometimesTooLargeRefused(s: Transport): bool = s.exchanges.some(e => e.
 
 ### A request gets 10 seconds, or 600 on a message, speech or stream route
 
-Speech covers the voice and local-speech routes. The deadline starts at
-dispatch; a subscription has none.
+Speech covers the voice and local-speech routes. A trigger's Run now counts
+as a message route here, since it answers only when its turn has ended, but
+keeps the 2 MiB body limit. The deadline starts at dispatch; a subscription
+has none.
 
 ```quint
 pure val shortDeadlineMs = 10000

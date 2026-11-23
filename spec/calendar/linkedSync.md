@@ -50,8 +50,8 @@ destinationless control with a pending dispatch reports waiting. For an
 active approved destination, a pending dispatch that moved on reports
 syncing and one that did not reports unconfirmed. Synced is reported only
 when the control is current and active with no pending dispatch, the event
-mappings were read, and none for this destination is conflicted or
-quarantined. A failure reading the mappings is unconfirmed.
+mappings were read, and none for this destination is staged, dirty,
+conflicted or quarantined. A failure reading the mappings is unconfirmed.
 
 ```quint
 type SyncReport = ReportWaiting | ReportSyncing | ReportSynced | ReportUnconfirmed | ReportChanged
