@@ -1,7 +1,10 @@
 // spec/nativeActivityTracker/index.md, "Story: Observe my desktop activity while my collector is running"
-import { assert, it } from "@effect/vitest"
+import { assert, makeMethods } from "@effect/vitest"
+import { test } from "vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { isSupportedPlatform, observeActivity } from "../src/index.vibe"
+
+const it = makeMethods(test)
 
 it.effect.skipIf(!isSupportedPlatform())('Observe valid desktop focus and idle events through the running collector (spec/nativeActivityTracker/index.md, "Story: Observe my desktop activity while my collector is running")', effect () => {
   provide NodeServices.layer {
