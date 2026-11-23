@@ -10,12 +10,117 @@ lemma restartText_ensures(s: ReplyStream, units: seq<int>, provisional: bool)
   ensures (inv(s) ==> canRestartText(s) ==> stepOnlyARestartShortensTheText(s, "restartText", restartText(s, units, provisional).state))
   ensures (inv(s) ==> canRestartText(s) ==> stepCadenceSnapshotsAtLeastDouble(s, restartText(s, units, provisional).state, restartText(s, units, provisional).out))
   ensures (inv(s) ==> canRestartText(s) ==> stepProgressNeverTouchesTheText(s, "restartText", restartText(s, units, provisional).state))
+  ensures (inv(s) ==> canRestartText(s) ==> stepAcknowledgingNeverTouchesTheText(s, "restartText", restartText(s, units, provisional).state))
+  ensures (inv(s) ==> canRestartText(s) ==> stepAcknowledgedAtMostOnce(s, restartText(s, units, provisional).state, restartText(s, units, provisional).out))
+  ensures (inv(s) ==> canRestartText(s) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, restartText(s, units, provisional).state, restartText(s, units, provisional).out))
   ensures (inv(s) ==> canRestartText(s) ==> stepReadyAtMostOnce(s, restartText(s, units, provisional).state, restartText(s, units, provisional).out))
   ensures (inv(s) ==> canRestartText(s) ==> stepNothingAfterTheEnd(s, restartText(s, units, provisional).state, restartText(s, units, provisional).out))
   ensures (inv(s) ==> canRestartText(s) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "restartText", restartText(s, units, provisional).state, restartText(s, units, provisional).out))
 {
   ReplyStreamRestartReadiness(s, units, provisional);
   ReplyStreamRestartOutput(s, units, provisional);
+  ReplyStreamRestartAck(s, units, provisional);
+}
+
+lemma {:induction false} ReplyStreamWriteNextAck(left: bool, x: ReplyStream)
+  ensures (if !(x.inFlight && !left) && x.phase.Open? && ackWaiting(x.ack) then
+      writeNext(left, x) == StreamStep(x.(inFlight := true, ack := AckSent), [Write(AckFrame(x.ack.cue))])
+    else
+      writeNext(left, x).state.ack == x.ack && !(exists f :: f in written(writeNext(left, x).out) && isAckFrame(f)))
+{
+  hide *;
+  reveal writeNext();
+  reveal isOpen();
+  reveal isFinishing();
+  reveal ackWaiting();
+  reveal ackFrame();
+  var r := writeNext(left, x);
+  var free := x.(inFlight := (x.inFlight && !left));
+  if free.inFlight || (!isFinishing(free.phase) && !isOpen(free.phase)) {
+    assert r.out == [] && r.state.ack == x.ack;
+    assert written(r.out) == [] by {
+      reveal written();
+      reveal Std.Collections.Seq.FoldLeft();
+    }
+    assert !(exists f :: f in written(r.out) && isAckFrame(f));
+  } else if isFinishing(free.phase) {
+    var e := ending(free.phase);
+    assert r.out == [Write(Final(e))] && r.state.ack == x.ack;
+    ReplyStreamTerminalFoldLeftWrites(Final(e));
+    assert !isAckFrame(Final(e)) by { reveal isAckFrame(); }
+    assert !(exists f :: f in written(r.out) && isAckFrame(f));
+  } else if ackWaiting(free.ack) {
+    assert r == StreamStep(x.(inFlight := true, ack := AckSent), [Write(AckFrame(x.ack.cue))]);
+  } else if textPending(free) {
+    var frame := textFrame(free);
+    assert r.out == [Write(frame)] && r.state.ack == x.ack;
+    ReplyStreamTerminalFoldLeftWrites(frame);
+    assert !isAckFrame(frame) by {
+      reveal textFrame();
+      reveal isAckFrame();
+    }
+    assert !(exists f :: f in written(r.out) && isAckFrame(f));
+  } else if readyPending(free.ready) {
+    var frame := readyFrame(free.ready);
+    assert r.out == [Write(frame)] && r.state.ack == x.ack;
+    ReplyStreamTerminalFoldLeftWrites(frame);
+    assert !isAckFrame(frame) by {
+      reveal readyFrame();
+      reveal isAckFrame();
+    }
+    assert !(exists f :: f in written(r.out) && isAckFrame(f));
+  } else if !free.progress.NoProgress? {
+    var frame := Progressed(free.progress);
+    assert r.out == [Write(frame)] && r.state.ack == x.ack;
+    ReplyStreamTerminalFoldLeftWrites(frame);
+    assert !isAckFrame(frame) by { reveal isAckFrame(); }
+    assert !(exists f :: f in written(r.out) && isAckFrame(f));
+  } else {
+    assert r.out == [] && r.state.ack == x.ack;
+    assert written(r.out) == [] by {
+      reveal written();
+      reveal Std.Collections.Seq.FoldLeft();
+    }
+    assert !(exists f :: f in written(r.out) && isAckFrame(f));
+  }
+}
+
+lemma {:induction false} ReplyStreamAckKept(before: ReplyStream, via: string, after: ReplyStream, out: seq<Effect>)
+  requires after.ack == before.ack
+  requires !(exists f :: f in written(out) && isAckFrame(f))
+  requires via != "acknowledge"
+  ensures stepAcknowledgingNeverTouchesTheText(before, via, after)
+  ensures stepAcknowledgedAtMostOnce(before, after, out)
+  ensures stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(before, after, out)
+{
+  hide *;
+  reveal stepAcknowledgingNeverTouchesTheText();
+  reveal stepAcknowledgedAtMostOnce();
+  reveal stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame();
+}
+
+lemma {:induction false} ReplyStreamRestartAck(s: ReplyStream, units: seq<int>, provisional: bool)
+  ensures (inv(s) ==> canRestartText(s) ==> stepAcknowledgingNeverTouchesTheText(s, "restartText", restartText(s, units, provisional).state))
+  ensures (inv(s) ==> canRestartText(s) ==> stepAcknowledgedAtMostOnce(s, restartText(s, units, provisional).state, restartText(s, units, provisional).out))
+  ensures (inv(s) ==> canRestartText(s) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, restartText(s, units, provisional).state, restartText(s, units, provisional).out))
+{
+  hide *;
+  if inv(s) && canRestartText(s) {
+    var next := s.(text := units, held := provisional);
+    var result := restartText(s, units, provisional);
+    assert result == writeNext(false, next) by { reveal restartText(); }
+    if !s.inFlight {
+      assert !ackWaiting(next.ack) by {
+        reveal inv();
+        reveal canRestartText();
+        reveal alwaysCaughtUpWhenFree();
+        reveal isOpen();
+      }
+    }
+    ReplyStreamWriteNextAck(false, next);
+    assert result.state.ack == s.ack && !(exists f :: f in written(result.out) && isAckFrame(f));
+    ReplyStreamAckKept(s, "restartText", result.state, result.out);
+  }
 }
 
 lemma finish_ensures(s: ReplyStream, reply: int, units: seq<int>, kind: agent__conversation__turns_ReplyKind, results: int)
@@ -30,6 +135,9 @@ lemma finish_ensures(s: ReplyStream, reply: int, units: seq<int>, kind: agent__c
   ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepOnlyARestartShortensTheText(s, "finish", finish(s, reply, units, kind, results).state))
   ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepCadenceSnapshotsAtLeastDouble(s, finish(s, reply, units, kind, results).state, finish(s, reply, units, kind, results).out))
   ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepProgressNeverTouchesTheText(s, "finish", finish(s, reply, units, kind, results).state))
+  ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepAcknowledgingNeverTouchesTheText(s, "finish", finish(s, reply, units, kind, results).state))
+  ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepAcknowledgedAtMostOnce(s, finish(s, reply, units, kind, results).state, finish(s, reply, units, kind, results).out))
+  ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, finish(s, reply, units, kind, results).state, finish(s, reply, units, kind, results).out))
   ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepReadyAtMostOnce(s, finish(s, reply, units, kind, results).state, finish(s, reply, units, kind, results).out))
   ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepNothingAfterTheEnd(s, finish(s, reply, units, kind, results).state, finish(s, reply, units, kind, results).out))
   ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "finish", finish(s, reply, units, kind, results).state, finish(s, reply, units, kind, results).out))
@@ -40,6 +148,7 @@ lemma finish_ensures(s: ReplyStream, reply: int, units: seq<int>, kind: agent__c
   ReplyStreamMarks_finish_ensures(s, reply, units, kind, results);
   ReplyStreamReadiness_finish_ensures(s, reply, units, kind, results);
   CombinedReplyStreamClause27_finish_ensures(s, reply, units, kind, results);
+  ReplyStreamAck_finish_ensures(s, reply, units, kind, results);
 }
 
 lemma answerError_ensures(s: ReplyStream, code: string)
@@ -54,12 +163,18 @@ lemma answerError_ensures(s: ReplyStream, code: string)
   ensures (inv(s) ==> canAnswerError(s, code) ==> stepOnlyARestartShortensTheText(s, "answerError", answerError(s, code).state))
   ensures (inv(s) ==> canAnswerError(s, code) ==> stepCadenceSnapshotsAtLeastDouble(s, answerError(s, code).state, answerError(s, code).out))
   ensures (inv(s) ==> canAnswerError(s, code) ==> stepProgressNeverTouchesTheText(s, "answerError", answerError(s, code).state))
+  ensures (inv(s) ==> canAnswerError(s, code) ==> stepAcknowledgingNeverTouchesTheText(s, "answerError", answerError(s, code).state))
+  ensures (inv(s) ==> canAnswerError(s, code) ==> stepAcknowledgedAtMostOnce(s, answerError(s, code).state, answerError(s, code).out))
+  ensures (inv(s) ==> canAnswerError(s, code) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, answerError(s, code).state, answerError(s, code).out))
   ensures (inv(s) ==> canAnswerError(s, code) ==> stepReadyAtMostOnce(s, answerError(s, code).state, answerError(s, code).out))
   ensures (inv(s) ==> canAnswerError(s, code) ==> stepNothingAfterTheEnd(s, answerError(s, code).state, answerError(s, code).out))
   ensures (inv(s) ==> canAnswerError(s, code) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "answerError", answerError(s, code).state, answerError(s, code).out))
 {
   var end := Errored(code);
-  ReplyStreamTerminalWrite(s.(progress := Progress.NoProgress, phase := Finishing(end)), end);
+  var next := s.(progress := Progress.NoProgress, phase := Finishing(end));
+  ReplyStreamTerminalWrite(next, end);
+  assert answerError(s, code) == writeNext(false, next);
+  ReplyStreamAckKept(s, "answerError", writeNext(false, next).state, writeNext(false, next).out);
 }
 
 lemma {:induction false} ReplyStreamTerminalFoldLeftSingleton<A, T>(f: (A, T) -> A, init: A, x: T)
@@ -111,6 +226,7 @@ lemma {:induction false} ReplyStreamRestartReadiness(s: ReplyStream, units: seq<
     } else {
       assert alwaysCaughtUpWhenFree(s);
       assert !readyPending(next.ready) && next.progress.NoProgress?;
+      assert !ackWaiting(next.ack);
       reveal textPending();
       if textPending(next) {
         var frame := textFrame(next);
@@ -224,6 +340,7 @@ lemma {:induction false} ReplyStreamRestartOutput(s: ReplyStream, units: seq<int
     if !s.inFlight {
       assert alwaysCaughtUpWhenFree(s);
       assert !readyPending(next.ready) && next.progress.NoProgress?;
+      assert !ackWaiting(next.ack);
     }
     if s.inFlight || !textPending(next) {
       assert result == StreamStep(next, []);
@@ -296,6 +413,8 @@ lemma {:induction false} ReplyStreamTerminalWrite(s: ReplyStream, e: Ending)
       s.(phase := Ended(e), inFlight := true, shown := endText(e, s.shown), shownHeld := false,
         sinceSnapshot := 0, lastSnapshot := |endText(e, s.shown)|))
   ensures writeNext(false, s).state.ready == s.ready
+  ensures writeNext(false, s).state.ack == s.ack
+  ensures !(exists f :: f in written(writeNext(false, s).out) && isAckFrame(f))
   ensures stepFramesRebuildTheText(s, writeNext(false, s).state, writeNext(false, s).out)
 {
   var result := writeNext(false, s);
@@ -311,6 +430,7 @@ lemma {:induction false} ReplyStreamTerminalWrite(s: ReplyStream, e: Ending)
     ReplyStreamTerminalFoldLeftWrites(f);
     ReplyStreamTerminalFoldLeftApplies(s.shown, f);
     assert rebuilt(s.shown, [w]) == result.state.shown;
+    assert !isAckFrame(f);
   }
 }
 
@@ -351,6 +471,18 @@ lemma ReplyStreamReadiness_finish_ensures(s: ReplyStream, reply: int, units: seq
   ReplyStreamTerminalWrite(s.(progress := Progress.NoProgress, phase := Finishing(end)), end);
 }
 
+lemma ReplyStreamAck_finish_ensures(s: ReplyStream, reply: int, units: seq<int>, kind: agent__conversation__turns_ReplyKind, results: int)
+  ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepAcknowledgingNeverTouchesTheText(s, "finish", finish(s, reply, units, kind, results).state))
+  ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepAcknowledgedAtMostOnce(s, finish(s, reply, units, kind, results).state, finish(s, reply, units, kind, results).out))
+  ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, finish(s, reply, units, kind, results).state, finish(s, reply, units, kind, results).out))
+{
+  var end := Done(reply, units, results, agent__conversation__turns_failureKind(kind));
+  var next := s.(progress := Progress.NoProgress, phase := Finishing(end));
+  ReplyStreamTerminalWrite(next, end);
+  assert finish(s, reply, units, kind, results) == writeNext(false, next);
+  ReplyStreamAckKept(s, "finish", writeNext(false, next).state, writeNext(false, next).out);
+}
+
 lemma CombinedReplyStreamClause27_finish_ensures(s: ReplyStream, reply: int, units: seq<int>, kind: agent__conversation__turns_ReplyKind, results: int)
   ensures (inv(s) ==> canFinish(s, reply, kind, results) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "finish", finish(s, reply, units, kind, results).state, finish(s, reply, units, kind, results).out))
 {
@@ -381,6 +513,9 @@ lemma admit_ensures(s: ReplyStream, verdict: agent__conversation__turns_Admissio
   ensures (inv(s) ==> canAdmit(s) ==> stepOnlyARestartShortensTheText(s, "admit", admit(s, verdict).state))
   ensures (inv(s) ==> canAdmit(s) ==> stepCadenceSnapshotsAtLeastDouble(s, admit(s, verdict).state, admit(s, verdict).out))
   ensures (inv(s) ==> canAdmit(s) ==> stepProgressNeverTouchesTheText(s, "admit", admit(s, verdict).state))
+  ensures (inv(s) ==> canAdmit(s) ==> stepAcknowledgingNeverTouchesTheText(s, "admit", admit(s, verdict).state))
+  ensures (inv(s) ==> canAdmit(s) ==> stepAcknowledgedAtMostOnce(s, admit(s, verdict).state, admit(s, verdict).out))
+  ensures (inv(s) ==> canAdmit(s) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, admit(s, verdict).state, admit(s, verdict).out))
   ensures (inv(s) ==> canAdmit(s) ==> stepReadyAtMostOnce(s, admit(s, verdict).state, admit(s, verdict).out))
   ensures (inv(s) ==> canAdmit(s) ==> stepNothingAfterTheEnd(s, admit(s, verdict).state, admit(s, verdict).out))
   ensures (inv(s) ==> canAdmit(s) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "admit", admit(s, verdict).state, admit(s, verdict).out))
@@ -397,7 +532,7 @@ lemma {:induction false} ReplyStreamAdmitShape(s: ReplyStream, verdict: agent__c
   requires inv(s) && canAdmit(s)
   ensures s.phase.Open? && !s.inFlight
   ensures s.text == [] && s.shown == [] && !s.held && !s.shownHeld
-  ensures s.ready.NotReady? && s.progress.NoProgress?
+  ensures s.ready.NotReady? && s.progress.NoProgress? && s.ack.Unacknowledged?
   ensures s.sinceSnapshot == 0 && s.lastSnapshot == 0
   ensures roleFor(verdict).Streams? || roleFor(verdict).Waits? || roleFor(verdict).Refused?
   ensures admit(s, verdict) ==
@@ -412,7 +547,7 @@ lemma {:induction false} ReplyStreamAdmitShape(s: ReplyStream, verdict: agent__c
   reveal isOpen();
   assert s.phase.Open? && !s.inFlight;
   assert s.text == [] && s.shown == [] && !s.held && !s.shownHeld;
-  assert s.ready.NotReady? && s.progress.NoProgress?;
+  assert s.ready.NotReady? && s.progress.NoProgress? && s.ack.Unacknowledged?;
   reveal roleFor();
   reveal admit();
   if roleFor(verdict).Streams? {
@@ -420,6 +555,7 @@ lemma {:induction false} ReplyStreamAdmitShape(s: ReplyStream, verdict: agent__c
     reveal isFinishing();
     reveal textPending();
     reveal readyPending();
+    reveal ackWaiting();
   }
 }
 
@@ -499,10 +635,16 @@ lemma {:induction false} ReplyStreamAdmitProtocol(s: ReplyStream, verdict: agent
   ensures stepReadyAtMostOnce(s, admit(s, verdict).state, admit(s, verdict).out)
   ensures stepNothingAfterTheEnd(s, admit(s, verdict).state, admit(s, verdict).out)
   ensures stepLeavingAbortsOnlyAnOwnRunningTurn(s, "admit", admit(s, verdict).state, admit(s, verdict).out)
+  ensures stepAcknowledgingNeverTouchesTheText(s, "admit", admit(s, verdict).state)
+  ensures stepAcknowledgedAtMostOnce(s, admit(s, verdict).state, admit(s, verdict).out)
+  ensures stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, admit(s, verdict).state, admit(s, verdict).out)
 {
   hide *;
   ReplyStreamAdmitShape(s, verdict);
   ReplyStreamAdmitResultViews(s, verdict);
+  assert admit(s, verdict).state.ack == s.ack;
+  assert !(exists f :: f in written(admit(s, verdict).out) && isAckFrame(f)) by { reveal isAckFrame(); }
+  ReplyStreamAckKept(s, "admit", admit(s, verdict).state, admit(s, verdict).out);
   reveal stepCadenceSnapshotsAtLeastDouble();
   reveal stepProgressNeverTouchesTheText();
   reveal stepReadyAtMostOnce();
@@ -529,6 +671,9 @@ lemma clientLeft_ensures(s: ReplyStream)
   ensures (inv(s) ==> canClientLeft(s) ==> stepOnlyARestartShortensTheText(s, "clientLeft", clientLeft(s).state))
   ensures (inv(s) ==> canClientLeft(s) ==> stepCadenceSnapshotsAtLeastDouble(s, clientLeft(s).state, clientLeft(s).out))
   ensures (inv(s) ==> canClientLeft(s) ==> stepProgressNeverTouchesTheText(s, "clientLeft", clientLeft(s).state))
+  ensures (inv(s) ==> canClientLeft(s) ==> stepAcknowledgingNeverTouchesTheText(s, "clientLeft", clientLeft(s).state))
+  ensures (inv(s) ==> canClientLeft(s) ==> stepAcknowledgedAtMostOnce(s, clientLeft(s).state, clientLeft(s).out))
+  ensures (inv(s) ==> canClientLeft(s) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, clientLeft(s).state, clientLeft(s).out))
   ensures (inv(s) ==> canClientLeft(s) ==> stepReadyAtMostOnce(s, clientLeft(s).state, clientLeft(s).out))
   ensures (inv(s) ==> canClientLeft(s) ==> stepNothingAfterTheEnd(s, clientLeft(s).state, clientLeft(s).out))
   ensures (inv(s) ==> canClientLeft(s) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "clientLeft", clientLeft(s).state, clientLeft(s).out))
@@ -536,6 +681,7 @@ lemma clientLeft_ensures(s: ReplyStream)
   hide *;
   if inv(s) && canClientLeft(s) {
     ReplyStreamClientLeftViews(s);
+    ReplyStreamAckKept(s, "clientLeft", clientLeft(s).state, clientLeft(s).out);
     reveal inv();
     reveal canClientLeft();
     reveal alwaysOnlyAStreamingTurnCarriesText();
@@ -594,6 +740,9 @@ lemma appendText_ensures(s: ReplyStream, units: seq<int>, provisional: bool)
   ensures (inv(s) ==> canAppendText(s, units) ==> stepOnlyARestartShortensTheText(s, "appendText", appendText(s, units, provisional).state))
   ensures (inv(s) ==> canAppendText(s, units) ==> stepCadenceSnapshotsAtLeastDouble(s, appendText(s, units, provisional).state, appendText(s, units, provisional).out))
   ensures (inv(s) ==> canAppendText(s, units) ==> stepProgressNeverTouchesTheText(s, "appendText", appendText(s, units, provisional).state))
+  ensures (inv(s) ==> canAppendText(s, units) ==> stepAcknowledgingNeverTouchesTheText(s, "appendText", appendText(s, units, provisional).state))
+  ensures (inv(s) ==> canAppendText(s, units) ==> stepAcknowledgedAtMostOnce(s, appendText(s, units, provisional).state, appendText(s, units, provisional).out))
+  ensures (inv(s) ==> canAppendText(s, units) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, appendText(s, units, provisional).state, appendText(s, units, provisional).out))
   ensures (inv(s) ==> canAppendText(s, units) ==> stepReadyAtMostOnce(s, appendText(s, units, provisional).state, appendText(s, units, provisional).out))
   ensures (inv(s) ==> canAppendText(s, units) ==> stepNothingAfterTheEnd(s, appendText(s, units, provisional).state, appendText(s, units, provisional).out))
   ensures (inv(s) ==> canAppendText(s, units) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "appendText", appendText(s, units, provisional).state, appendText(s, units, provisional).out))
@@ -612,6 +761,7 @@ lemma appendText_ensures(s: ReplyStream, units: seq<int>, provisional: bool)
     reveal stepOneFrameInFlight();
     reveal stepOnlyARestartShortensTheText();
     reveal stepProgressNeverTouchesTheText();
+    reveal stepAcknowledgingNeverTouchesTheText();
     reveal stepLeavingAbortsOnlyAnOwnRunningTurn();
   }
 }
@@ -628,6 +778,9 @@ lemma replaceText_ensures(s: ReplyStream, units: seq<int>, provisional: bool)
   ensures (inv(s) ==> canReplaceText(s) ==> stepOnlyARestartShortensTheText(s, "replaceText", replaceText(s, units, provisional).state))
   ensures (inv(s) ==> canReplaceText(s) ==> stepCadenceSnapshotsAtLeastDouble(s, replaceText(s, units, provisional).state, replaceText(s, units, provisional).out))
   ensures (inv(s) ==> canReplaceText(s) ==> stepProgressNeverTouchesTheText(s, "replaceText", replaceText(s, units, provisional).state))
+  ensures (inv(s) ==> canReplaceText(s) ==> stepAcknowledgingNeverTouchesTheText(s, "replaceText", replaceText(s, units, provisional).state))
+  ensures (inv(s) ==> canReplaceText(s) ==> stepAcknowledgedAtMostOnce(s, replaceText(s, units, provisional).state, replaceText(s, units, provisional).out))
+  ensures (inv(s) ==> canReplaceText(s) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, replaceText(s, units, provisional).state, replaceText(s, units, provisional).out))
   ensures (inv(s) ==> canReplaceText(s) ==> stepReadyAtMostOnce(s, replaceText(s, units, provisional).state, replaceText(s, units, provisional).out))
   ensures (inv(s) ==> canReplaceText(s) ==> stepNothingAfterTheEnd(s, replaceText(s, units, provisional).state, replaceText(s, units, provisional).out))
   ensures (inv(s) ==> canReplaceText(s) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "replaceText", replaceText(s, units, provisional).state, replaceText(s, units, provisional).out))
@@ -648,6 +801,7 @@ lemma replaceText_ensures(s: ReplyStream, units: seq<int>, provisional: bool)
     reveal stepOneFrameInFlight();
     reveal stepOnlyARestartShortensTheText();
     reveal stepProgressNeverTouchesTheText();
+    reveal stepAcknowledgingNeverTouchesTheText();
     reveal stepLeavingAbortsOnlyAnOwnRunningTurn();
   }
 }
@@ -673,9 +827,13 @@ lemma {:induction false} ReplyStreamNoChange(s: ReplyStream, result: StreamStep,
   ensures stepCadenceSnapshotsAtLeastDouble(s, result.state, result.out)
   ensures stepReadyAtMostOnce(s, result.state, result.out)
   ensures stepNothingAfterTheEnd(s, result.state, result.out)
+  ensures stepAcknowledgedAtMostOnce(s, result.state, result.out)
+  ensures stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, result.state, result.out)
 {
   hide *;
   reveal inv();
+  reveal stepAcknowledgedAtMostOnce();
+  reveal stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame();
   reveal written();
   reveal rebuilt();
   reveal Std.Collections.Seq.FoldLeft();
@@ -700,6 +858,9 @@ lemma showProgress_ensures(s: ReplyStream, progress: Progress)
   ensures (inv(s) ==> canShowProgress(s, progress) ==> stepOnlyARestartShortensTheText(s, "showProgress", showProgress(s, progress).state))
   ensures (inv(s) ==> canShowProgress(s, progress) ==> stepCadenceSnapshotsAtLeastDouble(s, showProgress(s, progress).state, showProgress(s, progress).out))
   ensures (inv(s) ==> canShowProgress(s, progress) ==> stepProgressNeverTouchesTheText(s, "showProgress", showProgress(s, progress).state))
+  ensures (inv(s) ==> canShowProgress(s, progress) ==> stepAcknowledgingNeverTouchesTheText(s, "showProgress", showProgress(s, progress).state))
+  ensures (inv(s) ==> canShowProgress(s, progress) ==> stepAcknowledgedAtMostOnce(s, showProgress(s, progress).state, showProgress(s, progress).out))
+  ensures (inv(s) ==> canShowProgress(s, progress) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, showProgress(s, progress).state, showProgress(s, progress).out))
   ensures (inv(s) ==> canShowProgress(s, progress) ==> stepReadyAtMostOnce(s, showProgress(s, progress).state, showProgress(s, progress).out))
   ensures (inv(s) ==> canShowProgress(s, progress) ==> stepNothingAfterTheEnd(s, showProgress(s, progress).state, showProgress(s, progress).out))
   ensures (inv(s) ==> canShowProgress(s, progress) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "showProgress", showProgress(s, progress).state, showProgress(s, progress).out))
@@ -708,6 +869,9 @@ lemma showProgress_ensures(s: ReplyStream, progress: Progress)
   if inv(s) && canShowProgress(s, progress) {
     ReplyStreamShowProgressShape(s, progress);
     ReplyStreamControlViews(s.shown, showProgress(s, progress).out, Progressed(progress));
+    assert showProgress(s, progress).state.ack == s.ack;
+    assert !(exists f :: f in written(showProgress(s, progress).out) && isAckFrame(f)) by { reveal isAckFrame(); }
+    ReplyStreamAckKept(s, "showProgress", showProgress(s, progress).state, showProgress(s, progress).out);
     reveal inv();
     reveal alwaysOnlyAStreamingTurnCarriesText();
     reveal alwaysCaughtUpWhenFree();
@@ -745,6 +909,9 @@ lemma announceReply_ensures(s: ReplyStream, units: seq<int>, results: int)
   ensures (inv(s) ==> canAnnounceReply(s) ==> stepOnlyARestartShortensTheText(s, "announceReply", announceReply(s, units, results).state))
   ensures (inv(s) ==> canAnnounceReply(s) ==> stepCadenceSnapshotsAtLeastDouble(s, announceReply(s, units, results).state, announceReply(s, units, results).out))
   ensures (inv(s) ==> canAnnounceReply(s) ==> stepProgressNeverTouchesTheText(s, "announceReply", announceReply(s, units, results).state))
+  ensures (inv(s) ==> canAnnounceReply(s) ==> stepAcknowledgingNeverTouchesTheText(s, "announceReply", announceReply(s, units, results).state))
+  ensures (inv(s) ==> canAnnounceReply(s) ==> stepAcknowledgedAtMostOnce(s, announceReply(s, units, results).state, announceReply(s, units, results).out))
+  ensures (inv(s) ==> canAnnounceReply(s) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, announceReply(s, units, results).state, announceReply(s, units, results).out))
   ensures (inv(s) ==> canAnnounceReply(s) ==> stepReadyAtMostOnce(s, announceReply(s, units, results).state, announceReply(s, units, results).out))
   ensures (inv(s) ==> canAnnounceReply(s) ==> stepNothingAfterTheEnd(s, announceReply(s, units, results).state, announceReply(s, units, results).out))
   ensures (inv(s) ==> canAnnounceReply(s) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "announceReply", announceReply(s, units, results).state, announceReply(s, units, results).out))
@@ -753,6 +920,9 @@ lemma announceReply_ensures(s: ReplyStream, units: seq<int>, results: int)
   if inv(s) && canAnnounceReply(s) {
     ReplyStreamAnnounceReplyShape(s, units, results);
     ReplyStreamControlViews(s.shown, announceReply(s, units, results).out, ReadyFrame(units, results));
+    assert announceReply(s, units, results).state.ack == s.ack;
+    assert !(exists f :: f in written(announceReply(s, units, results).out) && isAckFrame(f)) by { reveal isAckFrame(); }
+    ReplyStreamAckKept(s, "announceReply", announceReply(s, units, results).state, announceReply(s, units, results).out);
     reveal inv();
     reveal alwaysOnlyAStreamingTurnCarriesText();
     reveal alwaysCaughtUpWhenFree();
@@ -796,6 +966,7 @@ lemma {:induction false} ReplyStreamShowProgressShape(s: ReplyStream, progress: 
     reveal isFinishing();
     reveal textPending();
     reveal readyPending();
+    reveal ackWaiting();
   }
 }
 
@@ -819,12 +990,13 @@ lemma {:induction false} ReplyStreamAnnounceReplyShape(s: ReplyStream, units: se
     reveal readyPending();
     reveal readySent();
     reveal readyFrame();
+    reveal ackWaiting();
   }
 }
 
 lemma {:induction false} ReplyStreamControlViews(shown: seq<int>, out: seq<Effect>, frame: Frame)
   requires out == [] || out == [Write(frame)]
-  requires frame.Progressed? || frame.ReadyFrame?
+  requires frame.Progressed? || frame.ReadyFrame? || frame.AckFrame?
   ensures written(out) == (if out == [] then [] else [frame])
   ensures rebuilt(shown, out) == shown
   ensures !(exists e :: e in out && e.AbortTurn?)
@@ -855,6 +1027,9 @@ lemma frameFlushed_ensures(s: ReplyStream)
   ensures (inv(s) ==> canFrameFlushed(s) ==> stepOnlyARestartShortensTheText(s, "frameFlushed", frameFlushed(s).state))
   ensures (inv(s) ==> canFrameFlushed(s) ==> stepCadenceSnapshotsAtLeastDouble(s, frameFlushed(s).state, frameFlushed(s).out))
   ensures (inv(s) ==> canFrameFlushed(s) ==> stepProgressNeverTouchesTheText(s, "frameFlushed", frameFlushed(s).state))
+  ensures (inv(s) ==> canFrameFlushed(s) ==> stepAcknowledgingNeverTouchesTheText(s, "frameFlushed", frameFlushed(s).state))
+  ensures (inv(s) ==> canFrameFlushed(s) ==> stepAcknowledgedAtMostOnce(s, frameFlushed(s).state, frameFlushed(s).out))
+  ensures (inv(s) ==> canFrameFlushed(s) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, frameFlushed(s).state, frameFlushed(s).out))
   ensures (inv(s) ==> canFrameFlushed(s) ==> stepReadyAtMostOnce(s, frameFlushed(s).state, frameFlushed(s).out))
   ensures (inv(s) ==> canFrameFlushed(s) ==> stepNothingAfterTheEnd(s, frameFlushed(s).state, frameFlushed(s).out))
   ensures (inv(s) ==> canFrameFlushed(s) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "frameFlushed", frameFlushed(s).state, frameFlushed(s).out))
@@ -865,7 +1040,16 @@ lemma frameFlushed_ensures(s: ReplyStream)
     reveal alwaysSnapshotCadence();
     var result := frameFlushed(s);
     var free := s.(inFlight := false);
-    if s.phase.Open? && textPending(s) {
+    if s.phase.Open? && ackWaiting(s.ack) {
+      assert s.inFlight by { reveal canFrameFlushed(); }
+      assert !s.ack.AckSent? by { reveal ackWaiting(); }
+      ReplyStreamFlushedAckShape(s);
+      assert s.role.Streams? by {
+        reveal alwaysOnlyAStreamingTurnCarriesText();
+        reveal ackWaiting();
+      }
+      ReplyStreamAckFrameStep(s, "frameFlushed", result.state, result.out, s.ack.cue);
+    } else if s.phase.Open? && textPending(s) {
       var base := free.(text := s.shown, held := s.shownHeld, ready := Readiness.NotReady, progress := Progress.NoProgress);
       ReplyStreamFlushedTextShape(s, base);
       restartText_ensures(base, s.text, s.held);
@@ -873,6 +1057,13 @@ lemma frameFlushed_ensures(s: ReplyStream)
       assert alwaysSnapshotCadence(result.state);
       var frame := textFrame(free);
       ReplyStreamTerminalFoldLeftWrites(frame);
+      assert result.state.ack == s.ack;
+      assert !isAckFrame(frame) by {
+        reveal textFrame();
+        reveal isAckFrame();
+      }
+      assert !(exists f :: f in written(result.out) && isAckFrame(f));
+      ReplyStreamAckKept(s, "frameFlushed", result.state, result.out);
     } else if s.phase.Finishing? {
       var end := s.phase.end;
       assert result == writeNext(false, free) by {
@@ -881,12 +1072,19 @@ lemma frameFlushed_ensures(s: ReplyStream)
       }
       ReplyStreamTerminalWrite(free, end);
       assert alwaysSnapshotCadence(result.state) by { reveal threshold(); }
+      ReplyStreamAckKept(s, "frameFlushed", result.state, result.out);
     } else {
       ReplyStreamFlushedControlShape(s);
       if s.phase.Open? && s.ready.ReadyPending? {
         ReplyStreamControlViews(s.shown, result.out, ReadyFrame(s.ready.text, s.ready.results));
       } else {
         ReplyStreamControlViews(s.shown, result.out, Progressed(s.progress));
+      }
+      assert result.state.ack == s.ack;
+      assert !(exists f :: f in written(result.out) && isAckFrame(f)) by { reveal isAckFrame(); }
+      ReplyStreamAckKept(s, "frameFlushed", result.state, result.out);
+      if s.phase.Open? {
+        assert !ackWaiting(result.state.ack);
       }
       if s.phase.Open? && !result.state.inFlight {
         assert s.shown == s.text && s.shownHeld == s.held by { reveal textPending(); }
@@ -919,7 +1117,7 @@ lemma frameFlushed_ensures(s: ReplyStream)
 }
 
 lemma {:induction false} ReplyStreamFlushedTextShape(s: ReplyStream, base: ReplyStream)
-  requires inv(s) && canFrameFlushed(s) && s.phase.Open? && textPending(s)
+  requires inv(s) && canFrameFlushed(s) && s.phase.Open? && !ackWaiting(s.ack) && textPending(s)
   requires base == s.(inFlight := false, text := s.shown, held := s.shownHeld, ready := Readiness.NotReady, progress := Progress.NoProgress)
   ensures inv(base) && canRestartText(base)
   ensures frameFlushed(s).out == restartText(base, s.text, s.held).out
@@ -944,6 +1142,7 @@ lemma {:induction false} ReplyStreamFlushedTextShape(s: ReplyStream, base: Reply
   reveal isFinishing();
   reveal isSent();
   reveal canRestartText();
+  assert base.ack == s.ack;
   assert inv(base) && canRestartText(base);
 
   reveal frameFlushed();
@@ -956,7 +1155,7 @@ lemma {:induction false} ReplyStreamFlushedTextShape(s: ReplyStream, base: Reply
 }
 
 lemma {:induction false} ReplyStreamFlushedControlShape(s: ReplyStream)
-  requires !s.phase.Finishing? && !(s.phase.Open? && textPending(s))
+  requires !s.phase.Finishing? && !(s.phase.Open? && ackWaiting(s.ack)) && !(s.phase.Open? && textPending(s))
   ensures frameFlushed(s) ==
     (if s.phase.Open? && s.ready.ReadyPending? then
       StreamStep(s.(inFlight := true, ready := ReadySent(s.ready.results)), [Write(ReadyFrame(s.ready.text, s.ready.results))])
@@ -973,4 +1172,145 @@ lemma {:induction false} ReplyStreamFlushedControlShape(s: ReplyStream)
   reveal readyPending();
   reveal readySent();
   reveal readyFrame();
+  reveal ackWaiting();
+}
+
+lemma {:induction false} ReplyStreamFlushedAckShape(s: ReplyStream)
+  requires s.inFlight && s.phase.Open? && ackWaiting(s.ack)
+  ensures frameFlushed(s) == StreamStep(s.(ack := AckSent), [Write(AckFrame(s.ack.cue))])
+{
+  hide *;
+  reveal frameFlushed();
+  ReplyStreamWriteNextAck(true, s);
+  assert s.(inFlight := true, ack := AckSent) == s.(ack := AckSent);
+}
+
+lemma {:induction false} ReplyStreamAckFrameStep(before: ReplyStream, via: string, after: ReplyStream, out: seq<Effect>, cue: seq<int>)
+  requires out == [Write(AckFrame(cue))]
+  requires after == before.(inFlight := true, ack := AckSent)
+  requires !before.ack.AckSent?
+  requires before.role.Streams? && before.phase.Open?
+  requires !before.inFlight || via == "frameFlushed"
+  requires via != "clientLeft"
+  requires alwaysSnapshotCadence(before)
+  ensures alwaysOnlyAStreamingTurnCarriesText(after)
+  ensures alwaysCaughtUpWhenFree(after)
+  ensures alwaysSnapshotCadence(after)
+  ensures alwaysAnAnnouncedReplyEndsAnswered(after)
+  ensures stepOneFrameInFlight(before, via, after, out)
+  ensures stepFramesRebuildTheText(before, after, out)
+  ensures stepAppendsNeverClearTheMark(before, after, out)
+  ensures stepMarkFollowsTheText(before, after, out)
+  ensures stepOnlyARestartShortensTheText(before, via, after)
+  ensures stepCadenceSnapshotsAtLeastDouble(before, after, out)
+  ensures stepProgressNeverTouchesTheText(before, via, after)
+  ensures stepAcknowledgingNeverTouchesTheText(before, via, after)
+  ensures stepAcknowledgedAtMostOnce(before, after, out)
+  ensures stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(before, after, out)
+  ensures stepReadyAtMostOnce(before, after, out)
+  ensures stepNothingAfterTheEnd(before, after, out)
+  ensures stepLeavingAbortsOnlyAnOwnRunningTurn(before, via, after, out)
+{
+  hide *;
+  var frame := AckFrame(cue);
+  ReplyStreamControlViews(before.shown, out, frame);
+  assert written(out) == [frame];
+  assert frame in written(out) && isAckFrame(frame) by { reveal isAckFrame(); }
+  reveal alwaysOnlyAStreamingTurnCarriesText();
+  reveal alwaysCaughtUpWhenFree();
+  reveal alwaysSnapshotCadence();
+  reveal alwaysAnAnnouncedReplyEndsAnswered();
+  reveal isOpen();
+  reveal isFinishing();
+  reveal isSent();
+  reveal stepOneFrameInFlight();
+  reveal stepFramesRebuildTheText();
+  reveal stepAppendsNeverClearTheMark();
+  reveal stepMarkFollowsTheText();
+  reveal isTextFrame();
+  reveal stepOnlyARestartShortensTheText();
+  reveal stepCadenceSnapshotsAtLeastDouble();
+  reveal stepProgressNeverTouchesTheText();
+  reveal stepAcknowledgingNeverTouchesTheText();
+  reveal stepAcknowledgedAtMostOnce();
+  reveal stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame();
+  reveal isAckFrame();
+  reveal stepReadyAtMostOnce();
+  reveal isReadySent();
+  reveal isReadyFrame();
+  reveal stepNothingAfterTheEnd();
+  reveal isEnded();
+  reveal stepLeavingAbortsOnlyAnOwnRunningTurn();
+}
+
+lemma acknowledge_ensures(s: ReplyStream, units: seq<int>)
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> alwaysOnlyAStreamingTurnCarriesText(acknowledge(s, units).state))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> alwaysCaughtUpWhenFree(acknowledge(s, units).state))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> alwaysSnapshotCadence(acknowledge(s, units).state))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> alwaysAnAnnouncedReplyEndsAnswered(acknowledge(s, units).state))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepOneFrameInFlight(s, "acknowledge", acknowledge(s, units).state, acknowledge(s, units).out))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepFramesRebuildTheText(s, acknowledge(s, units).state, acknowledge(s, units).out))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepAppendsNeverClearTheMark(s, acknowledge(s, units).state, acknowledge(s, units).out))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepMarkFollowsTheText(s, acknowledge(s, units).state, acknowledge(s, units).out))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepOnlyARestartShortensTheText(s, "acknowledge", acknowledge(s, units).state))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepCadenceSnapshotsAtLeastDouble(s, acknowledge(s, units).state, acknowledge(s, units).out))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepProgressNeverTouchesTheText(s, "acknowledge", acknowledge(s, units).state))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepAcknowledgingNeverTouchesTheText(s, "acknowledge", acknowledge(s, units).state))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepAcknowledgedAtMostOnce(s, acknowledge(s, units).state, acknowledge(s, units).out))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(s, acknowledge(s, units).state, acknowledge(s, units).out))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepReadyAtMostOnce(s, acknowledge(s, units).state, acknowledge(s, units).out))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepNothingAfterTheEnd(s, acknowledge(s, units).state, acknowledge(s, units).out))
+  ensures (inv(s) ==> canAcknowledge(s, units) ==> stepLeavingAbortsOnlyAnOwnRunningTurn(s, "acknowledge", acknowledge(s, units).state, acknowledge(s, units).out))
+{
+  hide *;
+  if inv(s) && canAcknowledge(s, units) {
+    var next := s.(ack := AckWaiting(units));
+    var result := acknowledge(s, units);
+    assert result == writeNext(false, next) by { reveal acknowledge(); }
+    assert s.role.Streams? && s.phase.Open? && s.ack.Unacknowledged? by {
+      reveal canAcknowledge();
+      reveal isOpen();
+    }
+    assert ackWaiting(next.ack) by { reveal ackWaiting(); }
+    ReplyStreamWriteNextAck(false, next);
+    reveal inv();
+    if s.inFlight {
+      assert result == StreamStep(next, []) by { reveal writeNext(); }
+      assert written(result.out) == [] by {
+        reveal written();
+        reveal Std.Collections.Seq.FoldLeft();
+      }
+      assert rebuilt(s.shown, result.out) == s.shown by {
+        reveal rebuilt();
+        reveal written();
+        reveal Std.Collections.Seq.FoldLeft();
+      }
+      assert !(exists e :: e in result.out && e.AbortTurn?);
+      reveal alwaysOnlyAStreamingTurnCarriesText();
+      reveal alwaysCaughtUpWhenFree();
+      reveal alwaysSnapshotCadence();
+      reveal alwaysAnAnnouncedReplyEndsAnswered();
+      reveal isOpen();
+      reveal isFinishing();
+      reveal isSent();
+      reveal stepOneFrameInFlight();
+      reveal stepFramesRebuildTheText();
+      reveal stepAppendsNeverClearTheMark();
+      reveal stepMarkFollowsTheText();
+      reveal stepOnlyARestartShortensTheText();
+      reveal stepCadenceSnapshotsAtLeastDouble();
+      reveal stepProgressNeverTouchesTheText();
+      reveal stepAcknowledgingNeverTouchesTheText();
+      reveal stepAcknowledgedAtMostOnce();
+      reveal stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame();
+      reveal ackWaiting();
+      reveal stepReadyAtMostOnce();
+      reveal stepNothingAfterTheEnd();
+      reveal isEnded();
+      reveal stepLeavingAbortsOnlyAnOwnRunningTurn();
+    } else {
+      assert result == StreamStep(s.(inFlight := true, ack := AckSent), [Write(AckFrame(units))]);
+      ReplyStreamAckFrameStep(s, "acknowledge", result.state, result.out, units);
+    }
+  }
 }
