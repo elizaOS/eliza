@@ -427,31 +427,6 @@ it.each([
     failureClaim(),
   ],
   [
-    "a cited receipt-less failure superseded by a successful retry",
-    [
-      FAILED_NAVIGATION,
-      {
-        success: true,
-        text: "Opened Maps.",
-        data: { actionName: "OPEN_VIEW" },
-        effectReceipts: [appliedReceipt("view-open-retry")],
-      },
-    ],
-    failureClaim(),
-  ],
-  [
-    "a cited receipt-less failure followed by a bare successful retry",
-    [
-      FAILED_NAVIGATION,
-      {
-        success: true,
-        text: "Opened Maps.",
-        data: { actionName: "OPEN_VIEW" },
-      },
-    ],
-    failureClaim(),
-  ],
-  [
     "a cited rejected receipt whose operation and resource a retry applied",
     [
       {
@@ -496,6 +471,52 @@ it.each([
   },
 );
 
+// A receipt-less failure names no target, so a later success of the same
+// action gives code no target evidence: it may be a retry or a call for
+// another target. These two cases used to be rejected in code even when the
+// judge supported the report, which also stripped honest multi-target
+// failures; whether the later call was a retry is now the judge's call, and
+// an unsupported verdict still fails the turn.
+it.each([
+  [
+    "a successful call with an applied receipt",
+    {
+      success: true,
+      text: "Opened Maps.",
+      data: { actionName: "OPEN_VIEW" },
+      effectReceipts: [appliedReceipt("view-open-retry")],
+    },
+  ],
+  [
+    "a bare successful call",
+    { success: true, text: "Opened Maps.", data: { actionName: "OPEN_VIEW" } },
+  ],
+] as [string, ActionResult][])(
+  "leaves a receipt-less failure followed by %s of the same action to the judge",
+  async (_label, later) => {
+    const supported = fixture(
+      [{ response: HONEST_FAILURE }],
+      [{ grounded: true, claims: [failureClaim()] }],
+    );
+    await expect(
+      supported.recover([FAILED_NAVIGATION, later]),
+    ).resolves.toEqual({ text: HONEST_FAILURE, effectReceiptIds: [] });
+    const unsupported = fixture(
+      [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+      [
+        { grounded: true, claims: [failureClaim({ supported: false })] },
+        { grounded: true, claims: [failureClaim({ supported: false })] },
+      ],
+    );
+    await expect(
+      unsupported.recover([FAILED_NAVIGATION, later]),
+    ).rejects.toMatchObject({
+      code: "REPLY_GROUNDING_FAILED",
+      message: "Recovered reply asserts an unsupported outcome",
+    });
+  },
+);
+
 it("delivers a failure report when only a different action succeeded later", async () => {
   const f = fixture(
     [{ response: HONEST_FAILURE }],
@@ -521,6 +542,9 @@ it("tells the reviewer a successful retry supersedes a failed attempt", async ()
   await f.recover([FAILED_NAVIGATION]);
   expect(f.reviewPrompts[0]).toContain(
     "a later successful retry supersedes the failed attempt",
+  );
+  expect(f.reviewPrompts[0]).toContain(
+    "A success of the same action for a different resource, such as a text that reached a different person, is not a retry",
   );
 });
 
@@ -557,5 +581,404 @@ it("treats a change claim without an outcome as one that occurred", async () => 
   );
   await expect(f.recover([FAILED_NAVIGATION])).rejects.toMatchObject({
     code: "REPLY_GROUNDING_FAILED",
+  });
+});
+
+// Two calls of one action for different targets in the same turn: the
+// success for one target is not a retry of the other target's failure.
+const smsReceipt = (
+  receiptId: string,
+  thread: string,
+  outcome: "applied" | "rejected",
+): EffectReceipt => {
+  const base = {
+    receiptId,
+    operation: "sms.send",
+    resource: { kind: "sms.thread", id: thread },
+    artifacts: [],
+    idempotency: { key: `send-${thread}`, replayed: false },
+    observedAt: OBSERVED_AT,
+  };
+  return outcome === "applied"
+    ? {
+        ...base,
+        outcome: "applied",
+        commit: {
+          kind: "provider_accepted",
+          id: `${receiptId}-commit`,
+          committedAt: OBSERVED_AT,
+        },
+      }
+    : {
+        ...base,
+        outcome: "failed",
+        failure: {
+          code: "NO_NUMBER",
+          retryable: false,
+          acceptance: "rejected",
+        },
+      };
+};
+const MIXED_REPLY =
+  "sent bob the text. alice's text didn't go through: she has no number saved.";
+const bobSent = (): RecoveredReplyClaim => ({
+  quote: "sent bob the text",
+  actor: "assistant",
+  change: true,
+  outcome: "occurred",
+  failedResult: null,
+  supported: true,
+  evidence: "sms-bob",
+});
+const aliceFailed = (
+  failedResult: number,
+  evidence = "No number saved for Alice.",
+): RecoveredReplyClaim => ({
+  quote: "alice's text didn't go through",
+  actor: "assistant",
+  change: true,
+  outcome: "not_occurred",
+  failedResult,
+  supported: true,
+  evidence,
+});
+const bobResult: ActionResult = {
+  success: true,
+  text: "Sent to Bob.",
+  data: { actionName: "MESSAGE" },
+  effectReceipts: [smsReceipt("sms-bob", "bob", "applied")],
+};
+const aliceResult: ActionResult = {
+  success: false,
+  text: "No number saved for Alice.",
+  data: { actionName: "MESSAGE" },
+};
+
+it.each([
+  [
+    "a receipt-less failure before another target's success",
+    [aliceResult, bobResult],
+    aliceFailed(1),
+  ],
+  [
+    "a receipt-less failure after another target's success",
+    [bobResult, aliceResult],
+    aliceFailed(2),
+  ],
+  [
+    "a rejected receipt for one target before another target's success",
+    [
+      {
+        ...aliceResult,
+        effectReceipts: [smsReceipt("sms-alice", "alice", "rejected")],
+      },
+      bobResult,
+    ],
+    aliceFailed(1),
+  ],
+  [
+    "a rejected receipt the claim names beside another target's applied receipt",
+    [
+      {
+        success: true,
+        text: "Sent to Bob. No number saved for Alice.",
+        data: { actionName: "MESSAGE" },
+        effectReceipts: [
+          smsReceipt("sms-bob", "bob", "applied"),
+          smsReceipt("sms-alice", "alice", "rejected"),
+        ],
+      },
+    ],
+    aliceFailed(1, "sms-alice"),
+  ],
+  [
+    "a rejected receipt beside another target's applied receipt on one result",
+    [
+      {
+        success: true,
+        text: "Sent to Bob. No number saved for Alice.",
+        data: { actionName: "MESSAGE" },
+        effectReceipts: [
+          smsReceipt("sms-bob", "bob", "applied"),
+          smsReceipt("sms-alice", "alice", "rejected"),
+        ],
+      },
+    ],
+    aliceFailed(1),
+  ],
+] as [string, ActionResult[], RecoveredReplyClaim][])(
+  "keeps an honest failure report for %s of the same action",
+  async (_label, results, claim) => {
+    const f = fixture(
+      [{ response: MIXED_REPLY, effectReceiptIds: ["sms-bob"] }],
+      [{ grounded: true, claims: [bobSent(), claim] }],
+    );
+    await expect(f.recover(results)).resolves.toEqual({
+      text: MIXED_REPLY,
+      effectReceiptIds: ["sms-bob"],
+    });
+    expect(f.renderPrompts).toHaveLength(1);
+  },
+);
+
+// The review repro: Alice has no number and no receipt, Bob's text applied,
+// and the judge supports both claims. Both orders keep Alice's failure.
+const ALICE_BOB_REPLY =
+  "sent bob the text. i couldn't text alice: no number saved for her.";
+it.each([
+  ["Alice's failure first", [aliceResult, bobResult], 1],
+  ["Bob's success first", [bobResult, aliceResult], 2],
+] as [string, ActionResult[], number][])(
+  "delivers both halves of the Alice/Bob reply with %s",
+  async (_label, results, failedResult) => {
+    const f = fixture(
+      [{ response: ALICE_BOB_REPLY, effectReceiptIds: ["sms-bob"] }],
+      [
+        {
+          grounded: true,
+          claims: [
+            bobSent(),
+            {
+              ...aliceFailed(failedResult),
+              quote: "i couldn't text alice",
+            },
+          ],
+        },
+      ],
+    );
+    await expect(f.recover(results)).resolves.toEqual({
+      text: ALICE_BOB_REPLY,
+      effectReceiptIds: ["sms-bob"],
+    });
+    expect(f.renderPrompts).toHaveLength(1);
+    expect(f.reviewPrompts).toHaveLength(1);
+  },
+);
+
+it("rejects a did-not-happen claim for a failure retried to the same target under the same key", async () => {
+  // Target evidence stays code-side: the judge wrongly supports both drafts.
+  const aliceRetried: ActionResult = {
+    success: true,
+    text: "Sent to Alice.",
+    data: { actionName: "MESSAGE" },
+    effectReceipts: [smsReceipt("sms-alice-retry", "alice", "applied")],
+  };
+  const claim = aliceFailed(1, "sms-alice");
+  const f = fixture(
+    [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+    [
+      { grounded: true, claims: [claim] },
+      { grounded: true, claims: [claim] },
+    ],
+  );
+  await expect(
+    f.recover([
+      {
+        ...aliceResult,
+        effectReceipts: [smsReceipt("sms-alice", "alice", "rejected")],
+      },
+      aliceRetried,
+    ]),
+  ).rejects.toMatchObject({
+    code: "REPLY_GROUNDING_FAILED",
+    message: "Recovered reply asserts an unsupported outcome",
+  });
+  expect(f.reviewPrompts).toHaveLength(2);
+});
+
+it("does not treat an unnamed earlier success as a retry of an unnamed failure", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim({ failedResult: 2 })] }],
+  );
+  await expect(
+    f.recover([
+      { success: true, text: "Read the view list." },
+      {
+        success: false,
+        text: "Navigation rejected (HTTP 409).",
+        error: "HTTP 409",
+      },
+    ]),
+  ).resolves.toEqual({ text: HONEST_FAILURE, effectReceiptIds: [] });
+});
+
+it("does not treat an unnamed later success as a retry of an unnamed failure", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim()] }],
+  );
+  await expect(
+    f.recover([
+      {
+        success: false,
+        text: "Navigation rejected (HTTP 409).",
+        error: "HTTP 409",
+      },
+      { success: true, text: "Read the view list." },
+    ]),
+  ).resolves.toEqual({ text: HONEST_FAILURE, effectReceiptIds: [] });
+});
+
+const calendarFailed: ActionResult = {
+  success: false,
+  text: "Calendar source required.",
+  data: { actionName: "CALENDAR" },
+  effectReceipts: [
+    {
+      receiptId: "calendar-evaluate-failed",
+      operation: "calendar.request.evaluate",
+      resource: { kind: "calendar.operation", id: "op-hash-1" },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: OBSERVED_AT,
+      outcome: "failed",
+      failure: {
+        code: "CALENDAR_NATIVE_RESOURCE_REQUIRED",
+        retryable: true,
+        acceptance: "rejected",
+      },
+    },
+  ],
+};
+const calendarCreated = (
+  receipt: Partial<EffectReceipt> = {},
+): ActionResult => ({
+  success: true,
+  text: "Added the event.",
+  data: { actionName: "CALENDAR" },
+  effectReceipts: [
+    {
+      receiptId: "calendar-event-9",
+      operation: "calendar.event.create",
+      resource: { kind: "calendar.event", id: "event-9" },
+      artifacts: [],
+      idempotency: { key: "create-dentist", replayed: false },
+      observedAt: OBSERVED_AT,
+      outcome: "applied",
+      commit: {
+        kind: "provider_accepted",
+        id: "event-9-commit",
+        committedAt: OBSERVED_AT,
+      },
+      ...receipt,
+    } as EffectReceipt,
+  ],
+});
+
+it.each([
+  [
+    "a cited rejected receipt whose retry committed under the same idempotency key",
+    [
+      {
+        ...calendarFailed,
+        data: { actionName: "CALENDAR_CREATE" },
+        effectReceipts: [
+          {
+            ...smsReceipt("create-draft-1", "x", "rejected"),
+            operation: "calendar.event.create",
+            resource: { kind: "calendar.event", id: "draft-1" },
+            idempotency: { key: "create-dentist", replayed: false },
+          },
+        ],
+      },
+      calendarCreated(),
+    ],
+    failureClaim({ failedResult: 1 }),
+  ],
+  [
+    "a cited receipt the claim names that committed elsewhere",
+    [
+      {
+        success: true,
+        text: "Sent to Bob. No number saved for Alice.",
+        data: { actionName: "MESSAGE" },
+        effectReceipts: [
+          smsReceipt("sms-bob", "bob", "applied"),
+          smsReceipt("sms-alice", "alice", "rejected"),
+        ],
+      },
+    ],
+    failureClaim({ failedResult: 1, evidence: "sms-bob" }),
+  ],
+] as [string, ActionResult[], RecoveredReplyClaim][])(
+  "rejects a did-not-happen claim with %s",
+  async (_label, results, claim) => {
+    const f = fixture(
+      [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+      [
+        { grounded: true, claims: [claim] },
+        { grounded: true, claims: [claim] },
+      ],
+    );
+    await expect(f.recover(results)).rejects.toMatchObject({
+      code: "REPLY_GROUNDING_FAILED",
+      message: "Recovered reply asserts an unsupported outcome",
+    });
+  },
+);
+
+// A CALENDAR failure receipt (kind calendar.operation) and a later create
+// (kind calendar.event) cannot be compared by target: code cannot tell a
+// retry of one event from a second event, so it does not strip the failure
+// report, and whether the create was a retry is the judge's call.
+const CALENDAR_MIXED_REPLY =
+  "added lunch with sam. i couldn't add the dentist appointment: no calendar source was picked.";
+const lunchAdded = (): RecoveredReplyClaim => ({
+  quote: "added lunch with sam",
+  actor: "assistant",
+  change: true,
+  outcome: "occurred",
+  failedResult: null,
+  supported: true,
+  evidence: "calendar-event-9",
+});
+const dentistFailed = (supported: boolean): RecoveredReplyClaim => ({
+  quote: "i couldn't add the dentist appointment",
+  actor: "assistant",
+  change: true,
+  outcome: "not_occurred",
+  failedResult: 1,
+  supported,
+  evidence: "Calendar source required.",
+});
+
+it("keeps an honest CALENDAR failure report beside a later create for another event", async () => {
+  const f = fixture(
+    [
+      {
+        response: CALENDAR_MIXED_REPLY,
+        effectReceiptIds: ["calendar-event-9"],
+      },
+    ],
+    [{ grounded: true, claims: [lunchAdded(), dentistFailed(true)] }],
+  );
+  await expect(
+    f.recover([
+      calendarFailed,
+      calendarCreated({
+        idempotency: { key: "create-lunch", replayed: false },
+      }),
+    ]),
+  ).resolves.toEqual({
+    text: CALENDAR_MIXED_REPLY,
+    effectReceiptIds: ["calendar-event-9"],
+  });
+  expect(f.renderPrompts).toHaveLength(1);
+});
+
+it("leaves a CALENDAR failure retried by a later create of the same event to the judge", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+    [
+      { grounded: true, claims: [dentistFailed(false)] },
+      { grounded: true, claims: [dentistFailed(false)] },
+    ],
+  );
+  await expect(
+    f.recover([calendarFailed, calendarCreated()]),
+  ).rejects.toMatchObject({
+    code: "REPLY_GROUNDING_FAILED",
+    message: "Recovered reply asserts an unsupported outcome",
   });
 });

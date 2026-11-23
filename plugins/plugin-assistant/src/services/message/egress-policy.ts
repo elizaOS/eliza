@@ -8,6 +8,7 @@ import type {
   AgentContext,
   Content,
   ContextObject,
+  EffectReceipt,
   IAgentRuntime,
   JsonValue,
   Memory,
@@ -21,7 +22,6 @@ import {
   ElizaError,
   effectDeliveryBindingIsValid,
   effectDeliveryBindingProvesApplication,
-  getActionResultActionName,
   getEffectDeliveryBinding,
   getStreamingContext,
   getTrustedDeliveryAudience,
@@ -1172,11 +1172,32 @@ export async function resolvePlannedReplyEgress(args: {
     // occurred needs the cited result of this turn to have failed or left its
     // effect unapplied: an honest failure report has no applied receipt to
     // cite, while a failure no result records stays unsupported. A receipt
-    // whose provider acceptance is unknown proves neither polarity. The cited
-    // attempt must also not be superseded within the turn: a committed receipt
-    // for the same operation and resource, or (for a receipt-less attempt)
-    // another result of the same action that succeeded or committed, means the
-    // change did happen and the failure report would be false.
+    // whose provider acceptance is unknown proves neither polarity.
+    //
+    // The cited attempt must also not be superseded within the turn, and
+    // supersession is judged per target, not per action name: one turn can
+    // call an action for several targets, and a success for one target says
+    // nothing about another target's failure.
+    // - A cited receipt is superseded only by target evidence: a committed
+    //   receipt for the same operation and resource, or with the same
+    //   idempotency key, wherever it appears. A later committed receipt of
+    //   the same action for another resource does not supersede it, even when
+    //   the two kinds differ and cannot be compared: a CALENDAR failure
+    //   receipt (kind calendar.operation) and a later create (kind
+    //   calendar.event) may be a retry of one event or two different events,
+    //   and code cannot tell which. Rejecting both would strip every honest
+    //   multi-target report, so whether such a create was a retry is left to
+    //   the judge, which sees the ordered results.
+    // - A receipt-less failed attempt names no target, so code has no target
+    //   evidence against it: a later success of the same named action may be
+    //   a retry or a call for another target ("sent bob the text. i couldn't
+    //   text alice"), and code cannot tell which. As for receipts of kinds
+    //   that do not compare, whether it was a retry is left to the judge,
+    //   which sees the ordered results; code still requires the cited result
+    //   to have failed. Earlier results and "Unknown Action" therefore never
+    //   supersede it either.
+    // When a cited result carries several receipts, a claim whose evidence
+    // names one of them is checked against that receipt only.
     const results = actionResults();
     const committedReceipts = activeCommittedEffectReceipts(
       mergeEffectReceipts(...results.map((result) => result.effectReceipts)),
@@ -1184,44 +1205,41 @@ export async function resolvePlannedReplyEgress(args: {
     const committed = new Set(
       committedReceipts.map((receipt) => receipt.receiptId),
     );
-    const targetKey = (receipt: {
-      operation: string;
-      resource: { kind: string; id: string };
-    }) =>
+    const targetKey = (receipt: EffectReceipt) =>
       JSON.stringify([
         receipt.operation,
         receipt.resource.kind,
         receipt.resource.id,
       ]);
     const committedTargets = new Set(committedReceipts.map(targetKey));
+    const committedIdempotencyKeys = new Set(
+      committedReceipts.flatMap((receipt) =>
+        receipt.idempotency.key === null ? [] : [receipt.idempotency.key],
+      ),
+    );
     const reportsUnappliedResult = (claim: RecoveredReplyClaim) => {
       const index =
         typeof claim.failedResult === "number" ? claim.failedResult - 1 : -1;
       const result = index >= 0 ? results[index] : undefined;
       if (result === undefined) return false;
       const receipts = result.effectReceipts ?? [];
-      if (result.success !== false && receipts.length === 0) return false;
-      if (
-        receipts.some(
-          (receipt) =>
-            committed.has(receipt.receiptId) ||
-            committedTargets.has(targetKey(receipt)) ||
-            (receipt.outcome === "failed" &&
-              receipt.failure.acceptance === "unknown"),
-        )
-      )
-        return false;
-      if (receipts.length > 0) return true;
-      const actionName = getActionResultActionName(result);
-      return !results.some((other, otherIndex) => {
-        if (otherIndex === index) return false;
-        if (getActionResultActionName(other) !== actionName) return false;
-        const otherReceipts = other.effectReceipts ?? [];
-        return (
-          (other.success !== false && otherReceipts.length === 0) ||
-          otherReceipts.some((receipt) => committed.has(receipt.receiptId))
+      if (receipts.length === 0) return result.success === false;
+      const evidence = claim.evidence.trim();
+      const named = receipts.filter(
+        (receipt) => receipt.receiptId === evidence,
+      );
+      const reportable = (receipt: EffectReceipt) =>
+        !committed.has(receipt.receiptId) &&
+        !committedTargets.has(targetKey(receipt)) &&
+        !(
+          receipt.idempotency.key !== null &&
+          committedIdempotencyKeys.has(receipt.idempotency.key)
+        ) &&
+        !(
+          receipt.outcome === "failed" &&
+          receipt.failure.acceptance === "unknown"
         );
-      });
+      return (named.length > 0 ? named : receipts).some(reportable);
     };
     const unsupportedClaims = grounding.claims.filter(
       (claim) =>
