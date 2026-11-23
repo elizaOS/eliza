@@ -193,6 +193,38 @@ pure def sometimesTimedOut(s: Turns): bool = s.replies.some(r => r.kind == Timed
 pure def sometimesKeyLeftWithoutReply(s: Turns): bool = s.records.some(q => q.phase == KeyUnanswered)
 ```
 
+### Only the originating reply carries a live prepared view navigation
+
+A completed-action turn names its renderer in the authenticated
+request's client header. Body metadata can request completed-action
+delivery and, if it also names a renderer, that name must match the
+header. The built-in Views action prepares a binding for that renderer.
+The successful original reply can carry an optional
+`preparedNavigation` field on its Views action result. It contains the
+host's exact open request, renderer, view, installation, declared path
+and label. A prepared result claims no switch. The renderer must still
+claim it and report what happened through the [Views host](../views.md).
+
+The same typed field travels in the buffered reply and the final stream
+frame. Progress and provisional text carry no navigation. The server
+emits only its current host-issued binding, and discards it if the
+renderer or request no longer matches. Joined, replayed, failed and
+canceled turns carry no prepared navigation.
+
+```quint
+pure def rendererMayPrepare(completedAction: bool, headerPresent: bool, bodyMatches: bool): bool =
+  completedAction and headerPresent and bodyMatches
+pure def preparedNavigationMayLeave(originating: bool, successful: bool, minted: bool, pendingBinding: bool, sameRenderer: bool): bool =
+  originating and successful and minted and pendingBinding and sameRenderer
+pure def lawOnlyARequestBoundToARendererCanPrepare(completedAction: bool, bodyMatches: bool): bool =
+  not(rendererMayPrepare(completedAction, false, bodyMatches))
+pure def lawAJoinedOrReplayedReplyNeverCarriesNavigation(successful: bool, minted: bool, pendingBinding: bool, sameRenderer: bool): bool =
+  not(preparedNavigationMayLeave(false, successful, minted, pendingBinding, sameRenderer))
+pure def lawStaleOrForeignNavigationDoesNotTravel(originating: bool, successful: bool, minted: bool): bool =
+  not(preparedNavigationMayLeave(originating, successful, minted, false, true))
+  and not(preparedNavigationMayLeave(originating, successful, minted, true, false))
+```
+
 ### A failed reply names the owner's fix, and only a live rate limit carries its wait
 
 The fix follows the failure kind: `sign-in` for a refused credential,
