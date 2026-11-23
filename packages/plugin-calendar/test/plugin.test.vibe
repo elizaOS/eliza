@@ -147,6 +147,11 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   const yes = try runCalendarAction(host, { ...ask, id: "message-3g", text: "Yes, delete it" }, { subaction: "delete_event", eventId: String(at(vague.data, "eventId")) })
   assert.deepStrictEqual([at(vague.data, "requiresInput"), at(yes.data, "deleted"), filed.length, try stillThere("vet")], [true, true, 0, 0])
 
+  const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
+  assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
+  const pointDay = try runCalendarAction(host, { ...ask, id: "message-4b" }, { ...dentist, isAllDay: true, startAt: "2030-03-04T00:00:00Z", endAt: "2030-03-04T00:00:00Z" })
+  assert.deepStrictEqual([pointDay.success, pointDay.text, at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length")],
+    [false, "A new event needs a title and a start before its end.", 0])
   effect function deleteTurn(key: string, words: string, parameters: Record<string, unknown>, routedWords = words) {
     const message: Memory = try Effect.try(() => ({
       id: stringToUuid(key), entityId: stringToUuid("owner-entity"), agentId: stringToUuid("agent"), roomId: stringToUuid("calendar-chat"),
@@ -188,11 +193,6 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
     const removed = try deleteTurn(`delete-${title}`, words, { eventId: targetId })
     assert.deepEqual([made.success, removed.success, at(removed.data, "targetEvent", "id"), try host.find(String(targetId))], [true, true, targetId, undefined])
   }
-  const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
-  assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
-  const pointDay = try runCalendarAction(host, { ...ask, id: "message-4b" }, { ...dentist, isAllDay: true, startAt: "2030-03-04T00:00:00Z", endAt: "2030-03-04T00:00:00Z" })
-  assert.deepStrictEqual([pointDay.success, pointDay.text, at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length")],
-    [false, "A new event needs a title and a start before its end.", 0])
   const fromPhone = (id: string, text: string) => calendarAsk({ id, entityId: "owner-entity", roomId: "room",
     content: { text, metadata: { observation: { view: "calendar", revision: 1, sensitive: false, timeZone: "America/Los_Angeles" } } } } as unknown as Memory, "UTC")
   const phoneLunch = { subaction: "create_event", title: "Lunch", startAt: "2030-03-06T12:00:00-08:00", endAt: "2030-03-06T13:00:00-08:00", timeZone: "Asia/Tokyo" }
