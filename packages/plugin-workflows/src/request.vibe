@@ -1,8 +1,8 @@
-// spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"
-import { incomingMessagePersistenceSnapshot, unwrapUserMessageText, type IAgentRuntime, type Memory } from "@elizaos/core"
+// spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A whole-message workflow command is routed to the workflow action, and showing the workflows stays navigation"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"
+import { incomingMessagePersistenceSnapshot, registerDirectActionRoutingRule, unwrapUserMessageText, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { readTurnContext } from "@elizaos/agent"
 import {
-  bindToCommand, referenceAnswer, resolveWorkflow, searchKeeps, searchScore,
+  bindToCommand, commandOwnsRequest, referenceAnswer, resolveWorkflow, searchKeeps, searchScore,
   type CommandBinding, type ProposedWorkflowChange, type ReferenceOp, type WorkflowCommand,
 } from "../gen/workflow__lifecycle.effect.vibe"
 import type { WorkflowRefused, WorkflowService } from "./service/workflows.vibe"
@@ -27,7 +27,7 @@ module edge {
     | { readonly op: "create"; readonly name: string }
     | { readonly op: "rename"; readonly workflowName: string; readonly name: string }
     | { readonly op: "remove"; readonly workflowName: string }
-    | { readonly op: "list" }
+    | { readonly op: "list"; readonly showWording: boolean }
 
   const fullStop = /[.]+$/u
 
@@ -60,7 +60,9 @@ module edge {
       const named = nameOf(removed[1] ?? removed[2])
       return named ? { op: "remove", workflowName: named } : undefined
     }
-    return list.test(request) || whatDoIHave.test(request) ? { op: "list" } : undefined
+    const listed = list.exec(request)
+    if (listed) return { op: "list", showWording: listed[1] !== undefined }
+    return whatDoIHave.test(request) ? { op: "list", showWording: false } : undefined
   }
 
   /** @throws {never} */
@@ -168,6 +170,19 @@ function commandNames(command: AuthoredWorkflowRequest | undefined): Readonly<Re
 export function commandBinding(words: string, proposed: ProposedWorkflowChange): { readonly binding: CommandBinding; readonly names: Readonly<Record<string, string>> } {
   const command = authoredWorkflowRequest(words)
   return { binding: bindToCommand(command === undefined ? "NoCommand" : commands[command.op], proposed), names: commandNames(command) }
+}
+
+export function workflowRequestOwned(words: string): boolean {
+  const command = authoredWorkflowRequest(words)
+  return commandOwnsRequest(command === undefined ? "NoCommand" : commands[command.op], command?.op === "list" && command.showWording)
+}
+
+export function registerWorkflowRequestRouting(runtime: IAgentRuntime): void {
+  const matches = (text: string, message?: Memory) => workflowRequestOwned(message === undefined ? text : Effect.runSync(ownerWords(message)))
+  registerDirectActionRoutingRule(runtime, {
+    id: "workflow.authored-request", actionNames: ["WORKFLOW"], replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: [],
+    contexts: ["automation", "general"], matches, wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
+  })
 }
 
 export function searchWorkflows(workflows: readonly WorkflowView[], query: string): WorkflowView[] {

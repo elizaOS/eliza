@@ -1,7 +1,7 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { computeNextCronRunAtMs, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { computeNextCronRunAtMs, getDirectActionRoutingRules, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
@@ -9,6 +9,7 @@ import {
   type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun,
 } from "../src/client/index.vibe"
 import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
+import { registerWorkflowRequestRouting } from "../src/request.vibe"
 import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
 import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
@@ -279,7 +280,7 @@ it.live('Remove a workflow only when its runs are settled and restore it safely 
   try check(() => assert.deepStrictEqual(phone.performed, []))
 })
 
-it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
+it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A whole-message workflow command is routed to the workflow action, and showing the workflows stays navigation"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
   const rig = try harness({ draft: () => JSON.stringify({ name: "Drafted", description: "Drafts a summary", source: generatedSource }) })
   const morning = (try saved(rig, greeting)).receipt
   const garden = (try saved(rig, manual("Garden digest", greeting.steps))).receipt
@@ -318,6 +319,10 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   const listed = try say("list my workflows", { action: "list", limit: 2 })
   const found = try say("which workflow drafts a summary?", { action: "search", query: "summary drafts" })
   const ran = try say("run the Garden digest workflow", { action: "run", workflowName: "Garden digest" })
+  const inView = try say("make the Garden digest workflow shorter", { action: "modify", workflowName: "Garden digest" })
+  registerWorkflowRequestRouting(runtime)
+  const route = getDirectActionRoutingRules(runtime).find((rule) => rule.id === "workflow.authored-request")
+  const owned = (words: string) => route?.wholeRequest?.matches(words, { content: { text: words } } as Memory)
   const dossier = try say("give me today's dossier", { action: "dossier" })
   const context = (words: string) => promise(() => activeWorkflowsProvider.get(runtime, { content: { text: words } } as Memory, {} as Parameters<Provider["get"]>[2]))
   const matching = try context("which workflow drafts a summary")
@@ -334,6 +339,8 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     twins: (twins.data as { readonly matches?: readonly unknown[] } | undefined)?.matches?.length,
     ownerZone: twins.userFacingText?.includes(`created ${kiritimati}`),
     confirm: partial.userFacingText,
+    refusals: [inView, removedId, unknown].map((result) => [result.error, result.failureProvenance]),
+    routed: [owned("Please create a workflow called Alpha device test"), owned("list my workflows"), owned("show me my workflows"), owned("open my settings"), route?.replacesActionNames],
     names,
   }, {
     codes: [
@@ -348,6 +355,12 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     twins: 2,
     ownerZone: true,
     confirm: "Do you mean “Garden digest”? I left it unchanged.",
+    refusals: [
+      ["WORKFLOW_EDIT_IN_VIEW", { kind: "handler_error", boundary: "handler", code: "WORKFLOW_EDIT_IN_VIEW", retryable: true }],
+      ["WORKFLOW_REMOVED", { kind: "handler_error", boundary: "handler", code: "WORKFLOW_REMOVED", retryable: false }],
+      ["WORKFLOW_NOT_FOUND", { kind: "handler_error", boundary: "handler", code: "WORKFLOW_NOT_FOUND", retryable: true }],
+    ],
+    routed: [true, true, false, false, ["VIEWS", "VIEWS_SHOW"]],
     names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Reading list", "Twin", "Twin"],
   }))
 })
