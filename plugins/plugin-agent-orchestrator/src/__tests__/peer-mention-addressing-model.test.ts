@@ -241,10 +241,10 @@ async function replay(item: ModelCase): Promise<number[]> {
   } as Memory;
   const callsBefore = modelCalls;
   await handler({ message });
-  // A crowded room or a running turn asks the classifier; its prose leaves
-  // the decision to decideInterruption.
   const classified = ids.filter(
-    (_id, index) => item.rooms > 1 || item.busy.includes(index),
+    (_id, index) =>
+      (item.rooms > 1 || item.busy.includes(index)) &&
+      (item.address !== 2 || item.target === index),
   ).length;
   expect(modelCalls - callsBefore, text).toBe(classified);
   return ids.map((id) => {

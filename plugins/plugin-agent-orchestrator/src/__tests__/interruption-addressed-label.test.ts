@@ -63,6 +63,7 @@ describe("interruption decider addressing", () => {
   it("does not read an @-mention of another sub-agent as addressing this one", () => {
     for (const [text, peerLabels] of [
       ["@Ada stop", ["Ada"]],
+      ["@Ada stop, Bob can keep working", ["Ada"]],
       ["@ada, stop", ["Ada", "Cy"]],
       ["@민수 README도 고쳐줘", ["민수"]],
     ] as const) {
@@ -78,7 +79,7 @@ describe("interruption decider addressing", () => {
       ).toEqual({ action: "ignore", reason: "ambient chatter during turn" });
     }
     // An "@" the room cannot map to another sub-agent still addresses Bob.
-    for (const text of ["<@1234567890> stop", "@eliza stop", "@Adam stop"]) {
+    for (const text of ["<@1234567890> stop", "@eliza stop", "@Adam stop", "@Ada @Bob stop"]) {
       expect(
         decideInterruption({
           ...room,
@@ -90,6 +91,21 @@ describe("interruption decider addressing", () => {
         text,
       ).toBe("interrupt");
     }
+  });
+
+  it("keeps an explicit peer mention from being reclassified as an interruption", async () => {
+    const runtime = {
+      useModel: async () => '{"action":"interrupt","reason":"stop"}',
+    } as unknown as IAgentRuntime;
+    await expect(
+      decideInterruptionWithModel(runtime, {
+        ...room,
+        text: "@Ada stop, Bob can keep working",
+        agentLabel: "Bob",
+        peerLabels: ["Ada"],
+        sessionBusy: true,
+      }),
+    ).resolves.toEqual({ action: "ignore", reason: "ambient chatter during turn" });
   });
 
   it("falls back to the same addressing when the model is unavailable", async () => {

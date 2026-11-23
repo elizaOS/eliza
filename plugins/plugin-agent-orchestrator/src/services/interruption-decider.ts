@@ -101,9 +101,19 @@ function isAddressed(
   agentLabel?: string,
   peerLabels: readonly string[] = [],
 ): boolean {
-  if (agentLabel && labelNamed(text, agentLabel)) return true;
-  if (!text.includes("@")) return false;
-  return !peerLabels.some((peer) => mentionsLabel(text, peer));
+  if (!text.includes("@")) return Boolean(agentLabel && labelNamed(text, agentLabel));
+  return !namesOnlyPeer(text, agentLabel, peerLabels);
+}
+
+function namesOnlyPeer(
+  text: string,
+  agentLabel: string | undefined,
+  peerLabels: readonly string[] = [],
+): boolean {
+  return (
+    peerLabels.some((peer) => mentionsLabel(text, peer)) &&
+    !(agentLabel && mentionsLabel(text, agentLabel))
+  );
 }
 
 // ASCII labels keep word boundaries ("Ada" is not addressed by "Adam"). JS
@@ -286,7 +296,14 @@ export async function decideInterruptionWithModel(
   input: InterruptionInput,
 ): Promise<InterruptionDecision> {
   const baseline = decideInterruption(input);
-  if (!input.text.trim()) return baseline;
+  if (
+    !input.text.trim() ||
+    (!input.shouldRespond &&
+      input.multiParty &&
+      namesOnlyPeer(input.text, input.agentLabel, input.peerLabels))
+  ) {
+    return baseline;
+  }
   // A mid-turn agent (interrupt-vs-queue matters), a crowded room
   // (directed-vs-ambient matters), or a planner-shared channel
   // (task-follow-up-vs-planner-command matters) warrants a model call. Only an
