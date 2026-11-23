@@ -1,4 +1,4 @@
-// spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
+// spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "Without managed Google reads from its host, a live Google source is refused as mail and calendar not reachable from this agent"; spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
 import type { CloudClient } from "@elizaos/cloud/client"
 import type { HostedLiveSelection } from "../contract/digest.vibe"
 import { phoneWorkflowBytes, workflowSha } from "../contract/phone.vibe"
@@ -9,6 +9,7 @@ export interface LiveGoogleAccount { readonly accountId: string; readonly accoun
 
 type Bag = Record<string, unknown>
 const unavailableText = "Selected hosted Google source is unavailable; reconnect or review its owner and read grant"
+export const HOSTED_GOOGLE_UNREACHABLE_TEXT = "Mail and calendar are not reachable from this agent, so it cannot read a Google source. No mail or calendar data was read."
 const readTimeout = "30 seconds"
 
 effect function unavailable(): never!WorkflowRefused {

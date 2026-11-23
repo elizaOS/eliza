@@ -11,7 +11,7 @@ import {
 import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
 import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
-import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
+import { generatedWorkflows, hostedDigests, openWorkflows, runtimeWorkflowHost, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort } from "../src/service/host.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
 import { workflowHttpError } from "../src/client/workflow-client.vibe"
@@ -418,21 +418,22 @@ it.live('Acknowledge a page of digests only after it is stored (spec/workflow/ho
   }
 })
 
+const ownerGoogle = {
+  googleStatus: () => Promise.resolve({
+    provider: "google", side: "owner", mode: "managed", configured: true, connected: true, reason: "connected", identity: { email: "owner@example.com" },
+    grantedCapabilities: ["google.gmail.triage", "google.calendar.read"], grantedScopes: [], expiresAt: null, hasRefreshToken: true, connectionId: "conn-1", linkedAt: "2026-11-01T00:00:00.000Z", lastUsedAt: null,
+  }),
+  calendarCalendars: () => Promise.resolve([{ calendarId: "work@example.com", accountId: "acct", accountEmail: "owner@example.com", label: "Work", accessRole: "reader", read: true, write: false }]),
+  gmailSearch: () => Promise.resolve({
+    messages: [{ id: "m1", threadId: "t1", subject: "Release", from: "a@example.com", to: [], cc: [], snippet: "Ship it", receivedAt: new Date().toISOString(), labels: [], isUnread: true, isImportant: false, likelyReplyNeeded: false, triageScore: 1 }],
+    nextPageToken: null, syncedAt: new Date().toISOString(), mailboxHistoryId: "1", supportsSpamTrash: false,
+  }),
+  calendarFeed: () => Promise.resolve({ calendarId: "work@example.com", events: [], syncedAt: new Date().toISOString() }),
+} as unknown as ManagedGoogleReads
+
 it.live('Run a digest over a live Google source read through managed Google (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible")', effect () => {
   provide KeyValueStore.layerMemory {
     const prompts: string[] = []
-    const google = {
-      googleStatus: () => Promise.resolve({
-        provider: "google", side: "owner", mode: "managed", configured: true, connected: true, reason: "connected", identity: { email: "owner@example.com" },
-        grantedCapabilities: ["google.gmail.triage", "google.calendar.read"], grantedScopes: [], expiresAt: null, hasRefreshToken: true, connectionId: "conn-1", linkedAt: "2026-11-01T00:00:00.000Z", lastUsedAt: null,
-      }),
-      calendarCalendars: () => Promise.resolve([{ calendarId: "work@example.com", accountId: "acct", accountEmail: "owner@example.com", label: "Work", accessRole: "reader", read: true, write: false }]),
-      gmailSearch: () => Promise.resolve({
-        messages: [{ id: "m1", threadId: "t1", subject: "Release", from: "a@example.com", to: [], cc: [], snippet: "Ship it", receivedAt: new Date().toISOString(), labels: [], isUnread: true, isImportant: false, likelyReplyNeeded: false, triageScore: 1 }],
-        nextPageToken: null, syncedAt: new Date().toISOString(), mailboxHistoryId: "1", supportsSpamTrash: false,
-      }),
-      calendarFeed: () => Promise.resolve({ calendarId: "work@example.com", events: [], syncedAt: new Date().toISOString() }),
-    } as unknown as ManagedGoogleReads
     const reads: string[] = []
     let held: { readonly granting: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> } | undefined
     const native: WorkflowNativeDigests = {
@@ -446,7 +447,7 @@ it.live('Run a digest over a live Google source read through managed Google (spe
       },
       read: (selection) => sync(() => { reads.push(selection.sourceId); return "Water the plants" }),
     }
-    const rig = try harness({ google, native, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
+    const rig = try harness({ google: ownerGoogle, native, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
     const protocol = hostedDigestProtocol(rig.request)
     const [account] = try protocol.liveAccounts()
     const calendars = try protocol.liveCalendars(account)
@@ -487,6 +488,43 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     try check(() => assert.deepStrictEqual(
       [(meanwhile.source as { readonly id: string }).id, (replayed.execution as { readonly id: string }).id, afterRevoke._tag === "WorkflowHttpError" ? afterRevoke.status : 0, reads],
       ["notes-1", dossierRun, 409, ["tasks"]]))
+  }
+})
+
+it.live('Say plainly that mail and calendar are not reachable from this agent when a digest lists, saves, enables or runs a live Google source (spec/workflow/hostedDigest.md, "Story: Hear plainly when the agent cannot read my mail or calendar for a digest"; spec/workflow/hostedDigest.md, "Without managed Google reads from its host, a live Google source is refused as mail and calendar not reachable from this agent")', effect () => {
+  provide KeyValueStore.layerMemory {
+    const sent: unknown[] = []
+    const link = { request: (made: unknown) => { sent.push(made); return Promise.reject(new Error("The agent's host must not read Google through its cloud link")) } }
+    const agentHost = runtimeWorkflowHost({ adapter: {}, getService: (type: string) => type === "cloud" ? link : null } as unknown as IAgentRuntime)
+    const rig = try harness({ google: ownerGoogle })
+    const protocol = hostedDigestProtocol(rig.request)
+    const [account] = try protocol.liveAccounts()
+    const live = { provider: "google", accountId: account.accountId, accountRevision: account.accountRevision, kind: "email", windowHours: 12, maxItems: 5 }
+    const expiresAt = new Date(Date.now() + 86_400_000).toISOString()
+    const saved = try protocol.mutate("sources", { id: "google-1", kind: "email", label: "Inbox", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live, confirmed: true })
+    const revision = (saved.source as { readonly revision: string }).revision
+    const minute = Math.floor(Date.now() / 60_000) * 60_000
+    const spec = { version: 1, template: "morning", sourceId: "google-1", sourceRevision: revision, timeZone: "UTC", localTime: new Date(minute).toISOString().slice(11, 16), enabled: true }
+    const loop = try protocol.mutate("loops", { mutationId: "loop-google", confirmed: true, spec })
+    const workflowId = String((loop.receipt as { readonly workflowId: string }).workflowId)
+    const version = Number((try protocol.loops())[0].versionId.slice(1))
+
+    Object.assign(rig.host, { google: agentHost.google })
+    try rig.service.fire({ workflowId, armVersion: version, scheduledAt: minute }, rig.digests.fire)
+    const ran = try (try digestInbox("scope-unreachable")).sync(protocol, 1)
+    const answers = [
+      try promise(() => call(rig.routes, "/api/workflow/hosted/live-accounts", undefined)),
+      try promise(() => call(rig.routes, "/api/workflow/hosted/live-calendars", { accountId: account.accountId, accountRevision: account.accountRevision })),
+      try promise(() => call(rig.routes, "/api/workflow/hosted/sources", { id: "google-2", kind: "email", label: "Inbox", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live, confirmed: true })),
+      try promise(() => call(rig.routes, "/api/workflow/hosted/loops", { mutationId: "loop-google-2", confirmed: true, spec })),
+    ]
+    const unreachable = "Mail and calendar are not reachable from this agent, so it cannot read a Google source. No mail or calendar data was read."
+    try check(() => assert.deepStrictEqual([agentHost.google, ran.map((result) => [result.status, (result.output as { readonly text?: string }).text]), answers, sent], [undefined, [["unavailable", unreachable]], [
+      { status: 409, body: { error: unreachable } },
+      { status: 409, body: { error: unreachable } },
+      { status: 409, body: { error: unreachable, code: "HOSTED_SOURCE_NOT_SAVED", mutationId: "google-2" } },
+      { status: 409, body: { error: unreachable } },
+    ], []]))
   }
 })
 

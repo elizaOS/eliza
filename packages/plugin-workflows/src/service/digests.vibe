@@ -1,4 +1,4 @@
-// spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "Reconciliation preserves equivalent bytes and replaces only the matching cancellation"; spec/workflow/hostedDigest.md, "Parse the complete page before durable writes and bind its acknowledgement to its final incoming row"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"
+// spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "Without managed Google reads from its host, a live Google source is refused as mail and calendar not reachable from this agent"; spec/workflow/hostedDigest.md, "Reconciliation preserves equivalent bytes and replaces only the matching cancellation"; spec/workflow/hostedDigest.md, "Parse the complete page before durable writes and bind its acknowledgement to its final incoming row"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"
 import * as A from "../../gen/workflow__admission.effect.vibe"
 import * as L from "../../gen/workflow__lifecycle.effect.vibe"
 import * as X from "../../gen/workflow__execution.effect.vibe"
@@ -10,11 +10,16 @@ import {
 } from "../contract/digest.vibe"
 import { phoneWorkflowBytes, validatePhoneWorkflowSpec, workflowSha, workflowUuid } from "../contract/phone.vibe"
 import type { DefinitionRow, RunRow } from "./store.vibe"
-import { assertHostedGoogleSource, liveGoogleAccounts, liveGoogleCalendars, readHostedGoogleSource, validateHostedGoogleSelection } from "./google.vibe"
+import { assertHostedGoogleSource, HOSTED_GOOGLE_UNREACHABLE_TEXT, liveGoogleAccounts, liveGoogleCalendars, readHostedGoogleSource, validateHostedGoogleSelection, type ManagedGoogleReads } from "./google.vibe"
 import { PHONE_COMPILER_REVISION, versionId, WorkflowRefused, type WorkflowService } from "./workflows.vibe"
 
 type Bag = Record<string, unknown>
 const nativeKeys = ["provider", "ownerId", "agentId", "installationId", "enrollmentId", "sourceId", "revision"]
+
+effect function reachableGoogle(google: ManagedGoogleReads | undefined, refusal: { readonly code?: string; readonly mutationId?: string } = {}): ManagedGoogleReads!WorkflowRefused {
+  if (google === undefined) throw new WorkflowRefused({ status: 409, message: HOSTED_GOOGLE_UNREACHABLE_TEXT, ...refusal })
+  return google
+}
 
 effect function refused<A>(call: A!DigestRefused): A!WorkflowRefused {
   return try mapError(call, (error) => new WorkflowRefused({ status: error.status, message: error.message, ...(error.code === undefined ? {} : { code: error.code }) }))
@@ -83,8 +88,7 @@ function digestSources(service: Pick<WorkflowService, "host" | "store" | "owner"
         try mapError(native.grant(live, expires), changed)
       }
       if (live?.provider === "google") {
-        const google = host.google
-        if (google === undefined) throw changed()
+        const google = try reachableGoogle(host.google, notSaved)
         try mapError(assertHostedGoogleSource(google, live), changed)
       }
       if (!Number.isFinite(observed) || !Number.isFinite(expires) || observed > at + 60000 || observed < at - 7 * 86400000 || expires <= at || expires > observed + 7 * 86400000) {
@@ -185,8 +189,8 @@ export function hostedDigests(service: WorkflowService) {
       const source = try sourceOf(spec.sourceId)
       if (source.revision !== spec.sourceRevision) throw new WorkflowRefused({ status: 409, message: "Reviewed snapshot revision changed" })
       if (source.live?.provider === "google" && spec.enabled) {
-        const google = host.google
-        if (google === undefined || source.revoked || Date.parse(source.expiresAt) <= (try now)) throw new WorkflowRefused({ status: 409, message: "Selected Google source is unavailable" })
+        const google = try reachableGoogle(host.google)
+        if (source.revoked || Date.parse(source.expiresAt) <= (try now)) throw new WorkflowRefused({ status: 409, message: "Selected Google source is unavailable" })
         try assertHostedGoogleSource(google, source.live)
       }
       if (source.live?.provider === "native" && spec.enabled) {
@@ -270,6 +274,7 @@ export function hostedDigests(service: WorkflowService) {
     if (digestOccurrenceMissed(scheduledAt, at)) return try record(row, spec, source, scheduledAt, { status: "missed", text: DIGEST_MISSED_TEXT })
     if (runs.some((candidate) => !candidate.finished)) return try record(row, spec, source, scheduledAt, { status: "overlap", text: DIGEST_OVERLAP_TEXT })
     if (host.worker === undefined) return
+    if (source.live?.provider === "google" && host.google === undefined) return try record(row, spec, source, scheduledAt, { status: "unavailable", text: HOSTED_GOOGLE_UNREACHABLE_TEXT })
     const runnable = (runSpec(row, spec, source, at) catch effect () => {
       try record(row, spec, source, scheduledAt, { status: "unavailable", text: DIGEST_SOURCE_UNAVAILABLE_TEXT })
       return undefined
@@ -357,13 +362,10 @@ export function hostedDigests(service: WorkflowService) {
   return {
     sources, saveSource, revokeSource, loops, saveLoop, dossier, results, acknowledge, fire,
     effect liveAccounts() {
-      const google = host.google
-      return { accounts: google === undefined ? [] : try liveGoogleAccounts(google) }
+      return { accounts: try liveGoogleAccounts(try reachableGoogle(host.google)) }
     },
     effect liveCalendars(input: unknown) {
-      const google = host.google
-      if (google === undefined) throw new WorkflowRefused({ status: 409, message: "Managed Google is unavailable on this agent" })
-      return try liveGoogleCalendars(google, input)
+      return try liveGoogleCalendars(try reachableGoogle(host.google), input)
     },
   }
 }

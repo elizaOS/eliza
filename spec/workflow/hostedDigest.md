@@ -249,3 +249,27 @@ pure val weight_dispatchDigestAck = 8
 pure val weight_observeDigestAck = 8
 pure val weight_recoverDigestJournal = 8
 ```
+
+## Story: Hear plainly when the agent cannot read my mail or calendar for a digest
+
+> As the owner, I want a digest over my mail or calendar to tell me plainly
+> when this agent cannot reach them, and never to send me to reconnect when
+> reconnecting would not help.
+
+### Without managed Google reads from its host, a live Google source is refused as mail and calendar not reachable from this agent
+
+The agent's cloud link never sends a mail or calendar route
+([binding](../agent/models/binding.md)), so the agent reads a live Google
+source only through managed Google reads its host provides, and the agent's
+own runtime host provides none. Without them, listing live Google accounts
+or calendars, saving or enabling a live Google source and a scheduled run
+over one are each refused before any read, saying that mail and calendar are
+not reachable from this agent; such a run is recorded that way, not as a
+revoked or expired source.
+
+```quint
+type LiveGoogleReads = HostGoogleReads | NoGoogleReads
+type LiveGoogleAnswer = LiveGoogleRead | MailAndCalendarUnreachable
+pure def liveGoogleAnswer(reads: LiveGoogleReads): LiveGoogleAnswer = if (reads == HostGoogleReads) LiveGoogleRead else MailAndCalendarUnreachable
+pure def lawOnlyHostReadsReachAGoogleSource(reads: LiveGoogleReads): bool = liveGoogleAnswer(reads) == LiveGoogleRead iff reads == HostGoogleReads
+```

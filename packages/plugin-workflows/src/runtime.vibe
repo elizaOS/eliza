@@ -1,9 +1,6 @@
-// spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/core/occurrenceWindow.md, "An occurrence more than thirty minutes past its scheduled instant is missed, and stays missed"
+// spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/core/occurrenceWindow.md, "An occurrence more than thirty minutes past its scheduled instant is missed, and stays missed"; spec/workflow/hostedDigest.md, "Without managed Google reads from its host, a live Google source is refused as mail and calendar not reachable from this agent"
 import { agentProcessStartedAtMs, computeNextCronRunAtMs, ModelType, NotificationService, type IAgentRuntime, type Task, type UUID } from "@elizaos/core"
-import { cloudServiceType, type CloudLinkService } from "@elizaos/agent"
-import { createCloudClient } from "@elizaos/cloud/client"
 import type { HostedNativeSelection } from "./contract/digest.vibe"
-import type { ManagedGoogleReads } from "./service/google.vibe"
 import type { PhoneDeviceTarget } from "./contract/phone.vibe"
 import type { WorkflowDeviceBinding, WorkflowDeviceOperation } from "./contract/device.vibe"
 import type { ParentMessage, WorkerMessage } from "./worker/protocol.vibe"
@@ -65,47 +62,11 @@ module node {
     return { transaction: (work) => adapter.transaction(async (tx) => await work(connection(await tx.getConnection()))) }
   }
 
-  export interface LinkRequest {
-    readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
-    readonly path: string
-    readonly body?: unknown
-    readonly idempotencyKey?: string
-    readonly ifMatch?: string
-    readonly signal?: AbortSignal
-  }
-  export type LinkReply = { readonly kind: "answered" | "refused"; readonly status: number; readonly body: unknown } | { readonly kind: "changes-off" }
-
-  const methods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
-
-  export function linkFetch(request: (call: LinkRequest) => Promise<LinkReply>): typeof globalThis.fetch {
-    return async (input, init) => {
-      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url)
-      const method = (init?.method ?? "GET").toUpperCase()
-      if (!methods.has(method)) return new Response(JSON.stringify({ error: "method" }), { status: 405 })
-      const headers = new Headers(init?.headers)
-      const body = typeof init?.body === "string" && init.body !== "" ? JSON.parse(init.body) as unknown : undefined
-      const reply = await request({
-        method: method as LinkRequest["method"], path: url.pathname + url.search, ...(body === undefined ? {} : { body }),
-        ...(headers.get("idempotency-key") === null ? {} : { idempotencyKey: headers.get("idempotency-key") ?? "" }),
-        ...(headers.get("if-match") === null ? {} : { ifMatch: headers.get("if-match") ?? "" }),
-        ...(init?.signal === undefined || init.signal === null ? {} : { signal: init.signal }),
-      })
-      if (reply.kind === "changes-off") return new Response(JSON.stringify({ error: "changes-off" }), { status: 403, headers: { "content-type": "application/json" } })
-      return new Response(JSON.stringify(reply.body ?? null), { status: reply.status, headers: { "content-type": "application/json" } })
-    }
-  }
-
   export function workerHostOf(value: unknown): WorkerHostService | undefined {
     return typeof value === "object" && value !== null && "spawnWorker" in value && typeof value.spawnWorker === "function" ? value as WorkerHostService : undefined
   }
 }
-import { adapterSql, linkFetch, openChild, workerHostOf } from node
-
-function managedGoogle(runtime: IAgentRuntime): ManagedGoogleReads | undefined {
-  const link = serviceWith<CloudLinkService>(runtime, cloudServiceType, ["request"])
-  if (link === undefined) return undefined
-  return createCloudClient({ baseUrl: "https://cloud.link.local", credential: () => "linked", fetch: linkFetch((call) => link.request(call)) })
-}
+import { adapterSql, openChild, workerHostOf } from node
 
 interface WorkflowDeviceService {
   enrollment(): Promise<WorkflowDeviceEnrollment | undefined>
@@ -173,7 +134,7 @@ export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
       },
       catch: (cause) => new WorkflowModelFailed({ message: String(cause) }),
     }),
-    google: managedGoogle(runtime),
+    google: undefined,
     nativeDigests: native === undefined ? undefined : {
       grant: (selection, expiresAt) => tryPromise({ try: () => native.grant(selection, expiresAt), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
       read: (selection, at) => tryPromise({ try: () => native.read(selection, at), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
