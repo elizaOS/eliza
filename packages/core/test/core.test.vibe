@@ -1193,9 +1193,9 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       trajectoryFailures.push([member === "startTrajectory" ? capture === undefined && diagnostic("StandaloneTrajectory.start") === before + 1 : capture instanceof TypeError])
       try Effect.try(() => Object.assign(trajectory, defaults))
     }
-    trajectory.logLlmCall = () => { throw new TypeError("j03 logger fault") }
+    trajectory.logLlmCall = throwOnRead({ failure: new TypeError("j03 logger fault") })
     const providerCallBefore = diagnostic("TrajectoryProviderCall")
-    const recordedReply = try host(() => runWithTrajectoryContext({ trajectoryId: "j03-parent", trajectoryStepId: "j03-parent-step" }, async () => recordLlmCall(runtime, { model: "j03-model", systemPrompt: "", userPrompt: "", purpose: "test" }, () => "generated")))
+    const recordedReply = try host(async () => runWithTrajectoryContext({ trajectoryId: "j03-parent", trajectoryStepId: "j03-parent-step" }, async () => recordLlmCall(runtime, { model: "j03-model", systemPrompt: "", userPrompt: "", purpose: "test" }, () => "generated")))
     trajectoryFailures.push([recordedReply, diagnostic("TrajectoryProviderCall") === providerCallBefore + 1])
     try Effect.try(() => Object.assign(trajectory, defaults))
     for (const next of [undefined, null]) {
