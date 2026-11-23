@@ -1,6 +1,6 @@
 // spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone's reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it needs the owner's own ask"; spec/assistant/reminders.md, "A new phone reminder is due when the owner's words say, counted from the turn's start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn"
 import type { ActionParameterSchema } from "@elizaos/core"
-import { readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type Grounding, type PendingRequest, type ProposalForm, type ProposalText } from "@elizaos/agent/device-actions"
+import { readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type Grounding, type MessageAvailability, type NegotiatedDevice, type PendingRequest, type ProposalForm, type ProposalText } from "@elizaos/agent/device-actions"
 import { declinesInWords, namedInWords, parseExplicitLocalDate, parseStatedClockTimes, wordsInWords } from "@elizaos/plugin-calendar/request-time"
 import { alertAt, newReminderStated, phoneReminderProposed, relativeDueAt, reminderChangeAsked, reminderLead, reminderTargetGrounded, reminderTimeAdmitted, reminderWordsKept } from "../gen/assistant__reminders.effect.vibe"
 import { localDueGrounded, phoneZoneGrounded, reminderShownZone } from "../gen/assistant__timezone.effect.vibe"
@@ -63,8 +63,8 @@ const createFields = object({
 })
 const recordName = { type: "string", description: "The reminder name exactly as the owner said it. Never an ID or revision." } satisfies ActionParameterSchema
 
-const has = (turn: DeviceTurn, name: string) => turn.capabilities.includes(name)
-const keepsRecords = (turn: DeviceTurn) => has(turn, recordV1) || has(turn, recordV2)
+const has = (device: NegotiatedDevice, name: string) => device.capabilities.includes(name)
+const keepsRecords = (device: NegotiatedDevice) => has(device, recordV1) || has(device, recordV2)
 
 type Selection = NonNullable<NonNullable<DeviceTurn["observation"]>["selectedObject"]>
 
@@ -89,6 +89,15 @@ function recordsProposed(turn: DeviceTurn): boolean {
   return phoneReminderProposed(turn.runtime.actions.some(({ name }) => name === ownerRemindersAction.name), screenSelection(turn).phoneRecord)
 }
 
+const recordsHere: MessageAvailability = {
+  unavailable: "this agent keeps the owner's reminders with OWNER_REMINDERS, and this message's screen selects no phone reminder or reminder list, so an ordinary reminder is saved there",
+  available: recordsProposed,
+}
+const selectedHere: MessageAvailability = {
+  unavailable: "it acts only on the phone reminder selected on a screen that is not sensitive, so ask the owner to select that reminder on the phone",
+  available: (turn) => recordsProposed(turn) && screenSelection(turn).reminder !== undefined,
+}
+
 const sameTarget = (left: ReminderTarget, right: ReminderTarget) =>
   left.sourceId === right.sourceId && left.sourceRevision === right.sourceRevision && left.reminderId === right.reminderId
   && left.occurrenceId === right.occurrenceId && left.revision === right.revision && left.timingVersion === right.timingVersion
@@ -98,35 +107,35 @@ const reminderForms: readonly ProposalForm[] = [
     types: [type],
     schema: object({ type: typed(type), target: targetSchema, ...(type === "reminder_update" ? { fields: updateFields } : {}) }),
     guidance: "Selected reminder read, update, complete, snooze and cancel need the exact selected target. Supply dueAt and alertMinutes together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts need at = dueAt - alertMinutes * 60000 and the same recurrence leadMinutes. A no-alert reminder cannot be snoozed; only a reviewed schedule edit gives it an alert. Cancel stops all future repeats; snooze is ten minutes.",
-    offered: (turn) => keepsRecords(turn) && recordsProposed(turn) && screenSelection(turn).reminder !== undefined,
+    offered: keepsRecords, now: selectedHere,
   })),
   {
     types: ["reminder_named"],
     schema: object({ type: typed("reminder_named"), action: typed("update"), name: recordName, fields: updateFields }),
     guidance: "To change or cancel a phone reminder by its name, use reminder_named with action, the spoken name and, for an update, its declared fields.",
-    offered: (turn) => has(turn, namedTarget) && keepsRecords(turn) && recordsProposed(turn),
+    offered: (device) => has(device, namedTarget) && keepsRecords(device), now: recordsHere,
   },
   {
     types: ["reminder_named"],
     schema: object({ type: typed("reminder_named"), action: typed("cancel"), name: recordName }),
-    offered: (turn) => has(turn, namedTarget) && keepsRecords(turn) && recordsProposed(turn),
+    offered: (device) => has(device, namedTarget) && keepsRecords(device), now: recordsHere,
   },
   {
     types: ["reminder_create"],
     schema: object({ type: typed("reminder_create"), fields: createFields }),
     guidance: "Create reviewed phone reminders with reminder_create: alertMinutes null means no alert, recurrence is null or an exact repeat, at = dueAt - (alertMinutes ?? 0) * 60000 and the recurrence leadMinutes matches. For a relative time (\"in 20 minutes\") or a stated day and time the host sets dueAt from the owner's words and the phone's clock; a relative reminder alerts when due, or not at all. The title uses the owner's words and the body stays empty unless the owner gave a note. A reminder without an alert is pending, not delivered. Use a returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when present; they already use the phone's time zone. Otherwise keep its UTC instants explicit, without inventing a local time zone.",
-    offered: (turn) => has(turn, createCapability) && recordsProposed(turn),
+    offered: (device) => has(device, createCapability), now: recordsHere,
   },
   {
     types: ["create_reminder"],
     schema: object({ type: typed("create_reminder"), title: string, dueAt: { type: "string", description: "Absolute UTC ISO timestamp." } }),
     guidance: "The older create_reminder takes only a title and dueAt and always alerts; never drop requested timing: a no-alert, lead or repeating reminder needs reminder_create.",
-    offered: (turn) => turn.capabilities.some((name) => !name.startsWith("clock.")) && recordsProposed(turn),
+    offered: (device) => device.capabilities.some((name) => !name.startsWith("clock.")), now: recordsHere,
   },
 ]
 
 const clockGuidance = "Clock handoffs use clock_handoff. Set takes the phone's current time zone. Keep requested repeat days exactly; never silently drop a repeat or replace an alarm with a reminder. Only show is navigation. After the owner approves, set, dismiss and snooze may change alarms at once: dismiss can turn off the active one-off alarm or skip a repeating one, and snooze can affect every ringing alarm; Clock may use its own snooze length or ask. Clock alarms are not readable here: asked which alarms exist, say Clock keeps the list and offer show. Never promise a second confirmation in Clock, target one alarm, or say an opened receipt proves an alarm was set, dismissed, snoozed or rang. A request to be woken at a time is an alarm set, not a reminder."
-const clocked = (turn: DeviceTurn) => has(turn, clockCapability) || has(turn, clockRepeatCapability)
+const clocked = (device: NegotiatedDevice) => has(device, clockCapability) || has(device, clockRepeatCapability)
 const setSchema = (withDays: boolean) => object({
   type: typed("clock_handoff"), action: typed("set"), hour: { type: "integer", minimum: 0, maximum: 23 }, minute: { type: "integer", minimum: 0, maximum: 59 },
   label: { type: "string", maxLength: 200 }, timeZone: { type: "string", maxLength: 100 },
@@ -137,8 +146,8 @@ const clockForms: readonly ProposalForm[] = [
   ...(["show", "dismiss"] as const).map((action): ProposalForm => ({
     types: ["clock_handoff"], schema: object({ type: typed("clock_handoff"), action: typed(action) }), guidance: clockGuidance, offered: clocked,
   })),
-  { types: ["clock_handoff"], schema: setSchema(false), guidance: clockGuidance, offered: (turn) => has(turn, clockCapability) && !has(turn, clockRepeatCapability) },
-  { types: ["clock_handoff"], schema: setSchema(true), guidance: clockGuidance, offered: (turn) => has(turn, clockRepeatCapability) },
+  { types: ["clock_handoff"], schema: setSchema(false), guidance: clockGuidance, offered: (device) => has(device, clockCapability) && !has(device, clockRepeatCapability) },
+  { types: ["clock_handoff"], schema: setSchema(true), guidance: clockGuidance, offered: (device) => has(device, clockRepeatCapability) },
   {
     types: ["clock_handoff"], schema: object({ type: typed("clock_handoff"), action: typed("snooze"), snoozeMinutes: { type: "integer", minimum: 1, maximum: 60 } }),
     guidance: clockGuidance, offered: clocked,
@@ -363,11 +372,11 @@ const clockSettledText: Readonly<Record<Op<"clock_handoff">["action"], string>> 
   show: "Clock opened to show your alarms; Clock keeps the list.",
 }
 
-function reminderGuidance(turn: DeviceTurn): string | undefined {
+function reminderGuidance(device: NegotiatedDevice): string | undefined {
   const notes = [
-    ...(keepsRecords(turn) && !has(turn, recordV2) ? ["This phone does not take timingVersion 2 targets or schedules with dueAt plus alertMinutes."] : []),
-    ...(clocked(turn) && !has(turn, clockRepeatCapability) ? ["This phone supports only a one-off Clock set without days."] : []),
-    ...(turn.capabilities.length > 0 && turn.capabilities.every((name) => name.startsWith("clock."))
+    ...(keepsRecords(device) && !has(device, recordV2) ? ["This phone does not take timingVersion 2 targets or schedules with dueAt plus alertMinutes."] : []),
+    ...(clocked(device) && !has(device, clockRepeatCapability) ? ["This phone supports only a one-off Clock set without days."] : []),
+    ...(device.capabilities.length > 0 && device.capabilities.every((name) => name.startsWith("clock."))
       ? ["This connection supports only the Clock handoff operations in this schema. App navigation uses its registered view tools, not a phone proposal."] : []),
   ]
   return notes.length === 0 ? undefined : notes.join(" ")

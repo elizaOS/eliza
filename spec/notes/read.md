@@ -171,23 +171,28 @@ pure def lawUnsafeFormatFails(nodes: int, depth: int, encodedUnits: int): bool =
 > edit only from the note I shared, so that it never touches a note I did not
 > mean.
 
-### A phone Notes operation is offered only where the turn's own screen selects the phone's Notes
+### A phone Notes operation is offered as negotiated and proposed only where the message's screen selects the phone's Notes
 
-A turn offers the phone's Notes operations from its own observation.
+Each phone Notes form is offered whenever the device negotiated what its
+operation needs, so the device tool is the same on every message of a
+device conversation ([proposals](../agent/deviceActions/index.md)). Whether
+the form is available on a message follows that message's own observation.
 A lookup the phone resolves itself (a title or latest query, a content or
-titles search, a named delete) is offered from Home or the Notes view,
+titles search, a named delete) is available from Home or the Notes view,
 never while a canonical Notes record or source is selected. Sharing,
-deleting, moving or editing one exact note is offered only in the Notes
+deleting, moving or editing one exact note is available only in the Notes
 view with a phone note selected whose target reads as a note target. The
-canonical list filter is offered only while the canonical Notes list is
+canonical list filter is available only while the canonical Notes list is
 shown. Filtering by folder or kind, creating a folder, restoring and
-recording are offered by their capabilities alone on a turn with no
-observation, and otherwise only where [organizing](./organize.md) admits
-them: never on a sensitive screen, recording only in Notes, the rest only
-in Home or Notes. With no observation, on a sensitive screen, or in the
-Notes view with a phone Notes selection that does not read, nothing else is
-offered. Every operation also needs what its device-action need names; a
-canonical Notes request uses the agent's own Notes actions.
+recording are available on a message with no observation, and otherwise
+only where [organizing](./organize.md) admits them: never on a sensitive
+screen, recording only in Notes, the rest only in Home or Notes. With no
+observation, on a sensitive screen, or in the Notes view with a phone Notes
+selection that does not read, nothing else is available. On a message that
+does not allow a form, the device tool's note says so with the reason, and
+an operation of that form is refused before dispatch, as a call the message
+serves elsewhere, so nothing reaches the phone; a canonical Notes request
+uses the agent's own Notes actions.
 
 ```quint
 type PhoneScreen = PhoneHome | PhoneNotes | PhoneElsewhere
@@ -195,23 +200,23 @@ type NotesSelection = NothingSelected | PhoneNoteSelected | PhoneSourceSelected 
 type PhoneNotesReach = ResolvedByPhone | ExactPhoneNote | CanonicalListOnly | ByCapability
 pure def phoneNotesReadable(sensitive: bool, screen: PhoneScreen, selection: NotesSelection): bool =
   not(sensitive) and not(screen == PhoneNotes and selection == UnreadablePhoneSelection)
-pure def phoneNotesOffered(reach: PhoneNotesReach, observed: bool, sensitive: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool, organizeAdmitted: bool): bool =
+pure def phoneNotesAvailable(reach: PhoneNotesReach, observed: bool, sensitive: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool, organizeAdmitted: bool): bool =
   if (reach == ByCapability) not(observed) or organizeAdmitted
   else if (not(observed) or not(phoneNotesReadable(sensitive, screen, selection))) false
   else if (reach == ExactPhoneNote) screen == PhoneNotes and selection == PhoneNoteSelected
   else if (reach == CanonicalListOnly) screen == PhoneNotes and canonicalList
   else (screen == PhoneHome or screen == PhoneNotes) and selection != CanonicalNotesSelected
 pure def lawAnExactNoteIsTheOpenPhoneNote(observed: bool, sensitive: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool, organizeAdmitted: bool): bool =
-  phoneNotesOffered(ExactPhoneNote, observed, sensitive, screen, selection, canonicalList, organizeAdmitted) implies
+  phoneNotesAvailable(ExactPhoneNote, observed, sensitive, screen, selection, canonicalList, organizeAdmitted) implies
     (observed and not(sensitive) and screen == PhoneNotes and selection == PhoneNoteSelected)
-pure def lawASensitiveScreenOffersNoPhoneRecord(reach: PhoneNotesReach, observed: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool, organizeAdmitted: bool): bool =
-  reach != ByCapability implies not(phoneNotesOffered(reach, observed, true, screen, selection, canonicalList, organizeAdmitted))
+pure def lawASensitiveScreenProposesNoPhoneRecord(reach: PhoneNotesReach, observed: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool, organizeAdmitted: bool): bool =
+  reach != ByCapability implies not(phoneNotesAvailable(reach, observed, true, screen, selection, canonicalList, organizeAdmitted))
 pure def lawAnObservedScreenGatesOrganizing(sensitive: bool, screen: PhoneScreen, selection: NotesSelection, canonicalList: bool): bool =
-  not(phoneNotesOffered(ByCapability, true, sensitive, screen, selection, canonicalList, false))
+  not(phoneNotesAvailable(ByCapability, true, sensitive, screen, selection, canonicalList, false))
 pure def lawACanonicalSelectionKeepsPhoneLookupsOff(observed: bool, sensitive: bool, screen: PhoneScreen, canonicalList: bool, organizeAdmitted: bool): bool =
-  not(phoneNotesOffered(ResolvedByPhone, observed, sensitive, screen, CanonicalNotesSelected, canonicalList, organizeAdmitted))
+  not(phoneNotesAvailable(ResolvedByPhone, observed, sensitive, screen, CanonicalNotesSelected, canonicalList, organizeAdmitted))
 pure def lawALookupWorksFromHome(selection: NotesSelection, organizeAdmitted: bool): bool =
-  selection != CanonicalNotesSelected implies phoneNotesOffered(ResolvedByPhone, true, false, PhoneHome, selection, false, organizeAdmitted)
+  selection != CanonicalNotesSelected implies phoneNotesAvailable(ResolvedByPhone, true, false, PhoneHome, selection, false, organizeAdmitted)
 ```
 
 ### A phone note proposal names only words the owner said and only the note the owner has open
@@ -222,8 +227,8 @@ words in this message; anything else proposes nothing, and the owner is
 asked which note. A latest query and a titles list carry no text. Sharing,
 deleting, moving or editing an exact note targets exactly the phone note
 open in Notes: another target is refused. The model asks for a named edit
-as a named update with the name and empty fields, offered wherever a named
-delete is, and for an edit of the open note as its update with empty
+as a named update with the name and empty fields, available wherever a
+named delete is, and for an edit of the open note as its update with empty
 fields; a title lookup is never how an edit is asked for. A named edit is
 proposed as the title lookup of that name, never with the model's
 replacement fields, and only when the phone negotiated the lookup; an edit

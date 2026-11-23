@@ -548,20 +548,31 @@ const titleFound = (text: string, body: string) => ({ version: 1, kind: "notes_q
 const patch = (textEdit: unknown, changes: unknown[] = []) => JSON.stringify({ requiresInput: false, clarification: null, changes, textEdit })
 const question = "What should the note say instead?"
 
-it.effect('Ask about, delete or change a phone note only as the owner said it (spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn\'s own screen selects the phone\'s Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner\'s direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly")', effect () => {
+it.effect('Ask about, delete or change a phone note only as the owner said it (spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered as negotiated and proposed only where the message\'s screen selects the phone\'s Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner\'s direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly")', effect () => {
   const model = phoneModel([patch(null), patch(null), patch({ action: "append", field: "item", text: "eggs" }), JSON.stringify({ requiresInput: true, clarification: question, changes: [], textEdit: null })])
   const family = notesDeviceFamily(model.runtime)
   const home = { view: "home", revision: 1, sensitive: false }
   const opened = { view: "notes", revision: 2, sensitive: false, selectedObject: openPhoneNote }
-  const offered = (observation: DeviceTurn["observation"]) => family.forms.filter((form) => form.offered(phoneTurn(model.runtime, "", observation))).flatMap((form) => [...form.types])
+  const screens: Readonly<Record<string, DeviceTurn["observation"]>> = {
+    home, opened,
+    canonical: { view: "notes", revision: 3, sensitive: false, selectedObject: { kind: "canonical-note", id: "note-1", revision: "1" } },
+    sensitive: { ...opened, sensitive: true },
+    elsewhere: { view: "calendar", revision: 4, sensitive: false },
+    unobserved: undefined,
+  }
+  const offered = (observation: DeviceTurn["observation"]) => family.forms.filter((form) => form.offered(phoneTurn(model.runtime, "", observation)))
+  const available = (observation: DeviceTurn["observation"]) =>
+    offered(observation).filter((form) => form.now?.available(phoneTurn(model.runtime, "", observation)) ?? true).flatMap((form) => [...form.types])
+  const everyForm = offered(home).flatMap((form) => [...form.types])
+  const deleteOpen = family.forms.find((form) => form.types.includes("notes_delete"))
+  assert.deepEqual(Object.values(screens).map((observation) => offered(observation).flatMap((form) => [...form.types])), Object.values(screens).map(() => everyForm))
+  assert.deepEqual(everyForm, ["notes_query", "notes_search", "notes_named", "notes_named", "notes_read_selected", "notes_update", "notes_delete", "notes_move", "notes_filter", "notes_folder_create", "notes_restore", "notes_record"])
   assert.deepEqual({
-    home: offered(home),
-    opened: offered(opened),
-    canonical: offered({ view: "notes", revision: 3, sensitive: false, selectedObject: { kind: "canonical-note", id: "note-1", revision: "1" } }),
-    sensitive: offered({ ...opened, sensitive: true }),
-    elsewhere: offered({ view: "calendar", revision: 4, sensitive: false }),
-    unobserved: offered(undefined),
-  }, {
+    fromHome: deleteOpen?.now?.available(phoneTurn(model.runtime, "Delete this note", home)),
+    reason: deleteOpen?.now?.unavailable,
+    opened: deleteOpen?.now?.available(phoneTurn(model.runtime, "Delete this note", opened)),
+  }, { fromHome: false, reason: "it acts only on the phone note open in the Notes view on a screen that is not sensitive, so ask the owner to open that note on the phone", opened: true })
+  assert.deepEqual(Object.fromEntries(Object.entries(screens).map(([name, observation]) => [name, available(observation)])), {
     home: ["notes_query", "notes_search", "notes_named", "notes_named", "notes_filter", "notes_folder_create", "notes_restore"],
     opened: ["notes_query", "notes_search", "notes_named", "notes_named", "notes_read_selected", "notes_update", "notes_delete", "notes_move", "notes_filter", "notes_folder_create", "notes_restore", "notes_record"],
     canonical: ["notes_filter", "notes_folder_create", "notes_restore", "notes_record"],

@@ -1,7 +1,7 @@
-// spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner's own words ask for it, and a no keeps the event"; spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone's zone"; spec/calendar/reviewedReads.md, "A change after a shared read is the edits the owner's words gave, keeping every other field"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone's zone"
+// spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar form is offered as negotiated and proposed only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner's own words ask for it, and a no keeps the event"; spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone's zone"; spec/calendar/reviewedReads.md, "A change after a shared read is the edits the owner's words gave, keeping every other field"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone's zone"
 import type { ActionParameterSchema } from "@elizaos/core"
 import {
-  readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type ProposalForm, type ProposalText, type ReadContinuation,
+  readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type NegotiatedDevice, type ProposalForm, type ProposalText, type ReadContinuation,
 } from "@elizaos/agent/device-actions"
 import { askedAvailability, availabilityDayKnown, availabilityWindowed } from "../../gen/calendar__availability.effect.vibe"
 import {
@@ -71,7 +71,7 @@ const fieldsSchema = object({
 const typed = (type: string) => ({ type: "string", enum: [type] }) satisfies ActionParameterSchema
 const recordName = { type: "string", description: "The event name exactly as the owner said it. Never an ID or revision." } satisfies ActionParameterSchema
 
-const has = (turn: DeviceTurn, ...names: readonly string[]) => names.every((name) => turn.capabilities.includes(name))
+const has = (device: NegotiatedDevice, ...names: readonly string[]) => names.every((name) => device.capabilities.includes(name))
 
 function viewOf(view: string | undefined): CalendarView {
   return view === "home" ? "HomeView" : view === "calendar" ? "CalendarAppView" : "OtherView"
@@ -116,9 +116,18 @@ const needOf: Readonly<Record<FormKey, readonly string[]>> = {
   namedRead: [CALENDAR_NAMED_READ_CAPABILITY, CALENDAR_CAPABILITY], namedDelete: [namedTarget, CALENDAR_CAPABILITY], availability: [CALENDAR_AVAILABILITY_CAPABILITY],
 }
 
-function admitted(turn: DeviceTurn, key: FormKey): boolean {
+const homeOrCalendar = "it is proposed only from Home or the Calendar view on a screen that is not sensitive with no app Calendar record selected; otherwise use the canonical CALENDAR service"
+const selectedEvent = "it acts only on the phone event selected in the Calendar view on a screen that is not sensitive, so ask the owner to select that event on the phone"
+const unavailableOn: Readonly<Record<FormKey, string>> = {
+  next: "the owner's screen is not observed, is sensitive, or selects an app Calendar record or a Calendar record that does not read; an app Calendar record uses the canonical CALENDAR service",
+  createLocal: `${homeOrCalendar}. While this agent keeps its own calendar, a new phone event also needs the owner's words to name the phone's calendar or a phone calendar selected`,
+  create: "it adds to the phone calendar selected in the Calendar view on a screen that is not sensitive, so ask the owner to select that calendar on the phone",
+  readSelected: selectedEvent, delete: selectedEvent, namedRead: homeOrCalendar, namedDelete: homeOrCalendar, availability: homeOrCalendar,
+}
+
+function availableHere(turn: DeviceTurn, key: FormKey): boolean {
   const screen = screenOf(turn)
-  if (screen === undefined || !has(turn, ...needOf[key])) return false
+  if (screen === undefined) return false
   const unnamedLocalCreate = key === "createLocal" && turn.runtime.actions.some(({ name }) => name === calendarActionName) && !phoneCalendarWords.test(turn.ownerText)
   const selectionFits = key === "create" ? screen.calendar !== undefined : key === "readSelected" || key === "delete" ? screen.event !== undefined : true
   return selectionFits && calendarProposalAdmitted(reachOf[key], screen.view, screen.source, screen.appSelected, unnamedLocalCreate)
@@ -138,7 +147,11 @@ function keyOf(operation: DeviceOperation): FormKey | undefined {
 }
 
 function form(key: FormKey, schema: ActionParameterSchema, type: DeviceOperation["type"], guidance: string): ProposalForm {
-  return { types: [type], schema, guidance, offered: (turn) => admitted(turn, key) }
+  return {
+    types: [type], schema, guidance,
+    offered: (device) => has(device, ...needOf[key]),
+    now: { unavailable: unavailableOn[key], available: (turn) => availableHere(turn, key) },
+  }
 }
 
 const forms: readonly ProposalForm[] = [
@@ -386,7 +399,7 @@ function changeRead(turn: DeviceTurn, name: string | undefined): Refusal | undef
 function groundCalendar(operation: DeviceOperation, turn: DeviceTurn): Grounding {
   const key = keyOf(operation)
   const screen = screenOf(turn)
-  if (key === undefined || screen === undefined || !admitted(turn, key)) return notHere
+  if (key === undefined || screen === undefined || !has(turn, ...needOf[key]) || !availableHere(turn, key)) return notHere
   const asksDelete = deleteAsked(asksToDeleteInWords(turn.ownerText), declinesInWords(turn.ownerText, deleteWords))
   switch (operation.type) {
     case "calendar_read_next": return { kind: "Grounded", operation }

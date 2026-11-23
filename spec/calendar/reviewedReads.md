@@ -97,20 +97,27 @@ pure def lawChangedReadbackDoesNotPublish(evidence: AvailabilityEvidence): bool 
 > phone review only for the event, source, name and time that my own words
 > and my screen give, and never for one the agent chose.
 
-### A phone Calendar proposal is offered only where its record may be proposed
+### A phone Calendar form is offered as negotiated and proposed only where its record may be proposed
 
-The turn's screen decides whose calendar records a request is about. A
-sensitive screen, or a Calendar screen whose selection is malformed or a
-calendar record of another kind, is about no records the agent may name.
-A Calendar screen with a phone event or phone calendar selected is about
-the phone's records; any other screen is about the app's records. The next
-event read may be proposed from any screen; a new event on the phone's own
-calendar, a named event and an availability check from Home or Calendar;
-a selected read, delete or new event in a chosen calendar only with that
-phone record selected. A selected app calendar record is never proposed to
-the phone. When the agent keeps its own calendar, a new phone event needs
-the phone's record selected or the owner's words naming the phone's
-calendar, so one request never writes two stores.
+Each phone Calendar form is offered whenever the device negotiated its
+capabilities, so the device tool is the same on every message of a device
+conversation ([proposals](../agent/deviceActions/index.md)); the message's
+own screen decides whether the form is available on it. The screen decides
+whose calendar records a request is about. A sensitive screen, or a
+Calendar screen whose selection is malformed or a calendar record of
+another kind, is about no records the agent may name, and so is a message
+with no observation. A Calendar screen with a phone event or phone calendar
+selected is about the phone's records; any other screen is about the app's
+records. The next event read may be proposed from any screen; a new event
+on the phone's own calendar, a named event and an availability check from
+Home or Calendar; a selected read, delete or new event in a chosen calendar
+only with that phone record selected. A selected app calendar record is
+never proposed to the phone. When the agent keeps its own calendar, a new
+phone event needs the phone's record selected or the owner's words naming
+the phone's calendar, so one request never writes two stores. On a message
+that does not allow a form, the device tool's note says so with the reason,
+and an operation of that form is refused before dispatch, as a call the
+message serves elsewhere, so nothing reaches the phone.
 
 ```quint
 type CalendarView = HomeView | CalendarAppView | OtherView

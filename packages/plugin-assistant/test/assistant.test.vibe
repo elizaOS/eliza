@@ -1,6 +1,6 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/goals.md, "Story: Review how my goals are going"
 import { assert, it } from "@effect/vitest"
-import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn, type ProposalForm } from "@elizaos/agent/device-actions"
 import { reminderProposalFamily } from "../src/device-proposals.vibe"
 import { readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
 import { composeBrief, recalibrateBrief } from "../src/brief.vibe"
@@ -748,11 +748,24 @@ effect function groundedReminder(operation: unknown, turn: DeviceTurn) {
 }
 
 it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone\'s reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it needs the owner\'s own ask"; spec/assistant/reminders.md, "A new phone reminder is due when the owner\'s words say, counted from the turn\'s start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn")', effect () => {
-  const offered = (turn: DeviceTurn) => reminderProposalFamily.forms.filter((form) => form.offered(turn)).map(({ schema }) => `${schema.properties?.type?.enum?.[0]}:${schema.properties?.action?.enum?.[0] ?? ""}`)
+  const formName = ({ schema }: ProposalForm) => `${schema.properties?.type?.enum?.[0]}:${schema.properties?.action?.enum?.[0] ?? ""}`
+  const negotiated = (turn: DeviceTurn) => reminderProposalFamily.forms.filter((form) => form.offered(turn)).map(formName)
+  const offered = (turn: DeviceTurn) => reminderProposalFamily.forms.filter((form) => form.offered(turn) && (form.now?.available(turn) ?? true)).map(formName)
   const create = (schedule: object, title = "Call mom", body = "") => ({ type: "reminder_create", fields: { title, body, schedule } })
   const guessed = { at: 2_000_000_000_000, recurrence: null, dueAt: 2_000_000_000_000, alertMinutes: 0 }
   const listed = { kind: "reminder-source", id: "phone", revision: "a".repeat(64) }
+  const everyForm = [
+    "reminder_read_selected:", "reminder_update:", "reminder_complete:", "reminder_snooze:", "reminder_cancel:", "reminder_named:update", "reminder_named:cancel",
+    "reminder_create:", "create_reminder:", "clock_handoff:show", "clock_handoff:dismiss", "clock_handoff:set", "clock_handoff:snooze",
+  ]
+  try equal<unknown>([negotiated(reminderTurn("remind me in 20 minutes to call mom", undefined)), negotiated(reminderTurn("remind me in 20 minutes to call mom", listed)),
+    negotiated(reminderTurn("cancel this", phoneReminder))], [everyForm, everyForm, everyForm])
   try equal<unknown>(offered(reminderTurn("remind me in 20 minutes to call mom", undefined)), ["clock_handoff:show", "clock_handoff:dismiss", "clock_handoff:set", "clock_handoff:snooze"])
+  try equal<unknown>(offered(reminderTurn("remind me in 20 minutes to call mom", listed)), everyForm.filter((name) => !name.startsWith("reminder_") || name.startsWith("reminder_named") || name === "reminder_create:"))
+  try equal<unknown>(offered(reminderTurn("cancel this", phoneReminder)), everyForm)
+  const createForm = reminderProposalFamily.forms.find((form) => form.types.includes("reminder_create"))
+  try equal<unknown>([createForm?.now?.available(reminderTurn("remind me in 20 minutes to call mom", undefined)), createForm?.now?.unavailable],
+    [false, "this agent keeps the owner's reminders with OWNER_REMINDERS, and this message's screen selects no phone reminder or reminder list, so an ordinary reminder is saved there"])
   try equal<unknown>(try groundedReminder(create(guessed), reminderTurn("remind me in 20 minutes to call mom", undefined)), "REMINDER_RECORD_SOURCE_MISMATCH")
 
   const relative = reminderTurn("Remind me in 20 minutes to call mom", listed)

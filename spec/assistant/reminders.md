@@ -225,9 +225,17 @@ pure def lawABlankTitleNeverRenames(matches: int): bool = not(renameAdmitted(mat
 
 Where the assistant keeps the owner's reminders itself (`OWNER_REMINDERS`),
 an ordinary reminder is saved here, and a phone reminder is proposed only
-when the turn's nonsensitive screen selects a phone reminder or a phone
-reminder list. A reminder named from Home is no exception. Otherwise the
-proposal is refused before anything is offered, naming `OWNER_REMINDERS`.
+on a message whose nonsensitive screen selects a phone reminder or a phone
+reminder list. A reminder named from Home is no exception. A read or
+change of the selected reminder is proposed only on a message whose
+nonsensitive screen selects that phone reminder. The phone reminder forms
+are offered whenever the device negotiated them, so the device tool is the
+same on every message of a device conversation
+([proposals](../agent/deviceActions/index.md)). On a message that does not
+allow a form, the device tool's note says so with the reason, naming
+`OWNER_REMINDERS` where the assistant keeps reminders, and an operation of
+that form is refused before dispatch, as a call the message serves
+elsewhere, so nothing reaches the phone.
 
 ```quint
 pure def phoneReminderProposed(assistantKeepsReminders: bool, phoneReminderSelected: bool): bool =
