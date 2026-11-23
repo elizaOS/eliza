@@ -1,4 +1,4 @@
-# Phone calls, call controls, dial handoff and call log
+# Phone calls, call controls, dial handoff, call log and SIM lines
 
 The phone module (`packages/os/android/phone/`, from
 `plugins/plugin-native-phone/android` and the call-log and placement parts of
@@ -15,8 +15,8 @@ are the agent's ([operations](../../agent/deviceActions/operations.md),
 [capabilities](../../agent/deviceActions/capabilities.md)); this spec keeps
 the Android device check, what the call screen offers for a call, which
 keypad tone may sound and which calls alert, what a handoff and a placement
-may report, and the call-log read. Calls are admitted as
-[the bridge](./bridge.md) says and pages follow
+may report, the call-log read and what a SIM line may show. Calls are
+admitted as [the bridge](./bridge.md) says and pages follow
 [keyset paging](./paging.md).
 
 ## Story: Show my calls truthfully
@@ -330,4 +330,73 @@ pure def lawCallLogPageStaysOnItsQuery(declared: bool, presence: PluginPresence,
     | _ => true
   }
 }
+```
+
+## Story: See my SIM lines without guesses
+
+> As the person, I want Settings to show each SIM's carrier, number, network
+> and identifiers only as far as Android let this app read them, so that a
+> field Android refused reads as unread and never as a guess.
+
+### A SIM line shows a field only when Android let this app read it
+
+The read needs no permission of its own, runs only on the unlocked phone in
+front and is fenced again before it is published. Its answer says which
+parts Android let the app read: the active SIM list (phone-state access),
+the lines' own numbers (phone-number or SMS access, or the SMS role) and
+the device identifiers (the privileged permission or carrier privileges).
+Without phone-state access no line is listed, which is not a claim that the
+phone has no SIM. A line's number is null without number access, and its
+ICCID and IMEI are null without identifier access; each field is read on its
+own, so a field Android refused, or whose value does not have its shape, is
+null and the others are still read. At most `maxSimLines` lines are
+listed. An answer that fills a field its access refuses is malformed.
+
+```quint
+type SimAccess = { phoneState: bool, phoneNumbers: bool, deviceIdentifiers: bool }
+type SimLine = { hasNumber: bool, hasIccid: bool, hasImei: bool }
+pure val maxSimLines = 4
+pure def lineFollowsAccess(access: SimAccess, sim: SimLine): bool =
+  (sim.hasNumber implies access.phoneNumbers) and ((sim.hasIccid or sim.hasImei) implies access.deviceIdentifiers)
+pure def linesFollowAccess(access: SimAccess, sims: List[SimLine]): bool =
+  sims.length() <= maxSimLines and (access.phoneState or sims.length() == 0) and sims.every(sim => lineFollowsAccess(access, sim))
+pure def readSimLine(access: SimAccess, sim: SimLine): SimLine =
+  { hasNumber: access.phoneNumbers and sim.hasNumber, hasIccid: access.deviceIdentifiers and sim.hasIccid, hasImei: access.deviceIdentifiers and sim.hasImei }
+pure val accessValues = Set(
+  { phoneState: true, phoneNumbers: true, deviceIdentifiers: true },
+  { phoneState: true, phoneNumbers: false, deviceIdentifiers: false },
+  { phoneState: true, phoneNumbers: true, deviceIdentifiers: false },
+  { phoneState: false, phoneNumbers: false, deviceIdentifiers: false }
+)
+pure val simValues = Set(
+  { hasNumber: true, hasIccid: true, hasImei: true },
+  { hasNumber: true, hasIccid: false, hasImei: false },
+  { hasNumber: false, hasIccid: false, hasImei: true },
+  { hasNumber: false, hasIccid: false, hasImei: false }
+)
+pure def lawARefusedFieldIsNeverFilled(access: SimAccess, sim: SimLine): bool = lineFollowsAccess(access, readSimLine(access, sim))
+pure def lawALineReadTwiceReadsTheSame(access: SimAccess, sim: SimLine): bool =
+  readSimLine(access, readSimLine(access, sim)) == readSimLine(access, sim)
+pure def lawWithoutPhoneStateNoLineIsListed(access: SimAccess, sim: SimLine): bool =
+  not(access.phoneState) implies not(linesFollowAccess(access, List(readSimLine(access, sim))))
+```
+
+### A line's network reads "none" only when the radio is known to have no service
+
+The network is the line's data network type, or its voice network type when
+data reports none. With neither reported, the line reads "none" only when
+Android's service state says the radio has no service; a service state that
+could not be read, a line without its own telephony manager and a type this
+build does not recognise all read "unknown".
+
+```quint
+type NetworkTypeRead = TypeUnreported | TypeRecognised | TypeUnrecognised
+type ServiceRead = ServiceUnread | InService | OutOfService
+type NetworkShown = NetworkNamed | NetworkNone | NetworkUnknown
+pure def networkShown(typeRead: NetworkTypeRead, service: ServiceRead): NetworkShown =
+  if (typeRead == TypeRecognised) NetworkNamed
+  else if (typeRead == TypeUnreported and service == OutOfService) NetworkNone
+  else NetworkUnknown
+pure def lawNoServiceIsShownOnlyWhenTheRadioSaysSo(typeRead: NetworkTypeRead, service: ServiceRead): bool =
+  (networkShown(typeRead, service) == NetworkNone) == (typeRead == TypeUnreported and service == OutOfService)
 ```
