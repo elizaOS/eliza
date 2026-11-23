@@ -6,7 +6,7 @@ import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/go
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
 import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
-import { signedCaller } from "./support/caller.vibe"
+import { leasedCaller } from "./support/caller.vibe"
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -131,7 +131,7 @@ effect function mailOperationSetup(name: string) {
     fakes.mount("/google/api/", gmailReads(mailbox))
     fakes.mount("/google/api/", gmailChanges(mailbox, switches))
   } })
-  const { bearer: token, organizationId, userId } = try signedCaller(cloud, name)
+  const { bearer: token, organizationId, userId } = try leasedCaller(cloud, name)
   const owner: Owner = { organizationId, userId }
   const grantId = `ops-${name}`
   const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.manage"), ...scopeFor("google.gmail.send")]
