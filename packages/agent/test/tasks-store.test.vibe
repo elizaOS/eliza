@@ -110,6 +110,10 @@ module node {
     renameSync(staged, join(directory, "tasks.sqlite.lock"))
   }
 
+  export function leftUnderThisPid(directory: string): void {
+    replaceLock(directory, process.pid)
+  }
+
   export function stealingDatabase(directory: string) {
     let armed: "run" | "all" | undefined
     const steal = (during: "run" | "all") => {
@@ -136,7 +140,7 @@ module node {
 }
 
 import {
-  account, cancelled, closePermissions, decodes, exists, keyFor, laterBuild, newKey, openPermissions, replaceLock,
+  account, cancelled, closePermissions, decodes, exists, keyFor, laterBuild, leftUnderThisPid, newKey, openPermissions, replaceLock,
   stealingDatabase, storedIds, task, unknownOutcome,
 } from node
 
@@ -177,7 +181,7 @@ it.effect('Task storage opens only under verified custody and serves only authen
   const taken = try outcome(store.create(try support("task", () => task("task-2"))))
   try store.close()
   const closedStatus = try store.storageStatus()
-  try support("a lock left by an earlier run under this pid", () => replaceLock(directory, process.pid))
+  try support("a lock left by an earlier run under this pid", () => leftUnderThisPid(directory))
   const afterCrash = try storeIn(directory, key)
   const reclaimed = try outcome(afterCrash.open(account))
   try afterCrash.close()
