@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { reminderProposalFamily } from "../src/device-proposals.vibe"
 import { readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
-import { collectFacts, runCheckin, checkinReport } from "../src/checkin.vibe"
+import { checkinKind, collectFacts, reconcileCheckins, runCheckin, checkinReport, setCheckinTimes } from "../src/checkin.vibe"
 import { ownerActivity, setDossier } from "../src/dossier.vibe"
 import { restoreEarlier } from "../src/evaluators/pages.vibe"
 import { commitEvaluatorProgress, evidenceOf, sourceOf, stageEvaluatorOutput, stagedOutput } from "../src/evaluators/progress.vibe"
@@ -368,6 +368,34 @@ it.effect('A check-in stores a summary only when the model wrote one for today (
     const stored = try runCheckin("morning")
     const kept = try checkinReport("2026-11-22", "morning")
     try equal([wrongDay.stored, wrongDay.result, stored.stored, kept?.summary], [false, "WrongDaySummary", true, "Good morning. No open to-dos today, November 22."])
+  }
+})
+
+it.effect('Check-ins come at the times I chose: the morning one at eight until I choose, a night one only once I ask, and a new time replaces the old (spec/assistant/checkin.md, "Story: Check in on me at the times I chose"; spec/assistant/checkin.md, "A check-in comes at the time the owner chose, the morning one at eight until they choose, and the night one only once chosen")', effect () => {
+  const seen = ports()
+  provide portsLayer(seen) {
+    try reconcileCheckins("s1")
+    const first = rowsOf(seen, checkinKind).map((row) => row.trigger)
+    const replies = [
+      try setCheckinTimes({ morning: "7am" }, "s2"),
+      try setCheckinTimes({ morning: "07:30", night: "21:45" }, "s3"),
+      try setCheckinTimes({ night: "off" }, "s4"),
+      try setCheckinTimes({ night: "22:00" }, "s5"),
+    ]
+    try reconcileCheckins("s6")
+    const cron = (expression: string) => ({ kind: "cron", expression, tz: "America/New_York" })
+    try equal({
+      first, replies: replies.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]),
+      rows: rowsOf(seen, checkinKind).map((row) => [row.metadata.checkin, row.trigger, row.status]),
+    }, {
+      first: [cron("0 8 * * *")],
+      replies: [
+        [false, "CHECKIN_TIME_INVALID"], [true, "Done: your morning check-in comes at 07:30, and your night check-in comes at 21:45, on America/New_York time."],
+        [true, "Done: your morning check-in comes at 07:30, and your night check-in is off, on America/New_York time."],
+        [true, "Done: your morning check-in comes at 07:30, and your night check-in comes at 22:00, on America/New_York time."],
+      ],
+      rows: [["morning", cron("30 7 * * *"), "Scheduled"], ["night", cron("45 21 * * *"), "Dismissed"], ["night", cron("0 22 * * *"), "Scheduled"]],
+    })
   }
 })
 

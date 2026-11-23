@@ -1,8 +1,10 @@
-// spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/checkin.md, "A recent check-in keeps an event that is today or whose provider change is recent"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"; spec/assistant/checkin.md, "A failed check-in leaves storage unchanged, and a summary is stored at most once"
-import { createReminderPresentation, type UUID } from "@elizaos/core"
-import { Machine, machine, projectChange, type EventClocks, type RenderResult } from "../gen/assistant__checkin.effect.vibe"
+// spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/checkin.md, "A recent check-in keeps an event that is today or whose provider change is recent"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"; spec/assistant/checkin.md, "A failed check-in leaves storage unchanged, and a summary is stored at most once"; spec/assistant/checkin.md, "Story: Check in on me at the times I chose"; spec/assistant/checkin.md, "A check-in comes at the time the owner chose, the morning one at eight until they choose, and the night one only once chosen"
+import { createReminderPresentation, type ActionResult, type IAgentRuntime, type UUID } from "@elizaos/core"
+import type { AgentPlugin } from "@elizaos/agent"
+import { Machine, checkinMinuteValid, checkinSchedule, machine, projectChange, type CheckinSetting, type CheckinSlot, type EventClocks, type RenderResult } from "../gen/assistant__checkin.effect.vibe"
 import type { ChangeClock } from "../gen/calendar__managedFeed.effect.vibe"
-import { Calendar, Facts, Model, presentOnce, readRecord, writeRecord, type CalendarEventFacts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { Calendar, Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, writeRecord, type CalendarEventFacts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { appliedReceipt, attributed, failedReceipt } from "./replies.vibe"
 import { listGoals } from "./goals.vibe"
 import { liveReminders } from "./reminders.vibe"
 import { currentTodos, renderTodos } from "./todos.vibe"
@@ -11,7 +13,7 @@ import { ownerClockAt } from "./timezone.vibe"
 /** The scheduled-task kind of the owner's daily check-in. */
 export const checkinKind = "personal-assistant.checkin"
 
-import { civilDate, longDate } from "./time.vibe"
+import { civilDate, hhmm, longDate, minuteOf } from "./time.vibe"
 
 const recentWindow = 86_400_000
 const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
@@ -109,4 +111,127 @@ export effect function deliverCheckin(task: TaskRow) {
   if (presentation === undefined) return { kind: "undeliverable", error: "The summary cannot be presented" } satisfies DeliveryAnswer
   const room = task.metadata.roomId
   return try presentOnce({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
+}
+
+const Setting = Schema.Union([
+  Schema.Struct({ tag: Schema.Literal("CheckinUnset") }),
+  Schema.Struct({ tag: Schema.Literal("CheckinOff") }),
+  Schema.Struct({ tag: Schema.Literal("CheckinAt"), minute: Schema.Int }),
+])
+const CheckinTimes = Schema.Struct({
+  morning: Setting, night: Setting, tasks: Schema.Record(Schema.String, Schema.String), generations: Schema.Record(Schema.String, Schema.Number),
+})
+const decodeTimes = Schema.decodeUnknownOption(CheckinTimes)
+const timesKey = "checkin-times"
+const unset: CheckinSetting = { tag: "CheckinUnset" }
+const slots = { morning: "MorningCheckin", night: "NightCheckin" } as const satisfies Record<string, CheckinSlot>
+type SlotName = keyof typeof slots
+const slotNames: readonly SlotName[] = ["morning", "night"]
+
+effect function checkinTimes() {
+  return (try readRecord(timesKey, decodeTimes)) ?? { morning: unset, night: unset, tasks: {}, generations: {} }
+}
+
+/** When each check-in comes now: an HH:MM time on the owner's clock, or off. */
+export effect function checkinSchedules() {
+  const times = try checkinTimes()
+  const shown = (name: SlotName) => {
+    const schedule = checkinSchedule(slots[name], times[name])
+    return schedule.tag === "CheckinAt" ? hhmm(schedule.minute) : "off"
+  }
+  return { morning: shown("morning"), night: shown("night") }
+}
+
+/** Keeps exactly one daily check-in task per slot the owner's times turn on, at that time on the owner's clock now. */
+export effect function reconcileCheckins(key: string) {
+  const times = try checkinTimes()
+  const scheduler = try Scheduler
+  const zone = try ownerClockAt(try (try Facts).now())
+  const tasks: Record<string, string> = { ...times.tasks }
+  const generations: Record<string, number> = { ...times.generations }
+  for (const name of slotNames) {
+    const schedule = checkinSchedule(slots[name], times[name])
+    const taskId = tasks[name]
+    const row = taskId === undefined ? undefined : try scheduler.find(taskId)
+    const kept = row !== undefined && row.status !== "Dismissed" ? row : undefined
+    if (schedule.tag !== "CheckinAt") {
+      if (kept !== undefined) try scheduler.answer(kept.taskId, { tag: "Dismiss" }, `${key}:${name}:off`)
+      delete tasks[name]
+      continue
+    }
+    const trigger = { kind: "cron", expression: `${schedule.minute % 60} ${Math.floor(schedule.minute / 60)} * * *`, tz: zone } as const
+    if (kept !== undefined) {
+      const same = kept.trigger.kind === "cron" && kept.trigger.expression === trigger.expression && kept.trigger.tz === zone
+      if (!same) try scheduler.retrigger(kept.taskId, trigger, `${key}:${name}`)
+      continue
+    }
+    const last = generations[name]
+    const generation = last === undefined ? 0 : last + 1
+    const made = try scheduler.create({
+      kind: checkinKind, ownerVisible: true, promptInstructions: name === "morning" ? "Morning check-in" : "Night check-in",
+      trigger, metadata: { checkin: name }, idempotencyKey: generation === 0 ? `checkin:${name}` : `checkin:${name}:${generation}`,
+    })
+    tasks[name] = made.task.taskId
+    generations[name] = generation
+  }
+  try writeRecord(timesKey, { ...times, tasks, generations })
+  return zone
+}
+
+function settingOf(given: unknown): CheckinSetting | "invalid" | undefined {
+  if (given === undefined || given === null) return undefined
+  if (typeof given !== "string") return "invalid"
+  if (given.trim().toLowerCase() === "off") return { tag: "CheckinOff" }
+  const minute = minuteOf(given)
+  return minute !== undefined && checkinMinuteValid(minute) ? { tag: "CheckinAt", minute } : "invalid"
+}
+
+/** Sets the morning or night check-in to an HH:MM time on the owner's clock, or off, and reschedules it at once. */
+export effect function setCheckinTimes(given: { readonly morning?: unknown; readonly night?: unknown }, key: string) {
+  const morning = settingOf(given.morning)
+  const night = settingOf(given.night)
+  if (morning === "invalid" || night === "invalid" || (morning === undefined && night === undefined)) {
+    return { success: false, text: "Give a check-in time as HH:MM on your clock, such as 07:30, or off.", data: { outcome: "CHECKIN_TIME_INVALID" } } satisfies ActionResult
+  }
+  const at = try (try Facts).now()
+  const times = try checkinTimes()
+  try writeRecord(timesKey, { ...times, morning: morning ?? times.morning, night: night ?? times.night })
+  const zone = reconcileCheckins(key) catch (failed) => failed
+  const facts = { operation: "checkin.schedule", kind: "checkin-schedule", id: "owner", key, at }
+  const receipt = zone instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown") : appliedReceipt(facts)
+  const now = try checkinSchedules()
+  const said = (name: SlotName) => now[name] === "off" ? `your ${name} check-in is off` : `your ${name} check-in comes at ${now[name]}`
+  return attributed([{ actionName: "BRIEF", success: receipt.outcome === "applied", receipts: [receipt] }], "checkin-schedule:owner", {
+    done: `Done: ${said("morning")}, and ${said("night")}${typeof zone === "string" ? `, on ${zone} time` : ""}.`,
+    notDone: "Your check-in times were not changed.",
+    unproven: "I saved your check-in times but couldn't confirm they were rescheduled. They take effect when the assistant next starts.",
+  }, { morning: now.morning, night: now.night })
+}
+
+type LocalRoute = NonNullable<AgentPlugin["routes"]>[number]
+const decodeTimesInput = Schema.decodeUnknownOption(Schema.Struct({ morning: Schema.optionalKey(Schema.String), night: Schema.optionalKey(Schema.String) }), { onExcessProperty: "error" })
+
+/** The routes the owner's client reads and sets the check-in times through; the agent authenticates the owner before either. */
+export function checkinRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
+  const offline = { status: 503, body: { error: "assistant_unavailable" } }
+  return [
+    {
+      method: "GET", path: "/api/personal-assistant/checkins",
+      handler: async () => {
+        const runtime = agent()
+        return runtime === undefined ? offline : { status: 200, body: await onAgent(runtime, checkinSchedules()) }
+      },
+    },
+    {
+      method: "PUT", path: "/api/personal-assistant/checkins",
+      handler: async ({ body }) => {
+        const runtime = agent()
+        if (runtime === undefined) return offline
+        const given = decodeTimesInput(body)
+        if (Option.isNone(given)) return { status: 400, body: { error: "malformed" } }
+        const result = await onAgent(runtime, setCheckinTimes(given.value, `checkins:route:${Date.now()}`))
+        return { status: result.success ? 200 : 400, body: { text: result.text, ...result.data } }
+      },
+    },
+  ]
 }

@@ -93,3 +93,34 @@ pure def lawInvalidMetadataStaysUnknown(e: EventClocks): bool =
 pure def lawTodayOrRecentIsKept(e: EventClocks): bool =
   projectChange(e).included == (e.today or projectChange(e).changeClock == MF::ClockRecent)
 ```
+
+## Story: Check in on me at the times I chose
+
+> As an owner, I want my morning check-in, and a night check-in if I ask
+> for one, at the times I set on my own clock, and none that I turned off.
+
+### A check-in comes at the time the owner chose, the morning one at eight until they choose, and the night one only once chosen
+
+The owner sets the morning or the night check-in to an hour and minute
+of the day on their clock, or turns either off, from the conversation or
+from their own client. Until they choose, the morning check-in comes at
+08:00 and no night check-in comes. A new time replaces the check-in
+already scheduled for that slot, so it comes once a day at the new time
+and never at the old one too.
+
+```quint
+type CheckinSlot = MorningCheckin | NightCheckin
+type CheckinSetting = CheckinUnset | CheckinOff | CheckinAt({ minute: int })
+pure val defaultMorningMinute = 480
+pure def checkinMinuteValid(minute: int): bool = minute >= 0 and minute < 1440
+pure def checkinSchedule(slot: CheckinSlot, setting: CheckinSetting): CheckinSetting =
+  if (setting == CheckinUnset) (if (slot == MorningCheckin) CheckinAt({ minute: defaultMorningMinute }) else CheckinOff) else setting
+pure val settingValues: Set[CheckinSetting] = List(CheckinUnset, CheckinOff, CheckinAt({ minute: 450 }), CheckinAt({ minute: 1290 }))
+  .foldl(Set(), (acc, s) => acc.union(Set(s)))
+pure def lawTheMorningCheckinComesAtEightUntilChosen(slot: CheckinSlot): bool =
+  slot == MorningCheckin implies checkinSchedule(slot, CheckinUnset) == CheckinAt({ minute: defaultMorningMinute })
+pure def lawNoNightCheckinComesUntilChosen(slot: CheckinSlot): bool =
+  slot == NightCheckin implies checkinSchedule(slot, CheckinUnset) == CheckinOff
+pure def lawAChosenCheckinIsKept(slot: CheckinSlot, setting: CheckinSetting): bool =
+  setting != CheckinUnset implies checkinSchedule(slot, setting) == setting
+```

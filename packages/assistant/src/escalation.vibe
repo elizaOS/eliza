@@ -4,7 +4,7 @@ import { configureEscalation, effectiveIntensity, followupsUnder, noEscalation, 
 import { Facts, Scheduler, presentOnce, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { appliedReceipt, attributed } from "./replies.vibe"
 import type { ReminderEscalation } from "./requests.schema.vibe"
-import { localMinutes } from "./time.vibe"
+import { hhmm, localMinutes, minuteOf } from "./time.vibe"
 import { ownerClockAt } from "./timezone.vibe"
 
 /** The scheduled-task kind of one escalation step of a fired reminder. */
@@ -29,14 +29,6 @@ const noQuiet: QuietHours = { tag: "NoQuietHours" }
 
 const planOf = (record: EscalationRecord): EscalationPlan => ({ inAppAfter: [...record.inAppAfter], pushAfter: [...record.pushAfter], quiet: record.quiet })
 const ascending = (minutes: readonly number[]) => [...new Set(minutes)].sort((a, b) => a - b)
-const clockText = /^([01]\d|2[0-3]):([0-5]\d)$/u
-
-function minuteOf(text: string): number | undefined {
-  const clock = clockText.exec(text.trim())
-  return clock === null ? undefined : Number(clock[1]) * 60 + Number(clock[2])
-}
-
-const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`
 
 function describePlan(plan: EscalationPlan, zone: string): string {
   const steps = [...plan.inAppAfter.map((minutes) => ["in_app", minutes] as const), ...plan.pushAfter.map((minutes) => ["push", minutes] as const)]
