@@ -151,7 +151,11 @@ When the owner's words ask about tomorrow morning and no other period,
 the window must start no earlier than tomorrow's midnight and end no
 later than tomorrow's noon in the request's zone; a wider window is
 refused before anything is read, pointing to a slot search for a shorter
-opening. Both bounds themselves are inside the morning. A noon end bound
+opening. Tomorrow is the civil day after the host-bound message's date in
+the resolved request zone, even if action processing starts on a later
+day. Calendar availability from a routed message requires a valid bound
+timestamp. Direct calls without a bound request time use the execution clock.
+Both bounds themselves are inside the morning. A noon end bound
 ("until noon", "through 12:00 PM") keeps the request morning-only. The
 request names another period when it also names another part of the day
 (afternoon, evening, tonight, noon, lunch, all day, the rest of the day,
@@ -162,6 +166,10 @@ asked.
 
 ```quint
 type MorningAdmission = ReadMorning | RefuseOutsideMorning
+pure def availabilityRequestTimeAdmitted(routedMessage: bool, requestTimeKnown: bool): bool =
+  not(routedMessage) or requestTimeKnown
+pure def lawRoutedAvailabilityRequiresItsRequestTime(requestTimeKnown: bool): bool =
+  availabilityRequestTimeAdmitted(true, requestTimeKnown) iff requestTimeKnown
 pure def morningAdmission(morningOnly: bool, startsEarly: bool, endsLate: bool): MorningAdmission =
   if (morningOnly and (startsEarly or endsLate)) RefuseOutsideMorning else ReadMorning
 pure def lawMorningReadStaysInMorning(startsEarly: bool, endsLate: bool): bool =

@@ -1,10 +1,10 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, EffectReceipt, Memory, UUID } from "@elizaos/core"
-import { ChannelType, OWNER_EXCLUSIVE_DISCLOSURE_GATE } from "@elizaos/core"
+import { bindIncomingMessagePersistence, ChannelType, OWNER_EXCLUSIVE_DISCLOSURE_GATE } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, unavailableNotice } from "../gen/agent__conversation__planning.ts"
-import { groundedEventReply } from "../src/conversation/clock.vibe"
+import { groundedEventReply, groundedTimeReply, turnClock } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
@@ -561,18 +561,26 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   const launchPrompt = lastTurnPrompt(cloud)
 
   const today = { tokyo: localDay("Asia/Tokyo", 0), home: localDay("America/New_York", 0) }
+  const processing = Date.parse("2030-03-04T00:01:00-08:00")
+  const queued = { id: "delayed-turn", roomId: "room", entityId: "owner", content: { text: "What day is it?" }, createdAt: processing } as Memory
+  bindIncomingMessagePersistence(queued, { ...queued, createdAt: Date.parse("2030-03-03T23:59:00-08:00") })
+  const midnight = turnClock(queued, "America/Los_Angeles", true, processing)
   try Effect.try(() => assert.deepStrictEqual({
     invented: /^It's .+ GMT\+9\.$/.test(invented.text) && invented.text.includes(today.tokyo.monthDay),
     phoneClock: phonePrompt.includes(`Local date: ${today.tokyo.date} (Asia/Tokyo). `),
     clause: clause.text,
     launched: launched.text.startsWith("It's ") && launched.text.includes(today.home.monthDay),
     launchClock: launchPrompt.includes(`Local date: ${today.home.date} (America/New_York). `),
+    relativeDate: midnight.line.includes("Request local date: 2030-03-03 (America/Los_Angeles)."),
+    currentDate: groundedTimeReply("Today is Sunday.", "What day is it?", midnight).includes("Monday, March 4, 2030"),
   }, {
     invented: true,
     phoneClock: true,
     clause: `It's ${awayTokyo.weekday}.`,
     launched: true,
     launchClock: true,
+    relativeDate: true,
+    currentDate: true,
   }))
 }, 120_000)
 

@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"
 import { assert, it } from "@effect/vitest"
-import { attestAuthenticatedApiDeliveryAudience, canActionRun, disclosureGateFailure, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+import { attestAuthenticatedApiDeliveryAudience, bindIncomingMessagePersistence, canActionRun, disclosureGateFailure, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
 import {
   calendarAction, calendarAsk, calendarHost, calendarProvider, calendarRoutes, CalendarWriteNotAccepted, runCalendarAction,
   type CalendarAccount, type CalendarApprovalRow, type CalendarCache, type CalendarEvent, type CalendarProviderPort, type CalendarRouteInput,
@@ -330,6 +330,27 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const unsized = try asked("Find me time this week", { subaction: "propose_times", timeMin: "2030-03-04T09:00:00-08:00", timeMax: "2030-03-04T12:00:00-08:00" })
   const tooLong = try asked("Am I free this month?", { subaction: "check_availability", timeMin: "2030-03-04T00:00:00-08:00", timeMax: "2030-03-12T00:00:00-07:00" })
   assert.deepStrictEqual([at(unsized.data, "code"), at(tooLong.data, "code")], ["CALENDAR_AVAILABILITY_INVALID_WINDOW", "CALENDAR_AVAILABILITY_INVALID_WINDOW"])
+  const processingAt = Date.parse("2030-03-04T00:01:00-08:00")
+  const late = { id: "midnight-ask", roomId: "room", entityId: "owner-entity",
+    createdAt: processingAt, content: { text: "Am I free tomorrow morning until noon?" } } as Memory
+  bindIncomingMessagePersistence(late, { ...late, createdAt: Date.parse("2030-03-03T23:59:00-08:00") })
+  try TestClock.setTime(processingAt)
+  const requestedMorning = { subaction: "check_availability", timeZone: zone,
+    timeMin: "2030-03-04T00:00:00-08:00", timeMax: "2030-03-04T12:00:00-08:00" }
+  const anchored = try runCalendarAction(host, calendarAsk(late), requestedMorning, late)
+  const afterNoon = try runCalendarAction(host, calendarAsk(late), { ...requestedMorning, timeMax: "2030-03-04T12:00:00.001-08:00" })
+  const nextDay = try runCalendarAction(host, calendarAsk(late), {
+    ...requestedMorning, timeMin: "2030-03-05T00:00:00-08:00", timeMax: "2030-03-05T12:00:00-08:00",
+  })
+  assert.deepStrictEqual([anchored.success, at(anchored.data, "windowStart"), at(anchored.data, "windowEnd"),
+    at(afterNoon.data, "code"), at(nextDay.data, "code")],
+  [true, "2030-03-04T08:00:00.000Z", "2030-03-04T20:00:00.000Z",
+    "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD", "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD"])
+  const invalid = { ...late, id: "invalid-time-ask" } as Memory
+  bindIncomingMessagePersistence(invalid, { ...invalid, createdAt: Number.NaN })
+  const unknownTime = try runCalendarAction(host, calendarAsk(invalid), requestedMorning, invalid)
+  assert.deepStrictEqual([unknownTime.success, at(unknownTime.data, "code")], [false, "CALENDAR_AVAILABILITY_REQUEST_TIME_UNAVAILABLE"])
+  try TestClock.setTime(Date.parse("2030-03-03T20:00:00Z"))
   google.health.complete = false
   const stale = try asked("Do I have 20 minutes tomorrow morning?", morning)
   assert.deepStrictEqual([stale.success, at(stale.data, "availability"), at(stale.data, "slots")], [false, "unknown", undefined])

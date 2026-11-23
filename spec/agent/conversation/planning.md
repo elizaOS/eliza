@@ -660,13 +660,19 @@ The shell reads the phone's zone from the turn's voice view context
 (`uiTimeZone`), else its observation (`timeZone`); the launch document's
 `timeZone`; and the host's own zone, or `UTC`. A zone counts only when the
 host's zone database knows it. The turn's host notes, after the history,
-carry one line, to the minute, so every turn inside one minute sees the same
-text and the system prompt stays the same for the whole conversation. The owner's
+carry one line, to the minute, and the system prompt stays the same for
+the whole conversation. The owner's
 local clock reads `Local date: <YYYY-MM-DD> (<zone>). <full date and
 time>. Resolve today/tomorrow from this local date, not the UTC date. UTC
 instant: <YYYY-MM-DDTHH:MM>Z`. Any other clock reads `Agent time` for the
 launch zone or `Server time` for the host's, then the full date and time,
 the zone and the UTC instant, and says the user's timezone is unknown.
+
+Relative dates use the host-bound original message's timestamp when
+available. When processing starts on a different local day, the note labels
+the request's local date and still shows the current clock. Current-time
+answers use the clock at the start of processing. Calls without a bound
+timestamp use their processing clock for both.
 
 ```quint
 type ZoneOrigin = PhoneZone | LaunchZone | HostZone
@@ -684,6 +690,12 @@ pure def lawTheLaunchZoneIsLocalOnlyForTheOwner(launchZone: str, hostZone: str, 
   launchZone != "" implies clockSource("", launchZone, hostZone, owner) == { clockZone: launchZone, origin: LaunchZone, ownersLocal: owner }
 pure def lawTheHostClockIsNeverTheOwnersLocalTime(hostZone: str, owner: bool): bool =
   clockSource("", "", hostZone, owner) == { clockZone: hostZone, origin: HostZone, ownersLocal: false }
+pure def relativeDateInstant(hasRequestTime: bool, requestedAt: int, processingAt: int): int =
+  if (hasRequestTime) requestedAt else processingAt
+pure def lawADelayedTurnKeepsItsRequestInstant(requestedAt: int, processingAt: int): bool =
+  relativeDateInstant(true, requestedAt, processingAt) == requestedAt
+pure def lawWithoutRequestTimeUseProcessingTime(requestedAt: int, processingAt: int): bool =
+  relativeDateInstant(false, requestedAt, processingAt) == processingAt
 ```
 
 ### A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading

@@ -1,10 +1,10 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"
-import { readTurnContext } from "@elizaos/agent"
+import { incomingRequestTime, readTurnContext, requestDateInstant } from "@elizaos/agent"
 // spec/calendar/requestRouting.md, "A dense delete request reaches Calendar and the named title decides the target"
 import { calendarAnswerAdmitted, selectedCalendarDeleteTarget } from "../../gen/calendar__requestRouting.ts"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  chatCreateReviewed, deleteAnswer, deleteQuestionLifetime, deleteQuestionMatches, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
+  availabilityRequestTimeAdmitted, chatCreateReviewed, deleteAnswer, deleteQuestionLifetime, deleteQuestionMatches, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, statedYearCreate } from "../clock.vibe"
@@ -185,6 +185,7 @@ export interface CalendarAsk {
   readonly selected?: string
   readonly clientZone?: string
   readonly ownerZone?: string
+  readonly receivedAt?: number
 }
 
 function askTextOf(ask: CalendarAsk): string {
@@ -210,12 +211,14 @@ export function calendarAsk(message: Memory, ownerZone?: string): CalendarAsk {
   const clientZone = context.observation?.timeZone ?? context.voiceUi?.uiTimeZone
   const observation = context.observation
   const selected = observation?.sensitive === false && observation.selectedObject?.kind === "canonical-calendar-event" ? observation.selectedObject.id : undefined
+  const receivedAt = incomingRequestTime(message)
   return {
     by: String(message.entityId), id: String(message.id ?? `${message.roomId}:${message.createdAt ?? 0}`),
     conversation: `${message.roomId}:${message.entityId}`, text: ownerWords(message),
     ...(selected === undefined ? {} : { selected }),
     ...(clientZone === undefined ? {} : { clientZone }),
     ...(ownerZone === undefined ? {} : { ownerZone }),
+    ...(receivedAt === undefined ? {} : { receivedAt }),
   }
 }
 
@@ -349,7 +352,7 @@ effect function freeTime(host: CalendarHost, ask: CalendarAsk, parameters: Param
   if (freeTimeRead(windowValid, durationValid, true) === "RefuseWindow") {
     return failed(subaction, "I need the exact window (timeMin and timeMax, at most seven days apart) and, for openings, the asked length in minutes from 5 to 480.", { code: "CALENDAR_AVAILABILITY_INVALID_WINDOW" })
   }
-  const morning = tomorrowMorning(now, zone)
+  const morning = tomorrowMorning(requestDateInstant(ask.receivedAt, now), zone)
   if (morning !== undefined && morningAdmission(asksOnlyAboutTomorrowMorning(askTextOf(ask)), begin < morning.midnight, finish > morning.noon) === "RefuseOutsideMorning") {
     return failed(subaction, "The owner asked about tomorrow morning. Keep the window on tomorrow's date and end it by noon in the request's zone; for a shorter opening inside the morning, use propose_times.",
       { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
@@ -463,6 +466,11 @@ export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, i
   if (isDeleteAnswerCall(input)) return try applyDeleteAnswer(host, ask, message)
   const parameters = parametersOf({ parameters: input })
   if (parameters === undefined) return { success: false, text: `${calendarActionName} needs a subaction: ${subactions.join(", ")}.` }
+  const { subaction } = parameters
+  if ((subaction === "check_availability" || subaction === "propose_times") && !availabilityRequestTimeAdmitted(message !== undefined, ask.receivedAt !== undefined)) {
+    return failed(subaction, "I couldn't verify when this request arrived. Please send the Calendar request again.",
+      { code: "CALENDAR_AVAILABILITY_REQUEST_TIME_UNAVAILABLE" })
+  }
   return try handle(host, ask, parameters, message === undefined)
 }
 

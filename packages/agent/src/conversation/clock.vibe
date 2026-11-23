@@ -1,6 +1,6 @@
 // spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; spec/agent/conversation/planning.md, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading"; spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is replaced by the change's own words"
-import type { ActionResult, Memory } from "@elizaos/core"
-import { clockSource, eventRangeIsUngrounded, statedTimeIsUngrounded, type LocalClock, type StatedTime } from "../../gen/agent__conversation__planning.ts"
+import { incomingMessagePersistenceSnapshot, type ActionResult, type Memory } from "@elizaos/core"
+import { clockSource, eventRangeIsUngrounded, relativeDateInstant, statedTimeIsUngrounded, type LocalClock, type StatedTime } from "../../gen/agent__conversation__planning.ts"
 import { knownZone, readTurnContext } from "./turn-context.schema.vibe"
 
 export interface TurnClock {
@@ -31,10 +31,29 @@ export function turnClock(message: Memory, launchZone: string | undefined, owner
   const minute = Math.floor(instant / 60_000) * 60_000
   const minuteInstant = `${new Date(minute).toISOString().slice(0, 16)}Z`
   const minuteReading = fullReading(minute, zone).replace(/(\d{1,2}:\d{2}):00/, "$1")
+  const currentDay = new Date(minute).toLocaleDateString("en-CA", { timeZone: zone })
+  const requestDay = new Date(requestDateInstant(incomingRequestTime(message), instant)).toLocaleDateString("en-CA", { timeZone: zone })
+  const relativeDate = requestDay === currentDay
+    ? `Local date: ${currentDay} (${zone}). ${minuteReading}. Resolve today/tomorrow from this local date, not the UTC date.`
+    : `Request local date: ${requestDay} (${zone}). Resolve today/tomorrow from the request's date. Current clock: ${minuteReading}.`
   const line = source.ownersLocal
-    ? `Local date: ${new Date(minute).toLocaleDateString("en-CA", { timeZone: zone })} (${zone}). ${minuteReading}. Resolve today/tomorrow from this local date, not the UTC date. UTC instant: ${minuteInstant}`
+    ? `${relativeDate} UTC instant: ${minuteInstant}`
     : `${source.origin === "LaunchZone" ? "Agent" : "Server"} time: ${minuteReading} (${zone}), ISO (UTC): ${minuteInstant}; user timezone unknown.`
   return { instant, zone, reading: fullReading(instant, zone), line }
+}
+
+export function incomingRequestTime(message: Memory): number | undefined {
+  try {
+    const instant = incomingMessagePersistenceSnapshot(message)?.createdAt
+    return typeof instant === "number" && Number.isSafeInteger(instant) && instant >= 0 && Number.isFinite(new Date(instant).getTime())
+      ? instant : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function requestDateInstant(receivedAt: number | undefined, processingAt: number): number {
+  return relativeDateInstant(receivedAt !== undefined, receivedAt ?? 0, processingAt)
 }
 
 function localClockOf(clock: TurnClock): LocalClock {
