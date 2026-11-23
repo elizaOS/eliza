@@ -135,3 +135,48 @@ pure def stepFillConsumesNativeChoice(before: SignInVisit, via: str, after: Sign
   via == "fillPassword" implies before.chosen and after.filled and not(after.chosen)
 pure def sometimesPersonFillsPassword(s: SignInVisit): bool = s.filled
 ```
+
+## Story: Keep building my product against the paths and names I import
+
+> As a consumer, I want every os package file I reach by path, and every
+> name I read from its build and image entries, to stay where I import it,
+> so that advancing my pin never breaks my build before this package's own
+> checks have said so.
+
+### Every promised path and name is still published
+
+The os package promises a consumer the files and directories below, by
+path from the package root, the named exports of the modules it loads by
+path, and the named exports of `@elizaos/os/build` and `@elizaos/os/image`.
+Each stays published. Taking one away starts by removing it from this
+list, which is reviewed as any rule is.
+
+```quint
+pure val consumerPaths = List(
+  "android/build-consumer.mjs", "android/toolchain.ts", "android/host-templates",
+  "android/local-inference/consumer.gradle", "android/local-inference/engine.lock.json",
+  "android/local-inference/scripts/build-native.ts", "android/local-inference/scripts/stage-elizavoice-lib.ts",
+  "android/local-inference/voice-model-versions.json", "android/sign-in/build.gradle",
+  "aosp/aosp.lock.json", "aosp/devices/pixel10a", "aosp/launcher-provisioning.mjs",
+  "aosp/patches/soong-app-native/manifest.json", "aosp/runtime/node.lock.json", "aosp/sense/config.xml",
+  "aosp/sense/systemui/chip", "aosp/soong-app-native.mjs", "aosp/sources/pixel10a-stallion.json",
+  "aosp/sources/secure-camera.json", "aosp/stage-launcher-overlay.ts", "aosp/system-updater", "src/cli.vibe")
+pure val consumerPathNames = List(
+  "android/build-consumer.mjs#buildAndroidConsumer",
+  "android/toolchain.ts#resolveAndroidSdkRoot", "android/toolchain.ts#resolveJavaHome", "android/toolchain.ts#javaMajorVersion",
+  "aosp/launcher-provisioning.mjs#manifestComponents", "aosp/launcher-provisioning.mjs#provisioningComponents",
+  "aosp/launcher-provisioning.mjs#renderProvisioningOverlay", "aosp/soong-app-native.mjs#soongAppNativePatch",
+  "aosp/stage-launcher-overlay.ts#REVIEWED_PRIVILEGED_PERMISSIONS", "aosp/stage-launcher-overlay.ts#renderOverlay",
+  "aosp/stage-launcher-overlay.ts#main")
+pure val consumerBuildNames = List("buildAndroid", "exportCommittedSources", "generateAndroidHost", "stageRuntimePayload", "verifyCommittedWorkspace")
+pure val consumerImageNames = List(
+  "NATIVE_INSTALLS", "NATIVE_TARGETS", "aaptManifestTree", "acquireDeviceLease", "admitImageApk", "apkReleaseBlockers",
+  "apkUpdateAdmission", "assertStockVendorApi", "cloudVoiceAdmission", "compareDomains", "javaMajorVersion", "loadProfile",
+  "manifestFacts", "otaMain", "parseXmlTree", "prepareListenerSystemui", "provisioningComponents", "readApkBuildFlags",
+  "readNativeLibraries", "readbackInventory", "releaseDescriptorProblems", "releaseRecordProblems", "requireClockProduct",
+  "requireInstrumentationSuccess", "resolveAndroidSdkRoot", "resolveJavaHome", "runIsolatedAndroidTest", "signRelease",
+  "stageLauncher", "verifyDeviceSource", "verifyImage", "verifyListenerSystemui", "verifySecureCameraSource", "verifySource",
+  "writeImageCapability", "writeSecureCameraOverlay")
+pure def withdrawnFromConsumers(published: List[str], promised: List[str]): List[str] =
+  promised.select(x => not(published.includes(x)))
+```
