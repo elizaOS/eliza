@@ -21,7 +21,8 @@ operation key, the shape of the model's text, and the shape of the tool
 text. The operation key of a step with effect receipts is its action, the
 receipt's operation and its resource; without receipts it is the action
 and its canonical parameters. A refusal before dispatch (a malformed or
-unexpected argument, `executionStatus: "not_started"`) is `Rejected`.
+unexpected argument, or an action whose own check declines the message,
+`executionStatus: "not_started"`) is `Rejected`.
 
 ## Story: Ask the agent to do something and hear what happened
 
@@ -36,18 +37,30 @@ as tools; a `REPLY` call the model makes anyway ends planning with its
 text, and an owner turn always ends with one reply. A step whose model
 call returns no tool call ends planning with that text.
 
+Every other registered action the launch allows is offered whatever the
+message says or carries, unless it has no tool form for the turn (below).
+An action's own check of the message (its `validate`) never decides what
+is offered: it runs when the model calls the action, and a call it
+declines, or that fails to check, is refused before the action runs. The
+model reads in that call's result that the action did not run, and the
+refusal stays reported as any other refusal before dispatch.
+
 ```quint
 type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
 type PlanStep = { actionName: str, outcome: StepOutcome, operation: str }
 pure val maxPlanSteps = 8
 pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
-pure def offered(registered: Set[str], allowed: Set[str]): Set[str] = registered.intersect(allowed).exclude(messageServiceActions)
+pure def offered(registered: Set[str], allowed: Set[str], formless: Set[str]): Set[str] =
+  registered.intersect(allowed).exclude(messageServiceActions).exclude(formless)
 pure def keepsPlanning(taken: int, calls: int, terminal: bool): bool = calls > 0 and not(terminal) and taken < maxPlanSteps
 pure val registeredValues = Set(Set("REPLY", "CALCULATE"), Set("REPLY", "CALCULATE", "PRODUCT_ACTION"), Set())
 pure val allowedValues = Set(Set("REPLY"), Set("REPLY", "CALCULATE"), Set())
+pure val formlessValues = Set(Set(), Set("CALCULATE"))
 pure val takenValues = Set(0, 1, 7, 8, 9)
-pure def lawOnlyAllowedRegisteredActionsAreOffered(registered: Set[str], allowed: Set[str]): bool =
-  offered(registered, allowed).subseteq(allowed) and offered(registered, allowed).subseteq(registered) and not(offered(registered, allowed).contains("REPLY"))
+pure def lawOnlyAllowedRegisteredActionsAreOffered(registered: Set[str], allowed: Set[str], formless: Set[str]): bool =
+  offered(registered, allowed, formless).subseteq(allowed) and offered(registered, allowed, formless).subseteq(registered) and not(offered(registered, allowed, formless).contains("REPLY"))
+pure def lawEveryAllowedRegisteredActionWithAFormIsOffered(registered: Set[str], allowed: Set[str], formless: Set[str]): bool =
+  registered.intersect(allowed).exclude(messageServiceActions).exclude(formless).subseteq(offered(registered, allowed, formless))
 pure def lawPlanningStopsAtTheBound(taken: int, calls: int, terminal: bool): bool =
   taken >= maxPlanSteps implies not(keepsPlanning(taken, calls, terminal))
 pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool = not(keepsPlanning(taken, 0, terminal))
@@ -59,7 +72,11 @@ The system prompt is the character's: its system text, bio, style and
 message examples, then one fixed rule for the cue written with tool calls
 (below), the same text in every call. The offered tools are sent in the order of their
 names, each in the form the turn gives it (below), so they change only
-when what the turn offers does. The history follows, then the person's
+when what the turn offers does: no action's own check of a message
+changes them, and an action family's description is stated on the first
+of its offered actions by name. Only an action that narrows its tool to
+the turn, and a route that withdraws what it replaces, change them from
+one message to the next. The history follows, then the person's
 latest message, and only after it what this turn adds: the screen
 context, the device outcomes of this conversation's earlier requests, the
 task the turn runs for and the note that older history is not shown,
@@ -92,11 +109,18 @@ registered, a narrower schema: the device proposal tool offers only the
 operation forms this turn's device negotiated. A narrowed schema for a
 parameter the action never registered is dropped, and the action's handler
 still checks its arguments against everything its registered form allows.
+An action that narrows its tool may have no form for a turn, as the device
+proposal tool has none off an owner turn of the enrolled device, under a
+refused negotiation, or when no operation form is offered; it is then not
+offered that turn, since a tool with nothing it could be called with is
+never sent.
 
 ```quint
 pure def turnNarrowed(params: Set[str], narrowed: Set[str]): Set[str] = params.intersect(narrowed)
 pure val paramsValues = Set(Set(), Set("operation"), Set("operation", "reason"))
 pure val narrowedValues = Set(Set(), Set("operation"), Set("operation", "extra"), Set("extra"))
+pure def lawAnActionWithNoFormForTheTurnIsNotOffered(registered: Set[str], allowed: Set[str], formless: Set[str]): bool =
+  offered(registered, allowed, formless).forall(name => not(formless.contains(name)))
 pure def lawANarrowedSchemaForAnUnregisteredParameterIsDropped(params: Set[str], narrowed: Set[str]): bool =
   narrowed.forall(p => not(params.contains(p)) implies not(turnNarrowed(params, narrowed).contains(p)))
 pure def lawARegisteredParameterTheTurnNamesIsNarrowed(params: Set[str], narrowed: Set[str]): bool =

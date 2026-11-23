@@ -195,7 +195,7 @@ async function respond(
         const system = [character.system, ...(character.bio ?? []), ...(character.style?.all ?? []),
           ...(character.style?.chat ?? []), ...examples, cueRule].filter(Boolean).join("\n\n")
         const state = await runtime.composeState(message, [], true, true)
-        const actions = await offeredActions(runtime, message, state, actionGate)
+        const actions = offeredActions(runtime, message, actionGate)
         const planned = await planTurn({
           runtime, message, state, roles, actionGate, system, messages, signal,
           onStepResult: (result) => Effect.runPromise(Effect.try({
