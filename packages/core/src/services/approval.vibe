@@ -234,9 +234,11 @@ effect function armTimeout(approvals: Approvals, pending: PendingApproval, scope
     if (!timeoutMs || timeoutMs <= 0) return
     pending.expiresAt = pending.createdAt + timeoutMs
   }
-  const delay = Math.max(0, pending.expiresAt - Date.now())
+  const expiresAt = pending.expiresAt
   pending.timer = fork.detached effect {
-    try sleep(delay > 2147483647 ? 1 : delay)
+    for (let left = expiresAt - Date.now(); left > 0; left = expiresAt - Date.now()) {
+      try sleep(Math.min(left, 2147483647))
+    }
     if (!approvals.stopped) admitTimeout(approvals, pending, scope)
   }
 }

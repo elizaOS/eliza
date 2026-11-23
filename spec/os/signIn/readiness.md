@@ -79,6 +79,24 @@ pure def lawExtraGoogleStartNeedsBrowserFallback(readiness: Readiness, device: D
       and device.appLinkVerified and device.externalBrowser)
 ```
 
+### An external browser is a browser other than the host and the WebView shell, and the browser sign-in opens only an external browser
+
+The AOSP WebView shell (`org.chromium.webview_shell`) handles HTTPS links
+on a stock image but cannot complete Google's sign-in, and the host cannot
+open its own sign-in. Android's facts name an external browser only when
+one of the device's HTTPS handlers is neither. The browser sign-in opens
+the default handler when it is one, and otherwise the first that is; with
+no default set, Android answers with its chooser, which is no handler.
+
+```quint
+pure val webViewShellPackage = "org.chromium.webview_shell"
+pure def externalBrowserPackage(candidate: str, hostPackage: str): bool =
+  candidate != "" and candidate != hostPackage and candidate != webViewShellPackage
+pure def browserToOpen(handlers: List[str], defaultHandler: str, hostPackage: str): str =
+  if (handlers.includes(defaultHandler) and externalBrowserPackage(defaultHandler, hostPackage)) defaultHandler
+  else handlers.select(h => externalBrowserPackage(h, hostPackage)).nthOr(0, "")
+```
+
 ### A fresh cached answer is served at once
 
 A status request is answered from a fresh cached answer without waiting.

@@ -8,7 +8,7 @@ import { jvmDriver } from "./jvm-adapter.ts";
 
 const KEY = "device";
 
-type Cause = "Payload" | "Storage" | "Config" | "Credential" | "Agent" | "Crashed" | "Runtime";
+type Cause = "Payload" | "Storage" | "Config" | "Credential" | "Agent" | "Runtime";
 type RecoveryToken = { readonly epoch: number; readonly nonce: string };
 
 export type LifecycleEvent =
