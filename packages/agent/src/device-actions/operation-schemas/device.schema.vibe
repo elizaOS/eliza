@@ -1,6 +1,6 @@
 // spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"
 import { libraryIdAdmitted, photoTargets, type OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
-import { supportedViews } from "../capabilities.vibe"
+import { opensTelephonyView, supportedViews } from "../capabilities.vibe"
 import { digestOf as revisionOf } from "./digest.vibe"
 import type { Evidence, FamilySchemas, OperationSchema, WireOperation } from "./family.vibe"
 import { civilDay, day, isoInstant, knownZone, realDate, utf8Bytes, zonedWall } from "./personal.schema.vibe"
@@ -351,7 +351,7 @@ const viewAndFileOperations = {
   files_folder_create: withoutResult(FilesFolderCreate, "FilesFolderCreate"),
   create_note: withoutResult(CreateNote, "CreateNote"),
   create_reminder: withoutResult(CreateReminder, "CreateReminder"),
-  open_view: withoutResult(OpenView, "OpenView"),
+  open_view: { ...withoutResult(OpenView, "OpenView"), classify: ({ view }: typeof OpenView.Type) => ({ opType: "OpenView", versionTwo: opensTelephonyView(view) }) },
   browser_navigate: withoutResult(BrowserNavigate, "BrowserNavigate")
 } satisfies FamilySchemas
 
