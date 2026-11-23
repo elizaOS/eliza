@@ -784,7 +784,12 @@ async function toolchainId(root: string, stage: Stage): Promise<string | undefin
 }
 
 /** The remembered results of one check: whether it may read them, and every entry it read or wrote. */
-export interface Memory { root: string; fresh: boolean; used: Set<string>; cacheValue?: (value: unknown) => unknown }
+export interface Memory {
+  root: string;
+  fresh: boolean;
+  used: Set<string>;
+  actionProjection?: { version: string; encode: (value: unknown) => unknown };
+}
 /** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
 interface Entry { name: string; file: string; reusable: boolean; evaluator?: string }
 const formats = [["zst", zstdDecompressSync], ["gz", gunzipSync]] as const;
@@ -816,11 +821,26 @@ function use(memory: Memory, name: string) {
   sharedCache(name)?.used.add(name);
   try { const now = new Date(); fs.utimesSync(cacheFile(memory.root, name), now, now); } catch { /* still a hit */ }
 }
+function projectedEntry(memory: Memory, at: Entry): Entry | undefined {
+  if (!memory.actionProjection || !isActionEntry(at.name)) return undefined;
+  const raw = at.name.slice(0, -primaryExtension.length);
+  const name = `action-${sha("projection", raw, memory.actionProjection.version).slice(0, 24)}.json${primaryExtension}`;
+  return { ...at, name, file: cacheFile(memory.root, name) };
+}
 /** What an entry holds, or undefined. An entry that cannot be read, cut short by a kill or a full disk, is deleted and is a miss. */
-export function recall<T>(memory: Memory, { name, file, reusable }: Entry): T | undefined {
-  memory.used.add(name);
+export function recall<T>(memory: Memory, raw: Entry): T | undefined {
+  const projected = projectedEntry(memory, raw);
+  if (!projected) memory.used.add(raw.name);
   const check = checking.getStore();
-  if (memory.fresh || !reusable || check?.changed || check?.closed) return undefined;
+  if (memory.fresh || !raw.reusable || check?.changed || check?.closed) return undefined;
+  const compact = projected && readReceipt<T>(memory, projected);
+  if (compact !== undefined) return compact;
+  memory.used.add(raw.name);
+  return readReceipt<T>(memory, raw);
+}
+
+function readReceipt<T>(memory: Memory, { name, file }: Entry): T | undefined {
+  const check = checking.getStore();
   const fileBase = file.slice(0, -primaryExtension.length);
   const nameBase = name.slice(0, -primaryExtension.length);
   for (const [extension, decompress] of formats) {
@@ -842,13 +862,18 @@ export function recall<T>(memory: Memory, { name, file, reusable }: Entry): T | 
   return undefined;
 }
 /** Remember `value` under an entry, unless this process cannot say which tools computed it: then the next check computes it again. */
-export function store(memory: Memory, { name, file, evaluator, reusable }: Entry, value: unknown, action?: { program: Program; began: number }) {
-  memory.used.add(name);
+export function store(memory: Memory, raw: Entry, value: unknown, action?: { program: Program; began: number }) {
+  const { evaluator, reusable } = raw;
+  const projected = projectedEntry(memory, raw);
+  if (!projected) memory.used.add(raw.name);
   const check = checking.getStore();
   if (unsure || check?.changed || check?.closed || !reusable) return;
   if (evaluator !== undefined && !stableInstallation(evaluatorIdentity(memory.root) === evaluator)) return;
   if (action && !check && !action.program.unchanged()) return;
-  const bytes = zstdCompressSync(JSON.stringify(memory.cacheValue ? memory.cacheValue(value) : value));
+  const compact = projected && memory.actionProjection?.encode(value);
+  const { name, file } = projected && compact !== undefined ? projected : raw;
+  const bytes = zstdCompressSync(JSON.stringify(compact === undefined ? value : compact));
+  memory.used.add(name);
   sharedCache(name)?.used.add(name);
   if (action) check?.verify.add(action.program);
   else if (check) includePrograms(check);
