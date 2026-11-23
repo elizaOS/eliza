@@ -39,7 +39,7 @@ export interface DeviceTurn {
 }
 
 export type Grounding =
-  | { readonly kind: "Grounded"; readonly operation: DeviceOperation }
+  | { readonly kind: "Grounded"; readonly operation: DeviceOperation; readonly reviewed?: true }
   | { readonly kind: "Refused"; readonly code: string; readonly forModel: string; readonly forOwner: string }
 
 export interface ProposalForm {

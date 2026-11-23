@@ -1,6 +1,7 @@
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"
 import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
-import { directDestination, groundProposedDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
+import { groundedSearch } from "../gen/browser__control.effect.vibe"
+import { directDestination, pageLinkDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
 import { IANA_TLDS } from "./iana-tlds.vibe"
 
 /** The assistant name a request may start with when the host names none. */
@@ -439,12 +440,16 @@ function groundingEvidence(userText: string, proposed: URL, assistantName: strin
   }
 }
 
-/** The destination to open for a model-proposed address, spelled as the user typed it in this message, or undefined. */
-export function groundBrowserDestination(userText: string, proposedUrl: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
+function pageLinkOf(proposedUrl: string): string {
+  const parsed = parseBrowserAddressInput(proposedUrl, { defaultProtocol: "https:" })
+  return parsed.kind === "url" ? parsed.href.split("#", 1)[0] ?? "" : ""
+}
+
+export function groundBrowserDestination(userText: string, proposedUrl: string, assistantName: string = DEFAULT_ASSISTANT_NAME, pageLinks: readonly string[] = []): string | undefined {
   const readable = !unreadable(userText) && typeof proposedUrl === "string"
   const proposed = readable ? proposedAddress(proposedUrl) : undefined
   const evidence: Evidence = proposed === undefined ? { vetoed: false, candidates: [] } : groundingEvidence(userText, proposed, assistantName)
-  const href = groundProposedDestination(readable, proposed !== undefined, evidence.vetoed, evidence.candidates)
+  const href = pageLinkDestination(readable, proposed !== undefined, evidence.vetoed, evidence.candidates, [...pageLinks], proposed === undefined ? "" : pageLinkOf(proposedUrl))
   return href === "" ? undefined : href
 }
 
@@ -469,9 +474,7 @@ export function browserSearchQueryMatches(query: string, direct: string | undefi
   return direct !== undefined && unquoted(query.trim()).toLowerCase() === direct.toLowerCase()
 }
 
-/** The search words as the user typed them in this message, when the proposed query is whole words of it. */
-export function groundBrowserSearchQuery(userText: string, proposedQuery: string): string | undefined {
-  if (unreadable(userText) || typeof proposedQuery !== "string") return undefined
+function typedSpelling(userText: string, proposedQuery: string): string | undefined {
   const text = userText.trim().replace(/\s+/g, " ")
   const query = proposedQuery.trim().replace(/\s+/g, " ")
   if (query === "" || query.length > BROWSER_SEARCH_QUERY_MAX) return undefined
@@ -488,6 +491,14 @@ export function groundBrowserSearchQuery(userText: string, proposedQuery: string
     }
   }
   return undefined
+}
+
+/** The search words as the user typed them in this message, when the proposed query is whole words of it. */
+export function groundBrowserSearchQuery(userText: string, proposedQuery: string): string | undefined {
+  const readable = !unreadable(userText) && typeof proposedQuery === "string"
+  const typed = readable ? typedSpelling(userText, proposedQuery) : undefined
+  const grounded = groundedSearch({ readable, typedAsWholeWords: typed !== undefined, typedSpelling: typed ?? "" })
+  return grounded === "" ? undefined : grounded
 }
 
 /** Whether a proposed operation is a `browser_navigate` to exactly this direct destination. */
