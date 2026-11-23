@@ -45,12 +45,12 @@ public final class AgentConfig {
 
   public record Notification(String channel, String title, String text) {}
 
-  sealed interface ResidentOwner permits InstallationOwner, RetainedOwner {
+  public sealed interface ResidentOwner permits InstallationOwner, RetainedOwner {
     AgentCredentials.Account linkedAccount();
   }
-  record InstallationOwner(AgentCredentials.Account linkedAccount) implements ResidentOwner {}
-  record RetainedOwner(AgentCredentials.Account linkedAccount) implements ResidentOwner {
-    RetainedOwner { Objects.requireNonNull(linkedAccount); }
+  public record InstallationOwner(AgentCredentials.Account linkedAccount) implements ResidentOwner {}
+  public record RetainedOwner(AgentCredentials.Account linkedAccount) implements ResidentOwner {
+    public RetainedOwner { Objects.requireNonNull(linkedAccount); }
   }
 
   sealed interface ResidentInference permits NoInference, OwnKeyInference, CloudInference {}
@@ -114,6 +114,8 @@ public final class AgentConfig {
   public boolean ownKey() { return ownKey; }
 
   public boolean residentWithoutInference() { return residentWithoutInference; }
+
+  String cloudOrigin() { return needsAccount() ? (String) ((Map<?, ?>) launch.get("model")).get("cloudBaseUrl") : null; }
 
   public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker) {
     if (residentWithoutInference) throw new IllegalArgumentException("The resident's stored owner must be resolved before launch");

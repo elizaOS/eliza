@@ -113,6 +113,11 @@ public class AgentService extends Service {
   private CompletableFuture<Review> review;
   private int archived = -1;
   private AgentPolicy.UpdateTarget pendingHold;
+  private AgentResidentLaunch residentLaunch;
+  private long residentLaunchEpoch;
+  private ScheduledFuture<?> residentExpiry;
+  private record ResidentRecovery(long epoch, AgentCredentials.ResidentState binding, Path location) {}
+  private ResidentRecovery residentRecovery;
 
   public static void useCredentials(AgentCredentials source) { registered = Objects.requireNonNull(source); }
 
@@ -195,7 +200,13 @@ public class AgentService extends Service {
       service.later(() -> service.settled(service::syncCredential));
       return;
     }
-    if (signedIn()) start(context);
+    try { if (!config(context).residentWithoutInference() && signedIn()) start(context); }
+    catch (AgentConfig.Refused | IOException refused) { if (signedIn()) start(context); }
+  }
+
+  static boolean canStart(Context context) {
+    try { return config(context).residentWithoutInference() || signedIn(); }
+    catch (AgentConfig.Refused | IOException refused) { return signedIn(); }
   }
 
   static boolean signedIn() {
@@ -295,7 +306,7 @@ public class AgentService extends Service {
     }
     synchronized (LOCK) {
       AgentCredentials.Active active = null;
-      try { active = credentials().current(); }
+      try { if (!config(this).residentWithoutInference()) active = credentials().current(); }
       catch (Exception unreadable) { Log.w(TAG, "The device credential could not be read", unreadable); }
       synchronized (EPOCH_LOCK) {
         AgentPolicy.UpdateTarget held = null;
@@ -470,6 +481,7 @@ public class AgentService extends Service {
     if (effect instanceof AgentPolicy.Check check) effects.schedule(() -> settled(() -> check(check)), check.delayMs(), TimeUnit.MILLISECONDS);
     else if (effect instanceof AgentPolicy.Kill kill) {
       cancelTimers();
+      if (residentLaunchEpoch == kill.epoch()) CHANNEL.retire(kill.epoch());
       AgentSupervisor.Child target = child;
       if (target != null && target.epoch == kill.epoch()) work.execute(target::stop);
     } else if (effect instanceof AgentPolicy.PushCredential push) push(push);
@@ -533,6 +545,10 @@ public class AgentService extends Service {
   private void launchChecked(long epoch, AgentConfig config, PayloadCheck.PreparedPayload prepared) {
     AgentPolicy.State before = policy.state();
     if (!checking(before, epoch)) return;
+    if (config.residentWithoutInference()) {
+      launchResident(epoch, config, prepared);
+      return;
+    }
     AgentCredentials credentialSource;
     AgentCredentials.Active active;
     try {
@@ -572,12 +588,64 @@ public class AgentService extends Service {
     if (!step(new AgentPolicy.LaunchHook(refusal != null, refusal)).accepted() || policy.state().phase() != Phase.CHECKING) return;
     Path stateDir;
     try {
-      recoveryArchive.requireSettled(active.account());
+      recoveryArchive.requireSettled(directories.stateLocation(active.account().userId(), active.account().organizationId()));
       stateDir = directories.state(active.account().userId(), active.account().organizationId());
     } catch (IOException failed) {
       step(new AgentPolicy.Refuse(AgentPolicy.Cause.STORAGE, "The agent's state directory is not usable: " + failed.getMessage()));
       return;
     }
+    spawnChecked(epoch, prepared, document, stateDir, framed, storageKey);
+  }
+
+  private void launchResident(long epoch, AgentConfig config, PayloadCheck.PreparedPayload prepared) {
+    AgentResidentLaunch selected;
+    Path stateDir;
+    residentRecovery = null;
+    try {
+      selected = residentPlan(config);
+      AgentConfig.ResidentOwner owner = selected.binding().owner();
+      Path location = directories.residentLocation(owner);
+      residentRecovery = new ResidentRecovery(epoch, selected.binding(), location);
+      recoveryArchive.requireSettled(location);
+      stateDir = directories.residentState(owner);
+    } catch (Exception unavailable) {
+      step(new AgentPolicy.Refuse(AgentPolicy.Cause.STORAGE, "The resident's private storage could not be read."));
+      return;
+    }
+    Map<String, String> variables = new LinkedHashMap<>();
+    String document = null;
+    String refusal = null;
+    try {
+      configureLaunch(variables);
+      document = launchEnvironment(config.residentLaunchDocument(selected.binding().owner(), selected.inference(), workflowWorker(prepared.workflowWorker())), variables);
+    } catch (LaunchRefused | IllegalArgumentException refused) {
+      refusal = refused.getMessage();
+    }
+    if (!step(new AgentPolicy.LaunchHook(refusal != null, refusal, new AgentPolicy.ResidentLaunch(selected.cloudVersion()))).accepted()
+        || !checking(policy.state(), epoch)) return;
+    try {
+      AgentResidentLaunch latest = residentPlan(config);
+      if (selected.rolloutTo(latest) != AgentPolicy.ResidentRollout.KEEP_LAUNCH) {
+        step(new AgentPolicy.ResidentChanged(epoch, AgentPolicy.ResidentRollout.RETIRE_LAUNCH, latest.cloudVersion()));
+        return;
+      }
+    } catch (Exception unavailable) {
+      step(new AgentPolicy.Refuse(AgentPolicy.Cause.STORAGE, "The resident's private storage changed before launch."));
+      return;
+    }
+    residentLaunch = selected;
+    residentLaunchEpoch = epoch;
+    spawnChecked(epoch, prepared, document, stateDir, selected.framed(), selected.binding().storageKey());
+  }
+
+  private AgentResidentLaunch residentPlan(AgentConfig config) throws Exception {
+    AgentCredentials.ResidentState binding = credentials().residentState();
+    if (binding == null) throw new IOException("The resident vault is missing");
+    return AgentResidentLaunch.select(config, binding, System.currentTimeMillis());
+  }
+
+  private void spawnChecked(long epoch, PayloadCheck.PreparedPayload prepared, String document, Path stateDir,
+      LaunchFrame.Credential framed, String storageKey) {
     AgentSupervisor.Child spawned;
     String launchToken = LaunchFrame.newToken();
     try {
@@ -610,6 +678,10 @@ public class AgentService extends Service {
 
   private void ready(long launchEpoch) {
     if (!owns(launchEpoch) || policy.state().phase() != Phase.SPAWNED) return;
+    if (residentLaunchEpoch == launchEpoch) {
+      syncCredential();
+      if (policy.state().phase() != Phase.SPAWNED) return;
+    }
     CHANNEL.open(launchEpoch, token, socket);
     if (!step(new AgentPolicy.ObserveReady(launchEpoch)).accepted()) {
       CHANNEL.retire(launchEpoch);
@@ -619,6 +691,7 @@ public class AgentService extends Service {
     timers.add(effects.scheduleWithFixedDelay(() -> health(launchEpoch, true), HealthPolicy.PROBE_INTERVAL_MS, HealthPolicy.PROBE_INTERVAL_MS, TimeUnit.MILLISECONDS));
     timers.add(effects.scheduleWithFixedDelay(() -> health(launchEpoch, false), HealthPolicy.CONNECT_CHECK_INTERVAL_MS, HealthPolicy.CONNECT_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS));
     timers.add(effects.schedule(() -> settled(() -> { if (owns(launchEpoch)) step(new AgentPolicy.StableReset()); }), HealthPolicy.STABLE_RUN_MS, TimeUnit.MILLISECONDS));
+    if (residentLaunchEpoch == launchEpoch) scheduleResidentExpiry();
     for (Runnable observer : readyObservers) notices.execute(observer);
   }
 
@@ -626,6 +699,10 @@ public class AgentService extends Service {
     if (!owns(launchEpoch)) return;
     child = null;
     token = null;
+    if (residentLaunchEpoch == launchEpoch) {
+      residentLaunch = null;
+      residentLaunchEpoch = 0;
+    }
     cancelTimers();
     CHANNEL.retire(launchEpoch);
     boolean stale = policy.state().staleEpoch() == launchEpoch;
@@ -712,8 +789,44 @@ public class AgentService extends Service {
   }
 
   private void syncCredential() {
+    AgentConfig current = loaded;
+    if (current != null && current.residentWithoutInference()) {
+      syncResident(current);
+      return;
+    }
     try { sync(credentials().current()); }
     catch (Exception unreadable) { Log.w(TAG, "The device credential could not be read", unreadable); }
+  }
+
+  private void syncResident(AgentConfig config) {
+    AgentPolicy.State state = policy.state();
+    AgentResidentLaunch previous = residentLaunch;
+    if (pendingHold != null || previous == null || residentLaunchEpoch != state.epoch()
+        || (state.phase() != Phase.RUNNING && state.phase() != Phase.SPAWNED)) return;
+    try {
+      AgentResidentLaunch next = residentPlan(config);
+      AgentPolicy.ResidentRollout rollout = previous.rolloutTo(next);
+      if (rollout == AgentPolicy.ResidentRollout.KEEP_LAUNCH) return;
+      boolean rotating = state.phase() == Phase.RUNNING && rollout == AgentPolicy.ResidentRollout.ROTATE_KEY;
+      if (rotating) residentLaunch = next;
+      if (!step(new AgentPolicy.ResidentChanged(state.epoch(), rollout, next.cloudVersion())).accepted()) residentLaunch = previous;
+      else if (rotating) scheduleResidentExpiry();
+    } catch (Exception unavailable) {
+      step(new AgentPolicy.ResidentChanged(state.epoch(), AgentPolicy.ResidentRollout.RETIRE_LAUNCH, 0));
+    }
+  }
+
+  private void scheduleResidentExpiry() {
+    if (residentExpiry != null) residentExpiry.cancel(false);
+    AgentCredentials.Active cloud = residentLaunch == null ? null : residentLaunch.cloud();
+    if (cloud == null || cloud.expiresAt() <= 0) return;
+    long epoch = residentLaunchEpoch;
+    residentExpiry = effects.schedule(() -> settled(() -> {
+      if (!owns(epoch)) return;
+      if (System.currentTimeMillis() < cloud.expiresAt()) scheduleResidentExpiry();
+      else syncCredential();
+    }),
+      Math.max(1, cloud.expiresAt() - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
   }
 
   private void sync(AgentCredentials.Active active) {
@@ -741,7 +854,9 @@ public class AgentService extends Service {
     AgentConfig launched = loaded;
     if (launched == null || !launched.needsAccount()) return;
     AgentCredentials.Active active;
-    try { active = credentials().current(); }
+    try { active = launched.residentWithoutInference()
+      ? residentLaunchEpoch == push.epoch() && residentLaunch != null ? residentLaunch.cloud() : null
+      : credentials().current(); }
     catch (Exception unreadable) {
       Log.w(TAG, "The device credential could not be read for the push", unreadable);
       return;
@@ -754,23 +869,47 @@ public class AgentService extends Service {
       active.expiresAt(), new AgentSocketClient.Account(active.account().userId(), active.account().organizationId()));
     work.execute(() -> {
       try {
-        AgentSocketClient.PushResult result = CHANNEL.pushCredential(body);
-        if (!(result instanceof AgentSocketClient.PushAccepted)) Log.w(TAG, "The agent did not take credential version " + push.version() + ": " + result);
+        AgentSocketClient.PushResult result = CHANNEL.pushCredential(push.epoch(), body);
+        if (!(result instanceof AgentSocketClient.PushAccepted)) {
+          Log.w(TAG, "The agent did not take credential version " + push.version() + ": " + result);
+          restartAfterResidentPushFailure(launched, push);
+        }
       } catch (IOException failed) {
         Log.w(TAG, "Credential version " + push.version() + " could not be pushed to the agent", failed);
+        restartAfterResidentPushFailure(launched, push);
       }
     });
   }
 
-  private AgentCredentials.Account recoveryAccount(String accountKey) throws IOException {
+  private void restartAfterResidentPushFailure(AgentConfig config, AgentPolicy.PushCredential push) {
+    if (!config.residentWithoutInference()) return;
+    later(() -> settled(() -> {
+      if (pendingHold == null && residentLaunch != null && residentLaunchEpoch == push.epoch()
+          && residentLaunch.cloudVersion() == push.version())
+        step(new AgentPolicy.ResidentChanged(push.epoch(), AgentPolicy.ResidentRollout.RETIRE_LAUNCH, push.version()));
+    }));
+  }
+
+  private Path recoveryPath(String accountKey) throws IOException {
+    AgentConfig config = loaded;
+    if (config != null && config.residentWithoutInference()) {
+      ResidentRecovery reviewed = residentRecovery;
+      if (reviewed == null || reviewed.epoch() != policy.state().epoch()) throw new IOException("No resident location was held by this launch");
+      AgentCredentials.ResidentState current;
+      try { current = residentPlan(config).binding(); }
+      catch (Exception unavailable) { throw new IOException("The resident's current owner could not be verified"); }
+      if (!reviewed.binding().owner().equals(current.owner()) || !reviewed.binding().storageKey().equals(current.storageKey()))
+        throw new IOException("The reviewed resident vault changed");
+      return reviewed.location();
+    }
     AgentCredentials.Account account = accounts.get(accountKey);
     if (account == null) throw new IOException("The agent's account is not known to this service");
-    return account;
+    return directories.stateLocation(account.userId(), account.organizationId());
   }
 
   private int retained(String accountKey) {
     try {
-      return recoveryArchive.retained(recoveryAccount(accountKey), directories);
+      return recoveryArchive.retained(recoveryPath(accountKey));
     } catch (IOException | RuntimeException unreadable) {
       Log.w(TAG, "The agent's records could not be counted", unreadable);
       return 0;
@@ -780,7 +919,8 @@ public class AgentService extends Service {
   private void archive(AgentPolicy.Archive archive) {
     int count;
     try {
-      count = recoveryArchive.archive(recoveryAccount(archive.account()), directories, retained(archive.account()),
+      Path location = recoveryPath(archive.account());
+      count = recoveryArchive.archive(location, directories, recoveryArchive.retained(location),
         archive.token().epoch(), System.currentTimeMillis());
     } catch (IOException | RuntimeException failed) {
       Log.e(TAG, "The agent's records could not be moved aside", failed);
@@ -823,11 +963,17 @@ public class AgentService extends Service {
     return target;
   }
 
-  @SuppressWarnings("unchecked")
   private static String launchDocument(AgentConfig config, AgentCredentials.Account account, Optional<PayloadCheck.WorkflowWorker> worker,
       Map<String, String> variables) throws LaunchRefused {
-    String document = config.launchDocument(account, worker.map(staged ->
-      new AgentConfig.WorkflowWorker(staged.runtimeDir().toString(), staged.executable().toString(), staged.sha256())).orElse(null));
+    return launchEnvironment(config.launchDocument(account, workflowWorker(worker)), variables);
+  }
+
+  private static AgentConfig.WorkflowWorker workflowWorker(Optional<PayloadCheck.WorkflowWorker> worker) {
+    return worker.map(staged -> new AgentConfig.WorkflowWorker(staged.runtimeDir().toString(), staged.executable().toString(), staged.sha256())).orElse(null);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static String launchEnvironment(String document, Map<String, String> variables) throws LaunchRefused {
     if (variables.isEmpty()) return document;
     Map<String, Object> parsed = (Map<String, Object>) RouteGate.Json.parse(document);
     Map<String, Object> environment = parsed.get("environment") instanceof Map<?, ?> set ? new LinkedHashMap<>((Map<String, Object>) set) : new LinkedHashMap<>();
@@ -846,6 +992,8 @@ public class AgentService extends Service {
   }
 
   private void cancelTimers() {
+    if (residentExpiry != null) residentExpiry.cancel(false);
+    residentExpiry = null;
     for (ScheduledFuture<?> timer : timers) timer.cancel(false);
     timers.clear();
   }

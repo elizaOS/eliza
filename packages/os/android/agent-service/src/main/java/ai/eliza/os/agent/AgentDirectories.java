@@ -34,7 +34,23 @@ public final class AgentDirectories {
   public Path recoveryArchive() throws IOException { return privateDirectory(files.resolve("agent-recovery")); }
 
   public Path state(String userId, String organizationId) throws IOException {
-    return privateDirectory(privateDirectory(files.resolve("agent")).resolve(accountDigest(userId, organizationId)));
+    Path location = stateLocation(userId, organizationId);
+    privateDirectory(location.getParent());
+    return privateDirectory(location);
+  }
+
+  Path stateLocation(String userId, String organizationId) { return files.resolve("agent").resolve(accountDigest(userId, organizationId)); }
+
+  Path residentLocation(AgentConfig.ResidentOwner owner) {
+    if (owner instanceof AgentConfig.RetainedOwner retained)
+      return stateLocation(retained.linkedAccount().userId(), retained.linkedAccount().organizationId());
+    return files.resolve("agent").resolve("installation");
+  }
+
+  public Path residentState(AgentConfig.ResidentOwner owner) throws IOException {
+    Path location = residentLocation(owner);
+    privateDirectory(location.getParent());
+    return privateDirectory(location);
   }
 
   public Path socket() { return files.resolve("ipc").resolve(SOCKET); }

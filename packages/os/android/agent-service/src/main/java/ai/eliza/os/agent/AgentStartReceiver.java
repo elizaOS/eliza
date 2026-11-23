@@ -19,7 +19,7 @@ public class AgentStartReceiver extends BroadcastReceiver {
     PendingResult pending = goAsync();
     Thread starter = new Thread(() -> {
       try {
-        if (AgentService.signedIn()) AgentService.start(app);
+        if (AgentService.canStart(app)) AgentService.start(app);
       } catch (Exception refused) {
         Log.w(TAG, "The agent was not started after " + action, refused);
       } finally {

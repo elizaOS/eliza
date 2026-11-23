@@ -12,34 +12,36 @@ import java.util.stream.Stream;
 
 public final class RecoveryArchive {
   private record Moved(Path source, Path archive, int retainedCount) {}
-  private final Map<AgentCredentials.Account, Moved> pending = new HashMap<>();
+  private final Map<Path, Moved> pending = new HashMap<>();
 
-  int retained(AgentCredentials.Account account, AgentDirectories directories) throws IOException {
-    Moved moved = pending.get(account);
-    return moved == null ? count(state(account, directories)) : moved.retainedCount();
+  int retained(Path source) throws IOException {
+    verifyParent(source);
+    Moved moved = pending.get(source);
+    return moved == null ? count(source) : moved.retainedCount();
   }
 
-  void requireSettled(AgentCredentials.Account account) throws IOException {
-    if (pending.containsKey(account)) throw new IOException("The moved records still need reviewed recovery");
+  void requireSettled(Path source) throws IOException {
+    if (pending.containsKey(source)) throw new IOException("The moved records still need reviewed recovery");
   }
 
-  int archive(AgentCredentials.Account account, AgentDirectories directories, int retainedCount, long epoch, long nowMillis) throws IOException {
-    Moved moved = pending.get(account);
+  int archive(Path source, AgentDirectories directories, int retainedCount, long epoch, long nowMillis) throws IOException {
+    verifyParent(source);
+    Moved moved = pending.get(source);
     if (moved == null) {
-      Path source = state(account, directories);
       Path archive = move(source, directories.recoveryArchive(), epoch, nowMillis);
       moved = new Moved(source, archive, retainedCount);
-      pending.put(account, moved);
+      pending.put(source, moved);
     }
     if (!Files.isDirectory(moved.archive(), LinkOption.NOFOLLOW_LINKS)) throw new IOException("The moved records could not be found");
     directories.sync().directory(moved.archive().getParent());
     directories.sync().directory(moved.source().getParent());
-    pending.remove(account);
+    pending.remove(source);
     return moved.retainedCount();
   }
 
-  private static Path state(AgentCredentials.Account account, AgentDirectories directories) throws IOException {
-    return directories.state(account.userId(), account.organizationId());
+  private static void verifyParent(Path source) throws IOException {
+    if (!Files.isDirectory(source.getParent(), LinkOption.NOFOLLOW_LINKS))
+      throw new IOException("The agent's state parent is not a real directory");
   }
 
   private static int count(Path state) throws IOException {
