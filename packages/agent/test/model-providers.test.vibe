@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
-import { allowanceExhausted, answerJson, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
@@ -15,6 +15,7 @@ import { launchDocument, launchFrame, type Backend } from "./support/scratch.ts"
 module node {
   import { createHash } from "node:crypto"
 
+  /** @throws {never} */
   export function digest(text: string): string {
     return createHash("sha256").update(text).digest("hex")
   }
@@ -167,7 +168,7 @@ it.effect('The own-key backend answers text only, classifies its refusals into t
   assert.strictEqual(lineBreak._tag, "LaunchFrameRejected")
 })
 
-it.effect('A tool call and its token use reach the caller as one result, and each tool result follows the call that asked for it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
+it.effect('A tool call and its token use reach the caller as one result, a streamed call asks for its token use and records the cached prompt tokens of its last chunk, and each tool result follows the call that asked for it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
@@ -186,7 +187,7 @@ it.effect('A tool call and its token use reach the caller as one result, and eac
       { role: "tool", toolCallId: "call-0", content: "2" },
     ],
   }))
-  assert.deepStrictEqual(result, {
+  assert.deepStrictEqual<unknown>(result, {
     text: "", toolCalls: [{ id: "call-1", name: "CALCULATE", arguments: { expression: "2+2" } }], finishReason: "tool_calls",
     usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17, cacheReadInputTokens: 4 },
   })
@@ -200,6 +201,28 @@ it.effect('A tool call and its token use reach the caller as one result, and eac
   ])
   assert.deepStrictEqual([sent.tools, sent.tool_choice], [[{ type: "function", function: { name: "CALCULATE", description: "Arithmetic.", parameters } }], "auto"])
   assert.strictEqual((try binding.read()).accountState, "usable")
+
+  const scripted = try cloudFake(deviceKey)
+  const streaming = try cloudAgent(scripted)
+  try Effect.sync(() => scripted.script(text("Whole."), cachedText(48, "Four.")))
+  try host("whole call", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hi." }))
+  const chunks: string[] = []
+  const streamed = try host("streamed tool offer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, {
+    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto",
+    messages: [{ role: "user", content: "What is 2+2?" }], stream: true, onStreamChunk: (chunk: string) => { chunks.push(chunk) },
+  }))
+  const [whole, asked] = scripted.calls.map((call) => call.body as Record<string, unknown>)
+  let logged: unknown
+  for (let read = 0; logged === undefined && read < 100; read++) {
+    const rows = try host("model-call records", () => streaming.runtime.getLogs({ entityId: streaming.runtime.agentId }))
+    logged = rows.map((log) => (log.body as { usage?: { cacheReadInputTokens?: unknown } }).usage).find((usage) => usage?.cacheReadInputTokens !== undefined)
+  }
+  assert.deepStrictEqual<unknown>({ streamed, chunks, options: [asked?.stream_options, whole !== undefined && "stream_options" in whole], logged }, {
+    streamed: { text: "Four.", toolCalls: [], finishReason: "stop", usage: { promptTokens: 49, completionTokens: 2, totalTokens: 51, cacheReadInputTokens: 48 } },
+    chunks: ["Four."],
+    options: [{ include_usage: true }, false],
+    logged: { promptTokens: 49, completionTokens: 2, cacheReadInputTokens: 48 },
+  })
 })
 
 it.effect('An own-key overload or timeout is a provider issue and is retried, and a validation refusal ends the call (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
