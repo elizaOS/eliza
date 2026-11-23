@@ -7,6 +7,7 @@ import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { InferenceTurnTimer, runWithInferenceTiming } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyStatedTimeToCreateRequest,
   dedupeCalendarQueries,
   isRedundantObservedClockQuery,
   normalizeCalendarDetails,
@@ -164,6 +165,50 @@ describe("verifyAppliedCalendarMutation create with a place", () => {
     ).toMatch(
       /^Created “Optometrist appointment” for tomorrow, Friday, .* at 3pm/,
     );
+  });
+});
+
+describe("verifyAppliedCalendarMutation with a spoken range", () => {
+  it("matches the actual spoken range and refuses a different saved start", () => {
+    const request =
+      "Add an event called Taco Night tomorrow from one ten PM to one thirty PM with no guests.";
+    const event = {
+      ...seoulEvent("Taco Night", ""),
+      startAt: "2026-10-16T04:10:00.000Z",
+      endAt: "2026-10-16T04:30:00.000Z",
+    };
+    expect(createReceipt(request, event)).toContain("at 1:10pm");
+    expect(
+      createReceipt(request, {
+        ...event,
+        startAt: "2026-10-16T13:10:00.000Z",
+      }),
+    ).toBeNull();
+  });
+
+  it("uses the original range before writing even when extraction read one ten as ten ten", () => {
+    const timeZone = "America/Los_Angeles";
+    const now = new Date("2026-11-20T20:50:00Z");
+    const title = "Taco Night lab check";
+    const request = {
+      title,
+      startAt: "2026-11-22T06:10:00.000Z",
+      endAt: "2026-11-22T06:30:00.000Z",
+    };
+    const currentMessage =
+      "Add an event called Taco Night lab check tomorrow from one ten PM to one thirty PM on my built in Eliza calendar with no guests.";
+    expect(
+      applyStatedTimeToCreateRequest({
+        currentMessage,
+        intent: "Add Taco Night tomorrow at 10:10 PM",
+        title,
+        timeZone,
+        now,
+        request,
+      }),
+    ).toEqual({ corrected: true });
+    expect(request.startAt).toBe("2026-11-21T21:10:00.000Z");
+    expect(request.endAt).toBe("2026-11-21T21:30:00.000Z");
   });
 });
 

@@ -14,6 +14,7 @@ import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
 import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
+import { DETERMINISTIC_TOOL_ACKNOWLEDGMENT_DELAY_MS } from "./message/delayed-acknowledgment.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
@@ -34,6 +35,8 @@ async function ownerModelAcknowledgment(
     toolCategories = [] as string[],
     toolName = "LOOKUP",
     stage1Contexts = ["general"] as string[],
+    routeDirectly = false,
+    routeDelayMs = 0,
     guestInRoom = false,
     contextRead = false,
     contextReference = "CHOICE",
@@ -54,6 +57,8 @@ async function ownerModelAcknowledgment(
   let contextReadIssued = false;
   let readCompositions = 0;
   const stage1Wires: string[] = [];
+  const plannerWires: string[] = [];
+  const completionWires: string[] = [];
   const providerText =
     "PRIVATE_CONTEXT_TEST_VALUE authorized complete guide. ".repeat(20);
   const events: string[] = [];
@@ -174,6 +179,13 @@ async function ownerModelAcknowledgment(
     validate: async () => true,
     handler: async () => {
       events.push(event);
+      if (routeDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, routeDelayMs));
+      }
+      if (routeDirectly) {
+        // This schedule ends at dispatch so it needs no final-reply model stub.
+        controller.abort();
+      }
       return { success: true, text: "private result" };
     },
   });
@@ -199,6 +211,18 @@ async function ownerModelAcknowledgment(
       )
     : [lookup(toolName, "tool")];
   for (const tool of tools) runtime.registerAction(tool);
+  if (routeDirectly) {
+    runtime.registerResponseHandlerEvaluator({
+      name: "owner-ack-lookup-route",
+      priority: 65,
+      deterministicActions: [toolName],
+      shouldRun: () => true,
+      evaluate: () => ({
+        clearReply: true,
+        deterministicToolCall: { name: toolName, params: { query: "entry" } },
+      }),
+    });
+  }
   const readParticipants = runtime.getParticipantsForRoom.bind(runtime);
   if (
     changeAudienceBeforeAcknowledgment ||
@@ -257,6 +281,9 @@ async function ownerModelAcknowledgment(
       }
       if (contextRead && handlerCalls === 2)
         events.push("read-handle-response");
+      if (handlerCalls > (contextRead ? 2 : 1)) {
+        completionWires.push(JSON.stringify(params.messages ?? params.prompt));
+      }
       return (contextRead ? handlerCalls === 2 : first)
         ? {
             text: "",
@@ -305,7 +332,8 @@ async function ownerModelAcknowledgment(
   );
   runtime.registerModel(
     ModelType.ACTION_PLANNER,
-    async () => {
+    async (_rt, params) => {
+      plannerWires.push(JSON.stringify(params.messages ?? params.prompt));
       plannerReturned = true;
       plannerCalls++;
       return {
@@ -388,6 +416,8 @@ async function ownerModelAcknowledgment(
     handlerCalls,
     plannerCalls,
     stage1Wires,
+    plannerWires,
+    completionWires,
     readCompositions,
     providerText,
   };
@@ -409,7 +439,22 @@ describe("awaited owner model acknowledgments", () => {
     const result = await ownerModelAcknowledgment(true);
     expect(result.acknowledgments).toEqual(["Let me check."]);
     expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
+    expect(result.plannerWires.join()).toContain(
+      "Already sent to the user as progress",
+    );
+    expect(result.completionWires.join()).toContain("Let me check.");
     expect(result.chunks).toEqual([]);
+  });
+
+  it("preserves the validated model cue on a slow directly routed read", async () => {
+    const result = await ownerModelAcknowledgment(true, {
+      acknowledgment: "Let me check your calendar.",
+      routeDirectly: true,
+      routeDelayMs: DETERMINISTIC_TOOL_ACKNOWLEDGMENT_DELAY_MS + 60,
+    });
+    expect(result.plannerCalls).toBe(0);
+    expect(result.events).toEqual(["tool", "ack-start", "ack-end"]);
+    expect(result.acknowledgments).toEqual(["Let me check your calendar."]);
   });
 
   it("awaits a wait-cue-led model acknowledgment in its own words", async () => {
@@ -507,6 +552,12 @@ describe("awaited owner model acknowledgments", () => {
         changeAudienceBeforeAcknowledgment: true,
       });
       expect(result.acknowledgments).toEqual([]);
+      expect(result.plannerWires.join()).not.toContain(
+        "Already sent to the user as progress",
+      );
+      expect(result.completionWires.join()).not.toContain(
+        "Already sent to the user as progress",
+      );
     },
   );
 
@@ -701,7 +752,13 @@ describe("awaited owner model acknowledgments", () => {
         expect(result.stage1Wires).toHaveLength(2);
         expect(result.stage1Wires[0]).toContain("READ_CONTEXT");
         expect(result.stage1Wires[0]).not.toContain(result.providerText.trim());
+        expect(result.stage1Wires[1]).toContain(
+          "Already sent to the user as progress",
+        );
+        expect(result.stage1Wires[1]).toContain(acknowledgment);
         expect(result.stage1Wires[1]).toContain(result.providerText.trim());
+        expect(result.plannerWires.join()).toContain(acknowledgment);
+        expect(result.completionWires.join()).toContain(acknowledgment);
         expect(result.events.indexOf("read-compose")).toBeLessThan(
           result.events.indexOf("ack-start"),
         );

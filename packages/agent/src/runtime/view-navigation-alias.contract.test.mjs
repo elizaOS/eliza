@@ -46,7 +46,12 @@ function fixture({
       isOwner: owner,
       role: owner ? "OWNER" : "USER",
     }),
+    containsResourceAddress: () => false,
     getStreamingContext: () => undefined,
+    getTurnActionConstraint: () => undefined,
+    getViewClientScope: () => undefined,
+    getCurrentViewState: () => undefined,
+    resolveHostSessionAccessContext: () => undefined,
     enabledDeviceViews: () => undefined,
     getUserMessageText: (m) => m.content.text,
     isObjectRecord: (v) =>
@@ -75,12 +80,16 @@ async function evaluate(
     viewId = "workflows",
     replyEffectStatus = "non_applied",
     intents = [],
+    noteEditor,
+    unconditional,
   } = {},
 ) {
   const value = {
     disposition,
     viewId,
     reason: "Closed classification fixture",
+    ...(noteEditor === undefined ? {} : { noteEditor }),
+    ...(unconditional === undefined ? {} : { unconditional }),
   };
   f.api.viewNavigationField.handle({
     runtime: f.runtime,
@@ -124,6 +133,36 @@ test("actual Stage1 context advertises Workflows as verified alias of visible ca
   );
   assert.ok(context.includes('"id":"chat","label":"Home","aliases":["home"]'));
   assert.match(context, /not permission/);
+});
+test("a request for a saved note keeps lookup and editor navigation in the planner", async () => {
+  const f = fixture({
+    views: [
+      {
+        id: "notes",
+        label: "Notes",
+        available: true,
+        installationId: "installed-notes",
+      },
+    ],
+  });
+  f.message.content.text = "Open the note about taking the ferry";
+  f.message.content.metadata.notesEditorNavigation = 1;
+  const { out } = await evaluate(f, {
+    disposition: "planning",
+    viewId: "notes",
+    replyEffectStatus: "pending",
+    intents: ["Find the note about taking the ferry", "Open that note"],
+    noteEditor: true,
+    unconditional: true,
+  });
+  assert.equal(out?.requiresTool, true);
+  assert.deepEqual(out?.requiredViewNavigation, {
+    viewId: "notes",
+    clientId: "synthetic-client",
+    installationId: "installed-notes",
+    noteEditor: true,
+  });
+  assert.equal(out?.deterministicToolCall, undefined);
 });
 test("recorded unresolved Workflows stays planning, not fabricated direct success, but resolves the canonical known destination", async () => {
   const f = fixture();
@@ -287,9 +326,7 @@ const egressSource = readFileSync(
   ),
   "utf8",
 );
-const guardStart = egressSource.indexOf(
-    "function navigationClaimIsUngrounded(",
-  ),
+const guardStart = egressSource.indexOf("function leadingViewConfirmation("),
   guardEnd = egressSource.indexOf(
     "/** Exclude only an exact field label",
     guardStart,

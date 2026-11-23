@@ -30,6 +30,7 @@ async function fixture({
   retireAfterCalendars = false,
   access = hostOptions.access,
   gmailReadBodyMaxCharacters,
+  observeRequest = () => {},
 } = {}) {
   const calls = [],
     receipts = new Map();
@@ -41,6 +42,7 @@ async function fixture({
   const request = async (url, init = {}) => {
     const u = new URL(url);
     calls.push(u.pathname);
+    observeRequest(u.pathname);
     assert.equal(
       init.headers.Authorization,
       "Bearer synthetic-native-cloud-key",
@@ -531,6 +533,110 @@ test("managed Calendar keeps provider revision times across cache refreshes", as
         "2026-11-12T12:00:00.000Z",
       ],
     );
+  } finally {
+    await f.host.close();
+  }
+});
+
+test("a slow Calendar discovery can hand its verified sources to feed reads", async (t) => {
+  const epoch = Date.now();
+  let elapsed = 0;
+  t.mock.method(Date, "now", () => epoch + elapsed);
+  t.mock.method(performance, "now", () => elapsed);
+  let delayed = false;
+  const f = await fixture({
+    observeRequest(path) {
+      if (!delayed && path.endsWith("/calendar/calendars")) {
+        elapsed += 6_000;
+        delayed = true;
+      }
+    },
+  });
+  try {
+    const listed = await f.call({ calendar: { operation: "sources" } });
+    assert.equal(listed.status, 200);
+    const { grantId, calendarId } = listed.data.calendars[0];
+    const range = {
+      calendar: {
+        operation: "feed",
+        grantId,
+        calendarId,
+        timeMin: "2026-11-24T12:00:00.000Z",
+        timeMax: "2026-11-25T00:00:00.000Z",
+        timeZone: "America/Los_Angeles",
+      },
+    };
+    assert.equal((await f.call(range)).status, 200);
+    const count = (suffix) =>
+      f.calls.filter((path) => path.endsWith(suffix)).length;
+    assert.equal(
+      count("/api/v1/user"),
+      1,
+      "feed reuses the verified owner lookup",
+    );
+    assert.equal(
+      count("/calendar/calendars"),
+      1,
+      "feed reuses the source list",
+    );
+    assert.equal(
+      count("/accounts"),
+      3,
+      "discovery and feed each verify grants after their read",
+    );
+
+    elapsed += 5_001;
+    assert.equal((await f.call(range)).status, 200);
+    assert.equal(
+      count("/api/v1/user"),
+      2,
+      "expired owner evidence is refreshed",
+    );
+    assert.equal(
+      count("/calendar/calendars"),
+      2,
+      "expired source data is refreshed",
+    );
+  } finally {
+    await f.host.close();
+  }
+});
+
+test("a reused Calendar source still requires permission after reading events", async () => {
+  const account = {
+    configured: true,
+    connected: true,
+    reason: "connected",
+    connectionId: grant,
+    identity: { email: "owned@example.invalid" },
+    grantedCapabilities: ["google.calendar.read"],
+  };
+  const f = await fixture({
+    accounts: [account],
+    observeRequest(path) {
+      if (path.endsWith("/calendar/feed")) account.grantedCapabilities = [];
+    },
+  });
+  try {
+    const listed = await f.call({ calendar: { operation: "sources" } });
+    assert.equal(listed.status, 200);
+    const { grantId, calendarId } = listed.data.calendars[0];
+    const feed = await f.call({
+      calendar: {
+        operation: "feed",
+        grantId,
+        calendarId,
+        timeMin: "2026-11-24T12:00:00.000Z",
+        timeMax: "2026-11-25T00:00:00.000Z",
+        timeZone: "America/Los_Angeles",
+      },
+    });
+    assert.equal(
+      f.calls.filter((path) => path.endsWith("/calendar/calendars")).length,
+      1,
+    );
+    assert.notEqual(feed.status, 200);
+    assert.equal(feed.data.feed, undefined);
   } finally {
     await f.host.close();
   }

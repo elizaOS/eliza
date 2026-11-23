@@ -31,10 +31,9 @@ const CALL = new RegExp(
 );
 const textCommand = (recipient: string) =>
   new RegExp(
-    `${COURTESY}(?:text|sms|send\\s+(?:a\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${recipient})\\s*,?\\s+(?:saying|that|to\\s+say)\\s+\\S[\\s\\S]*$`,
+    `${COURTESY}(?:(?:thanks|thank you)[,.!]\\s+(?:(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?)?)?(?:text|sms|send\\s+(?:a\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${recipient})\\s*,?\\s+(?:saying|that|to\\s+say|and\\s+say|and\\s+tell\\s+(?:him|her|them)\\s+(?:to|that))\\s+\\S[\\s\\S]*$`,
     "iu",
   );
-const TEXT = textCommand(TARGET);
 // The same messages, with the name ending at the first "saying", "that" or
 // "to say": "text mom saying that I'm late" is to "mom", not "mom saying".
 const TEXT_RECIPIENT = textCommand(target("{0,2}?"));
@@ -82,6 +81,20 @@ export function namesEmergencyService(query: string): boolean {
 const NOT_A_PHONE_TARGET =
   /^(?:me|myself|us|it|this|that|them|him|her|back|off|out|up|in|a|an|the|someone|somebody|anyone|for|police|cops|emergency|ambulance|paramedics?)\b|\b(?:on|via|in|through|using|with|over|from|at|tomorrow|later|tonight|today|and|or)\b|&|^(?:dialer|dial\s?-?\s?pad|key\s?-?\s?pad|pad|number\s+pad|app)[.!?]*$/iu;
 
+/** An alternative in the addressing clause is a choice, never a lookup. */
+export function offersAlternativeSmsRecipients(text: string): boolean {
+  if (text.length > 400) return false;
+  const recipient = TEXT_RECIPIENT.exec(text.trim())?.[1];
+  if (!recipient || !/\bor\b/iu.test(recipient)) return false;
+  const alternatives = recipient.split(/\s+or\s+/iu).map((part) => part.trim());
+  return (
+    alternatives.length >= 2 &&
+    alternatives.every(
+      (part) => part.length > 0 && !NOT_A_PHONE_TARGET.test(part),
+    )
+  );
+}
+
 export function authoredTelephonyRequest(
   text: string,
 ): AuthoredTelephonyRequest | undefined {
@@ -92,8 +105,13 @@ export function authoredTelephonyRequest(
   if (requestedSmsDraftRecipient(request)?.kind === "previous-sender")
     return "text";
   if (isSmsSenderLookup(request)) return "sender";
-  const sms = TEXT.exec(request);
-  if (sms && !NOT_A_PHONE_TARGET.test(sms[1] ?? "")) return "text";
+  const sms = TEXT_RECIPIENT.exec(request);
+  if (
+    sms &&
+    !NOT_A_PHONE_TARGET.test(sms[1]) &&
+    !/\b(?:and|or)\b/iu.test(sms[1])
+  )
+    return "text";
   return;
 }
 

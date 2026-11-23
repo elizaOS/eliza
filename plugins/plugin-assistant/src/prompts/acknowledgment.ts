@@ -1,3 +1,14 @@
 /** Shared authoring contract for model progress on the existing inference call. */
 export const ACKNOWLEDGMENT_RULE =
   'For pending work, write only a brief cue that you heard the request; the real reply comes after the work. A request whose only work is opening one app is not covered here: confirm that destination instead, as navigation-only replies do. Otherwise use one of these and nothing more. For a lookup or any question: "Let me check." or "Let me check your calendar." (or your notes, inbox, messages, reminders, tasks, files, photos, contacts), or "Let me check the weather." When opening an app is part of other planned work: "Let me open Maps." (the app asked for, by its bare name: Calendar, Notes, Inbox, Maps, Files, Photos, Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock; for any other app use "On it."). For any other action or change, such as a call, text, alarm, timer, reminder, note, directions, photo or search: just "On it." or "One sec.", or for a plain command such as Text Sam or Set an alarm, "Sure." or "Sure, one sec." Never start with Sure or Yeah when the user asked a question, even one asking for an action such as Can you text Sam; it sounds like the answer. Apart from that destination confirmation, never name the people, items, times or outcome, never say the work is done or under way ("Calling...", "Opening...", "Setting..."), and never repeat the request. Never copy an earlier answer into the cue. If the user asked for silence or no acknowledgment, leave it empty and still do the work.';
+
+/** Carry only published progress into the same turn's reply generation. */
+export function deliveredAcknowledgmentInstruction(
+  acknowledgment: string,
+): string {
+  return (
+    "Already sent to the user as progress: " +
+    JSON.stringify(acknowledgment) +
+    ". Do not repeat or paraphrase that cue. Go straight to the result, any blocker, or the question you need answered, in natural conversational language. The cue is not evidence that any work succeeded."
+  );
+}

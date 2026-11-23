@@ -5,7 +5,10 @@ import {
   resolveSuppliedSourceReply,
   type SourceReplyRendering,
 } from "./source-reply";
-import { messageHandlerFromFieldResult } from "./stage1-output";
+import {
+  messageHandlerFromFieldResult,
+  normalizeRawParsedForFieldRegistry,
+} from "./stage1-output";
 
 function route(fields: {
   replyText: string;
@@ -78,4 +81,30 @@ describe("an empty reply cannot carry applied", () => {
         .replyEffectStatus,
     ).toBe("applied");
   });
+});
+
+describe("provider-serialized intents", () => {
+  it("retains the complete ordered intent list and its text", () => {
+    const intents = [
+      "Search today's calendar for the latenc\ny check event start time",
+      "Open Calendar",
+    ];
+    expect(
+      normalizeRawParsedForFieldRegistry({ intents: JSON.stringify(intents) })
+        .intents,
+    ).toEqual(intents);
+  });
+
+  it.each([
+    '["Check Calendar", null]',
+    '["Check Calendar"] trailing text',
+    "null",
+  ])(
+    "rejects an invalid serialized list %j without discarding pending work",
+    (intents) => {
+      expect(() => normalizeRawParsedForFieldRegistry({ intents })).toThrow(
+        "HANDLE_RESPONSE intents must be an array of strings",
+      );
+    },
+  );
 });

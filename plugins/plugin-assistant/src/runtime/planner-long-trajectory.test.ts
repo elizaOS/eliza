@@ -2638,6 +2638,104 @@ describe("canonical nonretryable receipt repair", () => {
 
   describe("registered rejected-operation recovery", () => {
     it.each([
+      { correctedTitle: "Calendar check", completed: true },
+      { correctedTitle: "Other appointment", completed: false },
+    ])(
+      "retains target identity when a rejected Calendar details object duplicated the title: $correctedTitle",
+      async ({ correctedTitle, completed }) => {
+        let plans = 0;
+        let attempts = 0;
+        const registeredSubaction = {
+          child: "CALENDAR_CREATE_EVENT",
+          discriminator: "subaction",
+          value: "create_event",
+        };
+        const applied: EffectReceipt = {
+          ...receipt,
+          receiptId: "created-calendar-range",
+          operation: "calendar.event.create",
+          resource: {
+            kind: "calendar.event",
+            id: "calendar-check",
+            version: "1",
+          },
+        };
+        const result = await runPlannerLoop({
+          context,
+          codingMode: false,
+          runtime: {
+            useModel: async () => {
+              plans++;
+              if (plans > 2) return gaveUp();
+              const first = plans === 1;
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    id: first ? "rejected" : "corrected",
+                    name: "CALENDAR_CREATE_EVENT",
+                    arguments: {
+                      subaction: "create_event",
+                      eliza_turn_scope: "final",
+                      title: first ? "Calendar check" : correctedTitle,
+                      details: first
+                        ? {
+                            title: "Calendar check",
+                            description: null,
+                            timeZone: "UTC",
+                          }
+                        : { timeZone: "UTC" },
+                    },
+                  },
+                ],
+              };
+            },
+          },
+          executeToolCall: async () =>
+            ++attempts === 1
+              ? {
+                  ...refused,
+                  registeredSubaction,
+                  error: "Unexpected argument 'details.title'.",
+                }
+              : {
+                  success: true,
+                  turnComplete: false,
+                  modelReplyRequired: true,
+                  transcriptVisibility: "internal",
+                  effectReceipts: [applied],
+                  registeredSubaction,
+                },
+          evaluate: async () =>
+            parseEvaluatorOutput(
+              JSON.stringify({
+                decision: "FINISH",
+                success: true,
+                thought: "Fixture confirmation after argument repair.",
+                messageToUser: added,
+                replyEffectStatus: "applied",
+                effectReceiptIds: [applied.receiptId],
+                requestFullyCovered: true,
+                outcomeCoverage: [
+                  {
+                    intentId: "intent:1",
+                    status: "completed",
+                    evidenceStepIds: ["step:2"],
+                  },
+                ],
+              }),
+            ),
+        });
+        expect(attempts).toBe(2);
+        if (completed) {
+          expect(result.finalMessage).toBe(added);
+          expect(plans).toBe(2);
+        } else {
+          expect(result.finalMessage).not.toBe(added);
+        }
+      },
+    );
+    it.each([
       {
         first: "CALENDAR_CREATE_EVENT",
         second: "CALENDAR_CREATE_EVENT",

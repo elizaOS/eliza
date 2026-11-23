@@ -66,6 +66,7 @@ public class ElizaAgentService extends Service {
     private static final String TAG = "ElizaAgent";
 
     private static final String CHANNEL_ID = "eliza_agent";
+    private static final String RUNTIME_ALERT_CHANNEL_ID = "eliza_agent_runtime_alerts";
     private static final int NOTIFICATION_ID = 2;
     /** Non-ongoing notice that outlives the service after a terminal failure. */
     private static final int TERMINAL_NOTIFICATION_ID = 3;
@@ -4725,9 +4726,19 @@ public class ElizaAgentService extends Service {
         channel.setDescription("Local Eliza agent runtime status");
         channel.setShowBadge(false);
 
+        // Keep the existing status channel and its owner preference. Runtime
+        // problems remain visible if the owner turns off routine status notices.
+        NotificationChannel alerts = new NotificationChannel(
+            RUNTIME_ALERT_CHANNEL_ID,
+            "Runtime alerts",
+            NotificationManager.IMPORTANCE_LOW
+        );
+        alerts.setDescription("Problems starting or running the local assistant");
+        alerts.setShowBadge(false);
+
         NotificationManager mgr = getSystemService(NotificationManager.class);
         if (mgr != null) {
-            mgr.createNotificationChannel(channel);
+            mgr.createNotificationChannels(java.util.Arrays.asList(channel, alerts));
         }
     }
 
@@ -4735,7 +4746,7 @@ public class ElizaAgentService extends Service {
      * The ongoing foreground notification carries {@link #NOTIFICATION_PRIMARY_ACTION};
      * a terminal notice ({@code ongoing=false}) has no action and can be dismissed.
      */
-    private Notification buildNotification(String title, String text, boolean ongoing) {
+    private Notification buildNotification(String channelId, String title, String text, boolean ongoing) {
         Intent launchIntent = new Intent(this, MainActivity.class);
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent launchPending = PendingIntent.getActivity(
@@ -4743,7 +4754,7 @@ public class ElizaAgentService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(text)
@@ -4817,17 +4828,25 @@ public class ElizaAgentService extends Service {
         // update must not repost an ongoing notification with no service behind it.
         if (terminalNoticePosted) return;
         String status = currentStatus;
+        String channelId = RUNTIME_ALERT_CHANNEL_ID;
         String title;
         String text;
         switch (status) {
             case "running":
+                channelId = CHANNEL_ID;
                 title = "Eliza agent · Running";
                 text = "On-device agent ready";
                 break;
             case "starting":
             case "restarting":
+                channelId = CHANNEL_ID;
                 title = "Eliza agent · Starting";
                 text = "Preparing on-device runtime…";
+                break;
+            case "stopping":
+                channelId = CHANNEL_ID;
+                title = "Eliza agent · Stopping";
+                text = "Stopping on-device runtime…";
                 break;
             case "extract-failed":
                 title = "Eliza agent · Asset error";
@@ -4853,7 +4872,7 @@ public class ElizaAgentService extends Service {
                 break;
         }
 
-        Notification notification = buildNotification(title, text, true);
+        Notification notification = buildNotification(channelId, title, text, true);
         NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (mgr != null) {
             mgr.notify(NOTIFICATION_ID, notification);
@@ -4880,6 +4899,7 @@ public class ElizaAgentService extends Service {
         if (mgr != null) {
             mgr.cancel(NOTIFICATION_ID);
             mgr.notify(TERMINAL_NOTIFICATION_ID, buildNotification(
+                RUNTIME_ALERT_CHANNEL_ID,
                 "Eliza agent · Stopped",
                 "Open the app to check the agent",
                 false));

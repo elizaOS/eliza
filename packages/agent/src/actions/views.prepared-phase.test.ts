@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { expect, test } from "vitest";
 import {
+  readViewNavigationReceipt,
+  requiredViewNavigationStatus,
+} from "../../../../plugins/plugin-assistant/src/runtime/nav-evaluator-eligibility.ts";
+import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
 } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
@@ -11,7 +15,14 @@ import {
   viewNavigationAvailable,
 } from "../runtime/view-navigation-targets.ts";
 
-function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
+function fixture({
+  prepared = true,
+  owner = true,
+  badBinding = false,
+  notesEditor = false,
+  viewId = "automations",
+  recordSource = "runtime",
+} = {}) {
   const source = readFileSync(new URL("./views.ts", import.meta.url), "utf8");
   // Node 26 removed stripTypeScriptTypes' transform mode.
   const code = ts.transpileModule(
@@ -30,6 +41,7 @@ function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
     viewEnabledByProfile,
     viewNavigationAvailable,
     getDeviceActionTurn: () => undefined,
+    currentAppRecordSource: () => recordSource,
     randomUUID: () => id,
     checkSenderRole: async () => ({
       isOwner: owner,
@@ -46,9 +58,9 @@ function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
     getViewClientScope: () => ({ request: {}, hostKey: {} }),
     listViews: () => [
       {
-        id: "automations",
-        label: "Workflows",
-        path: "/automations",
+        id: viewId,
+        label: viewId === "notes" ? "Notes" : "Workflows",
+        path: "/" + viewId,
         installationId: "installed",
       },
     ],
@@ -58,7 +70,7 @@ function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
         status: 200,
         body: {
           ok: true,
-          viewId: "automations",
+          viewId,
           completedActionHandoffId: id,
           ...(prepared
             ? {
@@ -66,7 +78,7 @@ function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
                 navigationBinding: {
                   requestId: id,
                   clientId: badBinding ? "wrong" : "client",
-                  viewId: "automations",
+                  viewId,
                   viewType: "gui",
                   installationId: "installed",
                 },
@@ -81,9 +93,21 @@ function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
     code + ";return viewsAction;",
   )(...Object.values(ports));
   return {
-    run: () =>
+    run: (noteId?: string) =>
       action.handler(
-        {},
+        {
+          getService: () => ({
+            snapshot: () => ({
+              notes: [
+                {
+                  id: "saved-note",
+                  title: "Private title",
+                  body: "Private text",
+                },
+              ],
+            }),
+          }),
+        },
         {
           id: "message",
           roomId: "room",
@@ -91,11 +115,18 @@ function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
           content: {
             metadata: {
               ...(prepared ? { viewDelivery: "completed-action" } : {}),
+              ...(notesEditor ? { notesEditorNavigation: 1 } : {}),
             },
           },
         },
         undefined,
-        { parameters: { action: "show", view: "automations" } },
+        {
+          parameters: {
+            action: "show",
+            view: viewId,
+            ...(noteId === undefined ? {} : { noteId }),
+          },
+        },
       ),
     dispatches: () => dispatches,
   };
@@ -113,6 +144,83 @@ test("only an exact prepared VIEWS action carries the external execution marker 
       actionResultToPlannerToolResult(result).data?.awaitingDeviceExecution,
     ).toBe(prepared ? true : undefined);
     expect(f.dispatches()).toBe(1);
+  }
+});
+test("prepares only the saved note ID for a supported canonical Notes editor", async () => {
+  const f = fixture({ viewId: "notes", notesEditor: true });
+  const result = await f.run("saved-note");
+  expect(result).toMatchObject({
+    success: true,
+    values: { noteId: "saved-note", viewId: "notes", navigationPrepared: true },
+    data: {
+      awaitingDeviceExecution: true,
+      navigation: { noteId: "saved-note", status: "prepared" },
+    },
+  });
+  const projected = actionResultToPlannerToolResult(result);
+  expect(projected.data?.values).toMatchObject({
+    noteId: "saved-note",
+  });
+  const step = {
+    toolCall: {
+      name: "VIEWS_SHOW",
+      params: { view: "notes", noteId: "saved-note" },
+    },
+    result: projected,
+  };
+  expect(readViewNavigationReceipt(step as never)?.status).toBe("prepared");
+  expect(
+    readViewNavigationReceipt({
+      ...step,
+      toolCall: {
+        ...step.toolCall,
+        params: { ...step.toolCall.params, noteId: "another-note" },
+      },
+    } as never),
+  ).toBeUndefined();
+  const required = {
+    context: {
+      metadata: {
+        requiredViewNavigation: {
+          viewId: "notes",
+          clientId: "client",
+          installationId: "installed",
+          noteEditor: true,
+        },
+      },
+    },
+    archivedSteps: [],
+    steps: [step],
+  };
+  expect(requiredViewNavigationStatus(required as never)).toBe("prepared");
+  const list = await fixture({ viewId: "notes", notesEditor: true }).run();
+  expect(
+    requiredViewNavigationStatus({
+      ...required,
+      steps: [
+        {
+          toolCall: { name: "VIEWS_SHOW", params: { view: "notes" } },
+          result: actionResultToPlannerToolResult(list),
+        },
+      ],
+    } as never),
+  ).toBe("missing");
+  expect(JSON.stringify(result)).not.toContain("Private text");
+  expect(f.dispatches()).toBe(1);
+});
+test("keeps absent, foreign and unsupported editor targets out of delivery", async () => {
+  for (const [options, id] of [
+    [{ notesEditor: true }, "saved-note"],
+    [{ viewId: "notes", notesEditor: true }, "missing-note"],
+    [{ viewId: "notes" }, "saved-note"],
+    [
+      { viewId: "notes", notesEditor: true, recordSource: "device" },
+      "saved-note",
+    ],
+  ] as const) {
+    const f = fixture(options);
+    expect((await f.run(id)).success).toBe(false);
+    expect(f.dispatches()).toBe(0);
   }
 });
 test("prepared phase reaches partial FINISH after evaluator CONTINUE without executing navigation again", async () => {

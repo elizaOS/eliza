@@ -125,13 +125,18 @@ describe("standalone Calendar availability", () => {
       {
         parameters: {
           subaction: "feed",
-          details: { timeMin: start, timeMax: end, timeZone },
+          details: { side: "owner", timeMin: start, timeMax: end, timeZone },
         },
       },
     );
     expect(result).toMatchObject({
       success: true,
       data: {
+        replyContext: {
+          userFacingFacts: expect.stringMatching(
+            /Friday, November 6, from 9:30 to 10:00\s*AM/,
+          ),
+        },
         slots: [
           {
             startAt: firstEnd,
@@ -260,7 +265,12 @@ describe("standalone Calendar availability", () => {
       {
         parameters: {
           subaction: "feed",
-          details: { timeMin: start, timeMax: wideEnd, timeZone },
+          details: {
+            side: "owner",
+            timeMin: start,
+            timeMax: wideEnd,
+            timeZone,
+          },
         },
       },
     );

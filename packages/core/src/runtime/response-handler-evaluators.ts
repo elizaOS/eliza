@@ -28,6 +28,7 @@ export interface RequiredViewNavigation {
 	viewId: string;
 	clientId: string;
 	installationId: string;
+	noteEditor?: true;
 }
 
 export interface ResponseHandlerPatch {

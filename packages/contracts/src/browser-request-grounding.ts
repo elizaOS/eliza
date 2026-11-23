@@ -61,7 +61,7 @@ const SPOKEN_PROSE_LABELS = new Set(
 );
 // Everyday verbs that ask for a site. Direct requests only: the router never
 // claims them without the model.
-const EVERYDAY_COMMAND = String.raw`(?:take\s+me\s+to|pull\s+up|bring\s+up|show\s+me|head\s+to|browse\s+to)`;
+const EVERYDAY_COMMAND = String.raw`(?:open\s+up|take\s+me\s+to|pull\s+up|bring\s+up|show\s+me|head\s+to|browse\s+to)`;
 // The strict whole-message web search: "(please) search (the web) for <words>",
 // "web search <words>", "google <words>" or "look up <words>".
 const SEARCH_COMMAND = String.raw`(?:search(?:\s+(?:the\s+)?(?:web|internet)|\s+online|\s+google)?\s+for|web\s+search(?:\s+for)?|google|look\s+up)`;
@@ -177,7 +177,7 @@ function patterns(assistantName: string): NamePatterns {
     // direct requests too, but file-like bare names still need a website
     // signal rather than acquiring authority from the verb.
     directRequest: new RegExp(
-      String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`,
+      String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${EVERYDAY_COMMAND}|${OPEN_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`,
       "i",
     ),
     // The same two forms around a spoken hostname: the words before it, the
@@ -188,7 +188,7 @@ function patterns(assistantName: string): NamePatterns {
       "iu",
     ),
     spokenRequest: new RegExp(
-      String.raw`(${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+)(${SPOKEN_ADDRESS_TOKEN})(\s.*)?$`,
+      String.raw`(${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${EVERYDAY_COMMAND}|${OPEN_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+)(${SPOKEN_ADDRESS_TOKEN})(\s.*)?$`,
       "iu",
     ),
     search: new RegExp(
@@ -296,6 +296,21 @@ export function directBrowserOpen(
   assistantName: string = DEFAULT_ASSISTANT_NAME,
 ): { href: string; newTab: boolean } | undefined {
   if (unreadable(text)) return;
+  // Dictation can put a sentence break between the hostname and a spelled
+  // top-level domain. Only join it when the owner explicitly names Browser.
+  const split = /([\p{L}\p{N}-]+)\.\p{Zs}+([A-Z]{2})(?=\p{Zs})/u.exec(text);
+  if (
+    split &&
+    IANA_TLDS.has(split[2].toLowerCase()) &&
+    IN_BROWSER.test(text.slice(split.index + split[0].length))
+  ) {
+    text =
+      text.slice(0, split.index) +
+      split[1] +
+      "." +
+      split[2].toLowerCase() +
+      text.slice(split.index + split[0].length);
+  }
   const strict = authoredBrowserOpen(text, assistantName);
   if (strict) return strict;
   const question = patterns(assistantName).directRequest.exec(text.trim());

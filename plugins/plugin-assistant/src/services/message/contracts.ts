@@ -31,7 +31,7 @@ export type ResolvedMessageOptions = {
   continueAfterActions: boolean;
   keepExistingResponses: boolean;
   onStreamChunk?: StreamChunkCallback;
-  onPlanningAcknowledgment?: (text: string) => void | Promise<void>;
+  onPlanningAcknowledgment?: MessageProcessingOptions["onPlanningAcknowledgment"];
   onResponseDecision?: () => void;
   /** Records the contexts Stage 1 selected; only names this turn's activity status. */
   onStage1SelectedContexts?: (contexts: readonly string[]) => void;

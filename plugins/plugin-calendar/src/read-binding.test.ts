@@ -136,6 +136,42 @@ describe("Calendar operation bindings", () => {
     });
     literalEffect?.mutateResult?.(literalResult);
     expect(literalResult.calendarReadBindings).toEqual(bindings);
+
+    const slot = {
+      intentId: "0",
+      source: "builtin",
+      operation: "propose_times",
+      execution: "required",
+      purpose: "requested_read",
+      filterEvidence: [],
+    };
+    const zeroBasedSlot = calendarReadBindingField.parse?.([slot], context);
+    if (!zeroBasedSlot) throw new Error("Singleton slot reference was dropped");
+    for (const intents of [[text], [text, "Read my note"]]) {
+      const result = {
+        ...parsed,
+        intents,
+        calendarReadBindings: zeroBasedSlot,
+      };
+      const effect = await calendarReadBindingField.handle?.({
+        ...context,
+        parsed: result,
+        value: zeroBasedSlot,
+      });
+      effect?.mutateResult?.(result);
+      expect(result.calendarReadBindings).toEqual(
+        intents.length === 1
+          ? [
+              expect.objectContaining({
+                intentId: "intent:1",
+                source: "builtin",
+              }),
+            ]
+          : [],
+      );
+    }
+    expect(calendarReadBindingField.parse?.([slot, slot], context)).toBeNull();
+
     const handler: MessageHandlerResult = {
       processMessage: "RESPOND",
       thought: "",
@@ -264,6 +300,269 @@ describe("Calendar operation bindings", () => {
     expect(await route([text])).toBeUndefined();
     expect(await route([text, "Send it to my coworker"], true)).toBeUndefined();
   });
+  it("routes one literal built-in slot request without asking the planner for the same window", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Calendar slot fixture", bio: [] },
+      logLevel: "fatal",
+    });
+    const route = async (
+      text: string,
+      options: {
+        source?: "builtin";
+        execution?: "required" | "conditional";
+        userRoles?: ["OWNER"] | [];
+        extraIntent?: string;
+        extraContext?: string;
+        missingBinding?: boolean;
+        timeZone?: string;
+      } = { source: "builtin" },
+    ) => {
+      const message: Memory = {
+        id: stringToUuid("scoped-slot"),
+        agentId: runtime.agentId,
+        entityId: stringToUuid("owner"),
+        roomId: stringToUuid("slot-room"),
+        createdAt: Date.parse("2026-11-20T19:00:00Z"),
+        content: {
+          text,
+          metadata: {
+            uiTimeZone: options.timeZone ?? "America/Los_Angeles",
+          },
+        },
+      };
+      const handler: MessageHandlerResult = {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: [
+            "calendar",
+            ...(options.extraContext ? [options.extraContext] : []),
+          ],
+          intents: [
+            text,
+            ...(options.extraIntent ? [options.extraIntent] : []),
+          ],
+          calendarReadBindings: options.missingBinding
+            ? []
+            : [
+                {
+                  intentId: "intent:1",
+                  operation: "propose_times",
+                  execution: options.execution ?? "required",
+                  ...(options.source ? { source: options.source } : {}),
+                  sourceMessageId: message.id as NonNullable<Memory["id"]>,
+                  roomId: message.roomId,
+                  actorId: message.entityId,
+                  requestedAt: message.createdAt as number,
+                },
+              ],
+        },
+      };
+      await runResponseHandlerEvaluators({
+        runtime,
+        message,
+        state: { values: {}, data: {}, text: "" },
+        messageHandler: handler,
+        availableContexts: [],
+        userRoles: options.userRoles ?? ["OWNER"],
+        evaluators: [calendarReadBindingEvaluator],
+      });
+      return handler.plan.deterministicToolCall;
+    };
+    const text =
+      "Find a twenty-minute slot for groceries tomorrow between noon and five on my built-in Eliza calendar.";
+    const expected = {
+      name: "CALENDAR_PROPOSE_TIMES",
+      params: {
+        grantId: "eliza-calendar",
+        calendarId: "primary",
+        windowStart: "2026-11-21T20:00:00.000Z",
+        windowEnd: "2026-11-22T01:00:00.000Z",
+        durationMinutes: 20,
+        timeZone: "America/Los_Angeles",
+      },
+    };
+    expect(await route(text)).toEqual(expected);
+    const unscoped =
+      "Find a thirty-minute opening tomorrow between noon and five p.m. for a grocery run.";
+    const exactWindow = {
+      name: "CALENDAR_PROPOSE_TIMES",
+      params: {
+        windowStart: "2026-11-21T20:00:00.000Z",
+        windowEnd: "2026-11-22T01:00:00.000Z",
+        durationMinutes: 30,
+        timeZone: "America/Los_Angeles",
+      },
+    };
+    expect(await route(unscoped, {})).toEqual(exactWindow);
+    expect(
+      await route(
+        "Find me half an hour free tomorrow afternoon to get groceries.",
+        {},
+      ),
+    ).toEqual(exactWindow);
+    expect(
+      await route(
+        "Find me a free half-hour tomorrow between noon and five p.m.",
+        {},
+      ),
+    ).toEqual(exactWindow);
+    expect(
+      await route(
+        "Find me half an hour free tomorrow afternoon to get groceries, then send a text.",
+        {},
+      ),
+    ).toBeUndefined();
+
+    expect(await route(unscoped)).toEqual(exactWindow);
+    expect(
+      await route(unscoped, {
+        missingBinding: true,
+        extraContext: "notes",
+        extraIntent: "Search the calendar",
+      }),
+    ).toEqual(exactWindow);
+    expect(
+      await route(unscoped, { missingBinding: true, userRoles: [] }),
+    ).toBeUndefined();
+    for (const request of [
+      "Can you find me a free hour tomorrow afternoon?",
+      "Cool. Can you find me a free hour tomorrow sometime where I could actually go pick up those groceries in the afternoon?",
+      "Can you find a free hour tomorrow afternoon where I can actually go pick up these groceries?",
+    ]) {
+      expect(await route(request, {})).toEqual({
+        name: "CALENDAR_PROPOSE_TIMES",
+        params: {
+          windowStart: "2026-11-21T20:00:00.000Z",
+          windowEnd: "2026-11-22T01:00:00.000Z",
+          durationMinutes: 60,
+          timeZone: "America/Los_Angeles",
+        },
+      });
+    }
+    for (const nonliteral of [
+      "Find a 30-minute opening tomorrow between noon and five p.m. on my Google calendar.",
+      "Find a 30-minute opening tomorrow between noon and five p.m. for a grocery run, then book it.",
+      "Find a 30-minute opening tomorrow between noon and five p.m. for when Maya is free.",
+      "Find a 30-minute opening tomorrow between noon and five p.m. for a run after work.",
+      "Find me a free hour tomorrow when I can pick up groceries with Carson in the afternoon.",
+      "Find me a free hour tomorrow afternoon, then book it.",
+      "Can you find a free hour tomorrow afternoon where I can pick up these groceries and create an event?",
+    ]) {
+      expect(await route(nonliteral, {})).toBeUndefined();
+    }
+    expect(
+      await route(
+        "Find a 20 minute slot for groceries tomorrow between noon and 5 on my built in Eliza calendar.",
+        { source: "builtin", extraContext: "simple" },
+      ),
+    ).toEqual(expected);
+    expect(
+      await route(text, { source: "builtin", extraContext: "notes" }),
+    ).toBeUndefined();
+    expect(
+      await route(
+        "Find me a 20 minute slot between noon and 5 tomorrow on my built in Eliza calendar.",
+      ),
+    ).toEqual(expected);
+    for (const unsafe of [
+      "Find a 20-minute slot tomorrow between one and four on my built-in calendar.",
+      "Find a 20-minute slot tomorrow from 5 pm to noon on my built-in calendar.",
+      "Find a 20-minute slot today from 8 am to noon on my built-in calendar.",
+      "Find a 20-minute slot tomorrow between noon and 12:10 pm on my built-in calendar.",
+      "Find a 20-minute slot 2027-03-14 from 2 am to 4 am on my built-in calendar.",
+      "Find a 20-minute slot 2027-11-07 from 1 am to 4 am on my built-in calendar.",
+      "Find a 20-minute slot 2026-11-31 between noon and five on my built-in calendar.",
+      "Find a 20-minute slot tomorrow between noon and five on my Google calendar.",
+      "Find a 20-minute slot for groceries tomorrow between noon and five on my built-in calendar, then book it.",
+      "Find a 20-minute slot for after work tomorrow between noon and five on my built-in calendar.",
+    ])
+      expect(await route(unsafe)).toBeUndefined();
+    expect(await route(text, {})).toBeUndefined();
+    expect(
+      await route(text, { source: "builtin", execution: "conditional" }),
+    ).toBeUndefined();
+    expect(
+      await route(text, { source: "builtin", userRoles: [] }),
+    ).toBeUndefined();
+    expect(
+      await route(text, { source: "builtin", extraIntent: "Send it" }),
+    ).toBeUndefined();
+    expect(
+      await route(text, { source: "builtin", timeZone: "invalid" }),
+    ).toBeUndefined();
+  });
+  it("retains a fully specified slot when the model labels its literal purpose as a filter", () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Calendar purpose fixture", bio: [] },
+      logLevel: "fatal",
+    });
+    const request =
+      "Find a 20 minute slot for groceries tomorrow between noon and 5 on my built in Eliza calendar.";
+    const message: Memory = {
+      id: stringToUuid("slot-purpose"),
+      agentId: runtime.agentId,
+      entityId: stringToUuid("owner"),
+      roomId: stringToUuid("slot-room"),
+      createdAt: Date.parse("2026-11-20T19:00:00Z"),
+      content: {
+        text: request,
+        metadata: { uiTimeZone: "America/Los_Angeles" },
+      },
+    };
+    const ctx = {
+      runtime,
+      message,
+      state: { values: {}, data: {}, text: "" },
+      senderRole: "OWNER" as const,
+      turnSignal: new AbortController().signal,
+    };
+    const binding = {
+      intentId: "1",
+      operation: "propose_times",
+      source: "builtin",
+      execution: "required",
+      purpose: "requested_read",
+    };
+    const purpose = {
+      query: "groceries",
+      quote: "groceries",
+      origin: "current",
+    };
+    expect(
+      calendarReadBindingField.parse?.(
+        [{ ...binding, filterEvidence: [purpose] }],
+        ctx,
+      ),
+    ).toEqual([
+      expect.objectContaining({ intentId: "intent:1", filterEvidence: [] }),
+    ]);
+    for (const filterEvidence of [
+      [{ ...purpose, query: "doctor" }],
+      [{ ...purpose, origin: "referent" }],
+      [purpose, purpose],
+    ]) {
+      expect(
+        calendarReadBindingField.parse?.([{ ...binding, filterEvidence }], ctx),
+      ).toBeNull();
+    }
+    expect(
+      calendarReadBindingField.parse?.(
+        [{ ...binding, filterEvidence: [purpose] }],
+        {
+          ...ctx,
+          message: {
+            ...message,
+            content: {
+              ...message.content,
+              text: `${request} Then schedule it.`,
+            },
+          },
+        },
+      ),
+    ).toBeNull();
+  });
+
   it("routes the sole built-in title lookup with a literal local date", async () => {
     const title = "Calendar latency check";
     const text = `What time does ${title} start today?`;

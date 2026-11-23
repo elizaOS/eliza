@@ -507,6 +507,11 @@ describe("authoredTelephonyTarget", () => {
       ["text mom to say that dinner is ready", "mom"],
       ["text Sam Lee saying hi", "Sam Lee"],
       ["text Sam, saying hi", "Sam"],
+      [
+        "Thank you. Can you text Carson and tell him to bring the ice and that we've got dinner covered?",
+        "Carson",
+      ],
+      ["Can you send a text to Carson and say dinner is covered?", "Carson"],
     ])
       expect(authoredTelephonyTarget(request), request).toEqual({
         request: "text",

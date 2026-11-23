@@ -217,6 +217,7 @@ import {
   rateLimitRetryWaitMs,
   repairFinishWithProgressPromise,
   runEvaluator,
+  runVerifiedCalendarStage,
   validatedOutcomeCoverage,
 } from "./evaluator";
 import { computeCallCostUsd } from "./model-pricing";
@@ -1691,6 +1692,27 @@ async function runPlannerLoopIterations(
       trajectory,
     ),
   });
+  if (
+    postToolReplySeed &&
+    !suppliedSourceReply &&
+    !params.resolveTypedReadReply
+  ) {
+    // A verified Calendar result can finish the same request immediately.
+    // Incomplete evidence still uses the ordinary seeded reply synthesis.
+    const calendarReply = runVerifiedCalendarStage({
+      runtime: params.runtime,
+      context: trajectory.context,
+      trajectory,
+      recorder: params.recorder,
+      trajectoryId: params.trajectoryId,
+      parentStageId: params.parentStageId,
+    });
+    if (calendarReply) {
+      const evaluator = await calendarReply;
+      trajectory.evaluatorOutputs.push(evaluator);
+      return finishWithEvaluator(evaluator);
+    }
+  }
   const selectRecommendedTool = (evaluator: EvaluatorOutput): void => {
     if (preferRecommendedToolCall(trajectory, evaluator)) return;
     params.runtime.logger?.warn?.(
@@ -8414,11 +8436,21 @@ function resolveRejectedCallsSupersededBy(
         // bindings while omitting the rejected non-target representation hints.
         const targets = isObjectRecord(value)
           ? Object.fromEntries(
-              Object.entries(value).filter(
-                ([field, value]) =>
+              Object.entries(value).filter(([field, target]) => {
+                // A Calendar create accepts the title at the top level. A
+                // rejected duplicate adds no second target when both calls
+                // retain the same exact title in its supported location.
+                const duplicateCalendarTitle =
+                  call.name.toUpperCase() === "CALENDAR_CREATE_EVENT" &&
+                  field === "title" &&
+                  correlationValuesEqual(target, params.title) &&
+                  correlationValuesEqual(target, call.params?.title);
+                return (
+                  !duplicateCalendarTitle &&
                   TARGET_PARAMETER_KEY_PATTERN.test(field) &&
-                  isSuppliedParameterValue(value),
-              ),
+                  isSuppliedParameterValue(target)
+                );
+              }),
             )
           : {};
         if (Object.keys(targets).length) params[name] = targets;

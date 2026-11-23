@@ -52,6 +52,7 @@ import {
 import { findViewActionHandoff } from "@elizaos/core/protocol";
 import { createTrajectoryRecorder } from "../../features/trajectories/recorded-trajectories.ts";
 import { runShouldRespondInjectionGate } from "../../features/trust/should-respond-risk-gate";
+import { deliveredAcknowledgmentInstruction } from "../../prompts/acknowledgment.ts";
 import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.ts";
 import {
   applyAddressedTo,
@@ -401,7 +402,7 @@ export async function runV5MessageRuntimeStage1(
       backgroundHistory,
       sourceReplyRendering,
       contextCatalogRead,
-      contextReadAcknowledgmentSent,
+      contextReadAcknowledgment,
     } = await generateStage1Decision(
       args,
       {
@@ -1086,27 +1087,34 @@ export async function runV5MessageRuntimeStage1(
         earlyReplyText = "";
       }
     }
+    // A directly routed read can still wait on I/O. Its validated cue follows
+    // the same playback preemption rules as a cue for a planned read.
     // Progress does not satisfy final delivery, persist an answer, or refresh history.
     getStreamingContext()?.abortSignal?.throwIfAborted();
     // A deterministic tool call usually settles before an acknowledgement
     // would read as anything but noise; it holds the eligible text and shows
     // it only if the call is still running after a short delay.
     let deterministicToolAcknowledgment: string | undefined;
+    let deterministicRawAcknowledgment: string | undefined;
+    let planningAcknowledgment = contextReadAcknowledgment;
     if (
       args.onPlanningAcknowledgment &&
-      !contextReadAcknowledgmentSent &&
+      !planningAcknowledgment &&
       !addressedToOtherParticipant &&
       messageHandler.processMessage === "RESPOND" &&
       prePatchStageOneReplyEffectStatus === "pending" &&
       earlyReplyText.trim().length > 0
     ) {
-      if (messageHandler.plan.deterministicToolCall)
+      if (messageHandler.plan.deterministicToolCall) {
+        deterministicRawAcknowledgment = earlyReplyText;
         deterministicToolAcknowledgment =
           restorePiiInUserReplyText(earlyReplyText);
-      else
-        await args.onPlanningAcknowledgment(
+      } else {
+        const delivered = await args.onPlanningAcknowledgment(
           restorePiiInUserReplyText(earlyReplyText),
         );
+        if (delivered !== false) planningAcknowledgment = earlyReplyText;
+      }
     }
     // The addressing gate above already terminal-routes addressed-to-other
     // turns to ignored, so a gated turn cannot normally reach this planning
@@ -1115,7 +1123,6 @@ export async function runV5MessageRuntimeStage1(
     // gated turn regardless of how routing evolves upstream.
     const earlyReplyEligible =
       !args.onPlanningAcknowledgment &&
-      !contextReadAcknowledgmentSent &&
       !addressedToOtherParticipant &&
       messageHandler.processMessage === "RESPOND" &&
       earlyReplyText.length > 0 &&
@@ -1935,16 +1942,24 @@ export async function runV5MessageRuntimeStage1(
                 "Call at least one exposed non-terminal tool that can attempt the current request.",
         })
       : budgetedPlannerContextWithDecision;
-    const plannerContextAfterEarlyReply = earlyReplySent
+    let earlyReplyInstruction: string | undefined;
+    if (planningAcknowledgment) {
+      earlyReplyInstruction = deliveredAcknowledgmentInstruction(
+        planningAcknowledgment,
+      );
+    } else if (earlyReplySent) {
+      earlyReplyInstruction =
+        "The Stage 1 router already sent this visible reply to the user before planning: " +
+        JSON.stringify(earlyReplyText) +
+        ". Do not repeat it. Send only additional follow-up text if the planner or tool work adds something new.";
+    }
+    const plannerContextAfterEarlyReply = earlyReplyInstruction
       ? appendContextEvent(effectivePlannerContext, {
           id: `early-reply:${messageHandlerEndedAt}`,
           type: "instruction",
           source: "message-service",
           createdAt: Date.now(),
-          content:
-            "The Stage 1 router already sent this visible reply to the user before planning: " +
-            JSON.stringify(earlyReplyText) +
-            ". Do not repeat it. Send only additional follow-up text if the planner or tool work adds something new.",
+          content: earlyReplyInstruction,
         })
       : effectivePlannerContext;
     if (senderRole === "OWNER")
@@ -2036,11 +2051,21 @@ export async function runV5MessageRuntimeStage1(
         },
       };
     };
+    const finalReplyContextForAck = () =>
+      planningAcknowledgment && !earlyReplyInstruction
+        ? appendContextEvent(plannerContextAfterEarlyReply, {
+            id: `early-reply:${messageHandlerEndedAt}`,
+            type: "instruction",
+            source: "message-service",
+            createdAt: Date.now(),
+            content: deliveredAcknowledgmentInstruction(planningAcknowledgment),
+          })
+        : plannerContextAfterEarlyReply;
     args.onReplyRecoveryPrepared?.(async () => ({
       ...captureMessageReplyRecovery(
         args.runtime,
         args.message,
-        plannerContextAfterEarlyReply,
+        finalReplyContextForAck(),
       ),
       actionResults: [...callbackActionResults],
     }));
@@ -2070,7 +2095,16 @@ export async function runV5MessageRuntimeStage1(
           acknowledgment && onPlanningAcknowledgment
             ? scheduleDelayedAcknowledgment({
                 delayMs: DETERMINISTIC_TOOL_ACKNOWLEDGMENT_DELAY_MS,
-                send: () => onPlanningAcknowledgment(acknowledgment),
+                send: async () => {
+                  const delivered =
+                    await onPlanningAcknowledgment(acknowledgment);
+                  if (
+                    delivered !== false &&
+                    !planningAcknowledgment &&
+                    deterministicRawAcknowledgment
+                  )
+                    planningAcknowledgment = deterministicRawAcknowledgment;
+                },
                 abortSignal: getStreamingContext()?.abortSignal,
                 onError: (error) => {
                   // error-policy:J7 Transient progress cannot change the
@@ -2297,7 +2331,7 @@ export async function runV5MessageRuntimeStage1(
             return {
               status: "finished",
               trajectory: {
-                context: plannerContextAfterEarlyReply,
+                context: finalReplyContextForAck(),
                 steps: [{ iteration: 0, toolCall, result }],
                 archivedSteps: [],
                 plannedQueue: [],
@@ -2321,7 +2355,7 @@ export async function runV5MessageRuntimeStage1(
               : {}),
             deferInternalReplyRecoveryToCaller: true,
             runtime: plannerRuntime,
-            context: plannerContextAfterEarlyReply,
+            context: finalReplyContextForAck(),
             config: args.plannerLoopConfig,
             postToolReplySeed: { toolCall, result },
             executeToolCall: () => {
@@ -2369,7 +2403,7 @@ export async function runV5MessageRuntimeStage1(
         return {
           status: "finished",
           trajectory: {
-            context: plannerContextAfterEarlyReply,
+            context: finalReplyContextForAck(),
             steps: [{ iteration: 0, toolCall, result }],
             archivedSteps: [],
             plannedQueue: [],

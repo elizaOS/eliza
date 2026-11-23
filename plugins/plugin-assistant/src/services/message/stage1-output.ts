@@ -16,6 +16,7 @@ import {
   HANDLE_RESPONSE_TOOL_NAME,
   isDiscoveryActionName,
   parseCompletionContextSelection,
+  parseJsonModelArray,
   parseJsonObject,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
@@ -245,7 +246,11 @@ function keepsFullRequiredToolBudget(
 }
 
 function requireCompleteIntents(value: unknown): string[] {
-  const intents = readCompleteStringHints(value);
+  // Some tool providers serialize the array instead of returning it inline.
+  // Validate the complete list either way and reject an invalid serialization.
+  const decoded =
+    typeof value === "string" ? (parseJsonModelArray(value) ?? value) : value;
+  const intents = readCompleteStringHints(decoded);
   if (intents === null) {
     throw new ElizaError(
       "HANDLE_RESPONSE intents must be an array of strings",

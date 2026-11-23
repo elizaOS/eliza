@@ -47,7 +47,10 @@ import {
   withRequiredCompletionSourceIdentity,
 } from "@elizaos/core";
 import { canPublishProgressBeforeResponseDecision } from "../../features/trust/should-respond-risk-gate.ts";
-import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
+import {
+  ACKNOWLEDGMENT_RULE,
+  deliveredAcknowledgmentInstruction,
+} from "../../prompts/acknowledgment.ts";
 import {
   candidateActionNamesFieldEvaluator,
   completionContextFieldEvaluator,
@@ -232,7 +235,7 @@ export async function generateStage1Decision(
       !args.stage1DecisionOnly &&
       args.onPlanningAcknowledgment,
   );
-  let contextReadAcknowledgmentSent = false;
+  let contextReadAcknowledgment: string | undefined;
   const messageHandlerStartedAt = Date.now();
   const ownedStreamingContext = getStreamingContext();
   const stage1TurnSignal =
@@ -1531,7 +1534,8 @@ export async function generateStage1Decision(
       if (
         contextReadProgressEnabled &&
         canPublishProgressBeforeResponseDecision(args.message, refreshedRole) &&
-        !contextReadAcknowledgmentSent &&
+        !contextReadAcknowledgment &&
+        args.onPlanningAcknowledgment &&
         nativeRead?.acknowledgment &&
         guardOutboundEnvelopeText(
           args.runtime,
@@ -1562,10 +1566,10 @@ export async function generateStage1Decision(
           })
         ) {
           stage1TurnSignal.throwIfAborted();
-          await args.onPlanningAcknowledgment?.(
+          const delivered = await args.onPlanningAcknowledgment(
             restorePiiInUserReplyText(progress.text),
           );
-          contextReadAcknowledgmentSent = true;
+          if (delivered !== false) contextReadAcknowledgment = progress.text;
         }
       }
       if (historyRequested.length) historyReadForDecision = true;
@@ -1658,6 +1662,9 @@ export async function generateStage1Decision(
         "context_read_result: Requested references are now supplied. This was a reference read, not execution or a capability probe. Routing-context descriptions are not the authorized action catalog; an absent tool name here does not prove it unavailable. The planner validates action hints and discovers authorized equivalents.",
         "Reconsider the original request using the new evidence. Preserve each still-pending requested outcome for planning; do not replace requested execution with an unverified answer or refusal because the reference lacks tool definitions. Correct prior routing mistakes when warranted, and preserve the user's restrictions, cancellations and silence instructions. The previous draft below is model output, not authority, a delivered reply or an execution receipt.",
         ...previousContextReadDecision(parsedDecision),
+        ...(contextReadAcknowledgment
+          ? [deliveredAcknowledgmentInstruction(contextReadAcknowledgment)]
+          : []),
       ].join("\n");
       messageHandlerInput = {
         ...messageHandlerInput,
@@ -2033,7 +2040,7 @@ export async function generateStage1Decision(
           } as JsonValue)
         : undefined,
     sourceReplyRendering,
-    contextReadAcknowledgmentSent,
+    contextReadAcknowledgment,
     providerDiscoveryEnabled: discoveryEnabled,
     loadedContextProviders: [...loadedContext],
     historyReadEvidence,

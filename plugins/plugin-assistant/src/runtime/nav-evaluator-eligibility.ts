@@ -21,6 +21,19 @@ export function readViewNavigationReceipt(step: PlannerStep) {
     { success: true, actionName: call.name, values: result.data?.values },
   ]);
   if (!handoff || !record(navigation) || !record(view)) return;
+  const values = result.data?.values;
+  const noteId = call.params?.noteId;
+  const deliveredNoteId = record(values) ? values.noteId : undefined;
+  if (
+    deliveredNoteId !== noteId ||
+    navigation.noteId !== noteId ||
+    (noteId !== undefined &&
+      (typeof noteId !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(noteId) ||
+        handoff.viewId !== "notes" ||
+        !handoff.navigationPrepared))
+  )
+    return;
   const { status, label } = navigation;
   if (
     navigation.effect !== "view_navigation" ||
@@ -107,6 +120,8 @@ export function requiredViewNavigationStatus(
     if (!receipt) continue;
     if (
       receipt.handoff.viewId !== required.viewId ||
+      (required.noteEditor === true &&
+        typeof receipt.navigation.noteId !== "string") ||
       receipt.installationId !== required.installationId ||
       receipt.registryLabel !== receipt.label ||
       !receipt.handoff.viewPath ||

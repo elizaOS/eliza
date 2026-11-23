@@ -3,14 +3,21 @@
 import {
   CALENDAR_READ_ACTIONS,
   type CalendarReadBinding,
+  readClientTurnObservation,
 } from "@elizaos/contracts";
 import {
   getRecentMessagesData,
   getStreamingContext,
   isObjectRecord,
+  type Memory,
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
+  registerDirectActionRoutingRule,
 } from "@elizaos/core";
+import {
+  currentAppRecordSource,
+  SIMPLE_CONTEXT_ID,
+} from "@elizaos/plugin-assistant";
 import { selectedCalendarTarget } from "./actions/calendar-read-selected.js";
 import {
   ELIZA_CALENDAR_GRANT_ID,
@@ -22,6 +29,7 @@ import {
   parseExplicitLocalDate,
   WEEKDAY_NAME_PATTERN,
 } from "./internal/request-time.js";
+import { parseScopedCalendarSlotWindow } from "./internal/scoped-slot-window.js";
 
 import {
   bindFilterEvidence,
@@ -66,6 +74,76 @@ function isWholeDayTitleLookup(
       date.match(WEEKDAY_NAME_PATTERN)?.[0] === date) &&
     parseExplicitLocalDate(date, "UTC", new Date(observedAt)) !== null
   );
+}
+
+function literalSlotWindow(
+  message: Memory,
+  observedAt: number | undefined,
+  source: "builtin" | undefined,
+  expectedTopic?: string,
+) {
+  const { metadata, text } = message.content;
+  const observation = readClientTurnObservation(metadata);
+  const timeZone =
+    observation?.timeZone ??
+    (isObjectRecord(metadata) && typeof metadata.uiTimeZone === "string"
+      ? metadata.uiTimeZone
+      : undefined);
+  return !observation?.sensitive &&
+    typeof text === "string" &&
+    typeof timeZone === "string" &&
+    typeof observedAt === "number"
+    ? parseScopedCalendarSlotWindow(
+        text,
+        timeZone,
+        observedAt,
+        source,
+        expectedTopic,
+      )
+    : undefined;
+}
+
+/** LifeOps can own the promoted action while the Calendar plugin supplies
+ * the deterministic request. Use the registered action's duration shape. */
+function literalSlotArguments(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+  window: NonNullable<ReturnType<typeof literalSlotWindow>>,
+) {
+  const action = runtime.actions?.find(
+    (candidate) => candidate.name === CALENDAR_READ_ACTIONS.propose_times,
+  );
+  if (
+    !action?.parameters?.some(
+      (parameter) => parameter.name === "duration" && parameter.required,
+    )
+  ) {
+    return window;
+  }
+  const { durationMinutes, ...bounds } = window;
+  return { ...bounds, duration: { minutes: durationMinutes } };
+}
+
+const literalSlotRoute = "calendar.literal-slot";
+
+/**
+ * A whole, unqualified availability read belongs to the runtime Calendar.
+ * Register it before Stage 1 can stream a reply using a guessed source.
+ */
+export function registerLiteralSlotRouting(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+) {
+  const matches = (_text: string, message?: Memory) =>
+    !!message?.id &&
+    currentAppRecordSource(runtime, "calendar", message) === "runtime" &&
+    literalSlotWindow(message, message.createdAt, undefined) !== undefined;
+  registerDirectActionRoutingRule(runtime, {
+    id: literalSlotRoute,
+    actionNames: [CALENDAR_READ_ACTIONS.propose_times],
+    requiredActionTags: [],
+    contexts: ["calendar"],
+    matches,
+    wholeRequest: { matches, invalidateFields: ["calendarReadBindings"] },
+  });
 }
 
 type RequestedRead = Pick<
@@ -187,8 +265,15 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       const index = /^(?:(?:intent|int):)?([1-9][0-9]*)$/.exec(
         item.intentId,
       )?.[1];
+      const zeroBasedSlot =
+        item.intentId === "0" &&
+        value.length === 1 &&
+        item.operation === "propose_times" &&
+        item.source === "builtin" &&
+        item.execution === "required";
       if (
         !index &&
+        !zeroBasedSlot &&
         (item.intentId.startsWith("intent:") ||
           item.intentId.startsWith("int:") ||
           (!item.intentId.includes(" ") &&
@@ -287,8 +372,31 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         operation !== "search_events" &&
         item.filterEvidence !== undefined &&
         (!Array.isArray(item.filterEvidence) || item.filterEvidence.length > 0)
-      )
-        return null;
+      ) {
+        // The complete literal request establishes the slot window. A model
+        // can mistake its stated purpose for a filter on existing events.
+        const evidence = item.filterEvidence;
+        if (
+          operation !== "propose_times" ||
+          read.purpose === "mutation_prerequisite" ||
+          read.execution !== "required" ||
+          value.length !== 1 ||
+          ctx.senderRole !== "OWNER" ||
+          !Array.isArray(evidence) ||
+          evidence.length !== 1 ||
+          !isObjectRecord(evidence[0]) ||
+          Object.keys(evidence[0]).length !== 3 ||
+          evidence[0].origin !== "current" ||
+          typeof evidence[0].query !== "string" ||
+          evidence[0].quote !== evidence[0].query ||
+          currentAppRecordSource(ctx.runtime, "calendar", ctx.message) !==
+            "runtime" ||
+          !literalSlotWindow(ctx.message, observedAt, source, evidence[0].query)
+        ) {
+          return null;
+        }
+        read.filterEvidence = [];
+      }
       reads.push({
         ...read,
         operation,
@@ -328,6 +436,10 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       declared.length === 0 && value.length > 0 && text ? [text] : declared;
     const bound = value.map((binding) => {
       if (/^intent:[1-9][0-9]*$/.test(binding.intentId)) return binding;
+      // A provider may use a zero-based index for the sole built-in slot request.
+      // Several intents give that index no safe interpretation.
+      if (binding.intentId === "0" && declared.length === 1)
+        return { ...binding, intentId: "intent:1" };
       // Some structured responses copy the exact wording of their own intent
       // instead of its index. Resolve that reference only if it is unique.
       const index = intents.indexOf(binding.intentId);
@@ -375,14 +487,16 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       (!valid && value.some((binding) => binding.execution === "required")) ||
       accepted.some((binding) => binding.purpose === "mutation_prerequisite");
     const owned = getStreamingContext();
-    if (owned)
+    if (owned) {
+      owned.actionConstraints ??= new Map();
       rememberCalendarReadBindings(
-        (owned.actionConstraints ??= new Map()),
+        owned.actionConstraints,
         message,
         String(runtime.agentId),
         accepted,
         owned.abortSignal ?? turnSignal,
       );
+    }
     return {
       mutateResult(result) {
         if (valid && intents !== declared) result.intents = intents;
@@ -430,19 +544,66 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
   deterministicActions: [
     CALENDAR_READ_ACTIONS.next_event,
     CALENDAR_READ_ACTIONS.search_events,
+    CALENDAR_READ_ACTIONS.propose_times,
   ],
   shouldRun: ({ runtime, message, messageHandler, userRoles }) =>
     messageHandler.processMessage === "RESPOND" &&
     ((Array.isArray(messageHandler.plan.calendarReadBindings) &&
       messageHandler.plan.calendarReadBindings.length > 0) ||
       (userRoles?.includes("OWNER") === true &&
-        calendarMutationPrerequisites(
-          getStreamingContext()?.actionConstraints,
-          message,
-          String(runtime.agentId),
-        ).length > 0)),
+        (literalSlotWindow(message, message.createdAt, undefined) !==
+          undefined ||
+          calendarMutationPrerequisites(
+            getStreamingContext()?.actionConstraints,
+            message,
+            String(runtime.agentId),
+          ).length > 0))),
   evaluate({ runtime, message, messageHandler, userRoles, wholeRequestOwner }) {
     const { plan } = messageHandler;
+    const turn = getStreamingContext();
+    if (
+      userRoles?.includes("OWNER") &&
+      message.id &&
+      (!wholeRequestOwner || wholeRequestOwner.id === literalSlotRoute) &&
+      !plan.deterministicToolCall &&
+      currentAppRecordSource(runtime, "calendar", message) === "runtime"
+    ) {
+      const window = literalSlotWindow(message, message.createdAt, undefined);
+      if (window && typeof message.content.text === "string") {
+        if (turn?.abortSignal) {
+          turn.actionConstraints ??= new Map();
+          rememberCalendarReadBindings(
+            turn.actionConstraints,
+            message,
+            String(runtime.agentId),
+            [
+              {
+                operation: "propose_times",
+                intentId: "intent:1",
+                execution: "required",
+              },
+            ],
+            turn.abortSignal,
+          );
+        }
+        return {
+          requiresTool: true,
+          clearReply: true,
+          clearCandidateActions: true,
+          clearParentActionHints: true,
+          setContexts: ["calendar"],
+          addCandidateActions: [CALENDAR_READ_ACTIONS.propose_times],
+          replaceIntentScope: {
+            intents: [message.content.text],
+            invalidateFields: ["calendarReadBindings"],
+          },
+          deterministicToolCall: {
+            name: CALENDAR_READ_ACTIONS.propose_times,
+            params: literalSlotArguments(runtime, window),
+          },
+        };
+      }
+    }
     const bindings = (plan.calendarReadBindings ?? []) as CalendarReadBinding[];
     if (
       !userRoles?.includes("OWNER") ||
@@ -466,16 +627,21 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
         !Object.values(CALENDAR_READ_ACTIONS).some((read) => read === name),
     );
     const [read] = bindings;
-    const singleBuiltInRead =
+    // The routing marker carries no domain work.
+    const domains = plan.contexts?.filter(
+      (context) => context !== SIMPLE_CONTEXT_ID,
+    );
+    const singleCalendarRead =
       bindings.length === 1 &&
-      read?.source === "builtin" &&
+      read &&
+      read.purpose !== "mutation_prerequisite" &&
       read.execution === "required" &&
       !prerequisites.length &&
       !wholeRequestOwner &&
       !plan.deterministicToolCall &&
       plan.intents?.length === 1 &&
-      plan.contexts?.length === 1 &&
-      plan.contexts[0] === "calendar" &&
+      domains?.length === 1 &&
+      domains[0] === "calendar" &&
       !plan.candidateActions?.some(
         (name) =>
           name !== "CALENDAR" && name !== CALENDAR_READ_ACTIONS[read.operation],
@@ -485,7 +651,7 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
       calendarId: ELIZA_CALENDAR_ID,
     };
     let deterministicToolCall: typeof plan.deterministicToolCall;
-    if (singleBuiltInRead) {
+    if (singleCalendarRead && read.source === "builtin") {
       if (read.operation === "next_event" && read.plainNextEvent) {
         deterministicToolCall = {
           name: CALENDAR_READ_ACTIONS.next_event,
@@ -499,6 +665,20 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
         deterministicToolCall = {
           name: CALENDAR_READ_ACTIONS.search_events,
           params: { ...calendar, query: read.filterEvidence[0].query },
+        };
+      }
+    }
+    if (
+      singleCalendarRead &&
+      read.operation === "propose_times" &&
+      currentAppRecordSource(runtime, "calendar", message) === "runtime"
+    ) {
+      const window = literalSlotWindow(message, read.requestedAt, read.source);
+      if (window) {
+        const args = literalSlotArguments(runtime, window);
+        deterministicToolCall = {
+          name: CALENDAR_READ_ACTIONS.propose_times,
+          params: read.source === "builtin" ? { ...calendar, ...args } : args,
         };
       }
     }

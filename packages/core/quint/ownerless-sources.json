@@ -41,7 +41,7 @@
 	},
 	{
 		"source": "packages/core/src/types/message-service.ts",
-		"sha256": "78ff666809e387b23d1a2e73893aee6b9c2f7dd115ed77b8e370936186845f81",
+		"sha256": "3bf7fec528121b2396dc2c87cad12567065e4f62b9019ef8b01226c72adde8b6",
 		"reason": "Declares message processing options, turn outcomes and reply recovery receipts. The message service and its callers own turn admission, processing and settlement."
 	},
 	{

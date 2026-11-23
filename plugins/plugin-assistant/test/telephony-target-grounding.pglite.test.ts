@@ -447,6 +447,30 @@ it("never takes an SMS recipient from the body", async () => {
   }
 });
 
+it("queues one SMS for the recipient named in conversational dictation", async () => {
+  const f = await fixture();
+  try {
+    const body = "Please bring the ice. We have dinner covered.";
+    const outcome = await f.run(
+      "Thank you. Can you text Carson and tell him to bring the ice and that we've got dinner covered?",
+      { type: "sms_compose", target: { kind: "contact", query: "Cole" }, body },
+    );
+    expect(outcome).toMatchObject({ success: true });
+    expect(await f.rows()).toEqual([
+      {
+        operation: {
+          type: "sms_compose",
+          target: { kind: "contact", query: "Carson" },
+          body,
+        },
+        reason: "Text the recipient the owner wrote.",
+      },
+    ]);
+  } finally {
+    await f.pg.close();
+  }
+});
+
 it("prefills the keypad only with the owner's number", async () => {
   const f = await fixture();
   try {

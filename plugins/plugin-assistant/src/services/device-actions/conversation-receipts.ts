@@ -4,6 +4,7 @@ import { validateDevicePayload } from "./contract.ts";
 import { deviceActionEffectReceipts } from "./effect-receipts.ts";
 import { isNotesOperation, validateNotesResult } from "./notes-contract.ts";
 import { DeviceActionService, getDeviceActionTurn } from "./service.ts";
+import { isSmsSend, type SmsSendResult } from "./sms-contract.ts";
 
 /** Fresh authenticated queue truth, scoped to the original user messages in this conversation.
  * These historical receipts never supply a current native-record revision or new effect authority. */
@@ -65,7 +66,7 @@ export async function readDeviceConversationReceipts(
   const service = new DeviceActionService(runtime),
     binding = await service.context(credential);
   assertCurrent();
-  const requests = await service.recentCompletedNotes(credential);
+  const requests = await service.recentCompletedConversationActions(credential);
   assertCurrent();
   const receipts = [];
   for (const request of requests) {
@@ -109,6 +110,11 @@ export async function readDeviceConversationReceipts(
       operation: payload.operation.type,
       ...(payload.operation.type === "create_note"
         ? { label: payload.operation.title }
+        : {}),
+      // deviceActionEffectReceipts validates the phone's typed SMS result.
+      // Only the transport status is needed to displace stale approval prose.
+      ...(isSmsSend(payload.operation)
+        ? { smsStatus: (provider.result as SmsSendResult).status }
         : {}),
       state: "done" as const,
       outcome: "applied" as const,

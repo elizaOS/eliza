@@ -10,6 +10,7 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-fie
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts.ts";
 import { registerDeviceGmailDraftRouting } from "./services/device-actions/service.ts";
 import {
+  phoneMessageIntentField,
   registerDeviceBrowserOpenRouting,
   registerDeviceBrowserTabListRouting,
   registerDeviceCameraCaptureRouting,
@@ -31,6 +32,7 @@ export function createAssistantPlugin(): Plugin {
       "Conversational planning, response generation, memory and assistant capabilities.",
     responseHandlerFieldEvaluators: [
       ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+      phoneMessageIntentField,
     ],
     async init(config, runtime) {
       if (runtime.messageService)

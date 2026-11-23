@@ -2641,9 +2641,12 @@ export async function resolvePlugins(
   const corePluginSet = new Set<string>(
     selectDatabasePluginNames(CORE_PLUGINS),
   );
-  const blockingPluginSet = new Set<string>(
-    selectDatabasePluginNames(BLOCKING_CORE_PLUGINS),
-  );
+  const blockingPluginSet = new Set<string>([
+    ...selectDatabasePluginNames(BLOCKING_CORE_PLUGINS),
+    // When the host selects Calendar, chat must expose its actions on the
+    // first turn. The resolver still honors hosts that omit or disable it.
+    "@elizaos/plugin-calendar",
+  ]);
   const routingOwnershipPluginNames = new Set<string>();
   const routingOnlyPluginNames = new Set<string>();
   for (const [pluginId, appDefault] of Object.entries(

@@ -16,6 +16,29 @@ import {
 } from "./browser-request-grounding.ts";
 import { IANA_TLDS } from "./iana-tlds.ts";
 
+it("handles a dictated country domain only in a complete Browser request", () => {
+  expect(
+    directBrowserDestination(
+      "Can you open alphacompute. AI in the browser, please?",
+      "Alpha",
+    ),
+  ).toBe("https://alphacompute.ai/");
+  expect(
+    directBrowserDestination(
+      "Can you open up alphacompute.ai in the browser?",
+      "Alpha",
+    ),
+  ).toBe("https://alphacompute.ai/");
+  for (const transcript of [
+    "Can you open alphacompute. A in the browser?",
+    "Don’t open alphacompute. AI in the browser.",
+    "Open Notes. NOW in Browser.",
+    "Can you open alphacompute. AI in Browser and text Carson?",
+  ]) {
+    expect(directBrowserDestination(transcript, "Alpha")).toBeUndefined();
+  }
+});
+
 describe("strict whole-message open command (fast path)", () => {
   it.each([
     ["open youtube.com", "https://youtube.com/"],

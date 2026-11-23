@@ -15,7 +15,11 @@ import {
   createSelfApiRequestHeaders,
   resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
-import { getDeviceActionTurn } from "@elizaos/plugin-assistant";
+import {
+  currentAppRecordSource,
+  getDeviceActionTurn,
+} from "@elizaos/plugin-assistant";
+import type { NotesService } from "@elizaos/plugin-notes";
 import { dispatchApiRoute } from "../api/in-process-api.ts";
 import { hasSelfApiTcpListener } from "../api/self-api-endpoint.ts";
 import { listViews, type ViewRegistryEntry } from "../api/views-registry.ts";
@@ -124,7 +128,7 @@ export function createViewsAction(
     name: "VIEWS",
     similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW", "VIEWS_LIST"],
     description:
-      "List registered application views or show an exact view id/label (for example Home, Notes, Calendar). Navigation only: opening a view does not read or change its records. Does not create or edit apps.",
+      "List registered application views or show an exact view id/label (for example Home, Notes, Calendar). On a host that supports the Notes editor, resolve the requested saved note with NOTES, then use show with view=Notes and its exact noteId to open that editor. Opening a view does not read or change its records. Does not create or edit apps.",
     contexts: ["general", "notes", "calendar", "settings"],
     roleGate: { minRole: "OWNER" },
     parameters: [
@@ -148,6 +152,14 @@ export function createViewsAction(
           "Optional runtime-owned navigation correlation. The executor supplies it; omit when planning.",
         required: false,
         schema: { type: "string" },
+      },
+      {
+        name: "noteId",
+        description:
+          "For show on Notes only, when the owner asks to open a specific saved note. Copy the exact ID from a unique successful NOTES lookup or save. Do not infer an ID from the title. If several notes match, ask which one. Omit to open the Notes list.",
+        required: false,
+        subactions: ["show"],
+        schema: { type: "string", minLength: 1, maxLength: 160 },
       },
     ],
     validate: async () => true,
@@ -235,6 +247,39 @@ export function createViewsAction(
           "No unique registered view matches. Use VIEWS action=list to inspect available views.",
         );
       const { view, resolvedAlias } = matches[0];
+      const noteId = params.noteId;
+      if (noteId !== undefined) {
+        if (
+          typeof noteId !== "string" ||
+          !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(noteId) ||
+          view.id !== "notes"
+        )
+          return fail(
+            "invalid",
+            "A saved note ID only opens an editor in Notes.",
+          );
+        if (
+          !completedAction ||
+          !isObjectRecord(message.content.metadata) ||
+          message.content.metadata.notesEditorNavigation !== 1 ||
+          currentAppRecordSource(runtime, "notes", message) !== "runtime"
+        )
+          return fail(
+            "unavailable",
+            "The originating view cannot open this Notes editor.",
+          );
+        const service = runtime.getService("notes") as NotesService | null;
+        try {
+          if (
+            service?.snapshot().notes.some((note) => note.id === noteId) !==
+            true
+          )
+            return fail("not-found", "That saved note is no longer available.");
+        } catch (error) {
+          runtime.reportError("VIEWS.notesTarget", error);
+          return fail("unavailable", "Saved Notes are unavailable.");
+        }
+      }
       const clientId = readViewInteractionClientId(message);
       if (!clientId)
         return fail(
@@ -320,6 +365,7 @@ export function createViewsAction(
               ? params.navigationStepId
               : null,
           handoffId,
+          ...(noteId === undefined ? {} : { noteId }),
         };
         return {
           success: true,
@@ -335,6 +381,7 @@ export function createViewsAction(
             label: view.label,
             completedActionDelivered: !completedAction,
             completedActionHandoffId: handoffId,
+            ...(noteId === undefined ? {} : { noteId }),
             ...(completedAction
               ? {
                   navigationPrepared: true,
