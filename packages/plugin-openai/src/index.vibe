@@ -1,6 +1,6 @@
 // spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"
 import { ModelType, VECTOR_DIMS, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage } from "@elizaos/core"
-import { Cause, Exit, Queue, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Queue, Schema, Stream } from "effect"
 import * as Sse from "effect/encoding/Sse"
 import { Machine, machine, type OpenAiAttempt, openAiModelId, openAiTokenizerKey, suitableOpenAiEndpoint } from "../gen/openai.effect.vibe"
 
@@ -17,9 +17,10 @@ module node {
     return encoding
   }
 
-  export function postOpenAi(address: string, key: string, payload: object, signal: AbortSignal) {
+  export function postOpenAi(address: string, key: string, payload: object, signal: AbortSignal, timeoutMs?: number) {
     return fetchWithConfidentialInference(address, {
-      method: "POST", redirect: "error", signal,
+      method: "POST", redirect: "error",
+      signal: timeoutMs === undefined ? signal : AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }, globalThis.fetch)
@@ -50,7 +51,7 @@ function callOpenAi(runtime: IAgentRuntime, path: string, body: object, selected
     const key = setting(runtime, "OPENAI_API_KEY")
     if (key === "" && setting(runtime, "OPENAI_BASE_URL") === "") throw new OpenAiFailure({ reason: "No OpenAI connection is configured.", retryable: false })
     const response = try tryPromise({
-      try: (signal) => postOpenAi(base + path, key, body, AbortSignal.any([signal, AbortSignal.timeout(120000)])),
+      try: (signal) => postOpenAi(base + path, key, body, signal, 120000),
       catch: () => new OpenAiFailure({ reason: "The OpenAI endpoint could not be reached.", retryable: true }),
     })
     if (!response.ok) {
@@ -84,11 +85,40 @@ function observed<T>(promise: Promise<T>): Promise<T> {
   return promise
 }
 
+interface OpenAiStreamCompletion {
+  readonly text: string
+  readonly reason?: string | undefined
+  readonly usage?: TokenUsage | undefined
+}
+
+function whenCancelled(signal: AbortSignal): Effect.Effect<never> {
+  return Effect.callback<never>((resume) => {
+    const abort = () => resume(Effect.interrupt)
+    if (signal.aborted) {
+      abort()
+      return
+    }
+    signal.addEventListener("abort", abort, { once: true })
+    return Effect.sync(() => signal.removeEventListener("abort", abort))
+  })
+}
+
+function streamResult<E>(fiber: Fiber.Fiber<OpenAiStreamCompletion, E>, queue: Queue.Queue<string, OpenAiFailure | Cause.Done>): TextStreamResult {
+  const completion = observed(Effect.runPromise(Fiber.join(fiber)))
+  return {
+    textStream: Stream.toAsyncIterable(Stream.fromQueue(queue)),
+    text: observed(completion.then((result) => result.text)),
+    finishReason: observed(completion.then((result) => result.reason)),
+    usage: observed(completion.then((result) => result.usage)),
+  }
+}
+
 effect function streamAnswer(response: Response, model: Machine.Shape, attempt: OpenAiAttempt, signal?: AbortSignal) {
   if (response.body === null || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream") {
     try Effect.ignore(tryPromise(async () => { await response.body?.cancel() }))
     throw new OpenAiFailure({ reason: "OpenAI did not return a completion event stream.", retryable: false })
   }
+  if (signal?.aborted) return try Effect.interrupt
   const body = response.body
   const replies = Stream.fromReadableStream({ evaluate: () => body, onError: () => new OpenAiFailure({ reason: "OpenAI event stream disconnected.", retryable: false }) })
     .pipe(Stream.decodeText(), Stream.pipeThroughChannel(Sse.decode({ maxEventSize: 1048576 })))
@@ -120,15 +150,12 @@ effect function streamAnswer(response: Response, model: Machine.Shape, attempt: 
     try model.send({ type: "acceptOpenAi", attempt, terminal: true, shapeMatches: true })
     return { text, reason, usage }
   }
-  const completion = observed(runPromise(Effect.onExit(produce, (outcome) => Exit.isSuccess(outcome)
+  const watched = signal === undefined ? produce : Effect.raceFirst(produce, whenCancelled(signal))
+  const fiber = try forkDetach(Effect.onExit(watched, (outcome) => Exit.isSuccess(outcome)
     ? Queue.end(queue)
-    : Queue.fail(queue, new OpenAiFailure({ reason: "OpenAI did not complete the event stream.", retryable: false }))), { signal }))
-  return {
-    textStream: Stream.toAsyncIterable(Stream.fromQueue(queue)),
-    text: observed(completion.then((result) => result.text)),
-    finishReason: observed(completion.then((result) => result.reason)),
-    usage: observed(completion.then((result) => result.usage)),
-  } satisfies TextStreamResult
+    : Queue.fail(queue, new OpenAiFailure({ reason: "OpenAI did not complete the event stream.", retryable: false }))),
+    { startImmediately: true })
+  return try Effect.sync(() => streamResult(fiber, queue))
 }
 
 const chatResponse = Schema.Struct({
@@ -184,13 +211,13 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
         const text = choice.message.content ?? ""
         const reported = complete.usage
         if (!params.stream && choice.message.tool_calls === undefined) return text
-        return {
+        return try Effect.sync(() => ({
           textStream: (async function* () { if (text !== "") yield text })(),
           text: Promise.resolve(text),
           usage: Promise.resolve(reported && { promptTokens: reported.prompt_tokens, completionTokens: reported.completion_tokens, totalTokens: reported.total_tokens }),
           finishReason: Promise.resolve(choice.finish_reason),
           toolCalls: choice.message.tool_calls,
-        } satisfies TextStreamResult
+        } satisfies TextStreamResult))
       }
       if (Cause.hasInterruptsOnly(result.cause)) return try Effect.failCause(result.cause)
       const failure = Cause.squash(result.cause)
