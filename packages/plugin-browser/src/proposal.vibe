@@ -117,7 +117,7 @@ effect function opened(turn: DeviceTurn, url: string, proposedNewTab: boolean): 
   const links = try pageLinks(turn)
   const destination = groundBrowserDestination(turn.ownerText, url, turn.assistantName, links)
   if (destination === undefined) return refused("DestinationNotRequested", turn)
-  const owner = directBrowserOpen(turn.ownerText, turn.assistantName)
+  const owner = directBrowserOpen(turn.ownerText, turn.assistantName) ?? spokenBrowserOpen(turn.ownerText, turn.assistantName)
   const newTab = opensInNewTab({
     proposedNewTab, ownerAskedNewTab: owner?.newTab === true, ownerAddressIsDestination: owner?.href === destination, newTabNegotiated: opensInItsOwnTab(turn),
   })

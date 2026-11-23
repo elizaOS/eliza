@@ -280,6 +280,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     try propose("I read example.com yesterday", navigate("https://example.com")),
     try propose("open example dot com", navigate("https://example.com")),
     try propose("open example dot com in a new tab", navigate("https://example.com")),
+    try propose("open example dot com in a new tab", navigate("https://example.com"), tabsOnly),
     try propose("open example.com", navigate("https://evil.example/")),
     try propose("do that in the browser", navigate("https://example.com/")),
   ]
@@ -334,7 +335,8 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
   try Effect.try(() => {
     assert.deepStrictEqual(opened, [
       direct(navigate("https://wikipedia.org/", true)), direct(navigate("https://example.com/docs")), reviewed(navigate("https://example.com/")),
-      reviewed(navigate("https://example.com/")), reviewed(navigate("https://example.com/")), notRequested, notRequested,
+      reviewed(navigate("https://example.com/")), reviewed(navigate("https://example.com/", true)), reviewed(navigate("https://example.com/")),
+      notRequested, notRequested,
     ])
     assert.deepStrictEqual(tabbed, [
       direct(navigate("https://wikipedia.org/", true)), reviewed(navigate("https://example.com/", true)), direct(navigate("https://wikipedia.org/")),
