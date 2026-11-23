@@ -275,9 +275,11 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
           partialHigh.clear();
         } else {
           for (const [pid, used] of sample.known) {
-            if (used <= (partialHigh.get(pid) ?? 0)) continue;
-            partialHigh.set(pid, used);
-            observedAt = now;
+            const previous = partialHigh.get(pid);
+            if (previous === undefined || used > previous) {
+              partialHigh.set(pid, used);
+              if (previous !== undefined) observedAt = now;
+            }
           }
         }
       };
