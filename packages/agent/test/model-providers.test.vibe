@@ -229,6 +229,42 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
   })
 })
 
+it.effect('A tool is offered without its pattern constraints, and the rest of its schema is sent as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime } = try cloudAgent(cloud, "cerebras/qwen-3.8-27b")
+  try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
+    choices: [{ message: { role: "assistant", content: "Done." }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 },
+  })))
+  const handle = "^maps_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"
+  const parameters = {
+    type: "object", additionalProperties: false, required: [],
+    properties: {
+      placeId: { type: "string", description: "A selection handle.", pattern: handle },
+      pattern: { type: "string", description: "A property named pattern.", enum: ["a", "b"] },
+      codes: { type: "array", items: { type: "string", pattern: "^[0-9]+$" } },
+      either: { anyOf: [{ type: "string", pattern: "^x" }, { type: "number" }] },
+      example: { type: "string", default: "x", examples: [{ pattern: "kept as data" }] },
+    },
+  }
+  try host("tool offer with patterns", () => runtime.useModel(ModelType.TEXT_LARGE, {
+    tools: [{ name: "MAPS_PLACE", description: "Places.", parameters }], toolChoice: "auto",
+    messages: [{ role: "user", content: "Coffee near me?" }],
+  }))
+  const sent = cloud.calls.at(-1)?.body as { tools: Array<{ function: { parameters: unknown } }> }
+  assert.deepStrictEqual(sent.tools[0]?.function.parameters, {
+    type: "object", additionalProperties: false, required: [],
+    properties: {
+      placeId: { type: "string", description: "A selection handle." },
+      pattern: { type: "string", description: "A property named pattern.", enum: ["a", "b"] },
+      codes: { type: "array", items: { type: "string" } },
+      either: { anyOf: [{ type: "string" }, { type: "number" }] },
+      example: { type: "string", default: "x", examples: [{ pattern: "kept as data" }] },
+    },
+  })
+  assert.strictEqual(parameters.properties.placeId.pattern, handle)
+})
+
 it.effect('An own-key overload or timeout is a provider issue and is retried, and a validation refusal ends the call (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }

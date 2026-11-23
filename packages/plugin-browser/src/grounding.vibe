@@ -1,4 +1,4 @@
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A reload of a page my phone withheld runs only when my message asked for it"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice"
 import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
 import { groundedSearch } from "../gen/browser__control.effect.vibe"
 import { closingMarkIsProse, directDestination, pageLinkDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
@@ -82,6 +82,9 @@ const PREPOSITION = /^(?:under|for|at|in|on|by|with|without|from|after|before|un
 const TAIL_LEAD = /^[\s,:;.!?()"'”’\u2014\u2013-]*(?:(?:no|nope|nah|please|but|and|so|just|actually|wait|oh|hmm)[\s,.!]+)*/i
 const TAIL_END = /^(?:\s+(?:to|up|on|over|into|it|that|this|them|one|there|yet|now|again|please|ever|today|anymore|either|the\s+(?:link|site|website|page|url|address)))*[\s)"'”’]*(?:[.!?;,]|$)/i
 const BARE_END = /(?:^|[\s.!?,;:(])(?:don['’]?t|do\s+not|never)[\s.!?)]*$/i
+const RELOAD_WORD = String.raw`(?:re-?load|refresh|re-?open)`
+const RELOAD_TAIL = String.raw`(?:\s+(?:it|this|that|the|page|tab|site|website|article|one|again|now|please|for\s+me|once\s+more))*[)"'”’]*(?=\s*[.!?;,]|\s+(?:and|then|so)\b|\s*$)`
+const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|not|stop|no\s+need\s+to)|(?<!\b(?:ca|could|wo|would))n['’]t|\b(?:ca|could|wo|would)n['’]t(?!\s+(?:you|u)\b))\s+(?:(?:just|ever|even|you|u|please|need\s+to|have\s+to|try\s+to|bother\s+to|want\s+to|to)\s+)*${RELOAD_WORD}(?:ing)?\b`, "i")
 const DOTS = /[\uff0e\u3002\uff61\u2024]/g
 const HOST_RUN = /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*/gu
 const LABEL_BEFORE = /[a-z\d](?:-*|\.)$/
@@ -101,6 +104,7 @@ interface NamePatterns {
   readonly sentenceStart: RegExp
   readonly questionStart: RegExp
   readonly questionStartWhy: RegExp
+  readonly reloadRequest: RegExp
 }
 
 const namePatterns = new Map<string, NamePatterns>()
@@ -122,6 +126,7 @@ function patterns(assistantName: string): NamePatterns {
     sentenceStart: compiled(String.raw`(?:^|[.!?:])\s*(?:(?:hey|hi|ok|okay|${name}|please)[\s,.!]*)*$`, "i"),
     questionStart: compiled(`${questionOpener}$`, "i"),
     questionStartWhy: compiled(String.raw`${questionOpener}why\s+(?:do|does|did)?$`, "i"),
+    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013])\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_WORD}${RELOAD_TAIL}`, "gi"),
   }
   namePatterns.set(key, built)
   return built
@@ -450,6 +455,16 @@ export function groundBrowserDestination(userText: string, proposedUrl: string, 
   return href === "" ? undefined : href
 }
 
+export function ownerAskedBrowserReload(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): boolean {
+  if (unreadable(text)) return false
+  const read = plain(text)
+  if (RELOAD_NEGATED.test(read) || BARE_END.test(read.slice(-200))) return false
+  return matchesOf(read, patterns(assistantName).reloadRequest).some((match) => {
+    const end = match.index + match[0].length
+    return !negatedAfter(read.slice(end, end + 200))
+  })
+}
+
 export function containsWebAddress(text: string): boolean {
   return typeof text === "string" && typedAddresses(text.slice(0, 8192).replace(CONTROLS, " "), DEFAULT_ASSISTANT_NAME).length > 0
 }
@@ -462,6 +477,24 @@ export function directBrowserSearchQuery(text: string, assistantName: string = D
   for (let rest = ""; rest !== query; query = query.replace(SEARCH_SUFFIX, "")) rest = query
   query = unquoted(query.replace(/\s+/g, " "))
   return query !== "" && query.length <= BROWSER_SEARCH_QUERY_MAX ? query : undefined
+}
+
+const TAB_LIST_GREETING = /^(?:hey|ok|okay|hi)(?:[\s,]+|[.!]\s+)/
+const TAB_LIST_POLITE_LEAD = /^(?:(?:please|can you|could you|let me)[\s,]+)+/
+const TAB_LIST_ASKS = [
+  /^(?:show|list|see)(?:\s+me)?(?:\s+(?:all|all of))?(?:\s+(?:my|the))?(?:\s+open)?(?:\s+browser)?\s+(?:tabs|tab list)(?:\s+(?:i\s+have\s+)?open)?(?:\s+in\s+(?:the\s+)?browser)?$/,
+  /^(?:what|which)\s+are\s+my\s+open(?:\s+browser)?\s+tabs$/,
+  /^(?:what|which)(?:\s+browser)?\s+tabs\s+(?:do\s+i\s+have|are|have\s+i\s+got)(?:\s+open)?(?:\s+in\s+(?:the\s+)?browser)?$/,
+]
+
+export function directBrowserTabList(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): boolean {
+  if (unreadable(text)) return false
+  let request = text.trim().toLowerCase().replace(/[\s.!?]+$/, "").replace(TAB_LIST_GREETING, "")
+  const name = assistantName.trim().toLowerCase() || DEFAULT_ASSISTANT_NAME.toLowerCase()
+  if (request.startsWith(name) && !/[\p{L}\p{N}]/u.test(request.charAt(name.length)))
+    request = request.slice(name.length).replace(/^[\s,:]+/, "")
+  request = request.replace(TAB_LIST_POLITE_LEAD, "").replace(/[\s,]+please$/, "").replace(/[\s.!?]+$/, "")
+  return TAB_LIST_ASKS.some((ask) => ask.test(request))
 }
 
 export function browserSearchQueryMatches(query: string, direct: string | undefined): boolean {
@@ -499,18 +532,4 @@ export function browserDestinationMatches(operation: unknown, destination: strin
   if (!("type" in operation) || operation.type !== "browser_navigate" || !("url" in operation) || typeof operation.url !== "string") return false
   const parsed = parseBrowserAddressInput(operation.url, { defaultProtocol: "https:" })
   return parsed.kind === "url" && parsed.href === destination
-}
-
-/** Match an authored request to show the phone's own tab overview. */
-export function asksToSeeBrowserTabs(text: string, assistantName?: string): boolean {
-  if (unreadable(text)) return false
-  let request = text.trim().toLowerCase().replace(/[\s.!?]+$/, "").replace(/^(?:hey|ok|okay|hi)[\s,]+/, "")
-  const name = assistantName?.trim().toLowerCase()
-  if (name && request.startsWith(name) && !/[\p{L}\p{N}]/u.test(request.charAt(name.length))) {
-    request = request.slice(name.length).replace(/^[\s,:]+/, "")
-  }
-  request = request.replace(/^(?:(?:please|can you|could you|let me)[\s,]+)+/, "").replace(/[\s,]+please$/, "")
-  return /^(?:show|list|see)(?:\s+me)?(?:\s+(?:all|all of))?(?:\s+(?:my|the))?(?:\s+open)?(?:\s+browser)?\s+(?:tabs|tab list)(?:\s+(?:i\s+have\s+)?open)?(?:\s+in\s+(?:the\s+)?browser)?$/.test(request)
-    || /^(?:what|which)\s+are\s+my\s+open(?:\s+browser)?\s+tabs$/.test(request)
-    || /^(?:what|which)(?:\s+browser)?\s+tabs\s+(?:do\s+i\s+have|are|have\s+i\s+got)(?:\s+open)?(?:\s+in\s+(?:the\s+)?browser)?$/.test(request)
 }

@@ -488,23 +488,32 @@ pure def lawARecoveredFailureRequiresAnUnappliedResult(supported: bool, quotesDr
 
 The system prompt's cue rule asks the model to write, with its first tool
 calls, only a brief cue that it heard the request: `Let me check.` or
-`Let me check your calendar.` for a question or a lookup, a request asked
-as a question (`Can you text Sam?`) included; `Sure.`, `Sure, one sec.` or
-`Yeah, one sec.` for a plain command (`Text Sam I'm late`, `Set an alarm
-for seven`); `On it.` or `One sec.` for any other action. It never names
-the people, items, times or outcome, never says the work is done or under
-way, never repeats the request, and is left empty, with the work still
-done, when the person asked for silence; later tool calls come with no
-text.
+`Let me check your calendar.` (or the owner's notes, inbox, messages,
+reminders, tasks, files, photos or contacts) for a question or a lookup, a
+request asked as a question (`Can you text Sam?`) included; `Let me open
+Maps.` when opening an app is part of other planned work, naming the app
+asked for by its bare name (Calendar, Notes, Inbox, Maps, Files, Photos,
+Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock)
+and `On it.` for any other app; `Sure.`, `Sure, one sec.` or `Yeah, one
+sec.` for a plain command (`Text Sam I'm late`, `Set an alarm for seven`);
+`On it.` or `One sec.` for any other action. A request whose only work is
+opening one app (`Open Maps.`) gets no cue: the model writes nothing with
+that call, and the reply after it confirms the destination (`Maps is
+open.`). The cue never names the people, items, times or outcome, never
+says the work is done or under way, never repeats the request, and is left
+empty, with the work still done, when the person asked for silence; later
+tool calls come with no text.
 
 The shell reads the model's text as a `Cue` only when the whole of it is
 one to three sentences of the closed acknowledgment grammar (`On it`,
 `One sec`, `Just a moment`, a lead such as `Let me` with a look-up verb and
 an owner container such as `your calendar`, or a lead with an intent such
-as `open Maps`), at most 120 characters, with no digits, clock times,
+as `open Maps`, so `Let me open Maps.` is a cue), at most 120 characters, with no digits, clock times,
 counts, names other than one after `check with`, or question mark. The
 grammar has no past-tense verb, negation or completion word, so a cue never
-claims that an effect happened or that the owner's tracked work is empty.
+claims that an effect happened or that the owner's tracked work is empty:
+a destination confirmation (`Maps is open.`, `Opened your calendar.`) is
+never a cue.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's
@@ -550,7 +559,11 @@ check your calendar.`) is a cue after any message. The acknowledgment is
 delivered at most once per turn, as the [reply stream](./replyStream.md)'s
 `acknowledgment` frame, and only while no tool of the turn has run, a call
 the whole message asked for outright included; a cue at a later step is
-dropped with the rest of that step's text.
+dropped with the rest of that step's text. A blank draft or one outside the
+grammar acknowledges nothing, after any message and with any work, so a
+navigation-only turn whose model confirms the destination alongside its
+tool call, rather than writing nothing, still gives the owner only the
+reply.
 
 ```quint
 type DraftShape = Blank | GrammarCue | AssentCue | OtherText
@@ -562,6 +575,8 @@ pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, ca
 pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int): bool =
   nextMove(readDraft(AssentCue, instruction, 0), 0, stepsLeft) == Deliver
 pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool, calls: int): bool = readDraft(GrammarCue, instruction, calls) == Cue
+pure def lawNoCueOrADestinationConfirmationNeverAcknowledges(instruction: bool, calls: int, earlierCalls: int): bool =
+  not(acknowledges(readDraft(Blank, instruction, calls), calls, earlierCalls)) and not(acknowledges(readDraft(OtherText, instruction, calls), calls, earlierCalls))
 pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: int, laterDraft: Draft, laterCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
 ```

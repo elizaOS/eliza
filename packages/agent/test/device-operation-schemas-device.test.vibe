@@ -121,6 +121,8 @@ it("Propose only operations the device can check: a proposal with a stray key or
     { type: "sms_reply_selected", body: "   " },
     { type: "browser_navigate", url: "ftp://example.com" },
     { type: "browser_navigate", url: "https://user:pw@example.com" },
+    { type: "browser_tabs_show", target: "bbc" },
+    { type: "browser_tabs_show", all: true },
     { type: "open_view", view: "terminal" },
     { type: "create_reminder", title: "Call", dueAt: "2026-11-22 09:00" },
     { ...range, end: "2026-11-30T00:00:00.000Z" },
@@ -153,6 +155,9 @@ it("Propose only operations the device can check: each operation needs its own c
   assert.isDefined(validate(samples.BrowserNavigate, negotiation(true, "files.browser.v1"), "NoBinding"))
   assert.isUndefined(validate(newTab, negotiation(true, "files.browser.v1"), "NoBinding"))
   assert.isDefined(validate(newTab, negotiation(true, "browser.open-new-tab.v1"), "NoBinding"))
+  assert.isUndefined(validate(samples.BrowserTabsShow, negotiation(true, "browser.tabs.v1"), "NoBinding"))
+  assert.isDefined(validate(samples.BrowserTabsShow, negotiation(true, "browser.tabs.show.v1"), "NoBinding"))
+  assert.isUndefined(validate(samples.BrowserTabSwitch, negotiation(true, "browser.tabs.show.v1"), "NoBinding"))
 })
 
 it("Propose only operations the device can check: a targeted text, a draft in the sender's thread, a contact change by value and a dial to a contact need their newer capability, and a draft never reports a send", () => {
@@ -272,6 +277,8 @@ it("Propose only operations the device can check: only a reversible local operat
   assert.isTrue(mayRunDirectly(checked(samples.SmsReplySelected), "NoBinding", true))
   assert.isFalse(mayRunDirectly(checked(samples.FilesOpen), "NoBinding", false))
   assert.isTrue(mayRunDirectly(checked(samples.BrowserHistory), "NoBinding", true))
+  assert.isTrue(mayRunDirectly(checked(samples.BrowserTabsShow), "NoBinding", true))
+  assert.isFalse(mayRunDirectly(checked(samples.BrowserTabsShow), "NoBinding", false))
   for (const type of ["SmsSend", "PhoneCall", "ContactDelete", "FilesShare", "PhotosShare", "PhotoLibraryReview", "VoicemailDeleteSelected", "BrowserTabClose"])
     assert.isFalse(mayRunDirectly(checked(samples[type]), "NoBinding", true), type)
 })
@@ -327,6 +334,9 @@ it("Learn exactly what the device did: reads carry a result exactly when applied
   assert.strictEqual(outcome(samples.CameraCapturePhoto, { outcome: "applied", operationId: "n1" }), "refused")
   assert.strictEqual(outcome(samples.FilesOpen, { outcome: "applied", operationId: "n1" }), "ReportedApplied")
   assert.strictEqual(outcome(samples.FilesOpen, { outcome: "applied", operationId: "n1", result: { shown: 1 } }), "refused")
+  assert.strictEqual(outcome(samples.BrowserTabsShow, { outcome: "applied", operationId: "n1" }), "ReportedApplied")
+  for (const result of [{ tabs: [{ title: "BBC News", url: "https://bbc.co.uk/news" }] }, { count: 3 }])
+    assert.strictEqual(outcome(samples.BrowserTabsShow, { outcome: "applied", operationId: "n1", result }), "refused", JSON.stringify(result))
   assert.strictEqual(outcome(samples.SpeakText, { outcome: "applied", operationId: "n1" }), "ReportedApplied")
   assert.strictEqual(outcome(samples.PhotosShare, { outcome: "applied", operationId: "n1", result: { kind: "photos_share", status: "review_opened", count: 1, missing: 0 } }), "ReportedApplied")
   assert.strictEqual(outcome(samples.PhotosShare, { outcome: "applied", operationId: "n1", result: { kind: "photos_share", status: "review_opened", count: 2, missing: 0 } }), "refused")

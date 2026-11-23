@@ -198,7 +198,6 @@ function writeActions(notes: NotesCollection): Action[] {
       parameters: [
         idParameter("Exact note ID."),
         contentParameter("The existing note's title or unique text, to find it."),
-        // The collection decodes both edit unions with its strict UpdateRequest schema.
         { name: "textEdit", description: "A literal replacement or an exact append.", required: false, schema: { type: "object", additionalProperties: true } },
         { name: "authoredEdit", description: "An indexed authored edit or a checklist append.", required: false, schema: { type: "object", additionalProperties: true } },
         { name: "replacementContent", description: "The complete replacement note text from a complete read.", required: false, schema: { type: "string" } },

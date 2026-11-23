@@ -37,6 +37,7 @@ pure def loadFailed(s: Recovery): Recovery = { ...s, phase: FailureCleanup, avai
 pure def canFinalize(s: Recovery): bool = s.phase == SuccessCleanup or s.phase == FailureCleanup
 pure def finalize(s: Recovery): Recovery = { ...s, phase: Idle }
 pure def canElapse(s: Recovery, milliseconds: int): bool = milliseconds >= 0
+pure val eval_refuse_canElapse = { milliseconds: -1 }
 pure def elapse(s: Recovery, milliseconds: int): Recovery = { ...s, remainingMs: if (milliseconds >= s.remainingMs) 0 else s.remainingMs - milliseconds }
 pure val millisecondsValues = Set(0, 1000, 2000, 30000)
 pure def alwaysCooldownIsBounded(s: Recovery): bool = s.failures >= 0 and s.remainingMs >= 0 and s.remainingMs <= delayMs(s.failures)

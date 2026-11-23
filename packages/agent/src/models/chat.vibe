@@ -230,9 +230,19 @@ module wireFormat {
     return tools.map((tool) => ({ type: "function", function: {
       name: tool.name,
       ...(tool.description === undefined ? {} : { description: tool.description }),
-      parameters: tool.parameters ?? { type: "object", properties: {} },
+      parameters: tool.parameters === undefined ? { type: "object", properties: {} } : advertised(tool.parameters),
       ...(tool.strict === true ? { strict: true } : {}),
     } }))
+  }
+
+  const dataKeywords: ReadonlySet<string> = new Set(["enum", "const", "default", "examples"])
+
+  /** A tool's parameter schema as a provider is shown it: without `pattern` constraints, which a provider may refuse (Cerebras does on a closed object); the action still validates its arguments when it runs. */
+  function advertised(schema: unknown): unknown {
+    if (Array.isArray(schema)) return schema.map(advertised)
+    if (typeof schema !== "object" || schema === null) return schema
+    return Object.fromEntries(Object.entries(schema).flatMap(([key, value]) =>
+      key === "pattern" && typeof value === "string" ? [] : [[key, dataKeywords.has(key) ? value : advertised(value)]]))
   }
 
   /** @throws {never} */

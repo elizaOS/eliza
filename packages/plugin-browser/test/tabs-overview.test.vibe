@@ -1,4 +1,4 @@
-// spec/browser/control.md, "Story: Show the tabs I have open on my phone"
+// spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice"
 import { assert, it } from "@effect/vitest"
 import { browserPlugin } from "../src/index.vibe"
 import { deviceActionsModuleName } from "../../agent/src/device-actions/proposal/module.vibe"
@@ -46,6 +46,17 @@ module node {
     })
     const settled = await client.call("POST", `${at}/receipt`, { digest: proposal.digest, attemptId, receipt: outcome })
     const kept = (settled.json as { proposal: Proposal }).proposal
+    const direct = { ...metadata, voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } }
+
+    model.script(text("Okay."))
+    const locked = await client.call("POST", turns, { text: "Show my open tabs.", metadata: { ...direct, observation: { ...metadata.observation, sensitive: true } } })
+    const lockedProposals = (await list()).filter(({ id }) => id !== proposal.id)
+
+    model.script(text("Okay."))
+    const requested = await client.call("POST", turns, { text: "Show my open tabs.", metadata: direct })
+    const directProposal = (await list()).find(({ id }) => id !== proposal.id)
+    if (directProposal === undefined) throw new Error(`No direct Browser proposal: ${JSON.stringify(requested)}`)
+    const directClaim = await client.call("POST", `${proposals}/${directProposal.id}/claim`, { digest: directProposal.digest })
     return {
       statuses: [registered.status, compound.status, asked.status, approved.status, claimed.status, settled.status],
       compoundCount,
@@ -54,12 +65,17 @@ module node {
       leakedStatus: leaked.status,
       leakedKept: JSON.stringify(kept).includes("private-fixture"),
       state: kept.state,
+      locked: [locked.status, lockedProposals.length],
+      direct: {
+        statuses: [requested.status, directClaim.status], operation: directProposal.payload.operation,
+        sameRequest: directProposal.payload.requestMessageId === (requested.json as { userMessageId: string }).userMessageId,
+      },
     }
   }
 }
 import { overviewJourney } from node
 
-it.live('The enrolled owner can approve a tab overview and the result contains no tab data (spec/browser/control.md, "The tab overview runs only for the current request on the enrolled phone")', effect () => {
+it.live('The enrolled owner can approve a tab overview and the result contains no tab data (spec/browser/control.md, "My whole-message request to see my open tabs shows my phone\'s own tab list without waiting on the model\'s choice")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, load: [deviceActionsModuleName, browserPlugin.name], allowed: ["REPLY", "IGNORE", "NONE", "PROPOSE_DEVICE_ACTION"] },
@@ -77,5 +93,7 @@ it.live('The enrolled owner can approve a tab overview and the result contains n
     assert.isAtLeast(result.leakedStatus, 400)
     assert.isFalse(result.leakedKept)
     assert.strictEqual(result.state, "done")
+    assert.deepStrictEqual(result.locked, [200, 0])
+    assert.deepStrictEqual(result.direct, { statuses: [200, 200], operation: { type: "browser_tabs_show" }, sameRequest: true })
   })
 }, 120_000)
