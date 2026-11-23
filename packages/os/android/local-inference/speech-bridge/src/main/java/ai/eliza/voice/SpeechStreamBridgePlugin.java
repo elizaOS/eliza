@@ -464,8 +464,9 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   private JSONObject consentAnswer(Session own) throws Exception {
     try {
       return post(own, "consent", new JSONObject());
-    } catch (java.net.SocketException failure) {
-      if (!CloudSpeechWire.connectionReset(failure)) throw failure;
+    } catch (IOException failure) {
+      if (!CloudSpeechWire.droppedConnection(failure)) throw failure;
+      mark(own, "consent-retry");
       return post(own, "consent", new JSONObject());
     }
   }
@@ -504,6 +505,9 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
           return new JSONObject();
         }
       }
+    } catch (Exception failure) {
+      mark(own, path + "-failed");
+      throw failure;
     } finally {
       own.pending = null;
     }

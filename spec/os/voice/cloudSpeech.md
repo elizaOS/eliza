@@ -87,7 +87,10 @@ deployment origin is `Misdirected`. A `401` with a credential reason goes
 to `C::rejected`; every refusal ends its request and passes on its retry
 or reset time (a `429` or `402` limit). The consent request comes before any
 paid admission, so the shell sends it once more after its connection was
-reset; a mint request is never sent again.
+dropped: reset by the peer, or a pooled connection that ended before its
+answer (OkHttp's "unexpected end of stream"); a mint request is never sent
+again. The shell's content-free startup timings mark each consent and mint
+request's start, headers, body or failure, and a consent sent again.
 
 ```quint
 type CloudAnswer = Answered | Misdirected | Unreachable | Refused({ refusal: Refusal })
