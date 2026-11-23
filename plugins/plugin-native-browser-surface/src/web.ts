@@ -120,6 +120,26 @@ export class BrowserSurfaceWeb
   ): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
+  async answerFileChooser(
+    _options: SurfaceIdOptions & { requestId: string; open: boolean },
+  ): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async answerSitePermission(
+    _options: SurfaceIdOptions & { requestId: string; grant: boolean },
+  ): ReturnType<ElizaSurfaceManagerPlugin["answerSitePermission"]> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async saveDownload(
+    _options: SurfaceIdOptions & { requestId: string },
+  ): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async openIdentityProvider(
+    _options: SurfaceIdOptions & { requestId: string },
+  ): Promise<{ status: "dispatched" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async openExternalLink(
     _options: SurfaceIdOptions & { url: string },
   ): Promise<{ status: "dispatched" }> {

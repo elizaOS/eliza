@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/actions/app-block.ts",
+    "plugins/plugin-personal-assistant/test/app-block-package-case.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-app-block-package-case.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-app-block-package-case.mjs",
+  "bounds": "One owner BLOCK target=app request on Android with two installed apps, Slack (`com.Slack`) and Instagram (`com.instagram.android`). The request carries one or two package ids, each spelled with the installed case, all lower case or all upper case, or an id that no installed app has; it supplies them as planner packageNames, names one or two different apps by display name in the intent text, or gets them from the app-block planning model. The conformance script replays every generated request through the production runAppBlockHandler on a PGlite-backed runtime with a canonical owner and requires all 88 requests (42 explicit, 4 named in the intent, 42 from the planning model). The device is registered through the production registerNativeAppBlockerBackend seam and follows the Android plugin: blockApps stores the trimmed ids as given and an app is blocked only when its exact id is stored. The planning model's answer is controlled by the test. Durations, iOS app tokens, a failed installed-app lookup, two installed ids that differ only in case, unblock and status are not covered by this model. Under weak fairness of the handler step every request is eventually handled. Explicit stuttering lets the handler never run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "app-block-installed-package-case",
+      "main": "AppBlockPackageCase",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ExplicitUnknownIdKept",
+        "PlannerIdsInstalled",
+        "SelectedAppsBlocked",
+        "StartsWhenAnIdIsLeft",
+        "StoredIdsUseInstalledCase",
+        "TypeOK"
+      ],
+      "temporal": ["Settles", "SettlesWithoutFairness"],
+      "maxSteps": 4,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled handler step eventually runs (weak fairness). This checks that every request is then handled, not how long the native call takes."
+          ]
+        },
+        {
+          "property": "SettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The handler may never run after a request, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

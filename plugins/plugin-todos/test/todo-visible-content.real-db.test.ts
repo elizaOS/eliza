@@ -265,6 +265,49 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     expect(state.map((todo) => todo.id)).toEqual([electricity.id]);
   });
 
+  it.each([
+    ["delete", "Pay electricity bill", "Pay water bill", true],
+    ["complete", "Send report to Alice", "Send report to Bob", true],
+    ["cancel", "Email Bob the invoice", "Email Alice the invoice", true],
+    [
+      "complete",
+      "Finish the quarterly report for the board",
+      "finish the quarterly report",
+      false,
+    ],
+  ] as const)(
+    "%s %s by %s asks first only for a swapped word (%s)",
+    async (action, listed, target, asks) => {
+      const entityId = newEntity();
+      const todo = await seed(entityId, listed);
+      const result = await run(say(entityId, `${action} ${target}`), {
+        action,
+        target,
+      });
+      if (!asks) {
+        expect(result.effectReceipts?.[0]?.resource.id).toBe(todo.id);
+        return;
+      }
+      expect(result.text).toBe(
+        `No todo matches "${target}" exactly, so nothing was changed. Did you mean this one?\n- "${listed}" (to do, added ${todo.createdAt.toISOString().slice(0, 10)}) ref ${await todoRef(todo.id)}`,
+      );
+      expect(result.effectReceipts).toBeUndefined();
+      expect(result.data).toMatchObject({ clarificationRequired: true });
+      expect((await rows(entityId)).map((row) => [row.id, row.status])).toEqual(
+        [[todo.id, "pending"]],
+      );
+
+      const chosen = await run(say(entityId, "yes, that one"), {
+        action,
+        ref: await todoRef(todo.id),
+      });
+      expect(chosen.effectReceipts?.[0]).toMatchObject({
+        outcome: "applied",
+        resource: { id: todo.id },
+      });
+    },
+  );
+
   it("keeps update's target separate from its replacement content, and a retry replays the original rename", async () => {
     const entityId = newEntity();
     const memo = await seed(entityId, "Draft memo");
@@ -316,6 +359,55 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
       resource: { id: doomed.id },
     });
     expect(await rows(entityId)).toEqual([]);
+  });
+
+  it("keeps a news todo distinct from a new todo and still folds real plurals", async () => {
+    const entityId = newEntity();
+    const news = await seed(entityId, "Read the news");
+
+    const missed = await run(say(entityId, "complete Read the new"), {
+      action: "complete",
+      target: "Read the new",
+    });
+    expect(missed.success).toBe(false);
+    expect(missed.text).toBe(
+      '[Todos] not_found: no todo matching "Read the new" found for this user',
+    );
+    expect(
+      (await rows(entityId)).find((todo) => todo.id === news.id)?.status,
+    ).toBe("pending");
+
+    const created = await run(say(entityId, "add Read the new"), {
+      action: "create",
+      content: "Read the new",
+    });
+    expect(created.data?.duplicate).not.toBe(true);
+    expect(created.effectReceipts?.[0]?.outcome).toBe("applied");
+    expect((await rows(entityId)).map((todo) => todo.content).sort()).toEqual([
+      "Read the new",
+      "Read the news",
+    ]);
+
+    const done = await run(say(entityId, "complete Read the news"), {
+      action: "complete",
+      target: "Read the news",
+    });
+    expect(done.success).toBe(true);
+    expect(done.text).toBe('Marked "Read the news" done.');
+    const after = await rows(entityId);
+    expect(after.find((todo) => todo.id === news.id)?.status).toBe("completed");
+    expect(after.find((todo) => todo.content === "Read the new")?.status).toBe(
+      "pending",
+    );
+
+    const notesEntity = newEntity();
+    await seed(notesEntity, "review the notes");
+    const plural = await run(say(notesEntity, "add review the note"), {
+      action: "create",
+      content: "review the note",
+    });
+    expect(plural.data).toMatchObject({ duplicate: true });
+    expect(await rows(notesEntity)).toHaveLength(1);
   });
 
   it("keeps positive and negative numeric todos distinct through create and completion", async () => {

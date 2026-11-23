@@ -1,0 +1,43 @@
+{
+  "sources": [
+    "plugins/plugin-x/src/utils/memory.ts",
+    "plugins/plugin-x/src/duplicate-post-words.test.ts",
+    "plugins/plugin-x/quint/check-x-duplicate-post.mjs"
+  ],
+  "conformance": "plugins/plugin-x/quint/check-x-duplicate-post.mjs",
+  "bounds": "One agent writes three posts in turn, each one of six posts: \"GM ☀️\", \"gm frens\", \"Paradigm shift ahead.\", \"Ahead: shift, paradigm!\", \"wagmi\" and the emoji-only \"☀️\". They cover the same text, the same words in another order (similar word sets), one post's words inside another's, the letters of \"gm\" inside \"paradigm\" and \"wagmi\" (not a repeat), and a post with no words after normalization. Three posts never fill the ten-post window of recent posts. The conformance script replays all 216 generated sequences through TwitterPostClient.generateNewTweet on a SQLite runtime with the assistant plugin's POST_GENERATED handler, env (OAuth 1.0a) login and the real twitter-api-v2 client over HTTPS to a loopback api.x.com, and compares the posts that X received. The assistant handler also skips a post whose text equals a recent message; that is the model's same-text rule. Similarity thresholds other than 90%, posts with links, and the recent-post cache across restarts are not covered. Under weak fairness of the write step all three posts are written. Explicit stuttering lets the replay stop before that, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "x-duplicate-post",
+      "main": "XDuplicatePost",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "RecentNewestFirst",
+        "SentInOrder",
+        "SentRepeatsNone",
+        "SkipsOnlyRepeats",
+        "TypeOK"
+      ],
+      "temporal": ["ReplayEnds", "ReplayEndsWithoutFairness"],
+      "maxSteps": 8,
+      "samples": 4000,
+      "temporalChecks": [
+        {
+          "property": "ReplayEnds",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled write step eventually runs (weak fairness). This checks that every post is then written and either sent or skipped, not how long the post interval is."
+          ]
+        },
+        {
+          "property": "ReplayEndsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The replay may stop before the third post, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -56,7 +56,6 @@ export const todosPlugin: Plugin = {
         },
       ],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
 };

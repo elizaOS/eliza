@@ -36,6 +36,7 @@ import {
   looksLikeWebSearchRequest,
   normalizeActionIdentifier,
 } from "./direct-action-heuristics";
+import { replyIsClaimSafeAcknowledgment } from "./side-effect-claims.ts";
 
 export const PLANNING_ACK_REPLIES = new Set([
   "looking into it.",
@@ -58,6 +59,10 @@ export function looksLikeProgressOnlyReply(replyText: string): boolean {
   const normalized = replyText.trim().toLowerCase();
   if (!normalized) return false;
   if (PLANNING_ACK_REPLIES.has(normalized)) return true;
+  // Whatever the acknowledgment grammar would speak before a tool runs is an
+  // ack here too ("One sec.", "On it, let me check your calendar."). The
+  // grammar is a closed list, so no answer passes it.
+  if (replyIsClaimSafeAcknowledgment(replyText)) return true;
   return PROGRESS_ONLY_REPLY_REGEX.test(normalized);
 }
 

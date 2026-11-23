@@ -16,6 +16,7 @@ import {
   projectProtectedModelCallValue,
   projectToolDiagnosticValue,
   type RecordedStage,
+  type RecordedTrajectory,
   recordedStageToSemanticStage,
   sanitizeTrajectoryJsonObject,
   type TrajectoryDetailRecord as Trajectory,
@@ -28,6 +29,12 @@ import {
   type TrajectoryStepKind,
   timeInferenceSpan,
 } from "@elizaos/core";
+import {
+  projectRecordedTrajectories,
+  type RecordedTrajectoryHeader,
+  withRecordedTrajectoryHeader,
+  withRecordedTrajectoryStage,
+} from "./recorded-trajectory.ts";
 import {
   persistedTrajectoryToDetailRecord,
   type RuntimeTrajectoryExportOptions,
@@ -1927,6 +1934,7 @@ export async function appendSemanticStage(
   trajectoryId: string,
   stepId: string,
   semantic: TrajectorySemanticStageRecord,
+  recordedTrajectoryId?: string,
   retryState?: ActiveCaptureRetryState,
 ): Promise<void> {
   const now = retryState?.timestamp ?? Date.now();
@@ -1983,6 +1991,15 @@ export async function appendSemanticStage(
     });
   }
   step.semanticStages = nextStages;
+  if (recordedTrajectoryId !== undefined) {
+    // The stage and its membership in the recorded trajectory commit in one
+    // row write, so a reader never sees one without the other.
+    trajectory.metadata = withRecordedTrajectoryStage(
+      trajectory.metadata,
+      recordedTrajectoryId,
+      semantic.stageId,
+    );
+  }
   trajectory.startTime = Math.min(trajectory.startTime, now);
   trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
   trajectory.updatedAt = nextTrajectoryUpdatedAt(expectedUpdatedAt, now);
@@ -2006,11 +2023,94 @@ export async function appendSemanticStage(
     });
   }
   await yieldTrajectoryWriteRetry();
-  await appendSemanticStage(runtime, trajectoryId, stepId, semantic, {
-    attempt: attempt + 1,
-    recordId: semantic.stageId,
-    timestamp: now,
-  });
+  await appendSemanticStage(
+    runtime,
+    trajectoryId,
+    stepId,
+    semantic,
+    recordedTrajectoryId,
+    {
+      attempt: attempt + 1,
+      recordId: semantic.stageId,
+      timestamp: now,
+    },
+  );
+}
+
+/**
+ * Set a recorded trajectory's header on an active row. Stage ids already
+ * stored for it are kept. A terminal row rejects the write as a late capture;
+ * its projection then settles the header from the row's terminal status.
+ */
+export async function writeRecordedTrajectoryHeader(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  header: RecordedTrajectoryHeader,
+): Promise<void> {
+  for (
+    let attempt = 0;
+    attempt < MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS;
+    attempt += 1
+  ) {
+    const now = Date.now();
+    const persisted = await loadTrajectoryById(runtime, trajectoryId);
+    if (!persisted) {
+      throw new ElizaError(
+        "Trajectory row is unavailable for its recorded-trajectory header",
+        {
+          code: "TRAJECTORY_PARENT_NOT_FOUND",
+          context: { trajectoryId, recordedTrajectoryId: header.trajectoryId },
+        },
+      );
+    }
+    if (persisted.status !== "active") {
+      releaseTrajectoryBridgeState(runtime, persisted.id);
+      reportLateTrajectoryCapture(runtime, trajectoryId, "semanticStage");
+      return;
+    }
+    const expectedUpdatedAt = persisted.updatedAt;
+    persisted.metadata = withRecordedTrajectoryHeader(
+      persisted.metadata,
+      header,
+    );
+    persisted.updatedAt = nextTrajectoryUpdatedAt(expectedUpdatedAt, now);
+    try {
+      await saveTrajectory(runtime, persisted, {
+        changedStepIds: [],
+        requireActiveExisting: true,
+        expectedUpdatedAt,
+      });
+      return;
+    } catch (error) {
+      // error-policy:J7 An active version conflict is retried; a closed row is
+      // a late capture; other durability failures reject to the caller.
+      const errorCode = asRecord(error)?.code;
+      if (errorCode === "TRAJECTORY_OWNER_CLOSED") {
+        releaseTrajectoryBridgeState(runtime, persisted.id);
+        reportLateTrajectoryCapture(runtime, trajectoryId, "semanticStage");
+        return;
+      }
+      if (
+        errorCode === "TRAJECTORY_WRITE_CONFLICT" &&
+        attempt + 1 < MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS
+      ) {
+        await yieldTrajectoryWriteRetry();
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+/** Every recorded trajectory one stored row carries, in the per-file format. */
+export async function loadRecordedTrajectories(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+): Promise<RecordedTrajectory[] | null> {
+  requireTrajectoryDatabase(runtime);
+  if (!(await ensureTrajectoriesTable(runtime))) return null;
+  const persisted = await loadTrajectoryById(runtime, trajectoryId);
+  return persisted ? projectRecordedTrajectories(persisted) : null;
 }
 
 /**

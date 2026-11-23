@@ -25,7 +25,10 @@ const deletion = deletionCandidate;
 
 type Context = {
   service: NotesService;
-  remove: (parameters: Record<string, unknown>) => Promise<ActionResult>;
+  remove: (
+    parameters: Record<string, unknown>,
+    text?: string,
+  ) => Promise<ActionResult>;
 };
 
 async function withService(run: (context: Context) => Promise<void>) {
@@ -56,9 +59,10 @@ async function withService(run: (context: Context) => Promise<void>) {
   await service.initialize();
   const remove = async (
     parameters: Record<string, unknown>,
+    text = "Delete the Alpha launch check note.",
   ): Promise<ActionResult> => {
     const request = await boundNotesRequest(runtime, {
-      text: "Delete the selected saved note.",
+      text,
       operations: ["delete"],
     });
     const result = await request.handler(deletion, parameters);
@@ -113,11 +117,24 @@ test("exact ID deletes only its selected note when titles match", () =>
     const target = await seed(service);
     const other = await seed(service, "Bring water.");
     const before = service.snapshot().revision;
-    await assert.rejects(remove({ content: target.title }), {
-      code: "NOTES_AMBIGUOUS_NOTE",
-    });
+    const ambiguous = await remove({ content: target.title });
+    assert.equal(ambiguous.error, "NOTES_AMBIGUOUS_NOTE");
+    assert.deepEqual(
+      (ambiguous.data?.candidates as Array<{ id: string }> | undefined)
+        ?.map((note) => note.id)
+        .sort(),
+      [target.id, other.id].sort(),
+    );
     assert.equal(service.snapshot().revision, before);
-    const result = await remove({ noteId: target.id });
+    // A planner picking one candidate's ID for the same named request is not
+    // the owner's selection; it asks again instead of deleting.
+    const repicked = await remove({ noteId: target.id });
+    assert.equal(repicked.error, "NOTES_AMBIGUOUS_NOTE");
+    assert.equal(service.snapshot().revision, before);
+    const result = await remove(
+      { noteId: target.id },
+      "The one about the jacket.",
+    );
     assert.equal(result.success, true);
     assert.ok(result.data);
     assert.equal(result.data.noteId, target.id);
@@ -172,12 +189,14 @@ test("unknown IDs and IDs passed as text are never reinterpreted", () =>
   withService(async ({ service, remove }) => {
     const target = await seed(service);
     const before = service.snapshot();
-    await assert.rejects(remove({ noteId: "note-missing-id" }), {
-      code: "NOTES_NOT_FOUND",
-    });
-    await assert.rejects(remove({ content: target.id }), {
-      code: "NOTES_NOT_FOUND",
-    });
+    for (const parameters of [
+      { noteId: "note-missing-id" },
+      { content: target.id },
+    ]) {
+      const result = await remove(parameters);
+      assert.equal(result.success, false);
+      assert.equal(result.error, "NOTES_NOT_FOUND");
+    }
     assert.deepEqual(service.snapshot(), before);
   }));
 

@@ -59,7 +59,36 @@ import {
   type World,
 } from "@elizaos/core";
 import { App, LogLevel } from "@slack/bolt";
-import { WebClient as SlackWebClient } from "@slack/web-api";
+import {
+  ErrorCode,
+  type RetryOptions,
+  retryPolicies,
+  WebClient as SlackWebClient,
+} from "@slack/web-api";
+
+/**
+ * Retry policy for calls that post to Slack. `@slack/web-api` retries any
+ * non-200 answer or network error by default, and `chat.postMessage` has no
+ * idempotency key: when Slack stored the message but the answer was lost, the
+ * retry posts it again. Only a rate limit (Slack stored nothing) is retried.
+ *
+ * The library signals "rate limited, retry after the wait" with an error that
+ * has no code. A non-200 answer and a network failure are its coded HTTP and
+ * request errors; those stop the retry.
+ */
+export const OUTBOUND_RETRY_CONFIG: RetryOptions & {
+  // `WebClient` hands `retryConfig` to p-retry, which stops when this throws.
+  // The exported `RetryOptions` type does not list it.
+  onFailedAttempt: (error: Error) => void;
+} = {
+  ...retryPolicies.tenRetriesInAboutThirtyMinutes,
+  onFailedAttempt: (error) => {
+    const code = (error as { code?: unknown }).code;
+    if (code === ErrorCode.HTTPError || code === ErrorCode.RequestError) {
+      throw error;
+    }
+  },
+};
 
 type WebClient = App["client"];
 type AccountScopedTargetInfo = TargetInfo & { accountId?: string };
@@ -509,7 +538,11 @@ import {
   type ResolvedSlackAccount,
   resolveDefaultSlackAccountId,
 } from "./accounts";
-import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
+import {
+  decodeSlackEntities,
+  markdownToSlackMrkdwn,
+  splitSlackText,
+} from "./formatting";
 import {
   fetchSlackFileBytes,
   normalizeSlackFiles,
@@ -554,6 +587,8 @@ type SlackAccountRuntime = {
    * accounts ignore it and keep using the bot client.
    */
   userClient: WebClient | null;
+  /** Bot-token client for posts and file uploads, with `OUTBOUND_RETRY_CONFIG`. Reads stay on `client`. */
+  outboundClient: WebClient;
   botUserId: string | null;
   teamId: string | null;
   policy: SlackAccountPolicyResolver;
@@ -986,8 +1021,13 @@ export class SlackService extends Service implements ISlackService {
       // `SlackWebClient` — a direct `as WebClient` cast is correct
       // and a future type divergence will surface as an error here.
       const userClient = account.userToken
-        ? (new SlackWebClient(account.userToken) as WebClient)
+        ? (new SlackWebClient(account.userToken, {
+            retryConfig: OUTBOUND_RETRY_CONFIG,
+          }) as WebClient)
         : null;
+      const outboundClient = new SlackWebClient(account.botToken, {
+        retryConfig: OUTBOUND_RETRY_CONFIG,
+      }) as WebClient;
 
       const authResult = await app.client.auth.test();
       const botUserId =
@@ -1042,6 +1082,7 @@ export class SlackService extends Service implements ISlackService {
         app,
         client: app.client,
         userClient,
+        outboundClient,
         botUserId,
         teamId,
         policy,
@@ -1158,26 +1199,24 @@ export class SlackService extends Service implements ISlackService {
     if (!app) return;
 
     // Handle regular messages
-    app.message(async ({ message, client, body }) => {
+    app.message(async ({ message, body }) => {
       if (!this.isInboundWorkspaceAuthorized(accountId, body, "message")) {
         return;
       }
       await this.handleMessage(
         message as SlackMessageEventType,
-        client,
         accountId,
         body,
       );
     });
 
     // Handle app mentions
-    app.event("app_mention", async ({ event, client, body }) => {
+    app.event("app_mention", async ({ event, body }) => {
       if (!this.isInboundWorkspaceAuthorized(accountId, body, "app_mention")) {
         return;
       }
       await this.handleAppMention(
         event as SlackAppMentionEventType,
-        client,
         accountId,
         body,
       );
@@ -1298,7 +1337,7 @@ export class SlackService extends Service implements ISlackService {
     }
     if (state.account.role === "OWNER") {
       if (state.account.config.userTokenReadOnly === true) {
-        return state.client;
+        return state.outboundClient;
       }
       if (!state.userClient) {
         this.runtime.logger.warn(
@@ -1309,7 +1348,7 @@ export class SlackService extends Service implements ISlackService {
         return state.userClient;
       }
     }
-    return state.client;
+    return state.outboundClient;
   }
 
   private getPolicyForAccount(
@@ -1459,7 +1498,6 @@ export class SlackService extends Service implements ISlackService {
 
   private async authorizeInboundEvent(
     event: Parameters<SlackAccountPolicyResolver["authorize"]>[0],
-    client: WebClient,
     accountId: string,
   ): Promise<SlackInboundPolicyDecision> {
     const policy = this.getPolicyForAccount(accountId);
@@ -1489,7 +1527,15 @@ export class SlackService extends Service implements ISlackService {
     }
 
     if (decision.pairingReply) {
-      await client.chat.postMessage({
+      // A pairing reply comes from the account's policy, which lives in its
+      // state, so the state and its outbound client exist here.
+      const outbound = this.getAccountState(accountId)?.outboundClient;
+      if (!outbound) {
+        throw new Error(
+          `Slack account ${accountId} has a pairing reply but no account state`,
+        );
+      }
+      await outbound.chat.postMessage({
         channel: event.channelId,
         text: decision.pairingReply,
       });
@@ -1516,7 +1562,6 @@ export class SlackService extends Service implements ISlackService {
 
   private async handleMessage(
     message: SlackMessageEventType,
-    client: WebClient,
     accountId = this.defaultAccountId,
     body?: unknown,
   ): Promise<void> {
@@ -1595,7 +1640,6 @@ export class SlackService extends Service implements ISlackService {
         isBotMessage: Boolean(message.bot_id),
         ...workspace,
       },
-      client,
       accountId,
     );
     if (!gate.allowed) return;
@@ -1683,7 +1727,6 @@ export class SlackService extends Service implements ISlackService {
 
   private async handleAppMention(
     event: SlackAppMentionEventType,
-    client: WebClient,
     accountId = this.defaultAccountId,
     body?: unknown,
   ): Promise<void> {
@@ -1718,7 +1761,6 @@ export class SlackService extends Service implements ISlackService {
         isBotMessage: false,
         ...workspace,
       },
-      client,
       accountId,
     );
     if (!gate.allowed) return;
@@ -2550,7 +2592,7 @@ export class SlackService extends Service implements ISlackService {
       roomId,
       entityId,
       content: {
-        text: message.text || "",
+        text: decodeSlackEntities(message.text || ""),
         source: "slack",
         name: displayName,
         metadata: { accountId },
@@ -2614,9 +2656,11 @@ export class SlackService extends Service implements ISlackService {
     const displayName = user ? getSlackUserDisplayName(user) : event.user;
 
     // Remove the bot mention from the text
-    const cleanText = event.text
-      .replace(`<@${this.getBotUserIdForAccount(accountId)}>`, "")
-      .trim();
+    const cleanText = decodeSlackEntities(
+      event.text
+        .replace(`<@${this.getBotUserIdForAccount(accountId)}>`, "")
+        .trim(),
+    );
 
     const media: Media[] = await this.rehostInboundFiles(
       normalizeSlackFiles(event.files),
@@ -4499,24 +4543,7 @@ export class SlackService extends Service implements ISlackService {
         (item): item is { type: "message"; message: Record<string, unknown> } =>
           item.type === "message" && "message" in item && !!item.message,
       )
-      .map((item) => ({
-        type: item.message.type as string,
-        subtype: item.message.subtype as string | undefined,
-        ts: item.message.ts as string,
-        user: item.message.user as string | undefined,
-        botId: item.message.bot_id as string | undefined,
-        text: item.message.text as string,
-        threadTs: item.message.thread_ts as string | undefined,
-        replyCount: item.message.reply_count as number | undefined,
-        replyUsersCount: item.message.reply_users_count as number | undefined,
-        latestReply: item.message.latest_reply as string | undefined,
-        reactions: item.message.reactions as
-          | { name: string; count: number; users: string[] }[]
-          | undefined,
-        files: normalizeSlackFiles(item.message.files),
-        attachments: item.message.attachments as SlackAttachment[] | undefined,
-        blocks: item.message.blocks as SlackBlock[] | undefined,
-      }));
+      .map((item) => this.wireMessageToSlackMessage(item.message));
   }
 
   async readHistory(
@@ -4576,7 +4603,7 @@ export class SlackService extends Service implements ISlackService {
       ts: msg.ts as string,
       user: msg.user as string | undefined,
       botId: msg.bot_id as string | undefined,
-      text: msg.text as string,
+      text: decodeSlackEntities(String(msg.text ?? "")),
       threadTs: msg.thread_ts as string | undefined,
       replyCount: msg.reply_count as number | undefined,
       replyUsersCount: msg.reply_users_count as number | undefined,
@@ -4729,7 +4756,12 @@ export class SlackService extends Service implements ISlackService {
     options?: { title?: string; initialComment?: string; threadTs?: string },
     accountId?: string | null,
   ): Promise<{ fileId: string; permalink: string }> {
-    const client = this.getClientForAccount(accountId);
+    // files.uploadV2 ends with files.completeUploadExternal, which Slack
+    // completes only once. Use the bot client with OUTBOUND_RETRY_CONFIG so
+    // a lost answer after Slack shared the file is not sent again.
+    const client =
+      this.getAccountState(accountId)?.outboundClient ??
+      this.getClientForAccount(accountId);
     if (!client) {
       throw new Error("Slack client not initialized");
     }

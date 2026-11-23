@@ -81,8 +81,11 @@ describe("isLifeSaveRetraction", () => {
     "Never mind.",
     "delete it",
     "actually don't save that one",
+    // iOS and macOS smart punctuation type U+2019 for the apostrophe.
+    "actually don’t save that one",
     "oh wait, cancel that",
     "no, don't keep it",
+    "no, don’t keep it",
     "undo the last one",
     "get rid of it",
   ])("treats %j as a retraction", (text) => {
@@ -91,6 +94,7 @@ describe("isLifeSaveRetraction", () => {
 
   it.each([
     "don't forget to set it for 9",
+    "don’t forget to set it for 9",
     "don't set it for 9, set it for 10",
     "the dentist reminder, delete it",
     "remind me to call mom, never mind the time",

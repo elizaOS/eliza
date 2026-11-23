@@ -273,9 +273,12 @@ describe("umbrella children consolidation on the planner wire", () => {
     const tools = collectPlannerTools(context, undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual(
-      ["TASKS", "REPLY", "IGNORE", "STOP"].sort(),
-    );
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "IGNORE",
+      "STOP",
+      "TASKS",
+      "REPLY",
+    ]);
     expect(collectCanonicalPlannerActions(actions)).toEqual([actions[0]]);
     const umbrella = tools.find((tool) => tool.name === "TASKS");
     const contracts = aliasContracts(umbrella?.description);
@@ -352,9 +355,13 @@ describe("umbrella children consolidation on the planner wire", () => {
     const tools = collectPlannerTools(contextFor(actions), undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual(
-      ["CONTACT", "DATABASE", "REPLY", "IGNORE", "STOP"].sort(),
-    );
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "IGNORE",
+      "STOP",
+      "CONTACT",
+      "DATABASE",
+      "REPLY",
+    ]);
     expect(
       tools.find((tool) => tool.name === "CONTACT")?.parameters.required,
     ).toEqual(["action"]);
@@ -395,9 +402,12 @@ describe("umbrella children consolidation on the planner wire", () => {
     const tools = collectPlannerTools(lossy.context, undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual(
-      ["TASKS", ...direct, "REPLY", "IGNORE", "STOP"].sort(),
-    );
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "IGNORE",
+      "STOP",
+      ...["TASKS", ...direct].sort(),
+      "REPLY",
+    ]);
     expect(
       aliasContracts(
         tools.find((tool) => tool.name === "TASKS")?.description,

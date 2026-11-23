@@ -562,7 +562,6 @@ describe("Stage 1 response format", () => {
       expect.objectContaining({
         src: "service:message",
         finishReason: "length",
-        maxTokens: undefined,
       }),
       "[message] Stage 1 hit the completion-token limit",
     );

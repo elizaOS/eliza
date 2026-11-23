@@ -9,6 +9,7 @@ import {
   type MapsChatMessageInput,
   projectMapsChatText,
 } from "../message-maps-text";
+import { parseMapsCardBody } from "../message-maps-parser";
 
 const place = {
   name: "Ferry Building",
@@ -137,6 +138,45 @@ describe("projectMapsChatText", () => {
       lines: ["Name a starting place."],
       attribution: "",
     });
+  });
+
+  it("reads what a locate card is for and drops a malformed optional field", () => {
+    const prompt = "I need your precise location to start the route to Casino.";
+    const locate = { kind: "locate", intent: "route-origin", prompt };
+    expect(
+      parseMapsCardBody(
+        JSON.stringify({ ...locate, destination: place, travelMode: "walk" }),
+      ),
+    ).toEqual({ ...locate, destination: place, travelMode: "walk" });
+    expect(
+      parseMapsCardBody(
+        JSON.stringify({
+          ...locate,
+          query: "nearest pharmacy",
+          destination: { name: "No coordinates" },
+          travelMode: "teleport",
+        }),
+      ),
+    ).toEqual({ ...locate, query: "nearest pharmacy" });
+    // A card from an older agent has the prompt only.
+    expect(parseMapsCardBody(JSON.stringify(locate))).toEqual(locate);
+  });
+
+  it("keeps the place a search was made around, and drops an unreadable one", () => {
+    const places = {
+      kind: "places",
+      query: "pharmacy",
+      places: [{ ...place, name: "Pharmacy 1", providerPlaceId: "rx1" }],
+      nextCursor: null,
+      attribution,
+    };
+    expect(
+      parseMapsCardBody(JSON.stringify({ ...places, near: place })),
+    ).toEqual({ ...places, near: place });
+    expect(
+      parseMapsCardBody(JSON.stringify({ ...places, near: { name: "x" } })),
+    ).toEqual(places);
+    expect(parseMapsCardBody(JSON.stringify(places))).toEqual(places);
   });
 
   it("keeps the share question as prose and offers its two exact answers", () => {

@@ -323,8 +323,9 @@ export class GoogleDomain {
     await this.ctx.repository.deleteGmailSyncState(
       this.ctx.agentId(),
       "google",
-      grant.id,
+      undefined,
       grant.side,
+      grant.id,
     );
     await this.ctx.repository.deleteCachedInboxMessagesForGmailAccount(
       this.ctx.agentId(),

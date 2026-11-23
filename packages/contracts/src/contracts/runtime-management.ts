@@ -9,9 +9,6 @@ export const RUNTIME_MANAGEMENT_OPERATIONS = [
   "deny_pairing",
   "revoke",
   "remove",
-  "retry",
-  "inspect_ssh",
-  "connect_ssh",
   "add_direct",
   "enroll_host",
   "approve_pairing",
@@ -28,11 +25,6 @@ export interface RuntimeManagementRequest {
   targetId?: string;
   runtimeId?: string;
   label?: string;
-  target?: string;
-  sshPort?: number;
-  remoteApiPort?: number;
-  expectedFingerprint?: string;
-  identityFile?: string;
   apiBase?: string;
   sessionId?: string;
   code?: string;

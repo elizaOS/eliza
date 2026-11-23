@@ -86,3 +86,33 @@ test("page script has no path to the host-native vault controls", () => {
     /destroy/i,
   );
 });
+
+test("portable password snapshots recover only with the correct recovery key and account", (t) => {
+  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "password-backup-"));
+  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
+  const bin = (name) =>
+    process.env.JAVA_HOME
+      ? path.join(process.env.JAVA_HOME, "bin", name)
+      : name;
+  execFileSync(
+    bin("javac"),
+    [
+      "-d",
+      classes,
+      path.join(custody, "PasswordBackupEnvelope.java"),
+      path.join(custody, "PasswordVaultFrame.java"),
+      path.join(plugin, "test/native-host/PasswordBackupEnvelopeTest.java"),
+    ],
+    { timeout: 60000 },
+  );
+  const output = execFileSync(
+    bin("java"),
+    [
+      "-cp",
+      classes,
+      "ai.eliza.plugins.securestore.nativeonly.PasswordBackupEnvelopeTest",
+    ],
+    { timeout: 60000, encoding: "utf8" },
+  );
+  assert.match(output, /^6 assertions passed/);
+});

@@ -193,7 +193,9 @@ async function readRuntimeAccountRecord(
     const account = await store?.getAccount(accountId);
     if (account) return account;
   } catch {
-    return null;
+    // error-policy:J4 this account source did not resolve; fall through to the
+    // next lookup strategy below. A store failure must not consume the last
+    // lookup and be reported as "this account has no credentials".
   }
 
   try {

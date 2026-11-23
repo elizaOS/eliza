@@ -88,6 +88,34 @@ public final class NoticeHostTest {
    check(original.getSuppressed().length==1&&original.getSuppressed()[0]==cleanup&&routes.token(id)!=null&&poster.posts==0&&!fault.values.containsKey("host-approvals:v1"));
   }
  }
+ /** A per-approval title is posted, recorded in the digest and matched by every later call; the configured
+  * title stays the default. */
+ private static void approvalTitles(String binding,long now,long minute)throws Exception{
+  String id="approval-"+"3".repeat(64),title="Approve step of Morning brief";
+  Store store=new Store();Poster poster=new Poster();NoticeDelivery delivery=new NoticeDelivery(DELIVERY,store,poster);
+  NoticeRoutes routes=new NoticeRoutes(store,ROUTES);NoticeCoordinator coordinator=new NoticeCoordinator(delivery,routes);
+  rejects(()->coordinator.postApproval(id,binding,route("owner","titled"),"",now+10*minute,now));check(routes.token(id)==null&&poster.posts==0);
+  check("succeeded".equals(coordinator.postApproval(id,binding,route("owner","titled"),title,now+10*minute,now)));
+  check(poster.active.get(id).equals(title+"\nOpen the app to review it.")&&poster.posts==1);
+  check(hash(new JSONArray().put(title).put("Open the app to review it.")).equals(new JSONObject(store.values.get("host-approvals:v1")).getJSONObject(id).getString("digest")));
+  // The same approval under another title (or the configured one) is a different notice and is refused.
+  rejects(()->delivery.publishApproval(id,binding,now+10*minute,now+minute));
+  rejects(()->delivery.publishApproval(id,binding,"Other title",now+10*minute,now+minute));
+  check("succeeded".equals(delivery.publishApproval(id,binding,title,now+10*minute,now+minute))&&poster.posts==1);
+  // An uncertain receipt is promoted by recheck only from the exact titled notice Android shows.
+  JSONObject ledger=new JSONObject(store.values.get("host-approvals:v1"));ledger.getJSONObject(id).put("status","unknown");store.values.put("host-approvals:v1",ledger.toString());
+  poster.active.put(id,"Step waiting for approval\nOpen the app to review it.");check("unknown".equals(delivery.recheck(id)));
+  poster.active.put(id,title+"\nOpen the app to review it.");check("succeeded".equals(delivery.recheck(id)));
+  // The owner fence keeps the titled notice resumable, and the quiet repost uses the same title.
+  check(coordinator.withdrawOtherOwners(NoticeOwner.fromRoute(route("second","x")),now+minute)==1&&!poster.active.containsKey(id));
+  coordinator.withdrawOtherOwners(NoticeOwner.fromRoute(route("owner","x")),now+2*minute);
+  rejects(()->coordinator.resumeApproval(id,binding,route("owner","titled"),now+10*minute,now+2*minute));
+  check("succeeded".equals(coordinator.resumeApproval(id,binding,route("owner","titled"),title,now+10*minute,now+2*minute))&&poster.quiet==1);
+  check(poster.active.get(id).equals(title+"\nOpen the app to review it."));
+  coordinator.withdrawApproval(id,now+3*minute);check(poster.cancelled.contains(id)&&!poster.active.containsKey(id));
+  // The quiet repost counted as a second post; a withdrawn approval never posts again.
+  check("withdrawn".equals(coordinator.postApproval(id,binding,route("owner","titled"),title,now+10*minute,now+4*minute))&&poster.posts==2);
+ }
  public static void main(String[] args)throws Exception{
   // Configuration keeps routes, owner fence and receipts in distinct deployed slots.
   rejects(()->new NoticeRoutes.Config("host-notices:v1","host-owner:v1",DELIVERY,"runId"));
@@ -124,6 +152,7 @@ public final class NoticeHostTest {
   coordinator.withdrawApproval(approval,now+3*minute);check(routes.token(approval)==null&&poster.cancelled.contains(approval));
   check("withdrawn".equals(coordinator.postApproval(approval,binding,route("owner","run-a"),now+10*minute,now+4*minute)));check(routes.token(approval)==null);
   approvalFailureCleanup(binding,now,minute);
+  approvalTitles(binding,now,minute);
   // Journal recovery promotes an admitted attempt only from its original receipt and never reposts.
   String scope="c".repeat(64),proposal="proposal",operationId="notice";
   JSONObject operation=new JSONObject().put("type","post_notification").put("title","Reviewed title").put("body","Reviewed body");

@@ -1,7 +1,8 @@
 /**
- * A planner tool call cut off at its output cap must surface as incomplete
- * output with its evidence, which the planner retries once, not as an invalid
- * tool call that fails the turn.
+ * A planner tool call cut off at an explicit output cap must surface as
+ * incomplete output with its evidence, not as an invalid tool call. Planner
+ * rounds send no cap; this checks that the adapter forwards one it is given
+ * and reports the stop.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, expect, it, vi } from "vitest";

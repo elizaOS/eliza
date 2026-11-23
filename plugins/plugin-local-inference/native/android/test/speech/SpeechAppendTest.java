@@ -25,7 +25,8 @@ public final class SpeechAppendTest {
   public synchronized int write(float[] samples,int offset,int length){for(int i=offset;i<offset+length;i++)heard.add(samples[i]);written+=length;return length;}
   public long playedFrames(){long cap=limit;return cap<0?written:Math.min(cap,written);}
   public long presentationNs(long frame){return VoiceLatencyTrials.UNSET;}
-  public void setVolume(float volume){}
+  volatile float volume=1f;
+  public void setVolume(float gain){volume=gain;}
   public void abort(){aborts.incrementAndGet();}
   public void stop(){stops.incrementAndGet();}
   public void release(){releases.incrementAndGet();}
@@ -51,6 +52,13 @@ public final class SpeechAppendTest {
   check(!speech.audible(),"nothing has played yet");
   out.limit=100;
   check(speech.audible()&&speech.pendingFrames()==380,"speech is audible while offered audio remains");
+  speech.setOutputMuted(true);
+  speech.duck(true);
+  check(out.volume==0f&&out.aborts.get()==0&&speech.pendingFrames()==380,"mute keeps the active track and its audio without overriding mute on duck");
+  speech.setOutputMuted(false);
+  check(out.volume==SpeechAudioFocusPolicy.DUCK_VOLUME,"unmuting restores the current focus gain");
+  speech.duck(false);
+  check(out.volume==1f&&out.plays.get()==1,"restoring focus keeps the same playback");
   check(!speech.finished()&&speech.extend(),"a playing utterance accepts the next sentence");
   long[] reached={-1,-1};AtomicInteger marks=new AtomicInteger();
   speech.mark((nanos,buffered)->{marks.incrementAndGet();reached[0]=out.written;reached[1]=buffered;});

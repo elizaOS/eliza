@@ -188,8 +188,6 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     ShellModalityProvider: Children,
     ShellRoleProvider: Children,
     DeveloperWorkspace: Children,
-    DesktopSurfaceNavigationRuntime: () => null,
-    DesktopTrayRuntime: () => null,
     ManagedCloudPage: () => null,
     NetworkHomePage: null,
     MarketingHomePage: () => null,

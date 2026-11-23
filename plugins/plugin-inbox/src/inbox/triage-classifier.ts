@@ -12,6 +12,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
+  parseJsonModelArray,
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
@@ -234,48 +235,23 @@ export function buildTriagePrompt(
   return sections.join("\n");
 }
 
-// Legacy JSON fallback: strip a surrounding markdown code fence from older
-// model output, e.g. ```json\n[...]\n``` or ```\n[...]\n```.
-const TRIAGE_CODE_FENCE_PATTERN =
-  /^\s*```(?:json5|json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
-
-// Parse a legacy JSON array returned by older classifier prompts. We tolerate
-// code fences and leading <think> blocks, but we do NOT regex-slice an array
-// out of arbitrary prose because that silently accepts malformed output.
+// Parse a legacy JSON array returned by older classifier prompts through the
+// core model-JSON parser, which tolerates a whole ```json / ```json5 code fence
+// and a leading reasoning block (any shared reasoning tag name, any case), the
+// same way the object answer is read. We do NOT regex-slice an array out of
+// arbitrary prose because that silently accepts malformed output.
 function parseTriageJsonArray(raw: string): unknown[] {
-  let candidate = raw.trim();
-  if (candidate.length === 0) {
+  if (raw.trim().length === 0) {
     throw new InboxTriageClassificationError(
       "Inbox classification returned an empty response.",
     );
   }
-  // Strip a leading <think>...</think> block (some reasoning models emit one).
-  const thinkEnd = candidate.indexOf("</think>");
-  if (candidate.startsWith("<think>") && thinkEnd !== -1) {
-    candidate = candidate.slice(thinkEnd + "</think>".length).trim();
-  }
-  const fenced = candidate.match(TRIAGE_CODE_FENCE_PATTERN);
-  if (fenced) {
-    candidate = (fenced[1] ?? "").trim();
-  }
-  if (!candidate.startsWith("[")) {
-    throw new InboxTriageClassificationError(
-      "Inbox classification did not return a JSON array.",
-    );
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(candidate) as unknown;
-  } catch (error) {
+  const parsed = parseJsonModelArray(raw);
+  if (!parsed) {
     logger.warn(
-      { src: "inbox-classifier", error: String(error) },
+      { src: "inbox-classifier" },
       "[InboxTriageClassifier] failed to parse LLM classification JSON",
     );
-    throw new InboxTriageClassificationError(
-      "Inbox classification JSON parsing failed.",
-    );
-  }
-  if (!Array.isArray(parsed)) {
     throw new InboxTriageClassificationError(
       "Inbox classification did not return a JSON array.",
     );

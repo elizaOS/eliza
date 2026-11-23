@@ -66,7 +66,6 @@ const catalogRouteGroups = [
       { label: "Database", path: "/apps/database", icon: "database" },
       { label: "Logs", path: "/apps/logs", icon: "list" },
       { label: "LifeOps test", path: "/lifeops-live-test", icon: "pulse" },
-      { label: "Desktop", path: "/desktop", icon: "desktop" },
       { label: "Cloud apps", path: "/cloud-apps", icon: "cloud" },
     ],
   },

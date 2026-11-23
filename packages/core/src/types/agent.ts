@@ -41,7 +41,6 @@ export interface CharacterSettings {
 	alwaysRespondChannels?: string;
 	alwaysRespondSources?: string;
 	defaultTemperature?: number;
-	defaultMaxTokens?: number;
 	defaultFrequencyPenalty?: number;
 	defaultPresencePenalty?: number;
 	extra?: JsonObject;

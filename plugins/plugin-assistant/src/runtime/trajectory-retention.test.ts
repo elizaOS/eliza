@@ -15,7 +15,7 @@ import {
 import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { basicServices } from "../features/basic-capabilities/index.ts";
-import { createJsonFileTrajectoryRecorder } from "./trajectory-recorder.ts";
+import { createTrajectoryRecorder } from "../features/trajectories/recorded-trajectories.ts";
 import {
   FileTrajectoryRetentionService,
   installTrajectoryRetention,
@@ -202,7 +202,8 @@ describe("trajectory file retention", () => {
       if (!service || !taskService)
         throw new Error("File recorder task services did not start");
       expect(runtime.getService("trajectory_logger")).toBeNull();
-      const recorder = createJsonFileTrajectoryRecorder({
+      const recorder = createTrajectoryRecorder({
+        runtime,
         rootDir: root,
         enabled: true,
       });

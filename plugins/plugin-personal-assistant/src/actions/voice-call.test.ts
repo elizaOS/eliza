@@ -3,14 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const twilio = vi.hoisted(() => ({
   sendTwilioVoiceCall: vi.fn(),
+  configured: true,
 }));
 
 vi.mock("@elizaos/plugin-native-phone/twilio", () => ({
-  readTwilioCredentialsFromEnv: () => ({
-    accountSid: "AC00000000000000000000000000000000",
-    authToken: "test-token",
-    fromPhoneNumber: "+15550000001",
-  }),
+  readTwilioCredentialsFromEnv: () =>
+    twilio.configured
+      ? {
+          accountSid: "AC00000000000000000000000000000000",
+          authToken: "test-token",
+          fromPhoneNumber: "+15550000001",
+        }
+      : null,
   sendTwilioVoiceCall: twilio.sendTwilioVoiceCall,
 }));
 
@@ -94,6 +98,21 @@ async function callTwice(
   );
   return { draft, confirmed };
 }
+
+describe("VOICE_CALL availability", () => {
+  afterEach(() => {
+    twilio.configured = true;
+  });
+  it("is offered only when Twilio can place a call", async () => {
+    const runtime = makeRuntime();
+    const message = makeMessage("call 415-555-0100");
+    expect(await voiceCallAction.validate(runtime, message)).toBe(true);
+    // Unconfigured, a phone's "call ..." turn must reach the phone's own
+    // reviewed call instead of a Twilio dial that can only fail.
+    twilio.configured = false;
+    expect(await voiceCallAction.validate(runtime, message)).toBe(false);
+  });
+});
 
 describe("VOICE_CALL external recipient with non-Latin contact names", () => {
   const savedAllowList = process.env.TWILIO_CALL_EXTERNAL_ALLOWLIST;
