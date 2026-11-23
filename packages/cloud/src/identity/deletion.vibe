@@ -103,10 +103,10 @@ effect function erasePersonalData(tx: Tx, userId: string, organizationId: string
     ["DELETE FROM cloud_spent_refresh WHERE session_key IN (SELECT key FROM sessions WHERE user_id = $1)", [userId]],
     ["DELETE FROM sessions WHERE user_id = $1", [userId]],
     ["DELETE FROM device_grants WHERE user_id = $1", [userId]],
+    ["DELETE FROM oauth_attempts WHERE link_user_id = $1 OR google_subject IN (SELECT provider_subject FROM cloud_sign_in_identities WHERE account_id = $1 AND provider = 'google')", [userId]],
     ["DELETE FROM cloud_sign_in_identities WHERE account_id = $1", [userId]],
     ["DELETE FROM second_factors WHERE key = $1", [userId]],
     ["DELETE FROM method_reviews WHERE key = $1", [userId]],
-    ["DELETE FROM oauth_attempts WHERE link_user_id = $1", [userId]],
     ["DELETE FROM referral_codes WHERE user_id = $1", [userId]],
     ["DELETE FROM google_connect_states WHERE user_id = $1", [userId]],
     ["DELETE FROM google_connections WHERE user_id = $1", [userId]],
@@ -122,7 +122,8 @@ effect function erasePersonalData(tx: Tx, userId: string, organizationId: string
     ["DELETE FROM cloud_speech_consents WHERE account_id = $1", [userId]],
     ["DELETE FROM code_challenges WHERE user_id = $1 OR destination_digest = ANY($2::text[])", [userId, digests]],
     ["DELETE FROM cloud_code_challenges WHERE destination = ANY($1::text[])", [destinations]],
-    ["DELETE FROM loopback_messages WHERE destination = ANY($1::text[])", [destinations]]
+    ["DELETE FROM loopback_messages WHERE destination = ANY($1::text[])", [destinations]],
+    ["UPDATE organizations SET name = 'Deleted account' WHERE id = $2 AND NOT EXISTS (SELECT 1 FROM accounts peer WHERE peer.organization_id = $2 AND peer.key <> $1 AND peer.status <> 'erased')", [userId, organizationId]]
   ]
   for (const [statement, params] of owned) try tx.query(statement, params)
   try stepAccount(tx, userId, { type: "erase" }, now, { email: null, phone: null, name: null })
