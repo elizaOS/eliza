@@ -25,9 +25,7 @@ export const meta: ComponentMeta<DialogProps> = {
   args: { children },
   examples: { Open: { defaultOpen: true } },
   play: {
-    // Opened from the keyboard, it takes focus; Escape and the close button dismiss it, and focus goes back to the trigger.
     Default: async () => {
-      // Focus goes back a moment after the dialog closes.
       const trigger = screen.getByRole("button", { name: "Delete" });
       trigger.focus();
       await userEvent.keyboard("{Enter}");

@@ -73,7 +73,7 @@ export interface LocalModelsApi {
   download(id: CatalogId): void!Rejected
   cancelDownload(id: CatalogId): void!Rejected
   assign(slot: ModelSlot, id: CatalogId | undefined): void!Rejected
-  activate(id: CatalogId): ActiveStatus!Rejected
+  activate(id: CatalogId): void!Rejected
   deactivate(): void!Rejected
   uninstall(id: CatalogId): void!Rejected
   repairAssignments(): void!(Rejected | AssignmentsUnreadable)
@@ -123,6 +123,7 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
 
   const files = new Map<CatalogId, readonly InstalledFile[]>()
   const fibers = new Map<CatalogId, Fiber.Fiber<void, never>>()
+  let loading: Fiber.Fiber<void, never> | undefined = undefined
   const lock = Semaphore.makeUnsafe(1)
   const directoryOf = (model: CatalogModel) => model.source.kind === "pinned" ? modelsDirectory : path.join(modelsDirectory, model.name)
   const failed = (model: CatalogModel, reason: string) => new DownloadFailed({ model: model.name, reason })
@@ -179,6 +180,11 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
   }
 
   const change = (event: Event) => lock.withPermits(1)(changed(event))
+
+  effect function stopLoading() {
+    if (loading !== undefined) try Fiber.interrupt(loading)
+    loading = undefined
+  }
 
   function installedOf(id: CatalogId): InstalledModel {
     const model = catalog[id]
@@ -334,24 +340,29 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
     effect assign(slot, id) {
       try change(id === undefined ? { type: "clearAssignment", slot } : { type: "assignModel", slot, modelId: id })
     },
-    effect activate(id) {
-      try change({ type: "activateModel", modelId: id })
-      const loaded = (map(engine.load(installedOf(id)), () => true) catch () => false)
-      const settled = (models.send({ type: "finishLoading", loaded }) catch effect () => {
-        try engine.unload()
-        return try models.get()
-      })
-      return settled.activeStatus
-    },
-    effect deactivate() {
-      try change({ type: "deactivateModel" })
+    activate: (id) => lock.withPermits(1)(effect {
+      uninterruptible {
+        try changed({ type: "activateModel", modelId: id })
+        const load = onExit(engine.load(installedOf(id)), effect (exit) => {
+          if (Exit.hasInterrupts(exit)) return
+          models.send({ type: "finishLoading", loaded: Exit.isSuccess(exit) }) catch effect () => { try engine.unload() }
+        })
+        loading = fork.detached Effect.interruptible(Effect.ignore(load))
+      }
+    }),
+    deactivate: () => lock.withPermits(1)(effect {
+      try stopLoading()
+      try changed({ type: "deactivateModel" })
       try engine.unload()
-    },
+    }),
     uninstall: (id) => lock.withPermits(1)(effect {
       const before = try models.get()
       const event: Event = { type: "uninstallModel", modelId: id }
       if (!enabled(before, event)) throw new Rejected({ event, state: before })
-      if (before.active === id) try engine.unload()
+      if (before.active === id) {
+        try stopLoading()
+        try engine.unload()
+      }
       try changed(event)
       const directory = directoryOf(catalog[id])
       for (const file of files.get(id) ?? []) (fs.remove(path.join(directory, file.path)) catch () => undefined)
@@ -382,6 +393,7 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
       return isCatalogId(id) ? installedOf(id) : undefined
     },
     effect close() {
+      try stopLoading()
       for (const fiber of [...fibers.values()]) try Fiber.interrupt(fiber)
     },
   } satisfies LocalModelsApi
