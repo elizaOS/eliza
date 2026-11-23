@@ -25,7 +25,7 @@ module node {
     forms: [{ types: ["create_reminder"], schema: reminderForm, guidance: "create_reminder saves a reminder the owner dictated.", offered: (turn) => turn.capabilities.includes(negotiated) }],
     guidance: () => "Reminders are saved on the owner's phone.",
     ground: (proposed, turn) => Effect.succeed<Grounding>(/\bremind\b/i.test(turn.ownerText)
-      ? { kind: "Grounded", operation: proposed.operation }
+      ? { kind: "Grounded", operation: proposed.operation, ...(/\bmaybe\b/i.test(turn.ownerText) ? { grounding: "GroundedForReview" as const } : {}) }
       : { kind: "Refused", code: "REMINDER_NOT_REQUESTED", forModel: "The owner did not ask for a reminder.", forOwner: "Tell me what to remind you of." }),
     proposedText: (operation) => ({ forOwner: `Review the reminder “${operation.type === "create_reminder" ? operation.title : ""}” on your phone.` }),
     settledText: () => ({ forOwner: "Your phone saved that reminder." }),
@@ -128,6 +128,10 @@ module node {
     await say("Did the plants reminder go out?")
     const afterDecline = (lastCompletion(cloud).messages ?? []).at(-1)
 
+    cloud.script(toolCalls("", reminder("Stretch")), text("Okay."))
+    await say("Maybe remind me to stretch", direct)
+    const stretch = (await proposals(client)).find(titled("Stretch"))
+
     return {
       registration,
       offered: {
@@ -158,6 +162,7 @@ module node {
         status: declined?.status, neverRan: learned(afterDecline, "Rejected by the owner; it never ran."),
         uncertainUnlisted: !learned(afterDecline, mom?.id ?? "-"),
       },
+      forReview: { state: stretch?.state, carriesMessage: stretch === undefined ? undefined : "requestMessageId" in stretch.payload },
     }
   }
 }
@@ -190,5 +195,6 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
     mom: { carriesMessage: false, uncertain: "reconciliation_required" },
     reconcile: { extraField: 400, otherAttempt: 409, reviewed: 200, state: "done", review: "not_applied", repeated: 200 },
     decline: { status: 200, neverRan: true, uncertainUnlisted: true },
+    forReview: { state: "pending", carriesMessage: false },
   }))
 }, 120_000)
