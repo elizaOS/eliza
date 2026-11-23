@@ -377,7 +377,7 @@ effect function endLegacyRenewals(tx: Tx, root: Row, named: string, now: number)
     if (pending) {
       try cancelLegacySuccessor(tx, toText(successor.key) ?? "")
     } else {
-      try endKey(tx, successor, now)
+      try endKey(tx, successor, now, false)
     }
   }
 }
