@@ -250,6 +250,7 @@
         "vibestack-studio#test:browser"
       ],
       "inputs": [
+        ".gitignore",
         "vibestack/**",
         "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!vibestack/selftests/{docs,examples}.ts",
@@ -259,7 +260,6 @@
         "apps/**",
         "packages/**",
         ".agents/**",
-        ".gitignore",
         "AGENTS.md",
         "SPEC.md",
         "README.md",
@@ -415,6 +415,7 @@
         "!**/.DS_Store",
         "!{apps,packages,vibestack/studio}/**/gen/**",
         "package.json",
+        "lint-js.js",
         "pnpm-workspace.yaml",
         "tsconfig.json",
         "*.config.js",
