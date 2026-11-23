@@ -1,4 +1,4 @@
-// spec/agent/schedule/triggers.md, "Story: Deliver a prompt only to the conversation I chose"; spec/agent/schedule/triggers.md, "An event trigger runs once for each emitted event of its name, never for its own run's events"
+// spec/agent/schedule/triggers.md, "Story: Deliver a prompt only to the conversation I chose"; spec/agent/schedule/triggers.md, "An event trigger runs once for each emitted event of its name, never for its own run's events"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"
 import { assert, it } from "@effect/vitest"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { startAgent } from "../src/host/process.vibe"
@@ -43,17 +43,17 @@ module node {
     const chosen = await delivery.resolveRoom(created.conversationId)
     const missing = await delivery.resolveRoom("no-such-conversation")
     cloud.script(text("Water is good for you."))
-    const completed = await delivery.deliver(created.conversationId, "Remind me to drink water", "trigger-1", signal)
+    const completed = await delivery.deliver(created.conversationId, { displayName: "Water", instructions: "Remind me to drink water" }, "trigger-1", signal)
     const roomId = await roomOf(running, created.conversationId)
     const stored = (await messages(running, roomId)).map((memory) => ({
       text: memory.content.text, fromAgent: memory.entityId === running.runtime.agentId,
       triggerId: (memory.metadata as { triggerId?: string } | undefined)?.triggerId,
     })).sort((a, b) => Number(a.fromAgent) - Number(b.fromAgent))
     cloud.script(refusal(400, "bad_request"))
-    const failed = await delivery.deliver(created.conversationId, "Remind me to stretch", "trigger-1", signal)
+    const failed = await delivery.deliver(created.conversationId, { displayName: "Water", instructions: "Remind me to stretch" }, "trigger-1", signal)
     await running.runtime.deleteRoom(roomId)
     const before = cloud.calls.length
-    const gone = await delivery.deliver(created.conversationId, "Remind me to sleep", "trigger-1", signal)
+    const gone = await delivery.deliver(created.conversationId, { displayName: "Water", instructions: "Remind me to sleep" }, "trigger-1", signal)
     const fallback = await delivery.resolveRoom(undefined)
     const fallbackRoom = fallback.kind === "Resolved" ? await roomOf(running, fallback.conversationId) : undefined
     return {
@@ -88,7 +88,7 @@ module node {
       eventTriggers: async (name: TriggerEventName) => [...kept].filter(([, t]) => t.enabled && t.eventKind === name).map(([id]) => id),
       receiveEvent: async (triggerId, eventId, name, ownRun) => {
         if (!await send(triggerId, { type: "receiveEvent", eventId, name, ownRun })) return
-        const done = await delivery.deliver(resolved.conversationId, `Event ${eventId} arrived`, triggerId, new AbortController().signal)
+        const done = await delivery.deliver(resolved.conversationId, { displayName: "Echo", instructions: `Event ${eventId} arrived` }, triggerId, new AbortController().signal)
         runs.push({ trigger: triggerId, eventId, delivery: done })
         await send(triggerId, { type: "finishRun", roomExists: done.kind === "Turn", turn: done.kind === "Turn" ? done.turn : "Failed" })
       },
@@ -143,7 +143,7 @@ it.effect('A trigger prompt reaches only its own conversation and fails when it 
     sameDefault: true, chosen: "Resolved", missing: "Missing",
     completed: { kind: "Turn", turn: "Completed" }, completedError: undefined,
     stored: [
-      { text: "Remind me to drink water", fromAgent: false, triggerId: "trigger-1" },
+      { text: 'Scheduled trigger "Water" fired. Do this now: Remind me to drink water', fromAgent: false, triggerId: "trigger-1" },
       { text: "Water is good for you.", fromAgent: true, triggerId: "trigger-1" },
     ],
     failed: "Failed", failedError: "Prompt automation failed: The reply could not be generated",

@@ -233,3 +233,21 @@ pure def sometimesOnceRanNowThenOnSchedule(t: Trigger): bool = t.life == Removed
 pure def sometimesFailedTurnIsAnError(t: Trigger): bool = t.history.includes(Ran({ source: RunNow, turn: Failed }))
 pure def sometimesGoneConversationFailedTheRun(t: Trigger): bool = t.history.includes(Ran({ source: RunNow, turn: RoomUnavailable }))
 ```
+
+### A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message
+
+The run stores its prompt as the message its turn answers, worded
+`Scheduled trigger "<displayName>" fired. Do this now: <instructions>`,
+with the source `trigger-prompt` and the trigger's id, so the model reads
+it as a saved prompt that fired, never as something the owner just said,
+in this turn and in the history of later ones. It is stored for the owner,
+so the turn keeps the owner's authority. The conversation's history pages,
+jumps and search leave it out: the owner sees the reply the run stored,
+shown as any reply is, and never a message they did not write.
+
+```quint
+type TurnInput = SaidByOwner | FiredByTrigger
+pure def historyShows(fromAgent: bool, origin: TurnInput): bool = fromAgent or origin == SaidByOwner
+pure def lawAFiredPromptIsNeverShownAsTheOwners(fromAgent: bool): bool = historyShows(fromAgent, FiredByTrigger) iff fromAgent
+pure def lawWhatTheOwnerSaidIsShown(fromAgent: bool): bool = historyShows(fromAgent, SaidByOwner)
+```

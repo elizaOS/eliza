@@ -1,6 +1,6 @@
-// spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"
+// spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"
 module node {
-  import { MISSED_SCHEDULED_OCCURRENCE_TEXT, type AgentRuntime, type MessageProcessingResult, type Room } from "@elizaos/core"
+  import { MESSAGE_SOURCE_TRIGGER_PROMPT, MISSED_SCHEDULED_OCCURRENCE_TEXT, type AgentRuntime, type MessageProcessingResult, type Room } from "@elizaos/core"
   import type { RunOutcome } from "../../gen/agent__schedule__triggers.ts"
   import { createConversation, deviceConversation, processTurn, type ConversationOwner } from "../conversation/turns.vibe"
 
@@ -17,9 +17,14 @@ module node {
 
   export type RunResult = Delivery | { readonly kind: "Missed" }
 
+  export interface FiredPrompt {
+    readonly displayName: string
+    readonly instructions: string
+  }
+
   export interface TriggerDelivery {
     resolveRoom(requested: string | undefined): Promise<ResolvedRoom>
-    deliver(conversationId: string, prompt: string, triggerId: string, signal: AbortSignal): Promise<Delivery>
+    deliver(conversationId: string, prompt: FiredPrompt, triggerId: string, signal: AbortSignal): Promise<Delivery>
   }
 
   /** @throws {never} */
@@ -85,7 +90,8 @@ module node {
         const room = await find(conversationId)
         if (room === undefined) return { kind: "RoomGone" }
         try {
-          return turnOf(await processTurn(runtime, owner, room, prompt, signal, { metadata: { type: "custom", triggerId } }))
+          const told = `Scheduled trigger "${prompt.displayName}" fired. Do this now: ${prompt.instructions.trim()}`
+          return turnOf(await processTurn(runtime, owner, room, told, signal, { metadata: { type: "custom", triggerId }, input: { source: MESSAGE_SOURCE_TRIGGER_PROMPT } }))
         } catch (cause) {
           runtime.reportError("triggers.delivery", cause, { triggerId, conversationId })
           return signal.aborted
@@ -96,4 +102,4 @@ module node {
     }
   }
 }
-export { finishFacts, runError, triggerDelivery, type Delivery, type ResolvedRoom, type RunResult, type TriggerDelivery, type TurnOutcome } from node
+export { finishFacts, runError, triggerDelivery, type Delivery, type FiredPrompt, type ResolvedRoom, type RunResult, type TriggerDelivery, type TurnOutcome } from node

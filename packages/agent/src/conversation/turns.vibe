@@ -143,6 +143,7 @@ module node {
       readonly attachments?: Media[]
       readonly task?: JsonObject
       readonly clientId?: string
+      readonly source?: string
     }
     readonly deadline?: AbortSignal
     readonly key?: KeyedTurn
@@ -221,11 +222,12 @@ module node {
       if (options.input?.attachments !== undefined) input.content.attachments = options.input.attachments
       if (options.input?.task !== undefined) input.content.task = options.input.task
       if (options.input?.clientId !== undefined) input.content.clientId = options.input.clientId
+      if (options.input?.source !== undefined) input.content.source = options.input.source
       if (key !== undefined) {
         input.id = key.inputId
         input.content.chatIdempotency = { ...key.marker }
       }
-      bindIncomingMessagePersistence(input, { ...input, content: { text, source: "device" } })
+      bindIncomingMessagePersistence(input, { ...input, content: { text, source: input.content.source } })
       const userMessageId = await runtime.createMessageMemory(input)
       let taskEnding: ChatTaskEnding | undefined
       const storeReply = async (content: Content): Promise<Memory[]> => {
