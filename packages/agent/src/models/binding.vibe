@@ -10,7 +10,7 @@ import type { LaunchDocument, LaunchFrame } from "../host/launch.schema.vibe"
 
 export type FailureKind = "credential_invalid" | "insufficient_credits" | "limit_reached" | "provider_issue"
 export type BackendName = "cloud" | "own-key" | "none"
-export type CallStart = number | "limited"
+export type CallStart = number | { readonly limitedUntil: number }
 
 export interface LastCloudFailure {
   readonly kind: FailureKind
@@ -174,10 +174,11 @@ export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
     credential: () => key.value,
     startCall: effect (handler: ModelHandler, now: number) => {
       const next = models.send({ type: "startCall", handler, now }) catch effect (rejected) => {
-        if (limitedAt(rejected.state.accountState, clockAt(rejected.state, now))) return undefined
+        const account = rejected.state.accountState
+        if (account.tag === "Failing" && limitedAt(account, clockAt(rejected.state, now))) return { limitedUntil: retryAtOf(account.failure) }
         return try Effect.die(rejected)
       }
-      return next === undefined ? "limited" as const : next.nextCall - 1
+      return "limitedUntil" in next ? next : next.nextCall - 1
     },
     answerCall: effect (id: number, now: number) => {
       try orDie(models.send({ type: "answerCall", id, now }))

@@ -1,10 +1,10 @@
-// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"
+// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import {
   type Action, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
   executePlannedToolCall, getTrajectoryContext, historyWindowNotice, runWithTrajectoryContext, RunTerminalOwner, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement,
 } from "@elizaos/core"
-import type { BindingView, FailureKind } from "../models/binding.vibe"
+import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { textForTurn } from "./heard.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext } from "./turn-context.schema.vibe"
@@ -14,7 +14,7 @@ import { runTurnEvaluators } from "./turn-evaluators.vibe"
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 type ContentPart = Exclude<NonNullable<ChatMessage["content"]>, string>[number]
 
-export type AccountFailureSince = (since: number) => FailureKind | undefined
+export type AccountFailureSince = (since: number) => Pick<LastCloudFailure, "kind" | "retryAt"> | undefined
 export interface AgentTurnProcessingOptions extends MessageProcessingOptions {
   readonly taskContext?: string
   readonly onReplyRestart?: (fullText: string) => void
@@ -25,8 +25,9 @@ const replyMaxTokens = 1024
 
 export const accountFailureOf = (read: () => BindingView): AccountFailureSince => (since) => {
   const view = read()
-  if (view.lastCloudFailure !== undefined && view.lastCloudFailure.at >= since) return view.lastCloudFailure.kind
-  return view.blocked && view.accountState !== "usable" ? view.accountState : undefined
+  const last = view.lastCloudFailure
+  if (last !== undefined && last.at >= since) return { kind: last.kind, ...(last.retryAt === undefined ? {} : { retryAt: last.retryAt }) }
+  return view.blocked && view.accountState !== "usable" ? { kind: view.accountState } : undefined
 }
 
 const reply: Action = {
@@ -197,14 +198,17 @@ async function respond(
           actionResults: [...planned.steps.map(({ action, result: step }) => ({ ...step, data: { ...step.data, actionName: action } })), result], outcome,
         }
       } catch (error: unknown) {
-        const kind = signal.aborted ? undefined : error instanceof ModelRefusal ? error.failureKind : accountFailure(began)
+        const failed = signal.aborted ? undefined
+          : error instanceof ModelRefusal ? { kind: error.failureKind, ...(error.retryAt === undefined ? {} : { retryAt: error.retryAt }) } : accountFailure(began)
+        const kind = failed?.kind
         const outcome = signal.aborted
           ? { status: "cancelled" as const, reason: "aborted", effects: terminal.effects }
           : { status: "failed" as const, error: { kind: kind ?? "generation", transient: kind === undefined, message: "The reply could not be generated" }, effects: terminal.effects }
         const content = { text: written, ...(kind === undefined ? {} : { failureKind: kind }) }
         if (kind !== undefined && callback !== undefined) responseMessages.push(...await callback(content))
         await terminal.request(outcome)
-        return { didRespond: false, responseContent: content, responseMessages, outcome }
+        const retryAt = failed?.retryAt
+        return { didRespond: false, responseContent: retryAt === undefined ? content : { ...content, retryAt }, responseMessages, outcome }
       } finally {
         runtime.endRun()
       }
