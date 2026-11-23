@@ -721,13 +721,13 @@ it.live('An unrelated owner turn closes the Maps choice, while routing the immed
   const first = try act(keyed("take me to the pharmacy", 10), ask)
   const otherRoom = keyed("call Mom", 11, "00000000-0000-4000-8000-000000000003")
   const immediate = keyed("2", 12)
-  const foreign = route.matches("call Mom", otherRoom)
-  const immediateRoutes = [route.matches("2", immediate), route.matches("2", immediate)]
+  const foreign = try Effect.sync(() => route.matches("call Mom", otherRoom))
+  const immediateRoutes = try Effect.sync(() => [route.matches("2", immediate), route.matches("2", immediate)])
   const answer = try act(immediate, {})
   const second = try act(keyed("take me to the pharmacy", 13), ask)
-  const moveOn = route.matches("call Mom", keyed("call Mom", 14))
+  const moveOn = try Effect.sync(() => route.matches("call Mom", keyed("call Mom", 14)))
   const stale = keyed("2", 15)
-  const staleRoute = route.matches("2", stale)
+  const staleRoute = try Effect.sync(() => route.matches("2", stale))
   const staleResult = try act(stale, {})
   try Effect.try(() => assert.deepStrictEqual(
     [first.data?.choice, foreign, immediateRoutes, answer.success, second.data?.choice, moveOn, staleRoute, staleResult.success],
