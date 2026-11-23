@@ -79,7 +79,8 @@ Pull requests go to `main`, the only long-lived branch; what CI runs on them is 
 | `vibestack/gen/classify.ts` | which definition is a transition, a guard or a rule |
 | `vibestack/gen/secrecy.ts` | where a secret may go |
 | `vibestack/gen/typescript.ts`, `vibestack/gen/harness.ts` | `gen/<name>.ts`, and the Quint module `gen/<name>.run.qnt` that simulation runs |
-| `vibestack/selftest.ts`, `vibestack/fixtures/` | the selftest and the specs it uses besides the order example |
+| `vibestack/selftest.ts`, `vibestack/fixtures/` | the tool selftest and the specs it uses besides the order example |
+| `vibestack/selftests/` | the docs and standalone example selftests, and helpers used by the selftests |
 
 Node runs all of it directly; `pnpm build` compiles it for the packaged `spec` command.
 
@@ -92,8 +93,8 @@ read: `selftest:docs` the documents against every file they can name, `selftest:
 against its own files and the tools. `selftest:tools:a` and `selftest:tools:b` build scratch projects from the order
 example and fixtures. `selftest:tools:rest` also rebuilds the packaged CLI from the workspace, so changes under
 `apps/`, `packages/` and `spec/` invalidate its isolated CI run. The first two each run one shard of the kinds of mistake, the
-`describe` named `in shard a` or `in shard b` in `vibestack/selftest.ts`; the third skips what the other four name, so
-a new test runs there unless it is written into a shard. Keep the longest tests spread over the three.
+`describe` named `in shard a` or `in shard b` in `vibestack/selftest.ts`. The third runs the remaining tool tests there.
+Changes to either docs or standalone example test code keep the tool shards cached. Keep the longest tests spread over the three.
 The two suites of the tools, the command line and each kind of mistake, run side by side under one parent, each at most four tests at a time. The order project the
 edits copy and a few long checks of fixtures are shared projects: each starts with the tool runs (`action-*` entries)
 earlier selftests kept in `.cache/selftest/.spec-cache` and leaves its own there; entries unused for a week are pruned.
