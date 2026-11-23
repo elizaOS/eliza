@@ -262,7 +262,13 @@ const planning = 'spec/agent/conversation/planning.md'
 
 it.live(`Competing terminal decisions run no sibling tool and get one repair round (${planning}, "A response with competing terminal decisions runs no sibling action and can be repaired once")`, effect () => {
   const cloud = try cloudFake(deviceKey)
-  const agent = try cloudAgent(cloud)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
   const { id } = try conversation(agent)
   const ambiguous = try Effect.sync(() => toolCalls("This draft should be cleared.",
     { name: "REPLY", arguments: { text: "First terminal copy." } },
