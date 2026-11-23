@@ -101,3 +101,62 @@ pure def sometimesSavedWithRecoveredDestination(s: ReminderIntent): bool =
 pure def sometimesRejected(s: ReminderIntent): bool = s.reminderPhase == IntentRejected and s.checked
 pure def sometimesCancelledWhenReady(s: ReminderIntent): bool = s.reminderPhase == IntentCancelled and s.checked
 ```
+
+## Story: Propose a reminder or alarm on my phone only as I asked
+
+> As an owner, I want a chat request about my phone's reminders or Clock to
+> become a phone review only for the phone reminder I mean, at the time my
+> own words give, and never to cancel one I did not ask to cancel.
+
+### A phone reminder is proposed only when the assistant keeps no reminders here or the phone's reminder is selected
+
+Where the assistant keeps the owner's reminders itself (`OWNER_REMINDERS`),
+an ordinary reminder is saved here, and a phone reminder is proposed only
+when the turn's nonsensitive screen selects a phone reminder or a phone
+reminder list. Otherwise the proposal is refused before anything is
+offered, naming `OWNER_REMINDERS`.
+
+```quint
+pure def phoneReminderProposed(assistantKeepsReminders: bool, phoneReminderSelected: bool): bool =
+  not(assistantKeepsReminders) or phoneReminderSelected
+pure def lawTheAssistantsRemindersStayHere(assistantKeepsReminders: bool): bool =
+  assistantKeepsReminders implies not(phoneReminderProposed(assistantKeepsReminders, false))
+```
+
+### A selected or named phone reminder is the one the owner gave, and a cancel needs the owner's own ask
+
+A read, edit, completion, snooze or cancel of a selected reminder names
+exactly the reminder selected on the phone, with its source, occurrence,
+revisions and timing version. A named edit or cancel names a reminder
+whose name is in the owner's own words. A cancel, selected or named, is
+proposed only when the owner's words ask to cancel, delete, remove or stop
+it, and never when they turn it down.
+
+```quint
+pure def reminderTargetGrounded(selectionKnown: bool, sameAsSelected: bool): bool = selectionKnown and sameAsSelected
+pure def reminderCancelAsked(asksToCancel: bool, declines: bool): bool = asksToCancel and not(declines)
+pure def lawADeclinedCancelIsNeverProposed(asksToCancel: bool): bool = not(reminderCancelAsked(asksToCancel, true))
+pure def lawAnUnselectedReminderIsNeverProposed(sameAsSelected: bool): bool = not(reminderTargetGrounded(false, sameAsSelected))
+```
+
+### A new phone reminder is due when the owner's words say, counted from the turn's start for a relative time
+
+A relative time the owner states ("in 20 minutes", "in an hour") is
+counted from the instant the turn started, never from an instant the model
+calculated, and repeats nothing. A stated day and clock time is placed on
+the phone's clock ([Owner time zone](./timezone.md)), and a repeat the
+reminder carries is set to that day, time, zone and alert lead. With
+neither, the model's reviewed instant stands, for the owner to check on
+the phone. A stated time that has passed by the time it is proposed is
+refused. The alert
+comes the stated number of minutes before the due time, and with no alert
+the reminder is pending at its due time.
+
+```quint
+pure def relativeDueAt(startedAt: int, afterMs: int): int = startedAt + afterMs
+pure def relativeDueAdmitted(afterMs: int, dueAt: int, checkedAt: int): bool = afterMs > 0 and dueAt > checkedAt
+pure def alertAt(dueAt: int, alertMinutes: int, alerts: bool): int = if (alerts) dueAt - alertMinutes * 60000 else dueAt
+pure def lawARelativeReminderIsInTheFuture(startedAt: int, afterMs: int, checkedAt: int): bool =
+  relativeDueAdmitted(afterMs, relativeDueAt(startedAt, afterMs), checkedAt) implies relativeDueAt(startedAt, afterMs) > checkedAt
+pure def lawASilentReminderIsDueWhenItFires(dueAt: int, alertMinutes: int): bool = alertAt(dueAt, alertMinutes, false) == dueAt
+```

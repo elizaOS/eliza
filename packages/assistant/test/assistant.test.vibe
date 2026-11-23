@@ -1,5 +1,7 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"
 import { assert, it } from "@effect/vitest"
+import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { reminderDueText, reminderProposalFamily } from "../src/device-proposals.vibe"
 import { readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
 import { collectFacts, runCheckin, checkinReport } from "../src/checkin.vibe"
 import { ownerActivity, setDossier } from "../src/dossier.vibe"
@@ -273,4 +275,55 @@ it.effect('A check-in mentions a calendar event changed recently by its provider
     const { facts, partial } = try collectFacts(seen.now, "America/New_York")
     try equal([facts.includes("Refreshed only"), facts.includes("Moved by the provider (changed recently)"), facts.includes("Unreadable"), partial], [false, true, false, true])
   }
+})
+
+const phoneCapabilities = ["reminders.local-record.v2", "reminders.create.v1", "device.named-target.v1", "clock.handoff.v1"]
+const phoneReminder = { kind: "reminder", id: "rem-1", accountId: "phone", sourceRevision: "a".repeat(64), occurrenceId: "occ-1", revision: "b".repeat(64) }
+const reminderTarget = { sourceId: "phone", sourceRevision: "a".repeat(64), reminderId: "rem-1", occurrenceId: "occ-1", revision: "b".repeat(64) }
+
+function reminderTurn(ownerText: string, selectedObject: object | undefined, startedAt = Date.now() - 1_000): DeviceTurn {
+  const negotiated = negotiation(true, phoneCapabilities.join(","))
+  const observation = { view: "reminders", revision: 1, sensitive: false, timeZone: "Europe/Berlin", ...(selectedObject === undefined ? {} : { selectedObject }) } as DeviceTurn["observation"]
+  return {
+    runtime: { actions: [{ name: "OWNER_REMINDERS" }] } as unknown as IAgentRuntime, by: {} as DeviceTurn["by"], negotiation: negotiated, capabilities: phoneCapabilities,
+    message: { id: "00000000-0000-4000-8000-000000000002" as UUID, content: { text: ownerText } } as DeviceTurn["message"],
+    ownerText, observation, completedActionNavigation: false, conversationId: "c1", requestId: "r1", assistantName: "Eliza", swapped: [],
+    startedAt, timeZone: "Europe/Berlin", signal: new AbortController().signal,
+    admit: (operation) => validate(operation, negotiated, "NoBinding"), earlier: () => succeed([]),
+  }
+}
+
+effect function groundedReminder(operation: unknown, turn: DeviceTurn) {
+  const result = try reminderProposalFamily.ground(readOperation(operation) as CheckedOperation, turn)
+  return result.kind === "Grounded" ? result.operation : result.code
+}
+
+it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone\'s reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a cancel needs the owner\'s own ask"; spec/assistant/reminders.md, "A new phone reminder is due when the owner\'s words say, counted from the turn\'s start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn")', effect () => {
+  const offered = (turn: DeviceTurn) => reminderProposalFamily.forms.filter((form) => form.offered(turn)).map(({ schema }) => `${schema.properties?.type?.enum?.[0]}:${schema.properties?.action?.enum?.[0] ?? ""}`)
+  const create = (schedule: object) => ({ type: "reminder_create", fields: { title: "Call mom", body: "", schedule } })
+  const guessed = { at: 2_000_000_000_000, recurrence: null, dueAt: 2_000_000_000_000, alertMinutes: 0 }
+  try equal<unknown>(offered(reminderTurn("remind me in 20 minutes to call mom", undefined)), ["clock_handoff:show", "clock_handoff:dismiss", "clock_handoff:set", "clock_handoff:snooze"])
+  try equal<unknown>(try groundedReminder(create(guessed), reminderTurn("remind me in 20 minutes to call mom", undefined)), "REMINDER_RECORD_SOURCE_MISMATCH")
+
+  const relative = reminderTurn("Remind me in 20 minutes to call mom", { kind: "reminder-source", id: "phone", revision: "a".repeat(64) })
+  const due = relative.startedAt + 1_200_000
+  const soon = try groundedReminder(create(guessed), relative)
+  try equal<unknown>(soon, create({ at: due, recurrence: null, dueAt: due, alertMinutes: 0 }))
+  try equal<unknown>(relative.admit(soon) !== undefined, true)
+  const passport = 2_209_000_000_000
+  const local = reminderTurn("Remind me on 2030-01-05 at 9am to renew my passport", { kind: "reminder-source", id: "phone", revision: "a".repeat(64) })
+  try equal<unknown>(try groundedReminder(create({ at: passport, recurrence: null, dueAt: passport + 600_000, alertMinutes: 10 }), local),
+    create({ at: Date.UTC(2030, 0, 5, 8) - 600_000, recurrence: null, dueAt: Date.UTC(2030, 0, 5, 8), alertMinutes: 10 }))
+  try equal<unknown>(try groundedReminder(create({ ...guessed, recurrence: { rule: "daily", zone: "UTC", date: "2033-05-18", time: "03:33", leadMinutes: 0 } }), relative), "REMINDER_RELATIVE_REPEAT")
+
+  const cancel = { type: "reminder_cancel", target: reminderTarget }
+  try equal<unknown>(try groundedReminder(cancel, reminderTurn("Cancel this reminder", phoneReminder)), cancel)
+  try equal<unknown>(try groundedReminder(cancel, reminderTurn("No, keep it", phoneReminder)), "REMINDER_CANCEL_NOT_REQUESTED")
+  try equal<unknown>(try groundedReminder({ ...cancel, target: { ...reminderTarget, reminderId: "rem-2" } }, reminderTurn("Cancel this reminder", phoneReminder)), "DEVICE_REMINDER_TARGET_NOT_SELECTED")
+  try equal<unknown>(try groundedReminder({ type: "reminder_named", action: "cancel", name: "pills" }, reminderTurn("Cancel my passport reminder", phoneReminder)), "REMINDER_NAMED_NOT_REQUESTED")
+
+  const alarm = { type: "clock_handoff", action: "set", hour: 6, minute: 30, label: "", timeZone: "Europe/Berlin" }
+  try equal<unknown>(try groundedReminder({ ...alarm, days: [] }, reminderTurn("Wake me at 6:30", undefined)), alarm)
+  try equal<unknown>(try groundedReminder({ ...alarm, timeZone: "UTC" }, reminderTurn("Wake me at 6:30", undefined)), "CLOCK_OBSERVATION_CHANGED")
+  try equal<unknown>(reminderDueText(Date.UTC(2030, 0, 5, 8), undefined).includes("UTC"), true)
 })
