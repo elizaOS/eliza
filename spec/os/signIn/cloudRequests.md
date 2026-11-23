@@ -164,7 +164,8 @@ pure def lawASentRequestIsAdmittedOnTheOrigin(routes: Routes::RouteList, h: Hold
     (originAccepted(origin) and Routes::admittedRoute(Routes::admission(routes, request)).length() == 1 and not(headers.includes("Authorization")))
 pure val originValues = Set({ scheme: Https, loopback: false, hasPath: false, hasQueryOrFragment: false }, { scheme: Https, loopback: false, hasPath: true, hasQueryOrFragment: false })
 pure val headersValues = Set(List(), List("Idempotency-Key"), List("If-Match"), List("Authorization"), List("Accept", "If-None-Match"))
-pure def at(names: List[str]): List[Routes::Piece] = List("api", "v1").concat(names).listMap(n => Routes::Literal({ text: n }))
+pure def at(names: List[str]): List[Routes::Piece] =
+  List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "v1" })).concat(names.listMap(n => Routes::Literal({ text: n })))
 pure def seg(text: str): Routes::Segment = { text: text, fits: List() }
 pure val routesValues = {
   val read = { method: Routes::Get, delivery: Routes::Buffered, path: at(List("user")), query: List(), limit: Routes::AnySize }
