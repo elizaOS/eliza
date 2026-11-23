@@ -127,7 +127,8 @@ const PLACEHOLDER_PATTERN =
  * (`__ELIZA_SECRET_<nonce>_<n>__`). Without it, a user message or model output
  * could contain a literal `__ELIZA_SECRET_1__` that collides with a real
  * mapping, hijacking restore to leak the secret into an unintended position —
- * the nonce makes placeholders unforgeable and unguessable per turn.
+ * the nonce makes placeholders unforgeable and unguessable; inside a conversation
+ * they stay the same from turn to turn, and outside one they are fresh per call.
  */
 /** A fresh key for stable references. The host keeps it in memory only. */
 export function createSecretSwapStableKey(): string {
