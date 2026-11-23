@@ -1,7 +1,9 @@
 // spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"
-const NonBlank = Schema.String.check(Schema.makeFilter((value) => value.trim() !== ""))
+import { sampledWireInstant } from "../availability/availability.schema.vibe"
+
+const NonBlank = Schema.String.check(Schema.isPattern(/\S/))
 const NullableNonBlank = Schema.NullOr(NonBlank)
-const Instant = NonBlank.check(Schema.makeFilter((value) => Number.isFinite(Date.parse(value))))
+const Instant = sampledWireInstant(NonBlank.check(Schema.makeFilter((value) => Number.isFinite(Date.parse(value)))))
 
 /** One calendar the Cloud's managed Google connection lists. */
 export const ManagedGoogleCalendar = Schema.Struct({
