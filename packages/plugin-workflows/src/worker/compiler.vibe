@@ -22,7 +22,7 @@ export const GENERATED_ENGINE_DECLARATION = `declare module "eliza-workflow" {
 export error CompilerUnavailable { reason: string }
 
 module node {
-  import type { CompilerOptions, Node } from "typescript"
+  import type { CompilerOptions, Node as SyntaxNode } from "typescript"
   export interface GeneratedCall { readonly id: string; readonly method: string }
   export interface GeneratedCheck {
     readonly ok: boolean
@@ -49,7 +49,7 @@ module node {
     const calls: GeneratedCall[] = []
     if (/@ts-(?:ignore|expect-error|nocheck|check)\b/i.test(source)) rejected.push("TypeScript suppression and directive comments are not supported")
     if (parsed.referencedFiles.length > 0 || parsed.typeReferenceDirectives.length > 0 || parsed.libReferenceDirectives.length > 0 || parsed.hasNoDefaultLib) rejected.push("Source reference directives are not supported")
-    const visit = (node: Node): void => {
+    const visit = (node: SyntaxNode): void => {
       if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier !== undefined) {
         const typeOnly = ts.isImportDeclaration(node) ? node.importClause?.isTypeOnly === true : node.isTypeOnly
         if (!ts.isStringLiteral(node.moduleSpecifier) || node.moduleSpecifier.text !== "eliza-workflow" || !typeOnly) rejected.push("Only type imports from eliza-workflow are supported")

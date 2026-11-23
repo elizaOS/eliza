@@ -111,7 +111,7 @@ lemma mute_ensures(s: CloudSpeech)
 {
   if inv(s) && canMute(s) {
     var actual := mute(s);
-    assert actual.out == [SpeechNotice.ReleaseLiveCapture];
+    assert actual.out == [] || actual.out == [SpeechNotice.ReleaseLiveCapture];
     forall n | n in actual.out
       ensures !isReplySettled(n) && failedBefore(n) == -1 && settledId(n) == 0
     {

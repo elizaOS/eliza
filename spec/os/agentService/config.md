@@ -186,7 +186,9 @@ pure val providerVersionValues = Set(0, 1, 2)
 
 A ready launch, sent with an admitted frame that carries a credential, passes
 the agent's own launch verdict, so the agent never exits 78 or 77 on a start
-the service judged ready.
+the service judged ready. Discovered by simulation: agent admission refused
+an own-key launch when the service sent a provider key longer than the
+1,024 units the own-key slot takes.
 
 A supplied own-key credential must fit the agent's own-key slot before the
 service writes or spawns the launch. The service refuses an oversized

@@ -59,6 +59,7 @@ export interface CalendarEventFields {
   readonly endAt: string
   readonly isAllDay: boolean
   readonly timeZone: string
+  readonly attendees?: readonly string[]
 }
 
 export type CalendarSourceStatus = "fresh" | "stale" | "error"

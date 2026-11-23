@@ -1,6 +1,9 @@
-// spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"
+// spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"
 import { readViewInteractionClientId, type Action, type ActionResult, type Memory } from "@elizaos/core"
+import { viewsShowsOnDevice } from "../../gen/agent__deviceActions__surfaces.ts"
 import { declaredAt } from "../../gen/agent__views.effect.vibe"
+import { turnElsewhere } from "../conversation/planning.vibe"
+import { deviceTurnFor } from "../device-actions/proposal/turn.vibe"
 import { foldName } from "./declarations.vibe"
 import type { ViewHost } from "./host.vibe"
 
@@ -53,8 +56,13 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
   } satisfies ActionResult
 }
 
+const elsewhere = {
+  code: "VIEWS_NOT_ON_THIS_MESSAGE",
+  text: "Views do not open with VIEWS on this message, so it did not run and nothing was shown. Open the view with the device tool's open_view where that tool offers it, or tell the person it can't be opened here.",
+}
+
 export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<string, string>): Action {
-  return {
+  const action: Action = {
     name: "VIEWS",
     similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW"],
     description: "Show one of the owner's views, named by its id, label or alias, on the renderer of this turn. Navigation only: it does not read or change the view's records.",
@@ -63,7 +71,15 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
       { name: "action", description: "show", required: false, schema: { type: "string", enum: ["show"] } },
       { name: "view", description: "The view's id, label or alias", required: true, schema: { type: "string" } },
     ],
-    validate: async (_runtime, message) => rendererOf(message) !== undefined,
+    validate: async (runtime, message) => {
+      const turn = deviceTurnFor(runtime, message)
+      return rendererOf(message) !== undefined && (turn === undefined || viewsShowsOnDevice(turn.completedActionNavigation))
+    },
     handler: (_runtime, message, _state, options) => runPromise(show(views, labels, message, options)),
   }
+  turnElsewhere.set(action, (runtime, message) => {
+    const turn = deviceTurnFor(runtime, message)
+    return turn === undefined || viewsShowsOnDevice(turn.completedActionNavigation) ? undefined : elsewhere
+  })
+  return action
 }

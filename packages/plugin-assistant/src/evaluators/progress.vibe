@@ -2,7 +2,7 @@
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { hashStableJson, type Memory } from "@elizaos/core"
 import {
-  Machine, canCapture, canCommitProgress, canStageOutput, stored,
+  Machine, canCapture, canCommitProgress, canFinishReconciliation, canPrepareReconciliation, canRetireProgress, canRetireReducers, canStageOutput, staleObserved, stored,
   type Evidence, type EvaluatorProgress, type ProgressFailure, type SourceRevision,
 } from "../../gen/assistant__evaluatorProgress.effect.vibe"
 
@@ -71,5 +71,23 @@ export effect function commitEvaluatorProgress(scope: ProgressScope, effectsSucc
     const committed = answer(try orDie(progress.send({ type: "commitProgress", handle: state.snapshot.handle, effectsSucceeded, checkpoint, durable: true })))
     if (committed.kind === "kept" && binding !== "") (try KeyValueStore.KeyValueStore).remove(outputKey(scope, binding)) catch () => undefined
     return committed
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the shell path for the spec's retireReducers event, which no caller reaches yet
+effect function reconcileEvaluatorEvidence(scope: ProgressScope, observed: readonly SourceRevision[], retire: (reprocess: readonly string[]) => boolean!unknown) {
+  provide stored(progressKey(scope)) {
+    const progress = try Machine
+    const refreshed = try orDie(progress.send({ type: "refreshSources", observed: [...observed] }))
+    if (!canPrepareReconciliation(refreshed)) return { kind: "kept", state: refreshed } satisfies ProgressAnswer
+    const affected = [...new Set(staleObserved(refreshed).map((source) => source.sourceId))]
+    const prepared = try orDie(progress.send({ type: "prepareReconciliation", durable: true }))
+    if (prepared.failure !== "NoProgressFailure" || !canRetireReducers(prepared, affected)) return answer(prepared)
+    const effectsSucceeded = retire(affected) catch () => false
+    const reduced = try orDie(progress.send({ type: "retireReducers", reprocess: affected, effectsSucceeded }))
+    if (!canRetireProgress(reduced)) return answer(reduced)
+    const retired = try orDie(progress.send({ type: "retireProgress", durable: true }))
+    if (!canFinishReconciliation(retired)) return answer(retired)
+    return answer(try orDie(progress.send({ type: "finishReconciliation", durable: true })))
   }
 }

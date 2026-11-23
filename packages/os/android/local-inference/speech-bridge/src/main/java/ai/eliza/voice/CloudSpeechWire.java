@@ -130,6 +130,13 @@ final class CloudSpeechWire {
     return next;
   }
 
+  static boolean droppedConnection(Exception failure) {
+    String message = failure.getMessage();
+    if (message == null) return false;
+    if (failure instanceof java.net.SocketException) return !(failure instanceof java.net.ConnectException) && message.startsWith("Connection reset");
+    return failure instanceof java.io.IOException && message.startsWith("unexpected end of stream");
+  }
+
   static long millis(long pcmBytes) {
     return pcmBytes / 2 * 1000 / RATE;
   }
