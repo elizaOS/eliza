@@ -1,0 +1,32 @@
+// spec/core/secretSession.md, "A map coordinate never becomes a contact reference"
+export const PHONE_PATTERN = /(?<!\d)(?:\+?1[ .-]?)?(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]?\d{4}(?!\d)|\+[1-9]\d{7,14}(?!\d)/g
+
+const MAPS_CARD = /\[[ \t]*MAPSCARD[ \t]*\][ \t]*\r?\n[ \t]*\{[^\n]*\}[ \t]*(?=\r?\n|$)(?:\r?\n[ \t]*\[[ \t]*\/[ \t]*MAPSCARD[ \t]*\])?/g
+const COORDINATE_KEY_BEFORE = /(?:^|[^\p{L}\p{N}_])(?:lat|lng|lon|long|latitude|longitude)\\?["']?\s*[:=]\s*\\?["']?\s*[-+]?\s*$/iu
+const GEO_WORD = /(?:^|[^\p{L}])(?:lat|lng|lon|latitude|longitude|coordinates?|coords?|geo(?:json|location)?|bbox|bounds|center|centre|location|waypoints?|polyline)(?![\p{L}])/iu
+const GEO_WORD_WINDOW = 160
+const COORDINATE_DECIMAL = /^\d{1,3}\.\d{4,}$/
+
+function mapsCards(text: string): Array<readonly [number, number]> {
+  if (!/MAPSCARD/i.test(text)) return []
+  return [...text.matchAll(MAPS_CARD)].map((card) => [card.index, card.index + card[0].length] as const)
+}
+
+function coordinateDecimal(text: string, start: number, end: number): boolean {
+  if (!COORDINATE_DECIMAL.test(text.slice(start, end).trim())) return false
+  const before = text.slice(Math.max(0, start - GEO_WORD_WINDOW), start)
+  return /-\s*$/.test(before)
+    || /\d\.\d{4,}\s*[,;/]\s*[-+]?\s*$/.test(before)
+    || /^\s*[,;/]\s*[-+]?\d{1,3}\.\d{4,}/.test(text.slice(end, end + 24))
+    || GEO_WORD.test(before)
+}
+
+export function findPhoneSpans(text: string): Array<{ value: string; start: number; end: number }> {
+  const cards = mapsCards(text)
+  return [...text.matchAll(PHONE_PATTERN)]
+    .map((phone) => ({ value: phone[0], start: phone.index, end: phone.index + phone[0].length }))
+    .filter(({ start, end }) =>
+      !cards.some(([from, to]) => start >= from && end <= to)
+      && !COORDINATE_KEY_BEFORE.test(text.slice(Math.max(0, start - 48), start))
+      && !coordinateDecimal(text, start, end))
+}
