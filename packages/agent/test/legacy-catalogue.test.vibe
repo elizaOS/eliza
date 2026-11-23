@@ -1,0 +1,134 @@
+// spec/agent/storage/legacyAdoption.md, "The installed catalogue uses channel identities and keeps deleted conversations deleted"
+import { assert, it } from "@effect/vitest"
+import { readInstalledHistory } from "../src/storage/legacy-catalogue.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+  import { PGlite } from "@electric-sql/pglite"
+  import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch"
+  import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm"
+  import { vector } from "@electric-sql/pglite/vector"
+  import { conversationClientUserMemoryId, stringToUuid, type UUID } from "@elizaos/core"
+  import { stageLegacyHistory } from "../src/storage/legacy-history-stage.vibe"
+  import type { PreparedLegacyHistory } from "../src/storage/legacy-history.vibe"
+
+  export const owner = {
+    agentId: stringToUuid("catalogue-fixture-agent"), ownerId: stringToUuid("catalogue-fixture-owner"),
+    worldId: stringToUuid("catalogue-fixture-world"),
+  }
+  export const conversation = stringToUuid("ordinary-conversation")
+  export const deleted = stringToUuid("deleted-conversation")
+  export const empty = stringToUuid("empty-conversation")
+  export const room = stringToUuid(`web-conv-${conversation}`)
+  export const reply = stringToUuid("catalogue-fixture-reply")
+  const scope = `${owner.agentId}:${room}:${owner.ownerId}`
+  export const input = conversationClientUserMemoryId(scope, "original-send-id")
+  export const fingerprint = "a".repeat(64)
+
+  async function digest(directory: string): Promise<string> {
+    const files = await readdir(directory, { recursive: true, withFileTypes: true })
+    const paths = files.filter((file) => file.isFile()).map((file) => join(file.parentPath, file.name)).sort()
+    const hash = createHash("sha256")
+    for (const path of paths) {
+      hash.update(path.slice(directory.length)).update("\0").update(await readFile(path))
+    }
+    return hash.digest("hex")
+  }
+
+  export async function fixture() {
+    const root = await mkdtemp(join(tmpdir(), "eliza-installed-catalogue-"))
+    const original = join(root, "installed")
+    const copy = join(root, "copy")
+    const extensions = { vector, fuzzystrmatch, pg_trgm }
+    try {
+      const source = await PGlite.create(original, { extensions })
+      try {
+        await source.exec(`CREATE EXTENSION vector; CREATE EXTENSION fuzzystrmatch; CREATE EXTENSION pg_trgm;
+          CREATE TABLE rooms (id uuid PRIMARY KEY, agent_id uuid, world_id uuid, source text NOT NULL,
+            type text NOT NULL, name text, metadata jsonb, channel_id text, created_at timestamp NOT NULL);
+          CREATE TABLE participants (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), room_id uuid, agent_id uuid, entity_id uuid);
+          CREATE TABLE memories (id uuid PRIMARY KEY, agent_id uuid NOT NULL, entity_id uuid, room_id uuid,
+            world_id uuid, type text NOT NULL, content jsonb NOT NULL, created_at timestamp NOT NULL)`)
+        const insertRoom = async (id: UUID, sourceName: string, member: boolean, name?: string) => {
+          const channel = `web-conv-${id}`
+          const roomId = stringToUuid(channel)
+          await source.query("INSERT INTO rooms VALUES ($1,$2,$3,$4,'DM',$5,$6,$7,timestamp '2026-03-04 12:34:56.789')",
+            [roomId, owner.agentId, owner.worldId, sourceName, name ?? null, JSON.stringify({ ownership: { ownerId: owner.ownerId } }), channel])
+          if (member) await source.query("INSERT INTO participants (room_id,agent_id,entity_id) VALUES ($1,$2,$2)", [roomId, owner.agentId])
+          return roomId
+        }
+        await insertRoom(conversation, "client_chat", true, "Original")
+        await insertRoom(empty, "client_chat", true)
+        const deletedRoom = await insertRoom(deleted, "client_chat", true)
+        const other = await insertRoom(stringToUuid("outside-catalogue"), "fixture", true)
+        const orphan = await insertRoom(stringToUuid("without-participation"), "client_chat", false)
+        const insert = async (id: UUID, roomId: UUID, entity: UUID, type: string, content: unknown) => {
+          await source.query("INSERT INTO memories VALUES ($1,$2,$3,$4,NULL,$5,$6,timestamp '2026-03-04 12:34:57.987')",
+            [id, owner.agentId, entity, roomId, type, JSON.stringify(content)])
+        }
+        await insert(input, room, owner.ownerId, "messages", { text: "Kept question",
+          chatIdempotency: { version: 1, scope, clientMessageId: "original-send-id", fingerprint } })
+        await insert(reply, room, owner.agentId, "messages", { text: "Kept reply", inReplyTo: input })
+        await insert(stringToUuid("deleted-message"), deletedRoom, owner.ownerId, "messages", ["invalid if read"])
+        await insert(stringToUuid("other-message"), other, owner.ownerId, "messages", ["invalid if read"])
+        await insert(stringToUuid("orphan-message"), orphan, owner.ownerId, "messages", ["invalid if read"])
+        await insert(stringToUuid("note-memory"), room, owner.ownerId, "documents", ["invalid if read"])
+      } finally { await source.close() }
+      const before = await digest(original)
+      await cp(original, copy, { recursive: true, errorOnExist: true, force: false })
+      const db = await PGlite.create(copy, { extensions })
+      return { db, stage: (history: PreparedLegacyHistory) => stageLegacyHistory(root,
+        { userId: "fixture-account", organizationId: "fixture-organization" }, 0, history),
+        originalUnchanged: async () => (await digest(original)) === before,
+        close: async () => { try { await db.close() } finally { await rm(root, { recursive: true, force: true }) } } }
+    } catch (error) {
+      await rm(root, { recursive: true, force: true })
+      throw error
+    }
+  }
+
+  export async function setRoomMetadata(db: PGlite, id: UUID) {
+    await db.query("UPDATE rooms SET metadata = $1 WHERE id = $2",
+      [JSON.stringify({ ownership: { ownerId: owner.ownerId }, webConversation: { conversationId: id } }), room])
+  }
+
+  export async function setMessageWorld(db: PGlite, world: UUID) {
+    await db.query("UPDATE memories SET world_id = $1 WHERE id = $2", [world, reply])
+  }
+}
+import { conversation, deleted, empty, fingerprint, fixture, input, owner, reply, room, setMessageWorld, setRoomMetadata } from node
+
+it.live('Read the retired installed catalogue and keep tombstoned or out-of-scope rows out (spec/agent/storage/legacyAdoption.md, "The installed catalogue uses channel identities and keeps deleted conversations deleted")', effect () => {
+  const source = try Effect.acquireRelease(Effect.tryPromise(fixture), (source) =>
+    Effect.orDie(Effect.tryPromise(() => source.close())))
+  const ledger = { kind: "Present", value: { version: 1, ids: [deleted] } } as const
+  const result = try readInstalledHistory(source.db, owner, ledger)
+  const keptRoom = result.rooms.find(({ id }) => id === room)
+  const emptyRoom = result.rooms.find(({ id }) => id !== room)
+  assert.lengthOf(result.rooms, 2)
+  assert.equal(keptRoom?.name, "Original")
+  assert.include(keptRoom?.metadata?.deviceConversation, { id: conversation,
+    createdAt: Date.parse("2026-03-04T12:34:56.789Z"), updatedAt: Date.parse("2026-03-04T12:34:57.987Z") })
+  assert.include(emptyRoom?.metadata?.deviceConversation, { id: empty,
+    createdAt: Date.parse("2026-03-04T12:34:56.789Z"), updatedAt: Date.parse("2026-03-04T12:34:56.789Z") })
+  assert.sameMembers(result.messages.map(({ id }) => id), [input, reply])
+  assert.include(result.reservations[0], { roomId: room, inputId: input, linkedReplyId: reply, fingerprint })
+  const stage = try Effect.tryPromise(() => source.stage(result))
+  assert.equal(stage.kind, "HistoryOnly")
+
+  const badLedger = try Effect.flip(readInstalledHistory(source.db, owner, { kind: "Present", value: { version: 2, ids: [] } }))
+  assert.equal(badLedger.reason, "tombstones")
+  const wrongOwner = try Effect.flip(readInstalledHistory(source.db, { ...owner, ownerId: empty }, ledger))
+  assert.equal(wrongOwner.reason, "binding")
+  try Effect.tryPromise(() => setRoomMetadata(source.db, empty))
+  const badRoom = try Effect.flip(readInstalledHistory(source.db, owner, ledger))
+  assert.equal(badRoom.reason, "room")
+  try Effect.tryPromise(() => setRoomMetadata(source.db, conversation))
+  try Effect.tryPromise(() => setMessageWorld(source.db, empty))
+  const badMessage = try Effect.flip(readInstalledHistory(source.db, owner, ledger))
+  assert.equal(badMessage.reason, "message")
+  assert.isTrue(try Effect.tryPromise(source.originalUnchanged))
+}, 120_000)

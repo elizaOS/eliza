@@ -1,0 +1,127 @@
+// spec/agent/storage/legacyAdoption.md, "The installed catalogue uses channel identities and keeps deleted conversations deleted"
+import { ChannelType, stringToUuid, validateUuid, type Content, type UUID } from "@elizaos/core"
+import { catalogueAnswer } from "../../gen/agent__storage__legacyAdoption.effect.vibe"
+import { planLegacyHistory, type LegacyConversation, type LegacyHistoryOwner, type LegacyHistoryRefused, type LegacyMessage, type PreparedLegacyHistory } from "./legacy-history.vibe"
+
+const webChannel = "web-conv-"
+
+module node {
+  import type { PGlite } from "@electric-sql/pglite"
+  import type { UUID } from "@elizaos/core"
+
+  interface RoomRow {
+    readonly id: UUID
+    readonly agentId: UUID
+    readonly ownerId: UUID
+    readonly worldId: UUID
+    readonly channel: string
+    readonly kind: string
+    readonly claimedConversation: string | null
+    readonly name: string | null
+    readonly milliseconds: string
+  }
+
+  interface MessageRow {
+    readonly id: UUID
+    readonly roomId: UUID
+    readonly agentId: UUID
+    readonly entityId: UUID
+    readonly worldId: UUID | null
+    readonly content: unknown
+    readonly milliseconds: string
+  }
+
+  const catalogue = `SELECT r.* FROM public.rooms r
+    WHERE r.agent_id = $1 AND r.source = 'client_chat' AND r.channel_id LIKE 'web-conv-%'
+      AND EXISTS (SELECT 1 FROM public.participants p WHERE p.room_id = r.id AND p.agent_id = $1 AND p.entity_id = $1)`
+
+  export async function readCatalogue(db: PGlite, agent: UUID, world: UUID, owner: UUID, deleted: readonly string[]) {
+    return await db.transaction(async (tx) => {
+      await tx.exec("SET TRANSACTION READ ONLY")
+      const rooms = await tx.query<RoomRow>(`WITH catalogue AS (${catalogue})
+        SELECT id, agent_id AS "agentId", world_id AS "worldId", metadata #>> '{ownership,ownerId}' AS "ownerId",
+          channel_id AS channel, type AS kind, metadata #>> '{webConversation,conversationId}' AS "claimedConversation",
+          name, trunc(extract(epoch FROM created_at) * 1000)::text AS milliseconds
+        FROM catalogue ORDER BY created_at, id`, [agent])
+      const messages = await tx.query<MessageRow>(`WITH catalogue AS (${catalogue})
+        SELECT m.id, m.room_id AS "roomId", m.agent_id AS "agentId", m.entity_id AS "entityId", m.world_id AS "worldId",
+          m.content, trunc(extract(epoch FROM m.created_at) * 1000)::text AS milliseconds
+        FROM public.memories m JOIN catalogue r ON r.id = m.room_id
+        WHERE m.type = 'messages' AND r.world_id = $2 AND r.metadata #>> '{ownership,ownerId}' = $3
+          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text($4::jsonb) gone(id)
+            WHERE r.channel_id = 'web-conv-' || gone.id)
+        ORDER BY m.created_at, m.id`, [agent, world, owner, JSON.stringify(deleted)])
+      return { rooms: rooms.rows, messages: messages.rows }
+    })
+  }
+}
+import { readCatalogue } from node
+import type { PGlite } from "@electric-sql/pglite"
+
+export type LegacyDeletions = { readonly kind: "Missing" } | { readonly kind: "Present"; readonly value: unknown }
+export error LegacyCatalogueRefused { reason: "source" | "room" | "message" | "tombstones" }
+
+effect function deletedIds(ledger: LegacyDeletions): Set<string>!LegacyCatalogueRefused {
+  if (ledger.kind === "Missing") return new Set()
+  const value = ledger.value
+  if (typeof value !== "object" || value === null || !("version" in value) || value.version !== 1
+      || !("ids" in value) || !Array.isArray(value.ids))
+    throw new LegacyCatalogueRefused({ reason: "tombstones" })
+  const ids: Set<string> = new Set()
+  for (const id of value.ids) {
+    if (typeof id !== "string" || id.trim() === "") throw new LegacyCatalogueRefused({ reason: "tombstones" })
+    ids.add(id.trim())
+  }
+  return ids
+}
+
+function canonicalChannel(channel: string): UUID | null {
+  const id = validateUuid(channel.slice(webChannel.length))
+  return id !== null && id === id.toLowerCase() && channel === webChannel + id ? id : null
+}
+
+effect function importedTime(milliseconds: string, reason: "room" | "message"): number!LegacyCatalogueRefused {
+  const time = Number(milliseconds)
+  if (!/^[0-9]+$/.test(milliseconds) || !Number.isSafeInteger(time)) throw new LegacyCatalogueRefused({ reason })
+  return time
+}
+
+function messageContent(value: unknown): value is Content {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    && (!("text" in value) || typeof value.text === "string")
+    && (!("inReplyTo" in value) || validateUuid(value.inReplyTo) !== null)
+}
+
+/** For the private offline worker. Its native caller owns the retired snapshot and authenticated identity. */
+export effect function readInstalledHistory(db: PGlite, owner: LegacyHistoryOwner, ledger: LegacyDeletions):
+    PreparedLegacyHistory!(LegacyCatalogueRefused | LegacyHistoryRefused) {
+  const deleted = try deletedIds(ledger)
+  const rows = try Effect.tryPromise({ try: () => readCatalogue(db, owner.agentId, owner.worldId, owner.ownerId, [...deleted]),
+    catch: () => new LegacyCatalogueRefused({ reason: "source" }) })
+  const rooms = new Map<UUID, LegacyConversation>()
+  for (const room of rows.rooms) {
+    const id = canonicalChannel(room.channel)
+    const expectedRoom = try Effect.try({ try: () => stringToUuid(room.channel),
+      catch: () => new LegacyCatalogueRefused({ reason: "room" }) })
+    const verdict = catalogueAnswer(id !== null, expectedRoom === room.id,
+      room.claimedConversation === null || room.claimedConversation === id, room.kind === ChannelType.DM,
+      id !== null && deleted.has(id))
+    if (verdict === "ExcludeDeleted") continue
+    if (verdict !== "ReadConversation" || id === null) throw new LegacyCatalogueRefused({ reason: "room" })
+    const createdAt = try importedTime(room.milliseconds, "room")
+    rooms.set(room.id, { id, roomId: room.id, agentId: room.agentId, ownerId: room.ownerId, worldId: room.worldId,
+      title: room.name || "Chat", createdAt, updatedAt: createdAt })
+  }
+  const messages: LegacyMessage[] = []
+  for (const row of rows.messages) {
+    const room = rooms.get(row.roomId)
+    if (room === undefined) continue
+    if ((row.worldId !== null && row.worldId !== room.worldId) || !messageContent(row.content))
+      throw new LegacyCatalogueRefused({ reason: "message" })
+    const createdAt = try importedTime(row.milliseconds, "message")
+    if (createdAt > room.updatedAt) rooms.set(room.roomId, { ...room, updatedAt: createdAt })
+    messages.push({ id: row.id, roomId: row.roomId, agentId: row.agentId, entityId: row.entityId,
+      createdAt, content: row.content })
+  }
+  return try planLegacyHistory(owner, [...rooms.values()], messages)
+}
