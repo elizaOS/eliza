@@ -1,0 +1,4 @@
+// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
+import { unoffered } from "../family.vibe"
+
+export const telephonyFamily = unoffered("telephony")

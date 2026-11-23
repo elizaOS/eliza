@@ -1,0 +1,24 @@
+// spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
+import { ModuleRefused, type AgentModule, type ModuleFactory } from "../../host/module.vibe"
+import { proposeDeviceAction } from "./action.vibe"
+import { surfacesFamily } from "./families/surfaces.vibe"
+import { telephonyFamily } from "./families/telephony.vibe"
+import { registerDeviceProposalFamily } from "./registry.vibe"
+
+export const deviceActionsModuleName = "@elizaos/agent/device-actions"
+
+export const deviceActionsModule: ModuleFactory<never> = effect ({ runtime }) => {
+  for (const family of [telephonyFamily, surfacesFamily]) {
+    registerDeviceProposalFamily(runtime, family) catch effect (conflict) => {
+      throw new ModuleRefused({ module: deviceActionsModuleName, reason: `${conflict.family} also claims ${conflict.type}` })
+    }
+  }
+  return {
+    name: deviceActionsModuleName,
+    plugin: {
+      name: deviceActionsModuleName,
+      description: "Proposes one operation the owner asked for in chat to the enrolled phone for review; runs nothing itself",
+      actions: [proposeDeviceAction],
+    },
+  } satisfies AgentModule
+}

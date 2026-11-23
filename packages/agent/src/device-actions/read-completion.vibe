@@ -1,12 +1,18 @@
-// spec/agent/deviceActions/index.md, "Only the original applied read with the retained hint opens a completion before its deadline"; spec/agent/deviceActions/index.md, "A durable claim allows at most one inference, even after a lost outcome"; spec/agent/deviceActions/index.md, "Cancelling never undoes a delivered reply"; spec/agent/deviceActions/operations.md, "A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it"
+// spec/agent/deviceActions/index.md, "Only the original applied read with the retained hint opens a completion before its deadline"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request"; spec/agent/deviceActions/index.md, "A durable claim allows at most one inference, even after a lost outcome"; spec/agent/deviceActions/index.md, "Cancelling never undoes a delivered reply"; spec/agent/deviceActions/operations.md, "A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it"
 module node {
   import { Effect, Result, Schema } from "effect"
-  import { ElizaError, ModelType, stringToUuid, validateUuid, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
+  import { ElizaError, extractUserText, ModelType, stringToUuid, validateUuid, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
   import { canClaimCompletion, completionDeadline, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
+  import { completableRead } from "../../gen/agent__deviceActions__operations.ts"
   import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
   import type { LocalRoute, RouteInput } from "../access/routes.vibe"
   import { recordOf, type ConversationOwner } from "../conversation/conversations.vibe"
+  import { readTurnContext } from "../conversation/turn-context.schema.vibe"
+  import { capabilitiesHeader, negotiation } from "./capabilities.vibe"
   import { latestSenderReplyFor } from "./latest-sender.vibe"
+  import { readOperation, validate } from "./operations.schema.vibe"
+  import { offerProposal } from "./proposal/offer.vibe"
+  import { familyOf } from "./proposal/registry.vibe"
   import { openRequest, StaleDeviceRow, withReadCompletionPublication, type DeviceRequestRecord, type DeviceStoreUnavailable, type RequestEvent } from "./store.vibe"
 
   interface ReadCompletionContext {
@@ -87,18 +93,42 @@ module node {
       return text
     }
 
-    async function deliver(record: DeviceRequestRecord, { hint, version }: CompletionRequest, by: SessionOwner) {
+    async function continueRead(record: DeviceRequestRecord, original: Memory & { id: UUID }, hint: Hint, by: SessionOwner, header: string | undefined) {
+      const operation = readOperation(record.terms.operation)?.operation
+      const family = operation === undefined ? undefined : familyOf(runtime, operation.type)
+      if (operation === undefined || family?.continueAfterRead === undefined) return
+      const negotiated = negotiation(true, header)
+      const context = readTurnContext(original)
+      try {
+        const next = await Effect.runPromise(family.continueAfterRead(
+          { proposalId: record.proposalId, requestMessageId: original.id, operation, result: record.result, settledAt: Date.now() },
+          {
+            ownerText: extractUserText(original.content.text ?? ""), message: original, negotiation: negotiated,
+            startedAt: original.createdAt ?? Date.now(), timeZone: context.observation?.timeZone ?? context.voiceUi?.uiTimeZone,
+          },
+        ))
+        const checked = next === undefined ? undefined : validate(next, negotiated, "NoBinding")
+        if (checked === undefined || !family.types.includes(checked.operation.type)) return
+        await Effect.runPromise(offerProposal({
+          runtime, by, negotiation: negotiated, message: original, conversationId: hint.conversationId, requestId: hint.requestId,
+        }, checked, completableRead(checked.opType)))
+      } catch (cause) {
+        runtime.logger.warn({ src: "device-actions", proposalId: hint.proposalId, cause: cause instanceof Error ? cause.message : String(cause) }, "The edit after a delivered read was not offered")
+      }
+    }
+
+    async function deliver(record: DeviceRequestRecord, { hint, version }: CompletionRequest, by: SessionOwner, header: string | undefined) {
       const kept = await runtime.getCache<{ text: string }>(cacheKey(hint))
       if (kept === undefined) return failure(409, "completion_reply_missing")
       const original = await originalMessage(hint)
       const messageId = replyId(hint)
-      await runtime.roomHandlerQueue.withLease(original.roomId, async () => {
+      const published = await runtime.roomHandlerQueue.withLease(original.roomId, async () => {
         const state = await Effect.runPromise(record.machine.get())
         if (!canClaimCompletion(state, by, hint)) throw new CompletionClosed()
         const prior = await runtime.getMemoryById(messageId)
         if (state.completion === "CompletionDelivered") {
           if (prior === null) throw new CompletionClosed()
-          return
+          return false
         }
         if (state.completion !== "CompletionPrepared" || prior !== null) throw new CompletionClosed()
         try {
@@ -111,18 +141,20 @@ module node {
           if (cause instanceof ElizaError && cause.code === "MESSAGE_CONTENT_PUBLICATION_CONFLICT") throw new CompletionClosed()
           throw cause
         }
+        return true
       })
+      if (published) await continueRead(record, original, hint, by, header)
       return { status: 200, body: { reply: {
         ...(version === undefined ? {} : { version }),
         messageId, requestId: hint.requestId, conversationId: hint.conversationId, inReplyTo: hint.inReplyTo, text: kept.text,
       } satisfies Reply } }
     }
 
-    async function complete(record: DeviceRequestRecord, request: CompletionRequest, by: SessionOwner, signal: AbortSignal) {
+    async function complete(record: DeviceRequestRecord, request: CompletionRequest, by: SessionOwner, signal: AbortSignal, header: string | undefined) {
       const { hint } = request
       const claimed = await send(record.machine, { type: "claimCompletion", hint }, by)
       if (claimed === undefined) return failure(409, "completion_refused")
-      if (claimed.completion !== "CompletionClaimed") return deliver(record, request, by)
+      if (claimed.completion !== "CompletionClaimed") return deliver(record, request, by, header)
       const cancelled = new AbortController()
       running.set(hint.proposalId, cancelled)
       const turn = AbortSignal.any([signal, cancelled.signal])
@@ -131,7 +163,7 @@ module node {
           AbortSignal.any([turn, AbortSignal.timeout(Math.max(0, completionDeadline(claimed) - Date.now()))]))
         if (!await runtime.setCache(cacheKey(hint), { text: runtime.redactSecrets(text) })) throw new CompletionFailed("The reply was not kept")
         const prepared = await send(record.machine, { type: "prepareCompletion" }, by)
-        return prepared === undefined ? failure(409, "completion_closed") : deliver(record, request, by)
+        return prepared === undefined ? failure(409, "completion_closed") : deliver(record, request, by, header)
       } catch (cause) {
         if (cause instanceof StaleDeviceRow) return failure(409, "completion_closed")
         runtime.logger.warn({ src: "device-actions", proposalId: hint.proposalId, aborted: turn.aborted, cause: cause instanceof Error ? cause.message : String(cause) }, "Read completion failed after its claim")
@@ -164,7 +196,7 @@ module node {
           if (hint._tag !== "Some") return failure(400, "invalid_completion_hint")
           return guarded(input, async (record, by) => {
             const request = matchAttempt(hint.value, record)
-            return request === undefined ? failure(409, "completion_refused") : complete(record, request, by, input.signal)
+            return request === undefined ? failure(409, "completion_refused") : complete(record, request, by, input.signal, input.headers.get(capabilitiesHeader))
           })
         },
       },
