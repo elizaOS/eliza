@@ -273,7 +273,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     duration: duration.text,
     labels: { text: solved.action, voice: spoken.action },
   }, {
-    offered: ["CALCULATE", "VIEWS"],
+    offered: ["RESTORE_CONTEXT", "CALCULATE", "VIEWS"],
     sameTools: true,
     declined: [true, `I can't switch screens from this chat.\n\n${unavailableNotice}`],
     toolResult: true,
@@ -385,11 +385,17 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   }))
 }, 120_000)
 
-it.live(`A long conversation sends the same history turn after turn, and the exchanges a request's words recall follow its latest message (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message")`, effect () => {
+it.live(`A long conversation keeps its prefix, recalls earlier dialogue at the tail and restores it once without running sibling tools (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A planner can restore the turn's deferred history once and runs no sibling action from that response"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message")`, effect () => {
   const cloud = try cloudFake(deviceKey)
-  const agent = try cloudAgent(cloud)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
   const { id } = try conversation(agent)
-  try Effect.sync(() => cloud.script(text("Hello.")))
+  try Effect.sync(() => cloud.script(
+    toolCalls("", { name: "RESTORE_CONTEXT", arguments: { scope: "providers", reason: "Check deferred evidence" } }),
+    text("Hello."),
+  ))
   const opened = replyOf(try send(agent, id, { text: "Hi" }))
   const locker = "My riverside gym locker number is 4417."
   const boiler = "Ortega repairs the basement boiler on Fridays."
@@ -403,12 +409,23 @@ it.live(`A long conversation sends the same history turn after turn, and the exc
   const boilerAsk = "Who repairs the basement boiler?"
   try send(agent, id, { text: lockerAsk })
   try send(agent, id, { text: boilerAsk })
+  const beforeRestore = completions(cloud)
+  try Effect.sync(() => cloud.script(
+    toolCalls("Let me check.", { name: "RESTORE_CONTEXT", arguments: { reason: "Find the earlier detail" } },
+      { name: "CALCULATE", arguments: { expression: "12 * 3" } }, { name: "REPLY", arguments: { text: "Premature reply." } }),
+    toolCalls("", { name: "RESTORE_CONTEXT", arguments: { scope: "history", reason: "Repeat the read" } }),
+    text("Your locker number is 4417."),
+  ))
+  const restored = replyOf(try send(agent, id, { text: "What did I tell you ages ago?" }))
   const textOf = (content: unknown) => typeof content === "string" ? content : JSON.stringify(content)
-  const turnFor = (asked: string) => cloud.calls.map(({ body }) => (body as { messages?: { role: string; content?: unknown }[] } | undefined)?.messages ?? [])
+  const requests = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
+    .map(({ body }) => body as { tools?: { function?: { name?: string } }[]; messages: { role: string; content?: unknown; tool_calls?: unknown }[] })
+  const turnFor = (asked: string) => requests.map(({ messages }) => messages)
     .find((messages) => textOf(messages.at(-1)?.content).startsWith(asked)) ?? []
   const first = turnFor(lockerAsk)
   const second = turnFor(boilerAsk)
   const before = (messages: readonly { content?: unknown }[]) => messages.slice(0, -1).map(({ content }) => textOf(content)).join("\n")
+  const [askedRestore, receivedRestore, repeatedRestore] = requests.slice(beforeRestore)
   try Effect.try(() => assert.deepStrictEqual({
     windowed: first.length < 60,
     samePrefix: JSON.stringify(second.slice(0, first.length - 1)) === JSON.stringify(first.slice(0, -1)),
@@ -417,6 +434,18 @@ it.live(`A long conversation sends the same history turn after turn, and the exc
     recalledLabelled: [first, second].map((messages) => textOf(messages.at(-1)?.content).includes("Recalled earlier exchanges, oldest first")),
     hostLabels: [first, second].map((messages) => textOf(messages.at(-1)?.content).split("Note from the agent host").length - 1),
     neverInHistory: [before(first).includes(locker), before(second).includes(locker), before(second).includes(boiler)],
+    sameToolForm: requests.every(({ tools }) => JSON.stringify(tools) === JSON.stringify(requests[0]?.tools)),
+    restoreOffered: requests[0]?.tools?.map((tool) => tool.function?.name),
+    unavailableOnColdTurn: textOf(requests[1]?.messages.at(-1)?.content).includes('"status":"unavailable"'),
+    beforeAndAfter: [textOf(askedRestore?.messages.at(-1)?.content).includes(locker), textOf(receivedRestore?.messages.at(-1)?.content).includes(locker)],
+    priorPrefix: JSON.stringify(receivedRestore?.messages.slice(0, askedRestore?.messages.length)) === JSON.stringify(askedRestore?.messages),
+    notice: textOf(askedRestore?.messages.at(-1)?.content).includes("call RESTORE_CONTEXT alone"),
+    olderUnread: /"earlierOutsideSnapshot":[1-9]/.test(textOf(receivedRestore?.messages.at(-1)?.content)),
+    noSibling: !JSON.stringify(receivedRestore?.messages.at(-2)?.tool_calls ?? []).includes("CALCULATE")
+      && !JSON.stringify(restored.actionResults).includes("CALCULATE"),
+    repeated: textOf(repeatedRestore?.messages.at(-1)?.content).includes('"status":"unavailable"'),
+    restored: restored.text,
+    calls: requests.length - beforeRestore,
   }, {
     windowed: true,
     samePrefix: true,
@@ -425,6 +454,9 @@ it.live(`A long conversation sends the same history turn after turn, and the exc
     recalledLabelled: [true, true],
     hostLabels: [1, 1],
     neverInHistory: [false, false, false],
+    sameToolForm: true, restoreOffered: ["RESTORE_CONTEXT", "CALCULATE"], unavailableOnColdTurn: true,
+    beforeAndAfter: [false, true], priorPrefix: true, notice: true, olderUnread: true, noSibling: true, repeated: true,
+    restored: "Your locker number is 4417.", calls: 3,
   }))
 }, 240_000)
 
