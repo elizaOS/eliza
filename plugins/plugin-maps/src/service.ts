@@ -349,6 +349,11 @@ export class MapsService extends Service {
     return [...this.providers.keys()];
   }
 
+  /** Whether a maps provider is registered under this exact id. */
+  hasProvider(providerId: string): boolean {
+    return this.providers.has(providerId);
+  }
+
   /**
    * Describes only the exact bounded provider ids requested by a consumer.
    * Result-producing providers cannot disappear behind registration order.
