@@ -12,8 +12,8 @@ module node {
   import { latestSenderReplyFor } from "./latest-sender.vibe"
   import { readOperation, validate, type CheckedOperation } from "./operations.schema.vibe"
   import { offerProposal } from "./proposal/offer.vibe"
+  import { ownerWords } from "./proposal/receipts.vibe"
   import { familyOf } from "./proposal/registry.vibe"
-  import { ownerWords } from "./proposal/turn.vibe"
   import { openRequest, StaleDeviceRow, withReadCompletionPublication, type DeviceRequestRecord, type DeviceStoreUnavailable, type RequestEvent } from "./store.vibe"
 
   interface ReadCompletionContext {

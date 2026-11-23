@@ -49073,6 +49073,11 @@
           "declarations": []
         },
         {
+          "name": "minuteStamp",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
           "name": "createSecretSwapStableKey",
           "typeOnly": false,
           "declarations": []
