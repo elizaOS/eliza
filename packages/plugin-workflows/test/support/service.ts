@@ -5,12 +5,12 @@ import { Effect } from "effect";
 import { openWorkflows, type WorkflowService } from "../../src/service/workflows.vibe";
 import type { WorkflowHost } from "../../src/service/host.vibe";
 
-export interface OpenedService {
+interface OpenedService {
   readonly service: WorkflowService;
   close(): Promise<void>;
 }
 
-export async function openDriverService(owner = "owner"): Promise<OpenedService> {
+async function openDriverService(owner = "owner"): Promise<OpenedService> {
   const db = new PGlite();
   const wakeups = new Map<string, number>();
   const host: WorkflowHost = {
@@ -35,4 +35,35 @@ export async function outcome<A>(step: Effect.Effect<A, { readonly _tag: string 
   if (result._tag === "Success") return "accepted";
   if (result.failure._tag === "Rejected") return "refused";
   throw new Error(`The shell failed a step: ${result.failure._tag}`);
+}
+
+interface DriverRoute<Event, View> {
+  step(service: WorkflowService, id: string, event: Event, actor: string): Effect.Effect<unknown, { readonly _tag: string }>;
+  observe(service: WorkflowService, id: string): Effect.Effect<View, unknown>;
+}
+
+export function workflowDriver<Event, View>(namespace: string, route: DriverRoute<Event, View>) {
+  let opened: Promise<OpenedService> | undefined;
+  let generation = 0;
+  const open = () => (opened ??= openDriverService());
+  const id = (key: string) => `${namespace}-${generation}-${key}`;
+
+  return {
+    reset() {
+      generation += 1;
+    },
+    async dispatch(key: string, event: Event, by?: unknown) {
+      const { service } = await open();
+      return outcome(route.step(service, id(key), event, typeof by === "string" ? by : ""));
+    },
+    async observe(key: string) {
+      const { service } = await open();
+      return Effect.runPromise(route.observe(service, id(key)));
+    },
+    async [Symbol.asyncDispose]() {
+      const done = opened;
+      opened = undefined;
+      if (done !== undefined) await (await done).close();
+    },
+  };
 }

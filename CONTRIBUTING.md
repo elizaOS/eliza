@@ -49,8 +49,9 @@ with the exact name below. A Markdown bullet before the field name is optional.
   and trace or run ID where available. Show failure and recovery for a fix.
   For model-backed behavior, include the provider and exact model ID.
 - `UI video:` Attach before-and-after video of the same changed flow and state
-  in the application or Studio. Include the before-and-after screenshots
-  required above and steps a reviewer can repeat.
+  in the application or Studio. Include steps a reviewer can repeat.
+- `UI screenshots:` Attach the required before-and-after screenshots of the
+  same flow and state.
 - `Benchmarks:` Show comparable base and PR runs for every performance claim.
   Give the command, workload, environment, samples, metric and units, and the
   before-and-after results. Report any quality change or failure.
@@ -115,7 +116,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `5f25987`](https://github.com/lalalune/vibestack/commit/5f259878cd436c3d7cdc3cec5e3955c5130a19ac).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `374c1f1`](https://github.com/lalalune/vibestack/commit/374c1f1f128b36061ff61f2beb007470234fa39a).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -248,7 +249,11 @@ remembers under the programs installed now. Each tool runs in a process group
 of its own, and a check that is interrupted, or that exits, ends each group
 still running and the group of each process a tool started outside its own, as
 a browser is: no verifier, simulation or browser outlives it. A tool stopped
-for its time or its output is ended the same way. A run
+for its time or its output is ended the same way. An unreached simulation goal
+or an event its guard never allows cancels the queued proofs started alongside
+the simulations. On systems with process groups, it also stops their running
+tools. The check reports every simulation and waits for the tools to close
+before it releases the project lock. A run
 of a tool is remembered when it reached its answer, a refusal of its input
 included, never when it was stopped, timed out or failed for want of a file or
 program: an unchanged unit whose proof failed runs neither again, and an edit
@@ -384,6 +389,10 @@ to tasks so they use the selected evaluator. Its bytes determine the fingerprint
 In CI, a Turborepo cache entry is
 kept for seven days after its last hit, which the run summary names.
 
+The shared Dafny library is a direct input of the tool package build and the
+Studio tests that run proofs. An edit to that library leaves the application
+build keys unchanged.
+
 ### Seeds and budgets
 
 `vibestack/testing/profile.ts` is the one source of the fixed profiles:
@@ -459,9 +468,13 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each simulate the specs assigned by file hash, starting from the spec cache `verify` saved. A complete shard transfers its simulation and imported typecheck receipts. An incomplete shard transfers the new simulation aggregates it produced and reports its failures. When the shards finish, `verify` keeps its restored receipts, imports missing keys on which the shards agree, computes the rest, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
+
+The precompute jobs skip the root install's build and generation only during
+the canonical `ci.yml` preparation in its workspace. Other workflows, manual
+commands and nested packages keep their declared install work.
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
@@ -479,9 +492,7 @@ results.
 The default branch's `verify` job publishes the pnpm store after the frozen
 install. All jobs can restore it by the same lockfile key. This cache holds
 public packages only because fork pull requests can read it.
-Verification and release install both Chromium executables. In CI and nightly
-runs, shard A needs full Chromium for Bombadil. The other self-test shards
-run without a browser.
+CI verification installs the headless shell for Playwright. An exploration or replay that runs Bombadil installs full Chromium on first use. Hosted shard A installs full Chromium when its Bombadil journey runs. Nightly shard A and release install their required browsers during setup. The other tool shards run without a browser.
 CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache, only those a job
 of the same name saved.
 Branch pushes save results that later pushes and pull requests can restore. A pull request's
@@ -494,8 +505,9 @@ The task entry point disables Turbo telemetry. Local `selftest:tools` tasks wait
 root and Studio tests. In CI, the verify job runs those integration tests once.
 Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
 Fixture selftests on a pull request first restore an archive scoped to its PR number and lockfile. A complete cached task reuses it only when setup preserves its evaluator; inherited archives, evaluator changes and actual fixture execution retain normal publication.
+Fixture jobs restore their pull request’s Turbo archive before the shared fallback. A full replay keeps that archive when the cached files stay unchanged and no files need pruning. Turbo refreshes its checkout-specific restore manifests locally.
 
-The canonical nightly install builds the tools and defers application generation to its unchanged nightly task graph. Verification and release install full Chromium and its headless shell. Hosted shard A installs Chromium when its Bombadil journey runs; nightly setup still provisions it, and other tool shards need no browser.
+The canonical nightly install builds the tools and defers application generation to its nightly task graph.
 
 All three tool shards skip workspace generation. The two fixture shards use their scratch inputs, and the packaged CLI test builds its workspace copy.
 Release materializes the prerequisites before running the isolated shards.

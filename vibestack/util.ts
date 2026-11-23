@@ -15,11 +15,13 @@ export const sha = (...parts: string[]) => digest(JSON.stringify(parts));
 export const short = (text: string) => digest(text).slice(0, 12);
 export const indent = (s: string, by = 6) => s.split("\n").map((l) => " ".repeat(by) + l).join("\n");
 /** What each promise gives, once every one has finished: a failure is thrown only then, so that nothing is left running. */
-export async function allDone<T>(promises: Promise<T>[]): Promise<T[]> {
+export function allDone<const T extends readonly unknown[]>(promises: T): Promise<{ -readonly [I in keyof T]: Awaited<T[I]> }>;
+export async function allDone(promises: readonly unknown[]): Promise<unknown[]> {
   const settled = await Promise.allSettled(promises);
-  const failure = settled.find((r) => r.status === "rejected");
-  if (failure) throw failure.reason;
-  return settled.map((r) => (r as PromiseFulfilledResult<T>).value);
+  return settled.map((r) => {
+    if (r.status === "rejected") throw r.reason;
+    return r.value;
+  });
 }
 
 /** Write a file whole or not at all: to a file of its own beside it, then renamed into place. */

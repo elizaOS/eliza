@@ -1,0 +1,68 @@
+// spec/nativeGateway/index.md, "Story: Connect to the gateway I chose and isolate its replies"
+import type { GatewayPlugin } from "./native-contract.vibe"
+
+export type * from "./native-contract.vibe"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { GatewayPlugin } from "./native-contract.vibe"
+
+  export const native = registerPlugin<GatewayPlugin>("Gateway")
+}
+import { native } from capacitor
+
+export const Gateway = native
+
+import { nativeCall, nativeReply } from "@elizaos/os/bridges/bridge"
+import { confirmGateway, connectGateway, initial, mayRouteGatewayRpc } from "../gen/nativeGateway.effect.vibe"
+import type { GatewayConnectOptions, GatewaySendOptions } from "./native-contract.vibe"
+
+const Connection = Schema.Struct({ url: Schema.NullOr(Schema.String), sessionId: Schema.NullOr(Schema.String) })
+const Connected = Schema.Struct({ connected: Schema.Boolean, sessionId: Schema.optionalKey(Schema.String) })
+const Reply = Schema.Struct({
+  ok: Schema.Boolean,
+  payload: Schema.optionalKey(Schema.Json),
+  error: Schema.optionalKey(Schema.Struct({ code: Schema.String, message: Schema.String, details: Schema.optionalKey(Schema.Json) })),
+})
+
+const sessions = new WeakMap<GatewayPlugin, Semaphore.Semaphore>()
+
+function sessionPermit(port: GatewayPlugin): Semaphore.Semaphore {
+  const held = sessions.get(port)
+  if (held !== undefined) return held
+  const created = Semaphore.makeUnsafe(1)
+  sessions.set(port, created)
+  return created
+}
+
+export error GatewaySessionRefused
+
+export effect function openGatewaySession(options: GatewayConnectOptions, port: GatewayPlugin = Gateway) {
+  if (options.url.trim() === "") throw new GatewaySessionRefused()
+  const permit = sessionPermit(port)
+  try acquireRelease(permit.take(1), () => permit.release(1))
+  const pending = connectGateway(initial, options.url)
+  const connected = try acquireRelease(nativeReply("Gateway", "connect", Connected, () => port.connect(options)), (opened) => effect {
+    const sessionId = opened.sessionId
+    if (!opened.connected || sessionId === undefined || sessionId === "") return
+    const current = nativeReply("Gateway", "getConnectionInfo", Connection, () => port.getConnectionInfo()) catch () => undefined
+    if (current?.sessionId === sessionId && current.url === options.url) {
+      nativeCall("Gateway", "disconnect", () => port.disconnect()) catch () => undefined
+    }
+  })
+  const connection = connected.sessionId
+  if (!connected.connected || connection === undefined || connection === "") throw new GatewaySessionRefused()
+  const active = confirmGateway(pending, options.url, pending.connectionGeneration, true)
+  return {
+    sessionId: connection,
+    effect send(request: GatewaySendOptions) {
+      const current = try nativeReply("Gateway", "getConnectionInfo", Connection, () => port.getConnectionInfo())
+      if (current.sessionId !== connection || current.url === null ||
+          !mayRouteGatewayRpc(active, current.url, active.connectionGeneration)) throw new GatewaySessionRefused()
+      const reply = try nativeReply("Gateway", "send", Reply, () => port.send(request))
+      const after = try nativeReply("Gateway", "getConnectionInfo", Connection, () => port.getConnectionInfo())
+      if (after.sessionId !== connection || after.url !== current.url) throw new GatewaySessionRefused()
+      return reply
+    },
+  }
+}

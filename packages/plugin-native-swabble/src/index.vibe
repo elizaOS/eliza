@@ -1,0 +1,46 @@
+// spec/nativeSwabble/index.md, "Story: Listen for a wake phrase only during the current authorized session"
+import type { SwabblePlugin } from "./native-contract.vibe"
+
+export type * from "./native-contract.vibe"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { SwabblePlugin } from "./native-contract.vibe"
+
+  export const native = registerPlugin<SwabblePlugin>("Swabble")
+}
+import { native } from capacitor
+
+export const Swabble = native
+
+import { mayReportWakeObservation, type WakeLease, type WakeObservation } from "../gen/nativeSwabble.effect.vibe"
+
+export function currentWakeListener<T>(lease: () => WakeLease, callbackId: string, observation: WakeObservation, forward: (value: T) => void): (value: T) => void {
+  return (value) => {
+    if (mayReportWakeObservation(lease(), callbackId, observation)) forward(value)
+  }
+}
+
+import type { SwabbleTranscriptEvent } from "./native-contract.vibe"
+
+const Transcript = Schema.Struct({
+  transcript: Schema.String,
+  isFinal: Schema.Boolean,
+  segments: Schema.Array(Schema.Struct({ text: Schema.String, start: Schema.Number, duration: Schema.Number, isFinal: Schema.Boolean })),
+  confidence: Schema.optionalKey(Schema.Number),
+})
+
+export effect function observeWakeTranscript(lease: () => WakeLease, forward: (value: SwabbleTranscriptEvent) => void, port: SwabblePlugin = Swabble) {
+  const leaseId = lease().leaseId
+  let retired = false
+  try acquireRelease(tryPromise(() => port.addListener("transcript", (raw) => {
+    const parsed = Schema.decodeUnknownOption(Transcript)(raw)
+    if (retired || Option.isNone(parsed)) return
+    const report = parsed.value
+    const observation: WakeObservation = report.isFinal ? "FinalWakeTranscript" : "InterimWakeTranscript"
+    if (mayReportWakeObservation(lease(), leaseId, observation)) forward({ ...report, segments: [...report.segments] })
+  })), (listener) => effect {
+    retired = true
+    tryPromise(() => listener.remove()) catch () => undefined
+  })
+}

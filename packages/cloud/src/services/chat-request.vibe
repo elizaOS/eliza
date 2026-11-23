@@ -3,7 +3,7 @@ import { outputLimit, quoteCounts, type TokenAsk } from "../../gen/cloud__servic
 import { callCost, countsInBound, type Model, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { RouteContext } from "../http/routes.vibe"
-import { acceptedFields, ChatRequest, type ChatMessage, type ResponseFormat } from "./chat-request.schema.ts"
+import { acceptedFields, ChatRequest, type ChatMessage, type ContentPart, type ResponseFormat } from "./chat-request.schema.ts"
 
 export type { ChatRequest }
 
@@ -33,8 +33,12 @@ export effect function chatBody(context: RouteContext): ChatRequest!Refused {
   return try parseChat(raw)
 }
 
+function partsOf(message: ChatMessage): ReadonlyArray<ContentPart> {
+  return message.content === undefined || message.content === null || typeof message.content === "string" ? [] : message.content
+}
+
 export function hasImage(body: ChatRequest): boolean {
-  return body.messages.some((message) => typeof message.content !== "string" && message.content.some((part) => part.type === "image_url"))
+  return body.messages.some((message) => partsOf(message).some((part) => part.type === "image_url"))
 }
 
 function closedSchema(node: unknown): boolean {
@@ -60,8 +64,10 @@ function formatServable(format: ResponseFormat | undefined): boolean {
 }
 
 function textChars(message: ChatMessage): number {
-  if (typeof message.content === "string") return message.content.length
-  return message.content.reduce((sum, part) => sum + (part.type === "text" ? part.text.length : 0), 0)
+  const calls = message.role === "assistant" ? message.tool_calls ?? [] : []
+  const said = typeof message.content === "string" ? message.content.length
+    : partsOf(message).reduce((sum, part) => sum + (part.type === "text" ? part.text.length : 0), 0)
+  return calls.reduce((sum, call) => sum + call.function.name.length + call.function.arguments.length, said)
 }
 
 function asked(tokens: number | undefined): TokenAsk {
