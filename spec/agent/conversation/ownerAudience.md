@@ -22,8 +22,8 @@ pure def lawAnUnprivilegedTurnDoesNotSeekOwnerAudience(offersDisclosureGate: boo
   not(privateAudienceCheckNeeded(false, offersDisclosureGate))
 pure def lawOrdinaryTurnsNeedNoAudienceRead(ownerRole: bool): bool =
   not(privateAudienceCheckNeeded(ownerRole, false))
-pure def lawAProtectedOwnerTurnChecksTheRoom(): bool =
-  privateAudienceCheckNeeded(true, true)
+pure def lawEveryProtectedOwnerTurnChecksTheRoom(ownerRole: bool, offersDisclosureGate: bool): bool =
+  (ownerRole and offersDisclosureGate) implies privateAudienceCheckNeeded(ownerRole, offersDisclosureGate)
 ```
 
 ### The audience lease ends with the turn

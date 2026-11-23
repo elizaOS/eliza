@@ -1,11 +1,13 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"
 import type { IAgentRuntime, Plugin } from "@elizaos/core"
+import { registerOwnerActionRelevance } from "@elizaos/agent"
 import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import { calendarProposalFamily } from "./plugin/device-proposals.vibe"
 import { calendarAction, calendarActionName, calendarAsk, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
 import type { CalendarHost } from "./plugin/host.vibe"
 import { linkedCalendarRoutes } from "./plugin/linked-routes.vibe"
 import { calendarRoutes, type CalendarRoute } from "./plugin/routes.vibe"
+import { calendarRequestRelevance } from "./plugin/request-routing.vibe"
 import { CalendarApprovalExecutorService, CalendarService, calendarApprovalExecutorServiceType, calendarServiceType } from "./plugin/service.vibe"
 
 export type * from "./model.vibe"
@@ -59,6 +61,7 @@ export function calendarPlugin(): CalendarPlugin {
     })],
     init: async (_config, runtime) => {
       started = runtime
+      registerOwnerActionRelevance(calendarAction, calendarRequestRelevance)
       await runPromise(registerDeviceProposalFamily(runtime, calendarProposalFamily))
     },
   }

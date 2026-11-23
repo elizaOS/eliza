@@ -2,7 +2,7 @@
 import {
   type Action, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
-  attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
+  attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, evaluateOwnerExclusiveDisclosure, executePlannedToolCall, getTrajectoryContext, historyWindowNotice, OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
 // spec/agent/conversation/ownerAudience.md, "The agent checks the stored room when an owner turn offers a disclosure-gated tool"; spec/agent/conversation/ownerAudience.md, "The audience lease ends with the turn"
 import { privateAudienceCheckNeeded } from "../../gen/agent__conversation__ownerAudience.ts"
@@ -14,7 +14,8 @@ import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { withOwnerResend } from "../models/owner-resend.vibe"
 import { readTurnContext, type BrowserPage } from "./turn-context.schema.vibe"
-import { actionNotes, offeredActions, planTurn } from "./planning.vibe"
+// spec/calendar/requestRouting.md, "An explicit event change adds Calendar relevance only to its admitted action"
+import { actionNotes, offeredActions, ownerRelevanceOf, planTurn } from "./planning.vibe"
 import { ownerNotesAdmission } from "./notes-admission.vibe"
 import { cueRule } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
@@ -202,7 +203,12 @@ async function respond(
           signal.throwIfAborted()
           if (audience !== undefined) releaseAudience = beginTrustedDeliveryAudienceTurn(runtime, message, { signal })
         }
-        const notes = [contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext]
+        const disclosure = releaseAudience === undefined ? undefined : evaluateOwnerExclusiveDisclosure(message)
+        const relevance = disclosure?.allowed && disclosure.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+          ? ownerRelevanceOf(message, actions)
+          : undefined
+        const relevanceNotes = [...(relevance?.values() ?? [])].map(({ note }) => note)
+        const notes = [contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), ...relevanceNotes, options?.taskContext]
         const notice = window.windowed ? historyWindowNotice(window, window.deferred.length > 0 ? "RESTORE_CONTEXT" : undefined) : undefined
         const messages: ChatMessage[] = [...history, said(message, asked, [...notes, notice])]
         const deferredHistory = window.deferred.length === 0 ? undefined : {
@@ -219,11 +225,18 @@ async function respond(
         const notesHistoryIds = new Set(recent.flatMap(({ id, entityId }) =>
           id !== undefined && (entityId === message.entityId || entityId === runtime.agentId) ? [id] : []))
         const current = () => planningLive && !signal.aborted && runtime.roomHandlerQueue.ownsLease(message.roomId, lease)
-        const actionContext = ownerNotesAdmission({
+        const notesContext = ownerNotesAdmission({
           runtime, message, state, signal, owner,
           history: history.filter((_, index) => notesHistoryIds.has(window.shown[index]?.id ?? "")),
           current,
         })
+        const actionContext = async (action: Action | undefined, params: Readonly<Record<string, unknown>>) => {
+          const wrapped = await notesContext(action)
+          const extra = action === undefined ? undefined : relevance?.get(action)
+          return extra?.matches(params) && !wrapped.activeContexts.includes(extra.context)
+            ? { ...wrapped, activeContexts: [...wrapped.activeContexts, extra.context] }
+            : wrapped
+        }
         const resend = owner && options?.deadlineAt !== undefined ? { deadline: options.deadlineAt, current } : undefined
         const planned = await withOwnerResend(resend, () => planTurn({
           runtime, message, state, roles, actionGate, system, messages, signal, actionContext,

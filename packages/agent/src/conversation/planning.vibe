@@ -58,7 +58,7 @@ export interface PlanInput {
   readonly messages: readonly ChatMessage[]
   readonly deferredHistory?: { readonly count: number; readonly originals: readonly ChatMessage[] }
   readonly signal: AbortSignal
-  readonly actionContext: (action: Action | undefined) => Promise<{ state: State; activeContexts: readonly AgentContext[] }>
+  readonly actionContext: (action: Action | undefined, params: Readonly<Record<string, unknown>>) => Promise<{ state: State; activeContexts: readonly AgentContext[] }>
   readonly onStreamChunk?: StreamChunkCallback
   readonly onReplyRestart?: (fullText: string) => void
   readonly onPlanningAcknowledgment?: (text: string) => void | Promise<void>
@@ -87,6 +87,27 @@ export interface ServedElsewhere {
 export const turnElsewhere = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory, params: Record<string, unknown>) => ServedElsewhere | undefined>()
 
 export const turnNotes = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => string | undefined>()
+
+export interface OwnerActionRelevance {
+  readonly note: string
+  readonly context: AgentContext
+  readonly matches: (params: Readonly<Record<string, unknown>>) => boolean
+}
+
+const ownerActionRelevance = new WeakMap<Action, (message: Memory) => OwnerActionRelevance | undefined>()
+
+export function registerOwnerActionRelevance(action: Action, read: (message: Memory) => OwnerActionRelevance | undefined): void {
+  ownerActionRelevance.set(action, read)
+}
+
+export function ownerRelevanceOf(message: Memory, actions: readonly Action[]): ReadonlyMap<Action, OwnerActionRelevance> {
+  const found = new Map<Action, OwnerActionRelevance>()
+  for (const action of actions) {
+    const relevance = ownerActionRelevance.get(action)?.(message)
+    if (relevance !== undefined) found.set(action, relevance)
+  }
+  return found
+}
 
 export function actionNotes(runtime: IAgentRuntime, message: Memory, actions: readonly Action[]): string[] {
   const names = new Set(actions.map(({ name }) => name))
@@ -419,7 +440,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     }
     await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
     const captured: string[] = []
-    const context = await input.actionContext(named.get(call.name))
+    const context = await input.actionContext(named.get(call.name), params)
     signal.throwIfAborted()
     const result = await executePlannedToolCall(runtime, {
       message, ...context, userRoles: roles, previousResults: steps.map(({ result }) => result),

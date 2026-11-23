@@ -1,0 +1,70 @@
+// spec/calendar/requestRouting.md, "An explicit event change adds Calendar relevance only to its admitted action"
+import { assert, it } from "@effect/vitest"
+import { calendarPlugin } from "../src/index.vibe"
+import { calendarEventRequest } from "../src/plugin/request-routing.vibe"
+import type { AgentPlugin } from "../../agent/src/host/module.vibe"
+import { toolCalls, text } from "../../agent/test/support/cloud-fake.ts"
+import { call, cloudFake, deviceKey, startInProcess } from "../../agent/test/support/kernel.vibe"
+
+it.effect('Recognize current Calendar words and keep other records out (spec/calendar/requestRouting.md, "An explicit event change adds Calendar relevance only to its admitted action")', effect () => {
+  try Effect.try(() => assert.deepStrictEqual([
+    calendarEventRequest("Please add a dentist appointment tomorrow."),
+    calendarEventRequest("Move the roadshow to 4pm."),
+    calendarEventRequest("Delete the calendar event migration planning."),
+    calendarEventRequest("Move the note migration planning to 4pm."),
+    calendarEventRequest("Move it to 4pm."),
+    calendarEventRequest("Add a meeting in the calendar app on this phone."),
+    calendarEventRequest("Delete the meeting notes."),
+  ], ["CreateEventIntent", "UpdateEventIntent", "DeleteEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent"]))
+})
+
+it.live('Create a resident event and keep the other work while Contacts is open (spec/calendar/requestRouting.md, "Story: Change a calendar event from the view I am using")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const calendar = calendarPlugin()
+  const other: AgentPlugin = {
+    name: "calendar-contacts-fixture",
+    description: "Reads a synthetic local record.",
+    actions: [{
+      name: "READ_EXTRA_FIXTURE", description: "Read the unrelated synthetic record.",
+      contextGate: { contexts: ["general"] },
+      validate: async () => true,
+      handler: async () => ({ success: true, text: "The other fixture is ready." }),
+    }],
+  }
+  const agent = try startInProcess({
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, load: [calendar.name, other.name],
+      allowed: ["REPLY", "IGNORE", "NONE", "CALENDAR", "READ_EXTRA_FIXTURE"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map<string, AgentPlugin>([[calendar.name, calendar], [other.name, other]]),
+  })
+
+  const title = "Migration planning"
+  const startAt = "2035-03-04T09:00:00Z"
+  const endAt = "2035-03-04T10:00:00Z"
+  const opened = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
+  if (!("status" in opened) || opened.status !== 200) throw new Error("The fixture conversation did not open")
+  const id = (opened.json as { conversation: { id: string } }).conversation.id
+  const asked = `Add an event called ${title} on March 4, 2035 at 9am UTC, save it now, and check the other fixture.`
+  try Effect.sync(() => cloud.script(toolCalls("",
+    { name: "CALENDAR", arguments: { subaction: "create_event", title, startAt, endAt, timeZone: "UTC", reviewBeforeCreate: false } },
+    { name: "READ_EXTRA_FIXTURE", arguments: {} },
+  ), text("I saved Migration planning and checked the other fixture.")))
+  const reply = try call(agent, {
+    method: "POST", path: `/api/conversations/${id}/messages`, body: { text: asked,
+      metadata: { observation: { view: "contacts", revision: 1, sensitive: false } } },
+  })
+  const window = new URLSearchParams({
+    timeMin: "2035-03-04T00:00:00Z", timeMax: "2035-03-05T00:00:00Z", timeZone: "UTC",
+  })
+  const feed = try call(agent, { method: "GET", path: `/api/lifeops/calendar/feed?${window}` })
+  const plan = cloud.calls.find(({ path }) => path.endsWith("/chat/completions"))
+  try Effect.try(() => {
+    assert.include(JSON.stringify(plan?.body), "Use CALENDAR's create_event")
+    if (!("status" in reply) || !("status" in feed)) throw new Error("A signed fixture route refused")
+    assert.strictEqual(reply.status, 200)
+    assert.strictEqual(feed.status, 200)
+    const result = reply.json as { actionResults: readonly { action: string }[] }
+    assert.includeMembers(result.actionResults.map(({ action }) => action), ["CALENDAR", "READ_EXTRA_FIXTURE"])
+    assert.include(JSON.stringify(feed.json), title)
+  })
+}, 120_000)
