@@ -78,10 +78,13 @@ pure val utcMinuteValues = Set(0, 1439)
 
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first
 
-When a create names a date, a trailing year wins. Otherwise a stated
-numeric year or "next" chooses the coming year, and a date with no year
-or "this year" chooses the current year. The year the extractor guessed
-is never used on its own. The wall clock and duration stay as
+When a create names a calendar date, a trailing year wins. Otherwise a
+stated numeric year, before the month, before a slash date or anywhere
+else in the request, is the year; "next year" chooses the coming year,
+and a date with no year or "this year" chooses the current year in the
+request's zone. The year the extractor guessed is never used on its own.
+A create that names no calendar date, such as "tomorrow" or "next
+Friday", keeps the extracted start. The wall clock and duration stay as
 extracted. A start that is already past must be confirmed by the owner
 before anything is stored; a future start is ready.
 
@@ -92,6 +95,12 @@ pure def correctedYear(cue: YearCue, statedYear: int, trailingYear: int, current
   else if (cue == StatedYearCue) statedYear
   else if (cue == NextYearCue) currentYear + 1
   else currentYear
+pure def createStartYear(namesDate: bool, cue: YearCue, statedYear: int, trailingYear: int, currentYear: int, extractedYear: int): int =
+  if (namesDate) correctedYear(cue, statedYear, trailingYear, currentYear) else extractedYear
+pure def lawUndatedCreateKeepsExtractedYear(cue: YearCue, statedYear: int, trailingYear: int, currentYear: int, extractedYear: int): bool =
+  createStartYear(false, cue, statedYear, trailingYear, currentYear, extractedYear) == extractedYear
+pure def lawDatedCreateUsesCorrectedYear(cue: YearCue, statedYear: int, trailingYear: int, currentYear: int, extractedYear: int): bool =
+  createStartYear(true, cue, statedYear, trailingYear, currentYear, extractedYear) == correctedYear(cue, statedYear, trailingYear, currentYear)
 pure def mustAskBeforeCreate(startYear: int, currentYear: int, dayPassed: bool): bool =
   startYear < currentYear or (startYear == currentYear and dayPassed)
 pure def lawTrailingYearWins(cue: YearCue, statedYear: int, trailingYear: int, currentYear: int): bool =
@@ -103,5 +112,6 @@ pure def lawFutureStartIsReady(startYear: int, currentYear: int, dayPassed: bool
 pure val statedYearValues = Set(2026, 2027, 2028)
 pure val currentYearValues = Set(2026)
 pure val trailingYearValues = Set(0, 2028)
+pure val extractedYearValues = Set(2025, 2031)
 pure val startYearValues = Set(2025, 2026, 2027)
 ```
