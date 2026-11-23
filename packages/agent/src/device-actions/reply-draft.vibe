@@ -1,7 +1,7 @@
 // spec/agent/deviceActions/replyDraft.md, "A draft request is exactly the open thread's tail, ending in a received message"; spec/agent/deviceActions/replyDraft.md, "Only an admitted thread with a person to answer reaches the model, and only once"; spec/agent/deviceActions/replyDraft.md, "Message text reaches the model only as escaped data inside one thread block"; spec/agent/deviceActions/replyDraft.md, "The answer is one draft of at most 320 units, or none, and nothing is sent"
 import { ModelType, logger, type AgentRuntime } from "@elizaos/core"
 import { clockAt } from "../../gen/agent__models__binding.effect.vibe"
-import { decision, draftMaxTokens, drafterCanCall, handle, httpStatus, keptUnits, requestLimitBytes, speakerOf, type Direction, type DraftAnswer, type DraftRequest, type ModelResult, type Participant, type ThreadMessage } from "../../gen/agent__deviceActions__replyDraft.effect.vibe"
+import { decision, drafterCanCall, handle, httpStatus, keptUnits, requestLimitBytes, speakerOf, type Direction, type DraftAnswer, type DraftRequest, type ModelResult, type Participant, type ThreadMessage } from "../../gen/agent__deviceActions__replyDraft.effect.vibe"
 import type { LocalRoute, RouteInput } from "../access/routes.vibe"
 import type { AgentModule, ModuleContext, ModuleFactory } from "../host/module.vibe"
 
@@ -111,7 +111,7 @@ error DraftCallFailed { cause: unknown }
 
 effect function draftCall(runtime: AgentRuntime, thread: ReadThread, signal: AbortSignal) {
   const raw = try tryPromise({
-    try: () => runtime.useModel(ModelType.TEXT_SMALL, { system: systemText, prompt: userText(thread), maxTokens: draftMaxTokens, signal }),
+    try: () => runtime.useModel(ModelType.TEXT_SMALL, { system: systemText, prompt: userText(thread), omitMaxTokens: true, signal }),
     catch: (cause) => new DraftCallFailed({ cause }),
   })
   return signal.aborted ? closed : saidOf(raw)
