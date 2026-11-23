@@ -182,19 +182,27 @@ pure def lawOwnKeyLaunchIsFramedWithTheProviderKeyOrNone(d: AgentData, cred: C::
 pure val providerVersionValues = Set(0, 1, 2)
 ```
 
-### The agent admits every launch the service writes, given a launch frame with a key
+### A ready configuration writes an admitted document and uses the Agent's frame verdict
 
-A ready launch, sent with an admitted frame that carries a credential, passes
-the agent's own launch verdict, so the agent never exits 78 or 77 on a start
-the service judged ready.
+Every document the service judges ready passes the agent's configuration
+check. The agent refuses a structurally invalid frame as `Config`. For an
+admitted frame, a backend that needs a credential refuses a missing key
+or a key too large for its slot as `Credential`. The service reports that
+failure when the agent exits with code 77. A frame that fits the backend
+passes the launch verdict.
 
 ```quint
-pure def readyDocumentAdmitted(v: StartVerdict, f: Launch::LaunchFrame): bool = match v {
-  | LaunchReady(r) => Launch::launchVerdict(r.launch.document, f) == Launch::LaunchAdmitted
+pure def lawReadyLaunchMatchesAgentVerdict(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool =
+  match startVerdict(d, cred, worker) {
+  | LaunchReady(r) => {
+    val doc = r.launch.document
+    val expected = if (not(Launch::frameAdmitted(f))) Launch::LaunchRefused({ cause: Launch::Config })
+      else if (Launch::needsCredential(doc.backend) and not(Launch::credentialFits(doc.backend, f.credential))) Launch::LaunchRefused({ cause: Launch::Credential })
+      else Launch::LaunchAdmitted
+    Launch::documentAdmitted(doc) and Launch::launchVerdict(doc, f) == expected
+  }
   | _ => true
 }
-pure def lawAgentAdmitsEveryReadyLaunch(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool =
-  (Launch::frameAdmitted(f) and Launch::hasCredential(f.credential)) implies readyDocumentAdmitted(startVerdict(d, cred, worker), f)
 pure val workerValues = Set(RP::NoLaunchWorker, RP::NamedWorker({ runtimeDir: "files/worker", executable: "worker", sha256: "w1" }))
 pure val credValues = {
   val active = { ...C::initial, lastVersion: 1, custody: C::Active({ version: 1, credentialId: "c1", account: { userId: "user1", organizationId: "org1" }, keyExpiresAt: 1000 }) }
