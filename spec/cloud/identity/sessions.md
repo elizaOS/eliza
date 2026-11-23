@@ -116,7 +116,7 @@ pure def refreshRefusal(presented: int, f: Family, personEpoch: int): RefusalRea
 pure def revokeAll(personEpoch: int): SessionEffect = RevokePersonSessions({ toEpoch: personEpoch + 1 })
 pure def canRefresh(f: Family, presented: int, personEpoch: int): bool = observes(f, personEpoch) and (isReuse(f, presented) or refreshRefusal(presented, f, personEpoch) == NoReason)
 pure def refresh(f: Family, presented: int, personEpoch: int): FamilyStep =
-  if (isLease(f)) leaseRefresh(f, presented, personEpoch)
+  if (isLease(f)) leaseRefresh(presented, f, personEpoch)
   else if (isReuse(f, presented)) { state: { ...f, phase: Reused, seenEpoch: personEpoch + 1 }, out: List(revokeAll(personEpoch)) }
   else { state: { ...f, seenEpoch: personEpoch, generation: f.generation + 1, issuedAt: f.now, accessExpiresAt: if (f.now + accessLifetime < f.refreshExpiresAt) f.now + accessLifetime else f.refreshExpiresAt }, out: List() }
 pure def stepRefreshRefusesTheOldPair(before: Family, via: str, after: Family, out: List[SessionEffect]): bool = (via == "refresh" and not(isLease(before))) implies not(accepts(after, before.generation, after.seenEpoch))
@@ -302,7 +302,7 @@ pure def answersOf(f: Family): int = { val r = f.rotation  match r { | Offering(
 pure def offeredAtOf(f: Family): Millis = { val r = f.rotation  match r { | Offering(o) => o.offeredAt | Settled => f.issuedAt } }
 pure def committedAt(at: Millis, f: Family): Family =
   { ...f, generation: f.generation + 1, issuedAt: at, accessExpiresAt: if (at + accessLifetime < f.refreshExpiresAt) at + accessLifetime else f.refreshExpiresAt, rotation: Settled }
-pure def leaseRefresh(f: Family, presented: int, personEpoch: int): FamilyStep = {
+pure def leaseRefresh(presented: int, f: Family, personEpoch: int): FamilyStep = {
   val kept = if (presented == f.generation) f else committedAt(offeredAtOf(f), f)
   val answers = if (presented == f.generation) answersOf(f) + 1 else 1
   if (isReuse(f, presented)) { state: { ...f, phase: Reused, rotation: Settled, seenEpoch: personEpoch }, out: List(EndLeaseAndGrant({ grantKey: leaseGrant(f) })) }
