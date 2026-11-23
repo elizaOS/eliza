@@ -270,16 +270,15 @@ public class FilesPlugin extends Plugin {
         storage(call, request -> {
             Double from = call.getDouble("from"), to = call.getDouble("to");
             long since = from == null ? 0 : from.longValue(), until = to == null ? 0 : to.longValue();
-            JSObject out = new JSObject();
             if (Boolean.TRUE.equals(call.getBoolean("folders", false))) {
                 JSArray rows = new JSArray();
                 for (StorageBrowser.Row r : primary().folders(call.getString("folder", ""), call.getString("text"), since, until, StorageCatalog.QUERY_MAX, StorageBrowser.WALK_MAX)) rows.put(row(r));
+                JSObject out = new JSObject();
                 out.put("entries", rows);
-            } else {
-                out.put("entries", StorageCatalog.query(resolver(), call.getString("text"), call.getString("mimePrefix"),
-                    Boolean.TRUE.equals(call.getBoolean("documents", false)), call.getString("folder"), since, until));
+                return out;
             }
-            return out;
+            return StorageCatalog.queryPage(resolver(), call.getString("text"), call.getString("mimePrefix"),
+                Boolean.TRUE.equals(call.getBoolean("documents", false)), call.getString("folder"), since, until);
         });
     }
 

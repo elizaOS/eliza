@@ -314,3 +314,19 @@ pure def stepEraseIsReportedOnlyWhenDataAndRecordAreGone(before: NativeTrashCust
 pure def sometimesErased(s: NativeTrashCustody): bool = s.answer == ErasedForever
 pure def sometimesErasureLeavesItsRecord(s: NativeTrashCustody): bool = s.answer == EraseFailed and s.record != NoRecord
 ```
+
+### A file search reports completeness only when the native cursor is exhausted
+
+A MediaStore search returns up to 500 visible matching rows. It marks the
+result partial when the cursor supplies another visible match or when the
+provider supplied no cursor. Exactly 500 visible matches are complete when
+the cursor is exhausted. A bounded folder walk supplies no completeness
+claim. Partial results retain their rows.
+
+```quint
+type NativeSearchEnd = SearchCursorExhausted | SearchCursorMissing | SearchHasMoreMatches | SearchFolderBound
+pure def reportsSearchComplete(end: NativeSearchEnd): bool = end == SearchCursorExhausted
+pure val nativeSearchEndValues = Set(SearchCursorExhausted, SearchCursorMissing, SearchHasMoreMatches, SearchFolderBound)
+pure def lawOnlyACursorThatEndedProvesTheSearchComplete(end: NativeSearchEnd): bool =
+  reportsSearchComplete(end) implies end == SearchCursorExhausted
+```

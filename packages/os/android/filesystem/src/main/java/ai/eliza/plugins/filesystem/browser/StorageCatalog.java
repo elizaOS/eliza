@@ -120,7 +120,7 @@ public final class StorageCatalog {
  /** One MediaStore category over the primary volume, newest first. Trash and pending rows are excluded by MediaStore. */
  public static JSObject category(ContentResolver resolver,String category){
   String selection=selection(category);String[] args=selection==null?null:DOCUMENT_TYPES;
-  Tally tally=new Tally();JSArray entries=rows(resolver,collection(category),selection,args,CATEGORY_MAX,tally);
+  Tally tally=new Tally();JSArray entries=rows(resolver,collection(category),selection,args,CATEGORY_MAX,tally).entries();
   JSObject out=new JSObject();out.put("entries",entries);out.put("count",tally.count);out.put("truncated",tally.count>entries.length());
   JSArray folders=new JSArray();
   for(java.util.Map.Entry<String,Object[]> e:tally.folders.entrySet()){JSObject f=new JSObject();f.put("folder",e.getKey());f.put("count",(int)e.getValue()[0]);f.put("latest",e.getValue()[1]);folders.put(f);}
@@ -131,6 +131,17 @@ public final class StorageCatalog {
  static final class Tally{int count;final java.util.LinkedHashMap<String,Object[]> folders=new java.util.LinkedHashMap<>();}
  /** Candidates for the agent's read-only filter; the renderer applies the exact filter rules. */
  public static JSArray query(ContentResolver resolver,String text,String mimePrefix,boolean documents,String folder,long from,long to){
+  return queryRows(resolver,text,mimePrefix,documents,folder,from,to).entries();
+ }
+ // spec/os/android/files/storage.md, "A file search reports completeness only when the native cursor is exhausted"
+ public static JSObject queryPage(ContentResolver resolver,String text,String mimePrefix,boolean documents,String folder,long from,long to){
+  SearchRows found=queryRows(resolver,text,mimePrefix,documents,folder,from,to);
+  JSObject page=new JSObject();
+  page.put("entries",found.entries());
+  page.put("truncated",found.truncated());
+  return page;
+ }
+ private static SearchRows queryRows(ContentResolver resolver,String text,String mimePrefix,boolean documents,String folder,long from,long to){
   List<String> clauses=new ArrayList<>(),args=new ArrayList<>();
   // Documents are a set of types, so the newest rows of other types never crowd them out.
   if(documents){StringBuilder in=new StringBuilder();for(int i=0;i<DOCUMENT_TYPES.length;i++){in.append(i==0?"?":",?");args.add(DOCUMENT_TYPES[i]);}clauses.add(MediaStore.MediaColumns.MIME_TYPE+" IN ("+in+")");}
@@ -140,18 +151,21 @@ public final class StorageCatalog {
   if(from>0){clauses.add(MediaStore.MediaColumns.DATE_MODIFIED+" >= ?");args.add(String.valueOf(from/1000));}
   if(to>0){clauses.add(MediaStore.MediaColumns.DATE_MODIFIED+" <= ?");args.add(String.valueOf(to/1000));}
   clauses.add(MediaStore.MediaColumns.MIME_TYPE+" IS NOT NULL");
+  clauses.add(VISIBLE);
   return rows(resolver,MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),String.join(" AND ",clauses),args.toArray(new String[0]),QUERY_MAX,null);
  }
+ private record SearchRows(JSArray entries,boolean truncated){}
  /** Rows newest first, at most `limit`; with a tally every row is read so counts are not capped. */
- private static JSArray rows(ContentResolver resolver,Uri uri,String selection,String[] args,int limit,Tally tally){
+ private static SearchRows rows(ContentResolver resolver,Uri uri,String selection,String[] args,int limit,Tally tally){
   JSArray out=new JSArray();
   try(Cursor cursor=resolver.query(uri,COLUMNS,selection,args,MediaStore.MediaColumns.DATE_MODIFIED+" DESC")){
-   if(cursor==null)return out;
-   while(cursor.moveToNext()&&(tally!=null||out.length()<limit)){
+   if(cursor==null)return new SearchRows(out,true);
+   while(cursor.moveToNext()){
     String relative=cursor.getString(0),name=cursor.getString(1);if(relative==null||name==null)continue;
     String folder=relative.replaceAll("/+$","");
     // Hidden folders (the trash included) are not shown in categories.
     if(name.startsWith(".")||("/"+folder).contains("/."))continue;
+    if(tally==null&&out.length()>=limit)return new SearchRows(out,true);
     Object[] group=null;
     if(tally!=null){tally.count++;group=tally.folders.get(folder);if(group!=null)group[0]=(int)group[0]+1;}
     boolean listed=out.length()<limit,first=tally!=null&&group==null;
@@ -162,6 +176,6 @@ public final class StorageCatalog {
     if(first)tally.folders.put(folder,new Object[]{1,row});
    }
   }
-  return out;
+  return new SearchRows(out,false);
  }
 }
