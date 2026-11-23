@@ -418,7 +418,18 @@ it.live('Run a digest over a live Google source read through managed Google (spe
       calendarFeed: () => Promise.resolve({ calendarId: "work@example.com", events: [], syncedAt: new Date().toISOString() }),
     } as unknown as ManagedGoogleReads
     const reads: string[] = []
-    const native: WorkflowNativeDigests = { grant: () => succeed({ timeZone: "UTC" }), read: (selection) => sync(() => { reads.push(selection.sourceId); return "Water the plants" }) }
+    let held: { readonly granting: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> } | undefined
+    const native: WorkflowNativeDigests = {
+      grant: () => effect {
+        const gate = held
+        if (gate !== undefined) {
+          try Deferred.succeed(gate.granting, undefined)
+          try Deferred.await(gate.release)
+        }
+        return { timeZone: "UTC" }
+      },
+      read: (selection) => sync(() => { reads.push(selection.sourceId); return "Water the plants" }),
+    }
     const rig = try harness({ google, native, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
     const protocol = hostedDigestProtocol(rig.request)
     const [account] = try protocol.liveAccounts()
@@ -444,12 +455,22 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     const phoneSaved = try protocol.mutate("sources", { id: "phone-1", kind: "tasks", label: "Tasks", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live: phoneLive, confirmed: true })
     const phoneRevision = (phoneSaved.source as { readonly revision: string }).revision
     const asked = { sourceId: "phone-1", sourceRevision: phoneRevision, mutationId: "dossier-1", confirmed: true }
-    const dossier = try protocol.mutate("dossier", asked)
+    const granting = try Deferred.make<void>()
+    const release = try Deferred.make<void>()
+    held = { granting, release }
+    const asking = try forkChild(protocol.mutate("dossier", asked))
+    try Deferred.await(granting)
+    held = undefined
+    const meanwhile = try Effect.timeout(protocol.mutate("sources", { id: "notes-1", kind: "notes", label: "Notes", text: "Buy milk", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, confirmed: true }), "60 seconds")
+    try Deferred.succeed(release, undefined)
+    const dossier = try Fiber.join(asking)
     const dossierRun = (dossier.execution as { readonly id: string }).id
     try protocol.mutate("sources/revoke", { id: "phone-1", confirmed: true })
     const replayed = try protocol.mutate("dossier", asked)
     const afterRevoke = try Effect.flip(rig.request("/api/workflow/hosted/dossier", { ...asked, mutationId: "dossier-2" }))
-    try check(() => assert.deepStrictEqual([(replayed.execution as { readonly id: string }).id, afterRevoke._tag === "WorkflowHttpError" ? afterRevoke.status : 0, reads], [dossierRun, 409, ["tasks"]]))
+    try check(() => assert.deepStrictEqual(
+      [(meanwhile.source as { readonly id: string }).id, (replayed.execution as { readonly id: string }).id, afterRevoke._tag === "WorkflowHttpError" ? afterRevoke.status : 0, reads],
+      ["notes-1", dossierRun, 409, ["tasks"]]))
   }
 })
 
