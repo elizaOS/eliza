@@ -2068,6 +2068,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const again = try operation("", { grantId, requestId, proposal })
     const otherKind = try operation("", { grantId, requestId, proposal: { ...proposal, kind: "archive" } })
     const wrongDigest = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: "0".repeat(64), proposal })
+    try check(() => assert.deepStrictEqual(switches.calls, []))
     switches.dropNextReply = true
     const lost = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
     const looked = try operation(`/${requestId}?grantId=${grantId}`)
@@ -2108,7 +2109,9 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const prepared = try operation("", { grantId, requestId, proposal })
     const reviewDigest = (prepared.body as OperationAnswer).receipt.reviewDigest
     const changed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal: { ...proposal, bodyText: "Something else." } })
+    try check(() => assert.deepStrictEqual(switches.calls, []))
     const sent = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    try check(() => assert.equal(sent.status, 200, JSON.stringify(sent.body)))
     const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
     const looked = try operation(`/${requestId}?grantId=${grantId}`)
     const sends = switches.calls.filter((call) => call.path === "/messages/send").length
