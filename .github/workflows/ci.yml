@@ -101,7 +101,47 @@ jobs:
           rm -f ".turbo/cache/$HASH-manifest.json"
           mv "$archive" "$meta" .turbo/cache/
       - id: verify-tasks
-        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
+        env:
+          JOB: ${{ matrix.name }}
+          TASKS: ${{ matrix.tasks }}
+        run: |
+          read -ra tasks <<< "$TASKS"
+          options=()
+          if [[ $JOB == verify ]]; then
+            options+=(--log-order=stream)
+            config=.cache/verify-turbo.json
+            if [[ $GITHUB_REPOSITORY == elizaOS/eliza && -z ${TURBO_ROOT_TURBO_JSON+x} && ! -e turbo.jsonc && ! -L turbo.jsonc ]]; then
+              mkdir -p .cache
+              if jq -e '
+                [
+                  {name: "core", dir: "core"},
+                  {name: "cloud", dir: "cloud"},
+                  {name: "agent", dir: "agent"},
+                  {name: "os", dir: "os"},
+                  {name: "plugin-browser", dir: "plugin-browser", inputs: ["$TURBO_DEFAULT$"]},
+                  {name: "plugin-calendar", dir: "plugin-calendar", inputs: ["$TURBO_DEFAULT$"]},
+                  {name: "plugin-files", dir: "plugin-files", inputs: ["$TURBO_DEFAULT$"]},
+                  {name: "plugin-inbox", dir: "plugin-inbox", inputs: ["$TURBO_DEFAULT$"]},
+                  {name: "plugin-local-inference", dir: "plugin-localinference", inputs: ["$TURBO_DEFAULT$"]},
+                  {name: "plugin-maps", dir: "plugin-maps", inputs: ["$TURBO_DEFAULT$"]},
+                  {name: "plugin-notes", dir: "plugin-notes"},
+                  {name: "plugin-personal-assistant", dir: "plugin-assistant", inputs: ["$TURBO_DEFAULT$"]},
+                  {name: "plugin-workflow", dir: "plugin-workflows", inputs: ["$TURBO_DEFAULT$"]}
+                ] as $owners
+                | select(.tasks.build.dependsOn | index("//#gen") != null)
+                | select(.tasks["//#gen"].outputs | index("packages/*/gen/**") != null and all(.[]; startswith("!") | not))
+                | select(.tasks as $tasks | all($owners[]; .name as $name | $tasks | has("@elizaos/\($name)#build") | not))
+                | reduce $owners[] as $owner (.;
+                    .tasks["@elizaos/\($owner.name)#build"] = (.tasks.build
+                      | .inputs = ((.inputs // []) + ($owner.inputs // []) + [{mode: "dependencyOutputs", from: ["//#gen"], globs: ["packages/\($owner.dir)/gen/**"]}])))
+              ' turbo.json > "$config"; then
+                options+=(--root-turbo-json "$config")
+              fi
+            fi
+          elif [[ $JOB == selftest-* ]]; then
+            options+=(--only)
+          fi
+          node vibestack/spec.ts tasks "${tasks[@]}" --continue=dependencies-successful --summarize "${options[@]}"
       - id: publish-tool-selftest
         if: >-
           github.event_name == 'push' && steps.tool-selftest-cache.outputs.key != '' &&

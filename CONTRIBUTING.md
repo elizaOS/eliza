@@ -492,6 +492,11 @@ runs, shard A needs full Chromium for Bombadil. The other self-test shards
 run without a browser.
 CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache, only those a job
 of the same name saved.
+The hosted Eliza verify job uses each package's own `gen/` files to key the root
+generation dependency of Core, Cloud, Agent, OS and first-party plugin builds. Generation runs
+before those builds and validates the full spec. Update the profile in `.github/workflows/ci.yml`
+when a build starts reading generator outputs outside its package. Keep direct file
+reads in that package's Turbo inputs, including Core's external plugin registry entries.
 Branch pushes save results that later pushes and pull requests can restore. A pull request's
 own saves are scoped to that pull request. Newer commits replace an older run of the same pull
 request. Pushes to one branch run one at a time. A run that has started

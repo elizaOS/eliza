@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["//#gen", "^build"],
-      "inputs": ["$TURBO_DEFAULT$", "!test/**", "!vitest.config.ts", "!android/*/{src/test,src/androidTest,test}/**"],
+      "inputs": ["$TURBO_EXTENDS$", "$TURBO_DEFAULT$", "!test/**", "!vitest.config.ts", "!android/*/{src/test,src/androidTest,test}/**"],
       "outputs": ["$TURBO_EXTENDS$", "android/browser-surface/resources/control-channel.js"]
     }
   }
