@@ -126,7 +126,31 @@ jobs:
             config=.cache/verify-turbo.json
             if [[ $GITHUB_REPOSITORY == elizaOS/eliza && -z ${TURBO_ROOT_TURBO_JSON+x} && ! -e turbo.jsonc && ! -L turbo.jsonc ]]; then
               mkdir -p .cache
-              if jq -e '
+              plugins=$(node --input-type=module <<'JS'
+              import { execFileSync } from "node:child_process";
+              import fs from "node:fs";
+              import path from "node:path";
+              import { codeDirs, manifest } from "./vibestack/util.ts";
+              const root = process.cwd();
+              const projects = JSON.parse(execFileSync("pnpm", ["--recursive", "list", "--depth", "-1", "--json"], { encoding: "utf8" }));
+              const workspace = new Map(projects.map((project) => [project.path, project.name]));
+              const stat = (file) => fs.lstatSync(file, { throwIfNoEntry: false });
+              const owners = codeDirs(root).flatMap((owner) => {
+                const dir = /^packages\/(plugin-[a-z0-9-]+)\/$/.exec(owner)?.[1];
+                if (!dir) return [];
+                const directory = path.join(root, "packages", dir);
+                if (!stat(directory)?.isDirectory() || !stat(path.join(directory, "package.json"))?.isFile() ||
+                    ["turbo.json", "turbo.jsonc"].some((file) => stat(path.join(directory, file)))) return [];
+                const { name, scripts } = manifest(directory);
+                if (typeof name !== "string" || !/^@elizaos\/[a-z0-9-]+$/.test(name) ||
+                    workspace.get(directory) !== name ||
+                    scripts?.build !== "vibelang -p tsconfig.build.json" || scripts.prebuild || scripts.postbuild) return [];
+                return [{ name: name.slice("@elizaos/".length), dir, inputs: ["$TURBO_DEFAULT$"] }];
+              });
+              process.stdout.write(JSON.stringify(owners));
+          JS
+              ) || plugins='[]'
+              if jq -e --argjson plugins "$plugins" '
                 [
                   {name: "core", dir: "core"},
                   {name: "cloud", dir: "cloud"},
@@ -138,15 +162,17 @@ jobs:
                   {name: "plugin-inbox", dir: "plugin-inbox", inputs: ["$TURBO_DEFAULT$"]},
                   {name: "plugin-local-inference", dir: "plugin-localinference", inputs: ["$TURBO_DEFAULT$"]},
                   {name: "plugin-maps", dir: "plugin-maps", inputs: ["$TURBO_DEFAULT$"]},
-                  {name: "capacitor-canvas", dir: "plugin-native-canvas", inputs: ["$TURBO_DEFAULT$"]},
-                  {name: "native-plugin-shared-types", dir: "plugin-native-shared-types", inputs: ["$TURBO_DEFAULT$"]},
                   {name: "plugin-notes", dir: "plugin-notes"},
                   {name: "plugin-personal-assistant", dir: "plugin-assistant", inputs: ["$TURBO_DEFAULT$"]},
                   {name: "plugin-workflow", dir: "plugin-workflows", inputs: ["$TURBO_DEFAULT$"]}
-                ] as $owners
-                | select(.tasks.build.dependsOn | index("//#gen") != null)
+                ] as $explicit
+                | .tasks as $tasks
+                | select(all($explicit[]; .name as $name | $tasks | has("@elizaos/\($name)#build") | not))
+                | ($explicit + ($plugins | map(select(.name as $name |
+                    all($explicit[]; .name != $name) and ($tasks | has("@elizaos/\($name)#build") | not))))) as $owners
+                | select($owners | map(.name) | length == (unique | length))
+                | select(.tasks.build.dependsOn | index("//#gen") != null and index("^build") != null)
                 | select(.tasks["//#gen"].outputs | index("packages/*/gen/**") != null and all(.[]; startswith("!") | not))
-                | select(.tasks as $tasks | all($owners[]; .name as $name | $tasks | has("@elizaos/\($name)#build") | not))
                 | reduce $owners[] as $owner (.;
                     .tasks["@elizaos/\($owner.name)#build"] = (.tasks.build
                       | .inputs = ((.inputs // []) + ($owner.inputs // []) + [{mode: "dependencyOutputs", from: ["//#gen"], globs: ["packages/\($owner.dir)/gen/**"]}])))
