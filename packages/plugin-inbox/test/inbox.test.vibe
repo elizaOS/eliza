@@ -46,7 +46,6 @@ function fakeCloud() {
       { id: "grant-a", email: "ana@example.com", connected: true, capabilities: [...readOnly] },
       { id: "grant-b", email: "ana@work.example", connected: true, capabilities: [...readOnly] },
     ],
-    selected: "grant-a",
     pages: new Map<string, { readonly messages: readonly Card[]; readonly next: string | null; readonly history: string }>([
       ["", { messages: [card("m1"), card("m2")], next: "p1", history: "41" }],
       ["p1", { messages: [card("m2"), card("m3")], next: "p2", history: "42" }],
@@ -83,13 +82,15 @@ function fakeCloud() {
   effect function prepare(body: Readonly<Record<string, unknown>>) {
     const requestId = String(body.requestId)
     const proposal = body.proposal as Readonly<Record<string, unknown>>
-    const earlier = state.operations.get(requestId)
-    if (earlier !== undefined) return answer(requestId, earlier, earlier.review)
     const kind = String(proposal.kind)
     const review = kind === "send" || kind.startsWith("draft-") && kind !== "draft-delete"
       ? { from: "ana@example.com", to: proposal.to ?? [], cc: proposal.cc ?? [], bcc: proposal.bcc ?? [], subject: proposal.subject, bodyText: proposal.bodyText, attachments: [], forwardedAttachments: [] }
       : { kind, messageId: proposal.messageId, expectedHistoryId: proposal.expectedHistoryId, from: "ana@example.com" }
-    const operation: Operation = { kind, digest: try sha256Hex(JSON.stringify({ requestId, review })), state: "prepared", proposal, review, result: null }
+    const digest = try sha256Hex(JSON.stringify({ requestId, review }))
+    const earlier = state.operations.get(requestId)
+    if (earlier !== undefined && earlier.digest !== digest) throw new MailProtocolFailed({ code: "http", status: 409, reason: "idempotency_conflict" })
+    if (earlier !== undefined) return answer(requestId, earlier, earlier.review)
+    const operation: Operation = { kind, digest, state: "prepared", proposal, review, result: null }
     state.operations.set(requestId, operation)
     return answer(requestId, operation, review)
   }
@@ -122,7 +123,12 @@ function fakeCloud() {
       const at = url.pathname.replace("/api/v1/eliza/google", "")
       const body = (options.body ?? {}) as Readonly<Record<string, unknown>>
       if (at === "/accounts") return state.connections.map(status)
-      if (at === "/status") return status(connection(url.searchParams.get("grantId") ?? state.selected))
+      if (at === "/status") {
+        const named = url.searchParams.get("grantId")
+        const active = state.connections.filter((row) => row.connected)
+        if (named === null && active.length > 1) throw new MailProtocolFailed({ code: "http", status: 400, reason: "grant_required" })
+        return status(named === null ? active[0] : connection(named))
+      }
       if (at === "/disconnect") {
         const row = connection(String(body.connectionId))
         if (row !== undefined) row.connected = false
@@ -304,13 +310,19 @@ it.effect(`Send a reviewed email once under its owner request, and recover a los
   const refusedSource = Effect.flip(operation.prepare(proposal, { draftId: "", requestId })) catch () => new MailUnreachable({ cause: "" })
   assert.equal(refusedSource._tag === "OperationRefused" && refusedSource.reason, "invalid-source-request")
   const reviewed = try operation.prepare(proposal, { draftId: "local-1", requestId: requestId.toUpperCase() })
-  assert.deepEqual([reviewed?.requestId, reviewed?.phase, reviewed?.composer], [requestId, "review", { draftId: "local-1" }])
-  const edited = Effect.flip(operation.confirm({ draftId: "local-1", proposal: { ...proposal, bodyText: "1pm?" } })) catch () => new MailUnreachable({ cause: "" })
+  assert.deepEqual([reviewed?.phase, reviewed?.composer], ["review", { draftId: "local-1" }])
+  const sentId = reviewed?.requestId
+  const editedProposal = { ...proposal, bodyText: "1pm?" }
+  const edited = Effect.flip(operation.confirm({ draftId: "local-1", proposal: editedProposal })) catch () => new MailUnreachable({ cause: "" })
   assert.equal(edited._tag === "ReviewNotBound" && edited.binding, "edited")
   assert.isNull(try operation.snapshot())
+  const rereviewed = try operation.prepare(editedProposal, { draftId: "local-1", requestId })
+  assert.equal(rereviewed?.phase, "review")
+  assert.notEqual(rereviewed?.requestId, sentId)
+  try operation.clear()
   assert.equal(cloud.state.dispatches, 0)
 
-  try operation.prepare(proposal, { draftId: "local-1", requestId })
+  assert.equal((try operation.prepare(proposal, { draftId: "local-1", requestId }))?.requestId, sentId)
   cloud.state.loseDispatchReply = true
   const lost = Effect.flip(operation.confirm({ draftId: "local-1", proposal })) catch () => new AttachmentRefused({ detail: "" })
   assert.equal(lost._tag, "MailUnreachable")
@@ -318,7 +330,7 @@ it.effect(`Send a reviewed email once under its owner request, and recover a los
   const unresolved = Effect.flip(operation.clear()) catch () => new MailUnreachable({ cause: "" })
   assert.equal(unresolved._tag === "OperationRefused" && unresolved.reason, "unresolved")
   const resolved = try operation.refresh()
-  assert.deepEqual([resolved?.phase, resolved?.receipt?.state, resolved?.receipt?.requestId, cloud.state.dispatches], ["observed", "succeeded", requestId, 1])
+  assert.deepEqual([resolved?.phase, resolved?.receipt?.state, resolved?.receipt?.requestId, cloud.state.dispatches], ["observed", "succeeded", sentId, 1])
 
   try operation.stop()
   const reopened = try inboxOperation(deps)
@@ -431,9 +443,12 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   assert.deepEqual(try managedInboxRead(cloud.client, { query: "in:inbox" }), { kind: "refused", reason: "missing-limit" })
   assert.deepEqual(try managedInboxRead(cloud.client, { limit: 5, account: "grant-b" }), { kind: "refused", reason: "account-override" })
   assert.equal(calls(), 0)
+  assert.deepEqual(try managedInboxRead(cloud.client, { limit: 1 }), { kind: "refused", reason: "several-accounts" })
+  const work = cloud.state.connections[1]
+  if (work !== undefined) work.connected = false
   const mail = try managedInboxRead(cloud.client, { limit: 1 })
   assert.deepEqual(mail.kind === "mail" && mail.messages.map((message) => message.id), ["m1"])
-  cloud.state.afterSearch = () => { cloud.state.selected = "grant-b" }
+  cloud.state.afterSearch = () => { cloud.state.connections = [{ id: "grant-c", email: "cy@example.com", connected: true, capabilities: [...readOnly] }] }
   assert.deepEqual(try managedInboxRead(cloud.client, { limit: 5 }), { kind: "refused", reason: "owner-changed" })
 
   const request = {

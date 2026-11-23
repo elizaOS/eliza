@@ -4,7 +4,7 @@ import { enabled, initial, machineOver, type Event, type ManagedInboxRead, type 
 import type { ManagedGmailClient } from "../client/index.vibe"
 import { classifyGmailFailure, type GmailFailureKind, type MailFailure } from "../mailbox/failures.vibe"
 import { gmailReadable } from "../mailbox/grants.vibe"
-import type { GmailMessage, GoogleConnection } from "../mailbox/types.vibe"
+import type { GmailAccount, GmailMessage } from "../mailbox/types.vibe"
 import { agentGmailClient } from "./cloud.vibe"
 
 /** The action name of the owner's managed inbox read. */
@@ -21,7 +21,7 @@ export interface ManagedReadRequest {
 /** What a managed inbox read answered. */
 export type ManagedReadAnswer =
   | { readonly kind: "mail"; readonly messages: readonly GmailMessage[] }
-  | { readonly kind: "refused"; readonly reason: "missing-limit" | "account-override" | "missed-only" | "not-connected" | "owner-changed" }
+  | { readonly kind: "refused"; readonly reason: "missing-limit" | "account-override" | "missed-only" | "not-connected" | "several-accounts" | "owner-changed" }
   | { readonly kind: "failed"; readonly failure: GmailFailureKind }
 
 function kindOf(request: ManagedReadRequest): ManagedReadKind {
@@ -33,7 +33,15 @@ function kindOf(request: ManagedReadRequest): ManagedReadKind {
 
 const refusalOf = { MissingLimitRead: "missing-limit", AccountOverrideRead: "account-override", MissedOnlyRead: "missed-only" } as const
 
-const readable = (status: GoogleConnection) => gmailReadable({ ...status, label: "" })
+/** The one readable Gmail account the agent may read, or why there is none to choose. */
+export type ManagedAccount = { readonly kind: "one"; readonly account: GmailAccount } | { readonly kind: "none" } | { readonly kind: "several" }
+
+/** The owner's one readable Gmail account, which every later call names, since Cloud picks none when several are connected. */
+export effect function managedAccount(client: Pick<ManagedGmailClient, "gmailAccounts">): ManagedAccount!MailFailure {
+  const [account, ...others] = (try client.gmailAccounts()).filter(gmailReadable)
+  if (account === undefined) return { kind: "none" }
+  return others.length === 0 ? { kind: "one", account } : { kind: "several" }
+}
 
 /** One managed read's lifecycle over its model: each step is taken only where the rules allow it. */
 export interface ManagedReadSession {
@@ -64,10 +72,11 @@ export effect function managedInboxRead(client: ManagedGmailClient, request: Man
     try read.step({ type: "beginRead", kind })
     return { kind: "refused", reason: refusalOf[kind] }
   }
-  const before: GoogleConnection | MailFailure = client.gmailStatus() catch (error) => error
+  const before: ManagedAccount | MailFailure = managedAccount(client) catch (error) => error
   if ("_tag" in before) return failed(before)
-  const grantId = before.connectionId
-  if (!readable(before) || grantId === null) return { kind: "refused", reason: "not-connected" }
+  if (before.kind === "several") return { kind: "refused", reason: "several-accounts" }
+  const grantId = before.kind === "one" ? before.account.connectionId : null
+  if (grantId === null) return { kind: "refused", reason: "not-connected" }
   try read.step({ type: "beginRead", kind })
 
   const search = request.query !== undefined && request.query.trim() !== "" ? request.query.trim() : "in:inbox"
@@ -77,11 +86,12 @@ export effect function managedInboxRead(client: ManagedGmailClient, request: Man
     try read.step({ type: "sourceFails" })
     return failed(page)
   }
-  const after: GoogleConnection | null = client.gmailStatus() catch () => null
-  if (after === null || after.connectionId !== grantId) try read.step({ type: "replaceOwner" })
-  if (after === null || !readable(after)) try read.step({ type: "revokePermission" })
+  const after: GmailAccount[] | null = client.gmailAccounts() catch () => null
+  const current = after?.find((account) => account.connectionId === grantId)
+  if (current === undefined) try read.step({ type: "replaceOwner" })
+  if (!gmailReadable(current)) try read.step({ type: "revokePermission" })
   const done = try read.step({ type: "receiveMail" })
-  if (done?.phase !== "ReadDone") return { kind: "refused", reason: after === null || after.connectionId === grantId ? "not-connected" : "owner-changed" }
+  if (done?.phase !== "ReadDone") return { kind: "refused", reason: after !== null && current === undefined ? "owner-changed" : "not-connected" }
   return { kind: "mail", messages: page.messages.slice(0, request.limit ?? page.messages.length) }
 }
 
@@ -101,6 +111,7 @@ const refusalText = {
   "account-override": "Inbox reads use the Gmail account connected on this phone; another account cannot be named here.",
   "missed-only": "Missed-mail reads are not available. Search the Inbox instead.",
   "not-connected": "Gmail is not connected with read access. Connect Gmail in Inbox, then ask again.",
+  "several-accounts": "Several Gmail accounts are connected, and the agent cannot tell which one to read. Read mail in Inbox, or disconnect the accounts the agent should not read.",
   "owner-changed": "The Gmail account changed while reading, so no mail is shown. Ask again to read the current account.",
 } as const
 

@@ -1,8 +1,8 @@
 // spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/grants.md, "Read is asked for first, changes are one consent, and a reconnect keeps what the account holds"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type IAgentRuntime, type Provider, type ProviderResult } from "@elizaos/core"
 import { gmailGrantTier, type GmailGrantTier } from "../mailbox/grants.vibe"
-import type { GoogleConnection } from "../mailbox/types.vibe"
 import { agentGmailClient } from "./cloud.vibe"
+import { managedAccount, type ManagedAccount } from "./read.vibe"
 
 /** The provider name of the owner's Gmail access state. */
 export const inboxAccessProviderName = "INBOX_ACCESS"
@@ -17,9 +17,10 @@ const tierText = {
 export effect function inboxAccess(runtime: IAgentRuntime): ProviderResult!! {
   const client = agentGmailClient(runtime)
   if (client === undefined) return { text: "Gmail is available only when this agent uses the cloud.", values: { gmailTier: "none" } }
-  const status: GoogleConnection | null = client.gmailStatus() catch () => null
-  if (status === null) return { text: "Gmail access could not be checked right now.", values: { gmailTier: "unknown" } }
-  const tier = gmailGrantTier({ ...status, label: "" })
+  const found: ManagedAccount | null = managedAccount(client) catch () => null
+  if (found === null) return { text: "Gmail access could not be checked right now.", values: { gmailTier: "unknown" } }
+  if (found.kind === "several") return { text: "Several Gmail accounts are connected, so the agent reads none of them; the owner reads and changes mail in Inbox.", values: { gmailTier: "several" } }
+  const tier = gmailGrantTier(found.kind === "one" ? found.account : null)
   return { text: tierText[tier], values: { gmailTier: tier } }
 }
 

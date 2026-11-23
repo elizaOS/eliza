@@ -135,7 +135,9 @@ provider operation and its receipt rather than a second send. The identity
 is a canonical UUID and is accepted only for a send from a named local
 draft; anything else supplying one is refused before anything is saved.
 Without one, a fresh identity is made. The operation's request identity is
-then the supplied one, exactly.
+then made from the supplied one and the reviewed email, so the same email
+always reaches the same operation, while an edited email, or a second email
+answering the same request, gets an identity of its own.
 
 ```quint
 type SourceRequest = NoSourceRequest | SuppliedRequest({ canonicalUuid: bool })

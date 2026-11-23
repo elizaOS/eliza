@@ -8,7 +8,7 @@ import {
   checkOutgoingAttachments, outgoingAttachmentLimits,
   type MailAttachmentReviewer, type OutgoingAttachmentsRefused, type OutgoingMailAttachment, type ReviewedMailAttachment,
 } from "./attachments.vibe"
-import { canonicalUuid, freshRequestId, sha256Hex, utf8Length } from "./digest.vibe"
+import { canonicalUuid, freshRequestId, ownerRequestId, sha256Hex, utf8Length } from "./digest.vibe"
 import type { MailFailure } from "./failures.vibe"
 import { gmailInboxAllows } from "./grants.vibe"
 import type { GmailInboxCapabilities, GmailInboxOperationKind, GmailInboxReceipt } from "./types.vibe"
@@ -460,7 +460,7 @@ export effect function inboxOperation(deps: InboxOperationDependencies): InboxOp
       const choice = requestChoice(kind === "send", draftId !== null,
         source?.requestId === undefined ? { tag: "NoSourceRequest" } : { tag: "SuppliedRequest", canonicalUuid: canonicalUuid(source.requestId) })
       if (choice === "RequestRefused") throw refused("invalid-source-request")
-      const requestId = choice === "OwnerRequest" && source?.requestId !== undefined ? source.requestId.toLowerCase() : try freshRequestId()
+      const requestId = choice === "OwnerRequest" && source?.requestId !== undefined ? try ownerRequestId(source.requestId, composerContent(clean)) : try freshRequestId()
       const expected = clean.expectedDigest
       if ((kind === "draft-replace" || kind === "draft-delete") && (typeof expected !== "string" || expected === "")) throw refused("invalid-proposal")
       const provider = source?.providerDraft

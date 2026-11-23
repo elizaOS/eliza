@@ -40,6 +40,13 @@ export effect function freshRequestId(): string!! {
   return try sync(() => randomRequestId())
 }
 
+/** The request identity of one email answering an owner request: the same email always gets the same identity, any other email its own. */
+export effect function ownerRequestId(ownerRequest: string, content: string): string!! {
+  const hex = try sha256Hex(JSON.stringify([ownerRequest.toLowerCase(), content]))
+  const variant = (8 | (Number.parseInt(hex.slice(16, 17), 16) & 3)).toString(16)
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+}
+
 /** Whether a supplied request identity is a canonical UUID. */
 export function canonicalUuid(value: unknown): value is string {
   return typeof value === "string" && uuid.test(value)
