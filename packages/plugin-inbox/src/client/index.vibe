@@ -1,6 +1,8 @@
-// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "A message names where its replies go only as one literal address, and marks attachments only as Cloud hinted"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"; spec/inbox/outgoing.md, "A saved attachment of any type is a checked byte copy, never opened"; spec/inbox/outgoing.md, "An account's capabilities are read from the kinds Cloud offers and its one attachment cap"; spec/inbox/display.md, "Only an absolute web link without credentials is kept, and its shown text is plain"
+// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "A message names where its replies go only as one literal address, and marks attachments only as Cloud hinted"; spec/inbox/reads.md, "An answer outside the bounds of its read is refused whole"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"; spec/inbox/outgoing.md, "A saved attachment of any type is a checked byte copy, never opened"; spec/inbox/outgoing.md, "An account's capabilities are read from the kinds Cloud offers and its one attachment cap"; spec/inbox/display.md, "Only an absolute web link without credentials is kept, and its shown text is plain"
 import { attachmentsOffered, capAdmitted, forwardOffered, maximumFiles } from "../../gen/inbox__outgoing.effect.vibe"
-import { attachmentMark, replyToKept } from "../../gen/inbox__reads.effect.vibe"
+import {
+  attachmentMark, followingAdmitted, listedAdmitted, receiptAdmitted, replyToKept, searchAnswerAdmitted, threadAnswerAdmitted, tokenAdmitted,
+} from "../../gen/inbox__reads.effect.vibe"
 import { reviewOpaqueAttachment, type MailAttachmentReviewer, type OpaqueMailAttachment, type ReviewedMailAttachment } from "../mailbox/attachments.vibe"
 import { utf8Length } from "../mailbox/digest.vibe"
 import { MailProtocolFailed, type MailFailure, type MailUnreachable } from "../mailbox/failures.vibe"
@@ -26,7 +28,7 @@ const inbox = `${google}/gmail/inbox-v1`
 const dispatchTimeoutMs = 45_000
 const maxHtmlBytes = 512 * 1024
 const sha = /^[a-f0-9]{64}$/
-const revision = /^\d{1,20}$/
+const digitsOf = (revision: string) => /^\d+$/.test(revision) ? revision.length : 0
 const labelKinds: readonly GmailInboxOperationKind[] = ["archive", "unarchive", "trash", "untrash"]
 
 const invalid = () => new MailProtocolFailed({ code: "invalid-response", status: 0, reason: "" })
@@ -99,7 +101,7 @@ effect function readOf(value: typeof MessageWire.Type, historyId: string | null)
 
 effect function receiptOf(value: typeof OperationWire.Type, requestId: string): GmailInboxReceipt!MailProtocolFailed {
   const receipt = value.receipt
-  if (receipt.requestId !== requestId || !sha.test(receipt.reviewDigest) || (receipt.state === "succeeded") !== (receipt.providerResult !== null)) throw invalid()
+  if (!receiptAdmitted(receipt.requestId === requestId, sha.test(receipt.reviewDigest), receipt.state === "succeeded", receipt.providerResult !== null)) throw invalid()
   return {
     requestId,
     kind: receipt.kind,
@@ -136,13 +138,13 @@ function capabilitiesOf(value: typeof CapabilitiesWire.Type): GmailInboxCapabili
   }
 }
 
-effect function nextToken(next: string | null, asked: string | undefined): (string | null)!MailProtocolFailed {
-  if (next !== null && (next === "" || next.length > 4096 || next === asked)) throw invalid()
-  return next
+effect function nextToken(following: string | null, asked: string | undefined): (string | null)!MailProtocolFailed {
+  if (!followingAdmitted(following !== null, following?.length ?? 0, following !== null && following === asked)) throw invalid()
+  return following
 }
 
 effect function pageToken(token: string | undefined): void!MailProtocolFailed {
-  if (token !== undefined && (token === "" || token.length > 4096)) throw invalid()
+  if (token !== undefined && !tokenAdmitted(token.length)) throw invalid()
 }
 
 export function managedGmailClient(transport: ManagedGmailTransport) {
@@ -175,7 +177,7 @@ export function managedGmailClient(transport: ManagedGmailTransport) {
     effect gmailSearch(grantId: string, search: string, maxResults: SearchSize = 25, token?: string): GmailSearchPage!MailFailure {
       try pageToken(token)
       const page = try decoded(SearchWire, try call(`${google}/gmail/search?${query({ side: "owner", grantId: try present(grantId), query: try present(search), maxResults: String(maxResults), pageToken: token })}`))
-      if (!revision.test(page.mailboxHistoryId) || page.messages.length > maxResults) throw invalid()
+      if (!searchAnswerAdmitted(maxResults, page.messages.length, digitsOf(page.mailboxHistoryId))) throw invalid()
       const messages: GmailMessage[] = []
       for (const card of page.messages) messages.push(try messageOf(card))
       return { messages, syncedAt: try present(page.syncedAt), nextPageToken: try nextToken(page.nextPageToken, token), mailboxHistoryId: page.mailboxHistoryId, supportsSpamTrash: page.supportsSpamTrash }
@@ -199,10 +201,10 @@ export function managedGmailClient(transport: ManagedGmailTransport) {
         grantId, threadId, offset: cursor === undefined ? undefined : String(cursor.offset), historyId: cursor?.historyId,
       })}`))
       const offset = cursor?.offset ?? 0
-      if (value.threadId !== threadId || value.messages.length > 25 || !Number.isSafeInteger(value.total) || value.offset !== offset ||
-        value.total < offset + value.messages.length || value.total > 2000 ||
-        value.nextOffset !== (offset + value.messages.length < value.total ? offset + value.messages.length : null) ||
-        (cursor !== undefined && cursor.historyId !== value.historyId) || !revision.test(value.historyId)) throw invalid()
+      if (value.threadId !== threadId || ![offset, value.offset, value.total, value.nextOffset ?? 0].every((whole) => Number.isSafeInteger(whole)) || !threadAnswerAdmitted({
+        askedOffset: offset, offset: value.offset, count: value.messages.length, total: value.total, continues: value.nextOffset !== null,
+        nextOffset: value.nextOffset ?? 0, revisionKept: cursor === undefined || cursor.historyId === value.historyId, digits: digitsOf(value.historyId),
+      })) throw invalid()
       const messages: GmailReadResult[] = []
       for (const row of value.messages) {
         if (row.message.threadId !== threadId) throw invalid()
@@ -230,7 +232,7 @@ export function managedGmailClient(transport: ManagedGmailTransport) {
     effect gmailDrafts(grantId: string, token?: string): { readonly drafts: readonly GmailDraftSummary[]; readonly nextPageToken: string | null }!MailFailure {
       try pageToken(token)
       const value = try decoded(DraftsWire, try call(`${inbox}/drafts?${query({ grantId, pageToken: token })}`))
-      if (value.drafts.length > 50) throw invalid()
+      if (!listedAdmitted(value.drafts.length)) throw invalid()
       const drafts: GmailDraftSummary[] = []
       for (const draft of value.drafts) drafts.push({ ...draft, draftId: try present(draft.draftId), messageId: try present(draft.messageId) })
       return { drafts, nextPageToken: try nextToken(value.nextPageToken, token) }
@@ -239,7 +241,7 @@ export function managedGmailClient(transport: ManagedGmailTransport) {
     effect gmailDraftContent(grantId: string, draftId: string): GmailDraftContent!MailFailure {
       const value = try decoded(DraftWire, try call(`${inbox}/draft?${query({ grantId, draftId })}`))
       const content = value.content
-      if (value.id !== draftId || !sha.test(value.providerDigest) || [content.to, content.cc, content.bcc].some((list) => list.length > 50) ||
+      if (value.id !== draftId || !sha.test(value.providerDigest) || [content.to, content.cc, content.bcc].some((list) => !listedAdmitted(list.length)) ||
         !Number.isSafeInteger(content.attachmentCount) || content.attachmentCount < 0) throw invalid()
       return {
         draftId, messageId: try present(value.messageId), providerDigest: value.providerDigest, to: content.to, cc: content.cc, bcc: content.bcc,

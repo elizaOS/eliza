@@ -85,6 +85,54 @@ pure def lawAnUnreadableReplyAddressIsNotKept(named: bool): bool = not(replyToKe
 pure def lawAnUnnamedReplyAddressIsNotKept(literalAddress: bool): bool = not(replyToKept(false, literalAddress))
 ```
 
+### An answer outside the bounds of its read is refused whole
+
+A page token, asked or answered, is 1 to 4,096 characters, and an answer
+never continues at the token it was asked with. A search answer holds at
+most the messages asked for and names a mailbox revision of 1 to 20
+digits. A thread page starts at the offset asked for, holds at most 25
+messages of a thread of at most 2,000, ends inside the thread, names its
+next offset exactly when messages remain and as its own end, and keeps the
+revision of the page before it. A drafts page holds at most 50 drafts and
+an opened draft at most 50 recipients in each list. A receipt names the
+request it was asked about and a review digest of 64 hexadecimal digits,
+and carries a provider result exactly when it succeeded. An answer that
+breaks any of these is an invalid response: none of it is shown or kept.
+
+```quint
+pure val tokenMaximum: int = 4096
+pure val revisionDigitsMaximum: int = 20
+pure val threadPageMaximum: int = 25
+pure val threadMaximum: int = 2000
+pure val listedMaximum: int = 50
+pure def tokenAdmitted(units: int): bool = units >= 1 and units <= tokenMaximum
+pure def followingAdmitted(continues: bool, units: int, repeatsAsked: bool): bool = not(continues) or (tokenAdmitted(units) and not(repeatsAsked))
+pure def revisionAdmitted(digits: int): bool = digits >= 1 and digits <= revisionDigitsMaximum
+pure def searchAnswerAdmitted(asked: int, returned: int, digits: int): bool = returned <= asked and revisionAdmitted(digits)
+type ThreadAnswer = { askedOffset: int, offset: int, count: int, total: int, continues: bool, nextOffset: int, revisionKept: bool, digits: int }
+pure def threadAnswerAdmitted(t: ThreadAnswer): bool =
+  t.offset == t.askedOffset and t.offset >= 0 and t.count >= 0 and t.count <= threadPageMaximum and t.total <= threadMaximum
+    and t.offset + t.count <= t.total and (t.continues iff t.offset + t.count < t.total)
+    and (not(t.continues) or t.nextOffset == t.offset + t.count) and t.revisionKept and revisionAdmitted(t.digits)
+pure def listedAdmitted(listed: int): bool = listed >= 0 and listed <= listedMaximum
+pure def receiptAdmitted(sameRequest: bool, digestWellFormed: bool, succeeded: bool, hasResult: bool): bool =
+  sameRequest and digestWellFormed and (succeeded iff hasResult)
+pure val unitsValues = Set(0, 1, 4096, 4097)
+pure val digitsValues = Set(0, 1, 20, 21)
+pure val askedValues = Set(10, 25)
+pure val returnedValues = Set(0, 10, 11, 26)
+pure val listedValues = Set(0, 50, 51)
+pure val okThread: ThreadAnswer = { askedOffset: 0, offset: 0, count: 2, total: 5, continues: true, nextOffset: 2, revisionKept: true, digits: 2 }
+pure val tValues = Set(okThread, { ...okThread, offset: 1 }, { ...okThread, count: 26, total: 40, nextOffset: 26 }, { ...okThread, total: 2001 },
+  { ...okThread, continues: false }, { ...okThread, nextOffset: 3 }, { ...okThread, count: 5, continues: false }, { ...okThread, revisionKept: false },
+  { ...okThread, digits: 0 })
+pure def lawAnAnswerNeverContinuesWhereItWasAsked(units: int): bool = not(followingAdmitted(true, units, true))
+pure def lawAnAdmittedThreadPageEndsInsideTheThread(t: ThreadAnswer): bool =
+  threadAnswerAdmitted(t) implies t.offset + t.count <= t.total and t.count <= threadPageMaximum and (t.continues implies t.nextOffset <= t.total)
+pure def lawASucceededReceiptCarriesItsResult(sameRequest: bool, digestWellFormed: bool, hasResult: bool): bool =
+  receiptAdmitted(sameRequest, digestWellFormed, true, hasResult) implies hasResult
+```
+
 ## Story: Resume my own mailbox from what was saved, and recheck its access
 
 > As the owner, I want a reopened inbox to show what my last read saved,

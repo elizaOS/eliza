@@ -61,6 +61,7 @@ function fakeCloud() {
     rowFields: new Map<string, Readonly<Record<string, unknown>>>(),
     attachmentCap: 8388608,
     bodyText: new Map<string, string>(),
+    reshape: (answer: Readonly<Record<string, unknown>>): unknown => answer,
   }
 
   const connection = (id: string) => state.connections.find((row) => row.id === id)
@@ -134,7 +135,12 @@ function fakeCloud() {
       if (at === "/gmail/search") {
         const page = state.pages.get(url.searchParams.get("pageToken") ?? "")
         state.afterSearch()
-        return { messages: (page?.messages ?? []).map(wireCard), nextPageToken: page?.next ?? null, syncedAt: "2026-11-20T10:00:00.000Z", mailboxHistoryId: page?.history ?? "41", supportsSpamTrash: true }
+        return state.reshape({ messages: (page?.messages ?? []).map(wireCard), nextPageToken: page?.next ?? null, syncedAt: "2026-11-20T10:00:00.000Z", mailboxHistoryId: page?.history ?? "41", supportsSpamTrash: true })
+      }
+      if (at === "/gmail/inbox-v1/thread") {
+        const threadId = url.searchParams.get("threadId") ?? ""
+        const only = { message: { ...wireCard(card("m1")), threadId }, bodyText: "One", bodyHtml: null, bodyHtmlStatus: "none", attachments: [], authenticationResults: null, historyId: "41" }
+        return state.reshape({ version: 1, threadId, historyId: "41", total: 1, offset: Number(url.searchParams.get("offset") ?? "0"), nextOffset: null, messages: [only] })
       }
       if (at === "/gmail/read") {
         const id = url.searchParams.get("messageId") ?? ""
@@ -258,6 +264,23 @@ it.effect(`Page a folder once per message, notice a changed mailbox, and keep ca
   const plain = (try cloud.client.gmailRead("grant-a", "m2")).message
   cloud.state.bodyText.set("m3", Array.from({ length: 52 }, (_, at) => `https://example.com/${at} https://example.com/${at}`).join(" "))
   const crowded = try cloud.client.gmailRead("grant-a", "m3")
+  const thread = try cloud.client.gmailThread("grant-a", "t-m1")
+  assert.deepEqual([thread.total, thread.nextOffset, thread.messages.map((row) => row.message.id)], [1, null, ["m1"]])
+  const refusals: string[] = []
+  const searched = () => Effect.asVoid(cloud.client.gmailSearch("grant-a", "in:inbox", 25, "p1"))
+  const threaded = () => Effect.asVoid(cloud.client.gmailThread("grant-a", "t-m1"))
+  const malformed: ReadonlyArray<readonly [Readonly<Record<string, unknown>>, typeof searched]> = [
+    [{ nextPageToken: "p1" }, searched], [{ nextPageToken: "" }, searched], [{ mailboxHistoryId: "4x1" }, searched],
+    [{ messages: Array.from({ length: 26 }, (_, at) => wireCard(card(`x${at}`))) }, searched],
+    [{ nextOffset: 1 }, threaded], [{ total: 2001 }, threaded], [{ offset: 1 }, threaded], [{ historyId: "" }, threaded],
+  ]
+  for (const [fields, read] of malformed) {
+    cloud.state.reshape = (answer) => ({ ...answer, ...fields })
+    const failure = Effect.flip(read()) catch () => new MailUnreachable({ cause: "" })
+    refusals.push(failure._tag === "MailProtocolFailed" ? failure.code : failure._tag)
+  }
+  cloud.state.reshape = (answer) => answer
+  assert.deepEqual(refusals, malformed.map(() => "invalid-response"))
   assert.deepEqual([crowded.links.length, crowded.links.at(-1)?.href, crowded.omittedLinks, body.omittedLinks], [50, "https://example.com/49", 2, undefined])
   assert.deepEqual([body.message.replyTo, body.message.hasAttachments, plain.replyTo, plain.hasAttachments], ["plans@example.org", true, undefined, undefined])
   try caches.rememberBody({ key: "m1", account: "grant-a", at: now, body })
