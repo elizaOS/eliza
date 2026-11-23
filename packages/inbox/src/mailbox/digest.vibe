@@ -1,0 +1,46 @@
+// spec/inbox/drafts.md, "A provider request is bound to the current draft and reserves its one dispatch durably"; spec/inbox/outgoing.md, "A send keeps the request identity of the owner turn that asked for it"
+module browser {
+  /** @throws {never} */
+  export async function digestBytes(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+    const hashed = await crypto.subtle.digest("SHA-256", bytes)
+    return Array.from(new Uint8Array(hashed), (byte) => byte.toString(16).padStart(2, "0")).join("")
+  }
+
+  /** @throws {never} */
+  export function utf8(text: string): Uint8Array<ArrayBuffer> {
+    return new TextEncoder().encode(text)
+  }
+
+  /** @throws {never} */
+  export function randomRequestId(): string {
+    return crypto.randomUUID()
+  }
+}
+import { digestBytes, randomRequestId, utf8 } from browser
+
+const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i
+
+/** The SHA-256 hex digest of UTF-8 text. */
+export effect function sha256Hex(text: string): string!! {
+  return try promise(() => digestBytes(utf8(text)))
+}
+
+/** The SHA-256 hex digest of raw bytes. */
+export effect function sha256Bytes(bytes: Uint8Array<ArrayBuffer>): string!! {
+  return try promise(() => digestBytes(bytes))
+}
+
+/** The UTF-8 byte length of text. */
+export function utf8Length(text: string): number {
+  return utf8(text).byteLength
+}
+
+/** A fresh request identity for one reviewed operation. */
+export effect function freshRequestId(): string!! {
+  return try sync(() => randomRequestId())
+}
+
+/** Whether a supplied request identity is a canonical UUID. */
+export function canonicalUuid(value: unknown): value is string {
+  return typeof value === "string" && uuid.test(value)
+}

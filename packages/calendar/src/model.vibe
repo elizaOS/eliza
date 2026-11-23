@@ -1,0 +1,127 @@
+// spec/calendar/aggregateMerge.md, "Story: See one occurrence with its precise source evidence"; spec/calendar/managedFeed.md, "Story: Keep each cached copy under its own source and its provider's edit time"
+
+/** A provider a calendar event or source belongs to. */
+export type CalendarProvider = "eliza" | "google" | "microsoft" | "apple_calendar" | "ics" | "device"
+
+/** Which side of a connector a source belongs to: the owner's own account or the agent's. */
+export type ConnectorSide = "owner" | "agent"
+
+/** The exact identity of one provider calendar: provider, side, grant, connector account and calendar. */
+export interface CalendarSourceKey {
+  readonly provider: CalendarProvider
+  readonly side: ConnectorSide
+  readonly grantId: string
+  readonly connectorAccountId: string
+  readonly calendarId: string
+}
+
+/** One attendee as the provider reports it. */
+export interface CalendarAttendee {
+  readonly email: string | null
+  readonly displayName: string | null
+  readonly responseStatus: string | null
+  readonly self: boolean
+  readonly organizer: boolean
+  readonly optional: boolean
+}
+
+/** One calendar event with its canonical UTC instants and the exact source it was read from. */
+export interface CalendarEvent {
+  readonly id: string
+  readonly externalId: string
+  readonly agentId: string
+  readonly provider: CalendarProvider
+  readonly side: ConnectorSide
+  readonly calendarId: string
+  readonly title: string
+  readonly description: string
+  readonly location: string
+  readonly status: string
+  readonly startAt: string
+  readonly endAt: string
+  readonly isAllDay: boolean
+  readonly timezone: string | null
+  readonly htmlLink: string | null
+  readonly conferenceLink: string | null
+  readonly organizer: Readonly<Record<string, unknown>> | null
+  readonly attendees: readonly CalendarAttendee[]
+  readonly metadata: Readonly<Record<string, unknown>>
+  readonly recurrence?: readonly string[] | null
+  readonly recurringEventId?: string | null
+  readonly syncedAt: string
+  readonly updatedAt: string
+  readonly calendarSummary?: string
+  readonly connectorAccountId?: string
+  readonly grantId?: string
+  readonly accountEmail?: string
+}
+
+/** The fields an owner reviews for a create or an update, exactly as they will be written. */
+export interface CalendarEventFields {
+  readonly title: string
+  readonly description: string
+  readonly location: string
+  readonly startAt: string
+  readonly endAt: string
+  readonly isAllDay: boolean
+  readonly timeZone: string
+}
+
+/** Freshness of one listed source in a feed. */
+export type CalendarSourceStatus = "fresh" | "stale" | "error"
+
+/** Health of one listed source in a feed. */
+export interface CalendarSourceHealth {
+  readonly key: CalendarSourceKey
+  readonly summary: string
+  readonly accessRole: string
+  readonly status: CalendarSourceStatus
+  readonly syncedAt: string | null
+}
+
+/** Coverage a feed declares: every source fresh, some usable, or none. */
+export type CalendarFeedState = "complete" | "partial" | "unavailable"
+
+/** A merged or single-source feed over one requested window. */
+export interface CalendarFeed {
+  readonly calendarId: string
+  readonly events: readonly CalendarEvent[]
+  readonly source: "cache" | "synced"
+  readonly state: CalendarFeedState
+  readonly sources: readonly CalendarSourceHealth[]
+  readonly timeMin: string
+  readonly timeMax: string
+  readonly syncedAt: string | null
+}
+
+/** A provider calendar the owner can see, with its access and selection. */
+export interface CalendarSummary extends CalendarSourceKey {
+  readonly accountEmail: string | null
+  readonly summary: string
+  readonly description: string | null
+  readonly primary: boolean
+  readonly accessRole: string
+  readonly timeZone: string | null
+  readonly selected: boolean
+  readonly includeInFeed: boolean
+}
+
+const canonicalInstant = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/
+
+/** The millisecond instant of a four-digit-year UTC string with millisecond precision that round-trips, or undefined. */
+export function utcInstant(value: unknown): number | undefined {
+  if (typeof value !== "string" || !canonicalInstant.test(value)) return undefined
+  const stamp = Date.parse(value)
+  return Number.isFinite(stamp) && new Date(stamp).toISOString() === value ? stamp : undefined
+}
+
+/** The one string that names a source key, field by field, for maps and comparisons. */
+export function sourceKeyId(key: CalendarSourceKey): string {
+  return JSON.stringify([key.provider, key.side, key.grantId, key.connectorAccountId, key.calendarId])
+}
+
+/** Whether two source keys name exactly the same provider calendar. */
+export function sameSourceKey(left: CalendarSourceKey, right: CalendarSourceKey): boolean {
+  return left.provider === right.provider && left.side === right.side && left.grantId === right.grantId
+    && left.connectorAccountId === right.connectorAccountId && left.calendarId === right.calendarId
+}

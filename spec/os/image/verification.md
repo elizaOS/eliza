@@ -15,7 +15,8 @@ update.
 
 The shell issues only reads over adb (`getprop`, `getenforce`, `pm`,
 `cmd package`, `cmd role`, `cmd overlay lookup`, `dumpsys`, `ps -Z`,
-`sha256sum`, `cat`); it installs, grants, sets and starts nothing. It
+`settings get`, `device_config get`, `sha256sum`, `cat`); it installs,
+grants, sets and starts nothing. It
 parses each capture into an `ImageObservation`: a command that failed,
 timed out, or printed nothing its parser recognises is that field's unread
 variant. The expectation comes from the staging record: the launcher
@@ -112,14 +113,18 @@ pure def clockHolds(clock: ClockReading): bool = match clock {
 For the user, the system camera (`Pv::secureCameraPackage`) is enabled
 and resolves both secure capture actions to its secure activity, the power
 gesture is enabled and SystemUI's gesture package is that camera, and no
-activity of the launcher handles either action.
+activity of the launcher handles either action. The person has not turned
+the gesture off (the secure setting
+`camera_double_tap_power_gesture_disabled` is unset or `0`), and the device
+declares `android.hardware.camera.any`.
 
 ```quint
 pure val secureCaptureActions: List[str] = List("STILL_IMAGE_CAMERA_SECURE", "IMAGE_CAPTURE_SECURE")
-type CameraReading = CameraUnread | CameraRead({ cameraEnabled: bool, systemHandles: List[str], launcherHandles: List[str], gestureEnabled: bool, gesturePackage: str })
+type CameraReading = CameraUnread | CameraRead({ cameraEnabled: bool, systemHandles: List[str], launcherHandles: List[str], gestureEnabled: bool, gesturePackage: str,
+  gestureNotDisabled: bool, cameraHardware: bool })
 pure def secureCameraHolds(camera: CameraReading): bool = match camera {
   | CameraRead(c) => c.cameraEnabled and secureCaptureActions.every(a => c.systemHandles.includes(a)) and c.launcherHandles.length() == 0
-      and c.gestureEnabled and c.gesturePackage == Pv::secureCameraPackage
+      and c.gestureEnabled and c.gesturePackage == Pv::secureCameraPackage and c.gestureNotDisabled and c.cameraHardware
   | _ => false
 }
 ```
@@ -129,7 +134,10 @@ pure def secureCameraHolds(camera: CameraReading): bool = match camera {
 The listener is the system package `<launcher>.sense`. The shell reads its
 grants from `dumpsys package`, the holders of the indicator-exempt roles
 and the microphone indicator flag, and the SELinux domain of its running
-process from `ps -Z`.
+process from `ps -Z`. The indicator is kept when no package holds those
+roles, the flag is not explicitly false and, for a listener the staging
+record marks activated, `ro.hotword.detection_service_required` is true;
+an inert listener's image does not set that property.
 
 ```quint
 type ListenerReading = ListenerUnread | ListenerRead({ privilegedSystemPackage: bool, granted: List[str], indicatorKept: bool, domain: str })
@@ -249,7 +257,8 @@ pure val stagedListener: ListenerReading = ListenerRead({ privilegedSystemPackag
 pure val bootedAsStaged: ImageObservation = { fingerprint: FingerprintRead({ fingerprint: stagedImage.fingerprint }), launcher: SystemApk({ sha256: stagedApk }),
   home: Read({ holds: true }), stockHome: Read({ holds: true }), clock: ClockRead({ clockEnabled: true, handledActions: clockAlarmActions }),
   webView: Read({ holds: true }), grants: GrantsRead({ granted: List(audioGrant) }), sameBoot: Read({ holds: true }), selinux: Enforcing,
-  camera: CameraRead({ cameraEnabled: true, systemHandles: secureCaptureActions, launcherHandles: List(), gestureEnabled: true, gesturePackage: Pv::secureCameraPackage }),
+  camera: CameraRead({ cameraEnabled: true, systemHandles: secureCaptureActions, launcherHandles: List(), gestureEnabled: true, gesturePackage: Pv::secureCameraPackage,
+    gestureNotDisabled: true, cameraHardware: true }),
   verifiedBoot: BootRead({ booted: Yellow }), privilege: PrivilegeRead({ privilegedApp: true, granted: List(phoneStatePermission) }), listener: stagedListener }
 pure val expectationValues = Set(stagedImage, { ...stagedImage, listener: true }, { ...stagedImage, boot: BootUnchecked },
   { ...stagedImage, boot: BootAtLeast({ minimum: Green }) }, { ...stagedImage, privilegedPermissions: List(phoneStatePermission) })
@@ -260,7 +269,9 @@ pure val observationValues = Set(bootedAsStaged, { ...bootedAsStaged, selinux: P
     domain: "untrusted_app", granted: L::listenerPrivilegedPermissions }) },
   { ...bootedAsStaged, clock: ClockRead({ clockEnabled: true, handledActions: List("SET_ALARM") }), selinux: SelinuxUnread },
   { ...bootedAsStaged, camera: CameraRead({ cameraEnabled: true, systemHandles: secureCaptureActions, launcherHandles: List("IMAGE_CAPTURE_SECURE"),
-    gestureEnabled: true, gesturePackage: Pv::secureCameraPackage }) }, { ...bootedAsStaged, privilege: PrivilegeRead({ privilegedApp: false, granted: List() }) },
+    gestureEnabled: true, gesturePackage: Pv::secureCameraPackage, gestureNotDisabled: true, cameraHardware: true }) },
+  { ...bootedAsStaged, camera: CameraRead({ cameraEnabled: true, systemHandles: secureCaptureActions, launcherHandles: List(),
+    gestureEnabled: true, gesturePackage: Pv::secureCameraPackage, gestureNotDisabled: false, cameraHardware: true }) }, { ...bootedAsStaged, privilege: PrivilegeRead({ privilegedApp: false, granted: List() }) },
   { ...bootedAsStaged, home: Unread })
 pure def lawTheStagedImagePasses(expectation: ImageExpectation): bool =
   (expectation.boot != BootAtLeast({ minimum: Green })) implies imageVerdict(expectation, bootedAsStaged) == Pass

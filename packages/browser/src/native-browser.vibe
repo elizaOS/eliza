@@ -1,0 +1,208 @@
+// spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"
+import { readViewInteractionClientId, type Action, type ActionResult, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { historyReport, type HistoryReceipt, type HistoryReport } from "../gen/browser__control.effect.vibe"
+import { NATIVE_HISTORY_SUBACTIONS, isNativeHistorySubaction, observedNativeHistorySelection, type NativeHistorySelection, type NativeHistorySubaction } from "./native-command.vibe"
+
+/** The browser view and the capability through which the agent asks the requesting device's mounted browser. */
+export const BROWSER_VIEW = { viewId: "browser", capability: "browser-command" } as const
+
+/** The failure codes a mounted browser gives when it refused a command before acting on it. */
+export const TYPED_REFUSAL_CODES = ["UNAVAILABLE", "UNSUPPORTED", "STALE_REF", "SESSION_GONE", "AUTH_REQUIRED", "POLICY_BLOCKED"] as const
+
+/** The code of a failed or uncertain browser command. */
+export type BrowserFailureCode = (typeof TYPED_REFUSAL_CODES)[number] | "UNCERTAIN_OUTCOME"
+
+/** What the agent's view host answers when it asks a view, in the shape this plugin reads. */
+export type BrowserViewWait =
+  | { readonly kind: "Replied"; readonly reply: string; readonly answer: { readonly success: boolean; readonly result?: unknown; readonly error?: string } }
+  | { readonly kind: "Unknown" }
+  | { readonly kind: "Superseded" }
+  | { readonly kind: "Stopped" }
+
+/** Whether the view host published the ask, and how to wait for its answer. */
+export type BrowserViewAsked =
+  | { readonly kind: "asked"; readonly wait: BrowserViewWait!! }
+  | { readonly kind: "unavailable" }
+  | { readonly kind: "refused" }
+
+/** The view host's grant facts for an ask, as its spec names them. */
+export interface BrowserViewGrant {
+  readonly roleAllowed: boolean
+  readonly standard: boolean
+  readonly declared: boolean
+  readonly manifestAllows: boolean
+  readonly agentAuthority: boolean
+}
+
+/** The part of the agent's view host that asks the requesting client's browser view. */
+export interface BrowserViewAsker {
+  ask(request: {
+    readonly clientId: string
+    readonly viewId: string
+    readonly capability: string
+    readonly params: Readonly<Record<string, unknown>>
+    readonly grant: BrowserViewGrant
+  }): BrowserViewAsked!!
+}
+
+/** A history move for the requesting client's mounted browser, bound to the tab its turn observed. */
+export interface HistoryRequest {
+  readonly clientId: string
+  readonly subaction: NativeHistorySubaction
+  readonly selection?: NativeHistorySelection
+}
+
+/** How a history command ended: dispatched only, refused with a typed code, never sent, or uncertain. */
+export type HistoryOutcome =
+  | { readonly report: "HistoryDispatched"; readonly subaction: NativeHistorySubaction }
+  | { readonly report: Exclude<HistoryReport, "HistoryDispatched">; readonly code: BrowserFailureCode; readonly message: string }
+
+/** The requesting client's mounted browser, which runs one history move per command and never twice. */
+export service NativeBrowser {
+  static readonly key = "@elizaos/plugin-browser/NativeBrowser"
+  history(request: HistoryRequest): HistoryOutcome!!
+}
+
+const browserCommandGrant: BrowserViewGrant = { roleAllowed: true, standard: false, declared: true, manifestAllows: true, agentAuthority: true }
+const viewHostServiceType = "agent_view_host"
+const uncertainMessage = "The browser command may have run; read the same browser before retrying."
+
+function record(value: unknown): object | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined
+}
+
+function field(value: object, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(value, key)?.value
+}
+
+function typedRefusal(code: unknown): code is (typeof TYPED_REFUSAL_CODES)[number] {
+  return TYPED_REFUSAL_CODES.some((known) => known === code)
+}
+
+type ReadReceipt = { readonly receipt: HistoryReceipt; readonly code: BrowserFailureCode; readonly message: string }
+
+const unanswered: HistoryReceipt = { delivered: true, answer: "AnswerMissing", typedCode: false, dispatched: false, completed: false, readbackAsked: false }
+const undelivered: HistoryReceipt = { ...unanswered, delivered: false }
+
+function receiptOf(wait: BrowserViewWait): ReadReceipt {
+  if (wait.kind !== "Replied") return { receipt: unanswered, code: "UNCERTAIN_OUTCOME", message: uncertainMessage }
+  const malformed = { receipt: { ...unanswered, answer: "AnswerFailed" }, code: "UNCERTAIN_OUTCOME", message: uncertainMessage } as const
+  if (!wait.answer.success) return { ...malformed, message: wait.answer.error ?? uncertainMessage }
+  const envelope = record(wait.answer.result)
+  if (envelope === undefined) return malformed
+  if (field(envelope, "ok") === false) {
+    const code = field(envelope, "code")
+    const told = field(envelope, "message")
+    return {
+      receipt: { ...unanswered, answer: "AnswerRefusal", typedCode: typedRefusal(code) },
+      code: typedRefusal(code) ? code : "UNCERTAIN_OUTCOME",
+      message: typeof told === "string" ? told : "Native browser command failed.",
+    }
+  }
+  const data = field(envelope, "ok") === true ? record(field(envelope, "data")) : undefined
+  if (data === undefined) return malformed
+  return {
+    receipt: { ...unanswered, answer: "AnswerReceipt", dispatched: field(data, "dispatched") === true, completed: field(data, "completed") !== false, readbackAsked: field(data, "requiresReadback") === true },
+    code: "UNCERTAIN_OUTCOME",
+    message: "Native browser did not return an explicit dispatch receipt.",
+  }
+}
+
+function outcomeOf(read: ReadReceipt, subaction: NativeHistorySubaction): HistoryOutcome {
+  const report = historyReport(read.receipt)
+  return report === "HistoryDispatched" ? { report, subaction } : { report, code: read.code, message: read.message }
+}
+
+/** NativeBrowser over the agent's view host: each command is one ask of the requesting client's browser view, never repeated. */
+export function viewNativeBrowser(views: BrowserViewAsker) {
+  return Layer.succeed(NativeBrowser, {
+    effect history(request: HistoryRequest) {
+      const asked = try views.ask({
+        clientId: request.clientId,
+        ...BROWSER_VIEW,
+        params: { command: { subaction: request.subaction }, ...(request.selection === undefined ? {} : { selection: request.selection }) },
+        grant: browserCommandGrant,
+      })
+      if (asked.kind === "unavailable") return outcomeOf({ receipt: undelivered, code: "UNAVAILABLE", message: "The requesting native Browser client is not connected." }, request.subaction)
+      if (asked.kind === "refused") return outcomeOf({ receipt: undelivered, code: "UNSUPPORTED", message: "The requesting Browser view does not take agent commands." }, request.subaction)
+      return outcomeOf(receiptOf(try asked.wait), request.subaction)
+    },
+  })
+}
+
+function isViewAsker(value: unknown): value is BrowserViewAsker {
+  const views = record(value)
+  return views !== undefined && typeof field(views, "ask") === "function"
+}
+
+/** The view host the agent registered on this runtime, as the asker this plugin needs, or undefined. */
+export function browserViewAsker(runtime: IAgentRuntime): BrowserViewAsker | undefined {
+  const service = record(runtime.getService(viewHostServiceType))
+  const views = service === undefined ? undefined : field(service, "views")
+  return isViewAsker(views) ? views : undefined
+}
+
+const dispatchedSentence: Readonly<Record<NativeHistorySubaction, string>> = {
+  back: "I asked the browser to go back. The previous page may still be loading.",
+  forward: "I asked the browser to go forward. The next page may still be loading.",
+  reload: "I asked the browser to reload the page. It may still be loading.",
+}
+
+function parametersOf(options: unknown): object | undefined {
+  const given = record(options)
+  return given === undefined ? undefined : record(field(given, "parameters"))
+}
+
+function failed(code: BrowserFailureCode, text: string): ActionResult {
+  return {
+    success: false,
+    text,
+    data: { actionName: "BROWSER", dispatchFailure: { kind: code, fallbackSafe: code === "UNSUPPORTED" || code === "UNAVAILABLE", targetId: "native-client" } },
+  }
+}
+
+/** The planner-facing result of a history command: a dispatch receipt owns the turn's reply and never claims the page finished. */
+export function historyActionResult(outcome: HistoryOutcome): ActionResult {
+  if (outcome.report !== "HistoryDispatched") return failed(outcome.code, outcome.message)
+  const result = { targetId: "native-client", mode: "web", subaction: outcome.subaction, value: { dispatched: true, completed: false, requiresReadback: false } }
+  return {
+    success: true,
+    text: JSON.stringify(result),
+    userFacingText: dispatchedSentence[outcome.subaction],
+    verifiedUserFacing: true,
+    turnComplete: true,
+    data: { actionName: "BROWSER", executionStatus: "dispatched", result },
+  }
+}
+
+async function runHistory(runtime: IAgentRuntime, message: Memory, options: HandlerOptions | Record<string, unknown> | undefined): Promise<ActionResult> {
+  const subaction = field(parametersOf(options) ?? {}, "action")
+  if (!isNativeHistorySubaction(subaction)) return { success: false, text: "A supported native browser action is required." }
+  const clientId = readViewInteractionClientId(message)
+  const views = browserViewAsker(runtime)
+  if (clientId === undefined || views === undefined) return failed("UNAVAILABLE", "The requesting native browser client is unavailable.")
+  const selection = observedNativeHistorySelection(message, subaction)
+  const request: HistoryRequest = selection === undefined ? { clientId, subaction } : { clientId, subaction, selection }
+  const program = Effect.provide(effect {
+    const browser = try NativeBrowser
+    return try browser.history(request)
+  }, viewNativeBrowser(views))
+  return historyActionResult(await runPromise(program))
+}
+
+/** The BROWSER action for the page showing in the requesting device's own browser: back, forward and reload, each only on the tab the turn observed. */
+export const browserAction: Action = {
+  name: "BROWSER",
+  description: `Control the page that is showing in the requesting device's own browser. Only these commands are available: ${NATIVE_HISTORY_SUBACTIONS.join(", ")}. Do not offer any other browser command through this tool. Accepted dispatch does not prove website completion.`,
+  similes: [],
+  examples: [],
+  roleGate: { minRole: "OWNER" },
+  validate: async (runtime) => browserViewAsker(runtime) !== undefined,
+  parameters: [{
+    name: "action",
+    required: true,
+    description: "Native browser command",
+    schema: { type: "string", enum: [...NATIVE_HISTORY_SUBACTIONS] },
+  }],
+  handler: (runtime, message, _state, options) => runHistory(runtime, message, options),
+}

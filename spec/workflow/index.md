@@ -6,10 +6,11 @@ remove it. Every run is bound to the exact version the owner reviewed.
 
 | Area | Specifications |
 | --- | --- |
-| Authoring and review | [Typed authoring](./authoring.md), [source publication](./sourcePublication.md), [worker provenance](./worker.md) |
+| Authoring and review | [Typed authoring](./authoring.md), [generated code](./generated.md), [source publication](./sourcePublication.md), [worker provenance](./worker.md) |
 | Admission | [Reviewed admission](./admission.md), [request archive](./intents.md), [lifecycle](./lifecycle.md) |
 | Running | [Schedule occurrences](./schedule.md), [execution and wakeups](./execution.md), [approvals](./approvals.md), [run scope](./runScope.md) |
 | Hosted digests | [Offers and delivery](./hostedDigest.md) |
+| Notices | [Run notices](./notices.md) |
 
 The client and agent keep separate records. The [request archive](./intents.md)
 owns the local revision. The [workflow definition](./admission.md) owns

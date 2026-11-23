@@ -197,3 +197,28 @@ pure val callValues = Set(
   { dispatched: true, cancelled: false, published: true },
   { dispatched: true, cancelled: false, published: false })
 ```
+
+### The proof of erase comes from the service's own verifier, else the host's verifier found when the cleanup is acknowledged, and only a literal true is proof
+
+A host whose recordings live outside the agent proves an erase through its
+registered verifier. The Notes service asks its own verifier first; with
+none, it looks the host's verifier up when the cleanup is acknowledged, so
+a host that registered after the Notes service started still counts. With
+neither, no cleanup is acknowledged. Only an answer that is exactly `true`
+proves the erase: any other value, or a failure, proves nothing and the
+cleanup stays pending. The acknowledgement is an owner route, and it
+retires only the exact pending receipt.
+
+```quint
+type CleanupVerifier = OwnVerifier | HostVerifier | NoVerifier
+type VerifierAnswer = AnsweredTrue | AnsweredOther | AnswerFailed
+pure def cleanupVerifier(ownVerifier: bool, hostRegistered: bool): CleanupVerifier =
+  if (ownVerifier) OwnVerifier else if (hostRegistered) HostVerifier else NoVerifier
+pure def verifierProvedErase(verifier: CleanupVerifier, answer: VerifierAnswer): bool =
+  verifier != NoVerifier and answer == AnsweredTrue
+pure def lawOwnVerifierTakesPrecedence(hostRegistered: bool): bool = cleanupVerifier(true, hostRegistered) == OwnVerifier
+pure def lawLateHostVerifierCounts(ownVerifier: bool): bool = not(ownVerifier) implies cleanupVerifier(ownVerifier, true) == HostVerifier
+pure def lawNoVerifierProvesNothing(answer: VerifierAnswer): bool = not(verifierProvedErase(NoVerifier, answer))
+pure def lawOnlyLiteralTrueProves(verifier: CleanupVerifier): bool =
+  not(verifierProvedErase(verifier, AnsweredOther)) and not(verifierProvedErase(verifier, AnswerFailed))
+```

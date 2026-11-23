@@ -1,0 +1,140 @@
+// spec/os/agentService/inference.md, "Story: Embed, speak and transcribe on my phone through my app alone"; spec/os/agentService/inference.md, "An embedding is answered only by the verified model assigned to embeddings, as a finite vector of its dimensions"; spec/os/agentService/inference.md, "Speech readiness and the end-of-turn score say only what the host answered"; spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"
+import { endOfTurnComplete, endOfTurnMilliAdmitted, speechReadiness } from "../../gen/os__agentService__inference.effect.vibe"
+import { exchange, floatsFromBase64, floatsToBase64, HostUnreachable } from "./socket.ts"
+
+/** What the engine is asked to do. */
+export type Capability = "text" | "embedding" | "synthesis" | "transcription" | "endOfTurn"
+
+/** The host cannot serve a capability now: it is not running, or its model or library is absent. */
+export error EngineUnavailable { capability: Capability; reason: string }
+
+/** The host took a request and failed it. */
+export error EngineFailed { capability: Capability; reason: string }
+
+/** A vector space as the catalog names it. */
+export interface VectorSpace {
+  readonly spaceModel: string
+  readonly dimensions: number
+  readonly pooling: "ClsPooling" | "MeanPooling" | "LastTokenPooling"
+}
+
+/** An installed model as the local inference plugin hands it to the engine. */
+export interface InstalledModel {
+  readonly model: {
+    readonly name: string
+    readonly source: { readonly kind: "pinned"; readonly files: readonly { readonly path: string; readonly sha256: string }[] } | { readonly kind: "bundle" }
+    readonly embedding?: { readonly space: VectorSpace }
+  }
+  readonly directory: string
+  readonly files: readonly string[]
+}
+
+/** One embedding and the vector space it is in. */
+export interface EngineVector {
+  readonly values: readonly number[]
+  readonly space: VectorSpace
+}
+
+/** Mono PCM samples in [-1, 1] at a sample rate. */
+export interface Pcm {
+  readonly sampleRate: number
+  readonly samples: Float32Array
+}
+
+/** An end-of-turn score, or why none could be computed. */
+export type EndOfTurnScore =
+  | { readonly available: true; readonly complete: boolean; readonly probability: number }
+  | { readonly available: false; readonly reason: string }
+
+/** Which speech engines the host reports ready. */
+export interface SpeechReadiness {
+  readonly synthesis: boolean
+  readonly transcription: boolean
+}
+
+/** The local inference engine served by the Android app's inference host; interrupting a call cancels it in the host. */
+export service AndroidInferenceEngine {
+  load(model: InstalledModel): void!EngineFailed
+  unload(): void!!
+  warmEmbedding(model: InstalledModel): void!(EngineUnavailable | EngineFailed)
+  embed(model: InstalledModel, text: string): EngineVector!(EngineUnavailable | EngineFailed)
+  speechReady(): SpeechReadiness!!
+  synthesize(text: string): Pcm!(EngineUnavailable | EngineFailed)
+  transcribe(audio: Pcm): string!(EngineUnavailable | EngineFailed)
+  scoreEndOfTurn(transcript: string): EndOfTurnScore!!
+}
+
+const Refused = Schema.Struct({ ok: Schema.Literal(false), code: Schema.String, error: Schema.String })
+const Done = Schema.Struct({ ok: Schema.Literal(true) })
+const Ready = Schema.Struct({ ok: Schema.Literal(true), synthesis: Schema.Boolean, transcription: Schema.Boolean })
+const Vector = Schema.Struct({ ok: Schema.Literal(true), embedding: Schema.Array(Schema.Number) })
+const Speech = Schema.Struct({ ok: Schema.Literal(true), sampleRate: Schema.Number, pcmBase64: Schema.String })
+const Transcript = Schema.Struct({ ok: Schema.Literal(true), text: Schema.String })
+const Score = Schema.Union([
+  Schema.Struct({ ok: Schema.Literal(true), available: Schema.Literal(true), milli: Schema.Number }),
+  Schema.Struct({ ok: Schema.Literal(true), available: Schema.Literal(false), reason: Schema.String }),
+])
+
+const POOLING: Readonly<Record<VectorSpace["pooling"], number>> = { MeanPooling: 1, ClsPooling: 2, LastTokenPooling: 3 }
+
+effect function ask<A>(socket: string, capability: Capability, request: object, shape: Schema.ConstraintDecoder<A>): A!(EngineUnavailable | EngineFailed) {
+  const raw = try tryPromise({
+    try: (signal) => exchange(socket, request, signal),
+    catch: (cause) => new EngineUnavailable({ capability, reason: cause instanceof HostUnreachable ? `the inference host is not reachable: ${cause.message}` : "the inference host is not reachable" }),
+  })
+  const refused = Schema.decodeUnknownOption(Refused)(raw)
+  if (Option.isSome(refused)) {
+    const { code, error } = refused.value
+    throw code === "UNAVAILABLE" ? new EngineUnavailable({ capability, reason: error }) : new EngineFailed({ capability, reason: `${code}: ${error}` })
+  }
+  return try mapError(Schema.decodeUnknownEffect(shape)(raw), () => new EngineFailed({ capability, reason: "the inference host answered out of shape" }))
+}
+
+effect function embedding(model: InstalledModel) {
+  const space = model.model.embedding?.space
+  const file = model.files.find((one) => one.endsWith(".gguf"))
+  if (space === undefined || file === undefined) throw new EngineUnavailable({ capability: "embedding", reason: `${model.model.name} is not an embedding model` })
+  const source = model.model.source
+  const pinned = source.kind === "pinned" ? source.files.find((one) => file === one.path || file.endsWith(`/${one.path}`)) : undefined
+  if (pinned === undefined) throw new EngineUnavailable({ capability: "embedding", reason: `${model.model.name} has no pinned digest` })
+  return { space, request: { file, sha256: pinned.sha256, dimensions: space.dimensions, pooling: POOLING[space.pooling] } }
+}
+
+effect function synthesized(socket: string, text: string) {
+  const reply = try ask(socket, "synthesis", { op: "synthesize", text }, Speech)
+  const samples = floatsFromBase64(reply.pcmBase64)
+  if (samples === undefined || !Number.isSafeInteger(reply.sampleRate) || reply.sampleRate <= 0) throw new EngineFailed({ capability: "synthesis", reason: "the inference host answered no audio" })
+  return { sampleRate: reply.sampleRate, samples }
+}
+
+function scored(reply: typeof Score.Type): EndOfTurnScore {
+  if (!reply.available) return { available: false, reason: reply.reason }
+  if (!Number.isSafeInteger(reply.milli) || !endOfTurnMilliAdmitted(reply.milli)) return { available: false, reason: "the inference host answered no probability" }
+  return { available: true, complete: endOfTurnComplete(reply.milli), probability: reply.milli / 1000 }
+}
+
+/** The engine over the inference host listening on an abstract socket name, or a socket file path. */
+export function androidInferenceEngine(socket: string): AndroidInferenceEngine.Shape {
+  return {
+    load: (model) => mapError(map(ask(socket, "text", { op: "load", bundleDir: model.directory, files: model.files }, Done), () => undefined), (failure) => new EngineFailed({ capability: failure.capability, reason: failure.reason })),
+    unload: effect () => map(ask(socket, "text", { op: "unload" }, Done), () => undefined) catch () => undefined,
+    warmEmbedding: (model) => effect {
+      const { request } = try embedding(model)
+      try ask(socket, "embedding", { op: "warmEmbedding", ...request }, Done)
+    },
+    embed: (model, text) => effect {
+      const { space, request } = try embedding(model)
+      const reply = try ask(socket, "embedding", { op: "embed", ...request, text }, Vector)
+      return { values: reply.embedding, space }
+    },
+    speechReady: effect () => map(ask(socket, "synthesis", { op: "capabilities" }, Ready), (reply) => speechReadiness(true, reply.synthesis, reply.transcription)) catch () => speechReadiness(false, false, false),
+    synthesize: (text) => synthesized(socket, text),
+    transcribe: (audio) => map(ask(socket, "transcription", { op: "transcribe", sampleRate: audio.sampleRate, pcmBase64: floatsToBase64(audio.samples) }, Transcript), (reply) => reply.text),
+    scoreEndOfTurn: effect (transcript) => map(ask(socket, "endOfTurn", { op: "endOfTurn", transcript }, Score), scored) catch (failure): EndOfTurnScore => ({ available: false, reason: failure.reason }),
+  }
+}
+
+/** Provides the engine over the inference host on a socket name, for the resident that hands it to the local inference plugin. */
+export function androidInferenceLayer(socket: string) {
+  return Layer.succeed(AndroidInferenceEngine, androidInferenceEngine(socket))
+}

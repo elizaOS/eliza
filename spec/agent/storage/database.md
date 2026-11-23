@@ -140,7 +140,11 @@ pure def sometimesOtherOwnerRefused(s: Store): bool = s.fault == OtherOwner
 
 The lock file in the data directory names its holder. A live holder refuses
 the open; a lock whose holder is gone is reclaimed. A memory store takes no
-lock. The lock is released when the store closes or fails.
+lock. The lock is released when the store closes or fails, even when the
+store engine's own close fails. The engine's lock file inside the data
+directory belongs to whoever holds the directory, so one that a gone holder
+left behind is removed, and the engine started once more, when it stops the
+start; a second failed start is `DirCorrupt`.
 
 ```quint
 type LockFile = LockFree | LockStale | LockLive
@@ -192,7 +196,9 @@ pure def sometimesNewerSchemaRefused(s: Store): bool = s.fault == NewerSchema
 The bundle may carry a pre-migrated empty snapshot. A memory store or an
 empty data directory starts from it only when its version equals the
 bundle's; otherwise it migrates from nothing. An existing directory is
-never seeded.
+never seeded. A seed is staged beside the directory and moved into place
+whole; a stage that a gone holder left unfinished is removed before the
+next seed.
 
 ```quint
 pure def alwaysSeedMatchesTheBundle(s: Store): bool = s.seeded implies seedable(s.bundle)
@@ -228,6 +234,54 @@ pure def stepOnlyASweepRemovesARow(before: Store, via: str, after: Store): bool 
 }
 pure def sometimesCloseWaitsForAQuery(s: Store): bool = s.phase == Closing and s.queries.size() > 0
 pure def sometimesClosedWithRecords(s: Store): bool = s.phase == Closed and s.logs.length() > 0
+```
+
+### A conditional cache write answers false only for a value it read, and a failed write is never retried
+
+A cache entry is replaced only when it still holds the value the writer
+expects, or created only when it is absent, in one statement. A write that
+ran and found another value answers false. A write whose statement failed
+may still have committed, so it fails with `CACHE_CAS_FAILED` instead of
+answering false, and the store never runs it again; a write refused because
+the store is closed never ran and fails as any closed-store query does.
+
+```quint
+type CacheWrite = CacheWritten | CacheMismatch | CacheUncertain
+pure def conditionalCacheWrite(stored: str, expected: str, completed: bool): CacheWrite =
+  if (not(completed)) CacheUncertain else if (stored == expected) CacheWritten else CacheMismatch
+pure val storedValues = Set("absent", "a", "b")
+pure val expectedValues = Set("absent", "a", "b")
+pure val completedValues = Set(true, false)
+pure def lawMismatchOnlyForAValueRead(stored: str, expected: str, completed: bool): bool =
+  (conditionalCacheWrite(stored, expected, completed) == CacheMismatch) iff (completed and stored != expected)
+pure def lawFailedWriteIsNeverAMismatch(stored: str, expected: str, completed: bool): bool =
+  not(completed) implies conditionalCacheWrite(stored, expected, completed) == CacheUncertain
+```
+
+### A write whose statement failed fails as a storage fault naming its table, and text the store cannot keep is refused before anything runs
+
+Every record write (create, put, update, a cache set) answers the keys it
+wrote or fails; it never answers `false` for a failed statement. A failed
+statement may still have committed, so it fails with `DB_UPSERT_FAILED`,
+carrying the collection, the agent and the write mode but no record
+content, and is never run again. A value whose JSON holds NUL or a lone
+UTF-16 surrogate, which jsonb cannot keep, is refused before the statement
+with `SQL_JSON_UNSUPPORTED_NUL` or `SQL_JSON_UNSUPPORTED_SURROGATE`, left
+unwrapped because it is the caller's input and not a storage fault. A
+write refused because the store is closed never ran and fails as any
+closed-store query does.
+
+```quint
+type WriteText = KeepableText | HoldsNul | HoldsLoneSurrogate
+type RecordWrite = RecordsWritten | TextRefused | WriteFault | WriteClosed
+pure def recordWrite(open: bool, text: WriteText, completed: bool): RecordWrite =
+  if (not(open)) WriteClosed else if (text != KeepableText) TextRefused else if (completed) RecordsWritten else WriteFault
+pure val openValues = Set(true, false)
+pure def lawUnkeepableTextNeverReachesTheStore(text: WriteText, completed: bool): bool =
+  text != KeepableText implies recordWrite(true, text, completed) == TextRefused
+pure def lawAFailedStatementIsAFault(completed: bool): bool =
+  not(completed) implies recordWrite(true, KeepableText, completed) == WriteFault
+pure def lawAClosedStoreRunsNoWrite(text: WriteText, completed: bool): bool = recordWrite(false, text, completed) == WriteClosed
 ```
 
 ## Story: Forget old logs on schedule

@@ -178,6 +178,37 @@ pure def lawASession401NeverReachesTheKey(attach: Attach, d: DeviceRoute, status
   isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and keyOf(attach) >= 1)
 ```
 
+### A cancel disconnects only the page's own call still in flight, which then settles once as cancelled
+
+The page may name a call when it sends it; a name already in flight is
+refused. Cancelling that name disconnects the call's connection, and the
+call settles as `cancelled` even when an answer was already arriving, so a
+cancelled call never resolves. A cancel of a name that is unknown, or of a
+call that has settled, changes nothing. Source: develop's
+`PendingRequests.java`.
+
+```quint
+type CallStatus = CallInFlight | CallCancelled | CallSettled
+type PageCall = { name: str, status: CallStatus }
+type CallEnd = AnsweredCall | CancelledCall | UnansweredCall
+pure def cancelCall(calls: List[PageCall], name: str): List[PageCall] =
+  calls.listMap(c => if (c.name == name and c.status == CallInFlight) { ...c, status: CallCancelled } else c)
+pure def callEnd(pending: PageCall, answered: bool): CallEnd =
+  if (pending.status == CallCancelled) CancelledCall else if (answered) AnsweredCall else UnansweredCall
+pure def nameFree(calls: List[PageCall], name: str): bool = not(calls.some(c => c.name == name and c.status != CallSettled))
+pure val nameValues = Set("a", "b")
+pure val callsValues = Set(List(), List({ name: "a", status: CallInFlight }), List({ name: "a", status: CallSettled }, { name: "b", status: CallInFlight }))
+pure val pendingValues = Set({ name: "a", status: CallInFlight }, { name: "a", status: CallCancelled }, { name: "a", status: CallSettled })
+pure def lawACancelChangesOnlyItsOwnCallInFlight(calls: List[PageCall], name: str): bool = {
+  val after = cancelCall(calls, name)
+  after.select(c => c.name != name) == calls.select(c => c.name != name)
+    and after.select(c => c.status == CallSettled) == calls.select(c => c.status == CallSettled)
+    and not(after.some(c => c.name == name and c.status == CallInFlight))
+}
+pure def lawACancelledCallNeverResolves(pending: PageCall, answered: bool): bool =
+  pending.status == CallCancelled implies callEnd(pending, answered) == CancelledCall
+```
+
 ### A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused
 
 Nothing is truncated and binary bodies pass unchanged. A body over 8 MiB is

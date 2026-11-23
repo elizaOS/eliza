@@ -1,0 +1,49 @@
+// spec/calendar/syncSettlement.md, "Story: Keep the newest sync decision when an old attempt returns late"
+import { assert, it } from "@effect/vitest"
+import { calendarWatchChannel, type CalendarLinkStorage } from "../src/linked-sync/index.vibe"
+
+function memoryStorage(): CalendarLinkStorage {
+  const slots = new Map<string, unknown>()
+  return {
+    read: async (slot) => structuredClone(slots.get(slot) ?? null),
+    async compareExchange(slot, expected, value) {
+      if (JSON.stringify(slots.get(slot) ?? null) !== JSON.stringify(expected)) return { status: "conflict" }
+      slots.set(slot, structuredClone(value))
+      return { status: "saved" }
+    },
+  }
+}
+
+error ProviderDown
+
+it.effect(`Keep the newest sync decision when an old attempt returns late (spec/calendar/syncSettlement.md, "Story: Keep the newest sync decision when an old attempt returns late"; spec/calendar/syncSettlement.md, "A new attempt is leased only on an active channel whose previous lease is gone or expired"; spec/calendar/syncSettlement.md, "Only the leased attempt's failure marks the channel failed"; spec/calendar/syncSettlement.md, "Only the leased attempt's success records the synced point")`, effect () => {
+  const channel = try calendarWatchChannel({ storage: memoryStorage(), channelId: "watch-1", leaseMs: 1000 })
+  try channel.queueChange()
+  try channel.queueChange()
+  const late = try channel.runAttempt((attempt) => effect {
+    assert.equal(attempt, 1)
+    try TestClock.adjust("2 seconds")
+    const newer = try channel.runAttempt(() => succeed("synced"))
+    assert.deepEqual(newer, { kind: "recorded", attempt: 2, channel: { channel: "ChannelActive", pending: 0, last: 2, failures: 0, lease: 0 } })
+    throw new ProviderDown()
+  })
+  assert.deepEqual(late, { kind: "ignored", attempt: 1, channel: { channel: "ChannelActive", pending: 0, last: 2, failures: 0, lease: 0 } })
+
+  try channel.queueChange()
+  const failed = try channel.runAttempt(() => effect { throw new ProviderDown() })
+  assert.deepEqual(failed, { kind: "recorded", attempt: 3, channel: { channel: "ChannelError", pending: 1, last: 2, failures: 1, lease: 0 } })
+  assert.equal((try channel.runAttempt(() => succeed("again"))).kind, "not_claimed")
+})
+
+it.effect('A stopped channel ignores a late attempt (spec/calendar/syncSettlement.md, "A new attempt is leased only on an active channel whose previous lease is gone or expired"; spec/calendar/syncSettlement.md, "Every attempt is in flight, recorded or ignored, and only one of them")', effect () => {
+  const channel = try calendarWatchChannel({ storage: memoryStorage(), channelId: "watch-2", leaseMs: 1000 })
+  try channel.queueChange()
+  const stopping = try channel.runAttempt(() => effect {
+    try channel.beginStop()
+    throw new ProviderDown()
+  })
+  assert.deepEqual(stopping, { kind: "ignored", attempt: 1, channel: { channel: "ChannelStopping", pending: 1, last: 0, failures: 0, lease: 1 } })
+  const stopped = try channel.confirmStop()
+  assert.deepEqual(stopped, { channel: "ChannelStopped", pending: 0, last: 0, failures: 0, lease: 0 })
+  assert.equal((try channel.runAttempt(() => succeed("late"))).kind, "not_claimed")
+})

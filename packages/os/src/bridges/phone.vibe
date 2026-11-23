@@ -1,4 +1,4 @@
-// spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/voicemail.md, "Story: Change a voicemail only as the provider confirms it"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"
+// spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/voicemail.md, "Story: Change a voicemail only as the provider confirms it"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"
 import type { HostFacts, ProviderReply, ReadKind, WriteGate } from "../../gen/os__android__bridge.ts"
 import { receiptOfWrite } from "../../gen/os__android__bridge.effect.vibe"
 import { isAfterStart, startOf, type PageCursor, type PageRequest } from "../../gen/os__android__paging.effect.vibe"
@@ -26,11 +26,14 @@ import {
   maxVoicemails,
   maxWavBytes,
   rowAt,
+  shownRows,
   type PcmDecode,
   type SourceConfiguration,
-  type VoicemailWrite,
 } from "../../gen/os__android__voicemail.effect.vibe"
+import { actionJournalPlugin, queuedDeletions } from "./action-journal.vibe"
 import { BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, settled } from "./bridge.vibe"
+import { hiddenRecords, parseStagedDeletion } from "./deletion-window.vibe"
+import type { ActionJournalPlugin } from "./definitions/action-journal.ts"
 import {
   TELEPHONY_DEFAULT_PAGE,
   VOICEMAIL_AUDIO_MAX_BYTES,
@@ -52,6 +55,7 @@ import {
   type TelephonyHandoffStatus,
   type TelephonyStatus,
   type VoicemailCarrierState,
+  type VoicemailDeletionReport,
   type VoicemailEntry,
   type VoicemailId,
   type VoicemailListing,
@@ -161,7 +165,11 @@ const Listing = Schema.Struct({
 schema Fetch { status: "ready" | "fetching" | "failed" }
 const Audio = Schema.Struct({ id: shaped(VOICEMAIL_ID), mimeType: shaped(AUDIO_TYPE), size: Count, data: Schema.String })
 const Pcm = Schema.Struct({ mimeType: Schema.Literal("audio/wav"), sampleRateHz: Schema.Literal(VOICEMAIL_PCM_RATE_HZ), durationSeconds: Schema.Finite, data: Schema.String })
-schema Written { status: "marked" | "deleted" | "unconfirmed" | "not-found" }
+schema Written { status: "marked" | "unconfirmed" | "not-found" }
+const Staged = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("queued"), deletion: Schema.Unknown }),
+  Schema.Struct({ status: Schema.Literal("not-found") }),
+])
 
 effect function parsed<A>(method: string, shape: Schema.Decoder<A>, raw: unknown): A!MalformedReply {
   return try mapError(Schema.decodeUnknownEffect(shape, strict)(raw), (refusal) => new MalformedReply({ plugin: PLUGIN, method, issue: refusal.message }))
@@ -346,33 +354,35 @@ function pcmRejection(code: string | undefined): PcmDecode | undefined {
   return code === "too-long" || code === "too-large" ? { tag: "DecodedSamples", samples: maxPcmSamples + 1 } : code === "undecodable" ? { tag: "Undecodable" } : undefined
 }
 
-function writtenReply(status: VoicemailWriteStatus, change: VoicemailWrite): ProviderReply {
+function writtenReply(status: VoicemailWriteStatus): ProviderReply {
   return match (status) {
-    when "marked": change === "MarkHeard" ? "CommittedAndReadBack" : "NoReply";
-    when "deleted": change === "DeleteRow" ? "CommittedAndReadBack" : "NoReply";
+    when "marked": "CommittedAndReadBack";
     when "unconfirmed": "CommittedNotReadBack";
     when "not-found": "NothingWritten";
   }
 }
 
-effect function held(): Voicemails!! {
+effect function held(journal: ActionJournalPlugin): Voicemails!! {
   provide machine() {
     const book = try Machine
     const entries = try Ref.make(new Map<number, VoicemailEntry>())
-    return { book, entries, lock: try Semaphore.make(1) }
+    const queued = try Ref.make<readonly number[]>([])
+    return { book, entries, queued, journal, lock: try Semaphore.make(1) }
   }
 }
 
 interface Voicemails {
   readonly book: Machine.Shape
   readonly entries: Ref.Ref<Map<number, VoicemailEntry>>
+  readonly queued: Ref.Ref<readonly number[]>
+  readonly journal: ActionJournalPlugin
   readonly lock: Semaphore.Semaphore
 }
 
 effect function listing(store: Voicemails): VoicemailListing!! {
   const state = try store.book.get()
   const details = try Ref.get(store.entries)
-  const voicemails = state.rows.flatMap((row): ListedVoicemail[] => {
+  const voicemails = shownRows(state.rows, [...(try Ref.get(store.queued))]).flatMap((row): ListedVoicemail[] => {
     const entry = details.get(row.id)
     if (entry === undefined) return []
     const { isNew: _isNew, hasAudio: _hasAudio, ...rest } = entry
@@ -415,6 +425,7 @@ effect function refresh(store: Voicemails, plugin: PhoneNativePlugin, kind: Read
     try malformed("listVoicemail", "The voicemail rows are not keyed by provider ID")
   }
   try Ref.set(store.entries, new Map(list.voicemails.map((row) => [Number(row.id), row])))
+  try Ref.set(store.queued, [...hiddenRecords(try queuedDeletions(store.journal), "voicemail")].map(Number))
   return try listing(store)
 }
 
@@ -450,16 +461,27 @@ effect function pcm(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailI
   return { ...wav }
 }
 
-effect function write(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailId, change: VoicemailWrite) {
+effect function markHeard(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailId) {
   const { row, facts } = try stored(store, plugin, id)
-  if (!canWriteRow(try store.book.get(), facts, row, change, "NoReply")) try refusal(store, id, "write-blocked")
-  const method = change === "MarkHeard" ? "markVoicemailHeard" : "deleteVoicemail"
-  const answer = reply(method, Written, () => change === "MarkHeard" ? plugin.markVoicemailHeard({ id }) : plugin.deleteVoicemail({ id }))
-  const providerReply: ProviderReply = effect { return writtenReply((try answer).status, change) } catch (failure) => failure instanceof BridgeUnavailable ? "NothingWritten" : "NoReply"
-  const step = try orDie(store.book.send({ type: "writeRow", facts, id: row, change, reply: providerReply }))
+  if (!canWriteRow(try store.book.get(), facts, row, "NoReply")) try refusal(store, id, "write-blocked")
+  const answer = reply("markVoicemailHeard", Written, () => plugin.markVoicemailHeard({ id }))
+  const providerReply: ProviderReply = effect { return writtenReply((try answer).status) } catch (failure) => failure instanceof BridgeUnavailable ? "NothingWritten" : "NoReply"
+  const step = try orDie(store.book.send({ type: "writeRow", facts, id: row, reply: providerReply }))
   const out = step.out[0]
   const written = out?.tag === "Wrote" ? out.written : "Uncertain"
   return { written, receipt: receiptOfWrite(written), listing: try listing(store) }
+}
+
+effect function stageDeletion(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailId): VoicemailDeletionReport!(PhoneRequestRefused | VoicemailRefused | BridgeUnavailable | NativeRejection | MalformedReply) {
+  const { row, facts } = try stored(store, plugin, id)
+  store.book.send({ type: "stageDelete", facts, id: row }) catch effect () => {
+    try refusal(store, id, "write-blocked")
+  }
+  const answer = try reply("deleteVoicemail", Staged, () => plugin.deleteVoicemail({ id }))
+  if (answer.status === "not-found") return { status: "not-found", listing: try listing(store) }
+  const deletion = try parseStagedDeletion(PLUGIN, "deleteVoicemail", "voicemail", answer.deletion)
+  try Ref.update(store.queued, (ids) => [...ids, row])
+  return { status: "queued", deletion, listing: try listing(store) }
 }
 
 effect function observe(store: Voicemails, plugin: PhoneNativePlugin, onChange: (refreshed: Promise<VoicemailListing>) => void) {
@@ -476,8 +498,8 @@ effect function observe(store: Voicemails, plugin: PhoneNativePlugin, onChange: 
   }
 }
 
-export function phoneClient(plugin: PhoneNativePlugin = telephonyPlugin()): PhoneClient {
-  const store = Effect.runSync(held())
+export function phoneClient(plugin: PhoneNativePlugin = telephonyPlugin(), journal: ActionJournalPlugin = actionJournalPlugin()): PhoneClient {
+  const store = Effect.runSync(held(journal))
   const serial = store.lock.withPermits(1)
   return {
     imageCapability: () => settled(checked("imageCapability", parseImageCapability, () => plugin.imageCapability())),
@@ -493,8 +515,8 @@ export function phoneClient(plugin: PhoneNativePlugin = telephonyPlugin()): Phon
     fetchVoicemailAudio: (id) => settled(serial(fetchAudio(store, plugin, id))),
     voicemailAudio: (id) => settled(serial(audio(store, plugin, id))),
     voicemailPcm: (id) => settled(serial(pcm(store, plugin, id))),
-    markVoicemailHeard: (id) => settled(serial(write(store, plugin, id, "MarkHeard"))),
-    deleteVoicemail: (id) => settled(serial(write(store, plugin, id, "DeleteRow"))),
+    markVoicemailHeard: (id) => settled(serial(markHeard(store, plugin, id))),
+    deleteVoicemail: (id) => settled(serial(stageDeletion(store, plugin, id))),
     observeVoicemail: (onChange) => settled(observe(store, plugin, onChange)),
   }
 }

@@ -1,0 +1,70 @@
+// spec/inbox/outgoing.md, "The retained recovery copy is read only whole, for its owner, within its bound"; spec/inbox/drafts.md, "Retained edits coalesce under the owner and flush on departure"
+import { retainedAdmitted, retainedLimit } from "../../gen/inbox__outgoing.effect.vibe"
+import { utf8Length } from "./digest.vibe"
+
+const Recipients = Schema.Array(Schema.String)
+const RetainedAttachment = Schema.Struct({ name: Schema.String, mimeType: Schema.String, dataBase64: Schema.String })
+const RetainedDraft = Schema.Struct({
+  version: Schema.Literal(1),
+  id: Schema.String.check(Schema.isMinLength(1)),
+  revision: Schema.String.check(Schema.isMinLength(1)),
+  owner: Schema.String,
+  to: Recipients,
+  cc: Schema.optionalKey(Recipients),
+  bcc: Schema.optionalKey(Recipients),
+  attachments: Schema.optionalKey(Schema.Array(RetainedAttachment)),
+  provider: Schema.optionalKey(Schema.Struct({ draftId: Schema.String, providerDigest: Schema.String })),
+  subject: Schema.String,
+  body: Schema.String,
+  mode: Schema.optionalKey(Schema.Literals(["compose", "reply", "reply-all", "forward"])),
+  reply: Schema.optionalKey(Schema.Struct({ messageId: Schema.String, threadId: Schema.String })),
+})
+const Retained = Schema.Struct({
+  version: Schema.Literal(1),
+  owner: Schema.String,
+  baseRevision: Schema.NullOr(Schema.String.check(Schema.isMinLength(1))),
+  draft: RetainedDraft,
+  toQ: Schema.String,
+})
+const decodeRetained = Schema.decodeUnknownOption(Schema.fromJsonString(Retained), { onExcessProperty: "error" })
+
+/** The account-scoped recovery copy of an email being edited; it never reaches the provider. */
+export type InboxUnsaved = typeof Retained.Type
+
+/** The largest recovery copy, leaving room for its envelope inside the 8 MiB secure slot. */
+export const inboxUnsavedLimit: number = retainedLimit
+
+/** A recovery copy that is malformed, foreign or too large: it needs recovery and is never repaired. */
+export error RetainedNeedsRecovery
+
+/** Reads a recovery copy whole for its owner, or refuses it. */
+export effect function readInboxUnsaved(raw: string, owner: string): InboxUnsaved!RetainedNeedsRecovery {
+  const bytes = utf8Length(raw)
+  if (bytes > retainedLimit) throw new RetainedNeedsRecovery()
+  const decoded = decodeRetained(raw)
+  if (Option.isNone(decoded)) throw new RetainedNeedsRecovery()
+  const value = decoded.value
+  const draft = value.draft
+  const lists = [draft.to, draft.cc ?? [], draft.bcc ?? []]
+  const admitted = retainedAdmitted({
+    bytes,
+    versionOne: true,
+    sameOwner: value.owner === owner && draft.owner === owner,
+    knownFields: true,
+    subjectUnits: draft.subject.length,
+    bodyUnits: draft.body.length,
+    longestList: Math.max(...lists.map((list) => list.length)),
+    longestRecipient: Math.max(0, ...lists.flat().map((address) => address.length)),
+    attachmentCount: draft.attachments?.length ?? 0,
+    searchUnits: value.toQ.length,
+  })
+  if (!admitted) throw new RetainedNeedsRecovery()
+  return value
+}
+
+/** Encodes a recovery copy, checking it by reading it back. */
+export effect function encodeInboxUnsaved(value: InboxUnsaved): string!RetainedNeedsRecovery {
+  const raw = JSON.stringify(value)
+  try readInboxUnsaved(raw, value.owner)
+  return raw
+}

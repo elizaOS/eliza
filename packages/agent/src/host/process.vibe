@@ -1,12 +1,12 @@
-// spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "Story: Tell the host whether the agent can answer"; spec/agent/host/process.md, "Story: Stop on a signal and exit with an honest code"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"
+// spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "Story: Tell the host whether the agent can answer"; spec/agent/host/process.md, "Story: Stop on a signal and exit with an honest code"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "Local embeddings boot only when the device serves them: no operator endpoint or chosen hosted service takes precedence, and the local inference plugin is listed"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open", "Story: Learn when something keeps going wrong"
 
 module node {
-  import type { BootFailure, LaunchDocument as LaunchModel, LaunchFrame as FrameModel, UrlShape } from "../../gen/agent__host__launch.ts"
+  import { deviceEmbeddingsPlugin, embeddingServer, localEmbeddingsBoot, type BootFailure, type LaunchDocument as LaunchModel, type LaunchFrame as FrameModel, type UrlShape } from "../../gen/agent__host__launch.ts"
   import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
   import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
   import type { AgentPlugin, ModuleFactory } from "./module.vibe"
-  import { measureWorker, workerHost, type WorkflowWorkerHost } from "./workflow-worker.vibe"
+  import { measureWorker, workerHost, workflowWorkerService, type WorkflowWorkerHost } from "./workflow-worker.vibe"
 
   export interface AgentStatus {
     readonly agentId: string
@@ -32,6 +32,8 @@ module node {
     readonly stateDirectory: string
     readonly bundled?: ReadonlyMap<string, AgentPlugin>
     readonly modules?: ReadonlyMap<string, ModuleFactory<never>>
+    readonly hostModules?: ReadonlyMap<string, ModuleFactory<never>>
+    readonly runtimeServices?: readonly ServiceClass[]
     readonly snapshot?: DeviceStorageSnapshot
   }
 
@@ -42,7 +44,7 @@ module node {
 
   import { randomUUID } from "node:crypto"
   import { Effect, Result } from "effect"
-  import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, TaskService, createCharacter, logger, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload } from "@elizaos/core"
+  import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, TaskService, createCharacter, logger, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload, type ServiceClass } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
   import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
   import { backendOf, runStateOf, statusRoutes } from "./status.vibe"
@@ -53,7 +55,8 @@ module node {
   import { listenOnHttp } from "../access/http.vibe"
   import { conversationRoutes } from "../conversation/routes.vibe"
   import { conversationStore } from "../conversation/conversations.vibe"
-  import { createEventHub } from "../conversation/events.vibe"
+  import { createEventHub, publishEventServiceType } from "../conversation/events.vibe"
+  import { cloudServiceType } from "../models/cloud-link.vibe"
   import { accountFailureOf, ownerMessageService } from "../conversation/message-service.vibe"
   import { deviceEnrollment } from "../device-actions/enrollment.vibe"
   import { agendaOffer } from "../device-actions/agenda.vibe"
@@ -65,6 +68,7 @@ module node {
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
   import { bootFailureOf, composeAgent } from "./compose.vibe"
   import { reservedHostPrefixes } from "../plugins/product.vibe"
+  import { builtinModuleFactories } from "../plugins/profile.vibe"
   import { bindModels } from "../models/binding.vibe"
   import { modelPlugin } from "../models/plugin.vibe"
 
@@ -98,7 +102,7 @@ module node {
   function frameModel(frame: LaunchFrame): FrameModel {
     return {
       version: frame.version, token: String(frame.token), epoch: frame.epoch,
-      credential: frame.credential === undefined ? { tag: "NoCredential" } : { tag: "Keyed", version: frame.credential.version, value: String(frame.credential.value) },
+      credential: frame.credential === undefined ? { tag: "NoCredential" } : { tag: "Keyed", version: frame.credential.version, value: String(frame.credential.value), units: Redacted.value(frame.credential.value).length },
       storageKey: frame.storageKey === undefined ? { tag: "NoStorageKey" } : { tag: "StorageKey", key: String(frame.storageKey) },
     }
   }
@@ -111,16 +115,45 @@ module node {
     }
   }
 
+  function settingOn(value: string | undefined): boolean {
+    return value !== undefined && ["1", "true", "yes"].includes(value.trim().toLowerCase())
+  }
+
+  function localEmbeddingsAdmitted(launch: LaunchDocument): boolean {
+    const environment = launch.environment ?? {}
+    const provider = (environment.EMBEDDING_PROVIDER ?? "").trim().toLowerCase()
+    const operatorEndpoint = (environment.EMBEDDING_BASE_URL ?? "").trim() !== "" || !["", "local"].includes(provider)
+    const server = embeddingServer(operatorEndpoint, launch.model.backend === "cloud", settingOn(environment.ELIZAOS_CLOUD_USE_EMBEDDINGS))
+    return localEmbeddingsBoot(launch.embeddings === "local", server, launch.policy.plugins.load.includes(deviceEmbeddingsPlugin))
+  }
+
+  function runtimeServicesAdmitted(services: readonly ServiceClass[], owned: readonly string[]): boolean {
+    const types = [...owned, ...services.map(({ serviceType }) => serviceType)]
+    return services.every(({ serviceType }) => typeof serviceType === "string" && serviceType !== "") && new Set(types).size === types.length
+  }
+
+  function hostedSources(input: StartAgentInput): { bundled: ReadonlyMap<string, AgentPlugin>; modules: ReadonlyMap<string, ModuleFactory<never>> } | undefined {
+    const bundled = input.bundled ?? new Map<string, AgentPlugin>()
+    const hosted = input.hostModules ?? new Map<string, ModuleFactory<never>>()
+    if ([...hosted.keys()].some((name) => !bundled.has(name) || builtinModuleFactories.has(name))) return undefined
+    return { bundled, modules: new Map([...(input.modules ?? builtinModuleFactories), ...hosted]) }
+  }
+
   function causeOf(state: AgentProcess): BootFailure {
     return state.failure.tag === "FailedWith" ? state.failure.cause : "Agent"
   }
 
   async function boot(input: StartAgentInput, lifecycle: Lifecycle): Promise<Result.Result<RunningAgent, BootFailure>> {
     const { launch, authority, binding, stateDirectory } = input
-    if (launch.embeddings === "local"
+    const sources = hostedSources(input)
+    if (sources === undefined || !localEmbeddingsAdmitted(launch)
       || launch.privacy?.secretSwap || launch.privacy?.piiSwap) return Result.fail("Config")
     const pinned = launch.workflowWorker === undefined ? undefined : await measureWorker(launch.workflowWorker)
     if (pinned?.kind === "refused") return Result.fail("Config")
+    let installedWorker: WorkflowWorkerHost | undefined
+    const runtimeServices = input.runtimeServices ?? []
+    const agentServices: ServiceClass[] = [TaskService, AgentEventService, ...(pinned === undefined ? [] : [workflowWorkerService(() => installedWorker)])]
+    if (!runtimeServicesAdmitted(runtimeServices, [...agentServices.map(({ serviceType }) => serviceType), NotificationService.serviceType, publishEventServiceType, cloudServiceType])) return Result.fail("Config")
     const sweeps = await Effect.runPromise(Effect.result(logSweeps(launch.retention)))
     if (Result.isFailure(sweeps)) return Result.fail("Config")
 
@@ -209,10 +242,10 @@ module node {
     let detachReports = () => {}
     let detachInbox = () => {}
     const formed = await Effect.runPromise(Effect.result(composeAgent({
-      agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
+      agentId, character, settings: {}, bundled: sources.bundled, modules: sources.modules, hostRoutes: reservedHostPrefixes,
       context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
         ownerEntityId: ownerId, conversationOwner, binding: () => Effect.runSync(models.state()), publishEvent: events.publishFromModule, viewFeeds: events.viewFeeds },
-      storage: { name: storagePlugin, description: "Own the device database", services: [TaskService, AgentEventService, events.PublishEventService], init: async (_config, runtime) => {
+      storage: { name: storagePlugin, description: "Own the device database", services: [...agentServices, events.PublishEventService, ...runtimeServices], init: async (_config, runtime) => {
         if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
         runtime.registerDatabaseAdapter(adapter)
         const sweeper = await Effect.runPromise(scheduleSweeps(adapter, sweeps.success))
@@ -321,6 +354,7 @@ module node {
       : workerHost(launch.workflowWorker, pinned.worker, launch.environment ?? {},
         { token: authority.token, credential: authority.credential?.value, storageKey: authority.storageKey },
         (offered) => Effect.runPromise(composed.workerEnvironment(offered)))
+    installedWorker = workflowWorker
     return Result.succeed({ runtime, status, phase: () => lifecycle.get(), stop, ...(workflowWorker === undefined ? {} : { workflowWorker }) })
   }
   export { boot }

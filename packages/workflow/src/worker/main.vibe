@@ -1,0 +1,43 @@
+#!/usr/bin/env node
+// spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity"; spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"
+import { decodeParentMessage, encodeWorkerMessage, serveWorker, WorkerStepFailed, type WorkerChannel } from "./protocol.vibe"
+
+module node {
+  import { createInterface } from "node:readline"
+
+  export interface Lines {
+    next(): Promise<string | undefined>
+    write(line: string): void
+    close(): void
+  }
+
+  export function stdioLines(): Lines {
+    const reader = createInterface({ input: process.stdin, crlfDelay: Infinity })
+    const iterator = reader[Symbol.asyncIterator]()
+    return {
+      next: async () => {
+        const read = await iterator.next()
+        return read.done === true ? undefined : read.value
+      },
+      write: (line) => { process.stdout.write(line + "\n") },
+      close: () => reader.close(),
+    }
+  }
+}
+import { stdioLines } from node
+
+/** Serves one run over standard input and output until it parks or settles. */
+export effect function main(): void!! {
+  const lines = try sync(() => stdioLines())
+  const channel: WorkerChannel = {
+    receive: effect {
+      const line = try (promise(() => lines.next()))
+      if (line === undefined) throw new WorkerStepFailed({ message: "The parent closed the worker channel", cancelled: true })
+      return try decodeParentMessage(line)
+    },
+    send: (message) => sync(() => lines.write(encodeWorkerMessage(message))),
+  }
+  try ensuring(serveWorker(channel), sync(() => lines.close()))
+}
+
+await runPromise(main())

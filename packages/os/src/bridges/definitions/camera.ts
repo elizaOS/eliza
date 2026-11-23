@@ -1,4 +1,4 @@
-// spec/os/android/camera.md, "Story: See the live view I opened"; spec/os/android/camera.md, "Story: Capture with the camera only from the live view"
+// spec/os/android/camera.md, "Story: See the live view I opened"; spec/os/android/camera.md, "Story: Capture with the camera only from the live view"; spec/os/android/camera.md, "A preview binds its photo stream only at an aspect ratio the device lists"; spec/os/android/camera.md, "While a recording runs, only one zoom or torch change runs at a time"
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { AccessDenial, CameraView, GrantRead, PreviewPhase, RecordingResult, Work } from "../../../gen/os__android__camera.ts";
 
@@ -12,6 +12,10 @@ export type CameraWhiteBalance = "auto" | "daylight" | "cloudy" | "tungsten" | "
 export type MediaType = "photo" | "video";
 export type CameraGrant = "granted" | "denied" | "prompt";
 export type CameraAccessKind = "camera" | "microphone";
+/** Photo stream aspect ratio, width:height in the sensor's landscape orientation. */
+export type CameraCaptureAspectRatio = "4:3" | "16:9";
+/** A viewfinder control the session still admits while a recording runs. */
+export type CameraRecordingControl = "zoom" | "torch";
 
 export interface CameraResolution {
   width: number;
@@ -27,6 +31,7 @@ export interface CameraDevice {
   maxZoom: number;
   supportedResolutions: CameraResolution[];
   supportedFrameRates: number[];
+  supportedCaptureAspectRatios?: CameraCaptureAspectRatio[];
 }
 
 export interface CameraPreviewOptions {
@@ -34,6 +39,7 @@ export interface CameraPreviewOptions {
   direction?: CameraDirection;
   resolution?: CameraResolution;
   mirror?: boolean;
+  captureAspectRatio?: CameraCaptureAspectRatio;
 }
 
 export interface CameraPreviewResult {

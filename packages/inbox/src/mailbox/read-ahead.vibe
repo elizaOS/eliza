@@ -1,0 +1,70 @@
+// spec/inbox/display.md, "A page is read ahead once at a time, kept briefly, and never retried"
+import { aheadLists, aheadUsable } from "../../gen/inbox__display.effect.vibe"
+
+/** A bounded, memory-only read-ahead of the next mailbox page: one speculative read at a time, no polling and no retry. */
+export interface MailReadAhead<T, E> {
+  prepare(key: string, cursor: string, read: T!E): void!!
+  take(key: string, cursor: string): (T | undefined)!E
+  invalidate(key?: string): void!!
+  pause(): void!!
+}
+
+/** A read-ahead that keeps at most eight finished pages, each usable once within thirty seconds. */
+export effect function mailReadAhead<T, E>(): MailReadAhead<T, E>!! {
+  type Pending = { readonly token: object; readonly key: string; readonly cursor: string; readonly at: number; readonly fiber: Fiber.Fiber<T, E> }
+  let pending: Pending | null = null
+  const ready = new Map<string, { readonly cursor: string; readonly at: number; readonly value: T }>()
+
+  effect function pause(): void!! {
+    const running = pending
+    pending = null
+    if (running !== null) try Fiber.interrupt(running.fiber)
+  }
+
+  effect function invalidate(key?: string): void!! {
+    if (key === undefined || pending?.key === key) try pause()
+    if (key === undefined) ready.clear()
+    else ready.delete(key)
+  }
+
+  return {
+    pause,
+    invalidate,
+    effect prepare(key, cursor, read) {
+      const now = try Clock.currentTimeMillis
+      const kept = ready.get(key)
+      if (kept !== undefined && kept.cursor === cursor && aheadUsable(kept.at, now)) return
+      if (pending !== null && pending.key === key && pending.cursor === cursor && aheadUsable(pending.at, now)) return
+      try pause()
+      ready.delete(key)
+      const token = {}
+      const finished = Effect.tap(read, (value) => sync(() => {
+        if (pending === null || pending.token !== token) return
+        pending = null
+        ready.set(key, { cursor, at: now, value })
+        while (ready.size > aheadLists) {
+          const oldest = ready.keys().next().value
+          if (oldest === undefined) break
+          ready.delete(oldest)
+        }
+      }))
+      pending = { token, key, cursor, at: now, fiber: try forkDetach(finished) }
+    },
+    effect take(key, cursor) {
+      const now = try Clock.currentTimeMillis
+      const kept = ready.get(key)
+      if (kept !== undefined && kept.cursor === cursor) {
+        ready.delete(key)
+        if (aheadUsable(kept.at, now)) return kept.value
+      }
+      const running = pending
+      if (running === null || running.key !== key || running.cursor !== cursor) return undefined
+      if (!aheadUsable(running.at, now)) {
+        try invalidate(key)
+        return undefined
+      }
+      pending = null
+      return try Fiber.join(running.fiber)
+    },
+  }
+}

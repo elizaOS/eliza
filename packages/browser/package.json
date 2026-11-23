@@ -4,5 +4,57 @@
   "private": true,
   "type": "module",
   "description": "Browser automation with grounded requests, remote control and payment-control review.",
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/os": "workspace:*",
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@effect/vitest": "4.1.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./contract": {
+      "eliza-source": "./src/contract.vibe",
+      "types": "./dist/src/contract.d.ts",
+      "import": "./dist/src/contract.js",
+      "default": "./dist/src/contract.js"
+    },
+    "./grounding": {
+      "eliza-source": "./src/grounding.vibe",
+      "types": "./dist/src/grounding.d.ts",
+      "import": "./dist/src/grounding.js",
+      "default": "./dist/src/grounding.js"
+    },
+    "./native-command": {
+      "eliza-source": "./src/native-command.vibe",
+      "types": "./dist/src/native-command.d.ts",
+      "import": "./dist/src/native-command.js",
+      "default": "./dist/src/native-command.js"
+    },
+    "./package.json": "./package.json"
+  }
 }

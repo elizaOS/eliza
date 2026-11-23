@@ -1,0 +1,655 @@
+// spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/approvals.md, "One caller at a time holds the execution lock, and only the canonical decision is reported"; spec/workflow/authoring.md, "A save receipt identifies the reviewed bytes and compiler"
+import {
+  assertPhoneWorkflowCapabilities, parsePhoneScheduledOccurrence, parsePhoneWorkflowCatalog, parsePhoneWorkflowSaveReceipt, phoneWorkflowBytes,
+  validatePhoneWorkflowSpec, workflowSha, workflowUuid, PhoneWorkflowSpecError,
+  type PhoneDeviceTarget, type PhoneStep, type PhoneWorkflowCatalog, type PhoneWorkflowSaveExpectation, type PhoneWorkflowSaveReceipt, type PhoneWorkflowSpec,
+} from "../contract/phone.vibe"
+import { parseWorkflowPhoneReview, type WorkflowDeviceScopeError, type WorkflowPhoneReview } from "../contract/device.vibe"
+import { HOSTED_DIGEST_METADATA_KEY } from "../contract/digest.vibe"
+
+/** The engine name the agent's status names when typed workflows are served. */
+export const WORKFLOW_ENGINE = "eliza-typed"
+/** The metadata key holding a typed workflow's reviewed specification. */
+export const WORKFLOW_PHONE_SPEC_METADATA_KEY = "elizaPhoneWorkflowSpec"
+/** The metadata key marking an agent-owned digest workflow. */
+export const WORKFLOW_HOSTED_DIGEST_METADATA_KEY = HOSTED_DIGEST_METADATA_KEY
+/** The largest generation response accepted before parsing a generated draft. */
+export const WORKFLOW_GENERATION_RESPONSE_MAX_BYTES = 75_000
+
+/** A workflow definition as the agent lists it. */
+export interface RemoteWorkflow {
+  readonly id: string
+  readonly name: string
+  readonly description: string
+  readonly active: boolean
+  readonly removed: boolean
+  readonly triggerCleanup: "pending" | "complete"
+  readonly versionId: string
+  readonly steps: readonly { readonly label: string; readonly description?: string }[]
+  readonly phoneSpec?: unknown
+  readonly hostedDigest?: boolean
+}
+/** The host's reconciliation of a run whose worker outcome is not yet known. */
+export interface WorkflowRunReconciliation { readonly state: "worker-running" | "outcome-unknown"; readonly message: string }
+/** A run admitted by a schedule; a not-run status records an occurrence that did not run. */
+export interface WorkflowRunOccurrence { readonly scheduledAt: string; readonly status: "ready" | "missed" | "overlap" | "unavailable" }
+/** One run as the agent reports it. */
+export interface WorkflowRun {
+  readonly id: string
+  readonly workflowId: string
+  readonly status: string
+  readonly startedAt: string
+  readonly finished: boolean
+  readonly versionId: string
+  readonly stoppedAt?: string
+  readonly error?: string
+  readonly output?: string
+  readonly reconciliation?: WorkflowRunReconciliation
+  readonly occurrence?: WorkflowRunOccurrence
+  readonly events: readonly { readonly type: string; readonly at: string; readonly node?: string }[]
+}
+/** One approval as the engine's canonical receipt records it. */
+export interface WorkflowApproval {
+  readonly runId: string
+  readonly workflowId: string
+  readonly workflowVersionId: string
+  readonly nodeId: string
+  readonly iteration: number
+  readonly requestDigest: string
+  readonly status: "pending" | "approved" | "denied"
+  readonly title: string
+  readonly summary: string
+  readonly operation: string
+  readonly target: string
+  readonly account: string
+  readonly supported: boolean
+  readonly decidedBy?: string
+  readonly decidedAt?: string
+  readonly expiresAt?: number
+}
+/** The approvals of one exact run. */
+export interface WorkflowApprovalReceipt {
+  readonly runId: string
+  readonly workflowId: string
+  readonly workflowVersionId: string
+  readonly finished: boolean
+  readonly cancellationRequested: boolean
+  readonly approvals: readonly WorkflowApproval[]
+}
+/** The receipt of one metadata change. */
+export interface WorkflowMetadataReceipt {
+  readonly mutationId: string; readonly workflowId: string; readonly previousVersionId: string; readonly versionId: string
+  readonly name: string; readonly description: string; readonly active: boolean; readonly appliedAt: string
+}
+/** The receipt of one removal or restore. */
+export interface WorkflowLifecycleReceipt {
+  readonly mutationId: string; readonly workflowId: string; readonly previousVersionId: string; readonly versionId: string
+  readonly operation: "remove" | "restore"; readonly appliedAt: string
+}
+/** An occurrence the agent settled without running anything. */
+export interface WorkflowOccurrenceNotRun { readonly status: "missed" | "overlap" | "unavailable"; readonly scheduledAt: string; readonly text: string; readonly skippedLocalTime?: string }
+/** The capabilities an agent's status advertises. */
+export interface WorkflowStatus {
+  readonly ready: boolean
+  readonly submissions: boolean
+  readonly approvals: boolean
+  readonly metadata: boolean
+  readonly lifecycle: boolean
+  readonly typedAuthoring: boolean
+  readonly typedSchedules: boolean
+  readonly hostedDigests: boolean
+  readonly raw: Readonly<Record<string, unknown>>
+}
+
+/** Only bounded public refusal identity crosses the transport boundary. */
+export error WorkflowHttpError {
+  status: number
+  code?: string
+  workflowId?: string
+  submissionId?: string
+  mutationId?: string
+  expectedVersionId?: string
+  clarification?: string
+  get message() { return "Workflow request unavailable. Check execution history before repeating a run." }
+}
+/** The agent refused this exact run submission because the version changed; nothing ran. */
+export error WorkflowAdmissionRejected { get message() { return "Workflow changed before acceptance. Refresh and review the current steps before a new run." } }
+/** The agent refused this exact typed save because the workflow changed first; nothing was saved. */
+export error WorkflowTypedRejected { get message() { return "This workflow changed on the agent before your edit was saved. Nothing was saved." } }
+/** The agent refused this exact metadata change; nothing was saved. */
+export error WorkflowMetadataRejected { get message() { return "Workflow changed before saving. Reopen Change and review the current name and description." } }
+/** The agent refused this exact removal or restore; nothing was applied. */
+export error WorkflowLifecycleRejected { get message() { return "Removal or restore was not applied. Refresh the workflow and review its version, cleanup and any ongoing executions." } }
+/** The agent refused to turn on this schedule because the workflow changed after review. */
+export error WorkflowActivationRejected { get message() { return "This workflow changed before its schedule was turned on. Nothing was enabled. Review the current version first." } }
+/** The agent refused to pause this workflow because it changed after review. */
+export error WorkflowPauseRejected { get message() { return "This workflow changed before it was paused. Nothing was changed. Review the current version, then pause it again." } }
+/** A response did not match what was sent; the outcome is unknown. */
+export error WorkflowResponseInvalid { message: string }
+
+/** Every failure a client call can end in. */
+export type WorkflowClientError =
+  | WorkflowHttpError | WorkflowAdmissionRejected | WorkflowTypedRejected | WorkflowMetadataRejected | WorkflowLifecycleRejected
+  | WorkflowActivationRejected | WorkflowPauseRejected | WorkflowResponseInvalid | PhoneWorkflowSpecError | WorkflowDeviceScopeError
+
+/** The host-chosen transport: GET without a body, POST with one; a refusal carries the agent's status and body. */
+export type WorkflowRequest = (path: string, body: unknown) => unknown!WorkflowHttpError
+
+type Bag = Record<string, unknown>
+const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const identityKeys = ["code", "workflowId", "submissionId", "mutationId", "expectedVersionId"] as const
+
+/** The typed refusal a transport raises for a non-2xx answer with this body. */
+export function workflowHttpError(status: number, body: unknown): WorkflowHttpError {
+  const data = typeof body === "object" && body !== null && !Array.isArray(body) ? body as Bag : {}
+  const fields: Record<string, string> = {}
+  for (const key of identityKeys) {
+    const value = data[key]
+    if (typeof value === "string" && value.length > 0 && value.length <= 200) fields[key] = value
+  }
+  const error = data.error
+  const clarification = status === 422 && typeof error === "string" && error.startsWith("Workflow needs clarification: ") && error.length <= 1100 && !error.includes("\0") ? { clarification: error } : {}
+  return new WorkflowHttpError({ status, ...fields, ...clarification })
+}
+
+effect function invalid(message: string): never!WorkflowResponseInvalid {
+  throw new WorkflowResponseInvalid({ message })
+}
+
+effect function obj(value: unknown): Bag!WorkflowResponseInvalid {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return try invalid("Invalid workflow response")
+  return value as Bag
+}
+
+effect function str(value: unknown): string!WorkflowResponseInvalid {
+  if (typeof value !== "string" || value === "") return try invalid("Invalid workflow field")
+  return value
+}
+
+function refusedWith(error: WorkflowHttpError, code: string, identity: Partial<Record<"workflowId" | "submissionId" | "mutationId" | "expectedVersionId", string>>): boolean {
+  return error.status === 409 && error.code === code && Object.entries(identity).every(([key, value]) => error[key as keyof typeof identity] === value)
+}
+
+/** SHA-256 hex of the canonical JSON bytes; the agent digests a typed specification the same way. */
+export effect function workflowSpecDigest(spec: unknown): string!! {
+  return try workflowSha(spec)
+}
+
+/** Reads a raw execution output as an occurrence that did not run, or undefined for any other output. */
+export function workflowOccurrenceNotRun(value: unknown, hostedDigest = false): WorkflowOccurrenceNotRun | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
+  const p = value as Bag
+  const status = p.status
+  if (!(status === "missed" || status === "overlap" || (hostedDigest && status === "unavailable")) || typeof p.text !== "string"
+    || typeof p.scheduledAt !== "string" || !Number.isFinite(Date.parse(p.scheduledAt))) return undefined
+  const skipped = status === "missed" && typeof p.skippedLocalTime === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(p.skippedLocalTime) ? { skippedLocalTime: p.skippedLocalTime } : {}
+  return { status, scheduledAt: p.scheduledAt, text: p.text.slice(0, 1000), ...skipped }
+}
+
+/** Whether the agent recorded this finished execution as a missed occurrence; output alone never proves nothing ran. */
+export function isRecordedMissedExecution(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
+  const p = value as Bag
+  return p.finished === true && typeof p.missedOccurrenceAt === "string" && Number.isFinite(Date.parse(p.missedOccurrenceAt))
+}
+
+function hostedDigestInput(input: unknown): boolean {
+  const value = typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Bag).hostedDigest : undefined
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+effect function runOccurrence(execution: Bag): (WorkflowRunOccurrence | undefined)!WorkflowClientError {
+  const input = execution.input
+  const record = typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Bag).typedSchedule : undefined
+  const settled = workflowOccurrenceNotRun(execution.output, hostedDigestInput(input))
+  if (record === undefined) {
+    return settled !== undefined && (settled.status !== "missed" || isRecordedMissedExecution(execution)) ? { scheduledAt: settled.scheduledAt, status: settled.status } : undefined
+  }
+  const admitted = try parsePhoneScheduledOccurrence(record)
+  if (admitted === undefined) return undefined
+  return { scheduledAt: admitted.scheduledAt, status: settled?.status ?? admitted.status }
+}
+
+effect function reconciliation(value: unknown): (WorkflowRunReconciliation | undefined)!WorkflowResponseInvalid {
+  if (value === undefined || value === null) return undefined
+  const r = try obj(value)
+  if ((r.state !== "worker-running" && r.state !== "outcome-unknown") || typeof r.message !== "string") return try invalid("Invalid execution reconciliation")
+  return { state: r.state, message: r.message.slice(0, 2000) }
+}
+
+function workflowOutput(value: unknown, runId: string, hostedDigest: boolean): string {
+  if (typeof value === "string") return value.slice(0, 4000)
+  const settled = workflowOccurrenceNotRun(value, hostedDigest)
+  if (settled !== undefined) return settled.text
+  if (Array.isArray(value) && value.length === 1) {
+    const item: unknown = value[0]
+    if (typeof item === "object" && item !== null && "nodeId" in item && item.nodeId === "typed-steps" && "runId" in item && item.runId === runId
+      && "text" in item && typeof item.text === "string") return item.text.slice(0, 4000)
+  }
+  return (JSON.stringify(value) ?? "").slice(0, 4000)
+}
+
+function storedPhoneSpec(value: unknown): { readonly phoneSpec?: unknown } {
+  if (typeof value !== "string" || value.length > 65536) return {}
+  try {
+    const spec: unknown = JSON.parse(value)
+    return typeof spec === "object" && spec !== null && !Array.isArray(spec) ? { phoneSpec: spec } : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Parses one workflow definition from the agent. */
+export effect function parseRemoteWorkflow(value: unknown): RemoteWorkflow!WorkflowResponseInvalid {
+  const p = try obj(value)
+  const removed = p.removed
+  const steps = p.steps ?? []
+  if (typeof p.active !== "boolean" || (removed !== undefined && typeof removed !== "boolean")
+    || (removed === true && p.triggerCleanup !== "pending" && p.triggerCleanup !== "complete") || !Array.isArray(steps)) return try invalid("Invalid workflow")
+  const metadata = typeof p.metadata === "object" && p.metadata !== null && !Array.isArray(p.metadata) ? p.metadata as Bag : {}
+  const parsedSteps: { label: string; description?: string }[] = []
+  for (const raw of steps) {
+    const step = try obj(raw)
+    parsedSteps.push({ label: try str(step.label), ...(typeof step.description === "string" ? { description: step.description } : {}) })
+  }
+  return {
+    id: try str(p.id), name: try str(p.name), description: typeof p.description === "string" ? p.description : "", active: p.active, removed: removed === true,
+    triggerCleanup: p.triggerCleanup === "pending" ? "pending" : "complete", versionId: try str(p.versionId),
+    ...storedPhoneSpec(metadata[WORKFLOW_PHONE_SPEC_METADATA_KEY]),
+    ...(typeof metadata[WORKFLOW_HOSTED_DIGEST_METADATA_KEY] === "string" ? { hostedDigest: true } : {}),
+    steps: parsedSteps,
+  }
+}
+
+/** Parses one execution receipt, binding every event to its run and workflow. */
+export effect function parseWorkflowRun(value: unknown): WorkflowRun!WorkflowClientError {
+  const p = try obj(value)
+  if (typeof p.finished !== "boolean") return try invalid("Invalid execution")
+  const id = try str(p.id)
+  const workflowId = try str(p.workflowId)
+  const events = p.events ?? []
+  if (!Array.isArray(events)) return try invalid("Invalid execution events")
+  const error = typeof p.error === "object" && p.error !== null ? p.error as Bag : undefined
+  const settled = try reconciliation(p.reconciliation)
+  const occurrence = try runOccurrence(p)
+  const parsedEvents: { type: string; at: string; node?: string }[] = []
+  for (const raw of events.slice(-100)) {
+    const e = try obj(raw)
+    if (e.runId !== id || e.workflowId !== workflowId) return try invalid("Execution event identity mismatch")
+    parsedEvents.push({ type: (try str(e.type)).slice(0, 120), at: try str(e.timestamp), ...(typeof e.nodeId === "string" ? { node: e.nodeId.slice(0, 200) } : {}) })
+  }
+  return {
+    id, workflowId, status: try str(p.status), startedAt: try str(p.startedAt), finished: p.finished, versionId: try str(p.workflowVersionId),
+    ...(typeof p.stoppedAt === "string" ? { stoppedAt: p.stoppedAt } : {}),
+    ...(typeof error?.message === "string" ? { error: error.message.slice(0, 2000) } : {}),
+    ...(p.output === undefined ? {} : { output: workflowOutput(p.output, id, hostedDigestInput(p.input)) }),
+    ...(settled === undefined ? {} : { reconciliation: settled }),
+    ...(occurrence === undefined ? {} : { occurrence }),
+    events: parsedEvents,
+  }
+}
+
+const approvalFieldLimits: Readonly<Record<string, number>> = { nodeId: 200, title: 500, summary: 4000, operation: 500, target: 1000, account: 500 }
+
+/** Accepts an approval receipt only for this exact run, workflow and version. */
+export effect function parseWorkflowApprovalReceipt(value: unknown, run: Pick<WorkflowRun, "id" | "workflowId" | "versionId">): WorkflowApprovalReceipt!WorkflowResponseInvalid {
+  const p = try obj(value)
+  if (p.runId !== run.id || p.workflowId !== run.workflowId || p.workflowVersionId !== run.versionId || typeof p.finished !== "boolean"
+    || typeof p.cancellationRequested !== "boolean" || !Array.isArray(p.approvals) || p.approvals.length > 100) return try invalid("Approval receipt identity mismatch")
+  const approvals: WorkflowApproval[] = []
+  for (const item of p.approvals) {
+    const a = try obj(item)
+    const iteration = a.iteration
+    if (a.runId !== run.id || a.workflowId !== run.workflowId || a.workflowVersionId !== run.versionId || typeof iteration !== "number" || !Number.isSafeInteger(iteration)
+      || iteration < 0 || (a.status !== "pending" && a.status !== "approved" && a.status !== "denied") || typeof a.supported !== "boolean"
+      || typeof a.requestDigest !== "string" || !/^[a-f0-9]{64}$/.test(a.requestDigest)) return try invalid("Approval identity mismatch")
+    for (const [key, maximum] of Object.entries(approvalFieldLimits)) {
+      const field = a[key]
+      if (typeof field !== "string" || field.length > maximum) return try invalid("Unsupported approval field")
+    }
+    const nodeId = a.nodeId as string
+    if (nodeId === "") return try invalid("Missing approval node")
+    const presented = (["title", "summary", "operation", "target", "account"] as const).every((key) => (a[key] as string).trim() !== "")
+    approvals.push({
+      runId: run.id, workflowId: run.workflowId, workflowVersionId: run.versionId, nodeId, iteration, requestDigest: a.requestDigest, status: a.status,
+      title: a.title as string, summary: a.summary as string, operation: a.operation as string, target: a.target as string, account: a.account as string,
+      supported: a.supported && presented,
+      ...(typeof a.decidedBy === "string" ? { decidedBy: a.decidedBy } : {}),
+      ...(typeof a.decidedAt === "string" ? { decidedAt: a.decidedAt } : {}),
+      ...(typeof a.expiresAt === "number" && Number.isSafeInteger(a.expiresAt) ? { expiresAt: a.expiresAt } : {}),
+    })
+  }
+  return { runId: run.id, workflowId: run.workflowId, workflowVersionId: run.versionId, finished: p.finished, cancellationRequested: p.cancellationRequested, approvals }
+}
+
+function readScope(step: PhoneStep): string {
+  return JSON.stringify(step.operation === "selected_notes" ? step.notes : step.operation === "selected_reminders" ? step.scope : step.operation === "calendar_range" ? step.range : undefined)
+}
+
+const reads = new Set(["selected_notes", "selected_reminders", "calendar_range"])
+
+/** Receipt-checked workflow operations over one host-chosen transport. */
+export interface WorkflowClient {
+  status(): WorkflowStatus!WorkflowClientError
+  phoneCatalog(): PhoneWorkflowCatalog!WorkflowClientError
+  generatePhone(prompt: string, catalog: PhoneWorkflowCatalog, operations: readonly string[], existing?: PhoneWorkflowSpec, device?: PhoneDeviceTarget): PhoneWorkflowSpec!WorkflowClientError
+  verifyPhoneValidation(value: unknown, spec: PhoneWorkflowSpec, catalog: PhoneWorkflowCatalog): { readonly spec: PhoneWorkflowSpec; readonly specDigest: string }!WorkflowClientError
+  validatePhone(spec: PhoneWorkflowSpec, catalog: PhoneWorkflowCatalog): { readonly spec: PhoneWorkflowSpec; readonly specDigest: string }!WorkflowClientError
+  savePhone(spec: PhoneWorkflowSpec, catalog: PhoneWorkflowCatalog, expected: PhoneWorkflowSaveExpectation): PhoneWorkflowSaveReceipt!WorkflowClientError
+  phoneSaveReceipt(expected: PhoneWorkflowSaveExpectation): (PhoneWorkflowSaveReceipt | null)!WorkflowClientError
+  approvals(run: WorkflowRun): (WorkflowApprovalReceipt | null)!WorkflowClientError
+  decideApproval(run: WorkflowRun, approval: WorkflowApproval, approved: boolean): WorkflowApprovalReceipt!WorkflowClientError
+  changeMetadata(id: string, version: string, name: string, description: string, beforeSubmit: (mutationId: string) => void!WorkflowClientError): WorkflowMetadataReceipt!WorkflowClientError
+  reconcileMetadata(id: string, version: string, mutationId: string): (WorkflowMetadataReceipt | null)!WorkflowClientError
+  removedWorkflows(): RemoteWorkflow[]!WorkflowClientError
+  lifecycle(id: string, version: string, operation: "remove" | "restore", beforeSubmit: (mutationId: string) => void!WorkflowClientError): WorkflowLifecycleReceipt!WorkflowClientError
+  reconcileLifecycle(id: string, version: string, mutationId: string, operation: "remove" | "restore"): (WorkflowLifecycleReceipt | null)!WorkflowClientError
+  list(): RemoteWorkflow[]!WorkflowClientError
+  detail(id: string): RemoteWorkflow!WorkflowClientError
+  pause(id: string, version?: string): RemoteWorkflow!WorkflowClientError
+  activate(id: string, version: string): RemoteWorkflow!WorkflowClientError
+  run(id: string, version: string, beforeSubmit: (submissionId: string) => void!WorkflowClientError): WorkflowRun!WorkflowClientError
+  resubmit(id: string, version: string, submissionId: string): WorkflowRun!WorkflowClientError
+  reconcile(id: string, version: string, submissionId: string): (WorkflowRun | null)!WorkflowClientError
+  executions(id: string): WorkflowRun[]!WorkflowClientError
+  cancel(id: string, workflowId: string): WorkflowRun!WorkflowClientError
+  receipt(id: string, workflowId: string): WorkflowRun!WorkflowClientError
+  phoneReview(run: Pick<WorkflowRun, "id" | "workflowId" | "versionId">): WorkflowPhoneReview!WorkflowClientError
+}
+
+/** Options of a workflow client: a host may wrap the shared normalizer but must not broaden what it accepts. */
+export interface WorkflowClientOptions {
+  readonly normalizePhoneSpec?: (value: unknown) => PhoneWorkflowSpec!PhoneWorkflowSpecError
+}
+
+/** The receipt-checked workflow client over one host-chosen transport. */
+export function workflowClient(request: WorkflowRequest, options: WorkflowClientOptions = {}): WorkflowClient {
+  const normalize = options.normalizePhoneSpec ?? validatePhoneWorkflowSpec
+  const path = (...segments: readonly string[]) => "/api/workflow/" + segments.map(encodeURIComponent).join("/")
+
+  effect function status(): WorkflowStatus!WorkflowClientError {
+    const p = try obj(try request("/api/workflow/status", undefined))
+    const ready = p.engine === WORKFLOW_ENGINE && p.status === "ready"
+    return {
+      ready, submissions: ready && p.manualSubmissionProtocol === 1, approvals: ready && p.approvalReceiptProtocol === 1, metadata: ready && p.metadataMutationProtocol === 1,
+      lifecycle: ready && p.lifecycleMutationProtocol === 1, typedAuthoring: ready && p.typedAuthoringProtocol === 1, typedSchedules: ready && p.typedScheduleProtocol === 1,
+      hostedDigests: ready && p.hostedDigestProtocol === 1, raw: p,
+    }
+  }
+
+  effect function ready(): WorkflowStatus!WorkflowClientError {
+    const current = try status()
+    if (!current.ready) return try invalid("Workflow capability unavailable")
+    return current
+  }
+
+  effect function phoneCatalog(): PhoneWorkflowCatalog!WorkflowClientError {
+    return try parsePhoneWorkflowCatalog(try request(path("phone", "catalog"), undefined))
+  }
+
+  effect function verifyPhoneValidation(value: unknown, spec: PhoneWorkflowSpec, catalog: PhoneWorkflowCatalog) {
+    const p = try obj(value)
+    const canonical = try normalize(p.spec)
+    if (JSON.stringify(canonical) !== JSON.stringify(spec) || p.specDigest !== (try workflowSpecDigest(spec)) || p.compilerRevision !== catalog.compilerRevision
+      || p.catalogRevision !== catalog.catalogRevision || p.active !== false) return try invalid("Agent validation changed the reviewed workflow")
+    return { spec: canonical, specDigest: p.specDigest as string }
+  }
+
+  effect function generatePhone(prompt: string, catalog: PhoneWorkflowCatalog, operations: readonly string[], existingInput?: PhoneWorkflowSpec, device?: PhoneDeviceTarget) {
+    if (catalog.generationProtocol !== 1) return try invalid("Typed generation is unavailable on this agent")
+    if (prompt.trim() === "" || prompt.length > 4000 || prompt.includes("\0")) return try invalid("Describe the workflow in 1–4000 characters")
+    const existing = existingInput === undefined ? undefined : try normalize(existingInput)
+    const body = {
+      prompt, operations, ...(existing === undefined ? {} : { existing }), ...(device === undefined ? {} : { device }),
+      catalogRevision: catalog.catalogRevision, compilerRevision: catalog.compilerRevision,
+    }
+    const response = (request(path("phone", "generate"), body) catch effect (error) => {
+      throw new WorkflowResponseInvalid({
+        message: error.status === 422
+          ? error.clarification ?? "The request needs clarification. Select any Notes or Calendar scope first, and describe a manual workflow using the available steps."
+          : "The agent could not generate a valid draft. Your current draft is unchanged.",
+      })
+    })
+    if (phoneWorkflowBytes(response) > WORKFLOW_GENERATION_RESPONSE_MAX_BYTES) return try invalid("Generated draft exceeds the response limit")
+    const spec = try normalize((try obj(response)).spec)
+    if (JSON.stringify(spec.trigger) !== JSON.stringify(existing?.trigger ?? { kind: "manual" })) return try invalid("Generated draft changed when this workflow runs")
+    try assertPhoneWorkflowCapabilities(spec, catalog)
+    if (JSON.stringify(spec.device) !== JSON.stringify(device ?? existing?.device) || spec.steps.some((step) => !operations.includes(step.operation))) {
+      return try invalid("Generated draft changed the available device or operations")
+    }
+    for (const step of spec.steps) {
+      if (!reads.has(step.operation)) continue
+      if (!(existing?.steps.some((prior) => prior.operation === step.operation && readScope(prior) === readScope(step)) ?? false)) {
+        return try invalid("Generated draft changed a selected read scope")
+      }
+    }
+    return (try verifyPhoneValidation(response, spec, catalog)).spec
+  }
+
+  effect function validatePhone(spec: PhoneWorkflowSpec, catalog: PhoneWorkflowCatalog) {
+    const body = { spec, catalogRevision: catalog.catalogRevision, compilerRevision: catalog.compilerRevision }
+    return try verifyPhoneValidation(try request(path("phone", "validate"), body), spec, catalog)
+  }
+
+  effect function savePhone(spec: PhoneWorkflowSpec, catalog: PhoneWorkflowCatalog, expected: PhoneWorkflowSaveExpectation) {
+    const target = expected.workflowId === undefined ? path("phone", "workflows") : path("workflows", expected.workflowId, "phone-spec")
+    const body = {
+      spec, catalogRevision: catalog.catalogRevision, compilerRevision: catalog.compilerRevision, mutationId: expected.mutationId,
+      ...(expected.workflowId === undefined ? {} : { expectedVersionId: expected.versionId }),
+    }
+    const response = (request(target, body) catch effect (error) => {
+      if (expected.workflowId !== undefined && refusedWith(error, "WORKFLOW_TYPED_NOT_APPLIED", { workflowId: expected.workflowId, mutationId: expected.mutationId, expectedVersionId: expected.versionId })) {
+        throw new WorkflowTypedRejected()
+      }
+      throw error
+    })
+    return try parsePhoneWorkflowSaveReceipt((try obj(response)).receipt, expected)
+  }
+
+  effect function phoneSaveReceipt(expected: PhoneWorkflowSaveExpectation) {
+    if (!uuidV4.test(expected.mutationId)) return try invalid("Invalid save identity")
+    const result = try obj(try request(path("phone", "mutations", expected.mutationId), undefined))
+    if (result.mutationId !== expected.mutationId) return try invalid("Save identity changed")
+    return result.receipt === null ? null : try parsePhoneWorkflowSaveReceipt(result.receipt, expected)
+  }
+
+  effect function approvals(run: WorkflowRun) {
+    if (!(try status()).approvals) return null
+    return try parseWorkflowApprovalReceipt(try request(path("executions", run.id, "approvals"), undefined), run)
+  }
+
+  effect function decideApproval(run: WorkflowRun, approval: WorkflowApproval, approved: boolean) {
+    if (approval.runId !== run.id || approval.workflowVersionId !== run.versionId || approval.workflowId !== run.workflowId || approval.status !== "pending"
+      || (approved && !approval.supported)) return try invalid("Approval is not reviewable")
+    const body = { approved, expectedVersionId: run.versionId, requestDigest: approval.requestDigest }
+    const result = try parseWorkflowApprovalReceipt(try request(path("executions", run.id, "approvals", approval.nodeId, String(approval.iteration)), body), run)
+    const confirmed = result.approvals.find((a) => a.nodeId === approval.nodeId && a.iteration === approval.iteration && a.requestDigest === approval.requestDigest)
+    if (confirmed?.status !== (approved ? "approved" : "denied")) return try invalid("Decision not confirmed")
+    return result
+  }
+
+  effect function metadataResult(value: unknown, id: string, version: string, mutationId: string): WorkflowMetadataReceipt!WorkflowClientError {
+    const p = try obj(value)
+    if (p.workflowId !== id || p.previousVersionId !== version || p.mutationId !== mutationId || typeof p.name !== "string" || p.name.trim() === ""
+      || p.name.length > 200 || typeof p.description !== "string" || p.description.length > 4000 || typeof p.active !== "boolean") return try invalid("Metadata receipt mismatch")
+    return { workflowId: id, previousVersionId: version, mutationId, versionId: try str(p.versionId), name: p.name, description: p.description, active: p.active, appliedAt: try str(p.appliedAt) }
+  }
+
+  effect function changeMetadata(id: string, version: string, nameInput: string, description: string, beforeSubmit: (mutationId: string) => void!WorkflowClientError) {
+    if (!(try status()).metadata) return try invalid("Metadata editing unavailable")
+    const name = nameInput.trim()
+    if (name === "" || name.length > 200 || description.length > 4000) return try invalid("Invalid workflow metadata")
+    const mutationId = try workflowUuid()
+    try beforeSubmit(mutationId)
+    const data = try obj((request(path("workflows", id, "metadata"), { mutationId, expectedVersionId: version, name, description }) catch effect (error) => {
+      if (refusedWith(error, "WORKFLOW_METADATA_NOT_APPLIED", { workflowId: id, mutationId, expectedVersionId: version })) throw new WorkflowMetadataRejected()
+      throw error
+    }))
+    const receipt = try metadataResult(data.receipt, id, version, mutationId)
+    if (receipt.name !== name || receipt.description !== description) return try invalid("Metadata values mismatch")
+    return receipt
+  }
+
+  effect function reconcileMetadata(id: string, version: string, mutationId: string) {
+    if (!(try status()).metadata) return try invalid("Metadata reconciliation unavailable")
+    if (!uuidV4.test(mutationId)) return try invalid("Invalid metadata mutation")
+    const data = try obj(try request(path("workflows", id, "metadata-mutations", mutationId), undefined))
+    if (data.mutationId !== mutationId) return try invalid("Metadata identity mismatch")
+    return data.receipt === null ? null : try metadataResult(data.receipt, id, version, mutationId)
+  }
+
+  effect function removedWorkflows() {
+    if (!(try status()).lifecycle) return try invalid("Removed workflow history unavailable")
+    const p = try obj(try request(path("removed-workflows"), undefined))
+    if (!Array.isArray(p.workflows)) return try invalid("Invalid removed workflows")
+    const workflows: RemoteWorkflow[] = []
+    for (const raw of p.workflows) {
+      const workflow = try parseRemoteWorkflow(raw)
+      if (!workflow.removed) return try invalid("Removed state mismatch")
+      workflows.push(workflow)
+    }
+    return workflows
+  }
+
+  effect function lifecycleResult(value: unknown, id: string, version: string, mutationId: string, operation: "remove" | "restore"): (WorkflowLifecycleReceipt | null)!WorkflowClientError {
+    const p = try obj(value)
+    if (p.mutationId !== mutationId) return try invalid("Mutation identity mismatch")
+    if (p.receipt === null) return null
+    const r = try obj(p.receipt)
+    if (r.workflowId !== id || r.previousVersionId !== version || r.mutationId !== mutationId || r.operation !== operation) return try invalid("Lifecycle receipt mismatch")
+    return { workflowId: id, previousVersionId: version, mutationId, operation, versionId: try str(r.versionId), appliedAt: try str(r.appliedAt) }
+  }
+
+  effect function lifecycle(id: string, version: string, operation: "remove" | "restore", beforeSubmit: (mutationId: string) => void!WorkflowClientError) {
+    if (!(try status()).lifecycle) return try invalid("Reviewed removal unavailable")
+    const mutationId = try workflowUuid()
+    try beforeSubmit(mutationId)
+    const result = (request(path("workflows", id, "lifecycle"), { mutationId, expectedVersionId: version, operation }) catch effect (error) => {
+      if (refusedWith(error, "WORKFLOW_LIFECYCLE_NOT_APPLIED", { workflowId: id, mutationId, expectedVersionId: version })) throw new WorkflowLifecycleRejected()
+      throw error
+    })
+    const receipt = try lifecycleResult(result, id, version, mutationId, operation)
+    if (receipt === null) return try invalid("Lifecycle outcome unknown")
+    return receipt
+  }
+
+  effect function reconcileLifecycle(id: string, version: string, mutationId: string, operation: "remove" | "restore") {
+    if (!(try status()).lifecycle || !uuidV4.test(mutationId)) return try invalid("Invalid lifecycle reconciliation")
+    return try lifecycleResult(try request(path("workflows", id, "lifecycle-mutations", mutationId), undefined), id, version, mutationId, operation)
+  }
+
+  effect function list() {
+    try ready()
+    const data = try obj(try request(path("workflows"), undefined))
+    if (!Array.isArray(data.workflows)) return try invalid("Invalid workflow list")
+    const workflows: RemoteWorkflow[] = []
+    for (const raw of data.workflows) workflows.push(try parseRemoteWorkflow(raw))
+    return workflows
+  }
+
+  effect function detail(id: string) {
+    const workflow = try parseRemoteWorkflow(try request(path("workflows", id), undefined))
+    if (workflow.id !== id) return try invalid("Workflow identity changed")
+    return workflow
+  }
+
+  effect function pause(id: string, version?: string) {
+    let exact = false
+    if (version !== undefined) {
+      if ((try detail(id)).versionId !== version) throw new WorkflowPauseRejected()
+      exact = (try status()).typedSchedules
+    }
+    const response = (request(path("workflows", id, "deactivate"), exact ? { expectedVersionId: version } : {}) catch effect (error) => {
+      if (exact && refusedWith(error, "WORKFLOW_ACTIVATION_NOT_APPLIED", { workflowId: id, expectedVersionId: version })) throw new WorkflowPauseRejected()
+      throw error
+    })
+    const workflow = try parseRemoteWorkflow(response)
+    if (workflow.id !== id || workflow.active) return try invalid("Pause was not confirmed")
+    return workflow
+  }
+
+  effect function activate(id: string, version: string) {
+    if ((try detail(id)).versionId !== version) return try invalid("Workflow changed. Review it again before enabling.")
+    const exact = (try status()).typedSchedules
+    const response = (request(path("workflows", id, "activate"), exact ? { expectedVersionId: version } : {}) catch effect (error) => {
+      if (exact && refusedWith(error, "WORKFLOW_ACTIVATION_NOT_APPLIED", { workflowId: id, expectedVersionId: version })) throw new WorkflowActivationRejected()
+      throw error
+    })
+    const workflow = try parseRemoteWorkflow(response)
+    if (workflow.id !== id || !workflow.active) return try invalid("Activation was not confirmed")
+    return workflow
+  }
+
+  effect function submit(id: string, version: string, submissionId: string) {
+    const response = try obj((request(path("workflows", id, "run"), { input: {}, submissionId, expectedVersionId: version }) catch effect (error) => {
+      if (refusedWith(error, "WORKFLOW_VERSION_NOT_ADMITTED", { workflowId: id, submissionId, expectedVersionId: version })) throw new WorkflowAdmissionRejected()
+      throw error
+    }))
+    if (response.submissionId !== submissionId) return try invalid("Submission identity mismatch")
+    const run = try parseWorkflowRun(response.execution)
+    if (run.workflowId !== id || run.versionId !== version) return try invalid("Execution identity or reviewed version changed")
+    return run
+  }
+
+  effect function run(id: string, version: string, beforeSubmit: (submissionId: string) => void!WorkflowClientError) {
+    if ((try detail(id)).versionId !== version) return try invalid("Workflow changed. Review it again before running.")
+    if (!(try ready()).submissions) return try invalid("Agent does not support submission reconciliation")
+    const submissionId = try workflowUuid()
+    try beforeSubmit(submissionId)
+    return try submit(id, version, submissionId)
+  }
+
+  effect function resubmit(id: string, version: string, submissionId: string) {
+    if (!(try ready()).submissions) return try invalid("Agent does not support submission reconciliation")
+    if (!uuidV4.test(submissionId)) return try invalid("Invalid retained submission")
+    return try submit(id, version, submissionId)
+  }
+
+  effect function reconcile(id: string, version: string, submissionId: string) {
+    if (!(try ready()).submissions) return try invalid("Agent does not support submission reconciliation")
+    if (!uuidV4.test(submissionId)) return try invalid("Invalid retained submission")
+    const data = try obj(try request(path("workflows", id, "submissions", submissionId), undefined))
+    if (data.submissionId !== submissionId) return try invalid("Submission identity changed")
+    if (data.execution === null) return null
+    const found = try parseWorkflowRun(data.execution)
+    if (found.workflowId !== id || found.versionId !== version) return try invalid("Reconciled execution mismatch")
+    return found
+  }
+
+  effect function executions(id: string) {
+    const data = try obj(try request(path("workflows", id, "executions"), undefined))
+    if (!Array.isArray(data.executions)) return try invalid("Invalid execution list")
+    const runs: WorkflowRun[] = []
+    for (const raw of data.executions) {
+      const found = try parseWorkflowRun(raw)
+      if (found.workflowId !== id) return try invalid("Execution identity mismatch")
+      runs.push(found)
+    }
+    return runs
+  }
+
+  effect function receipt(id: string, workflowId: string) {
+    const data = try obj(try request(path("executions", id), undefined))
+    const found = try parseWorkflowRun(data.execution)
+    if (found.id !== id || found.workflowId !== workflowId) return try invalid("Execution identity mismatch")
+    return found
+  }
+
+  effect function cancel(id: string, workflowId: string) {
+    const current = try receipt(id, workflowId)
+    if (current.finished) return current
+    const data = try obj(try request(path("executions", id, "cancel"), {}))
+    const found = try parseWorkflowRun(data.execution)
+    if (found.id !== id || found.workflowId !== workflowId) return try invalid("Cancellation identity mismatch")
+    return found
+  }
+
+  effect function phoneReview(run: Pick<WorkflowRun, "id" | "workflowId" | "versionId">) {
+    return try parseWorkflowPhoneReview(try request(path("executions", run.id, "phone-review"), undefined), run, normalize)
+  }
+
+  return {
+    status, phoneCatalog, generatePhone, verifyPhoneValidation, validatePhone, savePhone, phoneSaveReceipt, approvals, decideApproval, changeMetadata, reconcileMetadata,
+    removedWorkflows, lifecycle, reconcileLifecycle, list, detail, pause, activate, run, resubmit, reconcile, executions, cancel, receipt, phoneReview,
+  }
+}

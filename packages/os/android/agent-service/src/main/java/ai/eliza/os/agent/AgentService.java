@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent within a budget"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent within a budget"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentPolicy.Effect;
@@ -36,7 +36,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -539,8 +538,7 @@ public class AgentService extends Service {
     try {
       credentialSource = credentials();
       active = credentialSource.current();
-    }
-    catch (Exception unreadable) {
+    } catch (Exception unreadable) {
       step(new AgentPolicy.FailUnclassified("The device credential could not be read: " + unreadable.getMessage()));
       return;
     }
@@ -552,8 +550,13 @@ public class AgentService extends Service {
       return;
     }
     String storageKey;
-    try { storageKey = active == null ? null : credentialSource.storageKey(active.account()); }
-    catch (Exception unreadable) {
+    LaunchFrame.Credential framed;
+    try {
+      storageKey = active == null ? null : credentialSource.storageKey(active.account());
+      framed = config.ownKey()
+        ? credentialSource.providerKey()
+        : config.needsAccount() ? LaunchFrame.Credential.of(active) : null;
+    } catch (Exception unreadable) {
       step(new AgentPolicy.FailUnclassified("The device credential could not be read: " + unreadable.getMessage()));
       return;
     }
@@ -580,7 +583,7 @@ public class AgentService extends Service {
     try {
       Path launch = writeLaunch(document);
       Path agentSocket = directories.prepareSocket();
-      byte[] frame = LaunchFrame.first(launchToken, epoch, LaunchFrame.Credential.of(active), storageKey).encode();
+      byte[] frame = LaunchFrame.first(launchToken, epoch, framed, storageKey).encode();
       AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
         directories.runtime().resolve("agent.log"));
       synchronized (EPOCH_LOCK) {
@@ -735,6 +738,8 @@ public class AgentService extends Service {
   }
 
   private void push(AgentPolicy.PushCredential push) {
+    AgentConfig launched = loaded;
+    if (launched == null || !launched.needsAccount()) return;
     AgentCredentials.Active active;
     try { active = credentials().current(); }
     catch (Exception unreadable) {
@@ -746,7 +751,7 @@ public class AgentService extends Service {
       return;
     }
     AgentSocketClient.CredentialPush body = new AgentSocketClient.CredentialPush(active.version(), active.value(),
-      Instant.ofEpochMilli(active.expiresAt()).toString(), new AgentSocketClient.Account(active.account().userId(), active.account().organizationId()));
+      active.expiresAt(), new AgentSocketClient.Account(active.account().userId(), active.account().organizationId()));
     work.execute(() -> {
       try {
         AgentSocketClient.PushResult result = CHANNEL.pushCredential(body);

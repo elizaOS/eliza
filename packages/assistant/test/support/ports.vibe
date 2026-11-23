@@ -1,0 +1,85 @@
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { Approvals, ApprovalsUnavailable, Calendar, Facts, Model, ModelUnavailable, Presenter, Scheduler, SchedulerUnavailable, type ApprovalView, type AssistantTask, type CalendarEventFacts, type Presented, type TaskRow, type TaskVerb } from "../../src/host.vibe"
+
+/** What the scripted ports saw and how they answer. */
+export interface Ports {
+  readonly tasks: Map<string, TaskRow & { readonly key: string }>
+  readonly verbs: Array<{ readonly taskId: string; readonly verb: TaskVerb; readonly key: string }>
+  readonly presented: Presented[]
+  readonly answers: Array<string | undefined>
+  readonly prompts: string[]
+  schedulerFailures: number
+  now: number
+  approvals: ApprovalView[] | undefined
+  events: CalendarEventFacts[]
+}
+
+const statusAfter: Readonly<Record<TaskVerb["tag"], string>> = {
+  SnoozeFor: "Scheduled", Skip: "Skipped", Complete: "Completed", Dismiss: "Dismissed", Acknowledge: "Acknowledged", Reopen: "Scheduled",
+}
+
+/** Fresh ports: an in-memory store, a scheduler that keeps rows by idempotency key, a scripted model and a recording presenter. */
+export function ports(now = Date.UTC(2026, 10, 22, 15, 0)): Ports {
+  return { tasks: new Map(), verbs: [], presented: [], answers: [], prompts: [], schedulerFailures: 0, now, approvals: [], events: [] }
+}
+
+/** The layer of every port, over the given script. */
+export function portsLayer(seen: Ports) {
+  const keyed = new Set<string>()
+  return Layer.mergeAll(
+    KeyValueStore.layerMemory,
+    Layer.succeed(Scheduler, {
+      effect create(task: AssistantTask) {
+        if (seen.schedulerFailures > 0) {
+          seen.schedulerFailures -= 1
+          throw new SchedulerUnavailable({ reason: "scripted outage" })
+        }
+        const existing = [...seen.tasks.values()].find((row) => row.key === task.idempotencyKey)
+        if (existing !== undefined) return { created: false, task: existing }
+        const row = { taskId: `task-${seen.tasks.size + 1}`, kind: task.kind, promptInstructions: task.promptInstructions, trigger: task.trigger, metadata: task.metadata, status: "Scheduled", revision: 1, key: task.idempotencyKey }
+        seen.tasks.set(row.taskId, row)
+        return { created: true, task: row }
+      },
+      effect answer(taskId: string, verb: TaskVerb, key: string) {
+        const row = seen.tasks.get(taskId)
+        if (row === undefined) return { kind: "notFound" } as const
+        if (keyed.has(key)) return { kind: "applied" } as const
+        keyed.add(key)
+        seen.verbs.push({ taskId, verb, key })
+        const next = { ...row, status: statusAfter[verb.tag], revision: row.revision + 1 }
+        seen.tasks.set(taskId, next)
+        return { kind: "applied" } as const
+      },
+      effect find(taskId: string) { return seen.tasks.get(taskId) },
+      effect list() { return [...seen.tasks.values()] },
+    }),
+    Layer.succeed(Model, {
+      effect complete(system: string, prompt: string) {
+        seen.prompts.push(`${system}\n${prompt}`)
+        const answer = seen.answers.shift()
+        if (answer === undefined) throw new ModelUnavailable({ reason: "no model configured" })
+        return answer
+      },
+    }),
+    Layer.succeed(Presenter, { effect present(presented: Presented) { seen.presented.push(presented) } }),
+    Layer.succeed(Approvals, {
+      effect list() {
+        if (seen.approvals === undefined) throw new ApprovalsUnavailable({ reason: "scripted outage" })
+        return [...seen.approvals]
+      },
+    }),
+    Layer.succeed(Calendar, { effect events() { return [...seen.events] } }),
+    Layer.succeed(Facts, {
+      effect schedulingZone() { return "" },
+      effect runtimeZone() { return "America/New_York" },
+      effect hostZone() { return "UTC" },
+      effect now() { return seen.now },
+    }),
+  )
+}
+
+/** The scheduler rows of one kind, in creation order. */
+export function rowsOf(seen: Ports, kind: string): Array<TaskRow & { readonly key: string }> {
+  return [...seen.tasks.values()].filter((row) => row.kind === kind)
+}

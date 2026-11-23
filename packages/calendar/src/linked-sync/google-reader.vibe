@@ -1,0 +1,307 @@
+// spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"; spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"
+import type { ManagedGoogleCalendar, ManagedGoogleCalendarFeed, ManagedGoogleEvent } from "../feed/cloud-wire.schema.vibe"
+
+/** The capability a Google connection grants for calendar reads. */
+export const GOOGLE_CALENDAR_READ_CAPABILITY = "google.calendar.read"
+
+/** One Google calendar the connection lists. */
+export type GoogleCalendarSummary = ManagedGoogleCalendar
+
+/** One Google event as the Cloud feed returns it. */
+export type GoogleCalendarEvent = ManagedGoogleEvent
+
+/** One calendar's events over a window. */
+export type GoogleCalendarFeed = ManagedGoogleCalendarFeed
+
+/** A requested window and the zone it is about. */
+export interface GoogleCalendarRange {
+  readonly timeMin: string
+  readonly timeMax: string
+  readonly timeZone: string
+}
+
+/** One Google connection as the Cloud lists it. */
+export interface GoogleCalendarAccount {
+  readonly connectionId: string | null
+  readonly connected: boolean
+  readonly grantedCapabilities: readonly string[]
+  readonly label: string
+}
+
+/** The signed-in owner and connection a reader is bound to. */
+export interface GoogleCalendarBinding {
+  readonly environment: "production" | "staging"
+  readonly userId: string
+  readonly organizationId: string
+  readonly credentialId: string
+  readonly sessionId: string
+  readonly connectionId: string
+}
+
+/** The host's Cloud transport for Google calendar reads. */
+export interface GoogleCalendarClient {
+  gmailAccounts(signal: AbortSignal): Promise<GoogleCalendarAccount[]>
+  googleCalendars(grantId: string, signal: AbortSignal): Promise<GoogleCalendarSummary[]>
+  googleCalendarFeed(grantId: string, calendarId: string, range: GoogleCalendarRange, signal: AbortSignal): Promise<GoogleCalendarFeed>
+}
+
+/** A readable Google calendar offered for selection. */
+export interface GoogleCalendarSource {
+  readonly id: string
+  readonly name: string
+  readonly account: string
+  readonly connectionId: string
+  readonly providerCalendarId: string
+  readonly timeZone: string | null
+  readonly primary: boolean
+  readonly source: "google"
+  readonly readOnly: true
+}
+
+/** One read-only event of the selected Google calendar, with its interval in milliseconds. */
+export interface GoogleCalendarReadEvent {
+  readonly id: string
+  readonly calendarId: string
+  readonly providerEventId: string
+  readonly title: string
+  readonly body: string
+  readonly location: string
+  readonly begin: number
+  readonly end: number
+  readonly allDay: boolean
+  readonly timeZone: string
+  readonly revision: string
+  readonly source: "google"
+  readonly readOnly: true
+}
+
+/** Why a Google calendar could not be read. */
+export interface GoogleCalendarFailure {
+  readonly status: "not-connected" | "permission-required" | "unavailable"
+  readonly message: string
+}
+/** The readable calendars, or why there are none. */
+export type GoogleCalendarSources = GoogleCalendarFailure | { readonly status: "ready"; readonly calendars: readonly GoogleCalendarSource[] }
+/** The selected calendar's events, or why they cannot be shown. */
+export type GoogleCalendarRead =
+  | GoogleCalendarFailure
+  | { readonly status: "selection-required"; readonly message: string }
+  | { readonly status: "ready"; readonly calendar: GoogleCalendarSource; readonly events: readonly GoogleCalendarReadEvent[]; readonly syncedAt: string; readonly truncated: false }
+/** How the host classifies a transport failure. */
+export type GoogleCalendarErrorKind = "not-connected" | "permission-required" | "account-changed" | "unavailable"
+
+/** The account, connection or selection changed while a read was in flight; its result is dropped. */
+export error GoogleCalendarChanged {}
+/** Google returned a response that does not describe the selected calendar. */
+export error GoogleCalendarInvalidResponse {}
+/** A Google read failed, classified by the host. */
+export error GoogleCalendarFailureError { kind: GoogleCalendarErrorKind }
+/** The requested window is not a valid range in a known zone. */
+export error GoogleCalendarInvalidRange {}
+
+const bindingKey = (binding: GoogleCalendarBinding) =>
+  JSON.stringify([binding.environment, binding.userId, binding.organizationId, binding.credentialId, binding.sessionId, binding.connectionId])
+const sourceId = (binding: GoogleCalendarBinding, calendarId: string) => `google:${encodeURIComponent(binding.connectionId)}:${encodeURIComponent(calendarId)}`
+const disconnected = (): GoogleCalendarFailure => ({ status: "not-connected", message: "Connect Google Calendar to read its calendars." })
+const permissionRequired = (): GoogleCalendarFailure => ({ status: "permission-required", message: "Reconnect Google with Calendar read access to show its events." })
+const unavailable = (): GoogleCalendarFailure => ({ status: "unavailable", message: "Google Calendar could not be loaded. Retry before relying on this schedule." })
+const readable = (calendar: GoogleCalendarSummary) => ["reader", "writer", "owner"].includes(calendar.accessRole)
+const summaryKey = (calendar: GoogleCalendarSummary) => JSON.stringify([calendar.calendarId, calendar.accessRole, calendar.timeZone])
+
+function source(binding: GoogleCalendarBinding, account: GoogleCalendarAccount, calendar: GoogleCalendarSummary): GoogleCalendarSource {
+  return { id: sourceId(binding, calendar.calendarId), name: calendar.summary || "Google Calendar", account: account.label, connectionId: binding.connectionId,
+    providerCalendarId: calendar.calendarId, timeZone: calendar.timeZone, primary: calendar.primary, source: "google", readOnly: true }
+}
+
+effect function civilMidnight(instant: number, timeZone: string): number!GoogleCalendarInvalidResponse {
+  const parts = try Effect.try({
+    try: () => new Intl.DateTimeFormat("en-US", { timeZone, calendar: "gregory", numberingSystem: "latn", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(instant),
+    catch: () => new GoogleCalendarInvalidResponse(),
+  })
+  const part = (type: string) => Number(parts.find((entry) => entry.type === type)?.value)
+  return Date.UTC(part("year"), part("month") - 1, part("day"))
+}
+
+/** A feed event as a read-only row of its calendar: all-day spans as UTC civil dates, timed ones as instants. */
+export effect function googleCalendarReadEvent(event: GoogleCalendarEvent, calendar: GoogleCalendarSource): GoogleCalendarReadEvent!GoogleCalendarInvalidResponse {
+  let begin = Date.parse(event.startAt)
+  let end = Date.parse(event.endAt)
+  if (!Number.isFinite(begin) || !Number.isFinite(end) || end <= begin) throw new GoogleCalendarInvalidResponse()
+  const timeZone = event.timezone ?? calendar.timeZone
+  if (event.isAllDay) {
+    if (timeZone === null) throw new GoogleCalendarInvalidResponse()
+    begin = try civilMidnight(begin, timeZone)
+    end = try civilMidnight(end, timeZone)
+    if (!Number.isFinite(begin) || !Number.isFinite(end) || end <= begin) throw new GoogleCalendarInvalidResponse()
+  } else if (timeZone !== null) {
+    try Effect.try({ try: () => new Intl.DateTimeFormat("en-US", { timeZone }), catch: () => new GoogleCalendarInvalidResponse() })
+  }
+  return {
+    id: `${calendar.id}:${encodeURIComponent(event.externalId)}`, calendarId: calendar.id, providerEventId: event.externalId,
+    title: event.title || "Untitled event", body: event.description, location: event.location, begin, end, allDay: event.isAllDay,
+    timeZone: event.isAllDay ? "UTC" : event.timezone ?? calendar.timeZone ?? "UTC",
+    revision: JSON.stringify([event.externalId, event.startAt, event.endAt, event.status, event.title, event.description, event.location]),
+    source: "google", readOnly: true,
+  }
+}
+
+/** A read-only reader of one owner-chosen Google calendar, dropping any result whose account, connection or selection changed meanwhile. */
+export class GoogleCalendarReader {
+  #epoch = 0
+  #selected: string | null = null
+  #selectionOwner: string | null = null
+  #offered = new Map<string, GoogleCalendarSummary>()
+  readonly #client: GoogleCalendarClient
+  readonly #binding: () => GoogleCalendarBinding | null
+  readonly #classify: (error: unknown) => GoogleCalendarErrorKind
+
+  constructor(client: GoogleCalendarClient, binding: () => GoogleCalendarBinding | null, classify: (error: unknown) => GoogleCalendarErrorKind) {
+    this.#client = client
+    this.#binding = binding
+    this.#classify = classify
+  }
+
+  /** Forgets the selection and the listed calendars. */
+  invalidate(): void {
+    this.#epoch++
+    this.#selected = null
+    this.#selectionOwner = null
+    this.#offered.clear()
+  }
+
+  /** Selects a calendar from the current listing, or clears the selection; another calendar is refused. */
+  effect selectSource(id: string | null): void!GoogleCalendarChanged {
+    const binding = this.#binding()
+    if (id !== null && (binding === null || this.#selectionOwner !== bindingKey(binding) || !this.#offered.has(id))) throw new GoogleCalendarChanged()
+    this.#epoch++
+    this.#selected = id
+  }
+
+  #ticket() {
+    const binding = this.#binding()
+    if (binding === null || Object.values(binding).some((value) => !value)) return null
+    const key = bindingKey(binding)
+    const epoch = this.#epoch
+    const current = () => {
+      const active = this.#binding()
+      return this.#epoch === epoch && active !== null && bindingKey(active) === key
+    }
+    return { binding: { ...binding }, key, current }
+  }
+
+  effect #call<A>(current: () => boolean, call: (signal: AbortSignal) => Promise<A>): A!(GoogleCalendarChanged | GoogleCalendarFailureError) {
+    const value = try tryPromise({ try: call, catch: (error) => new GoogleCalendarFailureError({ kind: this.#classify(error) }) })
+    if (!current()) throw new GoogleCalendarChanged()
+    return value
+  }
+
+  effect #account(binding: GoogleCalendarBinding, current: () => boolean): (GoogleCalendarAccount | GoogleCalendarFailure)!(GoogleCalendarChanged | GoogleCalendarFailureError) {
+    const account = (try this.#call(current, (signal) => this.#client.gmailAccounts(signal))).find((item) => item.connectionId === binding.connectionId)
+    if (account === undefined || !account.connected) return disconnected()
+    if (!account.grantedCapabilities.includes(GOOGLE_CALENDAR_READ_CAPABILITY)) return permissionRequired()
+    return account
+  }
+
+  #failure(kind: GoogleCalendarErrorKind): GoogleCalendarFailure | undefined {
+    return kind === "not-connected" ? disconnected() : kind === "permission-required" ? permissionRequired() : kind === "account-changed" ? undefined : unavailable()
+  }
+
+  /** Lists the connection's readable calendars, keeping a selection only while it is still listed for the same owner. */
+  effect listSources(): GoogleCalendarSources!GoogleCalendarChanged {
+    const ticket = this.#ticket()
+    if (ticket === null) {
+      this.invalidate()
+      return disconnected()
+    }
+    const { binding, key, current } = ticket
+    return effect {
+      const account = try this.#account(binding, current)
+      if ("status" in account) {
+        this.invalidate()
+        return account as GoogleCalendarSources
+      }
+      const calendars = (try this.#call(current, (signal) => this.#client.googleCalendars(binding.connectionId, signal))).filter(readable)
+      const latest = try this.#account(binding, current)
+      if ("status" in latest) {
+        this.invalidate()
+        return latest as GoogleCalendarSources
+      }
+      const offered = new Map(calendars.map((calendar) => [sourceId(binding, calendar.calendarId), calendar] as const))
+      if (this.#selectionOwner !== key || (this.#selected !== null && !offered.has(this.#selected))) {
+        this.#epoch++
+        this.#selected = null
+      }
+      this.#selectionOwner = key
+      this.#offered = offered
+      return { status: "ready", calendars: calendars.map((calendar) => source(binding, latest, calendar)) } as GoogleCalendarSources
+    } catch effect (error) => {
+      if (error._tag !== "GoogleCalendarFailureError") throw error
+      const failure = this.#failure(error.kind)
+      if (failure === undefined) throw new GoogleCalendarChanged()
+      return failure as GoogleCalendarSources
+    }
+  }
+
+  /** Reads the selected calendar over a window, checking its access before and after the feed and every event's calendar and identity. */
+  effect read(range: GoogleCalendarRange): GoogleCalendarRead!(GoogleCalendarChanged | GoogleCalendarInvalidRange) {
+    const ticket = this.#ticket()
+    if (ticket === null) {
+      this.invalidate()
+      return disconnected()
+    }
+    const { binding, key, current } = ticket
+    const chosen = this.#selected !== null && this.#selectionOwner === key ? this.#offered.get(this.#selected) : undefined
+    if (chosen === undefined) return { status: "selection-required", message: "Choose a Google calendar to show its events." }
+    const start = Date.parse(range.timeMin)
+    const end = Date.parse(range.timeMax)
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new GoogleCalendarInvalidRange()
+    try Effect.try({ try: () => new Intl.DateTimeFormat("en", { timeZone: range.timeZone }), catch: () => new GoogleCalendarInvalidRange() })
+    const window = { ...range }
+    const listed = (current: () => boolean) => effect {
+      return (try this.#call(current, (signal) => this.#client.googleCalendars(binding.connectionId, signal)))
+        .find((calendar) => calendar.calendarId === chosen.calendarId && readable(calendar))
+    }
+    return effect {
+      const account = try this.#account(binding, current)
+      if ("status" in account) {
+        this.invalidate()
+        return account as GoogleCalendarRead
+      }
+      const before = try listed(current)
+      if (before === undefined || summaryKey(before) !== summaryKey(chosen)) {
+        this.invalidate()
+        return permissionRequired() as GoogleCalendarRead
+      }
+      const feed = try this.#call(current, (signal) => this.#client.googleCalendarFeed(binding.connectionId, chosen.calendarId, window, signal))
+      const latest = try this.#account(binding, current)
+      if ("status" in latest) {
+        this.invalidate()
+        return latest as GoogleCalendarRead
+      }
+      const after = try listed(current)
+      if (after === undefined || summaryKey(after) !== summaryKey(before)) {
+        this.invalidate()
+        return permissionRequired() as GoogleCalendarRead
+      }
+      if (feed.calendarId !== chosen.calendarId || !Number.isFinite(Date.parse(feed.syncedAt))) throw new GoogleCalendarInvalidResponse()
+      const calendar = source(binding, latest, after)
+      const seen = new Set<string>()
+      const events: GoogleCalendarReadEvent[] = []
+      for (const event of feed.events) {
+        if (event.status === "cancelled") continue
+        if (event.calendarId !== chosen.calendarId || seen.has(event.externalId)) throw new GoogleCalendarInvalidResponse()
+        seen.add(event.externalId)
+        const row = try googleCalendarReadEvent(event, calendar)
+        if (row.begin < end && row.end > start) events.push(row)
+      }
+      events.sort((left, right) => left.begin - right.begin || left.id.localeCompare(right.id))
+      return { status: "ready", calendar, events, syncedAt: feed.syncedAt, truncated: false } as GoogleCalendarRead
+    } catch effect (error) => {
+      if (error._tag === "GoogleCalendarInvalidResponse") return unavailable() as GoogleCalendarRead
+      if (error._tag !== "GoogleCalendarFailureError") throw error
+      const failure = this.#failure(error.kind)
+      if (failure === undefined) throw new GoogleCalendarChanged()
+      return failure as GoogleCalendarRead
+    }
+  }
+}

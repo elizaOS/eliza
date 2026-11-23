@@ -11,7 +11,11 @@ import com.getcapacitor.JSObject;
 import java.util.function.BooleanSupplier;
 import org.json.JSONObject;
 
-/** One owner-selected local message deletion. It never sends, cancels a send or retries an effect. */
+/**
+ * One owner-selected local message deletion. {@link #inspect} reads the selected row before the
+ * deletion is staged in the host's Undo window; {@link #dispatch} is that window's one provider
+ * call at expiry. It never sends, cancels a send or retries an effect.
+ */
 public final class MessageDeletion {
  private MessageDeletion() {}
  private static final long MAX_DATE = 9007199254740991L;
@@ -49,7 +53,7 @@ public final class MessageDeletion {
       || !Double.isFinite(date) || date!=Math.rint(date) || date<0 || date>MAX_DATE) throw new IllegalArgumentException("Invalid selected message");
   return new Reference(id,kind,threadId,Long.parseLong(id.substring(4)),thread,(long)date);
  }
- private static JSObject result(Reference target,String status) {
+ static JSObject result(Reference target,String status) {
   JSObject value=new JSObject(); value.put("status",status); value.put("message",target.json()); return value;
  }
  private static final class Identity {
@@ -72,6 +76,42 @@ public final class MessageDeletion {
  private static boolean allowed(BooleanSupplier guard,CancellationSignal cancel) {
   try { return (cancel==null||!cancel.isCanceled()) && guard.getAsBoolean(); }
   catch (RuntimeException unreadable) { return false; }
+ }
+ /**
+  * Reads only the selected row's identity, under the same authority as a deletion: null when it is
+  * the settled row the owner saw, otherwise {@code not-found}, {@code stale} or {@code not-settled}.
+  * Nothing is written.
+  */
+ public static String inspect(Context context,Reference target,CancellationSignal cancel,BooleanSupplier guard) throws Refused {
+  if (Looper.myLooper()==Looper.getMainLooper()) throw new IllegalStateException("Message inspection must run off the main thread");
+  if (!allowed(guard,cancel)) throw new Refused("Messages access changed before deletion");
+  final Identity seen;
+  try { seen=lookup(context.getContentResolver(),target,cancel); }
+  catch (RuntimeException unreadable) { throw new Refused("The selected message could not be read"); }
+  if (!allowed(guard,cancel)) throw new Refused("Messages access changed before deletion");
+  if (seen==null) return "not-found";
+  if (!seen.matches(target)) return "stale";
+  return settled(seen.box) ? null : "not-settled";
+ }
+ /** The SMS role and read grant a staged deletion needs when its window expires, with or without the screen. */
+ public static BooleanSupplier roleGuard(Context context) {
+  return () -> MmsStore.isDefaultSmsApp(context) && context.checkSelfPermission(android.Manifest.permission.READ_SMS)==android.content.pm.PackageManager.PERMISSION_GRANTED;
+ }
+ /**
+  * The Undo window's provider call for a staged {@code {id, kind, threadId, date}}: one
+  * {@link #delete} under {@code guard}, answered as {@code deleted}, {@code conflict} (gone,
+  * changed or in a send meanwhile, or not readable, so nothing was deleted), {@code unknown} or,
+  * when the guard no longer holds, {@code permission-required}.
+  */
+ public static JSObject dispatch(Context context,JSONObject staged,BooleanSupplier guard) {
+  JSObject value=new JSObject();
+  if (!allowed(guard,null)) { value.put("status","permission-required"); return value; }
+  String status;
+  try { status=delete(context,reference(staged),null,guard).getString("status"); }
+  catch (Refused | IllegalArgumentException nothingWritten) { status="conflict"; }
+  catch (RuntimeException lost) { status="unknown"; }
+  value.put("status","deleted".equals(status)||"unknown".equals(status)||"conflict".equals(status)?status:"conflict");
+  return value;
  }
  /**
   * Read only identity, recheck authority, then bind the collection delete to the observed raw date

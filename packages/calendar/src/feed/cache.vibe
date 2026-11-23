@@ -1,0 +1,76 @@
+// spec/calendar/managedFeed.md, "A cache write for another identity leaves the stored copy unchanged"; spec/calendar/managedFeed.md, "An event's change time is the provider's edit time, never the refresh time"
+import { cacheWriteResult, providerClock, type CacheIdentity } from "../../gen/calendar__managedFeed.effect.vibe"
+import type { CalendarEvent, CalendarProvider, ConnectorSide } from "../model.vibe"
+
+/** The imported projection of one owner grant and connector account at one provider. */
+export interface ImportedSourceScope {
+  readonly provider: CalendarProvider
+  readonly side: ConnectorSide
+  readonly grantId: string
+  readonly connectorAccountId: string
+}
+
+/** A store the host keeps the cached feed rows in. */
+export error CacheStoreFailed { reason: string }
+
+/** The host's durable cache of provider events, keyed by event ID. */
+export interface ManagedCacheStore {
+  readonly find: (eventId: string) => (CalendarEvent | undefined)!CacheStoreFailed
+  readonly save: (events: readonly CalendarEvent[]) => void!CacheStoreFailed
+  readonly eventsFor: (scope: ImportedSourceScope) => readonly CalendarEvent[]!CacheStoreFailed
+  readonly removeReminderPlans: (eventIds: readonly string[]) => void!CacheStoreFailed
+  readonly removeProjection: (scope: ImportedSourceScope) => number!CacheStoreFailed
+}
+
+/** What a cache write stored and which event IDs it left as another source's copy. */
+export interface CacheWrite {
+  readonly written: readonly CalendarEvent[]
+  readonly conflicts: readonly string[]
+}
+
+const identityFields = ["agentId", "provider", "side", "grantId", "calendarId", "externalId", "connectorAccountId"] as const
+const sameField: CacheIdentity = { agent: 0, provider: 0, side: 0, grant: 0, calendar: 0, external: 0, account: 0 }
+
+/** Whether a candidate row may replace what is cached under its event ID: an empty slot or the same seven-part identity. */
+export function cacheWriteAllowed(cached: CalendarEvent | undefined, candidate: CalendarEvent): boolean {
+  const differs = (field: typeof identityFields[number]) => cached !== undefined && cached[field] !== candidate[field] ? 1 : 0
+  return cacheWriteResult({ present: cached !== undefined, identity: sameField, payload: 0 }, {
+    agent: differs("agentId"), provider: differs("provider"), side: differs("side"), grant: differs("grantId"),
+    calendar: differs("calendarId"), external: differs("externalId"), account: differs("connectorAccountId"),
+  }) === "CacheWritten"
+}
+
+/** Stores every candidate whose slot is empty or holds the same identity, and leaves every other stored copy as it was. */
+export effect function writeFeedCache(store: ManagedCacheStore, events: readonly CalendarEvent[]): CacheWrite!CacheStoreFailed {
+  const written: CalendarEvent[] = []
+  const conflicts: string[] = []
+  for (const event of events) {
+    if (cacheWriteAllowed(try store.find(event.id), event)) written.push(event)
+    else conflicts.push(event.id)
+  }
+  if (written.length > 0) try store.save(written)
+  return { written, conflicts }
+}
+
+type Reading =
+  | { readonly clock: "ClockAbsent" | "ClockInvalid"; readonly iso?: never }
+  | { readonly clock: "ClockRecent"; readonly iso: string }
+
+function reading(metadata: Readonly<Record<string, unknown>>, keys: readonly string[]): Reading {
+  const value = keys.map((key) => metadata[key]).find((candidate) => candidate !== undefined && candidate !== null)
+  if (value === undefined) return { clock: "ClockAbsent" }
+  const stamp = typeof value === "string" ? Date.parse(value) : Number.NaN
+  return Number.isFinite(stamp) ? { clock: "ClockRecent", iso: new Date(stamp).toISOString() } : { clock: "ClockInvalid" }
+}
+
+export function providerTimestamps(metadata: Readonly<Record<string, unknown>>) {
+  const edited = reading(metadata, ["updated", "updatedAt"])
+  const created = reading(metadata, ["created", "createdAt"])
+  return { editedAt: edited.iso, createdAt: created.iso, valid: providerClock(edited.clock, created.clock) !== "ClockInvalid" }
+}
+
+/** The provider's edit time of an event, else its creation time, as an instant; undefined when neither is readable. */
+export function providerChangeTime(metadata: Readonly<Record<string, unknown>>): string | undefined {
+  const { editedAt, createdAt, valid } = providerTimestamps(metadata)
+  return valid ? editedAt ?? createdAt : undefined
+}

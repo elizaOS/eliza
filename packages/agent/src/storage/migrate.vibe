@@ -1,6 +1,6 @@
-// spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; spec/agent/storage/database.md, "An empty store starts from the bundle's snapshot only at the bundle's schema version"; spec/agent/storage/database.md, "A corrupt store fails the open and is never reset automatically"; spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"
+// spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; spec/agent/storage/database.md, "An empty store starts from the bundle's snapshot only at the bundle's schema version"; spec/agent/storage/database.md, "A corrupt store fails the open and is never reset automatically"; spec/agent/storage/database.md, "Only one live process holds a data directory"; spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"
 module node {
-  import { mkdtemp, open, rename, rm } from "node:fs/promises"
+  import { mkdtemp, open, readdir, rename, rm, unlink } from "node:fs/promises"
   import { dirname, join } from "node:path"
   import { PGlite, type PGliteOptions, type Transaction } from "@electric-sql/pglite"
   import { logger, type UUID } from "@elizaos/core"
@@ -28,7 +28,18 @@ module node {
     throw new StoreFailed({ fault })
   }
 
+  const seedStage = ".store-seed-"
+
+  function clearedEngineLock(dataDir: string): Promise<boolean> {
+    return unlink(join(dataDir, "postmaster.pid")).then(() => true, () => false)
+  }
+
   export async function startStore(options: PGliteOptions): Promise<PGlite> {
+    try { return await PGlite.create(options) }
+    catch (cause) {
+      if (options.dataDir === undefined || !await clearedEngineLock(options.dataDir)) return storeRefused("Corrupt", cause)
+      logger.warn({ src: "agent:storage", error: String(cause) }, "The device store starts again without the engine lock a gone holder left")
+    }
     try { return await PGlite.create(options) }
     catch (cause) { return storeRefused("Corrupt", cause) }
   }
@@ -124,7 +135,10 @@ module node {
 
   export async function seedDurableStore(directory: string, owner: StoreOwner, list: readonly Migration[], bytes: Blob): Promise<void> {
     const parent = dirname(directory)
-    const scratch = await mkdtemp(join(parent, ".store-seed-"))
+    for (const name of await readdir(parent)) {
+      if (name.startsWith(seedStage)) await rm(join(parent, name), { recursive: true, force: true })
+    }
+    const scratch = await mkdtemp(join(parent, seedStage))
     try {
       const staged = await startStore({ dataDir: scratch, loadDataDir: bytes })
       try { await migrate(staged, owner, list, true) }

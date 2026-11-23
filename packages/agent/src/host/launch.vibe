@@ -1,11 +1,12 @@
-// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"; spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error"
 export { type LaunchDocument, type LaunchFrame } from "./launch.schema.vibe"
 import { exitCode } from "../../gen/agent__host__launch.effect.vibe"
+import { ownKeyMaxUnits } from "../../gen/agent__host__launch.ts"
 export { exitClass, exitCode, type BootFailure, type ExitClass } from "../../gen/agent__host__launch.effect.vibe"
 import { Stdio } from "effect/Stdio"
 import { decodeLaunchDocument, decodeLaunchFrame, LaunchDocumentRejected, LaunchFrameRejected } from "./launch.schema.vibe"
 
-export error LaunchCredentialMissing
+export error LaunchCredentialMissing { oversized: boolean }
 
 export const AGENT_EXIT_CODES = {
   clean: 0, release: 1, config: exitCode("Config"), credential: exitCode("Credential"),
@@ -49,6 +50,8 @@ export effect function readLaunch() {
 export effect function parseLaunch(document: string, frame: string) {
   const launch = try decodeLaunchDocument(document)
   const authority = try decodeLaunchFrame(frame)
-  if (launch.model.backend !== "none" && authority.credential === undefined) throw new LaunchCredentialMissing()
+  if (launch.model.backend !== "none" && authority.credential === undefined) throw new LaunchCredentialMissing({ oversized: false })
+  if (launch.model.backend === "own-key" && authority.credential !== undefined && Redacted.value(authority.credential.value).length > ownKeyMaxUnits)
+    throw new LaunchCredentialMissing({ oversized: true })
   return { launch, authority }
 }

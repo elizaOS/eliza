@@ -1,7 +1,7 @@
 # Device credential
 
 Custody of the device key the cloud issues (`spec/cloud/nativeClients/deviceKeys.md`:
-connect, token, ack, self-revoke; 30-day keys, never renewed) and of the one
+connect, token, ack, renew, self-revoke) and of the one
 in-memory account session (`spec/cloud/identity/sessions.md`). The sign-in
 flow (`./flow.md`) runs the exchange. Key values, codes, PKCE verifiers and
 session tokens stay in the Java shell; the model sees versions, accounts,
@@ -20,8 +20,8 @@ Times are epoch milliseconds. `Announce`, `SignedOutNotice` and
 ### A sign-in reserves the next generation, and only the newest sign-in's answers are taken
 
 Each answer names the generation of the sign-in it belongs to. An answer of
-an older generation is discarded. A new sign-in, a sign-out or a reset
-starts a new generation; nothing else changes it.
+an older generation is discarded. A new sign-in, a renewal, a sign-out or a
+reset starts a new generation; nothing else changes it.
 
 ```quint
 import types.* from "../../cloud/shared/types"
@@ -30,7 +30,7 @@ import secureStore as S from "../android/secureStore"
 type Account = { userId: str, organizationId: str }
 type Custody = SignedOut | Active({ version: int, credentialId: str, account: Account, keyExpiresAt: Millis }) | Expired({ account: Account })
 type Attempt = NoAttempt | Exchanging({ attempt: int }) | Acknowledging({ attempt: int, version: int, credentialId: str, account: Account, lapsesAt: Millis })
-type Duty = { version: int, lapsesAt: Millis, tries: int }
+type Duty = { version: int, lapsesAt: Millis, tries: int, successor: str }
 type Refresh = NotRefreshing | Refreshing({ waiters: int })
 type AccountSession = NoSession | Session({ version: int, until: Millis, accessExpiresAt: Millis, refresh: Refresh })
 type DeviceCredential = { now: Millis, generation: int, lastVersion: int, custody: Custody, attempt: Attempt, duties: List[Duty], session: AccountSession }
@@ -51,7 +51,7 @@ pure val weight_beginSignIn = 2
 pure def alwaysCountersAreNatural(s: DeviceCredential): bool = s.now >= 0 and s.generation >= 0 and s.lastVersion >= 0
 pure def alwaysSignInIsTheNewestAction(s: DeviceCredential): bool = s.attempt == NoAttempt or (attemptOf(s) == s.generation and s.generation >= 1)
 pure def stepGenerationCountsOwnerActions(before: DeviceCredential, via: str, after: DeviceCredential): bool =
-  after.generation == before.generation + (if (via == "beginSignIn" or via == "signOut" or via == "reset") 1 else 0)
+  after.generation == before.generation + (if (via == "beginSignIn" or via == "beginRenewal" or via == "signOut" or via == "reset") 1 else 0)
 ```
 
 ### A minted key is kept only after the secure store reads it back, and a lost token reply is asked again with the same code
@@ -91,8 +91,8 @@ pure def sometimesAwaitingAcknowledgement(s: DeviceCredential): bool = pendingVe
 
 The acknowledgement (`{status: "acknowledged", credentialId, expiresAt}`)
 of the newest sign-in, for the credential its token answer named, installs
-that key as the active one with the expiry the answer gives. A key it replaces leaves with a revoke duty, and
-the account session of the old key is discarded. The new key is announced
+that key as the active one with the expiry the answer gives. A key it replaces leaves with a revoke duty that
+names the new key's credential id as its successor, and the account session of the old key is discarded. The new key is announced
 once with its account; the agent service pushes it to a running agent of
 the same account, or restarts the agent on the new account's directory.
 
@@ -105,7 +105,7 @@ pure def acknowledged(s: DeviceCredential, attempt: int, credentialId: str, keyE
   val p = s.attempt
   match p {
     | Acknowledging(k) => { state: { ...s, custody: Active({ version: k.version, credentialId: k.credentialId, account: k.account, keyExpiresAt: keyExpiresAt }), attempt: NoAttempt, session: NoSession,
-        duties: s.duties.concat(keyDuty(s.custody, signOutAttempts)) }, out: List(Announce({ version: k.version, account: k.account })) }
+        duties: s.duties.concat(keyDuty(s.custody, signOutAttempts, k.credentialId)) }, out: List(Announce({ version: k.version, account: k.account })) }
     | _ => { state: s, out: List() }
   } }
 pure val weight_acknowledged = 6
@@ -116,6 +116,9 @@ pure def stepEachNewKeyIsAnnouncedOnce(before: DeviceCredential, via: str, after
   else not(out.some(n => isAnnounce(n)))
 pure def sometimesSignedIn(s: DeviceCredential): bool = isSignedIn(s) and s.attempt == NoAttempt
 pure def sometimesNewKeyReplacedOld(s: DeviceCredential): bool = activeVersion(s) >= 2 and owes(s, 1)
+pure def stepAReplacedKeyNamesItsSuccessor(before: DeviceCredential, via: str, after: DeviceCredential): bool =
+  (via == "acknowledged" and activeVersion(before) >= 1 and activeVersion(after) != activeVersion(before)) implies
+    after.duties.some(d => d.version == activeVersion(before) and d.successor == credentialIdOf(after) and d.successor != "")
 ```
 
 ### A cancelled or refused sign-in leaves the active key as it was
@@ -162,10 +165,14 @@ pure def sometimesSignedOutByCloud(s: DeviceCredential): bool = s.custody == Sig
 
 ### Every key that leaves the device while the cloud may still accept it is owed a revoke, stored in the same step
 
-A duty names the key's version and when it lapses. The shell stores the
-duty before it removes the key from its slot, under one lock, and sends
-`DELETE /api/v1/api-keys/current` with the owed key; the cloud ends that
-key only. Sign-out and reset end the active key and a key awaiting
+A duty names the key's version, when it lapses and, for a key an
+acknowledged key replaced, that key's credential id as its successor. The
+shell stores the duty before it removes the key from its slot, under one
+lock, and sends `DELETE /api/v1/api-keys/current` with the owed key and,
+when the duty names a successor, `X-Renewed-Credential-Id` with it; the
+cloud then ends that key only, and keeps the successor it renewed. A duty of
+a sign-out, a reset or an ended sign-in names none, so the cloud also ends
+every key renewed from it. Sign-out and reset end the active key and a key awaiting
 acknowledgement; several duties may be owed. A key the cloud said is
 expired, revoked or unknown is owed nothing, and a key still held is never
 owed.
@@ -173,12 +180,12 @@ owed.
 ```quint
 pure val signOutAttempts = 3
 pure val resetAttempts = 1
-pure def keyDuty(c: Custody, tries: int): List[Duty] = match c { | Active(a) => List({ version: a.version, lapsesAt: a.keyExpiresAt, tries: tries }) | _ => List() }
-pure def pendingDuty(p: Attempt, tries: int): List[Duty] = match p { | Acknowledging(k) => List({ version: k.version, lapsesAt: k.lapsesAt, tries: tries }) | _ => List() }
+pure def keyDuty(c: Custody, tries: int, successor: str): List[Duty] = match c { | Active(a) => List({ version: a.version, lapsesAt: a.keyExpiresAt, tries: tries, successor: successor }) | _ => List() }
+pure def pendingDuty(p: Attempt, tries: int): List[Duty] = match p { | Acknowledging(k) => List({ version: k.version, lapsesAt: k.lapsesAt, tries: tries, successor: "" }) | _ => List() }
 pure def owes(s: DeviceCredential, version: int): bool = s.duties.some(d => d.version == version)
 pure def endedBy(tries: int, s: DeviceCredential): CredentialStep =
   { state: { ...s, generation: s.generation + 1, custody: SignedOut, attempt: NoAttempt, session: NoSession,
-      duties: s.duties.concat(keyDuty(s.custody, tries)).concat(pendingDuty(s.attempt, tries)) },
+      duties: s.duties.concat(keyDuty(s.custody, tries, "")).concat(pendingDuty(s.attempt, tries)) },
     out: if (s.custody == SignedOut) List() else List(SignedOutNotice) }
 pure def signOut(s: DeviceCredential): CredentialStep = endedBy(signOutAttempts, s)
 pure def reset(s: DeviceCredential): CredentialStep = endedBy(resetAttempts, s)
@@ -189,6 +196,9 @@ pure def stepAKeyLeavesOnlyWithItsDuty(before: DeviceCredential, via: str, after
   ((activeVersion(before) >= 1 and activeVersion(after) != activeVersion(before) and via != "rejected") implies owes(after, activeVersion(before)))
     and ((pendingVersion(before) >= 1 and pendingVersion(after) == 0 and via != "acknowledged") implies owes(after, pendingVersion(before)))
 pure def sometimesSeveralDutiesOwed(s: DeviceCredential): bool = s.duties.length() >= 2
+pure def stepAnEndedKeyNamesNoSuccessor(before: DeviceCredential, via: str, after: DeviceCredential): bool =
+  (via == "signOut" or via == "reset" or via == "signInEnded" or via == "beginSignIn" or via == "beginRenewal") implies
+    after.duties.select(d => d.successor != "").length() == before.duties.select(d => d.successor != "").length()
 ```
 
 ### A duty is asked up to three times in this process and once at each later start, until the cloud answers or the key lapses
@@ -298,4 +308,39 @@ pure def stepOneRefreshInFlight(before: DeviceCredential, via: str, after: Devic
   out.includes(RefreshAccountSession) implies (not(isRefreshing(before)) and isRefreshing(after))
 pure def alwaysRefreshWaitersAreCounted(s: DeviceCredential): bool = isRefreshing(s) implies waitersOf(refreshOf(s.session)) >= 0
 pure def sometimesReadersShareOneRefresh(s: DeviceCredential): bool = waitersOf(refreshOf(s.session)) >= 1
+```
+
+## Story: Keep my key fresh without signing in again
+
+> As a person signed in on this device, I want the device to replace my key
+> before it runs out, without asking me, for as long as the cloud renews my
+> sign-in, so that my agent never stops because a key expired.
+
+### A renewal starts only for the active key in its last ten days, and runs as a sign-in that keeps that key until its successor is acknowledged
+
+The shell sends `POST /api/v1/app-auth/mobile/renew` with the active key
+and the connect body of the client's registration (its sign-in return, an S256
+challenge and a state), then exchanges and acknowledges the code it gets as
+for a sign-in (`tokenAnswered`, `acknowledged`): the successor replaces the
+key, is announced once, and the replaced key leaves with a duty naming the
+successor. A refused or unanswered renewal ends like a refused sign-in and
+keeps the active key; a `401` with a credential reason is also reported as
+`rejected` for the key, as any other request's. The shell asks once per
+start for each key, so a closed renewal window is not asked again until the
+next start; after the window the key expires and a new sign-in is needed.
+
+```quint
+pure val renewalLead: Millis = 10 * millisPerDay
+pure def renewalDue(s: DeviceCredential): bool = {
+  val c = s.custody
+  match c { | Active(a) => s.now >= a.keyExpiresAt - renewalLead and s.now < a.keyExpiresAt | _ => false }
+}
+pure def canBeginRenewal(s: DeviceCredential): bool = s.attempt == NoAttempt and renewalDue(s)
+pure def beginRenewal(s: DeviceCredential): DeviceCredential =
+  { ...s, generation: s.generation + 1, attempt: Exchanging({ attempt: s.generation + 1 }) }
+pure val weight_beginRenewal = 2
+pure def stepARenewalKeepsTheActiveKey(before: DeviceCredential, via: str, after: DeviceCredential): bool =
+  via == "beginRenewal" implies (after.custody == before.custody and after.duties == before.duties and after.session == before.session)
+pure def sometimesKeyRenewedInPlace(s: DeviceCredential): bool =
+  activeVersion(s) >= 2 and s.generation >= 2 and s.duties.some(d => d.successor == credentialIdOf(s) and d.successor != "")
 ```

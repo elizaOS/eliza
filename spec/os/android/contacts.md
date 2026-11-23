@@ -2,7 +2,10 @@
 
 The owner's address book on an Android phone: bounded reads of the current
 profile's Contacts while the app's Contacts view is open, the owner's own
-saves and removals from that view, and the caller's name on the call screen.
+saves and removals from that view (a removal waits in the
+[deletion journal](./deferredDeletion.md) so that it can be undone),
+display-only names for the numbers the owner is looking at in Phone and
+Messages, and the caller's name on the call screen.
 It models the native `AddressBookPlugin`, `ContactsCatalog` and
 `ContactsEditor` of `plugins/plugin-native-contacts`, the renderer adapter
 around them, and the caller lookup of the phone plugin's `TelecomCallService`.
@@ -91,7 +94,8 @@ pure def sometimesRowsShown(s: ContactsState): bool = s.rowsShown
 ### A grant change retires every read and hides what the withdrawn grant allowed
 
 Contacts rows and a caller's cached name both disappear when `READ_CONTACTS`
-is withdrawn; the cached name stays cached for a later refresh.
+is withdrawn; the call screen's next refresh without the grant also forgets
+the cached name and photo and cancels every caller read still running.
 
 ```quint
 pure def grantsChanged(s: ContactsState, readGranted: bool, writeGranted: bool): ContactsState = {
@@ -206,6 +210,25 @@ pure def sometimesUncertainWriteOutlivesTheView(s: ContactsState): bool = s.gate
 pure def sometimesUncertainWriteSettledByAnExplicitRead(s: ContactsState): bool = s.lastWrite == Wrote({ result: Uncertain }) and s.gate == WriteIdle
 ```
 
+### A removal the owner confirmed waits in the deletion window, and only its expiry runs the editor's removal
+
+A removal is staged as a contact record exactly where a write could be
+dispatched now: the view open, the gate idle and a writing install admitted
+in front with focus. Before staging, the editor reads the contact without
+changing it; a contact that is gone, or at another version than the one
+reviewed, is not staged and answers not-found or stale. Staging writes
+nothing to Contacts and leaves the gate as it is; the list leaves the
+contact out while its window is queued. When the window expires, the
+journal's provider call runs the removal above, which asserts the reviewed
+version again inside its transaction, and its answer settles the journal row
+rather than the gate. Undo before then leaves the contact untouched.
+
+```quint
+pure def canStageRemoval(s: ContactsState, install: ContactsInstall, facts: HostFacts): bool = canDispatchWrite(s, install, facts)
+pure def stageRemoval(s: ContactsState, install: ContactsInstall, facts: HostFacts): ContactsState = s
+pure def stepStagingARemovalWritesNothing(before: ContactsState, via: str, after: ContactsState): bool = via == "stageRemoval" implies after == before
+```
+
 ## Story: See who is calling from my contacts
 
 > As the owner, I want an incoming or outgoing call to show the caller's
@@ -214,12 +237,17 @@ pure def sometimesUncertainWriteSettledByAnExplicitRead(s: ContactsState): bool 
 
 ### A caller's name is shown only while the call service, the call and the read grant are all current
 
-When Telecom names nobody (a name equal to the number names nobody), the
-call service looks the number up in Contacts off the main thread, once per
-call and number. The answer is cached and shown only if the service is still
-live, the call is still registered and `READ_CONTACTS` is still held; a later
-refresh from the cache checks the grant again. Removing the call or
-destroying the service drops the cached name.
+The call service looks the number up in Contacts off the main thread, once
+per call and number, for the contact's name and its Contacts thumbnail; a
+name Telecom gives is shown over the contact's (a name equal to the number
+names nobody), and a caller with neither a name nor a photo shows a person
+icon. The answer is cached and shown only if the service is still live, the
+call screen is still started, the call is still the same registered call
+with the same number and `READ_CONTACTS` is still held; a later refresh from
+the cache checks the grant again, and one without it forgets the cache.
+Stopping the call screen cancels its running reads. Removing the call or
+destroying the service drops the cached name and photo. A host may leave Hold
+out of its call controls without changing what Telecom allows.
 
 ```quint
 pure def canStartCallService(s: ContactsState): bool = not(s.callServiceLive)
@@ -234,8 +262,10 @@ pure def canCallerNameFound(s: ContactsState, callId: int): bool = s.callService
 pure def callerNameFound(s: ContactsState, callId: int): ContactsState = { ...s, call: InCall({ callId: callId, nameCached: true, nameShown: true }) }
 pure def refreshCaller(s: ContactsState): ContactsState = {
   val slot = s.call
-  { ...s, call: match slot { | InCall(c) => InCall({ callId: c.callId, nameCached: c.nameCached, nameShown: c.nameCached and s.grants.readGranted }) | NoCall => NoCall } }
+  { ...s, call: match slot { | InCall(c) => InCall({ callId: c.callId, nameCached: c.nameCached and s.grants.readGranted, nameShown: c.nameCached and s.grants.readGranted }) | NoCall => NoCall } }
 }
+pure def stepARefreshWithoutTheGrantForgetsTheCaller(before: ContactsState, via: str, after: ContactsState): bool =
+  (via == "refreshCaller" and not(before.grants.readGranted)) implies not(nameCachedIn(after.call))
 pure val callIdValues = Set(1, 2)
 pure def nameCachedIn(slot: CallerSlot): bool = match slot { | InCall(c) => c.nameCached | NoCall => false }
 pure def nameShownIn(slot: CallerSlot): bool = match slot { | InCall(c) => c.nameShown | NoCall => false }
@@ -244,4 +274,83 @@ pure def alwaysAShownCallerNameIsCachedAndGranted(s: ContactsState): bool =
   nameShownIn(s.call) implies (nameCachedIn(s.call) and s.grants.readGranted)
 pure def sometimesCallerNamed(s: ContactsState): bool = nameShownIn(s.call)
 pure def sometimesCachedNameHiddenWithoutGrant(s: ContactsState): bool = nameCachedIn(s.call) and not(nameShownIn(s.call))
+```
+
+## Story: Name the numbers I am already looking at
+
+> As the owner, I want my recent calls, my conversations and my call screen
+> to show the names and photos my contacts give the numbers on them, without
+> the phone reading my address book for anything else or handing those
+> names to the assistant.
+
+### A name lookup runs only for the numbers on an open Phone, Messages or call screen, on an unlocked phone with the read grant
+
+A screen asks for the numbers it shows: the calls of its Phone recents page,
+the addresses of its Messages thread page, or the number of the call it
+shows, and only while that screen is open. An ask holds 1 to 50 distinct
+dial-shaped numbers (an optional `+` and 2 to 20 digits once separators are
+removed); a screen showing more asks for its first 50 in screen order, and a
+sender that is not dial-shaped stays as Android shows it. The lookup needs what a Contacts read needs (`WhileUnlocked` and
+`READ_CONTACTS`) but not the Contacts view, runs off the main thread, and is
+cancelled, its answer dropped, on pause, resume, screen-off and grant change
+like every Contacts read (`fenceHolds`). A refused or dropped lookup leaves
+the numbers shown as they are. The native call screen keeps its own caller
+lookup ([above](#a-callers-name-is-shown-only-while-the-call-service-the-call-and-the-read-grant-are-all-current)).
+
+```quint
+type NameAsk = { screenOpen: bool, numbers: int, distinct: bool, dialShaped: bool }
+type NamesAnswer = NamesRead | NamesNotAdmitted({ refusal: Admission }) | NamesOutOfBounds | NamesStale
+pure val maxNamedNumbers = 50
+pure def nameAskAdmitted(nameAsk: NameAsk): bool =
+  nameAsk.screenOpen and nameAsk.distinct and nameAsk.dialShaped and nameAsk.numbers >= 1 and nameAsk.numbers <= maxNamedNumbers
+pure def namesAnswer(grants: ContactGrants, facts: HostFacts, nameAsk: NameAsk, fenceHolds: bool): NamesAnswer =
+  if (readAdmission(grants, facts) != CallAdmitted) NamesNotAdmitted({ refusal: readAdmission(grants, facts) })
+  else if (not(nameAskAdmitted(nameAsk))) NamesOutOfBounds
+  else if (not(fenceHolds)) NamesStale
+  else NamesRead
+pure val nameAskValues = Set(
+  { screenOpen: true, numbers: 3, distinct: true, dialShaped: true }, { screenOpen: false, numbers: 3, distinct: true, dialShaped: true },
+  { screenOpen: true, numbers: 51, distinct: true, dialShaped: true }, { screenOpen: true, numbers: 2, distinct: false, dialShaped: true },
+  { screenOpen: true, numbers: 1, distinct: true, dialShaped: false }, { screenOpen: true, numbers: 0, distinct: true, dialShaped: true })
+pure def lawNamesAreReadOnlyForAnOpenScreenWithTheReadGrant(grants: ContactGrants, facts: HostFacts, nameAsk: NameAsk, fenceHolds: bool): bool =
+  namesAnswer(grants, facts, nameAsk, fenceHolds) == NamesRead implies
+    (grants.readGranted and facts.foreground and facts.unlocked and nameAsk.screenOpen and nameAsk.numbers >= 1 and nameAsk.numbers <= maxNamedNumbers and fenceHolds)
+```
+
+### An answer gives only a name and a photo, for exactly the numbers asked, and never lists contacts
+
+Android's phone lookup matches each number whole, never as a prefix or a
+search. The answer holds, for each asked number in its order, the contact's
+display name or none, and its Contacts thumbnail as a small JPEG or none;
+nothing else of the contact (no ID, lookup key, other numbers, emails or
+notes), and no number that was not asked. An answer with another count,
+order or number is malformed and shows nothing.
+
+```quint
+type NamedNumber = { asked: int, named: bool, photo: bool }
+pure def answerMatchesAsk(asked: List[int], answer: List[NamedNumber]): bool =
+  answer.length() == asked.length() and answer.listMap(n => n.asked) == asked
+pure val askedValues = Set(List(), List(1), List(1, 2))
+pure val answerValues = Set(List(), List({ asked: 1, named: true, photo: false }),
+  List({ asked: 2, named: false, photo: false }, { asked: 1, named: true, photo: true }),
+  List({ asked: 1, named: true, photo: true }, { asked: 2, named: false, photo: false }))
+pure def lawAnAnswerNamesOnlyTheNumbersAsked(asked: List[int], answer: List[NamedNumber]): bool =
+  answerMatchesAsk(asked, answer) implies (answer.every(n => asked.includes(n.asked)) and answer.length() == asked.length())
+```
+
+### Names stay beside the rows of the screen that asked, and never reach the assistant
+
+The renderer keeps one generation per screen; a new ask or closing the
+screen moves it, and an answer for an older generation is dropped. Names are
+held in memory beside the rows they label, never stored, logged, put in a
+device action's result or a turn's context, or sent to the agent; the
+assistant sees numbers only as the device actions that read them say.
+
+```quint
+type NamesUse = BesideTheRows | InAgentContext | StoredNames
+pure def namesShown(names: NamesAnswer, askedGeneration: int, screenGeneration: int, use: NamesUse): bool =
+  names == NamesRead and askedGeneration == screenGeneration and use == BesideTheRows
+pure val namesValues = Set(NamesRead, NamesStale, NamesOutOfBounds, NamesNotAdmitted({ refusal: PermissionRequired }))
+pure def lawNamesNeverLeaveTheScreenThatAsked(names: NamesAnswer, askedGeneration: int, screenGeneration: int, use: NamesUse): bool =
+  namesShown(names, askedGeneration, screenGeneration, use) implies (names == NamesRead and use == BesideTheRows and askedGeneration == screenGeneration)
 ```

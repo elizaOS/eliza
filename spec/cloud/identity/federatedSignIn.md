@@ -398,7 +398,9 @@ pure def sometimesNativeBackupProven(a: GoogleAttempt): bool =
 ### A native connect stores tokens only for the signed-in account's own Google identity and only the scopes Google granted
 
 The device sends Google's one-use `serverAuthCode` for the account it
-signed in with, and the cloud redeems it. The connection is stored only when
+signed in with, and the cloud redeems it. After a second factor the request
+uses the device's acknowledged key, and the cloud finds its native app
+registration from that key. The connection is stored only when
 Google returned a refresh token and Google's verified subject is the Google
 sign-in subject of the account, which an account without a Google sign-in
 lacks. A stored connection has reading mail exactly when Google granted it

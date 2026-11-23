@@ -68,6 +68,14 @@ error ProductMakefileMissing { output: string }
 error SecureCameraContractInvalid { file: string; message: string }
 error SecureCameraSourceRefused { module: string; message: string }
 
+export type {
+  InvalidPackage,
+  LauncherManifestUnread,
+  ListenerActivationRefused,
+  UnknownSystemuiPatch,
+  ProductMakefileMissing,
+}
+
 const Sha256Hex = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
 const SecureCameraModuleSchema = Schema.Struct({
   path: Schema.String.check(Schema.isPattern(/^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))[^\0\\]+$/)),

@@ -1,0 +1,138 @@
+// spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"
+import { boundedText, TravelMode } from "./client/contracts.vibe"
+
+module browser {
+  /** @throws {never} */
+  export function allowedMapsUri(uri: string): boolean {
+    if (/^geo:-?\d/.test(uri)) return true
+    const url = URL.parse(uri)
+    return url !== null && url.protocol === "https:" && (url.hostname === "maps.apple.com" || url.hostname === "www.openstreetmap.org")
+  }
+}
+import { allowedMapsUri } from browser
+
+/** The bracket name of a Maps chat card, which reply processing recognizes as a widget marker rather than an invocation. */
+export const mapsCardMarker = "MAPSCARD"
+
+/** A card renders at most this many search results; the rest stay paginated. */
+export const mapsCardMaxPlaces = 10
+
+const Text = (limit: number) => Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, limit)))
+const Uri = Schema.String.check(Schema.makeFilter(allowedMapsUri))
+const Nonnegative = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
+
+/** A place as a card shows it: display-safe fields only. */
+export const MapsCardPlace = Schema.Struct({
+  name: Text(300),
+  latitude: Schema.Finite.check(Schema.isBetween({ minimum: -90, maximum: 90 })),
+  longitude: Schema.Finite.check(Schema.isBetween({ minimum: -180, maximum: 180 })),
+  provider: Text(64),
+  providerPlaceId: Text(512),
+  formattedAddress: Schema.optionalKey(Text(1000)),
+  categories: Schema.Array(Text(80)).check(Schema.isMaxLength(32)),
+})
+/** A place as a card shows it. */
+export type MapsCardPlace = typeof MapsCardPlace.Type
+
+const Attribution = Schema.NullOr(Text(2000))
+
+/** One alternative of a planned route, in the provider's order. */
+export const MapsCardRouteOption = Schema.Struct({ distanceMeters: Nonnegative, durationSeconds: Nonnegative, recommended: Schema.Boolean })
+/** One alternative of a planned route. */
+export type MapsCardRouteOption = typeof MapsCardRouteOption.Type
+
+/** A Maps chat card: a place, search results, a route with its alternatives, a navigation or share handoff, or a request for the phone's own location. */
+export const MapsCard = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("place"), place: MapsCardPlace, attribution: Attribution }),
+  Schema.Struct({
+    kind: Schema.Literal("places"), query: Text(500), places: Schema.Array(MapsCardPlace).check(Schema.isMaxLength(mapsCardMaxPlaces)),
+    nextCursor: Schema.NullOr(Text(2048)), attribution: Attribution, near: Schema.optionalKey(MapsCardPlace),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("route"), origin: MapsCardPlace, destination: MapsCardPlace, travelMode: TravelMode,
+    distanceMeters: Nonnegative, durationSeconds: Nonnegative, warnings: Schema.Array(Text(500)).check(Schema.isMaxLength(32)),
+    alternatives: Schema.optionalKey(Schema.Array(MapsCardRouteOption).check(Schema.isMaxLength(3))), attribution: Attribution,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("handoff"), handoffKind: Schema.Literals(["share", "navigate"]), place: MapsCardPlace,
+    geoUri: Uri, appleMapsUri: Uri, webUri: Uri, sharedAt: Schema.optionalKey(Text(40)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("locate"), intent: Schema.Literals(["place-near", "route-origin"]), prompt: Text(500),
+    query: Schema.optionalKey(Text(500)), destination: Schema.optionalKey(MapsCardPlace), travelMode: Schema.optionalKey(TravelMode),
+  }),
+])
+/** A Maps chat card. */
+export type MapsCard = typeof MapsCard.Type
+
+const decodeCard = Schema.decodeUnknownOption(Schema.fromJsonString(MapsCard))
+
+const opening = /^\s*\[[ \t]*MAPSCARD[ \t]*\][ \t]*$/
+const closing = /^\s*\[[ \t]*\/[ \t]*MAPSCARD[ \t]*\][ \t]*$/
+const fenceLine = /^[ \t]{0,3}(`{3,}|~{3,})(.*)$/
+
+interface Fence {
+  readonly character: string
+  readonly length: number
+}
+
+function fenceAfter(open: Fence | undefined, line: string): Fence | undefined {
+  const found = fenceLine.exec(line)
+  if (found === null) return open
+  const run = found[1] ?? ""
+  const rest = (found[2] ?? "").trim()
+  const character = run.charAt(0)
+  if (open === undefined) return character === "`" && rest.includes("`") ? undefined : { character, length: run.length }
+  return character === open.character && run.length >= open.length && rest === "" ? undefined : open
+}
+
+/** One card found in reply text, with the lines it spans. */
+export interface RecognizedMapsCard {
+  readonly card: MapsCard
+  readonly start: number
+  readonly end: number
+}
+
+/** The valid Maps cards of a reply that stand outside every Markdown fence; a card inside a fence is the reply's literal content. */
+export function recognizedMapsCards(text: string): readonly RecognizedMapsCard[] {
+  const lines = text.split(/\r?\n/)
+  const found: RecognizedMapsCard[] = []
+  let fence: Fence | undefined
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? ""
+    if (fence === undefined && opening.test(line) && closing.test(lines[index + 2] ?? "")) {
+      const card = decodeCard(lines[index + 1] ?? "")
+      if (card._tag === "Some") {
+        found.push({ card: card.value, start: index, end: index + 2 })
+        index += 2
+        continue
+      }
+    }
+    fence = fenceAfter(fence, line)
+  }
+  return found
+}
+
+/** The reply text with its recognized cards taken out, for surfaces without the Maps widget. */
+export function withoutMapsCards(text: string): string {
+  const cards = recognizedMapsCards(text)
+  if (cards.length === 0) return text
+  const lines = text.split(/\r?\n/)
+  const hidden = new Set(cards.flatMap(({ start, end }) => [start, start + 1, end]))
+  return lines.filter((_, index) => !hidden.has(index)).join("\n").replace(/\n{3,}/g, "\n\n").trim()
+}
+
+/** A card as its wire marker. */
+export function serializeMapsCard(card: MapsCard): string {
+  return `[${mapsCardMarker}]\n${JSON.stringify(card)}\n[/${mapsCardMarker}]`
+}
+
+/** The text with the card appended after a blank line, outside any fence the text left open, so the card is always recognized. */
+export function appendMapsCard(text: string, card: MapsCard): string {
+  const marker = serializeMapsCard(card)
+  const body = text.replace(/\s+$/, "")
+  if (body.trim() === "") return marker
+  const open = body.split(/\r?\n/).reduce<Fence | undefined>(fenceAfter, undefined)
+  const closed = open === undefined ? body : `${body}\n${open.character.repeat(open.length)}`
+  return `${closed}\n\n${marker}`
+}

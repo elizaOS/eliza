@@ -1,0 +1,611 @@
+// spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"
+import { assert, it } from "@effect/vitest"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { CloudError } from "@elizaos/cloud/client"
+import type { IAgentRuntime, Memory } from "@elizaos/core"
+import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
+import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
+import { MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route } from "../src/client/contracts.vibe"
+import {
+  backgroundNavigation, deviceMapsNavigation, RelayUnavailable, withMapsNavigationRelay,
+  type ActiveGuidance, type MapsNavigationSurface, type NavigationSnapshot,
+} from "../src/client/device-navigation.vibe"
+import { advanceStep, GuidanceSpeechStopped, navigationVoice } from "../src/client/guidance.vibe"
+import { nativeMapsLocation, type NativeFix, type Position } from "../src/client/location.vibe"
+import { usableNavigationFix } from "../src/client/navigation-fix.vibe"
+import { mapsObservation } from "../src/client/observation.vibe"
+import { routeProgress } from "../src/client/route-distance.vibe"
+import { savedPlaces } from "../src/client/saved-places.vibe"
+import { createMapsPlugin, nearbyPlaceKind, phonePositionProvider } from "../src/plugin.vibe"
+import { mapsNavigationRelay } from "../src/relay.vibe"
+import { routeOf } from "../src/routing.vibe"
+import type { AgentSavedPlaceStore } from "../src/saves.vibe"
+import type { MapsCloudLink } from "../src/service.vibe"
+
+const ferry = { latitude: 37.7955, longitude: -122.3937 }
+const tower = { latitude: 37.8024, longitude: -122.4058 }
+const here = { latitude: 37.7946, longitude: -122.3999 }
+const connectionId = "conn_0123456789abcdef"
+
+effect function routeTo(id: string, to: { readonly latitude: number; readonly longitude: number }, mode: Route["mode"], minutes: number): Route!! {
+  return {
+    providerId: "google", id, from: here, to, mode, geometry: [here, to], distanceMeters: minutes * 400, durationSeconds: minutes * 60,
+    steps: [{ instruction: "Head north", coordinate: here, distanceMeters: minutes * 400, maneuver: "depart" }, { instruction: "Arrive", coordinate: to, distanceMeters: 0, maneuver: "arrive" }],
+    attribution: "Google", fetchedAt: try Clock.currentTimeMillis, traffic: "live",
+  }
+}
+
+const offer = {
+  available: true as const, providerId: "google", connectionId, revision: "2026-11", attribution: "Google Maps Platform via Eliza Cloud",
+  sources: { data: "Google", search: "Google", routing: "Google" },
+  disclosure: { recipients: [{ role: "gateway" as const, name: "Eliza Cloud", operator: "Eliza Labs" }, { role: "search" as const, name: "Google Maps Platform", operator: "Google" }], cloudRecords: "operation-and-result-code" as const },
+  regions: [{ id: "world", name: "World", bounds: [-180, -90, 180, 90] as const }],
+  capabilities: { map: true, search: true as const, placeDetails: true as const, geocode: true as const, reverseGeocode: true as const, placeLookup: true, modes: ["drive", "walk"] as const, alternatives: true, traffic: "live" as const, transit: "none" as const, offline: { map: false as const, search: false as const, routing: false as const } },
+  tiles: { urlTemplate: "/api/v1/maps/tiles/{z}/{x}/{y}" as const, mapType: "roadmap" as const, minZoom: 0, maxZoom: 20, tileSize: 256 as const, attribution: "Google" },
+}
+
+function cloudFake() {
+  const calls: string[] = []
+  const gates: { search?: Promise<void>; refuseSearch?: CloudError } = {}
+  const client = {
+    async mapsCapabilities() { calls.push("capabilities"); return offer },
+    async mapsPlacesSearch(request: { readonly query: string }) {
+      calls.push(`search:${request.query}`)
+      await gates.search
+      if (gates.refuseSearch !== undefined) throw gates.refuseSearch
+      return { providerId: "google", attribution: "Google", places: [{ providerId: "google", id: "ferry", name: "Ferry Building", coordinate: ferry, attribution: "Google", fetchedAt: Date.now() }] }
+    },
+    async mapsPlaceDetails() { calls.push("details"); return { providerId: "google", attribution: "Google", place: null } },
+    async mapsRoutes() { calls.push("routes"); return { providerId: "google", attribution: "Google", routes: [] } },
+    async mapsViewport() { calls.push("viewport"); return { providerId: "google", copyright: "Map data ©2026 Google" } },
+    async mapsTile() { calls.push("tile"); return { contentType: "image/png", bytes: new Uint8Array([1, 2, 3]) } },
+  } as unknown as MapsCloud
+  return { client, calls, gates }
+}
+
+it.live('Keep Cloud Maps on the account that requested it: coverage installs the provider for the bound account, a request outliving the account is fenced, a Cloud pause holds the next request, and signed out reads nothing (spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/requests.md, "Story: Back off when Maps asks me to wait")', effect () => {
+  const cloud = cloudFake()
+  const installs: ProviderConfig["status"][] = []
+  const holder: { provider?: MapsProvider } = {}
+  const maps = try cloudMaps((config, installed) => {
+    installs.push(config.status)
+    holder.provider = installed
+  })
+  try maps.initialize()
+  const signedOut = maps.diagnostics()
+  const signedOutCalls = cloud.calls.length
+  try maps.bind({ session: "s1", credential: "k1", client: cloud.client })
+  try maps.initialize(true)
+  const installed = holder.provider
+  if (installed === undefined) return try Effect.die(new Error("Cloud Maps installed no provider"))
+  const found = try installed.search("ferry building")
+  let release = () => {}
+  cloud.gates.search = new Promise<void>((resolve) => { release = resolve })
+  const inFlight = fork installed.search("coit tower")
+  try sleep("20 millis")
+  try maps.bind({ session: "s2", credential: "k2", client: cloud.client })
+  release()
+  const fenced = try Fiber.await(inFlight)
+  cloud.gates.search = undefined
+  try maps.initialize()
+  const second = holder.provider
+  if (second === undefined) return try Effect.die(new Error("Cloud Maps installed no provider for the new account"))
+  cloud.gates.refuseSearch = new CloudError({ failure: { tag: "CloudRateLimited", retryAt: Date.now() + 60_000 }, cause: "" })
+  const limited = try Effect.flip(second.search("pharmacy"))
+  cloud.gates.refuseSearch = undefined
+  const before = cloud.calls.length
+  const held = try Effect.flip(second.search("pharmacy"))
+  try Effect.try(() => assert.deepStrictEqual({
+    signedOut: [signedOut.error, signedOutCalls],
+    installs,
+    found: found.map((item: Place) => [item.id, item.attribution]),
+    fenced: fenced._tag === "Failure" ? "fenced" : "returned",
+    limited: [limited.code, held.code, cloud.calls.length === before],
+  }, {
+    signedOut: ["unauthorized", 0],
+    installs: ["configured", "unconfigured", "configured"],
+    found: [["ferry", "Google"]],
+    fenced: "fenced",
+    limited: ["rate-limited", "rate-limited", true],
+  }))
+})
+
+it.live('Show the right copyright for the map I am looking at: a view inside the attributed area keeps its copyright and a reply for a view I left is never shown (spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
+  const answers: Array<{ readonly view: string; readonly resolve: (text: string) => void }> = []
+  const basemap: CloudMapsBasemap = {
+    kind: "cloud-raster", attribution: "Google", minZoom: 0, maxZoom: 20, tileSize: 256,
+    tile: () => succeed(new Uint8Array()),
+    copyright: (view) => promise(() => new Promise<string>((resolve) => { answers.push({ view: String(view.north), resolve }) })),
+  }
+  const attribution = try viewportAttribution(basemap)
+  const city = { zoom: 12, north: 38, south: 37, east: -122, west: -123 }
+  const first = fork attribution.show(city)
+  try sleep("10 millis")
+  answers[0]?.resolve("Map data ©2026 Google")
+  const shown = try join first
+  try attribution.move({ ...city, north: 37.9, south: 37.1 })
+  const within = try attribution.current()
+  const elsewhere = { zoom: 12, north: 41, south: 40, east: -73, west: -74 }
+  try attribution.move(elsewhere)
+  const hidden = try attribution.current()
+  const stale = fork attribution.show(elsewhere)
+  try sleep("10 millis")
+  const further = { ...elsewhere, north: 42, south: 41 }
+  try attribution.move(further)
+  const moved = fork attribution.show(further)
+  try sleep("10 millis")
+  answers[1]?.resolve("Stale copyright")
+  answers[2]?.resolve("Map data ©2026 Google, INEGI")
+  const late = try join stale
+  const current = try join moved
+  try attribution.dispose()
+  const disposed = try attribution.current()
+  try Effect.try(() => assert.deepStrictEqual({ shown, within, hidden, asked: answers.length, late, current, disposed },
+    { shown: "Map data ©2026 Google", within: "Map data ©2026 Google", hidden: "", asked: 3, late: "", current: "Map data ©2026 Google, INEGI", disposed: "" }))
+})
+
+function screenFake() {
+  const destination: { place?: Place; mode: Route["mode"] } = { mode: "drive" }
+  const state: { granted: boolean; fix?: Position; guidance: ActiveGuidance | null; revision: number; route?: Route; stopped: number; changeWhileLocating: boolean } =
+    { granted: false, guidance: null, revision: 1, stopped: 0, changeWhileLocating: false }
+  const config: ProviderConfig = { status: "configured", providerId: "google", connectionId, revision: "2026-11", capabilities: {
+    map: true, search: true, placeDetails: true, modes: ["drive", "walk"], traffic: "live", transit: "none", offline: { map: false, search: false, routing: false }, alternatives: true,
+  } }
+  const snapshot = (): NavigationSnapshot => ({
+    provider: config,
+    selection: destination.place === undefined ? { phase: "idle", value: null, error: null } : { phase: "ready", value: destination.place, error: null },
+    route: state.route === undefined ? { phase: "idle", value: null, error: null } : { phase: "ready", value: state.route, error: null },
+    revision: state.revision,
+    mode: destination.mode,
+  })
+  const surface: MapsNavigationSurface = {
+    present: () => succeed(true),
+    snapshot,
+    showPlace: effect (shown) => { destination.place = shown },
+    showDirections: effect (shown, mode) => {
+      destination.place = shown
+      destination.mode = mode
+      state.route = undefined
+    },
+    locationGranted: () => succeed(state.granted),
+    locate: effect () => {
+      if (state.changeWhileLocating) state.revision++
+      if (state.fix === undefined) throw new MapsFailure({ code: "timeout", message: "No location fix arrived." })
+      return state.fix
+    },
+    planFrom: effect () => {
+      const to = destination.place?.coordinate
+      if (to !== undefined) state.route = try routeTo("planned", to, destination.mode, 12)
+    },
+    guidance: () => state.guidance,
+    reroute: effect () => ({ session: state.guidance?.session ?? 0, ...(state.route === undefined ? {} : { route: state.route }) }),
+    stop: effect () => {
+      state.stopped++
+      state.guidance = null
+    },
+  }
+  return { surface, state }
+}
+
+const towerRef = { provider: "eliza-cloud", providerPlaceId: "tower", name: "Coit Tower", coordinates: tower }
+
+it.live('Plan directions and keep me in control of guidance: an agent request waits for permitted location, refuses a stale fix and a changed sheet, reaches confirmation only for the exact destination, and only my Start turns guidance on (spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/sessionReroute.md, "Story: Reroute the navigation I started, whoever planned the route")', effect () => {
+  const { surface, state } = screenFake()
+  const phone = try deviceMapsNavigation(surface, { providerId: "google", attribution: "Google", current: () => true }, "200 millis")
+  const withoutPermission = try phone.start({ destination: towerRef, travelMode: "walk" })
+  state.granted = true
+  const now = try Clock.currentTimeMillis
+  state.fix = { coordinate: here, accuracyMeters: 12, timestamp: now - 45_000, precision: "precise" }
+  const stale = try phone.start({ destination: towerRef, travelMode: "walk" })
+  state.fix = { coordinate: here, accuracyMeters: 12, timestamp: now, precision: "approximate" }
+  const approximate = try phone.start({ destination: towerRef, travelMode: "walk" })
+  state.fix = { coordinate: here, accuracyMeters: 12, timestamp: now, precision: "precise" }
+  state.changeWhileLocating = true
+  const changed = try Effect.flip(phone.start({ destination: towerRef, travelMode: "walk" }))
+  state.changeWhileLocating = false
+  const ready = try phone.start({ destination: towerRef, travelMode: "walk" })
+  const beforeStart = (try phone.directions()).active
+  const started = try phone.confirmed()
+  const agentPlanned: ActiveGuidance = { session: 1, routeId: "planned", placeName: "Coit Tower", travelMode: "walk", fix: state.fix, rerouting: false, arrived: false }
+  state.guidance = agentPlanned
+  try phone.guidanceStarted(agentPlanned)
+  const another = try Effect.flip(phone.start({ destination: towerRef, travelMode: "walk" }))
+  const rerouted = try phone.reroute()
+  const stopped = try phone.stop()
+  const ownerPlanned: ActiveGuidance = { session: 2, routeId: "own", placeName: "Ferry Building", travelMode: "drive", fix: { coordinate: here, accuracyMeters: 10, timestamp: try Clock.currentTimeMillis, precision: "precise" }, rerouting: false, arrived: false }
+  state.guidance = ownerPlanned
+  const adopted = try phone.guidanceStarted(ownerPlanned)
+  const ownReroute = try phone.reroute()
+  state.guidance = null
+  try phone.guidanceEnded()
+  const unsupported = try Effect.flip(phone.start({ destination: towerRef, travelMode: "transit" }))
+  try Effect.try(() => assert.deepStrictEqual({
+    withoutPermission: withoutPermission.state, stale: stale.state, approximate: approximate.state, changed: changed.code,
+    ready: [ready.state, ready.placeName, ready.route?.durationSeconds], beforeStart, started, another: another.code,
+    rerouted: rerouted.state, stopped: [stopped.state, state.stopped], unsupported: unsupported.code,
+    fresh: usableNavigationFix(state.fix, now + 31_000), ownerPlanned: [adopted, ownReroute.state, ownReroute.placeName],
+  }, {
+    withoutPermission: "awaiting-location", stale: "awaiting-location", approximate: "awaiting-location", changed: "MAPS_DEVICE_UNAVAILABLE",
+    ready: ["awaiting-confirmation", "Coit Tower", 720], beforeStart: false, started: true, another: "MAPS_INVALID_INPUT",
+    rerouted: "navigating", stopped: ["stopped", 1], unsupported: "MAPS_UNSUPPORTED_REGION",
+    fresh: false, ownerPlanned: [true, "navigating", "Ferry Building"],
+  }))
+})
+
+it.live('Navigate again when the phone never received my request: a lost delivery is delivered again to the same offer after its lease lapses, and the phone runs it once and answers once (spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer")', effect () => {
+  const relay = try mapsNavigationRelay({ leaseMs: 40, commandMs: 3_000, liveMs: 2_000, idleMs: 30_000, pollMs: 20 })
+  const conversationId = "11111111-2222-4333-8444-555555555555"
+  const agent = relay.navigation("phone-scope", conversationId, () => true)
+  const runs: string[] = []
+  let dropNextDelivery = true
+  const screen = {}
+  const phoneHost = {
+    current: () => screen,
+    execute: effect (_owner: object, operation: { readonly kind: string }) => {
+      runs.push(operation.kind)
+      return { state: "awaiting-confirmation" as const, placeName: "Coit Tower", travelMode: "walk" as const, route: { durationSeconds: 720, distanceMeters: 4800, traffic: "live" as const } }
+    },
+    connected: () => {},
+  }
+  const transport = effect (body: Readonly<Record<string, unknown>>) => {
+    const answer = try mapError(relay.handle("phone-scope", body), (refused) => new RelayUnavailable({ reason: refused.reason }))
+    if (answer.request !== null && dropNextDelivery) {
+      dropNextDelivery = false
+      return { protocol: 1, request: null }
+    }
+    return answer
+  }
+  const turn = fork withMapsNavigationRelay(phoneHost, transport, conversationId, sleep("1500 millis"))
+  try sleep("50 millis")
+  const available = try agent.available()
+  const status = try agent.start({ destination: towerRef, travelMode: "walk" })
+  try Fiber.interrupt(turn)
+  try Effect.try(() => assert.deepStrictEqual({ available, status: status.state, route: status.route?.durationSeconds, runs }, { available: true, status: "awaiting-confirmation", route: 720, runs: ["start"] }))
+})
+
+it.live('A command delivered to an offer that is then replaced is abandoned rather than replayed, and a queued one reaches the new offer (spec/maps/relay.md, "A queued command waits for the phone\'s current offer and survives a new offer it never reached")', effect () => {
+  const relay = try mapsNavigationRelay({ leaseMs: 1_000, commandMs: 3_000, liveMs: 2_000, idleMs: 30_000, pollMs: 20 })
+  const conversationId = "11111111-2222-4333-8444-555555555555"
+  const first = "aaaaaaaa-2222-4333-8444-555555555555"
+  const second = "bbbbbbbb-2222-4333-8444-555555555555"
+  const agent = relay.navigation("scope", conversationId, () => true)
+  const message = (offerId: string, phase: string) => ({ phase, conversationId, offerId })
+  try relay.handle("scope", message(first, "open"))
+  const queued = fork agent.stop()
+  try sleep("20 millis")
+  try relay.handle("scope", message(second, "open"))
+  const delivered = try relay.handle("scope", message(second, "poll"))
+  const id = delivered.request?.id ?? ""
+  try relay.handle("scope", { ...message(second, "result"), id, status: { state: "stopped" } })
+  const stopped = try join queued
+  const held = fork Effect.flip(agent.stop())
+  try sleep("20 millis")
+  const leased = try relay.handle("scope", message(second, "poll"))
+  try relay.handle("scope", message(first, "open"))
+  const abandoned = try join held
+  const late = try Effect.flip(relay.handle("scope", { ...message(second, "result"), id: leased.request?.id ?? "", status: { state: "stopped" } }))
+  try Effect.try(() => assert.deepStrictEqual({ carried: delivered.request?.operation, stopped: stopped.state, abandoned: abandoned.code, late: late.reason },
+    { carried: { kind: "stop" }, stopped: "stopped", abandoned: "MAPS_DEVICE_UNAVAILABLE", late: "Navigation request retired" }))
+})
+
+it.effect('Move on to the next step only when I have really passed the turn (spec/maps/guidanceRecovery.md, "Story: Move on to the next step only when I have really passed the turn")', effect () => {
+  const start = { latitude: 37.7946, longitude: -122.3999 }
+  const turn = { latitude: 37.7986, longitude: -122.3999 }
+  const end = { latitude: 37.7986, longitude: -122.3899 }
+  const route = { geometry: [start, turn, end], durationSeconds: 600, steps: [
+    { instruction: "Head north", coordinate: start, distanceMeters: 445 },
+    { instruction: "Turn right", coordinate: turn, distanceMeters: 880, maneuver: "right" as const },
+    { instruction: "Arrive", coordinate: end, distanceMeters: 0, maneuver: "arrive" as const },
+  ] }
+  const past = { latitude: 37.7986, longitude: -122.3969 }
+  const progress = routeProgress(past, route)
+  const fix = { coordinate: past, accuracyMeters: 10 }
+  const once = advanceStep({ index: 1, cleared: 0 }, route, progress, fix, true)
+  const twice = advanceStep(once, route, progress, fix, true)
+  const offRoute = advanceStep(once, route, progress, fix, false)
+  const near = advanceStep({ index: 1, cleared: 0 }, route, routeProgress(turn, route), { coordinate: turn, accuracyMeters: 5 }, true)
+  const last = advanceStep({ index: 2, cleared: 0 }, route, routeProgress(end, route), { coordinate: end, accuracyMeters: 5 }, true)
+  try Effect.try(() => assert.deepStrictEqual({ once, twice, offRoute, near, last },
+    { once: { index: 1, cleared: 1 }, twice: { index: 2, cleared: 0 }, offRoute: { index: 1, cleared: 0 }, near: { index: 2, cleared: 0 }, last: { index: 2, cleared: 0 } }))
+})
+
+it.live('Hear the newest turn instruction when my current route can speak: one key speaks once, a new key interrupts it, a hidden screen owes only the current instruction, and a failure mutes (spec/maps/guidanceVoice.md, "Story: Hear the newest turn instruction when my current route can speak")', effect () => {
+  const spoken: string[] = []
+  const interrupted: string[] = []
+  let failNext = false
+  let muted = 0
+  const voice = try navigationVoice({
+    speak: (text) => effect {
+      spoken.push(text)
+      if (failNext) throw new GuidanceSpeechStopped({ reason: "failed" })
+      try onInterrupt(sleep("200 millis"), () => sync(() => { interrupted.push(text) }))
+    },
+  }, () => { muted++ })
+  try voice.offer("route:1:step:1:500", "In 500 m, turn right", true)
+  try voice.offer("route:1:step:1:500", "In 500 m, turn right onto Main", true)
+  try sleep("10 millis")
+  try voice.offer("route:1:step:1:100", "In 100 m, turn right", true)
+  try sleep("10 millis")
+  try voice.hide()
+  try voice.offer("route:1:step:2:500", "In 500 m, turn left", true)
+  const hidden = try voice.state()
+  try voice.show(true)
+  try sleep("10 millis")
+  failNext = true
+  try voice.offer("route:1:step:3:500", "In 500 m, arrive", true)
+  try sleep("20 millis")
+  const after = try voice.state()
+  try Effect.try(() => assert.deepStrictEqual({ spoken, interrupted, owed: hidden.owedInstruction > 0, muted, voiceOn: after.voiceOn },
+    { spoken: ["In 500 m, turn right", "In 100 m, turn right", "In 500 m, turn left", "In 500 m, arrive"], interrupted: ["In 500 m, turn right", "In 100 m, turn right", "In 500 m, turn left"], owed: true, muted: 1, voiceOn: false }))
+})
+
+it.live('Keep guiding with the screen off when the exact native session can continue: only the device confirms screen-off, a notification Stop ends that guidance, and a missing service falls back to the visible screen (spec/maps/navigationService.md, "Story: Keep guiding with the screen off when the exact native session can continue")', effect () => {
+  const listeners = new Map<string, (reason: string) => void>()
+  const native = { background: true, started: [] as string[], stopped: [] as string[], updates: [] as string[] }
+  const ended: string[] = []
+  const screenOff = try backgroundNavigation({
+    availability: () => succeed({ background: native.background }),
+    listen: (sessionId, stopped) => sync(() => {
+      listeners.set(sessionId, stopped)
+      return () => { listeners.delete(sessionId) }
+    }),
+    start: (input) => sync(() => { native.started.push(input.sessionId) }),
+    update: (input) => sync(() => {
+      native.updates.push(input.title)
+      return { active: true }
+    }),
+    stop: (input) => sync(() => {
+      native.stopped.push(input.sessionId)
+      return { stopped: true }
+    }),
+  }, (reason) => { ended.push(reason) })
+  const confirmed = try screenOff.start("route-1", "500 m · Turn right", "12 min · 4.8 km remaining")
+  const hidden = try screenOff.hide()
+  try screenOff.update("100 m · Turn right", "11 min · 4.4 km remaining")
+  try sleep("10 millis")
+  const [session] = native.started
+  listeners.get(session ?? "")?.("notification")
+  try sleep("10 millis")
+  const afterStop = try screenOff.state()
+  try screenOff.show()
+  native.background = false
+  const fallback = try screenOff.start("route-2", "500 m · Turn left", "9 min")
+  const visible = try screenOff.state()
+  try Effect.try(() => assert.deepStrictEqual({
+    confirmed, hidden: [hidden.visible, hidden.background], updates: native.updates, ended, afterStop: afterStop.phase,
+    stoppedTwice: native.stopped.filter((id) => id === session).length, fallback, visible: [visible.phase, visible.fallback, visible.watchOwned],
+  }, {
+    confirmed: true, hidden: [false, "ScreenOff"], updates: ["100 m · Turn right"], ended: ["notification"], afterStop: "NoGuidance",
+    stoppedTwice: 0, fallback: false, visible: ["LiveGuidance", true, true],
+  }))
+})
+
+it.effect('Let the agent see only what the Maps screen shows now (spec/maps/observation.md, "Story: Let the agent see only what the Maps screen shows now")', effect () => {
+  const observation = try mapsObservation()
+  const source = { query: "coffee", area: "mission", results: ["a", "b"], provider: "google", ready: true }
+  try observation.publish(source)
+  const seen = try observation.observe()
+  if (seen === undefined) return try Effect.die(new Error("No observation was captured"))
+  const current = try observation.validate(seen)
+  try observation.publish(source)
+  const republished = try observation.validate(seen)
+  try observation.publish({ ...source, results: ["c"] })
+  const changed = try observation.validate(seen)
+  try observation.renew({ ...source, results: ["c"] })
+  const renewed = try observation.observe()
+  const retired = try observation.validate(seen)
+  try Effect.try(() => assert.deepStrictEqual({ current, republished, changed, retired, fresh: renewed?.id !== seen.id },
+    { current: true, republished: true, changed: false, retired: false, fresh: true }))
+})
+
+it.effect('Keep my saved places safe on this phone: saving the same place again replaces it, and a list that cannot be read is never written over (spec/maps/savedPlaces.md, "Story: Keep my saved places safe on this phone")', effect () => {
+  provide KeyValueStore.layerMemory {
+    try TestClock.adjust("1000 seconds")
+    const saved = try savedPlaces("maps.saved.v1")
+    const first = try saved.save({ label: "Ferry", coordinate: ferry, providerId: "google", providerPlaceId: "ferry" })
+    const again = try saved.save({ label: "Ferry Building", coordinate: ferry, providerId: "google", providerPlaceId: "ferry" })
+    try saved.save({ label: "Pin", coordinate: tower })
+    const listed = try saved.host.list()
+    const store = try KeyValueStore.KeyValueStore
+    try store.set("maps.saved.v1", "{\"version\":2}")
+    const refused = try Effect.flip(saved.save({ label: "Another", coordinate: here }))
+    const kept = try store.get("maps.saved.v1")
+    try Effect.try(() => assert.deepStrictEqual({ sameId: first.id === again.id, labels: listed.map((item) => item.label), refused: refused.code, kept },
+      { sameId: true, labels: ["Ferry Building", "Pin"], refused: "storage", kept: "{\"version\":2}" }))
+  }
+})
+
+function linkFake() {
+  const bodies: Array<{ readonly path: string; readonly body: unknown; readonly key: boolean }> = []
+  const link: MapsCloudLink = {
+    async request(request) {
+      bodies.push({ path: request.path, body: request.body, key: request.idempotencyKey !== undefined })
+      const at = Date.now()
+      const place = (id: string, name: string, coordinate: { readonly latitude: number; readonly longitude: number }) => ({ providerId: "google", id, name, coordinate, attribution: "Google", fetchedAt: at })
+      switch (request.path) {
+        case "/api/v1/maps/capabilities": return { kind: "answered", status: 200, body: offer }
+        case "/api/v1/maps/places/search": {
+          const query = (request.body as { readonly query: string }).query
+          if (query === "pharmacy") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry)] } }
+          if (query === "Ferry Building") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("ferry", "Ferry Building", ferry)] } }
+          return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("tower", "Coit Tower", tower)] } }
+        }
+        case "/api/v1/maps/places/details": {
+          const id = (request.body as { readonly id: string }).id
+          const known = [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry), place("tower", "Coit Tower", tower)].find((item) => item.id === id)
+          return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: known ?? null } }
+        }
+        case "/api/v1/maps/routes": {
+          const planned = (id: string, minutes: number) => ({ providerId: "google", id, from: ferry, to: tower, mode: "walk", geometry: [ferry, tower], distanceMeters: minutes * 80, durationSeconds: minutes * 60, steps: [], attribution: "Google", fetchedAt: at, traffic: "none" })
+          return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google Maps Platform via Eliza Cloud", routes: [planned("best", 20), planned("other", 24)] } }
+        }
+        default: return { kind: "refused", status: 404, body: { error: "not_found" } }
+      }
+    },
+  }
+  return { link, bodies }
+}
+
+function messageWith(location: unknown): Memory {
+  return { entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002", content: { text: "coffee near me", metadata: { clientDevice: { context: location === undefined ? {} : { location } } } } } as unknown as Memory
+}
+
+it.live('Search near me with where my phone is now: a recent reported position searches around the phone, an old one asks the phone for its location, routes keep their alternatives and attribution, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
+  const { link, bodies } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => undefined, namesView: () => false })
+  const runtime = {} as IAgentRuntime
+  const act = (name: string, message: Memory, parameters: Record<string, unknown>) => promise(async () => {
+    const action = plugin.actions?.find((found) => found.name === name)
+    if (action === undefined) throw new Error(`${name} is not registered`)
+    return await action.handler(runtime, message, undefined, { parameters })
+  })
+  const now = Date.now()
+  const recent = messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25, capturedAt: now - 60_000 })
+  const old = messageWith({ latitude: here.latitude, longitude: here.longitude, capturedAt: now - 31 * 60_000 })
+  const nearby = try act("MAPS_PLACE", recent, { query: "pharmacy", useCurrentLocation: true })
+  const asked = try act("MAPS_PLACE", old, { query: "nearest pharmacy" })
+  const route = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Coit Tower", travelMode: "walk" })
+  const fromHere = try act("MAPS_ROUTE", recent, { origin: "here", destination: "Coit Tower" })
+  const handoff = try act("MAPS_NAVIGATION_START", recent, { destination: "Coit Tower", travelMode: "walk" })
+  const provider = try promise(() => phonePositionProvider.get(runtime, recent, {} as never))
+  const routeText = route.text ?? ""
+  const fenced = `\`\`\`\n${appendMapsCard("", { kind: "place", place: { name: "X", latitude: 1, longitude: 1, provider: "p", providerPlaceId: "x", categories: [] }, attribution: null })}\n\`\`\``
+  const searched = bodies.find((made) => made.path === "/api/v1/maps/places/search")
+  try Effect.try(() => assert.deepStrictEqual({
+    nearby: [nearby.success, (nearby.data as { readonly places: ReadonlyArray<{ readonly providerPlaceId: string }> }).places.map((item) => item.providerPlaceId)],
+    searchedNear: (searched?.body as { readonly near?: unknown } | undefined)?.near, keyed: searched?.key,
+    asked: [asked.success, (asked.data as { readonly state: string }).state, recognizedMapsCards(asked.text ?? "")[0]?.card.kind],
+    route: [route.success, routeText.includes("Alternatives: 1. 20 min"), routeText.includes("Google Maps Platform via Eliza Cloud"), recognizedMapsCards(routeText).map((found) => found.card.kind)],
+    plain: withoutMapsCards(routeText).includes("MAPSCARD"),
+    fromHere: [fromHere.success, (fromHere.data as { readonly origin: string }).origin],
+    handoff: recognizedMapsCards(handoff.text ?? "")[0]?.card.kind,
+    provider: provider.values,
+    fenced: recognizedMapsCards(fenced).length,
+    kinds: [nearbyPlaceKind("the nearest pharmacy"), nearbyPlaceKind("round to the nearest dollar"), nearbyPlaceKind("coffee near me")],
+  }, {
+    nearby: [true, ["near", "far"]],
+    searchedNear: { latitude: here.latitude, longitude: here.longitude }, keyed: true,
+    asked: [false, "awaiting-location", "locate"],
+    route: [true, true, true, ["route"]],
+    plain: false,
+    fromHere: [false, "own-position"],
+    handoff: "handoff",
+    provider: { phonePositionAvailable: true },
+    fenced: 0,
+    kinds: ["pharmacy", undefined, "coffee"],
+  }))
+})
+
+it.live('Keep one location watch and clean up stale callbacks and handles: listeners attach before the watch, a grant received while hidden waits for the screen, a stale fix is skipped, an invalid one ends the watch, and cleanup is confirmed (spec/maps/navigationService.md, "Story: Keep one location watch and clean up stale callbacks and handles")', effect () => {
+  const order: string[] = []
+  const listeners: { fix?: (fix: NativeFix) => void } = {}
+  let hidden = true
+  let show = () => {}
+  const location = try nativeMapsLocation({
+    checkPermissions: () => sync(() => ({ location: "prompt" as const })),
+    requestPermissions: () => sync(() => {
+      order.push("prompt")
+      return { location: "granted" as const, accuracy: "precise" as const }
+    }),
+    cancelPermissionRequest: () => sync(() => { order.push("cancel") }),
+    watchPosition: () => sync(() => {
+      order.push("watch")
+      return { watchId: "w1" }
+    }),
+    clearWatch: (watchId) => sync(() => { order.push(`clear:${watchId}`) }),
+    onFix: (listener) => sync(() => {
+      order.push("fixes")
+      listeners.fix = listener
+      return sync(() => { order.push("remove:fixes") })
+    }),
+    onError: () => sync(() => {
+      order.push("errors")
+      return sync(() => { order.push("remove:errors") })
+    }),
+  }, {
+    isNative: () => true,
+    available: () => true,
+    hidden: () => hidden,
+    visible: () => callback<void>((resume) => { show = () => resume(Effect.void) }),
+  })
+  const fixes: number[] = []
+  const errors: string[] = []
+  const starting = fork location.start(false, (position) => { fixes.push(position.accuracyMeters) }, (error) => { errors.push(error.code) })
+  try sleep("20 millis")
+  const waiting = [...order]
+  hidden = false
+  show()
+  try join starting
+  const now = Date.now()
+  listeners.fix?.({ coords: { latitude: here.latitude, longitude: here.longitude, accuracy: 8, timestamp: now } })
+  listeners.fix?.({ coords: { latitude: here.latitude, longitude: here.longitude, accuracy: 9, timestamp: now - 60_000 } })
+  listeners.fix?.({ coords: { latitude: 200, longitude: here.longitude, accuracy: 9, timestamp: now } })
+  try sleep("20 millis")
+  try Effect.try(() => assert.deepStrictEqual({ waiting, order, fixes, errors },
+    { waiting: ["prompt"], order: ["prompt", "fixes", "errors", "watch", "remove:fixes", "remove:errors", "clear:w1"], fixes: [8], errors: ["invalid-response"] }))
+})
+
+function memoryStore(): AgentSavedPlaceStore {
+  const documents = new Map<string, { readonly revision: number; readonly text: string }>()
+  return {
+    read: (owner) => sync(() => documents.get(owner)),
+    write: (owner, expected, text) => sync(() => {
+      const current = documents.get(owner)
+      if (current?.revision !== expected) return false
+      documents.set(owner, { revision: (current?.revision ?? 0) + 1, text })
+      return true
+    }),
+  }
+}
+
+function ownerTurn(text: string, roomId = "00000000-0000-4000-8000-000000000002"): Memory {
+  return { entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text, source: "client_chat", channelType: "DM" } } as unknown as Memory
+}
+
+it.live('Save a place with my assistant once, and answer the question Maps asked: a repeat saves nothing, a superseded repeat is a new change, a reused key is refused, and "the second one" continues the request that asked (spec/maps/savedPlaces.md, "Story: Save a place with my assistant once"; spec/maps/routing.md, "Story: Send my directions request to Maps, not to a view")', effect () => {
+  const { link } = linkFake()
+  const store = memoryStore()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => store, namesView: (_runtime, destination) => destination === "settings" })
+  const runtime = {} as IAgentRuntime
+  const act = (name: string, message: Memory, parameters: Record<string, unknown>) => promise(async () => {
+    const action = plugin.actions?.find((found) => found.name === name)
+    if (action === undefined) throw new Error(`${name} is not registered`)
+    return await action.handler(runtime, message, undefined, { parameters })
+  })
+  const turn = ownerTurn("save Coit Tower as Work")
+  const work = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Work" })
+  const again = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Work" })
+  const home = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Home" })
+  const back = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Work" })
+  const keyed = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Office", idempotencyKey: "k1" })
+  const reused = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Gym", idempotencyKey: "k1" })
+  const listed = try act("MAPS_SAVED", turn, {})
+  const asked = try act("MAPS_NAVIGATION_START", ownerTurn("take me to the pharmacy"), { destination: "pharmacy" })
+  const answered = try act("MAPS_NAVIGATION_START", ownerTurn("the second one"), {})
+  const elsewhere = try act("MAPS_NAVIGATION_START", ownerTurn("the second one", "00000000-0000-4000-8000-000000000003"), {})
+  const routes = [
+    routeOf("directions to Coit Tower", ownerTurn("directions to Coit Tower"), false, () => false),
+    routeOf("take me to Coit Tower", ownerTurn("take me to Coit Tower"), false, () => false),
+    routeOf("take me to settings", ownerTurn("take me to settings"), false, (destination) => destination === "settings"),
+    routeOf("take me to Coit Tower then text Sam", ownerTurn("x"), false, () => false),
+    routeOf("find the nearest pharmacy", ownerTurn("x"), false, () => false),
+    routeOf("directions to Coit Tower", { ...ownerTurn("x"), content: { text: "x", source: "discord", channelType: "GROUP" } } as unknown as Memory, false, () => false),
+    routeOf("directions to assemble the shelf", ownerTurn("x"), false, () => false),
+  ]
+  const receipt = (result: { readonly effectReceipts?: ReadonlyArray<{ readonly outcome: string }> }) => result.effectReceipts?.[0]?.outcome
+  try Effect.try(() => assert.deepStrictEqual({
+    saves: [[work.success, receipt(work)], [again.success, receipt(again), again.text], [home.success, receipt(home)], [back.success, receipt(back)], [keyed.success, receipt(keyed)], reused.success],
+    listed: (listed.data as { readonly savedPlaces: ReadonlyArray<{ readonly label: string }> }).savedPlaces.map((saved) => saved.label),
+    asked: [asked.success, (asked.data as { readonly choice?: string }).choice],
+    answered: [answered.success, (answered.data as { readonly destination?: { readonly providerPlaceId: string } }).destination?.providerPlaceId],
+    elsewhere: elsewhere.success,
+    routes,
+  }, {
+    saves: [[true, "applied"], [true, "noop", "Work was already saved."], [true, "applied"], [true, "applied"], [true, "applied"], false],
+    listed: ["Office"],
+    asked: [false, "destination"],
+    answered: [true, "near"],
+    elsewhere: false,
+    routes: ["ToDirections", "ToTravel", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner", "ToPlanner"],
+  }))
+})

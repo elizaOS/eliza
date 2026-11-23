@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"
+// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"; spec/os/signIn/cloudRequests.md, "A cancel disconnects only the page's own call still in flight, which then settles once as cancelled"
 import type { Brand } from "effect";
 import type { BodyHandoff, CallRefusal } from "../../../gen/os__signIn__cloudRequests.ts";
 import type { EnvironmentName } from "./sign-in.ts";
@@ -26,7 +26,9 @@ export type CloudFailure =
   | "grant-unknown"
   | "grant-unreadable"
   | "link-refused"
-  | "no-browser";
+  | "no-browser"
+  | "name-in-use"
+  | "cancelled";
 
 export interface CloudRequest {
   readonly method: CloudMethod;
@@ -35,6 +37,7 @@ export interface CloudRequest {
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: unknown;
   readonly environment?: EnvironmentName;
+  readonly signal?: AbortSignal;
 }
 
 export interface CloudReply {
@@ -56,11 +59,13 @@ export interface NativeCloudRequest {
   readonly headers: Readonly<Record<string, string>>;
   readonly body?: string;
   readonly environment?: EnvironmentName;
+  readonly id?: string;
 }
 
 export interface ElizaCloudPlugin {
   request(options: NativeCloudRequest): Promise<unknown>;
   readGrant(options: { readonly grant: BodyGrantId }): Promise<unknown>;
+  cancel(options: { readonly id: string }): Promise<unknown>;
   openExternal(options: ExternalLinkOptions): Promise<unknown>;
 }
 

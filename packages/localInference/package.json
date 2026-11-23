@@ -4,5 +4,45 @@
   "private": true,
   "type": "module",
   "description": "On-device model lifecycle, text and embeddings, and speech output.",
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.1.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./speech-route": {
+      "eliza-source": "./src/speech-route.vibe",
+      "types": "./dist/src/speech-route.d.ts",
+      "import": "./dist/src/speech-route.js",
+      "default": "./dist/src/speech-route.js"
+    },
+    "./speech-output": {
+      "eliza-source": "./src/speech-output.vibe",
+      "types": "./dist/src/speech-output.d.ts",
+      "import": "./dist/src/speech-output.js",
+      "default": "./dist/src/speech-output.js"
+    }
+  }
 }

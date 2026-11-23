@@ -1,8 +1,9 @@
 # Deletion window
 
-A deletion the owner reviewed on the device (a calendar event, a reminder or
-another device record whose deletion is delayed after review) waits ten
-seconds before the provider write, so that the owner can undo it. This
+A deletion the owner reviewed on the device (a calendar event, a reminder, a
+text message, a conversation, a voicemail, a contact or another device record
+whose deletion is delayed after review) waits ten seconds before the provider
+write, so that the owner can undo it. This
 library holds the deadline, the window, the claim that decides between Undo
 and the provider write, and what the Undo notice offers. The renderer and
 every native journal that keeps such a deletion use it. Nothing here performs
@@ -166,5 +167,24 @@ pure def lawNoticeOffersUndoExactlyWhenUndoCanWin(entry: PendingDeletion, later:
 pure def lawOnlyAnUndoIsConfirmedAsKept(entry: PendingDeletion, owner: str, later: DeletionClock, claimAction: DeletionClaimAction): bool = {
   val claim = claimDeletion(entry, owner, later, claimAction)
   claim.won implies (undoConfirmed(claim.claimed.deletionPhase) iff claimAction == ClaimUndo)
+}
+```
+
+### A record waiting in its window is hidden from its list until Undo or the provider settles it
+
+The list that shows a message, a conversation, a voicemail or a contact
+leaves it out while its deletion is queued on its review clock, so that it
+leaves the screen when the owner confirms and comes back at once on Undo. A
+paused, undone, conflicting or uncertain deletion, or a queued one whose
+clock changed, hides nothing: the list shows what the provider holds.
+
+```quint
+pure def hiddenFromList(phase: DeletionPhase, windowState: WindowState): bool = phase == Queued and windowState != ClockChanged
+pure def lawOnlyAPendingClaimHidesItsRecord(entry: PendingDeletion, later: DeletionClock): bool =
+  hiddenFromList(entry.deletionPhase, deletionWindow(entry.deadline, later)) implies
+    (entry.deletionPhase == Queued and (claimDeletion(entry, entry.owner, later, ClaimUndo).won or claimDeletion(entry, entry.owner, later, ClaimDispatch).won))
+pure def lawUndoShowsTheRecordAgain(entry: PendingDeletion, later: DeletionClock, after: DeletionClock): bool = {
+  val undone = claimDeletion(entry, entry.owner, later, ClaimUndo)
+  undone.won implies not(hiddenFromList(undone.claimed.deletionPhase, deletionWindow(entry.deadline, after)))
 }
 ```

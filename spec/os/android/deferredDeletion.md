@@ -1,7 +1,8 @@
 # Deferred deletion journal
 
 The native journal that keeps each reviewed deletion of a device record (a
-calendar event or a reminder occurrence) through its
+calendar event, a reminder occurrence, a text message, a conversation, a
+voicemail or a contact) through its
 [deletion window](./deletionWindow.md), imported as `W`: it stages the row,
 decides between Undo and the provider write with `W::claimDeletion`, starts
 the provider call at most once and keeps the outcome. It models
@@ -19,7 +20,9 @@ encoding of the reviewed record, so two equal JSON objects in another key
 order are one target. The shell checks the operation ID (1 to 128 ASCII
 letters, digits, `_` or `-`), the clock, the 3 MiB limit on the encoded
 journal and the 1,000 dismissal marks; the reminder store keeps its own
-occurrence effects.
+occurrence effects. The messages, voicemail and contacts modules inspect a
+record for staging and make its provider call at expiry, each through the
+host's port.
 
 ## Story: Keep one winner between Undo and the provider
 
@@ -32,11 +35,13 @@ occurrence effects.
 Staging needs the owner's current review fence and a usable review clock.
 The same ID with the same owner, kind and target returns the existing row
 unchanged, whatever its phase; any other staging of a known ID is refused.
-A new ID is refused once the journal holds 500 rows.
+A new ID is refused once the journal holds 500 rows, and a new message,
+conversation, voicemail or contact row also needs its provider module's
+inspection ([below](#story-undo-a-deleted-message-conversation-voicemail-or-contact)).
 
 ```quint
 import deletionWindow as W from "./deletionWindow"
-type DeletionKind = CalendarEvent | ReminderOccurrence
+type DeletionKind = CalendarEvent | ReminderOccurrence | MessageRecord | ThreadRecord | VoicemailRecord | ContactRecord
 type DeletionHold = NotHeld | HeldOwnerChanged | HeldOwnerUnavailable | HeldProviderDeclined | HeldPermissionRefused
 type DeletionRow = { id: str, kind: DeletionKind, target: str, entry: W::PendingDeletion, hold: DeletionHold, providerCalls: int, dismissed: bool }
 type DeletionJournal = { rows: List[DeletionRow] }
@@ -54,15 +59,15 @@ pure def stageDecision(rows: List[DeletionRow], by: str, id: str, kind: Deletion
   else if (prior.entry.owner == by and prior.kind == kind and prior.target == target) ReplayRow
   else RefuseIdentity
 }
-pure def canStage(s: DeletionJournal, by: str, id: str, kind: DeletionKind, target: str, clock: W::DeletionClock, fence: FenceRead): bool =
+pure def canStage(s: DeletionJournal, by: str, id: str, kind: DeletionKind, target: str, clock: W::DeletionClock, fence: FenceRead, inspection: RecordInspection): bool =
   by != "" and id != "" and target != "" and fence == FenceCurrent and W::clockUsable(clock) and
-  (stageDecision(s.rows, by, id, kind, target) == StageNew or stageDecision(s.rows, by, id, kind, target) == ReplayRow)
-pure def stage(s: DeletionJournal, by: str, id: str, kind: DeletionKind, target: str, clock: W::DeletionClock, fence: FenceRead): DeletionStep = {
+  ((stageDecision(s.rows, by, id, kind, target) == StageNew and recordStageable(kind, inspection)) or stageDecision(s.rows, by, id, kind, target) == ReplayRow)
+pure def stage(s: DeletionJournal, by: str, id: str, kind: DeletionKind, target: str, clock: W::DeletionClock, fence: FenceRead, inspection: RecordInspection): DeletionStep = {
   val row = { id: id, kind: kind, target: target, entry: { owner: by, deadline: W::deletionDeadline(clock), deletionPhase: W::Queued }, hold: NotHeld, providerCalls: 0, dismissed: false }
   { state: if (hasRow(s.rows, id)) s else { rows: s.rows.append(row) }, out: List() }
 }
-pure def lawAKnownIdStagesOnlyAsItsExactReplay(row: DeletionRow, by: str, kind: DeletionKind, target: str, clock: W::DeletionClock): bool =
-  canStage({ rows: List(row) }, by, row.id, kind, target, clock, FenceCurrent) implies
+pure def lawAKnownIdStagesOnlyAsItsExactReplay(row: DeletionRow, by: str, kind: DeletionKind, target: str, clock: W::DeletionClock, inspection: RecordInspection): bool =
+  canStage({ rows: List(row) }, by, row.id, kind, target, clock, FenceCurrent, inspection) implies
     (by == row.entry.owner and kind == row.kind and target == row.target)
 pure def stepStagingNeverChangesAStagedRow(before: DeletionJournal, via: str, after: DeletionJournal): bool =
   via == "stage" implies before.rows.every(r => after.rows.includes(r))
@@ -180,8 +185,9 @@ Only the row's owner with a current fence and a provider that admits the
 target dispatches. A changed owner pauses without reading the old fence; a
 stale fence pauses as changed. An unreadable owner waits and is retried for
 24 hours after expiry, then pauses as unavailable. An unreadable fence
-pauses a calendar row as unavailable and leaves a reminder row queued for a
-retry. A declined target pauses. The manual installation is always read,
+pauses a calendar, message, conversation, voicemail or contact row as
+unavailable and leaves a reminder row queued for a retry. A declined target
+pauses. The manual installation is always read,
 with a current fence.
 
 ```quint
@@ -191,7 +197,7 @@ pure def expiryDecision(row: DeletionRow, clock: W::DeletionClock, authority: Ow
     | OwnerUnreadable => if (clock.elapsed - row.entry.deadline.expiresElapsed < ownerRetryMs) AwaitOwner else PauseDeletion({ hold: HeldOwnerUnavailable })
     | OwnerAt(a) =>
       if (a.owner != row.entry.owner or a.fence == FenceStale) PauseDeletion({ hold: HeldOwnerChanged })
-      else if (a.fence == FenceUnreadable) (if (row.kind == CalendarEvent) PauseDeletion({ hold: HeldOwnerUnavailable }) else AwaitOwner)
+      else if (a.fence == FenceUnreadable) (if (row.kind != ReminderOccurrence) PauseDeletion({ hold: HeldOwnerUnavailable }) else AwaitOwner)
       else if (admission == ProviderDeclines) PauseDeletion({ hold: HeldProviderDeclined })
       else if (W::claimDeletion(row.entry, a.owner, clock, W::ClaimDispatch).won) DispatchDeletion
       else AwaitOwner
@@ -211,6 +217,7 @@ pure val rowValues: Set[DeletionRow] = List(
   { ...noRow, id: "op1", target: "event1", entry: { owner: "owner1", deadline: W::deletionDeadline({ continuity: "boot1", elapsed: 0, wall: 100 }), deletionPhase: W::Queued } },
   { ...noRow, id: "op1", kind: ReminderOccurrence, target: "event1", entry: { owner: "owner1", deadline: W::deletionDeadline({ continuity: "boot1", elapsed: 0, wall: 100 }), deletionPhase: W::Queued } },
   { ...noRow, id: "op2", target: "event2", entry: { owner: "owner2", deadline: W::deletionDeadline({ continuity: "boot1", elapsed: 5000, wall: 5100 }), deletionPhase: W::Queued } },
+  { ...noRow, id: "op2", kind: ContactRecord, target: "event2", entry: { owner: "owner1", deadline: W::deletionDeadline({ continuity: "boot1", elapsed: 0, wall: 100 }), deletionPhase: W::Queued } },
   { ...noRow, id: "op2", target: "event2", hold: HeldOwnerChanged, entry: { owner: "owner1", deadline: W::deletionDeadline({ continuity: "boot1", elapsed: 0, wall: 100 }), deletionPhase: W::Paused } },
   { ...noRow, id: "op1", target: "event1", providerCalls: 1, entry: { owner: "owner1", deadline: W::deletionDeadline({ continuity: "boot1", elapsed: 0, wall: 100 }), deletionPhase: W::Dispatching } }
 ).foldl(Set(), (acc, r) => acc.union(Set(r)))
@@ -251,4 +258,60 @@ pure def canRetire(s: DeletionJournal, id: str): bool = hasRow(s.rows, id) and s
 pure def retire(s: DeletionJournal, id: str): DeletionStep = { state: { rows: s.rows.select(r => r.id != id) }, out: List() }
 pure def stepRetentionKeepsUnresolvedRows(before: DeletionJournal, after: DeletionJournal): bool =
   before.rows.every(r => settledPhase(r.entry.deletionPhase) or after.rows.some(x => x.id == r.id))
+```
+
+## Story: Undo a deleted message, conversation, voicemail or contact
+
+> As an owner, I want a text, a conversation, a voicemail or a contact I
+> chose to delete to wait ten seconds before the phone deletes it, as an
+> event or a reminder does, so that Undo keeps it, a restart keeps the
+> window and its receipt, and I am told it is gone only when Android
+> removed it.
+
+### A message, conversation, voicemail or contact is staged only while Android still holds it as I reviewed it
+
+The owner confirms on the app's own screen, which the provider module checks
+as it would its own write: the SMS role and read grant for a message or
+conversation, the voicemail grant for a voicemail, a writing install with
+both Contacts grants for a contact, each with the app in front on the
+unlocked phone. The module then reads the record without changing it: a
+message whose thread, date or box changed, or a contact at another version,
+is changed; a record that is gone is gone; a message or conversation whose
+rows all belong to a send is in a send. Only a current record is staged,
+with the manual owner of the installation; every other answer stages
+nothing and reaches the screen as the module's own refusal.
+
+```quint
+type RecordInspection = RecordCurrent | RecordGone | RecordChanged | RecordInSend | RecordUnreadable
+pure def isRecordKind(kind: DeletionKind): bool = kind == MessageRecord or kind == ThreadRecord or kind == VoicemailRecord or kind == ContactRecord
+pure def recordStageable(kind: DeletionKind, inspection: RecordInspection): bool = not(isRecordKind(kind)) or inspection == RecordCurrent
+pure def lawOnlyACurrentRecordIsStagedAnew(by: str, id: str, kind: DeletionKind, target: str, clock: W::DeletionClock, inspection: RecordInspection): bool =
+  (isRecordKind(kind) and inspection != RecordCurrent) implies not(canStage(initial, by, id, kind, target, clock, FenceCurrent, inspection))
+pure def sometimesARecordDeletionQueued(s: DeletionJournal): bool = s.rows.some(r => isRecordKind(r.kind) and r.entry.deletionPhase == W::Queued)
+pure def sometimesARecordDeletionUndone(s: DeletionJournal): bool = s.rows.some(r => isRecordKind(r.kind) and r.entry.deletionPhase == W::Undone)
+```
+
+### A record's provider call settles its row only as Android reported it
+
+At expiry the host's port admits the record with what its module needs in
+the background (the role or grant, never the screen) and then makes the
+module's one provider call, which reads the record again and deletes it
+conditionally: a message by its thread, date and settled box; a
+conversation's settled rows dated at or before the newest one the owner saw;
+a voicemail through its source; a contact at its reviewed version inside
+one provider transaction. Only a removal Android reported is deleted. A
+record gone, changed or taken into a send meanwhile, or a write the provider
+refused, deleted nothing and is a conflict; a lost reply or an unconfirmed
+removal is uncertain and is never repeated; an explicit permission refusal
+pauses the row.
+
+```quint
+type RecordAnswer = RecordRemoved | RecordAlreadyGone | RecordChangedMeanwhile | RecordNowInSend | RecordNotWritten | RecordAccessRefused | RecordSilent
+pure def recordReadback(answer: RecordAnswer): ProviderOutcome =
+  if (answer == RecordRemoved) OutcomeDeleted
+  else if (answer == RecordAccessRefused) OutcomePermissionRefused
+  else if (answer == RecordSilent) OutcomeUncertain
+  else OutcomeConflict
+pure def lawOnlyARemovalAndroidReportedDeletesARecord(answer: RecordAnswer): bool =
+  (recordReadback(answer) == OutcomeDeleted iff answer == RecordRemoved) and (recordReadback(answer) == OutcomeUncertain iff answer == RecordSilent)
 ```

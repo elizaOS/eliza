@@ -1,4 +1,4 @@
-// spec/os/android/media/rows.md, "A row is applied only after one counted write and a confirmed readback"; spec/os/android/media/catalog.md, "A next cursor is issued only for a full page with a lookahead row and reaches the caller only with the published page"; spec/os/android/media/trash.md, "A confirmation works once, for at most two minutes, and at most four wait at once"; spec/os/android/media/albums.md, "There are at most 24 albums of at most 200 members, each key once"; spec/os/android/media/editCopy.md, "Recovery observes the unique owned row before it settles anything"; spec/os/android/files/documentGrants.md, "Story: Keep only the documents I selected"
+// spec/os/android/media/rows.md, "A row is applied only after one counted write and a confirmed readback"; spec/os/android/media/catalog.md, "A next cursor is issued only for a full page with a lookahead row and reaches the caller only with the published page"; spec/os/android/media/trash.md, "A confirmation works once, for at most two minutes, and at most four wait at once"; spec/os/android/media/albums.md, "There are at most 24 albums of at most 200 members, each key once"; spec/os/android/media/editCopy.md, "Recovery observes the unique owned row before it settles anything"; spec/os/android/files/documentGrants.md, "Story: Keep only the documents I selected"; spec/os/android/files/documentGrants.md, "A selection reports its size and time only as the provider answered each"
 import { albumCapacity, memberCapacity } from "../../gen/os__android__media__albums.effect.vibe"
 import { maxCatalogPage } from "../../gen/os__android__media__catalog.effect.vibe"
 import { trashLimit } from "../../gen/os__android__media__trash.effect.vibe"
@@ -143,6 +143,8 @@ export const SelectedDocument = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
   mimeType: Schema.optionalKey(Schema.NullOr(Schema.String)),
   canRename: Schema.optionalKey(Schema.Boolean),
+  size: Schema.optionalKey(Count),
+  modified: Schema.optionalKey(Count.check(Schema.isGreaterThan(0))),
 })
 export const PdfPage = Schema.Struct({
   status: Schema.Literals(["rendered", "unavailable", "unsupported", "failed"]),

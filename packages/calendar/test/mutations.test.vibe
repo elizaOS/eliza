@@ -1,0 +1,91 @@
+// spec/calendar/mutationLedger.md, "Story: Run a reviewed Calendar change at most once and know what happened"
+import { assert, it } from "@effect/vitest"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import {
+  calendarMutationLedger, CalendarWriteNotAccepted, CalendarWriteUnconfirmed, reviewDigest,
+  type CalendarEvent, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest, type CalendarSourceKey,
+} from "../src/index.vibe"
+
+const source: CalendarSourceKey = { provider: "google", side: "owner", grantId: "grant", connectorAccountId: "owner@example.com", calendarId: "primary" }
+const fields = { title: "Dentist", description: "", location: "Main St", startAt: "2030-03-04T17:00:00.000Z", endAt: "2030-03-04T18:00:00.000Z", isAllDay: false, timeZone: "America/Los_Angeles" }
+const payload = { action: "schedule_event", account: "owner@example.com", source, fields, recurrence: null } as const
+const request: CalendarMutationRequest = { id: "approval-1", digest: reviewDigest(payload), payload }
+const event: CalendarEvent = {
+  id: "evt-1", externalId: "evt-1", agentId: "agent", provider: "google", side: "owner", calendarId: "primary", title: fields.title,
+  description: fields.description, location: fields.location, startAt: fields.startAt, endAt: fields.endAt, status: "confirmed", isAllDay: false, timezone: fields.timeZone, htmlLink: null, conferenceLink: null, organizer: null, attendees: [], metadata: { etag: "e1" },
+  syncedAt: "2030-01-01T00:00:00.000Z", updatedAt: "2030-01-01T00:00:00.000Z", connectorAccountId: "owner@example.com", grantId: "grant",
+}
+const receipt: CalendarMutationReceipt = { operation: "schedule_event", source, eventId: "evt-1", providerVersion: "e1", event, target: null, acceptedAt: event.updatedAt }
+
+type Answer = "applied" | "refused" | "unknown" | "hang"
+
+effect function scriptedProvider(answers: Answer[]) {
+  const calls = try Ref.make(0)
+  const started = try Deferred.make<void>()
+  const port: CalendarMutationPort = {
+    effect preflight() { return { target: null } },
+    effect execute() {
+      const answer = answers[try Ref.getAndUpdate(calls, (count) => count + 1)] ?? "applied"
+      try Deferred.succeed(started, undefined)
+      if (answer === "refused") throw new CalendarWriteNotAccepted({ failure: { code: "rate_limited", message: "Try later.", retryable: true } })
+      if (answer === "unknown") throw new CalendarWriteUnconfirmed({ failure: { code: "timeout", message: "No answer.", retryable: false } })
+      if (answer === "hang") try never
+      return receipt
+    },
+  }
+  return { port, calls: Ref.get(calls), started: Deferred.await(started) }
+}
+
+it.effect(`Run a reviewed Calendar change at most once and know what happened (spec/calendar/mutationLedger.md, "Story: Run a reviewed Calendar change at most once and know what happened"; spec/calendar/mutationLedger.md, "Reconciliation settles an ambiguous attempt from evidence or the owner's word"; spec/calendar/mutationLedger.md, "A replay needs a durable receipt, and a recorded receipt never changes")`, effect () => {
+  provide KeyValueStore.layerMemory {
+    const ledger = try calendarMutationLedger()
+    const provider = try scriptedProvider(["unknown", "refused", "applied"])
+    assert.deepStrictEqual(try ledger.run(request, provider.port), { kind: "blocked", reason: "ambiguous" })
+    assert.deepStrictEqual(try ledger.run(request, provider.port), { kind: "blocked", reason: "ambiguous" })
+    assert.strictEqual(try provider.calls, 1)
+    const held = try ledger.inspect(request.id)
+    assert.deepStrictEqual([held.state.approval, held.awaitingReconciliation, held.receipt], ["ReconciliationRequired", true, undefined])
+    assert.strictEqual((try ledger.reconcile(request.id, { kind: "not_delivered" })).kind, "retryable")
+    assert.deepStrictEqual(try ledger.run(request, provider.port), { kind: "retryable", failure: { code: "rate_limited", message: "Try later.", retryable: true } })
+    assert.deepStrictEqual(try ledger.run(request, provider.port), { kind: "succeeded", receipt, replayed: false })
+    const restarted = try calendarMutationLedger()
+    assert.deepStrictEqual(try restarted.run(request, provider.port), { kind: "succeeded", receipt, replayed: true })
+    assert.strictEqual(try provider.calls, 3)
+    const settled = try ledger.inspect(request.id)
+    assert.deepStrictEqual([settled.state.attempt, settled.state.approval, settled.state.generation, settled.receipt], ["Succeeded", "Done", 3, receipt])
+
+    const other = { ...request, id: "approval-2" }
+    const quarantined = try scriptedProvider(["unknown"])
+    try ledger.run(other, quarantined.port)
+    const unrelated = { ...receipt, eventId: "evt-2", event: { ...event, id: "evt-2" }, operation: "modify_event" as const }
+    assert.deepStrictEqual(try ledger.reconcile(other.id, { kind: "receipt", receipt: unrelated }), { kind: "blocked", reason: "ambiguous" })
+    assert.deepStrictEqual(try ledger.reconcile(other.id, { kind: "receipt", receipt }), { kind: "succeeded", receipt, replayed: false })
+    assert.deepStrictEqual((try ledger.inspect(other.id)).receipt, receipt)
+    assert.deepStrictEqual(try ledger.reconcile(other.id, { kind: "not_delivered" }), { kind: "succeeded", receipt, replayed: true })
+
+    const changed = { ...request, digest: reviewDigest({ ...payload, fields: { ...fields, title: "Dentist (moved)" } }) }
+    assert.strictEqual((try ledger.run(changed, provider.port)).kind, "succeeded")
+    const fresh = { ...request, id: "approval-3" }
+    try ledger.run(fresh, (try scriptedProvider(["refused"])).port)
+    const swapped = try ledger.run({ ...fresh, digest: changed.digest }, provider.port)
+    assert.deepStrictEqual(swapped.kind === "invalidated" && swapped.failure.code, "CALENDAR_MUTATION_REQUEST_CHANGED")
+  }
+})
+
+it.effect('A restart quarantines an executing claim instead of retrying it (spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"; spec/calendar/mutationLedger.md, "Story: Run a reviewed Calendar change at most once and know what happened")', effect () => {
+  provide KeyValueStore.layerMemory {
+    const before = try calendarMutationLedger()
+    const hanging = try scriptedProvider(["hang"])
+    const running = fork before.run(request, hanging.port)
+    try hanging.started
+    const after = try calendarMutationLedger()
+    const working = try scriptedProvider(["applied"])
+    assert.deepStrictEqual(try after.run(request, working.port), { kind: "blocked", reason: "ambiguous" })
+    assert.strictEqual(try working.calls, 0)
+    try Fiber.interrupt(running)
+    assert.deepStrictEqual(try after.reconcile(request.id, { kind: "owner_confirmed" }), { kind: "confirmed" })
+    assert.deepStrictEqual(try after.run(request, working.port), { kind: "confirmed" })
+    const confirmed = try after.inspect(request.id)
+    assert.deepStrictEqual([confirmed.state.attempt, confirmed.state.approval, confirmed.state.ownerConfirmed, try working.calls], ["Ambiguous", "Done", true, 0])
+  }
+})

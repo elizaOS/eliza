@@ -4,5 +4,66 @@
   "private": true,
   "type": "module",
   "description": "Reviewed workflows: authoring, admission, approvals, scheduling, execution and hosted digests.",
-  "license": "MIT"
+  "license": "MIT",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./client": {
+      "eliza-source": "./src/client/index.vibe",
+      "types": "./dist/src/client/index.d.ts",
+      "import": "./dist/src/client/index.js",
+      "default": "./dist/src/client/index.js"
+    },
+    "./digests": {
+      "eliza-source": "./src/digests/index.vibe",
+      "types": "./dist/src/digests/index.d.ts",
+      "import": "./dist/src/digests/index.js",
+      "default": "./dist/src/digests/index.js"
+    },
+    "./scope": {
+      "eliza-source": "./src/scope.vibe",
+      "types": "./dist/src/scope.d.ts",
+      "import": "./dist/src/scope.js",
+      "default": "./dist/src/scope.js"
+    },
+    "./worker": {
+      "eliza-source": "./src/worker/index.vibe",
+      "types": "./dist/src/worker/index.d.ts",
+      "import": "./dist/src/worker/index.js",
+      "default": "./dist/src/worker/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const crypto=require('node:crypto');const executable='src/worker/main.js';fs.chmodSync('dist/'+executable,0o755);const sha256=crypto.createHash('sha256').update(fs.readFileSync('dist/'+executable)).digest('hex');fs.writeFileSync('dist/workflow-worker.json',JSON.stringify({executable,sha256})+'\\n');\"",
+    "test": "vitest run",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/cloud": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0",
+    "effect": "4.1.1",
+    "quickjs-emscripten-core": "0.32.0",
+    "typescript": "catalog:",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@effect/vitest": "4.1.1",
+    "@electric-sql/pglite": "catalog:",
+    "@types/node": "catalog:",
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
+  }
 }

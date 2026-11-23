@@ -35,7 +35,7 @@ export interface TestCloudOptions {
   readonly seed?: string
 }
 
-effect function fakeServer() {
+export effect function fakeServer() {
   return try acquireRelease(promise(() => startFakeServer()), (fakes) => promise(() => fakes.close()))
 }
 

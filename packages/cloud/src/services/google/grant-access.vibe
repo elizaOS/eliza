@@ -107,7 +107,7 @@ export function holds(granted: ReadonlyArray<string>, capability: GoogleCapabili
   return grantsCapability(knownScopes(granted), kindOf[capability])
 }
 
-function capabilitiesOf(granted: ReadonlyArray<string>): ReadonlyArray<GoogleCapability> {
+export function capabilitiesOf(granted: ReadonlyArray<string>): ReadonlyArray<GoogleCapability> {
   return googleCapabilities.filter((capability) => holds(granted, capability))
 }
 

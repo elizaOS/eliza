@@ -15,6 +15,7 @@ module node {
   export interface DoneFrame {
     readonly type: "done"; readonly fullText: string; readonly messageId: string; readonly userMessageId: string; readonly agentName: string
     readonly actionResults: readonly ActionResultFrame[]; readonly taskChoices?: readonly unknown[]; readonly failureKind?: string
+    readonly action?: { readonly kind: string; readonly validatedCard: boolean; readonly verbatimAsked: boolean }
   }
 
   export interface ErrorFrame { readonly type: "error"; readonly code: string; readonly message: string }

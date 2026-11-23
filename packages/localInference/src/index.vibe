@@ -1,0 +1,14 @@
+// spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"
+export { curatedModels, isCatalogId, modelNamed, type Catalog, type CatalogId, type CatalogModel, type EmbeddingSpace, type ModelSource, type PublishedFile } from "./catalog.vibe"
+export { EmbeddingRefused, embedText, embeddingsOwnedBy, type EmbeddingChoice } from "./embeddings.vibe"
+export {
+  EngineFailed, EngineUnavailable, InferenceEngine,
+  type Capability, type EndOfTurnScore, type EngineVector, type InstalledModel, type Pcm, type SpeechReadiness,
+} from "./engine.vibe"
+export {
+  AssignmentsUnreadable, DownloadFailed, ModelStoreUnavailable, Rejected, openLocalModels, slotNamed, slotNames,
+  type LocalModelsApi, type ModelView, type ModelsView, type SlotName,
+} from "./models.vibe"
+export { localInferenceModule, localInferencePlugin, localInferencePluginName, localInferenceProvider } from "./plugin.vibe"
+export { endOfTurnPath, localInferenceRoutes } from "./routes.vibe"
+export { SpeechInputRefused, speakLocally, transcribeLocally } from "./speech.vibe"

@@ -1,0 +1,163 @@
+// spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/assistant/timezone.md, "At a tick, the owner's clock is the travel zone while travelling, else the first zone known"
+import { readOperation, receiptOutcome, type DeviceOperation } from "@elizaos/agent/device-actions"
+import { resolveZone } from "./timezone.vibe"
+
+export { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, statedZone, type OwnerFacts, type Travel } from "./timezone.vibe"
+
+/** A request to hand an alarm to the system Clock, as the agent's vocabulary defines it. */
+export type ClockHandoffOperation = Extract<DeviceOperation, { readonly type: "clock_handoff" }>
+/** A repeat day, Sunday 1 through Saturday 7, as Android's Clock numbers them. */
+export type ClockDay = 1 | 2 | 3 | 4 | 5 | 6 | 7
+/** What the Clock reported for a handoff: it opened, or why it did not. */
+export interface ClockHandoffResult {
+  readonly kind: "clock-handoff"
+  readonly action: ClockHandoffOperation["action"]
+  readonly status: "opened" | "unavailable" | "denied" | "failed" | "unknown"
+}
+
+/** The capability of a Clock handoff without repeat days. */
+export const clockCapability = "clock.handoff.v1"
+/** The capability of a Clock handoff that carries its own repeat days. */
+export const clockRepeatCapability = "clock.handoff.v2"
+/** Short names of the repeat days, Sunday first. */
+export const clockDayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
+
+/** The phone facts that bound what a Clock handoff host may advertise. */
+export interface ClockHandoffHostSupport {
+  readonly offered: readonly unknown[]
+  readonly handler: boolean
+  readonly repeatDays: boolean
+}
+
+/** The Clock capabilities a host advertises: v1 when the agent offers it and a Clock handler exists, v2 only when repeat days reach the Clock too. */
+export function clockHandoffCapabilities(support: ClockHandoffHostSupport): string[] {
+  if (!support.handler) return []
+  return [
+    ...(support.offered.includes(clockCapability) ? [clockCapability] : []),
+    ...(support.repeatDays && support.offered.includes(clockRepeatCapability) ? [clockRepeatCapability] : []),
+  ]
+}
+
+/** Whether a value is a well-formed Clock handoff. */
+export function isClockHandoffOperation(value: unknown): value is ClockHandoffOperation {
+  return readOperation(value)?.operation.type === "clock_handoff"
+}
+
+const ascending = (days: readonly number[]) => [...days].sort((a, b) => a - b)
+
+/** The handoff to dispatch: an explicit empty repeat is a one-off and carries no days, and repeat days go in ascending order. */
+export function clockHandoffDispatch(value: unknown): ClockHandoffOperation | undefined {
+  const checked = readOperation(value)
+  if (checked === undefined || checked.operation.type !== "clock_handoff") return undefined
+  const operation = checked.operation
+  if (operation.action !== "set" || operation.days === undefined) return operation
+  const { days, ...oneOff } = operation
+  return days.length === 0 ? oneOff : { ...oneOff, days: ascending(days) }
+}
+
+/** The repeat days as the owner reads them. */
+export function describeClockDays(days: readonly number[]): string {
+  const sorted = ascending(days)
+  if (sorted.length === 7) return "every day"
+  if (sorted.join() === "2,3,4,5,6") return "weekdays"
+  if (sorted.join() === "1,7") return "weekends"
+  return sorted.map((day) => clockDayNames[day - 1] ?? "").join(", ")
+}
+
+const pad = (value: number) => String(value).padStart(2, "0")
+
+/** The review text: what the Clock will be asked to do, never a promise that an alarm was set, dismissed, snoozed or rang. */
+export function describeClockHandoff(operation: ClockHandoffOperation, product: string): string {
+  switch (operation.action) {
+    case "set": return `Ask Clock to set ${pad(operation.hour)}:${pad(operation.minute)} in ${operation.timeZone}${operation.days?.length ? `, repeating ${describeClockDays(operation.days)}` : ""}${operation.label ? ` named “${operation.label}”` : ""}. Review the alarm in Clock; ${product} cannot confirm creation or ringing.`
+    case "show": return "Open Clock’s alarms page."
+    case "snooze": return `Open Clock so you can choose the intended alarm and snooze it yourself. Select the duration there; ${operation.snoozeMinutes} minutes will not be applied automatically. Completion stays unverified.`
+    case "dismiss": return `Open Clock so you can choose the intended alarm and dismiss it yourself. ${product} will not dismiss or disable an alarm automatically. Completion stays unverified.`
+  }
+}
+
+/** A zone the phone's runtime reported, as a Clock request states it; the zero offset some builds report is UTC. */
+export function normalizeClockTimeZone(zone: unknown): string | undefined {
+  if (typeof zone !== "string") return undefined
+  if (zone === "+00:00" || zone === "-00:00") return "UTC"
+  return /^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)*$/u.test(zone) && zone.length <= 100 && resolveZone(zone) !== undefined ? zone : undefined
+}
+
+module node {
+  /** @throws {never} */
+  export function phoneZone(): string {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone
+  }
+}
+import { phoneZone } from node
+
+/** The phone's current zone, as a Clock request must state it, or undefined when the runtime reports none it knows. */
+export function currentClockTimeZone(): string | undefined {
+  return normalizeClockTimeZone(phoneZone())
+}
+
+/** The zone the owner reviewed is no longer the phone's. */
+export error ClockZoneChanged { reviewed: string; observed: string | undefined; current: string | undefined }
+
+/** Refuses a set request whose reviewed zone no longer matches the observed phone context or the phone's zone now. */
+export effect function checkClockHandoffTimeZone(operation: ClockHandoffOperation, observed: string | undefined, current: string | undefined = currentClockTimeZone()) {
+  if (operation.action === "set" && (operation.timeZone !== observed || operation.timeZone !== current)) {
+    throw new ClockZoneChanged({ reviewed: operation.timeZone, observed, current })
+  }
+}
+
+/** The Clock's report does not bind to the reviewed handoff. */
+export error ClockReceiptRefused { status: unknown }
+
+/** Binds the native dispatcher's status to its receipt: only opened applies, unknown stays unknown, and anything else failed. */
+export effect function clockHandoffReceipt(operation: ClockHandoffOperation, value: unknown, claimKey: string) {
+  const checked = readOperation(operation)
+  const status = typeof value === "object" && value !== null && "status" in value ? value.status : undefined
+  if (checked === undefined) throw new ClockReceiptRefused({ status })
+  const outcome = status === "opened" ? "applied" : status === "unknown" ? "unknown" : "failed"
+  const verdict = receiptOutcome(checked, { outcome, result: value }, claimKey)
+  if (verdict.kind === "refused") throw new ClockReceiptRefused({ status })
+  return verdict.result as ClockHandoffResult
+}
+
+/** A handoff the owner reviewed in a phone form, before it becomes a native dispatch. */
+export type ClockHandoffRequest =
+  | { readonly action: "set"; readonly hour: number; readonly minute: number; readonly label: string; readonly timeZone: string; readonly reviewed: true; readonly days?: ClockDay[] }
+  | { readonly action: "snooze"; readonly snoozeMinutes: number; readonly reviewed: true }
+  | { readonly action: "show" | "dismiss"; readonly reviewed: true }
+
+/** The phone form a Clock handoff is reviewed in. */
+export interface ClockHandoffForm {
+  readonly action: "set" | "show" | "snooze" | "dismiss"
+  readonly time: string
+  readonly label: string
+  readonly snooze: string
+  readonly days: readonly number[]
+}
+
+/** Why a form is not a handoff yet, in the owner's words. */
+export type FormRefusal = { readonly refused: string }
+
+/** The reviewed request a form describes; an empty repeat is a one-off and carries no days. */
+export function buildClockHandoffRequest(form: ClockHandoffForm, timeZone: string): ClockHandoffRequest | FormRefusal {
+  switch (form.action) {
+    case "set": {
+      const time = /^([01]\d|2[0-3]):([0-5]\d)$/u.exec(form.time)
+      const zone = normalizeClockTimeZone(timeZone)
+      if (time === null || form.label.length > 200 || /[\u0000-\u001f\u007f]/u.test(form.label)) return { refused: "Choose a valid time and a label up to 200 characters." }
+      if (zone === undefined) return { refused: "The phone's time zone is not one Clock accepts." }
+      const days = ascending(form.days)
+      if (form.days.length > 0 && (days.length > 7 || new Set(days).size !== days.length || days.some((day) => !Number.isInteger(day) || day < 1 || day > 7))) return { refused: "Choose each repeat day once." }
+      return {
+        action: "set", hour: Number(time[1]), minute: Number(time[2]), label: form.label.trim(), timeZone: zone, reviewed: true,
+        ...(days.length > 0 ? { days: days as ClockDay[] } : {}),
+      }
+    }
+    case "snooze": {
+      const minutes = /^\d{1,2}$/u.test(form.snooze) ? Number(form.snooze) : 0
+      return minutes >= 1 && minutes <= 60 ? { action: "snooze", snoozeMinutes: minutes, reviewed: true } : { refused: "Choose 1 to 60 snooze minutes." }
+    }
+    case "show":
+    case "dismiss": return { action: form.action, reviewed: true }
+  }
+}

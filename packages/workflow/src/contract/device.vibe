@@ -1,0 +1,363 @@
+// spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/workflow/runScope.md, "A relative range resolves from the run's own day and needs a device that understands it"
+import {
+  isPhoneWorkflowLocalDay, isPhoneWorkflowTimeZone, phoneWorkflowCivilMidnight, phoneWorkflowLocalDay, phoneWorkflowLocalDayBounds, resolvePhoneCalendarRange,
+  SELECTED_REMINDERS_WINDOW, validatePhoneSelectedRemindersScope, validatePhoneWorkflowSpec, workflowSha, zoneOffsetMinutes,
+  type PhoneCalendarRange, type PhoneDeviceTarget, type PhoneRelativeCalendarRange, type PhoneStep, type PhoneWorkflowSpec, type PhoneWorkflowSpecError,
+} from "./phone.vibe"
+
+/** The run, version, digest and step one device operation is bound to. */
+export interface WorkflowDeviceBinding { readonly workflowId: string; readonly versionId: string; readonly runId: string; readonly stepId: string; readonly specDigest: string }
+/** A read of explicitly selected Notes at their reviewed revisions. */
+export interface WorkflowNotesReadOperation { readonly type: "read_selected_notes"; readonly notes: readonly { readonly id: string; readonly revision: string }[] }
+/** A read of an absolute Calendar range. */
+export interface WorkflowCalendarReadOperation {
+  readonly type: "read_calendar_range"; readonly calendarIds: readonly string[]; readonly start: string; readonly end: string; readonly timeZone: string; readonly maximumEvents: number
+}
+/** A read of the owner's reminders for one local day. */
+export interface WorkflowReminderReadOperation {
+  readonly type: "read_selected_reminders"; readonly window: typeof SELECTED_REMINDERS_WINDOW; readonly day: string; readonly timeZone: string; readonly maximumItems: number
+}
+/** A workflow device read. */
+export type WorkflowReadOperation = WorkflowNotesReadOperation | WorkflowCalendarReadOperation | WorkflowReminderReadOperation
+/** A workflow device write or presentation. */
+export type WorkflowEffectOperation =
+  | { readonly type: "create_note"; readonly title: string; readonly body: string }
+  | { readonly type: "post_notification"; readonly title: string; readonly body: string }
+  | { readonly type: "speak_text"; readonly text: string }
+/** Any workflow device operation. */
+export type WorkflowDeviceOperation = WorkflowReadOperation | WorkflowEffectOperation
+/** One reminder row a phone returns. */
+export interface WorkflowReminderRow { readonly id: string; readonly revision: string; readonly title: string; readonly dueAt: string; readonly status: "open" | "completed"; readonly completedAt?: string }
+/** One Calendar row a phone returns. */
+export interface WorkflowCalendarRow { readonly id: string; readonly calendarId: string; readonly revision: string; readonly title: string; readonly start: string; readonly end: string; readonly allDay: boolean }
+/** One Note row a phone returns. */
+export interface WorkflowNoteRow { readonly id: string; readonly revision: string; readonly title: string; readonly text: string }
+/** A validated read result. */
+export type WorkflowReadResult =
+  | { readonly kind: "notes"; readonly notes: readonly WorkflowNoteRow[] }
+  | { readonly kind: "calendar"; readonly events: readonly WorkflowCalendarRow[] }
+  | { readonly kind: "reminders"; readonly reminders: readonly WorkflowReminderRow[] }
+/** The phone-side copy of a run's reviewed specification. */
+export interface WorkflowPhoneReview {
+  readonly runId: string
+  readonly workflowId: string
+  readonly versionId: string
+  readonly specDigest: string
+  readonly spec: PhoneWorkflowSpec & { readonly device: PhoneDeviceTarget }
+  readonly status: string
+  readonly finished: boolean
+  readonly cancellationRequestedAt: string | null
+  readonly calendarAnchorAt?: string
+}
+
+/** Every read and its result are bounded to this encoded size; nothing is truncated. */
+export const WORKFLOW_READ_RESULT_MAX_BYTES = 65_536
+/** How long after local midnight a legacy unanchored review may still name the previous day. */
+export const WORKFLOW_LEGACY_DAY_GRACE_MS = 15 * 60_000
+
+/** A workflow scope, result or review failed the shared contract. */
+export error WorkflowDeviceScopeError { message: string }
+
+type Bag = Record<string, unknown>
+const scopeMessage = "Workflow phone scope could not be verified"
+
+effect function refuse(message = scopeMessage): never!WorkflowDeviceScopeError {
+  throw new WorkflowDeviceScopeError({ message })
+}
+
+effect function object(value: unknown): Bag!WorkflowDeviceScopeError {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return try refuse()
+  return value as Bag
+}
+
+effect function exact(value: Bag, keys: readonly string[]): void!WorkflowDeviceScopeError {
+  if (Object.keys(value).some((key) => !keys.includes(key)) || keys.some((key) => !(key in value))) try refuse()
+}
+
+effect function text(value: unknown, maximum: number, empty = false): string!WorkflowDeviceScopeError {
+  if (typeof value !== "string" || value.length > maximum || value.includes("\0") || (!empty && value.trim() === "")) return try refuse()
+  return value
+}
+
+/** An opaque workflow, run, step, note or device identity. */
+export effect function workflowId(value: unknown): string!WorkflowDeviceScopeError {
+  const id = try text(value, 128)
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) return try refuse()
+  return id
+}
+
+/** An opaque Calendar provider identity, which may contain `.` and `:`. */
+export effect function workflowCalendarId(value: unknown): string!WorkflowDeviceScopeError {
+  const id = try text(value, 128)
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(id)) return try refuse()
+  return id
+}
+
+effect function digest(value: unknown): string!WorkflowDeviceScopeError {
+  const found = try text(value, 64)
+  if (!/^[a-f0-9]{64}$/.test(found)) return try refuse()
+  return found
+}
+
+effect function utc(value: unknown): string!WorkflowDeviceScopeError {
+  const found = try text(value, 30)
+  if (!Number.isFinite(Date.parse(found)) || new Date(Date.parse(found)).toISOString() !== found) return try refuse()
+  return found
+}
+
+effect function list(value: unknown, maximum: number): unknown[]!WorkflowDeviceScopeError {
+  if (!Array.isArray(value) || value.length === 0 || value.length > maximum) return try refuse()
+  return value
+}
+
+effect function bound(value: unknown, maximum: number): number!WorkflowDeviceScopeError {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > maximum) return try refuse()
+  return value
+}
+
+/** UTF-8 size of a JSON value. */
+export function workflowBytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value) ?? "").byteLength
+}
+
+/** A range ending no later than the same local wall time `days` days after it starts, in the reviewed zone. */
+export function workflowCalendarRangeFitsLocalDays(start: string, end: string, timeZone: string, days = 7): boolean {
+  if (!Number.isInteger(days) || days < 1 || days > 7) return false
+  const first = Date.parse(start)
+  const last = Date.parse(end)
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last <= first || last - first > (days + 1) * 86_400_000 || !isPhoneWorkflowTimeZone(timeZone)) return false
+  const wall = (ms: number) => ms + zoneOffsetMinutes(ms, timeZone) * 60_000
+  return wall(last) <= wall(first) + days * 86_400_000
+}
+
+/** Whether a Calendar event overlaps a range; all-day bounds are civil dates in the range's zone. */
+export function calendarEventOverlapsRange(range: { readonly start: string; readonly end: string; readonly timeZone: string }, event: { readonly start: string; readonly end: string; readonly allDay: boolean }): boolean {
+  let a = Date.parse(event.start)
+  let b = Date.parse(event.end)
+  const begin = Date.parse(range.start)
+  const finish = Date.parse(range.end)
+  if (!Number.isFinite(a) || !Number.isFinite(b) || finish <= begin || b < a) return false
+  if (event.allDay) {
+    if (a % 86_400_000 !== 0 || b % 86_400_000 !== 0 || b <= a) return false
+    a = phoneWorkflowCivilMidnight(new Date(a).toISOString().slice(0, 10), range.timeZone)
+    b = phoneWorkflowCivilMidnight(new Date(b).toISOString().slice(0, 10), range.timeZone)
+  }
+  return b === a ? a >= begin && a < finish : a < finish && b > begin
+}
+
+/** The exact binding of one device operation. */
+export effect function parseWorkflowBinding(value: unknown): WorkflowDeviceBinding!WorkflowDeviceScopeError {
+  const p = try object(value)
+  try exact(p, ["workflowId", "versionId", "runId", "stepId", "specDigest"])
+  return { workflowId: try workflowId(p.workflowId), versionId: try workflowId(p.versionId), runId: try workflowId(p.runId), stepId: try workflowId(p.stepId), specDigest: try digest(p.specDigest) }
+}
+
+/** A reminder read for one owner day; any other shape is refused. */
+export effect function parseWorkflowReminderRead(value: unknown): WorkflowReminderReadOperation!WorkflowDeviceScopeError {
+  const p = try object(value)
+  if (p.type !== "read_selected_reminders") return try refuse()
+  try exact(p, ["type", "window", "day", "timeZone", "maximumItems"])
+  if (!isPhoneWorkflowLocalDay(p.day)) return try refuse()
+  const scope = (validatePhoneSelectedRemindersScope({ window: p.window, timeZone: p.timeZone, maximumItems: p.maximumItems })
+    catch effect () => try refuse())
+  return { type: "read_selected_reminders", window: scope.window, day: p.day, timeZone: scope.timeZone, maximumItems: scope.maximumItems }
+}
+
+/** The exact read operation shapes; anything else is refused. */
+export effect function parseWorkflowRead(value: unknown): WorkflowReadOperation!WorkflowDeviceScopeError {
+  const p = try object(value)
+  if (p.type === "read_selected_notes") {
+    try exact(p, ["type", "notes"])
+    const notes: { id: string; revision: string }[] = []
+    for (const raw of try list(p.notes, 16)) {
+      const note = try object(raw)
+      try exact(note, ["id", "revision"])
+      notes.push({ id: try workflowId(note.id), revision: try digest(note.revision) })
+    }
+    if (new Set(notes.map((note) => note.id)).size !== notes.length) return try refuse()
+    return { type: "read_selected_notes", notes }
+  }
+  if (p.type === "read_calendar_range") {
+    try exact(p, ["type", "calendarIds", "start", "end", "timeZone", "maximumEvents"])
+    const calendarIds: string[] = []
+    for (const id of try list(p.calendarIds, 16)) calendarIds.push(try workflowCalendarId(id))
+    const start = try utc(p.start)
+    const end = try utc(p.end)
+    if (!isPhoneWorkflowTimeZone(p.timeZone)) return try refuse()
+    const timeZone = p.timeZone
+    if (new Set(calendarIds).size !== calendarIds.length || !workflowCalendarRangeFitsLocalDays(start, end, timeZone)) return try refuse()
+    return { type: "read_calendar_range", calendarIds, start, end, timeZone, maximumEvents: try bound(p.maximumEvents, 200) }
+  }
+  if (p.type === "read_selected_reminders") return try parseWorkflowReminderRead(p)
+  return try refuse()
+}
+
+/** Whether a reminder read names the owner day of `anchor`, or of `anchor - grace` for a legacy unanchored review. */
+export function workflowReminderDayIsCurrent(operation: Pick<WorkflowReminderReadOperation, "day" | "timeZone">, anchor: number, graceMs: number): boolean {
+  return operation.day === phoneWorkflowLocalDay(anchor, operation.timeZone) || (graceMs > 0 && operation.day === phoneWorkflowLocalDay(anchor - graceMs, operation.timeZone))
+}
+
+/** Whether a Calendar read is exactly the reviewed step range for a run anchored at `anchor`. */
+export effect function workflowCalendarReadMatches(range: PhoneCalendarRange | PhoneRelativeCalendarRange, read: Omit<WorkflowCalendarReadOperation, "type">, anchor: number, graceMs: number): boolean!! {
+  const values = (r: Omit<WorkflowCalendarReadOperation, "type">) => JSON.stringify([r.calendarIds, r.start, r.end, r.timeZone, r.maximumEvents])
+  effect function at(instant: number): boolean!! {
+    const resolved = (resolvePhoneCalendarRange(range, instant) catch () => undefined)
+    return resolved !== undefined && values(resolved) === values(read)
+  }
+  if (try at(anchor)) return true
+  return "days" in range && graceMs !== 0 && try at(anchor - graceMs)
+}
+
+/** The revision input of one reminder row; both hosts hash exactly these values. */
+export function workflowReminderRevisionInput(row: Omit<WorkflowReminderRow, "revision">): unknown[] {
+  return [row.id, row.title, row.dueAt, row.status, row.completedAt ?? null]
+}
+
+/** The revision input of one Calendar row. */
+export function workflowCalendarRevisionInput(row: Omit<WorkflowCalendarRow, "revision">): unknown[] {
+  return [row.id, row.calendarId, row.title, row.start, row.end, row.allDay]
+}
+
+/** The structural check of a reminder result against its reviewed window, without the revision hash. */
+export effect function checkWorkflowReminderRows(operation: WorkflowReminderReadOperation, value: unknown): WorkflowReminderRow[]!WorkflowDeviceScopeError {
+  if (workflowBytes(value) > WORKFLOW_READ_RESULT_MAX_BYTES) return try refuse()
+  const p = try object(value)
+  try exact(p, ["kind", "reminders"])
+  if (p.kind !== "reminders" || !Array.isArray(p.reminders) || p.reminders.length > operation.maximumItems) return try refuse()
+  const day = (phoneWorkflowLocalDayBounds(operation.day, operation.timeZone) catch effect () => try refuse())
+  const rows: WorkflowReminderRow[] = []
+  for (const raw of p.reminders) {
+    const r = try object(raw)
+    const completed = r.status === "completed"
+    if (r.status !== "open" && !completed) return try refuse()
+    try exact(r, completed ? ["id", "revision", "title", "dueAt", "status", "completedAt"] : ["id", "revision", "title", "dueAt", "status"])
+    const dueAt = try utc(r.dueAt)
+    const completedAt = completed ? try utc(r.completedAt) : undefined
+    const row: WorkflowReminderRow = {
+      id: try workflowId(r.id), revision: try digest(r.revision), title: try text(r.title, 1000, true), dueAt,
+      status: completed ? "completed" : "open", ...(completedAt === undefined ? {} : { completedAt }),
+    }
+    const outside = completedAt !== undefined ? Date.parse(completedAt) < day.start || Date.parse(completedAt) >= day.end : Date.parse(dueAt) >= day.end
+    if (outside) return try refuse()
+    rows.push(row)
+  }
+  if (new Set(rows.map((row) => JSON.stringify([row.id, row.dueAt, row.status]))).size !== rows.length) return try refuse()
+  return rows
+}
+
+/** Validates a phone read result against its reviewed scope before any model sees it. */
+export effect function validateWorkflowReadResult(operation: WorkflowReadOperation, value: unknown): WorkflowReadResult!WorkflowDeviceScopeError {
+  if (workflowBytes(value) > WORKFLOW_READ_RESULT_MAX_BYTES) return try refuse()
+  const p = try object(value)
+  if (operation.type === "read_selected_reminders") {
+    const reminders = try checkWorkflowReminderRows(operation, value)
+    for (const { revision, ...rest } of reminders) if ((try workflowSha(workflowReminderRevisionInput(rest))) !== revision) return try refuse()
+    return { kind: "reminders", reminders }
+  }
+  if (operation.type === "read_selected_notes") {
+    try exact(p, ["kind", "notes"])
+    if (p.kind !== "notes" || !Array.isArray(p.notes) || p.notes.length !== operation.notes.length) return try refuse()
+    const notes: WorkflowNoteRow[] = []
+    for (const [index, wanted] of operation.notes.entries()) {
+      const n = try object(p.notes[index])
+      try exact(n, ["id", "revision", "title", "text"])
+      const item = { id: try workflowId(n.id), revision: try digest(n.revision), title: try text(n.title, 256, true), text: try text(n.text, 32_000, true) }
+      if (item.id !== wanted.id || item.revision !== wanted.revision || (try workflowSha([item.title, item.text])) !== item.revision) return try refuse()
+      notes.push(item)
+    }
+    return { kind: "notes", notes }
+  }
+  try exact(p, ["kind", "events"])
+  if (p.kind !== "calendar" || !Array.isArray(p.events) || p.events.length > operation.maximumEvents) return try refuse()
+  const events: WorkflowCalendarRow[] = []
+  for (const raw of p.events) {
+    const e = try object(raw)
+    try exact(e, ["id", "calendarId", "revision", "title", "start", "end", "allDay"])
+    if (typeof e.allDay !== "boolean") return try refuse()
+    const item: WorkflowCalendarRow = {
+      id: try workflowCalendarId(e.id), calendarId: try workflowCalendarId(e.calendarId), revision: try digest(e.revision),
+      title: try text(e.title, 1000, true), start: try utc(e.start), end: try utc(e.end), allDay: e.allDay,
+    }
+    const { revision, ...rest } = item
+    if (!operation.calendarIds.includes(item.calendarId) || !calendarEventOverlapsRange(operation, item)
+      || (try workflowSha(workflowCalendarRevisionInput(rest))) !== revision) return try refuse()
+    events.push(item)
+  }
+  if (new Set(events.map((event) => JSON.stringify([event.calendarId, event.id, event.start]))).size !== events.length) return try refuse()
+  return { kind: "calendar", events }
+}
+
+/** Accepts a run's phone review only for the expected run, workflow and version, with a spec whose digest matches. */
+export effect function parseWorkflowPhoneReview(
+  value: unknown, expected: { readonly id: string; readonly workflowId: string; readonly versionId: string },
+  normalize: (value: unknown) => PhoneWorkflowSpec!PhoneWorkflowSpecError = validatePhoneWorkflowSpec,
+): WorkflowPhoneReview!(WorkflowDeviceScopeError | PhoneWorkflowSpecError) {
+  const p = try object(value)
+  if (p.runId !== expected.id || p.workflowId !== expected.workflowId || p.versionId !== expected.versionId || typeof p.finished !== "boolean"
+    || !(p.cancellationRequestedAt === null || typeof p.cancellationRequestedAt === "string")) return try refuse()
+  const spec = try object(p.spec)
+  if (workflowBytes(spec) > WORKFLOW_READ_RESULT_MAX_BYTES) return try refuse()
+  const canonical = try normalize(spec)
+  const device = canonical.device
+  if (device === undefined) return try refuse()
+  const specDigest = try digest(p.specDigest)
+  if ((try workflowSha(spec)) !== specDigest) return try refuse()
+  const anchor = p.calendarAnchorAt === undefined ? {} : { calendarAnchorAt: try utc(p.calendarAnchorAt) }
+  return {
+    runId: try workflowId(p.runId), workflowId: try workflowId(p.workflowId), versionId: try workflowId(p.versionId), specDigest,
+    spec: { ...canonical, device }, status: try text(p.status, 100), finished: p.finished, cancellationRequestedAt: p.cancellationRequestedAt, ...anchor,
+  }
+}
+
+effect function reminderMatches(step: PhoneStep, operation: Bag, anchor: number, graceMs: number): boolean!WorkflowDeviceScopeError {
+  if (step.operation !== "selected_reminders") return false
+  const parsed = try parseWorkflowReminderRead(operation)
+  return JSON.stringify({ window: parsed.window, timeZone: parsed.timeZone, maximumItems: parsed.maximumItems }) === JSON.stringify(step.scope)
+    && workflowReminderDayIsCurrent(parsed, anchor, graceMs)
+}
+
+function boundedBody(value: unknown, maximum: number): boolean {
+  return typeof value === "string" && value.trim() !== "" && value.length <= maximum && !value.includes("\0")
+}
+
+/** Whether `request` is exactly what the reviewed step allows for this still-running run, version, digest and phone. */
+export effect function workflowOperationAdmitted(review: WorkflowPhoneReview, binding: WorkflowDeviceBinding, target: PhoneDeviceTarget, request: unknown, now: number): boolean!! {
+  return (effect {
+    const operation = try object(request)
+    if (review.finished || review.cancellationRequestedAt !== null || review.runId !== binding.runId || review.workflowId !== binding.workflowId
+      || review.versionId !== binding.versionId || review.specDigest !== binding.specDigest || review.spec.device.installationId !== target.installationId
+      || review.spec.device.enrollmentId !== target.enrollmentId) return false
+    const step = review.spec.steps.find((candidate) => candidate.id === binding.stepId)
+    if (step === undefined) return false
+    const anchor = review.calendarAnchorAt === undefined ? now : Date.parse(review.calendarAnchorAt)
+    const grace = review.calendarAnchorAt === undefined ? WORKFLOW_LEGACY_DAY_GRACE_MS : 0
+    const keysAre = (allowed: readonly string[]) => Object.keys(operation).every((key) => allowed.includes(key))
+    switch (operation.type) {
+      case "read_selected_notes":
+        return step.kind === "Read" && step.operation === "selected_notes"
+          && JSON.stringify(try parseWorkflowRead({ type: operation.type, notes: step.notes })) === JSON.stringify(try parseWorkflowRead(operation))
+      case "read_calendar_range": {
+        const read = try parseWorkflowRead(operation)
+        return read.type === "read_calendar_range" && step.kind === "Read" && step.operation === "calendar_range"
+          && try workflowCalendarReadMatches(step.range, read, anchor, grace)
+      }
+      case "read_selected_reminders":
+        return step.kind === "Read" && try reminderMatches(step, operation, anchor, grace)
+      case "create_note":
+        return step.kind === "Write" && step.operation === "save_note" && step.title === operation.title && typeof operation.body === "string"
+          && keysAre(["type", "title", "body"])
+      case "post_notification":
+        return step.kind === "Notify" && step.operation === "app_notification" && step.title === operation.title && boundedBody(operation.body, 2000)
+          && keysAre(["type", "title", "body"])
+      case "speak_text":
+        return step.kind === "Speak" && step.operation === "read_aloud" && boundedBody(operation.text, 5000) && keysAre(["type", "text"])
+      default:
+        return false
+    }
+  } catch () => false)
+}
+
+/** Refuses unless `request` is exactly what the reviewed step allows for this run and enrolled phone. */
+export effect function assertWorkflowOperation(review: WorkflowPhoneReview, binding: WorkflowDeviceBinding, target: PhoneDeviceTarget, request: unknown, now: number): void!WorkflowDeviceScopeError {
+  if (!(try workflowOperationAdmitted(review, binding, target, request, now))) try refuse()
+}

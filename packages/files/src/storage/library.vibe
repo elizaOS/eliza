@@ -1,0 +1,190 @@
+// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "A change commits only at the revision it expected, never takes a name in use, and never puts a folder inside itself"; spec/files/library.md, "A batch of library changes commits every row or none"
+module browser {
+  export type LibraryRow = {
+    readonly id: string
+    readonly parentId: string
+    readonly name: string
+    readonly mimeType: string
+    readonly directory: boolean
+    readonly size: number
+    readonly revision: string
+    readonly createdAt: number
+    readonly modifiedAt: number
+    readonly bytes?: Uint8Array<ArrayBuffer>
+  }
+  export type LibraryPlan = { readonly put: readonly LibraryRow[]; readonly remove: readonly string[] }
+  type Stored = Omit<LibraryRow, "bytes"> & { readonly bytes?: ArrayBuffer }
+
+  const opened = new Map<string, Promise<IDBDatabase>>()
+
+  function database(name: string): Promise<IDBDatabase> {
+    const known = opened.get(name)
+    if (known !== undefined) return known
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(name, 2)
+      request.onblocked = () => reject(new Error("Close other tabs for this app and retry Files."))
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("entries")) request.result.createObjectStore("entries", { keyPath: "id" })
+      }
+      request.onsuccess = () => {
+        request.result.onversionchange = () => {
+          request.result.close()
+          opened.delete(name)
+        }
+        resolve(request.result)
+      }
+      request.onerror = () => reject(request.error)
+    })
+    opened.set(name, opening)
+    opening.catch(() => opened.delete(name))
+    return opening
+  }
+
+  const row = ({ bytes, ...rest }: Stored): LibraryRow => bytes === undefined ? rest : { ...rest, bytes: new Uint8Array(bytes) }
+  const stored = ({ bytes, ...rest }: LibraryRow): Stored => bytes === undefined ? rest : { ...rest, bytes: bytes.slice().buffer }
+
+  /** Every row of the named library. */
+  export async function readRows(name: string): Promise<LibraryRow[]> {
+    const db = await database(name)
+    return new Promise((resolve, reject) => {
+      const request = db.transaction("entries").objectStore("entries").getAll()
+      request.onsuccess = () => resolve((request.result as Stored[]).map(row))
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  /** Reads every row and applies the plan made from them in one transaction; a refusal aborts it and changes nothing. */
+  export async function commitRows(name: string, plan: (rows: readonly LibraryRow[]) => LibraryPlan | string): Promise<string | undefined> {
+    const db = await database(name)
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("entries", "readwrite")
+      const store = tx.objectStore("entries")
+      let refusal: string | undefined
+      tx.oncomplete = () => resolve(refusal)
+      tx.onabort = () => refusal === undefined ? reject(tx.error ?? new Error("File storage failed.")) : resolve(refusal)
+      tx.onerror = () => undefined
+      const request = store.getAll()
+      request.onsuccess = () => {
+        const answer = plan((request.result as Stored[]).map(row))
+        if (typeof answer === "string") {
+          refusal = answer
+          tx.abort()
+          return
+        }
+        for (const id of answer.remove) store.delete(id)
+        for (const next of answer.put) store.put(stored(next))
+      }
+    })
+  }
+
+  /** A fresh row ID. */
+  export function newId(): string {
+    return crypto.randomUUID()
+  }
+
+  /** A fresh row revision. */
+  export function newRevision(): string {
+    return Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) => value.toString(16).padStart(2, "0")).join("")
+  }
+}
+import { commitRows, newId, newRevision, readRows, type LibraryPlan, type LibraryRow } from browser
+import { batchCommits, libraryAnswer, type AttachmentAnswer, type LibraryAnswer } from "../../gen/files__library.effect.vibe"
+
+export { newId, newRevision, type LibraryPlan, type LibraryRow }
+
+/** The library's own root folder. */
+export const LIBRARY_ROOT = "root"
+
+export error LibraryFailed { message: string }
+/** Why a plan refused to change the library. */
+export type LibraryRefusal = LibraryAnswer | "LibraryBatchRefused" | "FolderImportRefused" | AttachmentAnswer
+
+export error LibraryRefused { answer: LibraryRefusal; message: string }
+
+const MESSAGES: Readonly<Record<LibraryRefusal, string>> = {
+  LibraryApplied: "", LibraryStale: "This file changed. Refresh and try again.", LibraryNameTaken: "Choose a different name.",
+  LibraryOutside: "Choose a folder outside this folder.", LibraryNoFolder: "Choose a destination folder.",
+  LibraryBatchRefused: "A selected file changed. Refresh and select again.", FolderImportRefused: "A folder with this name already exists.",
+  SavedNew: "", ReturnedReceipt: "This step already saved its file.", ReceiptMismatch: "Saved file receipt does not match this step.",
+  ReceiptsBlocked: "A file named Receipts already exists. Rename it before saving receipts.",
+}
+
+/** The rows of one browser library and the one way to change them: a plan applied to the rows as one transaction reads them. */
+export service LibraryStore {
+  rows(): readonly LibraryRow[]!LibraryFailed
+  commit(plan: (rows: readonly LibraryRow[]) => LibraryPlan | LibraryRefusal): void!(LibraryFailed | LibraryRefused)
+}
+
+/** The library kept in this browser's IndexedDB database of that name, shared by every tab. */
+export function indexedLibrary(databaseName: string) {
+  return Layer.succeed(LibraryStore, {
+    rows: () => tryPromise({ try: () => readRows(databaseName), catch: () => new LibraryFailed({ message: "File storage could not be read." }) }),
+    effect commit(plan) {
+      const refused = try tryPromise({ try: () => commitRows(databaseName, plan), catch: () => new LibraryFailed({ message: "File storage failed." }) })
+      if (refused !== undefined) throw new LibraryRefused({ answer: refused as LibraryRefusal, message: MESSAGES[refused as LibraryRefusal] ?? MESSAGES.LibraryBatchRefused })
+    },
+  })
+}
+
+/** The rows a folder holds. */
+export function childrenOf(rows: readonly LibraryRow[], folderId: string): LibraryRow[] {
+  return rows.filter((row) => row.parentId === folderId)
+}
+
+/** Whether a folder is the row itself or lies inside it. */
+export function insideOf(rows: readonly LibraryRow[], folderId: string, rowId: string): boolean {
+  let current: string | undefined = folderId
+  for (let depth = 0; current !== undefined && current !== "" && depth <= rows.length + 1; depth++) {
+    if (current === rowId) return true
+    const at = current
+    current = rows.find((row) => row.id === at)?.parentId
+  }
+  return false
+}
+
+const isFolder = (rows: readonly LibraryRow[], id: string) => id === LIBRARY_ROOT || rows.some((row) => row.id === id && row.directory)
+const nameUsed = (rows: readonly LibraryRow[], folderId: string, name: string, except?: string) =>
+  rows.some((row) => row.parentId === folderId && row.id !== except && row.name === name)
+
+/** A new row in a folder, refused when the folder is gone or the name is in use. */
+export function insertPlan(entry: Omit<LibraryRow, "revision" | "createdAt" | "modifiedAt">, now: number) {
+  return (rows: readonly LibraryRow[]): LibraryPlan | LibraryAnswer => {
+    const answer = libraryAnswer({ present: true, revisionMatches: true, nameTaken: nameUsed(rows, entry.parentId, entry.name),
+      intoItself: false, destinationIsFolder: isFolder(rows, entry.parentId) })
+    return answer !== "LibraryApplied" ? answer : { put: [{ ...entry, revision: newRevision(), createdAt: now, modifiedAt: now }], remove: [] }
+  }
+}
+
+/** A rename or move of one row at the revision it expects, under a new revision. */
+export function placePlan(change: { readonly id: string; readonly expectedRevision: string; readonly destinationId: string; readonly name: string }, now: number) {
+  return (rows: readonly LibraryRow[]): LibraryPlan | LibraryAnswer => {
+    const row = rows.find((candidate) => candidate.id === change.id)
+    const answer = libraryAnswer({
+      present: row !== undefined, revisionMatches: row?.revision === change.expectedRevision,
+      nameTaken: nameUsed(rows, change.destinationId, change.name, change.id),
+      intoItself: row?.directory === true && insideOf(rows, change.destinationId, change.id), destinationIsFolder: isFolder(rows, change.destinationId),
+    })
+    return answer !== "LibraryApplied" || row === undefined ? answer
+      : { put: [{ ...row, parentId: change.destinationId, name: change.name, revision: newRevision(), modifiedAt: now }], remove: [] }
+  }
+}
+
+/** A row with everything inside it, as the rows to remove. */
+export function subtreeOf(rows: readonly LibraryRow[], id: string): string[] {
+  const out = [id]
+  for (let index = 0; index < out.length; index++) out.push(...childrenOf(rows, out[index]).map((row) => row.id))
+  return out
+}
+
+/** A permanent delete of rows at their expected revisions, all or none: confirmed, and leaving any folder that still holds rows unless whole subtrees go. */
+export function deletePlan(items: readonly { readonly id: string; readonly expectedRevision: string }[], confirmed: boolean, subtrees = false) {
+  return (rows: readonly LibraryRow[]): LibraryPlan | "LibraryBatchRefused" => {
+    const found = items.map((item) => rows.find((row) => row.id === item.id && row.revision === item.expectedRevision))
+    const commits = batchCommits({
+      rows: new Set(items.map((item) => item.id)).size === items.length ? items.length : 0,
+      rowsApplicable: found.filter((row) => row !== undefined).length,
+      confirmed, deleting: true, folderHoldsRows: !subtrees && items.some((item) => childrenOf(rows, item.id).length > 0),
+    })
+    return commits ? { put: [], remove: subtrees ? [...new Set(items.flatMap((item) => subtreeOf(rows, item.id)))] : items.map((item) => item.id) } : "LibraryBatchRefused"
+  }
+}

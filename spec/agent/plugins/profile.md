@@ -19,7 +19,12 @@ the launch.
 
 The agent's own optional modules are named plugins like any other.
 `@elizaos/agent/basic-actions` registers one action, `CALCULATE`: arithmetic
-only, no I/O, for a User caller. Any other name refuses boot.
+only, no I/O, for a User caller. Any other name refuses boot. A bundled
+package whose plugin needs a device service only the host supplies (local
+inference's engine) is a hosted module: the bundle carries its package, the
+host hands the agent its module factory, and it loads like the agent's own
+modules, from that factory with the launch's module context. A hosted module
+the bundle does not carry, or one named like an agent module, refuses boot.
 
 ```quint
 import actionPlanning as AP from "../../core/actionPlanning"
@@ -219,4 +224,37 @@ pure def spawnWorker(s: PluginPlan, offered: Set[ProcessValue]): PluginPlan =
 pure def alwaysWorkerGetsNoSecret(s: PluginPlan): bool = s.workerEnv.forall(v => v == PlainSetting)
 pure def alwaysOnlyAVerifiedWorkerRuns(s: PluginPlan): bool = s.workerRuns >= 0 and (s.workerRuns > 0 implies (s.phase == Ready and workerVerified(s.worker)))
 pure def sometimesWorkerRan(s: PluginPlan): bool = s.workerRuns > 0
+```
+
+### Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service
+
+A plugin finds its host's bridges by runtime service name when it
+initializes, so the agent registers them with its storage plugin, ahead
+of every listed plugin. When the launch pins a worker the agent registers
+`workflow-worker`, whose `spawnWorker` runs the verified worker under the
+rules above and refuses until the agent is ready. Every other bridge comes
+from the consumer: `runAgentCli({ runtimeServices })` returns service
+classes for the resident's state directory, as Alpha's entry does for
+`workflow-device` (the enrolled phone's device steps) and
+`workflow-native-digests` (reviewed native digest sources). A host service
+with an empty name, or one an agent service or another host service
+already uses (`task`, `agent_event`, `publishEvent`, `cloud`,
+`notification`, `workflow-worker` with a pinned worker), refuses boot with
+`Config`.
+
+```quint
+pure val workflowWorkerService = "workflow-worker"
+pure val agentServiceNames = Set("task", "agent_event", "publishEvent", "cloud", "notification")
+pure def ownedServiceNames(pinnedWorker: bool): Set[str] =
+  if (pinnedWorker) agentServiceNames.union(Set(workflowWorkerService)) else agentServiceNames
+pure def hostServicesAdmitted(names: List[str], pinnedWorker: bool): bool =
+  names.every(n => n != "" and not(ownedServiceNames(pinnedWorker).contains(n))) and distinct(names)
+pure val namesValues = Set(List(), List("workflow-device", "workflow-native-digests"), List("workflow-worker"), List("cloud"), List("workflow-device", "workflow-device"))
+pure val pinnedWorkerValues = Set(true, false)
+pure def lawAHostServiceNeverTakesAnAgentServiceName(names: List[str], pinnedWorker: bool): bool =
+  hostServicesAdmitted(names, pinnedWorker) implies names.every(n => not(ownedServiceNames(pinnedWorker).contains(n)))
+pure def lawAPinnedWorkerOwnsTheWorkerService(names: List[str]): bool =
+  names.includes(workflowWorkerService) implies not(hostServicesAdmitted(names, true))
+pure def lawTheWorkflowBridgesAreHostServices(pinnedWorker: bool): bool =
+  hostServicesAdmitted(List("workflow-device", "workflow-native-digests"), pinnedWorker)
 ```

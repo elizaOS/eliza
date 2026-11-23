@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "engine": {
+    "repository": "https://github.com/elizaOS/llama.cpp.git",
+    "commit": "5c5d6163c81cfc2f85ce3c12f10adbec5ae165cd",
+    "ffiInclude": "tools/omnivoice/include",
+    "library": "libelizainference.so"
+  },
+  "toolchain": { "ndk": "28.2.13676358", "cmake": "3.22.1" },
+  "jni": {
+    "source": "src/main/elizavoice-jni",
+    "class": "ai/eliza/voice/VoiceNative",
+    "subset": "full",
+    "library": "paradeevoicejni"
+  },
+  "abis": ["arm64-v8a", "x86_64"]
+}

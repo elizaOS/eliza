@@ -1,0 +1,122 @@
+// spec/workflow/notices.md, "A notice opens only its own run, at its own version, of a workflow still present"; spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"
+import { openNotice, resumesApprovalNotice } from "../../gen/workflow__notices.effect.vibe"
+import { workflowSha } from "../contract/phone.vibe"
+import type { WorkflowPhoneReview } from "../contract/device.vibe"
+import type { WorkflowApproval, WorkflowClient, WorkflowClientError, WorkflowRun } from "./workflow-client.vibe"
+
+/** The exact run route a workflow notice was posted for. */
+export interface WorkflowNoticeRoute {
+  readonly scope: string
+  readonly origin: string
+  readonly ownerId: string
+  readonly agentId: string
+  readonly workflowId: string
+  readonly runId: string
+  readonly versionId: string
+}
+/** The opaque identity and route binding of one approval notice. */
+export interface WorkflowApprovalNoticeIdentity { readonly id: string; readonly bindingHash: string }
+/** What a tap on a workflow notice opens: the exact run it was posted for, or nothing. */
+export type WorkflowNoticeTarget =
+  | { readonly kind: "run"; readonly route: WorkflowNoticeRoute; readonly run: WorkflowRun; readonly pending: readonly WorkflowApproval[]; readonly review?: WorkflowPhoneReview }
+  | { readonly kind: "unavailable"; readonly reason: "removed" | "changed" | "unreadable" }
+
+/**
+ * The installed identity of one pending phone-step approval notice: the id depends only on the scope, run and approval,
+ * and the binding names the whole route, so a new version keeps the notice and changes its binding.
+ */
+export effect function workflowApprovalNoticeIdentity(route: WorkflowNoticeRoute, proposalId: string): WorkflowApprovalNoticeIdentity!! {
+  return {
+    id: `approval-${try workflowSha(["workflow-approval-notice", route.scope, route.runId, proposalId])}`,
+    bindingHash: try workflowSha(["workflow-approval-route", route.scope, route.origin, route.ownerId, route.agentId, route.workflowId, route.runId, route.versionId, proposalId]),
+  }
+}
+
+/** The proposal identity of one approval: its node and iteration under the run. */
+export function workflowApprovalProposalId(approval: Pick<WorkflowApproval, "nodeId" | "iteration">): string {
+  return `${approval.nodeId}:${approval.iteration}`
+}
+
+/**
+ * Reopens the exact run a notice names, read only: the definition first, then the run receipt, its review and its still
+ * pending approvals. A removed definition, another version or a run of another workflow opens nothing.
+ */
+export effect function openWorkflowNotice(client: WorkflowClient, route: WorkflowNoticeRoute): WorkflowNoticeTarget!! {
+  return (effect {
+    const definition = try client.detail(route.workflowId)
+    const run = definition.removed ? undefined : try client.receipt(route.runId, route.workflowId)
+    const opened = openNotice(route, {
+      definitionPresent: true, definitionRemoved: definition.removed, runPresent: run !== undefined, runWorkflow: run?.workflowId ?? "", runVersion: run?.versionId ?? "",
+    })
+    if (opened === "OpenNothing" || run === undefined) return { kind: "unavailable", reason: definition.removed ? "removed" : "changed" } as const
+    const receipt = try client.approvals(run)
+    const pending = receipt?.approvals.filter((approval) => approval.status === "pending") ?? []
+    const review = definition.phoneSpec === undefined ? undefined : (client.phoneReview(run) catch () => undefined)
+    return { kind: "run", route, run, pending, ...(review === undefined ? {} : { review }) } as const
+  } catch () => ({ kind: "unavailable", reason: "unreadable" } as const))
+}
+
+/** The read-only agent views the device's notice fence uses to decide whether a suspended approval notice resumes. */
+export interface WorkflowNoticeReads {
+  detail(workflowId: string): { readonly versionId: string; readonly removed: boolean }!WorkflowClientError
+  receipt(runId: string, workflowId: string): WorkflowRun!WorkflowClientError
+  phoneReview(run: WorkflowRun): WorkflowPhoneReview!WorkflowClientError
+  pending(review: WorkflowPhoneReview, run: WorkflowRun): readonly { readonly id: string; readonly expiresAt: number; readonly title: string }[]!WorkflowClientError
+}
+
+/** The notice reads over one workflow client; none of them decides or executes anything. */
+export function workflowNoticeReads(client: WorkflowClient): WorkflowNoticeReads {
+  return {
+    detail: (workflowId) => map(client.detail(workflowId), (found) => ({ versionId: found.versionId, removed: found.removed })),
+    receipt: (runId, workflowId) => client.receipt(runId, workflowId),
+    phoneReview: (run) => client.phoneReview(run),
+    effect pending(_review, run) {
+      const receipt = try client.approvals(run)
+      return (receipt?.approvals ?? []).flatMap((approval) => approval.status === "pending" && approval.expiresAt !== undefined
+        ? [{ id: workflowApprovalProposalId(approval), expiresAt: approval.expiresAt, title: approval.title }] : [])
+    },
+  }
+}
+
+/** The deep link a workflow notice opens: the exact run, workflow and version it was posted for. */
+export function workflowRunDeepLink(route: Pick<WorkflowNoticeRoute, "workflowId" | "runId" | "versionId">): string {
+  return `eliza://workflows/runs/${encodeURIComponent(route.runId)}?workflowId=${encodeURIComponent(route.workflowId)}&versionId=${encodeURIComponent(route.versionId)}`
+}
+
+/** The exact run identity a workflow deep link names, or undefined for any other link. */
+export function parseWorkflowRunDeepLink(link: string): Pick<WorkflowNoticeRoute, "workflowId" | "runId" | "versionId"> | undefined {
+  const found = /^eliza:\/\/workflows\/runs\/([A-Za-z0-9_-]{1,128})\?workflowId=([A-Za-z0-9_-]{1,128})&versionId=([A-Za-z0-9_-]{1,128})$/.exec(link)
+  return found === null ? undefined : { runId: found[1], workflowId: found[2], versionId: found[3] }
+}
+
+/** A suspended approval notice as the device's fence keeps it for its owner. */
+export interface SuspendedWorkflowApprovalNotice { readonly id: string; readonly bindingHash: string; readonly expiresAt: number; readonly route: WorkflowNoticeRoute }
+
+/**
+ * Whether a suspended approval notice resumes for its returning owner, read only: the workflow and run unchanged at the
+ * notice's version, its review neither finished nor being cancelled, and the same approval still pending with the same
+ * binding and expiry. `stale` means the session changed during the reads.
+ */
+export effect function revalidateWorkflowApprovalNotice(notice: SuspendedWorkflowApprovalNotice, reads: WorkflowNoticeReads, valid: () => boolean): ("resume" | "withdraw" | "stale")!WorkflowClientError {
+  if (!valid()) return "stale"
+  const route = notice.route
+  const current = try reads.detail(route.workflowId)
+  if (!valid()) return "stale"
+  const at = try Clock.currentTimeMillis
+  if (current.removed || current.versionId !== route.versionId || notice.expiresAt <= at) return "withdraw"
+  const run = try reads.receipt(route.runId, route.workflowId)
+  if (!valid()) return "stale"
+  const review = run.versionId === route.versionId && !run.finished ? try reads.phoneReview(run) : undefined
+  if (!valid()) return "stale"
+  const pending = review === undefined ? [] : try reads.pending(review, run)
+  let same = false
+  for (const step of pending) {
+    const bound = try workflowApprovalNoticeIdentity(route, step.id)
+    if (bound.id === notice.id && bound.bindingHash === notice.bindingHash && step.expiresAt === notice.expiresAt) same = true
+  }
+  if (!valid()) return "stale"
+  return resumesApprovalNotice({
+    runFinished: run.finished || (review?.finished ?? true), cancellationRequested: review?.cancellationRequestedAt !== null && review !== undefined,
+    versionMatches: run.versionId === route.versionId, approvalPending: same, sameExpiry: same, expired: notice.expiresAt <= at,
+  }) ? "resume" : "withdraw"
+}

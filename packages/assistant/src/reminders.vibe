@@ -1,0 +1,267 @@
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"
+import { createReminderPresentation, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider, type UUID } from "@elizaos/core"
+import { Machine, machine, recoveredChoice, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
+import {
+  DeliveryFailed, Facts, Model, Presenter, Scheduler, SchedulerUnavailable, onAgent,
+  type DeliveryAnswer, type TaskRow, type TaskVerb, type VerbAnswer,
+} from "./host.vibe"
+import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attempt } from "./replies.vibe"
+import { ReminderAnswer, ReminderCheck, ReminderPlan } from "./requests.schema.vibe"
+import { ownerClockAt } from "./timezone.vibe"
+
+import { offsetInstant, wallText, zonedInstant } from "./time.vibe"
+
+/** The scheduled-task kind of a saved one-shot reminder. */
+export const reminderKind = "personal-assistant.reminder"
+
+const destinationChoice = { chat: "FirstChoice", device: "SecondChoice" } as const satisfies Record<string, DeliveryChoice>
+const alertChoice = { alert: "FirstChoice", silent: "SecondChoice" } as const satisfies Record<string, DeliveryChoice>
+const choiceOf = <K extends string>(table: Readonly<Record<K, DeliveryChoice>>, value: K | null): DeliveryChoice => value === null ? "UnknownChoice" : table[value]
+const destinationOf = (choice: DeliveryChoice) => choice === "SecondChoice" ? "device" : "chat"
+
+const decodePlan = Schema.decodeUnknownOption(ReminderPlan, { onExcessProperty: "error" })
+const decodeCheck = Schema.decodeUnknownOption(Schema.fromJsonString(ReminderCheck))
+
+const checkSystem = [
+  "You re-read the owner's own message before a reminder is saved. A planner's plan never grants that authority: only the message does.",
+  "Say whether the message itself explicitly asks the assistant to remind the owner, or to set a reminder or alarm for them.",
+  "A negated, quoted, hypothetical, reported or third-party mention of a reminder is not a request, and neither is a question about reminders.",
+  "clock is owner_local when the message names a wall time or day on the owner's clock, and utc when it names only a duration or an instant with its offset.",
+  "destination is device when the message asks for the phone's own reminder app, chat when it asks to be reminded here, and null when it says neither.",
+  "alert is silent when the message asks for no alert or no notification, alert when it asks to be alerted or notified, and null when it says neither.",
+  'Reply with one JSON object and nothing else: {"requested": boolean, "clock": "utc" | "owner_local", "destination": "chat" | "device" | null, "alert": "alert" | "silent" | null}.',
+].join("\n")
+
+/** The owner's message read again for what it asks, or undefined when the check could not run. */
+export effect function checkOriginalMessage(text: string) {
+  if (text.trim() === "") return undefined
+  const model = try Model
+  const said = model.complete(checkSystem, text, 120) catch () => ""
+  const check = decodeCheck(said.trim().replace(/^```(?:json)?\s*|\s*```$/gu, ""))
+  return Option.isSome(check) ? check.value : undefined
+}
+
+function durationWords(minutes: number): string {
+  const parts: string[] = []
+  const days = Math.floor(minutes / 1440)
+  const hours = Math.floor((minutes % 1440) / 60)
+  const rest = minutes % 60
+  if (days > 0) parts.push(`${days} ${days === 1 ? "day" : "days"}`)
+  if (hours > 0) parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`)
+  if (rest > 0) parts.push(`${rest} ${rest === 1 ? "minute" : "minutes"}`)
+  return parts.join(" ")
+}
+
+/** Where a request to save a reminder came from: the owner's own message. */
+export interface ReminderRequest {
+  readonly plan: unknown
+  readonly messageId: string
+  readonly text: string
+  readonly roomId: UUID | undefined
+}
+
+/** What became of a request to save a reminder. */
+export type ReminderOutcome =
+  | { readonly kind: "malformed" }
+  | { readonly kind: "notRequested"; readonly intent: ReminderIntent }
+  | { readonly kind: "unverified"; readonly intent: ReminderIntent }
+  | { readonly kind: "askAlert"; readonly intent: ReminderIntent }
+  | { readonly kind: "badTime"; readonly intent: ReminderIntent }
+  | { readonly kind: "past"; readonly intent: ReminderIntent }
+  | { readonly kind: "settled"; readonly intent: ReminderIntent; readonly attempts: readonly Attempt[]; readonly target: string; readonly said: string; readonly taskId: string | undefined }
+
+const saveAction = "OWNER_REMINDERS"
+
+/** Saves the reminder the plan proposes, only after the owner's own message is checked again, at most once per message. */
+export effect function createReminder(request: ReminderRequest) {
+  const planned = decodePlan(request.plan)
+  if (Option.isNone(planned)) return { kind: "malformed" } satisfies ReminderOutcome
+  const plan = planned.value
+  const check = try checkOriginalMessage(request.text)
+  const host = try Facts
+  const now = try host.now()
+  const zone = try ownerClockAt(now)
+  provide machine() {
+    const intent = try Machine
+    const send = (event: Parameters<Machine.Shape["send"]>[0]) => orDie(intent.send(event))
+    const plannedClock: ReminderClock = plan.due.kind === "local" ? "OwnerLocalClock" : "UtcClock"
+    try send({
+      type: "proposeReminder", requested: check?.requested ?? false, plannedClock,
+      extractedClock: check?.clock === "owner_local" ? "OwnerLocalClock" : "UtcClock",
+      plannedDestination: choiceOf(destinationChoice, plan.destination), extractedDestination: choiceOf(destinationChoice, check?.destination ?? null),
+      plannedAlert: choiceOf(alertChoice, plan.alert), extractedAlert: choiceOf(alertChoice, check?.alert ?? null),
+    })
+    const checked = try send(check === undefined ? { type: "checkUnavailable" } : { type: "checkRequest" })
+    if (checked.reminderPhase !== "IntentReady") {
+      return { kind: check === undefined ? "unverified" : "notRequested", intent: checked } satisfies ReminderOutcome
+    }
+    const alert = recoveredChoice(checked.plannedAlert, checked.extractedAlert)
+    if (alert === "UnknownChoice") return { kind: "askAlert", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
+    const due = plan.due
+    const at = due.kind === "in" ? now + due.minutes * 60_000 : due.kind === "at" ? offsetInstant(due.instant) : zonedInstant(due.date, due.time, zone)
+    if (at === undefined) return { kind: "badTime", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
+    if (at <= now) return { kind: "past", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
+    const destination = destinationOf(recoveredChoice(checked.plannedDestination, checked.extractedDestination))
+    const key = `reminder:${request.messageId}`
+    const facts = { operation: "reminder.create", kind: "reminder", id: key, key }
+    const scheduler = try Scheduler
+    const task = {
+      kind: reminderKind, ownerVisible: true, promptInstructions: plan.title, idempotencyKey: key,
+      trigger: { kind: "once", atIso: new Date(at).toISOString() } as const,
+      metadata: {
+        title: plan.title, body: plan.body ?? "", destination, alert: alert === "SecondChoice" ? "silent" : "alert",
+        clock: checked.plannedClock, zone, roomId: request.roomId ?? null, requestMessageId: request.messageId,
+      },
+    }
+    const attempts: Attempt[] = []
+    let taskId: string | undefined
+    for (const round of [1, 2]) {
+      const made = scheduler.create(task) catch (refused) => refused
+      if (made instanceof SchedulerUnavailable) {
+        attempts.push({ actionName: saveAction, success: false, receipts: [failedReceipt({ ...facts, at: now + round }, "SCHEDULER_UNAVAILABLE", "unknown")] })
+        continue
+      }
+      attempts.push({ actionName: saveAction, success: true, receipts: [appliedReceipt({ ...facts, at: now + round }, !made.created)] })
+      taskId = made.task.taskId
+      break
+    }
+    const settled = try send(taskId === undefined ? { type: "cancelReminder" } : { type: "saveReminder" })
+    const when = due.kind === "in" ? `in ${durationWords(due.minutes)}, at ${wallText(at, zone)}` : `at ${wallText(at, zone)} (${zone})`
+    return { kind: "settled", intent: settled, attempts, target: "reminder:" + key, said: `I'll remind you: "${plan.title}" ${when}.`, taskId } satisfies ReminderOutcome
+  }
+}
+
+/** The action result that tells the owner what became of the reminder request, claiming only what the attempts prove. */
+export function reminderReply(outcome: ReminderOutcome): ActionResult {
+  switch (outcome.kind) {
+    case "malformed": return { success: false, text: "The reminder plan was incomplete, so no reminder was saved.", data: { outcome: "REMINDER_PLAN_INVALID" } }
+    case "notRequested": return { success: false, text: "I didn't save a reminder because your message didn't ask me to remind you.", data: { outcome: "OWNER_REMINDER_INTENT_MISMATCH" } }
+    case "unverified": return { success: false, text: "I couldn't confirm from your message that you asked for a reminder, so no reminder was saved.", data: { outcome: "OWNER_REMINDER_INTENT_UNVERIFIED" } }
+    case "askAlert": return { success: false, text: "Should this reminder alert you, or only keep the due time without an alert?", data: { outcome: "REMINDER_ALERT_PREFERENCE_UNRESOLVED" } }
+    case "badTime": return { success: false, text: "I couldn't read that reminder time. When should I remind you?", data: { outcome: "REMINDER_TIME_INVALID" } }
+    case "past": return { success: false, text: "That reminder time has already passed. When should I remind you?", data: { outcome: "REMINDER_TIME_PASSED" } }
+    case "settled": return attributed(outcome.attempts, outcome.target, {
+      done: outcome.said,
+      notDone: "The reminder couldn't be saved, so you won't be reminded.",
+      unproven: "I couldn't confirm the reminder was saved. Check your reminders before relying on it.",
+    }, { taskId: outcome.taskId ?? null })
+  }
+}
+
+function metadataText(task: TaskRow, name: string): string {
+  const value = task.metadata[name]
+  return typeof value === "string" ? value : ""
+}
+
+/** Presents a fired reminder to the owner as the exact presentation issued for it, and says how the delivery went. */
+export effect function deliverReminder(task: TaskRow) {
+  const body = metadataText(task, "body").trim() || metadataText(task, "title").trim() || task.promptInstructions.trim()
+  const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => new DeliveryFailed({ reason: "The reminder has no text to present" }) })
+    catch (failed) => failed
+  if (presentation instanceof DeliveryFailed) return { kind: "undeliverable", error: presentation.reason } satisfies DeliveryAnswer
+  const room = task.metadata.roomId
+  const presenter = try Presenter
+  return try (presenter.present({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
+    |> Effect.as(%, { kind: "delivered" } as DeliveryAnswer)
+    |> Effect.catch(%, (failed) => Effect.succeed({ kind: "retry", afterMs: 60_000, reason: failed.reason } as DeliveryAnswer)))
+}
+
+const live = new Set(["Scheduled", "Fired", "Acknowledged"])
+
+/** The owner's saved reminders that have not settled. */
+export effect function liveReminders() {
+  const scheduler = try Scheduler
+  return (try scheduler.list()).filter((task) => task.kind === reminderKind && live.has(task.status))
+}
+
+function verbOf(answer: ReminderAnswer): TaskVerb {
+  switch (answer.op) {
+    case "complete": return { tag: "Complete" }
+    case "dismiss": return { tag: "Dismiss" }
+    case "acknowledge": return { tag: "Acknowledge" }
+    case "snooze": return { tag: "SnoozeFor", minutes: answer.minutes ?? 10 }
+  }
+}
+
+const said = { complete: "Marked done", dismiss: "Dismissed", acknowledge: "Acknowledged", snooze: "Snoozed" } as const
+const decodeAnswer = Schema.decodeUnknownOption(ReminderAnswer, { onExcessProperty: "error" })
+
+/** Completes, dismisses, snoozes or acknowledges the one live reminder the owner named, once per message. */
+export effect function answerReminder(input: unknown, messageId: string) {
+  const decoded = decodeAnswer(input)
+  if (Option.isNone(decoded)) return { success: false, text: "Say which reminder and what to do with it.", data: { outcome: "REMINDER_ANSWER_INVALID" } } satisfies ActionResult
+  const answer = decoded.value
+  const name = answer.target.trim().toLowerCase()
+  const matches = (try liveReminders()).filter((task) => task.taskId === answer.target || task.promptInstructions.trim().toLowerCase() === name)
+  const host = try Facts
+  const at = try host.now()
+  const key = `reminder:${answer.op}:${messageId}`
+  if (matches.length !== 1) {
+    const target = `reminder:${answer.target}`
+    const receipt = unchangedReceipt({ operation: `reminder.${answer.op}`, kind: "reminder", id: answer.target, key, at }, matches.length === 0 ? "no_match" : "ambiguous")
+    return {
+      success: false, effectReceipts: [receipt],
+      text: matches.length === 0 ? `No live reminder is called "${answer.target}", so nothing was changed.`
+        : `${matches.length} reminders match "${answer.target}", so nothing was changed. Which one did you mean: ${matches.map((task) => `"${task.promptInstructions}"`).join(", ")}?`,
+      data: { outcome: matches.length === 0 ? "not_found" : "ambiguous", target, candidates: matches.map((task) => task.taskId) },
+    } satisfies ActionResult
+  }
+  const task = matches[0]
+  const facts = { operation: `reminder.${answer.op}`, kind: "reminder", id: task.taskId, key, at }
+  const scheduler = try Scheduler
+  const reply: VerbAnswer | SchedulerUnavailable = scheduler.answer(task.taskId, verbOf(answer), key) catch (refused) => refused
+  const receipt = reply instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown")
+    : reply.kind === "applied" ? appliedReceipt(facts)
+    : failedReceipt(facts, reply.kind === "refused" ? reply.reason : "NOT_FOUND", "rejected")
+  return attributed([{ actionName: saveAction, success: receipt.outcome === "applied", receipts: [receipt] }], `reminder:${task.taskId}`, {
+    done: `${said[answer.op]} "${task.promptInstructions}".`,
+    notDone: `"${task.promptInstructions}" was not changed.`,
+    unproven: `I couldn't confirm "${task.promptInstructions}" was changed.`,
+  }, { taskId: task.taskId })
+}
+
+function parameters(options: unknown): Readonly<Record<string, unknown>> {
+  const found = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+  return typeof found === "object" && found !== null ? found as Record<string, unknown> : {}
+}
+
+/** The owner's request as this package reads it from a message. */
+export function requestOf(message: Memory) {
+  return { messageId: message.id ?? "", text: typeof message.content.text === "string" ? message.content.text : "", roomId: message.roomId }
+}
+
+/** Saves, completes, dismisses, snoozes or acknowledges the owner's own reminders. */
+export const ownerRemindersAction: Action = {
+  name: saveAction,
+  description: "Save a one-shot reminder the owner asked for in this message, or complete, dismiss, snooze or acknowledge one of their saved reminders. A reminder is saved only after the owner's own message is checked again.",
+  similes: ["REMINDER", "REMINDERS", "SET_REMINDER", "REMIND_ME", "REMIND_ME_TO", "CREATE_REMINDER", "SNOOZE_REMINDER", "DISMISS_REMINDER", "COMPLETE_REMINDER"],
+  parameters: [
+    { name: "op", required: true, description: "create, complete, dismiss, snooze or acknowledge.", schema: { type: "string", enum: ["create", "complete", "dismiss", "snooze", "acknowledge"] } },
+    { name: "plan", required: false, description: 'For create: {"title", "body"?, "due": {"kind":"in","minutes"} | {"kind":"at","instant" with Z or ±HH:MM} | {"kind":"local","date":"YYYY-MM-DD","time":"HH:MM"}, "destination": "chat"|"device"|null, "alert": "alert"|"silent"|null}. Leave a choice null unless the owner stated it.', schema: { type: "object" } },
+    { name: "target", required: false, description: "For any other op: the saved reminder's title or id.", schema: { type: "string" } },
+    { name: "minutes", required: false, description: "For snooze: minutes, 1 to 1440; 10 when omitted.", schema: { type: "number" } },
+  ],
+  tags: ["domain:reminders", "capability:write", "effect:receipt-required"],
+  roleGate: { minRole: "OWNER" },
+  validate: async () => true,
+  handler: async (runtime: IAgentRuntime, message, _state, options) => {
+    const given = parameters(options)
+    const request = requestOf(message)
+    if (given.op === "create") return reminderReply(await onAgent(runtime, createReminder({ ...request, plan: given.plan })))
+    const { op, target, minutes } = given
+    return onAgent(runtime, answerReminder({ op, target, ...(minutes === undefined ? {} : { minutes }) }, request.messageId))
+  },
+}
+
+/** The owner's live reminders, for the planner to name the right one. */
+export const ownerRemindersProvider: Provider = {
+  name: "PERSONAL_ASSISTANT_REMINDERS",
+  description: "The owner's saved reminders that have not settled, with their due times.",
+  dynamic: true,
+  private: true,
+  get: async (runtime) => {
+    const tasks = await onAgent(runtime, Effect.orElseSucceed(liveReminders(), () => []))
+    const lines = tasks.map((task) => `- "${task.promptInstructions}" (${task.status.toLowerCase()}${task.trigger.kind === "once" ? `, due ${task.trigger.atIso}` : ""}) id ${task.taskId}`)
+    return { text: lines.length === 0 ? "" : ["# Owner reminders", ...lines].join("\n"), data: { reminders: tasks.map(({ taskId, promptInstructions, status }) => ({ taskId, title: promptInstructions, status })) } }
+  },
+}

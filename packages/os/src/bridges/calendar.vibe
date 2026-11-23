@@ -25,6 +25,7 @@ import {
   type ScopeEvidence,
 } from "../../gen/os__android__calendar.effect.vibe"
 import type { DeletionClock } from "../../gen/os__android__deletionWindow.ts"
+export { readRange } from "../../gen/os__android__calendar.effect.vibe"
 import { nativeReply, settled } from "./bridge.vibe"
 import { rendererDeletionClock } from "./deletion-window.vibe"
 import type {

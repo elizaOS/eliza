@@ -1,0 +1,239 @@
+// spec/files/pdfInterpretation.md, "The private artifact must match the task bundle pin, Canvas version, and bytes"; spec/files/pdfInterpretation.md, "The PDF service reads a copied byte array and checks every rendered page"; spec/files/pdfInterpretation.md, "The interpreter receives the same full checked document"; spec/files/pdfInterpretation.md, "Partial or stale page work cannot produce a mapped value"; spec/files/pdfInterpretation.md, "A run holds a document only from start until it fails"
+module node {
+  import { createHash } from "node:crypto"
+  import { isAbsolute } from "node:path"
+  import { pathToFileURL } from "node:url"
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function absolute(path: string): boolean {
+    return isAbsolute(path)
+  }
+
+  /** @throws {never} */
+  export function base64Bytes(text: string): Uint8Array<ArrayBuffer> {
+    return Uint8Array.from(Buffer.from(text, "base64"))
+  }
+
+  export async function importFile(path: string): Promise<Record<string, unknown>> {
+    return import(pathToFileURL(path).href)
+  }
+}
+
+import {
+  artifactImportAllowed, artifactUsable, documentAccepted, initial, machineOver, pageMethod, pdfInputAccepted, scopeCurrent, validDeclaredPages,
+  type DocumentEnvelope, type Event, type PageMethod, type PageText, type PdfFailure, type PdfRun, type ScopeCheck,
+} from "../../gen/files__pdfInterpretation.effect.vibe"
+import { absolute, base64Bytes, importFile, sha256Hex } from node
+
+/** The five callables a reviewed document runtime exports. */
+export const DOCUMENT_RUNTIME_EXPORTS = ["pdfService", "imageDescription", "resolveAuthority", "nativeSlot", "callerAttribution"] as const
+
+/** The loaded document runtime's exports, by name. */
+export type DocumentRuntime = Readonly<Record<(typeof DOCUMENT_RUNTIME_EXPORTS)[number], (...args: never[]) => unknown>>
+
+/** What the task bundle pins for its document runtime. */
+export interface DocumentRuntimePin {
+  readonly path: string
+  readonly expectedCommit: string
+  readonly expectedCanvas: string
+}
+
+export type PdfRefusal = "artifact-refused" | "artifact-shape" | "unsupported" | "invalid-pdf" | "aborted" | "owner-lost" | "transcription-unavailable" | "page-failed" | "malformed-document"
+
+/** A PDF interpretation that stopped, with the page it stopped at when one failed. */
+export error PdfInterpretationFailed { reason: PdfRefusal; pageNumber?: number; pageCount?: number }
+
+schema Sidecar { schema: number; commit: string; canvas: string; sha256: string }
+const decodeSidecar = Schema.decodeUnknownEffect(Schema.fromJsonString(Sidecar))
+
+/** Loads the exact reviewed document runtime the bundle pins: sidecar provenance and bytes first, its five callables after import. */
+export effect function loadDocumentRuntime(pin: DocumentRuntimePin) {
+  const files = try FileSystem.FileSystem
+  const shaped = absolute(pin.path) && /^[a-f0-9]{40}$/.test(pin.expectedCommit) && pin.expectedCanvas.trim() !== ""
+  const sidecar = shaped ? try decodeSidecar(try files.readFileString(`${pin.path}.json`)) : undefined
+  const bytes = sidecar === undefined ? undefined : try files.readFile(pin.path)
+  const input = {
+    absolutePath: absolute(pin.path), expectedCommitFormat: /^[a-f0-9]{40}$/.test(pin.expectedCommit), expectedCanvasNonblank: pin.expectedCanvas.trim() !== "",
+    readableDecoded: sidecar !== undefined && bytes !== undefined, schema: sidecar?.schema ?? 0, taskCommitMatches: sidecar?.commit === pin.expectedCommit,
+    canvasMatches: sidecar?.canvas === pin.expectedCanvas, bundleHashMatches: bytes !== undefined && sidecar?.sha256 === sha256Hex(bytes),
+    importSucceeded: false, pdfService: false, imageDescription: false, resolveAuthority: false, nativeSlot: false, callerAttribution: false,
+  }
+  if (!artifactImportAllowed(input)) throw new PdfInterpretationFailed({ reason: "artifact-refused" })
+  const loaded = try tryPromise({ try: () => importFile(pin.path), catch: () => new PdfInterpretationFailed({ reason: "artifact-shape" }) })
+  const callable = (name: string) => typeof loaded[name] === "function"
+  if (!artifactUsable({ ...input, importSucceeded: true, pdfService: callable("pdfService"), imageDescription: callable("imageDescription"),
+    resolveAuthority: callable("resolveAuthority"), nativeSlot: callable("nativeSlot"), callerAttribution: callable("callerAttribution") })) {
+    throw new PdfInterpretationFailed({ reason: "artifact-shape" })
+  }
+  return loaded as DocumentRuntime
+}
+
+/** One page's parser evidence and rendering, as the runtime's PDF parser yields it. */
+export interface ParsedPage {
+  readonly width: number
+  readonly height: number
+  readonly nativeText: string
+  readonly nativePositionedText: readonly unknown[]
+  readonly operatorCount: number
+  readonly hasVisualContent: boolean
+  readonly render: () => string!unknown
+}
+
+/** The document runtime's parser and model ports, bound to the admitted actor. */
+export interface PdfPorts {
+  readonly open: (bytes: Uint8Array<ArrayBuffer>) => { readonly pageCount: unknown; readonly page: (pageNumber: number) => ParsedPage!unknown }!unknown
+  readonly describe: (imageUrl: string, prompt: string) => string!unknown
+  readonly ocr?: (pageNumber: number, png: Uint8Array<ArrayBuffer>) => string!unknown
+  readonly scope: () => ScopeCheck
+  readonly lifecycle: () => void!unknown
+}
+
+/** One transcribed page of the complete checked document. */
+export interface PdfPage {
+  readonly pageNumber: number
+  readonly width: number
+  readonly height: number
+  readonly method: "blank" | "native+vision" | "vision"
+  readonly nativeText: string
+  readonly nativePositionedText: readonly unknown[]
+  readonly ocrText: string | null
+  readonly visionText: string
+  readonly text: string
+  readonly hasVisualContent: boolean
+}
+
+/** The complete document: every declared page, in order. */
+export interface PdfDocument {
+  readonly complete: true
+  readonly pageCount: number
+  readonly pages: readonly PdfPage[]
+  readonly text: string
+}
+
+const methods: Readonly<Record<Exclude<PageMethod, "InvalidPage">, PdfPage["method"]>> = { BlankPage: "blank", NativeVisionPage: "native+vision", VisionPage: "vision" }
+const clean = (text: string) => text.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim()
+
+function header(bytes: Uint8Array): boolean {
+  const window = bytes.subarray(0, 1024)
+  for (let at = 0; at + 5 <= window.length; at++) if (String.fromCharCode(...window.subarray(at, at + 5)) === "%PDF-") return true
+  return false
+}
+
+function decodeDataUrl(url: string): Uint8Array<ArrayBuffer> | undefined {
+  if (!url.startsWith("data:image/") || !url.includes(";base64,")) return undefined
+  const text = url.slice(url.indexOf(",") + 1)
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text)) return undefined
+  return base64Bytes(text)
+}
+
+function json(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? "null"
+  } catch {
+    return "null"
+  }
+}
+
+function prompt(pageNumber: number, page: ParsedPage, ocrText: string | null): string {
+  return [
+    `Transcribe every visible word on PDF page ${pageNumber} exactly and in reading order.`,
+    "Preserve headings, labels, table cells, dates, handwriting, and meaningful layout relationships.",
+    "Do not summarize, omit repeated text, or infer text that is not visible.",
+    "Reconcile the rendered page against all parser and OCR evidence below; resolve disagreements from the image and explicitly note any unresolved ambiguity.",
+    "After the exact transcription, describe non-text visual information needed to understand the page.",
+    "If and only if the rendered page is completely blank, return exactly [BLANK PAGE].",
+    `Native flattened text evidence: ${json(page.nativeText)}`,
+    `Native positioned text evidence: ${json(page.nativePositionedText)}`,
+    `OCR evidence: ${json(ocrText)}`,
+  ].join("\n")
+}
+
+/** Interprets one PDF attachment: reads every declared page under the current scope, checks the whole document, then maps it once. */
+export effect function interpretPdf<A>(mimeType: string, input: Uint8Array, ports: PdfPorts, documentRef: number,
+  mapper: (document: PdfDocument) => A!unknown): A!PdfInterpretationFailed {
+  const state = try Ref.make<PdfRun>(initial)
+  const run = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+  const failure: { lifecycleRejected: boolean; visionRejected: boolean } = { lifecycleRejected: false, visionRejected: false }
+  let pageNumber = 0, pageCount = 0
+
+  effect function fail(reason: PdfRefusal): never!PdfInterpretationFailed {
+    const scope = ports.scope()
+    const failed: PdfFailure = { aborted: !scope.notAborted, ...failure }
+    const after = run.send({ type: "failPdf", failureInput: failed }) catch () => undefined
+    const kind = after?.failure ?? "FailurePageFailed"
+    const typed: PdfRefusal = kind === "FailureAborted" ? "aborted" : kind === "FailureOwnerLost" ? "owner-lost"
+      : kind === "FailureTranscriptionUnavailable" ? "transcription-unavailable" : reason
+    throw new PdfInterpretationFailed({ reason: typed, ...(pageNumber > 0 ? { pageNumber, pageCount } : {}) })
+  }
+
+  effect function current(): ScopeCheck!PdfInterpretationFailed {
+    ports.lifecycle() catch effect () => {
+      failure.lifecycleRejected = true
+      return try fail("owner-lost")
+    }
+    const scope = ports.scope()
+    if (!scopeCurrent(scope)) return try fail(scope.notAborted ? "owner-lost" : "aborted")
+    return scope
+  }
+
+  effect function send(event: Event, reason: PdfRefusal): PdfRun!PdfInterpretationFailed {
+    return run.send(event) catch effect () => try fail(reason)
+  }
+
+  const bytes = Uint8Array.from(input)
+  const pdfInput = { exactMime: mimeType === "application/pdf", bytes: true, nonempty: bytes.length > 0, headerInFirst1024: header(bytes), lifecyclePort: true }
+  if (!pdfInputAccepted(pdfInput)) throw new PdfInterpretationFailed({ reason: pdfInput.exactMime ? "invalid-pdf" : "unsupported" })
+  try current()
+  const parser = ports.open(bytes) catch effect () => try fail("invalid-pdf")
+  const declared = parser.pageCount
+  if (typeof declared !== "number" || !Number.isSafeInteger(declared) || !validDeclaredPages(declared)) return try fail("invalid-pdf")
+  pageCount = declared
+  try send({ type: "openPdf", pdfInput, pageCount, documentRef, scope: try current() }, "invalid-pdf")
+  const pages: PdfPage[] = []
+  for (pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+    try current()
+    const page = parser.page(pageNumber) catch effect () => try fail("page-failed")
+    const nativeText = clean(page.nativeText)
+    const url = page.render() catch effect () => try fail("page-failed")
+    const png = decodeDataUrl(url)
+    try send({ type: "renderPdfPage", pageNumber, imageDecoded: png !== undefined, scope: try current() }, "page-failed")
+    const ocr = ports.ocr
+    const recognized = ocr === undefined || png === undefined ? undefined : (ocr(pageNumber, png) catch effect () => try fail("page-failed"))
+    const ocrText = recognized === undefined || clean(recognized) === "" ? null : clean(recognized)
+    try send({ type: "requestVision", scope: try current() }, "page-failed")
+    const described = ports.describe(url, prompt(pageNumber, page, ocrText)) catch effect () => {
+      failure.visionRejected = true
+      return try fail("transcription-unavailable")
+    }
+    const visionText = typeof described === "string" ? described.trim() : ""
+    const pageText: PageText = {
+      nativeNonempty: nativeText !== "", noOperators: page.operatorCount === 0, ocrRan: ocr !== undefined, ocrNonempty: ocrText !== null,
+      visionNonempty: visionText !== "", visionBlank: visionText === "[BLANK PAGE]",
+    }
+    const method = pageMethod(pageText)
+    try send({ type: "keepPdfPage", pageNumber, pageText, scope: try current() }, "page-failed")
+    if (method === "InvalidPage") return try fail("page-failed")
+    pages.push({
+      pageNumber, width: page.width, height: page.height, method: methods[method], nativeText, nativePositionedText: page.nativePositionedText, ocrText, visionText,
+      text: [nativeText, ocrText === null ? "" : `[Rendered-page OCR]\n${ocrText}`, `[Rendered-page transcription and visual context]\n${visionText}`].filter(Boolean).join("\n\n"),
+      hasVisualContent: page.hasVisualContent,
+    })
+  }
+  pageNumber = 0
+  const document: PdfDocument = { complete: true, pageCount, pages, text: pages.map((page) => `--- Page ${page.pageNumber} ---\n${page.text}`).join("\n\n") }
+  const envelope: DocumentEnvelope = {
+    completeFlag: document.complete, pageCount: document.pageCount, pagesArray: Array.isArray(document.pages),
+    pages: document.pages.map((page) => ({ number: page.pageNumber, method: page.method === "blank" ? "BlankPage" : page.method === "vision" ? "VisionPage" : "NativeVisionPage",
+      nativeString: typeof page.nativeText === "string", visionNonblankString: typeof page.visionText === "string" && page.visionText.trim() !== "" })),
+  }
+  if (!documentAccepted(envelope)) return try fail("malformed-document")
+  try send({ type: "startInterpretation", envelope, checkedDocumentRef: documentRef, scope: try current() }, "malformed-document")
+  const mapped = mapper(document) catch effect () => try fail("page-failed")
+  try send({ type: "returnInterpretation", mappedRef: documentRef, scope: try current() }, "owner-lost")
+  return mapped
+}

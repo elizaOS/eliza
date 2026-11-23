@@ -1,0 +1,44 @@
+// spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedReconcile.md, "Story: Bring the two versions together without overwriting an independent edit"; spec/calendar/syncSettlement.md, "Story: Keep the newest sync decision when an old attempt returns late"
+export {
+  CalendarSyncAborted, CalendarSyncRefused, LocalRefused, ProviderRefused, ProviderUncertain, linkedCalendarSemanticDigest, linkedCalendarSemanticText,
+  type LinkedCalendarCheckpointStore, type LinkedCalendarEventRecord, type LinkedCalendarLocalPort, type LinkedCalendarLocalSnapshot,
+  type LinkedCalendarOperation, type LinkedCalendarPatch, type LinkedCalendarProviderPort, type LinkedCalendarProviderSnapshot,
+  type LinkedCalendarSemanticEvent, type LinkedCalendarState,
+} from "./linked.vibe"
+export {
+  CALENDAR_LINK_DOCUMENT_BYTES, CALENDAR_LINK_LIMIT, CALENDAR_LINK_SLOT_PREFIX, CalendarLinkedStore,
+  type CalendarLinkedStoreOptions, type CalendarLinkStorage, type CalendarSyncBinding,
+} from "./linked-store.vibe"
+export {
+  LinkedCalendarReconciler, type LinkedCalendarConflictChoice, type LinkedCalendarReconcileOutcome, type LinkedCalendarRecoveryOutcome, type LinkedCalendarRelease,
+} from "./reconcile.vibe"
+export {
+  calendarSyncHttp, googleCalendarSyncPort, readGoogleCalendarSyncCapabilities, readGoogleCalendarSyncDestination,
+  type CalendarSyncClient, type CalendarSyncHttp, type CalendarSyncRequest, type CalendarSyncSelection, type GoogleCalendarSyncDestination,
+  type GoogleCalendarSyncPortOptions,
+} from "./google-port.vibe"
+export {
+  CalendarSyncController, calendarSyncFailureMessage, calendarSyncReportMessage, calendarSyncSettingsSlot, calendarSyncTargetMatches,
+  createCalendarSyncHost, readCalendarSyncSettings,
+  type CalendarSyncContext, type CalendarSyncControllerOptions, type CalendarSyncDestination, type CalendarSyncDeviceGate,
+  type CalendarSyncHostOptions, type CalendarSyncHostSnapshot, type CalendarSyncLocalSource, type CalendarSyncPreference,
+  type CalendarSyncPrepared, type CalendarSyncReport, type CalendarSyncReview, type CalendarSyncSettings, type CalendarSyncSettingsStore,
+  type CalendarSyncTarget,
+} from "./sync-host.vibe"
+export {
+  LinkedControlRefused, LinkedControlUncertain, chooseLinkDestination, controlOperationKey, destinationWritable, eligibleDestination, linkedCalendarControl,
+  type LinkedCalendarCandidate, type LinkedCalendarControl, type LinkedCalendarControlMutation, type LinkedCalendarControlPorts,
+  type LinkedCalendarControlRequest, type LinkedCalendarDestination, type LinkedCalendarDestinationCheck, type LinkedCalendarMapping,
+  type LinkedCalendarMappingEdit, type LinkedCalendarSyncReport,
+} from "./control.vibe"
+export {
+  CalendarWatchUnavailable, calendarWatchChannel, foregroundSyncMachine,
+  type CalendarWatchAttemptOutcome, type CalendarWatchChannel, type CalendarWatchPorts,
+} from "./settlement.vibe"
+export {
+  GOOGLE_CALENDAR_READ_CAPABILITY, GoogleCalendarChanged, GoogleCalendarFailureError, GoogleCalendarInvalidRange, GoogleCalendarInvalidResponse,
+  GoogleCalendarReader, googleCalendarReadEvent,
+  type GoogleCalendarAccount, type GoogleCalendarBinding, type GoogleCalendarClient, type GoogleCalendarErrorKind, type GoogleCalendarEvent,
+  type GoogleCalendarFailure, type GoogleCalendarFeed, type GoogleCalendarRange, type GoogleCalendarRead, type GoogleCalendarReadEvent,
+  type GoogleCalendarSource, type GoogleCalendarSources, type GoogleCalendarSummary,
+} from "./google-reader.vibe"

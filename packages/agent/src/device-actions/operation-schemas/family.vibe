@@ -13,6 +13,7 @@ export interface Evidence {
 
 export interface ReceiptContext {
   readonly operationId: string | undefined
+  readonly versionTwo: boolean
 }
 
 export type WireOperation = { readonly type: string }

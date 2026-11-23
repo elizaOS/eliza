@@ -1,0 +1,137 @@
+// spec/files/requests.md, "Story: Open the file I asked for, and only from what I was shown"; spec/files/requests.md, "A request waits for the view, then access, then the owner's selection, while it stays current"; spec/files/requests.md, "The view's reload never retires the request"; spec/files/requests.md, "A granted selection opens only for the current request; a late one is released"; spec/files/requests.md, "An unpreviewable file opens in another app, and a fallback capability that arrives after the view left is released"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"
+import { acceptsFallback, canCancelRequest, canEnterFiles, canLeaveFiles, canLoadReply, canReplaceRows, decodeState, initial, machineOver, openRoute, releasesFallback,
+  type Event, type FileRequest, type OpenReply, type OpenRoute } from "../../gen/files__requests.effect.vibe"
+import { shownResolved } from "../../gen/files__shownTargets.effect.vibe"
+import { filterLabel, type FilesFilter, type Listing } from "./model.vibe"
+
+/** What Files shows for a filter: its results by position, 1 being the first. */
+export type ShownResults = { readonly filter: FilesFilter; readonly label: string; readonly paths: readonly string[]; readonly complete: boolean; readonly empty: boolean }
+
+/** The target of an open: a path, or a position in the filter results Files shows. */
+export type OpenTarget = { readonly path: string } | { readonly shown: number }
+
+/** How the host answers each stage of an open. */
+export interface OpenPorts {
+  readonly commitView: () => boolean!!
+  readonly access: () => boolean!!
+  readonly select: (path: string) => boolean!!
+  readonly release: (path: string) => void!!
+}
+
+export type OpenOutcome = { readonly kind: "opened"; readonly path: string } | { readonly kind: "refused"; readonly reason: "cancelled" | "not_current" | "denied" | "not_shown" | "not_selected" }
+
+export error ShownUnresolved { positions: readonly number[] }
+
+type ViewFacts = Pick<FileRequest, "active" | "epoch" | "generation" | "load">
+
+/** The positions' paths in the filter results shown now, one for each, in order. */
+export function resolveShown(shown: ShownResults | undefined, positions: readonly number[]): readonly string[] | undefined {
+  const paths = positions.flatMap((position) => shown?.paths[position - 1] ?? [])
+  return shownResolved({ positions: positions.length, resolvedPaths: paths.length, resultsShown: shown !== undefined }) ? paths : undefined
+}
+
+/** Where an opened file is shown: here, or in another app when it cannot be previewed and one can open it. */
+export function routeOpen(previewable: boolean, externalPort: boolean): OpenRoute {
+  return openRoute(previewable, externalPort)
+}
+
+/** Whether another app's fallback reply is accepted, released, or neither. */
+export function fallbackDisposition(reply: OpenReply, viewActive: boolean): "accept" | "release" | "ignore" {
+  return acceptsFallback(reply, viewActive) ? "accept" : releasesFallback(reply, viewActive) ? "release" : "ignore"
+}
+
+/** The Files view: its visits, the filter results it shows, and the one open request that belongs to them. */
+export effect function filesView() {
+  const view = try Ref.make<ViewFacts>({ active: false, epoch: 0, generation: 0, load: "Unread" })
+  const shown = try Ref.make<ShownResults | undefined>(undefined)
+  const request = try Ref.make<Ref.Ref<FileRequest> | undefined>(undefined)
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+  const facts = (state: FileRequest): ViewFacts => ({ active: state.active, epoch: state.epoch, generation: state.generation, load: state.load })
+
+  effect function viewEvent(event: Event, allowed: (state: FileRequest) => boolean): boolean!! {
+    const current = try Ref.get(request)
+    const base = current === undefined ? { ...initial, ...(try Ref.get(view)) } : try Ref.get(current)
+    if (!allowed(base)) return false
+    const machine = try machineOver(() => succeed(base), (next) => current === undefined ? Effect.void : Ref.set(current, next))
+    const next = try orDie(machine.send(event))
+    try Ref.set(view, facts(next))
+    return true
+  }
+
+  effect function enter(): boolean!! {
+    return try viewEvent({ type: "enterFiles" }, canEnterFiles)
+  }
+
+  effect function leave(): boolean!! {
+    try Ref.set(shown, undefined)
+    return try viewEvent({ type: "leaveFiles" }, canLeaveFiles)
+  }
+
+  effect function loaded(success: boolean): boolean!! {
+    return try viewEvent({ type: "loadReply", success }, (state) => canLoadReply(state))
+  }
+
+  effect function show(filter: FilesFilter, results: Listing): ShownResults!! {
+    try viewEvent({ type: "replaceRows" }, canReplaceRows)
+    const next = { filter, label: filterLabel(filter), paths: results.entries.map((entry) => entry.path), complete: results.complete, empty: results.empty }
+    try Ref.set(shown, next)
+    return next
+  }
+
+  effect function clearFilter(): void!! {
+    if (try Ref.get(shown) === undefined) return
+    try Ref.set(shown, undefined)
+    try viewEvent({ type: "replaceRows" }, canReplaceRows)
+  }
+
+  effect function shownPaths(positions: readonly number[]): readonly string[]!ShownUnresolved {
+    const paths = resolveShown(try Ref.get(shown), positions)
+    if (paths === undefined) throw new ShownUnresolved({ positions })
+    return paths
+  }
+
+  effect function cancel(): void!! {
+    try viewEvent({ type: "cancelRequest" }, (state) => state.phase !== "RequestIdle" && canCancelRequest(state))
+  }
+
+  effect function open(target: OpenTarget, ports: OpenPorts): OpenOutcome!! {
+    try serialize(cancel())
+    const mine = try Ref.make(try orDie(decodeState({ ...initial, ...(try Ref.get(view)) })))
+    try Ref.set(request, mine)
+    const machine = try machineOver(() => Ref.get(mine), (next) => effect {
+      try Ref.set(mine, next)
+      if ((try Ref.get(request)) === mine) try Ref.set(view, facts(next))
+    })
+    effect function send(event: Event): FileRequest!! {
+      return try serialize(machine.send(event) catch (rejected) => rejected.state)
+    }
+    return try ensuring(effect {
+      let state = try send({ type: "beginRequest" })
+      if (state.phase === "AwaitingView") state = try send({ type: "commitView", confirmed: try ports.commitView() })
+      if (state.phase === "RequestRefused") return { kind: "refused", reason: state.cancelled ? "cancelled" : "not_current" } satisfies OpenOutcome
+      const path = "path" in target ? target.path : resolveShown(try Ref.get(shown), [target.shown])?.[0]
+      state = try send({ type: "accessReply", granted: path !== undefined && (try ports.access()) })
+      if (path === undefined) {
+        return { kind: "refused", reason: "not_shown" } satisfies OpenOutcome
+      }
+      if (state.phase === "RequestRefused") return { kind: "refused", reason: state.cancelled ? "cancelled" : state.active ? "denied" : "not_current" } satisfies OpenOutcome
+      const granted = try ports.select(path)
+      state = try send({ type: "selectionReply", granted })
+      if (state.released) try ports.release(path)
+      return state.opened ? { kind: "opened", path } satisfies OpenOutcome
+        : { kind: "refused", reason: state.cancelled ? "cancelled" : granted ? "not_current" : "not_selected" } satisfies OpenOutcome
+    }, Ref.update(request, (current) => current === mine ? undefined : current))
+  }
+
+  return {
+    enter: () => serialize(enter()),
+    leave: () => serialize(leave()),
+    loaded: (success: boolean) => serialize(loaded(success)),
+    show: (filter: FilesFilter, results: Listing) => serialize(show(filter, results)),
+    clearFilter: () => serialize(clearFilter()),
+    shownPaths,
+    shown: () => Ref.get(shown),
+    cancel: () => serialize(cancel()),
+    open,
+  }
+}

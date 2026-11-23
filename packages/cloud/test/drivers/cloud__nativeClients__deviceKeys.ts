@@ -1,4 +1,4 @@
-// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Keep my phone signed in without a browser"
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Cause, Clock, ConfigProvider, Effect, Exit, Layer, ManagedRuntime, Option, Schema } from "effect";
 import { FetchHttpClient, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -11,7 +11,7 @@ import { landAccount } from "../../src/identity/accounts.vibe";
 import { routes as federatedRoutes } from "../../src/identity/federated.vibe";
 import { routes as factorRoutes } from "../../src/identity/second-factor.vibe";
 import { issueSession } from "../../src/identity/sessions.vibe";
-import { acknowledgeGrant, exchangeGrant, openGrant, retireGrant, routes } from "../../src/native-clients/device-keys.vibe";
+import { acknowledgeGrant, exchangeGrant, openGrant, renewGrant, retireGrant, routes, supersedeGrant } from "../../src/native-clients/device-keys.vibe";
 import { observeGrant } from "../../src/native-clients/grants.vibe";
 import { signInDevice } from "../../src/native-clients/mobile-google.vibe";
 import { decodeRegistration, readClient, registerClient, updateClient } from "../../src/native-clients/registry.vibe";
@@ -163,7 +163,53 @@ async function configureClient(binding: ClientBinding, ttl: number, check: Clien
 }
 
 async function epoch(subject: Person, value: number) {
-  await run(within((tx) => tx.query("UPDATE accounts SET status = 'active', device_epoch = $2 WHERE key = $1", [subject.userId, value])));
+  await run(within((tx) => Effect.gen(function* () {
+    yield* tx.query("UPDATE accounts SET status = 'active', device_epoch = $2 WHERE key = $1", [subject.userId, value]);
+    yield* tx.query("UPDATE device_grants SET device_epoch = $2 WHERE user_id = $1 AND state ? 'flatDeviceGrant'", [subject.userId, value]);
+  })));
+}
+
+const day = 86_400_000;
+
+function activeState(binding: ClientBinding, expiresAt: number, grantEpoch: number, credentialId: string) {
+  const credentialTtl = Math.min(90 * day, Math.max(day, expiresAt - now));
+  const ackedAt = expiresAt - credentialTtl;
+  const grant: Grant = {
+    phase: { tag: "Active", ackedAt, keyExpiresAt: expiresAt }, origin: { tag: "Connected" }, client: { tag: "BoundClient", ...binding },
+    codeExpiresAt: ackedAt + 300_000, credentialTtl, credentialId, epoch: grantEpoch, now: Math.max(now, ackedAt),
+  };
+  return grant;
+}
+
+async function insertKey(subject: Person, key: string, grant: Grant, signInAt: number, renewedFrom: string | null) {
+  const secret = `eliza_mobile_${hex(32)}`;
+  const expiresAt = grant.phase.tag === "Active" ? grant.phase.keyExpiresAt : 0;
+  await run(within((tx) => tx.query(
+    "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, device_epoch, issued_at, sign_in_at, renewed_from, updated_at) VALUES ($1, $2::jsonb, 1, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $10)",
+    [key, JSON.stringify(grant), subject.userId, grant.client.tag === "BoundClient" ? grant.client.clientId : "", grant.credentialId, tokenDigest(secret), grant.codeExpiresAt, expiresAt, grant.epoch, grant.now, signInAt, renewedFrom],
+  )));
+}
+
+async function renew(key: string, event: Extract<Event, { type: "renew" }>) {
+  const held = await device(key);
+  await configureClient(event.clientBinding, event.registrationTtl, event.codeRequest.client);
+  await epoch(held.person, event.deviceEpoch);
+  const predecessorKey = randomUUID();
+  const recorded: ClientBinding = event.facts.clientMatches ? event.clientBinding : { ...event.clientBinding, signInReturn: { ...event.clientBinding.signInReturn, path: `${event.clientBinding.signInReturn.path}/earlier` } };
+  const predecessorEpoch = event.facts.predecessor === "CredentialRevoked" ? event.deviceEpoch - 1 : event.deviceEpoch;
+  const expiresAt = event.facts.predecessor === "CredentialExpired" ? now : event.facts.predecessorExpiresAt;
+  await insertKey(held.person, predecessorKey, activeState(recorded, expiresAt, predecessorEpoch, randomUUID()), event.facts.signInAt, null);
+  if (event.facts.successorAcknowledged) {
+    await insertKey(held.person, randomUUID(), { ...activeState(event.clientBinding, now + day, event.deviceEpoch, randomUUID()), origin: { tag: "Renewed" } }, event.facts.signInAt, predecessorKey);
+  }
+  const answer = await attempt(within((tx) => renewGrant(tx, {
+    grantKey: held.grantKey, predecessorKey,
+    request: { ...wireBinding(event.clientBinding), state: event.codeRequest.hasState ? held.state : "absent", codeChallenge: s256(held.verifier), codeChallengeMethod: event.codeRequest.method, deviceName: "Conformance phone" },
+  })));
+  if (!answer.accepted || answer.value.kind !== "issued") return "refused" as const;
+  await run(within((tx) => tx.query("UPDATE device_grants SET state = $2::jsonb, phase = 'active', key_expires_at = $3 WHERE key = $1", [predecessorKey, JSON.stringify({ flatDeviceGrant: "FlatTokenStarted" }), Number.MAX_SAFE_INTEGER])));
+  devices.set(key, { ...held, code: answer.value.code, binding: event.clientBinding });
+  return "accepted" as const;
 }
 
 function keep(key: string, before: Device, credential: { readonly credentialId: string; readonly secret: string }, logicalId: string, out: ReadonlyArray<GrantEffect>, code?: string, binding?: ClientBinding) {
@@ -284,6 +330,14 @@ async function dispatch(key: string, event: Event) {
       const request = HttpServerRequest.fromWeb(new Request("https://api.staging.example.com/api/v1/api-keys/current", { method: "DELETE", headers: { authorization: `Bearer ${held.minted?.secret ?? `eliza_mobile_${hex(32)}`}` } }));
       const response = await run(Effect.provideService(respond(routes), HttpServerRequest.HttpServerRequest, request));
       return response.status === 204 ? "accepted" as const : "refused" as const;
+    }
+    case "renew": return renew(key, event);
+    case "supersede": {
+      const held = await device(key);
+      const answer = await attempt(within((tx) => supersedeGrant(tx, held.grantKey)));
+      if (!answer.accepted) return "refused" as const;
+      outputs.set(key, answer.value);
+      return "accepted" as const;
     }
     case "lapse": case "expire": {
       const held = await device(key);

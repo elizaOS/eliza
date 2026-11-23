@@ -45,6 +45,7 @@ const samples: Record<string, unknown> = {
   MessagesReadSelected: { type: "messages_read_selected" },
   VoicemailReadSelected: { type: "voicemail_read_selected" },
   VoicemailDeleteSelected: { type: "voicemail_delete_selected" },
+  SmsLatestSender: { type: "sms_latest_sender" },
   ReadSelectedNotes: { type: "read_selected_notes", notes: [{ id: "note-1", revision: noteRevision }] },
   ReadCalendarRange: range,
   ReadSelectedReminders: { type: "read_selected_reminders", window: "open_and_completed_today", day: "2026-11-21", timeZone: "UTC", maximumItems: 20 },
@@ -118,6 +119,37 @@ it("Propose only operations the device can check: each operation needs its own c
   assert.isUndefined(validate(range, negotiation(true, "files.browser.v1"), "AgendaBinding"))
   assert.isDefined(validate(range, negotiation(true, "calendar.agenda-read.v1"), "AgendaBinding"))
   assert.isUndefined(validate(samples.SpeakText, negotiation(true, "calendar.agenda-read.v1"), "AgendaBinding"))
+  const whole = { type: "sms_latest_sender", includeAddress: true }
+  assert.isDefined(validate(samples.SmsLatestSender, negotiation(true, "sms.latest-sender.v1"), "NoBinding"))
+  assert.isDefined(validate(samples.SmsLatestSender, negotiation(true, "sms.latest-sender.v2"), "NoBinding"))
+  assert.isUndefined(validate(whole, negotiation(true, "sms.latest-sender.v1"), "NoBinding"))
+  assert.strictEqual(validate(whole, negotiation(true, "sms.latest-sender.v2"), "NoBinding")?.versionTwo, true)
+  assert.strictEqual(readOperation({ type: "sms_latest_sender", includeAddress: false }), undefined)
+  assert.isFalse(mayRunDirectly(checked(whole), "NoBinding", true))
+})
+
+it("Propose only operations the device can check: an album or share names the open photo only under photos.view-selected.v1, and a capture's library ID needs its capability", () => {
+  const view = "photos.library.v1,photos.view.v1"
+  const openShare = { type: "photos_share", selected: true }
+  const openAlbum = { type: "photos_album_create", name: "Trip", ids: [], selected: true }
+  assert.isUndefined(validate(openShare, negotiation(true, view), "NoBinding"))
+  assert.strictEqual(validate(openShare, negotiation(true, `${view},photos.view-selected.v1`), "NoBinding")?.versionTwo, true)
+  assert.isDefined(validate(openAlbum, negotiation(true, `${view},photos.view-selected.v1`), "NoBinding"))
+  assert.isDefined(validate(samples.PhotosShare, negotiation(true, view), "NoBinding"))
+  assert.strictEqual(readOperation({ type: "photos_share", ids: [photo], selected: true }), undefined)
+  const review = { outcome: "applied", operationId: "n1", result: { kind: "photos_share", status: "review_opened", count: 1, missing: 0 } }
+  assert.strictEqual(outcome(openShare, review), "ReportedApplied")
+  assert.strictEqual(outcome(openShare, { ...review, result: { ...review.result, count: 2 } }), "refused")
+  const saved = { version: 1, kind: "camera_capture_photo", operationId: "n1", mediaId: "17", libraryId: "lib:i:17:0", width: 640, height: 480, mime: "image/jpeg" }
+  const capture = (capabilities: string) => validate(samples.CameraCapturePhoto, negotiation(true, capabilities), "NoBinding") as CheckedOperation
+  const settled = (capabilities: string, result: object) => {
+    const verdict = receiptOutcome(capture(capabilities), { outcome: "applied", operationId: "n1", result }, "claim-1")
+    return verdict.kind === "refused" ? "refused" : verdict.reported
+  }
+  assert.strictEqual(settled("camera.capture-photo.v1", saved), "refused")
+  assert.strictEqual(settled("camera.capture-photo.v1,camera.capture-library-id.v1", saved), "ReportedApplied")
+  const { libraryId: _left, ...withoutId } = saved
+  assert.strictEqual(settled("camera.capture-photo.v1", withoutId), "ReportedApplied")
 })
 
 it("Propose only operations the device can check: only a reversible local operation bound to the owner's message runs directly", () => {
@@ -160,6 +192,17 @@ it("Learn exactly what the device did: phone results are evidence, and only a dr
   assert.strictEqual(outcome(samples.MessagesReadSelected, { outcome: "applied", operationId: "n1", result: { kind: "messages-read", status: "read", ...thread, messages: [{ ...thread.messages[0], direction: "received" }] } }), "refused")
   assert.strictEqual(outcome(samples.VoicemailReadSelected, { outcome: "applied", operationId: "n1",
     result: { kind: "voicemail-read", status: "read", caller: null, date: 1, durationSeconds: 3, transcriptState: "ready", engine: null, transcript: "Hi" } }), "refused")
+  const suffix = samples.SmsLatestSender, whole = { type: "sms_latest_sender", includeAddress: true }
+  const sender = (result: object) => ({ outcome: "applied", operationId: "n1", result: { kind: "sms-latest-sender", ...result } })
+  assert.strictEqual(outcome(suffix, sender({ status: "found", numberEnding: "0100" })), "ReportedApplied")
+  assert.strictEqual(outcome(suffix, sender({ status: "found", address: "+15550100" })), "refused")
+  assert.strictEqual(outcome(whole, sender({ status: "found", address: "+15550100", threadId: "thread:42" })), "ReportedApplied")
+  assert.strictEqual(outcome(whole, sender({ status: "found", numberEnding: "0100" })), "refused")
+  assert.strictEqual(outcome(whole, sender({ status: "found", address: "+15550100", threadId: "42" })), "refused")
+  assert.strictEqual(outcome(whole, sender({ status: "found", address: "Sam" })), "refused")
+  assert.strictEqual(outcome(suffix, sender({ status: "empty" })), "ReportedApplied")
+  assert.strictEqual(outcome(suffix, sender({ status: "found", numberEnding: "0100", body: "Dinner?" })), "refused")
+  assert.strictEqual(outcome(suffix, { outcome: "applied", operationId: "n1" }), "refused")
 })
 
 it("Learn exactly what the device did: reads carry a result exactly when applied, and presentations and base operations never do", () => {

@@ -99,9 +99,7 @@
       "cache": false
     },
     "//#gen": {
-      "env": [
-        "!VITE_*"
-      ],
+      "env": ["!VITE_*"],
       "inputs": [
         "spec/**",
         "apps/*/package.json",
@@ -191,6 +189,7 @@
         "vibestack-studio#test:browser"
       ],
       "inputs": [
+        "eslint.config.js",
         "vibestack/**",
         "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!vibestack/selftests/{docs,examples}.ts",
@@ -253,7 +252,6 @@
         "vibestack-studio#test:browser"
       ],
       "inputs": [
-        "eslint.config.js",
         "vibestack/**",
         "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!vibestack/selftests/{docs,examples}.ts",
@@ -328,7 +326,32 @@
         "@elizaos/os#test",
         "@elizaos/plugin-notes#build",
         "@elizaos/plugin-notes#typecheck",
-        "@elizaos/plugin-notes#test"
+        "@elizaos/plugin-notes#test",
+        "@elizaos/plugin-personal-assistant#build",
+        "@elizaos/plugin-personal-assistant#typecheck",
+        "@elizaos/plugin-personal-assistant#test",
+        "@elizaos/plugin-browser#build",
+        "@elizaos/plugin-browser#typecheck",
+        "@elizaos/plugin-browser#test",
+        "@elizaos/plugin-calendar#build",
+        "@elizaos/plugin-calendar#typecheck",
+        "@elizaos/plugin-calendar#test",
+        "@elizaos/plugin-files#build",
+        "@elizaos/plugin-files#typecheck",
+        "@elizaos/plugin-files#test",
+        "@elizaos/plugin-files#test:browser",
+        "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-inbox#typecheck",
+        "@elizaos/plugin-inbox#test",
+        "@elizaos/plugin-local-inference#build",
+        "@elizaos/plugin-local-inference#typecheck",
+        "@elizaos/plugin-local-inference#test",
+        "@elizaos/plugin-maps#build",
+        "@elizaos/plugin-maps#typecheck",
+        "@elizaos/plugin-maps#test",
+        "@elizaos/plugin-workflow#build",
+        "@elizaos/plugin-workflow#typecheck",
+        "@elizaos/plugin-workflow#test"
       ],
       "cache": false
     },
@@ -340,7 +363,15 @@
         "@elizaos/agent#typecheck",
         "@elizaos/os#typecheck",
         "@elizaos/plugin-notes#typecheck",
-        "vibestack-studio#typecheck"
+        "vibestack-studio#typecheck",
+        "@elizaos/plugin-personal-assistant#typecheck",
+        "@elizaos/plugin-browser#typecheck",
+        "@elizaos/plugin-calendar#typecheck",
+        "@elizaos/plugin-files#typecheck",
+        "@elizaos/plugin-inbox#typecheck",
+        "@elizaos/plugin-local-inference#typecheck",
+        "@elizaos/plugin-maps#typecheck",
+        "@elizaos/plugin-workflow#typecheck"
       ],
       "inputs": [
         "apps/**",
@@ -362,6 +393,7 @@
       "inputs": [
         "**/*.css",
         "!.claude/**",
+        "!packages/os/android/**/build/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
         "!**/.DS_Store",
         "!{apps,packages,vibestack/studio}/**/gen/**",
@@ -373,12 +405,7 @@
       "outputs": []
     },
     "//#analyze": {
-      "dependsOn": [
-        "//#gen",
-        "@repo/design-system#build",
-        "@repo/ui#gen",
-        "vibestack-studio#gen"
-      ],
+      "dependsOn": ["//#gen", "@repo/design-system#build", "@repo/ui#gen", "vibestack-studio#gen"],
       "inputs": [
         "apps/**",
         "packages/**",
@@ -406,13 +433,8 @@
       "persistent": true
     },
     "vibestack-studio#gen": {
-      "env": [
-        "!VITE_*"
-      ],
-      "outputs": [
-        "gen/**",
-        "generated/**"
-      ]
+      "env": ["!VITE_*"],
+      "outputs": ["gen/**", "generated/**"]
     },
     "vibestack-studio#dev": {
       "dependsOn": [
@@ -489,6 +511,14 @@
       "outputs": [
         "generated/**",
         "design.md"
+      ]
+    },
+    "@repo/ui#gen": {
+      "dependsOn": [
+        "//#gen"
+      ],
+      "outputs": [
+        "generated/**"
       ]
     }
   },

@@ -1,0 +1,44 @@
+// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/navigationService.md, "Location events require the live watch attempt and cleanup preserves failures"
+import { usableFix, type Fix } from "../../gen/maps__navigation.effect.vibe"
+import { guidesFix, reportableFix, type LocationFix } from "../../gen/maps__navigationService.effect.vibe"
+import type { Position } from "./location.vibe"
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value)
+}
+
+/** A device fix as the planning rules read it: its age at `now`, rounded against the fix. */
+export function navigationFix(position: Position | undefined, now: number): Fix {
+  if (position === undefined || !finiteNumber(position.timestamp) || !finiteNumber(position.accuracyMeters)) {
+    return { present: false, precise: false, age: 0, accuracy: 0 }
+  }
+  return { present: true, precise: position.precision === "precise", age: Math.ceil(now - position.timestamp), accuracy: Math.ceil(position.accuracyMeters) }
+}
+
+/** Whether a fix is still fresh and precise enough to plan or reroute from; recheck at use time, since a fix ages without another event. */
+export function usableNavigationFix(position: Position | undefined, now: number): position is Position {
+  return usableFix(navigationFix(position, now))
+}
+
+function watchFix(position: Position, exactCallback: boolean, now: number): LocationFix {
+  const { latitude, longitude } = position.coordinate
+  return {
+    exactCallback,
+    coordinateValid: finiteNumber(latitude) && finiteNumber(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180,
+    finiteAccuracy: finiteNumber(position.accuracyMeters),
+    finiteTime: finiteNumber(position.timestamp),
+    reportedAccuracy: finiteNumber(position.accuracyMeters) ? Math.ceil(position.accuracyMeters) : -1,
+    age: finiteNumber(position.timestamp) ? Math.ceil(now - position.timestamp) : 0,
+    precise: position.precision === "precise",
+  }
+}
+
+/** Whether the watch may report this fix from the listener that delivered it. */
+export function reportableWatchFix(position: Position, exactCallback: boolean, now: number): boolean {
+  return reportableFix(watchFix(position, exactCallback, now))
+}
+
+/** Whether turn guidance may follow this fix; an approximate or stale one pauses voice until a fresh precise fix. */
+export function guidingWatchFix(position: Position, exactCallback: boolean, now: number): boolean {
+  return guidesFix(watchFix(position, exactCallback, now))
+}

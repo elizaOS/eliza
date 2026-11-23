@@ -1,0 +1,250 @@
+// spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"
+import { assert, it } from "@effect/vitest"
+import {
+  calendarHost, calendarRoutes, CalendarWriteNotAccepted, runCalendarAction,
+  type CalendarAccount, type CalendarApprovalRow, type CalendarCache, type CalendarEvent, type CalendarProviderPort, type CalendarRouteInput,
+} from "../src/index.vibe"
+
+function memoryCache(rows = new Map<string, unknown>(), refused = new Set<string>()): CalendarCache {
+  return {
+    async getCache<T>(key: string) { return rows.get(key) as T | undefined },
+    async setCache<T>(key: string, value: T) {
+      if (refused.has(key)) return false
+      rows.set(key, value)
+      return true
+    },
+    async deleteCache(key: string) { return rows.delete(key) },
+  }
+}
+
+function at(value: unknown, ...path: string[]): unknown {
+  return path.reduce<unknown>((inner, key) => typeof inner === "object" && inner !== null && key in inner ? (inner as Record<string, unknown>)[key] : undefined, value)
+}
+
+const owner: CalendarAccount = { agentId: "agent", ownerId: "owner", accountId: "owner@example.com" }
+const stranger: CalendarAccount = { agentId: "agent", ownerId: "owner", accountId: "other@example.com" }
+const work = { provider: "google", side: "owner", grantId: "grant", connectorAccountId: owner.accountId, calendarId: "work" } as const
+
+function googleCalendar() {
+  const events = new Map<string, CalendarEvent>()
+  const scopes: string[] = []
+  let made = 0
+  const mine = (account: CalendarAccount) => account.accountId === owner.accountId
+  const refuse = (code: string) => new CalendarWriteNotAccepted({ failure: { code, message: code, retryable: false } })
+  const port: CalendarProviderPort = {
+    provider: "google",
+    recurrenceLines: false,
+    effect sources(account) {
+      return mine(account) ? [{ ...work, accountEmail: owner.accountId, summary: "Work", description: null, primary: false, accessRole: "owner", timeZone: "UTC", selected: true, includeInFeed: true }] : []
+    },
+    effect read(account, _source, timeMin, timeMax) {
+      return { events: mine(account) ? [...events.values()].filter((event) => Date.parse(event.startAt) < timeMax && Date.parse(event.endAt) > timeMin) : [], complete: true }
+    },
+    effect get(account, _source, eventId) { return mine(account) ? events.get(eventId) : undefined },
+    effect create(_account, _source, fields, _recurrence, key) {
+      const existing = [...events.values()].find((event) => event.metadata.key === key)
+      if (existing !== undefined) return existing
+      made += 1
+      const event: CalendarEvent = {
+        id: `g-${made}`, externalId: `g-${made}`, agentId: "agent", provider: "google", side: "owner", calendarId: "work",
+        title: fields.title, description: fields.description, location: fields.location, status: "confirmed",
+        startAt: fields.startAt, endAt: fields.endAt, isAllDay: fields.isAllDay, timezone: fields.timeZone, htmlLink: null, conferenceLink: null,
+        organizer: null, attendees: [], metadata: { etag: `etag-${made}`, key }, syncedAt: "2030-01-01T00:00:00.000Z", updatedAt: "2030-01-01T00:00:00.000Z",
+        connectorAccountId: owner.accountId, grantId: "grant",
+      }
+      events.set(event.id, event)
+      return event
+    },
+    effect update(_account, _source, eventId, scope, fields, expected) {
+      scopes.push(scope)
+      const found = events.get(eventId)
+      if (found === undefined || found.metadata.etag !== expected) throw refuse("precondition_failed")
+      const changed = { ...found, ...fields, metadata: { ...found.metadata, etag: `${expected}+` } }
+      events.set(eventId, changed)
+      return changed
+    },
+    effect remove(_account, _source, eventId, scope, expected) {
+      scopes.push(scope)
+      if (events.get(eventId)?.metadata.etag !== expected) throw refuse("precondition_failed")
+      events.delete(eventId)
+    },
+  }
+  return { port, events, scopes }
+}
+
+const march = { timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-03-10T00:00:00Z" }
+
+it.effect(`Change my calendar only as I asked and know it happened (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all")`, effect () => {
+  const filed: CalendarApprovalRow[] = []
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
+  const ask = { by: "owner-entity", id: "message-1" }
+  const dentist = { subaction: "create_event", title: "Dentist", location: "Main St", startAt: "2030-03-04T09:00:00-08:00", endAt: "2030-03-04T10:00:00-08:00", timeZone: "America/Los_Angeles" }
+
+  const created = try runCalendarAction(host, ask, dentist)
+  const id = at(created.data, "event", "id")
+  const etag = at(created.data, "event", "metadata", "etag")
+  assert.deepStrictEqual([created.success, at(created.data, "event", "title"), at(created.data, "event", "startAt")], [true, "Dentist", "2030-03-04T17:00:00.000Z"])
+  assert.deepStrictEqual([at(created.effectReceipts?.[0], "operation"), at(created.effectReceipts?.[0], "resource", "id"), at(created.effectReceipts?.[0], "resource", "version")], ["calendar.event.create", id, etag])
+  const replayed = try runCalendarAction(host, ask, dentist)
+  assert.deepStrictEqual([at(replayed.data, "event", "id"), at(replayed.effectReceipts?.[0], "idempotency", "replayed")], [id, true])
+  const found = try runCalendarAction(host, ask, { subaction: "search_events", query: "DENTIST", ...march })
+  assert.deepStrictEqual([at(found.data, "events", "length"), at(found.data, "complete"), at(found.data, "accountId")], [1, true, "resident:agent"])
+
+  const updated = try runCalendarAction(host, { ...ask, id: "message-2" }, { subaction: "update_event", eventId: id, title: "Dentist moved" })
+  const changedEtag = at(updated.data, "event", "metadata", "etag")
+  assert.deepStrictEqual([at(updated.data, "subaction"), at(updated.data, "targetEvent", "id"), at(updated.data, "targetEvent", "metadata", "etag"), at(updated.data, "event", "id"), at(updated.data, "event", "title"), at(updated.data, "event", "location")],
+    ["update_event", id, etag, id, "Dentist moved", "Main St"])
+  assert.notStrictEqual(changedEtag, etag)
+  assert.deepStrictEqual([at(updated.effectReceipts?.[0], "operation"), at(updated.effectReceipts?.[0], "outcome"), at(updated.effectReceipts?.[0], "resource", "version")], ["calendar.event.update", "applied", changedEtag])
+
+  const deleted = try runCalendarAction(host, { ...ask, id: "message-3" }, { subaction: "delete_event", query: "moved", ...march })
+  assert.deepStrictEqual([at(deleted.data, "deleted"), at(deleted.data, "targetEvent", "id"), at(deleted.data, "targetEvent", "metadata", "etag")], [true, id, changedEtag])
+  assert.deepStrictEqual([at(deleted.effectReceipts?.[0], "operation"), at(deleted.effectReceipts?.[0], "resource", "kind"), at(deleted.effectReceipts?.[0], "resource", "version")], ["calendar.event.delete", "calendar.event", `deleted:${changedEtag}`])
+  assert.strictEqual(at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length"), 0)
+  const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
+  assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
+
+  const google = googleCalendar()
+  try host.register(google.port)
+  try host.bindAccount(owner)
+  const standup = { subaction: "create_event", calendarId: "work", title: "Standup", startAt: "2030-03-05T16:00:00Z", endAt: "2030-03-05T16:15:00Z", timeZone: "UTC" }
+  const queued = try runCalendarAction(host, { ...ask, id: "message-5" }, standup)
+  assert.deepStrictEqual([queued.success, at(queued.data, "approvalRequestId"), google.events.size], [true, filed[0]?.id, 0])
+  const reviewed = filed[0]
+  assert.deepStrictEqual(reviewed?.payload.change, { action: "schedule_event", account: owner.accountId, source: work,
+    fields: { title: "Standup", description: "", location: "", startAt: "2030-03-05T16:00:00.000Z", endAt: "2030-03-05T16:15:00.000Z", isAllDay: false, timeZone: "UTC" }, recurrence: null })
+  if (reviewed === undefined) return
+  const record = { id: reviewed.id, action: reviewed.action, payload: reviewed.payload }
+  assert.strictEqual((try host.executeApproval(record)).result, "ChangeSucceeded")
+  assert.strictEqual((try host.executeApproval(record)).result, "ChangeSucceeded")
+  assert.deepStrictEqual([...google.events.values()].map((event) => [event.title, event.startAt, event.endAt]), [["Standup", "2030-03-05T16:00:00.000Z", "2030-03-05T16:15:00.000Z"]])
+  const allHands = { title: "All hands", description: "", location: "", startAt: "2030-03-05T16:00:00.000Z", endAt: "2030-03-05T16:15:00.000Z", isAllDay: false, timeZone: "UTC" }
+  const tampered = try host.executeApproval({ ...record, id: "approval-tampered", payload: { ...reviewed.payload, change: { ...reviewed.payload.change, fields: allHands } } })
+  assert.deepStrictEqual([tampered.result, tampered.failure?.code], ["ChangeInvalidated", "CALENDAR_REVIEW_UNBOUND"])
+
+  const series = try runCalendarAction(host, { ...ask, id: "message-6" }, { subaction: "update_event", calendarId: "work", query: "standup", ...march, title: "Standup, all", recurrenceScope: "series" })
+  const seriesReview = filed.at(-1)
+  assert.deepStrictEqual([series.success, at(seriesReview?.payload.change, "scope"), at(seriesReview?.payload.change, "fields", "title")], [true, "series", "Standup, all"])
+  if (seriesReview === undefined) return
+  const rescoped = try host.executeApproval({ id: "approval-rescoped", action: seriesReview.action, payload: { ...seriesReview.payload, change: { ...seriesReview.payload.change, scope: "instance" } } })
+  assert.deepStrictEqual([rescoped.result, rescoped.failure?.code, google.scopes], ["ChangeInvalidated", "CALENDAR_REVIEW_UNBOUND", []])
+  assert.strictEqual((try host.executeApproval({ id: seriesReview.id, action: seriesReview.action, payload: seriesReview.payload })).result, "ChangeSucceeded")
+  assert.deepStrictEqual([google.scopes, [...google.events.values()].map((event) => event.title)], [["series"], ["Standup, all"]])
+})
+
+it.effect(`Ask the agent about my calendar and get my active account's events (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it")`, effect () => {
+  const filed: CalendarApprovalRow[] = []
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
+  const google = googleCalendar()
+  try host.register(google.port)
+  try host.bindAccount(owner)
+  const ask = { by: "owner-entity", id: "message-1" }
+  const lunch = try runCalendarAction(host, ask, { subaction: "create_event", title: "Private lunch", startAt: "2030-03-04T12:00:00Z", endAt: "2030-03-04T13:00:00Z" })
+  assert.deepStrictEqual([lunch.success, at(lunch.effectReceipts?.[0], "operation"), filed.length], [true, "calendar.event.create", 0])
+  try runCalendarAction(host, { ...ask, id: "message-2" }, { subaction: "create_event", calendarId: "work", title: "Board review", startAt: "2030-03-05T12:00:00Z", endAt: "2030-03-05T13:00:00Z" })
+  const board = filed.at(-1)
+  if (board === undefined) return
+  assert.strictEqual((try host.executeApproval({ id: board.id, action: board.action, payload: board.payload })).result, "ChangeSucceeded")
+  const mine = try runCalendarAction(host, ask, { subaction: "search_events", ...march })
+  assert.deepStrictEqual((at(mine.data, "events") as CalendarEvent[]).map((event) => event.title), ["Private lunch", "Board review"])
+
+  try runCalendarAction(host, { ...ask, id: "message-3" }, { subaction: "delete_event", calendarId: "work", query: "board", ...march })
+  const removal = filed.at(-1)
+  if (removal === undefined) return
+  try host.bindAccount(stranger)
+  const theirs = try runCalendarAction(host, ask, { subaction: "search_events", ...march })
+  assert.deepStrictEqual([at(theirs.data, "events", "length"), at(theirs.data, "accountId")], [0, stranger.accountId])
+  assert.strictEqual(at(removal.payload.change, "scope"), "instance")
+  const invalidated = try host.executeApproval({ id: removal.id, action: removal.action, payload: removal.payload })
+  assert.deepStrictEqual([invalidated.result, invalidated.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_REVIEW_UNBOUND", 1])
+})
+
+it.effect(`Change my calendar only as I asked and know it happened, from the owner's client (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened")`, effect () => {
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
+  const routes = calendarRoutes(async () => host)
+  const call = (method: string, path: string, input: Partial<CalendarRouteInput> = {}) => {
+    const route = routes.find((row) => row.method === method && row.path === path)
+    return tryPromise(() => route === undefined ? Promise.reject(new Error(`${method} ${path} is not a calendar route`))
+      : route.handler({ parameters: new Map(), query: new Map(), body: undefined, ...input }))
+  }
+  const window = new Map([["timeMin", "2030-03-01T00:00:00.000Z"], ["timeMax", "2030-03-10T00:00:00.000Z"]])
+  const made = try call("POST", "/api/lifeops/calendar/events", { body: { title: "Haircut", startAt: "2030-03-06T18:00:00Z", endAt: "2030-03-06T19:00:00Z", timeZone: "UTC", idempotencyKey: "key-1" } })
+  const id = String(at(made.body, "event", "id"))
+  const etag = String(at(made.body, "event", "metadata", "etag"))
+  assert.deepStrictEqual([made.status, at(made.body, "event", "title")], [200, "Haircut"])
+  assert.strictEqual(at((try call("GET", "/api/lifeops/calendar/feed", { query: window })).body, "events", "length"), 1)
+  const path = "/api/lifeops/calendar/events/{eventId}"
+  const parameters = new Map([["eventId", id]])
+  assert.strictEqual((try call("PATCH", path, { parameters, body: { title: "Haircut", expectedProviderVersion: "stale", idempotencyKey: "key-2" } })).status, 409)
+  const moved = try call("PATCH", path, { parameters, body: { startAt: "2030-03-07T18:00:00Z", endAt: "2030-03-07T19:00:00Z", expectedProviderVersion: etag, idempotencyKey: "key-2" } })
+  assert.deepStrictEqual([moved.status, at(moved.body, "event", "startAt"), at(moved.body, "event", "title")], [200, "2030-03-07T18:00:00.000Z", "Haircut"])
+  const next = String(at(moved.body, "event", "metadata", "etag"))
+  assert.strictEqual((try call("DELETE", path, { parameters, query: new Map([["expectedProviderVersion", next], ["idempotencyKey", "key-3"]]) })).status, 400)
+  const gone = try call("DELETE", path, { parameters, query: new Map([["expectedProviderVersion", next], ["idempotencyKey", "key-3"], ["cancellationMode", "remove_private_copy"]]) })
+  assert.deepStrictEqual([gone.status, at(gone.body, "deleted"), at(gone.body, "receipt", "providerVersion")], [200, true, `deleted:${next}`])
+  assert.strictEqual(at((try call("GET", "/api/lifeops/calendar/feed", { query: window })).body, "events", "length"), 0)
+})
+
+it.effect(`Create a repeating event through the reviewed create (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it")`, effect () => {
+  const filed: CalendarApprovalRow[] = []
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
+  const ask = { by: "owner-entity", id: "message-1" }
+  const weekly = { subaction: "create_event", title: "Piano", startAt: "2030-03-04T17:00:00Z", endAt: "2030-03-04T18:00:00Z", timeZone: "UTC",
+    repeat: "weekly", repeatUntil: "2030-03-25T17:00:00Z", skipStarts: ["2030-03-11T17:00:00Z"] }
+  const made = try runCalendarAction(host, ask, weekly)
+  assert.deepStrictEqual([made.success, at(made.data, "event", "recurrence")], [true, ["RRULE:FREQ=WEEKLY;UNTIL=20300325T170000Z", "EXDATE:20300311T170000Z"]])
+  const month = try runCalendarAction(host, ask, { subaction: "search_events", query: "piano", timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-04-01T00:00:00Z" })
+  assert.deepStrictEqual((at(month.data, "events") as CalendarEvent[]).map((event) => event.startAt), ["2030-03-04T17:00:00.000Z", "2030-03-18T17:00:00.000Z", "2030-03-25T17:00:00.000Z"])
+  const doubled = try runCalendarAction(host, { ...ask, id: "message-2" }, { ...weekly, skipStarts: ["2030-03-11T17:00:00Z", "2030-03-11T17:00:00Z"] })
+  assert.strictEqual(doubled.success, false)
+
+  const google = googleCalendar()
+  try host.register(google.port)
+  try host.bindAccount(owner)
+  try runCalendarAction(host, { ...ask, id: "message-3" }, { ...weekly, calendarId: "work" })
+  const review = filed.at(-1)
+  assert.deepStrictEqual(at(review?.payload.change, "recurrence"), { rule: "weekly", until: "2030-03-25T17:00:00.000Z", excluded: ["2030-03-11T17:00:00.000Z"] })
+  if (review === undefined) return
+  const refusal = try host.executeApproval({ id: review.id, action: review.action, payload: review.payload })
+  assert.deepStrictEqual([refusal.result, refusal.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_RECURRENCE_UNSUPPORTED", 0])
+})
+
+it.effect(`Keep the calendar events I saved before this version (spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/residentStore.md, "The earlier events are imported once, exactly, and never over the series rows")`, effect () => {
+  const priorKey = "calendar:kv:calendar.resident.agent.resident%3Aagent"
+  const rowsKey = "calendar:kv:calendar.resident.rows.agent.resident%3Aagent"
+  const saved: CalendarEvent = {
+    id: "resident-1", externalId: "resident-1", agentId: "agent", provider: "eliza", side: "owner", calendarId: "primary",
+    title: "Dentist", description: "Bring forms", location: "Main St", status: "confirmed", startAt: "2030-03-04T17:00:00.000Z", endAt: "2030-03-04T18:00:00.000Z",
+    isAllDay: false, timezone: "America/Los_Angeles", htmlLink: null, conferenceLink: null, organizer: null, attendees: [],
+    metadata: { etag: "r3", createdAt: "2030-01-01T00:00:00.000Z" }, syncedAt: "2030-01-02T00:00:00.000Z", updatedAt: "2030-01-02T00:00:00.000Z",
+    calendarSummary: "Calendar", connectorAccountId: "resident:agent", grantId: "resident",
+  }
+  const prior = JSON.stringify({ revision: 3, events: [saved], replays: { "old-key": saved.id } })
+  const rows = new Map<string, unknown>([[priorKey, prior]])
+  const refused = new Set([rowsKey])
+  const window = { timeMin: Date.parse("2030-03-01T00:00:00Z"), timeMax: Date.parse("2030-03-10T00:00:00Z") }
+  const crashed = try calendarHost({ cache: memoryCache(rows, refused), agentId: "agent", approvals: () => undefined })
+  const unsaved = try crashed.search(window)
+  assert.deepStrictEqual([unsaved?.complete, unsaved?.events.length, unsaved?.unavailable, rows.has(rowsKey)], [false, 0, ["eliza"], false])
+
+  refused.clear()
+  const first = try calendarHost({ cache: memoryCache(rows, refused), agentId: "agent", approvals: () => undefined })
+  const found = try first.search(window)
+  assert.deepStrictEqual(found?.events.map((event) => [event.id, event.title, event.description, event.startAt, event.timezone, event.metadata.etag]),
+    [["resident-1", "Dentist", "Bring forms", "2030-03-04T17:00:00.000Z", "America/Los_Angeles", "r3"]])
+  const receipt = at(JSON.parse(String(rows.get(rowsKey))), "imported")
+  assert.deepStrictEqual([at(receipt, "format"), at(receipt, "revision"), at(receipt, "events")], ["resident-events-1", 3, 1])
+  const moved = try runCalendarAction(first, { by: "owner-entity", id: "message-1" }, { subaction: "update_event", eventId: "resident-1", title: "Dentist moved" })
+  assert.deepStrictEqual([moved.success, at(moved.data, "targetEvent", "metadata", "etag")], [true, "r3"])
+
+  const rerun = try calendarHost({ cache: memoryCache(rows, refused), agentId: "agent", approvals: () => undefined })
+  assert.deepStrictEqual((try rerun.search(window))?.events.map((event) => event.title), ["Dentist moved"])
+  assert.strictEqual(rows.get(priorKey), prior)
+
+  const broken = new Map<string, unknown>([[priorKey, JSON.stringify({ revision: 3, events: [{ id: "resident-1" }], replays: {} })]])
+  const review = try calendarHost({ cache: memoryCache(broken), agentId: "agent", approvals: () => undefined })
+  const held = try review.search(window)
+  assert.deepStrictEqual([held?.complete, held?.events.length, held?.unavailable], [false, 0, ["eliza"]])
+  const blocked = try runCalendarAction(review, { by: "owner-entity", id: "message-2" }, { subaction: "create_event", title: "New", startAt: "2030-03-05T17:00:00Z", endAt: "2030-03-05T18:00:00Z" })
+  assert.deepStrictEqual([blocked.success, broken.has(rowsKey)], [false, false])
+})

@@ -1,8 +1,14 @@
-// spec/agent/plugins/bundle.md, "A built bundle's manifest is readable for its own bytes"; spec/agent/plugins/bundle.md, "A manifest is never read for other bundle bytes"
+// spec/agent/plugins/bundle.md, "A built bundle's manifest is readable for its own bytes"; spec/agent/plugins/bundle.md, "A manifest is never read for other bundle bytes"; spec/agent/plugins/bundle.md, "Profile groups name only bundled plugins, each in one group"
+import { profilesWellFormed } from "../../gen/agent__plugins__bundle.ts"
+
 const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
 const NonBlank = Schema.Trimmed.check(Schema.isMinLength(1))
 const Package = Schema.Struct({ name: NonBlank, version: NonBlank, sha256: Digest })
 const Action = Schema.Struct({ name: NonBlank, umbrella: Schema.optionalKey(NonBlank) })
+const Group = Schema.Array(NonBlank)
+
+/** The resident profile groups a build declares over the plugins it carries. */
+export const ProfileGroups = Schema.Struct({ core: Group, views: Group, aospOnly: Group, optional: Group })
 
 export const BundleManifest = Schema.Struct({
   schema: Schema.Literal(1),
@@ -16,12 +22,22 @@ export const BundleManifest = Schema.Struct({
   localInference: Schema.Boolean,
   workflowWorkerSha256: Schema.optionalKey(Digest),
   actions: Schema.Array(Action),
+  profiles: Schema.optionalKey(ProfileGroups),
 }).check(Schema.makeFilter((manifest) =>
   new Set(manifest.packages.map(({name,version,sha256}) => JSON.stringify([name,version,sha256]))).size === manifest.packages.length
   && new Set(manifest.plugins).size === manifest.plugins.length
   && !manifest.plugins.includes(manifest.productPlugin ?? "")
   && new Set(manifest.actions.map(({ name }) => name)).size === manifest.actions.length
-  && manifest.actions.every(({ umbrella }) => umbrella === undefined || manifest.actions.some((entry) => entry.name === umbrella && entry.umbrella === undefined))))
+  && manifest.actions.every(({ umbrella }) => umbrella === undefined || manifest.actions.some((entry) => entry.name === umbrella && entry.umbrella === undefined))
+  && (manifest.profiles === undefined || profilesWellFormed(groupLists(manifest.profiles), [...manifest.plugins]))))
+
+/** The mutable group lists the generated profile rules take. */
+export function groupLists(groups: typeof ProfileGroups.Type) {
+  return { core: [...groups.core], views: [...groups.views], aospOnly: [...groups.aospOnly], optional: [...groups.optional] }
+}
+
+/** The resident profile groups a manifest records. */
+export type ProfileGroups = typeof ProfileGroups.Type
 
 export type BundleManifest = typeof BundleManifest.Type
 export const readManifest = Schema.decodeUnknownSync(Schema.fromJsonString(BundleManifest), { onExcessProperty: "error" })

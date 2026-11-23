@@ -1,7 +1,8 @@
-// spec/os/android/contacts.md, "Story: Read my contacts only while I am looking at them"; spec/os/android/contacts.md, "Story: Change only the contact I reviewed"; spec/os/android/paging.md, "Story: Page my records without repeats or gaps"
+// spec/os/android/contacts.md, "Story: Read my contacts only while I am looking at them"; spec/os/android/contacts.md, "Story: Change only the contact I reviewed"; spec/os/android/contacts.md, "Story: Name the numbers I am already looking at"; spec/os/android/paging.md, "Story: Page my records without repeats or gaps"
 import type { PermissionState } from "@capacitor/core";
 import type { HandoffOutcome, ReadKind } from "../../../gen/os__android__bridge.ts";
 import type { ContactsInstall, ContactsState } from "../../../gen/os__android__contacts.ts";
+import type { ActionJournalPlugin, StagedDeletion } from "./action-journal.ts";
 
 export type ContactId = string & { readonly __brand: "ContactId" };
 export type ContactVersion = string & { readonly __brand: "ContactVersion" };
@@ -110,8 +111,23 @@ export type ContactSaveResult =
   | { status: "saved"; id: null; version: null }
   | { status: "stale" | "not-found" | "failed" | "unknown" };
 
-export interface ContactRemoveResult {
-  status: "deleted" | "stale" | "not-found" | "failed" | "unknown";
+export type ContactRemoveResult =
+  | { status: "queued"; deletion: StagedDeletion }
+  | { status: "stale" | "not-found" | "failed" };
+
+export type NameSurface = "phone" | "messages" | "call";
+
+export interface NameScreen {
+  surface: NameSurface;
+  numbers: readonly string[];
+}
+
+export type DisplayOnlyName = string & { readonly __brand: "DisplayOnlyName" };
+
+export interface ContactName {
+  number: string;
+  name: DisplayOnlyName | null;
+  photo: string | null;
 }
 
 export type ContactDraftProblem =
@@ -139,11 +155,13 @@ export interface AddressBookNativePlugin {
   get(options: { id: string }): Promise<unknown>;
   save(options: ContactDraft & { id?: string; version?: string }): Promise<unknown>;
   remove(options: { id: string; version: string }): Promise<unknown>;
+  resolveNames(options: { numbers: string[] }): Promise<unknown>;
 }
 
 export interface AddressBookClientOptions {
   install: ContactsInstall;
   plugin?: AddressBookNativePlugin;
+  journal?: ActionJournalPlugin;
 }
 
 export interface AddressBookClient {
@@ -160,6 +178,11 @@ export interface AddressBookClient {
   createContact(draft: ContactDraft): Promise<ContactSaveResult>;
   updateContact(reviewed: ReviewedContact, draft: ContactDraft): Promise<ContactSaveResult>;
   remove(reviewed: ReviewedContact): Promise<ContactRemoveResult>;
+}
+
+export interface ContactNamesClient {
+  resolve(screen: NameScreen): Promise<readonly ContactName[]>;
+  close(surface: NameSurface): Promise<void>;
 }
 
 export interface ContactSummary {

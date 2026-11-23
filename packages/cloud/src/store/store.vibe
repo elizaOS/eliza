@@ -61,9 +61,9 @@ module node {
 }
 import { migrationFiles, openPg, openPglite, type Migration } from node
 import { Store, type StoreFailure, foreign, storeOver, toText, type StoreLocation, type Tx } from "./connection.vibe"
+import { DatabaseIdentityMismatch, DatabaseUnreadable, readIdentity } from "./identity.vibe"
 export { Store, StoreFailure, toInt, toText, type Row, type StoreLocation, type Tx } from "./connection.vibe"
-export error DatabaseIdentityMismatch { expected: string; found: string }
-export error DatabaseUnreadable { problem: string }
+export { assertDatabaseIdentity, DatabaseIdentityMismatch, DatabaseUnreadable, identityDigest, observeIdentity, readIdentity, type DatabaseIdentity } from "./identity.vibe"
 export error StoreLocationInvalid { input: string }
 
 export effect function parseStoreLocation(input: string): StoreLocation!StoreLocationInvalid {
@@ -81,41 +81,6 @@ export function storeLayer(location: StoreLocation): Layer.Layer<Store, StoreFai
     )
     return try storeOver(location, pool)
   })
-}
-
-export effect function identityDigest(tx: Tx): (string | undefined)!StoreFailure {
-  const table = try tx.query("SELECT to_regclass('cloud_identity') IS NOT NULL AS present")
-  if (table[0]?.present !== true) return undefined
-  return toText((try tx.query("SELECT digest FROM cloud_identity"))[0]?.digest)
-}
-
-export effect function assertDatabaseIdentity(tx: Tx, expected: string): void!(StoreFailure | DatabaseIdentityMismatch) {
-  const found = try identityDigest(tx)
-  if (found !== expected) throw new DatabaseIdentityMismatch({ expected, found: found ?? "none" })
-}
-
-export type DatabaseIdentity =
-  | { readonly kind: "fresh" }
-  | { readonly kind: "identified"; readonly digest: string; readonly environment: string }
-  | { readonly kind: "unreadable"; readonly problem: string }
-
-export effect function readIdentity(tx: Tx): DatabaseIdentity!StoreFailure {
-  const table = try tx.query("SELECT to_regclass('cloud_identity') IS NOT NULL AS present")
-  if (table[0]?.present !== true) {
-    const objects = try tx.query("SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','f','S') LIMIT 1")
-    return objects.length ? { kind: "unreadable", problem: "the database holds objects but no cloud identity" } : { kind: "fresh" }
-  }
-  const rows = try tx.query("SELECT digest, environment FROM cloud_identity")
-  const digest = toText(rows[0]?.digest)
-  const environment = toText(rows[0]?.environment)
-  if (rows.length !== 1 || digest === undefined || environment === undefined) return { kind: "unreadable", problem: "the cloud identity row is missing or malformed" }
-  return { kind: "identified", digest, environment }
-}
-
-export effect function observeIdentity(): DatabaseIdentity!!Store {
-  return (try Store).transaction(readIdentity) catch effect (failure) => {
-    return { kind: "unreadable", problem: `the database could not be read (${failure.operation})` } satisfies DatabaseIdentity
-  }
 }
 
 export interface MigrationReport {

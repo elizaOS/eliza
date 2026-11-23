@@ -95,7 +95,8 @@ pure def lawNoCapabilityNeedsManagedGoogle(setup: CloudSetup, wanted: CloudCapab
 `Authorization`, `Content-Type`, `X-Request-ID`, `Traceparent` and
 `Tracestate`; a route's `headers` names the others it admits:
 `Idempotency-Key` on subscription checkout, redeem, chat completions,
-every metered maps operation and calendar create, `If-Match` on calendar change and delete. The
+every metered maps operation and calendar create, `If-Match` on calendar change and delete,
+`X-Renewed-Credential-Id` on the device key's sign-out. The
 auth classes are those of the cloud's request authentication. Enrollment
 and confirmation use a signed session. Their handlers apply the
 [second-factor policy](./identity/secondFactor.md) for a fresh first setup
@@ -110,6 +111,7 @@ webhook and the loopback test inbox are not device routes.
 ```quint
 pure val idempotencyKey = "Idempotency-Key"
 pure val ifMatch = "If-Match"
+pure val renewedCredential = "X-Renewed-Credential-Id"
 pure val baseHeaders = Set("Authorization", "Content-Type", "X-Request-ID", "Traceparent", "Tracestate")
 pure def lits(names: List[str]): List[Segment] = names.listMap(n => Literal({ text: n }))
 pure def api(names: List[str]): List[Segment] = List(Literal({ text: "api" }), Literal({ text: "v1" })).concat(lits(names))
@@ -152,7 +154,8 @@ pure val signInRoutes: List[DeviceRoute] = List(
   route(Post, api(List("app-auth", "mobile", "token")), Public),
   route(Post, api(List("app-auth", "mobile", "ack")), Public),
   route(Post, api(List("app-auth", "mobile", "google")), Public),
-  route(Delete, api(List("api-keys", "current")), KeyOrSession))
+  route(Post, api(List("app-auth", "mobile", "renew")), KeyOrSession),
+  keyed(Delete, api(List("api-keys", "current")), Set(renewedCredential)))
 pure val billingRoutes: List[DeviceRoute] = List(
   route(Get, api(List("subscriptions", "plans")), Public),
   route(Get, api(List("subscription", "entitlement-keys")), Public),

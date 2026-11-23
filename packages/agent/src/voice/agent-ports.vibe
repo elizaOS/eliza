@@ -23,7 +23,10 @@ module node {
     }
   }
 
-  const decodeReply = Schema.decodeUnknownOption(Schema.Struct({ messageId: Schema.String, text: Schema.String }))
+  const decodeReply = Schema.decodeUnknownOption(Schema.Struct({
+    messageId: Schema.String, text: Schema.String,
+    action: Schema.optionalKey(Schema.Struct({ kind: Schema.String, validatedCard: Schema.Boolean, verbatimAsked: Schema.Boolean })),
+  }))
 
   export type VoiceNetworkPorts = Pick<VoiceSessionPorts, "endOfTurn" | "turns" | "heard">
 

@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
@@ -19,12 +19,16 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class DeviceKeyClient {
   public static final String CONNECT = "/api/v1/app-auth/connect";
   public static final String TOKEN = "/api/v1/app-auth/mobile/token";
   public static final String ACK = "/api/v1/app-auth/mobile/ack";
+  public static final String RENEW = "/api/v1/app-auth/mobile/renew";
   public static final String REVOKE = "/api/v1/api-keys/current";
+  public static final String RENEWED_CREDENTIAL = "X-Renewed-Credential-Id";
   public static final String USER = "/api/v1/user";
   public static final String CODE_CHALLENGE_METHOD = "S256";
   public static final int CONNECT_TIMEOUT_MS = 8_000;
@@ -64,6 +68,7 @@ public final class DeviceKeyClient {
   private final URI origin;
   private final DeviceCredentialStore store;
   private final Pause pause;
+  private final Set<Integer> renewalsAsked = ConcurrentHashMap.newKeySet();
 
   public DeviceKeyClient(URI origin, DeviceCredentialStore store, Pause pause) {
     this.origin = origin;
@@ -72,11 +77,19 @@ public final class DeviceKeyClient {
   }
 
   public Answer<Grant> connect(String sessionToken, Binding binding, String state, String codeChallenge, String deviceName) {
+    return grant(CONNECT, sessionToken, binding, state, codeChallenge, deviceName);
+  }
+
+  public Answer<Grant> renew(String secret, Binding binding, String state, String codeChallenge, String deviceName) {
+    return grant(RENEW, secret, binding, state, codeChallenge, deviceName);
+  }
+
+  private Answer<Grant> grant(String path, String bearer, Binding binding, String state, String codeChallenge, String deviceName) {
     StringBuilder body = binding(binding).append(",\"flow\":\"mobile_pkce\",\"state\":").append(CredentialJson.quote(state))
       .append(",\"codeChallenge\":").append(CredentialJson.quote(codeChallenge))
       .append(",\"codeChallengeMethod\":\"").append(CODE_CHALLENGE_METHOD).append('"');
     if (deviceName != null) body.append(",\"deviceName\":").append(CredentialJson.quote(deviceName));
-    return ask("POST", CONNECT, sessionToken, body.append('}').toString(), 200,
+    return ask("POST", path, bearer, body.append('}').toString(), 200,
       answer -> new Grant(CredentialJson.text(answer, "code"), instant(answer, "expiresAt")));
   }
 
@@ -110,7 +123,12 @@ public final class DeviceKeyClient {
   }
 
   public boolean revoke(String secret) {
-    Answer<Boolean> answer = ask("DELETE", REVOKE, secret, null, 200, body -> true);
+    return revoke(secret, "");
+  }
+
+  public boolean revoke(String secret, String successor) {
+    Map<String, String> headers = successor.isEmpty() ? Map.of() : Map.of(RENEWED_CREDENTIAL, successor);
+    Answer<Boolean> answer = ask("DELETE", REVOKE, secret, headers, null, 200, body -> true);
     return answer instanceof Answer.Answered<Boolean> || answer instanceof Answer.Refused<Boolean> r && r.status() == 401;
   }
 
@@ -151,11 +169,28 @@ public final class DeviceKeyClient {
     return pending == null ? Exchange.SUPERSEDED : acknowledge(pending);
   }
 
+  public Exchange renewKey(Binding binding) {
+    CredentialReader.Credential held = store.current();
+    if (held == null || !renewalsAsked.add(held.version())) return Exchange.SUPERSEDED;
+    int attempt = store.beginRenewal();
+    if (attempt == 0) {
+      renewalsAsked.remove(held.version());
+      return Exchange.SUPERSEDED;
+    }
+    String state = SignInPolicy.newState(), verifier = SignInPolicy.newVerifier();
+    Answer<Grant> answer = renew(held.value(), binding, state, SignInPolicy.s256(verifier), null);
+    if (answer instanceof Answer.Answered<Grant> granted) return exchange(attempt, binding, new Proof(granted.value().code(), state, verifier));
+    store.signInEnded(attempt);
+    if (answer instanceof Answer.Refused<Grant> refused && refused.status() == 401 && refused.reason().credential())
+      store.rejected(held.version(), refused.reason(), RejectedOn.OTHER_REQUEST);
+    return answer instanceof Answer.Unanswered<Grant> ? Exchange.UNANSWERED : Exchange.REFUSED;
+  }
+
   public void settleDuties() {
     for (Owed owed : store.owed()) {
       for (int ask = 0; ask < owed.tries(); ask++) {
         if (ask > 0 && !rest(ask)) return;
-        if (store.revokeAnswered(owed.version(), revoke(owed.value())) == Outcome.REFUSED) break;
+        if (store.revokeAnswered(owed.version(), revoke(owed.value(), owed.successor())) == Outcome.REFUSED) break;
         if (store.owed().stream().noneMatch(o -> o.version() == owed.version())) break;
       }
     }
@@ -212,9 +247,13 @@ public final class DeviceKeyClient {
   }
 
   <T> Answer<T> ask(String method, String path, String bearer, String body, int expected, Reading<T> reading) {
+    return ask(method, path, bearer, Map.of(), body, expected, reading);
+  }
+
+  private <T> Answer<T> ask(String method, String path, String bearer, Map<String, String> headers, String body, int expected, Reading<T> reading) {
     Reply reply;
     try {
-      reply = send(method, path, bearer, body);
+      reply = send(method, path, bearer, headers, body);
     } catch (IOException unanswered) {
       return new Answer.Unanswered<>();
     }
@@ -237,7 +276,7 @@ public final class DeviceKeyClient {
     }
   }
 
-  private Reply send(String method, String path, String bearer, String body) throws IOException {
+  private Reply send(String method, String path, String bearer, Map<String, String> headers, String body) throws IOException {
     HttpURLConnection connection = (HttpURLConnection) origin.resolve(path).toURL().openConnection();
     connection.setInstanceFollowRedirects(false);
     connection.setUseCaches(false);
@@ -246,6 +285,7 @@ public final class DeviceKeyClient {
     connection.setRequestMethod(method);
     connection.setRequestProperty("Accept", "application/json");
     if (bearer != null) connection.setRequestProperty("Authorization", "Bearer " + bearer);
+    for (Map.Entry<String, String> header : headers.entrySet()) connection.setRequestProperty(header.getKey(), header.getValue());
     try {
       if (body != null) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);

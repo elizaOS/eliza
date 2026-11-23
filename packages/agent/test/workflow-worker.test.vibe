@@ -1,7 +1,8 @@
-// spec/agent/plugins/profile.md, "Story: Run my workflows only in the pinned worker"; spec/agent/host/launch.md, "Story: Tell the supervisor why the process ended"
+// spec/agent/plugins/profile.md, "Story: Run my workflows only in the pinned worker"; spec/agent/host/launch.md, "Story: Tell the supervisor why the process ended"; spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"
 import { assert, it } from "@effect/vitest"
 import { parseLaunch } from "../src/host/launch.vibe"
-import { startAgent } from "../src/host/process.vibe"
+import { AgentBootFailed, startAgent } from "../src/host/process.vibe"
+import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
 import { boot, host, scratch } from "./support/kernel.vibe"
 import { launchDocument, launchFrame } from "./support/scratch.ts"
 
@@ -81,3 +82,43 @@ it.effect('A symlinked worker executable is refused before the plan loads (spec/
   const failed = try Effect.flip(startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file("agent.sock") } }))
   try Effect.try(() => assert.strictEqual(failed._tag === "AgentBootFailed" ? failed.phase : failed._tag, "Config"))
 }, 60_000)
+
+const hostServicesRule = "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"
+
+function hostService(serviceType: string): ServiceClass {
+  return class HostBridge extends Service {
+    static override serviceType = serviceType
+    override capabilityDescription = "A host bridge fixture"
+    static override start(runtime: IAgentRuntime): Promise<Service> { return Promise.resolve(new HostBridge(runtime)) }
+    enrollment(): Promise<undefined> { return Promise.resolve(undefined) }
+    perform(): Promise<unknown> { return Promise.resolve({ ok: true }) }
+    override stop(): Promise<void> { return Promise.resolve() }
+  }
+}
+
+it.effect(`A pinned worker is the workflow-worker service, a host's bridges are found by name, and a host service under an agent service's name refuses boot (spec/agent/plugins/profile.md, "${hostServicesRule}")`, effect () => {
+  const state = try scratch("ww-services-state")
+  const workers = try scratch("ww-services-dir")
+  try host("worker fixture", () => writeWorker(workers.path, "worker"))
+  const frame = launchFrame({})
+  const document = try Effect.try(() => launchDocument({ workflowWorker: { runtimeDir: workers.path, executable: "worker", sha256: workerDigest } }))
+  const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
+  const running = try acquireRelease(
+    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file("agent.sock") },
+      runtimeServices: [hostService("workflow-device"), hostService("workflow-native-digests")] }),
+    (agent) => orDie(host("retire agent", () => agent.stop())),
+  )
+  const worker = running.runtime.getService("workflow-worker") as unknown as { spawnWorker?: (args: readonly string[]) => Promise<Parameters<typeof finished>[0]> } | null
+  const spawn = worker?.spawnWorker
+  if (spawn === undefined) return try die("The workflow-worker service was not registered")
+  const ran = try host("worker through the service", () => spawn.call(worker, ["run", "flow"]).then(finished))
+  const crowded = try scratch("ww-crowded-state")
+  const refused = try Effect.flip(startAgent({ ...parsed, stateDirectory: crowded.path, binding: { kind: "socket", path: crowded.file("agent.sock") },
+    runtimeServices: [hostService("cloud")] }))
+  try Effect.try(() => assert.deepStrictEqual({
+    ran: { code: ran.code, args: ran.lines.includes("ARGS=run flow") },
+    device: running.runtime.getService("workflow-device") !== null,
+    digests: running.runtime.getService("workflow-native-digests") !== null,
+    refused: refused instanceof AgentBootFailed ? refused.phase : "booted",
+  }, { ran: { code: 0, args: true }, device: true, digests: true, refused: "Config" }))
+}, 180_000)

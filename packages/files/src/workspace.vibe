@@ -1,0 +1,127 @@
+// spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"; spec/files/workspace.md, "A workspace path is relative, has no parent or control segment, and names the root only where a folder is asked for"; spec/files/workspace.md, "A call touches a file only when its real location is inside the workspace, and a write never follows a link"
+module node {
+  import { constants } from "node:fs"
+  import { lstat, mkdir, open, readdir, readFile, realpath, stat } from "node:fs/promises"
+  import * as path from "node:path"
+  import type { Resolved } from "../gen/files__workspace.ts"
+
+  const inside = (root: string, target: string) => target === root || target.startsWith(root.endsWith(path.sep) ? root : root + path.sep)
+  const code = (error: unknown) => typeof error === "object" && error !== null && "code" in error ? error.code : undefined
+
+  /** The workspace directory under a state directory. */
+  export function workspaceRoot(stateDirectory: string): string {
+    return path.join(stateDirectory, "workspace")
+  }
+
+  /** Where a relative path really is, with links resolved, and whether it stays in the workspace. */
+  export async function resolveExisting(root: string, relative: string): Promise<{ readonly target: string; readonly facts: Resolved }> {
+    await mkdir(root, { recursive: true })
+    const [base, target] = await Promise.all([realpath(root), realpath(path.join(root, relative))])
+    return { target, facts: { realInside: inside(base, target), parentIsLink: false, parentIsFile: false, leafIsLink: false } }
+  }
+
+  /** Creates each missing parent of a relative path as a plain folder and reports what the write would touch. */
+  export async function prepareWrite(root: string, relative: string): Promise<{ readonly target: string; readonly facts: Resolved }> {
+    await mkdir(root, { recursive: true })
+    const base = await realpath(root)
+    const parts = relative.split("/")
+    let current = base
+    let parentIsLink = false
+    let parentIsFile = false
+    for (const part of parts.slice(0, -1)) {
+      const next = path.join(current, part)
+      const info = await lstat(next).catch((error: unknown) => code(error) === "ENOENT" ? undefined : Promise.reject(error))
+      if (info === undefined) await mkdir(next).catch((error: unknown) => code(error) === "EEXIST" ? undefined : Promise.reject(error))
+      const settled = await lstat(next)
+      parentIsLink ||= settled.isSymbolicLink()
+      parentIsFile ||= !settled.isSymbolicLink() && !settled.isDirectory()
+      if (parentIsLink || parentIsFile) break
+      current = await realpath(next)
+    }
+    const target = path.join(current, parts[parts.length - 1] ?? "")
+    const leaf = await lstat(target).catch(() => undefined)
+    return { target, facts: { realInside: inside(base, current), parentIsLink, parentIsFile, leafIsLink: leaf?.isSymbolicLink() === true } }
+  }
+
+  /** Reads a resolved file. */
+  export async function readTarget(target: string, encoding: "utf8" | "base64"): Promise<string> {
+    return readFile(target, encoding)
+  }
+
+  /** Writes a prepared file without following a link at its own name. */
+  export async function writeTarget(target: string, content: string, encoding: "utf8" | "base64"): Promise<void> {
+    const flags = constants.O_WRONLY | constants.O_NOFOLLOW
+    const handle = await open(target, flags).catch((error: unknown) => code(error) === "ENOENT"
+      ? open(target, flags | constants.O_CREAT | constants.O_EXCL).catch((raced: unknown) => code(raced) === "EEXIST" ? open(target, flags) : Promise.reject(raced))
+      : Promise.reject(error))
+    try {
+      await handle.truncate(0)
+      await handle.writeFile(content, encoding)
+    } finally {
+      await handle.close()
+    }
+  }
+
+  /** The files and folders of a resolved folder; a dangling link counts as a file. */
+  export async function listTarget(target: string): Promise<{ readonly name: string; readonly type: "file" | "directory" }[]> {
+    const entries = await readdir(target, { withFileTypes: true })
+    return Promise.all(entries.map(async (entry) => ({
+      name: entry.name,
+      type: entry.isDirectory() || (entry.isSymbolicLink() && (await stat(path.join(target, entry.name)).catch(() => undefined))?.isDirectory() === true) ? "directory" as const : "file" as const,
+    })))
+  }
+}
+import { listTarget, prepareWrite, readTarget, resolveExisting, workspaceRoot, writeTarget } from node
+import { pathAdmitted, touches, type WorkspaceCall } from "../gen/files__workspace.effect.vibe"
+
+export { workspaceRoot }
+export type FileEncoding = "utf8" | "base64"
+export type DirectoryEntry = { readonly name: string; readonly type: "file" | "directory" }
+
+export error WorkspaceRefused { path: string; reason: "invalid_path" | "outside_workspace" | "not_found" | "failed" }
+
+/** A workspace path normalized to slash-separated segments, or undefined when the workspace rules refuse it. */
+export function normalizeWorkspacePath(input: string, folderCall = false): string | undefined {
+  const unified = input.replace(/\\/g, "/")
+  const segments = unified.split("/").filter((segment) => segment !== "" && segment !== ".")
+  const admitted = pathAdmitted({
+    absolute: unified.startsWith("/") || /^[a-zA-Z]:\//.test(unified),
+    parentSegment: unified.split("/").includes(".."),
+    nul: input.includes("\0"),
+    namesRoot: segments.length === 0,
+  }, folderCall)
+  return admitted ? segments.join("/") : undefined
+}
+
+effect function admitted(input: string, call: WorkspaceCall): string!WorkspaceRefused {
+  const relative = normalizeWorkspacePath(input, call === "WorkspaceList")
+  if (relative === undefined) throw new WorkspaceRefused({ path: input, reason: "invalid_path" })
+  return relative
+}
+
+effect function resolved(input: string, call: WorkspaceCall, resolve: () => Promise<{ readonly target: string; readonly facts: { realInside: boolean; parentIsLink: boolean; parentIsFile: boolean; leafIsLink: boolean } }>) {
+  const { target, facts } = try tryPromise({ try: resolve, catch: () => new WorkspaceRefused({ path: input, reason: "not_found" }) })
+  if (!touches(call, facts)) throw new WorkspaceRefused({ path: input, reason: "outside_workspace" })
+  return target
+}
+
+/** The agent's working files under one workspace directory. */
+export function workspace(root: string) {
+  return {
+    effect read(input: string, encoding: FileEncoding = "utf8"): string!WorkspaceRefused {
+      const relative = try admitted(input, "WorkspaceRead")
+      const target = try resolved(input, "WorkspaceRead", () => resolveExisting(root, relative))
+      return try tryPromise({ try: () => readTarget(target, encoding), catch: () => new WorkspaceRefused({ path: input, reason: "failed" }) })
+    },
+    effect write(input: string, content: string, encoding: FileEncoding = "utf8"): void!WorkspaceRefused {
+      const relative = try admitted(input, "WorkspaceWrite")
+      const target = try resolved(input, "WorkspaceWrite", () => prepareWrite(root, relative))
+      try tryPromise({ try: () => writeTarget(target, content, encoding), catch: () => new WorkspaceRefused({ path: input, reason: "failed" }) })
+    },
+    effect list(input: string): readonly DirectoryEntry[]!WorkspaceRefused {
+      const relative = try admitted(input, "WorkspaceList")
+      const target = try resolved(input, "WorkspaceList", () => resolveExisting(root, relative))
+      return try tryPromise({ try: () => listTarget(target), catch: () => new WorkspaceRefused({ path: input, reason: "failed" }) })
+    },
+  }
+}

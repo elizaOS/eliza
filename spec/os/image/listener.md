@@ -72,21 +72,28 @@ pure def lawForbiddenPermissionNeverReviewed(requested: List[str]): bool =
   permissionsReviewed(requested) implies not(requested.some(p => listenerForbiddenPermissions.includes(p)))
 ```
 
-### The listener overlay clears every indicator-exempt role and keeps the microphone toggle
+### The listener overlay clears every indicator-exempt role, keeps the microphone toggle and the power menu, and leaves the emergency and camera gestures alone
 
 A holder of any of the six roles Android exempts from the microphone and
 camera indicator would record unseen, so the overlay sets each to empty,
 and the person keeps the system microphone toggle. The shell reads each
-role's value once; a role the overlay does not set is not cleared.
+role's value once; a role the overlay does not set is not cleared. Where
+the overlay makes press-and-hold power open the assistant
+(`config_longPressOnPowerBehavior` `5`), power and volume up keeps opening
+the power menu (`config_keyChordPowerVolumeUp` `2`). The overlay sets none
+of `config_doublePressOnPowerBehavior`,
+`config_cameraDoubleTapPowerGestureEnabled`, `config_defaultAssistant`,
+`config_keyChordPowerVolumeDown` or an emergency setting, so the stock
+emergency, camera and assistant choices stay in force.
 
 ```quint
 type RoleValue = RoleCleared | RoleHeld | RoleNotOverlaid
 type RoleRow = { role: str, value: RoleValue }
-type ListenerOverlay = { roles: List[RoleRow], microphoneToggle: bool }
+type ListenerOverlay = { roles: List[RoleRow], microphoneToggle: bool, powerAssistant: bool, powerMenuChord: bool, gesturesUntouched: bool }
 pure val indicatorExemptRoles: List[str] = List("config_systemAmbientAudioIntelligence", "config_systemUiIntelligence", "config_systemAudioIntelligence",
   "config_systemNotificationIntelligence", "config_systemTextIntelligence", "config_systemVisualIntelligence")
 pure def overlayAdmitted(overlay: ListenerOverlay): bool =
-  overlay.microphoneToggle and indicatorExemptRoles.every(r => overlay.roles.some(row => row.role == r) and overlay.roles.every(row => row.role == r implies row.value == RoleCleared))
+  overlay.microphoneToggle and overlay.gesturesUntouched and (overlay.powerAssistant implies overlay.powerMenuChord) and indicatorExemptRoles.every(r => overlay.roles.some(row => row.role == r) and overlay.roles.every(row => row.role == r implies row.value == RoleCleared))
 ```
 
 ### Wake names are one to eight distinct well-formed words
@@ -208,7 +215,8 @@ pure val reviewedListener: ListenerApk = { packageName: { parent: "com.example",
   buildType: ReleaseBuild, requested: listenerPrivilegedPermissions.concat(listenerRequiredPermissions), layout: ZipAligned, speech: SpeechPinned }
 pure val reviewedRequest: ListenerRequest = { launcherPackage: "com.example", launcherSigner: reviewedSigner, launcherApk: Sha256({ hex: "a1" }), launcherDescriptor: Sha256({ hex: "d1" }),
   listener: reviewedListener, descriptor: ListenerReviewed({ bytes: Sha256({ hex: "d2" }), packageName: reviewedListener.packageName, apk: Sha256({ hex: "l1" }), certificate: reviewedSigner }),
-  wakeNames: List(WakeWord({ word: "hey" })), overlay: { roles: indicatorExemptRoles.listMap(r => { role: r, value: RoleCleared }), microphoneToggle: true },
+  wakeNames: List(WakeWord({ word: "hey" })), overlay: { roles: indicatorExemptRoles.listMap(r => { role: r, value: RoleCleared }), microphoneToggle: true, powerAssistant: true,
+    powerMenuChord: true, gesturesUntouched: true },
   policyCertificate: reviewedSigner, sepolicy: Sha256({ hex: "s1" }), sdkCommit: "e1", enrolledQualification: Sha256({ hex: "q1" }),
   qualification: QualificationRecord({ bytes: Sha256({ hex: "q1" }), inputs: reviewedInputs, qualified: true, gates: reviewedGates }) }
 pure val sourceValues = Set(reviewedSource, { ...reviewedSource, patches: reviewedSource.patches.select(e => e.name == "chip") }, { ...reviewedSource, verdict: V::Mismatch })
@@ -221,6 +229,7 @@ pure val requestValues = {
     { ...r, listener: { ...r.listener, buildType: DebuggableBuild }, qualification: unqualified }, { ...r, listener: { ...r.listener, speech: SpeechNotPinned } },
     { ...r, listener: { ...r.listener, speech: SpeechNotPinned, buildType: DebuggableBuild }, qualification: NoQualification },
     { ...r, listener: { ...r.listener, requested: r.listener.requested.append("android.permission.INTERNET") } }, { ...r, overlay: { ...r.overlay, roles: List() } },
+    { ...r, overlay: { ...r.overlay, powerMenuChord: false } }, { ...r, overlay: { ...r.overlay, gesturesUntouched: false } },
     { ...r, wakeNames: List() }, { ...r, policyCertificate: Sha256({ hex: "c2" }) }, { ...r, listener: { ...r.listener, layout: ZipRefused } }).foldl(Set(), (acc, x) => acc.union(Set(x)))
 }
 pure def lawAReviewedListenerStagesActivated(mode: StagingMode): bool = isActivated(listenerStaging(reviewedRequest, reviewedSource, mode))

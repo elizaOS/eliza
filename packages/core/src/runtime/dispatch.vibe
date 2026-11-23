@@ -90,8 +90,8 @@ module edge {
     currentRoomId: () => UUID | undefined
     isSecretSwapEnabled: () => boolean
     isPiiSwapEnabled: () => boolean
-    createSecretSwapSession: () => SecretSwapSession
-    createPiiSwapSession: () => PseudonymSession
+    createSecretSwapSession: (conversation?: string) => SecretSwapSession
+    createPiiSwapSession: (conversation?: string) => PseudonymSession
     initializationPending: () => boolean
     ensureServiceStarted: (serviceType: string) => Promise<Service | null>
     isStopping: () => boolean
@@ -103,8 +103,8 @@ module edge {
       currentRoomId: () => kernel().runSync(getCurrentRoomId()),
       isSecretSwapEnabled: () => kernel().runSync(isSecretSwapEnabled()),
       isPiiSwapEnabled: () => kernel().runSync(isPiiSwapEnabled()),
-      createSecretSwapSession: () => kernel().runSync(createSecretSwapSession()),
-      createPiiSwapSession: () => kernel().runSync(createPiiSwapSession()),
+      createSecretSwapSession: (conversation?: string) => kernel().runSync(createSecretSwapSession(conversation)),
+      createPiiSwapSession: (conversation?: string) => kernel().runSync(createPiiSwapSession(conversation)),
       initializationPending: () => kernel().runSync(isInitializationPending()),
       ensureServiceStarted: (serviceType: string) => kernel().run(ensureServiceStarted(serviceType)),
       isStopping: () => kernel().runSync(isStopRequested()),

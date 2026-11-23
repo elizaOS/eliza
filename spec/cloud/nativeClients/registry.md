@@ -14,7 +14,7 @@ publishes its Android association. Sources are develop
 registration, asset-link and readiness scripts and their sign-in plugins.
 
 This library has no state. Registrations live in the environment's own
-database and change only through `elizaos-cloud client register|update|disable`
+database and change only through `elizaos-cloud client register|update|apply|disable`
 (`spec/cloud/operator.md`). Their Effect Schema owns every string format: a
 client id and an Android package are reverse-DNS names, a fingerprint is 32
 upper-case colon-separated hex bytes, a display name is trimmed and at most 80
@@ -234,4 +234,56 @@ pure def lawNativeGoogleMatchesTheConfigRead(setup: SignInSetup, r: Registration
   (nativeGoogleCheck(setup, r) == NativeGoogleOpen) iff configAnswer(r, setup, serverClientId).google.nativeSignIn
 pure def lawANativeGoogleRefusalIsFinal(check: NativeGoogleCheck): bool =
   check != NativeGoogleOpen implies (wellFormed(nativeGoogleRefusal(check)) and not(retryableOf(nativeGoogleRefusal(check))))
+```
+
+## Story: Apply my app's registration from its reviewed file
+
+> As the operator of a deployment, I want to apply my app's reviewed
+> registration file to production as well as staging, every time I deploy,
+> so that the registry holds exactly what the file says and I keep a receipt
+> of what changed and what did not.
+
+`elizaos-cloud client apply --file <path>` reads a file
+`{environment, clients: [...]}` whose clients have the fields of `client
+register` (`credentialTtlDays` for the lifetime, `nativeGoogle` and `enabled`
+optional, `enabled` true when omitted). It runs in either environment under
+the operator's checks (`spec/cloud/operator.md`, as `RegisterClient`) and is
+not a seed. A client the file does not name is left as it is.
+
+### Applying a registration registers a new client, replaces a changed one and leaves an identical one untouched, so applying it again changes nothing
+
+The shell writes nothing for an unchanged registration, so its stored update
+time stays that of the last change.
+
+```quint
+type ApplyAction = AppliedNew | AppliedChanged | AppliedSame
+pure def applyAction(registry: List[Registration], r: Registration): ApplyAction =
+  if (not(registry.some(x => x.clientId == r.clientId))) AppliedNew
+  else if (registry.includes(r)) AppliedSame
+  else AppliedChanged
+pure def lawApplyingTwiceChangesNothing(registry: List[Registration], r: Registration): bool =
+  applyAction(withRegistration(registry, r), r) == AppliedSame
+pure def lawAnUnchangedRegistrationKeepsTheRegistry(registry: List[Registration], r: Registration): bool =
+  (applyAction(registry, r) == AppliedSame and registry.select(x => x.clientId == r.clientId).length() == 1) implies
+    (withRegistration(registry, r).length() == registry.length() and registry.every(x => withRegistration(registry, r).includes(x)))
+```
+
+### A registration file is applied only to the environment it names, and only whole, each client once, or not at all
+
+The clients are applied in the file's order in one transaction; a refused
+registration (`registrationAccepted`) refuses the file and nothing of it is
+kept. A file naming one client id twice is refused before any is applied.
+The command answers one receipt line: the environment, the database identity
+digest, the SHA-256 of the file's bytes, the time, and for each client its
+id, its action and the SHA-256 of its registration, never a secret.
+
+```quint
+type FileCheck = FileApplies | FileForOtherEnvironment | FileRepeatsClient
+pure def fileCheck(fileEnvironment: Environment, served: Environment, clientIds: List[str]): FileCheck =
+  if (fileEnvironment != served) FileForOtherEnvironment
+  else if (clientIds.some(c => clientIds.select(d => d == c).length() > 1)) FileRepeatsClient
+  else FileApplies
+pure val clientIdsValues = Set(List(), List("app.one"), List("app.one", "app.two"), List("app.one", "app.one"))
+pure def lawAFileNeverReachesTheOtherEnvironment(fileEnvironment: Environment, served: Environment, clientIds: List[str]): bool =
+  fileCheck(fileEnvironment, served, clientIds) == FileApplies implies fileEnvironment == served
 ```

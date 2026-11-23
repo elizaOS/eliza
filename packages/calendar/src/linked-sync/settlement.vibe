@@ -1,0 +1,106 @@
+// spec/calendar/syncSettlement.md, "Story: Keep the newest sync decision when an old attempt returns late"; spec/calendar/syncSettlement.md, "Every attempt is in flight, recorded or ignored, and only one of them"; spec/calendar/syncSettlement.md, "A new attempt is leased only on an active channel whose previous lease is gone or expired"; spec/calendar/syncSettlement.md, "Only the leased attempt's failure marks the channel failed"; spec/calendar/syncSettlement.md, "Only the leased attempt's success records the synced point"
+import {
+  apply, canClaimAttempt, canExpireLease, canQueueChange, decodeState, initial, machineOver,
+  type Event, type SyncSettlement, type WatchChannel,
+} from "../../gen/calendar__syncSettlement.effect.vibe"
+import type { CalendarLinkStorage } from "./linked-store.vibe"
+
+/** A watch channel's sync state as it is published: phase, synced point, pending work and failures. */
+export type CalendarWatchChannel = Pick<WatchChannel, "channel" | "pending" | "last" | "failures" | "lease">
+
+/** What one sync attempt's return did to the channel. */
+export type CalendarWatchAttemptOutcome =
+  | { readonly kind: "recorded"; readonly attempt: number; readonly channel: CalendarWatchChannel }
+  | { readonly kind: "ignored"; readonly attempt: number; readonly channel: CalendarWatchChannel }
+  | { readonly kind: "not_claimed"; readonly channel: CalendarWatchChannel }
+
+/** The channel store could not be read or written; nothing was recorded. */
+export error CalendarWatchUnavailable { message: string }
+
+/** What a watch channel's settlement needs from its host. */
+export interface CalendarWatchPorts {
+  readonly storage: CalendarLinkStorage
+  readonly channelId: string
+  readonly leaseMs: number
+  readonly now?: () => number
+}
+
+interface WatchDocument {
+  readonly version: 1
+  readonly channelId: string
+  readonly state: SyncSettlement
+  readonly leasedAt: number | null
+}
+
+const unavailable = () => new CalendarWatchUnavailable({ message: "The Calendar watch channel could not be read or written." })
+const view = (state: SyncSettlement): CalendarWatchChannel => {
+  const { channel, pending, last, failures, lease } = state.watch
+  return { channel, pending, last, failures, lease }
+}
+
+/** A provider watch channel that leases one sync attempt at a time, so a replaced or stopped attempt never changes the channel row. */
+export effect function calendarWatchChannel(ports: CalendarWatchPorts) {
+  const slot = `calendar-watch-channel:v1:${ports.channelId}`
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+
+  effect function load(): { before: unknown | null; document: WatchDocument }!CalendarWatchUnavailable {
+    const before = try tryPromise({ try: () => ports.storage.read(slot), catch: unavailable })
+    if (before === null || before === undefined) return { before: null, document: { version: 1, channelId: ports.channelId, state: initial, leasedAt: null } }
+    const raw = before as Partial<WatchDocument>
+    if (typeof before !== "object" || raw.version !== 1 || raw.channelId !== ports.channelId) throw unavailable()
+    return { before, document: { version: 1, channelId: ports.channelId, state: try mapError(decodeState(raw.state), unavailable), leasedAt: typeof raw.leasedAt === "number" ? raw.leasedAt : null } }
+  }
+
+  effect function step(change: (document: WatchDocument, now: number) => { events: readonly Event[]; leasedAt: number | null } | undefined): WatchDocument!CalendarWatchUnavailable {
+    const { before, document } = try load()
+    const now = ports.now?.() ?? DateTime.toEpochMillis(try DateTime.now)
+    const plan = change(document, now)
+    if (plan === undefined) return document
+    let state = document.state
+    for (const event of plan.events) state = try mapError(apply(state, event), unavailable)
+    const next: WatchDocument = { ...document, state, leasedAt: state.watch.lease === 0 ? null : plan.leasedAt }
+    const saved = try tryPromise({ try: () => ports.storage.compareExchange(slot, before, next), catch: unavailable })
+    if (saved.status !== "saved") throw unavailable()
+    return next
+  }
+
+  const expired = (document: WatchDocument, now: number) =>
+    canExpireLease(document.state) && document.leasedAt !== null && now - document.leasedAt >= ports.leaseMs
+
+  effect function settle(attempt: number, succeeded: boolean): CalendarWatchAttemptOutcome!CalendarWatchUnavailable {
+    const after = try serialize(step((document) => document.state.watch.inFlight.includes(attempt)
+      ? { events: [{ type: succeeded ? "settleAttempt" : "failAttempt", attempt }], leasedAt: document.leasedAt } : undefined))
+    return { kind: after.state.watch.recorded.includes(attempt) ? "recorded" : "ignored", attempt, channel: view(after.state) }
+  }
+
+  return {
+    /** The channel as kept now. */
+    read: () => map(load(), ({ document }) => view(document.state)),
+    /** Records provider change notifications as pending work while the channel is active. */
+    queueChange: () => serialize(map(step((document) => canQueueChange(document.state) ? { events: [{ type: "queueChange" }], leasedAt: document.leasedAt } : undefined), (document) => view(document.state))),
+    /** Claims a new attempt where no lease is held or the held one expired, runs it, and lets only the leased attempt's result change the channel. */
+    runAttempt: <A, E>(sync: (attempt: number) => A!E) => effect {
+      let attempt = 0
+      const claimed = try serialize(step((document, now) => {
+        const events: Event[] = expired(document, now) ? [{ type: "expireLease" }] : []
+        const state = expired(document, now) ? { ...document.state, watch: { ...document.state.watch, leaseExpired: true } } : document.state
+        if (!canClaimAttempt(state)) return undefined
+        attempt = state.watch.nextAttempt
+        return { events: [...events, { type: "claimAttempt" }], leasedAt: now }
+      }))
+      if (attempt === 0) return { kind: "not_claimed", channel: view(claimed.state) } as CalendarWatchAttemptOutcome
+      const result = try exit(sync(attempt))
+      return try settle(attempt, Exit.isSuccess(result))
+    },
+    /** Begins stopping an active channel; late attempts are then ignored unless they hold the lease and succeed. */
+    beginStop: () => serialize(map(step((document) => document.state.watch.channel === "ChannelActive" ? { events: [{ type: "beginStop" }], leasedAt: document.leasedAt } : undefined), (document) => view(document.state))),
+    /** Confirms a stop, clearing pending work and the lease. */
+    confirmStop: () => serialize(map(step((document) => document.state.watch.channel === "ChannelStopping" ? { events: [{ type: "confirmStop" }], leasedAt: null } : undefined), (document) => view(document.state))),
+  }
+}
+
+/** The foreground opt-in generations of one device sync host, kept in memory for the host's life. */
+export effect function foregroundSyncMachine() {
+  const kept = try Ref.make(initial)
+  return try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+}

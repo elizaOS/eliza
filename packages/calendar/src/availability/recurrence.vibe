@@ -1,0 +1,107 @@
+// spec/calendar/availability.md, "Story: Read the reviewed local source with its actual calendar rules"; spec/calendar/availability.md, "Expand recurrence before projecting availability"
+import { calendarReadOverflow, civilDayAllowed, expansionAdmitted, newOccurrence, positiveOverlap, rangeCapped, stride,
+  type RepeatRule, type TimeWindow } from "../../gen/calendar__availability.effect.vibe"
+import { addDaysToLocalDate, buildUtcDateFromLocalParts, getZonedDateParts, knownTimeZone, weekdayOfLocalDate } from "../clock.vibe"
+import type { CalendarRepeat, CalendarRow } from "../series/document.vibe"
+import type { ReadAnswer } from "./device-reader.vibe"
+
+/** The rows of a read range, stored and generated, with whether a series or the whole range was cut at its cap. */
+export interface DocumentRange {
+  readonly rows: readonly CalendarRow[]
+  readonly truncated: boolean
+}
+
+const day = 86_400_000
+const searchMargin = 3
+const rangeCap = 2000
+const rules: Record<CalendarRepeat, RepeatRule> = { none: "Once", daily: "Daily", weekdays: "Weekdays", weekly: "Weekly" }
+
+/** The ID of the occurrence of a series that begins at `begin`. */
+export function occurrenceId(seriesId: string, begin: number): string {
+  return `${seriesId}:occ:${begin}`
+}
+
+/** Whether a stored row is a series that generates occurrences, rather than a one-off event or an override under a series. */
+export function repeatingRow(row: CalendarRow): boolean {
+  return row.seriesId === undefined && row.repeat !== undefined && row.repeat !== "none"
+}
+
+/** The zone a series resolves its wall times in: UTC for all-day, else its saved zone, else UTC. */
+export function seriesZone(row: CalendarRow): string {
+  return row.allDay === true || !knownTimeZone(row.timeZone) ? "UTC" : row.timeZone
+}
+
+/** The occurrence a series generates at `begin`, keyed by the series and that start. */
+export function generatedOccurrence(series: CalendarRow, begin: number): CalendarRow {
+  return { ...series, id: occurrenceId(series.id, begin), begin, end: begin + series.end - series.begin, seriesId: series.id, occurrenceBegin: begin }
+}
+
+/** The occurrences a series generates over a window, before exclusions and overrides, or undefined when the search is out of bounds. */
+export function seriesOccurrences(series: CalendarRow, win: TimeWindow, overrides: readonly CalendarRow[], maximum: number) {
+  const rule = rules[series.repeat ?? "none"]
+  const zone = seriesZone(series)
+  const anchor = getZonedDateParts(new Date(series.begin), zone)
+  const span = stride(rule) * day
+  const duration = series.end - series.begin
+  const first = Math.max(0, Math.floor((win.begin - duration - series.begin) / span) - searchMargin)
+  const last = Math.max(first, Math.ceil((win.finish - series.begin) / span) + searchMargin)
+  if (anchor === undefined || !(duration >= 0) || !expansionAdmitted(first, last, maximum)) return undefined
+  const excluded = new Set(series.excluded ?? [])
+  const replacedIds = new Set(overrides.map((row) => row.id))
+  const replacedStarts = new Set(overrides.flatMap((row) => row.occurrenceBegin === undefined ? [] : [row.occurrenceBegin]))
+  const seen = new Set<number>()
+  const found: CalendarRow[] = []
+  const original = { begin: series.begin, finish: series.end }
+  for (let index = first; index <= last; index++) {
+    const date = addDaysToLocalDate(anchor, index * stride(rule))
+    if (!civilDayAllowed(rule, weekdayOfLocalDate(date))) continue
+    const at = index === 0 ? series.begin
+      : (buildUtcDateFromLocalParts(zone, { ...date, hour: anchor.hour, minute: anchor.minute, second: anchor.second })?.getTime() ?? Number.NaN)
+        + (((series.begin % 1000) + 1000) % 1000)
+    if (!Number.isFinite(at) || (series.until !== undefined && at >= series.until)) continue
+    if (newOccurrence(win, original, at, seen.has(at), excluded.has(at), replacedIds.has(occurrenceId(series.id, at)) || replacedStarts.has(at))) {
+      found.push(generatedOccurrence(series, at))
+    }
+    seen.add(at)
+  }
+  return { rows: found.slice(0, maximum), truncated: found.length > maximum }
+}
+
+/** Whether a series generates an occurrence that begins exactly at `begin`, excluded or not. */
+export function seriesOccursAt(series: CalendarRow, begin: number): boolean {
+  if (!repeatingRow(series)) return false
+  const found = seriesOccurrences({ ...series, excluded: [] }, { begin, finish: begin + Math.max(1, series.end - series.begin) }, [], 1)
+  return found?.rows.some((row) => row.begin === begin) === true
+}
+
+/** The rows of a document Calendar over a window: stored rows first, generated occurrences unless an override or exclusion replaces them, sorted and capped, or undefined when a series cannot be searched. */
+export function expandDocumentCalendar(rows: readonly CalendarRow[], window: { readonly start: string; readonly end: string }, maximum = rangeCap): DocumentRange | undefined {
+  const win = { begin: Date.parse(window.start), finish: Date.parse(window.end) }
+  if (!(win.finish > win.begin)) return undefined
+  const found: CalendarRow[] = []
+  let truncated = false
+  for (const row of rows) {
+    if (!repeatingRow(row)) {
+      if (positiveOverlap(win, { begin: row.begin, finish: row.end })) found.push(row)
+      continue
+    }
+    const series = seriesOccurrences(row, win, rows.filter((other) => other.seriesId === row.id), maximum)
+    if (series === undefined) return undefined
+    truncated ||= series.truncated
+    found.push(...series.rows)
+  }
+  found.sort((left, right) => left.begin - right.begin || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+  return { rows: found.slice(0, rangeCap), truncated: rangeCapped(truncated, found.length) }
+}
+
+/** A document Calendar's occupancy-only rows for an availability read, refusing a truncated range even when a filter would fit. */
+export function documentAvailability(rows: readonly CalendarRow[], window: { readonly start: string; readonly end: string }): ReadAnswer {
+  const range = expandDocumentCalendar(rows, window)
+  if (range === undefined) return { status: "unavailable" }
+  if (calendarReadOverflow(range.truncated, range.rows.length)) return { status: "too-many" }
+  const encode = (instant: number, allDay: boolean) => new Date(allDay ? Math.floor(instant / day) * day : instant).toISOString()
+  return {
+    status: "ready", freshness: "local",
+    events: range.rows.map((row) => ({ start: encode(row.begin, row.allDay === true), end: encode(row.end, row.allDay === true), allDay: row.allDay === true, availability: "busy" })),
+  }
+}

@@ -10,6 +10,6 @@ device's own browser surface, storage and reading are specified under
 
 | Area | Specifications |
 | --- | --- |
-| Requests | [Request grounding](./requestGrounding.md), [remote control](./remoteControl.md), [arbitration](./arbitration.md) |
+| Requests | [Request grounding](./requestGrounding.md), [Browser controls](./control.md), [remote control](./remoteControl.md), [arbitration](./arbitration.md) |
 | Guided websites | [Model inference](./inference.md), [manual activity](./manualActivity.md), [payment controls](./paymentControl.md), [website goals](./websiteGoal.md) |
 | Credentials | [Clipboard lease](./clipboardLease.md) |

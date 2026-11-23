@@ -1,0 +1,15 @@
+// spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"
+import { promoteSubactionsToActions, type Plugin } from "@elizaos/core"
+import { browserAction } from "./native-browser.vibe"
+
+export { BROWSER_VIEW, NativeBrowser, browserAction, browserViewAsker, historyActionResult, viewNativeBrowser } from "./native-browser.vibe"
+export type { BrowserFailureCode, BrowserViewAsked, BrowserViewAsker, BrowserViewGrant, BrowserViewWait, HistoryOutcome, HistoryRequest } from "./native-browser.vibe"
+
+/** The browser plugin: the BROWSER action and its back, forward and reload actions for the requesting device's own browser. */
+export const browserPlugin: Plugin = {
+  name: "@elizaos/plugin-browser",
+  description: "Authenticated native device browser control",
+  actions: [...promoteSubactionsToActions(browserAction)],
+}
+
+export default browserPlugin

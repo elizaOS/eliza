@@ -1,7 +1,7 @@
 // spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them"; spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"
-import { promotedSubactionDescription } from "@elizaos/core"
+import { promotedSubactionDescription, type ServiceClass } from "@elizaos/core"
 import { parseLaunch } from "../host/launch.vibe"
-import type { AgentPlugin } from "../host/module.vibe"
+import type { AgentPlugin, ModuleFactory } from "../host/module.vibe"
 import { startAgent } from "../host/process.vibe"
 import { builtinModuleFactories } from "../plugins/profile.vibe"
 import type { BundleManifest } from "./manifest.schema.vibe"
@@ -11,6 +11,8 @@ export interface SmokeInput {
   readonly plugins: readonly string[]
   readonly productPlugin?: string | undefined
   readonly stateDirectory: string
+  readonly hostModules?: ReadonlyMap<string, ModuleFactory<never>>
+  readonly runtimeServices?: readonly ServiceClass[]
 }
 
 interface SmokeReport {
@@ -62,6 +64,8 @@ export effect function smokeBoot(input: SmokeInput) {
     binding: { kind: "socket", path: `${input.stateDirectory}/smoke.sock` },
     bundled: input.bundled,
     modules: builtinModuleFactories,
+    ...(input.hostModules === undefined ? {} : { hostModules: input.hostModules }),
+    ...(input.runtimeServices === undefined ? {} : { runtimeServices: input.runtimeServices }),
   })
   const report: SmokeReport = {
     loaded: agent.runtime.plugins.map(({ name }) => name),

@@ -1,4 +1,4 @@
-// spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
+// spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"; spec/agent/host/launch.md, "Local embeddings boot only when the device serves them: no operator endpoint or chosen hosted service takes precedence, and the local inference plugin is listed"
 import { assert, it } from "@effect/vitest"
 import { AGENT_EXIT_CODES, exitClass, exitCode, parseLaunch } from "../src/host/launch.vibe"
 import { agentChild, boot, host, ready, scratch } from "./support/kernel.vibe"
@@ -112,12 +112,13 @@ it.effect('The exit table maps each boot failure to one code and every other cod
     [78, 77, 74, 70, 78, { tag: "BootFailed", cause: "Config" }, { tag: "Crash" }, { tag: "Crash" }, { tag: "Clean" }, { tag: "ReleaseFailed" }]))
 })
 
-it.effect('A refused document exits 78 and a keyless cloud or own-key launch exits 77 before any store opens (spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error")', effect () => {
+it.effect('A refused document exits 78 and a keyless cloud or own-key launch, or an own key longer than its slot, exits 77 before any store opens (spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error")', effect () => {
   const refusedDocument = try boot({ launch: { allowed: [] } })
   const keylessCloud = try boot({ launch: { backend: cloudBackend } })
   const keylessOwn = try boot({ launch: { backend: ownKeyBackend } })
-  const codes = try Effect.forEach([refusedDocument, keylessCloud, keylessOwn], (booted) => host("agent exit", () => booted.child.exited).pipe(Effect.map((exited) => exited.code)))
-  try Effect.try(() => assert.deepStrictEqual(codes, [78, 77, 77]))
+  const oversizedOwn = try boot({ launch: { backend: ownKeyBackend }, frame: { credential: { version: 1, value: "k".repeat(1025) } } })
+  const codes = try Effect.forEach([refusedDocument, keylessCloud, keylessOwn, oversizedOwn], (booted) => host("agent exit", () => booted.child.exited).pipe(Effect.map((exited) => exited.code)))
+  try Effect.try(() => assert.deepStrictEqual(codes, [78, 77, 77, 77]))
 }, 180_000)
 
 it.effect('A bad frame shape exits 78: two lines, no newline, version 2, epoch 0 or over 16 KiB (spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key")', effect () => {
@@ -160,3 +161,39 @@ it.effect('A refused launch does not echo the credential on stdout or stderr (sp
   try Effect.try(() => assert.deepStrictEqual(
     [exited.code, text.includes("credential-leak-probe-1"), text.includes("storage-leak-probe-1"), text.includes(booted.frame.token)], [78, false, false, false]))
 }, 180_000)
+
+module node {
+  import { readdir } from "node:fs/promises"
+
+  export function stateEntries(path: string): Promise<string[]> {
+    return readdir(path)
+  }
+}
+import { stateEntries } from node
+
+const localEmbeddingsRule = 'spec/agent/host/launch.md, "Local embeddings boot only when the device serves them: no operator endpoint or chosen hosted service takes precedence, and the local inference plugin is listed"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent\'s own modules"'
+
+it.effect(`Local embeddings without the local inference plugin, with an operator endpoint or with chosen hosted embeddings, and a hosted module the bundle does not carry, are Config refusals before any store opens (${localEmbeddingsRule})`, effect () => {
+  const state = try scratch("local-embeddings")
+  const { startAgent } = try host("agent process", () => import("../src/host/process.vibe"))
+  const local = (environment: Record<string, string>, load: readonly string[], backend?: typeof cloudBackend) =>
+    mutate({ load, environment, ...(backend === undefined ? {} : { backend }) }, (d) => ({ ...d, embeddings: "local", embeddingDimensions: 384 }))
+  const plugin = "@elizaos/plugin-local-inference"
+  const documents = [
+    local({}, []),
+    local({ EMBEDDING_BASE_URL: "https://embed.example" }, [plugin]),
+    local({ ELIZAOS_CLOUD_USE_EMBEDDINGS: "true" }, [plugin], cloudBackend),
+  ]
+  const phases = try Effect.forEach(documents, (document) => effect {
+    const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(launchFrame(keyed)))
+    const failed = try Effect.flip(startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: `${state.path}/agent.sock` } }))
+    return failed.phase
+  })
+  const parsed = try parseLaunch(JSON.stringify(launchDocument({})), JSON.stringify(launchFrame({})))
+  const unbundled = try Effect.flip(startAgent({
+    ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: `${state.path}/agent.sock` },
+    hostModules: new Map([[plugin, () => Effect.die("never built")]]),
+  }))
+  const entries = try host("state listing", () => stateEntries(state.path))
+  try Effect.try(() => assert.deepStrictEqual({ phases, unbundled: unbundled.phase, entries }, { phases: ["Config", "Config", "Config"], unbundled: "Config", entries: [] }))
+}, 120_000)

@@ -1,0 +1,131 @@
+// spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/timezone.md, "Whether a name is a zone is the host's zone database to say, and the empty name never is"; spec/assistant/timezone.md, "A stated zone replaces the stored zone only when the resolver knows it"; spec/assistant/timezone.md, "The calendar reads the stored zone, or the agent's zone when none is stored"; spec/assistant/timezone.md, "At a tick, the owner's clock is the travel zone while travelling, else the first zone known"
+import type { RegisteredEvaluator } from "@elizaos/core"
+import { Machine, calendarZone, opaque, ownerClockZone, stored, type ClockFacts } from "../gen/assistant__timezone.effect.vibe"
+import { Facts, onAgent, readRecord, writeRecord } from "./host.vibe"
+
+module node {
+  /** @throws {never} */
+  export function ianaZone(name: string): string | undefined {
+    try {
+      return new Intl.DateTimeFormat("en-US", { timeZone: name }).resolvedOptions().timeZone
+    } catch {
+      return undefined
+    }
+  }
+}
+import { ianaZone } from node
+
+const aliases: Readonly<Record<string, string>> = {
+  z: "UTC", zulu: "UTC", utc: "UTC", gmt: "UTC", "+00:00": "UTC", "-00:00": "UTC",
+  pt: "America/Los_Angeles", pst: "America/Los_Angeles", pdt: "America/Los_Angeles", pacific: "America/Los_Angeles",
+  mt: "America/Denver", mst: "America/Denver", mdt: "America/Denver", mountain: "America/Denver",
+  ct: "America/Chicago", cst: "America/Chicago", cdt: "America/Chicago", central: "America/Chicago",
+  et: "America/New_York", est: "America/New_York", edt: "America/New_York", eastern: "America/New_York",
+}
+
+/** The IANA zone a statement's zone names, or undefined when the resolver knows none. */
+export function resolveZone(named: string): string | undefined {
+  const plain = named.trim().replace(/[.,!;]+$/u, "").replace(/\s+time$/iu, "").trim()
+  if (plain === "" || plain.length > 64) return undefined
+  const alias = plain.toLowerCase()
+  if (Object.hasOwn(aliases, alias)) return aliases[alias]
+  return /^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,3}$/u.test(plain) ? ianaZone(plain) : undefined
+}
+
+const statement = /\bmy\s+time\s*zone\s+is\s+(?:now\s+)?([A-Za-z0-9_/+:.-]{1,60}(?:\s+time)?)/iu
+
+/** The zone a message states as the owner's own, as the resolver maps it. */
+export function statedZone(text: string): string | undefined {
+  const named = statement.exec(text)?.[1]
+  return named === undefined ? undefined : resolveZone(named)
+}
+
+opaque.knownZone = (named: string) => named !== "" && resolveZone(named) === named
+
+/** The name a statement gives the machine: the zone the resolver maps it to, or its own words when it maps to none. */
+export function statedName(text: string): string | undefined {
+  const named = statement.exec(text)?.[1]
+  return named === undefined ? undefined : resolveZone(named) ?? named.trim()
+}
+
+const Travel = Schema.Struct({ startAt: Schema.Number, endAt: Schema.Number, zone: Schema.String })
+/** A trip the owner told the assistant about. */
+export type Travel = typeof Travel.Type
+const decodeTravel = Schema.decodeUnknownOption(Travel)
+const travelKey = "owner-travel"
+const zoneKey = "owner-timezone"
+
+/** What the assistant keeps of the owner's clock: the stated zone, and a trip when one is known. */
+export interface OwnerFacts {
+  readonly zone: string
+  readonly travel?: Travel
+}
+
+/** The owner's clock facts as stored. */
+export effect function ownerFacts() {
+  const travel = try readRecord(travelKey, decodeTravel)
+  provide stored(zoneKey) {
+    const zone = (try (try Machine).get()).storedZone
+    return (travel === undefined ? { zone } : { zone, travel }) satisfies OwnerFacts
+  }
+}
+
+/** Applies a statement of the owner's zone: a zone the resolver knows replaces the stored one, anything else leaves it. */
+export effect function stateOwnerZone(text: string) {
+  const namedZone = statedName(text)
+  provide stored(zoneKey) {
+    const timezone = try Machine
+    const before = (try timezone.get()).storedZone
+    if (namedZone === undefined) return { changed: false, zone: before }
+    const after = (try timezone.send({ type: "stateTimezone", namedZone })).storedZone
+    return { changed: after !== before, zone: after }
+  }
+}
+
+/** Records a trip: while a tick falls within it, the owner's clock is the trip's zone. */
+export effect function recordTravel(startAt: number, endAt: number, named: string) {
+  const zone = resolveZone(named)
+  if (zone === undefined || endAt <= startAt) return false
+  try writeRecord(travelKey, { startAt, endAt, zone })
+  return true
+}
+
+/** The zone the owner's clock follows at the tick `at`, from the facts as they stand at that tick. */
+export effect function ownerClockAt(at: number) {
+  const facts = try ownerFacts()
+  const host = try Facts
+  const travel = facts.travel
+  const clock: ClockFacts = {
+    ownerZone: facts.zone, schedulingZone: resolveZone(try host.schedulingZone()) ?? "",
+    runtimeZone: resolveZone(try host.runtimeZone()) ?? "", hostZone: resolveZone(try host.hostZone()) ?? "UTC",
+    travellingAtTick: travel !== undefined && at >= travel.startAt && at < travel.endAt,
+    hostTravelling: false, travelZone: travel?.zone ?? "",
+  }
+  return ownerClockZone(clock)
+}
+
+/** The zone the owner's calendar reads. */
+export effect function ownerCalendarZone() {
+  const host = try Facts
+  const agentZone = resolveZone(try host.runtimeZone()) ?? resolveZone(try host.hostZone()) ?? "UTC"
+  return calendarZone({ storedZone: (try ownerFacts()).zone }, agentZone)
+}
+
+/** Records the owner's zone whenever they state one the resolver knows. */
+export const ownerTimezoneEvaluator: RegisteredEvaluator = {
+  name: "PERSONAL_ASSISTANT_OWNER_TIMEZONE",
+  description: "Keeps the time zone the owner states, such as \"my timezone is America/New_York\", for reminders, check-ins and the calendar.",
+  schema: { type: "object", properties: { zone: { type: "string" } }, required: ["zone"] },
+  inputScope: "current_message",
+  shouldRun: async ({ runtime, message }) => message.entityId !== runtime.agentId && typeof message.content.text === "string" && statedZone(message.content.text) !== undefined,
+  resolveOutputWhen: () => true,
+  resolveOutput: ({ message }) => ({ zone: statedZone(message.content.text ?? "") ?? "" }),
+  prompt: () => "",
+  processors: [{
+    name: "keep-owner-zone",
+    process: async ({ runtime, message }) => {
+      const kept = await onAgent(runtime, stateOwnerZone(message.content.text ?? ""))
+      return { success: true, text: `Owner time zone is ${kept.zone}.`, data: { zone: kept.zone, changed: kept.changed } }
+    },
+  }],
+}

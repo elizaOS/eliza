@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { compileAdapter } from "./drivers/jvm-adapter.ts";
@@ -47,6 +47,18 @@ describe("Confirm it is me before a billing change", () => {
     const seen = journey();
     expect([seen.otherAccountRefused, seen.sessionGranted, seen.usableToken]).toEqual([true, true, "access-1"]);
     expect([seen.refreshesForFourReaders, seen.tokensAfterRefresh, seen.afterTheHour]).toEqual([1, "access-2,access-2,access-2,access-2", "null"]);
+  });
+});
+
+describe("Keep my key fresh without signing in again", () => {
+  it("renews the active key in its last ten days with that key, then revokes it naming its successor, which stays live until sign-out", () => {
+    const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main, "renewal"], { encoding: "utf8", timeout: 120_000 })) as unknown;
+    expect(seen).toEqual({
+      signedIn: "SIGNED_IN", notYetDue: "SUPERSEDED", renewAsksBeforeDue: 0, renewed: "SIGNED_IN", askedWithTheActiveKey: true,
+      heldAfterRenewal: "2/cred-4/user-1", owedNamesSuccessor: true, revokedAfterRenewal: "cred-2", successorLive: true, firstReplaced: true,
+      renewedHeaders: "cred-4,none", revokedAfterSignOut: "cred-2,cred-4",
+      notices: [announce(1), announce(2), { tag: "SignedOutNotice" }],
+    });
   });
 });
 

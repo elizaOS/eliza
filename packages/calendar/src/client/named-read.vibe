@@ -1,0 +1,154 @@
+// spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/reviewedReads.md, "A named read opens Share for the owner's existing selected event"; spec/calendar/reviewedReads.md, "The read window covers the whole second around the selected start"
+import { Machine, canCancel, canStart, wholeSecond, type EventTarget, type NamedRequest } from "../../gen/calendar__reviewedReads.effect.vibe"
+import { Instant, ZoneName } from "../availability/index.vibe"
+
+/** The capability a consumer negotiates for a named Calendar read. */
+export const CALENDAR_NAMED_READ_CAPABILITY = "calendar.named-read.v1"
+/** The scoped capability for one exact local Calendar event. */
+export const CALENDAR_CAPABILITY = "calendar.local-event.v1"
+
+const Identifier = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/))
+const Revision = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const plain = (max: number, blank: boolean) => Schema.String.check(Schema.isMaxLength(max),
+  Schema.makeFilter((value: string) => !value.includes("\0") && (blank || value.trim() !== "")))
+
+/** One exact selected Calendar event: its source and event with their revisions. */
+export const CalendarTarget = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision, eventId: Identifier, revision: Revision })
+const NamedRead = Schema.Struct({ type: Schema.Literal("calendar_named"), action: Schema.Literal("read"), name: plain(256, false) })
+const ReadFields = Schema.Struct({ title: plain(500, false), description: plain(16_000, true), location: plain(2_000, true), start: Instant, end: Instant, timeZone: ZoneName })
+const ReadSelectedResult = Schema.Struct({
+  version: Schema.Literal(1), kind: Schema.Literal("calendar_read_selected"), sourceId: Identifier, eventId: Identifier, revision: Revision, fields: ReadFields,
+})
+const SelectedObject = Schema.Struct({ kind: Schema.Literal("calendar-event"), accountId: Identifier, sourceRevision: Revision, id: Identifier, revision: Revision })
+
+/** An exact selected Calendar event's type. */
+export type CalendarTarget = typeof CalendarTarget.Type
+/** The exact read a named read resolves to. */
+export type CalendarReadSelected = { readonly type: "calendar_read_selected"; readonly target: CalendarTarget }
+/** The fresh record a provider returns for a selected read. */
+export type CalendarReadSelectedResult = typeof ReadSelectedResult.Type
+
+/** The provider that reads the selected event through its own Share review, and cancels a read the owner abandons. */
+export interface NamedCalendarReadProvider {
+  readonly executeAgent: (input: { readonly operation: CalendarReadSelected; readonly operationId: string; readonly journalIdentity?: { readonly scope: string; readonly proposalId: string } })
+    => { readonly status: string; readonly result?: unknown; readonly feedComplete?: boolean }!NamedReadUnavailable
+  readonly cancelAgent: (input: { readonly operationId: string }) => void!!
+}
+
+/** The active context a named read starts from: the view, its sensitivity, the owner and what the owner selected. */
+export interface NamedCalendarReadContext {
+  readonly view: string
+  readonly sensitive?: boolean
+  readonly owner: string
+  readonly selectedObject?: unknown
+}
+
+/** What a named read tells the owner, with the reviewed record only when it was shared. */
+export type NamedReadOutcome =
+  | { readonly status: "failed"; readonly summary: string }
+  | { readonly status: "succeeded"; readonly summary: string; readonly foregroundResult: NamedReadReceipt }
+
+/** The receipt of a shared named read: the name asked for, the exact read and its fresh record. */
+export interface NamedReadReceipt {
+  readonly version: 1
+  readonly kind: "calendar_named"
+  readonly action: "read"
+  readonly name: string
+  readonly basis: "owner-chosen"
+  readonly operation: CalendarReadSelected
+  readonly record: CalendarReadSelectedResult
+}
+
+/** The provider could not be reached; nothing was shared. */
+export error NamedReadUnavailable { reason: string }
+/** The request is not a named read the negotiated capabilities allow. */
+export error NamedReadRefused { reason: "invalid_request" | "capability_unavailable" }
+
+const decodeTarget = Schema.decodeUnknownOption(SelectedObject)
+const decodeNamed = Schema.decodeUnknownEffect(NamedRead, { onExcessProperty: "error" })
+const decodeRecord = Schema.decodeUnknownOption(ReadSelectedResult, { onExcessProperty: "error" })
+
+/** The exact event the owner selected in an active, nonsensitive Calendar view, or undefined; readiness only, never authority. */
+export function namedCalendarReadTarget(context: Pick<NamedCalendarReadContext, "view" | "sensitive" | "selectedObject">): CalendarTarget | undefined {
+  if (context.view !== "calendar" || context.sensitive === true) return undefined
+  const selected = decodeTarget(context.selectedObject)
+  return selected._tag === "None" ? undefined
+    : { sourceId: selected.value.accountId, sourceRevision: selected.value.sourceRevision, eventId: selected.value.id, revision: selected.value.revision }
+}
+
+/** The provider's read window for a selected start: from the second before its second to the second after. */
+export function namedReadWindow(startMs: number): { readonly startMs: number; readonly endMs: number } {
+  return { startMs: wholeSecond(startMs - 1000), endMs: wholeSecond(startMs + 1000) }
+}
+
+const numbers = new Map<string, number>()
+function numbered(value: string): number {
+  const known = numbers.get(value)
+  if (known !== undefined) return known
+  numbers.set(value, numbers.size + 1)
+  return numbers.size
+}
+
+function modelTarget(target: CalendarTarget | undefined): EventTarget {
+  return target === undefined ? { sourceId: "", sourceVersion: 0, eventId: "", eventVersion: 0 }
+    : { sourceId: target.sourceId, sourceVersion: numbered(target.sourceRevision), eventId: target.eventId, eventVersion: numbered(target.revision) }
+}
+
+const fold = (value: string) => value.normalize("NFKC").toLowerCase().trim()
+const fail = (summary: string): NamedReadOutcome => ({ status: "failed", summary })
+
+/** Shares the owner's existing selected event only from an applied, complete, exact receipt whose fresh title matches the name, on the reviewed reads Machine. */
+export effect function executeNamedCalendarRead(provider: NamedCalendarReadProvider, operation: unknown, operationId: string,
+  context: NamedCalendarReadContext, capabilities: readonly string[], current: () => NamedCalendarReadContext,
+  journalIdentity?: { readonly scope: string; readonly proposalId: string }) {
+  const reads = try Machine
+  const requested = try mapError(decodeNamed(operation), () => new NamedReadRefused({ reason: "invalid_request" }))
+  const named = capabilities.includes(CALENDAR_NAMED_READ_CAPABILITY), scoped = capabilities.includes(CALENDAR_CAPABILITY)
+  if (!named || !scoped) throw new NamedReadRefused({ reason: "capability_unavailable" })
+  const ownerId = numbered(`owner:${context.owner}`)
+  const target = namedCalendarReadTarget(context)
+  const request: NamedRequest = {
+    calendarView: context.view === "calendar", sensitive: context.sensitive === true, namedCapability: named,
+    scopedCapability: scoped, ownSelection: target !== undefined, target: modelTarget(target),
+  }
+  if (target === undefined || !canStart(try reads.get(), ownerId, request)) {
+    return fail("Choose the exact matching event in Calendar before sharing it. Nothing was shared or changed.")
+  }
+  const exact: CalendarReadSelected = { type: "calendar_read_selected", target }
+  const started = try orDie(reads.send({ type: "start", ownerId, request }))
+
+  effect function retire(): void!! {
+    if (canCancel(try reads.get())) try orDie(reads.send({ type: "cancel" }))
+  }
+  function stillOwned(): boolean {
+    const now = current()
+    const selected = namedCalendarReadTarget(now)
+    return numbered(`owner:${now.owner}`) === ownerId && selected !== undefined && selected.sourceId === target.sourceId
+      && selected.sourceRevision === target.sourceRevision && selected.eventId === target.eventId && selected.revision === target.revision
+  }
+
+  const receipt = try onExit(provider.executeAgent({ operation: exact, operationId, ...(journalIdentity === undefined ? {} : { journalIdentity }) }),
+    (exit) => Exit.isSuccess(exit) ? Effect.void : effect { try provider.cancelAgent({ operationId }); try retire() })
+  if (!stillOwned()) {
+    try retire()
+    return fail("The event was not shared. Its selection, access or review changed; nothing was changed.")
+  }
+  const record = decodeRecord(receipt.result)
+  const fresh = record._tag === "Some" && record.value.sourceId === target.sourceId && record.value.eventId === target.eventId ? record.value : undefined
+  const titleMatches = fresh !== undefined && fold(fresh.fields.title).includes(fold(requested.name))
+  const delivered = fresh === undefined ? modelTarget(undefined) : { ...modelTarget(target), eventVersion: numbered(fresh.revision) }
+  const settled = reads.send({
+    type: "accept", ownerId, requestId: started.requestId, target: delivered,
+    applied: receipt.status === "applied", titleMatches, feedComplete: receipt.feedComplete === true,
+  }) catch (rejected) => rejected.state
+  if (settled.phase !== "Shared" || fresh === undefined) {
+    return fail(receipt.status === "applied" && fresh !== undefined && !titleMatches
+      ? "The selected event does not match the requested name. Nothing was shared or changed."
+      : "The event was not shared. Its selection, access or review changed; nothing was changed.")
+  }
+  return {
+    status: "succeeded",
+    summary: "Shared the matching event you chose. Its requested update still requires a separate review.",
+    foregroundResult: { version: 1, kind: "calendar_named", action: "read", name: requested.name, basis: "owner-chosen", operation: exact, record: fresh },
+  } satisfies NamedReadOutcome
+}

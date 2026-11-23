@@ -1,0 +1,70 @@
+// spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedSync.md, "Story: Pause, resume or recover without replacing a newer sync decision"; spec/calendar/linkedSync.md, "Story: Keep a link local or move it to the selected destination only while sync is drained"
+import type { LinkedCalendarCandidate, LinkedCalendarControlRequest, LinkedCalendarDestination, LinkedCalendarMapping, LinkedCalendarSyncReport } from "../linked-sync/index.vibe"
+import type { CalendarFetch } from "./calendar-api.vibe"
+
+/** The sync control as the owner reviews it: never the durable dispatch token, only a reference a recovery must echo. */
+export interface LinkedCalendarControlView {
+  readonly revision: number
+  readonly paused: boolean
+  readonly destination: LinkedCalendarDestination | null
+  readonly pendingDispatch: { readonly linkId: string; readonly reference: string | null } | null
+  readonly conflicts: number
+}
+
+/** A committed or replayed control change with its receipt. */
+export interface LinkedCalendarControlResult extends LinkedCalendarControlView {
+  readonly receipt: { readonly id: string; readonly operationKey: string; readonly committedAt: string; readonly revision: number; readonly replayed: boolean }
+}
+
+/** The destinations the owner can choose, and the one a link would take now. */
+export interface LinkedCalendarDestinations {
+  readonly revision: number
+  readonly choice: "ResumeDestination" | "SelectPrimary" | "ChooseDestination" | "RefuseDestination"
+  readonly destination: LinkedCalendarDestination | null
+  readonly candidates: readonly LinkedCalendarCandidate[]
+}
+
+/** A linked event with its resident event's summary, or null when that event is gone. */
+export type LinkedCalendarEventView = LinkedCalendarMapping & {
+  readonly event: { readonly title: string; readonly startAt: string; readonly endAt: string; readonly isAllDay: boolean; readonly location: string } | null
+}
+
+/** A request to link one resident event to the selected destination at the revision the owner saw. */
+export interface LinkedCalendarLinkRequest extends LinkedCalendarDestination {
+  readonly localEventId: string
+  readonly expectedLocalRevision: string
+  readonly idempotencyKey: string
+}
+
+/** The owner client's linked-sync methods over the agent's linked-control routes. */
+export interface LinkedSyncApi {
+  getLinkedCalendarControl(): Promise<LinkedCalendarControlView>
+  getLinkedCalendarSyncReport(expectedRevision: number): Promise<{ readonly report: LinkedCalendarSyncReport }>
+  updateLinkedCalendarControl(request: LinkedCalendarControlRequest): Promise<LinkedCalendarControlResult>
+  getLinkedCalendarDestinations(): Promise<LinkedCalendarDestinations>
+  listLinkedCalendarEvents(): Promise<{ readonly links: readonly LinkedCalendarMapping[] }>
+  listLinkedCalendarEventViews(): Promise<{ readonly links: readonly LinkedCalendarEventView[] }>
+  linkCalendarEvent(request: LinkedCalendarLinkRequest): Promise<{ readonly link: LinkedCalendarMapping; readonly replayed: boolean }>
+  disconnectLinkedCalendar(reviewed: LinkedCalendarMapping, expectedRevision: number): Promise<LinkedCalendarControlView>
+  rebindLinkedCalendar(reviewed: LinkedCalendarMapping, expectedRevision: number, destination: LinkedCalendarDestination): Promise<LinkedCalendarControlView>
+}
+
+const base = "/api/lifeops/calendar"
+const post = (body: unknown) => ({ method: "POST", body: JSON.stringify(body) })
+
+/** The linked-sync API bound to one host's authenticated fetch. */
+export function createLinkedSyncApi(fetch: CalendarFetch): LinkedSyncApi {
+  return {
+    getLinkedCalendarControl: () => fetch<LinkedCalendarControlView>(`${base}/sync-control`),
+    getLinkedCalendarSyncReport: (expectedRevision) => fetch(`${base}/sync-control/report?expectedRevision=${encodeURIComponent(String(expectedRevision))}`),
+    updateLinkedCalendarControl: (request) => fetch<LinkedCalendarControlResult>(`${base}/sync-control`, post(request)),
+    getLinkedCalendarDestinations: () => fetch<LinkedCalendarDestinations>(`${base}/sync-control/destinations`),
+    listLinkedCalendarEvents: () => fetch(`${base}/links`),
+    listLinkedCalendarEventViews: () => fetch(`${base}/links?view=events`),
+    linkCalendarEvent: (request) => fetch(`${base}/links`, post(request)),
+    disconnectLinkedCalendar: (reviewed, expectedRevision) =>
+      fetch<LinkedCalendarControlView>(`${base}/links/${encodeURIComponent(reviewed.linkId)}/disconnect`, post({ expectedRevision, reviewed })),
+    rebindLinkedCalendar: (reviewed, expectedRevision, destination) =>
+      fetch<LinkedCalendarControlView>(`${base}/links/${encodeURIComponent(reviewed.linkId)}/rebind`, post({ expectedRevision, reviewed, destination })),
+  }
+}

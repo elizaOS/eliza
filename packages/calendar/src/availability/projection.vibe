@@ -1,0 +1,123 @@
+// spec/calendar/availability.md, "Story: Share only the occupied time in my reviewed calendars"; spec/calendar/availability.md, "Choose a bounded interval and accept occupancy-only rows"; spec/calendar/availability.md, "Return sorted rows and preserve their multiplicity"
+import { aggregate, countAdmitted, lookupOverlap, resultAdmitted, rowsAdmitted, type Availability, type BusySlot, type EventRow,
+  type TimeWindow, type WindowRequest } from "../../gen/calendar__availability.effect.vibe"
+import { startOfCivilDay } from "../clock.vibe"
+import { AvailabilityEventRow, AvailabilityOperation, AvailabilityResult } from "./availability.schema.vibe"
+
+/** The capability an agent advertises for reviewed availability reads. */
+export const CALENDAR_AVAILABILITY_CAPABILITY = "calendar.availability-read.v1"
+/** The longest availability window, seven days. */
+export const CALENDAR_AVAILABILITY_MAX_MS = 7 * 86_400_000
+/** The most rows a read may return and the most busy intervals a result may hold. */
+export const CALENDAR_AVAILABILITY_MAX_BUSY = 200
+/** The most calendars one availability read may cover. */
+export const CALENDAR_AVAILABILITY_MAX_CALENDARS = 16
+
+/** The operation a consumer negotiates for a free/busy read. */
+export type CalendarAvailabilityOperation = AvailabilityOperation
+/** One occupancy-only row a reader returns. */
+export type CalendarAvailabilityEvent = AvailabilityEventRow
+/** The shared free/busy answer, with no event or calendar identity. */
+export type CalendarAvailabilityResult = AvailabilityResult
+
+/** Why an availability operation, row set or result was refused; nothing partial is returned. */
+export error AvailabilityRefused { reason: "invalid_operation" | "invalid_row" | "invalid_count" | "too_many" | "invalid_result" }
+
+const day = 86_400_000
+const exact = { onExcessProperty: "error" } as const
+const decodeOperation = Schema.decodeUnknownEffect(AvailabilityOperation, exact)
+const decodeRows = Schema.decodeUnknownEffect(Schema.Array(AvailabilityEventRow), exact)
+const decodeResult = Schema.decodeUnknownEffect(AvailabilityResult, exact)
+const availabilityOf: Record<CalendarAvailabilityEvent["availability"], Availability> = { busy: "Blocking", free: "Transparent", tentative: "Tentative" }
+
+/** An availability operation with exactly its fields, a bounded positive window and a supported zone. */
+export effect function validateCalendarAvailabilityOperation(value: unknown): CalendarAvailabilityOperation!AvailabilityRefused {
+  return try mapError(decodeOperation(value), () => new AvailabilityRefused({ reason: "invalid_operation" }))
+}
+
+function windowOf(operation: CalendarAvailabilityOperation): TimeWindow {
+  return { begin: Date.parse(operation.start), finish: Date.parse(operation.end) }
+}
+
+function civilMidnight(utcMidnight: number, timeZone: string): number {
+  const date = new Date(utcMidnight)
+  return startOfCivilDay({ year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() }, timeZone) ?? Number.NaN
+}
+
+function eventRow(row: CalendarAvailabilityEvent, timeZone: string): EventRow {
+  const encoded = { begin: Date.parse(row.start), finish: Date.parse(row.end) }
+  const allDayEncoded = encoded.begin % day === 0 && encoded.finish % day === 0 && encoded.finish > encoded.begin
+  const resolved = !row.allDay ? encoded
+    : allDayEncoded ? { begin: civilMidnight(encoded.begin, timeZone), finish: civilMidnight(encoded.finish, timeZone) }
+    : { begin: Number.NaN, finish: Number.NaN }
+  return { encoded, resolved, allDay: row.allDay, availability: availabilityOf[row.availability], exactWire: true, canonicalIso: true }
+}
+
+function slotOf(interval: CalendarAvailabilityResult["busy"][number]): BusySlot {
+  return { begin: Date.parse(interval.start), finish: Date.parse(interval.end), allDay: interval.allDay, tentative: interval.tentative }
+}
+
+/** The occupied time of the rows a reader returned, clipped to the window and sorted, or a refusal with no partial result. */
+export effect function calendarAvailability(operation: unknown, calendarCount: number, events: unknown): CalendarAvailabilityResult!AvailabilityRefused {
+  const op = try validateCalendarAvailabilityOperation(operation)
+  if (!countAdmitted(calendarCount)) throw new AvailabilityRefused({ reason: "invalid_count" })
+  if (Array.isArray(events) && !rowsAdmitted(events.length)) throw new AvailabilityRefused({ reason: "too_many" })
+  const rows = try mapError(decodeRows(events), () => new AvailabilityRefused({ reason: "invalid_row" }))
+  const win = windowOf(op)
+  const request: WindowRequest = { window: win, exactWire: true, canonicalIso: true, supportedZone: true }
+  const data = aggregate(request, calendarCount, rows.map((row) => eventRow(row, op.timeZone)))
+  if (!data.valid) throw new AvailabilityRefused({ reason: "invalid_row" })
+  const busy = data.slots.map((slot) => ({ start: new Date(slot.begin).toISOString(), end: new Date(slot.finish).toISOString(), allDay: slot.allDay, tentative: slot.tentative }))
+  const status = busy.length > 0 ? "busy" : "free"
+  if (!resultAdmitted(win, calendarCount, data.slots, data.transparentCount, status === "busy", true)) throw new AvailabilityRefused({ reason: "invalid_result" })
+  return canonicalAvailability({ version: 1, kind: "calendar_availability", window: { start: op.start, end: op.end, timeZone: op.timeZone },
+    calendarCount, status, busy, transparentIgnored: data.transparentCount })
+}
+
+/** A result with exactly its fields, echoing the operation's window, with monotonic starts inside it and a status that matches its intervals. */
+export effect function validateCalendarAvailabilityResult(operation: unknown, value: unknown): CalendarAvailabilityResult!AvailabilityRefused {
+  const op = try validateCalendarAvailabilityOperation(operation)
+  const result = try mapError(decodeResult(value), () => new AvailabilityRefused({ reason: "invalid_result" }))
+  const sameWindow = result.window.start === op.start && result.window.end === op.end && result.window.timeZone === op.timeZone
+  if (!sameWindow || !resultAdmitted(windowOf(op), result.calendarCount, result.busy.map(slotOf), result.transparentIgnored, result.status === "busy", true)) {
+    throw new AvailabilityRefused({ reason: "invalid_result" })
+  }
+  return canonicalAvailability(result)
+}
+
+/** A result rebuilt with its fields in their one canonical order. */
+export function canonicalAvailability(result: CalendarAvailabilityResult): CalendarAvailabilityResult {
+  return {
+    version: 1, kind: "calendar_availability",
+    window: { start: result.window.start, end: result.window.end, timeZone: result.window.timeZone },
+    calendarCount: result.calendarCount, status: result.status,
+    busy: result.busy.map(({ start, end, allDay, tentative }) => ({ start, end, allDay, tentative })),
+    transparentIgnored: result.transparentIgnored,
+  }
+}
+
+/** Whether two results are the same reviewed projection, compared as canonical JSON. */
+export function sameAvailabilityResult(left: CalendarAvailabilityResult, right: CalendarAvailabilityResult): boolean {
+  return JSON.stringify(canonicalAvailability(left)) === JSON.stringify(canonicalAvailability(right))
+}
+
+/** Whether a named event falls in a range for lookup: a point at or after the start and before the end, or a positive overlap. */
+export effect function calendarEventOverlapsRange(range: unknown, event: unknown): boolean!AvailabilityRefused {
+  const op = try validateCalendarAvailabilityOperation(range)
+  const row = try mapError(Schema.decodeUnknownEffect(Schema.Struct({ start: AvailabilityEventRow.fields.start, end: AvailabilityEventRow.fields.end,
+    allDay: Schema.Boolean }))(event), () => new AvailabilityRefused({ reason: "invalid_row" }))
+  const projected = eventRow({ ...row, availability: "busy" }, op.timeZone)
+  if (!(projected.resolved.finish >= projected.resolved.begin)) throw new AvailabilityRefused({ reason: "invalid_row" })
+  return lookupOverlap(windowOf(op), projected.resolved)
+}
+
+/** The owner-facing sentence for a shared result, carrying no event content. */
+export function describeAvailabilityResult(result: CalendarAvailabilityResult): string {
+  const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`
+  const calendars = `${plural(result.calendarCount, "calendar")} you chose`
+  const ignored = result.transparentIgnored > 0
+    ? ` ${plural(result.transparentIgnored, "event")} marked free ${result.transparentIgnored === 1 ? "was" : "were"} ignored.` : ""
+  return result.status === "free"
+    ? `Shared that you are free in this window, from ${calendars}.${ignored} No event titles or details were shared.`
+    : `Shared ${plural(result.busy.length, "busy time")} from ${calendars}.${ignored} No event titles or details were shared.`
+}

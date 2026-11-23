@@ -1,5 +1,6 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
-import { listening, respond as respondWithFallback } from "./transport.vibe"
+import { listening } from "./node-listener.vibe"
+import { respond as respondWithFallback } from "./transport.vibe"
 import type { Area, CloudContext, Route, Sweep } from "./routes.vibe"
 import { area as foundation } from "./routes/foundation.vibe"
 import { area as identity } from "./routes/identity.vibe"

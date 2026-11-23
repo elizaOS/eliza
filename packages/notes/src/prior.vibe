@@ -1,0 +1,79 @@
+// spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection"
+import { importedRevision } from "../gen/notes__records.effect.vibe"
+import type { NotesDocument } from "./collection.vibe"
+import { CleanupReceipt, Instant, Revision, StoredDocument } from "./records.schema.vibe"
+
+/** The earlier Notes document of this agent as its file holds it, with the SHA-256 of that text. */
+export interface PriorDocumentText {
+  readonly raw: string
+  readonly digest: string
+}
+
+/** The earlier document cannot be read or validated; it needs review and nothing starts empty. */
+export error PriorRefused { reason: string }
+
+const PriorShape = Schema.Struct({
+  schemaVersion: Schema.Literals([1, 2, 3]),
+  revision: Revision,
+  persistedAt: Instant,
+  notes: Schema.Array(Schema.Unknown),
+  trash: Schema.optionalKey(Schema.Array(Schema.Struct({ note: Schema.Unknown, deletedAt: Instant }))),
+  noteRevisions: Schema.optionalKey(Schema.Record(Schema.String, Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)))),
+  noteCreations: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  trashRecordingCleanup: Schema.optionalKey(Schema.Array(CleanupReceipt)),
+})
+
+const decodeShape = Schema.decodeUnknownEffect(Schema.fromJsonString(PriorShape), { onExcessProperty: "error" })
+const decodeStored = Schema.decodeUnknownEffect(StoredDocument, { onExcessProperty: "error" })
+
+function framed(note: unknown, schemaVersion: 1 | 2 | 3): unknown {
+  if (schemaVersion !== 1 || typeof note !== "object" || note === null || !("body" in note) || typeof note.body !== "string" || note.body === "") return note
+  return { ...note, body: `\n${note.body}` }
+}
+
+/** The collection an earlier document becomes: the same notes, Trash, creation IDs and pending cleanup, one revision on, with its import receipt. */
+export effect function importPriorDocument(prior: PriorDocumentText, importedAt: string): NotesDocument!PriorRefused {
+  const shape = try mapError(decodeShape(prior.raw), () => new PriorRefused({ reason: "The earlier Notes document is not a Notes document of schema 1, 2 or 3." }))
+  const ids = new Set([...shape.notes, ...(shape.trash ?? []).map((entry) => entry.note)]
+    .map((note) => typeof note === "object" && note !== null && "id" in note ? note.id : undefined))
+  if (Object.keys(shape.noteRevisions ?? {}).some((id) => !ids.has(id)) || Object.values(shape.noteRevisions ?? {}).some((value) => value > shape.revision)) {
+    throw new PriorRefused({ reason: "The earlier Notes document has an invalid note mutation revision." })
+  }
+  const cleanup = shape.trashRecordingCleanup ?? []
+  const distinct = (values: readonly string[]) => new Set(values).size === values.length
+  if (!distinct(cleanup.map((row) => row.operationId)) || !distinct(cleanup.map((row) => row.audioId)) || !distinct(cleanup.map((row) => row.noteId))
+    || cleanup.some((row) => ids.has(row.noteId))) {
+    throw new PriorRefused({ reason: "The earlier Notes recording cleanup conflicts with a retained identity." })
+  }
+  const candidate = {
+    schemaVersion: 1,
+    revision: importedRevision(shape.revision),
+    notes: shape.notes.map((note) => framed(note, shape.schemaVersion)),
+    trash: (shape.trash ?? []).map((entry) => ({ note: framed(entry.note, shape.schemaVersion), deletedAt: entry.deletedAt })),
+    creations: shape.noteCreations ?? {},
+    recordingCleanup: cleanup,
+    imported: {
+      source: "notes-state", schemaVersion: shape.schemaVersion, sourceRevision: shape.revision, sourceDigest: prior.digest,
+      notes: shape.notes.length, trash: (shape.trash ?? []).length, importedAt,
+    },
+  }
+  const stored = try mapError(decodeStored(candidate), () => new PriorRefused({ reason: "The earlier Notes document has a note, Trash row or creation that does not validate." }))
+  const retained = new Set([...stored.notes, ...stored.trash.map((entry) => entry.note)].flatMap((note) => {
+    const data = note.format?.kind === "voice" ? note.format.data : undefined
+    const audio = data?.audio
+    return [typeof audio === "object" && audio !== null && !Array.isArray(audio) ? audio.audioId : undefined, data?.recordingId]
+      .filter((id): id is string => typeof id === "string")
+  }))
+  if (stored.recordingCleanup.some((row) => retained.has(row.audioId))) {
+    throw new PriorRefused({ reason: "The earlier Notes recording cleanup names a recording a note still keeps." })
+  }
+  return {
+    schemaVersion: 1,
+    revision: stored.revision,
+    notes: stored.notes.map((note) => ({ ...note })),
+    trash: stored.trash.map((entry) => ({ note: { ...entry.note }, deletedAt: entry.deletedAt })),
+    creations: { ...stored.creations },
+    recordingCleanup: stored.recordingCleanup.map((row) => ({ ...row })),
+    ...(stored.imported === undefined ? {} : { imported: { ...stored.imported } }),
+  }
+}

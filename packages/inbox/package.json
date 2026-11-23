@@ -4,5 +4,45 @@
   "private": true,
   "type": "module",
   "description": "Mailbox listing, grants, drafts and background notices.",
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@effect/vitest": "4.1.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./mailbox": {
+      "eliza-source": "./src/mailbox/index.vibe",
+      "types": "./dist/src/mailbox/index.d.ts",
+      "import": "./dist/src/mailbox/index.js",
+      "default": "./dist/src/mailbox/index.js"
+    },
+    "./client": {
+      "eliza-source": "./src/client/index.vibe",
+      "types": "./dist/src/client/index.d.ts",
+      "import": "./dist/src/client/index.js",
+      "default": "./dist/src/client/index.js"
+    }
+  }
 }

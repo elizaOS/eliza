@@ -9,6 +9,7 @@ custody is the os package's [file storage](../os/android/files/storage.md).
 
 | Area | Specifications |
 | --- | --- |
-| Opening and changing | [Requests](./requests.md), [reviewed operations](./reviewedOperations.md), [reviewed file identity](./reviewPin.md), [downloads](./archive.md) |
+| Opening and changing | [Requests](./requests.md), [reviewed operations](./reviewedOperations.md), [reviewed file identity](./reviewPin.md), [shown targets](./shownTargets.md), [browser file library](./library.md), [downloads](./archive.md) |
+| Agent | [Agent workspace files](./workspace.md) |
 | Documents | [Source references](./sourceReferences.md), [local OCR](./localOcr.md) |
 | Scans | [Image bounds](./images.md), [scan review](./scan/review.md), [perspective correction](./scan/correction.md), [draft storage](./scan/drafts.md), [reviewed links](./scan/links.md), [searchable PDF](./scan/searchablePdf.md), [PDF interpretation](./pdfInterpretation.md) |

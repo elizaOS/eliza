@@ -1,4 +1,4 @@
-// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"
+// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"
 import { assert, it } from "@effect/vitest"
 import {
   comparePeer, decodeObservation, decodeVoiceUiContext, encodeTurnContext, learnPeer, notLearned, readTurnContext,
@@ -11,6 +11,7 @@ const calendar: Observation = {
   selectedObject: { kind: "event", id: "evt_42", revision: "W/\"etag-1\"", occurrenceId: "occ-3", timingVersion: 2 },
   calendarDay: { date: "2026-11-19", timeZone: "Europe/Berlin" },
 }
+const location = { latitude: 52.52, longitude: 13.405, accuracyMeters: 12.5, capturedAt: 1_763_500_000_000 }
 const voiceUi = { uiViewPath: "/calendar/day", uiViewSubview: "agenda", uiBrowserSurface: "native", viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } as const
 
 effect function readStatus(agent: InProcess) {
@@ -64,6 +65,10 @@ it.effect('A screen reaches the agent whole, only as the process instance the cl
     [{ ...withoutDay, sensitive: "no" }, "ObservationDropped"],
     [{ ...withoutDay, contents: "the whole screen" }, "ObservationDropped"],
     ["calendar", "ObservationDropped"],
+    [{ view: "vault", revision: 1, sensitive: true, location }, "carried"],
+    [{ ...withoutDay, location: { ...location, latitude: 91 } }, "ObservationDropped"],
+    [{ ...withoutDay, location: { ...location, capturedAt: 1.5 } }, "ObservationDropped"],
+    [{ ...withoutDay, location: { ...location, altitude: 30 } }, "ObservationDropped"],
   ] as const
   const decodedObservations = try Effect.forEach(observations, ([observation]) => outcomeOf(decodeObservation(observation)))
   const contexts = try Effect.forEach([
@@ -83,12 +88,16 @@ it.effect('A screen reaches the agent whole, only as the process instance the cl
     [[], undefined],
   ] as const, ([context, clientId]) => outcomeOf(decodeVoiceUiContext(context, clientId)))
   const silent = try decodeVoiceUiContext({ uiViewPath: "", unknownKey: "not carried" })
+  const located = try decodeObservation({ ...calendar, location })
+  const unlocated = encodeTurnContext({ observation: { ...calendar, location } }, { optionalFields: false }).observation
   const unreadable = readTurnContext({ content: { text: "this one", metadata: { observation: { ...calendar, sensitive: true }, voiceUi: { ...voiceUi, uiViewPath: "//x" } } } })
 
-  try Effect.try(() => assert.deepStrictEqual({ observations: decodedObservations, contexts, silent, unreadable }, {
+  try Effect.try(() => assert.deepStrictEqual({ observations: decodedObservations, contexts, silent, unreadable, located, unlocated }, {
     observations: observations.map(([, expected]) => expected),
     contexts: ["carried", "carried", ...Array.from({ length: 12 }, () => "VoiceUiContextInvalid")],
     silent: { uiViewPath: "" },
     unreadable: {},
+    located: { ...calendar, location },
+    unlocated: withoutDay,
   }))
 }, 180_000)

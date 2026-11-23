@@ -1,0 +1,130 @@
+// spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
+import { sha256Hex } from "@elizaos/core"
+import { createOutcome, repeatingCreateAllowed, receiptVersion, reviewStillBinds } from "../../gen/calendar__actions.effect.vibe"
+import { knownTimeZone } from "../clock.vibe"
+import { holdsRecurrence, type CalendarRecurrence } from "../series/recurrence-rule.vibe"
+import { sameSourceKey, utcInstant, type CalendarEvent, type CalendarEventFields, type CalendarSourceKey } from "../model.vibe"
+import { eventVersion, holdsFields, type CalendarAccount, type CalendarProviderPort } from "../plugin/providers.vibe"
+import {
+  CalendarPreflightRefused, CalendarWriteNotAccepted, CalendarWriteUnconfirmed,
+  type CalendarMutationFailure, type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest,
+} from "./ledger.vibe"
+
+/** Where the mutation port finds the active account and the provider for a source. */
+export interface CalendarProviders {
+  active(): (CalendarAccount | undefined)!!
+  port(provider: CalendarSourceKey["provider"]): (CalendarProviderPort | undefined)!!
+}
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+    return `{${entries.map(([key, inner]) => `${JSON.stringify(key)}:${canonical(inner)}`).join(",")}}`
+  }
+  return JSON.stringify(value) ?? "null"
+}
+
+/** The digest an owner's review binds: SHA-256 of the payload's canonical JSON. */
+export function reviewDigest(payload: CalendarMutationPayload): string {
+  return sha256Hex(canonical(payload))
+}
+
+/** Whether reviewed fields name a real, ordered span: canonical UTC instants, the end after the start (or equal for an all-day day). */
+export function fieldsSpanValid(fields: CalendarEventFields): boolean {
+  const start = utcInstant(fields.startAt)
+  const end = utcInstant(fields.endAt)
+  return start !== undefined && end !== undefined && (fields.isAllDay ? end >= start : end > start)
+}
+
+/** Whether a reviewed recurrence fits its fields: a timed series in a known zone, and an end of repeats no earlier than the start. */
+export function recurrenceFits(fields: CalendarEventFields, recurrence: CalendarRecurrence): boolean {
+  return (fields.isAllDay || knownTimeZone(fields.timeZone)) && (recurrence.until === undefined || Date.parse(recurrence.until) >= Date.parse(fields.startAt))
+}
+
+const failure = (code: string, message: string, retryable: boolean): CalendarMutationFailure => ({ code, message, retryable })
+const refuse = (code: string, message: string, retryable = false) => new CalendarPreflightRefused({ failure: failure(code, message, retryable) })
+const unconfirmed = (code: string, message: string) => new CalendarWriteUnconfirmed({ failure: failure(code, message, false) })
+
+function sourceOf(payload: CalendarMutationPayload): CalendarSourceKey {
+  return payload.action === "schedule_event" ? payload.source : payload.target.source
+}
+
+function fromSource(event: CalendarEvent, source: CalendarSourceKey): boolean {
+  return event.provider === source.provider && event.side === source.side && event.calendarId === source.calendarId
+    && (event.connectorAccountId ?? source.connectorAccountId) === source.connectorAccountId
+}
+
+/** The mutation port that checks a reviewed change against the active account's calendars, makes the one provider call and reads it back. */
+export function providerMutationPort(providers: CalendarProviders): CalendarMutationPort {
+  effect function bound(request: CalendarMutationRequest) {
+    const account = try providers.active()
+    if (account === undefined || !reviewStillBinds(request.payload.account, account.accountId, request.digest, reviewDigest(request.payload))) {
+      throw refuse("CALENDAR_REVIEW_UNBOUND", "The account or the change differs from the one that was reviewed.")
+    }
+    const source = sourceOf(request.payload)
+    const port = try providers.port(source.provider)
+    if (port === undefined) throw refuse("CALENDAR_PROVIDER_UNAVAILABLE", "That calendar's provider is not connected.", true)
+    return { account, source, port }
+  }
+
+  effect function readBack(port: CalendarProviderPort, account: CalendarAccount, source: CalendarSourceKey, eventId: string) {
+    return port.get(account, source, eventId) catch effect () => { throw unconfirmed("CALENDAR_READBACK_UNAVAILABLE", "The calendar could not be read back after the change.") }
+  }
+
+  return {
+    effect preflight(request) {
+      const { account, source, port } = try bound(request)
+      const listed = port.sources(account) catch effect () => { throw refuse("CALENDAR_SOURCE_UNAVAILABLE", "The calendar could not be listed.", true) }
+      const writable = listed.find((row) => sameSourceKey(row, source))
+      if (writable === undefined || (writable.accessRole !== "owner" && writable.accessRole !== "writer")) {
+        throw refuse("CALENDAR_SOURCE_NOT_WRITABLE", "That calendar is not one this account can write.")
+      }
+      const payload = request.payload
+      if (payload.action !== "cancel_event" && !fieldsSpanValid(payload.fields)) throw refuse("CALENDAR_FIELDS_INVALID", "The reviewed start and end are not an ordered span.")
+      if (payload.action === "schedule_event") {
+        const carrier = port.provider === "eliza" ? "ResidentRows" : port.recurrenceLines ? "ProviderRuleLines" : "ProviderWithoutRules"
+        if (!repeatingCreateAllowed(payload.recurrence !== null, carrier)) {
+          throw refuse("CALENDAR_RECURRENCE_UNSUPPORTED", "That calendar's provider can't save a repeating event, so it was not created.")
+        }
+        if (payload.recurrence !== null && !recurrenceFits(payload.fields, payload.recurrence)) {
+          throw refuse("CALENDAR_RECURRENCE_INVALID", "A repeating event needs a known time zone and an end of repeats no earlier than its start.")
+        }
+        return { target: null }
+      }
+      const target = port.get(account, source, payload.target.eventId) catch effect () => { throw refuse("CALENDAR_SOURCE_UNAVAILABLE", "The event could not be read.", true) }
+      if (target === undefined) throw refuse("CALENDAR_EVENT_NOT_FOUND", "That event is no longer in the calendar.")
+      if (eventVersion(target) !== payload.target.expectedVersion) throw refuse("CALENDAR_TARGET_CHANGED", "The event changed since it was reviewed.")
+      return { target }
+    },
+    effect execute(request, preflight) {
+      const { account, source, port } = try mapError(bound(request), (refused) => new CalendarWriteNotAccepted({ failure: refused.failure }))
+      const payload = request.payload
+      if (payload.action === "schedule_event") {
+        const made = try port.create(account, source, payload.fields, payload.recurrence, request.id)
+        const read = try readBack(port, account, source, made.id)
+        const outcome = createOutcome(true, read !== undefined, read !== undefined && fromSource(read, source),
+          read !== undefined && holdsFields(read, payload.fields) && holdsRecurrence(read.recurrence, payload.recurrence))
+        if (outcome !== "CreatedAndRead" || read === undefined) throw unconfirmed("CALENDAR_CREATE_UNCONFIRMED", "The created event did not read back from the same calendar.")
+        return { operation: payload.action, source, eventId: read.id, providerVersion: eventVersion(read), event: read, target: null, acceptedAt: read.updatedAt } satisfies CalendarMutationReceipt
+      }
+      const target = preflight.target
+      if (target === null) throw unconfirmed("CALENDAR_TARGET_UNREAD", "The change has no target read before it.")
+      if (payload.action === "modify_event") {
+        const changed = try port.update(account, source, payload.target.eventId, payload.scope, payload.fields, payload.target.expectedVersion, request.id)
+        const read = try readBack(port, account, source, changed.id)
+        const version = read === undefined ? "" : eventVersion(read)
+        if (read === undefined || !fromSource(read, source) || !holdsFields(read, payload.fields)
+          || receiptVersion("UpdateChange", eventVersion(target) !== "", version !== "") !== "FromChangedEvent") {
+          throw unconfirmed("CALENDAR_UPDATE_UNCONFIRMED", "The changed event did not read back with the reviewed fields.")
+        }
+        return { operation: payload.action, source, eventId: payload.target.eventId, providerVersion: version, event: read, target, acceptedAt: read.updatedAt } satisfies CalendarMutationReceipt
+      }
+      try port.remove(account, source, payload.target.eventId, payload.scope, payload.target.expectedVersion, request.id)
+      if ((try readBack(port, account, source, payload.target.eventId)) !== undefined) throw unconfirmed("CALENDAR_DELETE_UNCONFIRMED", "The deleted event still reads back.")
+      if (receiptVersion("DeleteChange", eventVersion(target) !== "", false) !== "FromDeletedTarget") throw unconfirmed("CALENDAR_DELETE_UNVERSIONED", "The deleted event had no version.")
+      const acceptedAt = new Date(try Clock.currentTimeMillis).toISOString()
+      return { operation: payload.action, source, eventId: target.id, providerVersion: `deleted:${eventVersion(target)}`, event: null, target, acceptedAt } satisfies CalendarMutationReceipt
+    },
+  }
+}

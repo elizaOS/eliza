@@ -1,4 +1,4 @@
-// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"
+// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
 package ai.eliza.os.agent;
 
 import java.math.BigDecimal;
@@ -56,6 +56,7 @@ public final class AgentConfig {
   private final List<RouteGate.Group> rendererRoutes, nativeRoutes;
   private final Map<String, Object> character, policy, launch;
   private final boolean cloud;
+  private final boolean ownKey;
 
   private AgentConfig(Map<String, Object> host, Map<String, Object> character, Map<String, Object> policy) throws Refused {
     known(host, HOST_KEYS, "host");
@@ -70,7 +71,9 @@ public final class AgentConfig {
     this.character = character(character);
     this.policy = policy(policy);
     launch = launch(host);
-    cloud = "cloud".equals(((Map<?, ?>) launch.get("model")).get("backend"));
+    Object backend = ((Map<?, ?>) launch.get("model")).get("backend");
+    cloud = "cloud".equals(backend);
+    ownKey = "own-key".equals(backend);
   }
 
   public static AgentConfig parse(byte[] host, byte[] character, byte[] policy) throws Refused {
@@ -85,6 +88,8 @@ public final class AgentConfig {
   }
 
   public boolean needsAccount() { return cloud; }
+
+  public boolean ownKey() { return ownKey; }
 
   public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker) {
     if (cloud && account == null) throw new IllegalArgumentException("A cloud launch names the signed-in account");

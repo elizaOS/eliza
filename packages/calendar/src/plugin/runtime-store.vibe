@@ -1,0 +1,69 @@
+// spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+
+/** The agent runtime's durable cache, which outlives a restart of the agent. */
+export interface CalendarCache {
+  getCache<T>(key: string): Promise<T | undefined>
+  setCache<T>(key: string, value: T): Promise<boolean>
+  deleteCache(key: string): Promise<boolean>
+}
+
+const prefix = "calendar:kv:"
+const indexKey = "calendar:kv-index"
+
+/** A KeyValueStore whose entries are rows of the agent runtime's durable cache, with an index of its keys. */
+export effect function cacheKeyValueStore(cache: CalendarCache) {
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+
+  effect function call<A>(method: string, key: string | undefined, run: () => Promise<A>) {
+    return try tryPromise({
+      try: run,
+      catch: (cause) => new KeyValueStore.KeyValueStoreError({ message: `The calendar cache refused ${method}`, method, ...(key === undefined ? {} : { key }), cause }),
+    })
+  }
+
+  effect function confirmed(method: string, key: string, run: () => Promise<boolean>) {
+    if (!(try call(method, key, run))) throw new KeyValueStore.KeyValueStoreError({ message: `The calendar cache did not keep ${method}`, method, key })
+  }
+
+  effect function index() {
+    const raw = try call("keys", indexKey, () => cache.getCache<unknown>(indexKey))
+    return Array.isArray(raw) ? raw.filter((key): key is string => typeof key === "string") : []
+  }
+
+  effect function setIndex(keys: readonly string[]) {
+    try confirmed("keys", indexKey, () => cache.setCache(indexKey, [...keys]))
+  }
+
+  effect function get(key: string) {
+    const raw = try call("get", key, () => cache.getCache<unknown>(prefix + key))
+    return typeof raw === "string" ? raw : undefined
+  }
+
+  effect function set(key: string, value: string) {
+    try serialize(effect {
+      try confirmed("set", key, () => cache.setCache(prefix + key, value))
+      const keys = try index()
+      if (!keys.includes(key)) try setIndex([...keys, key])
+    })
+  }
+
+  effect function remove(key: string) {
+    try serialize(effect {
+      try call("remove", key, () => cache.deleteCache(prefix + key))
+      try setIndex((try index()).filter((other) => other !== key))
+    })
+  }
+
+  const clear = serialize(effect {
+    for (const key of try index()) try call("clear", key, () => cache.deleteCache(prefix + key))
+    try setIndex([])
+  })
+
+  return KeyValueStore.makeStringOnly({ get, set, remove, clear, size: map(index(), (keys) => keys.length), keys: index() })
+}
+
+/** The KeyValueStore layer over the agent runtime's durable cache. */
+export function cacheStoreLayer(cache: CalendarCache) {
+  return Layer.effect(KeyValueStore.KeyValueStore, cacheKeyValueStore(cache))
+}

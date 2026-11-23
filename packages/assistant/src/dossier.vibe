@@ -1,0 +1,120 @@
+// spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/scheduledDossiers.md, "A change of the dossier's control starts a new generation and drops any admission"; spec/assistant/scheduledDossiers.md, "Only the owner's own foreground or unlock activity is admitted, once per owner day"; spec/assistant/scheduledDossiers.md, "The dossier fires automatically only on the day of a current admission, and consumes it"
+import { createReminderPresentation, type IAgentRuntime } from "@elizaos/core"
+import type { AgentPlugin } from "@elizaos/agent"
+import { Machine, canAdmitActivity, canFireDossier, canSetDossierControl, dayMinutes, stored, type ActivityKind, type DossierControl } from "../gen/assistant__scheduledDossiers.effect.vibe"
+import { collectFacts } from "./checkin.vibe"
+import { Facts, Model, Presenter, onAgent } from "./host.vibe"
+import { localMinutes, longDate, civilDate } from "./time.vibe"
+import { ownerClockAt } from "./timezone.vibe"
+
+const dossierKey = "dossier"
+const activityKinds = { foreground: "ForegroundActivity", unlock: "UnlockActivity" } as const satisfies Record<string, ActivityKind>
+
+type Dossier = Machine.Shape
+
+effect function caughtUp(dossier: Dossier) {
+  const at = try (try Facts).now()
+  const minutes = localMinutes(at, try ownerClockAt(at))
+  const state = try dossier.get()
+  if (minutes > state.now) return try orDie(dossier.send({ type: "passTime", minutes: minutes - state.now }))
+  return state
+}
+
+/** The dossier's control as it stands now on the owner's clock. */
+export effect function dossierControl() {
+  provide stored(dossierKey) {
+    return try caughtUp(try Machine)
+  }
+}
+
+/** Turns the dossier on or off, moves its day boundary, or reopens it; a real change starts a new generation and drops any admission. */
+export effect function setDossier(turnOn: boolean, boundary: number, reopened: boolean) {
+  provide stored(dossierKey) {
+    const dossier = try Machine
+    const state = try caughtUp(dossier)
+    if (!canSetDossierControl(state, turnOn, boundary, reopened)) return { changed: false, control: state }
+    return { changed: true, control: try orDie(dossier.send({ type: "setDossierControl", turnOn, boundary, reopened })) }
+  }
+}
+
+/** What became of one activity signal from the owner's device. */
+export type ActivityOutcome =
+  | { readonly kind: "ignored"; readonly control: DossierControl }
+  | { readonly kind: "admitted"; readonly control: DossierControl }
+  | { readonly kind: "fired"; readonly control: DossierControl; readonly presented: boolean }
+
+/** Admits the owner's authenticated foreground or unlock signal once per owner day, and fires the day's dossier in the same claim that consumes it. */
+export effect function ownerActivity(kind: string, fromOwner: boolean) {
+  const signal: ActivityKind = kind === "foreground" || kind === "unlock" ? activityKinds[kind] : "OtherActivity"
+  provide stored(dossierKey) {
+    const dossier = try Machine
+    const state = try caughtUp(dossier)
+    if (!canAdmitActivity(state, fromOwner, signal)) return { kind: "ignored", control: state } satisfies ActivityOutcome
+    const admitted = try orDie(dossier.send({ type: "admitActivity", fromOwner, kind: signal }))
+    if (!canFireDossier(admitted)) return { kind: "admitted", control: admitted } satisfies ActivityOutcome
+    const fired = try orDie(dossier.send({ type: "fireDossier" }))
+    return { kind: "fired", control: fired, presented: try presentDossier() } satisfies ActivityOutcome
+  }
+}
+
+/** Prepares and shows the owner's day; a manual refresh consumes nothing. */
+export effect function presentDossier() {
+  const at = try (try Facts).now()
+  const zone = try ownerClockAt(at)
+  const date = civilDate(at, zone)
+  const { facts } = try collectFacts(at, zone)
+  const said = (try Model).complete(`Prepare the owner's day for ${longDate(date)} in their zone ${zone}. Use only the facts given, in five to eight short lines.`, facts, 500) catch () => ""
+  const body = said.trim() || facts
+  const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Your day"), catch: () => "unpresentable" }) catch () => undefined
+  if (presentation === undefined) return false
+  return Effect.as((try Presenter).present({ taskId: `dossier:${date}`, kind: "personal-assistant.dossier", roomId: undefined, presentation }), true) catch () => false
+}
+
+type LocalRoute = NonNullable<AgentPlugin["routes"]>[number]
+const strict = { onExcessProperty: "error" } as const
+const decodeControl = Schema.decodeUnknownOption(Schema.Struct({
+  on: Schema.Boolean, boundaryMinute: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: dayMinutes - 1 })), reopened: Schema.optionalKey(Schema.Boolean),
+}), strict)
+const decodeActivity = Schema.decodeUnknownOption(Schema.Struct({ kind: Schema.Literals(["foreground", "unlock", "other"]) }), strict)
+
+/** The routes the owner's device reports activity through and the client sets the dossier's control through; the agent authenticates the owner before either. */
+export function dossierRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
+  const offline = { status: 503, body: { error: "assistant_unavailable" } }
+  const malformed = { status: 400, body: { error: "malformed" } }
+  return [
+    {
+      method: "GET", path: "/api/personal-assistant/dossier",
+      handler: async () => {
+        const runtime = agent()
+        return runtime === undefined ? offline : { status: 200, body: { control: await onAgent(runtime, dossierControl()) } }
+      },
+    },
+    {
+      method: "PUT", path: "/api/personal-assistant/dossier",
+      handler: async ({ body }) => {
+        const runtime = agent()
+        const input = decodeControl(body)
+        if (runtime === undefined) return offline
+        if (Option.isNone(input)) return malformed
+        return { status: 200, body: await onAgent(runtime, setDossier(input.value.on, input.value.boundaryMinute, input.value.reopened ?? false)) }
+      },
+    },
+    {
+      method: "POST", path: "/api/personal-assistant/dossier/activity",
+      handler: async ({ body }) => {
+        const runtime = agent()
+        const input = decodeActivity(body)
+        if (runtime === undefined) return offline
+        if (Option.isNone(input)) return malformed
+        return { status: 200, body: await onAgent(runtime, ownerActivity(input.value.kind, true)) }
+      },
+    },
+    {
+      method: "POST", path: "/api/personal-assistant/dossier/refresh",
+      handler: async () => {
+        const runtime = agent()
+        return runtime === undefined ? offline : { status: 200, body: { presented: await onAgent(runtime, presentDossier()) } }
+      },
+    },
+  ]
+}

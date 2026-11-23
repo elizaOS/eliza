@@ -1,0 +1,42 @@
+// spec/cloud/deployment.md, "A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve"; spec/cloud/deployment.md, "A scheduled tick runs each sweep whose period ends within the tick"
+import { sweepDue, workerAnswer, type WorkerAnswer } from "../../gen/cloud__deployment.effect.vibe"
+import { matchRoute, type Area, type Route, type Sweep } from "../http/routes.vibe"
+import { area as billing } from "../http/routes/billing.vibe"
+import { area as checkout } from "../http/routes/checkout.vibe"
+import { area as foundation } from "../http/routes/foundation.vibe"
+import { area as google } from "../http/routes/google.vibe"
+import { area as identity } from "../http/routes/identity.vibe"
+import { area as inference } from "../http/routes/inference.vibe"
+import { area as maps } from "../http/routes/maps.vibe"
+import { area as nativeClients } from "../http/routes/native-clients.vibe"
+import { area as operator } from "../http/routes/operator.vibe"
+import { area as providerEvents } from "../http/routes/provider-events.vibe"
+import { area as speech } from "../http/routes/speech.vibe"
+import { relaySpeechRoutes } from "../services/speech-relay.vibe"
+
+/** The server's areas a Worker mounts: all of them. */
+export const workerAreas: ReadonlyArray<Area> = [foundation, identity, nativeClients, checkout, providerEvents, billing, inference, speech, maps, google, operator]
+
+/** Every route of the server's table that a Worker answers. */
+export const workerRoutes: ReadonlyArray<Route> = workerAreas.flatMap((each) => each.routes)
+
+/** The speech relay's socket routes, which a Worker answers on a socket pair instead of a buffered answer. */
+export const relayRoutes: ReadonlyArray<Route> = relaySpeechRoutes
+
+/** Whether a request opens the speech relay's socket. */
+export function opensRelay(method: string, pathname: string): boolean {
+  return matchRoute(relayRoutes, method, pathname).kind === "route"
+}
+
+/** Every sweep of the areas a Worker mounts. */
+export const workerSweeps: ReadonlyArray<Sweep> = workerAreas.flatMap((each) => each.sweeps)
+
+/** Who answers a request: the server's table, a Worker-only route, or the table's fallback. */
+export function answerOf(method: string, pathname: string, workerOnly: (pathname: string) => boolean): WorkerAnswer {
+  return workerAnswer(matchRoute(workerRoutes, method, pathname).kind !== "none", workerOnly(pathname))
+}
+
+/** The sweeps due at a scheduled tick. */
+export function dueSweeps(scheduledAt: number): ReadonlyArray<Sweep> {
+  return workerSweeps.filter((sweep) => sweepDue(scheduledAt, sweep.everyMs))
+}

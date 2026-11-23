@@ -1,0 +1,183 @@
+// spec/maps/guidanceRecovery.md, "A maneuver is passed only on a nearby position or two clearing fixes"; spec/maps/guidanceRecovery.md, "A passed maneuver stays passed"; spec/maps/guidanceVoice.md, "Each instruction key owns one attempt until the voice is paused or muted"; spec/maps/guidanceVoice.md, "A visibility interruption owes only the exact current instruction"
+import { initial as pendingManeuver, step as progressStep, type GuidanceProgress } from "../../gen/maps__guidanceRecovery.effect.vibe"
+import { initial as quietVoice, machineOver as voiceOver, type Event as VoiceEvent, type GuidanceReply, type GuidanceVoice } from "../../gen/maps__guidanceVoice.effect.vibe"
+import type { Coordinate, RouteStep } from "./contracts.vibe"
+import { distanceToRoute, type RouteGeometry, type RouteProgress } from "./route-distance.vibe"
+
+/** The upcoming maneuver, and how many consecutive usable fixes have cleared it. */
+export interface StepHold {
+  readonly index: number
+  readonly cleared: number
+}
+
+const nearManeuverMeters = 40
+const clearanceMeters = 60
+
+function clearedMeters(point: Coordinate, route: Pick<RouteGeometry, "geometry" | "steps">, progress: Pick<RouteProgress, "alongMeters" | "maneuverAlongMeters">, index: number): number {
+  const at = progress.maneuverAlongMeters[index] ?? Infinity
+  const maneuver = route.steps[index]
+  if (!(progress.alongMeters > at) || maneuver === undefined) return 0
+  const before: Coordinate[] = []
+  let travelled = 0
+  for (const [position, vertex] of route.geometry.entries()) {
+    if (travelled > at) break
+    before.push(vertex)
+    const following = route.geometry[position + 1]
+    if (following !== undefined) travelled += distanceToRoute(vertex, [following])
+  }
+  return distanceToRoute(point, [...before, maneuver.coordinate])
+}
+
+function evidence(hold: StepHold): GuidanceProgress {
+  return hold.cleared === 1 ? { step: "PendingManeuver", cleared: 1, evidence: "OneClearFix" } : pendingManeuver
+}
+
+/** The upcoming maneuver after one usable fix: a fix within 40 m passes it, otherwise two consecutive on-route fixes clear beyond it by more than 60 m and twice their accuracy; the last step is never passed. */
+export function advanceStep(
+  hold: StepHold,
+  route: Pick<RouteGeometry, "geometry" | "steps">,
+  progress: Pick<RouteProgress, "alongMeters" | "maneuverAlongMeters">,
+  fix: { readonly coordinate: Coordinate; readonly accuracyMeters: number },
+  onRoute: boolean,
+): StepHold {
+  const last = route.steps.length - 1
+  let index = hold.index
+  let current = evidence(hold)
+  const near = (at: number) => {
+    const maneuver = route.steps[at]
+    return maneuver !== undefined && distanceToRoute(fix.coordinate, [maneuver.coordinate]) < nearManeuverMeters
+  }
+  while (index < last && near(index)) {
+    current = progressStep(current, { type: "nearPosition" })
+    if (current.step !== "ArrivalStep") break
+    index++
+    current = pendingManeuver
+  }
+  if (index < last) {
+    const clearing = onRoute && clearedMeters(fix.coordinate, route, progress, index) > Math.max(clearanceMeters, fix.accuracyMeters * 2)
+    current = progressStep(current, { type: clearing ? "clearFix" : "resetEvidence" })
+    if (current.step === "ArrivalStep") {
+      index++
+      current = pendingManeuver
+    }
+  }
+  return { index, cleared: current.cleared }
+}
+
+/** Progress with the upcoming maneuver fixed to `index`, so a sparse or jumping fix never skips an instruction. */
+export function atStep(progress: RouteProgress, steps: readonly RouteStep[], index: number): RouteProgress {
+  const { next: _next, then: _then, ...rest } = progress
+  const nextStep = steps[index]
+  const thenStep = steps[index + 1]
+  return {
+    ...rest,
+    ...(nextStep === undefined ? {} : { next: { index, step: nextStep, distanceMeters: Math.max(0, (progress.maneuverAlongMeters[index] ?? progress.alongMeters) - progress.alongMeters) } }),
+    ...(thenStep === undefined ? {} : { then: { index: index + 1, step: thenStep } }),
+  }
+}
+
+/** Why the device speaker stopped before it finished an instruction. */
+export error GuidanceSpeechStopped { reason: "interrupted" | "failed" | "cleanup-unconfirmed" }
+
+/** The device speaker the screen speaks turn instructions through; interrupting the effect stops the speech. */
+export interface GuidanceSpeaker {
+  speak(text: string): void!GuidanceSpeechStopped
+}
+
+/** The screen's speech context: session, inference mode, provider revision, Cloud account and connection. */
+export type GuidanceAuthority = string
+
+const replies: Record<GuidanceSpeechStopped["reason"], GuidanceReply> = {
+  interrupted: "VisibilityInterrupted",
+  failed: "PlaybackFailed",
+  "cleanup-unconfirmed": "CleanupUnconfirmed",
+}
+
+function interned(table: Map<string, number>): (value: string) => number {
+  return (value) => {
+    if (value === "") return 0
+    const known = table.get(value)
+    if (known !== undefined) return known
+    const next = table.size + 1
+    table.set(value, next)
+    return next
+  }
+}
+
+/** The one speaker of foreground turn guidance: the newest instruction key speaks once, a hidden screen owes only the exact current instruction, and a definite failure mutes and calls `onMuted`. */
+export effect function navigationVoice(speaker: GuidanceSpeaker, onMuted: () => void) {
+  const kept = try Ref.make<GuidanceVoice>(quietVoice)
+  const voice = try voiceOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+  const texts = new Map<string, number>()
+  const keys = new Map<string, number>()
+  const textId = interned(texts)
+  const keyId = interned(keys)
+  const allowed = try Ref.make(true)
+  const speaking = try Ref.make<{ readonly attempt: number; readonly fiber: Fiber.Fiber<void> } | undefined>(undefined)
+  const authorities = new Map<string, number>()
+  const authorityId = interned(authorities)
+
+  function textOf(id: number): string {
+    for (const [text, known] of texts) if (known === id) return text
+    return ""
+  }
+
+  effect function settle(attempt: number, reply: GuidanceReply): void!! {
+    try serialize(effect {
+      const running = try Ref.get(speaking)
+      if (running !== undefined && running.attempt === attempt) try Ref.set(speaking, undefined)
+      const before = try voice.get()
+      if (before.activeAttempt === 0) return
+      const after = try orDie(voice.send({ type: "settleGuidance", exactAttempt: before.activeAttempt === attempt, voiceReply: reply, voiceAllowed: try Ref.get(allowed) }))
+      try follow(after)
+      if (after.failures > before.failures) try sync(onMuted)
+    })
+  }
+
+  effect function follow(next: GuidanceVoice): void!! {
+    const running = try Ref.get(speaking)
+    if (running !== undefined && running.attempt === next.activeAttempt) return
+    if (running !== undefined) try Fiber.interrupt(running.fiber)
+    if (next.activeAttempt === 0) {
+      try Ref.set(speaking, undefined)
+      return
+    }
+    const attempt = next.activeAttempt
+    const text = textOf(next.activeInstruction.textId)
+    const fiber = fork.detached effect {
+      const reply: GuidanceReply = map(speaker.speak(text), (): GuidanceReply => "PlaybackDone") catch (stopped) => replies[stopped.reason]
+      try settle(attempt, reply)
+    }
+    try Ref.set(speaking, { attempt, fiber })
+  }
+
+  effect function send(event: VoiceEvent): GuidanceVoice!! {
+    return try serialize(effect {
+      const next = voice.send(event) catch effect () => try voice.get()
+      try follow(next)
+      return next
+    })
+  }
+
+  effect function permit(voiceAllowed: boolean): boolean!! {
+    try Ref.set(allowed, voiceAllowed)
+    return voiceAllowed
+  }
+
+  return {
+    state: voice.get,
+    changes: voice.changes,
+    offer: effect (key: string, text: string, voiceAllowed: boolean) => try send({ type: "offerGuidance", maneuverKey: keyId(key), textId: textId(text), voiceAllowed: try permit(voiceAllowed) }),
+    hide: () => send({ type: "hideGuidance" }),
+    show: effect (voiceAllowed: boolean) => try send({ type: "showGuidance", voiceAllowed: try permit(voiceAllowed) }),
+    toggle: effect (voiceAllowed: boolean) => try send({ type: "toggleGuidanceVoice", voiceAllowed: try permit(voiceAllowed) }),
+    pause: () => send({ type: "pauseGuidanceVoice" }),
+    allow: permit,
+    authority: (context: GuidanceAuthority) => send({ type: "changeGuidanceAuthority", authorityId: authorityId(context) }),
+    sheet: (open: boolean) => send({ type: "setGuidanceSheet", sheetOpen: open }),
+  }
+}
+
+/** The foreground guidance speaker of one Maps screen. */
+export type NavigationVoice = Effect.Success<ReturnType<typeof navigationVoice>>

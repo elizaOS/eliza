@@ -1,8 +1,8 @@
-// spec/agent/models/binding.md, "The binding is set once from an admitted launch and never changes while the process runs"; spec/agent/models/binding.md, "A model call starts only for a handler the backend serves, with the credential the binding holds"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force"; spec/agent/models/binding.md, "An answer clears the account state, except a limit not yet over"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"; spec/agent/models/binding.md, "A refusal of a replaced credential never marks the new one invalid"; spec/agent/models/binding.md, "Warm answers from the binding state and never reaches the cloud"
+// spec/agent/models/binding.md, "The binding is set once from an admitted launch and never changes while the process runs"; spec/agent/models/binding.md, "A model call starts only for a handler the backend serves, with the credential the binding holds"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force"; spec/agent/models/binding.md, "An answer clears the account state, except a limit not yet over"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"; spec/agent/models/binding.md, "A refusal of a replaced credential never marks the new one invalid"; spec/agent/models/binding.md, "Warm answers from the binding state and never reaches the cloud"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"
 import type { Backend, GoogleConsent, LaunchDocument as LaunchModel, UrlShape } from "../../gen/agent__host__launch.ts"
 import {
-  Machine, accountStateName, blocked, clockAt, failureName, limitedAt, machine, pushVerdict, retryAtOf, warmAnswer,
-  type AccountFailure, type ModelBinding, type ModelHandler, type PushVerdict, type WarmAnswer,
+  Machine, accountStateName, blocked, clockAt, failureName, keyAdmitted, keySlot, limitedAt, machine, pushVerdict, retryAtOf, warmAnswer,
+  type AccountFailure, type KeyShape, type ModelBinding, type ModelHandler, type PushVerdict, type WarmAnswer,
 } from "../../gen/agent__models__binding.effect.vibe"
 import type { CloudError } from "../../gen/cloud__client.ts"
 import type { LocalRoute } from "../access/routes.vibe"
@@ -106,6 +106,13 @@ export function failureKindName(failure: AccountFailure): FailureKind {
   return failureName(failure) as FailureKind
 }
 
+function shapeOf(key: Redacted.Redacted<string>): KeyShape {
+  const value = Redacted.value(key)
+  return { units: value.length, visibleAscii: /^[\x21-\x7e]*$/.test(value) }
+}
+
+const noKey: HeldCredential = { version: 0, value: Redacted.make("") }
+
 effect function held() {
   provide machine() {
     return try Machine
@@ -115,9 +122,10 @@ effect function held() {
 export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
   const models = try held()
   const doc = launchModel(launch)
+  const slot = keySlot(doc.backend)
   const bound = models.send({ type: "bind", doc, view: { epoch: frame.epoch, credentialVersion: frame.credential?.version ?? 0 } })
     catch effect () => { throw new BindRefused() }
-  let key: HeldCredential = frame.credential ?? { version: 0, value: Redacted.make("") }
+  let key: HeldCredential = slot === "NoKeySlot" ? noKey : frame.credential ?? noKey
 
   effect function read() {
     const state = try models.get()
@@ -138,6 +146,7 @@ export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
     const owner = { tag: "SignedIn", userId: account.userId, organizationId: account.organizationId } as const
     const verdict = pushVerdict(try models.get(), version, owner)
     if (verdict !== "PushAccepted") return { status: 409, body: { error: "credential_refused", reason: refusals[verdict] } }
+    if (!keyAdmitted("CloudDeviceKey", shapeOf(credential))) return { status: 400, body: { error: "malformed" } }
     const previous = key
     key = { version, value: credential, expiresAt }
     const refused = models.send({ type: "pushCredential", version, account: owner }) catch effect (rejected) => {

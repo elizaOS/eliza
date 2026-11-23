@@ -23,4 +23,5 @@ travel, health, bill and blocking services are not part of this package.
 | To-dos | [To-dos](./todos.md) |
 | Routines and their occurrences | [Routines](./routines.md) |
 | The daily dossier | [Scheduled dossiers](./scheduledDossiers.md) |
+| What the owner hears about the assistant's work | [Replies](./replies.md) |
 | Evaluating finished turns in batches | [Evaluator runner](./evaluatorRunner.md), [durable progress](./evaluatorProgress.md), [evidence pages](./evaluatorEvidencePages.md) |

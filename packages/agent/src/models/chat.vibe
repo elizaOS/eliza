@@ -1,8 +1,8 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
-import type { GenerateTextParams, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback } from "@elizaos/core"
+import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { failureOf, outcomeOf, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
+import { chatReturn, failureOf, outcomeOf, type ChatAsk, type ChatReturn, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
@@ -12,11 +12,22 @@ export type Binding = Pick<BoundModels, "credential" | "startCall" | "answerCall
 export interface Endpoint {
   readonly url: string
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
+  readonly maxTokensField: "max_tokens" | "max_completion_tokens"
+  readonly defaultMaxTokens?: number
 }
 
 interface Sink {
   readonly stream?: boolean
   readonly onStreamChunk?: StreamChunkCallback
+}
+
+/** One decoded chat completion: its text, tool calls, finish reason, token use and replayable reasoning. */
+export interface Reply {
+  readonly text: string
+  readonly toolCalls: ToolCall[]
+  readonly finishReason: string | undefined
+  readonly usage: TokenUsage | undefined
+  readonly reasoning: string
 }
 
 export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind }
@@ -25,38 +36,83 @@ export error Refused { cloud: CloudFailure }
 
 error StreamConsumerFailed { cause: unknown }
 
-schema Choice { message: { content: string } }
-const Completion = Schema.Struct({ choices: Schema.Array(Choice).check(Schema.isMinLength(1)) })
+const Usage = Schema.Struct({
+  prompt_tokens: Schema.Number,
+  completion_tokens: Schema.Number,
+  total_tokens: Schema.Number,
+  prompt_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({ cached_tokens: Schema.optionalKey(Schema.NullOr(Schema.Number)) }))),
+  completion_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({ reasoning_tokens: Schema.optionalKey(Schema.NullOr(Schema.Number)) }))),
+})
+type WireUsage = typeof Usage.Type
+const WireToolCall = Schema.Struct({ id: Schema.String, function: Schema.Struct({ name: Schema.String, arguments: Schema.String }) })
+const Completion = Schema.Struct({
+  choices: Schema.Array(Schema.Struct({
+    message: Schema.Struct({
+      content: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      refusal: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      reasoning: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      tool_calls: Schema.optionalKey(Schema.NullOr(Schema.Array(WireToolCall))),
+    }),
+    finish_reason: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  })).check(Schema.isMinLength(1)),
+  usage: Schema.optionalKey(Schema.NullOr(Usage)),
+})
 const decode = Schema.decodeUnknownEffect(Completion)
-const Delta = Schema.Struct({ choices: Schema.Array(Schema.Struct({ delta: Schema.Struct({
-  content: Schema.optionalKey(Schema.NullOr(Schema.String)),
-}) })) })
+const DeltaToolCall = Schema.Struct({
+  index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  id: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  function: Schema.optionalKey(Schema.NullOr(Schema.Struct({ name: Schema.optionalKey(Schema.NullOr(Schema.String)), arguments: Schema.optionalKey(Schema.NullOr(Schema.String)) }))),
+})
+const Delta = Schema.Struct({
+  choices: Schema.Array(Schema.Struct({
+    delta: Schema.optionalKey(Schema.NullOr(Schema.Struct({
+      content: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      reasoning: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      tool_calls: Schema.optionalKey(Schema.NullOr(Schema.Array(DeltaToolCall))),
+    }))),
+    finish_reason: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  })),
+  usage: Schema.optionalKey(Schema.NullOr(Usage)),
+})
 const decodeDelta = Schema.decodeUnknownOption(Schema.fromJsonString(Delta))
-const Quota = Schema.Struct({ error: Schema.Struct({
-  code: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  type: Schema.optionalKey(Schema.NullOr(Schema.String)),
-}) })
-const decodeQuota = Schema.decodeUnknownOption(Schema.fromJsonString(Quota))
+const ProviderFields = Schema.Struct({
+  message: Schema.optionalKey(Schema.Unknown),
+  type: Schema.optionalKey(Schema.Unknown),
+  code: Schema.optionalKey(Schema.Unknown),
+})
+const decodeNestedError = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ error: ProviderFields })))
+const decodeFlatError = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ message: Schema.String, type: Schema.optionalKey(Schema.Unknown), code: Schema.optionalKey(Schema.Unknown) })))
 schema Listing { data: { id: string }[] }
 const decodeListing = Schema.decodeUnknownOption(Listing)
 
 const providerIssue = (): Refused => new Refused({ cloud: { tag: "CloudProviderIssue" } })
 
 module wireFormat {
-  import type { GenerateTextParams } from "@elizaos/core"
+  import type { ChatMessageContentPart, GenerateTextAttachment, GenerateTextParams, ToolCall, ToolChoice, ToolDefinition } from "@elizaos/core"
 
   type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
-  type ChatMessageContentPart = Extract<NonNullable<ChatMessage["content"]>, readonly unknown[]>[number]
-
   type Source = string | URL | Uint8Array
   type Image = { type: "image"; image: Source; mediaType?: string }
   type File = { type: "file"; data: Source; mediaType: string; filename?: string }
+  type WireMessage = { role: string; content?: unknown; tool_call_id?: string; tool_calls?: { id: string }[] } & Record<string, unknown>
 
   /** @throws {never} */
   function urlOf(source: Source, mediaType: string | undefined): string {
     if (typeof source === "string") return source
     if (source instanceof URL) return source.href
     return `data:${mediaType ?? "application/octet-stream"};base64,${Buffer.from(source).toString("base64")}`
+  }
+
+  /** @throws {never} */
+  function fileOf(data: Source, mediaType: string, filename: string | undefined): object {
+    return mediaType.startsWith("image/")
+      ? { type: "image_url", image_url: { url: urlOf(data, mediaType) } }
+      : { type: "file", file: { file_data: urlOf(data, mediaType), ...(filename === undefined ? {} : { filename }) } }
+  }
+
+  /** @throws {never} */
+  function isReasoning(part: ChatMessageContentPart): boolean {
+    return (part.type === "reasoning" || part.type === "thinking") && typeof (part as { text?: unknown }).text === "string"
   }
 
   /** @throws {never} */
@@ -67,20 +123,125 @@ module wireFormat {
     }
     if (part.type === "file") {
       const file = part as File
-      return { type: "file", file: { file_data: urlOf(file.data, file.mediaType), ...(file.filename === undefined ? {} : { filename: file.filename }) } }
+      return fileOf(file.data, file.mediaType, file.filename)
     }
     return part
   }
 
   /** @throws {never} */
-  export function conversation(system: string | undefined, prompt: string | undefined, messages: readonly ChatMessage[] | undefined): object[] {
-    const turns: readonly ChatMessage[] = messages ?? (prompt ? [{ role: "user", content: prompt }] : [])
-    const said = turns.map((message) => ({
-      role: message.role,
-      content: typeof message.content === "string" ? message.content : (message.content ?? []).map(partOf),
-      ...(message.name === undefined ? {} : { name: message.name }),
-    }))
-    return system ? [{ role: "system", content: system }, ...said] : said
+  function textOf(content: ChatMessage["content"], wanted: (part: ChatMessageContentPart) => boolean): string {
+    if (typeof content === "string") return content
+    return (content ?? []).filter(wanted).map((part) => (part as { text?: unknown }).text).filter((text) => typeof text === "string").join("")
+  }
+
+  /** @throws {never} */
+  function argumentsOf(call: ToolCall): string | undefined {
+    if (typeof call.arguments === "string") return call.arguments
+    try {
+      return JSON.stringify(call.arguments)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  function wireOf(message: ChatMessage): WireMessage | undefined {
+    const plain = (part: ChatMessageContentPart) => part.type === "text"
+    switch (message.role) {
+      case "system":
+      case "developer":
+        return { role: "system", content: textOf(message.content, plain) }
+      case "tool":
+        return { role: "tool", tool_call_id: message.toolCallId ?? "", content: textOf(message.content, plain) }
+      case "assistant": {
+        const text = textOf(message.content, plain)
+        const reasoning = textOf(typeof message.content === "string" ? [] : message.content, isReasoning)
+        const calls = (message.toolCalls ?? []).map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: argumentsOf(call) } }))
+        if (calls.some((call) => call.function.arguments === undefined)) return undefined
+        return {
+          role: "assistant",
+          content: text === "" && calls.length > 0 ? null : text,
+          ...(calls.length === 0 ? {} : { tool_calls: calls }),
+          ...(reasoning === "" ? {} : { reasoning }),
+        }
+      }
+      case "user":
+        return {
+          role: "user",
+          content: typeof message.content === "string" ? message.content : (message.content ?? []).filter((part) => !isReasoning(part)).map(partOf),
+          ...(message.name === undefined ? {} : { name: message.name }),
+        }
+    }
+  }
+
+  /** @throws {never} */
+  function paired(turns: readonly WireMessage[]): WireMessage[] {
+    type Node = { message: WireMessage; responses: WireMessage[] }
+    const nodes: Node[] = []
+    const announcer = new Map<string, Node>()
+    for (const message of turns) {
+      if (message.role === "tool") {
+        const owner = announcer.get(message.tool_call_id ?? "")
+        if (owner !== undefined) {
+          owner.responses.push(message)
+          continue
+        }
+        nodes.push({ message: { role: "user", content: `[tool result]\n${String(message.content ?? "")}` }, responses: [] })
+        continue
+      }
+      const node: Node = { message, responses: [] }
+      nodes.push(node)
+      for (const call of message.tool_calls ?? []) announcer.set(call.id, node)
+    }
+    return nodes.flatMap(({ message, responses }) => [message, ...responses])
+  }
+
+  /** @throws {never} */
+  export function conversation(params: Pick<GenerateTextParams, "system" | "prompt" | "messages" | "attachments">): object[] | undefined {
+    const attachments = params.attachments ?? []
+    const wired = params.messages?.map(wireOf)
+    if (wired?.includes(undefined)) return undefined
+    const asked: WireMessage[] = wired !== undefined ? wired.filter((message) => message !== undefined)
+      : !params.prompt ? []
+      : attachments.length === 0 ? [{ role: "user", content: params.prompt }]
+      : [{ role: "user", content: [{ type: "text", text: params.prompt }, ...attachments.map((file: GenerateTextAttachment) => fileOf(file.data, file.mediaType, file.filename))] }]
+    const said = paired(asked)
+    return params.system ? [{ role: "system", content: params.system }, ...said] : said
+  }
+
+  /** @throws {never} */
+  export function toolsOf(tools: readonly ToolDefinition[] | undefined): object[] | undefined {
+    if (tools === undefined || tools.length === 0) return undefined
+    return tools.map((tool) => ({ type: "function", function: {
+      name: tool.name,
+      ...(tool.description === undefined ? {} : { description: tool.description }),
+      parameters: tool.parameters ?? { type: "object", properties: {} },
+      ...(tool.strict === true ? { strict: true } : {}),
+    } }))
+  }
+
+  /** @throws {never} */
+  export function toolChoiceOf(choice: ToolChoice | undefined): object | string | undefined {
+    if (choice === undefined || typeof choice === "string") return choice
+    return { type: "function", function: { name: "function" in choice ? choice.function.name : choice.name } }
+  }
+
+  /** @throws {never} */
+  export function responseFormatOf(params: Pick<GenerateTextParams, "responseSchema" | "responseFormat">): object | undefined {
+    if (params.responseSchema !== undefined) return { type: "json_schema", json_schema: { name: "response", schema: params.responseSchema, strict: false } }
+    const format = params.responseFormat
+    const type = typeof format === "string" ? format : format?.type
+    return type === "json_object" || type === "json" ? { type: "json_object" } : undefined
+  }
+
+  /** @throws {never} */
+  export function parsedArguments(raw: string): ToolCall["arguments"] {
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed as Exclude<ToolCall["arguments"], string> : raw
+    } catch {
+      return raw
+    }
   }
 
   /** @throws {never} */
@@ -94,7 +255,7 @@ module wireFormat {
     return found?.[1]?.replace(/\*\*/g, "").trim() || "Image Analysis"
   }
 }
-import { conversation, description, titleOf } from wireFormat
+import { conversation, description, parsedArguments, responseFormatOf, titleOf, toolChoiceOf, toolsOf } from wireFormat
 
 module edge {
   import { Cause, Effect, Exit } from "effect"
@@ -127,23 +288,61 @@ function refusalOf(cloud: CloudFailure): ModelRefusal {
   }
 }
 
-function quotaSpent(raw: string): boolean {
-  const body = decodeQuota(raw)
-  return body._tag === "Some" && (body.value.error.code === "insufficient_quota" || body.value.error.type === "insufficient_quota")
+function providerWords(raw: string): string | undefined {
+  const nested = decodeNestedError(raw)
+  const fields = nested._tag === "Some" ? nested.value.error : Option.getOrUndefined(decodeFlatError(raw))
+  if (fields === undefined) return undefined
+  return [fields.message, fields.type, fields.code].filter((word) => typeof word === "string").join(" ").toLowerCase()
+}
+
+function providerRefusal(status: number, words: string): CloudFailure | undefined {
+  if (status === 429 && words.includes("insufficient_quota")) return { tag: "CloudInsufficientCredits" }
+  if (status === 408 || status === 409) return { tag: "CloudProviderIssue" }
+  if (status === 400 && !/invalid|unsupported|must be|required|malformed|not allowed|schema/.test(words)
+    && /server error|server_error|try again|overload|capacity|temporarily|busy/.test(words)) return { tag: "CloudProviderIssue" }
+  return undefined
 }
 
 effect function refusalFrom(result: HttpClientResponse.HttpClientResponse) {
   const now = try Clock.currentTimeMillis
   const raw = timeout(result.text, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
-  if (result.status === 429 && quotaSpent(raw)) return new Refused({ cloud: { tag: "CloudInsufficientCredits" } })
+  const words = providerWords(raw)
+  const classified = words === undefined ? undefined : providerRefusal(result.status, words)
+  if (classified !== undefined) return new Refused({ cloud: classified })
   const response = { status: result.status, headers: { get: (name: string) => result.headers[name] ?? null }, text: async () => raw }
   const read = try Effect.promise(() => readCloudError(response, now))
   return new Refused({ cloud: read.failure })
 }
 
-effect function collectStream(result: HttpClientResponse.HttpClientResponse, sink: Sink) {
+function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
+  if (usage === undefined || usage === null) return undefined
+  const cached = usage.prompt_tokens_details?.cached_tokens
+  const reasoning = usage.completion_tokens_details?.reasoning_tokens
+  return {
+    promptTokens: usage.prompt_tokens,
+    completionTokens: usage.completion_tokens,
+    totalTokens: usage.total_tokens,
+    ...(typeof cached === "number" && cached > 0 ? { cacheReadInputTokens: cached } : {}),
+    ...(typeof reasoning === "number" && reasoning > 0 ? { reasoningTokens: reasoning } : {}),
+  }
+}
+
+effect function answered(reply: Reply, ask: ChatAsk) {
+  if (reply.text.length > 32768) throw providerIssue()
+  if (reply.toolCalls.some((call) => call.name.trim() === "" || call.id === "")) throw providerIssue()
+  const form = chatReturn(ask, { textBlank: reply.text.trim() === "", toolCalls: reply.toolCalls.length })
+  if (form === "AnswerProviderIssue") throw providerIssue()
+  return { reply, form }
+}
+
+effect function collectStream(result: HttpClientResponse.HttpClientResponse, sink: Sink, ask: ChatAsk) {
   let text = ""
+  let reasoning = ""
   let terminal = false
+  let finishReason: string | undefined
+  let usage: TokenUsage | undefined
+  let argumentBytes = 0
+  const calls: { id: string; name: string; arguments: string }[] = []
   const lines = result.stream.pipe(Stream.decodeText(), Stream.splitLines)
   const collect = Stream.runForEach(lines, effect (line) => {
     if (line.length > 262144) throw providerIssue()
@@ -155,7 +354,22 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
     }
     const decoded = decodeDelta(payload)
     if (decoded._tag !== "Some") throw providerIssue()
-    const delta = decoded.value.choices[0]?.delta.content
+    usage = usageOf(decoded.value.usage) ?? usage
+    const choice = decoded.value.choices[0]
+    if (choice === undefined) return
+    finishReason = choice.finish_reason ?? finishReason
+    reasoning += choice.delta?.reasoning ?? ""
+    for (const piece of choice.delta?.tool_calls ?? []) {
+      if (piece.index > calls.length) throw providerIssue()
+      const call = calls[piece.index] ?? { id: "", name: "", arguments: "" }
+      calls[piece.index] = call
+      call.id ||= piece.id ?? ""
+      call.name += piece.function?.name ?? ""
+      call.arguments += piece.function?.arguments ?? ""
+      argumentBytes += piece.function?.arguments?.length ?? 0
+      if (argumentBytes > 65536) throw providerIssue()
+    }
+    const delta = choice.delta?.content
     if (!delta) return
     text += delta
     if (text.length > 32768) throw providerIssue()
@@ -165,11 +379,13 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
     if (failure instanceof Refused || failure instanceof StreamConsumerFailed) throw failure
     throw new Refused({ cloud: { tag: "CloudNetwork" } })
   }
-  if (!terminal || text.trim() === "") throw providerIssue()
-  return text
+  if (!terminal) throw providerIssue()
+  const toolCalls = calls.map((call): ToolCall => ({ id: call.id, name: call.name, arguments: parsedArguments(call.arguments) }))
+  return try answered({ text, toolCalls, finishReason, usage, reasoning }, ask)
 }
 
-effect function send(url: string, credential: Redacted.Redacted<string>, body: object, sink: Sink) {
+effect function send(url: string, credential: Redacted.Redacted<string>, body: object | undefined, sink: Sink, ask: ChatAsk) {
+  if (body === undefined) throw providerIssue()
   const encoded = try Effect.try({ try: () => JSON.stringify(body), catch: () => providerIssue() })
   const request = HttpClientRequest.bodyText(HttpClientRequest.setHeader(
     HttpClientRequest.post(url), "authorization", "Bearer " + Redacted.value(credential),
@@ -177,50 +393,102 @@ effect function send(url: string, credential: Redacted.Redacted<string>, body: o
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
   const result = timeout(response, "90 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
   if (result.status < 200 || result.status >= 300) throw try refusalFrom(result)
-  if (sink.stream && result.headers["content-type"]?.startsWith("text/event-stream")) return try collectStream(result, sink)
+  if (sink.stream && result.headers["content-type"]?.startsWith("text/event-stream")) return try collectStream(result, sink, ask)
   const raw = timeout(result.json, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
   const decoded = decode(raw) catch effect () => { throw providerIssue() }
-  const first = decoded.choices[0]?.message.content
-  if (first === undefined || first.trim() === "") throw providerIssue()
-  return first
+  const choice = decoded.choices[0]
+  if (choice === undefined) throw providerIssue()
+  const message = choice.message
+  const toolCalls = (message.tool_calls ?? []).map((call): ToolCall => ({ id: call.id, name: call.function.name, arguments: parsedArguments(call.function.arguments) }))
+  return try answered({
+    text: message.content ?? message.refusal ?? "",
+    toolCalls,
+    finishReason: choice.finish_reason ?? undefined,
+    usage: usageOf(decoded.usage),
+    reasoning: message.reasoning ?? "",
+  }, ask)
 }
 
-effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, messages: object[], max: number | undefined, sink: Sink) {
+effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, fields: object | undefined, sink: Sink, ask: ChatAsk) {
   const began = try Clock.currentTimeMillis
   const started = try binding.startCall(handler, began)
   if (started === "limited") throw refusalOf({ tag: "CloudRateLimited", retryAt: 0 })
-  const body = { model: endpoint.models[handler], messages, stream: sink.stream === true, ...(max === undefined ? {} : { max_tokens: max }) }
-  const text = send(endpoint.url, binding.credential(), body, sink) catch effect (failure) => {
+  const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: sink.stream === true, ...fields }
+  const answer = send(endpoint.url, binding.credential(), body, sink, ask) catch effect (failure) => {
     if (!(failure instanceof Refused)) throw failure
     const refused = try Clock.currentTimeMillis
     try binding.refuseCall(started, refused, failure.cloud)
     throw refusalOf(failure.cloud)
   }
-  const answered = try Clock.currentTimeMillis
-  try binding.answerCall(started, answered)
-  return text
+  const at = try Clock.currentTimeMillis
+  try binding.answerCall(started, at)
+  return answer
 }
 
+function requestOf(endpoint: Endpoint, params: GenerateTextParams): object | undefined {
+  const messages = conversation(params)
+  if (messages === undefined) return undefined
+  const max = params.omitMaxTokens ? undefined : params.maxTokens ?? endpoint.defaultMaxTokens
+  const tools = toolsOf(params.tools)
+  const toolChoice = toolChoiceOf(params.toolChoice)
+  const format = responseFormatOf(params)
+  return {
+    messages,
+    ...(max === undefined ? {} : { [endpoint.maxTokensField]: max }),
+    ...(params.temperature === undefined ? {} : { temperature: params.temperature }),
+    ...(params.topP === undefined ? {} : { top_p: params.topP }),
+    ...(params.stopSequences === undefined || params.stopSequences.length === 0 ? {} : { stop: params.stopSequences }),
+    ...(params.frequencyPenalty === undefined ? {} : { frequency_penalty: params.frequencyPenalty }),
+    ...(params.presencePenalty === undefined ? {} : { presence_penalty: params.presencePenalty }),
+    ...(params.seed === undefined ? {} : { seed: params.seed }),
+    ...(tools === undefined ? {} : { tools }),
+    ...(toolChoice === undefined || tools === undefined ? {} : { tool_choice: toolChoice }),
+    ...(format === undefined ? {} : { response_format: format }),
+  }
+}
+
+function resultOf(reply: Reply): GenerateTextResult {
+  return {
+    text: reply.text,
+    toolCalls: reply.toolCalls,
+    ...(reply.finishReason === undefined ? {} : { finishReason: reply.finishReason }),
+    ...(reply.usage === undefined ? {} : { usage: reply.usage }),
+    ...(reply.reasoning === "" ? {} : { content: [{ type: "text", text: reply.text }, { type: "reasoning", text: reply.reasoning }] }),
+  }
+}
+
+function askOf(params: GenerateTextParams): ChatAsk {
+  return { offersTools: (params.tools?.length ?? 0) > 0, choosesTool: typeof params.toolChoice === "object", asksSchema: params.responseSchema !== undefined }
+}
+
+const textAsk: ChatAsk = { offersTools: false, choosesTool: false, asksSchema: false }
+
+function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProviderIssue"> }): string | GenerateTextResult {
+  return answer.form === "AnswerResult" ? resultOf(answer.reply) : answer.reply.text
+}
+
+/** Serves a text handler: the reply text, or one result with tool calls, finish reason and token use when the call offers tools or asks for a schema. */
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
-  return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string> => run(
-    Effect.provide(serve(binding, handler, endpoint, conversation(params.system, params.prompt, params.messages),
-      params.omitMaxTokens ? undefined : params.maxTokens ?? 1024, params), FetchHttpClient.layer),
+  return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
+    Effect.provide(Effect.map(serve(binding, handler, endpoint, requestOf(endpoint, params), params, askOf(params)), returned), FetchHttpClient.layer),
     params.signal,
   )
 }
 
+/** Serves image description as a chat completion with the image as its one part. */
 export function describeImage(binding: Binding, endpoint: Endpoint) {
   return (_runtime: IAgentRuntime, params: { imageUrl: string; prompt?: string; signal?: AbortSignal; stream?: boolean; onStreamChunk?: StreamChunkCallback } | string): Promise<{ title: string; description: string }> => {
     const input = typeof params === "string" ? { imageUrl: params } : params
     const messages = description(input.prompt ?? "Please analyze this image and provide a title and detailed description.", input.imageUrl)
     return run(
-      Effect.provide(Effect.map(serve(binding, "ImageDescription", endpoint, messages, undefined, typeof params === "string" ? {} : params),
-        (text) => ({ title: titleOf(text), description: text })), FetchHttpClient.layer),
+      Effect.provide(Effect.map(serve(binding, "ImageDescription", endpoint, { messages }, typeof params === "string" ? {} : params, textAsk),
+        ({ reply }) => ({ title: titleOf(reply.text), description: reply.text })), FetchHttpClient.layer),
       typeof params === "string" ? undefined : params.signal,
     )
   }
 }
 
+/** Lists the model ids an endpoint offers to the credential. */
 export effect function listModels(baseUrl: string, credential: Redacted.Redacted<string>) {
   const request = HttpClientRequest.setHeader(HttpClientRequest.get(baseUrl + "/models"), "authorization", "Bearer " + Redacted.value(credential))
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
@@ -234,6 +502,7 @@ export effect function listModels(baseUrl: string, credential: Redacted.Redacted
 
 type Handler = Parameters<IAgentRuntime["registerModel"]>[1]
 
+/** Registers each handler twice so core retries a transient refusal once. */
 export function registerTwice(runtime: IAgentRuntime, provider: string, handlers: Readonly<Record<string, unknown>>, metadata: ModelRegistrationMetadata): void {
   for (const [modelType, handler] of Object.entries(handlers)) {
     const serve = handler as Handler

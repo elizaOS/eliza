@@ -82,11 +82,13 @@ pure def sometimesExistingEntryGoesToHistory(s: DeviceAttempt): bool = s.phase =
 
 ### A lost journal write answer needs an exact readback
 
-A write counts when the journal confirms it. A definite refusal does not
-count. If the write returns an error, read the entry once. The write counts
-only if the stored revision, binding, attempt, and evidence match the entry
-the device tried to save. The read does not repeat the write or change the
-attempt that the write saves.
+Each attempt write replaces the last-read revision with the next revision
+in one compare-and-set. A definite refusal does not count. If the write
+returns an error, read the entry once. The write counts only if the entire
+stored entry matches, including its revision, binding, attempt, agent
+attempt and evidence. An unconfirmed write stops the attempt without
+calling the executor or repeating the write. A lost result is recovered
+from the journal without repeating the call.
 
 ```quint
 type JournalWrite = WriteKept | WriteRefused | WriteAnswerLost
@@ -98,6 +100,8 @@ pure def lawJournalRefusalIsFinal(reread: JournalReread): bool =
   not(needsJournalReread(WriteRefused)) and not(journalWriteHeld(WriteRefused, reread))
 pure def lawLostJournalAnswerNeedsExactReadback(reread: JournalReread): bool =
   journalWriteHeld(WriteAnswerLost, reread) iff reread == ReadbackExact
+pure def lawAKeptWriteNeedsNoReread(reread: JournalReread): bool =
+  not(needsJournalReread(WriteKept)) and journalWriteHeld(WriteKept, reread)
 ```
 
 ### The executor is called at most once, for a live claim

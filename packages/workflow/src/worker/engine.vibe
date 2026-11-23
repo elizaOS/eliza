@@ -1,0 +1,178 @@
+// spec/workflow/generated.md, "Each call is journaled once, replays its recorded result, and diverges when its arguments change"; spec/workflow/generated.md, "An effect is dispatched at most once, and an effect whose receipt is lost is never sent again"; spec/workflow/generated.md, "A wait parks the run until its own approval, signal or timer resolves it"; spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"
+import { workflowSha } from "../contract/phone.vibe"
+import { importWorkflowSource, publishWorkflowSource, SourceRefused } from "./source.vibe"
+
+/** One journaled call of a generated run with its recorded result. */
+export interface GeneratedEntry { readonly call: string; readonly digest: string; readonly kind: "StepCall" | "EffectCall" | "ApprovalCall" | "SignalCall" | "TimerCall"; readonly value: unknown }
+/** What a generated run parks on. */
+export type GeneratedWait =
+  | { readonly kind: "approval"; readonly request: { readonly title: string; readonly summary: string; readonly operation: string; readonly target: string; readonly account: string } }
+  | { readonly kind: "signal"; readonly name: string; readonly timeoutMs?: number }
+  | { readonly kind: "timer"; readonly ms: number }
+/** What the engine tells its parent while it runs generated code. */
+export type EngineMessage =
+  | { readonly type: "checkpoint"; readonly call: string; readonly digest: string; readonly value: unknown }
+  | { readonly type: "needsEffect"; readonly call: string; readonly digest: string; readonly request: { readonly prompt: string } }
+  | { readonly type: "park"; readonly call: string; readonly digest: string; readonly wait: GeneratedWait }
+  | { readonly type: "diverged"; readonly call: string }
+  | { readonly type: "done"; readonly text: string; readonly output: unknown }
+  | { readonly type: "failed"; readonly message: string; readonly cancelled: boolean }
+/** The parent's answer to an effect request. */
+export type EffectAnswer = { readonly type: "effect"; readonly call: string; readonly text: string } | { readonly type: "effectFailed"; readonly call: string; readonly message: string } | { readonly type: "cancel" }
+export type CheckpointAnswer = { readonly type: "checkpointed"; readonly call: string; readonly digest: string }
+export type CheckpointStatus = "acknowledged" | "cancelled" | "refused"
+/** Where one generated run starts or resumes: its compiled module, its input and its journal. */
+export interface GeneratedStart {
+  readonly type: "startGenerated"
+  readonly runId: string
+  readonly js: string
+  readonly jsDigest: string
+  readonly input: unknown
+  readonly journal: readonly GeneratedEntry[]
+}
+
+module node {
+  import { mkdtemp, realpath } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+  import { runGuest } from "./guest.vibe"
+  import type { CheckpointStatus, EffectAnswer, EngineMessage, GeneratedEntry, GeneratedWait } from "./engine.vibe"
+
+  class Parked {
+    constructor(readonly reason: string) {}
+  }
+
+  let directory: Promise<string> | undefined
+
+  export function sourceDirectory(): Promise<string> {
+    directory ??= realpath(tmpdir()).then((parent) => mkdtemp(join(parent, "eliza-workflow-source-")))
+    return directory
+  }
+
+  export interface EngineIo {
+    send(message: EngineMessage): Promise<void>
+    checkpoint(call: string, digest: string): Promise<CheckpointStatus>
+    effect(call: string): Promise<EffectAnswer>
+    digest(value: unknown): Promise<string>
+  }
+
+  function json(value: unknown): unknown {
+    return JSON.parse(JSON.stringify(value ?? null)) as unknown
+  }
+
+  export async function runProgram(source: Uint8Array, input: unknown, journal: readonly GeneratedEntry[], io: EngineIo): Promise<void> {
+    const recorded = new Map(journal.map((entry) => [entry.call, entry]))
+    const seen = new Set<string>()
+    let stopped: Parked | undefined
+
+    async function enter(call: string, args: unknown): Promise<{ readonly digest: string; readonly entry: GeneratedEntry | undefined }> {
+      if (stopped !== undefined) throw stopped
+      if (typeof call !== "string" || call === "" || call.length > 200) throw new Error("Each workflow call needs an id")
+      if (seen.has(call)) throw new Error(`The workflow call id ${call} is used twice`)
+      seen.add(call)
+      const digest = await io.digest(args)
+      const entry = recorded.get(call)
+      if (entry !== undefined && entry.digest !== digest) {
+        await io.send({ type: "diverged", call })
+        stopped = new Parked("diverged")
+        throw stopped
+      }
+      return { digest, entry }
+    }
+
+    async function park(call: string, digest: string, wait: GeneratedWait): Promise<never> {
+      await io.send({ type: "park", call, digest, wait })
+      stopped = new Parked("parked")
+      throw stopped
+    }
+
+    const value = (data: unknown) => ({ kind: "value" as const, value: data })
+    try {
+      const output = json(await runGuest(new TextDecoder().decode(source), input, async (request) => {
+        const { call } = request
+        switch (request.kind) {
+          case "step": {
+            const { digest, entry } = await enter(call, ["step", call, request.source])
+            if (entry !== undefined) return value(json(entry.value))
+            const result = json(request.compute())
+            await io.send({ type: "checkpoint", call, digest, value: result })
+            const checkpoint = await io.checkpoint(call, digest)
+            if (checkpoint === "cancelled") {
+              stopped = new Parked("cancelled")
+              throw stopped
+            }
+            if (checkpoint !== "acknowledged") throw new Error("The workflow checkpoint did not match its call")
+            return value(result)
+          }
+          case "generate": {
+            const prompt = request.prompt.slice(0, 16000)
+            const { digest, entry } = await enter(call, ["generate", call, prompt])
+            if (entry !== undefined) return typeof entry.value === "string" ? value(entry.value)
+              : { kind: "failed", message: "The text model could not draft this call" }
+            await io.send({ type: "needsEffect", call, digest, request: { prompt } })
+            const answer = await io.effect(call)
+            if (answer.type === "cancel") {
+              stopped = new Parked("cancelled")
+              throw stopped
+            }
+            if (answer.type === "effectFailed") return { kind: "failed", message: answer.message }
+            return value(answer.text)
+          }
+          case "approval": {
+            const shown = { title: request.title.slice(0, 500), summary: request.summary.slice(0, 4000), operation: request.operation.slice(0, 500), target: request.target.slice(0, 1000), account: request.account.slice(0, 500) }
+            const { digest, entry } = await enter(call, ["approval", call, shown])
+            if (entry !== undefined) return value(entry.value === true)
+            return park(call, digest, { kind: "approval", request: shown })
+          }
+          case "signal": {
+            const timeoutMs = request.timeoutMs !== undefined && Number.isFinite(request.timeoutMs) && request.timeoutMs > 0 ? Math.min(request.timeoutMs, 30 * 86_400_000) : undefined
+            const { digest, entry } = await enter(call, ["signal", call, request.name, timeoutMs ?? null])
+            if (entry !== undefined) return value(json(entry.value))
+            return park(call, digest, { kind: "signal", name: request.name.slice(0, 200), ...(timeoutMs === undefined ? {} : { timeoutMs }) })
+          }
+          case "sleep": {
+            const ms = Number.isFinite(request.ms) && request.ms > 0 ? Math.min(request.ms, 30 * 86_400_000) : 0
+            const { digest, entry } = await enter(call, ["sleep", call, ms])
+            if (entry !== undefined) return value(undefined)
+            return park(call, digest, { kind: "timer", ms })
+          }
+        }
+      }))
+      if (stopped !== undefined) return
+      await io.send({ type: "done", text: typeof output === "string" ? output : JSON.stringify(output), output })
+    } catch (error) {
+      if (stopped !== undefined) {
+        if (stopped.reason === "cancelled") await io.send({ type: "failed", message: "The run was cancelled", cancelled: true })
+        return
+      }
+      await io.send({ type: "failed", message: error instanceof Error ? error.message.slice(0, 2000) : "The workflow code failed", cancelled: false })
+    }
+  }
+}
+import { runProgram, sourceDirectory } from node
+
+/** The generated code could not be imported as the reviewed module. */
+export error GeneratedModuleRefused { reason: string }
+
+/**
+ * Runs one start of a generated run: the worker publishes the compiled module it received, imports only those exact
+ * bytes, and replays the journal before the next new call, which it checkpoints, sends as an effect, or parks on.
+ */
+export effect function runGenerated(start: GeneratedStart, channel: {
+  send(message: EngineMessage): void!!,
+  checkpoint(call: string, digest: string): CheckpointStatus!!,
+  effectAnswer(call: string): EffectAnswer!!,
+}): void!(GeneratedModuleRefused | SourceRefused) {
+  const bytes = new TextEncoder().encode(start.js)
+  if ((try workflowSha(start.js)) !== start.jsDigest) throw new GeneratedModuleRefused({ reason: "The compiled workflow is not the reviewed module" })
+  const directory = try promise(() => sourceDirectory())
+  const name = `${start.jsDigest}.mjs`
+  try publishWorkflowSource(directory, name, bytes, start.jsDigest)
+  const source = try importWorkflowSource(directory, name, bytes)
+  try promise(() => runProgram(source, start.input, start.journal, {
+    send: (message) => runPromise(channel.send(message)),
+    checkpoint: (call, digest) => runPromise(channel.checkpoint(call, digest)),
+    effect: (call) => runPromise(channel.effectAnswer(call)),
+    digest: (value) => runPromise(workflowSha(value)),
+  }))
+}

@@ -1,11 +1,12 @@
-// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
-import { ackOutcome, ackPerIp, apply, recordedExpiryReached, grantBindingMatches, nativeOutcome, revokeAll as revokeDeviceEpoch, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Keep my phone signed in without a browser"; spec/cloud/nativeClients/deviceKeys.md, "Signing out ends the presenting key and every key renewed from it, unless it names its acknowledged successor"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
+import { ackOutcome, ackPerIp, apply, recordedExpiryReached, grantBindingMatches, nativeOutcome, renewableUntil, renewalCheck, renewPerIp, reusedRefusal, revokeAll as revokeDeviceEpoch, signOutEndsSuccessor, successorMayFinish, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect, type RenewalFacts } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 import { clientCheck, codeChallengeMethod, faultRefusal, type ClientCheck, type ClientRequest, type Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { NativeVerdict, SignInYield } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import type { CodeBinding } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { admitRequest, type CredentialView } from "../../gen/cloud__identity__sessions.effect.vibe"
 import type { NativeGoogleCheck } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { RateLimit } from "../../gen/cloud__shared__rateLimit.effect.vibe"
+import type { RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
 import { refused, Refused } from "../http/refusal.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { admitCheck } from "../shared/rate-limit.vibe"
@@ -153,7 +154,7 @@ function openingColumns(opening: Pick<Opening, "userId" | "request">, code: stri
   return {
     user_id: opening.userId, client_id: opening.request.clientId, phase: phaseColumn(grant), code_digest: tokenDigest(code),
     code_challenge: opening.request.codeChallenge, state_digest: tokenDigest(opening.request.state), device_name: name,
-    code_expires_at: grant.codeExpiresAt, device_epoch: grant.epoch, issued_at: grant.now, updated_at: grant.now
+    code_expires_at: grant.codeExpiresAt, device_epoch: grant.epoch, issued_at: grant.now, sign_in_at: grant.now, updated_at: grant.now
   }
 }
 
@@ -179,10 +180,48 @@ export effect function openGrant(tx: Tx, opening: Opening) {
   return { key: opening.grantKey, code, codeExpiresAt: stepped.state.codeExpiresAt, out: stepped.out.out }
 }
 
-const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.issued_at, g.key_expires_at, a.organization_id, a.status, a.device_epoch"
+const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.issued_at, g.key_expires_at, g.renewed_from, COALESCE(g.sign_in_at, g.issued_at) AS sign_in_at, a.organization_id, a.status, a.device_epoch"
 
 effect function grantBy(tx: Tx, column: "code_digest" | "credential_id" | "key", value: string) {
   return (try tx.query(`SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.${column} = $1 FOR UPDATE OF a, g`, [value]))[0]
+}
+
+effect function renewedFrom(tx: Tx, key: string) {
+  return try tx.query(`WITH RECURSIVE chain AS (SELECT key FROM device_grants WHERE renewed_from = $1 UNION SELECT d.key FROM device_grants d JOIN chain c ON d.renewed_from = c.key) SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.key IN (SELECT key FROM chain) FOR UPDATE OF a, g`, [key])
+}
+
+function pending(row: Row): boolean {
+  return row.phase === "code_issued" || row.phase === "exchanged"
+}
+
+export effect function supersedeGrant(tx: Tx, key: string) {
+  const stepped = try stepGrant(tx, key, { type: "supersede" }, (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, updated_at: grant.now }))
+  return stepped.out.out
+}
+
+effect function endRenewed(tx: Tx, row: Row, now: number) {
+  if (!pending(row)) {
+    try endKey(tx, row, now)
+    return
+  }
+  supersedeGrant(tx, toText(row.key) ?? "") catch effect (failure) => {
+    if (failure._tag !== "Rejected") throw failure
+  }
+}
+
+effect function predecessorReason(tx: Tx, grant: Grant, row: Row, now: number) {
+  const none: RefusalReason = "NoReason"
+  if (grant.origin.tag !== "Renewed") return none
+  const predecessor = try grantBy(tx, "key", toText(row.renewed_from) ?? "")
+  const gone: RefusalReason = "CredentialRevoked"
+  if (predecessor === undefined) return gone
+  const key = inspectKey(predecessor, now) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
+  return key.reason
+}
+
+effect function finishable(tx: Tx, grant: Grant, row: Row, now: number) {
+  const predecessor = try predecessorReason(tx, grant, row, now)
+  if (!successorMayFinish(grant, predecessor)) throw refused("AuthenticationRequired", predecessor)
 }
 
 effect function current(row: Row, now: number) {
@@ -207,6 +246,7 @@ effect function mint(tx: Tx, row: Row, body: typeof TokenBody.Type) {
   const admitted = try storedAdmission(tx, before)
   const at = try Clock.currentTimeMillis
   const ready = try currentGrant(before, at)
+  try finishable(tx, ready, row, at)
   const proof = sameText(s256(body.codeVerifier), toText(row.code_challenge) ?? "") && sameText(tokenDigest(body.state), toText(row.state_digest) ?? "")
   const binding: CodeBinding = !bindingMatches(ready, body) ? "RedirectDiffers" : proof ? "BindingMatches" : "VerifierDiffers"
   const outcome = tokenOutcome(ready, admitted.check, binding, toInt(row.device_epoch))
@@ -305,6 +345,7 @@ export effect function acknowledgeGrant(tx: Tx, body: typeof AckBody.Type) {
     && (body.codeVerifier === undefined || (pkceText.test(body.codeVerifier) && sameText(s256(body.codeVerifier), toText(row.code_challenge) ?? "")))
   const now = try Clock.currentTimeMillis
   const ready = try currentGrant(before, now)
+  try finishable(tx, ready, row, now)
   const outcome = ackOutcome(ready, admitted.check, proofMatches, toInt(row.device_epoch))
   if (outcome.tag === "GrantRefused") throw new Refused({ refusal: outcome.refusal })
   const stepped = stepGrant(tx, toText(row.key) ?? "", { type: "ack", client: admitted.check, proofMatches, deviceEpoch: toInt(row.device_epoch) },
@@ -327,17 +368,98 @@ effect function ack(context: RouteContext) {
   return json(acknowledged.answer)
 }
 
+export effect function signOutKey(tx: Tx, grantKey: string, namedSuccessor: string) {
+  const row = try grantBy(tx, "key", grantKey)
+  if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const now = try Clock.currentTimeMillis
+  const reason = try endKey(tx, row, now)
+  if (reason !== "NoReason") throw refused("AuthenticationRequired", reason)
+  const chain = try renewedFrom(tx, grantKey)
+  let kept: string | undefined
+  for (const successor of chain) {
+    if (toText(successor.renewed_from) !== grantKey || pending(successor)) continue
+    const live = inspectKey(successor, now) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
+    if (!signOutEndsSuccessor(namedSuccessor, toText(successor.credential_id) ?? "", live.reason === "NoReason")) kept = toText(successor.key)
+  }
+  for (const successor of chain) {
+    if (kept !== undefined && (toText(successor.key) === kept || !pending(successor) || toText(successor.renewed_from) !== grantKey)) continue
+    try endRenewed(tx, successor, now)
+  }
+}
+
 effect function selfRevoke(context: RouteContext) {
   const caller = context.caller
   if (caller.kind !== "deviceKey") throw refused("AuthenticationRequired", "CredentialUnknown")
+  const named = context.request.headers["x-renewed-credential-id"]
+  if (named !== undefined && !uuidText.test(named)) throw refused("InvalidRequest")
   const store = try Store
-  try store.transaction(effect (tx: Tx) => {
-    const row = try grantBy(tx, "key", caller.grantKey)
-    if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
-    const reason = try endKey(tx, row, try Clock.currentTimeMillis)
-    if (reason !== "NoReason") throw refused("AuthenticationRequired", reason)
-  })
+  try store.transaction((tx: Tx) => signOutKey(tx, caller.grantKey, named ?? ""))
   return HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
+}
+
+export interface Renewing {
+  readonly grantKey: string
+  readonly predecessorKey: string
+  readonly request: typeof ConnectBody.Type
+}
+
+export effect function renewGrant(tx: Tx, renewing: Renewing) {
+  const { predecessorKey, request: body } = renewing
+  const name = openingName(body)
+  if (!challengeText.test(body.codeChallenge) || (body.deviceName !== undefined && name === null)) throw refused("InvalidRequest")
+  const row = try grantBy(tx, "key", predecessorKey)
+  if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const now = try Clock.currentTimeMillis
+  const key = inspectKey(row, now) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
+  try tx.query("LOCK TABLE native_clients IN SHARE MODE")
+  const served = try servedEnvironment()
+  const registry = try readRegistry(tx)
+  const request = requestOf(body)
+  const check = clientCheck(registry, served, request)
+  const registration = registry.find((entry) => entry.clientId === request.clientId && entry.environment === request.environment)
+  const predecessor = key.authority.tag === "GrantAuthority" ? try currentGrant(key.authority.grant, now) : undefined
+  const chain = try renewedFrom(tx, predecessorKey)
+  const facts: RenewalFacts = {
+    predecessor: key.reason,
+    clientMatches: check.tag === "ClientAdmitted" && registration !== undefined && predecessor !== undefined && grantBindingMatches(predecessor, bindingOf(registration)),
+    predecessorExpiresAt: key.expiresAt,
+    signInAt: toInt(row.sign_in_at),
+    successorAcknowledged: chain.some((successor) => toText(successor.renewed_from) === predecessorKey && !pending(successor))
+  }
+  const checked = renewalCheck(facts, now, registration?.credentialTtl ?? 0)
+  if (checked.tag === "RenewalRefused") throw new Refused({ refusal: checked.refusal })
+  if (checked.tag === "RenewalReused") {
+    try endKey(tx, row, now)
+    for (const successor of chain) try endRenewed(tx, successor, now)
+    return { kind: "reused" as const }
+  }
+  if (registration === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  for (const successor of chain) try endRenewed(tx, successor, now)
+  const userId = toText(row.user_id) ?? ""
+  const code = secretText("emac_", 32, "hex")
+  const stepped = stepGrant(tx, renewing.grantKey, {
+    type: "renew", facts, codeRequest: codeRequest(body, check), clientBinding: bindingOf(registration),
+    registrationTtl: registration.credentialTtl, deviceEpoch: toInt(row.device_epoch)
+  }, (grant) => ({ ...openingColumns({ userId, request: body }, code, name, grant), sign_in_at: facts.signInAt, renewed_from: predecessorKey })) catch effect (failure) => {
+    if (failure._tag === "Rejected") throw refused("InvalidRequest")
+    throw failure
+  }
+  return { kind: "issued" as const, code, codeExpiresAt: stepped.state.codeExpiresAt, renewableUntil: renewableUntil(facts.signInAt) }
+}
+
+effect function renewKey(context: RouteContext) {
+  try perIp(context, renewPerIp)
+  const caller = context.caller
+  if (caller.kind !== "deviceKey") throw refused("AuthenticationRequired", "CredentialUnknown")
+  const body = try jsonBody(context, ConnectBody)
+  const store = try Store
+  const renewed = try store.transaction((tx: Tx) => renewGrant(tx, { grantKey: newId(), predecessorKey: caller.grantKey, request: body }))
+  if (renewed.kind === "reused") throw new Refused({ refusal: reusedRefusal })
+  const now = try Clock.currentTimeMillis
+  return json({
+    code: renewed.code, codeType: "mobile_app_auth_code", expiresAt: iso(renewed.codeExpiresAt),
+    expiresIn: Math.floor((renewed.codeExpiresAt - now) / 1000), renewableUntil: iso(renewed.renewableUntil)
+  })
 }
 
 export effect function retireGrant(tx: Tx, key: string, kind: "lapse" | "expire") {
@@ -374,6 +496,7 @@ export const routes: ReadonlyArray<Route> = [
   { method: "POST", path: "/api/v1/app-auth/connect", auth: "SignedSession", maxBodyBytes: 4096, handler: connect },
   { method: "POST", path: "/api/v1/app-auth/mobile/token", auth: "Public", maxBodyBytes: 4096, handler: token },
   { method: "POST", path: "/api/v1/app-auth/mobile/ack", auth: "Public", maxBodyBytes: 4096, handler: ack },
+  { method: "POST", path: "/api/v1/app-auth/mobile/renew", auth: "ServiceAccess", maxBodyBytes: 4096, handler: renewKey },
   { method: "DELETE", path: "/api/v1/api-keys/current", auth: "ServiceAccess", handler: selfRevoke }
 ]
 export const sweeps: ReadonlyArray<Sweep> = [{ name: "device grants", everyMs: 60 * 60_000, run: sweepGrants() }]
