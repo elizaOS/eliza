@@ -381,6 +381,7 @@
         "!**/.DS_Store",
         "!{apps,packages,vibestack/studio}/**/gen/**",
         "package.json",
+        "lint-js.js",
         "pnpm-workspace.yaml",
         "tsconfig.json",
         "*.config.js",
