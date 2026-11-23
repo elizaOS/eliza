@@ -2,23 +2,18 @@
 import { endOfTurnComplete, endOfTurnMilliAdmitted, speechReadiness } from "../../gen/os__agentService__inference.effect.vibe"
 import { exchange, floatsFromBase64, floatsToBase64, HostUnreachable } from "./socket.ts"
 
-/** What the engine is asked to do. */
 export type Capability = "text" | "embedding" | "synthesis" | "transcription" | "endOfTurn"
 
-/** The host cannot serve a capability now: it is not running, or its model or library is absent. */
 export error EngineUnavailable { capability: Capability; reason: string }
 
-/** The host took a request and failed it. */
 export error EngineFailed { capability: Capability; reason: string }
 
-/** A vector space as the catalog names it. */
 export interface VectorSpace {
   readonly spaceModel: string
   readonly dimensions: number
   readonly pooling: "ClsPooling" | "MeanPooling" | "LastTokenPooling"
 }
 
-/** An installed model as the local inference plugin hands it to the engine. */
 export interface InstalledModel {
   readonly model: {
     readonly name: string
@@ -29,30 +24,25 @@ export interface InstalledModel {
   readonly files: readonly string[]
 }
 
-/** One embedding and the vector space it is in. */
 export interface EngineVector {
   readonly values: readonly number[]
   readonly space: VectorSpace
 }
 
-/** Mono PCM samples in [-1, 1] at a sample rate. */
 export interface Pcm {
   readonly sampleRate: number
   readonly samples: Float32Array
 }
 
-/** An end-of-turn score, or why none could be computed. */
 export type EndOfTurnScore =
   | { readonly available: true; readonly complete: boolean; readonly probability: number }
   | { readonly available: false; readonly reason: string }
 
-/** Which speech engines the host reports ready. */
 export interface SpeechReadiness {
   readonly synthesis: boolean
   readonly transcription: boolean
 }
 
-/** The local inference engine served by the Android app's inference host; interrupting a call cancels it in the host. */
 export service AndroidInferenceEngine {
   load(model: InstalledModel): void!EngineFailed
   unload(): void!!
@@ -113,7 +103,6 @@ function scored(reply: typeof Score.Type): EndOfTurnScore {
   return { available: true, complete: endOfTurnComplete(reply.milli), probability: reply.milli / 1000 }
 }
 
-/** The engine over the inference host listening on an abstract socket name, or a socket file path. */
 export function androidInferenceEngine(socket: string): AndroidInferenceEngine.Shape {
   return {
     load: (model) => mapError(map(ask(socket, "text", { op: "load", bundleDir: model.directory, files: model.files }, Done), () => undefined), (failure) => new EngineFailed({ capability: failure.capability, reason: failure.reason })),
@@ -134,7 +123,6 @@ export function androidInferenceEngine(socket: string): AndroidInferenceEngine.S
   }
 }
 
-/** Provides the engine over the inference host on a socket name, for the resident that hands it to the local inference plugin. */
 export function androidInferenceLayer(socket: string) {
   return Layer.succeed(AndroidInferenceEngine, androidInferenceEngine(socket))
 }

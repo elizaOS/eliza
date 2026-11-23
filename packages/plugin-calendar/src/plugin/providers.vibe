@@ -10,17 +10,14 @@ import { EventRecord } from "../mutations/records.schema.vibe"
 import { residentImport, residentImportedRevision } from "../../gen/calendar__residentStore.effect.vibe"
 import { recurrenceLines, rowRecurrence, type CalendarRecurrence } from "../series/recurrence-rule.vibe"
 
-/** The owner and connector account the agent is acting for now. */
 export interface CalendarAccount {
   readonly agentId: string
   readonly ownerId: string
   readonly accountId: string
 }
 
-/** A provider could not be read for this account. */
 export error CalendarSourceUnavailable { provider: CalendarProvider; reason: string }
 
-/** One provider read of a window: the events it holds and whether the provider declared the read complete. */
 export interface CalendarWindowRead {
   readonly events: readonly CalendarEvent[]
   readonly complete: boolean
@@ -28,7 +25,6 @@ export interface CalendarWindowRead {
 
 type WriteFailure = CalendarWriteNotAccepted | CalendarWriteUnconfirmed
 
-/** How the Calendar action reaches one provider for one account: whether it writes RFC 5545 recurrence lines, its calendars, reads and the three writes, an update or removal under the scope it names. */
 export interface CalendarProviderPort {
   readonly provider: CalendarProvider
   readonly recurrenceLines: boolean
@@ -40,19 +36,16 @@ export interface CalendarProviderPort {
   remove(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarWriteScope, expectedVersion: string, idempotencyKey: string): void!WriteFailure
 }
 
-/** The provider version of an event: its etag, else its update time. */
 export function eventVersion(event: CalendarEvent): string {
   return typeof event.metadata.etag === "string" && event.metadata.etag !== "" ? event.metadata.etag : event.updatedAt
 }
 
-/** Whether an event's half-open span meets the window, a zero-length event counting at its start. */
 export function eventInWindow(event: CalendarEvent, timeMin: number, timeMax: number): boolean {
   const start = Date.parse(event.startAt)
   const end = Date.parse(event.endAt)
   return Number.isFinite(start) && Number.isFinite(end) && (end === start ? start >= timeMin && start < timeMax : start < timeMax && end > timeMin)
 }
 
-/** Whether an event holds exactly the reviewed fields, comparing instants rather than their spelling. */
 export function holdsFields(event: CalendarEvent, fields: CalendarEventFields): boolean {
   return event.title === fields.title && event.description === fields.description && event.location === fields.location
     && event.isAllDay === fields.isAllDay && Date.parse(event.startAt) === Date.parse(fields.startAt) && Date.parse(event.endAt) === Date.parse(fields.endAt)
@@ -82,7 +75,6 @@ const PriorDocument = Schema.Struct({
 })
 const decodePrior = Schema.decodeUnknownOption(Schema.fromJsonString(PriorDocument))
 
-/** The resident calendar cannot be shown: its earlier record could not be read or kept exactly, so it waits for review rather than starting empty. */
 export error ResidentNeedsReview { reason: string }
 
 function priorRow(event: CalendarEvent): CalendarRow | undefined {
@@ -94,7 +86,6 @@ function priorRow(event: CalendarEvent): CalendarRow | undefined {
     allDay: event.isAllDay, ...(event.timezone === null ? {} : { timeZone: event.timezone }) }
 }
 
-/** The series rows an earlier record of resident events becomes, with its import receipt, or undefined when any of its events cannot be kept exactly. */
 export function importPriorResident(raw: string): ResidentDocument | undefined {
   const prior = decodePrior(raw)
   if (Option.isNone(prior)) return undefined
@@ -112,7 +103,6 @@ export function importPriorResident(raw: string): ResidentDocument | undefined {
 const deletedMark = "\0deleted"
 const residentCalendarId = "primary"
 
-/** The resident calendar's one source for an account. */
 export function residentSource(account: CalendarAccount): CalendarSourceKey {
   return { provider: "eliza", side: "owner", grantId: "resident", connectorAccountId: account.accountId, calendarId: residentCalendarId }
 }
@@ -220,7 +210,7 @@ export effect function residentCalendar(): ResidentCalendarPort!!KeyValueStore.K
 
   effect function readEvent(account: CalendarAccount, document: ResidentDocument, id: string) {
     const row = findRow(document.rows, id)
-    if (row === undefined) throw refused("CALENDAR_EVENT_NOT_FOUND", "The changed event is no longer in the calendar.")
+    if (row === undefined) throw new CalendarWriteUnconfirmed({ failure: { code: "CALENDAR_EVENT_NOT_FOUND", message: "The changed event is no longer in the calendar.", retryable: false } })
     return eventOf(account, document, row)
   }
 

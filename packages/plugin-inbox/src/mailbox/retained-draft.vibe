@@ -28,16 +28,12 @@ const Retained = Schema.Struct({
 })
 const decodeRetained = Schema.decodeUnknownOption(Schema.fromJsonString(Retained), { onExcessProperty: "error" })
 
-/** The account-scoped recovery copy of an email being edited; it never reaches the provider. */
 export type InboxUnsaved = typeof Retained.Type
 
-/** The largest recovery copy, leaving room for its envelope inside the 8 MiB secure slot. */
 export const inboxUnsavedLimit: number = retainedLimit
 
-/** A recovery copy that is malformed, foreign or too large: it needs recovery and is never repaired. */
 export error RetainedNeedsRecovery
 
-/** Reads a recovery copy whole for its owner, or refuses it. */
 export effect function readInboxUnsaved(raw: string, owner: string): InboxUnsaved!RetainedNeedsRecovery {
   const bytes = utf8Length(raw)
   if (bytes > retainedLimit) throw new RetainedNeedsRecovery()
@@ -62,7 +58,6 @@ export effect function readInboxUnsaved(raw: string, owner: string): InboxUnsave
   return value
 }
 
-/** Encodes a recovery copy, checking it by reading it back. */
 export effect function encodeInboxUnsaved(value: InboxUnsaved): string!RetainedNeedsRecovery {
   const raw = JSON.stringify(value)
   try readInboxUnsaved(raw, value.owner)

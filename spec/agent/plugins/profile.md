@@ -38,7 +38,7 @@ type ProcessValue = PlainSetting | DeviceCredential | LaunchToken | SealingKey
 type ProductStep = WithoutProduct | ProductPending({ name: str }) | ProductRegistered({ name: str })
 type PluginPlan = { phase: PlanPhase, bundled: Set[str], privacyOn: bool, product: ProductStep, order: List[str], next: int, allowed: Set[str], actions: Set[str], moduleRoutes: Set[str], productRoutes: Set[str], worker: WorkerState, workerEnv: Set[ProcessValue], workerRuns: int }
 pure val initial: PluginPlan = { phase: Choosing, bundled: Set(), privacyOn: false, product: WithoutProduct, order: List(), next: 0, allowed: Set(), actions: Set(), moduleRoutes: Set(), productRoutes: Set(), worker: NoWorker, workerEnv: Set(), workerRuns: 0 }
-pure val builtinModules = Set("@elizaos/agent/basic-actions", "@elizaos/agent/approvals", "@elizaos/agent/notifications", "@elizaos/agent/views", "@elizaos/agent/device-actions", "@elizaos/agent/reply-draft", "@elizaos/agent/triggers", "@elizaos/agent/scheduled-tasks", "@elizaos/agent/tasks", "@elizaos/agent/surface")
+pure val builtinModules = Set("@elizaos/agent/basic-actions", "@elizaos/agent/approvals", "@elizaos/agent/notifications", "@elizaos/agent/views", "@elizaos/agent/reply-draft", "@elizaos/agent/triggers", "@elizaos/agent/scheduled-tasks", "@elizaos/agent/tasks", "@elizaos/agent/surface")
 pure val calculateAction: AP::ActionDecl = { name: "CALCULATE", subactions: List(), minRole: Z::User }
 pure def available(bundled: Set[str]): Set[str] = bundled.union(builtinModules)
 pure def productName(policy: LaunchPolicy): str = {
@@ -76,7 +76,10 @@ pure def sometimesListedFixedPluginRefused(s: PluginPlan): bool = s.phase == Ref
 ### Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last
 
 The privacy service is core's, in the launch's mode, and loads only when
-either privacy switch is on. Each plugin registers through core plugins in
+either privacy switch is on. Its mode is the launch's two switches, each
+turning its swap on or off for every model call the agent makes, with stable
+references when the launch environment sets
+`ELIZA_SECRET_SWAP_STABLE_REFERENCES`. Each plugin registers through core plugins in
 this order, one at a time, and the product plugin registers only after every
 other plugin has. The plan starts from an admitted launch policy, which
 names each plugin once and never names the product plugin in the load list,

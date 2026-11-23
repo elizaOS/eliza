@@ -164,6 +164,11 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.deepEqual(try namedRead("read my groceries note"), { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: draft.value.note.id } } })
   assert.deepEqual(try namedRead("read my shopping note"), { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: "note-1" } } })
   assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:created", "note:deleted", "note:moved", "note:updated"])
+
+  const camp = try notes.create({ content: "Camp", format: { kind: "list", data: { items: [{ t: "tent", done: false }] } } })
+  const oversized = { field: "checklist", index: 0, expectedText: "tent", text: "x".repeat(262_145) } as const
+  assert.equal(try code(notes.update({ id: camp.value.note.id }, { authoredEdit: oversized }, camp.snapshot.revision)), "NOTES_VALIDATION_FAILED")
+  assert.equal((try notes.snapshot()).revision, camp.snapshot.revision)
 })
 
 it.effect('Restore a deleted note exactly, at the revision the owner saw (spec/notes/trash.md, "Story: Recover a deleted note")', effect () => {
@@ -311,7 +316,7 @@ function routed(routes: readonly LocalRoute[]) {
     async fetch<T>(path: string, init: { method: "GET" | "POST"; body?: string; signal?: AbortSignal }): Promise<T> {
       const route = routes.find((candidate) => candidate.path === path && candidate.method === init.method)
       if (route === undefined) throw new Error(`no route ${init.method} ${path}`)
-      let body: unknown = undefined
+      let body: unknown
       try {
         body = init.body === undefined ? undefined : JSON.parse(init.body)
       } catch {

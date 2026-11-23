@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process";
 import { createServer, type AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
+import { Effect } from "effect";
 import { request, type LocalAnswer, type Refusal } from "./socket-client.ts";
 import type { LaunchFrame } from "./scratch.ts";
 
@@ -120,7 +120,7 @@ export function startAgentChild(run: AgentRun): AgentChild {
       while (running && Date.now() < deadline) {
         const answer = await healthOver(run.transport).catch(() => undefined);
         if (answer !== undefined && "status" in answer && answer.status === 200) return answer;
-        await delay(50);
+        await Effect.runPromise(Effect.sleep(50));
       }
       throw new Error(`agent did not become ready (${running ? "timed out" : "exited"}): ${stderr}`);
     },

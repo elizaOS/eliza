@@ -3,23 +3,17 @@ import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { ModelType, ServiceType, type IAgentRuntime, type NotificationService, type ReminderPresentation, type Service, type UUID } from "@elizaos/core"
 import type { ScheduledTasksApi } from "@elizaos/agent"
 
-/** The scheduler refused or could not be reached. */
 export error SchedulerUnavailable { reason: string }
-/** No model answered. */
 export error ModelUnavailable { reason: string }
-/** The owner could not be told. */
 export error DeliveryFailed { reason: string }
-/** A stored record is not the shape this package writes. */
 /** @public */
 export error RecordUnreadable { key: string }
 
-/** When a scheduled task comes due. */
 export type TaskTrigger =
   | { readonly kind: "once"; readonly atIso: string }
   | { readonly kind: "cron"; readonly expression: string; readonly tz: string }
   | { readonly kind: "manual" }
 
-/** A task the assistant asks the agent's scheduler to keep. */
 export interface AssistantTask {
   readonly kind: string
   readonly ownerVisible: boolean
@@ -29,7 +23,6 @@ export interface AssistantTask {
   readonly idempotencyKey: string
 }
 
-/** A scheduled task as the scheduler keeps it. */
 export interface TaskRow {
   readonly taskId: string
   readonly kind: string
@@ -40,7 +33,6 @@ export interface TaskRow {
   readonly revision: number
 }
 
-/** A verb the owner answers a scheduled task with. */
 export type TaskVerb =
   | { readonly tag: "SnoozeFor"; readonly minutes: number }
   | { readonly tag: "Skip" }
@@ -49,19 +41,16 @@ export type TaskVerb =
   | { readonly tag: "Acknowledge" }
   | { readonly tag: "Reopen" }
 
-/** What the scheduler did with a verb. */
 export type VerbAnswer =
   | { readonly kind: "applied" }
   | { readonly kind: "refused"; readonly reason: string }
   | { readonly kind: "notFound" }
 
-/** How a delivery port answers the scheduler. */
 export type DeliveryAnswer =
   | { readonly kind: "delivered" }
   | { readonly kind: "retry"; readonly afterMs: number; readonly reason: string }
   | { readonly kind: "undeliverable"; readonly error: string }
 
-/** What a saved reminder or check-in shows the owner when it fires. */
 export interface Presented {
   readonly taskId: string
   readonly kind: string
@@ -69,30 +58,25 @@ export interface Presented {
   readonly presentation: ReminderPresentation
 }
 
-/** The agent's scheduled tasks, as the assistant asks for them. */
 export service Scheduler {
   create(task: AssistantTask): { readonly created: boolean; readonly task: TaskRow }!SchedulerUnavailable
   answer(taskId: string, verb: TaskVerb, key: string): VerbAnswer!SchedulerUnavailable
+  retrigger(taskId: string, trigger: TaskTrigger, key: string): VerbAnswer!SchedulerUnavailable
   find(taskId: string): (TaskRow | undefined)!SchedulerUnavailable
   list(): (readonly TaskRow[])!SchedulerUnavailable
 }
 
-/** The configured text model. */
 export service Model {
   complete(system: string, prompt: string, maxTokens: number): string!ModelUnavailable
 }
 
-/** Where a fired reminder reaches the owner: a notice and the conversation it was asked in. */
 export service Presenter {
   present(presented: Presented): void!DeliveryFailed
 }
 
-/** The owner's approval queue could not be read. */
 export error ApprovalsUnavailable { reason: string }
-/** The owner's calendar could not be read. */
 export error CalendarUnavailable { reason: string }
 
-/** An approval in the owner's queue, as a follow-up reads it. */
 export interface ApprovalView {
   readonly id: string
   readonly state: "pending" | "approved" | "retryable" | "reconciliation_required" | "done" | "rejected" | "expired"
@@ -100,12 +84,10 @@ export interface ApprovalView {
   readonly reason: string
 }
 
-/** The owner's approval queue, read once per tick. */
 export service Approvals {
   list(): (readonly ApprovalView[])!ApprovalsUnavailable
 }
 
-/** A calendar event and the clocks a check-in reads its change from. */
 export interface CalendarEventFacts {
   readonly title: string
   readonly startAt: number
@@ -116,12 +98,10 @@ export interface CalendarEventFacts {
   readonly copyUpdatedAt: number
 }
 
-/** The owner's calendar events within a window. */
 export service Calendar {
   events(startAt: number, endAt: number): (readonly CalendarEventFacts[])!CalendarUnavailable
 }
 
-/** The zones the agent and host know of, and the time now. */
 export service Facts {
   schedulingZone(): string!!
   runtimeZone(): string!!
@@ -129,12 +109,10 @@ export service Facts {
   now(): number!!
 }
 
-/** The service type the agent registers its scheduled tasks under. */
 export const scheduledTasksServiceType = "scheduled-tasks"
 
 const storePrefix = "eliza:personal-assistant:v1:"
 
-/** The agent database's cache as a key-value store, under this package's prefix; it cannot list or clear keys. */
 function runtimeStore(runtime: IAgentRuntime): KeyValueStore.KeyValueStore {
   const refused = (method: string, key?: string) => (cause: unknown) => new KeyValueStore.KeyValueStoreError({ message: `The agent store refused ${method}`, method, key, cause })
   const unlisted = (method: string) => Effect.fail(new KeyValueStore.KeyValueStoreError({ message: "The agent store keeps no key listing", method }))
@@ -156,7 +134,6 @@ function runtimeStore(runtime: IAgentRuntime): KeyValueStore.KeyValueStore {
   })
 }
 
-/** Reads one JSON record this package keeps, or undefined where none is kept. */
 export effect function readRecord<A>(key: string, decode: (raw: unknown) => Option.Option<A>) {
   const store = try KeyValueStore.KeyValueStore
   const raw = try orDie(store.get(key))
@@ -167,13 +144,11 @@ export effect function readRecord<A>(key: string, decode: (raw: unknown) => Opti
   return decoded.value
 }
 
-/** Keeps one JSON record; a store that refuses the write is a defect. */
 export effect function writeRecord(key: string, value: unknown) {
   const store = try KeyValueStore.KeyValueStore
   try orDie(store.set(key, JSON.stringify(value)))
 }
 
-/** Whether a started service is the agent's scheduled tasks. */
 export function isAgentScheduledTasks(service: Service | null): service is ScheduledTasksApi {
   return service !== null && ["create", "deliverKind", "get", "list", "applyVerb"].every((name) => typeof Reflect.get(service, name) === "function")
 }
@@ -191,7 +166,6 @@ effect function agentScheduler(runtime: IAgentRuntime) {
 
 const unavailable = (cause: unknown) => new SchedulerUnavailable({ reason: cause instanceof Error ? cause.message : String(cause) })
 
-/** The Scheduler over the agent's scheduled-tasks service. */
 function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
   return {
     effect create(task) {
@@ -202,6 +176,11 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
     effect answer(taskId, verb, key) {
       const tasks = try agentScheduler(runtime)
       const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "verb", verb }, { tag: "Keyed", key }), catch: unavailable })
+      return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
+    },
+    effect retrigger(taskId, trigger, key) {
+      const tasks = try agentScheduler(runtime)
+      const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "edit", edit: { trigger } }, { tag: "Keyed", key }), catch: unavailable })
       return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
     },
     effect find(taskId) {
@@ -215,7 +194,6 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
   }
 }
 
-/** The Model over the runtime's small text model. */
 function runtimeModel(runtime: IAgentRuntime): Model.Shape {
   return {
     effect complete(system, prompt, maxTokens) {
@@ -229,7 +207,6 @@ function runtimeModel(runtime: IAgentRuntime): Model.Shape {
   }
 }
 
-/** The Presenter over the agent's notifications and the conversation the reminder was asked in. */
 function runtimePresenter(runtime: IAgentRuntime): Presenter.Shape {
   const failed = (cause: unknown) => new DeliveryFailed({ reason: cause instanceof Error ? cause.message : String(cause) })
   return {
@@ -263,7 +240,6 @@ module node {
 }
 import { hostZoneName } from node
 
-/** The Facts of the running host and agent. */
 function runtimeFacts(runtime: IAgentRuntime): Facts.Shape {
   const setting = (name: string) => {
     const zone = runtime.getSetting(name)
@@ -277,7 +253,6 @@ function runtimeFacts(runtime: IAgentRuntime): Facts.Shape {
   }
 }
 
-/** The service type the agent registers the owner's approval queue under. */
 const ownerApprovalsServiceType = "owner_approvals"
 
 interface OwnerApprovals extends Service {
@@ -286,7 +261,6 @@ interface OwnerApprovals extends Service {
 
 const isOwnerApprovals = (service: Service | null): service is OwnerApprovals => service !== null && typeof Reflect.get(service, "list") === "function"
 
-/** The Approvals over the agent's owner approval queue. */
 function runtimeApprovals(runtime: IAgentRuntime): Approvals.Shape {
   return {
     effect list() {
@@ -297,7 +271,6 @@ function runtimeApprovals(runtime: IAgentRuntime): Approvals.Shape {
   }
 }
 
-/** The service type a calendar plugin registers its owner-scoped event reads under. */
 const calendarServiceType = "calendar"
 
 interface CalendarReads extends Service {
@@ -306,7 +279,6 @@ interface CalendarReads extends Service {
 
 const isCalendarReads = (service: Service | null): service is CalendarReads => service !== null && typeof Reflect.get(service, "eventsBetween") === "function"
 
-/** The Calendar over a calendar plugin's event reads; without one the owner has no events to report. */
 function runtimeCalendar(runtime: IAgentRuntime): Calendar.Shape {
   return {
     effect events(startAt, endAt) {
@@ -317,7 +289,6 @@ function runtimeCalendar(runtime: IAgentRuntime): Calendar.Shape {
   }
 }
 
-/** Every port this package needs, over one running agent. */
 export function runtimeLayer(runtime: IAgentRuntime) {
   return Layer.mergeAll(
     Layer.succeed(KeyValueStore.KeyValueStore, runtimeStore(runtime)),
@@ -330,10 +301,8 @@ export function runtimeLayer(runtime: IAgentRuntime) {
   )
 }
 
-/** The ports the assistant's programs need. */
 export type AssistantPorts = KeyValueStore.KeyValueStore | Scheduler | Model | Presenter | Facts | Approvals | Calendar
 
-/** Runs one program of this package against a running agent's ports. */
 export function onAgent<A, E>(runtime: IAgentRuntime, program: A!E!AssistantPorts): Promise<A> {
   return runPromise(Effect.provide(program, runtimeLayer(runtime)))
 }

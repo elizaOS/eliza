@@ -436,7 +436,7 @@ function parseSimpleRegexClass(
       state.index = savedIndex
     }
 
-    content += escapeGbnfClassChar(literal.value)
+    content += literal.single ? escapeGbnfClassChar(literal.value) : literal.value
     jsonEscaped ||= literal.single
       ? spansJsonEscapedChar(literal.value, literal.value)
       : literal.jsonEscaped

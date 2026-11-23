@@ -1,4 +1,5 @@
 // spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"
+import { Effect } from "effect";
 import type { FakeAnswer, FakeHandler, FakeRequest } from "./fakes.ts";
 
 export type GoogleOperation = "searchText" | "searchNearby" | "details" | "geocode" | "computeRoutes" | "createSession" | "tile" | "viewport";
@@ -139,7 +140,7 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
     case "answer":
       return answerOf(operation, request);
     case "slow":
-      await new Promise((resolve) => setTimeout(resolve, script.delayMs));
+      await Effect.runPromise(Effect.sleep(script.delayMs));
       return answerOf(operation, request);
     case "empty":
       return emptyOf(operation, request);

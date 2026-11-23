@@ -22,5 +22,4 @@ module node {
 }
 import { builtTemplate } from node
 
-/** The return pages `serve` reads from the package's build output, rendered without the stylesheet when there is none. */
 export const nodePageTemplates = Layer.succeed(PageTemplates, { read: async (file: string) => builtTemplate(file, import.meta.url) })

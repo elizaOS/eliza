@@ -28,6 +28,34 @@ pure val eventAccountValues = Set("owner", "other")
 pure val activeAccountValues = Set("owner", "other")
 ```
 
+### The calendar reaches the agent only in a turn whose audience is the owner alone
+
+The upcoming-events context and the Calendar action are disclosed only
+when the owner asks and the turn's attested audience is the owner alone.
+In a room anyone else can read, or with no attested audience, the owner's
+events stay out of the prompt and the action does not run.
+
+```quint
+pure def calendarDisclosed(isOwner: bool, ownerAlone: bool): bool = isOwner and ownerAlone
+pure def lawSharedAudienceSeesNoCalendar(isOwner: bool): bool = not(calendarDisclosed(isOwner, false))
+pure def lawOthersSeeNoCalendar(ownerAlone: bool): bool = not(calendarDisclosed(false, ownerAlone))
+```
+
+### A calendar the active account does not list never narrows a read
+
+A read or a lookup narrows to the calendar it names only when the active
+account lists that calendar. A name no listed calendar has, such as a
+masked or invented id, is dropped, and the read covers every listed
+calendar of the account, so it never answers "nothing" from a calendar
+that does not exist.
+
+```quint
+type ReadScope = AllListed | OneListed
+pure def readScope(named: bool, namedListed: bool): ReadScope =
+  if (named and namedListed) OneListed else AllListed
+pure def lawUnlistedNameNeverNarrows(named: bool): bool = readScope(named, false) == AllListed
+```
+
 ## Story: Change my calendar only as I asked and know it happened
 
 > As the owner, I want a change the agent makes to my calendar to carry
@@ -37,21 +65,49 @@ pure val activeAccountValues = Set("owner", "other")
 ### A write goes to the active account's writable calendar, at once only for the resident calendar
 
 A write needs the active account and a calendar that account can write.
-The resident calendar applies it at once for the owner who asked. Any
-provider calendar queues the exact fields for the owner's approval. A
-write for another account, or to a calendar it cannot write, is refused.
+The resident calendar applies it at once for the owner who asked, unless
+the owner asked to review it first. Any provider calendar queues the
+exact fields for the owner's approval, and so does a resident write the
+owner asked to review. A write for another account, or to a calendar it
+cannot write, is refused.
+
+A new event the agent proposes in chat is reviewed first unless the
+owner plainly chose to save it now: a create that does not say is
+reviewed. A save from the owner's own calendar editor is that choice.
 
 ```quint
 type WriteProvider = ResidentProvider | AccountProvider
 type WriteRoute = RefuseWrite | ApplyNow | QueueApproval
-pure def writeRoute(provider: WriteProvider, sameAccount: bool, writable: bool): WriteRoute =
+pure def writeRoute(provider: WriteProvider, sameAccount: bool, writable: bool, reviewAsked: bool): WriteRoute =
   if (not(sameAccount and writable)) RefuseWrite
-  else if (provider == ResidentProvider) ApplyNow
+  else if (provider == ResidentProvider and not(reviewAsked)) ApplyNow
   else QueueApproval
-pure def lawProviderWriteWaitsForApproval(sameAccount: bool, writable: bool): bool =
-  writeRoute(AccountProvider, sameAccount, writable) != ApplyNow
-pure def lawForeignAccountRefused(provider: WriteProvider, writable: bool): bool =
-  writeRoute(provider, false, writable) == RefuseWrite
+pure def chatCreateReviewed(saveNowChosen: bool): bool = not(saveNowChosen)
+pure def lawProviderWriteWaitsForApproval(sameAccount: bool, writable: bool, reviewAsked: bool): bool =
+  writeRoute(AccountProvider, sameAccount, writable, reviewAsked) != ApplyNow
+pure def lawForeignAccountRefused(provider: WriteProvider, writable: bool, reviewAsked: bool): bool =
+  writeRoute(provider, false, writable, reviewAsked) == RefuseWrite
+pure def lawAskedReviewWaitsForApproval(provider: WriteProvider): bool =
+  writeRoute(provider, true, true, true) == QueueApproval
+pure def lawUnsaidChatCreateIsReviewed(provider: WriteProvider): bool =
+  writeRoute(provider, true, true, chatCreateReviewed(false)) == QueueApproval
+```
+
+### Declining an invitation never deletes the event
+
+A removal names how it ends the owner's part in the event: the organizer
+cancels it, or the owner removes a private copy. Either deletes the
+event. Declining an invitation is a reply to the organizer, not a
+removal; until the calendar can send that reply it is refused, and the
+event stays as it was.
+
+```quint
+type CancellationMode = OrganizerCancel | DeclineInvitation | RemovePrivateCopy
+type CancellationRoute = DeleteEvent | RefuseUnsupported
+pure def cancellationRoute(mode: CancellationMode): CancellationRoute =
+  if (mode == DeclineInvitation) RefuseUnsupported else DeleteEvent
+pure def lawDeclineNeverDeletes(mode: CancellationMode): bool =
+  mode == DeclineInvitation implies cancellationRoute(mode) != DeleteEvent
 ```
 
 ### A chat delete runs directly only for the exact one-off event the owner named

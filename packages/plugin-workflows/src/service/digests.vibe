@@ -5,7 +5,7 @@ import * as X from "../../gen/workflow__execution.effect.vibe"
 import { providerDigestCursor } from "../../gen/workflow__hostedDigest.effect.vibe"
 import {
   DIGEST_MISSED_TEXT, DIGEST_OVERLAP_TEXT, DIGEST_PAGE_LIMIT, DIGEST_PAUSED_TEXT, DIGEST_SOURCE_UNAVAILABLE_TEXT, HOSTED_TEMPLATE_VERSION,
-  digestCron, digestId, digestKeys, digestOccurrenceMissed, digestPhoneSpec, digestRecord, digestSourceState, digestSourceType, digestText, validateDigestSpec, DigestRefused,
+  digestCron, digestId, digestKeys, digestOccurrenceMissed, digestPhoneSpec, digestRecord, digestSourceState, digestSourceType, digestText, validateDigestSpec, type DigestRefused,
   type DigestSourceRecord, type DigestSpec, type HostedNativeSelection,
 } from "../contract/digest.vibe"
 import { phoneWorkflowBytes, validatePhoneWorkflowSpec, workflowSha, workflowUuid } from "../contract/phone.vibe"
@@ -32,8 +32,7 @@ effect function nativeSelection(value: unknown): HostedNativeSelection!WorkflowR
   }
 }
 
-/** The hosted digest routes over the opened workflow service. */
-export function hostedDigests(service: WorkflowService) {
+function digestSources(service: Pick<WorkflowService, "host" | "store" | "owner" | "lock" | "now" | "db">) {
   const { host, store, owner, lock, now, db } = service
 
   effect function sourceOf(id: string): DigestSourceRecord!WorkflowRefused {
@@ -108,6 +107,13 @@ export function hostedDigests(service: WorkflowService) {
       return { id, revoked: true }
     })
   }
+
+  return { sourceOf, sources, saveSource, revokeSource }
+}
+
+export function hostedDigests(service: WorkflowService) {
+  const { host, store, owner, lock, now, db } = service
+  const { sourceOf, sources, saveSource, revokeSource } = digestSources(service)
 
   effect function digestDefinitions(): { readonly row: DefinitionRow; readonly spec: DigestSpec }[]!WorkflowRefused {
     return (try db(store.definitions(owner))).flatMap((stored) => stored.row.origin === "digest" && stored.row.hostedDigest !== undefined ? [{ row: stored.row, spec: stored.row.hostedDigest }] : [])
@@ -291,22 +297,30 @@ export function hostedDigests(service: WorkflowService) {
     const native = host.nativeDigests
     if (native === undefined || host.worker === undefined) throw new WorkflowRefused({ status: 503, message: "Native digest sources are unavailable on this agent" })
     const definitionKey = try workflowSha(["native-dossier-definition", owner, sourceId, sourceRevision, HOSTED_TEMPLATE_VERSION, PHONE_COMPILER_REVISION])
-    const prepared = try lock(effect {
+    const bound = effect {
       const source = try sourceOf(sourceId)
       if (source.revision !== sourceRevision || source.live?.provider !== "native") throw new WorkflowRefused({ status: 409, message: "Dossier source binding changed" })
       const existing = try db(store.receipt(definitionKey))
-      if (existing === undefined && (source.revoked || Date.parse(source.expiresAt) <= (try now))) throw new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" })
-      const grant = existing === undefined ? try mapError(native.grant(source.live, Date.parse(source.expiresAt)), () => new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" })) : undefined
-      const spec: DigestSpec = existing === undefined
-        ? { version: 1, template: "morning", sourceId, sourceRevision, timeZone: grant?.timeZone ?? "UTC", localTime: "08:00", enabled: false, manualOnly: true }
-        : (try service.definitionOf(String(existing.data.workflowId))).row.hostedDigest ?? { version: 1, template: "morning", sourceId, sourceRevision, timeZone: "UTC", localTime: "08:00", enabled: false, manualOnly: true }
-      const receipt = try digestMutation(definitionKey, spec, source)
-      return { workflowId: String(receipt.workflowId), spec, source }
+      const defined = existing === undefined ? undefined : try service.definitionOf(String(existing.data.workflowId))
+      const prior = defined === undefined ? undefined : A.readSubmission(try service.project(defined.row), owner, mutationId)
+      if (defined !== undefined && prior?.reply === "ExistingRun") return { replayed: try service.runOf(`${defined.row.id}-r${prior.replyRun}`) }
+      if (digestSourceState(source, try now) !== "current") throw new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" })
+      return { source, live: source.live, defined }
+    }
+    const reviewed = try lock(bound)
+    if (reviewed.replayed !== undefined) return { execution: service.runView(reviewed.replayed) }
+    const grant = try mapError(native.grant(reviewed.live, Date.parse(reviewed.source.expiresAt)), () => new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" }))
+    const prepared = try lock(effect {
+      const current = try bound
+      if (current.replayed !== undefined) return { replayed: current.replayed }
+      const spec: DigestSpec = current.defined?.row.hostedDigest
+        ?? { version: 1, template: "morning", sourceId, sourceRevision, timeZone: grant.timeZone, localTime: "08:00", enabled: false, manualOnly: true }
+      const receipt = try digestMutation(definitionKey, spec, current.source)
+      return { workflowId: String(receipt.workflowId), spec, source: current.source }
     })
+    if (prepared.replayed !== undefined) return { execution: service.runView(prepared.replayed) }
     const definition = try service.definitionOf(prepared.workflowId)
     const at = try now
-    const prior = A.readSubmission(try service.project(definition.row), owner, mutationId)
-    if (prior.reply === "ExistingRun") return { execution: service.runView(try service.runOf(`${definition.row.id}-r${prior.replyRun}`)) }
     const runnable = try runSpec(definition.row, prepared.spec, prepared.source, at)
     const submitted = try submitWith(runnable, mutationId, definition.row.admission.version, provenance(prepared.spec, prepared.source, at))
     if (submitted.fresh) try service.launch(submitted.run.id)

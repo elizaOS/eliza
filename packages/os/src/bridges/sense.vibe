@@ -17,7 +17,6 @@ module capacitor {
 import { sensePlugin } from capacitor
 export { sensePlugin }
 
-/** The `ElizaSense` plugin under its own name. */
 export const Sense: SensePlugin = sensePlugin()
 
 const MODEL_STATE: Readonly<Record<ListenerState, ModelState>> = {
@@ -41,7 +40,6 @@ const MODEL_STATE: Readonly<Record<ListenerState, ModelState>> = {
   LISTENING: "Listening",
 }
 
-/** Every listener state, in the provider's order. */
 export const LISTENER_STATES = Object.keys(MODEL_STATE) as readonly ListenerState[]
 
 const PAUSE_STOP_STATES: ReadonlySet<ListenerState> = new Set(["OFF", "PERMISSION_REQUIRED", "NOTIFICATIONS_REQUIRED", "STOPPED_AFTER_ERRORS", "STOPPED_INDICATOR_LOST", "PAUSED_OTHER_USER", "WAITING_FOR_UNLOCK", "SPEECH_UNAVAILABLE", "PAUSED_USER"])
@@ -50,13 +48,10 @@ const VOICE_ORIGIN: Readonly<Record<string, Origin>> = { listener: "Listener", s
 
 const STOP_WAIT = "5 seconds"
 
-/** Chat-only entry: an outside invocation never binds, consumes or starts voice. */
 export const CONVERSATION_ONLY_VOICE_ENTRY: SenseVoiceEntryPolicy = Object.freeze({ externalInvocation: false })
 
-/** Assistant entry: a native-verified wake or gesture may start one voice turn. */
 export const ASSISTANT_INVOCATION_VOICE_ENTRY: SenseVoiceEntryPolicy = Object.freeze({ externalInvocation: true })
 
-/** The mobile default: only an admitted AOSP host takes outside invocations; it never starts the listener. */
 export function mobileVoiceEntryPolicy(aosp: boolean): SenseVoiceEntryPolicy {
   return aosp ? ASSISTANT_INVOCATION_VOICE_ENTRY : CONVERSATION_ONLY_VOICE_ENTRY
 }
@@ -74,7 +69,6 @@ function absentListener(value: Readonly<Record<string, unknown>>): boolean {
     && (value.listening === undefined || value.listening === false) && (value.microphoneOpen === undefined || value.microphoneOpen === false)
 }
 
-/** The listener's status as the provider answered it; anything out of shape is unavailable. */
 export function parseListenerStatus(raw: unknown): ListenerStatus {
   const value = fields(raw)
   if (value.available !== true) return absentListener(value) ? { available: false, reason: "not-installed" } : { available: false }
@@ -93,19 +87,16 @@ function stopConfirmed(raw: unknown, action: "pause" | "turnOff", settlement: St
   return confirmed ? { ...status, saved: true, listening: false, microphoneOpen: false } : { available: false }
 }
 
-/** A saved Pause or Turn off, confirmed only by its own state with the microphone closed. */
 export function parseListenerStopReceipt(raw: unknown, action: "pause" | "turnOff"): ListenerStopReceipt {
   return stopConfirmed(raw, action, "ReplyInTime")
 }
 
-/** Who opened the assistant surface, or null when nothing is pending. */
 export function parseAssistantInvocation(raw: unknown): AssistantInvocation {
   const value = fields(raw)
   if (value.assistant !== true) return null
   return typeof value.invocation === "string" && VOICE_ORIGIN[value.invocation] !== undefined ? value.invocation as AssistantInvocation : "assist"
 }
 
-/** Whether the device was unlocked when the invocation was taken. */
 export function parseInvocationUnlocked(raw: unknown): boolean {
   return fields(raw).locked === false
 }
@@ -116,7 +107,6 @@ function answerOf(invocation: AssistantInvocation, unlocked: boolean): Answer {
   return origin !== undefined && unlocked ? { tag: "VoiceStart", origin, arrival: 0, claim: "WarmClaim", age: 0 } : { tag: "OpenOnly", arrival: 0 }
 }
 
-/** One voice turn starts only from a native voice origin, unlocked, visible, with no dialog, connection prompt or active voice. */
 export function listenerStartsVoice(input: { invocation: AssistantInvocation; unlocked: boolean; hidden: boolean; dialogOpen: boolean; connectionOpen: boolean; voiceActive: boolean }): boolean {
   return startsFromAnswer(answerOf(input.invocation, input.unlocked), { unlocked: input.unlocked, visible: !input.hidden, dialogOpen: input.dialogOpen, connectionPrompt: input.connectionOpen, voiceActive: input.voiceActive })
 }
@@ -128,7 +118,6 @@ effect function chatOnlyStop(native: Pick<SensePlugin, "turnOff">) {
   return settlement === "ReplyInTime" && (absentListener(fields(raw)) || stopConfirmed(raw, "turnOff", settlement).available)
 }
 
-/** Retires a listener a chat-only host no longer offers; true only for a timely confirmed stop or no listener at all. */
 export async function stopSenseListenerForChatOnly(native: Pick<SensePlugin, "turnOff"> | undefined): Promise<boolean> {
   return native === undefined ? false : runPromise(chatOnlyStop(native))
 }

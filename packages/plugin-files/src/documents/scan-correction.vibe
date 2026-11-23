@@ -1,13 +1,10 @@
 // spec/files/scan/correction.md, "Correction admits only a supported image and a valid convex selection"; spec/files/scan/correction.md, "A preview belongs to its current corners and active review"; spec/files/scan/correction.md, "Only adoption can replace the selected page and discard its text"
 import { admitsDecode, admitsDecodedImage, allowsCorners, canAdoptCorrection, initial, machineOver, replacementAllowed, type Correction, type Selection } from "../../gen/files__scan__correction.effect.vibe"
-import { decodedImage, encoded, fittedSize, imageAdmitted, imageRefused, rasterOf, ImageRefused, type Raster } from "./images.vibe"
+import { decodedImage, encoded, fittedSize, imageAdmitted, imageRefused, rasterOf, type ImageRefused, type Raster } from "./images.vibe"
 
-/** A normalized corner, with a top-left origin. */
 export interface ScanCorner { readonly x: number; readonly y: number }
-/** Clockwise corners starting at the top left. */
 export type ScanCorners = readonly [ScanCorner, ScanCorner, ScanCorner, ScanCorner]
 
-/** The full page, as the dialog starts. */
 export const fullPageCorners = (): ScanCorners => [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }]
 
 export type CornerRefusal = "outside" | "folded" | "too-small"
@@ -18,7 +15,6 @@ const cornerText: Readonly<Record<CornerRefusal, string>> = {
   "too-small": "Select a larger page area.",
 }
 
-/** A corner selection that is not a convex, clockwise, large enough page. */
 export error CornersRefused { reason: CornerRefusal; message: string }
 
 function selectionOf(corners: readonly ScanCorner[]): Selection {
@@ -35,12 +31,10 @@ function selectionOf(corners: readonly ScanCorner[]): Selection {
   return { normalizedFour, positiveTurns, minimumEdges, minimumArea: area >= 0.02 }
 }
 
-/** Whether these corners are a valid convex selection. */
 export function scanCornersAdmitted(corners: readonly ScanCorner[]): boolean {
   return allowsCorners(selectionOf(corners))
 }
 
-/** Checks the selection before any decode. */
 export effect function validateScanCorners(corners: readonly ScanCorner[]): void!CornersRefused {
   const selection = selectionOf(corners)
   if (allowsCorners(selection)) return
@@ -79,7 +73,6 @@ effect function pixelsOf(raster: Raster): Uint8ClampedArray!ImageRefused {
   return try Effect.try({ try: () => raster.pixels(), catch: () => imageRefused("unavailable") })
 }
 
-/** Corrects a page's perspective to the selected corners as a JPEG within the shared bounds; interruption stops it between rows. */
 export effect function correctScanPage(image: Blob, input: readonly ScanCorner[]): Blob!(CornersRefused | ImageRefused) {
   const corners = input.map((p) => ({ x: p.x, y: p.y }))
   try validateScanCorners(corners)
@@ -137,7 +130,6 @@ function quadrilateral(points: readonly Point[], w: number, h: number): ScanCorn
   return scanCornersAdmitted(corners) ? corners as unknown as ScanCorners : undefined
 }
 
-/** A conservative page outline suggestion from local contrast, or undefined; it is never an applied crop. */
 export effect function detectScanEdges(image: Blob): (ScanCorners | undefined)!ImageRefused {
   const raster = try scaledImage320(image)
   const pixels = try pixelsOf(raster)
@@ -186,14 +178,12 @@ effect function scaledImage320(image: Blob): Raster!ImageRefused {
   })
 }
 
-/** The parent operation a correction returns its page to; it owns the page slot, limits and abort. */
 export interface CorrectionParent {
   readonly current: () => boolean
   readonly replace: (page: Blob) => boolean!!
   readonly documentBytesWith: (page: Blob) => number
 }
 
-/** One page's correction review: a preview bound to its corners, released on cancel, written only by adoption. */
 export effect function correctionReview(page: Blob, hasText: boolean, parent: CorrectionParent) {
   const state = try Ref.make<Correction>(initial)
   const corners = try Ref.make<ScanCorners>(fullPageCorners())

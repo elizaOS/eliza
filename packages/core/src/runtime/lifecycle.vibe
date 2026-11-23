@@ -15,7 +15,7 @@ import type { IDatabaseAdapter } from "../types/database.vibe"
 import type { Plugin, RemotePluginInstallOptions, RemotePluginInstanceHandle } from "../types/plugin.vibe"
 import type { UUID } from "../types/primitives.vibe"
 import type { RuntimeStopOptions } from "../types/runtime.vibe"
-import { processEnv, rawEnv } from "../utils/environment.vibe"
+import { rawEnv } from "../utils/environment.vibe"
 import { timerDelay } from "../utils/retry.vibe"
 import { stringToUuid } from "../utils/string-to-uuid.vibe"
 import { validateUuid, type InvalidUuidSource, randomUuid } from "../utils/uuid.vibe"
@@ -55,6 +55,7 @@ interface LifecyclePayload {
 
 export interface LifecycleCells {
   readonly stopAttempt: Deferred.Deferred<void, LifecycleFailure> | undefined
+  readonly initializationAttempt: Deferred.Deferred<void, LifecycleFailure> | undefined
   readonly retriedInitializationFailed: boolean | undefined
   readonly runId: UUID | undefined
   readonly roomId: UUID | undefined
@@ -77,6 +78,7 @@ export const LifecycleLive: Layer.Layer<Lifecycle, never, Host> = Layer.effect(L
     } satisfies LifecyclePayload)
     const cells = try SynchronizedRef.make<LifecycleCells>({
       stopAttempt: undefined,
+      initializationAttempt: undefined,
       retriedInitializationFailed: undefined,
       runId: undefined,
       roomId: undefined,
@@ -247,17 +249,36 @@ effect function initializeCore(options?: { skipMigrations?: boolean }): void!Lif
   }
 }
 
+type InitializationTurn =
+  | { readonly kind: "join"; readonly attempt: Deferred.Deferred<void, LifecycleFailure> }
+  | { readonly kind: "lead"; readonly attempt: Deferred.Deferred<void, LifecycleFailure>; readonly modeled: boolean }
+
 export effect function initialize(options?: { skipMigrations?: boolean }): void!LifecycleFailure!RuntimeKernel {
-  const { cells } = try Lifecycle
-  const modeled = try accepted({ type: "beginInitialization" })
-  if (!modeled) try SynchronizedRef.update(cells, (current) => ({ ...current, retriedInitializationFailed: false }))
-  const outcome = try exit(initializeCore(options))
-  const ok = Exit.isSuccess(outcome)
-  if (modeled) try accepted({ type: "completeInitialization", ok })
-  else try SynchronizedRef.update(cells, (current) => ({ ...current, retriedInitializationFailed: !ok }))
-  const { released } = try lifecyclePayload()
-  try Deferred.succeed(released, undefined)
-  return try outcome
+  return try uninterruptibleMask((restore) => effect {
+    const { cells } = try Lifecycle
+    const turn = try SynchronizedRef.modifyEffect(cells, effect (current: LifecycleCells): readonly [InitializationTurn, LifecycleCells]!!Lifecycle => {
+      if (current.initializationAttempt) return [{ kind: "join", attempt: current.initializationAttempt }, current] as const
+      const attempt = Deferred.makeUnsafe<void, LifecycleFailure>()
+      const modeled = try accepted({ type: "beginInitialization" })
+      return [
+        { kind: "lead", attempt, modeled },
+        { ...current, initializationAttempt: attempt, retriedInitializationFailed: modeled ? current.retriedInitializationFailed : false },
+      ] as const
+    })
+    if (turn.kind === "join") return try restore(Deferred.await(turn.attempt))
+    const outcome = try Effect.exit(restore(initializeCore(options)))
+    const ok = Exit.isSuccess(outcome)
+    if (turn.modeled) try accepted({ type: "completeInitialization", ok })
+    try SynchronizedRef.update(cells, (current) => ({
+      ...current,
+      initializationAttempt: undefined,
+      retriedInitializationFailed: turn.modeled ? current.retriedInitializationFailed : !ok,
+    }))
+    try Deferred.done(turn.attempt, outcome)
+    const { released } = try lifecyclePayload()
+    try Deferred.succeed(released, undefined)
+    return try outcome
+  })
 }
 
 export effect function isInitializationPending(): boolean!!RuntimeKernel {
@@ -361,14 +382,7 @@ effect function stopAfterAdmissionCordon(options?: RuntimeStopOptions): void!(El
     }
   }
   try dispatch.drainDiagnostics()
-  const env = processEnv()
-  const previousFastShutdown = env.ELIZA_FAST_SHUTDOWN
-  if (fast) env.ELIZA_FAST_SHUTDOWN = "1"
-  try ensuring(stopServicesAndRetire(fast, options?.serviceStopTimeoutMs), sync(() => {
-    if (!fast) return
-    if (previousFastShutdown === undefined) delete env.ELIZA_FAST_SHUTDOWN
-    else env.ELIZA_FAST_SHUTDOWN = previousFastShutdown
-  }))
+  try stopServicesAndRetire(fast, options?.serviceStopTimeoutMs)
 }
 
 effect function stopBestEffort(options?: RuntimeStopOptions): void!LifecycleFailure!RuntimeKernel {
@@ -555,6 +569,11 @@ export effect function getStopSignal(): AbortSignal!!RuntimeKernel {
 
 export effect function isStopRequested(): boolean!!RuntimeKernel {
   return stopRequested(try runtimeState())
+}
+
+export effect function isFastStopRequested(): boolean!!RuntimeKernel {
+  const state = try runtimeState()
+  return stopRequested(state) && state.fast
 }
 
 export effect function createRunId(): UUID!! {

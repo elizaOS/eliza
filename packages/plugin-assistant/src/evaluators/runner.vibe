@@ -9,7 +9,6 @@ import {
 } from "../../gen/assistant__evaluatorRunner.effect.vibe"
 import { commitEvaluatorProgress, evidenceOf, sourceOf, stageEvaluatorOutput, stagedOutput, type ProgressScope } from "./progress.vibe"
 
-/** One run of the evaluators registered for a turn. */
 export interface EvaluatorRun {
   readonly runtime: IAgentRuntime
   readonly message: Memory
@@ -40,7 +39,6 @@ function scopeOf(run: EvaluatorRun, evaluator: RegisteredEvaluator): ProgressSco
   return { agentId: run.runtime.agentId, roomId: run.message.roomId, entityId: run.message.entityId, evaluator: evaluator.name, schemaVersion: 1 }
 }
 
-/** The entries of one batch in the captured order: priority, with 100 by default, then locale name order, then original position. */
 export function orderedEntries(evaluators: readonly RegisteredEvaluator[]): Array<{ readonly evaluator: RegisteredEvaluator; readonly position: number; readonly nameOrder: number }> {
   const names = [...new Set(evaluators.map((evaluator) => evaluator.name))].sort((a, b) => a.localeCompare(b))
   return evaluators.map((evaluator, position) => ({ evaluator, position, nameOrder: names.indexOf(evaluator.name) + 1 }))
@@ -175,7 +173,6 @@ effect function runBatch(run: EvaluatorRun, route: EvaluatorInput, evaluators: r
   }
 }
 
-/** Runs the evaluators of a turn in batches by input route, each under the runner's rules, and reports what each did. */
 export effect function runEvaluators(run: EvaluatorRun) {
   const routes = new Map<EvaluatorInput, RegisteredEvaluator[]>()
   for (const evaluator of run.evaluators) {

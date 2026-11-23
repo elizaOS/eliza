@@ -9,7 +9,6 @@ import { generatedWorkflows } from "./service/generated.vibe"
 import { openWorkflows } from "./service/workflows.vibe"
 import type { WorkflowInstance } from "./agent.vibe"
 
-/** The package name the bundle pins the workflow worker for. */
 export const workflowPluginName = "@elizaos/plugin-workflow"
 
 let current: WorkflowInstance | undefined
@@ -29,7 +28,6 @@ effect function open(runtime: IAgentRuntime) {
   return instance
 }
 
-/** The reviewed workflows plugin: typed authoring, exact admission, approvals, schedules while the agent runs, and hosted digests. */
 export const workflowPlugin: AgentPlugin = {
   name: workflowPluginName,
   description: "Reviewed typed workflows: authoring, admission by exact version, device-step approvals, local-time schedules while the agent runs, and hosted digests.",

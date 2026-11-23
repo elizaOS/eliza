@@ -5,19 +5,15 @@ import {
 } from "../../gen/calendar__syncSettlement.effect.vibe"
 import type { CalendarLinkStorage } from "./linked-store.vibe"
 
-/** A watch channel's sync state as it is published: phase, synced point, pending work and failures. */
 export type CalendarWatchChannel = Pick<WatchChannel, "channel" | "pending" | "last" | "failures" | "lease">
 
-/** What one sync attempt's return did to the channel. */
 export type CalendarWatchAttemptOutcome =
   | { readonly kind: "recorded"; readonly attempt: number; readonly channel: CalendarWatchChannel }
   | { readonly kind: "ignored"; readonly attempt: number; readonly channel: CalendarWatchChannel }
   | { readonly kind: "not_claimed"; readonly channel: CalendarWatchChannel }
 
-/** The channel store could not be read or written; nothing was recorded. */
 export error CalendarWatchUnavailable { message: string }
 
-/** What a watch channel's settlement needs from its host. */
 export interface CalendarWatchPorts {
   readonly storage: CalendarLinkStorage
   readonly channelId: string
@@ -38,7 +34,6 @@ const view = (state: SyncSettlement): CalendarWatchChannel => {
   return { channel, pending, last, failures, lease }
 }
 
-/** A provider watch channel that leases one sync attempt at a time, so a replaced or stopped attempt never changes the channel row. */
 export effect function calendarWatchChannel(ports: CalendarWatchPorts) {
   const slot = `calendar-watch-channel:v1:${ports.channelId}`
   const serialize = (try Semaphore.make(1)).withPermits(1)
@@ -74,11 +69,8 @@ export effect function calendarWatchChannel(ports: CalendarWatchPorts) {
   }
 
   return {
-    /** The channel as kept now. */
     read: () => map(load(), ({ document }) => view(document.state)),
-    /** Records provider change notifications as pending work while the channel is active. */
     queueChange: () => serialize(map(step((document) => canQueueChange(document.state) ? { events: [{ type: "queueChange" }], leasedAt: document.leasedAt } : undefined), (document) => view(document.state))),
-    /** Claims a new attempt where no lease is held or the held one expired, runs it, and lets only the leased attempt's result change the channel. */
     runAttempt: <A, E>(sync: (attempt: number) => A!E) => effect {
       let attempt = 0
       const claimed = try serialize(step((document, now) => {
@@ -92,14 +84,11 @@ export effect function calendarWatchChannel(ports: CalendarWatchPorts) {
       const result = try exit(sync(attempt))
       return try settle(attempt, Exit.isSuccess(result))
     },
-    /** Begins stopping an active channel; late attempts are then ignored unless they hold the lease and succeed. */
     beginStop: () => serialize(map(step((document) => document.state.watch.channel === "ChannelActive" ? { events: [{ type: "beginStop" }], leasedAt: document.leasedAt } : undefined), (document) => view(document.state))),
-    /** Confirms a stop, clearing pending work and the lease. */
     confirmStop: () => serialize(map(step((document) => document.state.watch.channel === "ChannelStopping" ? { events: [{ type: "confirmStop" }], leasedAt: null } : undefined), (document) => view(document.state))),
   }
 }
 
-/** The foreground opt-in generations of one device sync host, kept in memory for the host's life. */
 export effect function foregroundSyncMachine() {
   const kept = try Ref.make(initial)
   return try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))

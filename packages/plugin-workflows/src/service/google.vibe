@@ -4,9 +4,7 @@ import type { HostedLiveSelection } from "../contract/digest.vibe"
 import { phoneWorkflowBytes, workflowSha } from "../contract/phone.vibe"
 import { WorkflowRefused } from "./workflows.vibe"
 
-/** The managed Google reads a live digest source uses, from the owner's cloud client. */
 export type ManagedGoogleReads = Pick<CloudClient, "googleStatus" | "calendarCalendars" | "gmailSearch" | "calendarFeed">
-/** One Google account a live digest source may read. */
 export interface LiveGoogleAccount { readonly accountId: string; readonly accountRevision: string; readonly label: string; readonly kinds: readonly ("email" | "calendar")[] }
 
 type Bag = Record<string, unknown>
@@ -25,7 +23,6 @@ effect function call<A>(work: () => Promise<A>): A!WorkflowRefused {
   return try Effect.catch(timeout(tryPromise({ try: work, catch: () => new WorkflowRefused({ status: 409, message: unavailableText }) }), readTimeout), () => unavailable())
 }
 
-/** Parses a live Google selection; anything else is refused before it is saved or read. */
 export effect function validateHostedGoogleSelection(value: unknown): HostedLiveSelection!WorkflowRefused {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return try unavailable()
   const v = value as Bag
@@ -43,7 +40,6 @@ export effect function validateHostedGoogleSelection(value: unknown): HostedLive
   }
 }
 
-/** The owner's managed Google account, when connected, with the kinds its granted capabilities read. */
 export effect function liveGoogleAccounts(google: ManagedGoogleReads): LiveGoogleAccount[]!WorkflowRefused {
   const status = try call(() => google.googleStatus())
   if (!status.configured || !status.connected) return []
@@ -57,14 +53,12 @@ export effect function liveGoogleAccounts(google: ManagedGoogleReads): LiveGoogl
   return [{ accountId: `cloud:${status.connectionId ?? "google"}`, accountRevision, label: status.identity?.email ?? "Selected Google account", kinds }]
 }
 
-/** Refuses unless the selection still names the connected account at its reviewed revision with the kind it reads. */
 export effect function assertHostedGoogleSource(google: ManagedGoogleReads, selection: HostedLiveSelection): HostedLiveSelection!WorkflowRefused {
   const account = (try liveGoogleAccounts(google)).find((candidate) => candidate.accountId === selection.accountId && candidate.accountRevision === selection.accountRevision)
   if (account === undefined || !account.kinds.includes(selection.kind)) return try unavailable()
   return selection
 }
 
-/** The readable calendars of a reviewed account, at most 50. */
 export effect function liveGoogleCalendars(google: ManagedGoogleReads, input: unknown) {
   if (typeof input !== "object" || input === null || Array.isArray(input) || Object.keys(input).some((key) => key !== "accountId" && key !== "accountRevision")) return try unavailable()
   const v = input as Bag
@@ -80,12 +74,11 @@ effect function field(value: unknown, maximum: number): string!WorkflowRefused {
   return typeof value === "string" ? value : ""
 }
 
-/** Reads a live Google source for one occurrence: inbox metadata and snippets, or the selected calendar's events, bounded and labelled as possibly truncated. */
 export effect function readHostedGoogleSource(google: ManagedGoogleReads, input: HostedLiveSelection, at: number): string!WorkflowRefused {
   const selection = try assertHostedGoogleSource(google, input)
   const span = selection.windowHours * 3_600_000
   const items: Bag[] = []
-  let truncated = false
+  let truncated: boolean
   if (selection.kind === "email") {
     const page = try call(() => google.gmailSearch({ query: `in:inbox after:${Math.floor((at - span) / 1000)}`, maxResults: selection.maxItems }))
     if (page.messages.length > selection.maxItems) return try unavailable()

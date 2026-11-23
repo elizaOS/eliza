@@ -6,7 +6,6 @@ import { lookupMatches, noteContentKey, titleAppearsAsNamedPhrase, type NoteSele
 import { noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest } from "./records.schema.vibe"
 import type { NoteFormat, NotesSnapshot, NotesTrashErase, NotesTrashRecordingCleanup, StickyColor, StickyNote, TrashedNote } from "./types.vibe"
 
-/** The stored collection: saved notes, Trash, client creation IDs, pending recording cleanup and one revision. */
 export interface NotesDocument {
   schemaVersion: 1
   revision: number
@@ -17,36 +16,29 @@ export interface NotesDocument {
   imported?: ImportReceipt
 }
 
-/** The collection before its first commit. */
 export const emptyNotesDocument: NotesDocument = { schemaVersion: 1, revision: 0, notes: [], trash: [], creations: {}, recordingCleanup: [] }
 
-/** Why a Notes request changed nothing. */
 export type NotesRefusalCode =
   | "NOTES_VALIDATION_FAILED" | "NOTES_NOT_FOUND" | "NOTES_AMBIGUOUS_NOTE" | "NOTES_DELETE_NAME_MISMATCH"
   | "NOTES_EDIT_CONFLICT" | "NOTES_EDIT_REVISION_REQUIRED" | "NOTES_EDIT_TEXT_NOT_FOUND" | "NOTES_EDIT_TEXT_AMBIGUOUS"
   | "NOTES_RICH_EDIT_REQUIRED" | "NOTES_TRASH_EXPIRED" | "NOTES_TRASH_RETENTION_DISABLED" | "NOTES_TRASH_RECORDING_UNAVAILABLE"
   | "NOTES_FOLDER_UNKNOWN" | "NOTES_DUPLICATE_ID" | "CALENDAR_NOTE_SOURCE_CONFLICT"
 
-/** A Notes request refused before anything was written. */
 export error NotesRefused { code: NotesRefusalCode; message: string; candidateIds?: readonly string[] }
 
-/** What a request found and, when it changes the collection, the document it leads to before its revision advances. */
 export interface Change<A> {
   readonly next: NotesDocument | undefined
   readonly value: A
   readonly mutation: string
 }
 
-/** A note named by its exact ID, or by an exact title or contained text. */
 export type NoteTarget = { readonly id: string } | { readonly selector: NoteSelector; readonly value: string }
 
-/** The instant a request happens at, as milliseconds and as the stored timestamp. */
 export interface Instant {
   readonly ms: number
   readonly iso: string
 }
 
-/** The note list filter of a read: text, exact ID, newest by a timestamp, and a date window. */
 export interface NotesQuery {
   readonly content?: string
   readonly noteId?: string
@@ -57,7 +49,6 @@ export interface NotesQuery {
 const refused = (code: NotesRefusalCode, message: string, candidateIds?: readonly string[]) =>
   new NotesRefused({ code, message, ...(candidateIds === undefined ? {} : { candidateIds }) })
 
-/** The collection as its readers see it. */
 export function snapshotOf(document: NotesDocument): NotesSnapshot {
   return { notes: document.notes, revision: document.revision, trash: document.trash }
 }
@@ -92,7 +83,6 @@ effect function checked(note: StickyNote): StickyNote!NotesRefused {
   return note
 }
 
-/** A new note, or the one a known creation or an identical plain creation already made. */
 export effect function createIn(document: NotesDocument, request: CreateRequest, id: string, at: Instant): Change<{ note: StickyNote; replayed: boolean }>!NotesRefused {
   const authored = authoredNoteText(request.format).trim() !== ""
   const parts = request.content !== undefined ? try contentParts(request.content, authored)
@@ -133,7 +123,6 @@ export effect function createIn(document: NotesDocument, request: CreateRequest,
   }
 }
 
-/** The position of the one note a target names; distinct notes that all match need the owner's choice. */
 effect function resolveIndex(notes: readonly StickyNote[], target: NoteTarget): number!NotesRefused {
   if ("id" in target) {
     const index = notes.findIndex((note) => note.id === target.id)
@@ -200,7 +189,6 @@ function occurrences(text: string, part: string): number {
   return count
 }
 
-/** The note after one edit, keeping every field the edit does not name. */
 effect function applyPatch(existing: StickyNote, patch: UpdateRequest, updatedAt: string): StickyNote!NotesRefused {
   const updated: StickyNote = { ...existing, updatedAt }
   const { textEdit, authoredEdit } = editsOf(existing, patch)
@@ -245,7 +233,6 @@ function emptyPatch(patch: UpdateRequest): boolean {
   return Object.values(patch).every((value) => value === undefined)
 }
 
-/** One note edited at the revision its edit was prepared from. */
 export effect function updateIn(document: NotesDocument, target: NoteTarget, patch: UpdateRequest, expectedRevision: number | undefined, at: Instant): Change<StickyNote>!NotesRefused {
   if (emptyPatch(patch)) throw refused("NOTES_VALIDATION_FAILED", "Supply one edit: textEdit, authoredEdit, content, title, body, format or color.")
   try requireRevision(document, needsRevision(patch), expectedRevision)
@@ -256,7 +243,6 @@ export effect function updateIn(document: NotesDocument, target: NoteTarget, pat
   return { next: { ...document, notes: document.notes.map((note, position) => position === index ? updated : note) }, value: updated, mutation: "note:updated" }
 }
 
-/** One note moved to Trash; a note named by lookup is deleted only when the owner's words name its title. */
 export effect function deleteIn(document: NotesDocument, target: NoteTarget, at: Instant, ownerWords: string | undefined): Change<StickyNote>!NotesRefused {
   const index = try resolveIndex(document.notes, target)
   const existing = document.notes[index]
@@ -275,7 +261,6 @@ function trashFacts(entry: TrashedNote, retentionOn: boolean, sharedAudio: boole
   return { retentionOn, trashed: true, sharedAudio, deletedAt: Date.parse(entry.deletedAt), now: at.ms, revision, reviewRevision, reviewDeletion }
 }
 
-/** One Trash entry put back with its original ID and content, at the revision the owner saw. */
 export effect function restoreIn(document: NotesDocument, request: { readonly id: string; readonly expectedRevision: number; readonly deletedAt?: string }, at: Instant, retentionOn: boolean): Change<StickyNote>!NotesRefused {
   const entry = document.trash.find((row) => row.note.id === request.id)
   const evidence = {
@@ -298,7 +283,6 @@ export effect function restoreIn(document: NotesDocument, request: { readonly id
   }
 }
 
-/** Every saved note moved to Trash, at the revision the owner confirmed. */
 export effect function clearIn(document: NotesDocument, expectedRevision: number | undefined, at: Instant): Change<number>!NotesRefused {
   try requireRevision(document, true, expectedRevision)
   return {
@@ -308,7 +292,6 @@ export effect function clearIn(document: NotesDocument, expectedRevision: number
   }
 }
 
-/** One note's folder set, or cleared with null, leaving its text unchanged. */
 export effect function moveIn(document: NotesDocument, target: NoteTarget, folderId: string | null, at: Instant): Change<StickyNote>!NotesRefused {
   const index = try resolveIndex(document.notes, target)
   const existing = document.notes[index]
@@ -318,7 +301,6 @@ export effect function moveIn(document: NotesDocument, target: NoteTarget, folde
   return { next: { ...document, notes: document.notes.map((note, position) => position === index ? moved : note) }, value: moved, mutation: "note:moved" }
 }
 
-/** The recording a voice note owns: undefined for none, null when its attachment needs review. */
 function noteRecordingId(note: StickyNote): string | null | undefined {
   if (note.format?.kind !== "voice") return undefined
   const { audio, recordingId } = note.format.data
@@ -335,7 +317,6 @@ function recordingReferences(note: StickyNote): string[] {
   return [...new Set([audioId, recordingId].filter((id): id is string => typeof id === "string" && recordingIdPattern.test(id)))]
 }
 
-/** How many saved or trashed notes still reference each recording. */
 function recordingReferenceCounts(document: NotesDocument): ReadonlyMap<string, number> {
   const counts = new Map<string, number>()
   for (const note of [...document.notes, ...document.trash.map((entry) => entry.note)]) {
@@ -344,7 +325,6 @@ function recordingReferenceCounts(document: NotesDocument): ReadonlyMap<string, 
   return counts
 }
 
-/** Trash entries erased by the owner's reviewed erase, or by the three-day sweep when there is no review; each erased recording leaves a cleanup pending. */
 export effect function eraseIn(document: NotesDocument, review: NotesTrashErase | undefined, at: Instant, retentionOn: boolean, operationId: () => string): Change<{ erased: number; recordingCleanup: NotesTrashRecordingCleanup[] }>!NotesRefused {
   if (review !== undefined) {
     if (!retentionOn) throw refused("NOTES_TRASH_RETENTION_DISABLED", "Permanent Notes Trash erase is disabled for this host.")
@@ -393,12 +373,10 @@ export effect function eraseIn(document: NotesDocument, review: NotesTrashErase 
   }
 }
 
-/** Whether a receipt is exactly one the collection holds as pending. */
 export function sameCleanup(a: NotesTrashRecordingCleanup, b: NotesTrashRecordingCleanup): boolean {
   return a.operationId === b.operationId && a.noteId === b.noteId && a.audioId === b.audioId && a.deletedAt === b.deletedAt
 }
 
-/** The exact pending receipt retired; false when it was not pending. */
 export effect function acknowledgeIn(document: NotesDocument, receipt: NotesTrashRecordingCleanup): Change<boolean>!! {
   if (!document.recordingCleanup.some((entry) => sameCleanup(entry, receipt))) return { next: undefined, value: false, mutation: "trash:recording-cleanup" }
   return {
@@ -417,7 +395,6 @@ effect function bound(value: string | undefined): (number | undefined)!NotesRefu
   return ms
 }
 
-/** The saved notes a read asks for: all ties of the newest, inside a start-inclusive, end-exclusive window. */
 export effect function listIn(notes: readonly StickyNote[], query: NotesQuery): StickyNote[]!NotesRefused {
   const range = query.dateRange
   const start = try bound(range?.start)

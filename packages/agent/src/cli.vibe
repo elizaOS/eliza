@@ -55,7 +55,6 @@ import { bundledSnapshot, exitOnUncaught, publishBundleActions, reserveStdout } 
 
 type PlatformServices = Layer.Success<typeof NodeServices.layer>
 
-/** Where the resident runs, handed to a bundle entry's host services when they are built. */
 export interface ResidentHost {
   readonly stateDirectory: string
 }
@@ -66,7 +65,6 @@ interface AgentCliEntries {
   readonly runtimeServices?: (host: ResidentHost) => readonly ServiceClass[]
 }
 
-/** What a bundle entry hands the agent CLI: its bundled plugins, the product plugin, and host modules with the device services they need over the resident's platform layer. */
 export type AgentCli<R = never> = AgentCliEntries & (
   | { readonly hostModules?: ReadonlyMap<string, ModuleFactory<PlatformServices>>; readonly hostServices?: undefined }
   | { readonly hostModules: ReadonlyMap<string, ModuleFactory<R | PlatformServices>>; readonly hostServices: (host: ResidentHost) => Layer.Layer<R, never, PlatformServices> }
@@ -141,7 +139,6 @@ function exitWith(gone: Exit.Exit<unknown, unknown>): number {
   return crashed
 }
 
-/** Runs the agent process for a bundle entry: `serve` with a launch, or the load smoke, then exits with the agent's code. */
 export function runAgentCli<R = never>(cli: AgentCli<R>): void {
   exitOnUncaught(crashed)
   NodeRuntime.runMain(Effect.provide(Effect.scoped(main(cli)), NodeServices.layer), {

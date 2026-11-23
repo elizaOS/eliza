@@ -6,9 +6,8 @@ import { negotiation } from "./capabilities.vibe"
 import { enrollmentId } from "./enrollment.vibe"
 import { capabilityNamesOf, validate } from "./operations.schema.vibe"
 import { devicePayload } from "./proposal-review.vibe"
-import { DeviceStoreUnavailable, ProposalIdTaken, enrollment, offerRequest, openRequest, requestSnapshot, retireRequest, workflowAuthority } from "./store.vibe"
+import { type DeviceStoreUnavailable, ProposalIdTaken, enrollment, offerRequest, openRequest, requestSnapshot, retireRequest, workflowAuthority } from "./store.vibe"
 
-/** The run, version, step and spec digest one workflow device operation is bound to. */
 export interface WorkflowStep {
   readonly workflowId: string
   readonly versionId: string
@@ -17,30 +16,25 @@ export interface WorkflowStep {
   readonly specDigest: string
 }
 
-/** The enrolled device a workflow step names as its target. */
 export interface WorkflowStepTarget {
   readonly installationId: string
   readonly enrollmentId: string
 }
 
-/** The enrolled device with the workflow protocol it registered. */
 export interface WorkflowStepDevice extends WorkflowStepTarget {
   readonly protocol: number
 }
 
-/** How long an offered step waits for the device, and how often its settlement is read. */
 export interface WorkflowOfferTiming {
   readonly deadlineMs: number
   readonly pollMs: number
 }
 
-/** A workflow device bridge that offers each step to the enrolled device for review and answers with the result it applied. */
 export interface WorkflowDeviceOffer {
   enrollment(): Promise<WorkflowStepDevice | undefined>
   perform(binding: WorkflowStep, target: WorkflowStepTarget, operation: unknown, signal?: AbortSignal): Promise<unknown>
 }
 
-/** The enrolled device did not settle a workflow step as applied; `code` names why. */
 export error WorkflowStepRefused { code: string; message: string }
 
 const defaultTiming: WorkflowOfferTiming = { deadlineMs: 600_000, pollMs: 1_000 }
@@ -96,18 +90,21 @@ effect function offered(adapter: IDatabaseAdapter, timing: WorkflowOfferTiming, 
   const device = try enrolledDevice(adapter)
   if (device === undefined) throw refused("DEVICE_NOT_ENROLLED")
   if (device.target.installationId !== target.installationId || device.target.enrollmentId !== target.enrollmentId) throw refused("DEVICE_TARGET_CHANGED")
-  const binding = workflowAuthority({
+  const binding = try Effect.sync(() => workflowAuthority({
     kind: "WorkflowBinding", workflowId: step.workflowId, versionId: step.versionId, runId: step.runId, stepId: step.stepId, specDigest: step.specDigest,
-  })
+  }))
   const checked = validate(operation, negotiation(true, device.declared.join(",")), "WorkflowBinding")
   const needs = checked === undefined ? undefined : capabilityNamesOf(checked)
   const capability = needs?.required[0] ?? needs?.oneOf.find((name) => device.declared.includes(name))
   if (binding === undefined || checked === undefined || capability === undefined) throw refused("DEVICE_STEP_UNSUPPORTED")
   const { kind: _kind, ...workflow } = binding
-  const payload = devicePayload({ operation: checked.operation, scope: { workflow } }, device.by, device.target.enrollmentId, "")
-  const proposalId = stringToUuid(`workflow-device:${hashStableJson(payload)}`)
+  const { payload, proposalId } = try Effect.sync(() => {
+    const payload = devicePayload({ operation: checked.operation, scope: { workflow } }, device.by, device.target.enrollmentId, "")
+    const proposalId = stringToUuid(`workflow-device:${hashStableJson(payload)}`)
+    return { payload, proposalId }
+  })
   const expiresAt = (try Clock.currentTimeMillis) + timing.deadlineMs
-  const digest = hashStableJson({ id: proposalId, subjectUserId: device.by.actorId, payload, expiresAt: new Date(expiresAt).toISOString() })
+  const digest = try Effect.sync(() => hashStableJson({ id: proposalId, subjectUserId: device.by.actorId, payload, expiresAt: new Date(expiresAt).toISOString() }))
   const offer = offerRequest(adapter, {
     type: "offer", proposalId, digest, capability, expiresAt, readBack: false,
     origin: { requestId: step.runId, conversationId: "", inReplyTo: "" },
@@ -123,7 +120,6 @@ effect function offered(adapter: IDatabaseAdapter, timing: WorkflowOfferTiming, 
   return try ensuring(settled(adapter, proposalId, timing.pollMs), retire)
 }
 
-/** The workflow device bridge over the agent's own device requests: each step is offered to the enrolled device, which reviews, claims and receipts it like any request. */
 export function workflowDeviceOffer(runtime: Pick<IAgentRuntime, "adapter">, timing: WorkflowOfferTiming = defaultTiming): WorkflowDeviceOffer {
   return {
     enrollment: () => runPromise(map(enrolledDevice(runtime.adapter), (device) => device?.target)),

@@ -24,8 +24,9 @@ describe("the documents name what exists", () => {
   const within = (dir: string) => fs.existsSync(path.join(project, dir)) ? fs.readdirSync(path.join(project, dir), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `${dir}/${e.name}`) : [];
 
   test("every repository path, pnpm script and link in the documents and skills leads somewhere", () => {
+    const workspace = ["packages", "apps"].flatMap(within).filter((dir) => fs.existsSync(path.join(project, dir, "package.json")));
     // What pnpm itself provides, and what a document proposes rather than names.
-    const scripts = new Set(["install", "exec", "add", "pack", ...["", "vibestack/studio", ...["packages", "apps", "vibestack/examples"].flatMap(within)].flatMap((dir) => Object.keys(manifest(dir).scripts ?? {}))]);
+    const scripts = new Set(["install", "exec", "add", "pack", ...["", "vibestack/studio", ...workspace, ...within("vibestack/examples")].flatMap((dir) => Object.keys(manifest(dir).scripts ?? {}))]);
     const proposed = ["apps/billing", "packages/billing", "vibestack/README.md", "vibestack/LICENSE"];
     // A heading as GitHub links to it.
     const anchors = (file: string) => read(file).split("\n").flatMap((line) => /^#{1,6} /.test(line) ? [line.replace(/^#+ /, "").toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").trim().replace(/\s/g, "-")] : []);
@@ -124,7 +125,10 @@ describe("the documents name what exists", () => {
     const releasePrerequisites = release.match(/^ +- run: pnpm all (.+) --concurrency=1$/m)?.[1].split(" ").sort();
     assert.match(scripts.prepare, /^node vibestack\/spec\.ts gen --install --skip-gen-on-pack \/\/#build(?: |$)/);
     assert.deepEqual(["//#build", ...releasePrerequisites ?? []].sort(), JSON.parse(read("turbo.json")).tasks["//#selftest:tools:a"].dependsOn.toSorted(), "pack and the release tasks materialize every prerequisite before using the isolated CI shard cache");
-    assert.deepEqual(read(".github/workflows/fuzz.yml").match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
+    const fuzz = read(".github/workflows/fuzz.yml");
+    const nightly = fuzz.match(/^  vibestack-nightly-check:\n((?: {4}.*\n|\n)*)/m)?.[1] ?? "";
+    assert.match(nightly, /^ +- run: pnpm all check --continue -- --nightly$/m);
+    assert.deepEqual(fuzz.match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
     const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`].dependsOn);
     assert.deepEqual(others, others.map(() => first), "the shards wait for the same integration prerequisites");
     assert.deepEqual(fs.readdirSync(path.join(project, ".github/workflows")).filter((flow) => /\bdevelop\b/.test(read(`.github/workflows/${flow}`).replace(/^ +branches: \[[\w, ]+\]$/gm, ""))), [], "develop is named only where a workflow lists the branches that trigger it");
@@ -152,6 +156,8 @@ describe("the documents name what exists", () => {
       fs.cpSync(path.join(project, file), path.join(root, file), { verbatimSymlinks: true });
     }
     await exec("git", ["init", "-q"], root);
+    const staged = await exec("git", ["add", "-A"], root);
+    assert.equal(staged.status, 0, staged.stderr);
     const evaluatorHome = path.join(root, "custom quint home");
     const child = await exec(turbo, ["run", "@repo/kit#test", "--only", "--env-mode=strict", "--cache=local:rw", "--output-logs=full"], root,
       { ...process.env, QUINT_HOME: evaluatorHome, TURBO_TELEMETRY_DISABLED: "1" });
@@ -236,5 +242,43 @@ describe("the documents name what exists", () => {
       frameworkTest: { build: false, test: true },
       independentOwner: true, leftovers: [],
     }, "the owners' tasks, @repo/kit's among them, wait for the root's gen, and install's //#build does not, so `gen --if-valid` after it keeps a half-edited spec from failing install");
+
+    const generationPlan = async (...options: string[]) => {
+      const dry = await exec(process.execPath, [path.join(project, "vibestack/spec.ts"), "tasks", "//#gen", "//#lint:css", "--dry=json", ...options], root,
+        { ...process.env, TURBO_TOKEN: "", TURBO_CACHE: "local:rw" });
+      assert.equal(dry.status, 0, dry.stderr);
+      const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { cache: boolean; env: string[] } }[] = JSON.parse(dry.stdout).tasks;
+      return Object.fromEntries(tasks.map(({ taskId, hash, resolvedTaskDefinition }) => [taskId, { hash, ...resolvedTaskDefinition }]));
+    };
+    fs.mkdirSync(path.join(root, "apps/app/spec"));
+    fs.writeFileSync(path.join(root, "apps/app/spec/index.md"), "# Standalone app\n");
+    const proofs = ["spec/audit.proof.dfy", "apps/app/spec/index.proof.dfy", "packages/kit/spec/index.proof.dfy"];
+    for (const file of proofs) fs.writeFileSync(path.join(root, file), "lemma One() {}\n");
+    const beforeProofs = await generationPlan();
+    for (const file of proofs) append(file, "lemma Two() {}\n")();
+    const afterProofs = await generationPlan();
+    assert.equal(afterProofs["//#gen"].hash, beforeProofs["//#gen"].hash);
+    assert.equal(afterProofs["//#gen"].cache, true);
+    append("spec/app/index.md")();
+    assert.notEqual((await generationPlan())["//#gen"].hash, afterProofs["//#gen"].hash);
+
+    const alternate = "other turbo.jsonc";
+    const config = JSON.parse(read("turbo.json", root));
+    config.tasks["//#gen"].cache = true;
+    config.tasks["//#lint:css"].env = ["AUDIT_CONFIG"];
+    fs.writeFileSync(path.join(root, alternate), JSON.stringify(config).replace(/^{/, "{\n// Explicit workspace config\n"));
+    const explicit = await generationPlan("--root-turbo-json", alternate);
+    fs.unlinkSync(path.join(root, proofs[0]));
+    fs.symlinkSync("../missing-proof.dfy", path.join(root, proofs[0]));
+    const invalid = await generationPlan(`--root-turbo-json=${alternate}`);
+    assert.ok(invalid["//#lint:css"].env.includes("AUDIT_CONFIG"));
+    assert.deepEqual(invalid, { ...explicit, "//#gen": { ...explicit["//#gen"], cache: false } });
+    assert.equal((await generationPlan("--cwd", root))["//#gen"].cache, false);
+    assert.equal((await generationPlan("--cwd=packages/kit"))["//#gen"].cache, false);
+    fs.unlinkSync(path.join(root, proofs[0]));
+    fs.writeFileSync(path.join(root, proofs[0]), "lemma Two() {}\n");
+    assert.deepEqual(await generationPlan("--root-turbo-json", alternate), explicit);
+    const passThrough = await generationPlan("--", "--root-turbo-json", alternate);
+    assert.ok(!passThrough["//#lint:css"].env.includes("AUDIT_CONFIG"));
   });
 });

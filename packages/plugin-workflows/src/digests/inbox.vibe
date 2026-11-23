@@ -11,45 +11,32 @@ import {
 import { workflowUuid } from "../contract/phone.vibe"
 import { WorkflowResponseInvalid, type WorkflowHttpError, type WorkflowRequest } from "../client/workflow-client.vibe"
 
-/** A reviewed source as a client lists it. */
 export interface DigestSource {
   readonly id: string; readonly revision: string; readonly kind: string; readonly label: string; readonly observedAt: string; readonly expiresAt: string
   readonly revoked: boolean; readonly live?: HostedLiveSelection | HostedNativeSelection
 }
-/** A digest schedule as a client lists it. */
 export interface DigestLoop {
   readonly id: string; readonly versionId: string; readonly name: string; readonly active: boolean; readonly removed: boolean; readonly spec: DigestSpec
   readonly sourceState?: DigestSourceState
 }
-/** One digest result row. */
 export interface DigestResult {
   readonly cursor: number; readonly runId: string; readonly workflowId: string; readonly workflowVersionId: string; readonly templateVersion: string
   readonly scheduledAt: string; readonly source: Readonly<Record<string, unknown>>; readonly status: string; readonly startedAt: string; readonly completedAt: string
   readonly output: unknown; readonly error: string | null
 }
-/** What an agent's status advertises for digests. */
 export interface DigestCapabilities { readonly digests: boolean; readonly nativeSources: boolean; readonly nativeEvening: boolean; readonly sourcePause: boolean; readonly dossier: boolean }
-/** A Google account a live source may read. */
 export interface HostedLiveAccount { readonly accountId: string; readonly accountRevision: string; readonly label: string; readonly kinds: readonly ("email" | "calendar")[]; readonly expiresAt?: string }
-/** One Google calendar a live source may read. */
 export interface HostedLiveCalendar { readonly calendarId: string; readonly label: string; readonly timeZone: string }
-/** A source that keeps a loop running and needs renewal now. */
 export interface DigestRenewal { readonly source: DigestSource; readonly state: DigestSourceState | "expiring"; readonly loops: readonly DigestLoop[] }
-/** One reviewed Run now offer for a missed occurrence. */
 export interface MissedRunNow {
   readonly runId: string; readonly sourceId: string; readonly sourceRevision: string; readonly sourceLabel: string; readonly scheduledAt: string; readonly mutationId: string
 }
-/** The brief a Home card shows: the newest retained result that ran. */
 export interface RetainedDigestSummary { readonly summary: string; readonly ranAt: string; readonly agent: string; readonly status: string }
-/** Every mutation path under /api/workflow/hosted/. */
 export type HostedDigestMutationPath = "sources" | "loops" | "sources/revoke" | "dossier"
 
-/** The source save was refused because access changed before saving. */
 export error HostedSourceRejected { get message() { return "Source access changed before saving. Refresh accounts and review the source again." } }
-/** A digest page, saved row or index could not be kept; nothing was acknowledged. */
 export error DigestInboxFailed { reason: string }
 
-/** Every request path the digest protocol makes. */
 export const HOSTED_DIGEST_CLIENT_ROUTES: readonly string[] = [
   "GET /api/workflow/status", "GET /api/workflow/hosted/live-accounts", "POST /api/workflow/hosted/live-calendars", "GET /api/workflow/hosted/sources",
   "GET /api/workflow/hosted/loops", "POST /api/workflow/hosted/sources", "POST /api/workflow/hosted/loops", "POST /api/workflow/hosted/sources/revoke",
@@ -111,7 +98,6 @@ effect function liveSelection(value: unknown): (HostedLiveSelection | HostedNati
   }
 }
 
-/** Parses one digest result row. */
 export effect function parseDigestResult(value: unknown): DigestResult!WorkflowResponseInvalid {
   const v = try object(value)
   const cursor = v.cursor
@@ -129,17 +115,14 @@ const notRunLabel: Readonly<Record<DigestNotRunStatus, string>> = {
   unavailable: "Not run — source unavailable",
 }
 
-/** True when the occurrence executed; a missed, overlapping or unavailable occurrence is a record, not a brief. */
 export function digestRan(result: Pick<DigestResult, "status">): boolean {
   return !isDigestNotRunStatus(result.status)
 }
 
-/** The owner-facing state of one occurrence; executed runs keep the agent's status word. */
 export function digestStatusLabel(status: string): string {
   return isDigestNotRunStatus(status) ? notRunLabel[status] : status
 }
 
-/** The final summary of a result, never typed-step source payloads or execution metadata. */
 export function digestSummaryText(result: Pick<DigestResult, "runId" | "output" | "error">): string {
   if (result.error !== null) return result.error
   const output = result.output
@@ -156,7 +139,6 @@ export function digestSummaryText(result: Pick<DigestResult, "runId" | "output" 
   return "No readable summary was returned. Open execution details to inspect this result."
 }
 
-/** The sources that keep a loop running and need renewal now: expired, revoked, or within a day of expiry. */
 export function digestRenewals(sources: readonly DigestSource[], loops: readonly DigestLoop[], now: number): DigestRenewal[] {
   return sources.flatMap((source) => {
     const bound = loops.filter((loop) => !loop.removed && loop.spec.enabled && loop.spec.sourceId === source.id)
@@ -170,7 +152,6 @@ export function digestRenewals(sources: readonly DigestSource[], loops: readonly
   })
 }
 
-/** The loop state shown to the owner; only an agent that advertises pausing is described as paused. */
 export function digestLoopState(loop: DigestLoop, sources: readonly DigestSource[], now: number, pauses = false): string {
   if (loop.removed) return "Removed"
   if (!loop.spec.enabled || !loop.active) return "Paused"
@@ -181,10 +162,6 @@ export function digestLoopState(loop: DigestLoop, sources: readonly DigestSource
   return "On"
 }
 
-/**
- * The explicit Run now offers for missed scheduled digests: only the newest result of an active morning loop over a current
- * native source of the bound revision, and only while no newer result exists for that loop, that source or any on-demand run.
- */
 export function missedRunNowOffers(results: readonly DigestResult[], loops: readonly DigestLoop[], sources: readonly DigestSource[], now: number): Map<string, MissedRunNow> {
   const offers = new Map<string, MissedRunNow>()
   for (const result of results) {
@@ -211,7 +188,6 @@ function clipText(text: string, maximum: number): string {
   return text.length <= maximum ? text : `${text.slice(0, maximum - 1).trimEnd()}…`
 }
 
-/** The newest retained result that ran, by completion and then cursor; with only not-run records there is no brief. */
 export function latestRetainedBrief(results: readonly DigestResult[] | undefined, agent = "Your agent"): RetainedDigestSummary | undefined {
   const latest = (results ?? []).filter(digestRan).reduce<DigestResult | undefined>((best, row) => {
     if (best === undefined) return row
@@ -222,7 +198,6 @@ export function latestRetainedBrief(results: readonly DigestResult[] | undefined
   return latest === undefined ? undefined : { summary: clipText(digestSummaryText(latest), 2000), ranAt: latest.completedAt, agent: clipText(agent, 200) || "Your agent", status: latest.status }
 }
 
-/** The authenticated digest routes over one host-chosen transport. */
 export function hostedDigestProtocol(request: WorkflowRequest) {
   effect function capabilities(): DigestCapabilities!ProtocolError {
     const v = try object(try request("/api/workflow/status", undefined))
@@ -317,7 +292,6 @@ export function hostedDigestProtocol(request: WorkflowRequest) {
   return { capabilities, liveAccounts, liveCalendars, sources, loops, mutate, results, ack }
 }
 
-/** The authenticated digest routes over one host-chosen transport. */
 export type HostedDigestProtocol = ReturnType<typeof hostedDigestProtocol>
 
 function sameResultValue(left: unknown, right: unknown): boolean {
@@ -343,10 +317,8 @@ function sameProvenance(saved: DigestResult, incoming: DigestResult): boolean {
 
 interface StoredIndex extends DigestIndex { readonly clientId: string }
 
-/** A host's notice for one committed result; a failure keeps the notice pending for retry. */
 export type DigestAfterCommit = (result: DigestResult) => void!unknown
 
-/** One client-scoped result inbox; every result is kept before the server cursor advances. */
 export interface DigestInbox {
   readonly state: DigestInboxState!!
   step(event: DigestInboxEvent): DigestInboxState!DigestInboxRejected
@@ -355,7 +327,6 @@ export interface DigestInbox {
   retire(): void!!
 }
 
-/** Opens the inbox of one owner, agent and origin scope over Effect's KeyValueStore. */
 export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommit) {
   const store = try KeyValueStore.KeyValueStore
   const serial = (try Semaphore.make(1)).withPermits(1)
@@ -371,9 +342,13 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
     return try mapError(decode(value), () => failed("A saved digest is unreadable"))
   }
 
+  effect function save(key: string, value: unknown): void!DigestInboxFailed {
+    try mapError(store.set(key, JSON.stringify(value)), () => failed("The digest inbox could not be written"))
+  }
+
   effect function write(key: string, value: unknown): void!DigestInboxFailed {
     if ((try inbox.get()).retired) throw failed("The digest inbox was retired")
-    try mapError(store.set(key, JSON.stringify(value)), () => failed("The digest inbox could not be written"))
+    try save(key, value)
   }
 
   effect function decodeIndex(value: unknown): StoredIndex!WorkflowResponseInvalid {
@@ -415,10 +390,10 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
     return current
   }
 
-  effect function recoverJournal(index: StoredIndex): StoredIndex!DigestInboxFailed {
+  effect function recoverJournal(index: StoredIndex, keep: (key: string, value: unknown) => void!DigestInboxFailed): StoredIndex!DigestInboxFailed {
     for (const run of index.removalDue) if (!index.retained.includes(run)) try mapError(store.remove(rowKey(run)), () => failed("A removed digest could not be deleted"))
     const cleared = { ...index, removalDue: [] }
-    try write(scope, cleared)
+    try keep(scope, cleared)
     return cleared
   }
 
@@ -446,11 +421,16 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
     throw failed(reason)
   }
 
+  effect function interrupted() {
+    void (inbox.send({ type: "retireDigestPoll" }) catch () => undefined)
+    if ((try inbox.get()).phase === "AwaitingAck") void (inbox.send({ type: "observeDigestAck", exactProviderRow: false, responseSuccessful: false }) catch () => undefined)
+  }
+
   effect function sync(protocol: HostedDigestProtocol, generation: number) {
-    return try serial(effect {
+    return try serial(Effect.onInterrupt(effect {
       let index = (try read(scope, decodeIndex)) ?? { clientId: try workflowUuid(), ...initialDigestIndex }
-      if ((try inbox.get()).phase === "ReadyToPoll") try write(scope, index)
-      const recovered = (map(recoverJournal(index), (next) => { index = next; return true }) catch () => false)
+      if ((try inbox.get()).phase === "ReadyToPoll") try save(scope, index)
+      const recovered = (map(recoverJournal(index, save), (next) => { index = next; return true }) catch () => false)
       try step({ type: "beginDigestPoll", generation, client: index.clientId, recoveredAtStart: recovered })
       if (!recovered) throw failed("The removal journal could not be recovered")
       index = (settleNotices(index) catch effect () => try abort("A delivered notice could not be recorded"))
@@ -482,12 +462,12 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
         if ((try step({ type: "observeDigestAck", exactProviderRow: acked, responseSuccessful: acked })).phase !== "RecoveringRemoval") {
           throw failed("The server did not confirm the acknowledgement")
         }
-        const cleared = (map(recoverJournal(index), (after) => { index = after; return true }) catch () => false)
+        const cleared = (map(recoverJournal(index, write), (after) => { index = after; return true }) catch () => false)
         try step({ type: "recoverDigestJournal", removedAndCleared: cleared })
         if (!cleared) throw failed("The removal journal could not be cleared")
       }
       return try history()
-    })
+    }, interrupted))
   }
 
   return {
@@ -502,7 +482,6 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
   } satisfies DigestInbox
 }
 
-/** The retained brief of the current connection scope; a late read for another scope is ignored. */
 export effect function retainedBriefStore() {
   const state = try SubscriptionRef.make<{ readonly scope: string | undefined; readonly brief: RetainedDigestSummary | undefined }>({ scope: undefined, brief: undefined })
   return {
@@ -515,10 +494,8 @@ export effect function retainedBriefStore() {
   }
 }
 
-/** A template's owner-facing name. */
 export function digestTemplateName(template: DigestTemplate): string {
   return template === "morning" ? "Morning digest" : "Evening brief"
 }
 
-/** The page size and retention bounds a client enforces. */
 export const DIGEST_INBOX_LIMITS = { page: DIGEST_PAGE_LIMIT, retained: DIGEST_RETAINED_RESULTS } as const

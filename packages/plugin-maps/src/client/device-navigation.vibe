@@ -2,7 +2,7 @@
 import { admitRelay, commandBudget, initial as noDirections, machineOver as directionsOver, type Directions, type Travel } from "../../gen/maps__navigation.effect.vibe"
 import { initial as noSession, machineOver as sessionOver, type GuidedSession } from "../../gen/maps__sessionReroute.effect.vibe"
 import { initial as noGuidance, machineOver as navigationOver, type Event as NavigationEvent, type Navigation, type StopReason } from "../../gen/maps__navigationService.effect.vibe"
-import { boundedText, Coordinate, MapsFailure, place as validPlace, TravelMode, type Place, type ProviderConfig, type ResultState, type Route } from "./contracts.vibe"
+import { boundedText, Coordinate, type MapsFailure, place as validPlace, TravelMode, type Place, type ProviderConfig, type ResultState, type Route } from "./contracts.vibe"
 import type { Position } from "./location.vibe"
 import { navigationFix } from "./navigation-fix.vibe"
 
@@ -18,17 +18,14 @@ module browser {
 }
 import { offerId, sessionId } from browser
 
-/** What the phone reports after an agent navigation request. */
 export type MapsDeviceNavigationState = "selected" | "navigating" | "stopped" | "awaiting-location" | "awaiting-confirmation"
 
-/** Length and time of the route the phone planned; never the phone's position. */
 export interface MapsDeviceRouteSummary {
   readonly durationSeconds: number
   readonly distanceMeters: number
   readonly traffic: "none" | "approximated" | "live"
 }
 
-/** The phone's answer to an agent navigation request. */
 export const MapsDeviceNavigationStatus = Schema.Struct({
   state: Schema.Literals(["selected", "navigating", "stopped", "awaiting-location", "awaiting-confirmation"]),
   placeName: Schema.optionalKey(Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 300)))),
@@ -39,10 +36,8 @@ export const MapsDeviceNavigationStatus = Schema.Struct({
     traffic: Schema.Literals(["none", "approximated", "live"]),
   })),
 })
-/** The phone's answer to an agent navigation request. */
 export type MapsDeviceNavigationStatus = typeof MapsDeviceNavigationStatus.Type
 
-/** The agent's provider-neutral place as the phone receives it. */
 export const AgentPlaceRef = Schema.Struct({
   provider: Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,63}$/i)),
   providerPlaceId: Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 512))),
@@ -51,35 +46,28 @@ export const AgentPlaceRef = Schema.Struct({
   formattedAddress: Schema.optionalKey(Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 1000)))),
   categories: Schema.optionalKey(Schema.Array(Schema.String)),
 })
-/** The agent's provider-neutral place as the phone receives it. */
 export type AgentPlaceRef = typeof AgentPlaceRef.Type
 
-/** One navigation request the agent sends the phone. */
 export const DeviceNavigationOperation = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("select"), place: AgentPlaceRef }),
   Schema.Struct({ kind: Schema.Literal("start"), request: Schema.Struct({ destination: AgentPlaceRef, travelMode: TravelMode }) }),
   Schema.Struct({ kind: Schema.Literals(["reroute", "stop"]) }),
 ])
-/** One navigation request the agent sends the phone. */
 export type DeviceNavigationOperation = typeof DeviceNavigationOperation.Type
 
-/** The refusal codes the phone reports for an agent navigation request. */
 export const DeviceNavigationMapsCode = Schema.Literals([
   "MAPS_DEVICE_UNAVAILABLE", "MAPS_INVALID_INPUT", "MAPS_NOT_FOUND", "MAPS_UNSUPPORTED_REGION", "MAPS_AUTH_EXPIRED", "MAPS_NOT_ENTITLED",
   "MAPS_PROVIDER_CHANGED", "MAPS_PROVIDER_REJECTED", "MAPS_RATE_LIMITED", "MAPS_BUDGET_EXHAUSTED", "MAPS_PROVIDER_UNAVAILABLE",
   "MAPS_PROVIDER_NETWORK", "MAPS_PROVIDER_TIMEOUT", "MAPS_MALFORMED_RESPONSE",
 ])
-/** A refusal code the phone reports. */
 export type DeviceNavigationMapsCode = typeof DeviceNavigationMapsCode.Type
 
-/** A typed refusal from the phone; the phone never reports a state it is not in. */
 export error DeviceNavigationFailure { code: DeviceNavigationMapsCode; message: string }
 
 const unavailable = (message: string) => new DeviceNavigationFailure({ code: "MAPS_DEVICE_UNAVAILABLE", message })
 const invalidInput = (message: string) => new DeviceNavigationFailure({ code: "MAPS_INVALID_INPUT", message })
 const cancelledOnPhone = () => unavailable("The Maps request was cancelled on the phone.")
 
-/** A phone Maps failure as the agent's typed code, without inventing a state. */
 export function deviceNavigationFailure(error: MapsFailure): DeviceNavigationFailure {
   const coded = (code: DeviceNavigationMapsCode) => new DeviceNavigationFailure({ code, message: error.message })
   switch (error.code) {
@@ -97,7 +85,6 @@ export function deviceNavigationFailure(error: MapsFailure): DeviceNavigationFai
   }
 }
 
-/** The navigation session the Maps screen holds, from the owner's Start to End, including a replan and arrival. */
 export interface ActiveGuidance {
   readonly session: number
   readonly routeId: string
@@ -108,7 +95,6 @@ export interface ActiveGuidance {
   readonly arrived: boolean
 }
 
-/** What the screen shows that an agent request reads: provider, selection, route, sheet revision and mode. */
 export interface NavigationSnapshot {
   readonly provider: ProviderConfig
   readonly selection: ResultState<Place | null>
@@ -117,14 +103,12 @@ export interface NavigationSnapshot {
   readonly mode: TravelMode
 }
 
-/** The screen's own reroute publication for its active guidance. */
 export interface RoutePlanReceipt {
   readonly session: number
   readonly route?: Route
   readonly error?: MapsFailure
 }
 
-/** The Maps screen operations an agent request uses; guidance still needs the owner's own Start. */
 export interface MapsNavigationSurface {
   present(): boolean!!
   snapshot(): NavigationSnapshot | undefined
@@ -138,7 +122,6 @@ export interface MapsNavigationSurface {
   stop(): void!MapsFailure
 }
 
-/** The Cloud Maps installation an agent request belongs to. */
 export interface NavigationOwner {
   readonly providerId: string
   readonly attribution: string
@@ -148,7 +131,6 @@ export interface NavigationOwner {
 const travel: Record<TravelMode, Travel> = { drive: "Drive", walk: "Walk", bicycle: "Bicycle", transit: "Transit" }
 const agentCloudProvider = "eliza-cloud"
 
-/** The phone side of an agent's navigation requests over the reviewed Maps screen: one request at a time, a newer one cancelling the older, and guidance only after the owner's own Start. */
 export effect function deviceMapsNavigation(surface: MapsNavigationSurface, owner: NavigationOwner, fixTimeout: Duration.Input = "15 seconds") {
   const kept = try Ref.make<Directions>(noDirections)
   const directions = try directionsOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
@@ -354,13 +336,10 @@ export effect function deviceMapsNavigation(surface: MapsNavigationSurface, owne
   }
 }
 
-/** The phone side of agent navigation requests. */
 export type DeviceMapsNavigation = Effect.Success<ReturnType<typeof deviceMapsNavigation>>
 
-/** Why the native navigation bridge did not answer. */
 export error NavigationBridgeFailed { operation: string }
 
-/** The host's native screen-off navigation service: an ongoing notification that keeps the session alive and reports its own Stop. */
 export interface NavigationBridge {
   availability(): { readonly background: boolean }!NavigationBridgeFailed
   listen(sessionId: string, stopped: (reason: string) => void): (() => void)!NavigationBridgeFailed
@@ -379,7 +358,6 @@ interface NativeSession {
   remove?: () => void
 }
 
-/** Screen-off guidance for the route the owner started: confirmed only by the device, kept while the native session or a permission prompt holds it, and never resumed on its own. */
 export effect function backgroundNavigation(bridge: NavigationBridge, onEnded: (reason: "notification" | "lost" | "arrived") => void) {
   const kept = try Ref.make<Navigation>(noGuidance)
   const machine = try navigationOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
@@ -505,16 +483,12 @@ export effect function backgroundNavigation(bridge: NavigationBridge, onEnded: (
   }
 }
 
-/** The screen-off navigation of one Maps screen. */
 export type BackgroundNavigation = Effect.Success<ReturnType<typeof backgroundNavigation>>
 
-/** Why the relay to the agent host stopped. */
 export error RelayUnavailable { reason: string }
 
-/** The agent host's relay endpoint, called with the phone's own device credential. */
 export type RelayRequest = (body: Readonly<Record<string, unknown>>) => unknown!RelayUnavailable
 
-/** What the phone needs to answer relayed requests for the current Maps controller. */
 export interface MapsRelayHost<Owner extends object> {
   current(): Owner | undefined
   execute(owner: Owner, operation: DeviceNavigationOperation): MapsDeviceNavigationStatus!DeviceNavigationFailure
@@ -528,7 +502,6 @@ const RelayReply = Schema.Struct({
 const decodeReply = Schema.decodeUnknownEffect(RelayReply)
 const decodeOperation = Schema.decodeUnknownEffect(DeviceNavigationOperation)
 
-/** Offers this phone's navigation to the agent only during its authenticated turn: each relayed request runs at most once, a redelivered one is never run again, and its one receipt is never retried. */
 export effect function withMapsNavigationRelay<A, E, R, Owner extends object>(host: MapsRelayHost<Owner>, request: RelayRequest, conversationId: string, send: A!E!R): A!E!R {
   const current = host.current()
   if (current === undefined) return try send

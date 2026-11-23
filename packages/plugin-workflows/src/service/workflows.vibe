@@ -18,25 +18,17 @@ import { WORKFLOW_ENGINE, WORKFLOW_PHONE_SPEC_METADATA_KEY } from "../client/wor
 import { workflowRunDeepLink } from "../client/notices.vibe"
 import { TYPED_STEPS_NODE, type ParentMessage, type WorkerMessage, type WorkerResume } from "../worker/protocol.vibe"
 import type { GeneratedEntry, GeneratedWait } from "../worker/engine.vibe"
-import { WorkflowStoreUnavailable, workflowStore, type ApprovalRow, type DefinitionRow, type ReceiptRow, type RunEvent, type RunRow, type StoredDefinition } from "./store.vibe"
+import { workflowStore, type WorkflowStoreUnavailable, type ApprovalRow, type DefinitionRow, type ReceiptRow, type RunEvent, type RunRow, type StoredDefinition } from "./store.vibe"
 import type { WorkflowHost, WorkflowWorkerConnection } from "./host.vibe"
 
-/** The catalog revision a typed draft is authored against. */
 export const PHONE_CATALOG_REVISION = "phone-workflow-catalog-6"
-/** The engine revision every typed save receipt binds. */
 export const PHONE_COMPILER_REVISION = "typed-workflow-engine-1"
-/** How long a pending device approval stays reviewable. */
 const APPROVAL_LIFETIME_MS = 24 * 3_600_000
-/** The run output text of an occurrence that came due after its window. */
 const TYPED_MISSED_TEXT = "The scheduled time passed while the agent was not running. This occurrence did not run and will not run later."
-/** The run output text of an occurrence skipped behind an unfinished run. */
 const TYPED_OVERLAP_TEXT = "An earlier run of this workflow was still active. This occurrence did not run."
-/** The metadata key marking an untyped definition whose generated code was checked. */
 const GENERATED_METADATA_KEY = "elizaGeneratedWorkflowV1"
-/** The run output text of a scheduled run the agent stopped before starting. */
 const TYPED_STOPPED_TEXT = "The agent stopped before this scheduled run started. Nothing ran, and it will not run later."
 
-/** A request the workflow routes refuse, with the bounded identity a client may match. */
 export error WorkflowRefused {
   status: number
   message: string
@@ -50,7 +42,6 @@ export error WorkflowRefused {
 type Bag = Record<string, unknown>
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
-/** The wire version identity of a definition version. */
 export function versionId(version: number): string {
   return `v${version}`
 }
@@ -92,7 +83,6 @@ const statusOf: Readonly<Record<X.ExecutionPhase, string>> = {
   WaitingApproval: "waiting-approval", WorkerUncertain: "running", ExecutionDone: "finished", ExecutionCancelled: "cancelled", ExecutionFailed: "failed",
 }
 
-/** The typed catalog this agent advertises: device operations only with an enrolled phone, model drafts only with a text model. */
 export function phoneWorkflowCatalog(modelAvailable: boolean, deviceAvailable: boolean) {
   const device = (reason: string, requiredDeviceProtocol?: number) => ({
     available: deviceAvailable, ...(deviceAvailable ? {} : { reason }), ...(requiredDeviceProtocol === undefined ? {} : { requiredDeviceProtocol }),
@@ -127,83 +117,142 @@ export function phoneWorkflowCatalog(modelAvailable: boolean, deviceAvailable: b
   }
 }
 
-/** The opened workflow service of one agent. */
-export type WorkflowService = Effect.Success<ReturnType<typeof openWorkflows>>
+effect function project(row: DefinitionRow): A.Workflow!! {
+  return row.admission
+}
 
-/** Opens the workflow service over its host: the store, the pinned worker, the device bridge, the model and the scheduler. */
-export effect function openWorkflows(host: WorkflowHost) {
-  const store = workflowStore(host.sql)
-  const owner = host.owner
-  const lock = (try Semaphore.make(1)).withPermits(1)
-  const running = new Map<string, Fiber.Fiber<void, never>>()
-  const stopping = try Ref.make(false)
+function definitionView(row: DefinitionRow) {
+  const generated = row.generated
+  const metadata: Record<string, string> = row.origin === "digest" && row.hostedDigest !== undefined
+    ? { [HOSTED_DIGEST_METADATA_KEY]: JSON.stringify(row.hostedDigest) }
+    : generated !== undefined
+      ? { [GENERATED_METADATA_KEY]: JSON.stringify({ sourceDigest: generated.sourceDigest, compilerRevision: generated.compilerRevision, reviewed: generated.reviewedDigest === generated.sourceDigest && generated.reviewedVersion === row.admission.version }) }
+      : { [WORKFLOW_PHONE_SPEC_METADATA_KEY]: JSON.stringify(row.spec) }
+  return {
+    id: row.id, name: row.name, description: row.description, active: row.admission.active, removed: row.lifecycleState.removed,
+    triggerCleanup: row.lifecycleState.removed && !row.lifecycleState.cleaned ? "pending" : "complete", versionId: versionId(row.admission.version),
+    steps: generated === undefined ? row.spec.steps.map((step) => ({ label: stepLabel(step) })) : generated.calls.map((call) => ({ label: `${call.method}: ${call.id}` })), metadata, origin: row.origin, createdAt: row.createdAt, updatedAt: row.updatedAt,
+  }
+}
+
+effect function normalized(input: unknown): PhoneWorkflowSpec!WorkflowRefused {
+  return try mapError(validatePhoneWorkflowSpec(input), (error) => new WorkflowRefused({ status: 400, message: error.message }))
+}
+
+function withLifecycle(row: DefinitionRow, state: L.Lifecycle): DefinitionRow {
+  return { ...row, lifecycleState: state, admission: { ...row.admission, owner: row.admission.owner === "" ? state.owner : row.admission.owner, version: state.version, active: state.active } }
+}
+
+function runView(row: RunRow) {
+  const execution = row.execution
+  const uncertain = execution.phase === "WorkerUncertain"
+  return {
+    id: row.id, workflowId: row.workflowId, workflowVersionId: versionId(row.version), status: row.status, startedAt: row.startedAt, finished: row.finished,
+    ...(row.stoppedAt === undefined ? {} : { stoppedAt: row.stoppedAt }),
+    input: { ...row.input, ...(row.occurrence === undefined ? {} : { typedSchedule: row.occurrence }), ...(row.hostedDigest === undefined ? {} : { hostedDigest: row.hostedDigest }) },
+    ...(row.output === undefined ? {} : { output: row.output }),
+    ...(row.error === undefined ? {} : { error: { message: row.error } }),
+    ...(row.missedOccurrenceAt === undefined ? {} : { missedOccurrenceAt: row.missedOccurrenceAt }),
+    ...(row.cancellationRequestedAt === undefined ? {} : { cancellationRequestedAt: row.cancellationRequestedAt }),
+    ...(uncertain ? { reconciliation: execution.wakeId > 0
+      ? { state: "worker-running", message: "The worker may still be running; its outcome is being checked." }
+      : { state: "outcome-unknown", message: "The worker stopped without a terminal receipt; what it did is unknown." } } : {}),
+    events: row.events.slice(-100).map((event) => ({ runId: row.id, workflowId: row.workflowId, ...event })),
+  }
+}
+
+function approvalStatus(state: P.ApprovalState): "pending" | "approved" | "denied" {
+  return state === "ApprovedRequest" ? "approved" : state === "DeniedRequest" ? "denied" : "pending"
+}
+
+function approvalsView(row: RunRow) {
+  return {
+    runId: row.id, workflowId: row.workflowId, workflowVersionId: versionId(row.version), finished: row.finished, cancellationRequested: row.cancellationRequestedAt !== undefined,
+    approvals: row.approvals.map((approval) => ({
+      runId: row.id, workflowId: row.workflowId, workflowVersionId: versionId(row.version), nodeId: approval.nodeId, iteration: approval.iteration,
+      requestDigest: approval.requestDigest, status: approvalStatus(approval.machine.canonical), title: approval.title, summary: approval.summary,
+      operation: approval.operation, target: approval.target, account: approval.account, supported: approval.machine.supported, expiresAt: approval.expiresAt,
+      ...(approval.decidedBy === undefined ? {} : { decidedBy: approval.decidedBy }), ...(approval.decidedAt === undefined ? {} : { decidedAt: approval.decidedAt }),
+    })),
+  }
+}
+
+function presentation(step: PhoneStep, operation: WorkflowDeviceOperation, row: RunRow) {
+  const target = operation.type === "read_selected_notes" ? `${operation.notes.length} selected note${operation.notes.length === 1 ? "" : "s"}`
+    : operation.type === "read_calendar_range" ? `${operation.calendarIds.length} calendar${operation.calendarIds.length === 1 ? "" : "s"}, ${operation.start} to ${operation.end}`
+    : operation.type === "read_selected_reminders" ? `Reminders for ${operation.day}`
+    : operation.type === "create_note" ? `A new note titled “${operation.title}”`
+    : operation.type === "post_notification" ? `A notification titled “${operation.title}”`
+    : "Spoken text on this phone"
+  const summary = operation.type === "create_note" || operation.type === "post_notification" ? operation.body.slice(0, 4000)
+    : operation.type === "speak_text" ? operation.text.slice(0, 4000) : `${row.spec.name}: ${stepLabel(step)}`
+  return { title: `${row.spec.name.slice(0, 200)}: ${stepLabel(step)}`, summary: summary.trim() === "" ? stepLabel(step) : summary, operation: stepLabel(step), target, account: "This phone" }
+}
+
+effect function settledOutput(row: RunRow, text: string, steps: readonly { readonly id: string; readonly status: "completed" | "skipped"; readonly text: string }[]): RunRow!! {
+  return { ...row, output: [{ nodeId: TYPED_STEPS_NODE, runId: row.id, text, steps }] }
+}
+
+effect function finishApprovals(row: RunRow): RunRow!! {
+  const close = (machine: P.ApprovalRun) => {
+    const stopped = row.status === "cancelled" && P.canStopExecution(machine) ? P.stopExecution(machine) : machine
+    return P.canFinishExecution(stopped) ? P.finishExecution(stopped) : stopped
+  }
+  return { ...row, approvals: row.approvals.map((approval) => ({ ...approval, machine: close(approval.machine) })) }
+}
+
+type WorkerTurn =
+  | { readonly row: RunRow; readonly done: true }
+  | { readonly row: RunRow; readonly done: false; readonly reply?: ParentMessage }
+
+effect function journaled(row: RunRow, change: G.Event): RunRow!WorkflowRefused {
+  const generated = try mapError(G.apply(row.generated ?? G.initial, change), () => new WorkflowRefused({ status: 409, message: "The generated run is out of step" }))
+  return { ...row, generated }
+}
+
+function journalOf(row: RunRow): GeneratedEntry[] {
+  const values = row.journalValues ?? {}
+  return (row.generated?.journal ?? []).map((entry) => ({ ...entry, value: values[entry.call] ?? null }))
+}
+
+function waitOf(call: string, wait: GeneratedWait, at: number): G.Wait {
+  return wait.kind === "approval" ? { tag: "WaitApproval", call }
+    : wait.kind === "signal" ? { tag: "WaitSignal", call, signal: wait.name }
+    : { tag: "WaitTimer", call, due: at + wait.ms }
+}
+
+function scheduleKey(row: DefinitionRow): string {
+  return `${row.origin === "digest" ? "digest" : "workflow"}:${row.id}`
+}
+
+function scheduleOf(row: DefinitionRow): { readonly cron: string; readonly timeZone: string } | undefined {
+  if (row.origin === "digest") {
+    const spec = row.hostedDigest
+    if (spec === undefined || spec.manualOnly === true || !spec.enabled) return undefined
+    const [hour, minute] = spec.localTime.split(":").map(Number)
+    return { cron: `${minute} ${hour} * * *`, timeZone: spec.timeZone }
+  }
+  const trigger = timeTrigger(row.spec)
+  return trigger === undefined ? undefined : { cron: phoneTimeTriggerCron(trigger), timeZone: trigger.timeZone }
+}
+
+function scheduleWanted(row: DefinitionRow): boolean {
+  return scheduleOf(row) !== undefined && row.admission.active && !row.lifecycleState.removed
+}
+
+effect function placeholderSpec(): { readonly spec: PhoneWorkflowSpec; readonly specDigest: string }!! {
+  const spec: PhoneWorkflowSpec = { version: 1, name: "Conformance", description: "", trigger: { kind: "manual" }, steps: [{ id: "text", kind: "Read", operation: "supplied_text", text: "" }] }
+  return { spec, specDigest: try workflowSha(spec) }
+}
+
+function workflowDrafts(host: WorkflowHost) {
   const modelAvailable = host.draft !== undefined
   const catalog = () => phoneWorkflowCatalog(modelAvailable, host.device !== undefined)
   const parsedCatalog = (): PhoneWorkflowCatalog => catalog() as unknown as PhoneWorkflowCatalog
 
-  const unavailable = (cause: WorkflowStoreUnavailable) => new WorkflowRefused({ status: 503, message: `Workflow storage unavailable: ${cause.step}` })
-  effect function db<A>(call: A!WorkflowStoreUnavailable): A!WorkflowRefused {
-    return try mapError(call, unavailable)
-  }
-  const now = Clock.currentTimeMillis
-  const ticks = try SubscriptionRef.make(0)
-
-  try db(store.migrate())
-
   effect function deviceProtocol(): number!! {
     const enrolled = host.device === undefined ? undefined : try host.device.enrollment
     return enrolled?.protocol ?? 0
-  }
-
-  effect function project(row: DefinitionRow): A.Workflow!! {
-    return row.admission
-  }
-
-  effect function definitionOf(id: string): StoredDefinition!WorkflowRefused {
-    const found = try db(store.definition(id))
-    if (found === undefined || found.row.owner !== owner) return try refuse(404, "Workflow not found", { workflowId: id })
-    return found
-  }
-
-  effect function unfinishedRuns(workflowId: string): RunRow[]!WorkflowRefused {
-    return try db(store.runs({ owner, workflowId, unfinished: true }))
-  }
-
-  function definitionView(row: DefinitionRow) {
-    const generated = row.generated
-    const metadata: Record<string, string> = row.origin === "digest" && row.hostedDigest !== undefined
-      ? { [HOSTED_DIGEST_METADATA_KEY]: JSON.stringify(row.hostedDigest) }
-      : generated !== undefined
-        ? { [GENERATED_METADATA_KEY]: JSON.stringify({ sourceDigest: generated.sourceDigest, compilerRevision: generated.compilerRevision, reviewed: generated.reviewedDigest === generated.sourceDigest && generated.reviewedVersion === row.admission.version }) }
-        : { [WORKFLOW_PHONE_SPEC_METADATA_KEY]: JSON.stringify(row.spec) }
-    return {
-      id: row.id, name: row.name, description: row.description, active: row.admission.active, removed: row.lifecycleState.removed,
-      triggerCleanup: row.lifecycleState.removed && !row.lifecycleState.cleaned ? "pending" : "complete", versionId: versionId(row.admission.version),
-      steps: generated === undefined ? row.spec.steps.map((step) => ({ label: stepLabel(step) })) : generated.calls.map((call) => ({ label: `${call.method}: ${call.id}` })), metadata, origin: row.origin, createdAt: row.createdAt, updatedAt: row.updatedAt,
-    }
-  }
-
-  effect function writeDefinition(read: StoredDefinition | undefined, changed: DefinitionRow, mutation?: ReceiptRow): void!WorkflowRefused {
-    const lifecycleState = {
-      ...changed.lifecycleState, owner: changed.lifecycleState.owner === "" ? changed.admission.owner : changed.lifecycleState.owner,
-      version: changed.admission.version, active: changed.admission.active,
-    }
-    const revised = read === undefined || read.row.specDigest !== changed.specDigest || read.row.name !== changed.name || read.row.description !== changed.description
-    const revisions = revised ? [...changed.revisions, {
-      version: changed.admission.version, spec: changed.spec, specDigest: changed.specDigest, name: changed.name, description: changed.description,
-      createdAt: changed.updatedAt, reason: read === undefined ? "create" : mutation?.kind ?? "edit",
-      ...(changed.generated === undefined ? {} : { generated: { ...changed.generated, reviewedDigest: "", reviewedVersion: 0 } }),
-    }].slice(-50) : changed.revisions
-    const code = changed.generated
-    const generated = code !== undefined && read?.row.generated?.sourceDigest === code.sourceDigest && code.reviewedDigest === code.sourceDigest && code.reviewedVersion === read.row.admission.version
-      ? { ...code, reviewedVersion: changed.admission.version } : code
-    const next = { ...changed, lifecycleState, revisions, ...(generated === undefined ? {} : { generated }) }
-    const written = try db(store.writeDefinition(next.id, next.owner, read?.revision ?? 0, next, mutation))
-    if (written === "stale") return try refuse(409, "Workflow changed while it was being saved", { workflowId: next.id })
-  }
-
-  effect function admitted(row: DefinitionRow, event: A.Event): A.Workflow!WorkflowRefused {
-    return try mapError(A.apply(try project(row), event, owner), () => new WorkflowRefused({ status: 409, message: "Workflow changed before this request", workflowId: row.id }))
   }
 
   effect function checkDraft(spec: PhoneWorkflowSpec, input: unknown, revisions: { readonly catalogRevision: unknown; readonly compilerRevision: unknown }): void!WorkflowRefused {
@@ -213,10 +262,6 @@ export effect function openWorkflows(host: WorkflowHost) {
       return try refuse(409, "A verified phone enrollment is required")
     }
     if (!phoneDraftAccepted(spec, input, parsedCatalog(), enrolled?.protocol ?? 0)) return try refuse(409, "Workflow capabilities changed")
-  }
-
-  effect function normalized(input: unknown): PhoneWorkflowSpec!WorkflowRefused {
-    return try mapError(validatePhoneWorkflowSpec(input), (error) => new WorkflowRefused({ status: 400, message: error.message }))
   }
 
   effect function validate(input: unknown) {
@@ -292,11 +337,718 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return spec
   }
 
+  effect function generatedActivation(row: DefinitionRow): boolean!WorkflowRefused {
+    const code = row.generated
+    if (code === undefined) return true
+    const checked = try checkSource(code.source)
+    return G.generatedActivationAdmitted({
+      checked: checked.ok && (try workflowSha(checked.js)) === code.jsDigest, compilerCurrent: checked.compilerRevision === code.compilerRevision,
+      sourceDigest: code.sourceDigest, reviewedDigest: code.reviewedDigest, version: row.admission.version, reviewedVersion: code.reviewedVersion,
+    }, true)
+  }
+
+  effect function checkSource(source: string) {
+    const port = host.worker
+    if (port === undefined) return try refuse(503, "No verified workflow worker is installed to check workflow code")
+    const connection = try mapError(port.open(`check-${try workflowUuid()}`), (error) => new WorkflowRefused({ status: 503, message: error.reason }))
+    return try ensuring(effect {
+      try connection.send({ type: "check", source })
+      const answer = try connection.next
+      if (answer?.type !== "checked") return try refuse(503, answer?.type === "failed" ? `The workflow compiler failed: ${answer.message}` : "The workflow compiler did not answer")
+      return answer.result
+    }, connection.close)
+  }
+
+  function status() {
+    const ready = host.worker !== undefined
+    if (!ready) return { engine: WORKFLOW_ENGINE, status: "unavailable", reason: "No verified workflow worker is installed" }
+    return {
+      engine: WORKFLOW_ENGINE, status: "ready", manualSubmissionProtocol: 1, approvalReceiptProtocol: 1, approvalPresentationProtocol: 1, metadataMutationProtocol: 1,
+      lifecycleMutationProtocol: 1, typedAuthoringProtocol: 1, typedScheduleProtocol: 1, generatedWorkflowProtocol: 1, hostedDigestProtocol: 1, hostedDigestSourcePauseProtocol: 1,
+      ...(host.nativeDigests === undefined ? {} : { hostedNativeSourceProtocol: 1, hostedNativeEveningProtocol: 1, hostedDossierProtocol: 1 }),
+    }
+  }
+
+  return { catalog, deviceProtocol, checkDraft, validate, generate, draftSpec, generatedActivation, checkSource, status }
+}
+
+function workflowRows(
+  store: ReturnType<typeof workflowStore>,
+  owner: string,
+  lock: ReturnType<Semaphore.Semaphore["withPermits"]>,
+  now: typeof Clock.currentTimeMillis,
+  ticks: SubscriptionRef.SubscriptionRef<number>,
+) {
+  const unavailable = (cause: WorkflowStoreUnavailable) => new WorkflowRefused({ status: 503, message: `Workflow storage unavailable: ${cause.step}` })
+
+  effect function db<A>(call: A!WorkflowStoreUnavailable): A!WorkflowRefused {
+    return try mapError(call, unavailable)
+  }
+
+  effect function definitionOf(id: string): StoredDefinition!WorkflowRefused {
+    const found = try db(store.definition(id))
+    if (found === undefined || found.row.owner !== owner) return try refuse(404, "Workflow not found", { workflowId: id })
+    return found
+  }
+
+  effect function unfinishedRuns(workflowId: string): RunRow[]!WorkflowRefused {
+    return try db(store.runs({ owner, workflowId, unfinished: true }))
+  }
+
+  effect function writeDefinition(read: StoredDefinition | undefined, changed: DefinitionRow, mutation?: ReceiptRow): void!WorkflowRefused {
+    const lifecycleState = {
+      ...changed.lifecycleState, owner: changed.lifecycleState.owner === "" ? changed.admission.owner : changed.lifecycleState.owner,
+      version: changed.admission.version, active: changed.admission.active,
+    }
+    const revised = read === undefined || read.row.specDigest !== changed.specDigest || read.row.name !== changed.name || read.row.description !== changed.description
+    const revisions = revised ? [...changed.revisions, {
+      version: changed.admission.version, spec: changed.spec, specDigest: changed.specDigest, name: changed.name, description: changed.description,
+      createdAt: changed.updatedAt, reason: read === undefined ? "create" : mutation?.kind ?? "edit",
+      ...(changed.generated === undefined ? {} : { generated: { ...changed.generated, reviewedDigest: "", reviewedVersion: 0 } }),
+    }].slice(-50) : changed.revisions
+    const code = changed.generated
+    const generated = code !== undefined && read?.row.generated?.sourceDigest === code.sourceDigest && code.reviewedDigest === code.sourceDigest && code.reviewedVersion === read.row.admission.version
+      ? { ...code, reviewedVersion: changed.admission.version } : code
+    const next = { ...changed, lifecycleState, revisions, ...(generated === undefined ? {} : { generated }) }
+    const written = try db(store.writeDefinition(next.id, next.owner, read?.revision ?? 0, next, mutation))
+    if (written === "stale") return try refuse(409, "Workflow changed while it was being saved", { workflowId: next.id })
+  }
+
+  effect function admitted(row: DefinitionRow, event: A.Event): A.Workflow!WorkflowRefused {
+    return try mapError(A.apply(try project(row), event, owner), () => new WorkflowRefused({ status: 409, message: "Workflow changed before this request", workflowId: row.id }))
+  }
+
   effect function receiptOf(mutationId: string): (ReceiptRow["data"] | undefined)!WorkflowRefused {
     const found = try db(store.receipt(mutationId))
     return found === undefined || found.owner !== owner ? undefined : found.data
   }
 
+  effect function lifecycleState(row: DefinitionRow): L.Lifecycle!WorkflowRefused {
+    const unfinished = (try unfinishedRuns(row.id)).length > 0
+    return L.canObserveRuns(row.lifecycleState) ? L.step(row.lifecycleState, { type: "observeRuns", unfinished }, owner) : row.lifecycleState
+  }
+
+  effect function runOf(runId: string): RunRow!WorkflowRefused {
+    const found = try db(store.run(runId))
+    if (found === undefined || found.owner !== owner) return try refuse(404, "Execution not found")
+    return found
+  }
+
+  effect function event(type: string, nodeId?: string): RunEvent!! {
+    return { type, timestamp: iso(try now), ...(nodeId === undefined ? {} : { nodeId }) }
+  }
+
+  effect function executed(row: RunRow, change: X.Event): RunRow!WorkflowRefused {
+    const execution = try mapError(X.apply(row.execution, change), () => new WorkflowRefused({ status: 409, message: "The execution is out of step", workflowId: row.workflowId }))
+    const finished = terminal(execution.phase)
+    return { ...row, execution, status: statusOf[execution.phase], finished, ...(finished && row.stoppedAt === undefined ? { stoppedAt: iso(try now) } : {}) }
+  }
+
+  effect function persist(row: RunRow): void!WorkflowRefused {
+    try db(store.writeRun(row, row.hostedDigest === undefined || !row.finished ? undefined : try digestDelivery(row)))
+    try SubscriptionRef.update(ticks, (tick) => tick + 1)
+  }
+
+  effect function digestDelivery(row: RunRow) {
+    const output = row.output
+    const settled = typeof output === "object" && output !== null && !Array.isArray(output) && "status" in output && typeof output.status === "string"
+      && (output.status === "missed" || output.status === "overlap" || output.status === "unavailable") ? output.status : undefined
+    const result = {
+      runId: row.id, workflowId: row.workflowId, workflowVersionId: versionId(row.version), templateVersion: "hosted-digest-1",
+      scheduledAt: row.hostedDigest?.scheduledAt, source: row.hostedDigest?.source, status: settled ?? row.status, startedAt: row.startedAt,
+      completedAt: row.stoppedAt ?? row.startedAt, output: row.output ?? null, error: row.error ?? null,
+    }
+    const serialized = JSON.stringify(result)
+    const bounded = serialized.length <= 180000 && phoneWorkflowBytes(result) <= 240000 ? result : {
+      ...result, output: { status: "retained_in_workflow_history", message: "This output exceeds mobile delivery limits. Open the referenced workflow run for its complete result." },
+      error: typeof result.error === "string" ? result.error.slice(0, 2000) : null,
+    }
+    return { owner, runId: row.id, workflowId: row.workflowId, result: bounded }
+  }
+
+  effect function updateRun(runId: string, change: (row: RunRow) => RunRow!WorkflowRefused): RunRow!WorkflowRefused {
+    return try lock(effect {
+      const next = try change(try runOf(runId))
+      try persist(next)
+      return next
+    })
+  }
+
+  effect function freshRun(definition: DefinitionRow, serial: number, fields: { readonly submissionId?: string; readonly input: Bag; readonly occurrence?: RunRow["occurrence"]; readonly hostedDigest?: Bag }): RunRow!WorkflowRefused {
+    const at = try now
+    const execution = try mapError(X.apply(X.initial, { type: "admitRun", runId: serial }), () => new WorkflowRefused({ status: 409, message: "The run could not be admitted" }))
+    const anchor = fields.occurrence === undefined ? at : Date.parse(fields.occurrence.scheduledAt)
+    return {
+      id: `${definition.id}-r${serial}`, workflowId: definition.id, owner, version: definition.admission.version, serial, input: fields.input, spec: definition.spec,
+      specDigest: definition.specDigest, execution, status: "queued", finished: false, startedAt: iso(at), anchorAt: iso(anchor), values: {}, results: [], next: 0, allowed: true,
+      approvals: [], events: [], ...(fields.submissionId === undefined ? {} : { submissionId: fields.submissionId }),
+      ...(fields.occurrence === undefined ? {} : { occurrence: fields.occurrence }), ...(fields.hostedDigest === undefined ? {} : { hostedDigest: fields.hostedDigest }),
+      ...(definition.generated === undefined ? {} : { generated: G.initial, journalValues: {}, js: definition.generated.js, jsDigest: definition.generated.jsDigest }),
+    }
+  }
+
+  effect function* runEvents(runId: string) {
+    let sent = 0
+    for try (const _tick of SubscriptionRef.changes(ticks)) {
+      const row = try runOf(runId)
+      for (const entry of row.events.slice(sent)) yield { runId: row.id, workflowId: row.workflowId, ...entry }
+      sent = row.events.length
+      if (row.finished) {
+        yield { runId: row.id, workflowId: row.workflowId, type: "RunSettled", timestamp: row.stoppedAt ?? row.startedAt, status: row.status }
+        break
+      }
+    }
+  }
+
+  return { store, owner, lock, now, db, definitionOf, writeDefinition, admitted, receiptOf, lifecycleState, runOf, event, executed, persist, updateRun, freshRun, runEvents }
+}
+
+type WorkflowRows = ReturnType<typeof workflowRows>
+
+function workflowWorkerTurns(
+  host: WorkflowHost,
+  { runOf, event, now, executed, updateRun }: Pick<WorkflowRows, "runOf" | "event" | "now" | "executed" | "updateRun">,
+) {
+  effect function phoneReview(runId: string): WorkflowPhoneReview!WorkflowRefused {
+    const row = try runOf(runId)
+    const device = row.spec.device
+    if (device === undefined) return try refuse(404, "This run has no phone review")
+    return {
+      runId: row.id, workflowId: row.workflowId, versionId: versionId(row.version), specDigest: row.specDigest, spec: { ...row.spec, device }, status: row.status,
+      finished: row.finished, cancellationRequestedAt: row.cancellationRequestedAt ?? null, calendarAnchorAt: row.anchorAt,
+    }
+  }
+
+  effect function deviceScopeAdmitted(row: RunRow, step: PhoneStep): boolean!! {
+    const enrolled = host.device === undefined ? undefined : try host.device.enrollment
+    const relative = step.operation === "calendar_range" && "days" in step.range
+    const proposed = R.proposeRead(R.initial, relative, Math.max(1, enrolled?.protocol ?? 1), enrolled !== undefined && row.spec.device?.installationId === enrolled.installationId && row.spec.device.enrollmentId === enrolled.enrollmentId)
+    const resolved = R.resolveScope(proposed)
+    return resolved.phase === "Resolved" && (enrolled?.protocol ?? 0) >= phoneStepRequiredProtocol(step)
+  }
+
+  effect function requestApproval(row: RunRow, stepId: string, operation: WorkflowDeviceOperation): RunRow!WorkflowRefused {
+    const step = row.spec.steps.find((candidate) => candidate.id === stepId)
+    const review = try phoneReview(row.id)
+    const enrolled = host.device === undefined ? undefined : try host.device.enrollment
+    const binding: WorkflowDeviceBinding = { workflowId: row.workflowId, versionId: versionId(row.version), runId: row.id, stepId, specDigest: row.specDigest }
+    const admittedOperation = step !== undefined && enrolled !== undefined && phoneStepUsesDevice(step)
+      && try workflowOperationAdmitted(review, binding, enrolled, operation, Date.parse(row.anchorAt))
+    if (step === undefined || !admittedOperation) {
+      return try executed({ ...row, error: "The worker asked for a device operation outside the reviewed step" }, { type: "finishWork", succeeded: false })
+    }
+    const iteration = row.approvals.filter((approval) => approval.nodeId === stepId).length
+    const requestDigest = try workflowSha([row.id, versionId(row.version), stepId, iteration, JSON.stringify(operation)])
+    const shown = presentation(step, operation, row)
+    const supported = try deviceScopeAdmitted(row, step)
+    const machine = supported ? P.initial : P.markUnsupported(P.initial)
+    const approval: ApprovalRow = { nodeId: stepId, iteration, requestDigest, ...shown, request: operation, expiresAt: (try now) + APPROVAL_LIFETIME_MS, machine }
+    const parked = try executed({ ...row, approvals: [...row.approvals, approval], events: [...row.events, try event("ApprovalRequested", stepId)] },
+      { type: "parkWorker", parked: "WaitingApproval", deadline: 0, hasDeadline: false })
+    const route = { workflowId: row.workflowId, runId: row.id, versionId: versionId(row.version), proposalId: `${stepId}:${iteration}`, expiresAt: approval.expiresAt }
+    try host.notify({ kind: "approval", title: shown.title, body: "Review this workflow step on your phone.", deepLink: workflowRunDeepLink(route), groupKey: `workflow-approval:${row.id}:${stepId}:${iteration}`, route })
+    return parked
+  }
+
+  effect function resultNotice(row: RunRow): void!! {
+    if (row.hostedDigest !== undefined) return
+    const route = { workflowId: row.workflowId, runId: row.id, versionId: versionId(row.version) }
+    const title = row.status === "finished" ? `${row.spec.name} finished` : row.status === "cancelled" ? `${row.spec.name} was cancelled` : `${row.spec.name} stopped with an error`
+    try host.notify({ kind: "result", title: title.slice(0, 200), body: "Open the run to see what it did.", deepLink: workflowRunDeepLink(route), groupKey: `workflow-run:${row.id}`, route })
+  }
+
+  effect function handle(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection, drafted: string | undefined): WorkerTurn!WorkflowRefused {
+    if (message === undefined) {
+      const live = try connection.alive
+      const uncertain = try executed(row, { type: "observeUncertain", workerKnownLive: live })
+      if (live) try connection.close
+      return { row: uncertain.execution.wakeId > 0 ? try executed(uncertain, { type: "observeWake", wakeId: uncertain.execution.wakeId }) : uncertain, done: true }
+    }
+    switch (message.type) {
+      case "step": {
+        const events = [...row.events, try event(message.result.status === "completed" ? "NodeFinished" : "NodeSkipped", message.result.id)]
+        return { row: { ...row, values: { ...row.values, [message.result.id]: message.result.text }, results: [...row.results, message.result], next: message.next, allowed: message.allowed, events }, done: false }
+      }
+      case "needsDraft": {
+        const reply: ParentMessage = drafted === undefined ? { type: "draftFailed", stepId: message.stepId, message: "The text model could not draft this step" } : { type: "draft", stepId: message.stepId, text: drafted }
+        return { row, done: false, reply }
+      }
+      case "needsDevice": {
+        try connection.close
+        return { row: try requestApproval(row, message.stepId, message.operation), done: true }
+      }
+      case "done": {
+        const done = try executed(try settledOutput({ ...row, events: [...row.events, try event("RunFinished")] }, message.text, message.steps ?? []), { type: "finishWork", succeeded: true })
+        return { row: try finishApprovals(done), done: true }
+      }
+      case "failed": {
+        const failed = try executed({ ...row, error: message.message, events: [...row.events, try event(row.execution.cancelAsked ? "RunCancelled" : "RunFailed")] }, { type: "finishWork", succeeded: false })
+        return { row: try finishApprovals(failed), done: true }
+      }
+      default:
+        return { row: try executed({ ...row, error: `The worker sent ${message.type} to a typed run` }, { type: "finishWork", succeeded: false }), done: true }
+    }
+  }
+
+  effect function armWake(row: RunRow): void!! {
+    const key = `run:${row.id}`
+    void ((row.execution.wakeId > 0
+      ? host.scheduler.set(key, row.execution.wakeDue, { runId: row.id, wakeId: row.execution.wakeId })
+      : host.scheduler.clear(key)) catch () => undefined)
+  }
+
+  effect function parkGenerated(row: RunRow, call: string, digest: string, wait: GeneratedWait): RunRow!WorkflowRefused {
+    const at = try now
+    const parked = try journaled({ ...row, waitDigest: digest }, { type: "park", wait: waitOf(call, wait, at) })
+    const clocked = try executed(parked, { type: "changeClock", now: at })
+    if (wait.kind === "approval") {
+      const request = wait.request
+      const supported = [request.title, request.summary, request.operation, request.target, request.account].every((field) => field.trim() !== "")
+      const approval: ApprovalRow = {
+        nodeId: call, iteration: 0, requestDigest: try workflowSha([row.id, versionId(row.version), call, 0, JSON.stringify(request)]), ...request,
+        request: { type: "speak_text", text: request.summary.slice(0, 5000) || call }, expiresAt: at + APPROVAL_LIFETIME_MS, machine: supported ? P.initial : P.markUnsupported(P.initial),
+      }
+      const waiting = try executed({ ...clocked, approvals: [...clocked.approvals, approval], events: [...clocked.events, try event("ApprovalRequested", call)] },
+        { type: "parkWorker", parked: "WaitingApproval", deadline: 0, hasDeadline: false })
+      const route = { workflowId: row.workflowId, runId: row.id, versionId: versionId(row.version), proposalId: `${call}:0`, expiresAt: approval.expiresAt }
+      try host.notify({ kind: "approval", title: request.title.slice(0, 200) || "Workflow approval", body: "Review this workflow step.", deepLink: workflowRunDeepLink(route), groupKey: `workflow-approval:${row.id}:${call}:0`, route })
+      return waiting
+    }
+    const deadline = wait.kind === "timer" ? at + wait.ms : wait.timeoutMs === undefined ? 0 : at + wait.timeoutMs
+    const waiting = try executed({ ...clocked, ...(wait.kind === "signal" ? { waitingSignal: wait.name } : {}), events: [...clocked.events, try event(wait.kind === "timer" ? "TimerCreated" : "SignalAwaited", call)] },
+      { type: "parkWorker", parked: wait.kind === "timer" ? "WaitingTimer" : "WaitingEvent", deadline, hasDeadline: deadline > 0 })
+    try armWake(waiting)
+    return waiting
+  }
+
+  effect function handleGenerated(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection, drafted: string | undefined): WorkerTurn!WorkflowRefused {
+    if (message === undefined) return try handle(row, message, connection, drafted)
+    switch (message.type) {
+      case "checkpoint": {
+        const next = try journaled(row, { type: "checkpointStep", call: message.call, digest: message.digest })
+        return {
+          row: { ...next, journalValues: { ...(row.journalValues ?? {}), [message.call]: message.value }, events: [...row.events, try event("NodeFinished", message.call)] },
+          done: false, reply: { type: "checkpointed", call: message.call, digest: message.digest },
+        }
+      }
+      case "needsEffect": {
+        const committed = try journaled(row, { type: "commitEffect" })
+        const reply: ParentMessage = drafted === undefined ? { type: "effectFailed", call: message.call, message: "The text model could not draft this call" } : { type: "effect", call: message.call, text: drafted }
+        return {
+          row: { ...committed, journalValues: { ...(row.journalValues ?? {}), [message.call]: drafted ?? null }, events: [...row.events, try event(drafted === undefined ? "NodeFailed" : "NodeFinished", message.call)] },
+          done: false, reply,
+        }
+      }
+      case "park": {
+        try connection.close
+        return { row: try parkGenerated(row, message.call, message.digest, message.wait), done: true }
+      }
+      case "diverged": {
+        const diverged = try journaled(row, { type: "replayCall", call: message.call, digest: "" })
+        const failed = try executed({ ...diverged, error: `The workflow code changed what the call ${message.call} asked for`, events: [...row.events, try event("RunFailed", message.call)] }, { type: "finishWork", succeeded: false })
+        return { row: try finishApprovals(failed), done: true }
+      }
+      case "done": {
+        const settled = try journaled(row, { type: "settleRun" })
+        const done = try executed({ ...settled, output: message.output ?? message.text, events: [...row.events, try event("RunFinished")] }, { type: "finishWork", succeeded: true })
+        return { row: try finishApprovals(done), done: true }
+      }
+      case "failed": return try handle(row, message, connection, drafted)
+      default:
+        return { row: try executed({ ...row, error: `The worker sent ${message.type} to a generated run` }, { type: "finishWork", succeeded: false }), done: true }
+    }
+  }
+
+  effect function resumeGenerated(runId: string, call: string, value: unknown): RunRow!WorkflowRefused {
+    return try updateRun(runId, effect (row) => {
+      const resumed = try journaled(row, { type: "resumeWait", call, digest: row.waitDigest ?? "" })
+      return { ...resumed, waitDigest: undefined, waitingSignal: undefined, journalValues: { ...(row.journalValues ?? {}), [call]: value } }
+    })
+  }
+
+  effect function performDevice(row: RunRow, approval: ApprovalRow): WorkerResume!! {
+    const device = host.device
+    const enrolled = device === undefined ? undefined : try device.enrollment
+    if (device === undefined || enrolled === undefined) return { stepId: approval.nodeId, outcome: "failed", message: "The enrolled phone is unavailable" }
+    const binding: WorkflowDeviceBinding = { workflowId: row.workflowId, versionId: versionId(row.version), runId: row.id, stepId: approval.nodeId, specDigest: row.specDigest }
+    return (effect {
+      const raw = try mapError(device.perform(binding, enrolled, approval.request), (error) => error.message)
+      const request = approval.request
+      if (request.type !== "read_selected_notes" && request.type !== "read_calendar_range" && request.type !== "read_selected_reminders") {
+        return { stepId: approval.nodeId, outcome: "approved", value: "" } satisfies WorkerResume
+      }
+      const result = try mapError(validateWorkflowReadResult(request, raw), (error) => error.message)
+      return { stepId: approval.nodeId, outcome: "approved", value: JSON.stringify(result) } satisfies WorkerResume
+    } catch (message) => ({ stepId: approval.nodeId, outcome: "failed", message: typeof message === "string" ? message : "The phone step failed" }) satisfies WorkerResume)
+  }
+
+  return { phoneReview, resultNotice, handle, armWake, handleGenerated, resumeGenerated, performDevice }
+}
+
+function workflowWorker(
+  host: WorkflowHost,
+  { event, executed, lock, now, persist, runOf, updateRun }: Pick<WorkflowRows, "event" | "executed" | "lock" | "now" | "persist" | "runOf" | "updateRun">,
+  { handle, handleGenerated, resultNotice }: Pick<ReturnType<typeof workflowWorkerTurns>, "handle" | "handleGenerated" | "resultNotice">,
+  { running, stopping }: { readonly running: Map<string, Fiber.Fiber<void, never>>; readonly stopping: Ref.Ref<boolean> },
+) {
+  effect function drive(runId: string, resume?: WorkerResume): void!! {
+    void (effect {
+      const port = host.worker
+      if (port === undefined || (try Ref.get(stopping))) return
+      const connection = try mapError(port.open(runId), (error) => new WorkflowRefused({ status: 503, message: error.reason }))
+      const starting = try onError(lock(effect {
+        const current = try runOf(runId)
+        if (current.execution.worker || terminal(current.execution.phase) || current.execution.cancelAsked) return undefined
+        const next = try executed({ ...current, events: [...current.events, try event(current.events.some((e) => e.type === "RunStarted") ? "NodeStarted" : "RunStarted")] }, { type: "startWorker" })
+        try persist(next)
+        return next
+      }), () => connection.close)
+      if (starting === undefined) {
+        try connection.close
+        return
+      }
+      const row = try ensuring(effect {
+      const generated = starting.generated !== undefined && starting.js !== undefined && starting.jsDigest !== undefined
+      try connection.send(generated
+        ? { type: "startGenerated", runId: starting.id, js: starting.js ?? "", jsDigest: starting.jsDigest ?? "", input: starting.input, journal: journalOf(starting) }
+        : {
+          type: "start", runId: starting.id, spec: starting.spec, specDigest: starting.specDigest, anchorAt: starting.anchorAt, values: starting.values, results: starting.results, next: starting.next, allowed: starting.allowed,
+          ...(resume === undefined ? {} : { resume }),
+        })
+      for (;;) {
+        const message = try connection.next
+        const effectCall = generated && message?.type === "needsEffect" ? message : undefined
+        if (effectCall !== undefined) try lock(effect { try persist(try journaled(try runOf(runId), { type: "dispatchEffect", call: effectCall.call, digest: effectCall.digest })) })
+        const prompt = !generated && message?.type === "needsDraft" ? message.prompt : effectCall?.request.prompt
+        const draft = host.draft
+        const drafted = prompt === undefined || draft === undefined ? undefined : draft(prompt) catch () => undefined
+        const handled = try lock(effect {
+          const stored = try runOf(runId)
+          const next = generated ? try handleGenerated(stored, message, connection, drafted) : try handle(stored, message, connection, drafted)
+          try persist(next.row)
+          return next
+        })
+        if (handled.done) return handled.row
+        if (handled.reply !== undefined) try connection.send(handled.reply)
+      }
+      }, connection.close)
+      if (row.finished) try resultNotice(row)
+    } catch effect (error) => try log("workflow run could not continue", runId, error))
+  }
+
+  effect function launch(runId: string, resume?: WorkerResume): void!! {
+    const fiber = fork.detached ensuring(drive(runId, resume), sync(() => { running.delete(runId) }))
+    running.set(runId, fiber)
+  }
+
+  effect function cancel(runId: string) {
+    const fiber = running.get(runId)
+    const asked = try updateRun(runId, effect (row) => {
+      if (row.finished || row.execution.cancelAsked) return row
+      const marked = try executed({ ...row, cancellationRequestedAt: iso(try now) }, { type: "askCancellation" })
+      if (marked.execution.worker) return marked
+      const confirmed = try executed({ ...marked, events: [...marked.events, try event("RunCancelled")] }, { type: "confirmCancellation", native: "NativeRunCancelled" })
+      return try finishApprovals(confirmed)
+    })
+    if (fiber !== undefined && asked.execution.worker) {
+      try Fiber.interrupt(fiber)
+      const settled = try updateRun(runId, (row) => row.execution.worker ? effect {
+        const stopped = try executed({ ...row, events: [...row.events, try event("RunCancelled")] }, { type: "finishWork", succeeded: false })
+        return try finishApprovals(stopped)
+      } : succeed(row))
+      try resultNotice(settled)
+      return { execution: runView(settled) }
+    }
+    if (asked.finished) try resultNotice(asked)
+    return { execution: runView(asked) }
+  }
+
+  effect function stop(): void!! {
+    try Ref.set(stopping, true)
+    const fibers = [...running.entries()]
+    for (const [, fiber] of fibers) try Fiber.interrupt(fiber)
+    for (const [runId] of fibers) {
+      void (updateRun(runId, (row) => row.finished || row.execution.stopping ? succeed(row) : executed(row, { type: "stopWorkerService" })) catch () => undefined)
+    }
+  }
+
+  return { launch, cancel, stop }
+}
+
+type LaunchWorkflow = ReturnType<typeof workflowWorker>["launch"]
+
+function workflowRuns(
+  host: WorkflowHost,
+  { db, store, owner, lock, now, definitionOf, freshRun, runOf }: Pick<WorkflowRows, "db" | "store" | "owner" | "lock" | "now" | "definitionOf" | "freshRun" | "runOf">,
+  launch: LaunchWorkflow,
+) {
+  effect function submit(definitionId: string, submissionId: string, expected: number, input: Bag, extra: { readonly occurrence?: RunRow["occurrence"]; readonly hostedDigest?: Bag } = {}) {
+    const inputKey = JSON.stringify(input)
+    return try lock(effect {
+      const current = try definitionOf(definitionId)
+      if (current.row.lifecycleState.removed) return try refuse(409, "Removed workflows do not run", { code: "WORKFLOW_VERSION_NOT_ADMITTED", workflowId: definitionId, submissionId, expectedVersionId: versionId(expected) })
+      const submitted = A.submitWorkflow(try project(current.row), owner, "ExactRequest", submissionId, expected, inputKey)
+      switch (submitted.reply) {
+        case "QueuedRun": {
+          const created = try freshRun({ ...current.row, admission: submitted }, submitted.replyRun, { submissionId, input, ...extra })
+          const next = { ...current.row, admission: submitted }
+          const written = try db(store.admitRun({ id: current.row.id, read: current.revision, next }, created, try now))
+          if (written === "stale") return try refuse(409, "Workflow changed while the run was admitted", { workflowId: definitionId })
+          return { submissionId, run: created, fresh: true }
+        }
+        case "ExistingRun": return { submissionId, run: try runOf(`${definitionId}-r${submitted.replyRun}`), fresh: false }
+        case "VersionRefused": return try refuse(409, "Workflow changed before acceptance", { code: "WORKFLOW_VERSION_NOT_ADMITTED", workflowId: definitionId, submissionId, expectedVersionId: versionId(expected) })
+        case "KeyConflict": return try refuse(409, "This submission identity was used for another run", { code: "WORKFLOW_SUBMISSION_CONFLICT", workflowId: definitionId, submissionId })
+        case "InvalidRun": return try refuse(400, "Exact reviewed submission required")
+        default: return try refuse(404, "Workflow not found", { workflowId: definitionId })
+      }
+    })
+  }
+
+  effect function run(id: string, input: unknown) {
+    const p = try body(input, ["input", "submissionId", "expectedVersionId"])
+    const submissionId = p.submissionId
+    const expected = versionOf(p.expectedVersionId)
+    if (typeof submissionId !== "string" || submissionId === "" || submissionId.length > 128 || expected === undefined) return try refuse(400, "Exact reviewed submission required")
+    const runInput = p.input ?? {}
+    if (typeof runInput !== "object" || runInput === null || Array.isArray(runInput) || phoneWorkflowBytes(runInput) > 65536) return try refuse(400, "Invalid run input")
+    if (host.worker === undefined) return try refuse(503, "No verified workflow worker is installed")
+    const submitted = try submit(id, submissionId, expected, runInput as Bag)
+    if (submitted.fresh) try launch(submitted.run.id)
+    return { submissionId, execution: runView(submitted.run) }
+  }
+
+  effect function submission(id: string, submissionId: string) {
+    const current = try definitionOf(id)
+    const found = A.readSubmission(try project(current.row), owner, submissionId)
+    return { submissionId, execution: found.reply === "ExistingRun" ? runView(try runOf(`${id}-r${found.replyRun}`)) : null }
+  }
+
+  effect function executions(id: string) {
+    try definitionOf(id)
+    return { executions: (try db(store.runs({ owner, workflowId: id }))).toReversed().slice(0, 100).map(runView) }
+  }
+
+  effect function execution(runId: string) {
+    return { execution: runView(try runOf(runId)) }
+  }
+
+  return { submit, run, submission, executions, execution }
+}
+
+function workflowContinuations(
+  { owner, now, lock, runOf, persist, event, updateRun, executed }: Pick<WorkflowRows, "owner" | "now" | "lock" | "runOf" | "persist" | "event" | "updateRun" | "executed">,
+  { armWake, performDevice, resumeGenerated }: Pick<ReturnType<typeof workflowWorkerTurns>, "armWake" | "performDevice" | "resumeGenerated">,
+  launch: LaunchWorkflow,
+) {
+  effect function wake(runId: string, wakeId: number): void!WorkflowRefused {
+    const row = try runOf(runId)
+    if (!X.canObserveWake(row.execution, wakeId) || row.generated === undefined) return
+    const at = try now
+    if (row.execution.wakeDue > at) return try armWake(row)
+    const woken = try updateRun(runId, (current) => executed(current, { type: "observeWake", wakeId }))
+    const wait = woken.generated?.wait
+    if (wait === undefined || wait.tag === "NoWait" || wait.tag === "WaitApproval") return
+    try resumeGenerated(runId, wait.call, wait.tag === "WaitTimer" ? null : { received: false })
+    try launch(runId)
+  }
+
+  effect function approvals(runId: string) {
+    return approvalsView(try runOf(runId))
+  }
+
+  effect function decide(runId: string, nodeId: string, iteration: number, input: unknown) {
+    const p = try body(input, ["approved", "expectedVersionId", "requestDigest"])
+    if (typeof p.approved !== "boolean" || typeof p.requestDigest !== "string" || !/^[a-f0-9]{64}$/.test(p.requestDigest)
+      || typeof p.expectedVersionId !== "string" || p.expectedVersionId === "" || p.expectedVersionId.length > 200 || !Number.isSafeInteger(iteration) || iteration < 0) {
+      return try refuse(400, "Exact reviewed approval identity required")
+    }
+    const wants: P.ApprovalState = p.approved ? "ApprovedRequest" : "DeniedRequest"
+    const caller = try workflowUuid()
+    const outcome = try lock(effect {
+      const row = try runOf(runId)
+      const index = row.approvals.findIndex((approval) => approval.nodeId === nodeId && approval.iteration === iteration)
+      if (index < 0) return try refuse(404, "Approval not found")
+      const approval = row.approvals[index]
+      const step = (machine: P.ApprovalRun, change: P.Event) => mapError(P.apply(machine, change), () => new WorkflowRefused({ status: 409, message: "The approval is out of step" }))
+      const requested = try step(approval.machine, {
+        type: "requestDecision", caller, decision: wants, ownerOk: row.owner === owner, versionOk: p.expectedVersionId === versionId(row.version), digestOk: p.requestDigest === approval.requestDigest,
+      })
+      const acquired = try step(requested, { type: "acquireRun", caller })
+      const reviewed = acquired.lock === caller ? try step(acquired, { type: "reviewApproval", caller }) : acquired
+      const phase = P.attemptOf(reviewed, caller).phase
+      const at = iso(try now)
+      const keep = (machine: P.ApprovalRun, decided: boolean): RunRow => ({
+        ...row, approvals: row.approvals.map((other, at_) => at_ === index ? { ...other, machine, ...(decided ? { decidedBy: owner, decidedAt: at } : {}) } : other),
+      })
+      if (phase === "CallerFailed") {
+        try persist(keep(reviewed, false))
+        return { row: keep(reviewed, false), resumed: false, refused: true }
+      }
+      if (phase === "CallerResuming") {
+        const answered = try step(reviewed, { type: "resumeRun", caller, resumed: true })
+        try persist(keep(answered, false))
+        return { row: keep(answered, false), resumed: false, refused: false }
+      }
+      const commanded = try step(reviewed, { type: "sendControl", caller, committed: true })
+      const decidedRow = { ...keep(commanded, true), events: [...row.events, try event(p.approved ? "ApprovalGranted" : "ApprovalDenied", nodeId)] }
+      try persist(decidedRow)
+      const readBack = try runOf(runId)
+      const canonical = readBack.approvals[index]?.machine.canonical
+      const read = try step(commanded, { type: "readBack", caller, available: canonical === wants })
+      if (P.attemptOf(read, caller).phase === "CallerFailed") {
+        const unread = { ...decidedRow, approvals: decidedRow.approvals.map((other, at_) => at_ === index ? { ...other, machine: read } : other) }
+        try persist(unread)
+        return { row: unread, resumed: false, refused: true }
+      }
+      const persisted = try step(read, { type: "persistDecision", caller, committed: true })
+      const answered = try step(persisted, { type: "resumeRun", caller, resumed: true })
+      const settled = { ...decidedRow, approvals: decidedRow.approvals.map((other, at_) => at_ === index ? { ...other, machine: answered } : other) }
+      try persist(settled)
+      return { row: settled, resumed: true, refused: false }
+    })
+    if (outcome.refused) return try refuse(409, "Approval identity changed or the decision is no longer available", { code: "WORKFLOW_APPROVAL_NOT_APPLIED" })
+    if (outcome.resumed) {
+      const approval = outcome.row.approvals.find((candidate) => candidate.nodeId === nodeId && candidate.iteration === iteration)
+      if (approval !== undefined && outcome.row.generated !== undefined) {
+        try resumeGenerated(runId, nodeId, approval.machine.canonical === "ApprovedRequest")
+        try launch(runId)
+      } else if (approval !== undefined) {
+        const resume: WorkerResume = approval.machine.canonical === "ApprovedRequest" ? try performDevice(outcome.row, approval) : { stepId: nodeId, outcome: "denied" }
+        try launch(runId, resume)
+      }
+    }
+    return approvalsView(try runOf(runId))
+  }
+
+  effect function signal(runId: string, name: string, input: unknown) {
+    const p = try body(input ?? {}, ["payload"])
+    if (name.trim() === "" || name.length > 200 || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(name)) return try refuse(400, "Signal name is required")
+    if (phoneWorkflowBytes(p.payload ?? null) > 65536) return try refuse(413, "Signal payload is too large")
+    const at = iso(try now)
+    const received = try updateRun(runId, effect (row) => {
+      if (row.finished) return try refuse(409, "Workflow execution is already terminal")
+      const wait = row.generated?.wait
+      if (row.execution.phase !== "WaitingEvent" || row.waitingSignal !== name || wait === undefined || wait.tag !== "WaitSignal" || wait.signal !== name) return try refuse(409, "This run is not waiting for that signal")
+      const pending = row.execution.wakeId
+      const woken = pending > 0 ? try executed(row, { type: "observeWake", wakeId: pending }) : row
+      const resumed = try journaled({ ...woken, signals: [...(row.signals ?? []), { name, payload: p.payload ?? null, receivedAt: at, receivedBy: owner }].slice(-100), events: [...row.events, try event("SignalReceived", wait.call)] },
+        { type: "resumeWait", call: wait.call, digest: row.waitDigest ?? "" })
+      return { ...resumed, waitingSignal: undefined, waitDigest: undefined, journalValues: { ...(row.journalValues ?? {}), [wait.call]: { received: true, payload: p.payload ?? null } } }
+    })
+    try armWake(received)
+    try launch(runId)
+    return { execution: runView(received) }
+  }
+
+  return { wake, approvals, decide, signal }
+}
+
+function workflowSchedules(
+  host: WorkflowHost,
+  { db, store, owner, now, lock, definitionOf, lifecycleState, writeDefinition }: Pick<WorkflowRows, "db" | "store" | "owner" | "now" | "lock" | "definitionOf" | "lifecycleState" | "writeDefinition">,
+  { submit, launch, wake }: { readonly submit: ReturnType<typeof workflowRuns>["submit"]; readonly launch: LaunchWorkflow; readonly wake: ReturnType<typeof workflowContinuations>["wake"] },
+) {
+  effect function arm(row: DefinitionRow, after?: number): void!! {
+    const key = scheduleKey(row)
+    const schedule = scheduleWanted(row) ? scheduleOf(row) : undefined
+    void (effect {
+      if (schedule === undefined) {
+        try host.scheduler.clear(key)
+        return
+      }
+      const from = Math.max(try now, after ?? 0)
+      const due = host.nextCron(schedule.cron, from, schedule.timeZone)
+      if (due === undefined) {
+        try host.scheduler.clear(key)
+        return
+      }
+      try host.scheduler.set(key, due, { workflowId: row.id, armVersion: row.admission.version, scheduledAt: due })
+    } catch effect (error) => try log("workflow schedule could not be armed", row.id, error))
+  }
+
+  effect function cleanup(id: string): void!WorkflowRefused {
+    try lock(effect {
+      const current = try definitionOf(id)
+      if (!current.row.lifecycleState.removed || current.row.lifecycleState.cleaned) return
+      const key = scheduleKey(current.row)
+      void (host.scheduler.clear(key) catch () => undefined)
+      const keys = host.scheduler.keys catch () => [key]
+      const marked = try mapError(L.apply(try lifecycleState(current.row), { type: "markCleanup", confirmedEmpty: !keys.includes(key) }, owner),
+        () => new WorkflowRefused({ status: 409, message: "Workflow cleanup is out of step" }))
+      try writeDefinition(current, withLifecycle(current.row, marked))
+    })
+  }
+
+  effect function recordOccurrence(row: DefinitionRow, occurrence: NonNullable<RunRow["occurrence"]>, status: "missed" | "overlap", text: string, extra: Bag = {}) {
+    const at = try now
+    const record: RunRow = {
+      id: `${row.id}-o${Date.parse(occurrence.scheduledAt)}`, workflowId: row.id, owner, version: row.admission.version, serial: 0, input: {}, spec: row.spec, specDigest: row.specDigest,
+      execution: X.initial, status: "finished", finished: true, startedAt: iso(at), stoppedAt: iso(at), anchorAt: occurrence.scheduledAt, occurrence,
+      ...(status === "missed" && extra.skippedLocalTime === undefined ? { missedOccurrenceAt: occurrence.scheduledAt } : {}),
+      output: { status, scheduledAt: occurrence.scheduledAt, text, ...extra }, values: {}, results: [], next: 0, allowed: false, approvals: [], events: [],
+    }
+    try db(store.insertRun(record, at))
+  }
+
+  effect function fireTyped(row: DefinitionRow, armVersion: number, scheduledAt: number): void!WorkflowRefused {
+    const trigger = timeTrigger(row.spec)
+    if (trigger === undefined) return
+    const clockNow = try now
+    const cron = phoneTimeTriggerCron(trigger)
+    const runs = try db(store.runs({ owner, workflowId: row.id }))
+    const wall = phoneWorkflowLocalWall(scheduledAt, trigger.timeZone)
+    const decision = decideOccurrence({
+      armVersion, definitionVersion: row.admission.version, clockNow, scheduledAt, cronMatches: host.nextCron(cron, scheduledAt - 60000, trigger.timeZone) === scheduledAt,
+      wallMinuteMatches: wall.slice(11) === trigger.localTime, active: row.admission.active && !row.lifecycleState.removed, pendingRun: runs.some((candidate) => !candidate.finished),
+      hasPrior: runs.some((candidate) => candidate.occurrence?.scheduledAt === iso(scheduledAt) && candidate.version === armVersion),
+    })
+    const occurrence = (status: "ready" | "missed" | "overlap", text: string) => ({ scheduledAt: iso(scheduledAt), trigger, status, text })
+    switch (decision) {
+      case "MissedWallTime": {
+        const skippedLocalTime = `${wall.slice(0, 10)}T${trigger.localTime}`
+        const text = `${trigger.localTime} did not occur on ${wall.slice(0, 10)} in ${trigger.timeZone} because the clocks moved forward. This occurrence did not run and will not run later.`
+        try recordOccurrence(row, { ...occurrence("missed", text), skippedLocalTime }, "missed", text, { skippedLocalTime })
+        return
+      }
+      case "MissedWindow": return try recordOccurrence(row, occurrence("missed", TYPED_MISSED_TEXT), "missed", TYPED_MISSED_TEXT)
+      case "OverlappingRun": return try recordOccurrence(row, occurrence("overlap", TYPED_OVERLAP_TEXT), "overlap", TYPED_OVERLAP_TEXT)
+      case "QueueOccurrence": {
+        if (host.worker === undefined) return
+        const submitted = try submit(row.id, `schedule:${armVersion}:${scheduledAt}`, armVersion, {}, { occurrence: occurrence("ready", "") })
+        if (submitted.fresh) try launch(submitted.run.id)
+        return
+      }
+      default: return
+    }
+  }
+
+  effect function fire(metadata: Readonly<Record<string, unknown>>, digestFire: (row: DefinitionRow, armVersion: number, scheduledAt: number) => void!WorkflowRefused): void!! {
+    if (typeof metadata.runId === "string" && typeof metadata.wakeId === "number") {
+      const runId = metadata.runId
+      const wakeId = metadata.wakeId
+      return void (wake(runId, wakeId) catch effect (error) => try log("workflow wakeup could not resume its run", runId, error))
+    }
+    const workflowId = metadata.workflowId
+    const armVersion = metadata.armVersion
+    const scheduledAt = metadata.scheduledAt
+    if (typeof workflowId !== "string" || typeof armVersion !== "number" || typeof scheduledAt !== "number") return
+    void (effect {
+      const current = try definitionOf(workflowId)
+      if (current.row.origin === "digest") try digestFire(current.row, armVersion, scheduledAt)
+      else try fireTyped(current.row, armVersion, scheduledAt)
+      try arm((try definitionOf(workflowId)).row, scheduledAt)
+    } catch effect (error) => try log("workflow occurrence could not be admitted", workflowId, error))
+  }
+
+  return { arm, cleanup, recordOccurrence, fire }
+}
+
+function workflowDefinitions(
+  { definitionOf, admitted, writeDefinition, lock, now, owner, receiptOf, store, db, lifecycleState }: Pick<WorkflowRows, "definitionOf" | "admitted" | "writeDefinition" | "lock" | "now" | "owner" | "receiptOf" | "store" | "db" | "lifecycleState">,
+  { checkDraft, generatedActivation }: Pick<ReturnType<typeof workflowDrafts>, "checkDraft" | "generatedActivation">,
+  { arm, cleanup }: Pick<ReturnType<typeof workflowSchedules>, "arm" | "cleanup">,
+) {
   effect function save(input: unknown, workflowId?: string) {
     const p = try body(input, ["spec", "catalogRevision", "compilerRevision", "mutationId", ...(workflowId === undefined ? [] : ["expectedVersionId"])])
     const mutationId = p.mutationId
@@ -418,28 +1170,6 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return { mutationId, receipt }
   }
 
-  effect function lifecycleState(row: DefinitionRow): L.Lifecycle!WorkflowRefused {
-    const unfinished = (try unfinishedRuns(row.id)).length > 0
-    return L.canObserveRuns(row.lifecycleState) ? L.step(row.lifecycleState, { type: "observeRuns", unfinished }, owner) : row.lifecycleState
-  }
-
-  function withLifecycle(row: DefinitionRow, state: L.Lifecycle): DefinitionRow {
-    return { ...row, lifecycleState: state, admission: { ...row.admission, owner: row.admission.owner === "" ? state.owner : row.admission.owner, version: state.version, active: state.active } }
-  }
-
-  effect function cleanup(id: string): void!WorkflowRefused {
-    try lock(effect {
-      const current = try definitionOf(id)
-      if (!current.row.lifecycleState.removed || current.row.lifecycleState.cleaned) return
-      const key = scheduleKey(current.row)
-      void (host.scheduler.clear(key) catch () => undefined)
-      const keys = host.scheduler.keys catch () => [key]
-      const marked = try mapError(L.apply(try lifecycleState(current.row), { type: "markCleanup", confirmedEmpty: !keys.includes(key) }, owner),
-        () => new WorkflowRefused({ status: 409, message: "Workflow cleanup is out of step" }))
-      try writeDefinition(current, withLifecycle(current.row, marked))
-    })
-  }
-
   effect function lifecycle(id: string, input: unknown) {
     const p = try body(input, ["mutationId", "expectedVersionId", "operation"])
     const mutationId = p.mutationId
@@ -472,675 +1202,53 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return { mutationId, receipt: prior?.kind === "lifecycle" && (prior.receipt as Bag).workflowId === id ? prior.receipt : null }
   }
 
-  function runView(row: RunRow) {
-    const execution = row.execution
-    const uncertain = execution.phase === "WorkerUncertain"
-    return {
-      id: row.id, workflowId: row.workflowId, workflowVersionId: versionId(row.version), status: row.status, startedAt: row.startedAt, finished: row.finished,
-      ...(row.stoppedAt === undefined ? {} : { stoppedAt: row.stoppedAt }),
-      input: { ...row.input, ...(row.occurrence === undefined ? {} : { typedSchedule: row.occurrence }), ...(row.hostedDigest === undefined ? {} : { hostedDigest: row.hostedDigest }) },
-      ...(row.output === undefined ? {} : { output: row.output }),
-      ...(row.error === undefined ? {} : { error: { message: row.error } }),
-      ...(row.missedOccurrenceAt === undefined ? {} : { missedOccurrenceAt: row.missedOccurrenceAt }),
-      ...(row.cancellationRequestedAt === undefined ? {} : { cancellationRequestedAt: row.cancellationRequestedAt }),
-      ...(uncertain ? { reconciliation: execution.wakeId > 0
-        ? { state: "worker-running", message: "The worker may still be running; its outcome is being checked." }
-        : { state: "outcome-unknown", message: "The worker stopped without a terminal receipt; what it did is unknown." } } : {}),
-      events: row.events.slice(-100).map((event) => ({ runId: row.id, workflowId: row.workflowId, ...event })),
-    }
-  }
-
-  effect function runOf(runId: string): RunRow!WorkflowRefused {
-    const found = try db(store.run(runId))
-    if (found === undefined || found.owner !== owner) return try refuse(404, "Execution not found")
-    return found
-  }
-
-  effect function event(type: string, nodeId?: string): RunEvent!! {
-    return { type, timestamp: iso(try now), ...(nodeId === undefined ? {} : { nodeId }) }
-  }
-
-  effect function executed(row: RunRow, change: X.Event): RunRow!WorkflowRefused {
-    const execution = try mapError(X.apply(row.execution, change), () => new WorkflowRefused({ status: 409, message: "The execution is out of step", workflowId: row.workflowId }))
-    const finished = terminal(execution.phase)
-    return { ...row, execution, status: statusOf[execution.phase], finished, ...(finished && row.stoppedAt === undefined ? { stoppedAt: iso(try now) } : {}) }
-  }
-
-  effect function persist(row: RunRow): void!WorkflowRefused {
-    try db(store.writeRun(row, row.hostedDigest === undefined || !row.finished ? undefined : try digestDelivery(row)))
-    try SubscriptionRef.update(ticks, (tick) => tick + 1)
-  }
-
-  effect function digestDelivery(row: RunRow) {
-    const output = row.output
-    const settled = typeof output === "object" && output !== null && !Array.isArray(output) && "status" in output && typeof output.status === "string"
-      && (output.status === "missed" || output.status === "overlap" || output.status === "unavailable") ? output.status : undefined
-    const result = {
-      runId: row.id, workflowId: row.workflowId, workflowVersionId: versionId(row.version), templateVersion: "hosted-digest-1",
-      scheduledAt: row.hostedDigest?.scheduledAt, source: row.hostedDigest?.source, status: settled ?? row.status, startedAt: row.startedAt,
-      completedAt: row.stoppedAt ?? row.startedAt, output: row.output ?? null, error: row.error ?? null,
-    }
-    const serialized = JSON.stringify(result)
-    const bounded = serialized.length <= 180000 && phoneWorkflowBytes(result) <= 240000 ? result : {
-      ...result, output: { status: "retained_in_workflow_history", message: "This output exceeds mobile delivery limits. Open the referenced workflow run for its complete result." },
-      error: typeof result.error === "string" ? result.error.slice(0, 2000) : null,
-    }
-    return { owner, runId: row.id, workflowId: row.workflowId, result: bounded }
-  }
-
-  effect function updateRun(runId: string, change: (row: RunRow) => RunRow!WorkflowRefused): RunRow!WorkflowRefused {
-    return try lock(effect {
-      const next = try change(try runOf(runId))
-      try persist(next)
-      return next
-    })
-  }
-
-  effect function phoneReview(runId: string): WorkflowPhoneReview!WorkflowRefused {
-    const row = try runOf(runId)
-    const device = row.spec.device
-    if (device === undefined) return try refuse(404, "This run has no phone review")
-    return {
-      runId: row.id, workflowId: row.workflowId, versionId: versionId(row.version), specDigest: row.specDigest, spec: { ...row.spec, device }, status: row.status,
-      finished: row.finished, cancellationRequestedAt: row.cancellationRequestedAt ?? null, calendarAnchorAt: row.anchorAt,
-    }
-  }
-
-  function approvalStatus(state: P.ApprovalState): "pending" | "approved" | "denied" {
-    return state === "ApprovedRequest" ? "approved" : state === "DeniedRequest" ? "denied" : "pending"
-  }
-
-  function approvalsView(row: RunRow) {
-    return {
-      runId: row.id, workflowId: row.workflowId, workflowVersionId: versionId(row.version), finished: row.finished, cancellationRequested: row.cancellationRequestedAt !== undefined,
-      approvals: row.approvals.map((approval) => ({
-        runId: row.id, workflowId: row.workflowId, workflowVersionId: versionId(row.version), nodeId: approval.nodeId, iteration: approval.iteration,
-        requestDigest: approval.requestDigest, status: approvalStatus(approval.machine.canonical), title: approval.title, summary: approval.summary,
-        operation: approval.operation, target: approval.target, account: approval.account, supported: approval.machine.supported, expiresAt: approval.expiresAt,
-        ...(approval.decidedBy === undefined ? {} : { decidedBy: approval.decidedBy }), ...(approval.decidedAt === undefined ? {} : { decidedAt: approval.decidedAt }),
-      })),
-    }
-  }
-
-  function presentation(step: PhoneStep, operation: WorkflowDeviceOperation, row: RunRow) {
-    const target = operation.type === "read_selected_notes" ? `${operation.notes.length} selected note${operation.notes.length === 1 ? "" : "s"}`
-      : operation.type === "read_calendar_range" ? `${operation.calendarIds.length} calendar${operation.calendarIds.length === 1 ? "" : "s"}, ${operation.start} to ${operation.end}`
-      : operation.type === "read_selected_reminders" ? `Reminders for ${operation.day}`
-      : operation.type === "create_note" ? `A new note titled “${operation.title}”`
-      : operation.type === "post_notification" ? `A notification titled “${operation.title}”`
-      : "Spoken text on this phone"
-    const summary = operation.type === "create_note" || operation.type === "post_notification" ? operation.body.slice(0, 4000)
-      : operation.type === "speak_text" ? operation.text.slice(0, 4000) : `${row.spec.name}: ${stepLabel(step)}`
-    return { title: `${row.spec.name.slice(0, 200)}: ${stepLabel(step)}`, summary: summary.trim() === "" ? stepLabel(step) : summary, operation: stepLabel(step), target, account: "This phone" }
-  }
-
-  effect function deviceScopeAdmitted(row: RunRow, step: PhoneStep): boolean!! {
-    const enrolled = host.device === undefined ? undefined : try host.device.enrollment
-    const relative = step.operation === "calendar_range" && "days" in step.range
-    const proposed = R.proposeRead(R.initial, relative, Math.max(1, enrolled?.protocol ?? 1), enrolled !== undefined && row.spec.device?.installationId === enrolled.installationId && row.spec.device.enrollmentId === enrolled.enrollmentId)
-    const resolved = R.resolveScope(proposed)
-    return resolved.phase === "Resolved" && (enrolled?.protocol ?? 0) >= phoneStepRequiredProtocol(step)
-  }
-
-  effect function requestApproval(row: RunRow, stepId: string, operation: WorkflowDeviceOperation): RunRow!WorkflowRefused {
-    const step = row.spec.steps.find((candidate) => candidate.id === stepId)
-    const review = try phoneReview(row.id)
-    const enrolled = host.device === undefined ? undefined : try host.device.enrollment
-    const binding: WorkflowDeviceBinding = { workflowId: row.workflowId, versionId: versionId(row.version), runId: row.id, stepId, specDigest: row.specDigest }
-    const admittedOperation = step !== undefined && enrolled !== undefined && phoneStepUsesDevice(step)
-      && try workflowOperationAdmitted(review, binding, enrolled, operation, Date.parse(row.anchorAt))
-    if (step === undefined || !admittedOperation) {
-      return try executed({ ...row, error: "The worker asked for a device operation outside the reviewed step" }, { type: "finishWork", succeeded: false })
-    }
-    const iteration = row.approvals.filter((approval) => approval.nodeId === stepId).length
-    const requestDigest = try workflowSha([row.id, versionId(row.version), stepId, iteration, JSON.stringify(operation)])
-    const shown = presentation(step, operation, row)
-    const supported = try deviceScopeAdmitted(row, step)
-    const machine = supported ? P.initial : P.markUnsupported(P.initial)
-    const approval: ApprovalRow = { nodeId: stepId, iteration, requestDigest, ...shown, request: operation, expiresAt: (try now) + APPROVAL_LIFETIME_MS, machine }
-    const parked = try executed({ ...row, approvals: [...row.approvals, approval], events: [...row.events, try event("ApprovalRequested", stepId)] },
-      { type: "parkWorker", parked: "WaitingApproval", deadline: 0, hasDeadline: false })
-    const route = { workflowId: row.workflowId, runId: row.id, versionId: versionId(row.version), proposalId: `${stepId}:${iteration}`, expiresAt: approval.expiresAt }
-    try host.notify({ kind: "approval", title: shown.title, body: "Review this workflow step on your phone.", deepLink: workflowRunDeepLink(route), groupKey: `workflow-approval:${row.id}:${stepId}:${iteration}`, route })
-    return parked
-  }
-
-  effect function settledOutput(row: RunRow, text: string, steps: readonly { readonly id: string; readonly status: "completed" | "skipped"; readonly text: string }[]): RunRow!! {
-    return { ...row, output: [{ nodeId: TYPED_STEPS_NODE, runId: row.id, text, steps }] }
-  }
-
-  effect function finishApprovals(row: RunRow): RunRow!! {
-    const close = (machine: P.ApprovalRun) => {
-      const stopped = row.status === "cancelled" && P.canStopExecution(machine) ? P.stopExecution(machine) : machine
-      return P.canFinishExecution(stopped) ? P.finishExecution(stopped) : stopped
-    }
-    return { ...row, approvals: row.approvals.map((approval) => ({ ...approval, machine: close(approval.machine) })) }
-  }
-
-  effect function resultNotice(row: RunRow): void!! {
-    if (row.hostedDigest !== undefined) return
-    const route = { workflowId: row.workflowId, runId: row.id, versionId: versionId(row.version) }
-    const title = row.status === "finished" ? `${row.spec.name} finished` : row.status === "cancelled" ? `${row.spec.name} was cancelled` : `${row.spec.name} stopped with an error`
-    try host.notify({ kind: "result", title: title.slice(0, 200), body: "Open the run to see what it did.", deepLink: workflowRunDeepLink(route), groupKey: `workflow-run:${row.id}`, route })
-  }
-
-  type WorkerTurn =
-    | { readonly row: RunRow; readonly done: true }
-    | { readonly row: RunRow; readonly done: false; readonly reply?: ParentMessage }
-
-  effect function handle(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection): WorkerTurn!WorkflowRefused {
-    if (message === undefined) {
-      const live = try connection.alive
-      const uncertain = try executed(row, { type: "observeUncertain", workerKnownLive: live })
-      if (live) try connection.close
-      return { row: uncertain.execution.wakeId > 0 ? try executed(uncertain, { type: "observeWake", wakeId: uncertain.execution.wakeId }) : uncertain, done: true }
-    }
-    switch (message.type) {
-      case "step": {
-        const events = [...row.events, try event(message.result.status === "completed" ? "NodeFinished" : "NodeSkipped", message.result.id)]
-        return { row: { ...row, values: { ...row.values, [message.result.id]: message.result.text }, results: [...row.results, message.result], next: message.next, allowed: message.allowed, events }, done: false }
-      }
-      case "needsDraft": {
-        const draft = host.draft
-        const text = draft === undefined ? undefined : draft(message.prompt) catch () => undefined
-        const reply: ParentMessage = text === undefined ? { type: "draftFailed", stepId: message.stepId, message: "The text model could not draft this step" } : { type: "draft", stepId: message.stepId, text }
-        return { row, done: false, reply }
-      }
-      case "needsDevice": {
-        try connection.close
-        return { row: try requestApproval(row, message.stepId, message.operation), done: true }
-      }
-      case "done": {
-        const done = try executed(try settledOutput({ ...row, events: [...row.events, try event("RunFinished")] }, message.text, message.steps ?? []), { type: "finishWork", succeeded: true })
-        return { row: try finishApprovals(done), done: true }
-      }
-      case "failed": {
-        const failed = try executed({ ...row, error: message.message, events: [...row.events, try event(row.execution.cancelAsked ? "RunCancelled" : "RunFailed")] }, { type: "finishWork", succeeded: false })
-        return { row: try finishApprovals(failed), done: true }
-      }
-      default:
-        return { row: try executed({ ...row, error: `The worker sent ${message.type} to a typed run` }, { type: "finishWork", succeeded: false }), done: true }
-    }
-  }
-
-  effect function journaled(row: RunRow, change: G.Event): RunRow!WorkflowRefused {
-    const generated = try mapError(G.apply(row.generated ?? G.initial, change), () => new WorkflowRefused({ status: 409, message: "The generated run is out of step" }))
-    return { ...row, generated }
-  }
-
-  function journalOf(row: RunRow): GeneratedEntry[] {
-    const values = row.journalValues ?? {}
-    return (row.generated?.journal ?? []).map((entry) => ({ ...entry, value: values[entry.call] ?? null }))
-  }
-
-  function waitOf(call: string, wait: GeneratedWait, at: number): G.Wait {
-    return wait.kind === "approval" ? { tag: "WaitApproval", call }
-      : wait.kind === "signal" ? { tag: "WaitSignal", call, signal: wait.name }
-      : { tag: "WaitTimer", call, due: at + wait.ms }
-  }
-
-  effect function armWake(row: RunRow): void!! {
-    const key = `run:${row.id}`
-    void ((row.execution.wakeId > 0
-      ? host.scheduler.set(key, row.execution.wakeDue, { runId: row.id, wakeId: row.execution.wakeId })
-      : host.scheduler.clear(key)) catch () => undefined)
-  }
-
-  effect function parkGenerated(row: RunRow, call: string, digest: string, wait: GeneratedWait): RunRow!WorkflowRefused {
-    const at = try now
-    const parked = try journaled({ ...row, waitDigest: digest }, { type: "park", wait: waitOf(call, wait, at) })
-    const clocked = try executed(parked, { type: "changeClock", now: at })
-    if (wait.kind === "approval") {
-      const request = wait.request
-      const supported = [request.title, request.summary, request.operation, request.target, request.account].every((field) => field.trim() !== "")
-      const approval: ApprovalRow = {
-        nodeId: call, iteration: 0, requestDigest: try workflowSha([row.id, versionId(row.version), call, 0, JSON.stringify(request)]), ...request,
-        request: { type: "speak_text", text: request.summary.slice(0, 5000) || call }, expiresAt: at + APPROVAL_LIFETIME_MS, machine: supported ? P.initial : P.markUnsupported(P.initial),
-      }
-      const waiting = try executed({ ...clocked, approvals: [...clocked.approvals, approval], events: [...clocked.events, try event("ApprovalRequested", call)] },
-        { type: "parkWorker", parked: "WaitingApproval", deadline: 0, hasDeadline: false })
-      const route = { workflowId: row.workflowId, runId: row.id, versionId: versionId(row.version), proposalId: `${call}:0`, expiresAt: approval.expiresAt }
-      try host.notify({ kind: "approval", title: request.title.slice(0, 200) || "Workflow approval", body: "Review this workflow step.", deepLink: workflowRunDeepLink(route), groupKey: `workflow-approval:${row.id}:${call}:0`, route })
-      return waiting
-    }
-    const deadline = wait.kind === "timer" ? at + wait.ms : wait.timeoutMs === undefined ? 0 : at + wait.timeoutMs
-    const waiting = try executed({ ...clocked, ...(wait.kind === "signal" ? { waitingSignal: wait.name } : {}), events: [...clocked.events, try event(wait.kind === "timer" ? "TimerCreated" : "SignalAwaited", call)] },
-      { type: "parkWorker", parked: wait.kind === "timer" ? "WaitingTimer" : "WaitingEvent", deadline, hasDeadline: deadline > 0 })
-    try armWake(waiting)
-    return waiting
-  }
-
-  effect function handleGenerated(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection): WorkerTurn!WorkflowRefused {
-    if (message === undefined) return try handle(row, message, connection)
-    switch (message.type) {
-      case "checkpoint": {
-        const next = try journaled(row, { type: "checkpointStep", call: message.call, digest: message.digest })
-        return {
-          row: { ...next, journalValues: { ...(row.journalValues ?? {}), [message.call]: message.value }, events: [...row.events, try event("NodeFinished", message.call)] },
-          done: false, reply: { type: "checkpointed", call: message.call, digest: message.digest },
-        }
-      }
-      case "needsEffect": {
-        const pending = try journaled(row, { type: "dispatchEffect", call: message.call, digest: message.digest })
-        try persist(pending)
-        const draft = host.draft
-        const text = draft === undefined ? undefined : draft(message.request.prompt) catch () => undefined
-        const committed = try journaled(pending, { type: "commitEffect" })
-        const reply: ParentMessage = text === undefined ? { type: "effectFailed", call: message.call, message: "The text model could not draft this call" } : { type: "effect", call: message.call, text }
-        return {
-          row: { ...committed, journalValues: { ...(row.journalValues ?? {}), [message.call]: text ?? null }, events: [...row.events, try event(text === undefined ? "NodeFailed" : "NodeFinished", message.call)] },
-          done: false, reply,
-        }
-      }
-      case "park": {
-        try connection.close
-        return { row: try parkGenerated(row, message.call, message.digest, message.wait), done: true }
-      }
-      case "diverged": {
-        const diverged = try journaled(row, { type: "replayCall", call: message.call, digest: "" })
-        const failed = try executed({ ...diverged, error: `The workflow code changed what the call ${message.call} asked for`, events: [...row.events, try event("RunFailed", message.call)] }, { type: "finishWork", succeeded: false })
-        return { row: try finishApprovals(failed), done: true }
-      }
-      case "done": {
-        const settled = try journaled(row, { type: "settleRun" })
-        const done = try executed({ ...settled, output: message.output ?? message.text, events: [...row.events, try event("RunFinished")] }, { type: "finishWork", succeeded: true })
-        return { row: try finishApprovals(done), done: true }
-      }
-      case "failed": return try handle(row, message, connection)
-      default:
-        return { row: try executed({ ...row, error: `The worker sent ${message.type} to a generated run` }, { type: "finishWork", succeeded: false }), done: true }
-    }
-  }
-
-  effect function resumeGenerated(runId: string, call: string, value: unknown): RunRow!WorkflowRefused {
-    return try updateRun(runId, effect (row) => {
-      const resumed = try journaled(row, { type: "resumeWait", call, digest: row.waitDigest ?? "" })
-      return { ...resumed, waitDigest: undefined, waitingSignal: undefined, journalValues: { ...(row.journalValues ?? {}), [call]: value } }
-    })
-  }
-
-  effect function wake(runId: string, wakeId: number): void!WorkflowRefused {
-    const row = try runOf(runId)
-    if (!X.canObserveWake(row.execution, wakeId) || row.generated === undefined) return
-    const at = try now
-    if (row.execution.wakeDue > at) return try armWake(row)
-    const woken = try updateRun(runId, (current) => executed(current, { type: "observeWake", wakeId }))
-    const wait = woken.generated?.wait
-    if (wait === undefined || wait.tag === "NoWait" || wait.tag === "WaitApproval") return
-    try resumeGenerated(runId, wait.call, wait.tag === "WaitTimer" ? null : { received: false })
-    try launch(runId)
-  }
-
-  effect function drive(runId: string, resume?: WorkerResume): void!! {
-    void (effect {
-      const port = host.worker
-      if (port === undefined || (try Ref.get(stopping))) return
-      const connection = try mapError(port.open(runId), (error) => new WorkflowRefused({ status: 503, message: error.reason }))
-      const starting = try onError(lock(effect {
-        const current = try runOf(runId)
-        if (current.execution.worker || terminal(current.execution.phase) || current.execution.cancelAsked) return undefined
-        const next = try executed({ ...current, events: [...current.events, try event(current.events.some((e) => e.type === "RunStarted") ? "NodeStarted" : "RunStarted")] }, { type: "startWorker" })
-        try persist(next)
-        return next
-      }), () => connection.close)
-      if (starting === undefined) {
-        try connection.close
-        return
-      }
-      const row = try ensuring(effect {
-      const generated = starting.generated !== undefined && starting.js !== undefined && starting.jsDigest !== undefined
-      try connection.send(generated
-        ? { type: "startGenerated", runId: starting.id, js: starting.js ?? "", jsDigest: starting.jsDigest ?? "", input: starting.input, journal: journalOf(starting) }
-        : {
-          type: "start", runId: starting.id, spec: starting.spec, specDigest: starting.specDigest, anchorAt: starting.anchorAt, values: starting.values, results: starting.results, next: starting.next, allowed: starting.allowed,
-          ...(resume === undefined ? {} : { resume }),
-        })
-      let current = starting
-      for (;;) {
-        const message = try connection.next
-        const handled = try lock(effect {
-          const stored = try runOf(runId)
-          const next = generated ? try handleGenerated(stored, message, connection) : try handle(stored, message, connection)
-          try persist(next.row)
-          return next
-        })
-        current = handled.row
-        if (handled.done) break
-        if (handled.reply !== undefined) try connection.send(handled.reply)
-      }
-      return current
-      }, connection.close)
-      if (row.finished) try resultNotice(row)
-    } catch effect (error) => try log("workflow run could not continue", runId, error))
-  }
-
-  effect function launch(runId: string, resume?: WorkerResume): void!! {
-    const fiber = fork.detached ensuring(drive(runId, resume), sync(() => { running.delete(runId) }))
-    running.set(runId, fiber)
-  }
-
-  effect function freshRun(definition: DefinitionRow, serial: number, fields: { readonly submissionId?: string; readonly input: Bag; readonly occurrence?: RunRow["occurrence"]; readonly hostedDigest?: Bag }): RunRow!WorkflowRefused {
-    const at = try now
-    const execution = try mapError(X.apply(X.initial, { type: "admitRun", runId: serial }), () => new WorkflowRefused({ status: 409, message: "The run could not be admitted" }))
-    const anchor = fields.occurrence === undefined ? at : Date.parse(fields.occurrence.scheduledAt)
-    return {
-      id: `${definition.id}-r${serial}`, workflowId: definition.id, owner, version: definition.admission.version, serial, input: fields.input, spec: definition.spec,
-      specDigest: definition.specDigest, execution, status: "queued", finished: false, startedAt: iso(at), anchorAt: iso(anchor), values: {}, results: [], next: 0, allowed: true,
-      approvals: [], events: [], ...(fields.submissionId === undefined ? {} : { submissionId: fields.submissionId }),
-      ...(fields.occurrence === undefined ? {} : { occurrence: fields.occurrence }), ...(fields.hostedDigest === undefined ? {} : { hostedDigest: fields.hostedDigest }),
-      ...(definition.generated === undefined ? {} : { generated: G.initial, journalValues: {}, js: definition.generated.js, jsDigest: definition.generated.jsDigest }),
-    }
-  }
-
-  effect function submit(definitionId: string, submissionId: string, expected: number, input: Bag, extra: { readonly occurrence?: RunRow["occurrence"]; readonly hostedDigest?: Bag } = {}) {
-    const inputKey = JSON.stringify(input)
-    return try lock(effect {
-      const current = try definitionOf(definitionId)
-      if (current.row.lifecycleState.removed) return try refuse(409, "Removed workflows do not run", { code: "WORKFLOW_VERSION_NOT_ADMITTED", workflowId: definitionId, submissionId, expectedVersionId: versionId(expected) })
-      const submitted = A.submitWorkflow(try project(current.row), owner, "ExactRequest", submissionId, expected, inputKey)
-      switch (submitted.reply) {
-        case "QueuedRun": {
-          const created = try freshRun({ ...current.row, admission: submitted }, submitted.replyRun, { submissionId, input, ...extra })
-          const next = { ...current.row, admission: submitted }
-          const written = try db(store.admitRun({ id: current.row.id, read: current.revision, next }, created, try now))
-          if (written === "stale") return try refuse(409, "Workflow changed while the run was admitted", { workflowId: definitionId })
-          return { submissionId, run: created, fresh: true }
-        }
-        case "ExistingRun": return { submissionId, run: try runOf(`${definitionId}-r${submitted.replyRun}`), fresh: false }
-        case "VersionRefused": return try refuse(409, "Workflow changed before acceptance", { code: "WORKFLOW_VERSION_NOT_ADMITTED", workflowId: definitionId, submissionId, expectedVersionId: versionId(expected) })
-        case "KeyConflict": return try refuse(409, "This submission identity was used for another run", { code: "WORKFLOW_SUBMISSION_CONFLICT", workflowId: definitionId, submissionId })
-        case "InvalidRun": return try refuse(400, "Exact reviewed submission required")
-        default: return try refuse(404, "Workflow not found", { workflowId: definitionId })
-      }
-    })
-  }
-
-  effect function run(id: string, input: unknown) {
-    const p = try body(input, ["input", "submissionId", "expectedVersionId"])
-    const submissionId = p.submissionId
-    const expected = versionOf(p.expectedVersionId)
-    if (typeof submissionId !== "string" || submissionId === "" || submissionId.length > 128 || expected === undefined) return try refuse(400, "Exact reviewed submission required")
-    const runInput = p.input ?? {}
-    if (typeof runInput !== "object" || runInput === null || Array.isArray(runInput) || phoneWorkflowBytes(runInput) > 65536) return try refuse(400, "Invalid run input")
-    if (host.worker === undefined) return try refuse(503, "No verified workflow worker is installed")
-    const submitted = try submit(id, submissionId, expected, runInput as Bag)
-    if (submitted.fresh) try launch(submitted.run.id)
-    return { submissionId, execution: runView(submitted.run) }
-  }
-
-  effect function submission(id: string, submissionId: string) {
+  effect function revisions(id: string, limit: number) {
     const current = try definitionOf(id)
-    const found = A.readSubmission(try project(current.row), owner, submissionId)
-    return { submissionId, execution: found.reply === "ExistingRun" ? runView(try runOf(`${id}-r${found.replyRun}`)) : null }
+    return current.row.revisions.toReversed().slice(0, Math.max(1, Math.min(50, limit))).map((revision) => ({
+      versionId: versionId(revision.version), name: revision.name, description: revision.description, specDigest: revision.specDigest,
+      createdAt: revision.createdAt, reason: revision.reason, steps: revision.spec.steps.map((step) => ({ label: stepLabel(step) })),
+    }))
   }
 
-  effect function executions(id: string) {
-    try definitionOf(id)
-    return { executions: (try db(store.runs({ owner, workflowId: id }))).toReversed().slice(0, 100).map(runView) }
-  }
-
-  effect function execution(runId: string) {
-    return { execution: runView(try runOf(runId)) }
-  }
-
-  effect function cancel(runId: string) {
-    const fiber = running.get(runId)
-    const asked = try updateRun(runId, effect (row) => {
-      if (row.finished || row.execution.cancelAsked) return row
-      const marked = try executed({ ...row, cancellationRequestedAt: iso(try now) }, { type: "askCancellation" })
-      if (marked.execution.worker) return marked
-      const confirmed = try executed({ ...marked, events: [...marked.events, try event("RunCancelled")] }, { type: "confirmCancellation", native: "NativeRunCancelled" })
-      return try finishApprovals(confirmed)
-    })
-    if (fiber !== undefined && asked.execution.worker) {
-      try Fiber.interrupt(fiber)
-      const settled = try updateRun(runId, (row) => row.execution.worker ? effect {
-        const stopped = try executed({ ...row, events: [...row.events, try event("RunCancelled")] }, { type: "finishWork", succeeded: false })
-        return try finishApprovals(stopped)
-      } : succeed(row))
-      try resultNotice(settled)
-      return { execution: runView(settled) }
-    }
-    if (asked.finished) try resultNotice(asked)
-    return { execution: runView(asked) }
-  }
-
-  effect function approvals(runId: string) {
-    return approvalsView(try runOf(runId))
-  }
-
-  effect function performDevice(row: RunRow, approval: ApprovalRow): WorkerResume!! {
-    const device = host.device
-    const enrolled = device === undefined ? undefined : try device.enrollment
-    if (device === undefined || enrolled === undefined) return { stepId: approval.nodeId, outcome: "failed", message: "The enrolled phone is unavailable" }
-    const binding: WorkflowDeviceBinding = { workflowId: row.workflowId, versionId: versionId(row.version), runId: row.id, stepId: approval.nodeId, specDigest: row.specDigest }
-    return (effect {
-      const raw = try mapError(device.perform(binding, enrolled, approval.request), (error) => error.message)
-      const request = approval.request
-      if (request.type !== "read_selected_notes" && request.type !== "read_calendar_range" && request.type !== "read_selected_reminders") {
-        return { stepId: approval.nodeId, outcome: "approved", value: "" } satisfies WorkerResume
-      }
-      const result = try mapError(validateWorkflowReadResult(request, raw), (error) => error.message)
-      return { stepId: approval.nodeId, outcome: "approved", value: JSON.stringify(result) } satisfies WorkerResume
-    } catch (message) => ({ stepId: approval.nodeId, outcome: "failed", message: typeof message === "string" ? message : "The phone step failed" }) satisfies WorkerResume)
-  }
-
-  effect function decide(runId: string, nodeId: string, iteration: number, input: unknown) {
-    const p = try body(input, ["approved", "expectedVersionId", "requestDigest"])
-    if (typeof p.approved !== "boolean" || typeof p.requestDigest !== "string" || !/^[a-f0-9]{64}$/.test(p.requestDigest)
-      || typeof p.expectedVersionId !== "string" || p.expectedVersionId === "" || p.expectedVersionId.length > 200 || !Number.isSafeInteger(iteration) || iteration < 0) {
-      return try refuse(400, "Exact reviewed approval identity required")
-    }
-    const wants: P.ApprovalState = p.approved ? "ApprovedRequest" : "DeniedRequest"
-    const caller = try workflowUuid()
-    const outcome = try lock(effect {
-      const row = try runOf(runId)
-      const index = row.approvals.findIndex((approval) => approval.nodeId === nodeId && approval.iteration === iteration)
-      if (index < 0) return try refuse(404, "Approval not found")
-      const approval = row.approvals[index]
-      const step = (machine: P.ApprovalRun, change: P.Event) => mapError(P.apply(machine, change), () => new WorkflowRefused({ status: 409, message: "The approval is out of step" }))
-      const requested = try step(approval.machine, {
-        type: "requestDecision", caller, decision: wants, ownerOk: row.owner === owner, versionOk: p.expectedVersionId === versionId(row.version), digestOk: p.requestDigest === approval.requestDigest,
+  effect function restoreRevision(id: string, wanted: string) {
+    const current = try definitionOf(id)
+    const revision = current.row.revisions.find((candidate) => versionId(candidate.version) === wanted)
+    if (revision === undefined) return try refuse(404, `Workflow revision not found: ${id}/${wanted}`, { workflowId: id })
+    if (current.row.origin === "digest") return try refuse(409, "Digests are changed in the digest settings", { workflowId: id })
+    const code = revision.generated
+    if (current.row.origin === "generated" && code !== undefined) {
+      try lock(effect {
+        const fresh = try definitionOf(id)
+        const edited = try admitted(fresh.row, { type: "editWorkflow" })
+        const changed: DefinitionRow = { ...fresh.row, admission: edited, spec: { ...revision.spec, name: fresh.row.name }, specDigest: revision.specDigest, generated: code, updatedAt: iso(try now) }
+        const settled = edited.active ? try admitted(changed, { type: "changeActivation", form: "ExactRequest", expected: edited.version, enable: false }) : edited
+        const next = { ...changed, admission: settled }
+        try writeDefinition(fresh, next, { mutationId: try workflowUuid(), owner, kind: "generated", data: { receipt: { workflowId: id, operation: "restore", versionId: versionId(settled.version), sourceDigest: code.sourceDigest } } })
+        try arm(next)
       })
-      const acquired = try step(requested, { type: "acquireRun", caller })
-      const reviewed = acquired.lock === caller ? try step(acquired, { type: "reviewApproval", caller }) : acquired
-      const phase = P.attemptOf(reviewed, caller).phase
-      const at = iso(try now)
-      const keep = (machine: P.ApprovalRun, decided: boolean): RunRow => ({
-        ...row, approvals: row.approvals.map((other, at_) => at_ === index ? { ...other, machine, ...(decided ? { decidedBy: owner, decidedAt: at } : {}) } : other),
-      })
-      if (phase === "CallerFailed") {
-        try persist(keep(reviewed, false))
-        return { row: keep(reviewed, false), resumed: false, refused: true }
-      }
-      if (phase === "CallerResuming") {
-        const answered = try step(reviewed, { type: "resumeRun", caller, resumed: true })
-        try persist(keep(answered, false))
-        return { row: keep(answered, false), resumed: false, refused: false }
-      }
-      const commanded = try step(reviewed, { type: "sendControl", caller, committed: true })
-      const decidedRow = { ...keep(commanded, true), events: [...row.events, try event(p.approved ? "ApprovalGranted" : "ApprovalDenied", nodeId)] }
-      try persist(decidedRow)
-      const readBack = try runOf(runId)
-      const canonical = readBack.approvals[index]?.machine.canonical
-      const read = try step(commanded, { type: "readBack", caller, available: canonical === wants })
-      if (P.attemptOf(read, caller).phase === "CallerFailed") {
-        const unread = { ...decidedRow, approvals: decidedRow.approvals.map((other, at_) => at_ === index ? { ...other, machine: read } : other) }
-        try persist(unread)
-        return { row: unread, resumed: false, refused: true }
-      }
-      const persisted = try step(read, { type: "persistDecision", caller, committed: true })
-      const answered = try step(persisted, { type: "resumeRun", caller, resumed: true })
-      const settled = { ...decidedRow, approvals: decidedRow.approvals.map((other, at_) => at_ === index ? { ...other, machine: answered } : other) }
-      try persist(settled)
-      return { row: settled, resumed: true, refused: false }
-    })
-    if (outcome.refused) return try refuse(409, "Approval identity changed or the decision is no longer available", { code: "WORKFLOW_APPROVAL_NOT_APPLIED" })
-    if (outcome.resumed) {
-      const approval = outcome.row.approvals.find((candidate) => candidate.nodeId === nodeId && candidate.iteration === iteration)
-      if (approval !== undefined && outcome.row.generated !== undefined) {
-        try resumeGenerated(runId, nodeId, approval.machine.canonical === "ApprovedRequest")
-        try launch(runId)
-      } else if (approval !== undefined) {
-        const resume: WorkerResume = approval.machine.canonical === "ApprovedRequest" ? try performDevice(outcome.row, approval) : { stepId: nodeId, outcome: "denied" }
-        try launch(runId, resume)
-      }
+      return definitionView((try definitionOf(id)).row)
     }
-    return approvalsView(try runOf(runId))
+    const spec: PhoneWorkflowSpec = { ...revision.spec, name: current.row.name }
+    try save({ spec, catalogRevision: PHONE_CATALOG_REVISION, compilerRevision: PHONE_COMPILER_REVISION, mutationId: try workflowUuid(), expectedVersionId: versionId(current.row.admission.version) }, id)
+    return definitionView((try definitionOf(id)).row)
   }
 
-  function scheduleKey(row: DefinitionRow): string {
-    return `${row.origin === "digest" ? "digest" : "workflow"}:${row.id}`
-  }
-
-  function scheduleOf(row: DefinitionRow): { readonly cron: string; readonly timeZone: string } | undefined {
-    if (row.origin === "digest") {
-      const spec = row.hostedDigest
-      if (spec === undefined || spec.manualOnly === true || !spec.enabled) return undefined
-      const [hour, minute] = spec.localTime.split(":").map(Number)
-      return { cron: `${minute} ${hour} * * *`, timeZone: spec.timeZone }
-    }
-    const trigger = timeTrigger(row.spec)
-    return trigger === undefined ? undefined : { cron: phoneTimeTriggerCron(trigger), timeZone: trigger.timeZone }
-  }
-
-  effect function arm(row: DefinitionRow, after?: number): void!! {
-    const key = scheduleKey(row)
-    const schedule = scheduleOf(row)
-    const wanted = schedule !== undefined && row.admission.active && !row.lifecycleState.removed
-    void (effect {
-      if (!wanted) {
-        try host.scheduler.clear(key)
-        return
-      }
-      const from = Math.max(try now, after ?? 0)
-      const due = host.nextCron(schedule.cron, from, schedule.timeZone)
-      if (due === undefined) {
-        try host.scheduler.clear(key)
-        return
-      }
-      try host.scheduler.set(key, due, { workflowId: row.id, armVersion: row.admission.version, scheduledAt: due })
-    } catch effect (error) => try log("workflow schedule could not be armed", row.id, error))
-  }
-
-  effect function recordOccurrence(row: DefinitionRow, occurrence: NonNullable<RunRow["occurrence"]>, status: "missed" | "overlap", text: string, extra: Bag = {}) {
-    const at = try now
-    const record: RunRow = {
-      id: `${row.id}-o${Date.parse(occurrence.scheduledAt)}`, workflowId: row.id, owner, version: row.admission.version, serial: 0, input: {}, spec: row.spec, specDigest: row.specDigest,
-      execution: X.initial, status: "finished", finished: true, startedAt: iso(at), stoppedAt: iso(at), anchorAt: occurrence.scheduledAt, occurrence,
-      ...(status === "missed" && extra.skippedLocalTime === undefined ? { missedOccurrenceAt: occurrence.scheduledAt } : {}),
-      output: { status, scheduledAt: occurrence.scheduledAt, text, ...extra }, values: {}, results: [], next: 0, allowed: false, approvals: [], events: [],
-    }
-    try db(store.insertRun(record, at))
-  }
-
-  effect function fireTyped(row: DefinitionRow, armVersion: number, scheduledAt: number): void!WorkflowRefused {
-    const trigger = timeTrigger(row.spec)
-    if (trigger === undefined) return
-    const clockNow = try now
-    const cron = phoneTimeTriggerCron(trigger)
-    const runs = try db(store.runs({ owner, workflowId: row.id }))
-    const wall = phoneWorkflowLocalWall(scheduledAt, trigger.timeZone)
-    const decision = decideOccurrence({
-      armVersion, definitionVersion: row.admission.version, clockNow, scheduledAt, cronMatches: host.nextCron(cron, scheduledAt - 60000, trigger.timeZone) === scheduledAt,
-      wallMinuteMatches: wall.slice(11) === trigger.localTime, active: row.admission.active && !row.lifecycleState.removed, pendingRun: runs.some((candidate) => !candidate.finished),
-      hasPrior: runs.some((candidate) => candidate.occurrence?.scheduledAt === iso(scheduledAt) && candidate.version === armVersion),
-    })
-    const occurrence = (status: "ready" | "missed" | "overlap", text: string) => ({ scheduledAt: iso(scheduledAt), trigger, status, text })
-    switch (decision) {
-      case "MissedWallTime": {
-        const skippedLocalTime = `${wall.slice(0, 10)}T${trigger.localTime}`
-        const text = `${trigger.localTime} did not occur on ${wall.slice(0, 10)} in ${trigger.timeZone} because the clocks moved forward. This occurrence did not run and will not run later.`
-        try recordOccurrence(row, { ...occurrence("missed", text), skippedLocalTime }, "missed", text, { skippedLocalTime })
-        return
-      }
-      case "MissedWindow": return try recordOccurrence(row, occurrence("missed", TYPED_MISSED_TEXT), "missed", TYPED_MISSED_TEXT)
-      case "OverlappingRun": return try recordOccurrence(row, occurrence("overlap", TYPED_OVERLAP_TEXT), "overlap", TYPED_OVERLAP_TEXT)
-      case "QueueOccurrence": {
-        if (host.worker === undefined) return
-        const submitted = try submit(row.id, `schedule:${armVersion}:${scheduledAt}`, armVersion, {}, { occurrence: occurrence("ready", "") })
-        if (submitted.fresh) try launch(submitted.run.id)
-        return
-      }
-      default: return
+  effect function evaluationSuite(id: string, limit: number) {
+    const current = try definitionOf(id)
+    const runs = (try db(store.runs({ owner, workflowId: id }))).toReversed().slice(0, Math.max(1, Math.min(100, limit)))
+    return {
+      workflowId: id, workflowName: current.row.name, workflowVersionId: versionId(current.row.admission.version), generatedAt: iso(try now), sampleCount: runs.length,
+      samples: runs.map((row) => ({ executionId: row.id, workflowVersionId: versionId(row.version), input: row.input, output: row.output ?? null, status: row.status, passed: row.status === "finished" })),
+      engine: WORKFLOW_ENGINE,
     }
   }
 
-  effect function fire(metadata: Readonly<Record<string, unknown>>, digestFire: (row: DefinitionRow, armVersion: number, scheduledAt: number) => void!WorkflowRefused): void!! {
-    if (typeof metadata.runId === "string" && typeof metadata.wakeId === "number") {
-      const runId = metadata.runId
-      const wakeId = metadata.wakeId
-      return void (wake(runId, wakeId) catch effect (error) => try log("workflow wakeup could not resume its run", runId, error))
-    }
-    const workflowId = metadata.workflowId
-    const armVersion = metadata.armVersion
-    const scheduledAt = metadata.scheduledAt
-    if (typeof workflowId !== "string" || typeof armVersion !== "number" || typeof scheduledAt !== "number") return
-    void (effect {
-      const current = try definitionOf(workflowId)
-      if (current.row.origin === "digest") try digestFire(current.row, armVersion, scheduledAt)
-      else try fireTyped(current.row, armVersion, scheduledAt)
-      try arm((try definitionOf(workflowId)).row, scheduledAt)
-    } catch effect (error) => try log("workflow occurrence could not be admitted", workflowId, error))
-  }
+  return { save, saveReceipt, list, detail, activation, metadata, metadataReceipt, lifecycle, lifecycleReceipt, revisions, restoreRevision, evaluationSuite }
+}
 
-  effect function start(): void!! {
-    try Ref.set(stopping, false)
-    void (effect {
-      for (const row of try db(store.runs({ owner, unfinished: true }))) {
-        const restarted = row.execution.stopping ? try executed(row, { type: "restartWorkerService" }) : row
-        if (restarted.execution.worker) {
-          const recovered = restarted.generated !== undefined && restarted.generated.pending !== ""
-            ? { ...(try journaled(restarted, { type: "recoverEffect", receiptFound: false })), error: "The agent stopped while a model call was in flight, so its outcome is unknown. It was not sent again." }
-            : restarted
-          try persist(try executed(recovered, { type: "observeUncertain", workerKnownLive: false }))
-        } else if (restarted.generated !== undefined && (restarted.execution.phase === "WaitingTimer" || restarted.execution.phase === "WaitingEvent")) {
-          if (restarted !== row) try persist(restarted)
-          try armWake(restarted)
-        } else if (restarted.execution.phase === "WaitingApproval" && restarted.generated !== undefined) {
-          if (restarted !== row) try persist(restarted)
-          const decided = restarted.approvals.at(-1)
-          const wait = restarted.generated.wait
-          if (decided !== undefined && decided.machine.canonical !== "PendingApproval" && wait.tag === "WaitApproval" && wait.call === decided.nodeId) {
-            try resumeGenerated(restarted.id, decided.nodeId, decided.machine.canonical === "ApprovedRequest")
-            try launch(restarted.id)
-          }
-        } else if (restarted.execution.phase === "WaitingApproval") {
-          if (restarted !== row) try persist(restarted)
-          const decided = restarted.approvals.at(-1)
-          if (decided !== undefined && decided.machine.canonical !== "PendingApproval") {
-            try launch(restarted.id, decided.machine.canonical === "ApprovedRequest" ? try performDevice(restarted, decided) : { stepId: decided.nodeId, outcome: "denied" })
-          }
-        } else if (restarted.execution.phase === "PostedRun" && restarted.occurrence !== undefined) {
-          const asked = try executed(restarted, { type: "askCancellation" })
-          const cancelled = try executed({ ...asked, output: { status: "missed", scheduledAt: restarted.occurrence.scheduledAt, text: TYPED_STOPPED_TEXT } }, { type: "confirmCancellation", native: "NativeRunAbsent" })
-          try persist(cancelled)
-        } else if (restarted.execution.phase === "PostedRun") {
-          if (restarted !== row) try persist(restarted)
-          try launch(restarted.id)
-        } else if (restarted !== row) try persist(restarted)
-      }
-      for (const stored of try db(store.definitions(owner))) {
-        try arm(stored.row)
-        if (stored.row.lifecycleState.removed && !stored.row.lifecycleState.cleaned) (cleanup(stored.row.id) catch () => undefined)
-      }
-    } catch effect (error) => try log("workflow service could not recover its runs", "start", error))
-  }
-
-  effect function stop(): void!! {
-    try Ref.set(stopping, true)
-    const fibers = [...running.entries()]
-    for (const [, fiber] of fibers) try Fiber.interrupt(fiber)
-    for (const [runId] of fibers) {
-      void (updateRun(runId, (row) => row.finished || row.execution.stopping ? succeed(row) : executed(row, { type: "stopWorkerService" })) catch () => undefined)
-    }
-  }
-
-  effect function placeholderSpec(): { readonly spec: PhoneWorkflowSpec; readonly specDigest: string }!! {
-    const spec: PhoneWorkflowSpec = { version: 1, name: "Conformance", description: "", trigger: { kind: "manual" }, steps: [{ id: "text", kind: "Read", operation: "supplied_text", text: "" }] }
-    return { spec, specDigest: try workflowSha(spec) }
-  }
-
+function workflowConformance(
+  { db, store, lock, now, owner, writeDefinition, persist }: Pick<WorkflowRows, "db" | "store" | "lock" | "now" | "owner" | "writeDefinition" | "persist">,
+) {
   effect function storedOrPlaceholder(id: string): { readonly read: StoredDefinition | undefined; readonly row: DefinitionRow }!WorkflowRefused {
     const read = try db(store.definition(id))
     if (read !== undefined) return { read, row: read.row }
@@ -1219,80 +1327,6 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return (try db(store.run(runId)))?.approvals.find((approval) => approval.nodeId === nodeId && approval.iteration === 0)?.machine ?? P.initial
   }
 
-  effect function signal(runId: string, name: string, input: unknown) {
-    const p = try body(input ?? {}, ["payload"])
-    if (name.trim() === "" || name.length > 200 || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(name)) return try refuse(400, "Signal name is required")
-    if (phoneWorkflowBytes(p.payload ?? null) > 65536) return try refuse(413, "Signal payload is too large")
-    const at = iso(try now)
-    const received = try updateRun(runId, effect (row) => {
-      if (row.finished) return try refuse(409, "Workflow execution is already terminal")
-      const wait = row.generated?.wait
-      if (row.execution.phase !== "WaitingEvent" || row.waitingSignal !== name || wait === undefined || wait.tag !== "WaitSignal" || wait.signal !== name) return try refuse(409, "This run is not waiting for that signal")
-      const pending = row.execution.wakeId
-      const woken = pending > 0 ? try executed(row, { type: "observeWake", wakeId: pending }) : row
-      const resumed = try journaled({ ...woken, signals: [...(row.signals ?? []), { name, payload: p.payload ?? null, receivedAt: at, receivedBy: owner }].slice(-100), events: [...row.events, try event("SignalReceived", wait.call)] },
-        { type: "resumeWait", call: wait.call, digest: row.waitDigest ?? "" })
-      return { ...resumed, waitingSignal: undefined, waitDigest: undefined, journalValues: { ...(row.journalValues ?? {}), [wait.call]: { received: true, payload: p.payload ?? null } } }
-    })
-    try armWake(received)
-    try launch(runId)
-    return { execution: runView(received) }
-  }
-
-  effect function* runEvents(runId: string) {
-    let sent = 0
-    for try (const _tick of SubscriptionRef.changes(ticks)) {
-      const row = try runOf(runId)
-      for (const entry of row.events.slice(sent)) yield { runId: row.id, workflowId: row.workflowId, ...entry }
-      sent = row.events.length
-      if (row.finished) {
-        yield { runId: row.id, workflowId: row.workflowId, type: "RunSettled", timestamp: row.stoppedAt ?? row.startedAt, status: row.status }
-        break
-      }
-    }
-  }
-
-  effect function revisions(id: string, limit: number) {
-    const current = try definitionOf(id)
-    return current.row.revisions.toReversed().slice(0, Math.max(1, Math.min(50, limit))).map((revision) => ({
-      versionId: versionId(revision.version), name: revision.name, description: revision.description, specDigest: revision.specDigest,
-      createdAt: revision.createdAt, reason: revision.reason, steps: revision.spec.steps.map((step) => ({ label: stepLabel(step) })),
-    }))
-  }
-
-  effect function restoreRevision(id: string, wanted: string) {
-    const current = try definitionOf(id)
-    const revision = current.row.revisions.find((candidate) => versionId(candidate.version) === wanted)
-    if (revision === undefined) return try refuse(404, `Workflow revision not found: ${id}/${wanted}`, { workflowId: id })
-    if (current.row.origin === "digest") return try refuse(409, "Digests are changed in the digest settings", { workflowId: id })
-    const code = revision.generated
-    if (current.row.origin === "generated" && code !== undefined) {
-      try lock(effect {
-        const fresh = try definitionOf(id)
-        const edited = try admitted(fresh.row, { type: "editWorkflow" })
-        const changed: DefinitionRow = { ...fresh.row, admission: edited, spec: { ...revision.spec, name: fresh.row.name }, specDigest: revision.specDigest, generated: code, updatedAt: iso(try now) }
-        const settled = edited.active ? try admitted(changed, { type: "changeActivation", form: "ExactRequest", expected: edited.version, enable: false }) : edited
-        const next = { ...changed, admission: settled }
-        try writeDefinition(fresh, next, { mutationId: try workflowUuid(), owner, kind: "generated", data: { receipt: { workflowId: id, operation: "restore", versionId: versionId(settled.version), sourceDigest: code.sourceDigest } } })
-        try arm(next)
-      })
-      return definitionView((try definitionOf(id)).row)
-    }
-    const spec: PhoneWorkflowSpec = { ...revision.spec, name: current.row.name }
-    try save({ spec, catalogRevision: PHONE_CATALOG_REVISION, compilerRevision: PHONE_COMPILER_REVISION, mutationId: try workflowUuid(), expectedVersionId: versionId(current.row.admission.version) }, id)
-    return definitionView((try definitionOf(id)).row)
-  }
-
-  effect function evaluationSuite(id: string, limit: number) {
-    const current = try definitionOf(id)
-    const runs = (try db(store.runs({ owner, workflowId: id }))).toReversed().slice(0, Math.max(1, Math.min(100, limit)))
-    return {
-      workflowId: id, workflowName: current.row.name, workflowVersionId: versionId(current.row.admission.version), generatedAt: iso(try now), sampleCount: runs.length,
-      samples: runs.map((row) => ({ executionId: row.id, workflowVersionId: versionId(row.version), input: row.input, output: row.output ?? null, status: row.status, passed: row.status === "finished" })),
-      engine: WORKFLOW_ENGINE,
-    }
-  }
-
   effect function generatedStep(runId: string, change: G.Event): G.GeneratedRun!(G.Rejected | WorkflowRefused) {
     return try lock(effect {
       const row = try runOrPlaceholder(runId)
@@ -1306,38 +1340,82 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return (try db(store.run(runId)))?.generated ?? G.initial
   }
 
-  effect function generatedActivation(row: DefinitionRow): boolean!WorkflowRefused {
-    const code = row.generated
-    if (code === undefined) return true
-    const checked = try checkSource(code.source)
-    return G.generatedActivationAdmitted({
-      checked: checked.ok && (try workflowSha(checked.js)) === code.jsDigest, compilerCurrent: checked.compilerRevision === code.compilerRevision,
-      sourceDigest: code.sourceDigest, reviewedDigest: code.reviewedDigest, version: row.admission.version, reviewedVersion: code.reviewedVersion,
-    }, true)
-  }
+  return { admissionStep, admissionState, lifecycleStep, lifecycleOf, executionStep, executionState, approvalStep, approvalState, generatedStep, generatedState }
+}
 
-  effect function checkSource(source: string) {
-    const port = host.worker
-    if (port === undefined) return try refuse(503, "No verified workflow worker is installed to check workflow code")
-    const connection = try mapError(port.open(`check-${try workflowUuid()}`), (error) => new WorkflowRefused({ status: 503, message: error.reason }))
-    return try ensuring(effect {
-      try connection.send({ type: "check", source })
-      const answer = try connection.next
-      if (answer?.type !== "checked") return try refuse(503, answer?.type === "failed" ? `The workflow compiler failed: ${answer.message}` : "The workflow compiler did not answer")
-      return answer.result
-    }, connection.close)
-  }
+export type WorkflowService = Effect.Success<ReturnType<typeof openWorkflows>>
 
-  function status() {
-    const ready = host.worker !== undefined
-    if (!ready) return { engine: WORKFLOW_ENGINE, status: "unavailable", reason: "No verified workflow worker is installed" }
-    return {
-      engine: WORKFLOW_ENGINE, status: "ready", manualSubmissionProtocol: 1, approvalReceiptProtocol: 1, approvalPresentationProtocol: 1, metadataMutationProtocol: 1,
-      lifecycleMutationProtocol: 1, typedAuthoringProtocol: 1, typedScheduleProtocol: 1, generatedWorkflowProtocol: 1, hostedDigestProtocol: 1, hostedDigestSourcePauseProtocol: 1,
-      ...(host.nativeDigests === undefined ? {} : { hostedNativeSourceProtocol: 1, hostedNativeEveningProtocol: 1, hostedDossierProtocol: 1 }),
-    }
-  }
+export effect function openWorkflows(host: WorkflowHost) {
+  const store = workflowStore(host.sql)
+  const owner = host.owner
+  const lock = (try Semaphore.make(1)).withPermits(1)
+  const running = new Map<string, Fiber.Fiber<void, never>>()
+  const stopping = try Ref.make(false)
+  const drafts = workflowDrafts(host)
+  const { catalog, deviceProtocol, validate, generate, draftSpec, generatedActivation, checkSource, status } = drafts
+  const now = Clock.currentTimeMillis
+  const ticks = try SubscriptionRef.make(0)
+  const rows = workflowRows(store, owner, lock, now, ticks)
+  const { db, definitionOf, writeDefinition, admitted, runOf, updateRun, executed, persist, freshRun, runEvents } = rows
+  try db(store.migrate())
 
+  const turns = workflowWorkerTurns(host, rows)
+  const { phoneReview, armWake, performDevice, resumeGenerated } = turns
+  const { launch, cancel, stop } = workflowWorker(host, rows, turns, { running, stopping })
+  const { submit, run, submission, executions, execution } = workflowRuns(host, rows, launch)
+  const { wake, approvals, decide, signal } = workflowContinuations(rows, turns, launch)
+  const schedules = workflowSchedules(host, rows, { submit, launch, wake })
+  const { arm, cleanup, recordOccurrence, fire } = schedules
+  const {
+    save, saveReceipt, list, detail, activation, metadata, metadataReceipt, lifecycle, lifecycleReceipt, revisions, restoreRevision, evaluationSuite,
+  } = workflowDefinitions(rows, drafts, schedules)
+  const {
+    admissionStep, admissionState, lifecycleStep, lifecycleOf, executionStep, executionState, approvalStep, approvalState, generatedStep, generatedState,
+  } = workflowConformance(rows)
+
+  effect function start(): void!! {
+    try Ref.set(stopping, false)
+    void (effect {
+      for (const row of try db(store.runs({ owner, unfinished: true }))) {
+        const restarted = row.execution.stopping ? try executed(row, { type: "restartWorkerService" }) : row
+        if (restarted.execution.worker) {
+          const recovered = restarted.generated !== undefined && restarted.generated.pending !== ""
+            ? { ...(try journaled(restarted, { type: "recoverEffect", receiptFound: false })), error: "The agent stopped while a model call was in flight, so its outcome is unknown. It was not sent again." }
+            : restarted
+          try persist(try executed(recovered, { type: "observeUncertain", workerKnownLive: false }))
+        } else if (restarted.generated !== undefined && (restarted.execution.phase === "WaitingTimer" || restarted.execution.phase === "WaitingEvent")) {
+          if (restarted !== row) try persist(restarted)
+          try armWake(restarted)
+        } else if (restarted.execution.phase === "WaitingApproval" && restarted.generated !== undefined) {
+          if (restarted !== row) try persist(restarted)
+          const decided = restarted.approvals.at(-1)
+          const wait = restarted.generated.wait
+          if (decided !== undefined && decided.machine.canonical !== "PendingApproval" && wait.tag === "WaitApproval" && wait.call === decided.nodeId) {
+            try resumeGenerated(restarted.id, decided.nodeId, decided.machine.canonical === "ApprovedRequest")
+            try launch(restarted.id)
+          }
+        } else if (restarted.execution.phase === "WaitingApproval") {
+          if (restarted !== row) try persist(restarted)
+          const decided = restarted.approvals.at(-1)
+          if (decided !== undefined && decided.machine.canonical !== "PendingApproval") {
+            try launch(restarted.id, decided.machine.canonical === "ApprovedRequest" ? try performDevice(restarted, decided) : { stepId: decided.nodeId, outcome: "denied" })
+          }
+        } else if (restarted.execution.phase === "PostedRun" && restarted.occurrence !== undefined) {
+          const asked = try executed(restarted, { type: "askCancellation" })
+          const cancelled = try executed({ ...asked, output: { status: "missed", scheduledAt: restarted.occurrence.scheduledAt, text: TYPED_STOPPED_TEXT } }, { type: "confirmCancellation", native: "NativeRunAbsent" })
+          try persist(cancelled)
+        } else if (restarted.execution.phase === "PostedRun") {
+          if (restarted !== row) try persist(restarted)
+          try launch(restarted.id)
+        } else if (restarted !== row) try persist(restarted)
+      }
+      const held: readonly string[] = host.scheduler.keys catch () => []
+      for (const stored of try db(store.definitions(owner))) {
+        if (!held.includes(scheduleKey(stored.row)) || !scheduleWanted(stored.row)) try arm(stored.row)
+        if (stored.row.lifecycleState.removed && !stored.row.lifecycleState.cleaned) (cleanup(stored.row.id) catch () => undefined)
+      }
+    } catch effect (error) => try log("workflow service could not recover its runs", "start", error))
+  }
   return {
     host, store, owner, lock, now, db, status, catalog, validate, generate, draftSpec, save, saveReceipt, list, detail, activation, metadata, metadataReceipt, lifecycle, lifecycleReceipt,
     run, submit, launch, submission, executions, execution, cancel, approvals, decide, phoneReview, arm, fire, start, stop, definitionOf, writeDefinition, admitted,

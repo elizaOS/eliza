@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import {
   deviceCalendar, findRow, occurrenceId, removeRow, removeScoped, reviewSeries, saveEdit, saveScopedEdit, saveSeriesEdit, settleDeletions, stageDeletion, stageSeriesDeletion,
-  guardPendingChanges, trimJournal, undoDeletion, DeletionRefused, DeviceBridgeFault, ScopeMismatch, SeriesChanged,
+  guardPendingChanges, trimJournal, undoDeletion, type DeletionRefused, DeviceBridgeFault, InvalidSeriesTime, ScopeMismatch, SeriesChanged,
   type CalendarDocument, type CalendarRow, type DeletionClock, type DeletionOwner, type DeviceInspection, type DeviceRemoval, type DeviceRow,
   type DeviceTicket, type OwnerFacts,
 } from "../src/series/index.vibe"
@@ -74,6 +74,13 @@ it.effect('Change this event, this and following, or all of a series from one oc
     [occurrenceId("standup", begin + day + 1_800_000), "Sync", "Sync"])
   const one = try saveScopedEdit([standup], { id: second, revision: "r1" }, "instance", { title: "Just today" }, mint, "unused")
   assert.deepStrictEqual([findRow(one.rows, second)?.title, findRow(one.rows, third)?.title], ["Just today", "Standup"])
+  const fromOverride = try saveScopedEdit(one.rows, { id: second, revision: findRow(one.rows, second)!.revision }, "series",
+    { title: "Sync", begin: begin + day + hour, end: begin + day + hour + 1_800_000 }, mint, "unused")
+  assert.deepStrictEqual([fromOverride.selected, findRow(fromOverride.rows, second)?.title, findRow(fromOverride.rows, second)?.begin, findRow(fromOverride.rows, occurrenceId("standup", begin + 2 * day + hour))?.title],
+    [second, "Sync", begin + day + hour, "Sync"])
+  const friday = occurrenceId("standup", begin + 4 * day)
+  const weekend = try Effect.flip(saveScopedEdit([{ ...standup, repeat: "weekdays" }], { id: friday, revision: "r1" }, "series", { begin: begin + 5 * day, end: begin + 5 * day + 1_800_000 }, mint, "unused"))
+  assert.isTrue(weekend instanceof InvalidSeriesTime)
   const mismatch = try Effect.flip(saveScopedEdit([dentist], { id: "dentist", revision: "d1" }, "series", { title: "Dentist" }, mint, "unused"))
   assert.isTrue(mismatch instanceof ScopeMismatch)
   const stale = try Effect.flip(removeScoped([standup], { id: second, revision: "old" }, "series", mint))

@@ -1,5 +1,6 @@
 // spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"
 import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
+import type { Clock } from "effect";
 import { exportJWK, SignJWT } from "jose";
 import type { FakeAnswer, FakeHandler, FakeRequest } from "./fakes.ts";
 
@@ -50,7 +51,7 @@ function back(redirectUri: string, fields: Readonly<Record<string, string>>): Fa
   return { status: 302, headers: { location: `${redirectUri}?${new URLSearchParams(fields)}` } };
 }
 
-export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
+export function googleIdentityFake(clientSecret: string, clock?: Pick<Clock.Clock, "currentTimeMillisUnsafe">): GoogleIdentityFake {
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const jwk = exportJWK(publicKey).then((key) => ({ ...key, kid: keyId, alg: "RS256", use: "sig" }));
   const grants = new Map<string, Grant>();
@@ -61,15 +62,17 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
   let deny = false;
   let managedScopes: ReadonlyArray<string> | undefined;
 
-  const idToken = (who: GooglePerson, claims: IdTokenClaims) =>
-    new SignJWT({ email: who.email, email_verified: who.emailVerified, ...(who.givenName === undefined ? {} : { given_name: who.givenName }), ...(claims.nonce === undefined ? {} : { nonce: claims.nonce }) })
+  const idToken = (who: GooglePerson, claims: IdTokenClaims) => {
+    const issuedAt = Math.floor((clock?.currentTimeMillisUnsafe() ?? Date.now()) / 1000);
+    return new SignJWT({ email: who.email, email_verified: who.emailVerified, ...(who.givenName === undefined ? {} : { given_name: who.givenName }), ...(claims.nonce === undefined ? {} : { nonce: claims.nonce }) })
       .setProtectedHeader({ alg: "RS256", kid: keyId })
       .setIssuer(claims.issuer ?? "https://accounts.google.com")
       .setAudience(claims.audience)
       .setSubject(who.subject)
-      .setIssuedAt()
-      .setExpirationTime(Math.floor(Date.now() / 1000) + (claims.expiresInSeconds ?? 300))
+      .setIssuedAt(issuedAt)
+      .setExpirationTime(issuedAt + (claims.expiresInSeconds ?? 300))
       .sign(privateKey);
+  };
 
   const accounts = (request: FakeRequest): FakeAnswer => {
     const query = request.query;
@@ -152,7 +155,7 @@ export interface Redirect {
   readonly body: string;
 }
 
-/** @throws {TypeError} when the request cannot be sent */
+/** @throws {TypeError} */
 export async function visit(url: string): Promise<Redirect> {
   const response = await fetch(url, { redirect: "manual" });
   return { status: response.status, location: response.headers.get("location") ?? "", body: await response.text() };

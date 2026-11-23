@@ -1,6 +1,5 @@
 // spec/os/update/operator.md, "A candidate is admitted only from a signed record of the channel, with the same OTA certificate and AVB key, its build date as post-timestamp and no lower rollback index"; spec/os/update/operator.md, "An incremental package starts from exactly the installed build and its signed target files"; spec/os/update/operator.md, "Stock recovery prints its plan only for the channel's locked factory archive and never flashes"
 import { recordAdmitted, rollbackNotLower, startsFromInstalled, stockPlanAdmitted, updateAdmitted, type OperatorRelease } from "../../gen/os__update__operator.effect.vibe"
-import type { ReleaseChannel } from "../../gen/os__image__signing.effect.vibe"
 import { parseDigest } from "./apk.vibe"
 import { archiveEntries } from "./signing-archive.vibe"
 import { readSigningJson } from "./signing-keys.vibe"

@@ -33,77 +33,10 @@ jobs:
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            .github/workflows/ci.yml
+            .github/actions/verify-android-node-lock/action.yml
             packages/os/aosp/runtime/node.lock.json
             packages/os/android/android-runtime-inventory.mjs
-      - id: changed
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && git fetch --no-tags --depth=1 origin "$BASE_SHA" &&
-            git diff --quiet "$BASE_SHA" HEAD -- .github/workflows/ci.yml packages/os/aosp/runtime/node.lock.json packages/os/android/android-runtime-inventory.mjs; then
-            exit 0
-          fi
-          echo 'verify=true' >> "$GITHUB_OUTPUT"
-      - if: steps.changed.outputs.verify == 'true'
-        uses: actions/setup-node@v6
-        with:
-          node-version: '26'
-      - if: steps.changed.outputs.verify == 'true'
-        name: Verify the two released ABI archives and producer manifests
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          node --input-type=module <<'JS'
-          import assert from 'node:assert/strict';
-          import { execFileSync } from 'node:child_process';
-          import { createHash } from 'node:crypto';
-          import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-          import { tmpdir } from 'node:os';
-          import { join } from 'node:path';
-          import { isAndroidExecutableForAbi } from './packages/os/android/android-runtime-inventory.mjs';
-
-          const lock = JSON.parse(readFileSync('packages/os/aosp/runtime/node.lock.json', 'utf8'));
-          const { version, ndk, apiLevel, buildCommit, sourceSha256, entries } = lock;
-          const sha256 = /^[0-9a-f]{64}$/;
-          assert.ok(Array.isArray(entries) && entries.length === 2, 'Pin both released Android Node ABIs');
-          assert.match(version, /^26\.\d+\.\d+$/);
-          assert.match(ndk, /^\d+\.\d+\.\d+$/);
-          assert.ok(Number.isSafeInteger(apiLevel) && apiLevel > 0, 'Invalid Android API level');
-          assert.match(buildCommit, /^[0-9a-f]{40}$/);
-          assert.match(sourceSha256, sha256);
-          assert.deepEqual(entries.map(entry => entry.abi).sort(), ['arm64-v8a', 'x86_64']);
-
-          const repo = 'elizaOS/eliza';
-          const tag = `android-node-v${version}-ndk-${ndk}`;
-          const assetName = abi => `node-v${version}-android-${abi}.zip`;
-          for (const entry of entries) {
-            assert.match(entry.sha256, sha256);
-            assert.match(entry.archiveSha256, sha256);
-            assert.equal(entry.url, `https://github.com/${repo}/releases/download/${tag}/${assetName(entry.abi)}`);
-          }
-          const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-          const archiveDir = mkdtempSync(join(tmpdir(), 'android-node-lock-'));
-          try {
-            for (const { abi, sha256, archiveSha256 } of entries) {
-              const name = assetName(abi);
-              execFileSync('gh', ['release', 'download', tag, '--repo', repo, '--pattern', name, '--dir', archiveDir], { stdio: 'inherit' });
-              const archive = join(archiveDir, name);
-              assert.equal(hash(readFileSync(archive)), archiveSha256, `${abi} archive digest does not match the lock`);
-              const manifest = JSON.parse(execFileSync('unzip', ['-p', archive, 'manifest.json'], { encoding: 'utf8', maxBuffer: 64 * 1024 }));
-              assert.deepEqual({
-                schema: manifest.schema, abi: manifest.abi, version: manifest.version, ndk: manifest.ndk,
-                apiLevel: manifest.apiLevel, buildCommit: manifest.buildCommit, sourceSha256: manifest.sourceSha256, sha256: manifest.sha256,
-              }, { schema: 1, abi, version, ndk, apiLevel, buildCommit, sourceSha256, sha256 });
-              const binary = execFileSync('unzip', ['-p', archive, 'libeliza_node.so'], { maxBuffer: 512 * 1024 * 1024 });
-              assert.ok(isAndroidExecutableForAbi(binary, abi), `${abi} archive contains the wrong executable`);
-              assert.equal(hash(binary), sha256, `${abi} executable digest does not match the lock`);
-            }
-          } finally { rmSync(archiveDir, { recursive: true, force: true }); }
-          console.log('Both released Android Node ABIs match the runtime lock.');
-          JS
+      - uses: ./.github/actions/verify-android-node-lock
 
   verify:
     name: ${{ matrix.name }}
@@ -122,10 +55,89 @@ jobs:
         uses: ./.github/actions/setup
         with:
           job: ${{ matrix.name }}
+      - id: tool-selftest-cache
+        if: startsWith(matrix.name, 'selftest-') && (env.TURBO_CACHE == 'local:rw' || github.event_name == 'push')
+        continue-on-error: true
+        shell: bash
+        env:
+          TASK: ${{ matrix.tasks }}
+          JOB: ${{ matrix.name }}
+        run: |
+          hash=$(node vibestack/spec.ts tasks "$TASK" --only --dry=json | jq -er --arg task "$TASK" '
+            .tasks | select(length == 1) | .[0]
+            | select(.taskId == $task and .resolvedTaskDefinition.cache == true and .resolvedTaskDefinition.outputs == [])
+            | .hash
+          ')
+          [[ $hash =~ ^[0-9a-f]{16}$ ]] || exit 0
+          archive=".turbo/cache/$hash.tar.zst"
+          meta=".turbo/cache/$hash-meta.json"
+          if [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] &&
+            jq -e --arg hash "$hash" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null; then
+            [[ $GITHUB_EVENT_NAME == push ]] || exit 0
+            echo 'lookup=true' >> "$GITHUB_OUTPUT"
+          fi
+          printf 'hash=%s\nkey=turbo-tool-selftest-v1-%s-%s-%s-%s\n' "$hash" "$RUNNER_OS" "$RUNNER_ARCH" "$JOB" "$hash" >> "$GITHUB_OUTPUT"
+      - id: restore-tool-selftest
+        if: steps.tool-selftest-cache.outputs.key != ''
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          key: ${{ steps.tool-selftest-cache.outputs.key }}
+          path: |
+            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}.tar.zst
+            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}-meta.json
+          lookup-only: ${{ steps.tool-selftest-cache.outputs.lookup == 'true' }}
+      - if: steps.restore-tool-selftest.outputs.cache-hit == 'true' && steps.tool-selftest-cache.outputs.lookup != 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          HASH: ${{ steps.tool-selftest-cache.outputs.hash }}
+        run: |
+          archive=".turbo/tool-selftest-cache/$HASH.tar.zst"
+          meta=".turbo/tool-selftest-cache/$HASH-meta.json"
+          [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] || exit 0
+          jq -e --arg hash "$HASH" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null || exit 0
+          mkdir -p .turbo/cache
+          rm -f ".turbo/cache/$HASH-manifest.json"
+          mv "$archive" "$meta" .turbo/cache/
       - id: verify-tasks
         run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
+      - id: publish-tool-selftest
+        if: >-
+          github.event_name == 'push' && steps.tool-selftest-cache.outputs.key != '' &&
+          steps.restore-tool-selftest.outputs.cache-hit != 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          TASK: ${{ matrix.tasks }}
+          HASH: ${{ steps.tool-selftest-cache.outputs.hash }}
+        run: |
+          jq -e -s --arg task "$TASK" --arg hash "$HASH" '
+            map(select(.version == "1" and .execution.exitCode == 0 and (.tasks | length == 1)))
+            | map(.tasks[0] | select(.taskId == $task and .hash == $hash and .execution.exitCode == 0))
+            | length == 1
+          ' .turbo/runs/*.json >/dev/null || exit 0
+          archive=".turbo/cache/$HASH.tar.zst"
+          meta=".turbo/cache/$HASH-meta.json"
+          [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] || exit 0
+          jq -e --arg hash "$HASH" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null || exit 0
+          mkdir -p .turbo/tool-selftest-cache
+          cp "$archive" "$meta" .turbo/tool-selftest-cache/
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+      - if: steps.publish-tool-selftest.outputs.ready == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          key: ${{ steps.tool-selftest-cache.outputs.key }}
+          path: |
+            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}.tar.zst
+            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}-meta.json
       - name: Report Turbo task timings
+        id: task-timings
         if: ${{ !cancelled() }}
+        env:
+          RESTORED_FIXTURE_EVALUATOR: ${{ steps.setup.outputs.spec-evaluator-restored == 'true' && steps.verify-tasks.outcome == 'success' }}
+          TASK: ${{ matrix.tasks }}
         run: |
           for report in .turbo/runs/*.json; do
             [[ -f "$report" ]] || continue
@@ -146,6 +158,19 @@ jobs:
                 ""
             ' "$report" >> "$GITHUB_STEP_SUMMARY" || echo "::warning::Could not read the Turbo run summary"
           done
+          [[ $RESTORED_FIXTURE_EVALUATOR == true ]] || exit 0
+          shopt -s nullglob
+          reports=(.turbo/runs/*.json)
+          (( ${#reports[@]} )) || exit 0
+          jq -es --arg task "$TASK" '
+            map(select(.version == "1" and any(.tasks[]?; .taskId == $task)))
+            | length == 1 and
+              (.[0] | .execution.exitCode == 0 and .execution.attempted == 1 and .execution.cached == 1 and
+                (.tasks | length == 1 and (.[0] | .taskId == $task and .cache.status == "HIT" and
+                  .execution.exitCode == 0 and .resolvedTaskDefinition.outputs == [])))
+          ' "${reports[@]}" >/dev/null || exit 0
+          echo 'skip-spec-cache=true' >> "$GITHUB_OUTPUT"
+          echo 'Skipping the spec cache upload after a full fixture replay.'
       - id: superseded-spec-cache
         if: >-
           cancelled() && matrix.name == 'verify' && steps.verify-tasks.conclusion == 'cancelled' &&
@@ -160,13 +185,33 @@ jobs:
           [[ $tip =~ ^[0-9a-f]{40}$ && $ref == "$GITHUB_REF" && $tip != "$GITHUB_SHA" ]] || exit 0
           echo 'skip=true' >> "$GITHUB_OUTPUT"
           echo "Skipping the spec cache upload for superseded commit $GITHUB_SHA."
-      - if: always() && steps.setup.outputs.spec-cache-key != '' && steps.superseded-spec-cache.outputs.skip != 'true'
+      - id: closed-pr-cache
+        if: >-
+          always() && github.event_name == 'pull_request' && github.run_attempt == '1' &&
+          (steps.setup.outputs.spec-cache-key != '' || steps.setup.outputs.turbo-cache-key != '')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ -n $GH_TOKEN && $GITHUB_REF =~ ^refs/pull/([1-9][0-9]*)/merge$ ]] || exit 0
+          number=${BASH_REMATCH[1]}
+          pull=$(curl --fail --silent --max-time 4 -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$number") || exit 0
+          jq -e --argjson number "$number" '
+            .number == $number and .state == "closed" and (.closed_at | type == "string")
+          ' <<< "$pull" >/dev/null 2>&1 || exit 0
+          echo 'skip=true' >> "$GITHUB_OUTPUT"
+          echo "Skipping verification cache uploads for closed PR #$number."
+      - if: >-
+          always() && steps.setup.outputs.spec-cache-key != '' &&
+          steps.superseded-spec-cache.outputs.skip != 'true' && steps.task-timings.outputs.skip-spec-cache != 'true' &&
+          steps.closed-pr-cache.outputs.skip != 'true'
         uses: actions/cache/save@v6
         with:
           path: ${{ steps.setup.outputs.spec-cache-path }}
           key: ${{ steps.setup.outputs.spec-cache-key }}
       - id: prune-turbo-cache
-        if: always() && steps.setup.outputs.turbo-cache-key != ''
+        if: always() && steps.setup.outputs.turbo-cache-key != '' && steps.closed-pr-cache.outputs.skip != 'true'
         run: |
           [[ -d .turbo/cache ]] || exit 0
           cat .turbo/runs/*.json 2>/dev/null | jq -r '.tasks[] | select(.cache.status == "HIT") | .hash' | while read -r hash; do find .turbo/cache -name "$hash*" -exec touch {} +; done

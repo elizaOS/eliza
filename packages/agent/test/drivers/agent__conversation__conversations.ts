@@ -91,7 +91,13 @@ async function storedMessages(w: World, record: ConversationRecord): Promise<Arr
     .flatMap((memory) => memory.id === undefined ? [] : [memory as Memory & { id: UUID }]);
 }
 
-const sourceOf = (memory: Memory) => (memory.metadata as { forkSourceMessageId?: unknown } | undefined)?.forkSourceMessageId;
+function sourceOf(memory: Memory): string | undefined {
+  const metadata = memory.metadata;
+  if (metadata === undefined || !("forkSourceMessageId" in metadata)) return undefined;
+  const source = metadata.forkSourceMessageId;
+  if (source !== undefined && typeof source !== "string") throw new TypeError("The recorded fork source must be a message identifier");
+  return source;
+}
 
 async function send(event: Event): Promise<"accepted" | "refused"> {
   const w = await current();
@@ -128,7 +134,10 @@ async function send(event: Event): Promise<"accepted" | "refused"> {
       const result = await w.forks.begin(source, { messageId, requestId: event.requestId, expectedText: event.expectedText });
       if (result.kind !== "forked" || (await records(w)).length === before) return "refused";
       const copies = (await storedMessages(w, result.fork))
-        .map((memory) => ({ memory, from: w.messageIds.get(String(sourceOf(memory))) ?? 0 }))
+        .map((memory) => {
+          const sourceId = sourceOf(memory);
+          return { memory, from: sourceId === undefined ? 0 : w.messageIds.get(sourceId) ?? 0 };
+        })
         .sort((a, b) => a.from - b.from);
       for (const { memory } of copies) w.messageIds.set(memory.id, w.nextMessage++);
       w.digests.set(result.fork.id, event.textDigest);
@@ -174,11 +183,11 @@ async function observe(): Promise<Conversations> {
     return {
       id: w.messageIds.get(memory.id) ?? 0, conversationId: record.seq, at: modelTime(w, memory.createdAt ?? 0),
       author: memory.entityId === w.runtime.agentId ? "Agent" : "User", body: bodyOf(memory),
-      origin: from === undefined ? { tag: "Original" } : { tag: "Copied", fromId: w.messageIds.get(String(from)) ?? 0 },
+      origin: from === undefined ? { tag: "Original" } : { tag: "Copied", fromId: w.messageIds.get(from) ?? 0 },
     };
   })))).flat().sort((a, b) => a.id - b.id);
   const logs = (await Promise.all(held.map(async (record) => (await w.runtime.adapter.getLogs({ roomId: record.roomId })).map((row) => {
-    const prompt = String((row.body as { prompt?: unknown }).prompt ?? "");
+    const prompt = "prompt" in row.body ? row.body.prompt ?? "" : "";
     return { at: row.createdAt.getTime(), row: { conversationId: record.seq, body: prompt === notice ? { tag: "Redacted" } : { tag: "Said", text: prompt } } satisfies LogRow };
   })))).flat().sort((a, b) => a.at - b.at).map(({ row }) => row);
   const forks = (await Promise.all(held.map(async (record) => (await forkRecords(w.runtime, record)).map((kept): Fork => ({
