@@ -99,6 +99,24 @@ pure def stepNoChangeKeepsItems(before: Todos, after: Todos): bool =
 pure def sometimesStatusAlreadySet(s: Todos): bool = s.lastOutcome == AlreadySet
 ```
 
+### A miss offers the items that share most of its words, and changes nothing
+
+When the words of a change name no item, the reply still helps the owner
+find the one they meant: it offers every item that shares most of its
+words with the request, each with its t-N reference, as "Pay water bill"
+offers "Pay electricity bill". Words are compared without case or
+punctuation, and an item is offered when the words the two share are at
+least three fifths of the words they hold on average. The offer changes
+nothing; the owner answers with the reference or the exact text.
+
+```quint
+pure def nearMiss(sharedWords: int, askedWords: int, keptWords: int): bool = sharedWords > 0 and 10 * sharedWords >= 3 * (askedWords + keptWords)
+pure def lawNoSharedWordIsNeverOffered(askedWords: int, keptWords: int): bool = not(nearMiss(0, askedWords, keptWords))
+pure def lawTheSameWordsAreOffered(askedWords: int): bool = askedWords > 0 implies nearMiss(askedWords, askedWords, askedWords)
+pure def lawFewSharedWordsAreNotOffered(sharedWords: int, askedWords: int, keptWords: int): bool =
+  10 * sharedWords < 3 * (askedWords + keptWords) implies not(nearMiss(sharedWords, askedWords, keptWords))
+```
+
 ### An item's completion time is set exactly while it is completed
 
 The completion time is the instant the owner's change completed it, so an

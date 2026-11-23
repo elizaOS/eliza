@@ -423,7 +423,7 @@ it.effect('Review how my goals are going: one goal from its latest answer, or ev
   }
 })
 
-it.effect('To-dos change once per request, by their text whatever its case or punctuation, never on a guess between two items or on a near miss, are renamed as asked, and clear only after the owner confirms (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed")', effect () => {
+it.effect('To-dos change once per request, by their text whatever its case or punctuation, never on a guess between two items or on a near miss, which is offered back instead, are renamed as asked, and clear only after the owner confirms (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed"; spec/assistant/todos.md, "A miss offers the items that share most of its words, and changes nothing")', effect () => {
   const seen = ports()
   provide portsLayer(seen) {
     try changeTodos({ op: "create", content: "buy milk" }, "t1", "add buy milk")
@@ -453,6 +453,9 @@ it.effect('To-dos change once per request, by their text whatever its case or pu
     try changeTodos({ op: "complete", target: "Read the new" }, "n3", "read the new one")
     try changeTodos({ op: "create", content: "Pay electricity bill" }, "n4", "add pay electricity bill")
     const swapped = try changeTodos({ op: "delete", target: "Pay water bill" }, "n5", "delete pay water bill")
+    const unlike = try changeTodos({ op: "delete", target: "Walk the dog" }, "n5b", "delete walk the dog")
+    try equal([swapped.text, unlike.text], ['No to-do says "Pay water bill", so nothing was changed. Did you mean "Pay electricity bill" (t-6)?', 'No to-do says "Walk the dog", so nothing was changed.'])
+    try equal([swapped.data?.offered, unlike.data?.offered], [[6], []])
     const looseDuplicate = try changeTodos({ op: "create", content: "read the NEWS!" }, "n6", "add read the news")
     const looseDone = try changeTodos({ op: "complete", target: "pay electricity bill." }, "n7", "paid the electricity bill")
     const renamed = try changeTodos({ op: "rename", target: "PAY ELECTRICITY BILL", content: "Pay the power bill" }, "n8", "call it the power bill")
