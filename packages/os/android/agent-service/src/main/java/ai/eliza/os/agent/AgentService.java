@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Keep restarting a crashed or unhealthy agent after a growing pause"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentPolicy.Effect;
@@ -570,6 +570,17 @@ public class AgentService extends Service {
       refusal = refused.getMessage();
     }
     if (!step(new AgentPolicy.LaunchHook(refusal != null, refusal)).accepted() || policy.state().phase() != Phase.CHECKING) return;
+    String launchToken = LaunchFrame.newToken();
+    LaunchFrame readyFrame;
+    try {
+      readyFrame = config.initialFrame(launchToken, epoch, framed, storageKey);
+    } catch (AgentConfig.Refused refused) {
+      step(new AgentPolicy.Refuse(AgentPolicy.Cause.CONFIG, refused.getMessage()));
+      return;
+    } catch (RuntimeException failed) {
+      step(new AgentPolicy.SpawnFailed("The agent could not be started: " + failed.getMessage()));
+      return;
+    }
     Path stateDir;
     try {
       recoveryArchive.requireSettled(active.account());
@@ -579,11 +590,10 @@ public class AgentService extends Service {
       return;
     }
     AgentSupervisor.Child spawned;
-    String launchToken = LaunchFrame.newToken();
     try {
       Path launch = writeLaunch(document);
       Path agentSocket = directories.prepareSocket();
-      byte[] frame = LaunchFrame.first(launchToken, epoch, framed, storageKey).encode();
+      byte[] frame = readyFrame.encode();
       AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
         directories.runtime().resolve("agent.log"));
       synchronized (EPOCH_LOCK) {
@@ -681,7 +691,7 @@ public class AgentService extends Service {
     AtomicBoolean connected = new AtomicBoolean();
     AtomicReference<AgentSocketClient.Result> answer = new AtomicReference<>();
     try {
-      client.exchange(agentSocket, launchToken, "health-" + UUID.randomUUID(), new AgentSocketClient.HttpCall("GET", HEALTH, null, false),
+      client.exchange(agentSocket, launchToken, "health-" + UUID.randomUUID(), new AgentSocketClient.HttpCall("GET", HEALTH, null, false, Map.of()),
         link -> connected.set(true), frame -> {
           if (frame instanceof AgentSocketClient.Result result) answer.set(result);
           return false;

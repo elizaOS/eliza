@@ -1,0 +1,166 @@
+// spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/checkin.md, "A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then"; spec/assistant/checkin.md, "Story: Check in on me at the times I chose"
+import type { Action, ActionResult } from "@elizaos/core"
+import { briefKind, briefPeriod, recapsTheDay, type BriefAsked, type BriefKind, type BriefPeriod } from "../gen/assistant__checkin.effect.vibe"
+import { setCheckinTimes } from "./checkin.vibe"
+import { goalStanding, listGoals } from "./goals.vibe"
+import { Calendar, Facts, Model, onAgent, readRecord, requestOf, writeRecord } from "./host.vibe"
+import { liveReminders, reminderDueWithin, reminderWhen, remindersDoneSince } from "./reminders.vibe"
+import { listRoutines, routineTimes } from "./routines.vibe"
+import { civilDate, localMinutes, longDate, wallText, zonedInstant } from "./time.vibe"
+import { ownerClockAt } from "./timezone.vibe"
+import { currentTodos, renderTodos } from "./todos.vibe"
+
+const briefActionName = "BRIEF"
+const dayMs = 86_400_000
+const asks = { compose_morning: "AskedMorning", compose_evening: "AskedEvening", compose_weekly: "AskedWeekly" } as const satisfies Record<string, BriefAsked>
+const periods = { today: "PeriodToday", tomorrow: "PeriodTomorrow", this_week: "PeriodThisWeek" } as const satisfies Record<string, BriefPeriod>
+const kindNamed: Readonly<Record<Exclude<BriefAsked, "AskedNoKind">, RegExp>> = {
+  AskedMorning: /\bmorning\b/iu,
+  AskedEvening: /\b(?:evening|tonight|end of (?:the|my) day)\b/iu,
+  AskedWeekly: /\b(?:weekly|week ahead|(?:for|of|on|about|over) (?:my|the|this|next) week|(?:my|the) week(?:['’]s)? (?:brief|plan|schedule|review|look|looking|ahead))\b/iu,
+}
+const periodNamed: Readonly<Record<Exclude<BriefPeriod, "PeriodUnstated">, RegExp>> = {
+  PeriodToday: /\btoday\b/iu,
+  PeriodTomorrow: /\btomorrow\b/iu,
+  PeriodThisWeek: /\b(?:this|the) week\b/iu,
+}
+const kindWords: Readonly<Record<BriefKind, string>> = { MorningBrief: "morning", EveningBrief: "evening", WeeklyBrief: "weekly" }
+const periodWords: Readonly<Record<BriefPeriod, string>> = { PeriodToday: "today", PeriodTomorrow: "tomorrow", PeriodThisWeek: "this week", PeriodUnstated: "today" }
+const standingWords: Readonly<Record<string, string>> = { GroupOnTrack: "on track", GroupAtRisk: "at risk", GroupNeedsAttention: "needs attention", GroupUnanswered: "no check-in answered yet" }
+const sectionNames = ["calendar", "todos", "goals", "routines", "reminders"] as const
+type Section = typeof sectionNames[number]
+const isSection = (name: unknown): name is Section => typeof name === "string" && (sectionNames as readonly string[]).includes(name)
+
+function askedIn(action: unknown, text: string): BriefAsked {
+  const planned = typeof action === "string" && Object.hasOwn(asks, action) ? asks[action as keyof typeof asks] : undefined
+  if (planned !== undefined && kindNamed[planned].test(text)) return planned
+  const daily = (["AskedMorning", "AskedEvening"] as const).filter((kind) => kindNamed[kind].test(text))
+  return daily.length === 1 ? daily[0] : "AskedNoKind"
+}
+
+function periodAsked(period: unknown, text: string): BriefPeriod {
+  const planned = typeof period === "string" && Object.hasOwn(periods, period) ? periods[period as keyof typeof periods] : undefined
+  if (planned !== undefined && periodNamed[planned].test(text)) return planned
+  const daily = (["PeriodToday", "PeriodTomorrow"] as const).filter((named) => periodNamed[named].test(text))
+  return daily.length === 1 ? daily[0] : "PeriodUnstated"
+}
+
+const nextDate = (date: string, days: number) => civilDate(Date.parse(`${date}T12:00:00Z`) + days * dayMs, "UTC")
+
+function daysOf(period: BriefPeriod, now: number, zone: string): { readonly from: string; readonly startAt: number; readonly endAt: number } {
+  const today = civilDate(now, zone)
+  const from = period === "PeriodTomorrow" ? nextDate(today, 1) : today
+  const until = nextDate(from, period === "PeriodThisWeek" ? 7 : 1)
+  const midnight = (date: string) => zonedInstant(date, "00:00", zone) ?? Date.parse(`${date}T00:00:00Z`)
+  return { from, startAt: midnight(from), endAt: midnight(until) }
+}
+
+const decodeHidden = Schema.decodeUnknownOption(Schema.Struct({ sections: Schema.Array(Schema.Literals(sectionNames)) }))
+const hiddenKey = "brief-hidden"
+
+effect function hiddenSections() {
+  return new Set<Section>((try readRecord(hiddenKey, decodeHidden))?.sections ?? [])
+}
+
+const unchecked = (title: string) => `# ${title}\nThis could not be read; say it was not checked, and tell the rest.`
+const listed = (title: string, empty: string, lines: readonly string[]) => lines.length === 0 ? `# ${title}\n${empty}` : [`# ${title}`, ...lines].join("\n")
+
+effect function briefFacts(kind: BriefKind, covers: BriefPeriod, now: number, zone: string) {
+  const { startAt, endAt } = daysOf(covers, now, zone)
+  const todayStart = daysOf("PeriodToday", now, zone).startAt
+  const hidden = hiddenSections() catch () => new Set<Section>()
+  const events = (try Calendar).events(startAt, endAt) catch () => undefined
+  const list = currentTodos() catch () => undefined
+  const goals = listGoals() catch () => undefined
+  const routines = listRoutines() catch () => undefined
+  const reminders = liveReminders() catch () => undefined
+  const remindersDone = remindersDoneSince(todayStart) catch () => undefined
+  const timeOf = (at: number) => wallText(at, zone)
+  const eventLine = (event: { readonly title: string; readonly startAt: number; readonly endAt?: number; readonly location?: string }) =>
+    `- ${event.title}, ${timeOf(event.startAt)}${event.endAt === undefined ? "" : ` to ${timeOf(event.endAt)}`}${event.location === undefined || event.location.trim() === "" ? "" : `, at ${event.location.trim()}`}`
+  const active = goals?.filter(({ goal }) => goal.status === "GoalActive")
+  const habits = routines?.filter((routine) => routine.status === "active" && !routine.muted)
+  const sections: Readonly<Record<Section, string>> = {
+    calendar: events === undefined ? unchecked("Calendar") : listed("Calendar", "No events.", [...events].sort((a, b) => a.startAt - b.startAt).map(eventLine)),
+    todos: list === undefined ? unchecked("Open to-dos") : renderTodos(list.todos, false) || "# Current todos\nNo open to-dos.",
+    goals: active === undefined ? unchecked("Goals") : listed("Goals", "No active goals.", active.map(({ record, goal }) => `- ${record.title}: ${standingWords[goalStanding(record, goal, now)] ?? goal.reviewState}`)),
+    routines: habits === undefined ? unchecked("Routines") : listed("Routines", "No active routines.", habits.map((routine) => `- ${routine.title}, ${routineTimes(routine)}`)),
+    reminders: reminders === undefined ? unchecked("Reminders")
+      : listed("Reminders", "None due.", reminders.filter((task) => reminderDueWithin(task, startAt, endAt)).map((task) => `- ${task.promptInstructions}, ${reminderWhen(task, zone)}`)),
+  }
+  const today = (at: number | undefined) => at !== undefined && at >= todayStart && at <= now
+  const recap = [
+    ...(list === undefined ? ["- To-dos: could not be read; say they were not checked."] : list.todos.filter((todo) => todo.todoStatus === "TodoCompleted" && today(todo.completedAt)).map((todo) => `- To-do done: ${todo.content}`)),
+    ...(routines === undefined ? ["- Routines: could not be read; say they were not checked."] : routines.flatMap((routine) => routine.done.filter(today).map((at) => `- Routine done: ${routine.title}, ${timeOf(at)}`))),
+    ...(remindersDone === undefined ? ["- Reminders: could not be read; say they were not checked."] : remindersDone.map(({ title, at }) => `- Reminder done: ${title}, ${timeOf(at)}`)),
+    ...(goals === undefined ? ["- Goal check-ins: could not be read; say they were not checked."]
+      : goals.flatMap(({ record }) => record.log.filter((entry) => today(entry.at)).map(({ progress, note }) => `- Goal check-in: ${record.title}, ${progress.replace("_", " ")}${note === "" ? "" : ` (${note})`}`))),
+  ]
+  return [
+    ...sectionNames.filter((name) => !hidden.has(name)).map((name) => sections[name]),
+    ...(recapsTheDay(kind) ? [listed("Done today", "Nothing was marked done today.", recap)] : []),
+  ]
+}
+
+export effect function composeBrief(action: unknown, period: unknown, text: string) {
+  const now = try (try Facts).now()
+  const zone = try ownerClockAt(now)
+  const kind = briefKind(askedIn(action, text), localMinutes(now, zone) % 1440)
+  const covers = briefPeriod(kind, periodAsked(period, text))
+  const { from } = daysOf(covers, now, zone)
+  const days = covers === "PeriodThisWeek" ? `the week from ${longDate(from)}` : `${periodWords[covers]}, ${longDate(from)}`
+  const facts = try briefFacts(kind, covers, now, zone)
+  const system = [
+    `Write the owner's ${kindWords[kind]} brief for ${days}, on ${zone} time, to them directly in plain conversational language.`,
+    "Use only the facts given and name nothing they do not hold. For an evening brief, start with what was done today.",
+    "A section that could not be read was not checked: say so in one short clause and tell the rest. Do not mention sections that are not given.",
+  ].join("\n")
+  const data = { kind: kindWords[kind], period: periodWords[covers], zone }
+  const written = ((try Model).complete(system, facts.join("\n\n")) catch () => "").trim()
+  if (written === "") return { success: false, text: "The brief could not be written because no model answered.", data: { ...data, outcome: "BRIEF_MODEL_UNAVAILABLE" } } satisfies ActionResult
+  return { success: true, text: written, userFacingText: written, verifiedUserFacing: true, data } satisfies ActionResult
+}
+
+export effect function recalibrateBrief(op: "recalibrate" | "reset_recalibration", section: unknown) {
+  const hidden = try hiddenSections()
+  if (op === "reset_recalibration") {
+    try writeRecord(hiddenKey, { sections: [] })
+    return { success: true, text: hidden.size === 0 ? "Your briefs already include everything." : "Your briefs include every section again.", data: { hidden: [] } } satisfies ActionResult
+  }
+  if (!isSection(section)) {
+    return { success: false, text: `Say which part to leave out of your briefs: ${sectionNames.join(", ")}.`, data: { outcome: "BRIEF_SECTION_INVALID" } } satisfies ActionResult
+  }
+  const sections = [...new Set([...hidden, section])]
+  try writeRecord(hiddenKey, { sections })
+  return { success: true, text: `Your briefs leave out ${section} until you ask for it back.`, data: { hidden: sections } } satisfies ActionResult
+}
+
+function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
+  const given = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+  return typeof given === "object" && given !== null ? given as Record<string, unknown> : {}
+}
+
+const failedWith = (text: string) => (failed: { readonly _tag: string }) => Effect.succeed({ success: false, text, data: { outcome: failed._tag } } satisfies ActionResult)
+
+export const briefAction: Action = {
+  name: briefActionName,
+  description: "Brief the owner on their morning, evening or week from their calendar, to-dos, goals, routines and reminders (compose_morning, compose_evening, compose_weekly only when the owner named that kind; leave action out for an unnamed brief), leave one section out of their briefs (recalibrate with section, for \"stop showing me my goals in my brief\") or bring every section back (reset_recalibration), or set when the daily morning and night check-ins come (schedule_checkins, each HH:MM on the owner's clock or off).",
+  similes: ["BRIEF_ME", "MORNING_BRIEF", "EVENING_BRIEF", "WEEKLY_BRIEF", "DAILY_DIGEST", "CHECKIN_TIMES", "RECALIBRATE_BRIEF"],
+  parameters: [
+    { name: "action", required: false, description: "compose_morning, compose_evening, compose_weekly, recalibrate, reset_recalibration or schedule_checkins.", schema: { type: "string", enum: ["compose_morning", "compose_evening", "compose_weekly", "recalibrate", "reset_recalibration", "schedule_checkins"] } },
+    { name: "period", required: false, description: "For a brief: today, tomorrow or this_week, only when the owner named one.", schema: { type: "string", enum: ["today", "tomorrow", "this_week"] } },
+    { name: "section", required: false, description: "For recalibrate: the part of the brief to leave out.", schema: { type: "string", enum: [...sectionNames] } },
+    { name: "morning", required: false, description: "For schedule_checkins: the morning check-in time as HH:MM, or off.", schema: { type: "string" } },
+    { name: "night", required: false, description: "For schedule_checkins: the night check-in time as HH:MM, or off.", schema: { type: "string" } },
+  ],
+  tags: ["domain:briefing", "capability:read", "capability:compose"],
+  roleGate: { minRole: "OWNER" },
+  validate: async () => true,
+  handler: async (runtime, message, _state, options) => {
+    const given = parametersOf(options)
+    const { messageId, text } = requestOf(message)
+    if (given.action === "schedule_checkins") return onAgent(runtime, Effect.catch(setCheckinTimes({ morning: given.morning, night: given.night }, `checkins:${messageId}`), failedWith("Your check-in times were not changed.")))
+    if (given.action === "recalibrate" || given.action === "reset_recalibration") return onAgent(runtime, Effect.catch(recalibrateBrief(given.action, given.section), failedWith("Your brief settings were not changed.")))
+    return onAgent(runtime, Effect.catch(composeBrief(given.action, given.period, text), failedWith("The brief could not be prepared.")))
+  },
+}

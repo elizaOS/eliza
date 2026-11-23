@@ -57,6 +57,12 @@
       "import": "./dist/src/feed/index.js",
       "default": "./dist/src/feed/index.js"
     },
+    "./request-time": {
+      "eliza-source": "./src/request-time.vibe",
+      "types": "./dist/src/request-time.d.ts",
+      "import": "./dist/src/request-time.js",
+      "default": "./dist/src/request-time.js"
+    },
     "./series": {
       "eliza-source": "./src/series/index.vibe",
       "types": "./dist/src/series/index.d.ts",

@@ -93,14 +93,14 @@ module node {
   /** @throws {never} */
   export const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
 
-  /** @throws {Error} when apksigner refuses the two keys */
+  /** @throws {Error} */
   export function signTwice(tools: Extract<AndroidTools, { kind: "present" }>, input: string, output: string, first: TestSigner, second: TestSigner): string {
     const key = (signer: TestSigner) => ["--ks", signer.keystore, "--ks-type", "PKCS12", "--ks-pass", `pass:${signer.password}`, "--ks-key-alias", signer.alias]
     execFileSync(tools.apksigner, ["sign", "--v3-signing-enabled", "false", "--v4-signing-enabled", "false", ...key(first), "--next-signer", ...key(second), "--out", output, input], { stdio: "pipe" })
     return sha256(readFileSync(output))
   }
 
-  /** @throws {Error} when the copy fails */
+  /** @throws {Error} */
   export function copyInto(file: string, directory: string): string {
     mkdirSync(directory, { recursive: true })
     const target = path.join(directory, path.basename(file))

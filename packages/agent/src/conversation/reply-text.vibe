@@ -1,6 +1,6 @@
-// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"
+// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"
 import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput } from "@elizaos/core/protocol"
-import { actionLabel, compose, type ActionLabel, type Composition, type Draft, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
+import { actionLabel, compose, readDraft, type ActionLabel, type Composition, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
 function pattern(source: string, flags: string): RegExp {
   try {
@@ -38,23 +38,72 @@ const tail = "(?:,? (?:now|for you|real quick|quickly)){0,2}"
 const progress = pattern(`^(?:${waitCue}(?:, | ?[—–:;] ?| - ))?(?:${leadForm}|(?:i(?:'m| am) )?(?:${verbs.map(([, gerund]) => gerund).join("|")}))${tail}$`, "u")
 const afterAssent = pattern(`^${leadForm}${tail}$`, "u")
 const waitSentence = pattern(`^${waitCue}$`, "u")
+const instructionAssent = /^(?:sure|yeah)(?:$|, |[.!…]+ | ?[—–:;] ?| - )/u
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
 
-function isPendingWorkCue(reply: string): boolean {
-  const text = reply.trim()
-  if (!text || text.length > maxCueLength || text.includes("?") || text.includes(personMark) || dataToken.test(text)) return false
-  const words = text.replace(/\s+/gu, " ").replace(person, `check with ${personMark}`).toLowerCase()
-    .replace(/[‘’ʼ]/gu, "'").replace(/ ?, ?/gu, ", ").replace(/[.!…]+$/u, "")
-  const assent = words.startsWith("sure! ")
-  const sentences = words.slice(assent ? "sure! ".length : 0).split(/[.!…]+ /u)
-  return sentences.length <= (assent ? 2 : 3)
-    && (!assent || afterAssent.test(sentences[0] ?? ""))
+export const cueRule = "When you call tools, write with your first tool calls only a brief cue that you heard the request; the real reply comes after the work. For a question or a lookup, including a request asked as a question such as \"Can you text Sam?\": \"Let me check.\" or \"Let me check your calendar.\" (or your notes, inbox, messages, reminders), or \"Let me check the weather.\" For a plain command such as \"Text Sam I'm late\" or \"Set an alarm for seven\": \"Sure.\", \"Sure, one sec.\" or \"Yeah, one sec.\" For any other action: \"On it.\" or \"One sec.\" Never start with Sure or Yeah after a question; it sounds like the answer. Never name the people, items, times or outcome, never say the work is done or under way, and never repeat the request. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls."
+
+function inGrammar(words: string, assent: string | undefined): boolean {
+  const opening = assent ?? (words.startsWith("sure! ") ? "sure! " : "")
+  const rest = words.slice(opening.length)
+  const sentences = rest ? rest.split(/[.!…]+ /u) : []
+  return (sentences.length > 0 || assent !== undefined)
+    && sentences.length <= (opening ? 2 : 3)
+    && (!opening || assent !== undefined || afterAssent.test(sentences[0] ?? ""))
     && sentences.every((sentence) => waitSentence.test(sentence) || progress.test(sentence))
 }
 
-export function draftOf(text: string): Draft {
-  if (!text.trim()) return "Silent"
-  return isPendingWorkCue(text) ? "Cue" : "Answer"
+function shapeOf(reply: string): DraftShape {
+  const text = reply.trim()
+  if (!text) return "Blank"
+  if (text.length > maxCueLength || text.includes("?") || text.includes(personMark) || dataToken.test(text)) return "OtherText"
+  const words = text.replace(/\s+/gu, " ").replace(person, `check with ${personMark}`).toLowerCase()
+    .replace(/[‘’ʼ]/gu, "'").replace(/ ?, ?/gu, ", ").replace(/[.!…]+$/u, "")
+  if (inGrammar(words, undefined)) return "GrammarCue"
+  const assent = instructionAssent.exec(words)?.[0]
+  return assent !== undefined && inGrammar(words, assent) ? "AssentCue" : "OtherText"
+}
+
+export function draftOf(text: string, instruction: boolean, calls: number): Draft {
+  return readDraft(shapeOf(text), instruction, calls)
+}
+
+const requestFiller = new Set(["hey", "hi", "hello", "ok", "okay", "alright", "so", "please", "oh", "um", "uh", "well", "yo", "and", "also", "but", "then", "now", "actually"])
+const requestGreeting = new Set(["hey", "hi", "hello", "ok", "okay", "yo"])
+const questionOpener = /^(?:(?:what|when|where|who|whom|whose|why|how|which)(?:s|re|d|ll|ve)?|am|is|are|was|were|do|does|did|can|could|will|would|should|shall|may|might|have|has|had|must|isnt|arent|wasnt|werent|dont|doesnt|didnt|cant|cannot|couldnt|wont|wouldnt|shouldnt|shant|havent|hasnt|hadnt|mustnt|aint)$/u
+const commandVerb = new Set([
+  "accept", "add", "answer", "archive", "ask", "block", "book", "bring", "call", "cancel", "capture", "change", "check", "clear", "close",
+  "compose", "copy", "create", "decline", "delete", "dial", "disable", "dismiss", "draft", "edit", "email", "enable", "end", "erase", "find",
+  "flag", "forward", "get", "give", "go", "hang", "invite", "launch", "let", "lets", "list", "locate", "lock", "look", "make", "mark",
+  "message", "move", "mute", "navigate", "note", "open", "order", "pause", "phone", "pin", "play", "post", "pull", "put", "read", "record",
+  "remember", "remind", "remove", "rename", "reply", "reschedule", "respond", "restart", "resume", "ring", "run", "save", "schedule",
+  "search", "send", "set", "share", "show", "silence", "skip", "snap", "snooze", "start", "stop", "switch", "take", "tell", "text",
+  "toggle", "translate", "turn", "unlock", "unmute", "update", "wake", "write",
+])
+
+function clauseWords(clause: string): string[] {
+  return [...clause.matchAll(/[\p{L}'‘’ʼ]+/gu)].map((match) => match[0].toLowerCase().replace(/['‘’ʼ]/gu, ""))
+}
+
+function afterFillers(words: readonly string[]): number {
+  const index = words.findIndex((word) => !requestFiller.has(word))
+  return index < 0 ? words.length : index
+}
+
+export function requestIsInstruction(request: string): boolean {
+  const text = request.trim()
+  if (!text || text.includes("?")) return false
+  const clauses = text.split(/[.!…;:,\n]+|\s[—–-]+\s/u).map(clauseWords).filter((words) => words.length > 0)
+  if (clauses.some((words) => questionOpener.test(words[afterFillers(words)] ?? ""))) return false
+  for (const words of clauses) {
+    const index = afterFillers(words)
+    const first = words[index]
+    if (first === undefined) continue
+    if (commandVerb.has(first)) return true
+    if (index === words.length - 1) continue
+    return words.slice(0, index).some((word) => requestGreeting.has(word)) && commandVerb.has(words[index + 1] ?? "")
+  }
+  return false
 }
 
 const cardBlock = /(?:^|\n)[ \t]*\[(MAPSCARD|CHECKLIST|WORKFLOW)\][ \t]*\r?\n[ \t]*(\{[^\n]*\})[ \t]*\r?\n[ \t]*\[\/\1\][ \t]*(?=\r?\n|$)/g

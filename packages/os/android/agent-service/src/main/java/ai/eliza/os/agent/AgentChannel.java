@@ -1,4 +1,4 @@
-// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"
+// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentSocketClient.Chunk;
@@ -133,13 +133,16 @@ public final class AgentChannel {
     return true;
   }
 
-  public FailCode ask(String owner, String id, String method, String path, boolean streamed, byte[] body, Listener listener) {
-    return ask(CallerKind.RENDERER, owner, id, method, path, streamed, body, listener);
+  public FailCode ask(String owner, String id, String method, String path, boolean streamed, byte[] body, Map<String, ?> headers, Listener listener) {
+    return ask(CallerKind.RENDERER, owner, id, method, path, streamed, body, headers, listener);
   }
 
-  public FailCode ask(CallerKind kind, String owner, String id, String method, String path, boolean streamed, byte[] body, Listener listener) {
-    HttpCall call = new HttpCall(method, path, body, streamed);
-    synchronized (policy) { return begin(policy.ask(kind, owner, id, method, path, streamed, body), listener, call); }
+  public FailCode ask(CallerKind kind, String owner, String id, String method, String path, boolean streamed, byte[] body, Map<String, ?> headers, Listener listener) {
+    List<ChannelPolicy.Header> described = ChannelPolicy.headers(headers);
+    synchronized (policy) {
+      Step step = policy.ask(kind, owner, id, method, path, streamed, body, described);
+      return begin(step, listener, new HttpCall(method, path, body, streamed, ChannelPolicy.carried(headers)));
+    }
   }
 
   public FailCode subscribe(String owner, String id, Topic topic, Listener listener) {
@@ -173,7 +176,7 @@ public final class AgentChannel {
 
   public CompletableFuture<Response> request(CallerKind kind, String method, String path, byte[] body) {
     CompletableFuture<Response> answer = new CompletableFuture<>();
-    FailCode refused = ask(kind, NATIVE_OWNER, UUID.randomUUID().toString(), method, path, false, body, new Listener() {
+    FailCode refused = ask(kind, NATIVE_OWNER, UUID.randomUUID().toString(), method, path, false, body, Map.of(), new Listener() {
       @Override public void head(String id, long index, int status, Map<String, String> head) { }
       @Override public void chunk(String id, long index, byte[] data) { }
       @Override public void event(String id, long index, JSONObject event) { }
@@ -188,7 +191,7 @@ public final class AgentChannel {
 
   public Call requestStream(CallerKind kind, String method, String path, byte[] body, Listener listener) {
     String id = UUID.randomUUID().toString();
-    FailCode refused = ask(kind, NATIVE_OWNER, id, method, path, true, body, listener);
+    FailCode refused = ask(kind, NATIVE_OWNER, id, method, path, true, body, Map.of(), listener);
     if (refused != null) listener.settled(id, Outcome.failed(refused), null);
     return new Call(this, NATIVE_OWNER, id);
   }

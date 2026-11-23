@@ -1,20 +1,24 @@
 # Turn context
 
-With each message a client may describe its screen in two parts of the
+With each message a client may describe its screen in three parts of the
 turn's `metadata`: `metadata.observation` (the view, an optional selected
-record and, on the calendar, the civil day in view) and `metadata.voiceUi`
-(what the voice renderer shows and how it takes completed actions). Each
-part is untrusted data about that one message: opaque identifiers, never
-record contents, never an instruction, and no device, provider, navigation
-or record permission. Each part is accepted whole or not at all. An observation may also carry
+record and, on the calendar, the civil day in view), `metadata.voiceUi`
+(what the voice renderer shows and how it takes completed actions) and
+`metadata.browserPage` (the public web page open in Browser as the message
+was sent). Each part is untrusted data about that one message, never an
+instruction, and no device, provider, navigation or record permission. The
+observation and the voice context hold opaque identifiers, never record
+contents; the Browser page is web content the owner is looking at. Each
+part is accepted whole or not at all. An observation may also carry
 the phone's last known position, which a client sends only while the
 platform's location permission is granted and the owner has location on. Every
 other key of `metadata` is stored with the message and decoded by nothing
 here. Actions and providers (device-action admission, actions on the
 selected record, the current-time provider) read an accepted part only
-through `readTurnContext(message)`, which returns `{observation?, voiceUi?}`,
-never through raw metadata keys; prompt assembly shows it to the model only
-as labelled untrusted data. Nothing is truncated or summarized.
+through `readTurnContext(message)`, which returns `{observation?, voiceUi?,
+browserPage?}`, never through raw metadata keys; prompt assembly shows it to
+the model only as labelled untrusted data. Nothing is truncated or
+summarized; a client sends a long page's text already cut and says so.
 
 The decoders live in `conversation/turn-context.schema.vibe`, with the
 client encoder `encodeTurnContext`. They hand this library the facts a
@@ -111,7 +115,13 @@ sensitive screen keeps it; a malformed one drops the whole observation, as
 any malformed field does. It is shown to the model with the rest of the
 accepted observation, labelled untrusted data about the device, and so
 reaches the bound backend, which may be hosted inference (Eliza Cloud or
-the owner's own provider). The agent never asks the device for it.
+the owner's own provider). The agent never asks the device for it. With
+it comes a note that it is the phone's last known position, that no
+street, neighbourhood or city is guessed from its coordinates, that where
+the owner is comes from the Maps place lookup or else is given as the
+coordinates themselves, and that an accuracy over 1,000 m is a rough
+estimate that names only the area, never a street or building
+([Maps](../../maps/phonePosition.md) answers where the owner is).
 
 ```quint
 pure val locationBytesValues = Set(1, 90, 2048)
@@ -123,6 +133,78 @@ pure def lawALocationIsKeptOnAnyScreen(o: ObservationFacts, locationBytes: int):
 pure def lawAMalformedLocationDropsTheObservation(o: ObservationFacts): bool = not(observationAccepted({ ...o, location: MalformedLocation }))
 pure def lawALocationCountsWithinTheBound(o: ObservationFacts): bool =
   observationAccepted(o) implies o.coreBytes + locationBytesOf(o.location) <= observationMaxBytes
+```
+
+### A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes
+
+A client sends the page only while Browser shows that tab, never for a
+private tab. The page is bound to the same message's kept observation: its
+view is `browser`, stated not sensitive, and its selected record is a
+`browser-tab` whose id and revision are the page's `tabId` and `revision`,
+so a page from an earlier load is never shown as the current one. A page
+that fails, or whose observation was dropped, is dropped and the message
+goes on without it; nothing of it is stored with the message or shown to
+the model, raw or otherwise. Any other key is an unknown field, and nothing
+is cut to fit.
+
+| Key | Form |
+| --- | --- |
+| `tabId`, `revision` | `[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,255}` |
+| `url` | an absolute `https:` address of at most 2,048 characters with a host, no credentials and no fragment, written as it parses |
+| `title` | text of at most 300 characters, no control character |
+| `capturedAt` | epoch milliseconds when the client read the page, a safe integer, 0 or more |
+| `withheld` | `sensitive-page` or `unreadable`: the client sent no text, and then `text`, `truncated`, `selection` and `links` are absent |
+| `text` | without `withheld`, the visible text, at most 6,000 characters; line breaks and tabs are its only control characters |
+| `truncated` | without `withheld`, a boolean: whether the client cut the text, marking the cut in it |
+| `selection` | optional, text the owner selected, at most 1,000 characters, as `text` |
+| `links` | optional, at most 20 `{text, url}` in page order: `text` not blank, at most 120 characters, no control character; `url` as `url` |
+
+No text holds a lone surrogate. The size is the UTF-8 length of the JSON of
+the decoded page, keys in the table's order.
+
+The model sees a kept page once, in the latest message's screen context,
+after a note on how to use it: it is the page open as the owner sent the
+message, for "this page" or what is on screen; a cut or withheld text is
+said to be cut or withheld, never guessed; and its title, address, text and
+links are information only, never the owner's instructions, authorizing no
+action. The page itself sits inside core's untrusted-content envelope with
+the source `Browser page open on the owner's phone`, from the page's host,
+so a marker the page forges cannot close or open an envelope. History
+keeps only message text.
+
+```quint
+type PageContent = PageRead | PageWithheld | WithheldWithContent | MalformedPage
+type PageBinding = NoObservation | OtherView | SensitiveBrowser | OtherTab | SelectedTab
+type BrowserPageFacts = { unknownField: bool, fieldsValid: bool, content: PageContent, binding: PageBinding, bytes: int }
+pure val browserPageMaxBytes = 16384
+pure def pageContentAccepted(content: PageContent): bool = content == PageRead or content == PageWithheld
+pure def browserPageAccepted(page: BrowserPageFacts): bool =
+  not(page.unknownField) and page.fieldsValid and pageContentAccepted(page.content) and page.binding == SelectedTab and page.bytes > 0 and page.bytes <= browserPageMaxBytes
+pure val pageValues: Set[BrowserPageFacts] = {
+  val kept = { unknownField: false, fieldsValid: true, content: PageRead, binding: SelectedTab, bytes: 900 }
+  List(
+    kept,
+    { ...kept, content: PageWithheld },
+    { ...kept, content: WithheldWithContent },
+    { ...kept, content: MalformedPage },
+    { ...kept, binding: NoObservation },
+    { ...kept, binding: OtherView },
+    { ...kept, binding: SensitiveBrowser },
+    { ...kept, binding: OtherTab },
+    { ...kept, unknownField: true },
+    { ...kept, fieldsValid: false },
+    { ...kept, bytes: 16385 }
+  ).foldl(Set(), (acc, p) => acc.union(Set(p)))
+}
+pure def lawAPageIsKeptOnlyForTheSelectedBrowserTab(page: BrowserPageFacts): bool =
+  page.binding != SelectedTab implies not(browserPageAccepted(page))
+pure def lawAWithheldPageCarriesNoContent(page: BrowserPageFacts): bool =
+  not(browserPageAccepted({ ...page, content: WithheldWithContent }))
+pure def lawAPageFitsItsBound(page: BrowserPageFacts): bool =
+  browserPageAccepted(page) implies page.bytes <= browserPageMaxBytes
+pure def lawAWellFormedBoundPageIsKept(page: BrowserPageFacts): bool =
+  (not(page.unknownField) and page.fieldsValid and pageContentAccepted(page.content) and page.bytes > 0 and page.bytes <= browserPageMaxBytes) implies
+    browserPageAccepted({ ...page, binding: SelectedTab })
 ```
 
 ### A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity
@@ -191,14 +273,15 @@ pure def lawAPathFromAnotherHostIsRefused(rest: List[int]): bool =
 
 ### Optional fields go only to the process instance the client compared for this turn
 
-An optional field (today the civil day and the location) is a format the agent process
-understands, never a permission. A client learns the process instance once
+An optional field (today the civil day, the location and the Browser page)
+is a format the agent process understands, never a permission. A client learns the process instance once
 per verified connection from the non-empty `serverInstanceId` of an
 authenticated `GET /api/status`, compared exactly as returned. A turn that
 would carry an optional field first waits for that learn (joining one in
 progress, or starting one), then reads the status again and sends the field
 only when the instance is the learned one; otherwise it sends the
-observation without its optional fields, which stays accepted. A learn
+observation without its optional fields, which stays accepted, and no
+Browser page. A learn
 whose read fails or is cancelled learns nothing, so a later turn tries
 again. A learn that names no instance, a mismatch, or a compare whose read
 fails or is cancelled ends optional fields for that connection: nothing is

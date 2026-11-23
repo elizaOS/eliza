@@ -70,7 +70,10 @@ the owner typed in the request the host bound to this turn, never the text a
 route wrapped around it; with no bound request, they read the message's own
 text with its envelopes removed. A delete by name happens only when those
 words name the note's title; otherwise the closest note is offered and
-nothing is deleted.
+nothing is deleted. A delete by an ID those words do not carry, of a note
+whose title they name, is a delete by that title: notes that share the
+title ask the owner which one, and nothing is deleted. A delete by an ID
+the owner's words carry, or of a note they do not name, deletes that note.
 
 ```quint
 type OwnerWords = BoundRequestWords | MessageWords
@@ -80,6 +83,25 @@ pure def deleteByNameAllowed(isOwner: bool, wordsNameTitle: bool): bool = notesA
 pure def lawBoundRequestWins(requestBound: bool): bool = requestBound implies ownerWordsSource(requestBound) == BoundRequestWords
 pure def lawOnlyTheOwnerReachesNotes(wordsNameTitle: bool): bool = not(deleteByNameAllowed(false, wordsNameTitle))
 pure def lawUnnamedNoteIsNotDeleted(isOwner: bool): bool = not(deleteByNameAllowed(isOwner, false))
+pure def idDeleteByTitle(idInOwnerWords: bool, wordsNameItsTitle: bool): bool = not(idInOwnerWords) and wordsNameItsTitle
+pure def lawATypedIdDeletesThatNote(wordsNameItsTitle: bool): bool = not(idDeleteByTitle(true, wordsNameItsTitle))
+pure def lawAPlannerIdForANamedTitleIsReresolved(idInOwnerWords: bool): bool = idDeleteByTitle(false, true) and not(idDeleteByTitle(idInOwnerWords, false))
+```
+
+### A move by name takes the identical copies of the note along
+
+Plain saved notes with the same title, body and color are one note to a
+lookup, as when the owner's editor saved the same text twice. A move that
+names the note by its words puts every such copy in the folder, so no copy
+stays behind outside it; a move by ID changes only that note.
+
+```quint
+pure def moveTakesCopy(byName: bool, resolvedNote: bool, identicalCopy: bool): bool =
+  resolvedNote or (byName and identicalCopy)
+pure def lawResolvedNoteMoves(byName: bool, identicalCopy: bool): bool = moveTakesCopy(byName, true, identicalCopy)
+pure def lawMoveByIdLeavesOtherNotes(identicalCopy: bool): bool = not(moveTakesCopy(false, false, identicalCopy))
+pure def lawMoveByNameLeavesNoCopyBehind(resolvedNote: bool): bool = moveTakesCopy(true, resolvedNote, true)
+pure def lawDifferentNoteStays(byName: bool): bool = not(moveTakesCopy(byName, false, false))
 ```
 
 ### A calendar draft made from a note is admitted only while that exact note is unchanged

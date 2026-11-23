@@ -78,11 +78,10 @@ function service(adapter: IDatabaseAdapter): PromptTriggers {
   return promptTriggers({
     host: hostOver(adapter),
     facts: scheduleFacts,
-    listen: () => ({ idle: () => Promise.resolve(), stop: () => Promise.resolve() }),
+    listen: () => ({ idle: () => Promise.resolve(undefined), stop: () => Promise.resolve(undefined) }),
     delivery: {
-      resolveRoom: (requested) => Promise.resolve(
-        rooms.exists ? { kind: "Resolved", conversationId: requested ?? rooms.fallback } : { kind: "Missing" },
-      ),
+      resolveRoom: (requested) =>
+        Promise.resolve(rooms.exists ? { kind: "Resolved", conversationId: requested ?? rooms.fallback } : { kind: "Missing" }),
       deliver: (_conversationId, _prompt, triggerId, signal) => new Promise<Delivery>((resolve) => {
         if (signal.aborted) return resolve(cancelled);
         signal.addEventListener("abort", () => resolve(cancelled), { once: true });
