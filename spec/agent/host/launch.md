@@ -136,8 +136,9 @@ pure def lawAdmittedPolicyBootsOnlyWhenEveryNameIsRegistered(p: LaunchPolicy, re
 
 There is no local text backend. `cloudBaseUrl` is an HTTPS origin with no
 path, query or fragment (the cloud client builds the `/api/v1/...` paths),
-and a cloud launch names the signed-in `account`, whose store it opens;
-empty cloud model names leave the choice to cloud. An own key needs an HTTPS
+and a cloud launch names the signed-in `account` used for inference.
+A launch without a resident binding also uses that account for its store.
+Empty cloud model names leave the choice to cloud. An own key needs an HTTPS
 base URL, which may have a path, and both model names. Local embeddings need
 a positive dimension.
 
