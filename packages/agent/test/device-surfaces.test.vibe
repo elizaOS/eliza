@@ -190,7 +190,7 @@ module node {
         views: navigating.note.includes("Open app views with VIEWS (mode show) on this message"), offered: navigating.views,
       },
       notes: {
-        fromHome: { quiet: fromHome === "Okay.", told: homeTold.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW") }, homeOffer: homeOffer.types.includes("create_note"),
+        fromHome: { quiet: fromHome === "Okay.", told: homeTold.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW"), redirected: homeTold.includes("so a request to make or save a note uses the canonical NOTES service") }, homeOffer: homeOffer.types.includes("create_note"),
         toldCanonical: homeOffer.note.includes("create_note is not available on this message: the owner's Notes screen does not select the phone's own Notes.") &&
           homeOffer.description.includes("on any other message a request to make or save a note uses the canonical NOTES service"),
         sameTools: homeOffer.tools === notesOffer.tools && homeOffer.tools === firstOffer.tools, notesNote: notesOffer.note.includes("create_note is not available"),
@@ -342,7 +342,7 @@ it.live(`Take a photo, open a view, read a Maps place, find and share photos and
     searched: "done", staleRevision: true,
     navigating: { sameTools: true, openView: true, views: true, offered: true },
     notes: {
-      fromHome: { quiet: true, told: true }, homeOffer: true, toldCanonical: true, sameTools: true, notesNote: false, notesOffer: true, canonical: true, summarized: true,
+      fromHome: { quiet: true, told: true, redirected: true }, homeOffer: true, toldCanonical: true, sameTools: true, notesNote: false, notesOffer: true, canonical: true, summarized: true,
       saved: { state: "done", told: true }, learned: true,
     },
     profile: { refused: true, told: true },

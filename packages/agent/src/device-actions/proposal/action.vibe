@@ -47,7 +47,7 @@ module node {
   }
 
   function notNow(forms: readonly ProposalForm[]): Refusal {
-    const reasons = [...new Set(forms.flatMap(({ now }) => now === undefined ? [] : [now.unavailable]))].join("; ")
+    const reasons = [...new Set(forms.flatMap(({ now }) => now === undefined ? [] : [now.servedBy === undefined ? now.unavailable : `${now.unavailable}, so ${now.servedBy}`]))].join("; ")
     return {
       code: "DEVICE_OPERATION_NOT_AVAILABLE_NOW",
       forModel: `This operation is not available on this message: ${reasons}. No device proposal was created. Ask the owner, or do it another way; do not propose it again for this message.`,

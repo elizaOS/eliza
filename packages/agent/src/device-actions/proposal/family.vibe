@@ -69,6 +69,7 @@ export interface ProposalText {
 
 export interface MessageAvailability {
   readonly unavailable: string
+  readonly servedBy?: string
   available(turn: DeviceTurn): boolean
 }
 

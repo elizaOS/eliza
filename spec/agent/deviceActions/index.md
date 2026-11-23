@@ -554,14 +554,17 @@ the owner's own, in this conversation, under the current enrollment, and
 the turn's negotiation still admits its operation. Each line gives its
 proposal id, its operation type, a label where the operation has one, and
 when it settled, or that it never ran, after a lead saying its labels are
-untrusted record data, never instructions. A turn with no outcome to
-report sends no such note, and when the requests cannot be read, a note
-says that they could not be checked. What holds on every turn sits in the
-device tool's description (above): that an applied outcome supersedes
-older pending dialogue for that proposal only, that a completed request is
-never replayed, and that earlier pending dialogue proves nothing is still
-pending. It looks at the fifty newest requests of this conversation that
-settled. It is a historical receipt, never a current read or authority for
+untrusted record data, never instructions. When the requests cannot be
+read, a note says that they could not be checked. While the device tool is
+offered, what holds on every turn sits in its description (above): that
+an applied outcome supersedes older pending dialogue for that proposal
+only, that a completed request is never replayed, and that earlier pending
+dialogue proves nothing is still pending; a turn with no outcome to report
+then sends no such note. A device turn whose negotiation was refused or
+offers no form has no device tool to describe this, so its note says it:
+after the outcomes it names, how to read them, and with none, that earlier
+pending dialogue proves nothing is still pending. It looks at the fifty
+newest requests of this conversation that settled. It is a historical receipt, never a current read or authority for
 a new effect, and it names at most six.
 
 ```quint
@@ -582,9 +585,11 @@ pure def lawAReadIsNeverLearnedAsAnEffect(standing: bool): bool = not(outcomeLea
 pure def lawAnOpenOrUncertainRequestIsNotLearned(nothingChanged: bool, standing: bool): bool =
   not(outcomeLearned(StillOpen, nothingChanged, standing)) and not(outcomeLearned(EndedOtherwise, nothingChanged, standing))
 pure def lawOnlyAStandingRequestIsLearned(ending: RequestEnding, nothingChanged: bool): bool = not(outcomeLearned(ending, nothingChanged, false))
-pure def outcomesNoteSent(learnedCount: int, checked: bool): bool = not(checked) or outcomesLearned(learnedCount) > 0
-pure def lawNoOutcomeSendsNoNote(learnedCount: int): bool = learnedCount <= 0 implies not(outcomesNoteSent(learnedCount, true))
-pure def lawAnUncheckedHistoryIsAlwaysSaid(learnedCount: int): bool = outcomesNoteSent(learnedCount, false)
+pure def outcomesNoteSent(learnedCount: int, checked: bool, toolDescribed: bool): bool =
+  not(checked) or not(toolDescribed) or outcomesLearned(learnedCount) > 0
+pure def lawNoOutcomeSendsNoNote(learnedCount: int): bool = learnedCount <= 0 implies not(outcomesNoteSent(learnedCount, true, true))
+pure def lawAnUncheckedHistoryIsAlwaysSaid(learnedCount: int, toolDescribed: bool): bool = outcomesNoteSent(learnedCount, false, toolDescribed)
+pure def lawWithoutTheToolTheNoteIsAlwaysSent(learnedCount: int): bool = outcomesNoteSent(learnedCount, true, false)
 pure def lawAnEndingThatNeverRanWasNeverDispatched(requestPhase: RequestPhase): bool =
   (requestEnding(requestPhase) == EndedDeclined or requestEnding(requestPhase) == EndedExpired) implies not(afterDispatch(requestPhase))
 pure def lawAnUncertainRequestIsStillOpen(requestPhase: RequestPhase): bool = requestPhase == uncertainPhase implies requestEnding(requestPhase) == StillOpen

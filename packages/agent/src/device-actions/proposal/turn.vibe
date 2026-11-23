@@ -3,7 +3,7 @@ module node {
   import { AsyncLocalStorage } from "node:async_hooks"
   import { Effect } from "effect"
   import { extractUserText, getTrajectoryContext, unwrapUserMessageText, type AgentRuntime, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
-  import { capabilityName } from "../../../gen/agent__deviceActions__capabilities.ts"
+  import { capabilityName, isRefused } from "../../../gen/agent__deviceActions__capabilities.ts"
   import type { RouteInput } from "../../access/routes.vibe"
   import { readTurnContext } from "../../conversation/turn-context.schema.vibe"
   import { capabilitiesHeader, negotiation } from "../capabilities.vibe"
@@ -12,6 +12,7 @@ module node {
   import { viewProfile } from "../store.vibe"
   import type { DeviceTurn } from "./family.vibe"
   import { deviceOutcomesNote, earlierRequests, outcomesUnchecked } from "./receipts.vibe"
+  import { offeredForms } from "./registry.vibe"
 
   export interface DeviceTurnStart {
     readonly headers: RouteInput["headers"]
@@ -81,7 +82,8 @@ module node {
             (applied) => applied.filter(({ operation }) => types.includes(operation.type)).slice(0, limit)),
         }
         live.add(turn)
-        const note = await deviceOutcomesNote(turn).catch(() => outcomesUnchecked)
+        const described = !isRefused(negotiated) && offeredForms(runtime, turn).length > 0
+        const note = await deviceOutcomesNote(turn, described).catch(() => outcomesUnchecked)
         const retire = await options.agenda?.(turn)
         return {
           context: note,

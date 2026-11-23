@@ -126,6 +126,12 @@ module node {
     await say("What did I just save?")
     const remembered = lastCompletion(cloud).messages ?? []
 
+    cloud.script(text("I can't tell from here."))
+    await client.call("POST", path, { text: "Did my milk reminder get saved?" }, "")
+    const untooled = lastCompletion(cloud)
+    const untooledAt = completions(cloud).length - 1
+    const untooledNote = JSON.stringify((untooled.messages ?? []).at(-1) ?? "")
+
     cloud.script(toolCalls("", reminder("Mom")), text("Done."))
     await say("Remind me to call mom")
     const mom = (await proposals(client)).find(titled("Mom"))
@@ -157,7 +163,7 @@ module node {
     await say("Remind me outright to buy bread")
     const bread = (await proposals(client)).find(titled("Bread"))
     const toldFirst = (lastCompletion(cloud).messages ?? []).at(-1)
-    const deviceTools = new Set(completions(cloud).flatMap((body, index) => index === hostOnly ? [] : [JSON.stringify(body.tools)]))
+    const deviceTools = new Set(completions(cloud).flatMap((body, index) => index === hostOnly || index === untooledAt ? [] : [JSON.stringify(body.tools)]))
 
     return {
       registration,
@@ -189,6 +195,11 @@ module node {
         hostLabels: [askedNote, JSON.stringify(remembered.at(-1) ?? "")].map((said) => said.split("Note from the agent host").length - 1),
         guidanceInTool: ["Device approval outcomes can change", "supersedes older pending-approval dialogue"].every((guidance) => offeredTool?.description?.includes(guidance) === true),
         guidanceInNote: learned(remembered.at(-1), "supersedes older pending-approval dialogue"),
+        withoutTool: {
+          offered: (untooled.tools ?? []).some(({ function: tool }) => tool?.name === proposeTool),
+          cautioned: untooledNote.includes("Historical pending-approval text does not establish that a proposal is still pending"),
+          hostLabels: untooledNote.split("Note from the agent host").length - 1,
+        },
       },
       mom: { carriesMessage: mom === undefined ? undefined : "requestMessageId" in mom.payload, uncertain: uncertain?.state },
       reconcile: {
@@ -232,7 +243,8 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
     hostOnlyOffered: false,
     sameToolsEveryMessage: 1,
     applied: "done",
-    outcomeNote: { afterHistory: true, inSystem: false, beforeAny: false, hostLabels: [1, 1], guidanceInTool: true, guidanceInNote: false },
+    outcomeNote: { afterHistory: true, inSystem: false, beforeAny: false, hostLabels: [1, 1], guidanceInTool: true, guidanceInNote: false,
+      withoutTool: { offered: false, cautioned: true, hostLabels: 1 } },
     mom: { carriesMessage: false, uncertain: "reconciliation_required" },
     reconcile: { extraField: 400, otherAttempt: 409, reviewed: 200, state: "done", review: "not_applied", repeated: 200 },
     decline: { status: 200, neverRan: true, uncertainUnlisted: true },

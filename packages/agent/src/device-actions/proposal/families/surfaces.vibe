@@ -57,6 +57,7 @@ function notesSelected(turn: DeviceTurn): boolean {
 
 const noteNow: MessageAvailability = {
   unavailable: "the owner's Notes screen does not select the phone's own Notes",
+  servedBy: "a request to make or save a note uses the canonical NOTES service",
   available: notesSelected,
 }
 const openViewNow: MessageAvailability = {
