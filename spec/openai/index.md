@@ -81,6 +81,13 @@ pure def sometimesOpenAiFallbackFinishes(s: OpenAiRun): bool = s.phase == Comple
 pure val eval_witness_sometimesOpenAiFallbackFinishes = (("beginOpenAi", { address: "primary", modelId: "text", acceptsOperation: true, acceptsSchema: true, confidential: true }, { address: "backup", modelId: "text", acceptsOperation: true, acceptsSchema: true, confidential: true }, true, true), ("failOpenAi", PrimaryOpenAi, RetryableOpenAi), ("acceptOpenAi", FallbackOpenAi, true, true))
 ```
 
+### Tool calls and their replies use the model tool protocol
+
+A tool completion gives the runtime each call's ID, name and JSON object
+arguments. A missing call, reused ID or malformed arguments fail the completion.
+When the runtime continues the conversation, an assistant message sends the same
+tool call IDs and each tool result refers to its originating ID.
+
 ### Reported cache and reasoning token counts survive completion decoding
 
 The completion result keeps the endpoint's prompt, completion and total token
