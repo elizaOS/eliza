@@ -438,7 +438,11 @@ describe("pump.fun buy confirmation states", () => {
 
     const result = await buy();
 
-    // A failure here invites a second "yes" and a second 0.5 SOL buy.
+    expect(mockGetLatestBlockhash).not.toHaveBeenCalled();
+    expect(mockConfirmTransaction).toHaveBeenCalledWith(
+      "pump-signature-abc123",
+      "confirmed",
+    );
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.result.signature).toBe("pump-signature-abc123");
