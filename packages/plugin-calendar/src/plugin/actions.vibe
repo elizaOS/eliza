@@ -1,6 +1,7 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
+import { readTurnContext } from "@elizaos/agent"
 import { sha256Hex, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
-import { mustAskBeforeCreate } from "../../gen/calendar__readClock.effect.vibe"
+import { createNeedsConfirmation, createTimeZone, deviceTimeZone, inCreateYear, requestTimeZone } from "../clock.vibe"
 import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
@@ -46,23 +47,6 @@ const decodeFields = Schema.decodeUnknownOption(FieldsRecord)
 const decodeRecurrence = Schema.decodeUnknownOption(RecurrenceRecord)
 
 const canonical = (instant: string) => new Date(Date.parse(instant)).toISOString()
-
-function knownZone(zone: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: zone })
-    return true
-  } catch {
-    return false
-  }
-}
-
-function hostZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
-  } catch {
-    return "UTC"
-  }
-}
 
 function wallTime(event: CalendarEvent, zone: string): string {
   try {
@@ -159,14 +143,29 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
   return { success: true, text: `Deleted ${title}.`, effectReceipts, data: { subaction, targetEvent: receipt.target, deleted: true, requestId: request.id } }
 }
 
-/** Who asked for a Calendar action, and the stable id of the request that asked. */
+/** Who asked for a Calendar action, the stable id of the request that asked, what they said, and the zones of their client and of the owner. */
 export interface CalendarAsk {
   readonly by: string
   readonly id: string
+  readonly said?: string
+  readonly clientZone?: string
+  readonly ownerZone?: string
 }
 
-function askOf(message: Memory): CalendarAsk {
-  return { by: String(message.entityId), id: String(message.id ?? `${message.roomId}:${message.createdAt ?? 0}`) }
+/** The ask of one message: its client's zone from the accepted turn context, and the owner's zone when it is known. */
+export function calendarAsk(message: Memory, ownerZone?: string): CalendarAsk {
+  const context = readTurnContext(message)
+  const clientZone = context.observation?.timeZone ?? context.voiceUi?.uiTimeZone
+  return {
+    by: String(message.entityId), id: String(message.id ?? `${message.roomId}:${message.createdAt ?? 0}`),
+    ...(message.content.text === undefined ? {} : { said: message.content.text }),
+    ...(clientZone === undefined ? {} : { clientZone }),
+    ...(ownerZone === undefined ? {} : { ownerZone }),
+  }
+}
+
+function zonesOf(ask: CalendarAsk) {
+  return { owner: ask.ownerZone ?? deviceTimeZone(), ...(ask.clientZone === undefined ? {} : { client: ask.clientZone }) }
 }
 
 effect function target(host: CalendarHost, parameters: Parameters, now: number) {
@@ -201,7 +200,9 @@ function updatedFields(found: CalendarFound, parameters: Parameters, zone: strin
 effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Parameters): ActionResult!! {
   const subaction = parameters.subaction
   const now = try Clock.currentTimeMillis
-  const zone = parameters.timeZone !== undefined && knownZone(parameters.timeZone) ? parameters.timeZone : hostZone()
+  const zones = zonesOf(ask)
+  const zone = requestTimeZone({ ...zones, ...(parameters.timeZone === undefined ? {} : { explicit: parameters.timeZone }) })
+  const createZone = createTimeZone(zones)
   const askedBy = ask.by
   const askId = `${ask.id}:${subaction}`
   switch (subaction) {
@@ -215,25 +216,26 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
       return readResult(subaction, found, events, zone, subaction === "next_event" ? "Nothing is on your calendar in the next 30 days." : "No events match in that range.")
     }
     case "create_event": {
+      const isAllDay = parameters.isAllDay ?? false
+      const extracted = { startAt: parameters.startAt === undefined ? "" : canonical(parameters.startAt), endAt: parameters.endAt === undefined ? "" : canonical(parameters.endAt), isAllDay }
+      const span = extracted.startAt === "" || extracted.endAt === "" || ask.said === undefined ? extracted : inCreateYear(extracted, ask.said, new Date(now), createZone)
+      if (span === undefined) return failed(subaction, "That date doesn't exist in the year you named.")
       const fields = decodeFields({
         title: parameters.title ?? "", description: parameters.description ?? "", location: parameters.location ?? "",
-        startAt: parameters.startAt === undefined ? "" : canonical(parameters.startAt), endAt: parameters.endAt === undefined ? "" : canonical(parameters.endAt),
-        isAllDay: parameters.isAllDay ?? false, timeZone: zone,
+        startAt: span.startAt, endAt: span.endAt, isAllDay, timeZone: createZone,
       })
       if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return failed(subaction, "A new event needs a title and a start before its end.")
       const recurrence = parameters.repeat === undefined ? Option.some(null) : decodeRecurrence({ rule: parameters.repeat,
         ...(parameters.repeatUntil === undefined ? {} : { until: canonical(parameters.repeatUntil) }),
         ...(parameters.skipStarts === undefined ? {} : { excluded: parameters.skipStarts.map(canonical) }) })
       if (Option.isNone(recurrence)) return failed(subaction, "A repeating event needs one rule (daily, weekdays or weekly) and distinct skipped starts.")
-      const start = new Date(Date.parse(fields.value.startAt))
-      const current = new Date(now)
-      if (parameters.confirmedPastStart !== true && mustAskBeforeCreate(start.getUTCFullYear(), current.getUTCFullYear(), start.getTime() < now)) {
+      if (parameters.confirmedPastStart !== true && createNeedsConfirmation(fields.value.startAt, new Date(now), createZone)) {
         return failed(subaction, "That start time has already passed. Should I still create it?", { needsConfirmation: "past_start", fields: fields.value })
       }
       const source = try host.writeTarget(parameters.calendarId)
       if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
       const result = host.change({ kind: "create", source, fields: fields.value, recurrence: recurrence.value, askedBy, askId }) catch () => undefined
-      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
+      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, createZone)
     }
     case "update_event":
     case "delete_event": {
@@ -244,7 +246,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
       }
       if (lookup.kind === "missing") return failed(subaction, "I couldn't find that event in this account's calendars.")
       const asked = subaction === "update_event"
-        ? { kind: "update" as const, target: lookup.found, scope: parameters.recurrenceScope ?? "instance", fields: updatedFields(lookup.found, parameters, zone), askedBy, askId }
+        ? { kind: "update" as const, target: lookup.found, scope: parameters.recurrenceScope ?? "instance", fields: updatedFields(lookup.found, parameters, createZone), askedBy, askId }
         : { kind: "delete" as const, target: lookup.found, scope: parameters.recurrenceScope ?? "instance", askedBy, askId }
       if (asked.kind === "update" && (Option.isNone(decodeFields(asked.fields)) || !fieldsSpanValid(asked.fields))) return failed(subaction, "The changed event needs a title and a start before its end.")
       const result = host.change(asked) catch () => undefined
@@ -263,6 +265,16 @@ export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, i
 function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
   const found: unknown = runtime.getService(calendarServiceType)
   return found instanceof CalendarService ? found.host : undefined
+}
+
+const assistantServiceType = "personal-assistant"
+
+async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
+  const assistant: unknown = runtime.getService(assistantServiceType)
+  const read = typeof assistant === "object" && assistant !== null && "ownerCalendarZone" in assistant ? assistant.ownerCalendarZone : undefined
+  if (typeof read !== "function") return undefined
+  const zone: unknown = await Promise.resolve(read.call(assistant)).catch(() => undefined)
+  return typeof zone === "string" && zone !== "" ? zone : undefined
 }
 
 /** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
@@ -297,7 +309,7 @@ export const calendarAction: Action = {
     const host = serviceOf(runtime)
     if (host === undefined) return { success: false, text: "The calendar isn't running." }
     const input = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
-    return runPromise(runCalendarAction(host, askOf(message), input))
+    return runPromise(runCalendarAction(host, calendarAsk(message, await ownerZone(runtime)), input))
   },
 }
 
@@ -307,13 +319,13 @@ export const calendarProvider: Provider = {
   description: "The owner's events over the next 24 hours from the active account's calendars",
   dynamic: true,
   roleGate: { minRole: "OWNER" },
-  get: async (runtime) => {
+  get: async (runtime, message) => {
     const host = serviceOf(runtime)
     if (host === undefined) return {}
     const now = Date.now()
     const found = await runPromise(host.search({ timeMin: now, timeMax: now + day }))
     if (found === undefined) return {}
-    const zone = hostZone()
+    const zone = createTimeZone(zonesOf(calendarAsk(message, await ownerZone(runtime))))
     const lines = found.events.map((event) => `- ${line(event, zone)}`)
     return {
       text: lines.length === 0 ? "No calendar events in the next 24 hours." : `Calendar, next 24 hours${found.complete ? "" : " (some calendars unread)"}:\n${lines.join("\n")}`,

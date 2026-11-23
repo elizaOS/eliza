@@ -1,7 +1,7 @@
 // spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about"
 import { assert, it } from "@effect/vitest"
 import { machine } from "../gen/calendar__reviewedReads.effect.vibe"
-import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
+import { createNeedsConfirmation, createStartYearOf, createTimeZone, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
   requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
 import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedReadWindow,
   type NamedCalendarReadContext, type NamedCalendarReadProvider } from "../src/client/named-read.vibe"
@@ -81,8 +81,10 @@ it.effect('See and create times in the zone I am asking about (spec/calendar/rea
     displayDay({ startAt: "2026-01-15T00:00:00.000Z", isAllDay: true }, la),
     displayDay({ startAt: "2026-01-15T12:00:00.000Z", isAllDay: false }, "Pacific/Kiritimati"),
   ], ["2026-01-14", "2026-01-15", "2026-01-16"])
-  assert.deepStrictEqual([createYear("lunch on March 3 2028", 2026), createYear("lunch next March 3", 2026), createYear("lunch on March 3", 2026),
-    createYear("March 3 2027 at noon", 2026)], [2028, 2027, 2026, 2027])
+  const createYear = (text: string) => createStartYearOf(text, 2026, 2031)
+  assert.deepStrictEqual([createYear("lunch on March 3 2028"), createYear("lunch next March 3"), createYear("lunch on March 3"),
+    createYear("March 3 2027 at noon"), createYear("2027 3/5 dentist"), createYear("2027년 3월 5일 치과"), createYear("dentist 3/5/28"),
+    createYear("lunch next Friday at 12:30"), createYear("lunch on 12 March this year")], [2028, 2027, 2026, 2027, 2027, 2027, 2028, 2031, 2026])
   const now = new Date("2026-06-01T12:00:00.000Z")
   assert.deepStrictEqual([createNeedsConfirmation("2026-01-01T10:00:00.000Z", now, "UTC"), createNeedsConfirmation("2026-06-02T10:00:00.000Z", now, "UTC"),
     createNeedsConfirmation("2025-12-31T10:00:00.000Z", now, "UTC")], [true, false, true])

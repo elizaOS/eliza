@@ -1,5 +1,5 @@
 // spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/readClock.md, "Display shifts the canonical instant by the zone's offset on that date"; spec/calendar/readClock.md, "An all-day event keeps its civil date; a timed event uses the viewer's day"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"
-import { correctedYear, displayDayShift, mustAskBeforeCreate, type YearCue } from "../gen/calendar__readClock.effect.vibe"
+import { createStartYear, displayDayShift, mustAskBeforeCreate, type YearCue } from "../gen/calendar__readClock.effect.vibe"
 
 /** A wall-clock reading in one zone, to the second. */
 export interface ZonedDateParts {
@@ -154,19 +154,55 @@ export function displayDay(event: { readonly startAt: string; readonly isAllDay:
   return new Date(utcDay + shift * dayMs).toISOString().slice(0, 10)
 }
 
-/** What a create request says about its year: a trailing year, a stated year, "next", "this year" or nothing. */
-export function yearCueOf(text: string): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number } {
-  const folded = text.normalize("NFKC").toLowerCase()
-  const trailing = /\b(\d{4})\s*[.!?]?\s*$/.exec(folded)
-  const stated = /\b(19|20|21)\d{2}\b/.exec(folded)
-  const cue: YearCue = /\bnext\b/.test(folded) ? "NextYearCue" : stated !== null ? "StatedYearCue" : /\bthis year\b/.test(folded) ? "ThisYearCue" : "NoYearCue"
-  return { cue, statedYear: stated === null ? 0 : Number(stated[0]), trailingYear: trailing === null ? 0 : Number(trailing[1]) }
+const monthName = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?![a-z])\\.?"
+const calendarDates = [
+  new RegExp(`\\b${monthName}\\s*\\d{1,2}(?!\\d)`),
+  new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?${monthName}`),
+  /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/,
+  /\b\d{4}-\d{1,2}-\d{1,2}\b/,
+  /\d{1,2}\s*[월月]\s*\d{1,2}\s*[일日号]/,
+]
+const nextYear = new RegExp(`\\bnext\\s+(?:year\\b|${monthName})|내년|明年`)
+
+function folded(text: string): string {
+  return text.normalize("NFKC").toLowerCase()
 }
 
-/** The year a create uses from its request text, never the year an extractor guessed. */
-export function createYear(text: string, currentYear: number): number {
+/** Whether a create request names a calendar date: a month and day, a slash or ISO date. */
+export function namesCalendarDate(text: string): boolean {
+  const said = folded(text)
+  return calendarDates.some((date) => date.test(said))
+}
+
+/** What a create request says about its year: a trailing year, a stated year, "next year", "this year" or nothing. */
+export function yearCueOf(text: string): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number } {
+  const said = folded(text)
+  const trailing = /(?<!\d)((?:19|20|21)\d{2})\s*[.!?]?\s*$/.exec(said)
+  const stated = /(?<![\d:])((?:19|20|21)\d{2})(?![\d:])/.exec(said) ?? /\b\d{1,2}\/\d{1,2}\/(\d{2})\b/.exec(said)
+  const statedYear = stated === null ? 0 : stated[1].length === 2 ? 2000 + Number(stated[1]) : Number(stated[1])
+  const cue: YearCue = stated !== null ? "StatedYearCue" : nextYear.test(said) ? "NextYearCue" : /\bthis year\b|올해|今年/.test(said) ? "ThisYearCue" : "NoYearCue"
+  return { cue, statedYear, trailingYear: trailing === null ? 0 : Number(trailing[1]) }
+}
+
+/** The year a create starts in: from the request text when it names a calendar date, never then the year an extractor guessed; else the extracted year. */
+export function createStartYearOf(text: string, currentYear: number, extractedYear: number): number {
   const { cue, statedYear, trailingYear } = yearCueOf(text)
-  return correctedYear(cue, statedYear, trailingYear, currentYear)
+  return createStartYear(namesCalendarDate(text), cue, statedYear, trailingYear, currentYear, extractedYear)
+}
+
+/** A create's start and end in the year its request states, with the wall clock and duration kept, or undefined when that date does not exist in that year. */
+export function inCreateYear(span: { readonly startAt: string; readonly endAt: string; readonly isAllDay: boolean }, text: string, now: Date, timeZone: string): { readonly startAt: string; readonly endAt: string } | undefined {
+  const zone = span.isAllDay ? "UTC" : timeZone
+  const start = getZonedDateParts(new Date(span.startAt), zone)
+  const today = getZonedDateParts(now, timeZone)
+  if (start === undefined || today === undefined) return undefined
+  const year = createStartYearOf(text, today.year, start.year)
+  if (year === start.year) return { startAt: span.startAt, endAt: span.endAt }
+  const moved = buildUtcDateFromLocalParts(zone, { ...start, year })
+  const kept = moved === undefined ? undefined : getZonedDateParts(moved, zone)
+  if (moved === undefined || kept?.month !== start.month || kept.day !== start.day) return undefined
+  const shift = moved.getTime() - Date.parse(span.startAt)
+  return { startAt: moved.toISOString(), endAt: new Date(Date.parse(span.endAt) + shift).toISOString() }
 }
 
 /** Whether a create's start is already past in its zone, so the owner must confirm it before anything is stored. */

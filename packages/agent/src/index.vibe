@@ -13,6 +13,7 @@ export {
   createScheduledTask, getScheduledTask, listScheduledTasks, NoScheduledTask, scheduledTaskByKey, scheduledTaskKeeping, ScheduleStoreUnavailable, StaleRevision, TaskIdTaken,
   type NewScheduledTask, type ScheduledTaskDetails, type StoredTask,
 } from "./schedule/store.vibe"
+export { readTurnContext, type TurnContext } from "./conversation/turn-context.schema.vibe"
 export {
   workflowDeviceOffer, WorkflowStepRefused,
   type WorkflowDeviceOffer, type WorkflowOfferTiming, type WorkflowStep, type WorkflowStepDevice, type WorkflowStepTarget,
