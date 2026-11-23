@@ -22,7 +22,7 @@ public final class CloudRequestPolicy {
   public static final List<String> BASE_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate");
 
   public enum Auth { PUBLIC, KEY_OR_SESSION, MAIL, SESSION, SESSION_FAMILY, FRESH_SESSION, STEP_UP }
-  public enum Refusal { NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED }
+  public enum Refusal { NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, MAIL_LEASE_UPGRADE_REQUIRED, REAUTH_REQUIRED }
   public enum Handoff { INLINE_BODY, CACHED_BODY, REPLY_TOO_LARGE }
   public enum Scheme { HTTPS, HTTP, OTHER_SCHEME }
 
@@ -137,7 +137,11 @@ public final class CloudRequestPolicy {
     Auth auth = d.auth();
     if (auth == Auth.PUBLIC) return new Send(new Bare());
     if (sessionOnly(auth)) return h.sessionLive() ? new Send(new WithSession(h.key())) : h.sessionHeld() ? new RefreshSessionFirst() : new Refuse(Refusal.REAUTH_REQUIRED);
-    if (mailRoute(d)) return h.leaseLive() ? new Send(new WithLease(h.key())) : h.leaseHeld() ? new RefreshLeaseFirst() : new Refuse(Refusal.SIGN_IN_REQUIRED);
+    if (mailRoute(d)) {
+      if (h.leaseLive()) return new Send(new WithLease(h.key()));
+      if (h.leaseHeld()) return new RefreshLeaseFirst();
+      return new Refuse(h.key() >= 1 ? Refusal.MAIL_LEASE_UPGRADE_REQUIRED : Refusal.SIGN_IN_REQUIRED);
+    }
     return h.key() >= 1 ? new Send(new WithKey(h.key())) : new Refuse(Refusal.SIGN_IN_REQUIRED);
   }
 

@@ -63,11 +63,13 @@ public final class DeviceKeyJourney {
     final List<String> revoked = new CopyOnWriteArrayList<>();
     final List<String> proofs = new CopyOnWriteArrayList<>();
     final AtomicInteger issued = new AtomicInteger(), tokenAsks = new AtomicInteger(), revokeAsks = new AtomicInteger(), refreshes = new AtomicInteger();
+    final AtomicInteger ackAsks = new AtomicInteger();
     final AtomicInteger rotations = new AtomicInteger(), reused = new AtomicInteger(), secrets = new AtomicInteger();
     final List<Family> families = new CopyOnWriteArrayList<>();
     final Map<String, Renewal> renewals = new ConcurrentHashMap<>();
     final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>();
     volatile boolean offline, leases, dropNextRotation;
+    volatile Account tokenOwner = ACCOUNT;
     volatile int dropAcks;
     final HttpServer server;
 
@@ -170,9 +172,10 @@ public final class DeviceKeyJourney {
           if (grant.asks++ == 0) { x.close(); return; }
           String lease = grant.lease == null ? "" : ",\"lease\":{\"refresh\":\"" + grant.lease.refresh + "\",\"refreshExpiresIn\":7776000}";
           answer(x, 200, "{\"credentialId\":\"" + grant.credentialId + "\",\"secret\":\"" + grant.secret + "\",\"tokenType\":\"Bearer\",\"expiresAt\":\""
-            + iso(now + 30 * DAY_MS) + "\",\"user\":{\"id\":\"" + ACCOUNT.userId() + "\"},\"organizationId\":\"" + ACCOUNT.organizationId() + "\"" + lease + "}");
+            + iso(now + 30 * DAY_MS) + "\",\"user\":{\"id\":\"" + tokenOwner.userId() + "\"},\"organizationId\":\"" + tokenOwner.organizationId() + "\"" + lease + "}");
         }
         case "POST " + DeviceKeyClient.ACK -> {
+          ackAsks.incrementAndGet();
           String credentialId = CredentialJson.text(body, "credentialId"), secret = CredentialJson.text(body, "secret");
           Grant1 signedIn = codes.values().stream().filter(g -> credentialId.equals(g.credentialId) && secret.equals(g.secret)).findFirst().orElse(null);
           Renewal renewed = renewals.get(credentialId);
@@ -350,14 +353,52 @@ public final class DeviceKeyJourney {
       String origin = cloud.origin().toString();
       String feed = "/api/v1/eliza/google/calendar/feed", models = "/api/v1/models";
       List<String> seen = new ArrayList<>();
+      seen.add(take("mailSignedOut", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
       seen.add(take("keyOnlySignIn", signIn()));
-      seen.add(take("mailWithoutLease", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
+      String oldKey = store.current().credentialId();
+      String recordSlot = DeviceCredentialStore.NAMESPACE + ":" + DeviceCredentialStore.authorityDigest(origin) + ":credential";
+      String snapshot = slots.read(recordSlot);
+      String oldSnapshot = snapshot.replace(",\"lease\":{\"tag\":\"NoLease\"}", "");
+      if (oldSnapshot.equals(snapshot)) throw new IllegalStateException("The key-only record did not contain an empty lease");
+      slots.write(recordSlot, oldSnapshot);
+      start();
+      custody = new CloudRequests.Custody(store, new AccountSession(store, client), lease);
+      seen.add(take("mailWithoutLease", outcome(requests.send("upgrade", origin, custody, "GET", feed, Map.of(), null))));
+      seen.add(take("settledRequestCancelled", requests.cancel("upgrade")));
+      var expected = CredentialPolicy.mailLeaseUpgrade(store.state());
+      int cancelled = store.beginMailLeaseUpgrade(expected);
+      store.signInEnded(cancelled);
+      seen.add(take("oldKeyAfterCancel", oldKey.equals(store.current().credentialId())));
+      seen.add(take("mailAfterCancel", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
+      seen.add(take("inferenceBeforeUpgrade", outcome(requests.send(origin, custody, "GET", models, Map.of(), null))));
+      int priorAcks = cloud.ackAsks.get();
+      seen.add(take("upgradeWithoutLease", client.exchange(store.beginMailLeaseUpgrade(expected), BINDING, proof()).name()));
       cloud.leases = true;
-      seen.add(take("leasedSignIn", signIn()));
+      cloud.tokenOwner = new Account(ACCOUNT.userId(), "another-organization");
+      seen.add(take("upgradeToOtherOrganization", client.exchange(store.beginMailLeaseUpgrade(expected), BINDING, proof()).name()));
+      cloud.tokenOwner = ACCOUNT;
+      seen.add(take("refusalsKeptOldKey", oldKey.equals(store.current().credentialId()) && store.owed().size() == 2));
+      int interrupted = store.beginMailLeaseUpgrade(expected);
+      Proof unfinished = proof();
+      client.token(BINDING, unfinished);
+      Answer<DeviceCredentialStore.Token> second = client.token(BINDING, unfinished);
+      if (!(second instanceof Answer.Answered<DeviceCredentialStore.Token> minted)
+          || store.tokenAnswered(interrupted, minted.value()) != DeviceCredentialStore.Kept.KEPT) {
+        throw new IllegalStateException("The interrupted upgrade did not stage a pending grant");
+      }
+      start();
+      custody = new CloudRequests.Custody(store, new AccountSession(store, client), lease);
+      seen.add(take("restartRetiredPendingUpgrade", store.pending() == null && store.owed().size() == 3 && oldKey.equals(store.current().credentialId())));
+      seen.add(take("failedUpgradeAcknowledgements", cloud.ackAsks.get() - priorAcks));
+      seen.add(take("leasedSignIn", client.exchange(store.beginMailLeaseUpgrade(expected), BINDING, proof()).name()));
+      seen.add(take("upgradeStayedWithOwner", ACCOUNT.equals(store.current().account()) && store.beginMailLeaseUpgrade(expected) == 0));
       cloud.dropNextRotation = true;
       seen.add(take("mailAfterLostRotation", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
       seen.add(take("mailWithLease", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
       seen.add(take("inferenceWithKey", outcome(requests.send(origin, custody, "GET", models, Map.of(), null))));
+      cloud.families.get(cloud.families.size() - 1).ended = true;
+      clock.addAndGet(16 * 60_000L);
+      seen.add(take("mailAfterRevokedLease", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
       seen.add(take("bearers", String.join(",", cloud.mailBearers) + "/" + String.join(",", cloud.modelBearers)));
       seen.add(take("leaseReuses", cloud.reused.get()));
       cloud.server.stop(0);
@@ -371,10 +412,14 @@ public final class DeviceKeyJourney {
 
   private String signIn() {
     int attempt = store.beginSignIn();
+    return client.exchange(attempt, BINDING, proof()).name();
+  }
+
+  private Proof proof() {
     String state = SignInPolicy.newState(), verifier = SignInPolicy.newVerifier();
     Answer<Grant> grant = client.connect(SESSION, BINDING, state, SignInPolicy.s256(verifier), "Journey phone");
     if (!(grant instanceof Answer.Answered<Grant> granted)) throw new IllegalStateException("connect " + grant);
-    return client.exchange(attempt, BINDING, new Proof(granted.value().code(), state, verifier)).name();
+    return new Proof(granted.value().code(), state, verifier);
   }
 
   private String held() {

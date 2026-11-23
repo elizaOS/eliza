@@ -2,6 +2,7 @@
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
+import ai.eliza.plugins.signin.CredentialPolicy.MailLeaseUpgrade;
 import ai.eliza.plugins.signin.SignInPolicy.Failure;
 import ai.eliza.plugins.signin.SignInRegistration.Environment;
 
@@ -24,6 +25,12 @@ public interface SignInCustody {
   }
 
   int beginSignIn(Environment environment) throws Refused;
+
+  default MailLeaseUpgrade mailLeaseUpgrade(Environment environment) { return null; }
+
+  default int beginMailLeaseUpgrade(Environment environment, MailLeaseUpgrade expected) throws Refused {
+    throw new Refused(Failure.REJECTED);
+  }
 
   void signInEnded(Environment environment, int attempt);
 
