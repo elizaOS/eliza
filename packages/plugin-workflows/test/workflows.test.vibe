@@ -392,6 +392,13 @@ it.live('Acknowledge a page of digests only after it is stored (spec/workflow/ho
     const index = try Effect.try(() => JSON.parse(String(raw)) as { readonly clientId: string })
     const drained = try protocol.results(index.clientId)
     try check(() => assert.deepStrictEqual(drained, []))
+
+    try Effect.flip(Effect.timeout(inbox.sync({ ...protocol, results: () => Effect.never }, 1), "20 millis"))
+    const afterInterrupt = try inbox.sync(protocol, 1)
+    const retiring = { ...protocol, results: (clientId: string) => Effect.andThen(inbox.retire(), protocol.results(clientId)) }
+    const retired = try Effect.flip(inbox.sync(retiring, 1))
+    const nextGeneration = try inbox.sync(protocol, 2)
+    try check(() => assert.deepStrictEqual([afterInterrupt.length, retired._tag, nextGeneration.length], [2, "DigestInboxFailed", 2]))
   }
 })
 
