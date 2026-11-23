@@ -20,7 +20,7 @@ const codeTable = {
 
 const reasonTable = {
   GrantRequired: 0, UnsupportedField: 0, CredentialExpired: 0, CredentialRevoked: 0, CredentialUnknown: 0,
-  ChallengeLocked: 0, GoogleAccountChanged: 0, AccountInactive: 0, CapabilityMissing: 0, GoogleNotConfigured: 0
+  ChallengeLocked: 0, GoogleAccountChanged: 0, AccountInactive: 0, CapabilityMissing: 0, GoogleNotConfigured: 0, DeviceKeyNotAllowed: 0
 } satisfies Record<Exclude<RefusalReason, "NoReason">, 0>
 
 function wireName(name: string): string {
