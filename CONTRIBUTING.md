@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `24fd071`](https://github.com/lalalune/vibestack/commit/24fd071208add450d567c09938961d2933c77fc1).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `9865679`](https://github.com/lalalune/vibestack/commit/9865679c703e38a098e7cc749628ea198fe25868).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -434,7 +434,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 | When | Runs |
 |---|---|
 | Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
-| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
+| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
@@ -445,8 +445,9 @@ The run summary lists Turbo task times, cache status and exit codes.
 Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
 tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job, the
-lockfile and the commit. A job restores what a job of its name last saved under the same lockfile, or else under
-another: each entry is named by the tools and inputs that produced it, so a job reads only the entries that still apply.
+lockfile and the commit. A job tries both key layouts for its own name and current lockfile, then tries the current
+layout for another lockfile. Each entry is named by the tools and inputs that produced it, so a job reads only the
+entries that still apply.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
 The default branch's `verify` job publishes the pnpm store after the frozen
