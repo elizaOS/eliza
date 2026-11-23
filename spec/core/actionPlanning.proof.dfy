@@ -167,6 +167,10 @@ lemma planCall_ensures(s: Planning, id: int, actionName: string, role: core__aut
   if inv(s) && canPlanCall(s, id, actionName, role) {
     var t := planCall(s, id, actionName, role);
     Extend(s, t, PlannedCall(id, actionName, 0, role, false, CallPhase.Planned, RejectReason.NotRejected));
+    forall b | b in s.calls ensures b in t.calls {
+      var j :| 0 <= j < |s.calls| && s.calls[j] == b;
+      assert t.calls[j] == b;
+    }
   }
 }
 
