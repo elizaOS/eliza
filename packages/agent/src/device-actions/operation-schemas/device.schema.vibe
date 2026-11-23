@@ -306,8 +306,9 @@ const PhotosShare = Schema.Union([
   Schema.Struct({ type: Schema.Literal("photos_share"), ids: MediaIds(100) }),
   Schema.Struct({ type: Schema.Literal("photos_share"), ...OpenItem }),
 ])
-const openItem = (operation: { readonly selected?: true }) => operation.selected === true
-const targetsOf = (operation: { readonly ids?: readonly string[]; readonly selected?: true }) =>
+type PhotoReview = (typeof PhotosAlbumCreate)["Type"] | (typeof PhotosShare)["Type"]
+const openItem = (operation: PhotoReview) => "selected" in operation && operation.selected === true
+const targetsOf = (operation: PhotoReview) =>
   photoTargets(openItem(operation), operation.ids?.length ?? 0)
 
 const PhotosFilterResult = Schema.Struct({ kind: Schema.Literal("photos_filter"), shown: MediaCount, more: Schema.Boolean })

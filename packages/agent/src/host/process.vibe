@@ -43,7 +43,7 @@ module node {
   }
 
   import { randomUUID } from "node:crypto"
-  import { Effect, Result } from "effect"
+  import { Effect, Redacted, Result } from "effect"
   import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, TaskService, createCharacter, logger, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload, type ServiceClass } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
   import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"

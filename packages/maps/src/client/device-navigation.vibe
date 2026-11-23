@@ -283,9 +283,10 @@ export effect function deviceMapsNavigation(surface: MapsNavigationSurface, owne
       const fix = navigationFix(active.fix, now)
       const started = sessions.send({ type: "startSessionReroute", fix }) catch () => undefined
       if (started === undefined || active.fix === undefined) throw unavailable("The phone has no fresh, precise location fix, so it kept the current route.")
+      const ticket = started.ticket
       const prepared = (try directions.get()).phase === "Guiding" ? (directions.send({ type: "startReroute", fix }) catch () => undefined) : undefined
       effect function settle(route: number, sameSession: boolean): void!! {
-        try orDie(sessions.send({ type: "sessionRerouteSettles", ticket: started.ticket, route, sameSession }))
+        try orDie(sessions.send({ type: "sessionRerouteSettles", ticket, route, sameSession }))
         if (prepared !== undefined) try orDie(directions.send({ type: "rerouteSettles", ticket: prepared.ticket, route, sameSession }))
       }
       const reply = mapError(surface.reroute(active.fix.coordinate), deviceNavigationFailure) catch effect (error) => {
@@ -529,8 +530,9 @@ const decodeOperation = Schema.decodeUnknownEffect(DeviceNavigationOperation)
 
 /** Offers this phone's navigation to the agent only during its authenticated turn: each relayed request runs at most once, a redelivered one is never run again, and its one receipt is never retried. */
 export effect function withMapsNavigationRelay<A, E, R, Owner extends object>(host: MapsRelayHost<Owner>, request: RelayRequest, conversationId: string, send: A!E!R): A!E!R {
-  const navigation = host.current()
-  if (navigation === undefined) return try send
+  const current = host.current()
+  if (current === undefined) return try send
+  const navigation = current
   const offer = offerId()
   const phase = (name: "open" | "poll" | "retire") => request({ phase: name, conversationId, offerId: offer })
   const opened = try exit(flatMap(phase("open"), decodeReply))
