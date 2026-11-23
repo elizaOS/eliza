@@ -1509,6 +1509,7 @@ describe("reloading a page the phone withheld", () => {
     "Reload this page. Actually, do not close the tab or reload it.",
     "Reload this page. Actually, don't.",
     "Reload this page. Never mind.",
+    "Reload this page. Never mind. Summarize what you have.",
     "Reload this page — wait, do not.",
     "do not refresh it, just tell me what it says",
     "summarize it without reloading",

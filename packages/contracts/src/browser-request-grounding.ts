@@ -597,7 +597,7 @@ const RELOAD_RETRACTION_LEAD =
 // A short withdrawal names no verb. It refers to a reload only when it follows
 // the reload clause directly, without another intervening request.
 const SHORT_RELOAD_RETRACTION =
-  /^[^.?!;:\n–—]*[.?!;,:\n–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)[.!?\s]*$/i;
+  /^[^.?!;:\n–—]*[.?!;,:\n–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[.!?]+(?=\s|$)|\s*$)/i;
 
 /** Whether the owner's own message asks to reload, refresh or reopen the page
  * that is showing ("reload this page", "it won't load, so refresh", "can you
