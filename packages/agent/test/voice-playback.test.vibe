@@ -1,0 +1,67 @@
+// spec/agent/voice/clientAudio.md, "Story: Record and play speech in the screen without losing a segment"
+import { assert, it } from "@effect/vitest"
+import { startCumulativeMicrophoneCapture } from "../src/voice/capture.vibe"
+import { SegmentedSpeechPlayback, type SegmentedSpeechState } from "../src/voice/index.vibe"
+import { FakeMicrophone, FakePlayer, fakeCaptureAudio, tone } from "./support/audio-fake.ts"
+import { host } from "./support/kernel.vibe"
+
+const turn = () => new Promise<void>((resolve) => setImmediate(resolve))
+
+async function until(check: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 1000 && !check(); attempt += 1) await turn()
+}
+
+it.live('Record and play speech in the screen without losing a segment (spec/agent/voice/clientAudio.md, "Story: Record and play speech in the screen without losing a segment"; spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "Segments play in order once each, and Stop silences the reply at once")', () => effect {
+  const microphone = new FakeMicrophone()
+  const audio = fakeCaptureAudio()
+  const previews: number[] = []
+  const metered: number[] = []
+  const capture = try startCumulativeMicrophoneCapture({
+    audio, stream: microphone, sampleRate: 16_000, maxSeconds: 1, minimumNewSamples: 1, previewIntervalMs: 60_000, speechThreshold: 0.01,
+    onPreview: async (chunks) => { previews.push(chunks.reduce((samples, chunk) => samples + chunk.length, 0)) },
+    meter: (_level, endSample) => { metered.push(endSample) },
+  })
+  microphone.say(tone(0.5, 4096))
+  try host("deliver the captured blocks", () => until(() => metered.at(-1) === 4096))
+  const offered = try host("snapshot the capture", () => capture.snapshot())
+  const aliveWhileOpen = microphone.processorAlive()
+  capture.close()
+  try host("end the capture processor", () => until(() => microphone.processorAlive() === false))
+  microphone.say(tone(0.5, 4096))
+  try host("ignore speech after close", () => turn())
+
+  const players: FakePlayer[] = []
+  const attached: string[] = []
+  const phases: Array<SegmentedSpeechState["phase"]> = []
+  let disposed = 0
+  const playback = new SegmentedSpeechPlayback({
+    player: () => {
+      const player = new FakePlayer()
+      players.push(player)
+      return player
+    },
+    attach: (_player, text, { onReady }) => {
+      attached.push(text)
+      void turn().then(() => onReady(null))
+      return { loaded: turn().then(turn), dispose: () => { disposed += 1 } }
+    },
+    changed: (state) => { phases.push(state.phase) },
+  })
+  let played = 0
+  const reply = playback.speakSegments(["One.", "Two.", "Three."], () => { played += 1 })
+  try host("start the first segment", () => until(() => phases.includes("playing")))
+  players[0]?.emit("ended")
+  try host("start the second segment", () => until(() => phases.filter((phase) => phase === "playing").length === 2))
+  playback.stop()
+  try host("end the reply at Stop", () => reply)
+  players[1]?.emit("ended")
+  try host("ignore a late end", () => turn())
+
+  assert.deepStrictEqual({
+    capture: { offered, previews, aliveWhileOpen, alive: microphone.processorAlive(), metered: metered.at(-1), contextClosed: audio.opened.map(({ closed }) => closed) },
+    playback: { attached, played, paused: players.map(({ paused }) => paused), disposed, last: phases.at(-1), pending: playback.pending },
+  }, {
+    capture: { offered: true, previews: [4096], aliveWhileOpen: true, alive: false, metered: 4096, contextClosed: [true] },
+    playback: { attached: ["One.", "Two."], played: 1, paused: [1, 1], disposed: 2, last: "idle", pending: false },
+  })
+})

@@ -1,6 +1,7 @@
 // spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "A WAV holds every sample in order as mono PCM16 behind a 44-byte header"
 import type { CaptureAudioPort, CaptureContext, CaptureNode, ClipAudioPort, DecodedClip } from "../../src/voice/capture.vibe"
-import { captureProcessorName } from "../../src/voice/capture-browser.ts"
+import { browserCaptureAudio } from "../../src/voice/capture-browser.ts"
+import type { PlayerEvent, SpeechPlayer } from "../../src/voice/playback.vibe"
 
 const renderQuantum = 128
 
@@ -8,30 +9,37 @@ interface SampleProcessor {
   process(inputs: Float32Array[][]): boolean
 }
 
-class WorkletPort {
-  closed = false
-  constructor(readonly deliver: (data: unknown) => void) {}
-  postMessage(data: unknown): void {
-    if (!this.closed) this.deliver(data)
-  }
-  close(): void {
-    this.closed = true
-  }
-}
-
 const processors = new Map<string, new () => SampleProcessor>()
-let nextPort: WorkletPort | undefined
+let nextPort: MessagePort | undefined
+
+class FakeWorkletNode implements CaptureNode {
+  readonly port: MessagePort
+  readonly processor: SampleProcessor
+  constructor(_context: unknown, name: string) {
+    const Processor = processors.get(name)
+    if (Processor === undefined) throw new Error(`no processor ${name}`)
+    const { port1, port2 } = new MessageChannel()
+    nextPort = port1
+    this.processor = new Processor()
+    nextPort = undefined
+    this.port = port2
+  }
+  connect(): void {}
+  disconnect(): void {}
+}
 
 Object.assign(globalThis, {
   AudioWorkletProcessor: class {
     readonly port = nextPort
   },
+  AudioWorkletNode: FakeWorkletNode,
   registerProcessor: (name: string, processor: new () => SampleProcessor) => processors.set(name, processor),
 })
 
 export class FakeMicrophone {
   tracksStopped = 0
   processor: SampleProcessor | undefined
+  connected: SampleProcessor | undefined
 
   getTracks(): Array<{ stop(): void }> {
     return [{ stop: () => (this.tracksStopped += 1) }]
@@ -42,10 +50,10 @@ export class FakeMicrophone {
       this.processor?.process([[first.subarray(start, start + renderQuantum), second.subarray(start, start + renderQuantum)]])
     }
   }
-}
 
-interface SampleNode extends CaptureNode {
-  readonly processor: SampleProcessor
+  processorAlive(): boolean | undefined {
+    return this.connected?.process([[new Float32Array(renderQuantum)]])
+  }
 }
 
 export class FakeAudioContext implements CaptureContext<FakeMicrophone> {
@@ -64,7 +72,8 @@ export class FakeAudioContext implements CaptureContext<FakeMicrophone> {
   createMediaStreamSource(stream: FakeMicrophone): CaptureNode {
     return {
       connect: (node) => {
-        stream.processor = (node as SampleNode).processor
+        stream.processor = (node as FakeWorkletNode).processor
+        stream.connected = stream.processor
       },
       disconnect: () => {
         stream.processor = undefined
@@ -90,16 +99,40 @@ export function fakeCaptureAudio(options: { readonly workletFails?: boolean } = 
       opened.push(context)
       return context
     },
-    samples: (_context, receive) => {
-      const Processor = processors.get(captureProcessorName)
-      if (Processor === undefined) throw new Error(`no processor ${captureProcessorName}`)
-      const port = new WorkletPort(receive)
-      nextPort = port
-      const processor = new Processor()
-      nextPort = undefined
-      const node: SampleNode = { processor, connect: () => undefined, disconnect: () => undefined }
-      return { node, stop: () => port.close() }
-    },
+    samples: (context, receive) => browserCaptureAudio.samples(context as unknown as AudioContext, receive),
+  }
+}
+
+export class FakePlayer implements SpeechPlayer {
+  src = ""
+  playbackRate = 1
+  defaultPlaybackRate = 1
+  preservesPitch = false
+  paused = 0
+  readonly listeners = new Map<PlayerEvent, Set<() => void>>()
+
+  addEventListener(type: PlayerEvent, listener: () => void): void {
+    this.listeners.set(type, (this.listeners.get(type) ?? new Set()).add(listener))
+  }
+
+  removeEventListener(type: PlayerEvent, listener: () => void): void {
+    this.listeners.get(type)?.delete(listener)
+  }
+
+  emit(type: PlayerEvent): void {
+    for (const listener of [...(this.listeners.get(type) ?? [])]) listener()
+  }
+
+  async play(): Promise<void> {}
+
+  pause(): void {
+    this.paused += 1
+  }
+
+  load(): void {}
+
+  removeAttribute(): void {
+    this.src = ""
   }
 }
 
