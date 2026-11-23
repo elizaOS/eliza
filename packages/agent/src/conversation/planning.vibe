@@ -5,6 +5,7 @@ import {
   buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
+import { tagsMayProduceEffects } from "@elizaos/core/protocol"
 import {
   acknowledges, actionNoteSent, admitsPlannerWork, callAdmission, callRunsFirst, canCueDirectCall, contextRestoreOf, cutOffReply, directCueDelayMs, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, offersContextRestore, openOutcomes, plansOn, resendWait, toolActivity,
   toolDispatch, turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
@@ -302,11 +303,13 @@ function stoppedAtModelMaximum(result: ActionResult): boolean {
   return [result.error, settled].some(stoppedAtOutputLimit)
 }
 
-function toolSettlement(result: ActionResult): ToolSettlement {
+function toolSettlement(result: ActionResult, action?: Action): ToolSettlement {
   const receipts = result.effectReceipts ?? []
   if (result.success) {
+    const tags = action?.tags
     const observation = receipts.length === 0
       ? result.data?.readOnlyOperation === true
+        || (tags?.some((tag) => tag.trim().toLowerCase() === "capability:read") === true && !tagsMayProduceEffects(tags))
       : receipts.every((receipt) => receipt.outcome === "preview" || (receipt.outcome === "noop" && !receipt.idempotency.replayed))
     return observation ? "ToolOpen" : "ToolSucceeded"
   }
@@ -428,7 +431,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         return []
       },
     }, { id: call.id, name: call.name, params }, { abortSignal: signal })
-    settlements.set(identity, toolSettlement(result))
+    settlements.set(identity, toolSettlement(result, named.get(name)))
     await input.onStepResult?.(result)
     steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
     conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })

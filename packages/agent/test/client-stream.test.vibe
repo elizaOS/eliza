@@ -1,4 +1,5 @@
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"
+// spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 import { assert, describe, it } from "@effect/vitest"
 import { insufficientCredits, partial, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
@@ -22,6 +23,7 @@ module node {
 
   const agendaRead: Action = {
     name: "AGENDA_READ", description: "Reads the owner's agenda.", contexts: ["general", "agenda"],
+    tags: ["capability:read"],
     validate: async () => true,
     handler: async (_runtime, message) => {
       if (message.content.text?.startsWith("Open my agenda for next month")) await sleepWithAbort(850)
@@ -289,7 +291,7 @@ it.live(`Hear that the agent heard me while work is pending, and see which app i
   const instruction = try turn("Text Sam that I'm late")
   try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda), text("You're free Friday.")))
   const question = try turn("Am I free Friday")
-  try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda), toolCalls("Let me check.", agenda), text("Sam is in your contacts.")))
+  try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda, agenda), toolCalls("Let me check.", agenda), text("Sam is in your contacts.")))
   const politeAsk = try turn("Can you text Sam")
   try Effect.sync(() => cloud.script(text("Hello.")))
   const answer = try turn("Hi")
