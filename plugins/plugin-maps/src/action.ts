@@ -178,6 +178,18 @@ function selectionHandleRefusal(
   };
 }
 
+/**
+ * A provider id the planner named that no adapter is registered under is a
+ * guess ("google-maps" from a card's "Google Maps" attribution, alpha.v630),
+ * not an owner choice: the default provider answers instead of the turn
+ * failing with "No maps provider adapter is available."
+ */
+function withoutUnknownProvider(service: MapsService, params: Params): void {
+  const provider = text(params.provider);
+  if (provider !== undefined && !service.hasProvider(provider))
+    delete params.provider;
+}
+
 function flag(value: unknown): boolean {
   return value === true || value === "true";
 }
@@ -1178,6 +1190,7 @@ async function execute(
     };
   }
   const service = getMapsService(runtime);
+  withoutUnknownProvider(service, params);
   const handleField =
     action === "saved" || action === "coverage"
       ? undefined
@@ -2148,7 +2161,8 @@ export const mapsAction: Action = {
     },
     {
       name: "provider",
-      description: "Registered maps adapter id; omit for the default.",
+      description:
+        "Omit it. Only a provider id an earlier Maps result returned in its provider field; never a name from an attribution such as Google Maps.",
       required: false,
       schema: { type: "string" },
     },
@@ -2378,6 +2392,7 @@ async function executeNavigation(
     return value;
   };
   const service = getMapsService(runtime);
+  withoutUnknownProvider(service, params);
   try {
     if (action === "stop") {
       return reply(
@@ -2516,7 +2531,8 @@ export const mapsNavigationAction: Action = {
     },
     {
       name: "provider",
-      description: "Registered maps adapter id; omit for the default.",
+      description:
+        "Omit it. Only a provider id an earlier Maps result returned in its provider field; never a name from an attribution such as Google Maps.",
       required: false,
       schema: { type: "string" },
       subactions: ["start"],

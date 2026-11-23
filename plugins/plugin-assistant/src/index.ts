@@ -11,6 +11,7 @@ import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts.ts";
 import { registerDeviceGmailDraftRouting } from "./services/device-actions/service.ts";
 import {
   registerDeviceBrowserOpenRouting,
+  registerDeviceBrowserTabListRouting,
   registerDeviceCameraCaptureRouting,
   registerDeviceKeypadRouting,
   registerDeviceTelephonyRouting,
@@ -39,6 +40,7 @@ export function createAssistantPlugin(): Plugin {
       runtime.messageService = new DefaultMessageService();
       registerCoreShouldRespondRiskHook(runtime);
       registerDeviceBrowserOpenRouting(runtime);
+      registerDeviceBrowserTabListRouting(runtime);
       registerDeviceCameraCaptureRouting(runtime);
       registerDeviceGmailDraftRouting(runtime);
       registerDeviceTelephonyRouting(runtime);

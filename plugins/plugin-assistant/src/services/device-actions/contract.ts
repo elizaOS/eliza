@@ -592,13 +592,14 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
     case "browser_tab_new":
     case "browser_tab_switch":
     case "browser_tab_close":
+    case "browser_tabs_show":
     case "browser_find":
     case "browser_history":
       try {
         return validateBrowserControl(p);
       } catch (error) {
         throw new DeviceActionError(
-          `Invalid Browser operation: ${(error as Error).message}. Use browser_search {query}, browser_tab_new {private}, browser_tab_switch {target}, browser_tab_close {target}, browser_find {text} or browser_history {action: back|forward|reload|stop}.`,
+          `Invalid Browser operation: ${(error as Error).message}. Use browser_search {query}, browser_tab_new {private}, browser_tab_switch {target}, browser_tab_close {target}, browser_tabs_show {}, browser_find {text} or browser_history {action: back|forward|reload|stop}.`,
         );
       }
     default:

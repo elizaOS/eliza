@@ -443,6 +443,7 @@ it("offers each Browser control only with its own capability and validates its e
       "browser_tab_switch",
       "browser_tab_close",
     ],
+    "browser.tabs.show.v1": ["browser_tabs_show"],
     "browser.find.v1": ["browser_find"],
     "browser.history.v1": ["browser_history"],
   };
@@ -496,6 +497,7 @@ it("offers each Browser control only with its own capability and validates its e
     { type: "browser_tab_close" },
     { type: "browser_tab_close", target: "bbc" },
     { type: "browser_tab_close", all: true },
+    { type: "browser_tabs_show" },
     { type: "browser_find", text: "refund" },
     { type: "browser_history", action: "stop" },
   ])
@@ -512,6 +514,9 @@ it("offers each Browser control only with its own capability and validates its e
     { type: "browser_tab_close", all: false },
     { type: "browser_tab_close", all: "yes" },
     { type: "browser_tab_close", all: true, target: "bbc" },
+    // Showing the tab list takes nothing: no filter, no tab, no count.
+    { type: "browser_tabs_show", target: "bbc" },
+    { type: "browser_tabs_show", all: true },
     { type: "browser_find", text: "" },
     { type: "browser_history", action: "home" },
   ])

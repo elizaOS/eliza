@@ -11,7 +11,10 @@ import type {
 } from "@elizaos/core";
 import { ElizaError, registerDirectActionRoutingRule } from "@elizaos/core";
 import { opensAddressInNewTab, proposeDeviceAction } from "./action.ts";
-import { isBrowserControlType } from "./browser-contract.ts";
+import {
+  asksToSeeBrowserTabs,
+  isBrowserControlType,
+} from "./browser-contract.ts";
 import { authoredBrowserDestination } from "./browser-request-grounding.ts";
 import {
   CALENDAR_CAPABILITY,
@@ -125,6 +128,7 @@ const capabilityBoundTypes = new Set([
   "browser_tab_new",
   "browser_tab_switch",
   "browser_tab_close",
+  "browser_tabs_show",
   "browser_find",
 ]);
 const reminderTypes = new Set([
@@ -179,6 +183,11 @@ const declarations = [
     "DEVICE_BROWSER_TAB_CLOSE",
     "browser_tab_close",
     "Close a tab in this phone's Browser (browser.tabs.v1). target is a word of the tab's title or site as the owner said it; leave it out to close the tab that is showing. When the owner asks to close all or every tab, set all true (browser.tabs.close-all.v1) instead: the phone lists the tabs on one review card. Never close only the showing tab for a request about several or all tabs. Closing a tab is always reviewed by the owner. You never receive the list of tabs.",
+  ],
+  [
+    "DEVICE_BROWSER_TAB_OVERVIEW",
+    "browser_tabs_show",
+    "Show the owner this phone's Browser tab list (browser.tabs.show.v1) when they ask to see, show or list their tabs, or which tabs they have. The owner reads the list on the phone; you never receive it, a title, an address or a count, so never say which tabs there are or how many: say you are opening the list on the phone.",
   ],
   [
     "DEVICE_BROWSER_TAB_NEW",
@@ -494,23 +503,31 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
             ? ["switch tab", "go to tab", "show tab"]
             : type === "browser_tab_close"
               ? ["close tab"]
-              : type === "browser_tab_new"
-                ? ["new tab", "open a new tab", "open a tab"]
-                : type === "reminder_read_selected"
-                  ? ["DEVICE_REMINDER_READ_SELECTED"]
-                  : type === "notes_query"
-                    ? [
-                        "find note by title",
-                        "look up saved note",
-                        "search notes before reading",
-                        "read a named note",
-                      ]
-                    : type === "notes_read_selected"
+              : type === "browser_tabs_show"
+                ? [
+                    "show tabs",
+                    "list tabs",
+                    "tab list",
+                    "tab overview",
+                    "which tabs are open",
+                  ]
+                : type === "browser_tab_new"
+                  ? ["new tab", "open a new tab", "open a tab"]
+                  : type === "reminder_read_selected"
+                    ? ["DEVICE_REMINDER_READ_SELECTED"]
+                    : type === "notes_query"
                       ? [
-                          "read selected note",
-                          "read note by returned identity and revision",
+                          "find note by title",
+                          "look up saved note",
+                          "search notes before reading",
+                          "read a named note",
                         ]
-                      : [],
+                      : type === "notes_read_selected"
+                        ? [
+                            "read selected note",
+                            "read note by returned identity and revision",
+                          ]
+                        : [],
     // "phone" is the telephony context: its call/text/dial keyword signals
     // ranked this Maps read above the dialer for "open the phone keypad".
     contexts:
@@ -850,6 +867,46 @@ export function registerDeviceBrowserOpenRouting(
       "target:selected-device",
     ],
     contexts: ["browser", "web", "general"],
+    matches,
+    wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
+  });
+}
+
+/**
+ * Availability for a whole-message request to see the open Browser tabs
+ * ("show my open tabs", "what tabs do I have open?"). The phone brings its own
+ * tab list to the front and returns only whether it is showing; the agent
+ * never receives the tabs. On a phone without browser.tabs.show.v1 the route
+ * does not match and the model answers as before.
+ */
+export function registerDeviceBrowserTabListRouting(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+): void {
+  const matches = (
+    text: string,
+    message?: Parameters<NonNullable<Action["validate"]>>[1],
+  ): boolean => {
+    const capabilities = ownerPhoneChatCapabilities(runtime, message);
+    return (
+      capabilities !== undefined &&
+      deviceOperationSupportedByCapabilities(
+        "browser_tabs_show",
+        capabilities,
+      ) &&
+      asksToSeeBrowserTabs(text, runtime.character.name)
+    );
+  };
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.browser-tab-list",
+    actionNames: ["DEVICE_BROWSER_TAB_OVERVIEW"],
+    replacesActionNames: ["VIEWS", "VIEWS_SHOW", "BROWSER"],
+    requiredActionTags: [
+      "domain:browser",
+      "capability:control",
+      "effect:receipt-required",
+      "target:selected-device",
+    ],
+    contexts: ["browser"],
     matches,
     wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
   });

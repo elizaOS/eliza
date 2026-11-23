@@ -1144,6 +1144,31 @@ describe("directions to a place the phone selected", () => {
     return { result, replies };
   }
 
+  // alpha.v630: the planner passed provider "google-maps", taken from a card's
+  // "Google Maps" attribution, and the owner was told "No maps provider
+  // adapter is available." A provider no adapter is registered under is a
+  // guess, so the default provider answers.
+  it("answers with the default provider when the planner names one that is not registered", async () => {
+    const { service, requests, starts } = setup(providerInvalid);
+    const place = await maps(service, {
+      action: "place",
+      query: "Coit Tower",
+      provider: "google-maps",
+    });
+    expect(place.result?.success).toBe(true);
+    expect(place.replies.join("\n")).not.toMatch(/adapter/i);
+    const { result } = await navigate(service, {
+      placeQuery: "Coit Tower",
+      provider: "google-maps",
+    });
+    expect(starts).toEqual(["Coit Tower"]);
+    expect(result?.userFacingText).toMatch(/Where are you starting from\?/);
+    expect(requests.map(({ path }) => path)).toEqual([
+      "/api/v1/maps/places/search",
+      "/api/v1/maps/places/search",
+    ]);
+  });
+
   it("looks a place up by its query when the planner also passes the handle", async () => {
     const { service, requests } = setup(providerInvalid);
     const { result } = await maps(service, {
