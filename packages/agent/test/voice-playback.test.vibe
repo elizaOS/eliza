@@ -24,8 +24,8 @@ module node {
       onPreview: async (chunks) => { previews.push(chunks.reduce((samples, chunk) => samples + chunk.length, 0)) },
       meter: (_level, endSample) => { metered.push(endSample) },
     }))
-    microphone.say(tone(0.5, 20_000))
-    await until(() => metered.at(-1) === 20_000)
+    microphone.say(tone(0.5, 20_480))
+    await until(() => metered.at(-1) === 20_480)
     const offered = await capture.snapshot()
     const aliveWhileOpen = microphone.processorAlive()
     capture.close()
@@ -77,7 +77,7 @@ import { recordThenSpeak } from node
 
 it.live('Record and play speech in the screen without losing a segment (spec/agent/voice/clientAudio.md, "Story: Record and play speech in the screen without losing a segment"; spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "Segments play in order once each, and Stop silences the reply at once"; spec/agent/voice/clientAudio.md, "The progressive attachment is ready at its first appended frame, or at the end without streaming")', () => effect {
   assert.deepStrictEqual(try host("record a turn, then speak a reply and stop it", () => recordThenSpeak()), {
-    capture: { offered: true, previews: [16_000], aliveWhileOpen: true, alive: false, metered: 20_000, contextClosed: [true] },
+    capture: { offered: true, previews: [16_000], aliveWhileOpen: true, alive: false, metered: 20_480, contextClosed: [true] },
     playback: {
       attached: ["One.", "Two."], readyAtFirstFrame: true, played: 1, paused: [2, 2], last: "idle", pending: false,
       appended: [[[3]], [[3]]], ended: [true, false], cancelled: [false, true],
