@@ -101,3 +101,31 @@ pure def sometimesSavedWithRecoveredDestination(s: ReminderIntent): bool =
 pure def sometimesRejected(s: ReminderIntent): bool = s.reminderPhase == IntentRejected and s.checked
 pure def sometimesCancelledWhenReady(s: ReminderIntent): bool = s.reminderPhase == IntentCancelled and s.checked
 ```
+
+## Story: Take back the reminder I just saved
+
+> As an owner, when I say "actually, don't save that one" right after a
+> reminder was saved, I want that reminder gone and nothing else changed.
+
+### A retraction takes back only the reminder this conversation just saved, from a later message within five minutes
+
+A retraction leads the message, after an "oh", "wait" or "actually": a
+negated save ("don't save that one", with a typographic apostrophe too),
+a cancel or undo of that one, "never mind", or "get rid of it". It is
+honored only from a later message than the one that saved the reminder,
+within five minutes of the save, while that reminder is still live, and
+when the message names no other reminder and asks to complete, snooze,
+acknowledge or escalate none. A message that also asks for a new reminder
+saves it after the retraction.
+
+```quint
+pure val retractionWindowMs = 300000
+pure def retractsRecentSave(savedAt: int, now: int, sameMessage: bool, saveLive: bool, otherTarget: bool): bool =
+  saveLive and not(sameMessage) and not(otherTarget) and now >= savedAt and now - savedAt <= retractionWindowMs
+pure def lawAStaleSaveIsNeverTakenBack(savedAt: int, now: int, sameMessage: bool, saveLive: bool, otherTarget: bool): bool =
+  now - savedAt > retractionWindowMs implies not(retractsRecentSave(savedAt, now, sameMessage, saveLive, otherTarget))
+pure def lawTheSavingMessageNeverTakesItBack(savedAt: int, now: int, saveLive: bool, otherTarget: bool): bool =
+  not(retractsRecentSave(savedAt, now, true, saveLive, otherTarget))
+pure def lawAnotherReminderIsNeverTakenBack(savedAt: int, now: int, sameMessage: bool, saveLive: bool): bool =
+  not(retractsRecentSave(savedAt, now, sameMessage, saveLive, true))
+```

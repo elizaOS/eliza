@@ -1,9 +1,11 @@
-// spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "A starter routine is created at most once for each template"; spec/assistant/routines.md, "An occurrence is answered only after it was shown"; spec/assistant/routines.md, "An unanswered occurrence expires when its window ends"; spec/assistant/routines.md, "A muted routine shows nothing until it is unmuted"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/routines.md, "A creation with an idempotency key creates at most one definition"; spec/assistant/routines.md, "A change answers with the definition as saved, and a deletion answers deleted"
-import { createReminderPresentation, type IAgentRuntime } from "@elizaos/core"
+// spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "A starter routine is created at most once for each template"; spec/assistant/routines.md, "An occurrence is answered only after it was shown"; spec/assistant/routines.md, "An unanswered occurrence expires when its window ends"; spec/assistant/routines.md, "A muted routine shows nothing until it is unmuted"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/routines.md, "A creation with an idempotency key creates at most one definition"; spec/assistant/routines.md, "A change answers with the definition as saved, and a deletion answers deleted"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/routines.md, "A request from the conversation changes the one routine it names, and none when it names none or several"
+import { createReminderPresentation, type Action, type ActionResult, type IAgentRuntime, type Provider } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
-import { Machine, Rejected, stored, type DefinitionStatus, type Event, type Routines } from "../gen/assistant__routines.effect.vibe"
+import { Machine, Rejected, routineNamed, stored, type DefinitionStatus, type Event, type Routines } from "../gen/assistant__routines.effect.vibe"
 import { Facts, Presenter, Scheduler, onAgent, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
-import { OccurrenceAnswer, RoutineCreate, RoutineUpdate } from "./requests.schema.vibe"
+import { requestOf } from "./reminders.vibe"
+import { appliedReceipt, attributed, failedReceipt, unchangedReceipt } from "./replies.vibe"
+import { OccurrenceAnswer, RoutineCreate, RoutineRequest, RoutineUpdate } from "./requests.schema.vibe"
 import { ownerClockAt } from "./timezone.vibe"
 
 /** The scheduled-task kind of a routine's occurrences. */
@@ -167,12 +169,7 @@ export function routineRoutes(agent: () => IAgentRuntime | undefined): LocalRout
     {
       method: "GET", path: "/api/personal-assistant/routines",
       handler: () => run(async (runtime) => {
-        const listed = await onAgent(runtime, effect {
-          const index = try routineIndex()
-          const routines = []
-          for (const record of index.routines) routines.push(wireRoutine(record, try routineState(record.routineId)))
-          return routines
-        })
+        const listed = await onAgent(runtime, listRoutines())
         return { status: 200, body: { routines: listed } }
       }),
     },
@@ -218,4 +215,113 @@ export function routineRoutes(agent: () => IAgentRuntime | undefined): LocalRout
       }),
     },
   ]
+}
+
+const routineActionName = "OWNER_ROUTINES"
+const decodeRequest = Schema.decodeUnknownOption(RoutineRequest, strict)
+const statusOf = { pause: "paused", resume: "active", archive: "archived" } as const satisfies Record<string, RoutineUpdate["status"]>
+const answeredWords = { complete: "Marked done", skip: "Skipped", snooze: "Snoozed", mute: "Muted", unmute: "Unmuted" } as const satisfies Record<OccurrenceAnswer["op"], string>
+
+effect function namedRoutines(target: string) {
+  const name = target.trim().toLowerCase()
+  return (try routineIndex()).routines.filter((record) => record.routineId === target || record.title.trim().toLowerCase() === name)
+}
+
+/** The owner's routines with their status, as the planner and the owner read them. */
+export effect function listRoutines() {
+  const listed = []
+  for (const record of (try routineIndex()).routines) listed.push(wireRoutine(record, try routineState(record.routineId)))
+  return listed
+}
+
+/** Adds, pauses, resumes, archives, deletes, lists or answers the one routine a message names. */
+export effect function changeRoutine(input: unknown, messageId: string) {
+  const decoded = decodeRequest(input)
+  if (Option.isNone(decoded)) return { success: false, text: "Say which routine to add or change.", data: { outcome: "ROUTINE_REQUEST_INVALID" } } satisfies ActionResult
+  const request = decoded.value
+  const at = try (try Facts).now()
+  if (request.op === "list") {
+    const routines = try listRoutines()
+    return { success: true, text: routines.length === 0 ? "You have no routines." : routines.map((routine) => `- "${routine.title}" (${routine.status}, ${routine.windows.join(", ")})`).join("\n"), data: { routines } } satisfies ActionResult
+  }
+  if (request.op === "create") {
+    const made = try createRoutine({ idempotencyKey: `chat:${messageId}`, title: request.title, windows: request.windows })
+    const id = made.routine?.id ?? ""
+    const facts = { operation: "routine.create", kind: "routine", id, key: `routine:create:${messageId}`, at }
+    return attributed([{ actionName: routineActionName, success: made.routine !== undefined, receipts: [appliedReceipt(facts, !made.created)] }], `routine:${id}`, {
+      done: made.created ? `Added the routine "${request.title}" for the ${request.windows.join(", ")}.` : `"${request.title}" was already added by this request; nothing new was created.`,
+      notDone: `"${request.title}" was not added.`,
+      unproven: `I couldn't confirm "${request.title}" was added.`,
+    }, { routineId: id })
+  }
+  const matches = try namedRoutines(request.target)
+  const named = routineNamed(matches.length)
+  const key = `routine:${request.op}:${messageId}`
+  if (named !== "OneRoutineNamed") {
+    const receipt = unchangedReceipt({ operation: `routine.${request.op}`, kind: "routine", id: request.target, key, at }, named === "NoRoutineNamed" ? "no_match" : "ambiguous")
+    return {
+      success: false, effectReceipts: [receipt],
+      text: named === "NoRoutineNamed" ? `No routine is called "${request.target}", so nothing was changed.`
+        : `${matches.length} routines are called "${request.target}", so nothing was changed. Which one did you mean: ${matches.map((record) => record.routineId).join(", ")}?`,
+      data: { outcome: named === "NoRoutineNamed" ? "not_found" : "ambiguous", candidates: matches.map((record) => record.routineId) },
+    } satisfies ActionResult
+  }
+  const record = matches[0]
+  const facts = { operation: `routine.${request.op}`, kind: "routine", id: record.routineId, key, at }
+  const target = `routine:${record.routineId}`
+  const reply = (applied: boolean, done: string, refusal: string) => attributed(
+    [{ actionName: routineActionName, success: applied, receipts: [applied ? appliedReceipt(facts) : failedReceipt(facts, refusal, "rejected")] }], target,
+    { done, notDone: `"${record.title}" was not changed.`, unproven: `I couldn't confirm "${record.title}" was changed.` }, { routineId: record.routineId },
+  )
+  switch (request.op) {
+    case "pause":
+    case "resume":
+    case "archive": {
+      const saved = try updateRoutine(record.routineId, { status: statusOf[request.op] })
+      return reply(saved !== undefined, `"${record.title}" is now ${saved?.status ?? statusOf[request.op]}.`, "ROUTINE_UNCHANGED")
+    }
+    case "delete": return reply(try deleteRoutine(record.routineId), `Deleted the routine "${record.title}".`, "ROUTINE_UNCHANGED")
+    default: {
+      const answered = try answerOccurrence(record.routineId, { op: request.op })
+      return reply(answered !== undefined && !answered.refused, `${answeredWords[request.op]} "${record.title}".`, "OCCURRENCE_NOT_SHOWN")
+    }
+  }
+}
+
+function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
+  const given = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+  return typeof given === "object" && given !== null ? Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null)) : {}
+}
+
+/** Adds, changes, deletes, lists and answers the owner's routines from the conversation. */
+export const ownerRoutinesAction: Action = {
+  name: routineActionName,
+  description: "The owner's recurring habits and routines, such as stretching every afternoon: create one with its daily windows, pause, resume, archive or delete one, list them, or complete, skip, snooze, mute or unmute the one showing now. A change names the routine by its title or id and applies only when exactly one routine matches. A one-time reminder is OWNER_REMINDERS.",
+  similes: ["ROUTINES", "HABITS", "CREATE_ROUTINE", "ADD_HABIT", "PAUSE_ROUTINE", "DELETE_ROUTINE", "COMPLETE_ROUTINE"],
+  parameters: [
+    { name: "op", required: true, description: "create, pause, resume, archive, delete, list, complete, skip, snooze, mute or unmute.", schema: { type: "string", enum: ["create", "pause", "resume", "archive", "delete", "list", "complete", "skip", "snooze", "mute", "unmute"] } },
+    { name: "title", required: false, description: "For create: the routine's title.", schema: { type: "string" } },
+    { name: "windows", required: false, description: "For create: the daily windows it shows in, from morning (9:00), afternoon (15:00), evening (18:00) and night (21:00).", schema: { type: "array" } },
+    { name: "target", required: false, description: "For any other op but list: the routine's title or id.", schema: { type: "string" } },
+  ],
+  tags: ["domain:routines", "capability:write", "effect:receipt-required"],
+  roleGate: { minRole: "OWNER" },
+  validate: async () => true,
+  handler: async (runtime, message, _state, options) => {
+    const { messageId } = requestOf(message)
+    return onAgent(runtime, Effect.catch(changeRoutine(parametersOf(options), messageId), (failed) => Effect.succeed({ success: false, text: "The routine could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
+  },
+}
+
+/** The owner's routines, for the planner to name the right one. */
+export const ownerRoutinesProvider: Provider = {
+  name: "PERSONAL_ASSISTANT_ROUTINES",
+  description: "The owner's routines, with their status, windows and ids.",
+  dynamic: true,
+  private: true,
+  get: async (runtime) => {
+    const routines = await onAgent(runtime, Effect.orElseSucceed(listRoutines(), () => []))
+    const lines = routines.map((routine) => `- "${routine.title}" (${routine.status}, ${routine.windows.join(", ")}) id ${routine.id}`)
+    return { text: lines.length === 0 ? "" : ["# Owner routines", ...lines].join("\n"), data: { routines } }
+  },
 }
