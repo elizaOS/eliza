@@ -232,7 +232,7 @@ it.effect(`Keep the calendar events I saved before this version (spec/calendar/r
   const found = try first.search(window)
   assert.deepStrictEqual(found?.events.map((event) => [event.id, event.title, event.description, event.startAt, event.timezone, event.metadata.etag]),
     [["resident-1", "Dentist", "Bring forms", "2030-03-04T17:00:00.000Z", "America/Los_Angeles", "r3"]])
-  const receipt = at(JSON.parse(String(rows.get(rowsKey))), "imported")
+  const receipt = at(try Effect.try(() => JSON.parse(String(rows.get(rowsKey)))), "imported")
   assert.deepStrictEqual([at(receipt, "format"), at(receipt, "revision"), at(receipt, "events")], ["resident-events-1", 3, 1])
   const moved = try runCalendarAction(first, { by: "owner-entity", id: "message-1" }, { subaction: "update_event", eventId: "resident-1", title: "Dentist moved" })
   assert.deepStrictEqual([moved.success, at(moved.data, "targetEvent", "metadata", "etag")], [true, "r3"])

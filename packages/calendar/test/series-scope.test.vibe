@@ -37,7 +37,7 @@ it.effect('Edit one occurrence, delete another and move the series (spec/calenda
     { ...standup, id: second, title: "Standup, later", begin: begin + day + 3_600_000, end: begin + day + 5_400_000, revision: "m1", repeat: "none", seriesId: "standup", occurrenceBegin: begin + day },
   ])
   assert.equal(findRow(edited, third)?.title, "Standup")
-  const removed = try removeRow(edited, findRow(edited, third)!, "m2")
+  const removed = try removeRow(edited, findRow(edited, third)!, mint())
   assert.deepStrictEqual(removed[0], { ...standup, revision: "m2", excluded: [begin + 2 * day] })
   assert.equal(findRow(removed, third), undefined)
   assert.equal(try map(Effect.flip(saveEdit(removed, { id: second, revision: "r1" }, { title: "stale" }, mint)), (error) => error._tag), "SeriesChanged")
@@ -199,7 +199,9 @@ it.effect('Send only the inspected device target and hold an uncertain write (sp
   session.owner = "alice"
 
   controls.deletion = { status: "external" }
+  calls.length = 0
   assert.deepStrictEqual(try device.remove(row, false), { status: "external" })
+  assert.deepStrictEqual(calls, [["inspectDeletion", "row-1", undefined], ["openExternal", { id: "row-1", begin: 10_000, end: 20_000 }]])
   controls.deletion = { status: "changed" }
   assert.deepStrictEqual(try device.remove(row, false), { status: "refresh" })
 
@@ -212,7 +214,9 @@ it.effect('Send only the inspected device target and hold an uncertain write (sp
   assert.equal(try device.held(), "row-1")
   assert.deepStrictEqual(try device.remove(row, false), { status: "busy" })
   controls.removal = "queued"
+  session.openRow = "row-2"
   assert.equal((try device.remove({ ...row, id: "row-2" }, false)).status, "sent")
+  session.openRow = row.id
   const read = { accepted: true, cause: "requested" as const, complete: true, eventIds: [] as string[], begin: 0, end: 100_000 }
   assert.equal(try device.observeRead({ ...read, complete: false }), false)
   assert.equal(try device.observeRead({ ...read, cause: "ordinary" }), false)
