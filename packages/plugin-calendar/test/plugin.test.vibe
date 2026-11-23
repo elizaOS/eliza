@@ -118,6 +118,9 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   assert.strictEqual(at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length"), 0)
   const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
   assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
+  const pointDay = try runCalendarAction(host, { ...ask, id: "message-4b" }, { ...dentist, isAllDay: true, startAt: "2030-03-04T00:00:00Z", endAt: "2030-03-04T00:00:00Z" })
+  assert.deepStrictEqual([pointDay.success, pointDay.text, at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length")],
+    [false, "A new event needs a title and a start before its end.", 0])
 
   const google = googleCalendar()
   try host.register(google.port)
@@ -214,6 +217,12 @@ it.effect(`Create a repeating event through the reviewed create (spec/calendar/a
   assert.deepStrictEqual([made.success, at(made.data, "event", "recurrence")], [true, ["RRULE:FREQ=WEEKLY;UNTIL=20300325T170000Z", "EXDATE:20300311T170000Z"]])
   const month = try runCalendarAction(host, ask, { subaction: "search_events", query: "piano", timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-04-01T00:00:00Z" })
   assert.deepStrictEqual((at(month.data, "events") as CalendarEvent[]).map((event) => event.startAt), ["2030-03-04T17:00:00.000Z", "2030-03-18T17:00:00.000Z", "2030-03-25T17:00:00.000Z"])
+  const lesson = String(at(month.data, "events", "1", "id"))
+  const once = try runCalendarAction(host, { ...ask, id: "message-4" }, { subaction: "update_event", eventId: lesson, title: "Piano recital" })
+  const all = try runCalendarAction(host, { ...ask, id: "message-5" }, { subaction: "update_event", eventId: lesson, title: "Piano lesson", recurrenceScope: "series" })
+  const renamed = try runCalendarAction(host, ask, { subaction: "search_events", query: "piano", timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-04-01T00:00:00Z" })
+  assert.deepStrictEqual([once.success, all.success, at(all.data, "event", "id"), (at(renamed.data, "events") as CalendarEvent[]).map((event) => event.title)],
+    [true, true, lesson, ["Piano lesson", "Piano lesson", "Piano lesson"]])
   const doubled = try runCalendarAction(host, { ...ask, id: "message-2" }, { ...weekly, skipStarts: ["2030-03-11T17:00:00Z", "2030-03-11T17:00:00Z"] })
   assert.strictEqual(doubled.success, false)
   const checkup = { subaction: "create_event", title: "Checkup", startAt: "2030-03-06T17:00:00Z", endAt: "2030-03-06T18:00:00Z", timeZone: "UTC" }

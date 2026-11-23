@@ -212,7 +212,7 @@ export effect function residentCalendar(): CalendarProviderPort!!KeyValueStore.K
 
   effect function readEvent(account: CalendarAccount, document: ResidentDocument, id: string) {
     const row = findRow(document.rows, id)
-    if (row === undefined) throw refused("CALENDAR_EVENT_NOT_FOUND", "The changed event is no longer in the calendar.")
+    if (row === undefined) throw new CalendarWriteUnconfirmed({ failure: { code: "CALENDAR_EVENT_NOT_FOUND", message: "The changed event is no longer in the calendar.", retryable: false } })
     return eventOf(account, document, row)
   }
 

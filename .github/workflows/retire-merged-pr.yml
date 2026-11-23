@@ -1,0 +1,20 @@
+name: Retire merged PR verification
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [vibestack, develop, main]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.event.pull_request.merged == true && github.event.pull_request.number > 0 && github.run_attempt == '1' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-close-{0}-{1}', github.run_id, github.run_attempt) }}
+  cancel-in-progress: ${{ github.event.pull_request.merged == true && github.event.pull_request.number > 0 && github.run_attempt == '1' }}
+
+jobs:
+  merged-pr-retired:
+    name: Retire old PR verification
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1

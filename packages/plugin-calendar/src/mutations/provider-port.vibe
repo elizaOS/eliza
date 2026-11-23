@@ -30,11 +30,11 @@ export function reviewDigest(payload: CalendarMutationPayload): string {
   return sha256Hex(canonical(payload))
 }
 
-/** Whether reviewed fields name a real, ordered span: canonical UTC instants, the end after the start (or equal for an all-day day). */
+/** Whether reviewed fields name a real, ordered span: canonical UTC instants, the end after the start. */
 export function fieldsSpanValid(fields: CalendarEventFields): boolean {
   const start = utcInstant(fields.startAt)
   const end = utcInstant(fields.endAt)
-  return start !== undefined && end !== undefined && (fields.isAllDay ? end >= start : end > start)
+  return start !== undefined && end !== undefined && end > start
 }
 
 /** Whether a reviewed recurrence fits its fields: a timed series in a known zone, and an end of repeats no earlier than the start. */
