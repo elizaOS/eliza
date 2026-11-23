@@ -154,14 +154,16 @@ export async function orgJsonAdapterClasspath(main: string): Promise<string> {
   return [compileAdapter(main, undefined, [jar]), jar].join(path.delimiter);
 }
 
+const needsOrgJson = (main: string) =>
+  main.startsWith("ai.eliza.plugins.media.") || main === "ai.eliza.plugins.signin.ReadinessJourney" || main === "ai.eliza.systemupdater.JournalReplay";
+
 export async function compileAdapters(): Promise<{ readonly compiled: readonly string[]; readonly failed: readonly string[] }> {
   const found = sources();
   const compiled: string[] = [];
   const failed: string[] = [];
   for (const main of found.adapters.keys()) {
     try {
-      const needsJson = main.startsWith("ai.eliza.plugins.media.") || main === "ai.eliza.plugins.signin.ReadinessJourney";
-      compiled.push(compileAdapter(main, found, needsJson ? [await jsonJavaArtifact()] : []));
+      compiled.push(compileAdapter(main, found, needsOrgJson(main) ? [await jsonJavaArtifact()] : []));
     } catch (error) {
       failed.push(error instanceof Error ? error.message : String(error));
     }
@@ -240,14 +242,15 @@ export function jvmDriver<E, V>(main: string, options: JvmOptions = {}): Driver<
   const sessions = new Map<string, Promise<Session>>();
   const fixtures = new Map<string, string>();
   let classes: string | undefined;
-  const open = (key: string, mode: "fresh" | "reopen") => {
+  const open = async (key: string, mode: "fresh" | "reopen") => {
     const args: string[] = [];
     if (options.recreateAfter) {
       const fixture = fixtures.get(key) ?? mkdtempSync(path.join(tmpdir(), "eliza-jvm-driver-"));
       fixtures.set(key, fixture);
       args.push(fixture, mode);
     }
-    return start(classes ??= compileAdapter(main), main, args);
+    classes ??= needsOrgJson(main) ? await orgJsonAdapterClasspath(main) : compileAdapter(main);
+    return start(classes, main, args);
   };
   const session = (key: string) => {
     const existing = sessions.get(key);
