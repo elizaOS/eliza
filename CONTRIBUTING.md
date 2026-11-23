@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `5f25987`](https://github.com/lalalune/vibestack/commit/5f259878cd436c3d7cdc3cec5e3955c5130a19ac).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `75ef17f`](https://github.com/lalalune/vibestack/commit/75ef17f3e16dc92f7ce7fa80f9bae6614b3f8cad).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -248,7 +248,11 @@ remembers under the programs installed now. Each tool runs in a process group
 of its own, and a check that is interrupted, or that exits, ends each group
 still running and the group of each process a tool started outside its own, as
 a browser is: no verifier, simulation or browser outlives it. A tool stopped
-for its time or its output is ended the same way. A run
+for its time or its output is ended the same way. An unreached simulation goal
+or an event its guard never allows cancels the queued proofs started alongside
+the simulations. On systems with process groups, it also stops their running
+tools. The check reports every simulation and waits for the tools to close
+before it releases the project lock. A run
 of a tool is remembered when it reached its answer, a refusal of its input
 included, never when it was stopped, timed out or failed for want of a file or
 program: an unchanged unit whose proof failed runs neither again, and an edit
@@ -384,6 +388,10 @@ to tasks so they use the selected evaluator. Its bytes determine the fingerprint
 In CI, a Turborepo cache entry is
 kept for seven days after its last hit, which the run summary names.
 
+The shared Dafny library is a direct input of the tool package build and the
+Studio tests that run proofs. An edit to that library leaves the application
+build keys unchanged.
+
 ### Seeds and budgets
 
 `vibestack/testing/profile.ts` is the one source of the fixed profiles:
@@ -459,9 +467,13 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue`, over eight jobs: `simulate-1` to `simulate-4` each pass the specs whose files hash to that shard to `precomputeSimulations`, starting from the spec cache `verify` saved; `verify` starts once they finish, adds the simulation results they wrote, not those they restored, to its `.spec-cache`, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each pass the specs whose files hash to that shard to `precomputeSimulations`, starting from the spec cache `verify` saved; `verify` starts once they finish, adds the simulation results they wrote, not those they restored, to its `.spec-cache`, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
+
+The precompute jobs skip the root install's build and generation only during
+the canonical `ci.yml` preparation in its workspace. Other workflows, manual
+commands and nested packages keep their declared install work.
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
