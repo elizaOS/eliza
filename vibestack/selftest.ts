@@ -2977,7 +2977,7 @@ function eachCheck() {
     fs.writeFileSync(lock, `${process.pid}\n`);
     fs.mkdirSync(path.join(staging, "node_modules"));
     fs.writeFileSync(path.join(staging, "node_modules/should-not-copy"), "dependencies belong to the scratch install\n");
-    const copy = scratch({});
+    const copy = scratch({ ".gitignore": read(".gitignore") });
     copySources(staging, copy);
     const fixture = "vibestack/stories/test/fixtures/gen/index.ts";
     assert.deepEqual(fs.readFileSync(path.join(copy, fixture)), fs.readFileSync(path.join(project, fixture)));
@@ -2997,8 +2997,22 @@ function eachCheck() {
     const dependencies = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm",
       ["install", "--offline", "--frozen-lockfile", "--ignore-scripts"], copy, installEnv);
     assert.equal(dependencies.status, 0, dependencies.stdout + dependencies.stderr);
+    const page = path.join(copy, "vibestack/studio/dist/page");
+    const pageFiles = (directory: string) => fs.readdirSync(directory, { recursive: true, encoding: "utf8" })
+      .filter((file) => fs.statSync(path.join(directory, file)).isFile()).sort()
+      .map((file) => ({ file: file.split(path.sep).join("/"), bytes: fs.readFileSync(path.join(directory, file)) }));
+    const studio = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["all", "vibestack-studio#build"], copy, { ...process.env, TURBO_CACHE: "local:rw" });
+    assert.equal(studio.status, 0, studio.stdout + studio.stderr);
+    const currentPage = pageFiles(page);
+    const stale = ["assets/stale-bundle.js", "assets/stale-style.css", "removed-public.txt"];
+    for (const file of stale) {
+      fs.mkdirSync(path.dirname(path.join(page, file)), { recursive: true });
+      fs.writeFileSync(path.join(page, file), "obsolete build output\n");
+    }
     const built = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["run", "build"], copy, { ...process.env, TURBO_CACHE: "local:rw" });
     assert.equal(built.status, 0, built.stdout + built.stderr);
+    assert.match(stripVTControlCharacters(built.stdout), /^(?:vibestack-studio:build: |::group::vibestack-studio:build\r?\n)cache hit\b/m);
+    assert.deepEqual(stale.filter((file) => fs.existsSync(path.join(page, file))), stale);
     const script = path.join(copy, "dist/spec.js");
     fs.chmodSync(script, 0o755);
     const generated = await exec(process.platform === "win32" ? process.execPath : script,
@@ -3015,6 +3029,7 @@ function eachCheck() {
     fs.mkdirSync(installed, { recursive: true });
     const unpacked = await exec("tar", ["-xzf", archive, "--strip-components", "1", "-C", installed], copy);
     assert.equal(unpacked.status, 0, unpacked.stdout + unpacked.stderr);
+    assert.deepEqual(pageFiles(path.join(installed, "dist/studio/dist/page")), currentPage);
     assert.deepEqual(fs.readdirSync(installed, { recursive: true, encoding: "utf8" }).filter((file) => file.split(path.sep).includes("examples")), [], "an application's toolchain carries no example to check");
     fs.mkdirSync(path.join(installed, "node_modules"));
     for (const entry of fs.readdirSync(nodeModules).filter((name) => name !== ".bin"))

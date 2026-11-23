@@ -259,6 +259,7 @@
         "apps/**",
         "packages/**",
         ".agents/**",
+        ".gitignore",
         "AGENTS.md",
         "SPEC.md",
         "README.md",
