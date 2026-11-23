@@ -1,0 +1,12 @@
+// spec/agent/conversation/turns.md, "Only the originating reply carries a live prepared view navigation"
+export schema PreparedViewNavigation {
+  readonly binding: {
+    readonly requestId: Schema.NonEmptyString
+    readonly clientId: Schema.NonEmptyString
+    readonly viewId: Schema.NonEmptyString
+    readonly viewType: "gui"
+    readonly installationId: Schema.NonEmptyString
+  }
+  readonly viewPath: Schema.NonEmptyString
+  readonly label: Schema.NonEmptyString
+}

@@ -7,9 +7,12 @@ module node {
 
   export type Activity = "thinking" | "streaming" | "running_action" | "running_tool" | "evaluating" | "waking" | "speaking"
 
+  import type { PreparedViewNavigation } from "../views/prepared-navigation.schema.vibe"
+
   export interface ActionResultFrame {
     readonly action: string
     readonly data: unknown
+    readonly preparedNavigation?: PreparedViewNavigation
   }
 
   export interface DoneFrame {
