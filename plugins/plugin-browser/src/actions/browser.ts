@@ -22,7 +22,10 @@ import {
   isBrowserDispatchFailure,
 } from "../dispatch-types.js";
 import { isNativeBrowserRequest } from "../native-browser-request.js";
-import { observedNativeHistorySelection } from "../native-client-command.js";
+import {
+  observedNativeHistorySelection,
+  withheldPageReloadRefusal,
+} from "../native-client-command.js";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
@@ -951,6 +954,24 @@ export const browserAction: Action = {
       x: params?.x,
       y: params?.y,
     };
+
+    // A page the phone withheld stays withheld after a reload: refuse one the
+    // owner did not ask for before anything is dispatched.
+    const withheldPage = nativePage
+      ? withheldPageReloadRefusal(message, command)
+      : undefined;
+    if (withheldPage)
+      return {
+        success: false,
+        transcriptVisibility: "internal",
+        text: withheldPage,
+        data: {
+          actionName: "BROWSER",
+          code: "BROWSER_PAGE_WITHHELD",
+          executed: false,
+          retryable: false,
+        },
+      };
 
     const browserService =
       runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);

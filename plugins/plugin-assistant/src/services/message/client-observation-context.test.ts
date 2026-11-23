@@ -7,6 +7,7 @@ import {
 import { describe, expect, test } from "vitest";
 import {
   CLIENT_BROWSER_PAGE_NOTE,
+  CLIENT_BROWSER_PAGE_UNREADABLE_NOTE,
   CLIENT_LOCATION_NOTE,
   CLIENT_OBSERVATION_SCOPE,
   CLIENT_OBSERVATION_SEGMENT_ID,
@@ -430,7 +431,62 @@ test("a withheld page shows its address and title and says the text was not shar
     ).segment ?? "";
   expect(segment).toContain("address: https://bank.example/");
   expect(segment).toContain("text: withheld.");
+  expect(segment).toContain("sign-in, account or one-time-code details");
   expect(segment).not.toContain("links:");
+  // Withheld on purpose, not unreadable: its own wording only.
+  expect(segment).not.toContain(CLIENT_BROWSER_PAGE_UNREADABLE_NOTE);
+  expect(segment).not.toContain("cannot read");
+});
+
+// Pixel, 2026-11-23: the WebView could not read a page, and "summarize this
+// page in two sentences" was answered with a Browser reload.
+test("a page the phone could not read says only its title and address are known, and that reloading does not help", () => {
+  const unreadable = {
+    tabId: "tab-1",
+    revision: "3",
+    url: "https://news.example/story?id=42",
+    title: "Octopus study",
+    capturedAt: 1,
+    withheld: "unreadable",
+  } as const;
+  const segment =
+    projectClientObservation(
+      residentTurn({
+        clientDevice: { context: browserContext, browserPage: unreadable },
+      }),
+    ).segment ?? "";
+  const rendered = renderClientBrowserPage(unreadable);
+  // Host wording, outside the web-content envelope, right after the page note.
+  expect(segment).toContain(
+    `${CLIENT_BROWSER_PAGE_NOTE}\n${CLIENT_BROWSER_PAGE_UNREADABLE_NOTE}\n${rendered}`,
+  );
+  expect(segment.indexOf(CLIENT_BROWSER_PAGE_UNREADABLE_NOTE)).toBeLessThan(
+    segment.indexOf("<<<EXTERNAL_UNTRUSTED_CONTENT>>>"),
+  );
+  expect(CLIENT_BROWSER_PAGE_UNREADABLE_NOTE).toContain(
+    "The phone cannot read this page's text: only its title and address are known",
+  );
+  expect(CLIENT_BROWSER_PAGE_UNREADABLE_NOTE).toContain(
+    "reloading, refreshing or reopening it will not change that",
+  );
+  expect(CLIENT_BROWSER_PAGE_UNREADABLE_NOTE).toContain(
+    "Tell the owner you cannot read the page here",
+  );
+  expect(CLIENT_BROWSER_PAGE_UNREADABLE_NOTE).toContain(
+    "Do not reload, refresh, reopen or navigate unless the owner asked for that.",
+  );
+  expect(rendered).toContain("title: Octopus study");
+  expect(rendered).toContain("address: https://news.example/story?id=42");
+  expect(rendered).toContain(
+    "text: withheld. The phone cannot read this page's text; only its title and address are known. Reloading or reopening it does not change that.",
+  );
+  expect(rendered).not.toContain("sign-in");
+  // A readable page carries no such note.
+  expect(
+    projectClientObservation(
+      residentTurn({ clientDevice: { context: browserContext, browserPage } }),
+    ).segment,
+  ).not.toContain(CLIENT_BROWSER_PAGE_UNREADABLE_NOTE);
 });
 
 test("a page that is invalid or not the observed tab is never shown, raw or fenced", () => {

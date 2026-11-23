@@ -1,4 +1,5 @@
 import { parseBrowserAddressInput } from "./browser-address-input.ts";
+import type { ClientBrowserPageWithheldReason } from "./client-turn-observation.ts";
 import { IANA_TLDS } from "./iana-tlds.ts";
 import { stripTrailingPunctuation } from "./strip-trailing-punctuation.ts";
 
@@ -555,6 +556,68 @@ export function browserDestinationMatches(
     defaultProtocol: "https:",
   });
   return parsed.kind === "url" && parsed.href === destination;
+}
+
+// A reload, refresh or reopen of the page that is showing, as the owner says
+// it: "reload", "refresh", "re-open", "open it again", "try reloading".
+const RELOAD_VERB =
+  /\b(?:re-?load|refresh|re-?open|(?:load|open)\s+(?:it|this|that|(?:the|this|that)\s+(?:page|site|tab))\s+again)(ing)?\b/gi;
+// Coordinated verbs can share a negation: "don't reopen or refresh it".
+// A separate instruction can follow a transition such as "it won't load, so reload it".
+const RELOAD_CLAUSE_END = /[.!?;,:]|\b(?:so|then|but)\b/gi;
+// What may come before the verb in a request, and nothing else: an imperative
+// ("reload it"), "please", "can you", "I need you to", "try", "hit the". So a
+// negation ("don't reload", "no need to refresh", "without reloading"), a noun
+// ("the reopening of", "about refreshing") or a question about the past ("why
+// did you reload it?") never asks.
+const RELOAD_REQUEST_LEAD =
+  /^\s*(?:(?:ok(?:ay)?|now|hey|please|pls|just|maybe|also|first)\s+)*(?:(?:(?:can|could|would|will)\s+(?:you|u)|i\s+(?:want|need)\s+you\s+to|you\s+(?:should|can|could|need\s+to|have\s+to))\s+(?:(?:please|just)\s+)*)?(?:(?:try|hit|press|tap|click)\s+(?:(?:to|the)\s+)?)?$/i;
+// "the refresh rate", "a reload button" names a thing, not a request.
+const RELOAD_NOUN_AFTER =
+  /^\s+(?:rates?|tokens?|intervals?|cycles?|periods?)\b/i;
+
+/** Whether the owner's own message asks to reload, refresh or reopen the page
+ * that is showing ("reload this page", "it won't load, so refresh", "can you
+ * open it again?"). Only the request form asks: a negated reload ("don't
+ * reload it"), the word as a noun or topic ("the refresh rate", "about the
+ * reopening of") or a question about one ("why did you reload?") does not. */
+export function asksToReloadBrowserPage(text: string): boolean {
+  if (unreadable(text)) return false;
+  for (const match of text.matchAll(RELOAD_VERB)) {
+    const before = text.slice(0, match.index);
+    const clause = before
+      .slice(
+        Math.max(
+          0,
+          ...[...before.matchAll(RELOAD_CLAUSE_END)].map(
+            (end) => (end.index ?? 0) + end[0].length,
+          ),
+        ),
+      )
+      .trim();
+    const lead = RELOAD_REQUEST_LEAD.test(`${clause} `);
+    // "try reloading" asks; "reloading it" on its own does not.
+    const form = match[1] ? /\btry$/i.test(clause) : true;
+    const noun = RELOAD_NOUN_AFTER.test(
+      text.slice((match.index ?? 0) + match[0].length),
+    );
+    if (lead && form && !noun) return true;
+  }
+  return false;
+}
+
+/** The model-facing refusal of a reload, refresh or reopen of the Browser page
+ * this turn carried when the phone withheld its text and the owner's own
+ * message did not ask for one. Reloading never makes such a page readable and
+ * can resubmit a form, so it must not run. Undefined when it may run. */
+export function withheldBrowserPageReloadRefusal(
+  page: { readonly withheld?: ClientBrowserPageWithheldReason } | undefined,
+  ownerText: string,
+): string | undefined {
+  if (!page?.withheld || asksToReloadBrowserPage(ownerText)) return;
+  return page.withheld === "unreadable"
+    ? "Not reloaded: the phone cannot read this page's text, and reloading or reopening it does not change that. Nothing ran. Answer the owner instead: say you cannot read the page here; you may name its title or address."
+    : "Not reloaded: the phone does not share text from this page because it may hold sign-in, account or one-time-code details, and reloading or reopening it does not change that. Nothing ran. Answer the owner instead; you may name its title or address.";
 }
 
 function unreadable(text: string): boolean {
