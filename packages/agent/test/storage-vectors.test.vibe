@@ -48,6 +48,34 @@ module node {
     } finally { await opened.adapter.close() }
   }
 
+  export async function historyJourney(directory: string) {
+    const { adapter } = await openDeviceStorage({ stateDirectory: directory, persistMemory: false, account: null, embeddingDimensions: 3 })
+    try {
+      const fixtures = [
+        { ...memory("older", [0, 1, 0]), id: "01", at: 100 },
+        { ...memory("first-tie", [0, 1, 0]), id: "02", at: 200 },
+        { ...memory("last-tie", [0, 1, 0]), id: "03", at: 200 },
+        { ...memory("other-room", [0, 1, 0], other), id: "04", at: 300 },
+        { ...memory("other table", [0, 1, 0]), id: "05", at: 300, tableName: "facts" },
+      ]
+      await adapter.createMemories(fixtures.map(({ id, at, memory, tableName }) => ({
+        memory: { ...memory, id: `00000000-0000-4000-8000-0000000000${id}` as UUID, createdAt: at }, tableName,
+      })))
+      const scope = { tableName: "messages", roomId, unique: false }
+      const recent = await adapter.getMemories({ ...scope, limit: 2, includeEmbedding: false })
+      const ascending = await adapter.getMemories({ ...scope, count: 2, orderDirection: "asc" })
+      const unbounded = await adapter.getMemories(scope)
+      const filtered = await adapter.getMemories({ ...scope, limit: 1, textContains: "older" })
+      const empty = await adapter.getMemories({ ...scope, limit: 0 })
+      const counted = await adapter.countMemories({ roomIds: [roomId], tableName: scope.tableName })
+      return {
+        recent: texts(recent), ascending: texts(ascending), unbounded: texts(unbounded), filtered: texts(filtered),
+        noEmbedding: recent.every(({ embedding }) => embedding === undefined),
+        empty: empty.length, counted,
+      }
+    } finally { await adapter.close() }
+  }
+
   export async function otherSize(directory: string) {
     return await openDeviceStorage({ stateDirectory: directory, persistMemory: true, account: null, embeddingDimensions: 4 })
       .then(async (opened) => { await opened.adapter.close(); return "opened" }, () => "refused")
@@ -60,7 +88,7 @@ module node {
     } finally { await adapter.close() }
   }
 }
-import { offJourney, otherSize, reopenJourney, searchJourney } from node
+import { historyJourney, offJourney, otherSize, reopenJourney, searchJourney } from node
 
 it.effect('Local embeddings are searched by cosine within the room, above the threshold, in one embedding size; no embeddings means no search (spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for")', effect () => {
   const state = try scratch("storage-vectors")
@@ -79,4 +107,15 @@ it.effect('Local embeddings are searched by cosine within the room, above the th
   assert.strictEqual(resized, "refused")
   const off = try host("vector off", () => offJourney(state.file("off")))
   assert.strictEqual(off, "UnsupportedStorageOperation")
+})
+
+
+it.effect('A bounded room message page and its count agree with the full query (spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight")', effect () => {
+  const state = try scratch("storage-history-page")
+  const found = try host("read stored history", () => historyJourney(state.path))
+  assert.deepStrictEqual(found, {
+    recent: ["last-tie", "first-tie"], ascending: ["older", "first-tie"],
+    unbounded: ["last-tie", "first-tie", "older"], filtered: ["older"],
+    noEmbedding: true, empty: 0, counted: 3,
+  })
 })
