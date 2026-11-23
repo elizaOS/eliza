@@ -1,3 +1,4 @@
+// spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"
 import { assert, describe, it } from "@effect/vitest"
 import { insufficientCredits, partial, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
@@ -8,7 +9,10 @@ import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-r
 import { cueRule } from "../src/conversation/reply-text.vibe"
 
 module node {
+  import { registerDirectActionRoutingRule, sleepWithAbort, type Action } from "@elizaos/core"
+  import type { EffectReceipt } from "@elizaos/core/protocol"
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
+  import { turnFirstCalls } from "../src/conversation/planning.vibe"
   import type { AgentPlugin } from "../src/host/module.vibe"
 
   export interface Read {
@@ -18,14 +22,82 @@ module node {
     readonly seen: readonly string[]
   }
 
-  export const agendaApp: AgentPlugin = {
-    name: "agenda-app", description: "An app whose one action reads the owner's agenda",
-    init: async (_config, runtime) => { runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" }) },
-    actions: [{
-      name: "AGENDA_READ", description: "Reads the owner's agenda.", contexts: ["general", "agenda"],
-      validate: async () => true, handler: async () => ({ success: true, text: "Nothing booked." }),
-    }],
+  export const slowAgendaReads = { started: 0 }
+
+  const agendaRead: Action = {
+    name: "AGENDA_READ", description: "Reads the owner's agenda.", contexts: ["general", "agenda"],
+    tags: ["capability:read"],
+    validate: async () => true,
+    handler: async (_runtime, message) => {
+      if (message.content.text?.includes("next month")) {
+        slowAgendaReads.started += 1
+        await sleepWithAbort(850)
+      }
+      return { success: true, text: "Nothing booked." }
+    },
   }
+
+  const agendaFind: Action = {
+    name: "AGENDA_FIND", description: "Finds an entry in the owner's agenda by its name.", contexts: ["general", "agenda"],
+    parameters: [{ name: "name", required: false, description: "The entry's name.", schema: { type: "string" } }],
+    validate: async () => true,
+    handler: async (_runtime, _message, _state, options) => {
+      const entry = (options as { readonly parameters?: { readonly name?: unknown } } | undefined)?.parameters?.name
+      return typeof entry === "string"
+        ? { success: true, text: `Found ${entry}.` }
+        : { success: false, transcriptVisibility: "internal", text: "Call AGENDA_FIND again with the entry's name from the conversation.", data: { coachingFailure: true } }
+    },
+  }
+
+  const plannerShow: Action = {
+    name: "PLANNER_SHOW", description: "Shows the owner's agenda or journal.", contexts: ["general", "agenda", "journal"],
+    validate: async () => true, handler: async () => ({ success: true, text: "Shown." }),
+  }
+
+  export const agendaApp: AgentPlugin = {
+    name: "agenda-app", description: "An app that reads the owner's agenda and shows it or the journal",
+    init: async (_config, runtime) => {
+      runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" })
+      runtime.contexts.tryRegister({ id: "journal", label: "Journal", sensitivity: "personal" })
+      turnFirstCalls.set(agendaRead, (_runtime, { content }) => content.text?.startsWith("Open my agenda for ") ? {} : undefined)
+      for (const app of ["agenda", "journal"]) {
+        registerDirectActionRoutingRule(runtime, {
+          id: `${app}.show`, actionNames: ["PLANNER_SHOW"], requiredActionTags: [], contexts: [app],
+          matches: (text) => new RegExp(`\\bshow my\\b.*\\b${app}\\b`, "iu").test(text),
+        })
+      }
+    },
+    actions: [agendaRead, agendaFind, plannerShow],
+  }
+
+  export const privateEffectPayload = "private-fixture-effect-payload"
+  export const appliedReceiptId = "private-fixture-applied-receipt"
+  const fixtureEffect = (rolledBack: boolean, record: (effect: "applied" | "rolled_back") => void): Action => ({
+    name: rolledBack ? "ROLL_BACK_FIXTURE" : "APPLY_FIXTURE",
+    description: rolledBack ? "Undoes the test change." : "Makes a test change.",
+    validate: async () => true,
+    handler: async () => {
+      record(rolledBack ? "rolled_back" : "applied")
+      const observedAt = new Date().toISOString()
+      const base = {
+        operation: "write", resource: { kind: "fixture.change", id: "fixture-change" },
+        artifacts: [], idempotency: { key: null, replayed: false }, observedAt,
+      }
+      const receipt: EffectReceipt = rolledBack ? {
+        ...base, receiptId: "fixture-rollback", outcome: "rolled_back",
+        rollback: { receiptId: "fixture-rollback", revertedReceiptIds: [appliedReceiptId], rolledBackAt: observedAt },
+      } : {
+        ...base, receiptId: appliedReceiptId, outcome: "applied",
+        commit: { kind: "durable", id: "fixture-commit", committedAt: observedAt },
+      }
+      return { success: true, data: { privatePayload: privateEffectPayload }, effectReceipts: [receipt] }
+    },
+  })
+
+  export const effectApp = (record: (effect: "applied" | "rolled_back") => void): AgentPlugin => ({
+    name: "effect-app", description: "A fixture for observing applied and rolled-back effects.",
+    actions: [fixtureEffect(false, record), fixtureEffect(true, record)],
+  })
 
   async function* pieces(bytes: Uint8Array, size: number, broken: boolean): AsyncGenerator<Uint8Array> {
     for (let at = 0; at < bytes.length; at += size) yield bytes.slice(at, at + size)
@@ -51,6 +123,17 @@ module node {
     await new Promise<never>(() => undefined)
   }
 
+  export async function readErrorBeforeEof(): Promise<{ readonly outcome: ReplyOutcome; readonly reads: number }> {
+    let reads = 0
+    async function* source(): AsyncGenerator<Uint8Array> {
+      reads += 1
+      yield new TextEncoder().encode('data: {"type":"error","code":"UNAVAILABLE","message":"The reply is unavailable"}\n\n')
+      reads += 1
+    }
+    const outcome = await readReplyStream(source())
+    return { outcome, reads }
+  }
+
   export async function leftRead(): Promise<boolean> {
     const leave = new AbortController()
     const reason = new Error("Stop")
@@ -59,9 +142,9 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { agendaApp, leftRead, readSplit } from node
+import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads } from node
 
-schema Created { conversation: { id: string } }
+schema Created { conversation: { id: string; roomId: string } }
 const created = Schema.decodeUnknownOption(Created)
 
 effect function cloudAgent(cloud: CloudFake, http: boolean) {
@@ -72,7 +155,7 @@ effect function conversation(agent: InProcess) {
   const answer = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
   const decoded = "json" in answer ? created(answer.json) : Option.none()
   if (decoded._tag !== "Some") return try Effect.die(new Error(`The conversation was not created: ${JSON.stringify(answer)}`))
-  return decoded.value.conversation.id
+  return decoded.value.conversation
 }
 
 effect function streamed(agent: InProcess, id: string, body: object, abortAfterChunks?: number) {
@@ -93,12 +176,57 @@ const summary = (outcome: ReplyOutcome) => outcome.kind === "Done"
 
 const long = "a".repeat(1500) + "é".repeat(1500) + "🙂".repeat(800)
 
+for (const rolledBack of [false, true]) {
+  it.live(`An interrupted reply keeps ${rolledBack ? "no rolled-back" : "negotiated applied"} evidence through replay (spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect")`, effect () => {
+    const cloud = try cloudFake(deviceKey)
+    const toolRuns: string[] = []
+    const effects = try Effect.sync(() => effectApp((kind) => { toolRuns.push(kind) }))
+    const agent = try startInProcess({
+      http: true,
+      launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [effects.name], allowed: ["REPLY", "IGNORE", "NONE", "APPLY_FIXTURE", "ROLL_BACK_FIXTURE"] },
+      frame: { credential: { version: 1, value: deviceKey } }, bundled: new Map([[effects.name, effects]]),
+    })
+    const { id } = try conversation(agent)
+    const path = `/api/conversations/${id}/messages`
+    const body = { text: "Make the requested change.", clientMessageId: "effect-proof" }
+    const headers = { "x-eliza-device-cut-off-effect": "applied" }
+    try Effect.sync(() => {
+      const patch = toolCalls("", { name: "APPLY_FIXTURE", arguments: {} })
+      const undo = toolCalls("", { name: "ROLL_BACK_FIXTURE", arguments: {} })
+      cloud.script(...(rolledBack ? [patch, undo] : [patch]), insufficientCredits())
+    })
+    const initial = try stream(agent, { method: "POST", path: `${path}/stream`, body, headers })
+    const live = (try read(initial.chunks, 7)).outcome
+    const replay = try call(agent, { method: "POST", path, body, headers })
+    const legacy = try stream(agent, { method: "POST", path: `${path}/stream`, body })
+    const old = (try read(legacy.chunks, 7)).outcome
+    const expected = rolledBack ? undefined : "applied"
+    if (live.kind !== "Done" || old.kind !== "Done" || !("json" in replay)) return try Effect.die(new Error("The turn did not leave replayable replies"))
+    try Effect.try(() => {
+      const buffered = replay.json as typeof live
+      assert.strictEqual(live.failureKind, "insufficient_credits")
+      assert.strictEqual(live.cutOffEffect, expected)
+      assert.strictEqual(buffered.cutOffEffect, expected)
+      assert.strictEqual(buffered.messageId, live.messageId)
+      assert.strictEqual(buffered.userMessageId, live.userMessageId)
+      assert.strictEqual(old.messageId, live.messageId)
+      assert.strictEqual(old.cutOffEffect, undefined)
+      assert.deepStrictEqual([live.actionResults, buffered.actionResults], [[], []])
+      const output = [initial.chunks.join(""), replay.text, legacy.chunks.join("")].join("")
+      assert.isFalse(output.includes(privateEffectPayload))
+      assert.isFalse(output.includes(appliedReceiptId))
+      assert.deepStrictEqual(toolRuns, rolledBack ? ["applied", "rolled_back"] : ["applied"])
+      assert.strictEqual(cloud.calls.filter(({ path: called }) => called.endsWith("/chat/completions")).length, rolledBack ? 3 : 2)
+    })
+  }, 120_000)
+}
+
 for (const transport of ["socket", "http"] as const) {
   describe(`Read a streamed reply from the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
-    it.live('The reader rebuilds the preview from split frames and ends with the done text exactly (spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds")', effect () => {
+    it.live('The reader rebuilds provisional previews from split frames and ends with the done text exactly (spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds"; spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark")', effect () => {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
-      const id = try conversation(agent)
+      const { id } = try conversation(agent)
       try Effect.sync(() => cloud.script(text(long.slice(0, 1500), long.slice(1500, 3000), long.slice(3000))))
       const chunks = try streamed(agent, id, { text: "Write at length." })
       const whole = try read(chunks, 0)
@@ -106,29 +234,30 @@ for (const transport of ["socket", "http"] as const) {
       try Effect.try(() => assert.deepStrictEqual({
         whole: summary(whole.outcome), split: summary(split.outcome), samePreviews: split.previews.length === whole.previews.length,
         lastPreview: split.previews.at(-1), firstStatus: split.statuses[0],
+        allPreviewsProvisional: split.previews.every(({ provisional }) => provisional),
       }, {
         whole: { kind: "Done", text: long, failureKind: undefined, keyed: true }, split: { kind: "Done", text: long, failureKind: undefined, keyed: true }, samePreviews: true,
-        lastPreview: { text: long, provisional: false }, firstStatus: "thinking",
+        lastPreview: { text: long, provisional: true }, firstStatus: "thinking", allPreviewsProvisional: true,
       }))
     }, 120_000)
 
     it.live('A stream cut before its terminal frame is Dropped, and a broken transport too (spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId")', effect () => {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
-      const id = try conversation(agent)
+      const { id } = try conversation(agent)
       try Effect.sync(() => cloud.script(partial("Let me think")))
       const chunks = try streamed(agent, id, { text: "Think forever." }, 2)
       const cut = try read(chunks, 5)
       const broken = try read(chunks, 5, true)
       try Effect.try(() => assert.deepStrictEqual(
         { cut: cut.outcome, broken: broken.outcome, preview: cut.previews.at(-1) },
-        { cut: { kind: "Dropped" }, broken: { kind: "Dropped" }, preview: { text: "Let me think", provisional: false } }))
+        { cut: { kind: "Dropped" }, broken: { kind: "Dropped" }, preview: { text: "Let me think", provisional: true } }))
     }, 120_000)
 
     it.live('An account refusal is Done with its failure kind, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
-      const id = try conversation(agent)
+      const { id } = try conversation(agent)
       try Effect.sync(() => cloud.script(insufficientCredits()))
       const chunks = try streamed(agent, id, { text: "Answer me." })
       const refused = try read(chunks, 11)
@@ -163,6 +292,14 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
     }))
   })
 
+  it.live('An error frame ends the read before EOF (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {
+    const result = try host("terminal error before EOF", () => readErrorBeforeEof())
+    try Effect.try(() => assert.deepStrictEqual(result, {
+      outcome: { kind: "Failed", code: "UNAVAILABLE", message: "The reply is unavailable" },
+      reads: 1,
+    }))
+  })
+
   it.live('Leaving a read rejects it with the reason instead of a Dropped outcome (spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId")', effect () => {
     const rejectedWithReason = try host("left read", () => leftRead())
     try Effect.try(() => assert.isTrue(rejectedWithReason))
@@ -171,17 +308,18 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
 
 const planning = "spec/agent/conversation/planning.md"
 
-it.live(`Hear that the agent heard me once before it works, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
+it.live(`Hear that the agent heard me once while work is pending, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; ${planning}, "A directly routed call acknowledges once if it is still running after 400 milliseconds"; ${planning}, "A coaching response stays in the planner transcript")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
       backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName, agendaApp.name],
-      allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE", "AGENDA_READ"],
+      allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE", "AGENDA_READ", "AGENDA_FIND", "PLANNER_SHOW"],
     },
     frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[agendaApp.name, agendaApp]]),
   })
-  const id = try conversation(agent)
+  const { id, roomId } = try conversation(agent)
   const agenda = { name: "AGENDA_READ", arguments: {} }
+  const show = { name: "PLANNER_SHOW", arguments: {} }
   const modelCalls = () => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
   const turn = (request: string) => effect {
     const before = modelCalls()
@@ -204,7 +342,7 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
   const instruction = try turn("Text Sam that I'm late")
   try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda), text("You're free Friday.")))
   const question = try turn("Am I free Friday")
-  try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda), toolCalls("Let me check.", agenda), text("Sam is in your contacts.")))
+  try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda, agenda), toolCalls("Let me check.", agenda), text("Sam is in your contacts.")))
   const politeAsk = try turn("Can you text Sam")
   try Effect.sync(() => cloud.script(text("Hello.")))
   const answer = try turn("Hi")
@@ -220,12 +358,40 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
     .map(({ body }) => (body as { messages: { role: string; content?: unknown }[] }).messages[0])
     .map((message) => message?.role === "system" && typeof message.content === "string" ? message.content : "")
 
+  try Effect.sync(() => cloud.script(toolCalls("", show), text("Shown."), toolCalls("", show), text("Shown."), toolCalls("", show), text("Shown.")))
+  const sharedSelected = try turn("Show my agenda for today")
+  const sharedBothSelected = try turn("Show my agenda and my journal")
+  const sharedUnselected = try turn("Bring up what I wrote")
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "AGENDA_FIND", arguments: {} }), toolCalls("", { name: "AGENDA_FIND", arguments: { name: "dentist" } }), text("Your dentist visit is Thursday.")))
+  const coached = try turn("When is my dentist visit")
+  try Effect.sync(() => cloud.script(text("Nothing booked."), text("Nothing booked."), text("Nothing booked.")))
+  const directFast = try turn("Open my agenda for this morning")
+  const directSlow = try turn("Open my agenda for next month")
+  const directQuiet = try turn("Open my agenda for next month without an acknowledgment")
+  try Effect.sync(() => cloud.script(toolCalls("Let me check.", agenda), text("Friday is open.")))
+  const modelQuiet = try turn("Check my availability without a cue")
+
+  const startedBefore = slowAgendaReads.started
+  const sending = fork streamed(agent, id, { text: "Open my agenda for next month, then I stop it" })
+  while (slowAgendaReads.started === startedBefore) try sleep("5 millis")
+  try call(agent, { method: "POST", path: `/api/turns/${roomId}/abort`, body: { reason: "client-stop" } })
+  const stoppedChunks = try join sending
+  const stopped = try read(stoppedChunks, 0)
+  const directStopped = { acknowledgments: stopped.seen.filter((entry) => entry.startsWith("acknowledgment:")), tools: stopped.seen.filter((entry) => entry.startsWith("tool:")) }
+
   const done = (reply: string) => ({ kind: "Done", text: reply, failureKind: undefined, keyed: true })
+  const shared = (label: string) => ({ done: done("Shown."), asked: 2, acknowledgments: [], tools: [`tool:PLANNER_SHOW:${label}`], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true })
+  const direct = (acknowledgments: string[]) => ({
+    done: done("Nothing booked."), asked: 1, acknowledgments, tools: ["tool:AGENDA_READ:Using Agenda"],
+    acknowledgedBeforeTools: acknowledgments.length === 0, cueLeftTheText: true, sameWhenSplit: true,
+  })
   try Effect.try(() => assert.deepStrictEqual({
-    exemptionInRule: [cueRule.includes("A request whose only work is opening one app gets no cue"), cueRule.includes("\"Let me open Maps.\"")],
+    exemptionInRule: [cueRule.includes("A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue"), cueRule.includes("Any question or lookup gets its cue, even one about what is on the screen."), cueRule.includes("\"Let me open Maps.\"")],
     ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
-  }, { exemptionInRule: [true, true], ruleInEverySystemPrompt: true }))
-  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork, openAsPart, navigationOnly, calendarOnly }, {
+  }, { exemptionInRule: [true, true, true], ruleInEverySystemPrompt: true }))
+  try Effect.try(() => assert.deepStrictEqual({
+    instruction, question, politeAsk, answer, assentWithoutWork, openAsPart, navigationOnly, calendarOnly, sharedSelected, sharedBothSelected, sharedUnselected, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
+  }, {
     instruction: {
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
@@ -237,11 +403,26 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
     },
     answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    sharedSelected: shared("Using Agenda"),
+    sharedBothSelected: shared("Working"),
+    sharedUnselected: shared("Working"),
+    coached: {
+      done: done("Your dentist visit is Thursday."), asked: 3, acknowledgments: [], tools: ["tool:AGENDA_FIND:Using Agenda", "tool:AGENDA_FIND:Using Agenda"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
+    directStopped: { acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"] },
     openAsPart: {
       done: done("The nearest coffee is on Main Street."), asked: 2, acknowledgments: ["acknowledgment:Let me open Maps."], tools: ["tool:AGENDA_READ:Using Agenda"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
     navigationOnly: { done: done("Maps is open."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     calendarOnly: { done: done("Opened your calendar."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    directFast: direct([]),
+    directSlow: direct(["acknowledgment:One sec."]),
+    directQuiet: direct([]),
+    modelQuiet: {
+      done: done("Friday is open."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
   }))
 }, 120_000)
