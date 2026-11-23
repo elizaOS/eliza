@@ -538,16 +538,16 @@ if (import.meta.main) {
   async function overlap([vibe, ...typed]) {
     const active = new Set()
     const held = []
-    let stopping = false
+    let stoppingGroups
     let force
     let interrupted
     const signals = ["SIGINT", "SIGTERM", "SIGHUP"]
     const stop = (signal) => {
-      if (stopping) return
-      stopping = true
-      for (const child of active) signalGroup(child, signal)
+      if (stoppingGroups) return
+      stoppingGroups = [...active]
+      for (const child of stoppingGroups) signalGroup(child, signal)
       force = setTimeout(() => {
-        for (const child of active) signalGroup(child, "SIGKILL")
+        for (const child of stoppingGroups) signalGroup(child, "SIGKILL")
       }, 750)
     }
     const interrupt = (signal) => {
@@ -566,7 +566,7 @@ if (import.meta.main) {
         let error
         child.once("error", (cause) => { error = cause })
         child.once("exit", (_, signal) => {
-          if (signal && !stopping) signalGroup(child, "SIGKILL")
+          if (signal && !stoppingGroups) signalGroup(child, "SIGKILL")
         })
         child.once("close", (status, signal) => {
           active.delete(child)
@@ -582,7 +582,7 @@ if (import.meta.main) {
     const typedPasses = async () => {
       let status = 0
       for (const args of typed) {
-        if (stopping) break
+        if (stoppingGroups) break
         const result = await run(args, true)
         if (result.error || result.signal) return result
         status = Math.max(status, result.status ?? 2)
@@ -606,8 +606,8 @@ if (import.meta.main) {
       }
       return Math.max(firstResult.status ?? 2, typedResult.status ?? 2)
     } finally {
+      if (stoppingGroups) for (const child of stoppingGroups) signalGroup(child, "SIGKILL")
       clearTimeout(force)
-      if (stopping) for (const child of active) signalGroup(child, "SIGKILL")
       for (const signal of signals) process.off(signal, interrupt)
     }
   }
