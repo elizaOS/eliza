@@ -234,6 +234,7 @@ module node {
   export interface RequestReview extends RequestClaim {
     readonly attemptId: string
     readonly review: ReviewOutcome
+    readonly evidence?: { readonly providerReceipt: DeviceReceipt; readonly result: unknown }
   }
   export type ReviewCommit =
     | { readonly kind: "reviewed"; readonly state: DeviceRequest; readonly claim: ClaimBinding; readonly providerReceipt: DeviceReceipt }
@@ -337,7 +338,7 @@ module node {
     })
   }
 
-  export function writeReview(adapter: IDatabaseAdapter, { proposalId, digest, by, attemptId, review }: RequestReview): Promise<ReviewCommit> {
+  export function writeReview(adapter: IDatabaseAdapter, { proposalId, digest, by, attemptId, review, evidence }: RequestReview): Promise<ReviewCommit> {
     return within(adapter, async (sql) => {
       const row = await requestIn(sql, proposalId, true)
       if (row === undefined) return { kind: "missing" }
@@ -346,10 +347,14 @@ module node {
       const current = atWallTime(row.state)
       if (providerReceipt === undefined || !canReconcile(current, by, digest, claim.modelAttemptId, review)) return { kind: "refused" }
       const reviewed = step(current, { type: "reconcile", digest, attemptId: claim.modelAttemptId, review }, by)
-      if (reviewed.phase.tag !== current.phase.tag && await keepRequest(sql, proposalId, row.revision, reviewed) !== "written") {
+      if (reviewed.phase.tag === current.phase.tag) return { kind: "reviewed", state: reviewed, claim, providerReceipt }
+      const kept = evidence === undefined ? undefined : {
+        kind: "receipt" as const, result: JSON.stringify(evidence.result) ?? null, providerReceipt: JSON.stringify(evidence.providerReceipt) ?? null,
+      }
+      if (await keepRequest(sql, proposalId, row.revision, reviewed, kept) !== "written") {
         throw new Error(`The locked review for ${proposalId} could not be saved`)
       }
-      return { kind: "reviewed", state: reviewed, claim, providerReceipt }
+      return { kind: "reviewed", state: reviewed, claim, providerReceipt: evidence?.providerReceipt ?? providerReceipt }
     })
   }
 

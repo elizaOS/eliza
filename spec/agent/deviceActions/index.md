@@ -233,7 +233,24 @@ id and `review` one of `applied`, `not_applied` or `unresolved`. The shell
 refuses an unconfirmed review. A review never dispatches again; the same
 review again changes nothing.
 
+An applied review may carry the device's saved evidence as
+`applied: {operationId, result}`, the operation id and typed result its
+journal kept for the attempt. The evidence is admitted only as an applied
+receipt for the same operation would be (the
+[operations' rule](./operations.md)), and only on an applied review: a not
+applied or unresolved review that carries evidence, or evidence that would
+not settle applied, is refused and records nothing. The agent keeps
+admitted evidence as the request's receipt and result, so a read confirmed
+applied this way is answered from its own result. A review without
+evidence is admitted as before and leaves the uncertain receipt in place.
+
 ```quint
+type ReviewEvidence = NoReviewEvidence | AppliedReviewEvidence | RefusedReviewEvidence
+pure def reviewEvidenceAdmitted(review: ReviewOutcome, evidence: ReviewEvidence): bool =
+  evidence == NoReviewEvidence or (review == ReviewedApplied and evidence == AppliedReviewEvidence)
+pure def lawOnlyAnAppliedReviewCarriesEvidence(review: ReviewOutcome, evidence: ReviewEvidence): bool =
+  (evidence != NoReviewEvidence and reviewEvidenceAdmitted(review, evidence)) implies (review == ReviewedApplied and evidence == AppliedReviewEvidence)
+pure def lawAReviewWithoutEvidenceIsAdmitted(review: ReviewOutcome): bool = reviewEvidenceAdmitted(review, NoReviewEvidence)
 pure val uncertainPhase: RequestPhase = Receipted({ reported: ReportedUnknown })
 pure def canReconcile(d: DeviceRequest, by: S::SessionOwner, digest: str, attemptId: int, review: ReviewOutcome): bool = exactBinding(d, by, digest) and attemptId == d.session.currentClaim and ((d.phase == uncertainPhase and (review != ReviewedApplied or S::canInvoke(d.session, by, attemptId))) or d.phase == Reviewed({ reviewed: review }))
 pure def reconcile(d: DeviceRequest, by: S::SessionOwner, digest: str, attemptId: int, review: ReviewOutcome): DeviceRequest = if (d.phase != uncertainPhase) d else { ...d, phase: Reviewed({ reviewed: review }), session: if (review == ReviewedApplied) settleApplied(d.session, by, attemptId) else d.session }
