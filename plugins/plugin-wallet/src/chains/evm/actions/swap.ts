@@ -76,7 +76,7 @@ import {
   type SwapQuote,
   type Transaction,
 } from "../types";
-import { buildSendTxParams, createEvmActionValidator } from "./helpers";
+import { buildSendTxParams, createEvmActionValidator, sendEvmTransaction } from "./helpers";
 export const DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS = 10000;
 const legacySpec = requireActionSpec("EVM_SWAP");
 const spec = { ...legacySpec, name: "WALLET" };
@@ -508,7 +508,8 @@ export class SwapAction {
         BigInt(route.fromAmount)
       );
     }
-    const hash = await walletClient.sendTransaction(
+    const { hash, sendUncertain } = await sendEvmTransaction(
+      walletClient,
       buildSendTxParams({
         account,
         to: txRequest.to as Address,
@@ -523,11 +524,10 @@ export class SwapAction {
           : undefined,
       })
     );
-    const confirmationStatus = await this.waitForSwapReceipt(
-      publicClient,
-      hash,
-      `Transaction reverted. Hash: ${hash}`
-    );
+    // An unanswered send has no receipt to wait for: report it unconfirmed.
+    const confirmationStatus = sendUncertain
+      ? "unconfirmed"
+      : await this.waitForSwapReceipt(publicClient, hash, `Transaction reverted. Hash: ${hash}`);
     return {
       hash,
       from: account.address,
@@ -536,6 +536,7 @@ export class SwapAction {
       data: txRequest.data as Hex,
       chainId: route.fromChainId,
       confirmationStatus,
+      ...(sendUncertain ? { sendUncertain } : {}),
     };
   }
   private async executeBebopQuote(
@@ -560,7 +561,8 @@ export class SwapAction {
         BigInt(bebopRoute.sellAmount)
       );
     }
-    const hash = await walletClient.sendTransaction(
+    const { hash, sendUncertain } = await sendEvmTransaction(
+      walletClient,
       buildSendTxParams({
         account,
         to: bebopRoute.to as Address,
@@ -569,11 +571,10 @@ export class SwapAction {
         chain: walletClient.chain,
       })
     );
-    const confirmationStatus = await this.waitForSwapReceipt(
-      publicClient,
-      hash,
-      `Bebop swap reverted. Hash: ${hash}`
-    );
+    // An unanswered send has no receipt to wait for: report it unconfirmed.
+    const confirmationStatus = sendUncertain
+      ? "unconfirmed"
+      : await this.waitForSwapReceipt(publicClient, hash, `Bebop swap reverted. Hash: ${hash}`);
     return {
       hash,
       from: account.address,
@@ -582,6 +583,7 @@ export class SwapAction {
       data: bebopRoute.data as Hex,
       chainId: chainConfig.id,
       confirmationStatus,
+      ...(sendUncertain ? { sendUncertain } : {}),
     };
   }
   private async executeKyberSwapQuote(
@@ -633,7 +635,8 @@ export class SwapAction {
         BigInt(ks.amountIn)
       );
     }
-    const hash = await walletClient.sendTransaction(
+    const { hash, sendUncertain } = await sendEvmTransaction(
+      walletClient,
       buildSendTxParams({
         account,
         to: tx.routerAddress as Address,
@@ -642,11 +645,10 @@ export class SwapAction {
         chain: walletClient.chain,
       })
     );
-    const confirmationStatus = await this.waitForSwapReceipt(
-      publicClient,
-      hash,
-      `KyberSwap swap reverted. Hash: ${hash}`
-    );
+    // An unanswered send has no receipt to wait for: report it unconfirmed.
+    const confirmationStatus = sendUncertain
+      ? "unconfirmed"
+      : await this.waitForSwapReceipt(publicClient, hash, `KyberSwap swap reverted. Hash: ${hash}`);
     return {
       hash,
       from: account.address,
@@ -655,6 +657,7 @@ export class SwapAction {
       data: tx.data as Hex,
       chainId: this.walletProvider.getChainConfigs(params.chain).id,
       confirmationStatus,
+      ...(sendUncertain ? { sendUncertain } : {}),
     };
   }
   private async handleTokenApproval(

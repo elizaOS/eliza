@@ -89,6 +89,8 @@ export interface Transaction {
   readonly logs?: readonly Log[];
   /** "unconfirmed": broadcast, but the receipt could not be read in time. */
   readonly confirmationStatus?: "confirmed" | "unconfirmed";
+  /** The send got no answer: the node may or may not hold the transaction. */
+  readonly sendUncertain?: boolean;
 }
 
 export const TransactionSchema = z.object({

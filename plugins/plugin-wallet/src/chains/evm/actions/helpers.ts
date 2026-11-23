@@ -5,16 +5,27 @@
  * assembling viem `SendTransactionParameters` from optional fields. See
  * `isConfirmed` for why LLM-supplied confirmation flags are never trusted.
  */
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
+import {
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type State,
 } from "@elizaos/core";
-import type { Address, Chain, Hex, SendTransactionParameters } from "viem";
+import {
+  type Address,
+  BaseError,
+  type Chain,
+  type Hash,
+  type Hex,
+  keccak256,
+  type SendTransactionParameters,
+  type WalletClient,
+} from "viem";
 import type { Account } from "viem/accounts";
+import { sendTransaction } from "viem/actions";
 
 type ActionValidate = NonNullable<Action["validate"]>;
 
@@ -153,4 +164,42 @@ export function buildSendTxParams(params: {
   }
 
   return txParams as SendTransactionParameters;
+}
+
+export interface EvmSendOutcome {
+  readonly hash: Hash;
+  /** The RPC did not confirm that it accepted the transaction. */
+  readonly sendUncertain: boolean;
+}
+
+/**
+ * Signs locally, then sends the raw transaction. The hash of the signed bytes
+ * is known before the send. An RPC error can come from a gateway or a fallback
+ * after an upstream node accepted the same signed bytes. Return an uncertain
+ * outcome with the hash after a send error. Errors before the send still throw.
+ */
+export async function sendEvmTransaction(
+  walletClient: WalletClient,
+  params: SendTransactionParameters
+): Promise<EvmSendOutcome> {
+  let sendUncertain = false;
+  const client: WalletClient = {
+    ...walletClient,
+    async sendRawTransaction(request) {
+      try {
+        return await walletClient.sendRawTransaction(request);
+      } catch (error) {
+        const hash = keccak256(request.serializedTransaction);
+        sendUncertain = true;
+        // error-policy:J2 the signed transaction may be on the node; its outcome is unknown.
+        logger.warn(
+          { hash, error: error instanceof BaseError ? error.shortMessage : "Unknown RPC error" },
+          "[plugin-wallet] EVM send outcome unconfirmed"
+        );
+        return hash;
+      }
+    },
+  };
+  const hash = await sendTransaction(client, params);
+  return { hash, sendUncertain };
 }

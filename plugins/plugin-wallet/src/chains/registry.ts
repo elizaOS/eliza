@@ -51,7 +51,7 @@ import type {
   WalletSignerMetadata,
 } from "../types/wallet-router.js";
 import type { SolanaSigner } from "../wallet/backend.js";
-import { buildSendTxParams } from "./evm/actions/helpers";
+import { buildSendTxParams, sendEvmTransaction } from "./evm/actions/helpers";
 import { SwapAction } from "./evm/actions/swap";
 import { TransferAction } from "./evm/actions/transfer";
 import { routeEvmBridge } from "./evm/bridge-router";
@@ -295,6 +295,7 @@ function transactionToExecution(
       ...(tx.confirmationStatus === "unconfirmed"
         ? { confirmationStatus: "unconfirmed" }
         : {}),
+      ...(tx.sendUncertain ? { sendUncertain: true } : {}),
     },
   };
 }
@@ -358,7 +359,8 @@ async function executeEvmTransfer(
     args: [recipient, parseEvmBaseUnits(params.amount ?? "", decimals)],
   });
 
-  const hash = await walletClient.sendTransaction(
+  const { hash, sendUncertain } = await sendEvmTransaction(
+    walletClient,
     buildSendTxParams({
       account,
       to: token,
@@ -385,6 +387,9 @@ async function executeEvmTransfer(
       decimals,
       value: "0",
       data,
+      ...(sendUncertain
+        ? { confirmationStatus: "unconfirmed", sendUncertain: true }
+        : {}),
     },
   };
 }

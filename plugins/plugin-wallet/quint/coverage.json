@@ -70,5 +70,32 @@
     "implementationTests": [
       "plugins/plugin-wallet/src/analytics/evm-balances-erc20-errors.test.ts"
     ]
+  },
+  {
+    "id": "plugin-wallet.EvmTransactionSend",
+    "model": "plugins/plugin-wallet/quint/EvmTransactionSend.qnt",
+    "sources": [
+      "plugins/plugin-wallet/src/chains/evm/actions/helpers.ts",
+      "plugins/plugin-wallet/src/chains/evm/actions/transfer.ts",
+      "plugins/plugin-wallet/src/chains/evm/actions/swap.ts",
+      "plugins/plugin-wallet/src/chains/registry.ts",
+      "plugins/plugin-wallet/src/chains/wallet-action.ts"
+    ],
+    "invariants": [
+      "SignedBeforeSend",
+      "NoDoublePay",
+      "FailureOnlyWhenNothingLanded",
+      "UncertainKeepsHash",
+      "SubmittedLanded"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One confirmed spend from one local-key account, abstract RPC answers (answered, refused, lost after or before the node took it, already known) and up to two retries after a reported failure.",
+      "A gateway that returns a JSON-RPC error for an upstream timeout is a refusal in the code; the model treats every refusal as nothing landed.",
+      "Token approvals, governance, LP and bridge sends, dApp signing routes and receipt waiting are outside this model."
+    ],
+    "implementationTests": [
+      "plugins/plugin-wallet/src/chains/evm/__tests__/send-outcome.anvil.test.ts"
+    ]
   }
 ]

@@ -22,7 +22,7 @@ import {
   type Transaction,
   type TransferParams,
 } from "../types";
-import { buildSendTxParams } from "./helpers";
+import { buildSendTxParams, sendEvmTransaction } from "./helpers";
 export class TransferAction {
   constructor(private readonly walletProvider: WalletProvider) {}
   async transfer(params: TransferParams): Promise<Transaction> {
@@ -37,7 +37,8 @@ export class TransferAction {
     }
     const chainConfig = this.walletProvider.getChainConfigs(params.fromChain);
     const value = parseEvmBaseUnits(params.amount, chainConfig.nativeCurrency.decimals);
-    const hash = await walletClient.sendTransaction(
+    const { hash, sendUncertain } = await sendEvmTransaction(
+      walletClient,
       buildSendTxParams({
         account,
         to: params.toAddress,
@@ -52,6 +53,7 @@ export class TransferAction {
       to: params.toAddress,
       value,
       data,
+      ...(sendUncertain ? { confirmationStatus: "unconfirmed", sendUncertain } : {}),
     };
   }
 }

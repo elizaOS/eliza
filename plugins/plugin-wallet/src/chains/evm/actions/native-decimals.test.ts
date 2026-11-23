@@ -36,13 +36,18 @@ function stubRuntime(modelReply = ""): IAgentRuntime {
 
 describe("TransferAction.transfer native value", () => {
   function transferOn(chain: SupportedChain, amount: string) {
-    const sendTransaction = vi.fn(async (_params: { value?: bigint }) => "0xabc" as const);
+    const signTransaction = vi.fn(async (_params: { value?: bigint }) => "0x02" as const);
+    const walletClient = {
+      account: { ...ACCOUNT, signTransaction },
+      prepareTransactionRequest: async (params: unknown) => params,
+      sendRawTransaction: async () => "0xabc" as const,
+    };
     const walletProvider = {
-      getWalletClient: () => ({ account: ACCOUNT, sendTransaction }) as unknown as WalletClient,
+      getWalletClient: () => walletClient as unknown as WalletClient,
       getChainConfigs: (name: SupportedChain) => CHAINS[name],
     } as unknown as WalletProvider;
     return {
-      sendTransaction,
+      signTransaction,
       result: new TransferAction(walletProvider).transfer({
         fromChain: chain,
         toAddress: RECIPIENT,
@@ -52,23 +57,23 @@ describe("TransferAction.transfer native value", () => {
   }
 
   it("signs 6-decimal base units on Tempo", async () => {
-    const { sendTransaction, result } = transferOn("tempo" as SupportedChain, "1");
+    const { signTransaction, result } = transferOn("tempo" as SupportedChain, "1");
     const tx = await result;
-    expect(sendTransaction).toHaveBeenCalledTimes(1);
-    expect(sendTransaction.mock.calls[0]?.[0].value).toBe(1_000_000n);
+    expect(signTransaction).toHaveBeenCalledTimes(1);
+    expect(signTransaction.mock.calls[0]?.[0].value).toBe(1_000_000n);
     expect(tx.value).toBe(1_000_000n);
   });
 
   it("rejects an amount finer than the chain's native decimals", async () => {
-    const { sendTransaction, result } = transferOn("tempo" as SupportedChain, "0.0000001");
+    const { signTransaction, result } = transferOn("tempo" as SupportedChain, "0.0000001");
     await expect(result).rejects.toThrow();
-    expect(sendTransaction).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
   });
 
   it("keeps 18-decimal base units on an 18-decimal chain", async () => {
-    const { sendTransaction, result } = transferOn("mainnet", "1");
+    const { signTransaction, result } = transferOn("mainnet", "1");
     await result;
-    expect(sendTransaction.mock.calls[0]?.[0].value).toBe(10n ** 18n);
+    expect(signTransaction.mock.calls[0]?.[0].value).toBe(10n ** 18n);
   });
 });
 
