@@ -438,6 +438,53 @@ describe("durable interactive task journal", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  it("reports a torn set-aside record as corruption instead of keeping it set aside", () => {
+    const root = mkdtempSync(join(tmpdir(), "eliza-task-torn-quarantine-"));
+    const connections: DatabaseSync[] = [];
+    const open = () => {
+      const connection = new DatabaseSync(join(root, "host.sqlite"));
+      connections.push(connection);
+      connection.exec("PRAGMA synchronous = FULL");
+      return new SqliteInteractiveTaskStore(connection);
+    };
+    try {
+      let store = open();
+      const written = store.create(input);
+      // A newer build wrote and finished the record, then this build rolled back
+      // and set it aside as a version difference. A finished record is not the
+      // unfinished row recovery reads next, so only the set-aside marker can
+      // decide what happens to it.
+      connections[0]
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = ?, unfinished = 0 WHERE id = ?",
+        )
+        .run(JSON.stringify({ ...written, laterField: true }), input.id);
+      store = open();
+      expect(store.recoverOwner(owner, 2000)).toBeNull();
+      expect(store.unreadable(owner)).toHaveLength(1);
+      // The disk then tears the set-aside document. That is no longer a record
+      // from another version: the journal is corrupt and recovery must say so
+      // instead of quietly dropping the marker and calling the record readable.
+      connections[0]
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = '{' WHERE id = ?",
+        )
+        .run(input.id);
+      const reopened = open();
+      expect(() => reopened.recoverOwner(owner, 3000)).toThrow(
+        expect.objectContaining({ code: "TASK_STORAGE_CORRUPT" }),
+      );
+      // The failed recovery keeps the record set aside, so a build that can read
+      // it still finds it instead of the marker disappearing on a torn document.
+      expect(reopened.unreadable(owner)).toHaveLength(1);
+      expect(() => reopened.get(input.id, owner)).toThrow(
+        expect.objectContaining({ code: "TASK_UNREADABLE" }),
+      );
+    } finally {
+      for (const connection of connections) connection.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it("recovers a stored dispatched operation whose plan no longer matches the task", () => {
     const root = mkdtempSync(join(tmpdir(), "eliza-task-stale-dispatch-"));
     const connections: DatabaseSync[] = [];

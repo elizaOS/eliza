@@ -91,6 +91,19 @@ const TRAVEL_MODES: Record<MapsTravelMode, string> = {
 const GOOGLE_PLACE_ID = /^[A-Za-z0-9_-]{10,255}$/;
 /** Search bias radius around `near` (the Places API maximum). */
 const NEAR_RADIUS_METERS = 50_000;
+/** The most places one Text Search request returns. */
+const MAX_SEARCH_PAGE = 20;
+
+/** Great-circle distance in metres between two points on the Earth. */
+function metersBetween(a: MapsCoordinate, b: MapsCoordinate): number {
+  const rad = Math.PI / 180;
+  const h =
+    Math.sin(((b.latitude - a.latitude) * rad) / 2) ** 2 +
+    Math.cos(a.latitude * rad) *
+      Math.cos(b.latitude * rad) *
+      Math.sin(((b.longitude - a.longitude) * rad) / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
+}
 /** Renew a tile session this long before Google says it expires. */
 const SESSION_RENEW_MARGIN_MS = 60 * 60 * 1000;
 
@@ -392,6 +405,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
         geocode: true,
         reverseGeocode: true,
         placeLookup: true,
+        distanceRank: true,
         modes: this.transit
           ? ["drive", "walk", "bicycle", "transit"]
           : ["drive", "walk", "bicycle"],
@@ -421,9 +435,13 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     reportPrice?: MapsPriceObserver,
   ): Promise<MapsPlace[]> {
     if (request.near) this.requireCovered(request.near);
+    const limit = request.limit ?? 10;
+    // Text Search orders by relevance inside the bias circle. For the closest
+    // places Cloud reads the largest page (same price) and orders it by distance.
+    const nearest = request.rank === "distance" ? request.near : undefined;
     const body: Record<string, unknown> = {
       textQuery: request.query,
-      pageSize: request.limit ?? 10,
+      pageSize: nearest ? MAX_SEARCH_PAGE : limit,
       ...(this.language ? { languageCode: this.language } : {}),
       ...(this.region ? { regionCode: this.region } : {}),
       ...(request.near
@@ -454,7 +472,10 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const places = (json as { places?: unknown }).places;
     if (places === undefined) return [];
     if (!Array.isArray(places)) throw invalidResponse();
-    return this.covered(places.map((entry) => this.placeCandidate(entry)));
+    const found = this.covered(places.map((entry) => this.placeCandidate(entry)));
+    if (!nearest) return found;
+    const away = new Map(found.map((place) => [place, metersBetween(nearest, place.coordinate)]));
+    return found.sort((a, b) => (away.get(a) ?? 0) - (away.get(b) ?? 0)).slice(0, limit);
   }
 
   async geocode(
@@ -664,7 +685,17 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     let response = await this.fetchTile(request, session, signal, reportPrice);
     if (response.status === 401 || response.status === 403) {
       // A revoked or expired session is renewed once; a second refusal is a configuration fault.
-      tileSessions.delete(this.tileSessionKey());
+      // Only the session that was refused is dropped: another tile may already hold its renewal.
+      const key = this.tileSessionKey();
+      const held = tileSessions.get(key);
+      const current =
+        held &&
+        (await untilAborted(held, signal).catch((error) => {
+          // This caller's own cancellation is not a session failure.
+          if (signal?.aborted) throw error;
+          return undefined;
+        }));
+      if (current === session && tileSessions.get(key) === held) tileSessions.delete(key);
       session = await this.tileSession(signal);
       response = await this.fetchTile(request, session, signal, reportPrice);
     }
@@ -753,25 +784,44 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
 
   private async tileSession(signal?: AbortSignal): Promise<TileSession> {
     const key = this.tileSessionKey();
-    const cached = tileSessions.get(key);
-    if (cached) {
+    // Twice: the session this caller found may have failed or expired while
+    // another tile already started its replacement, which this caller then shares.
+    for (let pass = 0; pass < 2; pass++) {
+      const held = tileSessions.get(key);
+      if (!held) break;
       try {
-        const session = await cached;
+        const session = await untilAborted(held, signal);
         if (session.expiresAt - SESSION_RENEW_MARGIN_MS > this.now()) return session;
-      } catch {
+      } catch (error) {
+        // This caller's own cancellation is not a session failure.
+        if (signal?.aborted) throw error;
         // error-policy:J4 a failed session creation is retried by the next request.
       }
-      if (tileSessions.get(key) === cached) tileSessions.delete(key);
+      if (tileSessions.get(key) === held) {
+        tileSessions.delete(key);
+        break;
+      }
     }
-    const created = this.createTileSession(signal);
+    // The session is shared by every tile of this isolate, so one caller's
+    // cancellation must not fail it for the others; each caller stops waiting on its own signal.
+    const created = this.createTileSession();
     tileSessions.set(key, created);
     created.catch(() => {
       if (tileSessions.get(key) === created) tileSessions.delete(key);
     });
-    return created;
+    return untilAborted(created, signal);
   }
 
-  private async createTileSession(signal?: AbortSignal): Promise<TileSession> {
+  prepareTiles(): Promise<void> {
+    return this.tiles
+      ? this.tileSession().then(
+          () => undefined,
+          () => undefined,
+        )
+      : Promise.resolve();
+  }
+
+  private async createTileSession(): Promise<TileSession> {
     const url = new URL("createSession", TILES_URL);
     url.searchParams.set("key", this.apiKey);
     const response = await upstreamFetch(
@@ -783,9 +833,14 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           mapType: "roadmap",
           language: this.language ?? "en-US",
           region: this.region ?? "US",
+          // Two image pixels per map pixel on the same 256-unit grid. Without it
+          // a phone screen (2.6 device pixels per unit) stretches each tile.
+          // `highDpi` doubles the image; `scaleFactor2x` keeps labels readable at that size.
+          scale: "scaleFactor2x",
+          highDpi: true,
         }),
       },
-      signal,
+      undefined,
       this.fetchImpl,
       [200, 400, 401, 403],
     );
@@ -974,6 +1029,17 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
         "This location is outside the supported Maps regions.",
       );
   }
+}
+
+/** The value of a shared promise, or this caller's own cancellation, whichever comes first. */
+function untilAborted<T>(shared: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return shared;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    shared.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 }
 
 async function routeId(parts: string): Promise<string> {

@@ -363,14 +363,13 @@ export function parseMessageHandlerModelOutput(
 /**
  * Whether a Stage-1 result should be regenerated. Empty or garbled output can be
  * fixed by retrying, but hitting a completion limit cannot: regenerating at
- * the same token cap repeats the failure and burns a full Stage-1 turn. The
- * partial response is rejected explicitly. Exported for unit coverage.
+ * the model's own maximum repeats the failure and burns a full Stage-1 turn.
+ * The partial response is rejected explicitly. Exported for unit coverage.
  */
 export function shouldRetryStage1Generation(
   reason: ReturnType<typeof getStage1RetryReason>,
   raw: string | GenerateTextResult,
-  maxTokens: number | undefined,
 ): boolean {
   if (!reason) return false;
-  return !stage1HitCompletionLimit(raw, maxTokens);
+  return !stage1HitCompletionLimit(raw);
 }

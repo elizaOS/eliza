@@ -114,12 +114,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo docker image prune -a -f || true
 
-      - name: Install jq
-        # Used by docker-ci-smoke's boot-KPI budget parser after the image is
-        # built. Keep it explicit so the real boot gate reports the committed
-        # budget instead of falling back to its baked-in default.
-        run: bash packages/scripts/github/install-apt-packages.sh --no-install-recommends jq
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -235,7 +229,7 @@ jobs:
         run: |
           cp packages/app/deploy/.dockerignore.ci .dockerignore
 
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}

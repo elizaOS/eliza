@@ -56,8 +56,6 @@ export function createRuntimeMemoryBoardStore(
   runtime: IAgentRuntime,
 ): BoardMessageStore {
   const idFor = (key: string): UUID => stringToUuid(`tg-task-board:${key}`);
-  const roomFor = (key: string): UUID =>
-    stringToUuid(`tg-task-board-room:${key}`);
   const readId = (mem: Memory | null): number | undefined => {
     const v = (mem?.content as { boardMessageId?: unknown } | undefined)
       ?.boardMessageId;
@@ -85,7 +83,9 @@ export function createRuntimeMemoryBoardStore(
             id,
             entityId: runtime.agentId,
             agentId: runtime.agentId,
-            roomId: roomFor(key),
+            // The agent's own room: runtime.initialize creates it, so the
+            // memory row passes the room foreign key of the SQL adapter.
+            roomId: runtime.agentId,
             content,
           } as Memory,
           BOARD_MEMORY_TABLE,

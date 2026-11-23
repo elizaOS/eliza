@@ -371,7 +371,7 @@ try {
 		"ManagedProviderHttpClient",
 		"resolveProviderConnection",
 		"buildBaseTables",
-		"createJsonFileTrajectoryRecorder",
+		"createTrajectoryRecorder",
 		"resolveTrajectoryDir",
 		"computeCallCostUsd",
 		"MODEL_PRICES_USD_PER_M_TOKENS",

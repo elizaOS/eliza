@@ -174,7 +174,7 @@ public abstract class TelephonyPlugin extends Plugin {
      && declares(packages.queryIntentServices(new Intent("android.telecom.InCallService").setPackage(self), 0));
   if (RoleManager.ROLE_SMS.equals(role))
    return declares(packages.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.SMS_DELIVER_ACTION).setPackage(self), 0))
-     && declares(packages.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION).setPackage(self), 0))
+     && declares(packages.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION).setType("application/vnd.wap.mms-message").setPackage(self), 0))
      && declares(packages.queryIntentServices(new Intent(TelephonyManager.ACTION_RESPOND_VIA_MESSAGE).setData(Uri.fromParts("smsto", "0", null)).setPackage(self), 0))
      && declares(packages.queryIntentActivities(new Intent(Intent.ACTION_SENDTO).setData(Uri.fromParts("smsto", "0", null)).setPackage(self), 0));
   return false;
@@ -321,6 +321,7 @@ public abstract class TelephonyPlugin extends Plugin {
       if (fenceResult && !current(access, cancel, granted)) call.reject(noun + " access changed. Refresh after unlocking.", "unavailable");
       else call.resolve(value);
      });
+    } catch (MessageDeletion.Refused refusal) { call.reject(refusal.getMessage(), refusal.code);
     } catch (VoicemailStore.Refused refusal) { call.reject(refusal.getMessage(), refusal.code);
     } catch (Exception unreadable) { call.reject(noun + " could not be read. Check access and refresh.", "unavailable"); }
     finally { reads.remove(cancel); }
@@ -528,6 +529,12 @@ public abstract class TelephonyPlugin extends Plugin {
   fencedRead(call, "sms", "Messages", cancel -> SmsProviderReader.messages(getContext(), thread, limit, before, cursor, cancel));
  }
 
+ /** Latest incoming SMS sender metadata, without loading or disclosing message content. */
+ @PluginMethod public void latestIncomingSender(PluginCall call) {
+  if (refused(call)) return;
+  fencedRead(call, "sms", "Messages", cancel -> SmsProviderReader.latestIncomingSender(getContext(), cancel, call.getBoolean("includeAddress", false)));
+ }
+
  /**
   * Marks a conversation's received messages read, up to the newest one the owner has on screen
   * ({@code throughDate}, milliseconds), and removes its notice. Keeping read state is the default SMS
@@ -547,6 +554,19 @@ public abstract class TelephonyPlugin extends Plugin {
    value.put("updated", holder ? MmsStore.markThreadRead(getContext(), thread, through) : 0);
    return value;
   });
+ }
+
+ /** Deletes exactly one message the owner selected and confirmed in the host UI; no radio or retry. */
+ @PluginMethod public void deleteMessage(PluginCall call) {
+  if (refused(call)) return;
+  final MessageDeletion.Reference target;
+  try { target=MessageDeletion.reference(call.getData()); }
+  catch (IllegalArgumentException invalid) { call.reject("Invalid selected message", "invalid"); return; }
+  if (!MmsStore.isDefaultSmsApp(getContext())) { call.reject("The default messaging app is required", "role-required"); return; }
+  final long selectedGeneration=generation.get();
+  fencedWrite(call,"sms","Messages",cancel -> MessageDeletion.delete(getContext(),target,cancel,() ->
+    selectedGeneration==generation.get() && admitted() && unlockedForeground()
+      && getPermissionState("sms")==PermissionState.GRANTED && MmsStore.isDefaultSmsApp(getContext())));
  }
 
  // ---- Incoming/outgoing change observation ----------------------------------------------------

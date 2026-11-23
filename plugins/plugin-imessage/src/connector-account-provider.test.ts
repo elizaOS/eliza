@@ -3,6 +3,7 @@
  * deterministic runtime boundary. No live provider or Messages access is used.
  */
 import {
+  AgentRuntime,
   ConnectorAccountManager,
   type IAgentRuntime,
   InMemoryConnectorAccountStorage,
@@ -153,5 +154,46 @@ describe("iMessage account readiness", () => {
     });
     expect((await manager.getAccount("imessage", "removed-sender"))?.status).toBe("pending");
     expect((await manager.getAccount("imessage", "default"))?.status).toBe("connected");
+  });
+});
+
+describe("iMessage account policy from saved settings", () => {
+  // The app saves connectors.imessage.dmPolicy / groupPolicy as
+  // IMESSAGE_DM_POLICY / IMESSAGE_GROUP_POLICY runtime settings; the service
+  // gate reads them, so the inventory must report the same policy.
+  it.each([
+    {
+      name: "a saved disabled DM and open group",
+      saved: { IMESSAGE_DM_POLICY: "disabled", IMESSAGE_GROUP_POLICY: "open" },
+      imessage: undefined,
+      expected: { accessGate: "disabled", dmPolicy: "disabled", groupPolicy: "open" },
+    },
+    {
+      name: "a saved pairing DM policy",
+      saved: { IMESSAGE_DM_POLICY: "pairing" },
+      imessage: undefined,
+      expected: { accessGate: "pairing", dmPolicy: "pairing", groupPolicy: "allowlist" },
+    },
+    {
+      name: "character policy over a saved one",
+      saved: { IMESSAGE_DM_POLICY: "disabled" },
+      imessage: { dmPolicy: "open" },
+      expected: { accessGate: "open", dmPolicy: "open", groupPolicy: "allowlist" },
+    },
+  ])("reports $name", async ({ saved, imessage, expected }) => {
+    const runtime = new AgentRuntime({
+      character: { name: "IMessagePolicy", bio: [], settings: imessage ? { imessage } : {} },
+      settings: saved,
+      logLevel: "fatal",
+      enableAutonomy: false,
+    });
+    const provider = createIMessageConnectorAccountProvider(runtime);
+    const manager = new ConnectorAccountManager(runtime, new InMemoryConnectorAccountStorage());
+    const [account] = (await provider.listAccounts?.(manager)) ?? [];
+    expect({
+      accessGate: account?.accessGate,
+      dmPolicy: account?.metadata?.dmPolicy,
+      groupPolicy: account?.metadata?.groupPolicy,
+    }).toEqual(expected);
   });
 });

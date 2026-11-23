@@ -11,8 +11,11 @@ import android.content.BroadcastReceiver;
 import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.database.Cursor;
 import android.database.MatrixCursor;
@@ -96,10 +99,11 @@ public final class TelephonyPluginReviewTest {
   }
   static final class Host extends TelephonyPlugin {
     final AppCompatActivity activity;
+    boolean imageAllowed=true, smsAllowed=true;
     Host(AppCompatActivity activity) { this.activity = activity; }
     @Override public Context getContext() { return activity; }
     @Override public AppCompatActivity getActivity() { return activity; }
-    @Override public PermissionState getPermissionState(String alias) { return PermissionState.GRANTED; }
+    @Override public PermissionState getPermissionState(String alias) { return alias.equals("sms") && !smsAllowed ? PermissionState.DENIED : PermissionState.GRANTED; }
     @Override protected SmsTelephonyConfiguration configuration() { throw new AssertionError("fixture installs its configuration"); }
     void pause() { handleOnPause(); }
     void sendFromComposer(Call call, SmsTelephony.DispatchGuard guard) {
@@ -118,7 +122,7 @@ public final class TelephonyPluginReviewTest {
     Shadows.shadowOf(activity.getSystemService(SubscriptionManager.class)).setActiveSubscriptionInfos(ShadowSubscriptionManager.SubscriptionInfoBuilder.newBuilder().setId(1).setSimSlotIndex(0).setDisplayName("Test SIM").setCarrierName("Test carrier").buildSubscriptionInfo());
     Host host = new Host(activity);
     Map<String, String> slots = new HashMap<>();
-    SmsTelephonyConfiguration config = new SmsTelephonyConfiguration(identity, null, identity, "fixture.sent", "fixture.delivered", "fixture", "operation", "index", "fixture.image", Receiver.class, context -> true, context -> new SmsTelephonyConfiguration.JournalStore() {
+    SmsTelephonyConfiguration config = new SmsTelephonyConfiguration(identity, null, identity, "fixture.sent", "fixture.delivered", "fixture", "operation", "index", "fixture.image", Receiver.class, context -> host.imageAllowed, context -> new SmsTelephonyConfiguration.JournalStore() {
       public String read(String slot) { return slots.get(slot); }
       public void write(String slot, String value) { slots.put(slot, value); }
     });
@@ -134,6 +138,50 @@ public final class TelephonyPluginReviewTest {
     assertNull(Shadows.shadowOf(SmsManager.getSmsManagerForSubscriptionId(1)).getLastSentMultimediaMessageParams());
     Field owners = TelephonyPlugin.class.getDeclaredField("pendingReviews"); owners.setAccessible(true);
     assertTrue("settlement releases the pending owner", ((java.util.Set<?>) owners.get(host)).isEmpty());
+  }
+  @Test public void smsEligibilityMatchesTypedMmsReceiverAndEnabledHostComponents() throws Exception {
+    Host host = host("role-eligibility");
+    PackageManager manager = host.getContext().getPackageManager();
+    var packages = Shadows.shadowOf(manager);
+    String self = host.getContext().getPackageName();
+    ComponentName sms = new ComponentName(self, self + ".SmsReceiver");
+    ComponentName mms = new ComponentName(self, self + ".MmsReceiver");
+    ComponentName responder = new ComponentName(self, self + ".MessageResponder");
+    ComponentName composer = new ComponentName(self, self + ".MessageComposer");
+    packages.addReceiverIfNotPresent(sms).enabled = true;
+    packages.addIntentFilterForReceiver(sms, new IntentFilter(Telephony.Sms.Intents.SMS_DELIVER_ACTION));
+    packages.addReceiverIfNotPresent(mms).enabled = true;
+    IntentFilter mmsFilter = new IntentFilter(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION);
+    mmsFilter.addDataType("application/vnd.wap.mms-message");
+    packages.addIntentFilterForReceiver(mms, mmsFilter);
+    packages.addServiceIfNotPresent(responder).enabled = true;
+    IntentFilter respondFilter = new IntentFilter(TelephonyManager.ACTION_RESPOND_VIA_MESSAGE);
+    respondFilter.addDataScheme("smsto");
+    packages.addIntentFilterForService(responder, respondFilter);
+    packages.addActivityIfNotPresent(composer).enabled = true;
+    IntentFilter composeFilter = new IntentFilter(Intent.ACTION_SENDTO);
+    composeFilter.addDataScheme("smsto");
+    packages.addIntentFilterForActivity(composer, composeFilter);
+
+    // Exercise Android IntentFilter resolution, not a preselected ResolveInfo response.
+    assertTrue(manager.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION).setPackage(self), 0).isEmpty());
+    assertEquals(1, manager.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION)
+      .setType("application/vnd.wap.mms-message").setPackage(self), 0).size());
+    assertTrue("a MIME-qualified enabled host can be offered the SMS role", host.eligibleFor(RoleManager.ROLE_SMS));
+    assertTrue(host.statusObject().getJSONObject("roles").getJSONObject("sms").getBoolean("eligible"));
+    for (ComponentName component : new ComponentName[] {sms, mms, responder, composer}) {
+      manager.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+      assertFalse("every host component remains required", host.eligibleFor(RoleManager.ROLE_SMS));
+      manager.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+      assertTrue(host.eligibleFor(RoleManager.ROLE_SMS));
+    }
+    ComponentName foreign = new ComponentName("other.messages", "other.messages.MmsReceiver");
+    packages.addReceiverIfNotPresent(foreign).enabled = true;
+    packages.addIntentFilterForReceiver(foreign, mmsFilter);
+    manager.setComponentEnabledSetting(mms, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+    assertFalse("a foreign receiver cannot qualify this host", host.eligibleFor(RoleManager.ROLE_SMS));
+    assertFalse(host.getContext().getSystemService(RoleManager.class).isRoleHeld(RoleManager.ROLE_SMS));
+    noRadioAndNoRetainedOwner(host);
   }
   @Test public void smsCancellationBeforeJournalReplyMustRetireQueuedReview() throws Exception { queuedCancellation("sendSms", false); }
   @Test public void mmsCancellationBeforeJournalReplyMustRetireQueuedReview() throws Exception { queuedCancellation("sendMms", false); }
@@ -340,4 +388,64 @@ public final class TelephonyPluginReviewTest {
     assertEquals(1, provider.deletes);
     noRadioAndNoRetainedOwner(host);
   }
+  public static final class DeleteProvider extends ContentProvider {
+    static int reads,writes; static Runnable onRead,onDelete;
+    @Override public boolean onCreate(){return true;}
+    @Override public String getType(Uri uri){return null;}
+    @Override public Uri insert(Uri uri,ContentValues values){throw new UnsupportedOperationException();}
+    @Override public int update(Uri uri,ContentValues values,String where,String[]args){throw new UnsupportedOperationException();}
+    @Override public Cursor query(Uri uri,String[]projection,String where,String[]args,String order){
+      reads++;MatrixCursor row=new MatrixCursor(new String[]{"_id","thread_id","date","type"});row.addRow(new Object[]{7,9,1700000000123L,SmsRecords.INBOX});
+      Runnable action=onRead;onRead=null;if(action!=null)action.run();return row;
+    }
+    @Override public int delete(Uri uri,String where,String[]args){
+      writes++;assertEquals(Telephony.Sms.CONTENT_URI,uri);Runnable action=onDelete;onDelete=null;if(action!=null)action.run();return 1;
+    }
+  }
+  private static void settleDeletion(Host host)throws Exception{
+    Field field=TelephonyPlugin.class.getDeclaredField("reader");field.setAccessible(true);
+    java.util.concurrent.ExecutorService reader=(java.util.concurrent.ExecutorService)field.get(host);
+    reader.submit(()->{}).get(10,TimeUnit.SECONDS);ShadowLooper.idleMainLooper();
+  }
+  private static Call deleteCall(){
+    JSObject data=new JSObject();data.put("id","sms:7");data.put("kind","sms");data.put("threadId","thread:9");data.put("date",1700000000123L);return new Call("deleteMessage",data);
+  }
+  private static void deleteProvider(){
+    DeleteProvider.reads=DeleteProvider.writes=0;DeleteProvider.onRead=DeleteProvider.onDelete=null;
+    ProviderInfo info=new ProviderInfo();info.authority="sms";Robolectric.buildContentProvider(DeleteProvider.class).create(info);
+  }
+  @Test public void deleteRequiresImageForegroundUnlockedDefaultSmsAndReadAuthority()throws Exception{
+    deleteProvider();Host denied=host("delete-image");denied.imageAllowed=false;Call call=deleteCall();denied.deleteMessage(call);assertEquals("unavailable",call.error);
+    Host background=host("delete-background");background.pause();call=deleteCall();background.deleteMessage(call);assertEquals("unavailable",call.error);
+    Host ordinary=host("delete-role");call=deleteCall();ordinary.deleteMessage(call);assertEquals("role-required",call.error);
+    Host permission=host("delete-permission");Shadows.shadowOf(permission.getContext().getSystemService(RoleManager.class)).addHeldRole(RoleManager.ROLE_SMS);permission.smsAllowed=false;
+    call=deleteCall();permission.deleteMessage(call);assertEquals("permission-required",call.error);
+    Host locked=host("delete-locked");Shadows.shadowOf(locked.getContext().getSystemService(KeyguardManager.class)).setIsDeviceLocked(true);call=deleteCall();locked.deleteMessage(call);assertEquals("unavailable",call.error);
+    assertEquals(0,DeleteProvider.reads);assertEquals(0,DeleteProvider.writes);
+  }
+  @Test public void deleteRechecksLifecycleBeforeEffectAndKeepsKnownContentFreeOutcomeAfterwards()throws Exception{
+    deleteProvider();Host before=host("delete-race");Shadows.shadowOf(before.getContext().getSystemService(RoleManager.class)).addHeldRole(RoleManager.ROLE_SMS);
+    DeleteProvider.onRead=before::pause;Call denied=deleteCall();before.deleteMessage(denied);settleDeletion(before);
+    assertEquals("unavailable",denied.error);assertEquals(0,DeleteProvider.writes);
+    Host after=host("delete-known");DeleteProvider.onDelete=()->{after.smsAllowed=false;after.pause();};Call known=deleteCall();after.deleteMessage(known);settleDeletion(after);
+    assertNull(known.error);assertEquals("deleted",known.result.getString("status"));assertEquals(1,DeleteProvider.writes);
+  }
+
+  @Test @Config(sdk=36) public void deleteRefusesANonForegroundAndroidUserProfile()throws Exception{
+    deleteProvider();Host host=host("delete-profile");
+    Shadows.shadowOf(host.getContext().getSystemService(RoleManager.class)).addHeldRole(RoleManager.ROLE_SMS);
+    Shadows.shadowOf(host.getContext().getSystemService(UserManager.class)).setUserForeground(false);
+    Call call=deleteCall();host.deleteMessage(call);
+    assertEquals("unavailable",call.error);assertEquals(0,DeleteProvider.reads);assertEquals(0,DeleteProvider.writes);
+  }
+  @Test public void deleteRechecksRoleAndReadPermissionDuringIdentityLookup()throws Exception{
+    for(boolean roleLoss:new boolean[]{true,false}){
+      deleteProvider();Host host=host(roleLoss?"delete-role-race":"delete-permission-race");
+      RoleManager roles=host.getContext().getSystemService(RoleManager.class);Shadows.shadowOf(roles).addHeldRole(RoleManager.ROLE_SMS);
+      DeleteProvider.onRead=()->{if(roleLoss)Shadows.shadowOf(roles).removeHeldRole(RoleManager.ROLE_SMS);else host.smsAllowed=false;};
+      Call call=deleteCall();host.deleteMessage(call);settleDeletion(host);
+      assertEquals("unavailable",call.error);assertEquals(0,DeleteProvider.writes);
+    }
+  }
+
 }

@@ -982,6 +982,86 @@ function getProviderErrorCode(value: unknown): string | null {
   return null;
 }
 
+// What a provider 400 says about the request, for the caller's runtime to
+// classify as it does on a direct route: one Stage 1 re-send after Cerebras's
+// `parser_error` on `tool_calls`, and the context-length and schema replies.
+// Cerebras sends that 400 flat, so the SDK keeps it only in `responseBody` and
+// its message is the reason phrase "Bad Request". Finite values only: a body
+// can echo the request, and a billing, quota or auth code would have the caller
+// read this deployment's provider account as its own (see the 402 below).
+const PROVIDER_REQUEST_ERROR_CODES = new Set([
+  "parser_error",
+  "context_length_exceeded",
+  "context_window_exceeded",
+  "input_too_long",
+  "invalid_json_schema",
+  "schema_validation_error",
+  "wrong_api_format",
+  "unsupported_parameter",
+  "unsupported_value",
+  "invalid_value",
+  "invalid_type",
+  "invalid_request",
+  "tool_use_failed",
+]);
+const PROVIDER_REQUEST_ERROR_PARAMS = new Set([
+  "tool_calls",
+  "messages",
+  "tools",
+  "response_format",
+]);
+// A client keeps a bounded excerpt of the body (core: 400 characters).
+const PROVIDER_MESSAGE_MAX_CHARS = 200;
+
+/**
+ * The listed `code` and `param` of a provider 400 and its message, redacted
+ * and bounded, from the SDK's parsed `data` or the raw `responseBody`, flat or
+ * in an `error` envelope. Empty for any other error. A field is left out when
+ * the provider did not send an accepted value; `failed_generation` and every
+ * other field are never read.
+ */
+function getProviderRequestErrorFields(
+  error: unknown,
+  promptCacheKey: string | undefined,
+): { code?: string; param?: string; message?: string } {
+  const providerError = unwrapProviderError(error);
+  if (
+    !APICallError.isInstance(providerError) ||
+    providerError.statusCode !== 400
+  ) {
+    return {};
+  }
+  const sources = [
+    providerError.data,
+    parseJsonObject(providerError.responseBody),
+  ].map((body) => {
+    const envelope = getObjectValue(body, "error");
+    return envelope && typeof envelope === "object" ? envelope : body;
+  });
+  const read = (key: string, accept: (value: string) => boolean) =>
+    sources
+      .map((source) => getObjectValue(source, key))
+      .find(
+        (value): value is string => typeof value === "string" && accept(value),
+      );
+  const code = read("code", (value) => PROVIDER_REQUEST_ERROR_CODES.has(value));
+  const param = read("param", (value) =>
+    PROVIDER_REQUEST_ERROR_PARAMS.has(value),
+  );
+  const message = read("message", (value) => value.trim().length > 0);
+  return {
+    ...(code === undefined ? {} : { code }),
+    ...(param === undefined ? {} : { param }),
+    ...(message === undefined
+      ? {}
+      : {
+          message: redactPromptCacheKey(message, promptCacheKey)
+            .trim()
+            .slice(0, PROVIDER_MESSAGE_MAX_CHARS),
+        }),
+  };
+}
+
 function unwrapProviderError(error: unknown): unknown {
   if (RetryError.isInstance(error)) {
     return error.lastError;
@@ -2288,23 +2368,48 @@ export async function handleChatCompletionsPOST(
     const status = isInsufficientCredits
       ? 402
       : (providerStatus ?? getErrorStatusCode(error));
-    const errorType = openAiErrorTypeForStatus(status);
-
     return attachPreforwardTelemetry(
       addCorsHeaders(
         Response.json(
-          {
-            error: {
-              message: errorMessage,
-              type: errorType,
-              ...(isInsufficientCredits && { code: "insufficient_credits" }),
-            },
-          },
+          bufferedErrorBody(
+            error,
+            errorMessage,
+            status,
+            isInsufficientCredits,
+            promptCacheKeyForRedaction,
+          ),
           { status },
         ),
       ),
     );
   }
+}
+
+/**
+ * The body of a failed buffered request. A provider 400 carries its listed
+ * code and param ahead of the message, which a client may cut short, and its
+ * own redacted text as `provider_message`; `message` stays the gateway's.
+ */
+function bufferedErrorBody(
+  error: unknown,
+  message: string,
+  status: number,
+  insufficientCredits: boolean,
+  promptCacheKey: string | undefined,
+): { error: Record<string, string> } {
+  const { message: providerMessage, ...providerFields } =
+    status === 400 ? getProviderRequestErrorFields(error, promptCacheKey) : {};
+  return {
+    error: {
+      ...providerFields,
+      message,
+      type: openAiErrorTypeForStatus(status),
+      ...(insufficientCredits && { code: "insufficient_credits" }),
+      ...(providerMessage === undefined
+        ? {}
+        : { provider_message: providerMessage }),
+    },
+  };
 }
 
 /**
@@ -3590,9 +3695,21 @@ async function handleStreamingRequest(
           ? 400
           : (getRecoverableProviderErrorStatus(error) ??
             getErrorStatusCode(error));
+        const providerFields =
+          !isConfigError && status === 400
+            ? getProviderRequestErrorFields(error, promptCacheKey)
+            : {};
         try {
           const errorChunk = {
             error: {
+              // Ahead of the message. `code` stays the status, which clients
+              // read as such, so the provider's code is `provider_code`.
+              ...(providerFields.code === undefined
+                ? {}
+                : { provider_code: providerFields.code }),
+              ...(providerFields.param === undefined
+                ? {}
+                : { param: providerFields.param }),
               message: isConfigError
                 ? modelNotAvailableMessage(model)
                 : isProviderPaymentError(error)
@@ -3608,6 +3725,9 @@ async function handleStreamingRequest(
               // retries.
               type: openAiErrorTypeForStatus(status),
               code: status,
+              ...(providerFields.message === undefined
+                ? {}
+                : { provider_message: providerFields.message }),
             },
           };
           enqueue(encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`));
@@ -4015,6 +4135,8 @@ export const __reasoningEffortTestHooks = {
 export const __streamingCreditTestHooks = {
   handleStreamingRequest,
   getRecoverableProviderErrorStatus,
+  getProviderRequestErrorFields,
+  bufferedErrorBody,
 } as const;
 
 export const __billingBranchTestHooks = {

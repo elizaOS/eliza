@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "plugins/plugin-inbox/src/inbox/triage-classifier.ts",
+    "plugins/plugin-inbox/test/triage-array-preamble-model.test.ts",
+    "plugins/plugin-inbox/quint/check-inbox-triage-array-preamble.mjs"
+  ],
+  "conformance": "plugins/plugin-inbox/quint/check-inbox-triage-array-preamble.mjs",
+  "bounds": "One TEXT_SMALL answer for a batch of two messages: a legacy JSON array or the results object the prompt asks for, as bare JSON, in a whole ```json code fence, or after a sentence of prose; before it, no reasoning block or a <think>, <thinking> or <reasoning> block (core REASONING_TAG_NAMES) in lower or upper case, closed or unclosed. The conformance script replays every generated answer through classifyMessages on a real AgentRuntime whose TEXT_SMALL handler returns the answer and counts calls: all 78 answers (6 without a block and 24 for each tag) must match. The other shared tag names (analysis, reflection, thought, antthinking), mixed-case tag names, attributes on the tag, more than one reasoning block, malformed JSON, missing or invalid result fields, batches longer than ten messages and the optimized-prompt path are not covered by this model. Under weak fairness of the classify step the answer is eventually read. Explicit stuttering lets the triage run not start, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "inbox-triage-array-preamble",
+      "main": "InboxTriageArrayPreamble",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ClosedBlockSkipped",
+        "NothingBeforeRead",
+        "OneModelCall",
+        "OneOutcome",
+        "ProseRefused",
+        "TypeOK",
+        "UnclosedBlockRefused"
+      ],
+      "temporal": ["AnswerRead", "AnswerReadWithoutFairness"],
+      "maxSteps": 3,
+      "samples": 3000,
+      "temporalChecks": [
+        {
+          "property": "AnswerRead",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled classify step eventually runs (weak fairness). This checks that the answer is then read, not how long the model call takes."
+          ]
+        },
+        {
+          "property": "AnswerReadWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The triage run may never start, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

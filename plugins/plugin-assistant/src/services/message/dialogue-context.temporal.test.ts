@@ -127,12 +127,8 @@ describe("historical message temporal grounding", () => {
   it("distinguishes same text recorded today from the prior local day on the actual Stage1 native wire", () => {
     const today = context([memory(observed)]),
       yesterday = context([memory(observed - 86400000)]);
-    expect(userWire(today)).toContain(
-      "[message_at=2026-10-26T13:42:36.954-07:00]",
-    );
-    expect(userWire(yesterday)).toContain(
-      "[message_at=2026-10-25T13:42:36.954-07:00]",
-    );
+    expect(userWire(today)).toContain("[message_at=10-26 13:42]");
+    expect(userWire(yesterday)).toContain("[message_at=10-25 13:42]");
     expect(userWire(today)).not.toEqual(userWire(yesterday));
     expect(stageOne(today)[0]).toEqual(stageOne(yesterday)[0]);
   });
@@ -180,7 +176,7 @@ describe("historical message temporal grounding", () => {
       userRoles: ["OWNER"],
     });
     expect(assembled.metadata?.displayTimeZone).toBe("America/Los_Angeles");
-    expect(userWire(assembled)).toContain("2026-10-26T13:42:36.954-07:00");
+    expect(userWire(assembled)).toContain("[message_at=10-26 13:42]");
   });
   it("preserves raw originals, source IDs, exact text hashes and append-only events", () => {
     const ctx = context([memory(observed)]),
@@ -214,15 +210,15 @@ describe("historical message temporal grounding", () => {
       ]);
     const wire = userWire(ctx, true);
     expect(wire).toContain("same_text_as=");
-    expect(wire).toContain("2026-10-25T13:42:36.954-07:00");
-    expect(wire).toContain("2026-10-26T13:42:36.954-07:00");
+    expect(wire).toContain("[message_at=10-25 13:42]");
+    expect(wire).toContain("[message_at=10-26 13:42]");
   });
   it("preserves distinct offsets during a repeated DST hour without relative-date guesses", () => {
     expect(block(Date.parse("2026-11-01T08:30:00Z"))).toContain(
-      "2026-11-01T01:30:00.000-07:00",
+      "2026-11-01 01:30-07:00",
     );
     expect(block(Date.parse("2026-11-01T09:30:00Z"))).toContain(
-      "2026-11-01T01:30:00.000-08:00",
+      "2026-11-01 01:30-08:00",
     );
   });
   it.each([undefined, 0, -1, NaN, Infinity, 8.64e15 + 1, "2026-10-26"])(
@@ -239,9 +235,9 @@ describe("historical message temporal grounding", () => {
         stable: false,
         createdAt: observed,
       }),
-    ).toContain("2026-10-26T20:42:36.954Z");
+    ).toContain("2026-10-26 20:42Z");
     expect(block(observed, "invalid-zone-value")).toBe(
-      "[message_at=2026-10-26T20:42:36.954Z] " + body,
+      "[message_at=2026-10-26 20:42Z] " + body,
     );
   });
   it("does not duplicate clock facts or annotate providers, instructions or current user messages", () => {
@@ -295,7 +291,7 @@ describe("historical message temporal grounding", () => {
         events: [event],
       });
     expect(segmentBlock(rendered.promptSegments[0])).toContain(
-      "2026-10-26T13:42:36.954-07:00",
+      "[message_at=10-26 13:42]",
     );
     expect(event).toEqual(original);
   });
@@ -310,15 +306,13 @@ describe("historical message temporal grounding", () => {
         stepMessages: [],
       });
     expect(wire(observed)[0]).toEqual(wire(observed - 86400000)[0]);
-    expect(wire(observed)[1].content).toContain(
-      "2026-10-26T13:42:36.954-07:00",
-    );
+    expect(wire(observed)[1].content).toContain("[message_at=10-26 13:42]");
   });
   it("does not convert a message timestamp into a contained operation timestamp or grant new scope", () => {
     const text =
       "Historical operation committedAt: 2026-10-24T10:00:00Z; this message is a later recap.";
     const wire = userWire(context([memory(observed, "recap", text)]));
-    expect(wire).toContain("[message_at=2026-10-26T13:42:36.954-07:00]");
+    expect(wire).toContain("[message_at=10-26 13:42]");
     expect(wire).toContain(text);
     expect(wire).not.toContain("deleted_at=");
   });

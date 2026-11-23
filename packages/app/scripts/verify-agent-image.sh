@@ -44,7 +44,7 @@ set -Eeuo pipefail
 #                        this to "1" in the workflow once the baseline is
 #                        confirmed green in CI. The KPI measurement is additive
 #                        and only runs in --boot-verify-only mode; a measurement
-#                        failure (missing jq/budget) never fails a smoke that
+#                        failure (missing or non-monotonic timestamps) never fails a smoke that
 #                        otherwise passed.
 
 BUN_VERSION="${BUN_VERSION:-1.4.2}"
@@ -437,13 +437,11 @@ boot_verify() {
   }
 
   # Boot-KPI cold-start budget (item 5 of #8812). Computes cold readyMs from the
-  # pre-`docker run` checkpoint to the FIRST health/status success, reads the
-  # boot.coldReadyMs budget (default mirrors the loadperf budgets in
-  # https://github.com/elizaOS/benchmarks), and
-  # reports the comparison. WARN-FIRST: a breach prints a ::warning:: line and
+  # pre-`docker run` checkpoint to the FIRST health/status success and compares
+  # it with the budget defined below. WARN-FIRST: a breach prints a ::warning:: line and
   # returns 0 (does not fail) UNLESS BOOT_KPI_ENFORCE=1, in which case it returns
-  # 1 so the caller can fail the smoke. Every measurement step is guarded so a
-  # missing jq / budget / timer NEVER turns a liveness-passing boot RED.
+  # 1 so the caller can fail the smoke. Missing or non-monotonic timestamps
+  # skip the cold-start measurement.
   # peakRss is intentionally NOT measured: `docker stats` reports an inst
   # sample, not the boot peak, so a number here would be misleading.
   emit_boot_kpi() {

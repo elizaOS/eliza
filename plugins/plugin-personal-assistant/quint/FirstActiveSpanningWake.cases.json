@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/schedule-insight.ts",
+    "plugins/plugin-personal-assistant/test/schedule-first-active-wake.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-first-active-spanning-wake.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-first-active-spanning-wake.mjs",
+  "bounds": "One agent on 2026-11-16 in UTC: an Oura reading says the owner slept from 23:00 to 07:00, and the evening before left a screen-time window from 18:00 to 22:30. The owner then records up to three phone sessions in time order, and the schedule is inspected 10 minutes after each one. The first session starts at 06:40 or 07:00 and lasts 20 or 40 minutes, so it ends at the wake, spans it or starts on it. Each later session starts 5 minutes (merged into the previous window) or 60 minutes (a new window) after the previous one ended and lasts 30 minutes. The conformance script replays every generated three-session morning (all 16; their prefixes give all 28 shorter mornings) through the production recordScreenTimeEvent and inspectSchedule on a fresh PGlite-backed runtime per morning, and compares wakeAt and firstActiveAt after every session. A first session that starts after the reading's wake is not covered: the sleep cycle then takes the wake from that session. Wakes inferred without a health reading, other time zones and DST nights, activity events and active signals as window sources, open sessions, several devices and the merged schedule state that copies firstActiveAt are not covered by this model. Under weak fairness of the inspect step every stored session is eventually inspected. Explicit stuttering lets the inspection never run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "first-active-spanning-wake",
+      "main": "FirstActiveSpanningWake",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "NoEarlierActiveMoment",
+        "ShownNotBeforeWake",
+        "ShownWheneverActiveAfterWake",
+        "ShownWhileActive",
+        "StaysOnceShown",
+        "TypeOK"
+      ],
+      "temporal": ["Settles", "SettlesWithoutFairness"],
+      "maxSteps": 12,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled inspect step eventually runs (weak fairness). This checks that every stored session is then inspected, not how long the database work takes."
+          ]
+        },
+        {
+          "property": "SettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The inspection may never run after a session is stored, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

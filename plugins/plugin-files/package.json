@@ -51,6 +51,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@elizaos/core": "workspace:*",
     "pdf-lib": "^1.17.1"
   },
   "devDependencies": {

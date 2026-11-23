@@ -51,7 +51,16 @@ import { buildOAuthAppErrorReturn } from "./oauth-app-error-return";
 
 import { randomBytes } from "node:crypto";
 import { assertPublicHttpsEndpoint, ElizaError, logger } from "@elizaos/core";
-import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import {
+  and,
+  arrayContains,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  sql,
+} from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { errors as joseErrors } from "jose";
 import { generateNonce, SiweMessage } from "siwe";
@@ -89,6 +98,7 @@ import {
   revocationStore,
   type StoredRecoveryCode,
   signIdentityJwtPayload,
+  supportsPinnedDnsTransport,
   type TelegramLoginPayload,
   uint8ArrayToBase64url,
   unusedRecoveryCodeCount,
@@ -107,6 +117,7 @@ import {
   getDb,
   hasTenantTransactionDatabase,
   refreshTokens,
+  tenantAppClients,
   tenantContextFromAuthenticatedPrincipal,
   tenantSamlAssertionReplays,
   tenantSamlAuthnRequests,
@@ -119,6 +130,7 @@ import {
 } from "../../db/index.ts";
 import {
   type ApiResponse,
+  type AppVariables,
   redactedThrownDiagnostics,
   type SsoDiscoveryResult,
   type TenantAuthAbuseConfig,
@@ -139,7 +151,11 @@ import {
   validateWalletAbusePolicy,
   verifyCaptchaToken,
 } from "../services/auth-abuse";
-import { verifySessionToken } from "../services/context";
+import {
+  tenantAuth,
+  verifySessionToken,
+  withAuthenticatedTenantDatabase,
+} from "../services/context";
 import { defaultAuthTenantId } from "../services/default-auth-tenant";
 import { verifyEip1271 } from "../services/eip1271";
 import {
@@ -2094,19 +2110,34 @@ async function consumeTelegramLoginChallenge(
   const raw = await getNonceBackend().consume(
     telegramLoginChallengeKey(challengeId),
   );
+  // No stored record means the challenge was never issued, already consumed, or
+  // expired — a legitimate "absent" answer the verifier reports as such.
   if (!raw) return null;
+  let parsed: TelegramLoginChallengeRecord;
   try {
-    const parsed = JSON.parse(raw) as TelegramLoginChallengeRecord;
-    return {
-      tenantId:
-        typeof parsed.tenantId === "string" ? parsed.tenantId : undefined,
-      originHost:
-        typeof parsed.originHost === "string" ? parsed.originHost : undefined,
-      issuedAt: typeof parsed.issuedAt === "number" ? parsed.issuedAt : 0,
-    };
-  } catch {
-    return null;
+    const decoded: unknown = JSON.parse(raw);
+    if (typeof decoded !== "object" || decoded === null) {
+      throw new TypeError("Telegram login challenge is not an object");
+    }
+    parsed = decoded as TelegramLoginChallengeRecord;
+  } catch (cause) {
+    // This server writes the record and consumes it exactly once, so a payload
+    // it cannot read is a damaged nonce store, not a missing challenge.
+    // Returning null would surface as "Invalid or expired Telegram login
+    // challenge" (401) and hide the fault behind a retryable-looking error.
+    throw new ElizaError("Stored Telegram login challenge cannot be read.", {
+      code: "TELEGRAM_LOGIN_CHALLENGE_UNREADABLE",
+      cause,
+      context: { challengeKey: telegramLoginChallengeKey(challengeId) },
+      severity: "ephemeral",
+    });
   }
+  return {
+    tenantId: typeof parsed.tenantId === "string" ? parsed.tenantId : undefined,
+    originHost:
+      typeof parsed.originHost === "string" ? parsed.originHost : undefined,
+    issuedAt: typeof parsed.issuedAt === "number" ? parsed.issuedAt : 0,
+  };
 }
 
 function validateConsumedTelegramLoginChallenge(
@@ -2202,17 +2233,14 @@ function decryptMfaJson<T>(value: string): T {
   return JSON.parse(getOAuthKeyStore().decrypt(encrypted)) as T;
 }
 
-async function readMfaJson<T>(key: string): Promise<T | null> {
-  const raw = await getMfaBackend().get(key);
-  if (!raw) return null;
+function decodeMfaJson<T>(value: string, kind: string): T {
   try {
-    return decryptMfaJson<T>(raw);
+    return decryptMfaJson<T>(value);
   } catch (cause) {
     // An unreadable record is a key-store or payload failure, not proof that
     // the user has no second factor. Deleting it here would erase the
     // enrollment and make every caller read "absent", so a login would skip
     // the MFA challenge. Keep the bytes and fail closed instead.
-    const kind = key.split(":")[0];
     throw new ElizaError(`Stored ${kind} MFA record cannot be read.`, {
       code: "MFA_RECORD_UNREADABLE",
       cause,
@@ -2220,6 +2248,12 @@ async function readMfaJson<T>(key: string): Promise<T | null> {
       severity: "ephemeral",
     });
   }
+}
+
+async function readMfaJson<T>(key: string): Promise<T | null> {
+  const raw = await getMfaBackend().get(key);
+  if (!raw) return null;
+  return decodeMfaJson<T>(raw, key.split(":")[0]);
 }
 
 async function writeMfaJson(
@@ -2783,15 +2817,17 @@ async function consumeDeviceAuthorizationRecord(
 ): Promise<DeviceAuthorizationRecord | null> {
   const raw = await getMfaBackend().consume(deviceCodeKey(deviceCode));
   if (!raw) return null;
-  try {
-    const record = decryptMfaJson<DeviceAuthorizationRecord>(raw);
-    await getMfaBackend().delete(deviceUserCodeKey(record.userCode));
-    await getMfaBackend().delete(devicePollKey(deviceCode));
-    if (record.expiresAt <= Date.now()) return null;
-    return record;
-  } catch {
-    return null;
-  }
+  // A record that no longer decrypts is a key-store or payload failure, not an
+  // expired grant: `catch { return null }` here made /auth/device/token answer
+  // expired_token (400), so the client restarted a flow the server could not
+  // decide and the fault was never reported. Decode through the same
+  // fail-closed path readMfaJson uses; a missing or expired record still
+  // returns null.
+  const record = decodeMfaJson<DeviceAuthorizationRecord>(raw, "device-auth");
+  await getMfaBackend().delete(deviceUserCodeKey(record.userCode));
+  await getMfaBackend().delete(devicePollKey(deviceCode));
+  if (record.expiresAt <= Date.now()) return null;
+  return record;
 }
 
 async function readDeviceAuthorizationRecordByUserCode(
@@ -4149,6 +4185,28 @@ auth.get("/providers", async (c) => {
   const enabledOauth = oauth.filter(
     (provider) => loginMethods.oauth?.[provider] !== false,
   );
+  const clientId = normalizePublicClientId(c.req.query("clientId"));
+  if (clientId) c.header("Cache-Control", "no-store");
+  const clients =
+    tenantId && (enabledOauth.includes("google") || clientId)
+      ? await authAppClientSubjects(tenantId)
+      : [];
+  const requestedClient = clients.find((client) => client.id === clientId);
+  const nativeGoogleApp = clientId
+    ? {
+        clientId,
+        ready: Boolean(
+          requestedClient &&
+            oauth.includes("google") &&
+            googleNativeClientIds(clientId).length > 0 &&
+            !loginMethodRefusal(
+              requestedClient.login_methods ?? loginMethods,
+              "oauth",
+              "google",
+            ),
+        ),
+      }
+    : undefined;
   const oidc = tenantId
     ? (await getTenantOidcProviders(tenantId))
         .filter((provider) => provider.enabled !== false)
@@ -4182,12 +4240,13 @@ auth.get("/providers", async (c) => {
       enabledOauth.includes("google") &&
       Boolean(
         tenantId &&
-          (await authAppClientSubjects(tenantId)).some(
+          clients.some(
             (client) =>
               googleNativeClientIds(client.id).length > 0 &&
               client.login_methods?.oauth?.google !== false,
           ),
       ),
+    ...(nativeGoogleApp ? { nativeGoogleApp } : {}),
     discord: enabledOauth.includes("discord"),
     github: enabledOauth.includes("github"),
     twitter: enabledOauth.includes("twitter"),
@@ -4206,6 +4265,218 @@ auth.get("/providers", async (c) => {
     captcha: publicAuthAbuseConfig(authAbuseConfig).captcha,
   });
 });
+
+const backupIdentity = new Hono<{ Variables: AppVariables }>();
+backupIdentity.post(
+  "/:operation",
+  async (c, next) => {
+    if (
+      !c.get("serviceSignatureVerified") ||
+      !c.req.header("X-Steward-Key") ||
+      !isValidTenantId(c.req.header("X-Steward-Tenant")) ||
+      c.req.raw.headers.has("authorization") ||
+      c.req.raw.headers.has("origin") ||
+      c.req.raw.headers.has("cookie")
+    )
+      return c.json({ error: "service_approval_required" }, 401);
+    return tenantAuth(c, next, { bindTenantDatabase: false });
+  },
+  async (c) => {
+    setAuthNoStoreHeaders(c);
+    const operation = c.req.param("operation");
+    if (!["registration", "verify", "current"].includes(operation))
+      return c.notFound();
+    const tenantId = c.get("tenantId");
+    if (
+      c.get("authType") !== "api-key" ||
+      !tenantId ||
+      tenantId !== c.req.header("X-Steward-Tenant")
+    )
+      return c.json({ error: "service_approval_required" }, 403);
+    const body = await safeJsonParse<Record<string, unknown>>(c);
+    const denied = () => c.json({ error: "native_approval_unavailable" }, 403);
+    if (!body) return denied();
+    const { packageName, environment, redirectUri } = body;
+    if (
+      typeof packageName !== "string" ||
+      normalizeNativePackageName(packageName) !== packageName ||
+      typeof redirectUri !== "string" ||
+      (environment !== "production" && environment !== "staging")
+    )
+      return denied();
+    const registration = async () => {
+      const [app, duplicate] = await getDb()
+        .select({ id: tenantAppClients.id })
+        .from(tenantAppClients)
+        .where(
+          and(
+            eq(tenantAppClients.tenantId, tenantId),
+            eq(tenantAppClients.enabled, true),
+            eq(tenantAppClients.environment, environment),
+            arrayContains(tenantAppClients.allowedPackageNames, [packageName]),
+            arrayContains(tenantAppClients.allowedRedirectUrls, [redirectUri]),
+          ),
+        )
+        .limit(2);
+      if (
+        !app ||
+        duplicate ||
+        !getEnabledProviders().includes("google") ||
+        !supportsPinnedDnsTransport()
+      )
+        return null;
+      if (
+        await requireTenantLoginMethodAllowed(
+          c,
+          tenantId,
+          "oauth",
+          "google",
+          app.id,
+        )
+      )
+        return null;
+      const presenters = googleNativeClientIds(app.id);
+      const serverClientId = getProviderConfig("google").clientId;
+      if (!presenters.length || !serverClientId) return null;
+      return { appId: app.id, serverClientId, presenters };
+    };
+    const inTenant = <T>(read: () => Promise<T>) =>
+      withAuthenticatedTenantDatabase(tenantId, "api-key", tenantId, read);
+    const googleIdentity = async () => {
+      if (
+        typeof body.idToken !== "string" ||
+        typeof body.nonce !== "string" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(body.nonce)
+      )
+        return null;
+      const app = await inTenant(registration);
+      if (!app) return null;
+      try {
+        const identity = await verifyGoogleNativeIdToken(
+          body.idToken,
+          app.serverClientId,
+          app.presenters,
+          body.nonce,
+        );
+        return typeof identity.claims.azp === "string"
+          ? {
+              subject: identity.subject,
+              presenter: identity.claims.azp,
+              audience: app.serverClientId,
+              token: body.idToken,
+              expiry: identity.claims.exp,
+            }
+          : null;
+      } catch {
+        return null;
+      }
+    };
+    const verified = operation === "verify" ? await googleIdentity() : null;
+    if (operation === "verify" && !verified) return denied();
+    return inTenant(async () => {
+      const current = await registration();
+      if (!current) return denied();
+      const { appId, serverClientId, presenters } = current;
+      if (operation === "registration" && body.ownerId === undefined)
+        return c.json({ serverClientId });
+      const ownerId = body.ownerId;
+      if (
+        typeof ownerId !== "string" ||
+        !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(ownerId)
+      )
+        return denied();
+      const linked = await getDb()
+        .select({
+          subject: accounts.providerAccountId,
+          linkId: accounts.id,
+          membershipId: userTenants.id,
+          email: users.email,
+        })
+        .from(accounts)
+        .innerJoin(users, eq(accounts.userId, users.id))
+        .innerJoin(userTenants, eq(userTenants.userId, users.id))
+        .where(
+          and(
+            eq(users.id, ownerId),
+            eq(users.isGuest, false),
+            isNull(users.deactivatedAt),
+            eq(userTenants.tenantId, tenantId),
+            eq(accounts.provider, "google"),
+          ),
+        );
+      const owner = linked[0];
+      if (
+        !owner?.email ||
+        (await isSsoRequiredForEmailDomain(tenantId, owner.email)) ||
+        validateEmailAbusePolicy(
+          owner.email,
+          await getTenantAuthAbuseConfig(tenantId),
+        ) ||
+        (await hasTotpEnabled(ownerId)) ||
+        (await getSmsMfa(ownerId))
+      )
+        return denied();
+      const ownerBinding = hashSha256Hex(
+        JSON.stringify([
+          "native-password-backup-owner",
+          tenantId,
+          appId,
+          packageName,
+          redirectUri,
+          environment,
+          serverClientId,
+          ownerId,
+          [...new Set(presenters)].sort(),
+          owner.membershipId,
+          linked.map((row) => JSON.stringify([row.linkId, row.subject])).sort(),
+        ]),
+      );
+      if (operation === "registration")
+        return c.json({ serverClientId, ownerBinding });
+      const binding = (subject: string, presenter: string) =>
+        hashSha256Hex(
+          JSON.stringify([
+            "native-password-backup-proof",
+            ownerBinding,
+            subject,
+            presenter,
+          ]),
+        );
+      if (operation === "current") {
+        if (
+          !linked.some(({ subject }) =>
+            presenters.some(
+              (presenter) => binding(subject, presenter) === body.proofBinding,
+            ),
+          )
+        )
+          return denied();
+        return c.json({ verified: true, serverClientId });
+      }
+      if (
+        !verified ||
+        body.ownerBinding !== ownerBinding ||
+        verified.audience !== serverClientId ||
+        !presenters.includes(verified.presenter) ||
+        !linked.some(({ subject }) => subject === verified.subject)
+      )
+        return denied();
+      const used = await markOidcIdTokenUsedOnce(
+        tenantId,
+        "google",
+        verified.token,
+        verified.expiry,
+      );
+      if (!used.ok) return denied();
+      return c.json({
+        verified: true,
+        serverClientId,
+        proofBinding: binding(verified.subject, verified.presenter),
+      });
+    });
+  },
+);
+auth.route("/oauth/google/native/backup", backupIdentity);
 
 type GoogleNativeChallenge = {
   tenantId: string;

@@ -1,8 +1,10 @@
 # @elizaos/capacitor-browser-surface
 
-Isolated native browser surfaces for mobile Browser tabs, exposed through the ElizaSurfaceManager Capacitor bridge.
+Isolated native browser surfaces for mobile Browser tabs, exposed through the
+ElizaSurfaceManager Capacitor bridge.
 
-See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require
+their SDKs, registered bridge, and OS permissions.
 
 Android `openBrowser` opens a full Chromium Custom Tab using the installed
 build-pinned browser (`org.chromium.chrome` by default, or `ai.elizaos.chromium`
@@ -32,6 +34,30 @@ The plugin owns the Chromium native-messaging AIDL definitions. Host apps use
 the library classes and must not compile duplicate copies of those definitions.
 Eliza retains its existing service component as a thin subclass of this relay.
 
+For a sign-in that the person completes themselves, use an Android surface with
+`purpose: "manual-sign-in"`, `process: "isolated"`, and `storage: "isolated"`.
+The surface gets a new temporary profile on every open and accepts only HTTPS
+top-level navigation. Omit `profileKey`, `interceptNavigation` and `answersRequests`.
+Creation fails if the installed WebView cannot attest field origins in an isolated
+world. On iOS, this purpose is unavailable.
+
+The person focuses a login field on the website and chooses Autofill in Android.
+The installed password provider handles authentication and selection. The native
+browser supplies the committed document origin and the origin Android WebView
+reported for the field's frame. A cross-origin field cannot get a password.
+To use the Eliza provider, configure its host-browser mode as described in the
+[password plugin](../plugin-native-passwords/README.md#host-integration-android).
+The host can manage saved passwords in the native vault editor.
+
+The bridge reports the HTTPS origin and load state. Page titles, URL paths,
+query parameters, field data and download requests stay off the bridge. Page
+reading, control, task-origin extension and history observation are unavailable
+on this surface. Window capture is blocked across all surfaces while one of
+these surfaces exists. Close it on exit so the temporary profile is retired.
+Only the local user interface should open and navigate this surface. The host
+sets Android `FLAG_SECURE` during presentation to protect screenshots and
+recent-app previews. An assistant can describe the public sign-in destination.
+
 Android surfaces may opt in to navigation interception with
 `createSurface({ ..., interceptNavigation: true })`. The page then navigates within its
 own origin by itself; a main-frame navigation to another origin, a cross-origin redirect
@@ -57,27 +83,148 @@ hold; every other origin is still held. `origins: []` ends the extension. Nothin
 added without this call, and the list ends with the surface.
 
 A website never acts for the person through a surface. Android reports these as events
-and does nothing by itself:
+and does nothing by itself. Dialogs, file inputs and site permission requests wait only on
+a surface whose own owner created it with `answersRequests: true`, while a listener for the
+event exists; any other surface's are dismissed at once (a dialog cancelled, a file input
+given nothing, a permission denied) and not reported, so no page freezes on a request
+another owner's listener would never answer. `interceptNavigation` does not hold them: an
+intercepting surface without `answersRequests` dismisses dialogs at once like any other.
 
-- `dialogRequested`: `alert`, `confirm`, `prompt` and leave-page dialogs wait for
-  `answerDialog`. A dialog of a hidden, closing or navigating surface is cancelled,
-  never accepted.
-- `downloadRequested`: nothing is downloaded. The http(s) address can carry access
-  tokens, so keep it out of models and logs.
-- `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link.
+- `dialogRequested`: `alert`, `confirm`, `prompt` and leave-page (`beforeunload`)
+  dialogs wait for `answerDialog`; a dismissed one is cancelled, never accepted.
+- `fileChooserRequested`: a file input waits for `answerFileChooser({ requestId, open })`.
+  `open: true` shows the system document picker and gives the page the content URIs the
+  person picks (at most 16, one unless the input takes several); `open: false` gives it
+  nothing. A save-mode input always gets nothing.
+- `sitePermissionRequested`: a camera, microphone or location request from the https
+  page's own origin (`{ requestId, origin, kinds, topFrame, androidPermissions }`) waits
+  for `answerSitePermission({ requestId, grant })` and is never remembered. A grant asks
+  Android for `androidPermissions` (the runtime permissions the app still lacks) itself.
+  It resolves `{ granted, outcome }`; `granted: false` means the page was denied, and
+  `outcome` says why (see Site permissions below). Another origin's request is already
+  denied and reported with `topFrame: false` and no `requestId`; an insecure page's own
+  request is denied without a word. WebView names only the requesting origin, never the
+  frame, so `topFrame` is an origin check: a same-origin embedded frame counts as the page.
+- `sitePermissionWithdrawn` (`{ requestId }`): a held request ended without the host's
+  answer; close its prompt. Either the page withdrew it (WebView's
+  `onPermissionRequestCanceled` or `onGeolocationPermissionsHidePrompt`: WebView has
+  already cancelled it and the plugin answers nothing), or the page navigated, or the
+  surface was hidden, reconciled or closed, and the plugin denied it.
+- `pageStarted` (`{ url }`): the surface's main frame started loading a new document
+  (WebView's `onPageStarted`, which frames and same-document moves never send; an error
+  page is a document too). Everything the previous page waited on has ended by then: each
+  `sitePermissionWithdrawn` this start caused arrives before it. `navigationChanged`
+  follows once the page settles.
+- `downloadRequested`: nothing is downloaded until `saveDownload({ requestId })`, which
+  saves the file to Downloads with the surface's own cookie for the requesting page's
+  exact origin and reports `downloadFinished` (`saved` or `failed`). The http(s) address
+  can carry access tokens, so keep it out of models and logs; native code never logs it.
+- `fullscreenChanged`: a page's fullscreen view (usually video) is shown above the host;
+  Back, the page, or hiding, pausing or navigating the surface ends it, and the host's
+  system bars return as they were before.
+- `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link,
+  with `handoff` (`send-to`, `dial`, `view` or `refuse`).
   `openExternalLink` opens only that link with a fresh Intent; `tel:` opens the dialer
-  and places no call. Script attempts are dropped.
+  and places no call. Script attempts are dropped without an event.
 - `identityProviderRequested`: Google and Facebook sign-in pages refuse embedded
-  WebViews (`disallowed_useragent`). They are not loaded; open them in a full browser.
+  WebViews (`disallowed_useragent`). They are not loaded; `openIdentityProvider({ requestId })`
+  opens the page as a Custom Tab in the default browser, or another browser when the
+  default is this app or Android would ask, sent by package so it never comes back into
+  this app. The address never comes back from the host.
 - `surfaceCrashed`: the page renderer crashed or was reclaimed. Only that surface
   closes; the host activity keeps running. Recreate the surface to continue.
 - `keyboardChanged`: the on-screen keyboard opened or closed, with its height.
+
+### Request lifecycle (Android)
+
+What the code does, one surface at a time:
+
+- **Who may wait.** A dialog or site permission request waits only when the surface was
+  created with `answersRequests: true`, a listener for its event exists, the owner's session
+  is live, the surface is foregrounded (presented) and not paused, and fewer than 4 of that
+  kind are already waiting. A file input waits under the same conditions (one at a time, see
+  below). Anything else is dismissed at once and not reported: so a request from a surface
+  that is not foregrounded is dismissed at once. Downloads, external links and sign-in pages
+  are not gated on `answersRequests` or on being foregrounded: any live surface reports them.
+- **Presenting ends the hidden siblings' requests.** `presentSurface({ id })` hides every
+  other surface of the same owner, and `presentSurface()` with no id hides them all; for
+  each hidden one, held dialogs are cancelled (a leave-page dialog cancelled means the page
+  stays), fullscreen ends, the file input gets no files, held site permissions are denied
+  and each sends `sitePermissionWithdrawn`, and the held download is dropped. The surface
+  being presented keeps its own. `reconcileOwner` does the same to every surface of the
+  owner. The held external link and sign-in page are not ended by hiding.
+- **Navigating and closing** (the page starts loading a new document, `destroySurface`,
+  a purged profile, a renderer crash, a stale surface `reconcileOwner` removes, the
+  plugin's teardown when the host activity is destroyed) end the
+  same things as hiding, and also drop the held external link and sign-in page.
+  `sitePermissionWithdrawn` is sent only while the owner's session is live.
+- **Pausing** (`pauseSurface`) cancels held dialogs and ends fullscreen only; a held
+  file input and held site permissions stay, since a system picker or Android's
+  runtime permission dialog for a grant may be what covers the page.
+- **One of each per surface; the later replaces the earlier.** File input: the earlier
+  one gets no files at once; the host hears nothing for it, and `answerFileChooser` with its
+  id rejects `FILE_CHOOSER_CLOSED`. Download: the earlier one is dropped silently;
+  `saveDownload` with its id rejects `DOWNLOAD_NOT_PENDING`. External link: the later
+  link replaces the earlier silently, and `openExternalLink` with the earlier address
+  rejects `EXTERNAL_LINK_NOT_PENDING`; a refused or scripted link also clears the earlier
+  one. Sign-in page: the later `requestId` replaces the earlier silently, and
+  `openIdentityProvider` with the earlier one rejects `IDENTITY_PROVIDER_NOT_PENDING`.
+  None of the four sends an event for the replaced request.
+- **Site permissions.** A request carries `kinds[]` (`camera`, `microphone`, `location`;
+  kinds the host app declares no Android permission for are left out, and a request left
+  with none is denied at once). One `answerSitePermission` answers the whole request:
+  `grant: true` first shows Android's runtime permission dialog for any permission the app
+  lacks (one dialog at a time; later grants wait their turn), then grants every listed kind
+  if Android allowed them all and the page is still at the requesting origin, and otherwise
+  denies them all; `grant: false` denies them all. It resolves `{ granted, outcome }`:
+  `granted` (the page has every kind), `denied` (`grant: false`), `android-refused`
+  (Android's dialog was shown and a permission is still missing) or `ended` (the page
+  withdrew the request, navigating, hiding or closing ended it while Android asked, the
+  page left the requesting origin, or Android could not ask: no dialog could open, or
+  Android returned no answer, e.g. another request was showing). Only
+  `granted` gives the page anything. It is answered once: a second answer, even while
+  Android's dialog is up, rejects `SITE_PERMISSION_CLOSED`.
+- **Autoplay while capturing.** As Chrome lets a page that captures play media, a granted
+  camera or microphone request lets that surface's current page play audio and video
+  without a gesture (`mediaPlaybackRequiresUserGesture` off); the next page start
+  (WebView's `onPageStarted`) turns the gesture requirement back on. A location grant
+  changes nothing. WebView's Blink fixes the requirement into each `<video>` and `<audio>`
+  element when it is created, so only elements the page creates after the grant play on
+  their own: a preview element already in the page (for example a static
+  `<video autoplay>`) stays paused until a tap plays it. The setting is changed before the
+  grant is answered, but WebView sends settings to the page by an asynchronous sync that
+  does not wait for the permission answer, so an element made in the page's
+  `getUserMedia` handler plays on its own only as best effort (observed to on WebView 124).
+- **External links.** `openExternalLink` takes the pending link first, so it is used once
+  whatever happens. When no app other than this one resolves the Intent, or the app is gone
+  by launch, it rejects `EXTERNAL_APP_UNAVAILABLE` (Android refusing the launch rejects
+  `EXTERNAL_LINK_DENIED`; an unparsable link `EXTERNAL_LINK_INVALID`). It resolves
+  `{ status: "dispatched" }` once Android started the other app.
+- **The host's own navigation.** `navigate`, `reloadSurface`, `goBack` and `goForward`
+  first end what the page holds, as navigating does (dialogs cancelled, fullscreen,
+  file input, site permissions with `sitePermissionWithdrawn`, held download), then load:
+  a held dialog blocks the page, so WebView could not start the load and no `pageStarted`
+  would follow. A held leave-page dialog is cancelled too; the load then runs the page's
+  `beforeunload` again, which may hold a new leave-page dialog, as Chrome asks before a
+  browser navigation.
+- **Leaving the page (`beforeunload`).** A page's leave-page check reaches the plugin as
+  `onJsBeforeUnload` and is a dialog like the others, `kind: "beforeunload"`.
+  `answerDialog({ accept: true })` leaves the page; `accept: false` keeps the page and
+  drops the navigation. A leave-page dialog that is dismissed — on a surface without
+  `answersRequests`, with no listener, not foregrounded, paused, or when the surface is
+  hidden — is cancelled, so the page stays and the navigation does not happen.
+
+A certificate error is never passed. When it is the page's own, `navigationChanged`
+follows with `securityBlocked: true` and the certificate `pageError`, which a later
+generic load error of the same address does not replace, so the host can cover the error
+page with a security block.
 
 Android `pauseSurface` calls `WebView.onPause()` on one surface and `resumeSurface`
 undoes it. The page stops drawing and its timers slow to about once a second, even while
 it is shown; its state and history stay. A hidden surface is already treated this way, so
 use it for a page that stays shown under host screens. It frees no memory. A paused
-page gets no touches, focus or keyboard, its held dialogs are cancelled, and capture,
+page gets no touches, focus or keyboard, its held dialogs are cancelled (held file inputs
+and permission requests stay, as a picker or permission prompt may cover it), and capture,
 page control, `observeHistory` and `navigateHistory` reject until `resumeSurface`;
 `goBack`, `goForward`, `navigate` and `reloadSurface` still run. `presentSurface` never
 resumes it. iOS rejects both methods with `UNSUPPORTED`.
@@ -85,10 +232,13 @@ resumes it. iOS rejects both methods with `UNSUPPORTED`.
 Isolated surfaces get a fresh storage profile that is cleared when the surface closes
 and deleted once Android releases it. `createSurface({ ..., profileKey })` instead
 selects one persistent profile per owner and key (for example a signed-in account), so
-website sign-ins survive. `purgeProfiles({ profileKey })` removes it at once and closes
+website sign-ins survive. `purgeProfiles({ profileKey })` removes it and closes
 its surfaces (`surfaceClosed`); `purgeProfiles({ idleMs })` removes keyed profiles idle
-for that long. `purgeProfiles({ all: true })` removes every surface profile of any owner,
-closes their surfaces and resolves `clean` once no purged profile holds a cookie.
+for that long. `purgeProfiles({ all: true })` removes every surface profile of any owner
+and closes their surfaces. `profileKey` and `all` resolve only once WebView reports the
+cookies removed, after storage deletion was issued, with `clean` true when no purged
+profile still holds a cookie; `idleMs` resolves at once, without `clean`.
+A keyed profile accepts third-party cookies, so embedded sign-ins work as in a browser.
 `clearSurfaceStorage` signs one isolated surface out of every website.
 
 Android `createSurface({ ..., layer: "below-host" })` draws the page under the host
@@ -129,17 +279,24 @@ Android `observeHistory` exposes adjacent same-origin destinations with opaque,
 short-lived references. `navigateHistory` consumes a reference once and dispatches
 through the native-owned isolated world: Android's ordinary Back/Forward API can
 skip history entries. Hidden, paused, replaced or changed history refuses the
-reference. Navigation can retire the reply; `UNCERTAIN_OUTCOME` requires page
-readback, never replay. A dispatch receipt does not prove arrival or task success.
+reference. While the page holds a dialog it rejects `DIALOG_OPEN` at once, without
+dispatching or consuming the reference: a dialog freezes the page, so the traversal could
+run only once the dialog is answered. Unlike `goBack` and `goForward` it ends nothing the
+page holds. Navigation can retire the reply, and a page that does not answer within 5
+seconds rejects it; `UNCERTAIN_OUTCOME` requires page readback, never replay. A dispatch receipt does not prove arrival or task success.
 These are host primitives, not agent authorization: the caller must compose task
 scope, origin approval, preview and durable effect recording. Cross-origin history
 and iOS are not supported by these methods. Form POST resubmission is refused.
 
 Android `stopLoading` stops the current page load where it is (a no-op when nothing is
-loading) and then sends `navigationChanged`, so the host re-reads `progress`.
+loading) and then sends `navigationChanged`, so the host re-reads `progress`. It ends
+nothing the page holds: a held dialog, file input or site permission request still waits
+for its answer.
 
-Script popups never open. `getSurfaceState` also returns `title`, `canGoBack`,
-`canGoForward`, `progress`, `pageError` and `textZoom`; `setTextZoom` sets the page
+Script popups never open. Pages pinch-zoom, and a page without a mobile viewport is shown
+whole. `getSurfaceState` also returns `title`, `canGoBack`, `canGoForward`, `progress`,
+`pageError`, `securityBlocked`, `textZoom` and `pageScale` (density-independent pixels per CSS pixel: 1 is
+the page's own mobile size); `navigationChanged` follows a pinch once it settles. `setTextZoom` sets the page
 text size from 50 to 300 percent. On Android every `navigationChanged` event also
 carries these fields as they were when it was sent. Listeners receive every surface's
 events, so a host uses them only when `exists` is true and `owner`, `session` and
@@ -242,11 +399,12 @@ The host must supply an authorized task policy for input. Never use a policy
 from model output or website content. Each effect requires a fresh snapshot and
 its document ID. Closing, hiding, navigation, or owner reconciliation interrupts
 pending work. Activity pause also fences control and keeps the page for Resume.
-Hiding or pausing requires a fresh snapshot before the next input. A lost effect reply reports an uncertain outcome; observe before
-continuing and never automatically replay the effect. This API currently covers
-the main frame's DOM commands, not child frames or coordinate input. After a task
-effect, `BrowserEffectWatch` applies the Chromium network watch's rule to every
-request `shouldInterceptRequest` sees, from any frame; task snapshots report it as
+Hiding or pausing requires a fresh snapshot before the next input. A lost effect
+reply reports an uncertain outcome; observe before continuing and never
+automatically replay the effect. This API currently covers the main frame's DOM
+commands, not child frames or coordinate input. After a task effect,
+`BrowserEffectWatch` applies the Chromium network watch's rule to every request
+`shouldInterceptRequest` sees, from any frame; task snapshots report it as
 `effectViolation` and `effectWatch`. WebView names no request type, so only an
 image or stylesheet load (by its `Accept` header) is a passive cross-site read;
 beacons and other cross-site reads count within the 30-second window. WebView
@@ -301,9 +459,10 @@ A host that needs the browser only for some work calls `acquire()` instead of
 `start()` and closes the returned lease when that work ends; `stop()` ends a
 `start()`. With no `start()` or open lease, the binding is released after the
 idle delay (the constructor's second argument, 60 s by default), so Android can
-freeze or reclaim the browser. That trades resident memory for latency: the
-next `acquire()` after a release may cold-start Chromium. The memory saving has not been measured on a device yet
-(compare `dumpsys meminfo` and `oom_adj` of the browser with the host idle).
+freeze or reclaim the browser. That trades resident memory for latency: the next
+`acquire()` after a release may cold-start Chromium. The memory saving has not
+been measured on a device yet (compare `dumpsys meminfo` and `oom_adj` of the
+browser with the host idle).
 `lease.whenReady(callback)` is posted to the main thread once the browser
 service is connected, has passed its package and certificate check and was asked
 to warm up; it runs once and is dropped when the lease closes. Warmup is only
@@ -411,7 +570,16 @@ credential prose return `{blocked:true}`; any other failure offers nothing so th
 opens for pasted text. Hosts inject `fetch` and the HTML parser; the live frame keeps its
 opaque origin.
 
-`SubmittedNavigation` from `./submitted-navigation` owns submitted-address history, stale-check fencing and revision-bound explicit one-time overrides. Hosts validate/resolve addresses and supply a verdict check. Failed checks stay unavailable. The default `check-first` policy waits for a clean verdict. A host can select `policy: "blacklist"` to permit unavailable and lookalike results; a confirmed blocked result still stops navigation. Navigation waits for the host check, which should use a local cache rather than await feed downloads. Request-time enforcement must also cover redirects and subsequent navigation. It does not grant task actions. Hosts retain warning/confirmation UI, sandbox configuration and all navigation authorization. This controller cannot observe internal iframe navigation or certify loaded content.
+`SubmittedNavigation` from `./submitted-navigation` owns submitted-address history,
+stale-check fencing and revision-bound explicit one-time overrides. Hosts
+validate/resolve addresses and supply a verdict check. Failed checks stay unavailable.
+The default `check-first` policy waits for a clean verdict. A host can select
+`policy: "blacklist"` to permit unavailable and lookalike results; a confirmed blocked
+result still stops navigation. Navigation waits for the host check, which should use a local
+cache rather than await feed downloads. Request-time enforcement must also cover
+redirects and subsequent navigation. It does not grant task actions. Hosts retain
+warning/confirmation UI, sandbox configuration and all navigation authorization. This
+controller cannot observe internal iframe navigation or certify loaded content.
 
 ## Android host web policy
 
@@ -469,10 +637,11 @@ Android helpers for the same hosts (they need AndroidX WebKit with
   on each redirect hop, and stops that fetch when its entry, tab or site data is cleared.
   `BrowserBlobCapture` copies a page-created `blob:` file through an isolated world. The host
   passes its preference name, its "is this review still current" check and its cookie reader.
-- `BrowserExternalHandoff.intentFor(raw, ownPackage, hostSchemes)` builds the implicit intent for
-  a `mailto:`, `tel:` (dial only), `sms:`/`smsto:` (compose only), `geo:`, `market:` or `intent:` link with no component, selector, clip
-  data, extras or grant flags; `fallback` reads a safe HTTPS `browser_fallback_url`, and
-  `browserProbe`/`genericHttps` find general browsers for an external page handoff.
+- `BrowserExternalHandoff.intentFor(raw, ownPackage, hostSchemes)` builds the implicit intent
+  for a `mailto:`, `tel:` (dial only), `sms:`/`smsto:` (compose only), `geo:`, `market:` or
+  `intent:` link with no component, selector, clip data, extras or grant flags; `fallback` reads
+  a safe HTTPS `browser_fallback_url`, and `browserProbe`/`genericHttps` find general browsers
+  for an external page handoff.
 - `BrowserBookmarkStore` and `BrowserSessionStore` keep bookmarks, normal-tab history and tabs,
   and site-permission decisions, sealed by the host's `BrowserSealedText` (for example a
   Keystore AES-GCM frame). The host passes its own preferences file and key, so installed data

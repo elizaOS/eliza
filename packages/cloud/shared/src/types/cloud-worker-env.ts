@@ -96,6 +96,8 @@ export interface Bindings {
   STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS?: string;
   /** Exact Cloud organization UUIDs eligible for the staging QA session bridge. */
   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS?: string;
+  STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT?: string;
+  STAGING_SESSION_EXCHANGE_GRANT_READ_KEY?: string;
   /**
    * Secondary kill switch for durable auto-top-up claims. Only the exact
    * string "true" permits new claims; recovery and signed reconciliation run
@@ -209,6 +211,7 @@ export interface Bindings {
 
   // ---- ElevenLabs ----
   ELEVENLABS_API_KEY?: string;
+  ELEVENLABS_VOICE_ID?: string;
 
   // ---- Cartesia ----
   /**

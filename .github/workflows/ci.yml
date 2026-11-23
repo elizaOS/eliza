@@ -126,7 +126,7 @@ jobs:
       - name: Build core contract
         run: bun run build:core
       - name: Setup Java for Quint verification
-        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880
         with:
           distribution: temurin
           java-version: "21"
@@ -149,8 +149,7 @@ jobs:
       - name: Install local Redis for protocol conformance
         run: |
           if ! command -v redis-server >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends redis-server
+            bash packages/scripts/github/install-apt-packages.sh --no-install-recommends redis-server
           fi
           redis-server --version
       - name: Install Chromium for browser conformance

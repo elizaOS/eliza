@@ -25,6 +25,12 @@ receivers, deadline and teardown settlement. A timeout means unknown send status
 and must not trigger an automatic resend. Only the default SMS app persists sent
 rows; other apps leave platform-owned persistence alone.
 
+The latest-sender lookup reads one incoming SMS without its message body. The legacy
+`sms.latest-sender.v1` response returns a four-digit suffix. With `sms.latest-sender.v2`,
+a current owner request can obtain the complete replyable address and its thread identity.
+A follow-up draft can use the delivered lookup in the same conversation and enrollment.
+The phone presents the draft; only the owner's Send tap submits it.
+
 ## Android modem verification
 
 `bun packages/app/scripts/android-native-sms.ts --sender emulator-5580 --receiver emulator-5582`
@@ -83,6 +89,27 @@ newest shown message); its receipt labels never claim more than a result proves.
   carrier; a PDU over the carrier's size limit is refused before review.
   "sent" is the carrier's send confirmation (M-Send.conf Ok); MMS delivery is
   never claimed. `status().mmsSend` reports whether the path is available.
+
+## Single-message deletion
+
+`createTelephonyClient().deleteMessage({ id, kind, threadId, date })` removes
+one listed local SMS or MMS after the host confirms the owner's choice. Pass
+its exact `listMessages` identity and millisecond date. This does not cancel a
+send or delete a conversation. Older native hosts omit this method.
+
+The native bridge rechecks image admission, foreground user, unlocked foreground
+access, SMS read permission and default SMS role before its conditional provider
+write. It binds the collection delete to the observed row, thread and raw date
+and to a settled box (received or sent); SMS and MMS stay separate. A draft,
+queued, outbox or failed row belongs to a send and is answered `not-settled`
+with nothing deleted. The content-free receipt is `deleted`, `not-found`,
+`stale`, `not-settled` or `unknown`. Only `deleted` confirms this operation
+removed the row.
+A lost or invalid reply is unknown; never retry it automatically. No message
+body or address is included, and no automatic agent mutation is exposed.
+
+SQLite-backed JVM provider tests and entry/lifecycle tests cover this path.
+Platform role/AppOp enforcement and real-device acceptance remain separate.
 
 ## Host-native reviewed send (`ReviewedSmsSend`)
 

@@ -12,7 +12,7 @@ import {
 } from "../../native-host/android-runtime-inventory.mjs";
 
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
-function fixture(t, targetAbi = "arm64-v8a") {
+function fixture(t, targetAbi = "arm64-v8a", gateway = true) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-inventory-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const assetsDirectory = path.join(root, "assets"),
@@ -23,8 +23,12 @@ function fixture(t, targetAbi = "arm64-v8a") {
   fs.mkdirSync(nativeLibraryDirectory);
   for (const [name, bytes] of [
     ["agent-bundle.js", "synthetic agent fixture"],
-    ["gateway/bootstrap.mjs", "synthetic bootstrap"],
-    ["gateway/local-agent-gateway.mjs", "synthetic gateway"],
+    ...(gateway
+      ? [
+          ["gateway/bootstrap.mjs", "synthetic bootstrap"],
+          ["gateway/local-agent-gateway.mjs", "synthetic gateway"],
+        ]
+      : []),
     ["extension.tar", "synthetic tar fixture"],
   ])
     fs.writeFileSync(path.join(assetsDirectory, "agent", name), bytes);
@@ -38,7 +42,45 @@ function fixture(t, targetAbi = "arm64-v8a") {
       path.join(nativeLibraryDirectory, name),
       "synthetic native bytes; no execution",
     );
-  return { root, assetsDirectory, nativeLibraryDirectory, targetAbi };
+  return { root, assetsDirectory, nativeLibraryDirectory, targetAbi, gateway };
+}
+function extractWithJava(f) {
+  const classes = path.join(f.root, "classes");
+  fs.mkdirSync(classes);
+  const bin = (name) =>
+    process.env.JAVA_HOME
+      ? path.join(process.env.JAVA_HOME, "bin", name)
+      : name;
+  execFileSync(
+    bin("javac"),
+    [
+      "-d",
+      classes,
+      path.join(
+        plugin,
+        "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeBundleStore.java",
+      ),
+      path.join(
+        plugin,
+        "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeAssets.java",
+      ),
+      path.join(plugin, "test/native-host/RuntimeInventoryInterop.java"),
+    ],
+    { timeout: 60000 },
+  );
+  assert.match(
+    execFileSync(
+      bin("java"),
+      [
+        "-cp",
+        classes,
+        "ai.eliza.plugins.agent.runtime.test.RuntimeInventoryInterop",
+        f.root,
+      ],
+      { encoding: "utf8", timeout: 60000 },
+    ),
+    /tamper rejection passed/,
+  );
 }
 for (const targetAbi of ["arm64-v8a", "x86_64"])
   test(`${targetAbi} Node inventory interoperates with Java extraction, restart and integrity checks`, (t) => {
@@ -46,43 +88,26 @@ for (const targetAbi of ["arm64-v8a", "x86_64"])
       first = stageAndroidRuntimeInventory(f),
       second = stageAndroidRuntimeInventory(f);
     assert.deepEqual(second, first);
-    const classes = path.join(f.root, "classes");
-    fs.mkdirSync(classes);
-    const bin = (name) =>
-      process.env.JAVA_HOME
-        ? path.join(process.env.JAVA_HOME, "bin", name)
-        : name;
-    execFileSync(
-      bin("javac"),
-      [
-        "-d",
-        classes,
-        path.join(
-          plugin,
-          "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeBundleStore.java",
-        ),
-        path.join(
-          plugin,
-          "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeAssets.java",
-        ),
-        path.join(plugin, "test/native-host/RuntimeInventoryInterop.java"),
-      ],
-      { timeout: 60000 },
-    );
-    assert.match(
-      execFileSync(
-        bin("java"),
-        [
-          "-cp",
-          classes,
-          "ai.eliza.plugins.agent.runtime.test.RuntimeInventoryInterop",
-          f.root,
-        ],
-        { encoding: "utf8", timeout: 60000 },
-      ),
-      /tamper rejection passed/,
-    );
+    extractWithJava(f);
   });
+test("an agent-only payload for the embedded agent stages without a gateway and extracts on Java", (t) => {
+  const f = fixture(t, "x86_64", false);
+  assert.throws(
+    () => stageAndroidRuntimeInventory({ ...f, gateway: true }),
+    /Incomplete runtime asset inventory/,
+  );
+  assert.throws(
+    () => stageAndroidRuntimeInventory({ ...f, gateway: "no" }),
+    /Invalid runtime gateway choice/,
+  );
+  const text = fs.readFileSync(
+    stageAndroidRuntimeInventory(f).manifestPath,
+    "utf8",
+  );
+  assert.match(text, /\tbundle\/agent-bundle\.js\n/);
+  assert.doesNotMatch(text, /gateway/);
+  extractWithJava(f);
+});
 test("unsafe inputs and incomplete inventories cannot replace the admitted manifest", (t) => {
   const f = fixture(t),
     first = stageAndroidRuntimeInventory(f),

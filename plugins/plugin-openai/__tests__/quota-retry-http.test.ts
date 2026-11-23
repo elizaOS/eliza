@@ -255,7 +255,7 @@ describe("provider quota retry HTTP boundary", () => {
     10000
   );
 
-  it("keeps a long millisecond cooldown through aliases until the complete provider delay expires", async () => {
+  it("keeps a long cooldown through aliases until the provider's whole delay expires off direct Cerebras", async () => {
     const now = Date.UTC(2026, 8, 6, 12);
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
     const test = await fixture("rate_limit_exceeded", true, { "retry-after-ms": "180000" });
@@ -264,6 +264,8 @@ describe("provider quota retry HTTP boundary", () => {
         statusCode: 429,
       }
     );
+    // OpenAI and other compatible providers count a refused request against the limit, so the
+    // short local hold applies only on the direct Cerebras route.
     clock.mockReturnValue(now + 120_001);
     await expect(
       handleResponseHandler(test.runtime, {
@@ -271,7 +273,11 @@ describe("provider quota retry HTTP boundary", () => {
         model: "latency-test",
         stream: true,
       })
-    ).rejects.toMatchObject({ name: "ProviderRateLimitCooldownError", statusCode: 429 });
+    ).rejects.toMatchObject({
+      name: "ProviderRateLimitCooldownError",
+      statusCode: 429,
+      retryAfterMs: 180_000 - 120_001,
+    });
     expect(test.requests()).toBe(1);
     clock.mockReturnValue(now + 180_000);
     await expect(handleTextSmall(test.runtime, { prompt: "After reset." })).resolves.toBe(

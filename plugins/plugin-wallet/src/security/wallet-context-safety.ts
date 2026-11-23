@@ -63,6 +63,10 @@ function messageHasPromptInjectionFlag(message: Memory): boolean {
 }
 export const EVM_ADDRESS_PATTERN = /0x[a-fA-F0-9]{40}\b/g;
 export const SOLANA_ADDRESS_PATTERN = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+// Redaction patterns deliberately have no \b: an address glued to a word
+// character ("_", a letter, a digit) must still be redacted.
+const EVM_ADDRESS_REDACT_PATTERN = /0x[a-fA-F0-9]{40}/g;
+const SOLANA_ADDRESS_REDACT_PATTERN = /[1-9A-HJ-NP-Za-km-z]{32,44}/g;
 const SOLANA_ADDRESS_EXACT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 const INFERRED_RECIPIENT_PHRASE =
@@ -70,8 +74,8 @@ const INFERRED_RECIPIENT_PHRASE =
 
 export function sanitizeWalletDisplayLabel(label: string): string {
   return label
-    .replace(EVM_ADDRESS_PATTERN, "[address]")
-    .replace(SOLANA_ADDRESS_PATTERN, "[address]")
+    .replace(EVM_ADDRESS_REDACT_PATTERN, "[address]")
+    .replace(SOLANA_ADDRESS_REDACT_PATTERN, "[address]")
     .replace(
       /\[[^\]]*(?:recipient|operational|settlement|canonical)[^\]]*\]/gi,
       "[routing-hint-removed]",

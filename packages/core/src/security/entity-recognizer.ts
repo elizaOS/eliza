@@ -31,6 +31,7 @@
  * (regex/gazetteer/LLM do) so overlap resolution is precise.
  */
 import { findBasicEmailSpans } from "./basic-email";
+import { coordinateSpanTest } from "./phone-span-context";
 
 /** A detected named-entity span. Offsets are best-effort (see module note). */
 export interface EntitySpan {
@@ -125,11 +126,16 @@ export class RegexEntityRecognizer implements PiiEntityRecognizer {
 			}
 			for (const { kind, pattern } of this.detectors) {
 				pattern.lastIndex = 0;
+				// A map coordinate ("-122.4194093") is never a phone number.
+				const isCoordinate =
+					kind === "phone" ? coordinateSpanTest(text) : undefined;
 				for (const match of text.matchAll(pattern)) {
 					const value = match[0].trim();
 					if (!value) continue;
 					const start = match.index ?? 0;
-					spans.push({ kind, value, start, end: start + match[0].length });
+					const end = start + match[0].length;
+					if (isCoordinate?.(start, end)) continue;
+					spans.push({ kind, value, start, end });
 				}
 			}
 		}

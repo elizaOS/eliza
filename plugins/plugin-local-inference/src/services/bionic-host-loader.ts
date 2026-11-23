@@ -149,6 +149,11 @@ function assertPayloadFrameFits(
  * it. Android smoke and first-run paths can stage the curated Eliza-1 text GGUF
  * flat under `local-inference/models/`, so for those files we create a hidden
  * hardlink/symlink bundle view without copying the multi-GB model bytes.
+ *
+ * Returns `""` only when the model needs no staged view (host default). A flat
+ * Eliza-1 model whose view cannot be staged throws
+ * `BIONIC_BUNDLE_STAGE_FAILED` instead: `""` there would let the load succeed
+ * against a bundle that does not hold the requested model.
  */
 export function deriveBundleDir(modelPath: string): string {
 	if (!modelPath) return "";
@@ -179,18 +184,32 @@ export function deriveBundleDir(modelPath: string): string {
 		}
 		return bundleRoot;
 	} catch (err) {
-		logger.warn(
-			`[BionicHostLoader] could not stage bionic bundle view for flat model "${modelPath}": ${err instanceof Error ? err.message : String(err)}`,
+		// error-policy:J1 "" means "this model needs no staged view, use the
+		// host default". A view we were asked to stage but could not is a broken
+		// artifact path, so it must fail the load: returning "" here made
+		// loadModel() succeed, log `<host-default>`, and decode with a bundle
+		// that does not contain the requested model.
+		throw new ElizaError(
+			`Could not stage the bionic bundle view for flat model "${modelPath}"`,
+			{
+				code: "BIONIC_BUNDLE_STAGE_FAILED",
+				cause: err,
+				context: { modelPath },
+			},
 		);
 	}
-	return "";
 }
 function isStagedAlias(stagedPath: string): boolean {
 	try {
 		lstatSync(stagedPath);
 		return true;
-	} catch {
-		return false;
+	} catch (err) {
+		// Absence is the only answer this probe may invent. A path that cannot
+		// be read (EACCES, ELOOP, EIO) is a broken stage: reporting it as "not
+		// staged" relinks over an alias we never inspected and surfaces a
+		// downstream EEXIST instead of the real errno.
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw err;
 	}
 }
 

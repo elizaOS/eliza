@@ -69,7 +69,6 @@ const BUILTIN_VIEW_CASES: Array<{
   { id: "voice", path: "/settings/voice" },
   { id: "runtime", path: "/apps/runtime" },
   { id: "database", path: "/apps/database" },
-  { id: "desktop", path: "/desktop" },
   { id: "settings", path: "/settings" },
   { id: "logs", path: "/apps/logs" },
   { id: "background", path: "/background" },

@@ -45,13 +45,6 @@ function storeNavigateViewPayload(detail: NavigateViewDetail): void {
   if (!detail.viewId || detail.payload === undefined) return;
   pendingNavigateViewPayloads.set(detail.viewId, detail.payload);
 }
-export type DesktopTabOpen = (
-  view: ViewRegistryEntry,
-  options?: {
-    pinned?: boolean;
-  },
-) => void;
-export type DesktopTabClose = (viewId: string) => void;
 export type DesktopBridgeRequest = <T>(options: {
   rpcMethod: string;
   ipcChannel: string;
@@ -112,26 +105,16 @@ function layoutViewIdsForDetail(detail: NavigateViewDetail): string[] {
   });
 }
 export function createNavigateViewHandler({
-  availableViewsForDesktopTabs,
-  closeDesktopTab,
-  desktopTabs = [],
+  availableViews,
   invokeDesktopBridgeRequest,
   navigatePath = navigateBrowserPath,
-  openDesktopTab,
-  setActiveDesktopTabId,
   setTab,
   setTabForPath,
   setViewLayout,
 }: {
-  availableViewsForDesktopTabs: ViewRegistryEntry[];
-  closeDesktopTab?: DesktopTabClose;
-  desktopTabs?: Array<{
-    viewId: string;
-  }>;
+  availableViews: ViewRegistryEntry[];
   invokeDesktopBridgeRequest: DesktopBridgeRequest;
   navigatePath?: (path: string) => void;
-  openDesktopTab: DesktopTabOpen;
-  setActiveDesktopTabId: (viewId: string | null) => void;
   setTab: (tab: Tab) => void;
   setTabForPath?: (tab: Tab) => void;
   setViewLayout?: (layout: ActiveViewLayout | null) => void;
@@ -147,14 +130,6 @@ export function createNavigateViewHandler({
     storeNavigateViewPayload(detail);
     if (detail.action === "close" || detail.action === "close-all") {
       setViewLayout?.(null);
-      if (detail.action === "close-all" || detail.viewId === "__all__") {
-        for (const tab of desktopTabs) {
-          closeDesktopTab?.(tab.viewId);
-        }
-      } else if (detail.viewId) {
-        closeDesktopTab?.(detail.viewId);
-      }
-      setActiveDesktopTabId(null);
       setTab("chat");
       return true;
     }
@@ -162,17 +137,9 @@ export function createNavigateViewHandler({
       const viewIds = layoutViewIdsForDetail(detail);
       const resolvedViewIds: string[] = [];
       for (const viewId of viewIds) {
-        const entry = desktopEntryForDetail(
-          availableViewsForDesktopTabs,
-          viewId,
-        );
-        if (!entry) continue;
-        resolvedViewIds.push(entry.id);
-        openDesktopTab(entry, { pinned: false });
+        const entry = desktopEntryForDetail(availableViews, viewId);
+        if (entry) resolvedViewIds.push(entry.id);
       }
-      const primaryViewId =
-        resolvedViewIds[0] ?? viewIds[0] ?? detail.viewId ?? null;
-      if (primaryViewId) setActiveDesktopTabId(primaryViewId);
       setViewLayout?.({
         mode: detail.action === "split-view" ? "split" : "tile",
         viewIds: resolvedViewIds.length > 0 ? resolvedViewIds : viewIds,
@@ -183,10 +150,7 @@ export function createNavigateViewHandler({
       navigatePath("/views");
       return true;
     }
-    const path = pathForNavigateViewDetail(
-      detail,
-      availableViewsForDesktopTabs,
-    );
+    const path = pathForNavigateViewDetail(detail, availableViews);
     if (!path) return false;
     setViewLayout?.(null);
     const directTab = directTabForNavigateView(detail, path);
@@ -195,10 +159,7 @@ export function createNavigateViewHandler({
       return true;
     }
     if (detail.action === "open-window" && detail.viewId) {
-      const entry = desktopEntryForDetail(
-        availableViewsForDesktopTabs,
-        detail.viewId,
-      );
+      const entry = desktopEntryForDetail(availableViews, detail.viewId);
       const viewPath = entry?.path ?? `/apps/${detail.viewId}`;
       const viewLabel = entry?.label ?? detail.viewId;
       void invokeDesktopBridgeRequest<{
@@ -231,16 +192,6 @@ export function createNavigateViewHandler({
           navigatePath(viewPath);
         });
       return true;
-    }
-    if (detail.viewId) {
-      const entry = desktopEntryForDetail(
-        availableViewsForDesktopTabs,
-        detail.viewId,
-      );
-      if (entry && (detail.action === "pin-tab" || entry.desktopTabEnabled)) {
-        openDesktopTab(entry, { pinned: detail.action === "pin-tab" });
-        setActiveDesktopTabId(entry.id);
-      }
     }
     activateTabForPath(path);
     navigatePath(path);

@@ -57,6 +57,7 @@ public final class NativeProviderAdmissionTest {
   check("https://api.eliza.app/api/v1".equals(env.get("ELIZAOS_CLOUD_BASE_URL")),"production Cloud API");
   check("true".equals(env.get("ELIZAOS_CLOUD_USE_INFERENCE")),"Cloud inference on");
   check("cerebras/qwen-3.8-27b".equals(env.get("ELIZAOS_CLOUD_SMALL_MODEL"))&&"cerebras/qwen-3.8-27b".equals(env.get("ELIZAOS_CLOUD_LARGE_MODEL")),"Cloud models are the pinned Qwen");
+  check(NativeProviderAdmission.CLOUD_PROVIDER_MODEL.equals(env.get("ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL")),"Cloud image description uses the approved Qwen model");
   for(String key:env.keySet())check(!key.startsWith("CEREBRAS_")&&!key.startsWith("OPENAI_")&&!"ELIZA_PROVIDER".equals(key),"elizacloud removes "+key);
   check("provider:elizacloud:9b2d6c34-6f0a-4d0e-9f63-2b8e1f0c7a11".equals(env.get("ELIZA_HOST_CONTEXT_REVISION")),"host revision comes from the selection");
   // Only cerebras/qwen-3.8-27b; expired, malformed or another credential's token is refused.
@@ -81,6 +82,10 @@ public final class NativeProviderAdmissionTest {
   for(String key:new String[]{"CEREBRAS_MODEL","CEREBRAS_SMALL_MODEL","CEREBRAS_LARGE_MODEL"})check("qwen-3.8-27b".equals(directEnv.get(key)),"Cerebras forces qwen-3.8-27b for "+key);
   check(KEY.equals(directEnv.get("CEREBRAS_API_KEY"))&&"false".equals(directEnv.get("ELIZAOS_CLOUD_USE_INFERENCE")),"direct key, Cloud inference off");
   check(!directEnv.containsKey("ELIZAOS_CLOUD_API_KEY")&&!directEnv.containsKey("ELIZAOS_CLOUD_SMALL_MODEL"),"Cloud key and models removed");
+  NativeProviderAdmission.applyProviderEnvironment(direct,null,env,NOW);
+  check(!env.containsKey("ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL"),"Direct removes the previous Cloud image model");
+  NativeProviderAdmission.applyProviderEnvironment(selected,cloud(ID,NOW+1),env,NOW);
+  check(NativeProviderAdmission.CLOUD_PROVIDER_MODEL.equals(env.get("ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL")),"Returning to Cloud restores the approved Qwen image model");
   check(directEnv.get("ELIZA_HOST_CONTEXT_REVISION").startsWith("boot:"),"a legacy selection gets a boot revision");
   refused(()->NativeProviderAdmission.applyProviderEnvironment(new JSONObject().put("provider","cerebras").put("key","bad key!").put("model","qwen-3.8-27b"),null,inherited(),NOW),"invalid direct key");
   refused(()->NativeProviderAdmission.applyProviderEnvironment(new JSONObject().put("provider","openai").put("model","gpt"),null,inherited(),NOW),"unknown provider");

@@ -2,8 +2,8 @@
  * The non-coding planner on the Anthropic wire, through the runtime's
  * per-attempt preparation, the real text handler and AI SDK, and a loopback
  * Messages API that enforces the extended-thinking rule (max_tokens must exceed
- * thinking.budget_tokens). The planner sets no default cap for Anthropic, so
- * every thinking configuration keeps the request it had before the default.
+ * thinking.budget_tokens). The planner sends no cap, so Anthropic's required
+ * max_tokens is the model's output limit in every thinking configuration.
  */
 import { createServer, type Server } from "node:http";
 import { AgentRuntime, type IAgentRuntime, ModelType, type ToolDefinition } from "@elizaos/core";
@@ -78,7 +78,6 @@ afterAll(async () => {
 beforeEach(() => {
   bodies.length = 0;
   vi.stubEnv("ANTHROPIC_AUTH_MODE", "apikey");
-  vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", undefined);
   for (const key of [
     "ANTHROPIC_COT_BUDGET",
     "ANTHROPIC_COT_BUDGET_SMALL",
@@ -150,7 +149,7 @@ async function plan(thinking: Record<string, string>, model: string = MODEL) {
 const outputLimit = (model: string) =>
   resolveAnthropicMaxOutputTokens({ getSetting: () => null } as never, model as never);
 
-it("sends the model output limit without thinking settings, as before the default", async () => {
+it("sends the model output limit without thinking settings", async () => {
   const sent = await plan({});
   expect(sent).toHaveLength(1);
   expect(sent[0]).toMatchObject({ max_tokens: outputLimit(MODEL) });
@@ -168,7 +167,7 @@ it("keeps max_tokens above a thinking budget", async () => {
   ]);
 });
 
-it("leaves adaptive thinking the model output limit, as before the default", async () => {
+it("leaves adaptive thinking the model output limit", async () => {
   // Adaptive thinking spends max_tokens; a default would share it with the answer.
   const sent = await plan({ ANTHROPIC_EFFORT_LARGE: "high" });
   expect(sent).toEqual([
@@ -190,13 +189,14 @@ it("leaves a model that always thinks adaptively its output limit", async () => 
   ]);
 });
 
-it("sends the planner override above a thinking budget", async () => {
-  vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", "8192");
+it("ignores the former planner cap variables", async () => {
+  vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", "16");
+  vi.stubEnv("ELIZA_CODING_PLANNER_MAX_TOKENS", "16");
   const sent = await plan({ ANTHROPIC_COT_BUDGET: "10000" });
   expect(sent).toEqual([
     expect.objectContaining({
       thinking: { type: "enabled", budget_tokens: 10000 },
-      max_tokens: 8192 + 10000,
+      max_tokens: outputLimit(MODEL),
     }),
   ]);
 });

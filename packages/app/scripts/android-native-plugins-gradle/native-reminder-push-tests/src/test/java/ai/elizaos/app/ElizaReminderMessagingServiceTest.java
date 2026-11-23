@@ -46,6 +46,7 @@ public class ElizaReminderMessagingServiceTest {
         shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         manager = context.getSystemService(NotificationManager.class);
         context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).edit().clear().commit();
+        NativeNotificationChannels.setHostAssignedGroups(java.util.Set.of());
         PushNotificationsPlugin.staticBridge = null;
         PushNotificationsPlugin.lastMessage = null;
         ResolveInfo activity = new ResolveInfo();
@@ -287,6 +288,48 @@ public class ElizaReminderMessagingServiceTest {
         assertEquals("eliza_updates", reminderChildren()[0].getNotification().getChannelId());
         assertEquals("reminders", manager.getNotificationChannel("eliza_updates").getGroup());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
+    @Test public void hostAssignedGroupIsNotAnOccurrenceCustomisation() {
+        NativeNotificationChannels.setHostAssignedGroups(java.util.Set.of("host-reminders"));
+        manager.createNotificationChannelGroup(new android.app.NotificationChannelGroup("host-reminders", "Reminders"));
+        NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
+        updates.setGroup("host-reminders");
+        manager.createNotificationChannel(updates);
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "host-grouped-occurrence"));
+        assertEquals(android.os.Build.VERSION.SDK_INT < 30 ? "eliza_updates" : "eliza_notifications", reminderChildren()[0].getNotification().getChannelId());
+    }
+    @Config(sdk = {29, 36})
+    @Test public void blockedHostAssignedGroupKeepsOccurrenceBlocked() {
+        NativeNotificationChannels.setHostAssignedGroups(java.util.Set.of("host-reminders"));
+        android.app.NotificationChannelGroup group = new android.app.NotificationChannelGroup("host-reminders", "Reminders");
+        org.robolectric.util.ReflectionHelpers.setField(group, "mBlocked", true);
+        manager.createNotificationChannelGroup(group);
+        NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
+        updates.setGroup("host-reminders");
+        manager.createNotificationChannel(updates);
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "blocked-host-group-occurrence"));
+        assertEquals(0, reminderChildren().length);
+        assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
+    @Config(sdk = {29, 36})
+    @Test public void summaryIsNotPostedIntoABlockedGroup() {
+        android.app.NotificationChannelGroup group = new android.app.NotificationChannelGroup("muted-reminders", "Muted reminders");
+        manager.createNotificationChannelGroup(group);
+        NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
+        updates.setGroup("muted-reminders");
+        manager.createNotificationChannel(updates);
+        receiver().onMessageReceived(message(data(A), "grouped-first"));
+        receiver().onMessageReceived(message(data(B), "grouped-second"));
+        manager.cancel("eliza.reminder.summary:eliza_updates", 0);
+        org.robolectric.util.ReflectionHelpers.setField(group, "mBlocked", true);
+        manager.createNotificationChannelGroup(group);
+        Notification child = java.util.Arrays.stream(reminderChildren()).filter(n -> n.getTag().endsWith(A))
+            .findFirst().get().getNotification();
+        new ReminderNotificationDismissReceiver().onReceive(context, shadowOf(child.deleteIntent).getSavedIntent());
+        assertEquals(1, reminderChildren().length);
+        assertNull(summary("eliza_updates"));
     }
     @Config(sdk = {29, 36})
     @Test public void blockedGroupDoesNotConsumeReceiptAndCanLaterDeliver() {

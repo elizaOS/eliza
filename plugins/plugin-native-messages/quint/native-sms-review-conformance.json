@@ -2,6 +2,7 @@
   {
     "className": "ai.eliza.plugins.messages.TelephonyPluginReviewTest",
     "required": [
+      "smsEligibilityMatchesTypedMmsReceiverAndEnabledHostComponents",
       "smsCancellationBeforeJournalReplyMustRetireQueuedReview",
       "mmsCancellationBeforeJournalReplyMustRetireQueuedReview",
       "backgroundBeforeJournalReplyMustRetireQueuedReview",
@@ -11,7 +12,11 @@
       "ownerApprovedSmsUsesTheSameReceiptWithoutDialogOrReplay",
       "ownerApprovedMmsUsesTheSameReceiptWithoutDialogOrReplay",
       "withdrawnComposerApprovalCannotDispatchOrBeReplayed",
-      "mmsRetiredAfterStagingRollsBackOnlyItsOwnRow"
+      "mmsRetiredAfterStagingRollsBackOnlyItsOwnRow",
+      "deleteRequiresImageForegroundUnlockedDefaultSmsAndReadAuthority",
+      "deleteRefusesANonForegroundAndroidUserProfile",
+      "deleteRechecksRoleAndReadPermissionDuringIdentityLookup",
+      "deleteRechecksLifecycleBeforeEffectAndKeepsKnownContentFreeOutcomeAfterwards"
     ]
   },
   {

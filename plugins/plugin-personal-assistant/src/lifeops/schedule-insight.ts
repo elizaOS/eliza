@@ -141,17 +141,19 @@ function firstActiveAfterWake(
   if (wakeAtMs === null) {
     return windows[0]?.startMs ?? null;
   }
-  const startedAfterWake = windows.find((window) => window.startMs >= wakeAtMs);
-  if (startedAfterWake) {
-    return startedAfterWake.startMs;
-  }
   // A window spanning the wake time should report the wake itself as the first
   // active moment — the window's startMs may fall inside the preceding sleep
-  // (e.g. a frontmost app that was never deactivated).
+  // (e.g. a frontmost app that was never deactivated). The merged windows are
+  // sorted and disjoint, so a spanning window comes before every window that
+  // starts after the wake and must be checked first.
   const spansWake = windows.find(
     (window) => window.startMs < wakeAtMs && window.endMs > wakeAtMs,
   );
-  return spansWake ? wakeAtMs : null;
+  if (spansWake) {
+    return wakeAtMs;
+  }
+  const startedAfterWake = windows.find((window) => window.startMs >= wakeAtMs);
+  return startedAfterWake ? startedAfterWake.startMs : null;
 }
 function windowsFromActivityEvents(
   events: Awaited<ReturnType<typeof listActivityEvents>>,
@@ -427,8 +429,12 @@ function predictNextMeal(args: {
       0.6,
     );
   }
+  // A lunch that has not happened by 17:00 was skipped. From then on the next
+  // meal is dinner: inferMealCandidates labels any meal eaten from 17:00 to
+  // 22:00 as dinner, never as lunch.
   if (
     !mealSet.has("lunch") &&
+    nowHour < 17 &&
     ((nowHour >= 11 && nowHour < 15) ||
       (minutesSinceMeal !== null && minutesSinceMeal >= 180))
   ) {

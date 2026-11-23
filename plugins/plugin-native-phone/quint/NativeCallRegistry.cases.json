@@ -71,6 +71,25 @@
           ]
         }
       ]
+    },
+    {
+      "name": "screen-contact-lifetime",
+      "main": "NativeCallScreenContact",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK", "VisibleContactHasCurrentOwner"],
+      "temporal": ["FairReadSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairReadSettles",
+          "expect": "holds",
+          "assumptions": [
+            "The admitted query returns and its Main continuation is weakly fair; no completion deadline or Android I/O success is implied."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 1000
     }
   ],
   "sources": [
@@ -92,7 +111,8 @@
     "failures": "Safety assumes native registration, notification operations and the lifecycle callback itself return normally. Android permission/channel/startActivity exceptions, notification delivery, physical calls, carrier/SIM state, VVM, foreground/lock-screen policy and user controls are separate qualification. This is a bounded projection, not a machine-checked refinement of Android.",
     "fairness": "Progress of a retired posted callback requires weak fairness for that callback dispatcher. Without that assumption a queued runnable can remain pending; an expected counterexample records the gap.",
     "conformance": "Mandatory tests execute the production service and actual Android Call asynchronous callback dispatcher under Robolectric API 35, with real Android notification shadows. They verify state and details callbacks after removal, queued work after destroy, preservation of another call and current-call publication. Existing presentation and keypad ownership tests also run. No device or carrier success is inferred.",
-    "contacts": "One lookup and one later Main refresh for one unique call, one service lifetime, permission withdrawal, cached-name refresh, call removal and destruction. No fairness or guaranteed lookup completion. This models admission for a new publication; it does not retract an already delivered notification on permission changes. Telecom-provided display names are separate authority."
+    "contacts": "One lookup and one later Main refresh for one unique call, one service lifetime, permission withdrawal, cached-name refresh, call removal and destruction. No fairness or guaranteed lookup completion. This models admission for a new publication; it does not retract an already delivered notification on permission changes. Telecom-provided display names are separate authority.",
+    "screen": "One read, two screen visits, two call identities and two number identities; observed grant revocation clears cached display. Thumbnails and names share read ownership. Real decoding, resource pressure and the device visual flow remain separate. Three actual Activity lifecycle tests execute provider reads, current publication, screen stop and permission withdrawal. No automatic grant or carrier effect."
   },
   "conformance": "plugins/plugin-native-phone/quint/check-native-call-registry.ts"
 }

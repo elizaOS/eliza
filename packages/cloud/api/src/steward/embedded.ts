@@ -673,6 +673,7 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   const url = new URL(c.req.url);
   const requestMethod = c.req.method.toUpperCase();
   const path = stripStewardPrefix(url.pathname);
+  if (path.startsWith("/auth/oauth/google/native/backup/")) return c.notFound();
   const ownerPhonePrefix = "/cloud-owner-phone";
   const isOwnerPhoneLogin =
     path === ownerPhonePrefix || path.startsWith(`${ownerPhonePrefix}/`);
@@ -688,9 +689,10 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   }
   const isReadMethod = requestMethod === "GET" || requestMethod === "HEAD";
   const isProvidersRequest = isReadMethod && isAuthProvidersPath(url.pathname);
-  const providerCacheKey = isProvidersRequest
-    ? await providersCacheKey(c.env, url)
-    : null;
+  const providerCacheKey =
+    isProvidersRequest && !url.searchParams.has("clientId")
+      ? await providersCacheKey(c.env, url)
+      : null;
 
   if (isReadMethod && isPublicStewardTenantConfigPath(url.pathname)) {
     const response = c.json({ ok: true, data: PUBLIC_STEWARD_TENANT_CONFIG });
@@ -886,13 +888,8 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
     );
   }
 
-  if (isProvidersRequest && providerCacheKey) {
-    const existing = providersInflight.get(providerCacheKey);
-    if (existing) {
-      const shared = (await existing).clone();
-      return requestMethod === "HEAD" ? asHeadResponse(shared) : shared;
-    }
-    const load = (async () => {
+  if (isProvidersRequest) {
+    const loadProviders = async () => {
       let response: Response;
       try {
         response = await fetch(upstreamUrl.toString(), init);
@@ -912,8 +909,21 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
         );
       }
       const patched = await patchProvidersResponse(response, c.env);
-      return writeProvidersCache(patched, providerCacheKey);
-    })();
+      if (providerCacheKey)
+        return writeProvidersCache(patched, providerCacheKey);
+      patched.headers.set("cache-control", "no-store");
+      return patched;
+    };
+    if (!providerCacheKey) {
+      const scoped = await loadProviders();
+      return requestMethod === "HEAD" ? asHeadResponse(scoped) : scoped;
+    }
+    const existing = providersInflight.get(providerCacheKey);
+    if (existing) {
+      const shared = (await existing).clone();
+      return requestMethod === "HEAD" ? asHeadResponse(shared) : shared;
+    }
+    const load = loadProviders();
     providersInflight.set(providerCacheKey, load);
     try {
       const loaded = (await load).clone();

@@ -701,6 +701,32 @@ describe("content-free support diagnostics", () => {
     }
   );
 
+  it.each([
+    [
+      "with the provider's text",
+      {
+        param: "messages",
+        message: "Bad Request",
+        provider_message: "This model's maximum context length is 131072 tokens. PRIVATE_BODY",
+      },
+    ],
+    [
+      "by its code alone",
+      { code: "context_length_exceeded", param: "messages", message: "Bad Request" },
+    ],
+  ])("reads a Cloud-relayed context overflow %s as context-window", (_, body) => {
+    const agent = runtime();
+    recordCloudInferenceFailure(
+      agent,
+      "TEXT_LARGE",
+      {},
+      Object.assign(new Error("Bad Request"), { status: 400, error: body })
+    );
+    const diagnostic = getCloudInferenceFailure(agent);
+    expect(diagnostic?.reason).toBe("context-window");
+    expect(JSON.stringify(diagnostic)).not.toContain("PRIVATE");
+  });
+
   it("keeps an actual Responses HTTP refusal classified without inventing native tools", async () => {
     const agent = runtime();
     reply = {

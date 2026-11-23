@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { requiredViewNavigationStatus } from "./nav-evaluator-eligibility.ts";
 import { runPlannerLoop } from "./planner-loop.ts";
 
 // Live tj-6941f5b0efa216: "make an event for today at 7am called qa teaa".
@@ -6,8 +7,10 @@ import { runPlannerLoop } from "./planner-loop.ts";
 // the app renderer prepared that navigation, and the evaluator asked to
 // CONTINUE to the create. The loop ended the turn on the prepared marker, so
 // the create never ran and reply recovery could only fail.
-function preparedNavigation() {
+function preparedNavigation(viewId = "calendar") {
   const id = "11111111-1111-4111-8111-111111111111";
+  const path = `/${viewId}`;
+  const label = viewId === "inbox" ? "Inbox" : "Calendar";
   return {
     success: true,
     transcriptVisibility: "internal",
@@ -15,9 +18,9 @@ function preparedNavigation() {
     text: JSON.stringify({
       effect: "view_navigation",
       status: "prepared",
-      viewId: "calendar",
-      path: "/calendar",
-      label: "Calendar",
+      viewId,
+      path,
+      label,
       handoffId: id,
     }),
     data: {
@@ -25,22 +28,22 @@ function preparedNavigation() {
       navigation: {
         effect: "view_navigation",
         status: "prepared",
-        viewId: "calendar",
-        path: "/calendar",
-        label: "Calendar",
+        viewId,
+        path,
+        label,
         handoffId: id,
       },
       values: {
         mode: "show",
-        viewId: "calendar",
-        viewPath: "/calendar",
+        viewId,
+        viewPath: path,
         completedActionDelivered: false,
         completedActionHandoffId: id,
         navigationPrepared: true,
         navigationBinding: {
           requestId: id,
           clientId: "client-1",
-          viewId: "calendar",
+          viewId,
           viewType: "gui",
           installationId: "install-1",
         },
@@ -268,6 +271,163 @@ describe("prepared app-view navigation with explicitly pending work", () => {
       replyEffectStatus: "non_applied",
     });
   });
+});
+
+describe("Inbox search and required view navigation", () => {
+  for (const required of [true, false]) {
+    it(
+      required
+        ? "keeps the Inbox open pending after the evaluator cites two reads"
+        : "finishes the reads without opening Inbox when its condition did not hold",
+      async () => {
+        const calls: string[] = [];
+        const result = await runPlannerLoop({
+          context: {
+            id: "inbox-read-and-open",
+            metadata: required
+              ? {
+                  requiredViewNavigation: {
+                    viewId: "inbox",
+                    clientId: "client-1",
+                    installationId: "install-1",
+                  },
+                }
+              : {},
+            events: [
+              {
+                id: "stage-one",
+                type: "message_handler",
+                source: "message-service",
+                metadata: {
+                  plan: {
+                    intents: [
+                      "find the email about tomorrow’s shoot",
+                      required
+                        ? "open the mail inbox view"
+                        : "open Inbox only if the message is unread",
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+          deferInternalReplyRecoveryToCaller: true,
+          tools: [
+            "MESSAGE_LIST_INBOX",
+            "MESSAGE_SEARCH_INBOX",
+            "VIEWS_SHOW",
+          ].map((name) => ({
+            name,
+            parameters: { type: "object", properties: {} },
+          })),
+          runtime: {
+            useModel: async () => {
+              const name = [
+                "MESSAGE_LIST_INBOX",
+                "MESSAGE_SEARCH_INBOX",
+                "VIEWS_SHOW",
+              ][calls.length];
+              if (!name)
+                throw Error("The requested navigation must not be repeated");
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    id: `call-${calls.length}`,
+                    name,
+                    arguments: {
+                      ...(name === "VIEWS_SHOW" ? { view: "inbox" } : {}),
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            },
+          },
+          executeToolCall: async ({
+            name,
+            params,
+          }: {
+            name: string;
+            params?: { navigationStepId?: string };
+          }) => {
+            calls.push(name);
+            if (name === "VIEWS_SHOW") {
+              const prepared = preparedNavigation("inbox");
+              return {
+                ...prepared,
+                data: {
+                  ...prepared.data,
+                  navigation: {
+                    ...prepared.data.navigation,
+                    stepId: params?.navigationStepId ?? null,
+                  },
+                  view: {
+                    id: "inbox",
+                    label: "Inbox",
+                    installationId: "install-1",
+                  },
+                },
+              };
+            }
+            return {
+              success: true,
+              text: "The matching message was already read.",
+            };
+          },
+          evaluate: async () =>
+            calls.length === 1
+              ? {
+                  success: false,
+                  decision: "CONTINUE",
+                  thought: "Search for the requested message.",
+                }
+              : {
+                  success: true,
+                  decision: "FINISH",
+                  requestFullyCovered: true,
+                  messageToUser:
+                    calls.length === 3
+                      ? "Inbox will open. I found the email titled Tomorrow’s shoot."
+                      : "I found the email titled Tomorrow’s shoot.",
+                  outcomeCoverage: [
+                    {
+                      intentId: "intent:1",
+                      status: "completed",
+                      evidenceStepIds: ["step:2"],
+                    },
+                    {
+                      intentId: "intent:2",
+                      status: "completed",
+                      evidenceStepIds: ["step:1", "step:2"],
+                    },
+                  ],
+                },
+        } as never);
+        expect(calls).toEqual([
+          "MESSAGE_LIST_INBOX",
+          "MESSAGE_SEARCH_INBOX",
+          ...(required ? ["VIEWS_SHOW"] : []),
+        ]);
+        expect(result.status).toBe("finished");
+        if (required) {
+          expect(requiredViewNavigationStatus(result.trajectory)).toBe(
+            "prepared",
+          );
+          expect(
+            result.trajectory.steps.at(-1)?.result?.data?.navigation,
+          ).toMatchObject({
+            viewId: "inbox",
+            status: "prepared",
+          });
+          expect(result.evaluator).toMatchObject({
+            success: false,
+            requestFullyCovered: false,
+          });
+        }
+      },
+    );
+  }
 });
 
 // Live tj-a2dfaa98a8bc03: "open maps to the nearest coffee shop". Stage 1

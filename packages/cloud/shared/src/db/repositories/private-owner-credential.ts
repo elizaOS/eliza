@@ -1,7 +1,7 @@
 /** Primary credential attribution for private owner surfaces; never use auth/app caches. */
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { dbWrite } from "../client";
+import { type DbTransaction, dbWrite } from "../client";
 import { apiKeys } from "../schemas/api-keys";
 import { apps } from "../schemas/apps";
 import { mobileAppAuthClients } from "../schemas/mobile-app-auth-clients";
@@ -37,15 +37,32 @@ export async function readPrivateOwnerAccountAuthority(args: {
   return row;
 }
 
-export async function readPrivateOwnerApiKeyAuthority(args: {
-  apiKeyId: string;
-  apiKeyHash: string;
-  userId: string;
-  organizationId: string;
-}) {
+export async function lockBackupDevice(tx: DbTransaction, apiKeyId: string) {
+  const locked = await tx.execute(sql`
+    SELECT k.id FROM api_keys k
+    JOIN users u ON u.id = k.user_id
+    JOIN organizations o ON o.id = u.organization_id
+    JOIN mobile_app_auth_grants g ON g.credential_id = k.id
+    JOIN mobile_app_auth_clients c ON c.client_id = g.client_id
+    JOIN apps a ON a.id = g.app_id
+    WHERE k.id = ${apiKeyId}
+    FOR SHARE OF k, u, o, g, c, a
+  `);
+  return locked.rows.length === 1;
+}
+
+export async function readPrivateOwnerApiKeyAuthority(
+  args: {
+    apiKeyId: string;
+    apiKeyHash: string;
+    userId: string;
+    organizationId: string;
+  },
+  db: Pick<typeof dbWrite, "select"> = dbWrite,
+) {
   const mobileApp = alias(apps, "private_owner_mobile_app");
   const mobileClient = alias(mobileAppAuthClients, "private_owner_mobile_client");
-  return dbWrite
+  return db
     .select({
       key: {
         id: apiKeys.id,
@@ -54,6 +71,8 @@ export async function readPrivateOwnerApiKeyAuthority(args: {
         deletedAt: apiKeys.deleted_at,
         expiresAt: apiKeys.expires_at,
       },
+      stewardOwnerId: users.steward_user_id,
+      anonymous: users.is_anonymous,
       backendAppId: apps.id,
       grant: {
         credentialId: mobileAppAuthGrants.credential_id,
@@ -76,6 +95,7 @@ export async function readPrivateOwnerApiKeyAuthority(args: {
       },
       mobileClient: {
         clientId: mobileClient.client_id,
+        packageName: mobileClient.android_package_name,
         appId: mobileClient.app_id,
         redirectUri: mobileClient.redirect_uri,
         enabled: mobileClient.enabled,
