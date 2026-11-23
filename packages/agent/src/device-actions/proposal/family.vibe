@@ -21,11 +21,16 @@ export interface EarlierRequest {
   readonly settledAt: number
 }
 
-export interface DeviceTurn {
-  readonly runtime: IAgentRuntime
-  readonly by: SessionOwner
+export interface NegotiatedDevice {
   readonly negotiation: Negotiation
   readonly capabilities: readonly string[]
+  readonly viewProfile?: ViewProfile
+  admit(operation: unknown): CheckedOperation | undefined
+}
+
+export interface DeviceTurn extends NegotiatedDevice {
+  readonly runtime: IAgentRuntime
+  readonly by: SessionOwner
   readonly message: Memory & { readonly id: UUID }
   readonly ownerText: string
   readonly observation: typeof Observation.Type | undefined
@@ -38,8 +43,6 @@ export interface DeviceTurn {
   readonly startedAt: number
   readonly timeZone: string | undefined
   readonly signal: AbortSignal
-  readonly viewProfile?: ViewProfile
-  admit(operation: unknown): CheckedOperation | undefined
   earlier(types: readonly DeviceOperationType[], limit: number): (readonly EarlierRequest[])!DeviceStoreUnavailable
 }
 
@@ -64,11 +67,17 @@ export interface ProposalText {
   readonly data?: { readonly [key: string]: ProviderValue }
 }
 
+export interface MessageAvailability {
+  readonly unavailable: string
+  available(turn: DeviceTurn): boolean
+}
+
 export interface ProposalForm {
   readonly types: readonly [DeviceOperationType, ...DeviceOperationType[]]
   readonly schema: ActionParameterSchema
   readonly guidance?: string
-  offered(turn: DeviceTurn): boolean
+  readonly now?: MessageAvailability
+  readonly offered: (device: NegotiatedDevice) => boolean
 }
 
 export interface WholeRequestRoute {
@@ -85,7 +94,8 @@ export interface DeviceProposalFamily {
   readonly types: readonly DeviceOperationType[]
   readonly forms: readonly ProposalForm[]
   readonly route?: WholeRequestRoute
-  guidance(turn: DeviceTurn): string | undefined
+  readonly guidance: (device: NegotiatedDevice) => string | undefined
+  now?(turn: DeviceTurn): string | undefined
   prepare?(operation: unknown): unknown
   wholeMessageOperation?(turn: DeviceTurn): DeviceOperation | undefined
   ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable

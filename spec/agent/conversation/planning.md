@@ -78,16 +78,22 @@ message examples, then one fixed rule for the cue written with tool calls
 names, each in the form the turn gives it (below), so they change only
 when what the turn offers does: no action's own check of a message
 changes them, and an action family's description is stated on the first
-of its offered actions by name. Only an action that narrows its tool to
-the turn, and a route that withdraws what it replaces, change them from
-one message to the next: on the phone the device tool's forms follow the
-screen, the routes and how views are delivered, so a phone conversation's
-tools still change when those do. The history follows, then the person's
-latest message, and only after it what this turn adds: the screen
-context, the device outcomes of this conversation's earlier requests, the
-task the turn runs for, the note that older history is not shown and the
-earlier exchanges recalled for this request, each labelled as a note from
-the agent host. A recalled exchange is never placed among the history, so
+of its offered actions by name. Nothing a message carries changes them:
+not its words, its screen, a whole-request route it matches, nor how its
+views are delivered, which a phone states anew with each message. Only
+what the launch allows, what the device negotiated, the installation's
+enabled views and the browser the agent can command shape them, so the
+tools of a phone conversation are the same bytes on every message while
+those hold. What applies to one message only (which device operations its
+screen allows, the route that owns it, how its views open) reaches the
+model after the history, in the note of the offered action it concerns,
+and a call that message serves in another place is refused before
+dispatch (below). The history follows, then the person's latest message,
+and only after it what this turn adds: the screen context, the device
+outcomes of this conversation's earlier requests, the notes of offered
+actions on what this message allows, the task the turn runs for, the note
+that older history is not shown and the earlier exchanges recalled for
+this request, each labelled as a note from the agent host. A recalled exchange is never placed among the history, so
 the history a turn sends is the one the turn before it sent, followed by
 that turn's request and reply, until the window over it steps. A provider
 reuses a request's prompt cache up to its first changed byte, and the cached prefix
@@ -109,29 +115,34 @@ pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == Screen
 pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, DeviceNote, TaskNote, WindowNotice, RecalledExchanges)
 pure def lawNothingPerTurnPrecedesTheHistory(p: PromptPart): bool = changesPerTurn(p) implies promptPosition(p) > promptPosition(PriorHistory)
 pure def lawTheConstantPartsLead(p: PromptPart): bool = not(changesPerTurn(p)) implies promptPosition(p) <= promptPosition(PriorHistory)
+type ToolFact = LaunchAllowed | DeviceNegotiation | InstallationViews | BrowserCommanded | MessageWords | ScreenShown | ViewDelivery | WholeRequestRoute
+pure def shapesTools(f: ToolFact): bool = f == LaunchAllowed or f == DeviceNegotiation or f == InstallationViews or f == BrowserCommanded
+pure def carriedByMessage(f: ToolFact): bool = f == MessageWords or f == ScreenShown or f == ViewDelivery or f == WholeRequestRoute
+pure def lawNothingAMessageCarriesShapesTheTools(f: ToolFact): bool = carriedByMessage(f) implies not(shapesTools(f))
 ```
 
 ### An action may narrow its tool to the turn, never beyond its registered form
 
 An action may give the turn its own description and, for parameters it
 registered, a narrower schema: the device proposal tool offers only the
-operation forms this turn's device negotiated. A narrowed schema for a
+operation forms the device negotiated. A narrowed schema for a
 parameter the action never registered is dropped, and the action's handler
 still checks its arguments against everything its registered form allows.
 An action that narrows its tool may have no form for a turn, as the device
 proposal tool has none off an owner turn of the enrolled device, under a
 refused negotiation, or when no operation form is offered; it is then not
 offered that turn, since a tool with nothing it could be called with is
-never sent. An action whose job has another home on some turns has no form
-there, so each job is offered in one place: the native `BROWSER` command
-has none unless it is the home of a history move
-([browser control](../../browser/control.md)), and `VIEWS` none on a device
-turn whose views are not delivered as completed actions, where the device
-tool offers `open_view` instead
-([device surfaces](../deviceActions/surfaces.md)). These follow what the
-device negotiated, the browser the agent can command and how views are
-delivered, which change the device tool's own form anyway, never the words
-of a message.
+never sent. An action whose job has another home under some negotiations
+has no form there, so each job is offered in one place: the native
+`BROWSER` command has none unless it is the home of a history move
+([browser control](../../browser/control.md)). A tool's form follows only
+what shapes the tools (above), never what a message carries: a job whose
+home changes from one message to the next, as a phone view opens with
+`VIEWS` on a message whose views are delivered as completed actions and
+with the device tool's `open_view` on any other
+([device surfaces](../deviceActions/surfaces.md)), keeps both tools, and
+the call the message serves in the other is refused before dispatch
+(below).
 
 ```quint
 pure def turnNarrowed(params: Set[str], narrowed: Set[str]): Set[str] = params.intersect(narrowed)
@@ -165,27 +176,66 @@ pure def lawOnlyOneAskedCallRunsFirst(askedCalls: int): bool = callRunsFirst(ask
 pure def lawTwoAskedCallsLeaveTheChoiceToTheModel(askedCalls: int): bool = askedCalls > 1 implies not(callRunsFirst(askedCalls))
 ```
 
-### A route that owns the whole request withdraws the actions it replaces while its own actions are offered
+### A route that owns the whole request refuses the actions it replaces while its own actions are offered
 
 A plugin may register a direct route ([routing registries](../../core/registries.md))
 that owns the whole request. When the turn's message matches such a route
-and every action it routes to is offered this turn, the actions it names as
-replaced are not offered, so the model cannot plan that request another
-way, such as opening the Camera view for "take a picture"
-([device surfaces](../deviceActions/surfaces.md)). A route that does not own
-the whole request, does not match, or routes to an action this turn does
-not offer withdraws nothing, and no route withdraws an action it does not
-name.
+and every action it routes to is offered this turn, a call of an action it
+names as replaced is refused before it runs, so the model cannot plan that
+request another way, such as opening the Camera view for "take a picture"
+([device surfaces](../deviceActions/surfaces.md)). The route is something
+the message carries, so the tools stay as they are (above). The refused
+call runs nothing, not even its action's own check; the model reads in its
+result that the whole request is routed elsewhere and that the action did
+not run. It is no step of the turn, since the person never asked for it,
+so the reply reports no failure for it. A route that does not own the
+whole request, does not match, or routes to an action this turn does not
+offer refuses nothing, and no route refuses an action it does not name.
 
 ```quint
-pure def withdrawnByRoute(ownsWholeRequest: bool, matched: bool, routedOffered: bool, replaced: bool): bool =
+pure def refusedByRoute(ownsWholeRequest: bool, matched: bool, routedOffered: bool, replaced: bool): bool =
   ownsWholeRequest and matched and routedOffered and replaced
-pure def lawARouteWhoseActionsAreNotOfferedWithdrawsNothing(ownsWholeRequest: bool, matched: bool, replaced: bool): bool =
-  not(withdrawnByRoute(ownsWholeRequest, matched, false, replaced))
-pure def lawARouteWithdrawsOnlyWhatItReplaces(ownsWholeRequest: bool, matched: bool, routedOffered: bool): bool =
-  not(withdrawnByRoute(ownsWholeRequest, matched, routedOffered, false))
-pure def lawARouteThatDoesNotOwnTheRequestWithdrawsNothing(matched: bool, routedOffered: bool, replaced: bool): bool =
-  not(withdrawnByRoute(false, matched, routedOffered, replaced))
+pure def lawARouteWhoseActionsAreNotOfferedRefusesNothing(ownsWholeRequest: bool, matched: bool, replaced: bool): bool =
+  not(refusedByRoute(ownsWholeRequest, matched, false, replaced))
+pure def lawARouteRefusesOnlyWhatItReplaces(ownsWholeRequest: bool, matched: bool, routedOffered: bool): bool =
+  not(refusedByRoute(ownsWholeRequest, matched, routedOffered, false))
+pure def lawARouteThatDoesNotOwnTheRequestRefusesNothing(matched: bool, routedOffered: bool, replaced: bool): bool =
+  not(refusedByRoute(false, matched, routedOffered, replaced))
+```
+
+### A call this message serves in another place is refused before it runs, and is no step of the turn
+
+An action whose tool is the same on every message may say, from what a
+message carries, that a call of it has another home on that message:
+`VIEWS` on a device message whose views are not delivered as completed
+actions, where the device tool's `open_view` serves it
+([device surfaces](../deviceActions/surfaces.md)), and a device operation
+the message does not allow or that a whole-message route does not own
+([proposals](../deviceActions/index.md)). The planner asks before it
+dispatches each call, after the route (above). Such a call runs nothing,
+not even its action's own check, and the model reads in its result where
+the message is served and that nothing ran, so it may take that way, ask
+or answer. Like a call a route refuses, it is no step of the turn: the
+person's request was not refused, only one way of serving it, which the
+tool offers on other messages, so the reply never reports a failure for
+it. A call the action itself refuses (one matching none of its forms, one
+its own check declines, one its handler refuses) is a step as before.
+An action may also give the turn a note on what this message allows of
+it, such as the device tool's route lead; it is sent after the person's
+latest message only while that action is offered, so it never tells the
+model of a tool, a route or a refusal the turn does not have.
+
+```quint
+type CallAdmission = Dispatched | RefusedByItsRoute | ServedElsewhere
+pure def callAdmission(routeRefuses: bool, servedElsewhere: bool): CallAdmission =
+  if (routeRefuses) RefusedByItsRoute else if (servedElsewhere) ServedElsewhere else Dispatched
+pure def isTurnStep(a: CallAdmission): bool = a == Dispatched
+pure def lawACallRefusedBeforeDispatchIsNoStep(routeRefuses: bool, servedElsewhere: bool): bool =
+  (routeRefuses or servedElsewhere) implies not(isTurnStep(callAdmission(routeRefuses, servedElsewhere)))
+pure def lawACallNothingRefusesIsDispatched(routeRefuses: bool, servedElsewhere: bool): bool =
+  not(routeRefuses or servedElsewhere) implies callAdmission(routeRefuses, servedElsewhere) == Dispatched
+pure def actionNoteSent(actionOffered: bool, noted: bool): bool = actionOffered and noted
+pure def lawOnlyAnOfferedActionNotesTheMessage(noted: bool): bool = not(actionNoteSent(false, noted))
 ```
 
 ### The model reads what was said in the conversation, in a window taken once for the whole turn
