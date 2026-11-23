@@ -28,7 +28,7 @@ function askedIn(action: unknown, text: string): BriefAsked {
 const periodAsked = (period: unknown): BriefPeriod => typeof period === "string" && Object.hasOwn(periods, period) ? periods[period as keyof typeof periods] : "PeriodUnstated"
 const nextDate = (date: string, days: number) => civilDate(Date.parse(`${date}T12:00:00Z`) + days * dayMs, "UTC")
 
-function window(period: BriefPeriod, now: number, zone: string): { readonly from: string; readonly startAt: number; readonly endAt: number } {
+function daysOf(period: BriefPeriod, now: number, zone: string): { readonly from: string; readonly startAt: number; readonly endAt: number } {
   const today = civilDate(now, zone)
   const from = period === "PeriodTomorrow" ? nextDate(today, 1) : today
   const until = nextDate(from, period === "PeriodThisWeek" ? 7 : 1)
@@ -42,13 +42,13 @@ export effect function composeBrief(action: unknown, period: unknown, text: stri
   const zone = try ownerClockAt(now)
   const kind = briefKind(askedIn(action, text), localMinutes(now, zone) % 1440)
   const covers = briefPeriod(kind, periodAsked(period))
-  const { from, startAt, endAt } = window(covers, now, zone)
+  const { from, startAt, endAt } = daysOf(covers, now, zone)
   const due = (at: number) => at >= startAt && at < endAt
   const events = ((try Calendar).events(startAt, endAt) catch () => undefined)?.filter((event) => due(event.startAt))
   const todos = renderTodos((try currentTodos()).todos, false)
   const goals = (try listGoals()).filter(({ goal }) => goal.status === "GoalActive")
   const reminders = (try liveReminders()).filter((task) => task.trigger.kind === "once" && due(Date.parse(task.trigger.atIso)))
-  const todayStart = window("PeriodToday", now, zone).startAt
+  const todayStart = daysOf("PeriodToday", now, zone).startAt
   const answered = goals.flatMap(({ record }) => record.log.filter((entry) => entry.at >= todayStart && entry.at <= now).map((entry) => ({ title: record.title, ...entry })))
   const sections = [
     events === undefined ? "# Calendar\nThe calendar could not be read; say it was not checked."

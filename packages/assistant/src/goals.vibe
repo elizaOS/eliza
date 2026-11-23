@@ -117,7 +117,7 @@ effect function named(target: string, key: string) {
   } satisfies ActionResult
 }
 
-const progressWords: Readonly<Record<string, string>> = { on_track: "on track", at_risk: "at risk", needs_attention: "needing attention" }
+const standings: Readonly<Record<string, string>> = { on_track: "is on track", at_risk: "is at risk", needs_attention: "needs attention" }
 
 effect function reviewGoals(target: string | undefined, key: string) {
   const now = try (try Facts).now()
@@ -145,7 +145,7 @@ effect function reviewGoals(target: string | undefined, key: string) {
     : latest === undefined ? (record.cadence === "none"
       ? `"${record.title}" has no check-ins, so there is nothing to review yet. A daily or weekly cadence would check in on it.`
       : `"${record.title}" has no check-in answered yet.`)
-    : `"${record.title}" is ${progressWords[latest.progress] ?? latest.progress}: your last check-in, ${wallText(latest.at, zone)}, said so${latest.note === "" ? "" : ` ("${latest.note}")`}. ${recent} ${recent === 1 ? "check-in was" : "check-ins were"} answered in the last 7 days.`
+    : `"${record.title}" ${standings[latest.progress] ?? latest.progress}: your last check-in, ${wallText(latest.at, zone)}, said so${latest.note === "" ? "" : ` ("${latest.note}")`}. ${recent} ${recent === 1 ? "check-in was" : "check-ins were"} answered in the last 7 days.`
   return { success: true, text, data: { goalId: record.goalId, status: goal.status, reviewState: goal.reviewState, recentCheckins: recent } } satisfies ActionResult
 }
 
