@@ -61,9 +61,12 @@ names, each in the form the turn gives it (below), so they change only
 when what the turn offers does. The history follows, then the person's
 latest message, and only after it what this turn adds: the screen
 context, the device outcomes of this conversation's earlier requests, the
-task the turn runs for and the note that older history is not shown,
-each labelled as a note from the agent host. A provider reuses a
-request's prompt cache up to its first changed byte, and the cached prefix
+task the turn runs for, the note that older history is not shown and the
+earlier exchanges recalled for this request, each labelled as a note from
+the agent host. A recalled exchange is never placed among the history, so
+the history a turn sends is the one the turn before it sent, followed by
+that turn's request and reply, until the window over it steps. A provider
+reuses a request's prompt cache up to its first changed byte, and the cached prefix
 is the tools, then the system prompt, then the messages, so a part that
 changes with the turn placed before the history costs every message after
 it. Each planning call also names its conversation's prompt cache key,
@@ -74,12 +77,12 @@ each conversation and stage rather than one for every phone that sends
 the same prompt ([binding](../models/binding.md) decides where it is sent).
 
 ```quint
-type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice
+type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice | RecalledExchanges
 pure def promptPosition(p: PromptPart): int = match p {
-  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | DeviceNote => 5 | TaskNote => 6 | WindowNotice => 7
+  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | DeviceNote => 5 | TaskNote => 6 | WindowNotice => 7 | RecalledExchanges => 8
 }
-pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == DeviceNote or p == TaskNote or p == WindowNotice
-pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, DeviceNote, TaskNote, WindowNotice)
+pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == DeviceNote or p == TaskNote or p == WindowNotice or p == RecalledExchanges
+pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, DeviceNote, TaskNote, WindowNotice, RecalledExchanges)
 pure def lawNothingPerTurnPrecedesTheHistory(p: PromptPart): bool = changesPerTurn(p) implies promptPosition(p) > promptPosition(PriorHistory)
 pure def lawTheConstantPartsLead(p: PromptPart): bool = not(changesPerTurn(p)) implies promptPosition(p) <= promptPosition(PriorHistory)
 ```
