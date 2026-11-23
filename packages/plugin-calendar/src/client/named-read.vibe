@@ -2,6 +2,12 @@
 import { Machine, canCancel, canStart, wholeSecond, type EventTarget, type NamedRequest } from "../../gen/calendar__reviewedReads.effect.vibe"
 import { Instant, ZoneName } from "../availability/index.vibe"
 
+/**
+ * The reviewed-reads machine `executeNamedCalendarRead` runs under. A client builds `namedReadMachine()` once and provides it to
+ * its named reads; without it a client outside this package cannot run one.
+ */
+export { Machine as NamedReadMachine, machine as namedReadMachine } from "../../gen/calendar__reviewedReads.effect.vibe"
+
 export const CALENDAR_NAMED_READ_CAPABILITY = "calendar.named-read.v1"
 export const CALENDAR_CAPABILITY = "calendar.local-event.v1"
 
