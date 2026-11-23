@@ -686,11 +686,12 @@ public final class CloudDeviceAccount {
     return false;
    }
    boolean canonical = canonical(credential);
-   Exchange reply = post(canonical ? RENEW : "/api/auth/device/renew", null, newest(lease), 200, 401);
+   Exchange reply = transfer("POST", canonical ? RENEW : "/api/auth/device/renew", null, newest(lease), Map.of(), 4096);
    if (reply.status() == 401) {
     clear();
     return false;
    }
+   if (reply.status() != 200) return false;
    JSONObject renewed = new JSONObject(reply.body());
    String token = renewed.getString(canonical ? "secret" : "token");
    long seconds = renewed.getLong("expiresIn");

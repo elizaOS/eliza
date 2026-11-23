@@ -574,41 +574,61 @@ effect function refreshLease(request: Request, db: Client) {
   return json(200, try leaseRefusedOr(try transact(db, (tx: Tx) => rotateLease(tx, refresh, now))))
 }
 
+effect function renewalBearer(mac: Mac.Mac["Service"], refresh: string, successorKey: string) {
+  const key = Mac.key(Mac.hmacSha256, encoder.encode(refresh)) catch effect () => { throw new ProviderUnavailable() }
+  const signature = mac.sign(key, encoder.encode("device-renewal:" + successorKey)) catch effect () => { throw new ProviderUnavailable() }
+  return "eliza_mobile_" + hex(signature)
+}
+
 effect function renewDevice(request: Request, env: IdentityEnv, db: Client) {
   const registration = browserNativeRegistration(env)
   if (!registration) throw new ProviderUnavailable()
   const refresh = leaseBearer(request)
   if (refresh === null) throw refused("AuthenticationRequired", "CredentialUnknown")
   try rateLimit(db, "lease:renew:ip", request.headers.get("cf-connecting-ip") ?? "local", 10, 60)
-  const bearer = try newSecret("device")
-  const bearerHash = try digestCredential(bearer)
   const random = try SecureRandom.SecureRandom
   const credential = try random.uuidV4()
   const key = try random.uuidV4()
+  const mac = try Mac.Mac
+  const bearer = try renewalBearer(mac, refresh, key)
+  const bearerHash = try digestCredential(bearer)
   const now = try Clock.currentTimeMillis
   const renewed = try transact(db, effect (tx: Tx) => {
     const admitted = try admitLeaseRefresh(tx, refresh, now)
     if (admitted.kind === "refused") return admitted
     const lease = admitted.value
-    const created = try tx.query(`
-      WITH predecessor AS MATERIALIZED (
-        SELECT d.key, d.user_id, d.client_id, d.device_epoch FROM device_grants d JOIN accounts a ON a.key = d.user_id
-        WHERE d.key = $1 AND d.user_id = $2 AND d.client_id = $3 AND d.phase IN ('active', 'expired')
-          AND d.device_epoch = a.device_epoch AND a.status = 'active'
-        FOR UPDATE OF a, d
-      ), created AS (
+    const locked = try tx.query(`
+      SELECT d.key FROM device_grants d JOIN accounts a ON a.key = d.user_id
+      WHERE d.key = $1 AND d.user_id = $2 AND d.client_id = $3 AND d.phase IN ('active', 'expired')
+        AND d.device_epoch = a.device_epoch AND a.status = 'active'
+      FOR UPDATE OF a, d
+    `, [lease.grantKey, lease.userId, registration.clientId])
+    if (locked.length === 0) return { kind: "refused", reason: "CredentialRevoked" } as const
+    const pending = (try tx.query(`
+      SELECT key, credential_id, secret_digest FROM device_grants
+      WHERE renewed_from = $1 AND phase = 'exchanged' AND code_expires_at > $2 AND state->>'flatDeviceGrant' = 'FlatTokenStarted'
+      ORDER BY issued_at DESC LIMIT 1
+    `, [lease.grantKey, now]))[0]
+    if (pending !== undefined) {
+      const again = try renewalBearer(mac, refresh, toText(pending.key) ?? "")
+      const same = (try digestCredential(again)) === toText(pending.secret_digest)
+      return { kind: "done", value: { accountId: lease.userId, token: same ? again : null, credentialId: toText(pending.credential_id) ?? "" } } as const
+    }
+    try tx.query(`
+      WITH created AS (
         INSERT INTO device_grants (key,state,revision,user_id,client_id,phase,credential_id,secret_digest,code_expires_at,key_expires_at,device_epoch,renewed_from,issued_at,updated_at)
         SELECT $4, jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Exchanged','renewedFrom',key), 1, user_id, client_id, 'exchanged',
-          $5, $6, $7, $8, device_epoch, key, $9, $9 FROM predecessor
+          $5, $6, $7, $8, device_epoch, key, $9, $9 FROM device_grants WHERE key = $1 AND user_id = $2 AND client_id = $3
         RETURNING key
       )
-      INSERT INTO cloud_device_proofs (grant_key, session_key, challenge) SELECT key, $10, 'renewal' FROM created RETURNING grant_key
+      INSERT INTO cloud_device_proofs (grant_key, session_key, challenge) SELECT key, $10, 'renewal' FROM created
     `, [lease.grantKey, lease.userId, registration.clientId, key, credential, bearerHash, now + deviceGrantSeconds * 1000,
       now + registration.credentialTtl, now, lease.key])
-    return created.length === 1 ? { kind: "done", value: lease.userId } as const : { kind: "refused", reason: "CredentialRevoked" } as const
+    return { kind: "done", value: { accountId: lease.userId, token: bearer as string | null, credentialId: credential } } as const
   })
-  const accountId = try leaseRefusedOr(renewed)
-  return json(200, { token: bearer, credentialId: credential, expiresIn: Math.floor(registration.credentialTtl / 1000), accountId })
+  const answer = try leaseRefusedOr(renewed)
+  if (answer.token === null) return json(409, { error: "renewal_pending" })
+  return json(200, { token: answer.token, credentialId: answer.credentialId, expiresIn: Math.floor(registration.credentialTtl / 1000), accountId: answer.accountId })
 }
 
 effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
