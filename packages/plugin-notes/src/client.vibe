@@ -1,4 +1,5 @@
 // spec/notes/client.md, "A save owns the captured draft and adopts only the server's exact target"; spec/notes/client.md, "Late reads and old owner snapshots cannot replace the current collection"; spec/notes/trash.md, "A recording's cleanup is acknowledged only with the device's proof that the audio is gone"
+import { sameJson } from "./json-equality.vibe"
 import { NoteRow, Revision, TrashRow } from "./records.schema.vibe"
 import type { NoteJson, NotesSnapshot, NotesTrashErase, NotesTrashRecordingCleanup, StickyNote } from "./types.vibe"
 
@@ -10,7 +11,7 @@ module browser {
   }
 }
 import { sha256 } from browser
-import { encode, run, sameJson } from "./json.vibe"
+import { encode, run } from "./json.vibe"
 
 export error NotesClientRefused { message: string }
 

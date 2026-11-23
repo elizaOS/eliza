@@ -220,7 +220,7 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
     registration: { first: "registered", again: "registered", rival: "FamilyConflict", foreignForm: "FamilyConflict" },
     offered: { types: ["create_note", "create_reminder", "open_view", "reminder_create", "reminder_named", "reminder_named"], guided: true },
     notHere: { grouped: true, reasonsSaid: 1 },
-    proposalReply: "Review the reminder “Milk” on your phone.",
+    proposalReply: "Review the reminder “Milk” on your phone.\n\nI couldn't prepare that on your phone.",
     milk: { state: "pending", payload: expectedPayload },
     refusalReply: true, afterRefusal: 1,
     askedAgain: { refused: true, afterAskedAgain: 1 },

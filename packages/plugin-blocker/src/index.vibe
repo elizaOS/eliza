@@ -1,0 +1,121 @@
+// spec/blocker/index.md, "Story: Block distractions for a chosen interval"
+import { Machine, stored, type BlockKind, type FocusBlock } from "../gen/blocker.effect.vibe"
+import { AppBlocker, applyAppBlock, type AppBlockerPlugin } from "@elizaos/capacitor-appblocker"
+import { WebsiteBlocker, applyWebsiteBlock, type WebsiteBlockerPlugin } from "@elizaos/capacitor-websiteblocker"
+
+export error FocusBackendFailed { operation: "apply" | "read" | "clear"; reason: string }
+export error FocusIdentityMissing
+
+export service FocusBackend {
+  apply(block: FocusBlock): boolean!FocusBackendFailed
+  read(block: FocusBlock): boolean!FocusBackendFailed
+  clear(block: FocusBlock): boolean!FocusBackendFailed
+}
+
+export function createNativeFocusBackend(app: AppBlockerPlugin = AppBlocker, website: WebsiteBlockerPlugin = WebsiteBlocker): FocusBackend.Shape {
+  return {
+    effect apply(block) {
+      const durationMinutes = Math.floor((block.expiry - (try Clock.currentTimeMillis)) / 60_000)
+      if (durationMinutes <= 0) return false
+      const failure = () => new FocusBackendFailed({ operation: "apply", reason: "device refused focus selection" })
+      const result = block.blockKind === "ApplicationBlock"
+        ? applyAppBlock({ packageNames: [...block.targets], durationMinutes }, app) catch effect () => { throw failure() }
+        : applyWebsiteBlock({ domains: block.targets, durationMinutes }, website) catch effect () => { throw failure() }
+      return result.success
+    },
+    effect read(block) {
+      const current = try nativeFocusStatus(block.blockKind, app, website)
+      return current.active && matchesTargets(current.targets, block.targets)
+    },
+    effect clear(block) {
+      const current = try nativeFocusStatus(block.blockKind, app, website)
+      if (!current.active) return true
+      if (!matchesTargets(current.targets, block.targets)) return false
+      const result = try tryPromise({
+        try: () => block.blockKind === "ApplicationBlock" ? app.unblockApps() : website.stopBlock(),
+        catch: () => new FocusBackendFailed({ operation: "clear", reason: "device refused to clear focus" }),
+      })
+      return result.success
+    },
+  }
+}
+
+function matchesTargets(seen: readonly string[], expected: readonly string[]): boolean {
+  const unique = new Set(seen)
+  return unique.size === expected.length && expected.every((target) => unique.has(target))
+}
+
+effect function nativeFocusStatus(kind: BlockKind, app: AppBlockerPlugin, website: WebsiteBlockerPlugin) {
+  return try tryPromise({
+    try: async () => {
+      if (kind === "ApplicationBlock") {
+        const status = await app.getStatus()
+        return { active: status.active, targets: status.blockedPackageNames }
+      }
+      const status = await website.getStatus()
+      return { active: status.active, targets: status.blockedWebsites }
+    },
+    catch: () => new FocusBackendFailed({ operation: "read", reason: "device focus status is unavailable" }),
+  })
+}
+
+export interface FocusRequest {
+  readonly ownerId: string
+  readonly blockKind: BlockKind
+  readonly targets: readonly string[]
+  readonly deadline: number
+}
+
+export effect function enableFocus(request: FocusRequest) {
+  const key = try blockKey(request.ownerId, request.blockKind)
+  const now = try Clock.currentTimeMillis
+  const backend = try FocusBackend
+  provide stored(key) {
+    const gate = try Machine
+    const block = try gate.receive({
+      type: "requestBlock",
+      ownerId: request.ownerId,
+      blockKind: request.blockKind,
+      targets: [...new Set(request.targets.map((target) => request.blockKind === "WebsiteBlock" ? target.trim().toLowerCase() : target.trim()).filter((target) => target !== ""))],
+      now,
+      deadline: request.deadline,
+    }, request.ownerId)
+    const applied = try backend.apply(block)
+    return try gate.send({ type: "observeApplied", generation: block.generation, applied }, "device")
+  }
+}
+
+export effect function reconcileFocus(ownerId: string, blockKind: BlockKind) {
+  const key = try blockKey(ownerId, blockKind)
+  const backend = try FocusBackend
+  provide stored(key) {
+    const gate = try Machine
+    const block = try gate.get()
+    if (block.phase === "ApplyingBlock") {
+      const applied = try backend.read(block)
+      return try gate.send({ type: "observeApplied", generation: block.generation, applied }, "device")
+    }
+    if (block.phase === "ClearingBlock") {
+      const stillBlocked = try backend.read(block)
+      return try gate.send({ type: "observeCleared", generation: block.generation, cleared: !stillBlocked }, "device")
+    }
+    return block
+  }
+}
+
+export effect function clearFocus(ownerId: string, blockKind: BlockKind, generation: number, expired: boolean) {
+  const key = try blockKey(ownerId, blockKind)
+  const now = try Clock.currentTimeMillis
+  const backend = try FocusBackend
+  provide stored(key) {
+    const gate = try Machine
+    const block = try gate.send({ type: "requestClear", generation, now }, expired ? "scheduler" : ownerId)
+    const cleared = try backend.clear(block)
+    return try gate.send({ type: "observeCleared", generation, cleared }, "device")
+  }
+}
+
+effect function blockKey(ownerId: string, blockKind: BlockKind) {
+  if (ownerId === "" || ownerId === "device" || ownerId === "scheduler") throw new FocusIdentityMissing()
+  return "focus:" + blockKind + ":" + ownerId
+}

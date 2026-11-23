@@ -1,0 +1,55 @@
+// spec/nativeWebsiteblocker/index.md, "Story: See which websites my device is actually blocking"
+import type { WebsiteBlockerPlugin } from "./native-contract.vibe"
+
+export type * from "./native-contract.vibe"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { WebsiteBlockerPlugin } from "./native-contract.vibe"
+
+  export const native = registerPlugin<WebsiteBlockerPlugin>("ElizaWebsiteBlocker")
+}
+import { native } from capacitor
+
+export const WebsiteBlocker = native
+
+import { nativeReply } from "@elizaos/os/bridges/bridge"
+import { mayInstallWebsitePolicy, type WebsiteEngine, type WebsiteWindow } from "../gen/nativeWebsiteblocker.effect.vibe"
+
+const WebPermission = Schema.Struct({
+  status: Schema.Literals(["granted", "denied", "not-determined", "not-applicable"]),
+  engine: Schema.Literals(["hosts-file", "vpn-dns", "network-extension", "content-blocker"]),
+})
+const WebBlockResult = Schema.Union([
+  Schema.Struct({
+    success: Schema.Literal(true),
+    endsAt: Schema.NullOr(Schema.String),
+    request: Schema.Struct({ websites: Schema.Array(Schema.String), durationMinutes: Schema.NullOr(Schema.Number) }),
+  }),
+  Schema.Struct({ success: Schema.Literal(false), error: Schema.String }),
+])
+const Engines = {
+  "hosts-file": "DesktopHosts",
+  "vpn-dns": "AndroidVpn",
+  "network-extension": "DesktopNetworkExtension",
+  "content-blocker": "AppleContentBlocker",
+} satisfies Record<typeof WebPermission.Type["engine"], WebsiteEngine>
+
+export error WebsiteBlockSelectionRefused
+
+export effect function applyWebsiteBlock(options: { domains: readonly string[]; durationMinutes?: number }, port: WebsiteBlockerPlugin = WebsiteBlocker) {
+  const domains = [...new Set(options.domains.map((domain) => domain.trim().toLowerCase()))].filter((domain) => domain !== "")
+  const permission = try nativeReply("ElizaWebsiteBlocker", "checkPermissions", WebPermission, () => port.checkPermissions())
+  const nowMs = try Clock.currentTimeMillis
+  const delta = (options.durationMinutes ?? 0) * 60000
+  if (options.durationMinutes !== undefined && (!Number.isSafeInteger(delta) || delta <= 0 || !Number.isSafeInteger(nowMs + delta))) {
+    throw new WebsiteBlockSelectionRefused()
+  }
+  const window: WebsiteWindow = options.durationMinutes === undefined ? { tag: "WebsiteNoExpiry" } : { tag: "WebsiteExpiresAt", deadline: nowMs + delta }
+  if (!mayInstallWebsitePolicy(Engines[permission.engine], permission.status === "granted", domains.length, window, nowMs)) {
+    throw new WebsiteBlockSelectionRefused()
+  }
+  return try nativeReply("ElizaWebsiteBlocker", "startBlock", WebBlockResult, () => port.startBlock({
+    websites: domains, durationMinutes: options.durationMinutes ?? null,
+  }))
+}

@@ -128,7 +128,8 @@ internal class SurfaceControlChannel(
             call.reject("The isolated page control channel is not ready", "UNAVAILABLE")
             return
         }
-        if (referenced && expectedDocument != currentDocument) {
+        val statementRead = observation && command.opt("statementRegions") == true
+        if ((referenced || statementRead) && expectedDocument != currentDocument) {
             call.reject("Observe the current document before acting", "STALE_REF")
             return
         }

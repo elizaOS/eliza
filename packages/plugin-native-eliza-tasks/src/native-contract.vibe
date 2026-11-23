@@ -1,0 +1,60 @@
+// spec/nativeElizaTasks/index.md, "Story: Schedule a background wake without stacking duplicate requests"
+import type { PluginListenerHandle } from "@capacitor/core";
+
+export type ElizaTaskKind = "refresh" | "processing" | "remote-push";
+
+export type ElizaTaskIdentifier =
+  | "ai.eliza.tasks.refresh"
+  | "ai.eliza.tasks.processing";
+
+export interface ElizaTasksWakeEvent {
+  kind: ElizaTaskKind;
+  identifier: ElizaTaskIdentifier | "ai.eliza.tasks.remote-push";
+  deadlineSec: number;
+
+  firedAtMs: number;
+
+  payload: Record<string, unknown>;
+}
+
+export interface ElizaTasksScheduleOptions {
+
+  earliestBeginSec?: number;
+
+  alsoProcessing?: boolean;
+}
+
+export interface ElizaTasksScheduleResult {
+  scheduled: boolean;
+  identifier: ElizaTaskIdentifier;
+  earliestBeginAtMs: number | null;
+  reason: string | null;
+}
+
+export interface ElizaTasksStatus {
+  supported: boolean;
+  platform: "ios" | "android" | "web";
+  refreshScheduled: boolean;
+  processingScheduled: boolean;
+  lastWakeFiredAtMs: number | null;
+  lastWakeKind: ElizaTaskKind | null;
+  reason: string | null;
+}
+
+export interface ElizaTasksPlugin {
+
+  scheduleNext(
+    options?: ElizaTasksScheduleOptions,
+  ): Promise<ElizaTasksScheduleResult>;
+
+  getStatus(): Promise<ElizaTasksStatus>;
+
+  cancelAll(): Promise<{ cancelled: boolean }>;
+
+  addListener(
+    eventName: "wake",
+    listenerFunc: (event: ElizaTasksWakeEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  removeAllListeners(): Promise<void>;
+}

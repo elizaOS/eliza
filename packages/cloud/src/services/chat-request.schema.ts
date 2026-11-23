@@ -16,11 +16,45 @@ export const ImagePart = Schema.Struct({
 export const ContentPart = Schema.Union([TextPart, ImagePart]);
 export type ContentPart = typeof ContentPart.Type;
 
-export const ChatMessage = Schema.Struct({
-  role: Schema.Literals(["system", "developer", "user", "assistant"]),
-  content: Schema.Union([Schema.String, Schema.NonEmptyArray(ContentPart)]),
+const content = Schema.Union([Schema.String, Schema.NonEmptyArray(ContentPart)]);
+const name = Schema.optionalKey(Schema.String);
+const functionName = Schema.String.check(Schema.isMinLength(1));
+
+export const ToolCall = Schema.Struct({
+  id: Schema.String.check(Schema.isMinLength(1)),
+  type: Schema.Literal("function"),
+  function: Schema.Struct({ name: functionName, arguments: Schema.String }),
 });
+
+export const ChatMessage = Schema.Union([
+  Schema.Struct({ role: Schema.Literals(["system", "developer", "user"]), content, name }),
+  Schema.Struct({
+    role: Schema.Literal("assistant"),
+    content: Schema.optionalKey(Schema.NullOr(content)),
+    name,
+    tool_calls: Schema.optionalKey(Schema.NonEmptyArray(ToolCall)),
+    reasoning: Schema.optionalKey(Schema.String),
+  }),
+  Schema.Struct({ role: Schema.Literal("tool"), tool_call_id: Schema.String.check(Schema.isMinLength(1)), content: Schema.Union([Schema.String, Schema.NonEmptyArray(TextPart)]) }),
+]);
 export type ChatMessage = typeof ChatMessage.Type;
+
+export const Tool = Schema.Struct({
+  type: Schema.Literal("function"),
+  function: Schema.Struct({
+    name: functionName,
+    description: Schema.optionalKey(Schema.String),
+    parameters: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+    strict: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
+  }),
+});
+
+export const ToolChoice = Schema.Union([
+  Schema.Literals(["none", "auto", "required"]),
+  Schema.Struct({ type: Schema.Literal("function"), function: Schema.Struct({ name: functionName }) }),
+]);
+
+const penalty = Schema.Finite.check(Schema.isBetween({ minimum: -2, maximum: 2 }));
 
 export const JsonSchemaFormat = Schema.Struct({
   name: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,64}$/)),
@@ -46,6 +80,14 @@ export const ChatRequest = Schema.Struct({
   max_completion_tokens: Schema.optionalKey(tokens),
   reasoning_effort: Schema.optionalKey(Schema.Literals(["none", "minimal", "low", "medium", "high"])),
   response_format: Schema.optionalKey(ResponseFormat),
+  tools: Schema.optionalKey(Schema.NonEmptyArray(Tool)),
+  tool_choice: Schema.optionalKey(ToolChoice),
+  top_p: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
+  stop: Schema.optionalKey(Schema.Union([Schema.String, Schema.NonEmptyArray(Schema.String).check(Schema.isMaxLength(4))])),
+  seed: Schema.optionalKey(Schema.Int),
+  frequency_penalty: Schema.optionalKey(penalty),
+  presence_penalty: Schema.optionalKey(penalty),
+  prompt_cache_key: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024))),
 });
 export type ChatRequest = typeof ChatRequest.Type;
 

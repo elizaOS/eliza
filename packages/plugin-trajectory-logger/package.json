@@ -1,0 +1,38 @@
+{
+  "name": "@elizaos/plugin-trajectory-logger",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Realtime trajectory inspector overlay app \u2014 surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13",
+    "react": "catalog:",
+    "@repo/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "@types/react": "catalog:"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./ui": {
+      "eliza-source": "./src/TrajectoryView.tsx",
+      "types": "./dist/src/TrajectoryView.d.ts",
+      "import": "./dist/src/TrajectoryView.js",
+      "default": "./dist/src/TrajectoryView.js"
+    }
+  }
+}

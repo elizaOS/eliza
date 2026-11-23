@@ -1,0 +1,35 @@
+// spec/nativeLocation/index.md, "Story: Use a fresh device location and stop updates when I close the view"
+import { accessOf, type LocationClient, type LocationOptions } from "@elizaos/os/bridges/location"
+import { mayUseLocation, type LocationGrant } from "../gen/nativeLocation.effect.vibe"
+
+export { locationClient, locationPlugin } from "@elizaos/os/bridges/location"
+export type * from "@elizaos/os/bridges/definitions/location"
+
+export error NativeLocationRejected
+
+export effect function readCurrentDeviceLocation(client: LocationClient, options?: LocationOptions) {
+  const reading = try tryPromise(() => client.getCurrentPosition(options))
+  if (reading.kind !== "fix") return reading
+  const permission = try tryPromise(() => client.checkPermissions())
+  const access = accessOf(permission)
+  const grant: LocationGrant = access === "PreciseAccess" ? "PreciseLocation" : access === "ApproximateAccess" ? "ApproximateLocation" : "NoLocation"
+  const nowMs = try Clock.currentTimeMillis
+  const maxAgeMs = options?.maxAge ?? 0
+  const fix = {
+    latitudeMillionths: Math.round(reading.coords.latitude * 1000000),
+    longitudeMillionths: Math.round(reading.coords.longitude * 1000000),
+    accuracyMm: Math.round(reading.coords.accuracy * 1000),
+    measuredAtMs: Math.floor(reading.coords.timestamp),
+    fromCache: reading.source === "cached",
+  }
+  if (!Number.isSafeInteger(fix.latitudeMillionths) || !Number.isSafeInteger(fix.longitudeMillionths) ||
+      !Number.isSafeInteger(fix.accuracyMm) || !Number.isSafeInteger(fix.measuredAtMs) ||
+      !Number.isSafeInteger(maxAgeMs) || !mayUseLocation(grant, fix, nowMs, maxAgeMs)) {
+    throw new NativeLocationRejected()
+  }
+  return { ...reading, precise: reading.precise && grant === "PreciseLocation" }
+}
+
+import { locationPlugin } from "@elizaos/os/bridges/location"
+
+export const Location = locationPlugin()

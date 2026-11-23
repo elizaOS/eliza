@@ -71,6 +71,7 @@ function negotiatedOf(capabilities: readonly string[] | undefined): Negotiated {
     findCapability: has(BROWSER_FIND_CAPABILITY),
     historyCapability: has(BROWSER_HISTORY_CAPABILITY),
     newTabCapability: has(BROWSER_OPEN_NEW_TAB_CAPABILITY),
+    closeAllCapability: has(BROWSER_TABS_CLOSE_ALL_CAPABILITY),
   }
 }
 
@@ -84,6 +85,15 @@ export function isBrowserControl(value: unknown): value is BrowserControlOperati
 
 export function browserControlCapabilityAvailable(type: BrowserControlType, capabilities?: readonly string[]): boolean {
   return controlOffered(CONTROLS[type], negotiatedOf(capabilities))
+}
+
+const CLOSE_ALL_UNAVAILABLE = "This phone's Browser closes one tab at a time and cannot close all tabs at once. Nothing was closed. Tell the owner, and offer to close the tab that is showing or a tab they name."
+const CONTROL_UNAVAILABLE = "This phone's Browser did not offer this control. Nothing was sent."
+
+export function browserControlRefusal(operation: BrowserControlOperation, capabilities?: readonly string[]): string | undefined {
+  if (operation.type !== "browser_tab_close") return browserControlCapabilityAvailable(operation.type, capabilities) ? undefined : CONTROL_UNAVAILABLE
+  const answer = browserCloseAnswer(operation, capabilities)
+  return answer === "CloseProposed" ? undefined : answer === "CloseEveryRefused" ? CLOSE_ALL_UNAVAILABLE : CONTROL_UNAVAILABLE
 }
 
 export function browserNavigationAvailable(newTab: boolean, capabilities?: readonly string[]): boolean {

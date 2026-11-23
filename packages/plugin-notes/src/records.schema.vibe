@@ -121,7 +121,7 @@ export const StoredDocument = sampledSchema(DocumentWire, DocumentSeed, ({ notes
   return { ...document, notes: saved, trash: deleted, creations: references }
 })
 
-const noteFields = {
+const NoteDraftFields = {
   content: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.content))),
   title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.title))),
   body: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.body - 1))),
@@ -130,7 +130,7 @@ const noteFields = {
 }
 
 export const CreateRequest = Schema.Struct({
-  ...noteFields,
+  ...NoteDraftFields,
   forceNew: Schema.optionalKey(Schema.Boolean),
   creationId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.creationId))),
 })
@@ -163,7 +163,7 @@ const AuthoredAppend = Schema.Struct({
 export const UpdateRequest = Schema.Struct({
   textEdit: Schema.optionalKey(Schema.Union([TextReplace, TextAppend])),
   authoredEdit: Schema.optionalKey(Schema.Union([AuthoredReplace, AuthoredAppend])),
-  ...noteFields,
+  ...NoteDraftFields,
 })
 
 export type ImportReceipt = typeof ImportReceipt.Type

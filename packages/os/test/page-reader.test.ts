@@ -59,6 +59,9 @@ const pages: Record<string, string> = {
     customElements.define("northfield-login", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<form><label>Username <input id="shadow-user" name="username"></label><label>Password <input id="shadow-pass" type="password"></label><button type="button" id="shadow-next">Next</button><p id="echo"></p></form>'; } });
     customElements.define("sealed-box", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "closed" }).innerHTML = '<label>Closed field <input id="closed-field"></label><button type="button" id="closed-button">Closed button</button><p>Sealed words</p>'; } });
   </script>`),
+  [`${shop}/statement-regions`]: page(`<nav>Navigation date</nav><main><p>Unrelated date</p><article><h1>Current statement</h1><p>Amount due: <strong>$64.28</strong> by <time>October 12, 2026</time></p><dl><dt>Reference</dt><dd>Current account</dd></dl><section><h2>Previous period</h2><p>Prior amount $11</p></section><span hidden>Hidden date</span><span style="opacity:0">Invisible date</span><form><button type="button">Form date</button></form></article><iframe src="/statement-frame" title="Statement frame"></iframe><iframe src="${partner}/statement-frame" title="Third-party statement frame"></iframe></main>`),
+  [`${shop}/statement-frame`]: page("<section>Same-origin frame amount</section>"),
+  [`${partner}/statement-frame`]: page("<section>Cross-origin frame amount</section>"),
   [`${shop}/pay`]: page(`<h1>Make a payment</h1><p>Amount due $84.20</p><iframe id="card-frame" src="/card-frame" title="Secure payment form" style="width:520px;height:330px;border:4px solid #333;padding:6px"></iframe><iframe id="other-frame" src="${partner}/card-frame" title="Partner payment form" style="width:520px;height:330px"></iframe>`),
   [`${shop}/card-frame`]: cardForm("Card words"),
   [`${partner}/card-frame`]: cardForm("Partner words"),
@@ -185,9 +188,9 @@ const surface = async () => {
   await evaluate(channel, executionContextId);
   const documentId = text(fields(await evaluate("elizaSurfaceControl.replies.find((reply) => reply.ready)", executionContextId)).documentId);
   let count = 0;
-  return async (command: Fields) => {
+  return async (command: Fields, claimedDocument = documentId) => {
     const number = ++count;
-    await evaluate(`elizaSurfaceControl.onmessage({ data: ${JSON.stringify(JSON.stringify({ documentId, sequence: number, command }))} })`, executionContextId);
+    await evaluate(`elizaSurfaceControl.onmessage({ data: ${JSON.stringify(JSON.stringify({ documentId: claimedDocument, sequence: number, command }))} })`, executionContextId);
     await expect.poll(() => evaluate(`elizaSurfaceControl.replies.some((reply) => reply.sequence === ${number})`, executionContextId)).toBe(true);
     return fields(fields(await evaluate(`elizaSurfaceControl.replies.find((reply) => reply.sequence === ${number})`, executionContextId)).result);
   };
@@ -236,6 +239,44 @@ describe('The WebView runs the page reader Chromium runs (spec/os/browser/pageCo
   it("embeds page-command.mjs and page-guidance.mjs token for token", () => {
     const same = (file: string, name: string) => JSON.stringify(embedded("control-channel.js", name, channel).tokens) === JSON.stringify(embedded(`../browser/src/${file}`, name).tokens);
     expect({ pageCommand: same("page-command.mjs", "pageCommand"), pageGuidance: same("page-guidance.mjs", "pageGuidance") }).toEqual({ pageCommand: true, pageGuidance: true });
+  });
+
+  it("observes disjoint statement regions only for an explicit local native read", async () => {
+    await open(`${shop}/statement-regions`);
+    const send = await surface();
+    const request = { subaction: "snapshot", statementRegions: true };
+    const Regions = Schema.Struct({
+      complete: Schema.Boolean,
+      regions: Schema.Array(Schema.Struct({ key: Schema.NonEmptyString, fragments: Schema.Array(Schema.String) })),
+    });
+    expect((await send({ subaction: "snapshot" })).statementRegions).toBeUndefined();
+    expect(await send(request, "prior-document")).toMatchObject({ error: { kind: "STALE_REF" } });
+    const grouped = await send(request);
+    const complete = Schema.decodeUnknownSync(Regions)(grouped.statementRegions);
+    expect(grouped.text).toBe("");
+    expect(complete.complete).toBe(true);
+    expect(complete.regions.map(({ fragments }) => fragments.map(value => value.trim()))).toEqual([
+      ["Unrelated date"], ["Current statement", "Amount due: $64.28 by October 12, 2026", "Reference", "Current account"],
+      ["Previous period", "Prior amount $11"],
+    ]);
+    expect(new Set(complete.regions.map(({ key }) => key)).size).toBe(3);
+    expect((await send(request)).statementRegions).toEqual(complete);
+
+    await tab.evaluate(() => {
+      const oversized = document.createElement("section");
+      oversized.textContent = "x".repeat(24_577);
+      document.querySelector("main")?.append(oversized);
+    });
+    expect((await send(request)).statementRegions).toEqual({ complete: false, regions: [] });
+
+    await open(`${shop}/signin`);
+    const privatePage = await (await surface())(request);
+    expect({ text: privatePage.text, regions: privatePage.statementRegions }).toEqual({
+      text: "", regions: { complete: false, regions: [] },
+    });
+
+    await open(`${shop}/absolute-wall`);
+    expect((await (await surface())(request)).statementRegions).toEqual({ complete: false, regions: [] });
   });
 
   it("answers a snapshot through installControlChannel in its own isolated world as page-command.mjs does", async () => {
@@ -509,6 +550,9 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
       await handle(message, { send: (value) => { reply = value; } }, () => true);
       return fields(reply);
     };
+    expect(await send({ type: "command", id: "statement-regions", command: { subaction: "snapshot", id: "1", statementRegions: true } })).toMatchObject({
+      ok: false, error: { kind: "POLICY_BLOCKED" },
+    });
     const raw = Schema.decodeUnknownSync(Schema.Array(Fields))(fields((await send({ type: "command", id: "raw-1", command: { subaction: "snapshot", id: "1" } })).result).frames);
     expect(raw.map((read) => Schema.decodeUnknownSync(Schema.Array(Fields))(read.elements).filter((element) => element.label === "Show details").length)).toEqual([0, 1]);
     const taskContext = { actorId: "actor", accountId: "account", agentId: "agent", taskId: "task", epoch: 0 };

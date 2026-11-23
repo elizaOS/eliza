@@ -1,4 +1,5 @@
 // spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection"; spec/notes/trash.md, "An erase that may or may not have committed never reports success"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"
+import { sameJson } from "./json-equality.vibe"
 import { canonicalDocument, eraseOutcome, notesSchemaVersion, type EraseCommit } from "../gen/notes__trash.effect.vibe"
 import { committedRevision, importSettled, importStep } from "../gen/notes__records.effect.vibe"
 import { emptyNotesDocument, NotesRefused, snapshotOf, type Change, type NotesDocument } from "./collection.vibe"
@@ -17,7 +18,6 @@ module edge {
   }
 }
 import { plain } from edge
-import { sameJson } from "./json.vibe"
 
 export interface NotesStorage {
   get(): Promise<unknown>

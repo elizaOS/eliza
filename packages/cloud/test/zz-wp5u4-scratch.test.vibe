@@ -1,5 +1,0 @@
-// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
-import { respond } from "../src/http/transport.vibe"
-import { chatAdmissionSuite } from "./support/chat-admission.vibe"
-
-chatAdmissionSuite({ defaultTokens: 500, defaultMicros: 1212, respond: (routes) => respond(routes) })

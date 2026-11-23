@@ -62,7 +62,11 @@ public final class AgentSocketClient {
   public record Event(JSONObject event) implements Frame {}
 
   public sealed interface Outgoing permits HttpCall, Subscription {}
-  public record HttpCall(String method, String path, byte[] body, boolean streamed, Map<String, String> headers) implements Outgoing {}
+  public record HttpCall(String method, String path, byte[] body, boolean streamed, Map<String, String> headers) implements Outgoing {
+    public HttpCall(String method, String path, byte[] body, boolean streamed) {
+      this(method, path, body, streamed, Map.of());
+    }
+  }
   public record Subscription(List<String> streams, String clientId) implements Outgoing {}
 
   public record Account(String userId, String organizationId) {}

@@ -1,0 +1,37 @@
+// spec/assistant/billEvidence.md, "Story: Keep the evidence of an owner-submitted bill payment"
+import { mayLookUpBillReceipt, reconcileBillOutcome, sameBill, type BillEvidence, type BillObservation } from "../gen/assistant__billEvidence.effect.vibe"
+
+export error BillEvidenceUnavailable { reason: string }
+
+export interface BillLookup {
+  readonly evidence: BillEvidence
+  readonly revision: number
+  readonly attempts: number
+  readonly lastAttemptAt: number
+}
+
+export service BillEvidencePort {
+  get(ownerId: string, billKey: string): (BillLookup | undefined)!BillEvidenceUnavailable
+  replace(ownerId: string, billKey: string, revision: number, evidence: BillEvidence): boolean!BillEvidenceUnavailable
+  reserveReceiptAttempt(ownerId: string, billKey: string, revision: number, at: number): boolean!BillEvidenceUnavailable
+  matchingReceipts(ownerId: string, reference: string): string[]!BillEvidenceUnavailable
+}
+
+export effect function keepObservedBill(observation: BillObservation) {
+  const port = try BillEvidencePort
+  const current = try port.get(observation.observedOwner, observation.observedBill)
+  if (current === undefined || !sameBill(current.evidence, observation) || current.evidence.progress !== "SubmissionUnknown") return false
+  const settled = reconcileBillOutcome(current.evidence, observation)
+  return try port.replace(observation.observedOwner, observation.observedBill, current.revision, settled)
+}
+
+export effect function findBillReceipt(ownerId: string, billKey: string) {
+  const port = try BillEvidencePort
+  const current = try port.get(ownerId, billKey)
+  const at = try Clock.currentTimeMillis
+  if (current === undefined || current.evidence.billOwner !== ownerId || current.evidence.billKey !== billKey ||
+    !mayLookUpBillReceipt(current.evidence, current.attempts, current.lastAttemptAt, at)) return undefined
+  if (!(try port.reserveReceiptAttempt(ownerId, billKey, current.revision, at))) return undefined
+  const matches = try port.matchingReceipts(ownerId, current.evidence.outcomeRef)
+  return matches.length === 1 ? matches[0] : undefined
+}
