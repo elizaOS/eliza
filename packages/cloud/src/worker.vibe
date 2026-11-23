@@ -71,7 +71,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     if (access.kind === "refused") return WorkerResponse.json(access.body, { status: access.status })
     const response = await googleRequest(request, env, db, access.account, providerFetch)
     if (response.ok && request.method === "GET" && path.startsWith("/api/v1/eliza/google/gmail/")) {
-      const current = await mailAccount(request, db)
+      const current = await mailAccount(request, db, false)
       if (current.kind !== "owner" || current.account !== access.account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     }
     return response

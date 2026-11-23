@@ -176,7 +176,9 @@ The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
 have separate permissions: every mail and calendar route refuses the device
-key with `403 device_key_not_allowed`, even beside a browser session. A
+key with `403 device_key_not_allowed`, even beside a browser session, except
+the four the device itself calls with its key: inbox arrival notices,
+attachment handoff redemption, its reminder schedule and native connect. A
 request that carries an `Authorization` header is authenticated by that
 header alone, never by a cookie. The owner can search Inbox, Sent, Drafts or Trash.
 Counts show the provider’s unread Inbox messages and total draft messages across
@@ -200,10 +202,10 @@ pure def canReadCloudGoogle(ownerSessionOrLeaseActive: bool, connectionPresent: 
 
 ### Managed mail dispatch requires separate consent and explicit approval
 
-The owner may separately grant permission to send email. A browser request
-dispatches one reviewed plain-text draft to one exact address through the
-current Gmail connection, from the owner's browser session or the device's
-mail lease. A reply is threaded only after Cloud re-reads the
+The owner may separately grant permission to send email. A request from the
+owner's browser session or the device's mail lease dispatches one reviewed
+plain-text draft to one exact address through the current Gmail connection.
+A reply is threaded only after Cloud re-reads the
 selected message and matches the reviewed recipient and subject. Cloud builds
 the thread headers from that verified message. The device inference key cannot dispatch a draft.
 Cloud reserves the operation ID before calling Gmail and records provider

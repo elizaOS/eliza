@@ -122,14 +122,14 @@ export type MailAccess =
 
 const unauthenticated: MailAccess = { kind: "refused", status: 401, body: { error: "authentication_required" } }
 
-effect function accountForMail(request: Request, db: Client) {
+effect function accountForMail(request: Request, db: Client, countRequest: boolean) {
   const authorization = request.headers.get("authorization")
   if (authorization === null) {
     const id = (try browserAccount(request, db))?.id
     return id ? { kind: "owner", account: id } satisfies MailAccess : unauthenticated
   }
   const admitted = effect {
-    const caller = try authenticate(authorization, "MailAccess")
+    const caller = try authenticate(authorization, "MailAccess", countRequest)
     return caller.kind === "lease" ? { kind: "owner", account: caller.userId } satisfies MailAccess : unauthenticated
   }
   return Effect.provide(admitted, workerStore(db)) catch effect (failure) => {
@@ -138,8 +138,8 @@ effect function accountForMail(request: Request, db: Client) {
   }
 }
 
-export function mailAccount(request: Request, db: Client): Promise<MailAccess> {
-  return runPromise(Effect.provide(accountForMail(request, db), cryptoServices))
+export function mailAccount(request: Request, db: Client, countRequest = true): Promise<MailAccess> {
+  return runPromise(Effect.provide(accountForMail(request, db, countRequest), cryptoServices))
 }
 
 function leaseBearer(request: Request) {
@@ -650,7 +650,7 @@ effect function revokeDevice(request: Request, db: Client) {
   const now = try Clock.currentTimeMillis
   try transact(db, effect (tx: Tx) => {
     const lease = refresh === null ? undefined : try presentedLease(tx, refresh, now)
-    if (lease !== undefined && lease.presented < lease.family.generation) return
+    if (refresh !== null && lease !== undefined && lease.presented < lease.family.generation) try rotateLease(tx, refresh, now)
     const row = (try tx.query(`
       SELECT d.key, d.state, d.phase, d.key_expires_at, d.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, a.status
       FROM device_grants d JOIN accounts a ON a.key = d.user_id WHERE d.secret_digest = $1 OR d.key = $2 FOR UPDATE OF a, d
