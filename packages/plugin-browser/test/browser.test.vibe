@@ -480,6 +480,17 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
     try outcome("Can you open https://bank.example.com/statement#heading in the browser?", samePage, withheld("unreadable")),
     try outcome("Summarize https://bank.example.com/statement#heading", samePage),
   ]
+  const statement = { type: "browser_navigate", url: "https://bank.example.com/statement" } as const
+  const dictatedSite = { type: "browser_navigate", url: "https://alphacompute.ai/" } as const
+  const exactReopen = [
+    try outcome("Please summarize https://bank.example.com/statement in two sentences.", statement, withheld("unreadable")),
+    try outcome("reload this page", statement, withheld("unreadable")),
+    try outcome("open https://bank.example.com/statement#details", statement, withheld("unreadable")),
+    try outcome("Eliza, can you open https://bank.example.com/statement?", statement, withheld("unreadable")),
+    try outcome("open https://bank.example.com/statement", statement, withheld("unreadable")),
+    try outcome("Eliza, can you open https://bank.example.com/statement", statement, withheld("unreadable")),
+    try outcome("Can you open alphacompute. AI in the browser, please?", dictatedSite, { ...withheld("unreadable"), url: "https://alphacompute.ai/" }),
+  ]
   const reloadCommand = browserPlugin.actions?.find((action) => action.name === "BROWSER_RELOAD")
   try Effect.try(() => assert.isTrue(reloadCommand !== undefined))
   const device = renderer([replied(dispatched), replied(dispatched), replied(dispatched)])
@@ -501,6 +512,9 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
       "Reload this page. Actually, don't send the email.",
       "Reload this page. Send the email. Actually, don't.",
       "Reload this page, send the email, actually, don't.",
+      "Refresh", "please refresh the page", "can you reload it?", "re-open this page", "open it again", "It looks stuck, reload",
+      "it isn't loading so reload it", "the page won't load so please refresh", "this page doesn't work so reload it",
+      "could you please refresh the page?", "Don't go back but reload it", "open the article then reload it",
     ]
     const mentions = [
       summarize, "don't reload it", "why won't this page reload?", "refresh my memory about this page", "I reloaded it already",
@@ -517,6 +531,12 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
       "Reload it, never mind, open a new tab.",
       "Reload it: do not — tell me the time.",
       "Reload this page. Never mind. Summarize what you have.",
+      "what is this page about?", "don't reload the page", "do not reopen or refresh this page", "please do not close this tab and reload it",
+      "Reload this page. Actually, don't.", "Reload this page. Never mind.", "Reload this page, actually, don't.",
+      "do not refresh it, just tell me what it says", "summarize it without reloading", "no need to reload, just read it", "please don't reload it",
+      "reload this page\nand then summarize it", "summarize this article about the reopening of Notre-Dame",
+      "what is the refresh rate on this monitor page?", "summarize this page about refreshing your skin", "why did you reload the page?",
+      "If it fails to load then I'll refresh it myself", "it won't load, so don't reload it, just read it", "it's slow so don't refresh it",
     ]
     assert.deepStrictEqual([...asks, ...mentions].map((text) => ownerAskedBrowserReload(text)), [...asks.map(() => true), ...mentions.map(() => false)])
     assert.deepStrictEqual(refusal.kind === "Refused" ? [refusal.code, refusal.forModel, refusal.forOwner.includes("didn't reload")] : refusal, ["DEVICE_BROWSER_NOT_REQUESTED", BROWSER_RELOAD_WITHHELD_REFUSAL, true])
@@ -528,6 +548,11 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
       { operation: { type: "browser_history", action: "back" }, reviewed: false },
     ])
     assert.deepStrictEqual(reopen.map(result => typeof result === "string" ? result : result.operation), ["DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED", samePage, samePage, samePage])
+    assert.deepStrictEqual(exactReopen, [
+      "DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED",
+      { operation: { type: "browser_navigate", url: "https://bank.example.com/statement#details" }, reviewed: false }, { operation: statement, reviewed: false },
+      { operation: statement, reviewed: false }, { operation: statement, reviewed: false }, { operation: dictatedSite, reviewed: false },
+    ])
     assert.deepStrictEqual([unasked, sensitive, withdrawn].map((result) => [result.success, failureKind(result), result.text]), Array.from({ length: 3 }, () => [false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL]))
     assert.strictEqual(asksAfterRefusal, 0)
     assert.deepStrictEqual([asked, askedSensitive, readable].map((result) => [result.success, result.data?.executionStatus]), [[true, "dispatched"], [true, "dispatched"], [true, "dispatched"]])
