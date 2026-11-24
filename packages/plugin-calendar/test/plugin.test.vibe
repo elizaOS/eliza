@@ -310,7 +310,7 @@ it.effect(`Find my events by their words, and what is on while I am away (spec/c
   assert.deepStrictEqual([moved.success, at(moved.data, "change", "target", "eventId")], [true, "dentist"])
 })
 
-it.effect(`Ask when I am free and get openings from my real calendar (spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A free-time question reads exactly the asked window and answers only from a complete read"; spec/calendar/actions.md, "A morning-only question reads only that morning, from midnight to noon"; spec/calendar/actions.md, "An afternoon-only question reads only that afternoon, from noon to five"; spec/calendar/readClock.md, "A free-time window's clock times the owner stated are ones the owner's words hold"; spec/calendar/actions.md, "A period is free only when no blocking event overlaps it"; spec/calendar/actions.md, "Openings are at most two quarter-hour starts of the asked length inside the window")`, effect () => {
+it.effect(`Ask when I am free and get openings from my real calendar (spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A free-time question reads exactly the asked window and answers only from a complete read"; spec/calendar/actions.md, "A morning-only question reads only that morning, from midnight to noon"; spec/calendar/actions.md, "An afternoon-only question reads only that afternoon, from noon to five"; spec/calendar/readClock.md, "A free-time window's clock times the owner stated are ones the owner's words hold"; spec/calendar/readClock.md, "A stated window is read only when the owner's words fit it one way on its day"; spec/calendar/actions.md, "A free-time window starts no earlier than the current minute"; spec/calendar/actions.md, "A period is free only when no blocking event overlaps it"; spec/calendar/actions.md, "Openings are at most two quarter-hour starts of the asked length inside the window")`, effect () => {
   try TestClock.setTime(Date.parse("2030-03-03T20:00:00Z"))
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
   const google = googleCalendar()
@@ -365,6 +365,13 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const errand = "Find me 30 minutes tomorrow when I can go get groceries in the afternoon"
   const thirty = try asked("Find me 30 minutes tomorrow afternoon", afternoon)
   const errandSlots = try asked(errand, afternoon)
+  const errandAfter = try asked("Can you find a free hour tomorrow afternoon where I can pick up these groceries?", { ...afternoon, durationMinutes: 60 })
+  assert.deepStrictEqual([errandAfter.success, at(errandAfter.data, "slots", "0", "startAt"), at(errandAfter.data, "slots", "0", "endAt")], [true, "2030-03-04T20:00:00.000Z", "2030-03-04T21:00:00.000Z"])
+  const described = (name: string) => calendarAction.parameters?.find((parameter) => parameter.name === name)?.description ?? ""
+  assert.deepStrictEqual([
+    described("afternoonOnly").includes("tomorrow when I can pick up groceries in the afternoon"), described("afternoonOnly").includes("tomorrow afternoon where I can pick up these groceries"),
+    described("statedClock").includes("between noon and five"), described("statedClock").includes("from one ten PM to two PM"), described("durationMinutes").includes("a free hour"), described("timeMin").includes("no earlier than now"),
+  ], [true, true, true, true, true, true])
   const errandMorning = try asked(errand, { ...afternoon, timeMin: "2030-03-04T09:00:00-08:00" })
   const afterFive = try asked("Am I free tomorrow afternoon?", { ...afternoon, subaction: "check_availability", timeMax: "2030-03-04T18:00:00-08:00" })
   const wholeDay = try asked("Am I free tomorrow afternoon?", { subaction: "check_availability", timeMin: "2030-03-04T09:00:00-08:00", timeMax: "2030-03-04T18:00:00-08:00" })
@@ -374,8 +381,12 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const between = try asked("Am I free tomorrow between noon and five?", noonToFive)
   const pastFive = try asked("Am I free tomorrow between noon and five?", { ...noonToFive, timeMax: "2030-03-04T18:00:00-08:00" })
   const twoToFour = try asked("Am I free tomorrow from 2 to 4?", { ...noonToFive, timeMin: "2030-03-04T14:00:00-08:00", timeMax: "2030-03-04T16:00:00-08:00" })
-  assert.deepStrictEqual([between.success, at(between.data, "isFree"), pastFive.success, at(pastFive.data, "code"), at(pastFive.data, "sent"), at(twoToFour.data, "isFree")],
-    [true, true, false, "CALENDAR_CLOCK_UNSAID", "2030-03-05T02:00:00.000Z", true])
+  const twoToFourRead = try asked("Am I free tomorrow from 2 to 4?", { ...noonToFive, timeMin: "2030-03-04T14:00:00-08:00", timeMax: "2030-03-04T16:00:00-08:00", statedClock: "none" })
+  assert.deepStrictEqual([between.success, at(between.data, "isFree"), pastFive.success, at(pastFive.data, "code"), at(pastFive.data, "sent"), twoToFour.success, at(twoToFour.data, "code"), at(twoToFour.data, "windows"), at(twoToFourRead.data, "isFree")],
+    [true, true, false, "CALENDAR_CLOCK_UNSAID", "2030-03-05T02:00:00.000Z", false, "CALENDAR_CLOCK_AMBIGUOUS", [
+      { startAt: "2030-03-04T10:00:00.000Z", endAt: "2030-03-04T12:00:00.000Z" }, { startAt: "2030-03-04T10:00:00.000Z", endAt: "2030-03-05T00:00:00.000Z" },
+      { startAt: "2030-03-04T22:00:00.000Z", endAt: "2030-03-05T00:00:00.000Z" },
+    ], true])
   assert.strictEqual(pastFive.text, "Nothing was read: the end time 6:00 PM is not a time the request gives.")
   const spokenWindow = { subaction: "propose_times", timeMin: "2030-03-04T13:10:00-08:00", timeMax: "2030-03-04T14:00:00-08:00", durationMinutes: 20, statedClock: "range" }
   const spoken = try asked("Find me 20 minutes tomorrow from one ten PM to two PM", spokenWindow)
@@ -383,6 +394,11 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const chosen = try asked("Find me 20 minutes tomorrow from one ten PM to two PM", { ...spokenWindow, timeMin: "2030-03-04T01:10:00-08:00", statedClock: "none" })
   assert.deepStrictEqual([at(spoken.data, "slots"), at(spokenMisread.data, "code"), at(spokenMisread.data, "sent"), chosen.success],
     [[{ startAt: "2030-03-04T21:15:00.000Z", endAt: "2030-03-04T21:35:00.000Z", durationMinutes: 20, timeZone: zone }], "CALENDAR_CLOCK_UNSAID", "2030-03-04T09:10:00.000Z", true])
+  const today = try asked("Is today free?", { subaction: "check_availability", timeMin: "2030-03-03T00:00:00-08:00", timeMax: "2030-03-04T00:00:00-08:00" })
+  const minuteAgo = try asked("Am I free for the next hour?", { subaction: "check_availability", timeMin: "2030-03-03T11:59:00-08:00", timeMax: "2030-03-03T13:00:00-08:00" })
+  const restOfToday = try asked("Is today free?", { subaction: "check_availability", timeMin: "2030-03-03T12:00:00-08:00", timeMax: "2030-03-04T00:00:00-08:00" })
+  assert.deepStrictEqual([today.success, at(today.data, "code"), at(minuteAgo.data, "code"), restOfToday.success, at(restOfToday.data, "isFree")],
+    [false, "CALENDAR_AVAILABILITY_PAST_WINDOW", "CALENDAR_AVAILABILITY_PAST_WINDOW", true, true])
   const unsized = try asked("Find me time this week", { subaction: "propose_times", timeMin: "2030-03-04T09:00:00-08:00", timeMax: "2030-03-04T12:00:00-08:00" })
   const tooLong = try asked("Am I free this month?", { subaction: "check_availability", timeMin: "2030-03-04T00:00:00-08:00", timeMax: "2030-03-12T00:00:00-07:00" })
   assert.deepStrictEqual([at(unsized.data, "code"), at(tooLong.data, "code")], ["CALENDAR_AVAILABILITY_INVALID_WINDOW", "CALENDAR_AVAILABILITY_INVALID_WINDOW"])
@@ -529,7 +545,7 @@ it.effect(`Create a repeating event through the reviewed create (spec/calendar/a
   assert.deepStrictEqual([refusal.result, refusal.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_RECURRENCE_UNSUPPORTED", 0])
 })
 
-it.effect(`Change my calendar only as I asked and know it happened, at a free time and for the one event I meant (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request says"; spec/calendar/actions.md, "A change that moves only the start keeps the event's length")`, effect () => {
+it.effect(`Change my calendar only as I asked and know it happened, at a free time and for the one event I meant (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/actions.md, "A create the owner gave a start and an end for reports the saved range"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request says"; spec/calendar/actions.md, "A change that moves only the start keeps the event's length")`, effect () => {
   try TestClock.setTime(Date.parse("2030-03-01T12:00:00Z"))
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
@@ -563,7 +579,11 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const dictated = try ranged("slot-4k", taco, "Taco Night lab check", "2030-03-02T13:10", "2030-03-02T13:30")
   const written = try ranged("slot-4l", labSync, "Lab sync", "2030-03-02T15:00", "2030-03-02T15:45")
   const extended = try ranged("slot-4m", labDinner, "Lab dinner", "2030-03-02T18:00", "2030-03-02T19:00")
+  const morningTaco = try ranged("slot-4v", taco, "Taco Night lab check", "2030-03-02T01:10", "2030-03-02T01:30")
+  assert.deepStrictEqual([morningTaco.success, at(morningTaco.data, "code"), at(morningTaco.data, "sent"), morningTaco.effectReceipts?.length ?? 0], [false, "CALENDAR_CLOCK_UNSAID", "2030-03-02T09:10:00.000Z", 0])
+  assert.deepStrictEqual([dictated.text?.replace(/\s/gu, " ").startsWith("Created Taco Night lab check, Mar 2, 2030, 1:10 – 1:30 PM."), written.text?.replace(/\s/gu, " ").startsWith("Created Lab sync, Mar 2, 2030, 3:00 – 3:45 PM.")], [true, true])
   const open = try said("slot-4n", "Block an hour for the lab tomorrow afternoon", { subaction: "create_event", title: "Lab block", startAt: "2030-03-02T14:00", endAt: "2030-03-02T15:00", statedClock: "none" })
+  assert.strictEqual(open.text?.replace(/\s/gu, " ").startsWith("Created Lab block, Mar 2, 2030, 2:00 PM."), true)
   const shifted = try said("slot-4o", "Add an event called Lab review tomorrow from 3pm to 3:45pm", { subaction: "create_event", title: "Lab review", startAt: "2030-03-02T15:00", endAt: "2030-03-02T16:45", statedClock: "range" })
   assert.deepStrictEqual([span(dictated), span(written), span(extended), span(open), at(shifted.data, "code")],
     [["2030-03-02T21:10:00.000Z", "2030-03-02T21:30:00.000Z"], ["2030-03-02T23:00:00.000Z", "2030-03-02T23:45:00.000Z"], ["2030-03-03T02:00:00.000Z", "2030-03-03T03:00:00.000Z"],

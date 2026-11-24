@@ -180,7 +180,9 @@ new event's is: one the words hold is read, and one they do not hold reads
 nothing, and the result names the time sent so the model sends the window
 the owner said. A window the model did not call stated, or called none, is
 read as asked: a window the model chose ("tomorrow afternoon", "is
-Wednesday free?") holds no clock time the owner said.
+Wednesday free?") holds no clock time the owner said. Only the Calendar
+action's free-time questions send a window; their story is "Ask when I am
+free and get openings from my real calendar" in actions.md.
 
 ```quint
 pure def windowClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): StatedClockCheck =
@@ -191,6 +193,34 @@ pure def lawAnUndeclaredWindowIsReadAsAsked(statedByOwner: bool, heldByOwnerWord
   windowClockCheck(false, statedByOwner, heldByOwnerWords) == ClockAsSent
 pure def lawAWindowCheckNeverAsksForADeclaration(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): bool =
   windowClockCheck(declared, statedByOwner, heldByOwnerWords) != ClockUndeclared
+```
+
+### A stated window is read only when the owner's words fit it one way on its day
+
+A free-time window the model calls a stated range is read only when the
+owner's words fit it one way on its day. Code takes each reading of the
+window's start and of its end, in either half of the day, that the
+owner's words hold, and pairs them where the end comes after the start on
+that day; the window as sent is one such pairing. "Between noon and
+five" and "from one ten PM to two PM" fit one way and are read. Bare
+hours that fit more than one way ("from 2 to 4": 2 to 4 AM, 2 AM to 4
+PM, or 2 to 4 PM) read nothing, and the result lists each pairing, so the
+model asks the owner which one they mean or, when the conversation
+already settles it, sends that window as one it read (statedClock none).
+A window that runs past midnight, and one the model did not call a
+stated range, is not paired.
+
+```quint
+type WindowPairing = PairingSettled | PairingOpen
+pure def windowPairing(statedRange: bool, sameDay: bool, pairings: int): WindowPairing =
+  if (statedRange and sameDay and pairings > 1) PairingOpen else PairingSettled
+pure def lawAWindowTheWordsFitMoreThanOneWayReadsNothing(pairings: int): bool =
+  (windowPairing(true, true, pairings) == PairingOpen) iff pairings > 1
+pure def lawAnUnstatedWindowIsNotPaired(sameDay: bool, pairings: int): bool =
+  windowPairing(false, sameDay, pairings) == PairingSettled
+pure def lawAWindowPastMidnightIsNotPaired(statedRange: bool, pairings: int): bool =
+  windowPairing(statedRange, false, pairings) == PairingSettled
+pure val pairingsValues = Set(0, 1, 2, 3)
 ```
 
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first

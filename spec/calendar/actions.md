@@ -228,6 +228,27 @@ pure def lawWiderAfternoonRequestIsRead(startsBeforeNoon: bool, endsAfterFive: b
   afternoonAdmission(false, startsBeforeNoon, endsAfterFive) == ReadAfternoon
 ```
 
+### A free-time window starts no earlier than the current minute
+
+A free-time question asks about time still to come. A window that starts
+before the current minute is refused before anything is read, and the
+result tells the model to start the window at the current time when the
+owner asked about the rest of a period already under way ("is today
+free?", "am I free this afternoon?" at 2 PM). A window that starts within
+the current minute or later is read as asked.
+
+```quint
+type WindowStartAdmission = ReadFromStart | RefusePastStart
+pure def windowStartAdmission(startMs: int, nowMs: int): WindowStartAdmission =
+  if (startMs < nowMs - nowMs % 60000) RefusePastStart else ReadFromStart
+pure def lawAWindowBeforeThisMinuteReadsNothing(startMs: int, nowMs: int): bool =
+  (windowStartAdmission(startMs, nowMs) == RefusePastStart) iff startMs < nowMs - nowMs % 60000
+pure def lawAWindowFromThisMinuteIsRead(nowMs: int): bool =
+  windowStartAdmission(nowMs - nowMs % 60000, nowMs) == ReadFromStart
+pure val startMsValues = Set(0, 59999, 60000, 120000)
+pure val nowMsValues = Set(0, 60000, 119999, 120000)
+```
+
 ### A period is free only when no blocking event overlaps it
 
 An event blocks the time it overlaps with positive length; a zero-length
@@ -754,6 +775,24 @@ pure def createOutcome(written: bool, readBack: bool, sameSource: bool, fieldsMa
   else CreatedUnconfirmed
 pure def lawCreatedNeedsSameCalendarReadback(written: bool, readBack: bool, sameSource: bool, fieldsMatch: bool): bool =
   createOutcome(written, readBack, sameSource, fieldsMatch) == CreatedAndRead implies readBack and sameSource and fieldsMatch
+```
+
+### A create the owner gave a start and an end for reports the saved range
+
+A created event's reply names its title and when it starts. When the
+model says the owner stated the new event's start and end ("from one ten
+PM to one thirty PM", "from 3pm to 3:45pm"), and those clock times are
+ones the owner's words hold, the reply names the saved start and end, so
+the owner hears the range as it was saved. An all-day event, and a create
+whose end the model worked out or chose, reports its start only.
+
+```quint
+type CreateReplyTime = SavedStart | SavedRange
+pure def createReplyTime(statedRange: bool, allDay: bool): CreateReplyTime =
+  if (statedRange and not(allDay)) SavedRange else SavedStart
+pure def lawAStatedRangeIsReportedWhole(allDay: bool): bool =
+  (createReplyTime(true, allDay) == SavedRange) iff not(allDay)
+pure def lawAnUnstatedEndIsNotReported(allDay: bool): bool = createReplyTime(false, allDay) == SavedStart
 ```
 
 ### A repeating create carries its reviewed recurrence and reads back with it
