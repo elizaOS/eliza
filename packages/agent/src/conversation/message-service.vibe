@@ -1,20 +1,21 @@
 // spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/agent/conversation/planning.md, "What the person said earlier reaches the model with the minute it was said, on the turn's clock"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/planning.md, "Attached documents share a bounded text allowance and images stay images"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none"
 // spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"
+// spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/conversation/planning.md, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; spec/agent/conversation/planning.md, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is asked for again, and the clock's own reading is the last resort"; spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort"
 import {
   type Action, type ActionResult, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
   executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, ServiceType, stampedMessage, stampYear, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
 import { revertedEffectReceiptIds, utf8ByteLength, type EffectReceipt } from "@elizaos/core/protocol"
-import { attachedDocumentBytes, attachedRead, documentTextFits, hostNoteLabels, offersContextRestore, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
+import { asksAgain, attachedDocumentBytes, attachedRead, documentTextFits, followsTheReply, hostNoteLabels, offersContextRestore, putToTheModel, replySource, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
 import { carriesCutOffEffect, replyQuoteChars, storedFailureName } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
-import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
+import { turnClock, ungroundedEventReply, ungroundedTimeReply, type Ungrounded } from "./clock.vibe"
 import { textForTurn } from "./heard.vibe"
 import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "./turn-context.schema.vibe"
-import { actionNotes, offeredActions, planTurn } from "./planning.vibe"
+import { actionNotes, failureNote, offeredActions, planTurn, type PlannedTurn } from "./planning.vibe"
 import { cueRule } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 
@@ -256,6 +257,32 @@ function evaluateLater(runtime: AgentRuntime, message: Memory, state: State, res
   }
 }
 
+const omittedDocuments = "Some attached documents exceeded the amount of text I can read in one turn."
+const omittedNote = "Some attached documents exceeded the amount of text you can read in this turn, and the reply must tell the person."
+
+function withWords(reply: string, words: readonly string[]): string {
+  return [reply, ...words.filter((said) => !reply.includes(said))].filter((part) => part.trim()).join("\n\n")
+}
+
+async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded: (reply: string) => Ungrounded | undefined): Promise<string> {
+  const asked = planned.notices.filter((notice) => putToTheModel(planned.reply.includes(notice.words), notice.safetyCopy))
+  const unreported = [...asked.map(failureNote), ...(omitted ? [omittedNote] : [])]
+  const wrong = misgrounded(planned.reply)
+  const { revised, stoodBy } = asksAgain(unreported.length > 0, wrong !== undefined, planned.cutOff)
+    ? await planned.reask([...unreported, ...(wrong === undefined ? [] : [wrong.note])])
+    : { revised: undefined, stoodBy: false }
+  const noticeWords = planned.notices.map(({ words }) => words)
+  const attachmentWords = omitted ? [omittedDocuments] : []
+  switch (replySource(unreported.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)) {
+    case "ModelReply": return withWords(planned.reply, noticeWords)
+    case "RevisedReply": return withWords(revised ?? "", [...noticeWords, ...attachmentWords])
+    case "FixedWords": return withWords(wrong?.fixed ?? planned.reply, [
+      ...planned.notices.flatMap((notice) => followsTheReply(notice.answerableLater, asked.includes(notice), stoodBy, wrong === undefined, notice.safetyCopy) ? [notice.words] : []),
+      ...attachmentWords,
+    ])
+  }
+}
+
 function turnScope<T>(message: Memory, run: () => Promise<T>): Promise<T> {
   const { secretSwapSession, piiSwapSession, ...outer } = getTrajectoryContext() ?? {}
   const sameRoom = outer.roomId === message.roomId
@@ -337,9 +364,10 @@ async function respond(
           ...(options?.onActivityStatus === undefined ? {} : { onActivityStatus: options.onActivityStatus }),
         }, actions)
         signal.throwIfAborted()
-        const answer = groundedEventReply(groundedTimeReply(planned.reply, asked, clock), asked, planned.steps.map(({ result }) => result), runtime.agentId)
-        if (!answer.trim()) throw new Error("The turn produced no reply")
-        const replyText = attachments.omitted ? `${answer}\n\nSome attached documents exceeded the amount of text I can read in one turn.` : answer
+        const results = planned.steps.map(({ result }) => result)
+        const replyText = await settledReply(planned, attachments.omitted, (said) => ungroundedTimeReply(said, asked, clock) ?? ungroundedEventReply(said, asked, results, runtime.agentId))
+        signal.throwIfAborted()
+        if (!replyText.trim()) throw new Error("The turn produced no reply")
         if (onStreamChunk !== undefined && replyText !== written) options?.onReplyRestart?.(replyText)
         written = replyText
         const ran = planned.steps.map(({ action, result: step }): ActionResult => ({ ...step, data: { ...step.data, actionName: action } }))

@@ -3,7 +3,7 @@ import { answerKeptFor, closestFirst, courseOf, entryOf, keepsAnswer, limitOf, m
 import { planRpm } from "../billing/plans.vibe"
 import { laneFor, readPolicy } from "../billing/policy.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
-import { recheckServiceAccess, signed, type Signed } from "../http/request-auth.vibe"
+import { recheckAccess, signed, type Signed } from "../http/request-auth.vibe"
 import { json, jsonBody, type CloudContext, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { describeMaps, mapsProvider, providerKindOf, specModeOf, type MapsContext, type MapsProvider, type MapsReply, type MapsTile, type LostReplyRefusal, type ProviderRefusal } from "../providers/maps.vibe"
@@ -62,6 +62,7 @@ function credentialOf(caller: Signed): string {
   switch (caller.kind) {
     case "deviceKey": return `key:${caller.credentialScope}`
     case "session": return `session:${caller.sessionKey}`
+    case "lease": return `lease:${caller.sessionKey}`
     default: {
       const _exhaustive: never = caller
       return _exhaustive
@@ -194,7 +195,7 @@ effect function repeatKept(holdKey: string, stored: unknown, now: number): Answe
 }
 
 effect function keepStanding(context: RouteContext, caller: Signed, ticket: Extract<HoldTicket, { replayed: false }>) {
-  try recheckServiceAccess(context.request.headers.authorization, caller)
+  try recheckAccess(context.request.headers.authorization, caller, "ServiceAccess")
   const store = try Store
   const now = try Clock.currentTimeMillis
   const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, "MeteredMaps", now))
