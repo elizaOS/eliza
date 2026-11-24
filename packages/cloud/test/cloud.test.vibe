@@ -13,7 +13,7 @@ import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { migrate, Store, StoreFailure, type Tx } from "../src/store/store.vibe"
-import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { organization, testCloud, type Answer, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
@@ -2048,6 +2048,103 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     }
   }))
 
+  it.live('Hear about new mail while the phone is idle: a baseline, ordered pages with current labels, a reset, refusals before Google, and nothing once the grant is gone (spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle")', () => scoped(effect {
+    const google = try sync(() => googleFakeState())
+    const now = try Clock.currentTimeMillis
+    let historyRead = Promise.withResolvers<void>()
+    let releaseHistory = Promise.withResolvers<void>()
+    let provider = "pages"
+    const added = (id: string, thread: string) => ({ message: { id, threadId: thread } })
+    const cloud = try testCloud({ mount: (fakes) => {
+      fakes.mount("/google/", mountGoogleToken(google))
+      fakes.mount("/google/api/", (request) => {
+        if (bearerGrant(google, request) === undefined) return { status: 401 }
+        if (request.path === "/gmail/v1/users/me/profile") return { status: 200, body: { historyId: "1000" } }
+        if (request.path === "/gmail/v1/users/me/messages/new-mail") return { status: 200, body: { id: "new-mail", threadId: "thread-new", labelIds: ["INBOX", "UNREAD", "INBOX"] } }
+        if (request.path === "/gmail/v1/users/me/messages/gone-mail") return { status: 404 }
+        if (request.path !== "/gmail/v1/users/me/history") return undefined
+        if (request.query.get("startHistoryId") === "900") return { status: 404 }
+        if (provider === "held") {
+          historyRead.resolve()
+          return releaseHistory.promise.then(() => ({ status: 200, body: { historyId: "1001", history: [{ id: "1001", messagesAdded: [added("new-mail", "thread-new")] }] } }))
+        }
+        if (provider === "reordered") return { status: 200, body: { historyId: "1003", history: [{ id: "1002", messagesAdded: [added("new-mail", "thread-new")] }, { id: "1001", messagesDeleted: [added("old-mail", "thread-old")] }] } }
+        if (!request.query.has("pageToken")) return { status: 200, body: { historyId: "1003", nextPageToken: "more", history: [{ id: "1001", messagesAdded: [added("new-mail", "thread-new")] }] } }
+        return { status: 200, body: { historyId: "1003", history: [
+          { id: "1002", messagesAdded: [added("gone-mail", "thread-gone")] },
+          { id: "1003", labelsRemoved: [{ ...added("new-mail", "thread-new"), labelIds: ["UNREAD"] }] }
+        ] } }
+      })
+    } })
+    const device = try signedCaller(cloud, "mail-history")
+    const other = try signedCaller(cloud, "mail-history-other")
+    const grant = "5f0c2b7e-8d1a-4c3e-9b6f-2a7d4e1c9b30"
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+    const refresh = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
+    try cloud.inside(linkedGrant(cloud, device, grant, refresh, scopes, now - 1000))
+    const path = "/api/v1/eliza/google/gmail/history"
+    const history = (query: string) => cloud.call(`${path}?grantId=${grant}${query}`, { headers: device.headers })
+    const page = { version: 1, grantId: grant, startHistoryId: "1000", historyId: "1003", backfillRequired: false }
+    const newMail = { messageId: "new-mail", threadId: "thread-new" }
+
+    const baseline = try history("&maxResults=50")
+    const first = try history("&maxResults=50&startHistoryId=1000")
+    const second = try history("&maxResults=50&startHistoryId=1000&pageToken=more")
+    const expired = try history("&startHistoryId=900&side=owner")
+    const asked = cloud.fakes.seen.filter((request) => request.path.endsWith("/history")).map(({ query }) => [query.get("startHistoryId"), query.get("maxResults"), query.get("pageToken")])
+    provider = "reordered"
+    const beforeReordered = cloud.fakes.seen.length
+    const reordered = try history("&startHistoryId=1000")
+    const readAfterReordered = cloud.fakes.seen.slice(beforeReordered).map((request) => request.path.split("/").at(-1))
+    const beforeRefusals = cloud.fakes.seen.length
+    const refusals = try all([
+      cloud.call(`${path}?startHistoryId=1000`, { headers: device.headers }), history("&maxResults=101"), history("&maxResults=0"), history("&pageToken=more"),
+      history("&startHistoryId=0100"), history("&startHistoryId=1000&startHistoryId=1001"), history("&unexpected=1"), history("&side=agent"), cloud.call(`${path}?grantId=${grant}`)
+    ])
+    const otherOrganization = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
+    try sql(cloud, "UPDATE accounts SET organization_id = $1 WHERE key = $2", [device.organizationId, other.userId])
+    const otherUser = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
+    const providerCallsOnRefusal = cloud.fakes.seen.length - beforeRefusals
+
+    const heldRead = (end: () => Answer!!) => effect {
+      historyRead = Promise.withResolvers<void>()
+      releaseHistory = Promise.withResolvers<void>()
+      provider = "held"
+      const reading = try forkChild(history("&startHistoryId=1000"))
+      try timeout(promise(() => historyRead.promise), "5 seconds")
+      const ended = try end()
+      try sync(() => releaseHistory.resolve())
+      return [ended, try Fiber.join(reading)] as const
+    }
+    const [disconnected, lostDuringRead] = try heldRead(() => cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } }))
+    const relinked = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
+    try cloud.inside(linkedGrant(cloud, device, grant, relinked, scopes, now - 1000))
+    const [revoked, revokedDuringRead] = try heldRead(() => cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: device.headers }))
+    try check(() => {
+      assert.deepStrictEqual([baseline.status, first.status, second.status, expired.status, baseline.headers["cache-control"]], [200, 200, 200, 200, "no-store"])
+      assert.deepStrictEqual([baseline.body, expired.body], [
+        { version: 1, grantId: grant, status: "baseline-required", startHistoryId: null, historyId: "1000", checkpoint: null, nextPageToken: null, events: [], backfillRequired: true },
+        { version: 1, grantId: grant, status: "reset-required", startHistoryId: "900", historyId: null, checkpoint: null, nextPageToken: null, events: [], backfillRequired: true }
+      ])
+      assert.deepStrictEqual([first.body, second.body], [
+        { ...page, status: "page", checkpoint: null, nextPageToken: "more", events: [
+          { id: "1001:message-added:new-mail", historyId: "1001", type: "message-added", ...newMail, labelIds: ["INBOX", "UNREAD"], messageAvailable: true }
+        ] },
+        { ...page, status: "page", checkpoint: "1003", nextPageToken: null, events: [
+          { id: "1002:message-added:gone-mail", historyId: "1002", type: "message-added", messageId: "gone-mail", threadId: "thread-gone", labelIds: [], messageAvailable: false },
+          { id: "1003:labels-removed:new-mail", historyId: "1003", type: "labels-removed", ...newMail, labelIds: ["UNREAD"] }
+        ] }
+      ])
+      assert.deepStrictEqual(asked, [["1000", "50", null], ["1000", "50", "more"], ["900", "50", null]])
+      assert.deepStrictEqual([errorOf(reordered), readAfterReordered], [[502, "provider_invalid_response"], ["history"]])
+      assert.deepStrictEqual(refusals.map((answer) => answer.status), [400, 400, 400, 400, 400, 400, 400, 400, 401])
+      assert.deepStrictEqual([errorOf(otherUser), errorOf(otherOrganization)], [[404, "not_found"], [404, "not_found"]])
+      assert.equal(providerCallsOnRefusal, 0)
+      assert.deepStrictEqual([disconnected.status, errorOf(lostDuringRead)], [200, [409, "google_reauth_required"]])
+      assert.deepStrictEqual([revoked.status, errorOf(revokedDuringRead)], [204, [401, "authentication_required"]])
+    })
+  }))
+
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     const now = try Clock.currentTimeMillis
@@ -3402,20 +3499,23 @@ describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
     const refusedSets = [
       try run(["prices", "set", "--model", "unoffered", "--input-per-1k", "100", "--output-per-1k", "200"]),
       try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "1.5", "--output-per-1k", "200"]),
-      try run(["prices", "set", "--model", "test-chat", "--output-per-1k", "200"])
+      try run(["prices", "set", "--model", "test-chat", "--output-per-1k", "200"]),
+      try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--cached-input-per-1k", "151", "--output-per-1k", "600"])
     ]
-    const set = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
+    const sameAsInput = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
+    const set = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--cached-input-per-1k", "0", "--output-per-1k", "600"])
     const admittedAfter = try admission
     const listedAfter = try listed()
     const checkAfter = try run(["prices", "check"])
     try check(() => assert.deepStrictEqual(
-      { checkBefore, admittedBefore, listedBefore, refusedSets, set, admittedAfter, listedAfter, checkAfter },
+      { checkBefore, admittedBefore, listedBefore, refusedSets, sameAsInput, set, admittedAfter, listedAfter, checkAfter },
       {
         checkBefore: "PricesMismatched",
         admittedBefore: "model_unavailable",
         listedBefore: [200, []],
-        refusedSets: ["Refused", "PriceFlagsInvalid", "PriceFlagsInvalid"],
-        set: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, output 600 µUSD per 1,000 tokens"]}',
+        refusedSets: ["Refused", "PriceFlagsInvalid", "PriceFlagsInvalid", "Refused"],
+        sameAsInput: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, cached input 150, output 600 µUSD per 1,000 tokens"]}',
+        set: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, cached input 0, output 600 µUSD per 1,000 tokens"]}',
         admittedAfter: "admitted test-chat at 150/600 via llm",
         listedAfter: [200, ["test-chat"]],
         checkAfter: 'succeeded with {"kind":"done","lines":["0 price mismatches; usable models: test-chat","payment catalog verified"]}'
@@ -4285,11 +4385,16 @@ module node {
           "GET https://gmail.googleapis.com/gmail/v1/users/me/history",
         ].includes(call)),
       }
-      const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: (input, init) => {
+      const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: async (input, init) => {
         const request = new Request(input, init)
         request.headers.delete("authorization")
         request.headers.set("cookie", "__Host-eliza-session=" + owner.access)
-        return worker.fetch(request, env)
+        const completed: Promise<unknown>[] = []
+        try {
+          return await worker.fetch(request, env, { waitUntil: (pending) => { completed.push(pending) } })
+        } finally {
+          await Promise.all(completed)
+        }
       } })
       const readMail = (messageId: string) => client.gmailRead({ messageId, grantId: grant })
       const whole = await readMail("mail-whole")

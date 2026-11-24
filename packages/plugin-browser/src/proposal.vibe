@@ -12,6 +12,7 @@ import {
   authoredBrowserOpen, browserDestinationMatches, browserSearchQueryMatches, containsWebAddress, directBrowserDestination, directBrowserOpen, directBrowserSearchQuery,
   groundBrowserDestination, groundBrowserSearchQuery, ownerAskedBrowserReload, spokenBrowserOpen, directBrowserTabList,
 } from "./grounding.vibe"
+import { browserContext } from "./native-browser.vibe"
 
 type BrowserProposalType = "browser_navigate" | BrowserControlType
 
@@ -192,6 +193,7 @@ function directText(operation: DeviceOperation): ProposalText | undefined {
 
 export const browserProposalFamily: DeviceProposalFamily = {
   name: "browser",
+  app: browserContext.id,
   types: BROWSER_PROPOSAL_TYPES,
   forms: FORMS,
   guidance: (device) => browserControlCapabilityAvailable("browser_tab_new", device.capabilities) ? [TABS_GUIDANCE] : [],

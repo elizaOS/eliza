@@ -182,7 +182,10 @@ A call that offers tools, names the tool to use or asks for a schema gets one
 result: the text, every tool call with its arguments, the finish reason and
 the token use. Any other call gets the text alone. Tool results follow the
 call that asked for them; a result no call asked for is sent as the person's
-text. An answer with neither text nor a tool call is a provider issue. A call
+text. An answer with neither text nor a tool call is a provider issue, and
+that is the only answer refused for what it holds: the text and the tool
+arguments reach the caller whole at any length, as develop's handlers
+returned them, so a long answer is never turned into a failure. A call
 sends an output cap only when the caller or its admitted lease sets one;
 otherwise the backend owns the output limit. A
 streamed call asks for its token use (`stream_options.include_usage`), which

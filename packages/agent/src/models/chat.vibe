@@ -387,7 +387,6 @@ function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
 }
 
 effect function answered(reply: Reply, ask: ChatAsk) {
-  if (reply.text.length > 32768) throw providerIssue()
   if (reply.toolCalls.some((call) => call.name.trim() === "" || call.id === "")) throw providerIssue()
   const form = chatReturn(ask, { textBlank: reply.text.trim() === "", toolCalls: reply.toolCalls.length })
   if (form === "AnswerProviderIssue") throw providerIssue()
@@ -400,7 +399,6 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   let terminal = false
   let finishReason: string | undefined
   let usage: TokenUsage | undefined
-  let argumentBytes = 0
   const calls: { id: string; name: string; arguments: string }[] = []
   const silent = () => Stream.fail(new ShellRefused({ refusal: "SilentStream" }))
   const lines = Stream.timeoutOrElse(result.stream, { duration: Duration.seconds(streamIdleSeconds), orElse: silent }).pipe(Stream.decodeText(), Stream.splitLines)
@@ -427,13 +425,10 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
       call.id ||= piece.id ?? ""
       call.name += piece.function?.name ?? ""
       call.arguments += piece.function?.arguments ?? ""
-      argumentBytes += piece.function?.arguments?.length ?? 0
-      if (argumentBytes > 65536) throw providerIssue()
     }
     const delta = choice.delta?.content
     if (!delta) return
     text += delta
-    if (text.length > 32768) throw providerIssue()
     if (sink.onStreamChunk) try tryPromise({ try: async () => sink.onStreamChunk?.(delta, undefined, text), catch: (cause) => new StreamConsumerFailed({ cause }) })
   })
   collect catch effect (failure) => {

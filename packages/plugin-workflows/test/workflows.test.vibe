@@ -2,8 +2,9 @@
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { TestClock } from "effect/testing"
-import { computeNextCronRunAtMs, getDirectActionRoutingRules, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
-import { activeWorkflowsProvider, workflowAction, workflowInstances } from "../src/agent.vibe"
+import { activityLabel } from "@elizaos/agent"
+import { computeNextCronRunAtMs, ContextRegistry, getDirectActionRoutingRules, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
   workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected,
@@ -28,6 +29,12 @@ module node {
   import { join } from "node:path"
   import type { LocalRoute } from "@elizaos/agent/routes"
   import type { WorkflowSql } from "../src/index.vibe"
+
+  export async function plant(sql: WorkflowSql, statements: readonly string[]): Promise<void> {
+    await sql.transaction(async (q) => {
+      for (const statement of statements) await q.query(statement)
+    })
+  }
 
   export async function openDatabase(): Promise<{ readonly sql: WorkflowSql; close(): Promise<void> }> {
     const db = new PGlite()
@@ -82,7 +89,7 @@ module node {
     return { status: 404, body: { error: "No route" } }
   }
 }
-import { call, floodingWorker, joinPath, listEntries, openDatabase, readText, scratch, writeTree } from node
+import { call, floodingWorker, joinPath, listEntries, openDatabase, plant, readText, scratch, writeTree } from node
 
 const owner = "owner"
 const device = { installationId: "phone-1", enrollmentId: "enrollment-1" }
@@ -143,8 +150,8 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
 
 type Harness = Effect.Success<ReturnType<typeof harness>>
 
-effect function settled(client: WorkflowClient, run: Pick<WorkflowRun, "id" | "workflowId">, done: (run: WorkflowRun) => boolean = (found) => found.finished) {
-  for (let attempt = 0; attempt < 400; attempt++) {
+effect function settled(client: WorkflowClient, run: Pick<WorkflowRun, "id" | "workflowId">, done: (run: WorkflowRun) => boolean = (found) => found.finished, attempts = 400) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const found = try client.receipt(run.id, run.workflowId)
     if (done(found)) return found
     try sleep("5 millis")
@@ -170,6 +177,12 @@ effect function saved(rig: Harness, draft: PhoneWorkflowSpec, copy = "") {
   const receipt = try rig.client.savePhone(validated.spec, catalog, { mutationId, specDigest: validated.specDigest, compilerRevision: catalog.compilerRevision })
   return { catalog, receipt, mutationId, specDigest: validated.specDigest }
 }
+
+it.effect('Show Workflows while a workflow call runs, without changing which calls of it run (spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results")', effect () => {
+  const runtime = { contexts: try Effect.try(() => new ContextRegistry([workflowsContext])) } as unknown as IAgentRuntime
+  const label = try Effect.try(() => activityLabel(runtime, workflowAction))
+  assert.deepStrictEqual([label, workflowAction.contexts], ["Using Workflows", ["general", "automation", "tasks", "agent_internal"]])
+})
 
 it.live('Recover one reviewed run across an interrupted reply (spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/workflow/intents.md, "Story: Preserve the owner’s pending action across transport uncertainty"; spec/workflow/authoring.md, "Story: Review the exact typed workflow that my agent will save")', effect () => {
   provide KeyValueStore.layerMemory {
@@ -688,6 +701,84 @@ it.effect('End a run whose worker stops answering (spec/workflow/execution.md, "
     "The workflow ran for more than 30 minutes without finishing or waiting, so it was stopped.",
     { type: "failed", message: "The workflow worker sent a message over 1 MiB, so it was stopped.", cancelled: false },
   ]))
+})
+
+const countingSource = `import type { WorkflowContext } from "eliza-workflow"
+export default async function (ctx: WorkflowContext) {
+  await ctx.sleep("pause", 1)
+  let total = 0
+  for (let index = 0; index < 205; index++) total += await ctx.step("count" + index, () => index)
+  return total
+}
+`
+
+it.live('Recover a parked workflow without creating a second execution, past rows it cannot read, and keep each run storable and bounded (spec/workflow/execution.md, "Story: Recover a parked workflow without creating a second execution"; spec/workflow/execution.md, "One unreadable run or schedule does not stop the recovery of the others"; spec/workflow/execution.md, "A run\'s stored record leaves out U+0000, which the store cannot hold"; spec/workflow/execution.md, "A stored run keeps its newest 200 progress events and every timer and approval event, and counts the ones it dropped")', effect () => {
+  const nul = String.fromCharCode(0)
+  const rig = try harness({ draft: () => `Invoice 42${nul} paid` })
+  const invoice = (try saved(rig, manual("Invoice summary", [
+    { id: "text", kind: "Read", operation: "supplied_text", text: "Invoice 42" },
+    { id: "line", kind: "Write", operation: "model_draft", source: "text", instruction: "Summarize" },
+  ]))).receipt
+  const queued = (try rig.service.submit(invoice.workflowId, "77777777-7777-4777-8777-777777777777", Number(invoice.versionId.slice(1)), {})).run
+  const timed = (try saved(rig, manual("Nightly note", greeting.steps, { trigger: { kind: "time", localTime: "23:00", timeZone: "UTC", days: [0, 1, 2, 3, 4, 5, 6] } }))).receipt
+  try rig.client.activate(timed.workflowId, timed.versionId)
+  const key = `workflow:${timed.workflowId}`
+  rig.wakeups.delete(key)
+  try promise(() => plant(rig.host.sql, [
+    `INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ('broken-run', 'gone', '${owner}', false, 0, '["workflow-json-keys-v1", "{"]'::jsonb)`,
+    `INSERT INTO workflow_definitions (id, owner, revision, data) VALUES ('00000000-broken', '${owner}', 1, '["workflow-json-keys-v1", "{"]'::jsonb)`,
+  ]))
+  const restarted = try openWorkflows(rig.host)
+  try addFinalizer(() => restarted.stop())
+  try restarted.start()
+  const resumed = try settled(rig.client, queued)
+  try check(() => assert.deepStrictEqual([queued.status, resumed.status, resumed.output, rig.wakeups.has(key)], ["queued", "finished", "Invoice 42 paid", true]))
+
+  const live = try harness()
+  const created = try live.request("/api/workflow/workflows", { name: "Counter", description: "Counts", source: countingSource, mutationId: "66666666-6666-4666-8666-666666666666" })
+  const counter = (created as { readonly receipt: { readonly workflowId: string; readonly versionId: string; readonly sourceDigest: string } }).receipt
+  try live.request(`/api/workflow/workflows/${counter.workflowId}/review`, { expectedVersionId: counter.versionId, sourceDigest: counter.sourceDigest })
+  const on = try live.client.activate(counter.workflowId, counter.versionId)
+  const run = try live.client.run(counter.workflowId, on.versionId, () => succeed(undefined))
+  const pausing = try settled(live.client, run, (found) => found.status === "waiting-timer")
+  const timerSeen = try Deferred.make<void>()
+  const resumeReader = try Deferred.make<void>()
+  const received: { readonly type: string }[] = []
+  const reading = try forkChild(Stream.runForEach(live.service.runEvents(pausing.id), effect (entry) => {
+    received.push(entry)
+    if (entry.type === "TimerCreated") {
+      try Deferred.succeed(timerSeen, undefined)
+      try Deferred.await(resumeReader)
+    }
+  }))
+  try Deferred.await(timerSeen)
+  try sleep("10 millis")
+  const wakeup = live.wakeups.get(`run:${pausing.id}`)
+  if (wakeup === undefined) return try die(new Error("The timer was not armed"))
+  try live.service.fire(wakeup.metadata, live.digests.fire)
+  const counted = try settled(live.client, pausing, (found) => found.finished, 4000)
+  try Deferred.succeed(resumeReader, undefined)
+  try Fiber.join(reading)
+  const stored = try live.service.runOf(counted.id)
+  const publicRun = try live.service.settle(counted.id)
+  try check(() => assert.deepStrictEqual(
+    [counted.status, counted.output, stored.events.length, stored.events[0]?.type, stored.events.at(-1)?.type, stored.eventsDropped],
+    ["finished", String(204 * 205 / 2), 201, "TimerCreated", "RunFinished", 8]))
+  try check(() => assert.deepStrictEqual(
+    [
+      received.filter((event) => event.type === "TimerCreated").length,
+      received.at(-1)?.type,
+      received.some((event) => Object.hasOwn(event, "ordinal")),
+      publicRun.events.some((event) => Object.hasOwn(event, "ordinal")),
+    ],
+    [1, "RunSettled", false, false]))
+
+  const journalValues = { result: [{ a: "first", [`a${nul}`]: `second${nul}`, ["a\\u0000"]: "literal", ["__proto__"]: "own data" }] }
+  try live.service.store.writeRun({ ...stored, journalValues })
+  const restored = try live.service.store.run(stored.id)
+  try check(() => assert.deepStrictEqual(
+    restored?.journalValues,
+    { result: [{ a: "first", [`a${nul}`]: "second", ["a\\u0000"]: "literal", ["__proto__"]: "own data" }] }))
 })
 
 it.live('Import only complete reviewed workflow source, and run only a worker built and installed intact (spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"; spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets")', effect () => {

@@ -1,4 +1,4 @@
-// spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/voicemail.md, "Story: Change a voicemail only as the provider confirms it"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"
+// spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/voicemail.md, "Story: Change a voicemail only as the provider confirms it"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"; spec/os/android/phone.md, "Story: See my SIM lines without guesses"; spec/os/android/phone.md, "A SIM line shows a field only when Android let this app read it"
 import type { HostFacts, ProviderReply, ReadKind, WriteGate } from "../../gen/os__android__bridge.ts"
 import { receiptOfWrite } from "../../gen/os__android__bridge.effect.vibe"
 import { isAfterStart, startOf, type PageCursor, type PageRequest } from "../../gen/os__android__paging.effect.vibe"
@@ -6,7 +6,9 @@ import {
   callLogKey,
   dialReceipt,
   dialResult,
+  linesFollowAccess,
   maxCallLogPage,
+  maxSimLines,
   placeReceipt,
   placeStatus,
   readCallLog,
@@ -39,7 +41,6 @@ import {
   VOICEMAIL_AUDIO_MAX_BYTES,
   VOICEMAIL_PCM_RATE_HZ,
   WAV_HEADER_BYTES,
-  PHONE_INFO_MAX_LINES,
   normalizePhoneNumber,
   parseImageCapability,
   parseTelephonyStatus,
@@ -145,7 +146,7 @@ const Line = Schema.Struct({
 })
 const Info = Schema.Struct({
   access: Schema.Struct({ phoneState: Schema.Boolean, phoneNumbers: Schema.Boolean, deviceIdentifiers: Schema.Boolean }),
-  lines: Schema.Array(Line).check(Schema.isMaxLength(PHONE_INFO_MAX_LINES)),
+  lines: Schema.Array(Line).check(Schema.isMaxLength(maxSimLines)),
 })
 const Carrier = Schema.Literals(["ready", "unconfigured", "unsupported"])
 const Status = Schema.Struct({ access: Schema.Boolean, state: Schema.NullOr(Carrier) })
@@ -317,9 +318,8 @@ effect function phoneInfo(plugin: PhoneNativePlugin): PhoneInfo!(BridgeUnavailab
   const info = try reply("phoneInfo", Info, () => plugin.phoneInfo())
   const subscriptions = new Set(info.lines.map((line) => line.subscriptionId))
   const ordered = info.lines.every((line, index) => index === 0 || (info.lines[index - 1]?.slot ?? 0) <= line.slot)
-  const withheld = info.lines.some((line) =>
-    (line.number !== null && !info.access.phoneNumbers) || ((line.iccid !== null || line.imei !== null) && !info.access.deviceIdentifiers))
-  if (subscriptions.size !== info.lines.length || !ordered || withheld || (!info.access.phoneState && info.lines.length > 0)) {
+  const followed = linesFollowAccess({ ...info.access }, info.lines.map((line) => ({ hasNumber: line.number !== null, hasIccid: line.iccid !== null, hasImei: line.imei !== null })))
+  if (subscriptions.size !== info.lines.length || !ordered || !followed) {
     try malformed("phoneInfo", "The lines do not follow the access Android granted")
   }
   return { access: { ...info.access }, lines: info.lines.map((line) => ({ ...line })) }

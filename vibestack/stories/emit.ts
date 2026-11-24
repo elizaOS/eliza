@@ -5,13 +5,13 @@ import { createHash } from "node:crypto";
 import { type FSWatcher, type Stats, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, unwatchFile, watch, watchFile, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
-import { type Found, type Prop, analyze, beside, compare, modelFile, modelTag, packageOf, programs, sources } from "./analyze.ts";
+import { type Found, type Lookup, type Prop, analyze, beside, compare, modelFile, modelTag, packageOf, programs, sources } from "./analyze.ts";
 import { type Plan, type Story, plan } from "./variants.ts";
 
 export type { Prop, Story };
 
 /** Part of every hash: raise it when the same inputs would be written differently. */
-const VERSION = "eliza-9";
+const VERSION = "eliza-10";
 
 export interface Component {
   id: string;
@@ -37,7 +37,7 @@ export interface Options {
   cap?: number;
 }
 interface Result { index: ComponentIndex; written: string[]; removed: string[]; analyzed: number; diagnostics: string[] }
-interface Entry { hash: string; inputs: string[]; outputs: string[]; manual: string[]; components: Component[] }
+interface Entry { hash: string; inputs: string[]; lookups: Lookup[]; outputs: string[]; manual: string[]; components: Component[] }
 
 const COMPONENTS = ["src/**/*.tsx", "packages/*/src/**/*.tsx"];
 // Not a dot-directory: Storybook's index does not follow changes inside one (verified on 10.6.7).
@@ -257,14 +257,13 @@ const browser = (files: string[], preview: string | undefined) =>
 /** A generator for one project. Each call brings the output up to date and says what it changed. */
 export function generator({ root, out = outOf(root), cap = 12 }: Options): (observe?: (file: string) => void) => Result {
   out = resolve(root, out);
-  const config = join(root, "tsconfig.json");
-  let configured: string | undefined;
+  let configured = new Map<string, string | undefined>();
   let build: ReturnType<typeof programs>;
-  let built: ts.Program | undefined;
+  let built: ReturnType<ReturnType<typeof programs>> | undefined;
   const rel = (file: string) => relative(root, file).replaceAll("\\", "/");
   const from = (file: string) => JSON.stringify(relative(out, file).replaceAll("\\", "/").replace(/^(?!\.)/, "./"));
   // A file the Program read is hashed as the Program read it, so an edit made while it ran is seen by the next run.
-  const text = (file: string) => built?.getSourceFile(file)?.text ?? (existsSync(file) ? readFileSync(file, "utf8") : "");
+  const text = (file: string) => built?.program.getSourceFile(file)?.text ?? (built && configured.has(file) ? configured.get(file) : ts.sys.readFile(file));
   const hash = (component: string, inputs: string[], observe?: (file: string) => void, read = text) => {
     const sum = createHash("sha1").update(`${VERSION}:${cap}:${rel(out)}`);
     for (const file of inputs) {
@@ -272,11 +271,11 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): (obse
       observe?.(absolute);
       const content = read(absolute);
       if (file === component) {
-        const spec = modelTag(content);
+        const spec = content && modelTag(content);
         const model = spec && modelFile(absolute, spec, observe);
         if (model) sum.update(`model\0${rel(model)}\0`);
       }
-      sum.update(`${file}\0${content}\0`);
+      sum.update(`${file}\0${content === undefined ? "-" : "+" + content}\0`);
     }
     return sum.digest("hex");
   };
@@ -286,22 +285,24 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): (obse
    * source file those reach through imports, by an alias or in another workspace package too, short of `node_modules`.
    */
   const inputsOf = (file: string, names: string[]) => {
-    const seen = new Set([file, ...beside(file, names), join(packageOf(dirname(file)).dir, "package.json"), config]);
+    const seen = new Set([file, ...beside(file, names), join(packageOf(dirname(file)).dir, "package.json"), ...configured.keys()]);
+    const lookups = new Map<string, Lookup>();
     for (const each of seen) {
-      const source = built!.getSourceFile(each);
-      for (const s of source?.statements ?? []) {
-        if (!(ts.isImportDeclaration(s) || ts.isExportDeclaration(s)) || !s.moduleSpecifier || !ts.isStringLiteral(s.moduleSpecifier)) continue;
-        const to = ts.resolveModuleName(s.moduleSpecifier.text, each, built!.getCompilerOptions(), ts.sys, undefined, undefined, built!.getModeForUsageLocation(source!, s.moduleSpecifier)).resolvedModule?.resolvedFileName;
-        if (to && !/[\\/]node_modules[\\/]/.test(to) && built!.getSourceFile(to)) seen.add(to);
-      }
+      const imported = built!.imports.get(each);
+      if (!imported) continue;
+      for (const dep of imported.files) seen.add(dep);
+      for (const lookup of imported.lookups) lookups.set(lookup[0] + "\0" + lookup[1], lookup);
     }
-    return [...seen].map(rel).sort();
+    return { inputs: [...seen].map(rel).sort(), lookups: [...lookups].sort(([a], [b]) => compare(a, b)).map(([, probe]) => probe) };
   };
 
   return (observe?: (file: string) => void) => {
     built = undefined;
-    // Compiler options are read again only when the tsconfig changed.
-    if (configured !== (configured = text(config))) build = programs(root);
+    if (!build || [...configured].some(([file, before]) => before !== ts.sys.readFile(file))) {
+      const configs = new Map<string, string | undefined>();
+      build = programs(root, configs);
+      configured = configs;
+    }
     const manifest = join(out, MANIFEST);
     const known: Record<string, Entry> = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")) : {};
     const written: string[] = [];
@@ -313,27 +314,53 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): (obse
     };
 
     const files = sources(root, COMPONENTS);
-    const sourceText = new Map<string, string>();
+    const sourceText = new Map<string, string | undefined>();
     const read = (file: string) => {
-      let value = sourceText.get(file);
-      if (value === undefined) sourceText.set(file, value = text(file));
-      return value;
+      if (!sourceText.has(file)) sourceText.set(file, text(file));
+      return sourceText.get(file);
     };
-    const fresh = (file: string, e: Entry | undefined) => e && e.hash === hash(file, e.inputs, observe, read) && e.outputs.every((name) => existsSync(join(out, name)));
+    const states = new Map<string, string | boolean | undefined>();
+    const valid = ([kind, file, before]: Lookup) => {
+      const absolute = join(root, file);
+      observe?.(absolute);
+      const key = kind + "\0" + file;
+      if (!states.has(key)) {
+        switch (kind) {
+          case "file": states.set(key, ts.sys.fileExists(absolute)); break;
+          case "directory": states.set(key, ts.sys.directoryExists(absolute)); break;
+          case "realpath": states.set(key, rel(ts.sys.realpath!(absolute))); break;
+          case "manifest": {
+            const content = read(absolute);
+            states.set(key, content === undefined ? undefined : createHash("sha1").update(content).digest("hex"));
+            break;
+          }
+        }
+      }
+      return states.get(key) === (before ?? false);
+    };
+    let reset = false;
+    const fresh = (file: string, entry: Entry | undefined) => {
+      if (!entry?.lookups || !entry.lookups.every(valid)) {
+        reset = true;
+        return false;
+      }
+      return entry.hash === hash(file, entry.inputs, observe, read) && entry.outputs.every((name) => existsSync(join(out, name)));
+    };
     const stale = files.filter((file) => !fresh(rel(file), known[rel(file)]));
-    if (stale.length) built = build(files);
+    if (stale.length) built = build(files, reset);
     const entries: Record<string, Entry> = {};
     for (const file of files) {
       if (!stale.includes(file)) {
         entries[rel(file)] = known[rel(file)];
         continue;
       }
-      const found = analyze(built!, file).map((c) => ({ c, p: plan(c, cap) }));
-      const inputs = inputsOf(file, found.map(({ c }) => c.name));
+      const found = analyze(built!.program, file).map((c) => ({ c, p: plan(c, cap) }));
+      const { inputs, lookups } = inputsOf(file, found.map(({ c }) => c.name));
+      if (observe) for (const [, file] of lookups) observe(join(root, file));
       for (const { c, p } of found) if (p.stories.length) write(`${p.id}.stories.tsx`, story(c, p, from));
       entries[rel(file)] = {
         hash: hash(rel(file), inputs, observe),
-        inputs,
+        inputs, lookups,
         outputs: found.filter(({ p }) => p.stories.length).map(({ p }) => `${p.id}.stories.tsx`),
         manual: [...new Set(found.flatMap(({ c }) => c.manual ? [rel(c.manual.file)] : []))].sort(compare),
         // As the manifest will give them back: without what JSON cannot hold.

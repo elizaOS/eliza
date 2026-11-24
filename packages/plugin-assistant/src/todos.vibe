@@ -1,6 +1,6 @@
-// spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item's completion time is set exactly while it is completed"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"
+// spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item's completion time is set exactly while it is completed"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"; spec/assistant/todos.md, "A miss offers the items that share most of its words, and changes nothing"
 import { isAffirmativeConfirmationReply, type Action, type ActionResult, type Memory, type Provider } from "@elizaos/core"
-import { Machine, Rejected, matching, stored, type Event, type Todo, type TodoStatus, type Todos } from "../gen/assistant__todos.effect.vibe"
+import { Machine, Rejected, matching, nearMiss, stored, type Event, type Todo, type TodoStatus, type Todos } from "../gen/assistant__todos.effect.vibe"
 import { Facts, onAgent, readRecord, requestOf, writeRecord } from "./host.vibe"
 import { appliedReceipt, attributed, failedReceipt, previewReceipt, unchangedReceipt } from "./replies.vibe"
 import { TodoRequest } from "./requests.schema.vibe"
@@ -25,8 +25,17 @@ export function renderTodos(todos: readonly Todo[], includeClosed: boolean): str
   return shown.length === 0 ? "" : ["# Current todos", ...shown.map((todo) => `- ${marks[todo.todoStatus]} ${todo.content} (t-${todo.todoId})`)].join("\n")
 }
 
-const plain = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/gu, " ").trim()
+export const plain = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/gu, " ").trim()
 const isOpen = (todo: Todo) => todo.todoStatus === "TodoPending" || todo.todoStatus === "TodoInProgress"
+const wordsOf = (text: string) => new Set(plain(text).split(" ").filter((word) => word !== ""))
+
+function nearMisses(list: Todos, target: string): readonly Todo[] {
+  const asked = wordsOf(target)
+  return list.todos.filter((todo) => {
+    const kept = wordsOf(todo.content)
+    return nearMiss([...asked].filter((word) => kept.has(word)).length, asked.size, kept.size)
+  })
+}
 
 function namedTexts(list: Todos, words: string): readonly string[] {
   const target = words.trim()
@@ -99,11 +108,16 @@ export effect function changeTodos(input: unknown, message: Memory) {
       }
       case "Missed": {
         const candidates = matching(before, content)
+        const offered = candidates.length === 0 ? nearMisses(before, content) : []
         return {
           success: false, effectReceipts: [unchangedReceipt(facts, candidates.length === 0 ? "no_match" : "ambiguous")],
-          text: candidates.length === 0 ? `No to-do says "${content}", so nothing was changed.`
-            : `${candidates.length} to-dos say "${content}", so nothing was changed. Which one did you mean: ${candidates.map((todo) => `t-${todo.todoId}`).join(", ")}?`,
-          data: { outcome: candidates.length === 0 ? "not_found" : "ambiguous", candidates: candidates.map((todo) => todo.todoId), awaitingUserInput: candidates.length > 0 },
+          text: candidates.length > 0 ? `${candidates.length} to-dos say "${content}", so nothing was changed. Which one did you mean: ${candidates.map((todo) => `t-${todo.todoId}`).join(", ")}?`
+            : offered.length === 0 ? `No to-do says "${content}", so nothing was changed.`
+            : `No to-do says "${content}", so nothing was changed. Did you mean ${offered.map((todo) => `"${todo.content}" (t-${todo.todoId})`).join(" or ")}?`,
+          data: {
+            outcome: candidates.length === 0 ? "not_found" : "ambiguous", candidates: candidates.map((todo) => todo.todoId), offered: offered.map((todo) => todo.todoId),
+            awaitingUserInput: candidates.length > 0 || offered.length > 0,
+          },
         } satisfies ActionResult
       }
       default: break

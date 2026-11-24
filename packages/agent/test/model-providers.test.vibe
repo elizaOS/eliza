@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
-import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, textWithoutEof, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, requestFault, text, textWithoutEof, toolCalls, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
 import { ModelRefusal } from "../src/models/chat.vibe"
@@ -273,6 +273,19 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
     options: [{ include_usage: true }, false],
     logged: { promptTokens: 49, completionTokens: 2, cacheReadInputTokens: 48 },
   })
+
+  const long = "A long answer.".repeat(4_000)
+  const longArgument = "7".repeat(70_000)
+  try Effect.sync(() => scripted.script(text(long, long), text(long), toolCalls("", { name: "CALCULATE", arguments: { expression: longArgument } })))
+  const longStreamed = try host("long streamed answer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "At length.", stream: true, onStreamChunk: () => undefined }))
+  const longWhole = try host("long whole answer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "At length again." }))
+  const longCall = try host("long streamed tool call", () => streaming.runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
+    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto",
+    messages: [{ role: "user", content: "Count." }], stream: true, onStreamChunk: () => undefined,
+  }))
+  assert.deepStrictEqual<unknown>(
+    [longStreamed === long + long, longWhole === long, typeof longCall === "string" ? longCall : longCall.toolCalls?.map((made) => made.arguments)],
+    [true, true, [{ expression: longArgument }]])
 })
 
 it.effect('A tool is offered without its pattern constraints, and the rest of its schema is sent as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
@@ -326,7 +339,7 @@ it.effect('An own-key overload or timeout is a provider issue and is retried, an
   assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), "max_completion_tokens" in (bodies[0] ?? {}), bodies[2]?.max_completion_tokens], [0.2, ["\n\n"], false, false, 256])
 })
 
-it.effect('A rate limit holds a cloud account for the provider\'s whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider\'s time left, a parse failure is not retried, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider\'s whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
+it.effect('A rate limit holds a cloud account for the provider\'s whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider\'s time left, a parse failure is not retried, as the provider or as the cloud names it, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider\'s whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const held = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
   registerCloudModels(held.runtime, held.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
@@ -365,6 +378,11 @@ it.effect('A rate limit holds a cloud account for the provider\'s whole retry ti
   assert.deepStrictEqual(sent.map((body) => [body.reasoning_effort, "max_tokens" in body, JSON.stringify(body).includes("thinking"), body.prompt_cache_key]),
     [["none", false, false, undefined], ["low", false, false, undefined], [undefined, false, false, undefined],
       [undefined, false, false, plannerKey], [undefined, false, false, undefined]])
+
+  try Effect.sync(() => cloud.script(requestFault("parser_error")))
+  const beforeFault = completions(cloud)
+  const faulted = try refusalOf(hinted.runtime, { prompt: "Call a tool." })
+  assert.deepStrictEqual([faulted?.code, faulted?.status, completions(cloud) - beforeFault], ["PROVIDER_TOOL_CALL_PARSE_FAILED", 400, 1])
 
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "qwen-3.8-27b", large: "large" }
   const ownKey = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)

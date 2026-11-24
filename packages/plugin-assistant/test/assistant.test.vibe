@@ -1,8 +1,8 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/goals.md, "Story: Review how my goals are going"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/goals.md, "Story: Review how my goals are going"; spec/assistant/reminders.md, "Story: Answer the question a reminder I asked for drew"; spec/assistant/reminders.md, "Story: Answer or put off a reminder I keep"; spec/assistant/names.md, "Story: Name what I keep without repeating its whole title"
 import { assert, it } from "@effect/vitest"
 import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { reminderProposalFamily } from "../src/device-proposals.vibe"
-import { readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
+import { canActionRun, ContextRegistry, readReminderPresentation, resolveActionContexts, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
 import { composeBrief, recalibrateBrief } from "../src/brief.vibe"
 import { checkinKind, checkinSchedules, collectFacts, followOwnerClock, reconcileCheckins, runCheckin, checkinReport, setCheckinTimes } from "../src/checkin.vibe"
 import { ownerActivity, setDossier } from "../src/dossier.vibe"
@@ -10,10 +10,10 @@ import { restoreEarlier } from "../src/evaluators/pages.vibe"
 import { commitEvaluatorProgress, evidenceOf, sourceOf, stageEvaluatorOutput, stagedOutput } from "../src/evaluators/progress.vibe"
 import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
-import { admitRoute } from "@elizaos/agent"
+import { activityLabel, admitRoute } from "@elizaos/agent"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
-import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, reminderKind, reminderReply, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
+import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, ownerRemindersAction, reminderKind, reminderReply, remindersContext, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
 import { onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKind, routineNudgeKind, routineRoutes, updateRoutine } from "../src/routines.vibe"
@@ -29,9 +29,9 @@ const outcomeOf = (result: ActionResult) => ({ success: result.success, text: re
 const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
 const heard = (id: string, text: string) => ({ id: id as UUID, entityId: "owner-1" as UUID, roomId: "room-1" as UUID, content: { text } }) satisfies Memory
 
-it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message")', effect () => {
+it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose, and with an alert when nobody stated one (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminders.md, "An alert nobody stated is an alert")', effect () => {
   const seen = ports()
-  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }), check({}))
+  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }), check({ alert: null }))
   provide portsLayer(seen) {
     const first = try createReminder(asked("m1"))
     const again = try createReminder(asked("m1"))
@@ -50,6 +50,15 @@ it.effect('Create each reminder I asked for, once, at the planned time with the 
   }
 })
 
+it.effect('Show Reminders while a reminder I asked for in chat is saved, without changing which calls of it run (spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results")', effect () => {
+  const runtime = { contexts: try Effect.try(() => new ContextRegistry()) } as unknown as IAgentRuntime
+  try Effect.try(() => runtime.contexts.tryRegister(remindersContext))
+  const registered = { ...ownerRemindersAction, contexts: try Effect.try(() => resolveActionContexts(ownerRemindersAction)) }
+  const runsOnTurn = try Effect.try(() => canActionRun(registered, { userRoles: ["OWNER"], activeContexts: ["general"] }))
+  try equal({ label: activityLabel(runtime, ownerRemindersAction), declared: ownerRemindersAction.contexts, registered: registered.contexts, runsOnTurn, familyApp: reminderProposalFamily.app },
+    { label: "Using Reminders", declared: undefined, registered: ["tasks", "automation"], runsOnTurn: false, familyApp: undefined })
+})
+
 it.effect('A plan alone never saves a reminder: a message that did not ask, or a check that cannot run, writes nothing (spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing")', effect () => {
   const seen = ports()
   seen.answers.push(check({ requested: false }))
@@ -61,6 +70,36 @@ it.effect('A plan alone never saves a reminder: a message that did not ask, or a
     const late = reminderReply(try createReminder(past))
     try equal([declined, unverified, late].map(outcomeOf).map(({ outcome }) => outcome), ["OWNER_REMINDER_INTENT_MISMATCH", "OWNER_REMINDER_INTENT_UNVERIFIED", "REMINDER_TIME_PASSED"])
     try equal(rowsOf(seen, reminderKind).length, 0)
+  }
+})
+
+it.effect('An answer to "when should I remind you?" finishes the reminder that drew the question, from a later message within five minutes, and no other message does (spec/assistant/reminders.md, "Story: Answer the question a reminder I asked for drew"; spec/assistant/reminders.md, "An answer finishes only the reminder this conversation asked about, from a later message within five minutes")', effect () => {
+  const seen = ports()
+  const roomId = "room-9" as UUID
+  const gone = { kind: "at", instant: "2026-11-22T14:00:00Z" }
+  const givesATime = (answer: boolean) => JSON.stringify({ givesATime: answer })
+  const said = (messageId: string, text: string, due: object, title = "Something else") => ({ plan: { ...plan, title, due }, messageId, text, roomId })
+  provide portsLayer(seen) {
+    seen.answers.push(check({ alert: "silent", important: true }), check({ requested: false }), givesATime(false), check({ requested: false }), givesATime(true), check({ requested: false }))
+    const replies = [
+      reminderReply(try createReminder(said("q1", "remind me at 9 to call the dentist, quietly, it's important", gone, "Call the dentist"))),
+      reminderReply(try createReminder(said("q2", "what's the weather like", { kind: "in", minutes: 30 }))),
+      reminderReply(try createReminder(said("q3", "in half an hour then", { kind: "in", minutes: 30 }))),
+      reminderReply(try createReminder(said("q4", "make it an hour", { kind: "in", minutes: 60 }))),
+    ]
+    seen.answers.push(check({}), check({ requested: false }))
+    replies.push(reminderReply(try createReminder(said("q5", "remind me at 9 to water the plants", gone, "Water the plants"))))
+    seen.now += 6 * 60_000
+    replies.push(reminderReply(try createReminder(said("q6", "in ten minutes", { kind: "in", minutes: 10 }))))
+    try equal({
+      replies: replies.map((reply) => reply.success ? reply.userFacingText?.startsWith('I\'ll remind you: "Call the dentist" in 30 minutes') : reply.data?.outcome),
+      unasked: seen.answers.length,
+      rows: rowsOf(seen, reminderKind).map((row) => [row.promptInstructions, row.metadata.alert, row.metadata.priority, row.metadata.requestMessageId]),
+    }, {
+      replies: ["REMINDER_TIME_PASSED", "OWNER_REMINDER_INTENT_MISMATCH", true, "OWNER_REMINDER_INTENT_MISMATCH", "REMINDER_TIME_PASSED", "OWNER_REMINDER_INTENT_MISMATCH"],
+      unasked: 0,
+      rows: [["Call the dentist", "silent", "high", "q3"]],
+    })
   }
 })
 
@@ -84,7 +123,7 @@ it.effect('A save that failed and then succeeded is reported saved, and one that
   }
 })
 
-it.effect('A fired reminder reaches the owner once as the exact presentation issued for it, is sent again only when nothing left, and can be dismissed by its title (spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again")', effect () => {
+it.effect('A fired reminder reaches the owner once as the exact presentation issued for it, is sent again only when nothing left, can be dismissed by its title, and a silent one only posts in its conversation (spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "A silent reminder comes due without a phone notification")', effect () => {
   const seen = ports()
   seen.answers.push(check({}))
   provide portsLayer(seen) {
@@ -99,6 +138,14 @@ it.effect('A fired reminder reaches the owner once as the exact presentation iss
       { delivered: { kind: "delivered" }, trusted: true, chatText: "Call the dentist", copy: null })
     const dismissed = try answerReminder({ op: "dismiss", target: "call the dentist" }, "m8")
     try equal([dismissed.success, seen.tasks.get(row.taskId)?.status], [true, "Dismissed"])
+    seen.answers.push(check({ alert: "silent" }), check({ alert: "silent" }))
+    try createReminder({ ...asked("m9"), plan: { ...plan, title: "Stretch" }, roomId: "room-1" as UUID })
+    try createReminder({ ...asked("m10"), plan: { ...plan, title: "Drink water" } })
+    const [, quiet, unannounced] = rowsOf(seen, reminderKind)
+    const shownBefore = seen.presented.length
+    const silent = [try deliverReminder(quiet), try deliverReminder(unannounced)]
+    try equal({ silent, posted: seen.presented.slice(shownBefore).map((posted) => [posted.presentation.chatText, posted.conversationOnly ?? false]) },
+      { silent: [{ kind: "delivered" }, { kind: "delivered" }], posted: [["Stretch", true]] })
   }
 })
 
@@ -156,7 +203,7 @@ it.effect('Move the reminder I just saved: a delay counts from my message, secon
   }
 })
 
-it.effect('Hear and rename the reminders I keep: a list changes nothing, a rename changes only the title of the one reminder named, and a day or a repeat is kept on my clock (spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"; spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked")', effect () => {
+it.effect('Hear, rename, skip and snooze the reminders I keep: a list changes nothing, a rename changes only the title of the one reminder named, a day comes at 09:00, a repeat naming every weekday comes every day, a day, a repeat or an even interval is kept on my clock, a few words name one reminder, only a repeating one is skipped, and a snooze lasts until tonight or tomorrow morning (spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"; spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/reminders.md, "A reminder for a day comes at 09:00 that day, and a repeat at its time on the days it names, or every day when it names none"; spec/assistant/reminders.md, "A reminder repeats on an interval only when the interval divides the hour or the day evenly"; spec/assistant/reminders.md, "Story: Answer or put off a reminder I keep"; spec/assistant/reminders.md, "A skip passes over one occurrence of a repeating reminder, and a reminder that does not repeat is not skipped"; spec/assistant/reminders.md, "A snooze until tonight comes at 20:00, and one until tomorrow morning at 08:00, on the owner\'s clock"; spec/assistant/names.md, "A title that is the name wins, and otherwise the titles that hold the name\'s words are the candidates")', effect () => {
   const seen = ports()
   seen.answers.push(check({}), check({ clock: "owner_local" }), check({ clock: "owner_local" }))
   provide portsLayer(seen) {
@@ -185,6 +232,35 @@ it.effect('Hear and rename the reminders I keep: a list changes nothing, a renam
         ["Stand-up", { kind: "cron", expression: "30 7 * * 1,5", tz: "America/New_York" }],
         ["Pay the rent", { kind: "once", atIso: "2026-11-25T14:00:00.000Z" }],
       ],
+    })
+    seen.answers.push(check({ clock: "owner_local" }))
+    const allWeek = reminderReply(try createReminder({ ...asked("l6b"), plan: { ...plan, title: "Morning walk", due: { kind: "repeat", time: "06:45", days: ["sat", "sun", "mon", "tue", "wed", "thu", "fri"] } }, text: "remind me to walk every day of the week at 6:45" }))
+    try equal([allWeek.text, rowsOf(seen, reminderKind).find((row) => row.promptInstructions === "Morning walk")?.trigger], [
+      'I\'ll remind you: "Morning walk" every day at 06:45 (America/New_York).', { kind: "cron", expression: "45 6 * * *", tz: "America/New_York" },
+    ])
+    seen.answers.push(check({ clock: "owner_local" }), check({ clock: "owner_local" }))
+    const everyTwoHours = reminderReply(try createReminder({ ...asked("l7"), plan: { ...plan, title: "Drink water", due: { kind: "every", minutes: 120 } }, text: "remind me every two hours to drink water" }))
+    const uneven = reminderReply(try createReminder({ ...asked("l8"), plan: { ...plan, title: "Stretch", due: { kind: "every", minutes: 45 } }, text: "remind me every 45 minutes to stretch" }))
+    const answers = [
+      try answerReminder({ op: "skip", target: "water" }, "l9"),
+      try answerReminder({ op: "skip", target: "the dentist" }, "l10"),
+      try answerReminder({ op: "snooze", target: "dentist", until: "tonight" }, "l11"),
+      try answerReminder({ op: "snooze", target: "rent", until: "tomorrow_morning" }, "l12"),
+      try answerReminder({ op: "complete", target: "the" }, "l13"),
+    ]
+    try equal({
+      said: [everyTwoHours.text, uneven.data?.outcome],
+      trigger: rowsOf(seen, reminderKind).find((row) => row.promptInstructions === "Drink water")?.trigger,
+      answers: answers.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]),
+      snoozedUntil: seen.verbs.flatMap(({ verb }) => verb.tag === "SnoozeUntil" ? [new Date(verb.until).toISOString()] : []),
+    }, {
+      said: ['I\'ll remind you: "Drink water" every 2 hours (America/New_York).', "REMINDER_INTERVAL_UNSUPPORTED"],
+      trigger: { kind: "cron", expression: "0 0/2 * * *", tz: "America/New_York" },
+      answers: [
+        [true, 'Skipped the next occurrence of "Drink water".'], [false, "REMINDER_NOT_REPEATING"], [true, 'Snoozed "Call the dentist" until 8:00 PM.'],
+        [true, 'Snoozed "Pay the rent" until Nov 23, 8:00 AM.'], [false, "ambiguous"],
+      ],
+      snoozedUntil: ["2026-11-23T01:00:00.000Z", "2026-11-23T13:00:00.000Z"],
     })
   }
 })
@@ -276,7 +352,7 @@ it.effect('Reminders and routines chase me only as hard as I asked: the first al
   }
 })
 
-it.effect('A goal checks in on its cadence, a dismissed check-in stays gone, an answer sets its review state, and only an active goal of the same title stops a new one (spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once")', effect () => {
+it.effect('A goal checks in on its cadence, a dismissed check-in stays gone, an answer sets its review state, only an active goal of the same title stops a new one, two goals asked for in one message are both saved, and a goal is renamed and listed whatever its status (spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/goals.md, "A message may ask for several goals, and a goal is renamed only to a nonblank title no other active goal has"; spec/assistant/goals.md, "A list tells every goal the owner keeps with its status, and changes nothing"; spec/assistant/names.md, "Story: Name what I keep without repeating its whole title")', effect () => {
   const seen = ports()
   provide portsLayer(seen) {
     try changeGoal({ op: "create", title: "Run a 10k", cadence: "daily" }, "g1")
@@ -305,7 +381,22 @@ it.effect('A goal checks in on its cadence, a dismissed check-in stays gone, an 
     ]
     const ambiguous: ActionResult = try changeGoal({ op: "update", target: "run a half marathon", status: "paused" }, "g11")
     try equal([...saved, ambiguous].map(outcomeOf).map(({ success, outcome }) => [success, outcome ?? null]), [[true, null], [true, null], [true, "existing"], [true, null], [true, null], [false, "ambiguous"]])
-    try equal(ambiguous.data?.candidates, ["goal-g6", "goal-g10"])
+    const candidates = ambiguous.data?.candidates
+    const halfMarathons = (try listGoals()).filter(({ record }) => record.title === "Run a half marathon").map(({ record }) => record.goalId)
+    try equal(candidates, halfMarathons)
+    try equal(halfMarathons.map((goalId) => goalId.split("-").slice(0, 2).join("-")), ["goal-g6", "goal-g10"])
+    const both = [try changeGoal({ op: "create", title: "Sleep by eleven", cadence: "none" }, "g12"), try changeGoal({ op: "create", title: "Drink less coffee", cadence: "none" }, "g12")]
+    const renames = [
+      try changeGoal({ op: "rename", target: "coffee", title: "Drink no coffee" }, "g13"),
+      try changeGoal({ op: "rename", target: "Sleep by eleven", title: "run a 10K" }, "g14"),
+      try changeGoal({ op: "rename", target: "Sleep by eleven", title: " " }, "g15"),
+    ]
+    const listed = try changeGoal({ op: "list" }, "g16")
+    try equal({ both: both.map(({ success }) => success), renames: renames.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]), listed: listed.text }, {
+      both: [true, true],
+      renames: [[true, 'Renamed the goal "Drink less coffee" to "Drink no coffee".'], [false, "existing"], [false, "GOAL_TITLE_MISSING"]],
+      listed: 'Your goals:\n- "Run a 10k" (active, daily check-ins)\n- "Run a marathon" (active)\n- "Run a half marathon" (archived)\n- "Run a half marathon" (active)\n- "Sleep by eleven" (active)\n- "Drink no coffee" (active)',
+    })
   }
 })
 
@@ -347,7 +438,7 @@ it.effect('Review how my goals are going: one goal from its latest answer, or ev
   }
 })
 
-it.effect('To-dos change once per request, by their text whatever its case or punctuation, never on a guess between two items or on a near miss, are renamed as asked, and take a duplicate or clear only on a reply that says yes and nowhere refuses (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms")', effect () => {
+it.effect('To-dos change once per request, by their text whatever its case or punctuation, never on a guess between two items or on a near miss, which is offered back instead, are renamed as asked, and take a duplicate or clear only on a reply that says yes and nowhere refuses (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"; spec/assistant/todos.md, "A miss offers the items that share most of its words, and changes nothing")', effect () => {
   const seen = ports()
   provide portsLayer(seen) {
     try changeTodos({ op: "create", content: "buy milk" }, heard("t1", "add buy milk"))
@@ -377,6 +468,9 @@ it.effect('To-dos change once per request, by their text whatever its case or pu
     try changeTodos({ op: "complete", target: "Read the new" }, heard("n3", "read the new one"))
     try changeTodos({ op: "create", content: "Pay electricity bill" }, heard("n4", "add pay electricity bill"))
     const swapped = try changeTodos({ op: "delete", target: "Pay water bill" }, heard("n5", "delete pay water bill"))
+    const unlike = try changeTodos({ op: "delete", target: "Walk the dog" }, heard("n5b", "delete walk the dog"))
+    try equal([swapped.text, unlike.text], ['No to-do says "Pay water bill", so nothing was changed. Did you mean "Pay electricity bill" (t-6)?', 'No to-do says "Walk the dog", so nothing was changed.'])
+    try equal([swapped.data?.offered, unlike.data?.offered], [[6], []])
     const looseDuplicate = try changeTodos({ op: "create", content: "read the NEWS!" }, heard("n6", "add read the news"))
     const looseDone = try changeTodos({ op: "complete", target: "pay electricity bill." }, heard("n7", "paid the electricity bill"))
     const renamed = try changeTodos({ op: "rename", target: "PAY ELECTRICITY BILL", content: "Pay the power bill" }, heard("n8", "call it the power bill"))

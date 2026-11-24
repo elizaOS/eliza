@@ -1,7 +1,8 @@
 // Reads React components with the TypeScript checker: what each takes, what its metadata file gives, and
 // the spec model it shows. One Program serves every file, and the next run reuses it.
+import { createHash } from "node:crypto";
 import { existsSync, globSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import ts from "typescript";
 import { formatStamp } from "../run.ts";
 import { owner } from "../util.ts";
@@ -114,11 +115,21 @@ export function beside(abs: string, names: string[]): string[] {
  * Builds Programs over a project's components, their metadata and their models. Each reuses what the last
  * one parsed, so a rebuild reads only the files that changed.
  */
-export function programs(root: string): (files: string[]) => ts.Program {
+export type Lookup = [kind: "file" | "directory", file: string] | [kind: "manifest" | "realpath", file: string, value: string];
+interface Imports { files: string[]; lookups: Lookup[] }
+
+export function programs(root: string, configs: Map<string, string | undefined>) {
   const fail = (problem: ts.Diagnostic) => {
     throw new Error(ts.flattenDiagnosticMessageText(problem.messageText, "\n"));
   };
-  const given = ts.getParsedCommandLineOfConfigFile(join(root, "tsconfig.json"), {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: fail })!.options;
+  const given = ts.getParsedCommandLineOfConfigFile(join(root, "tsconfig.json"), {}, {
+    ...ts.sys, onUnRecoverableConfigFileDiagnostic: fail,
+    readFile(file) {
+      const content = ts.sys.readFile(file);
+      configs.set(file, content);
+      return content;
+    },
+  })!.options;
   const options: ts.CompilerOptions = { ...given, jsx: given.jsx ?? ts.JsxEmit.ReactJSX, noEmit: true, skipLibCheck: true };
   const host = ts.createCompilerHost(options, true);
   const parse = host.getSourceFile;
@@ -129,11 +140,56 @@ export function programs(root: string): (files: string[]) => ts.Program {
     if (parsed.get(name)?.stamp !== stamp) parsed.set(name, { stamp, file: parse(name, ...rest) });
     return parsed.get(name)!.file;
   };
+  const imports = new Map<string, Imports>();
+  const installed = (file: string) => /(^|[\\/])node_modules([\\/]|$)/.test(file);
+  const rel = (file: string) => relative(root, file).replaceAll("\\", "/");
+  let moduleCache: ts.ModuleResolutionCache;
+  host.resolveModuleNameLiterals = (literals, from, redirected, options, source) => {
+    const dependencies = new Set<string>();
+    const probes = new Map<string, Lookup>();
+    const record = (op: Lookup) => probes.set(op[0] + "\0" + op[1], op);
+    const observing: ts.ModuleResolutionHost = {
+      ...host,
+      fileExists(file) {
+        const exists = host.fileExists(file);
+        if (!exists && !installed(file)) record(["file", rel(file)]);
+        return exists;
+      },
+      directoryExists(dir) {
+        const exists = ts.sys.directoryExists(dir);
+        if (!exists && !installed(dir)) record(["directory", rel(dir)]);
+        return exists;
+      },
+      readFile(file) {
+        const text = host.readFile(file);
+        if (text !== undefined && !installed(file)) record(["manifest", rel(file), createHash("sha1").update(text).digest("hex")]);
+        return text;
+      },
+      realpath(file) {
+        const resolved = ts.sys.realpath!(file);
+        if (resolved !== file && !installed(resolved)) record(["realpath", rel(file), rel(resolved)]);
+        return resolved;
+      },
+    };
+    const internal = installed(from);
+    const modules = literals.map((literal) => {
+      const mode = ts.getModeForUsageLocation(source, literal, options);
+      const result = ts.resolveModuleName(literal.text, from, options, internal ? host : observing, internal ? moduleCache : undefined, redirected, mode);
+      const file = result.resolvedModule?.resolvedFileName;
+      if (file && !installed(file)) dependencies.add(file);
+      return result;
+    });
+    if (!internal) imports.set(from, { files: [...dependencies], lookups: [...probes.values()] });
+    return modules;
+  };
   let last: ts.Program | undefined;
-  return (files) => {
+  return (files: string[], reset: boolean) => {
+    moduleCache = ts.createModuleResolutionCache(host.getCurrentDirectory(), host.getCanonicalFileName, options);
+    if (reset) imports.clear();
     const metas = [...new Set(files.map(dirname))].flatMap((dir) => readdirSync(dir).filter((name) => /\.meta\.tsx?$/.test(name)).map((name) => join(dir, name)));
     const models = files.flatMap((file) => beside(file, []).filter((input) => input.endsWith(".ts") && existsSync(input)));
-    return (last = ts.createProgram({ rootNames: [...new Set([...files, ...metas, ...models])], options, host, oldProgram: last }));
+    last = ts.createProgram({ rootNames: [...new Set([...files, ...metas, ...models])], options, host, oldProgram: reset ? undefined : last });
+    return { program: last, imports };
   };
 }
 
