@@ -348,6 +348,7 @@ function keypadText(operation: Keypad, ownerText: string): ProposalText {
   return {
     forOwner: operation.number !== undefined ? `Opening the keypad with ${operation.number}.` : emergency ? emergencyKeypadReply : "Opening the keypad.",
     forModel: `The requesting phone brings its Phone keypad in front right after this reply, with no review. It never dials: only the owner's Call tap there places a call. It is not showing yet; never report a call.${emergency ? " The owner asked for emergency services: the keypad opens empty for them to dial their local emergency number." : ""}`,
+    ...(emergency ? { data: { safetyCopy: true } } : {}),
   }
 }
 

@@ -1,8 +1,8 @@
-// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or end my other sessions"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"
-import { type NotAState, type Rejected, apply, canLogout, canRecordStepUp, canRefresh, canRevokeOthers, decodeState, elapse, initial, refreshPerIp, refreshRefusal, revokeAll, sessionRefusal, type Assurance, type Event, type Family, type FamilyStep, type Moment, type SessionEffect } from "../../gen/cloud__identity__sessions.effect.vibe"
+// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or end my other sessions"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"; spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"
+import { type NotAState, type Rejected, apply, canActivateLease, canLogout, canMoveLease, canRecordStepUp, canRefresh, canRevokeOthers, decodeState, elapse, initial, offeredAccessEnd, offeredGeneration, refreshPerIp, refreshRefusal, revokeAll, sessionRefusal, type Assurance, type Event, type Family, type FamilyStep, type LeaseSecret, type Moment, type SessionEffect } from "../../gen/cloud__identity__sessions.effect.vibe"
 import { refused, type Refused, type RefusalReason } from "../http/refusal.vibe"
-import { bearerToken } from "../http/request-auth.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
+import { endGrantForLeaseTheft } from "../native-clients/grants.vibe"
 import { admit } from "../shared/rate-limit.vibe"
 import { newId, secretText, tokenDigest } from "../shared/sealing.vibe"
 import { loadRow, stepRow, type RowConflict, type RowCorrupt, type Columns, type MachineRows } from "../store/rows.vibe"
@@ -53,6 +53,34 @@ type Refreshed = { readonly kind: "rotated"; readonly answer: Rotated } | { read
 
 const accessPattern = /^eliza_session_[A-Za-z0-9_-]{43}$/
 const refreshPattern = /^eliza_refresh_[A-Za-z0-9_-]{54}$/
+export const leaseAccessPattern = /^eliza_lease_[A-Za-z0-9_-]{43}$/
+export const leaseRefreshPattern = /^eliza_lease_refresh_[A-Za-z0-9_-]{54}$/
+
+export function bearerToken(authorization: string | undefined): string | undefined {
+  const match = /^Bearer ([^\s]+)$/.exec(authorization ?? "")
+  return match?.[1]
+}
+
+export interface LeaseRefresh {
+  readonly refresh: string
+  readonly refreshExpiresIn: number
+}
+
+export interface LeasePair {
+  readonly access: string
+  readonly accessExpiresIn: number
+  readonly refresh: string
+  readonly refreshExpiresIn: number
+}
+
+export interface PresentedLease {
+  readonly key: string
+  readonly userId: string
+  readonly grantKey: string
+  readonly family: Family
+  readonly epoch: number
+  readonly presented: number
+}
 
 effect function applyAt(family: Family, timed: Timed): FamilyStep!Rejected {
   const current = timed.now > family.now ? (try apply(family, { type: "elapse", elapsed: timed.now - family.now })).state : family
@@ -94,7 +122,7 @@ effect function lockAccount(tx: Tx, userId: string): { readonly epoch: number; r
 
 effect function moveEpochs(tx: Tx, userId: string, out: ReadonlyArray<SessionEffect>, now: number): void!StoreFailure {
   for (const revoked of out) {
-    try tx.query("UPDATE accounts SET sessions_revoked_before = GREATEST(sessions_revoked_before, $2), updated_at = $3 WHERE key = $1", [userId, revoked.toEpoch, now])
+    if (revoked.tag === "RevokePersonSessions") try tx.query("UPDATE accounts SET sessions_revoked_before = GREATEST(sessions_revoked_before, $2), updated_at = $3 WHERE key = $1", [userId, revoked.toEpoch, now])
   }
 }
 
@@ -148,17 +176,39 @@ export effect function revokeAllSessions(tx: Tx, userId: string, now: number): v
   try moveEpochs(tx, userId, [revokeAll(epoch)], now)
 }
 
+effect function lockedRefresh(tx: Tx, digest: string, kind: "browser" | "device_lease", now: number) {
+  const account = (try tx.query(`
+    SELECT a.key, a.sessions_revoked_before FROM accounts a WHERE a.key = (
+      SELECT s.user_id FROM sessions s WHERE s.kind = $2 AND (s.refresh_digest = $1 OR s.offered_refresh_digest = $1)
+      UNION ALL
+      SELECT s.user_id FROM cloud_spent_refresh r JOIN sessions s ON s.key = r.session_key WHERE r.digest = $1 AND s.kind = $2
+      LIMIT 1
+    ) FOR UPDATE OF a
+  `, [digest, kind]))[0]
+  const userId = toText(account?.key)
+  if (account === undefined || userId === undefined) return undefined
+  const found = (try tx.query(`
+    SELECT s.key, s.access_digest, CASE WHEN s.refresh_digest = $1 THEN 0 ELSE 1 END AS slot, NULL::integer AS generation
+    FROM sessions s WHERE s.kind = $2 AND s.user_id = $3 AND (s.refresh_digest = $1 OR s.offered_refresh_digest = $1)
+    UNION ALL
+    SELECT s.key, r.access_digest, 2, r.generation FROM cloud_spent_refresh r JOIN sessions s ON s.key = r.session_key
+    WHERE r.digest = $1 AND s.kind = $2 AND s.user_id = $3
+  `, [digest, kind, userId]))[0]
+  const key = toText(found?.key)
+  if (found === undefined || key === undefined) return undefined
+  const loaded = try loadRow(tx, familyRows, key)
+  if (!loaded.found) return undefined
+  const family = advanced(loaded.state, now)
+  const slot = toInt(found.slot)
+  const presented = slot === 0 ? family.generation : slot === 1 ? offeredGeneration(family) : toInt(found.generation)
+  return { key, userId, family, epoch: toInt(account.sessions_revoked_before), presented, accessDigest: toText(found.access_digest) ?? "" }
+}
+
 effect function refreshFamily(tx: Tx, token: string, now: number): Refreshed!SessionFailure {
   const presentedDigest = tokenDigest(token)
-  const found = (try tx.query(
-    "SELECT key, access_digest, NULL::integer AS generation FROM sessions WHERE refresh_digest = $1 UNION ALL SELECT session_key, access_digest, generation FROM cloud_spent_refresh WHERE digest = $1",
-    [presentedDigest]
-  ))[0]
+  const found = try lockedRefresh(tx, presentedDigest, "browser", now)
   if (found === undefined) return { kind: "refused", reason: "CredentialUnknown" }
-  const key = toText(found.key) ?? ""
-  const { family, epoch, userId } = try liveFamily(tx, key, now)
-  const current = found.generation === null
-  const presented = current ? family.generation : toInt(found.generation)
+  const { key, family, epoch, userId, presented, accessDigest } = found
   if (!canRefresh(family, presented, epoch)) {
     const reason = refreshRefusal(presented, family, epoch)
     return { kind: "refused", reason: reason === "NoReason" ? "CredentialRevoked" : reason }
@@ -169,7 +219,7 @@ effect function refreshFamily(tx: Tx, token: string, now: number): Refreshed!Ses
     try moveEpochs(tx, userId, out, now)
     return { kind: "refused", reason: "CredentialRevoked" }
   }
-  try tx.query("INSERT INTO cloud_spent_refresh (digest, access_digest, session_key, generation) VALUES ($1, $2, $3, $4)", [presentedDigest, toText(found.access_digest) ?? "", key, family.generation])
+  try tx.query("INSERT INTO cloud_spent_refresh (digest, access_digest, session_key, generation) VALUES ($1, $2, $3, $4)", [presentedDigest, accessDigest, key, family.generation])
   return {
     kind: "rotated",
     answer: { accessToken, accessExpiresAt: state.accessExpiresAt, refreshToken, refreshExpiresAt: state.refreshExpiresAt, stepUpAt: at(state.stepUpAt), mfaAt: at(state.mfaAt) }
@@ -221,6 +271,164 @@ export const routes: ReadonlyArray<Route> = [
       const store = try Store
       const ended = try store.transaction((tx) => logoutFamily(tx, token, context.now))
       if (!ended) throw refused("AuthenticationRequired", "CredentialUnknown")
+      return HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
+    }
+  }
+]
+
+function seconds(until: number, now: number): number {
+  return Math.max(0, Math.floor((until - now) / 1000))
+}
+
+export effect function offerLease(tx: Tx, input: { readonly userId: string; readonly grantKey: string; readonly now: number }): (LeaseRefresh & { readonly sessionKey: string })!SessionFailure {
+  const account = try lockAccount(tx, input.userId)
+  if (!account.active) throw refused("AuthenticationRequired", "CredentialRevoked")
+  const refresh = secretText("eliza_lease_refresh_", 40, "base64url")
+  const sessionKey = newId()
+  const { state } = try stepFamily(tx, sessionKey, { type: "offerLease", grantKey: input.grantKey, personEpoch: account.epoch }, input.now, () => ({
+    user_id: input.userId, kind: "device_lease", grant_key: input.grantKey,
+    access_digest: tokenDigest(secretText("eliza_lease_", 32, "base64url")), refresh_digest: tokenDigest(refresh)
+  }))
+  return { sessionKey, refresh, refreshExpiresIn: seconds(state.refreshExpiresAt, input.now) }
+}
+
+effect function leaseKeyOf(tx: Tx, grantKey: string): (string | undefined)!StoreFailure {
+  return toText((try tx.query("SELECT key FROM sessions WHERE kind = 'device_lease' AND grant_key = $1 ORDER BY updated_at DESC LIMIT 1 FOR UPDATE", [grantKey]))[0]?.key)
+}
+
+export effect function leaseRefreshExpiresIn(tx: Tx, grantKey: string, now: number): number!(StoreFailure | RowCorrupt | Refused) {
+  const key = try leaseKeyOf(tx, grantKey)
+  if (key === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  return seconds((try loadRow(tx, familyRows, key)).state.refreshExpiresAt, now)
+}
+
+export effect function activateLease(tx: Tx, grantKey: string, now: number): void!SessionFailure {
+  const key = try leaseKeyOf(tx, grantKey)
+  if (key === undefined) return
+  const { family, epoch } = try liveFamily(tx, key, now)
+  if (canActivateLease(family, epoch)) try stepFamily(tx, key, { type: "activateLease", personEpoch: epoch }, now)
+}
+
+effect function endFamily(tx: Tx, key: string, now: number): void!SessionFailure {
+  const family = advanced((try loadRow(tx, familyRows, key)).state, now)
+  if (family.phase === "Live" || family.phase === "Offered") try stepFamily(tx, key, { type: "logout" }, now, () => ({ offered_access_digest: null, offered_refresh_digest: null }))
+}
+
+export effect function endLease(tx: Tx, grantKey: string, now: number): void!SessionFailure {
+  const key = try leaseKeyOf(tx, grantKey)
+  if (key !== undefined) try endFamily(tx, key, now)
+}
+
+export effect function endLeasesOf(tx: Tx, userId: string, now: number): void!SessionFailure {
+  const leases = try tx.query("SELECT key FROM sessions WHERE kind = 'device_lease' AND user_id = $1 FOR UPDATE", [userId])
+  for (const row of leases) {
+    try endFamily(tx, toText(row.key) ?? "", now)
+  }
+}
+
+export effect function moveLease(tx: Tx, fromKey: string, toKey: string, now: number): void!SessionFailure {
+  const key = try leaseKeyOf(tx, fromKey)
+  if (key === undefined) throw refused("AuthenticationRequired", "CredentialRevoked")
+  const family = advanced((try loadRow(tx, familyRows, key)).state, now)
+  if (!canMoveLease(family, toKey)) throw refused("AuthenticationRequired", "CredentialRevoked")
+  try stepFamily(tx, key, { type: "moveLease", grantKey: toKey }, now, () => ({ grant_key: toKey }))
+}
+
+effect function commitOffered(tx: Tx, key: string, generation: number): void!StoreFailure {
+  try tx.query("INSERT INTO cloud_spent_refresh (digest, access_digest, session_key, generation) SELECT refresh_digest, access_digest, key, $2 FROM sessions WHERE key = $1", [key, generation])
+  try tx.query("UPDATE sessions SET refresh_digest = offered_refresh_digest, access_digest = offered_access_digest, offered_refresh_digest = NULL, offered_access_digest = NULL WHERE key = $1", [key])
+}
+
+export effect function presentedLease(tx: Tx, refresh: string, now: number): (PresentedLease | undefined)!(StoreFailure | RowCorrupt | Refused) {
+  if (!leaseRefreshPattern.test(refresh)) return undefined
+  const found = try lockedRefresh(tx, tokenDigest(refresh), "device_lease", now)
+  if (found === undefined || found.family.kind.tag !== "DeviceLease") return undefined
+  const { key, family, epoch, userId, presented } = found
+  return { key, userId, grantKey: found.family.kind.grantKey, family, epoch, presented }
+}
+
+effect function endStolenLease(tx: Tx, lease: PresentedLease, out: ReadonlyArray<SessionEffect>): void!(StoreFailure | RowCorrupt | RowConflict) {
+  for (const effect of out) {
+    if (effect.tag === "EndLeaseAndGrant") {
+      try endGrantForLeaseTheft(tx, effect.grantKey)
+      try annotateLogs(logWarning("device lease reused"), { event: "security", grantKey: effect.grantKey, sessionKey: lease.key })
+    }
+  }
+}
+
+export type LeaseAnswer<T> = { readonly kind: "done"; readonly value: T } | { readonly kind: "refused"; readonly reason: RefusalReason }
+
+function refusedLease<T>(reason: RefusalReason): LeaseAnswer<T> {
+  return { kind: "refused", reason: reason === "NoReason" ? "CredentialRevoked" : reason }
+}
+
+export effect function rotateLease(tx: Tx, refresh: string, now: number): LeaseAnswer<LeasePair>!SessionFailure {
+  const lease = try presentedLease(tx, refresh, now)
+  if (lease === undefined) return refusedLease("CredentialUnknown")
+  const { family, epoch, presented } = lease
+  if (!canRefresh(family, presented, epoch)) return refusedLease(refreshRefusal(presented, family, epoch))
+  if (presented === offeredGeneration(family) && presented !== family.generation) try commitOffered(tx, lease.key, family.generation)
+  const access = secretText("eliza_lease_", 32, "base64url")
+  const next = secretText("eliza_lease_refresh_", 40, "base64url")
+  const { state, out } = try stepFamily(tx, lease.key, { type: "refresh", presented, personEpoch: epoch }, now, (stepped): Columns =>
+    stepped.phase === "Reused" ? { offered_access_digest: null, offered_refresh_digest: null } : { offered_access_digest: tokenDigest(access), offered_refresh_digest: tokenDigest(next) })
+  if (out.length > 0) {
+    try endStolenLease(tx, lease, out)
+    return refusedLease("CredentialRevoked")
+  }
+  return { kind: "done", value: { access, accessExpiresIn: seconds(offeredAccessEnd(state), now), refresh: next, refreshExpiresIn: seconds(state.refreshExpiresAt, now) } }
+}
+
+export effect function admitLeaseRefresh(tx: Tx, refresh: string, now: number): LeaseAnswer<PresentedLease>!SessionFailure {
+  const lease = try presentedLease(tx, refresh, now)
+  if (lease === undefined) return refusedLease("CredentialUnknown")
+  if (lease.presented < lease.family.generation) {
+    const rotated = try rotateLease(tx, refresh, now)
+    return rotated.kind === "refused" ? rotated : refusedLease("CredentialRevoked")
+  }
+  const reason = refreshRefusal(lease.presented, lease.family, lease.epoch)
+  if (reason !== "NoReason") return refusedLease(reason)
+  if (lease.presented !== lease.family.generation) try useOfferedPair(tx, lease.key, lease.family.generation, lease.epoch, "OfferedRefresh", now)
+  return { kind: "done", value: lease }
+}
+
+export effect function useOfferedPair(tx: Tx, key: string, generation: number, epoch: number, secret: LeaseSecret, now: number): void!(StoreFailure | RowCorrupt | RowConflict | Rejected) {
+  try stepFamily(tx, key, { type: "useOffered", personEpoch: epoch, secret }, now)
+  try commitOffered(tx, key, generation)
+}
+
+export effect function leaseRefusedOr<T>(answer: LeaseAnswer<T>): T!Refused {
+  if (answer.kind === "refused") throw refused("AuthenticationRequired", answer.reason)
+  return answer.value
+}
+
+export const leaseRoutes: ReadonlyArray<Route> = [
+  {
+    method: "POST",
+    path: "/api/v1/app-auth/mobile/lease",
+    auth: "Public",
+    handler: (context) => effect {
+      try admit({ subject: clientAddress(context), scope: refreshPerIp.name, limit: refreshPerIp.limit, widthMs: refreshPerIp.windowMs })
+      const refresh = bearerToken(context.request.headers.authorization)
+      if (refresh === undefined || !leaseRefreshPattern.test(refresh)) throw refused("AuthenticationRequired", "CredentialUnknown")
+      const store = try Store
+      return json(try leaseRefusedOr(try store.transaction((tx) => rotateLease(tx, refresh, context.now))))
+    }
+  },
+  {
+    method: "DELETE",
+    path: "/api/v1/app-auth/mobile/lease",
+    auth: "Public",
+    handler: (context) => effect {
+      const refresh = bearerToken(context.request.headers.authorization)
+      if (refresh === undefined || !leaseRefreshPattern.test(refresh)) throw refused("AuthenticationRequired", "CredentialUnknown")
+      const store = try Store
+      try store.transaction(effect (tx: Tx) => {
+        const lease = try presentedLease(tx, refresh, context.now)
+        if (lease === undefined || lease.presented < lease.family.generation) throw refused("AuthenticationRequired", "CredentialUnknown")
+        if (lease.family.phase !== "Live" && lease.family.phase !== "Offered") throw refused("AuthenticationRequired", "CredentialRevoked")
+        try endLease(tx, lease.grantKey, context.now)
+      })
       return HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
     }
   }

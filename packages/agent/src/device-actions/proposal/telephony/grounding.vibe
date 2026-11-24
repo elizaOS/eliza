@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "The model's own recipient is grounded as it proposed it, and an invented one is handed back once"; spec/agent/deviceActions/telephony.md, "A request to open the dialer is the model's keypad, filled only with a number the owner wrote"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"
+// spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "The model's own recipient is grounded as it proposed it, and an invented one is handed back once"; spec/agent/deviceActions/telephony.md, "A request to open the dialer is the model's keypad, filled only with a number the owner wrote"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained in a sentence that says truthfully that nothing ran"
 import {
   contactValueVerdict, emailVerdict, emergencyVerdict, nameVerdict, numberVerdict, ownedMatch, refusalReply, targetGrounded,
   type NumberMatch, type TargetVerdict,
@@ -281,5 +281,8 @@ export function telephonyTargetRefusalReply(refused: Refused, text: string, oper
   const forModel = modelText(refused, contactChange)
   return handBack
     ? { kind: "Coached", code: telephonyTargetCode, forModel: `${forModel} ${correctIt}` }
-    : { kind: "Refused", code: telephonyTargetCode, forModel, forOwner: ownerText(refused, text, contactChange) }
+    : {
+      kind: "Refused", code: telephonyTargetCode, forModel, forOwner: ownerText(refused, text, contactChange),
+      ...(refused.verdict === "EmergencyDial" ? { safetyCopy: true } : {}),
+    }
 }

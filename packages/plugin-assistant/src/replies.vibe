@@ -1,26 +1,8 @@
-// spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/replies.md, "A cue is heard only while the work is pending, and never in place of an answer"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"
+// spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"
 import { revertedEffectReceiptIds, type ActionResult, type EffectReceipt, type ProviderDataRecord } from "@elizaos/core"
-import { claimSupported, heardWhile, type ReplyKind, type ResultEnd, type TurnResult, type WorkPhase } from "../gen/assistant__replies.effect.vibe"
+import { claimSupported, type ResultEnd, type TurnResult } from "../gen/assistant__replies.effect.vibe"
 
-export type { ReplyKind, TurnResult, WorkPhase }
-
-const waitCue = /^(?:on it|(?:one|just a) (?:sec|second|moment))$/iu
-const progressLead = /^(?:let me (?:check|look|open|pull up|take a look|have a look)|checking|looking|searching|reading)\b/iu
-const statedFact = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|hundred|thousand|million|half|quarter|dozen|minutes?|seconds?|hours?|days?|weeks?|months?|years?|ms|milliseconds?|ago|after|before|until|tomorrow|today|tonight|noon|midnight|am|pm|set|saved|done|created|sent|deleted)\b/iu
-
-export function replyKind(text: string): ReplyKind {
-  const reply = text.trim()
-  if (reply === "") return "EmptyReply"
-  if (reply.length > 120 || /[?\d]/u.test(reply)) return "AnswerReply"
-  const pieces = reply.split(/\s*(?:[.!…]+|[,;:]|\s[—–-]\s)\s*/u).filter((piece) => piece !== "")
-  const cue = (piece: string) => waitCue.test(piece)
-  const progress = (piece: string) => progressLead.test(piece) && !statedFact.test(piece)
-  return pieces.length > 0 && pieces.length <= 3 && pieces.every((piece) => cue(piece) || progress(piece)) ? "CueReply" : "AnswerReply"
-}
-
-export function heardReply(phase: WorkPhase, text: string): string | undefined {
-  return heardWhile(phase, replyKind(text)) === "EmptyReply" ? undefined : text
-}
+export type { TurnResult }
 
 export interface Attempt {
   readonly actionName: string

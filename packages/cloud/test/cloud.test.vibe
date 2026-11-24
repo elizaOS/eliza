@@ -39,7 +39,7 @@ import { sentTexts } from "./support/fakes/google-gmail-changes.ts"
 import { errorOf, linkedGrant, mailOperationSetup, type MailCaller } from "./support/google-mail.vibe"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
-import { signedCaller } from "./support/caller.vibe"
+import { leasedCaller, signedCaller } from "./support/caller.vibe"
 import { callCloud, callDeclaring, openCloud } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
@@ -542,6 +542,166 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
       [200, 401, "authentication_required", "credential_expired", "expired", null, expiry]))
     }
   }))
+
+  it.live("Keep pre-lease renewal duties through enrollment and sign-out (spec/cloud/nativeClients/deviceKeys.md, \"Signing out ends only the presenting key\")", () => scoped(effect {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const owner = try signedIn(cloud, "legacy-devices@example.com")
+    const replacing = try device(cloud, owner.accessToken, "Replaced tablet")
+    const named = try device(cloud, owner.accessToken, "Acknowledged successor")
+    const alternative = try device(cloud, owner.accessToken, "Pending alternative")
+    const leaving = try device(cloud, owner.accessToken, "Signing out")
+    const descendant = try device(cloud, owner.accessToken, "Renewed key")
+    const upgraded = try device(cloud, owner.accessToken, "Enrolled for mail")
+
+    const legacy = effect (credentialId: string, from: string | null) => {
+      try sql(cloud, "DELETE FROM sessions s USING device_grants d WHERE s.grant_key = d.key AND d.credential_id = $1", [credentialId])
+      try sql(cloud, `
+        UPDATE device_grants SET sign_in_at = issued_at,
+          renewed_from = (SELECT key FROM device_grants WHERE credential_id = $2),
+          state = CASE WHEN $2::text IS NULL THEN state ELSE jsonb_set(state, '{origin}',
+            jsonb_build_object('tag', 'Renewed', 'fromKey', (SELECT key FROM device_grants WHERE credential_id = $2))) END
+        WHERE credential_id = $1
+      `, [credentialId, from])
+    }
+    try legacy(replacing.credential.credentialId, null)
+    try legacy(named.credential.credentialId, replacing.credential.credentialId)
+    try legacy(alternative.credential.credentialId, replacing.credential.credentialId)
+    try legacy(leaving.credential.credentialId, null)
+    try legacy(descendant.credential.credentialId, leaving.credential.credentialId)
+    try sql(cloud, "UPDATE device_grants SET phase = 'exchanged', state = jsonb_set(state, '{phase}', jsonb_build_object('tag', 'Exchanged')), sealed_copy = 'pending' WHERE credential_id = $1", [alternative.credential.credentialId])
+
+    const replacement = try cloud.call("/api/v1/api-keys/current", {
+      method: "DELETE",
+      headers: { ...bearer(replacing.credential.secret), "x-renewed-credential-id": named.credential.credentialId }
+    })
+    const signOut = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
+    const kept = try cloud.call("/api/v1/user", { headers: bearer(named.credential.secret) })
+    const ended = try cloud.call("/api/v1/user", { headers: bearer(descendant.credential.secret) })
+    const enrolled = try cloud.call("/api/v1/user", { headers: bearer(upgraded.credential.secret) })
+    const pending = (try sql(cloud, "SELECT phase, sealed_copy FROM device_grants WHERE credential_id = $1", [alternative.credential.credentialId]))[0]
+    try check(() => assert.deepStrictEqual(
+      [replacement.status, signOut.status, kept.status, ended.status, ...refusal(ended.body), enrolled.status, pending?.phase, pending?.sealed_copy],
+      [204, 204, 200, 401, "authentication_required", "credential_revoked", 200, "ended", null]
+    ))
+  }))
+
+  it.live("Keep a tablet signed in: the key's sign-in offers a lease, a lost reply answers it again, rotation is two-phase, mail admits only the lease, a renewed key replaces the old one, and a spent lease ends only its device (spec/cloud/identity/sessions.md, \"Story: Keep a tablet signed in to mail and calendar\"; spec/cloud/nativeClients/deviceKeys.md, \"Story: Keep a tablet's key without signing in again\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(1_000_000))
+    provide Clock.Clock = clock.clock {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "tablet@example.com")
+    const lease = (minted: { readonly body: unknown }) => (minted.body as { readonly lease: { readonly refresh: string; readonly refreshExpiresIn: number } }).lease
+    const rotate = (refresh: string) => cloud.call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: bearer(refresh) })
+    const pairOf = (answer: { readonly body: unknown }) => answer.body as { readonly access: string; readonly accessExpiresIn: number; readonly refresh: string; readonly refreshExpiresIn: number }
+    const mail = (token: string) => cloud.call("/api/v1/eliza/google/status", { headers: bearer(token) })
+    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Grace tablet" } })
+    const tokenBody = { ...binding, grantType: "authorization_code", code: (connected.body as { readonly code: string }).code, state, codeVerifier: verifier }
+    const first = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const lostReply = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const offered = lease(first)
+    const beforeAck = try rotate(offered.refresh)
+    const credential = first.body as { readonly credentialId: string; readonly secret: string }
+    const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    const lostRotation = pairOf(try rotate(offered.refresh))
+    const reOffered = pairOf(try rotate(offered.refresh))
+    const replacedOffer = try mail(lostRotation.access)
+    const leaseOnMail = try mail(reOffered.access)
+    const keyOnMail = try mail(credential.secret)
+    const leaseOnInference = try cloud.call("/api/v1/user", { headers: bearer(reOffered.access) })
+    const keyOnInference = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const leaseOnSessionRoute = try cloud.call("/api/v1/auth/mfa/totp/enroll", { headers: bearer(reOffered.access), json: {} })
+    const committed = pairOf(try rotate(reOffered.refresh))
+    const spent = try rotate(offered.refresh)
+    const keyAfterTheft = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const leaseAfterTheft = try rotate(committed.refresh)
+    const browserAfterTheft = try cloud.call("/api/v1/user", { headers: bearer(signed.accessToken) })
+    const epochs = try sql(cloud, "SELECT sessions_revoked_before FROM accounts WHERE key = $1", [signed.user.id])
+    try check(() => assert.deepStrictEqual({
+      token: [first.status, /^eliza_lease_refresh_[A-Za-z0-9_-]{54}$/.test(offered.refresh), offered.refreshExpiresIn, lostReply.body],
+      beforeAck: [beforeAck.status, ...refusal(beforeAck.body)], acked: acked.status,
+      rotation: [lostRotation.accessExpiresIn, /^eliza_lease_[A-Za-z0-9_-]{43}$/.test(reOffered.access), reOffered.access !== lostRotation.access, reOffered.refreshExpiresIn],
+      replacedOffer: [replacedOffer.status, ...refusal(replacedOffer.body)], leaseOnMail: leaseOnMail.status, keyOnMail: [keyOnMail.status, ...refusal(keyOnMail.body)],
+      leaseOnInference: [leaseOnInference.status, ...refusal(leaseOnInference.body)], keyOnInference: keyOnInference.status, leaseOnSessionRoute: leaseOnSessionRoute.status,
+      theft: [spent.status, ...refusal(spent.body), keyAfterTheft.status, ...refusal(keyAfterTheft.body), leaseAfterTheft.status, browserAfterTheft.status, Number(epochs[0]?.sessions_revoked_before)]
+    }, {
+      token: [200, true, 7_776_000, first.body], beforeAck: [401, "authentication_required", "credential_unknown"], acked: 200,
+      rotation: [900, true, true, 7_776_000],
+      replacedOffer: [401, "authentication_required", "credential_unknown"], leaseOnMail: 200, keyOnMail: [403, "access_denied", "device_key_not_allowed"],
+      leaseOnInference: [403, "access_denied", undefined], keyOnInference: 200, leaseOnSessionRoute: 403,
+      theft: [401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 401, 200, 0]
+    }))
+    try sync(() => clock.set(1_100_000))
+    const tablet = try device(cloud, signed.accessToken, "Second tablet")
+    const tabletLease = lease(tablet.minted)
+    const renewed = try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(tabletLease.refresh) })
+    const successor = renewed.body as { readonly credentialId: string; readonly secret: string }
+    const oldBeforeAck = try cloud.call("/api/v1/user", { headers: bearer(tablet.credential.secret) })
+    const keyRenewing = try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(tablet.credential.secret) })
+    const successorAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: successor.credentialId, secret: successor.secret } })
+    const oldAfterAck = try cloud.call("/api/v1/user", { headers: bearer(tablet.credential.secret) })
+    const newAfterAck = try cloud.call("/api/v1/user", { headers: bearer(successor.secret) })
+    const movedLease = pairOf(try rotate(tabletLease.refresh))
+    const signOut = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(successor.secret) })
+    const leaseAfterSignOut = try rotate(tabletLease.refresh)
+    const renewAfterSignOut = try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(tabletLease.refresh) })
+    try sync(() => clock.set(1_200_000))
+    const idle = try device(cloud, signed.accessToken, "Idle tablet")
+    try sync(() => clock.set(1_200_000 + 7_776_000_000))
+    const lapsed = try rotate(lease(idle.minted).refresh)
+    try check(() => assert.deepStrictEqual({
+      renewed: [renewed.status, /^eliza_mobile_[0-9a-f]{64}$/.test(successor.secret), successor.credentialId !== tablet.credential.credentialId, oldBeforeAck.status, keyRenewing.status],
+      replaced: [successorAck.status, oldAfterAck.status, ...refusal(oldAfterAck.body), newAfterAck.status, movedLease.accessExpiresIn],
+      signedOut: [signOut.status, leaseAfterSignOut.status, ...refusal(leaseAfterSignOut.body), renewAfterSignOut.status, ...refusal(renewAfterSignOut.body)],
+      lapsed: [lapsed.status, ...refusal(lapsed.body)]
+    }, {
+      renewed: [200, true, true, 200, 401],
+      replaced: [200, 401, "authentication_required", "credential_revoked", 200, 900],
+      signedOut: [204, 401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked"],
+      lapsed: [401, "authentication_required", "credential_unknown"]
+    }))
+    const awake = try signedIn(cloud, "tablet@example.com")
+    const sleeping = try device(cloud, awake.accessToken, "Sleeping tablet")
+    const sleepingLease = lease(sleeping.minted)
+    const keyLife = (sleeping.minted.body as { readonly expiresIn: number }).expiresIn
+    try sync(() => clock.set(1_200_000 + 7_776_000_000 + keyLife * 1000 + 1))
+    provide Store = cloud.store {
+      try sweepGrants()
+    }
+    const renew = (refresh: string) => cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(refresh) })
+    const expiredKey = try cloud.call("/api/v1/user", { headers: bearer(sleeping.credential.secret) })
+    const grantPhase = try sql(cloud, "SELECT phase FROM device_grants WHERE credential_id = $1", [sleeping.credential.credentialId])
+    const woken = pairOf(try rotate(sleepingLease.refresh))
+    const mailAfterExpiry = try mail(woken.access)
+    const nextLease = pairOf(try rotate(woken.refresh))
+    const offeredAt = try Clock.currentTimeMillis
+    try sync(() => clock.set(offeredAt + nextLease.accessExpiresIn * 1000 + 1))
+    const heirMinted = try renew(nextLease.refresh)
+    const renewedLease = (try sql(cloud, "SELECT s.state->>'generation' AS generation, s.offered_refresh_digest IS NULL AS settled FROM sessions s JOIN device_grants d ON d.key = s.grant_key WHERE d.credential_id = $1", [sleeping.credential.credentialId]))[0]
+    const heir = heirMinted.body as { readonly credentialId: string; readonly secret: string }
+    const heirAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: heir.credentialId, secret: heir.secret } })
+    const heirKey = try cloud.call("/api/v1/user", { headers: bearer(heir.secret) })
+    const moved = pairOf(try rotate(nextLease.refresh))
+    const mailOnMoved = try mail(moved.access)
+    const now = try Clock.currentTimeMillis
+    try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
+    const renewAfterRevoke = try renew(moved.refresh)
+    const rotateAfterRevoke = try rotate(moved.refresh)
+    const mailAfterRevoke = try mail(moved.access)
+    const liveLeases = try sql(cloud, "SELECT key FROM sessions WHERE kind = 'device_lease' AND user_id = $1 AND live", [signed.user.id])
+    try check(() => assert.deepStrictEqual({
+      expired: [expiredKey.status, ...refusal(expiredKey.body), grantPhase[0]?.phase, mailAfterExpiry.status],
+      renewedFromExpired: [heirMinted.status, Number(renewedLease?.generation), renewedLease?.settled, heirAck.status, heirKey.status, mailOnMoved.status],
+      revoked: [renewAfterRevoke.status, ...refusal(renewAfterRevoke.body), rotateAfterRevoke.status, ...refusal(rotateAfterRevoke.body), mailAfterRevoke.status, ...refusal(mailAfterRevoke.body), liveLeases.length]
+    }, {
+      expired: [401, "authentication_required", "credential_expired", "expired", 200],
+      renewedFromExpired: [200, 3, true, 200, 200, 200],
+      revoked: [401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 0]
+    }))
+    }
+  }))
 })
 describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/registry.md)", () => {
   const fingerprint = "E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"
@@ -854,9 +1014,11 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     provide Clock.Clock = clock.clock {
       const registration = { ...native, connectReturn: `${web}/apps/native/google` }
       const { cloud, google } = try nativeCloud(undefined, registration)
-      const caller = try signedCaller(cloud, "google-browser")
+      const owner = try signedCaller(cloud, "google-browser")
+      const session = try cloud.store.transaction((tx) => issueSession(tx, { ...owner, assurance: "SingleFactor", accountCreated: false, now: start }))
+      const caller = { ...owner, headers: { authorization: "Bearer " + session.accessToken } }
       const callback = "/api/v1/oauth/google/callback"
-      const initialize = (body: unknown, headers = caller.headers) => cloud.call("/api/v1/eliza/google/connect/initiate", { json: body, headers })
+      const initialize = (body: unknown, headers: Readonly<Record<string, string>> = caller.headers) => cloud.call("/api/v1/eliza/google/connect/initiate", { json: body, headers })
       const appState = "s".repeat(43)
       const redirectUrl = `${registration.connectReturn}?state=${appState}`
       const requested = { side: "owner", capabilities: ["google.gmail.triage", "google.calendar.read"], redirectUrl }
@@ -2012,7 +2174,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       provider = "held"
       const reading = try forkChild(cloud.call(freshPoll, { headers: device.headers }))
       try timeout(promise(() => historyRead.promise), "5 seconds")
-      const disconnected = try cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } })
+      const disconnected = try cloud.call("/api/v1/eliza/google/disconnect", { headers: web, json: { grantId: grant } })
       try sync(() => releaseHistory.resolve())
       const lostDuringRead = try Fiber.join(reading)
       const beforeRevoked = cloud.fakes.seen.length
@@ -2063,6 +2225,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     } })
     const device = try signedCaller(cloud, "mail-history")
     const other = try signedCaller(cloud, "mail-history-other")
+    const browser = try cloud.store.transaction((tx) => issueSession(tx, { ...device, assurance: "SingleFactor", accountCreated: false, now }))
+    const web = { authorization: `Bearer ${browser.accessToken}` }
     const grant = "5f0c2b7e-8d1a-4c3e-9b6f-2a7d4e1c9b30"
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
     const refresh = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
@@ -2102,7 +2266,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       try sync(() => releaseHistory.resolve())
       return [ended, try Fiber.join(reading)] as const
     }
-    const [disconnected, lostDuringRead] = try heldRead(() => cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } }))
+    const [disconnected, lostDuringRead] = try heldRead(() => cloud.call("/api/v1/eliza/google/disconnect", { headers: web, json: { grantId: grant } }))
     const relinked = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
     try cloud.inside(linkedGrant(cloud, device, grant, relinked, scopes, now - 1000))
     const [revoked, revokedDuringRead] = try heldRead(() => cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: device.headers }))
@@ -2176,7 +2340,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         return mailProvider(request)
       })
     } })
-    const token = try entitledDevice(cloud, "mail", now)
+    const tablet = try leasedCaller(cloud, "mail")
+    const token = tablet.bearer
     const owner: Owner = { organizationId: "org-mail", userId: "user-mail" }
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage"), ...scopeFor("google.gmail.drafts")]
     const refreshToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-mail", email: "conn-mail@example.com", scopes }))
@@ -2193,6 +2358,30 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const tooMany = try gmail("/search?query=plan&maxResults=101")
     const read = try gmail("/read?messageId=msg-direct")
     const fetched = try gmail("/read?messageId=msg-trashed")
+    const managedCard = Schema.Struct({ externalId: Schema.String, from: Schema.String, subject: Schema.String, receivedAt: Schema.String, isUnread: Schema.Boolean })
+    const managedPage = Schema.Struct({
+      accountId: Schema.String, messages: Schema.Array(managedCard), nextPageToken: Schema.NullOr(Schema.String),
+      folder: Schema.optionalKey(Schema.String), q: Schema.optionalKey(Schema.String),
+    })
+    const page1 = try gmail("/triage?folder=inbox&maxResults=1")
+    const firstPage = try Schema.decodeUnknownEffect(managedPage)(page1.body)
+    const page2 = try gmail("/triage?folder=inbox&maxResults=1&pageToken=" + encodeURIComponent(firstPage.nextPageToken ?? ""))
+    const nextPage = try Schema.decodeUnknownEffect(managedPage)(page2.body)
+    const trash = try gmail("/triage?folder=trash&q=%20plan%20&counts=1")
+    const trashPage = try Schema.decodeUnknownEffect(managedPage)(trash.body)
+    const managedSearch = try Schema.decodeUnknownEffect(managedPage)(search.body)
+    const managedPreview = try Schema.decodeUnknownEffect(Schema.Struct({
+      accountId: Schema.String, historyId: Schema.NullOr(Schema.String), bodyTextAvailable: Schema.Boolean, message: managedCard,
+    }))(read.body)
+    const unknownFolder = try gmail("/triage?folder=archive")
+    const managedResponses = {
+      pages: [page1.status, page2.status, firstPage.accountId, nextPage.accountId, firstPage.folder, firstPage.q,
+        firstPage.nextPageToken !== null, nextPage.nextPageToken, [...firstPage.messages, ...nextPage.messages].map(({ externalId }) => externalId).sort()],
+      trash: [trash.status, trashPage.accountId, trashPage.folder, trashPage.q, trashPage.messages.map(({ externalId }) => externalId), trashPage.nextPageToken],
+      search: [managedSearch.accountId, managedSearch.q, managedSearch.messages.map(({ externalId }) => externalId)],
+      preview: [managedPreview.accountId, managedPreview.message.externalId, managedPreview.historyId, managedPreview.bodyTextAvailable],
+      invalid: errorOf(unknownFolder),
+    }
     const decoded = try promise(() => readMailThroughClient(cloud.url, token, "msg-direct"))
     const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => token }))
     const whole = try promise(() => client.gmailRead({ messageId: "msg-digest" }))
@@ -2299,6 +2488,9 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       selection: [[404, "not_found"], [400, "invalid_request"]],
       providerCallsOnRejectedSelection: 0,
     }))
+    const keyOnly = (path: string) => cloud.call(`/api/v1/eliza/google${path}`, { headers: { authorization: `Bearer ${tablet.deviceKey}` } })
+    const deviceKey = [try keyOnly("/gmail/search?query=plan"), try keyOnly("/gmail/read?messageId=msg-direct"), try keyOnly("/gmail/inbox-v1/drafts"), try keyOnly("/status"), try keyOnly("/calendar/feed")]
+      .map((answer) => [answer.status, (answer.body as { readonly reason?: string }).reason])
     const pdf = new TextEncoder().encode("%PDF-plan")
     type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
     const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
@@ -2312,6 +2504,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         triage: [triage.status, (triage.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, triageLimit, cards(triage)],
         search: [search.status, (search.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, (search.body as { readonly nextPageToken: string | null }).nextPageToken, cards(search)],
         tooMany: errorOf(tooMany),
+        managed: managedResponses,
         read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments, readBody.authenticationResults],
         fetched: [fetched.status, (fetched.body as { readonly authenticationResults: string | null }).authenticationResults],
         client: decoded,
@@ -2328,7 +2521,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         stale: [errorOf(staleAttachment), errorOf(staleThread)],
         drafts: [drafts.status, draftList.drafts, draftList.nextPageToken],
         draft: [draft.status, draftBody.providerDigest, draftBody.content.to, draftBody.content.subject, draftBody.content.bodyText, draftBody.content.plainText],
-        anonymous: errorOf(anonymous)
+        anonymous: errorOf(anonymous),
+        deviceKey
       },
       {
         triage: [200, "1004", "12", [
@@ -2337,6 +2531,13 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         ]],
         search: [200, "1004", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
         tooMany: [400, "invalid_request"],
+        managed: {
+          pages: [200, 200, owner.userId, owner.userId, "inbox", "", true, null, ["msg-digest", "msg-direct"]],
+          trash: [200, owner.userId, "trash", "plan", ["msg-trashed"], null],
+          search: [owner.userId, "plan", ["msg-direct"]],
+          preview: [owner.userId, "msg-direct", "1001", true],
+          invalid: [400, "invalid_request"],
+        },
         read: [200, "msg-direct", ["conn-mail@example.com"], "Please review the plan.", null, "none", [{ partId: "1", name: "plan.pdf", mimeType: "application/pdf", size: pdf.length, supported: true }],
           "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org"],
         fetched: [200, null],
@@ -2355,13 +2556,14 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         stale: [[409, "stale_revision"], [409, "stale_revision"]],
         drafts: [200, [{ draftId: "draft-1", messageId: "msg-draft-1", subject: "Re: Quarterly plan", to: ["ada@example.org"], snippet: "", updatedAt: null }], null],
         draft: [200, sha256Hex(draftRaw), ["ada@example.org"], "Re: Quarterly plan", "Looks good.", true],
-        anonymous: [401, "authentication_required"]
+        anonymous: [401, "authentication_required"],
+        deviceKey: Array.from({ length: 5 }, () => [403, "device_key_not_allowed"])
       }
     ))
   }))
 
   it.live("Trash a message as reviewed, lose Google's reply, and learn by lookup that it succeeded once (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
-    const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-trash", deviceMailCaller("ops-trash"))
+    const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-trash", sessionMailCaller("ops-trash"))
     const requestId = "6f1c2a3b-4d5e-4f60-8a7b-1c2d3e4f5a6b"
     const proposal = { kind: "trash", messageId: "msg-plan", expectedHistoryId: "1001" }
     const prepared = try operation("", { grantId, requestId, proposal })
@@ -2403,7 +2605,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
   }))
 
   it.live("Send a message with an attachment once though the dispatch is replayed, and refuse a forward at a stale history id (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
-    const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-send", deviceMailCaller("ops-send"))
+    const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-send", sessionMailCaller("ops-send"))
     const requestId = "1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d"
     const note = btoa("Agenda for Monday")
     const proposal = { kind: "send", mode: "compose", to: ["ada@example.org"], subject: "Agenda", bodyText: "See the note.", attachments: [{ name: "agenda.txt", mimeType: "text/plain", dataBase64: note }] }
@@ -2460,10 +2662,11 @@ function receiptOf(answer: { readonly body: unknown }): ReadonlyArray<unknown> {
   return [receipt.kind, receipt.state, receipt.rejectionCode, receipt.dispatchedAt !== null, receipt.finishedAt !== null]
 }
 
-function deviceMailCaller(name: string) {
+function sessionMailCaller(name: string) {
   return (cloud: TestCloud, now: number) => effect {
-    const token = try entitledDevice(cloud, name, now)
-    const caller: MailCaller = { token, owner: { organizationId: `org-${name}`, userId: `user-${name}` } }
+    const owner = try signedCaller(cloud, name)
+    const session = try cloud.store.transaction((tx) => issueSession(tx, { ...owner, assurance: "SingleFactor", accountCreated: false, now }))
+    const caller: MailCaller = { token: session.accessToken, owner: { organizationId: owner.organizationId, userId: owner.userId } }
     return caller
   }
 }
@@ -2483,7 +2686,7 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     provide Clock.Clock = clock.clock {
     const google = try sync(() => googleFakeState())
     const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
-    const caller = try signedCaller(cloud, "google-status")
+    const caller = try leasedCaller(cloud, "google-status")
     const other = try signedCaller(cloud, "google-status-other")
     const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now: start }))
     const sibling = { organizationId: caller.organizationId, userId: other.userId }
@@ -2549,10 +2752,10 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     }, {
       missing: empty, unauthorized: 401, live: active, accounts: [200, "no-store", [full]],
       denied: [[404, "not_found"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]], lapsed: { ...active, connected: false, reason: "token_missing" },
-      several: [[400, "invalid_request"], "grant_required"], named: [200, old],
+      several: [[400, "invalid_request"], "grant_required"], named: [200, { ...old, accountId: caller.userId }],
       listed: [200, [legacyStatus("unverified-old", start + 200, false), old, { ...full, connected: false, reason: "token_missing" }, revoked]],
       unchanged: [["status-live", 1, null], ["status-revoked", 2, null], ["unverified-old", 1, start + 200], ["verified-old", 1, start + 100]], refreshes: 0,
-      off: [200, { ...empty, configured: false, reason: "config_missing" }, 200, []]
+      off: [200, { ...empty, configured: false, reason: "config_missing", accountId: caller.userId }, 200, []]
     }))
     }
   }), 120_000)
@@ -2572,7 +2775,7 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
       }
       return answer
     }) })
-    const caller = try signedCaller(cloud, "disconnect-owner")
+    const caller = try leasedCaller(cloud, "disconnect-owner")
     const other = try signedCaller(cloud, "disconnect-other")
     const now = try Clock.currentTimeMillis
     const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now }))
@@ -2586,9 +2789,10 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     try sql(cloud, `INSERT INTO google_connections (key, state, revision, organization_id, user_id, subject, email, status, tokens, granted_scopes, expires_at, linked_at) VALUES ('legacy', $1::jsonb, 1, $2, $3, 'legacy-subject', 'legacy@example.com', 'Active', $4, $5::jsonb, $6, $7)`, [JSON.stringify(state), caller.organizationId, caller.userId, legacy, JSON.stringify(scopes), expiresAt, now])
 
     const root = "/api/v1/eliza/google"
-    const disconnect = (json?: unknown) => cloud.call(`${root}/disconnect`, { method: "POST", headers: caller.headers, json })
+    const disconnect = (json?: unknown) => cloud.call(`${root}/disconnect`, { method: "POST", headers: { authorization: `Bearer ${session.accessToken}` }, json })
     const revokes = () => cloud.fakes.seen.filter(({ path }) => path === "/google/revoke").map(({ body }) => new URLSearchParams(body).get("token"))
     const unauthenticated = try cloud.call(`${root}/disconnect`, { method: "POST" })
+    const mailAccess = try cloud.call(`${root}/disconnect`, { method: "POST", headers: caller.headers, json: { grantId: "racing" } })
     const [ambiguous, foreign, wrongSide, conflict] = try all([
       disconnect(), disconnect({ connectionId: "another-owner" }), disconnect({ side: "agent", connectionId: "racing" }),
       disconnect({ connectionId: "legacy", grantId: "racing" })
@@ -2605,14 +2809,14 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     const clean = try sql(cloud, "SELECT key, status, tokens IS NULL AS erased, expires_at, refreshing_until, granted_scopes, revision FROM google_connections ORDER BY key", [])
     const ended = try promise(() => client.googleStatus({ grantId: "legacy" }))
     try check(() => assert.deepStrictEqual({
-      denied: [unauthenticated.status, errorOf(ambiguous), errorOf(foreign), errorOf(wrongSide), errorOf(conflict)],
+      denied: [unauthenticated.status, errorOf(mailAccess), errorOf(ambiguous), errorOf(foreign), errorOf(wrongSide), errorOf(conflict)],
       ambiguousReason: (ambiguous.body as { readonly reason: string }).reason, refusedCalls,
       dropped: errorOf(dropped), repeated: [repeated.status, repeated.body], failedRevoke: [failedRevoke.status, failedRevoke.body],
       revokes: revokes(), providerRevoked: [...google.revoked], refreshes: google.tokenCalls,
       clean: clean.map((row) => [row.key, row.status, row.erased, Number(row.expires_at), Number(row.refreshing_until), row.granted_scopes, Number(row.revision)]),
       ended: [ended.connected, ended.reason, ended.expiresAt, ended.hasRefreshToken, ended.grantedScopes, ended.grantedCapabilities]
     }, {
-      denied: [401, [400, "invalid_request"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]],
+      denied: [401, [403, "access_denied"], [400, "invalid_request"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]],
       ambiguousReason: "grant_required", refusedCalls: [], dropped: [409, "google_reauth_required"],
       repeated: [200, { ok: true }], failedRevoke: [200, { ok: true }], revokes: [refreshToken, accessToken], providerRevoked: [refreshToken], refreshes: 1,
       clean: [["another-owner", "Active", false, expiresAt, 0, scopes, 1], ["legacy", "Revoked", true, 0, 0, [], 3], ["racing", "Revoked", true, 0, 0, [], 3]],
@@ -2684,7 +2888,7 @@ effect function calendarSetup(email: string) {
     seedCalendar(google, { id: "team@example.com", summary: "Team", accessRole: "reader", timeZone: "UTC" })
     seedEvent(google, "own@example.com", "standup", { summary: "Standup", start: { dateTime: "2026-12-01T09:00:00Z" }, end: { dateTime: "2026-12-01T09:15:00Z" } })
   })
-  return { google, cloud, headers: { authorization: `Bearer ${signed.accessToken}` } }
+  return { google, cloud, accountId: signed.user.id, headers: { authorization: `Bearer ${signed.accessToken}` } }
 }
 
 function calendarRefusal(body: unknown): ReadonlyArray<unknown> {
@@ -2696,7 +2900,7 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
   const calendarBase = "/api/v1/eliza/google/calendar"
 
   it.live("Read my calendars, a window of events and one event, refusing a window that is empty or in no time zone (spec/cloud/services/google/calendar.md, \"Story: Read my calendar for a window\")", () => scoped(effect {
-    const { cloud, google, headers } = try calendarSetup("calendar-reads@example.com")
+    const { google, cloud, accountId, headers } = try calendarSetup("calendar-reads@example.com")
     try Effect.try(() => seedEvent(google, "own@example.com", "standup-moved", {
       summary: "Moved standup", start: { dateTime: "2026-12-01T10:00:00Z" }, end: { dateTime: "2026-12-01T10:15:00Z" },
       recurringEventId: "daily-standup", originalStartTime: { dateTime: "2026-12-01T09:00:00Z" },
@@ -2712,12 +2916,18 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
     const wrongEventOwner = try cloud.call(`${calendarBase}/events/standup?expectedAccountId=subject-other`, { headers })
     const missing = try cloud.call(`${calendarBase}/events/nothere`, { headers })
     const anonymous = try cloud.call(`${calendarBase}/calendars`)
-    const events = (feed.body as { readonly events: ReadonlyArray<{ readonly externalId: string; readonly title: string; readonly etag: string | null; readonly seriesId: string | null; readonly metadata: { readonly originalStartTime?: string } }> }).events
+    const feedBody = try Schema.decodeUnknownEffect(Schema.Struct({
+      accountId: Schema.String, calendarId: Schema.String, syncedAt: Schema.String, nextPageToken: Schema.Null,
+      events: Schema.Array(Schema.Struct({
+        externalId: Schema.String, title: Schema.String, etag: Schema.NullOr(Schema.String),
+        seriesId: Schema.NullOr(Schema.String), metadata: Schema.Struct({ originalStartTime: Schema.optional(Schema.String) }),
+      })),
+    }))(feed.body)
     try check(() => assert.deepStrictEqual(
       {
         calendars: [calendars.status, calendars.body],
-        feed: [feed.status, (feed.body as { readonly calendarId: string }).calendarId, events.map((event) => [event.externalId, event.title, event.etag !== null]), typeof (feed.body as { readonly syncedAt: unknown }).syncedAt],
-        moved: [events[1]?.seriesId, events[1]?.metadata.originalStartTime],
+        feed: [feed.status, feedBody.accountId, feedBody.calendarId, feedBody.nextPageToken, feedBody.events.map((event) => [event.externalId, event.title, event.etag !== null]), typeof feedBody.syncedAt],
+        moved: [feedBody.events[1]?.seriesId, feedBody.events[1]?.metadata.originalStartTime],
         wrongOwner: [wrongOwner, wrongEventOwner].map((reply) => [reply.status, ...calendarRefusal(reply.body)]),
         refused: [reversed.status, empty.status, noZone.status, calendarRefusal(reversed.body)],
         one: [one.status, (one.body as { readonly event: { readonly externalId: string } }).event.externalId],
@@ -2729,7 +2939,7 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
           { calendarId: "own@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Own", accessRole: "owner", read: true, write: true, recurrenceLines: true, privateCreate: true },
           { calendarId: "team@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Team", accessRole: "reader", read: true, write: false }
         ]],
-        feed: [200, "primary", [["standup", "Standup", true], ["standup-moved", "Moved standup", true]], "string"],
+        feed: [200, accountId, "primary", null, [["standup", "Standup", true], ["standup-moved", "Moved standup", true]], "string"],
         moved: ["daily-standup", "2026-12-01T09:00:00Z"],
         wrongOwner: [[403, "access_denied", "google_account_changed", undefined], [403, "access_denied", "google_account_changed", undefined]],
         refused: [400, 400, 400, ["invalid_request", undefined, undefined]],
@@ -2845,6 +3055,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     switch (auth) {
       case "Public": return "Public"
       case "KeyOrSession": return "ServiceAccess"
+      case "Mail": return "MailAccess"
       case "Session": return "SignedSession"
       case "SessionFamily": return "SessionFamily"
       case "FreshSession": return "FreshSession"
@@ -4038,9 +4249,9 @@ module node {
       const grant = "00112233-4455-6677-8899-aabbccddeeff"
       const nonce = Buffer.alloc(12)
       const cipher = createCipheriv("aes-256-gcm", Buffer.from(key, "hex"), nonce)
-      cipher.setAAD(Buffer.from(JSON.stringify(["cloud-google-token-v1", api, owner.account.id, subject, true, false])))
+      cipher.setAAD(Buffer.from(JSON.stringify(["cloud-google-token-v1", api, owner.account.id, subject, true, true])))
       const encrypted = Buffer.concat([nonce, cipher.update("fixture-refresh"), cipher.final(), cipher.getAuthTag()]).toString("hex")
-      await fixture.db.query("INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, refresh_cipher) VALUES ($1, $2, $3, $4, true, false, $5)",
+      await fixture.db.query("INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, refresh_cipher) VALUES ($1, $2, $3, $4, true, true, $5)",
         [owner.account.id, grant, subject, "attachment-owner@example.test", encrypted])
       const wholeText = "x".repeat(8 * 1024 * 1024)
       const externalText = "é".repeat(450 * 1024)
@@ -4076,8 +4287,12 @@ module node {
         providerCalls.push(`${request.method} ${url.origin}${url.pathname}`)
         providerRequestsValid &&= request.redirect === "manual"
         if (url.href === "https://oauth2.googleapis.com/token" && request.method === "POST")
-          return Response.json({ access_token: "fixture-access", scope: "https://www.googleapis.com/auth/gmail.readonly" })
+          return Response.json({ access_token: "fixture-access", scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events.readonly" })
         providerRequestsValid &&= request.headers.get("authorization") === "Bearer fixture-access"
+        if (url.origin === "https://www.googleapis.com" && url.pathname === "/calendar/v3/calendars/primary/events") {
+          return Response.json({ timeZone: "UTC", items: [{ id: "fixture-appointment", summary: "Library visit",
+            start: { dateTime: "2026-12-01T12:00:00Z" }, end: { dateTime: "2026-12-01T13:00:00Z" } }] })
+        }
         if (searchReply && url.origin === "https://gmail.googleapis.com") {
           if (url.pathname === "/gmail/v1/users/me/profile") {
             searchCalls.push(["profile", url.searchParams.get("fields")])
@@ -4197,7 +4412,11 @@ module node {
         return { authorization: "Bearer " + token }
       }
       const attachmentClient = { clientId, androidPackage: clientId, environment: "staging", displayName: "Attachment", signInReturn: redirectUri,
-        billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AA").join(":")], enabled: true }
+        billingReturn: web + "/billing", credentialTtlMs: 86400000, certFingerprints: [Array(32).fill("AA").join(":")], enabled: true }
+      const otherClient = "com.example.other"
+      const otherRedirect = web + "/other/auth/callback"
+      const otherRegistration = { clientId: otherClient, androidPackage: otherClient, environment: "staging", displayName: "Other", signInReturn: otherRedirect,
+        billingReturn: web + "/other/billing", credentialTtlMs: 86400000, certFingerprints: [Array(32).fill("BB").join(":")], enabled: true }
       await registerClients(fixture.db, [attachmentClient])
       const ownDevice = await device(owner.account.id)
       const otherDevice = await device(other.account.id)
@@ -4205,8 +4424,26 @@ module node {
         ...workerBindings({ api, web, digest }), AI: { run: async () => { throw new Error("Unexpected inference in attachment fixture") } }, DATABASE_URL: fixture.databaseUrl,
         NATIVE_CLIENT_ID: clientId, NATIVE_AUTH_CALLBACK: redirectUri, NATIVE_CLIENT_REGISTRY: JSON.stringify([attachmentClient]),
         GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: key,
+        DEVICE_LEASE_SEAL_KEY: "A".repeat(43) + "=",
       } satisfies CloudBindings
       const worker = cloudWorker(undefined, providerFetch)
+      const configPath = (id: string, redirect: string) => api + "/api/v1/app-auth/mobile/config?" +
+        new URLSearchParams({ clientId: id, environment: "staging", redirectUri: redirect }).toString()
+      const offersMailLease = async (binding: CloudBindings, id = clientId, redirect = redirectUri) => {
+        const response = await worker.fetch(new Request(configPath(id, redirect)), binding)
+        const config = Schema.decodeUnknownSync(Schema.Struct({ mailLease: Schema.optionalKey(Schema.Boolean) }))(await response.json())
+        return [response.status, config.mailLease === true]
+      }
+      const { DEVICE_LEASE_SEAL_KEY: _sealKey, ...withoutLeaseKey } = env
+      const anotherRegistration = { ...env, NATIVE_CLIENT_REGISTRY: JSON.stringify([attachmentClient, otherRegistration]) }
+      const leaseOffers = [
+        await offersMailLease(env),
+        await offersMailLease(withoutLeaseKey),
+        await offersMailLease({ ...env, DEVICE_LEASE_SEAL_KEY: "invalid" }),
+      ]
+      await registerClients(fixture.db, [otherRegistration])
+      leaseOffers.push(await offersMailLease(anotherRegistration, otherClient, otherRedirect))
+      await fixture.db.query("DELETE FROM native_clients WHERE client_id = $1", [otherClient])
       const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
         headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
       }), env)
@@ -4442,6 +4679,73 @@ module node {
       revokeDuringDownload = false
       redirect = true
       const rejectedRedirect = await get(selected, owner.access)
+      const deviceOperation = (operation: string, data: object, headers: Record<string, string> = {}) =>
+        worker.fetch(new Request(api + "/api/auth/device/" + operation, {
+          method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(data),
+        }), env)
+      const verifier = "v".repeat(43)
+      const challenge = createHash("sha256").update(verifier).digest("base64url")
+      const granted = await deviceOperation("authorize", { challenge, state: "s".repeat(43), expectedAccountId: owner.account.id }, webHeaders)
+      const { redirectUrl } = Schema.decodeUnknownSync(Schema.Struct({ redirectUrl: Schema.String }))(await granted.json())
+      const exchangeProof = { code: new URL(redirectUrl).searchParams.get("code"), verifier }
+      const exchanged = await deviceOperation("exchange", exchangeProof)
+      const replayedExchange = await deviceOperation("exchange", exchangeProof)
+      const enrollment = Schema.Struct({ token: Schema.String, lease: Schema.Struct({ refresh: Schema.String }) })
+      const tablet = Schema.decodeUnknownSync(enrollment)(await exchanged.json())
+      const repeatedTablet = Schema.decodeUnknownSync(enrollment)(await replayedExchange.json())
+      const bearerHeaders = (token: string) => ({ authorization: "Bearer " + token })
+      const beforeAcknowledgement = await deviceOperation("lease", {}, bearerHeaders(tablet.lease.refresh))
+      const acknowledged = await deviceOperation("ack", {}, bearerHeaders(tablet.token))
+      const lease = await deviceOperation("lease", {}, bearerHeaders(tablet.lease.refresh))
+      const pair = Schema.decodeUnknownSync(Schema.Struct({ access: Schema.String, refresh: Schema.String }))(await lease.json())
+      const readTablet = (path: string, headers: Record<string, string>) =>
+        worker.fetch(new Request(api + "/api/v1/eliza/google/" + path, { headers }), env)
+      const tabletHeaders = bearerHeaders(pair.access)
+      const mailPath = "gmail/read?" + query
+      const calendarPath = "calendar/feed?timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z&grantId=" + grant
+      const tabletMessage = await readTablet(mailPath, tabletHeaders)
+      const messageBody = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, bodyText: Schema.String }))(await tabletMessage.json())
+      const tabletCalendar = await readTablet(calendarPath, tabletHeaders)
+      const calendarBody = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String,
+        events: Schema.Array(Schema.Struct({ externalId: Schema.String, title: Schema.String })) }))(await tabletCalendar.json())
+      const deviceAndCookie = await readTablet(mailPath, { ...webHeaders, ...bearerHeaders(tablet.token) })
+      const forbiddenWrite = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/operations", {
+        method: "POST", headers: { ...webHeaders, ...tabletHeaders, "content-type": "application/json" }, body: "{}",
+      }), env)
+      const renewal = Schema.Struct({ token: Schema.String, credentialId: Schema.String })
+      const renewed = await deviceOperation("renew", {}, bearerHeaders(pair.refresh))
+      const repeatedRenewed = await deviceOperation("renew", {}, bearerHeaders(pair.refresh))
+      const replacement = Schema.decodeUnknownSync(renewal)(await renewed.json())
+      const repeatedReplacement = Schema.decodeUnknownSync(renewal)(await repeatedRenewed.json())
+      const confirmedReplacement = await deviceOperation("ack", {}, bearerHeaders(replacement.token))
+      const closedLease = await deviceOperation("revoke", {}, bearerHeaders(pair.refresh))
+      const afterSignOut = [await readTablet(mailPath, tabletHeaders), await readTablet(calendarPath, tabletHeaders)]
+      const mobile = (path: string, method: "POST" | "DELETE", data: object, headers: Record<string, string> = {}) =>
+        worker.fetch(new Request(api + "/api/v1/app-auth/" + path, {
+          method, headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(data),
+        }), env)
+      const mobileBinding = { clientId, environment: "staging", redirectUri }
+      const state = "q".repeat(43)
+      const begin = await mobile("connect", "POST", { ...mobileBinding, state, codeChallenge: challenge, codeChallengeMethod: "S256" }, bearerHeaders(owner.access))
+      const { code } = Schema.decodeUnknownSync(Schema.Struct({ code: Schema.String }))(await begin.json())
+      const mint = await mobile("mobile/token", "POST", { ...mobileBinding, grantType: "authorization_code", code, state, codeVerifier: verifier })
+      const official = Schema.decodeUnknownSync(Schema.Struct({ credentialId: Schema.String, secret: Schema.String, lease: Schema.Struct({ refresh: Schema.String }) }))(await mint.json())
+      const officialAcknowledged = await mobile("mobile/ack", "POST", { credentialId: official.credentialId, secret: official.secret })
+      const officialRefresh = await mobile("mobile/lease", "POST", {}, bearerHeaders(official.lease.refresh))
+      const officialPair = Schema.decodeUnknownSync(Schema.Struct({ access: Schema.String, refresh: Schema.String }))(await officialRefresh.json())
+      const officialRead = await readTablet(mailPath, bearerHeaders(officialPair.access))
+      const officialClosed = await mobile("mobile/lease", "DELETE", {}, bearerHeaders(officialPair.refresh))
+      const officialAfter = await readTablet(mailPath, bearerHeaders(officialPair.access))
+      const tabletReads = {
+        canonical: [begin.status, mint.status, officialAcknowledged.status, officialRefresh.status, officialRead.status, officialClosed.status, officialAfter.status],
+        enrollment: [granted.status, exchanged.status, replayedExchange.status, tablet.token === repeatedTablet.token,
+          tablet.lease.refresh === repeatedTablet.lease.refresh, beforeAcknowledgement.status, acknowledged.status, lease.status],
+        renewal: [renewed.status, repeatedRenewed.status, replacement.token === repeatedReplacement.token,
+          replacement.credentialId === repeatedReplacement.credentialId, confirmedReplacement.status],
+        mail: [tabletMessage.status, messageBody.accountId === owner.account.id, messageBody.bodyText],
+        calendar: [tabletCalendar.status, calendarBody.accountId === owner.account.id, calendarBody.events],
+        refused: [deviceAndCookie.status, forbiddenWrite.status, closedLease.status, ...afterSignOut.map((answer) => answer.status)],
+      }
       revokeListing = "session"
       const signedOut = await get(folder, owner.access)
       const signedBackIn = await signIn("attachment-owner@example.test")
@@ -4457,7 +4761,7 @@ module node {
       const reconnectedSchedule = await schedule()
       return {
         reminders: [unconnectedSchedule, reconnectedSchedule],
-        arrivalResult, triage, search, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
+        arrivalResult, triage, search, mailboxes, deniedFolders, tabletReads, leaseOffers, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
         organization, grant, manifest, mailText, html, mime: [mime, mimeAttachment.status, mimeFile.dataBase64, mimeMalformed.status],
         readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
@@ -4482,11 +4786,13 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Read complete mail text, open the selected named attachment and watch for new mail (spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/index.md, "A device reminder follows the reviewed event occurrence")', () => effect {
+it.live('Read complete mail text, open the selected named attachment, watch for new mail and read the connected calendar from a signed-in tablet (spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/index.md, "A device reminder follows the reviewed event occurrence")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
   try check(() => assert.deepStrictEqual(
     {
       arrivals: got.arrivalResult,
+      tablet: got.tabletReads,
+      leaseOffers: got.leaseOffers,
       text: got.mailText,
       html: got.html,
       mime: got.mime,
@@ -4501,6 +4807,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       reminders: got.reminders,
     },
     {
+      leaseOffers: [[200, true], [200, false], [200, false], [200, false]],
       arrivals: {
         baseline: [200, "no-store", false, true, 200, false],
         deviceAdmissionCount: 1,
@@ -4523,6 +4830,14 @@ it.live('Read complete mail text, open the selected named attachment and watch f
           }),
         ],
       },
+      tablet: {
+        canonical: [200, 200, 200, 200, 200, 204, 401],
+        enrollment: [200, 200, 200, true, true, 401, 204, 200],
+        renewal: [200, 200, true, true, 204],
+        mail: [200, true, "hello"],
+        calendar: [200, true, [{ externalId: "fixture-appointment", title: "Library visit" }]],
+        refused: [403, 403, 204, 401, 401],
+      },
       text: ["mail-whole", true, true, "Preview only",
         { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, 502],
       html: expectedHtmlReads,
@@ -4533,7 +4848,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
           [["moved-to-trash"], "10000000000000000012", null, true],
         ],
         providerRefusals: Array.from({ length: 3 }, () => [502, "provider_invalid_response"]),
-        denied: [401, 401, 409, 403], invalid: Array.from({ length: 5 }, () => [400, "invalid_request"]), providersOnDenied: 0,
+        denied: [401, 403, 409, 403], invalid: Array.from({ length: 5 }, () => [400, "invalid_request"]), providersOnDenied: 0,
         cards: ["fixture-message:metadata", "moved-to-trash:metadata", "trashed-message:metadata"],
         requests: [
           ["profile", "historyId"], ["list", "in:anywhere subject:plan & dates", "50", "true", null],
