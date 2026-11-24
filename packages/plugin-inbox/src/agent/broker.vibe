@@ -1,9 +1,11 @@
-// spec/inbox/managedRead.md, "The agent reads managed mail only through the device's broker, and without one the read is not offered"; spec/os/signIn/cloudRequests.md, "The broker reads only Gmail status and search, and the calendar list and feed, each through listed GET routes"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body within the operation's limit, and never the credential that read it"
+// spec/inbox/managedRead.md, "The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link"; spec/os/signIn/cloudRequests.md, "The broker reads only Gmail status and search, and the calendar list and feed, each through listed GET routes"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body within the operation's limit, and never the credential that read it"
+import type { IAgentRuntime } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { mailReaderOf } from "../../gen/inbox__managedRead.effect.vibe"
 import { gmailConnectionOf, gmailSearchPageOf, type SearchSize } from "../client/index.vibe"
 import { MailProtocolFailed, MailUnreachable, type MailFailure } from "../mailbox/failures.vibe"
 import type { GmailSearchPage, GoogleConnection } from "../mailbox/types.vibe"
+import { agentGmailClient } from "./cloud.vibe"
 
 const brokerPath = "/__alpha-owner-gmail"
 const brokerReplyLimit = 262_144
@@ -23,7 +25,7 @@ function privateBroker(endpoint: string, token: string): GmailBroker | undefined
   const url = URL.parse(endpoint)
   const privateAddress = url !== null && url.protocol === "http:" && url.hostname === "127.0.0.1" && url.port !== "" && url.pathname === brokerPath
     && url.search === "" && url.hash === "" && url.username === "" && url.password === ""
-  if (url === null || mailReaderOf(endpoint !== "", privateAddress, /^[A-Za-z0-9_-]{64}$/.test(token)) !== "DeviceBroker") return undefined
+  if (url === null || mailReaderOf(endpoint !== "", privateAddress, /^[A-Za-z0-9_-]{64}$/.test(token), false) !== "DeviceBroker") return undefined
   return { url: url.href, token: Redacted.make(token) }
 }
 
@@ -78,8 +80,15 @@ export function brokerGmailReads(endpoint: string, token: string, http: Layer.La
   }
 }
 
-export effect function agentGmailReads() {
+/** The agent's managed mail reads: the host's broker when it names one, else the agent's cloud link when it has one, else none. */
+export function gmailReadsOf(endpoint: string, token: string, http: Layer.Layer<HttpClient.HttpClient>, cloudLink: () => AgentGmailReads | undefined): AgentGmailReads | undefined {
+  if (endpoint !== "") return brokerGmailReads(endpoint, token, http)
+  const linked = cloudLink()
+  return mailReaderOf(false, false, false, linked !== undefined) === "CloudLink" ? linked : undefined
+}
+
+export effect function agentGmailReads(runtime: IAgentRuntime) {
   const endpoint = try Config.withDefault(Config.String("ELIZA_MANAGED_GMAIL_READ_BROKER"), "")
   const token = try Config.withDefault(Config.String("ELIZA_API_TOKEN"), "")
-  return brokerGmailReads(endpoint, token, FetchHttpClient.layer)
+  return gmailReadsOf(endpoint, token, FetchHttpClient.layer, () => agentGmailClient(runtime))
 }

@@ -7,13 +7,14 @@ import { inboxReadAction } from "./agent/read.vibe"
 export { inboxAccess, inboxAccessProvider, inboxAccessProviderName } from "./agent/access.vibe"
 export { emailDraftAnswer, inboxComposeAction, inboxComposeActionName, type EmailDraftHandoff } from "./agent/compose.vibe"
 export { managedInboxRead, inboxReadAction, inboxReadActionName, type ManagedReadAnswer, type ManagedReadRequest } from "./agent/read.vibe"
-export { agentGmailReads, brokerGmailReads, type AgentGmailReads } from "./agent/broker.vibe"
+export { agentGmailReads, brokerGmailReads, gmailReadsOf, type AgentGmailReads } from "./agent/broker.vibe"
+export { agentGmailClient, cloudLinkTransport } from "./agent/cloud.vibe"
 
 export const inboxPluginName = "@elizaos/plugin-inbox"
 
 export const inboxPlugin: AgentPlugin = {
   name: inboxPluginName,
-  description: "Reads the owner's connected Gmail fresh and bounded, hands a new email to the phone's own composer, and reports Gmail access, reading only through the device's mail broker; sending and mailbox changes stay with the owner in Inbox",
+  description: "Reads the owner's connected Gmail fresh and bounded, hands a new email to the phone's own composer, and reports Gmail access, reading through the device's mail broker when the host names one; sending and mailbox changes stay with the owner in Inbox",
   actions: [inboxReadAction, inboxComposeAction],
   providers: [inboxAccessProvider],
 }

@@ -1,0 +1,36 @@
+// spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/failures.md, "A failure is classified by the client's own refusal first, then by being offline, then by Cloud's code and status"
+import { cloudServiceType, type CloudLinkService } from "@elizaos/agent"
+import type { IAgentRuntime } from "@elizaos/core"
+import { managedGmailClient, type ManagedGmailClient, type ManagedGmailTransport } from "../client/index.vibe"
+import { AttachmentRefused, MailProtocolFailed, MailUnreachable } from "../mailbox/failures.vibe"
+
+function refusalCode(body: unknown): string {
+  return typeof body === "object" && body !== null && "error" in body && typeof body.error === "string" ? body.error : ""
+}
+
+function cloudLinkOf(runtime: IAgentRuntime): CloudLinkService | undefined {
+  const found = runtime.getService<CloudLinkService>(cloudServiceType)
+  return found === null || typeof found.request !== "function" ? undefined : found
+}
+
+export function cloudLinkTransport(link: CloudLinkService): ManagedGmailTransport {
+  return {
+    effect request(path, options) {
+      const reply = try tryPromise({
+        try: (signal) => link.request({ method: options.body === undefined ? "GET" : "POST", path, ...(options.body === undefined ? {} : { body: options.body }), signal }),
+        catch: (cause) => new MailUnreachable({ cause }),
+      })
+      switch (reply.kind) {
+        case "answered": return reply.body
+        case "refused": throw new MailProtocolFailed({ code: "http", status: reply.status, reason: refusalCode(reply.body) })
+        case "changes-off": throw new MailProtocolFailed({ code: "http", status: 403, reason: "changes_off" })
+      }
+    },
+    reviewAttachment: effect () => { throw new AttachmentRefused({ detail: "The agent does not open attachment bytes" }) },
+  }
+}
+
+export function agentGmailClient(runtime: IAgentRuntime): ManagedGmailClient | undefined {
+  const link = cloudLinkOf(runtime)
+  return link === undefined ? undefined : managedGmailClient(cloudLinkTransport(link))
+}

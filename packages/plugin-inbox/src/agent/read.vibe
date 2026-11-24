@@ -1,5 +1,5 @@
-// spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/managedRead.md, "The agent reads managed mail only through the device's broker, and without one the read is not offered"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"
-import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult } from "@elizaos/core"
+// spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/managedRead.md, "The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type IAgentRuntime } from "@elizaos/core"
 import { enabled, initial, machineOver, type Event, type ManagedInboxRead, type ManagedReadKind } from "../../gen/inbox__managedRead.effect.vibe"
 import { classifyGmailFailure, type GmailFailureKind, type MailFailure } from "../mailbox/failures.vibe"
 import { gmailReadable } from "../mailbox/grants.vibe"
@@ -128,9 +128,9 @@ function resultOf(answer: ManagedReadAnswer): ActionResult {
   }
 }
 
-async function handle(options: unknown): Promise<ActionResult> {
-  const reads = await runPromise(agentGmailReads())
-  if (reads === undefined) return { success: false, text: "Gmail reading is not offered on this device.", data: { refusal: "not-offered" } }
+async function handle(runtime: IAgentRuntime, options: unknown): Promise<ActionResult> {
+  const reads = await runPromise(agentGmailReads(runtime))
+  if (reads === undefined) return { success: false, text: "Gmail is available only when this agent uses the cloud.", data: { refusal: "no-cloud" } }
   return resultOf(await runPromise(managedInboxRead(reads, parameters(options))))
 }
 
@@ -144,6 +144,6 @@ export const inboxReadAction: Action = {
   ],
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  validate: async () => (await runPromise(agentGmailReads())) !== undefined,
-  handler: async (_runtime, _message, _state, options) => handle(options),
+  validate: async (runtime) => (await runPromise(agentGmailReads(runtime))) !== undefined,
+  handler: async (runtime, _message, _state, options) => handle(runtime, options),
 }

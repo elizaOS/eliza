@@ -364,7 +364,10 @@ pure def lawASearchIsBounded(op: BrokerOperation): bool = match op {
 
 The broker's reads are planned as a page's are, by the auth class of their
 listed route, so the agent's reads carry exactly the credential the device
-attaches for mail and calendar and the broker cannot choose another.
+attaches for mail and calendar and the broker cannot choose another. While
+these routes take the device key, the broker sends the key; when the
+device's route table gives mail and calendar their own credential, the
+broker sends that one instead, and nothing changes on the agent's side.
 
 ```quint
 pure def brokerPlan(h: Holding, brokerRead: BrokerRead): CallPlan = {

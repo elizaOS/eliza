@@ -1,5 +1,5 @@
-// spec/inbox/managedRead.md, "The agent reads managed mail only through the device's broker, and without one the read is not offered"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/grants.md, "Read is asked for first, changes are one consent, and a reconnect keeps what the account holds"
-import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Provider, type ProviderResult } from "@elizaos/core"
+// spec/inbox/managedRead.md, "The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/grants.md, "Read is asked for first, changes are one consent, and a reconnect keeps what the account holds"
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type IAgentRuntime, type Provider, type ProviderResult } from "@elizaos/core"
 import { gmailGrantTier, type GmailGrantTier } from "../mailbox/grants.vibe"
 import type { GoogleConnection } from "../mailbox/types.vibe"
 import { agentGmailReads } from "./broker.vibe"
@@ -12,10 +12,10 @@ const tierText = {
   modify: "Gmail is connected with read and change access. Sending and mailbox changes are still reviewed and confirmed by the owner in Inbox.",
 } as const satisfies Record<GmailGrantTier, string>
 
-export effect function inboxAccess() {
-  const reads = try agentGmailReads()
+export effect function inboxAccess(runtime: IAgentRuntime) {
+  const reads = try agentGmailReads(runtime)
   if (reads === undefined) {
-    const notOffered: ProviderResult = { text: "", data: {}, values: {} }
+    const notOffered: ProviderResult = { text: "Gmail is available only when this agent uses the cloud.", values: { gmailTier: "none" } }
     return notOffered
   }
   const status: GoogleConnection | null = reads.gmailStatus() catch () => null
@@ -31,5 +31,5 @@ export const inboxAccessProvider: Provider = {
   cacheStable: false,
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  get: async () => runPromise(inboxAccess()),
+  get: async (runtime) => runPromise(inboxAccess(runtime)),
 }

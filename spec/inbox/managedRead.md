@@ -70,21 +70,31 @@ pure def leadsToReadFinishes(s: ManagedInboxRead, later: ManagedInboxRead): bool
   s.phase == ReadPending implies later.phase != ReadPending
 ```
 
-### The agent reads managed mail only through the device's broker, and without one the read is not offered
+### The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link
 
-The agent's managed mail reads go only to the device's mail and calendar
-broker ([cloud requests](../os/signIn/cloudRequests.md)), named by
-`ELIZA_MANAGED_GMAIL_READ_BROKER` on the loopback path
+The agent's managed mail reads go to the device's mail and calendar
+broker ([cloud requests](../os/signIn/cloudRequests.md)) whenever the host
+names one in `ELIZA_MANAGED_GMAIL_READ_BROKER`: the loopback path
 `/__alpha-owner-gmail` with a bearer of 64 URL-safe characters in
-`ELIZA_API_TOKEN`; the agent never sends a mail route through its own cloud
-link or holds a mail credential. With no broker named, or an address or
-bearer that is not the device's private one, the read action and the access
-check are not offered, rather than failing at every call.
+`ELIZA_API_TOKEN`. The broker attaches the device's credential itself, so
+the agent then sends no mail route through its own cloud link. A host that
+names no broker leaves the agent reading through its cloud link, with the
+credential it was launched with, as before the broker existed; once the
+Cloud requires the mail lease on mail routes, such a read is refused and
+reported as a failure. An address or bearer that is not the device's
+private one, or no broker and no cloud link, offers neither the read
+action nor the access check, rather than failing at every call.
 
 ```quint
-type MailReader = DeviceBroker | NotOffered
-pure def mailReaderOf(brokerNamed: bool, privateAddress: bool, bearerShaped: bool): MailReader =
-  if (brokerNamed and privateAddress and bearerShaped) DeviceBroker else NotOffered
-pure def lawMailIsReadOnlyThroughAPrivateBroker(brokerNamed: bool, privateAddress: bool, bearerShaped: bool): bool =
-  (mailReaderOf(brokerNamed, privateAddress, bearerShaped) == DeviceBroker) iff (brokerNamed and privateAddress and bearerShaped)
+type MailReader = DeviceBroker | CloudLink | NotOffered
+pure def mailReaderOf(brokerNamed: bool, privateAddress: bool, bearerShaped: bool, cloudLinked: bool): MailReader =
+  if (brokerNamed) (if (privateAddress and bearerShaped) DeviceBroker else NotOffered)
+  else if (cloudLinked) CloudLink
+  else NotOffered
+pure def lawANamedBrokerIsTheOnlyMailReader(brokerNamed: bool, privateAddress: bool, bearerShaped: bool, cloudLinked: bool): bool =
+  brokerNamed implies mailReaderOf(brokerNamed, privateAddress, bearerShaped, cloudLinked) != CloudLink
+pure def lawMailIsReadThroughABrokerOnlyWhenItIsPrivate(brokerNamed: bool, privateAddress: bool, bearerShaped: bool, cloudLinked: bool): bool =
+  (mailReaderOf(brokerNamed, privateAddress, bearerShaped, cloudLinked) == DeviceBroker) iff (brokerNamed and privateAddress and bearerShaped)
+pure def lawWithoutABrokerTheCloudLinkReads(brokerNamed: bool, privateAddress: bool, bearerShaped: bool, cloudLinked: bool): bool =
+  (mailReaderOf(brokerNamed, privateAddress, bearerShaped, cloudLinked) == CloudLink) iff (not(brokerNamed) and cloudLinked)
 ```

@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import type { Memory } from "@elizaos/core"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { managedGmailClient, type ManagedGmailTransport } from "../src/client/index.vibe"
-import { brokerGmailReads, emailDraftAnswer, managedInboxRead } from "../src/index.vibe"
+import { brokerGmailReads, emailDraftAnswer, gmailReadsOf, managedInboxRead } from "../src/index.vibe"
 import {
   AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount,
   encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation,
@@ -28,7 +28,7 @@ const story = {
   readState: 'spec/inbox/readState.md, "Story: Change a message\'s read state once, and never repeat a change I did not ask for"',
   notices: 'spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"',
   managed: 'spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"',
-  broker: 'spec/inbox/managedRead.md, "The agent reads managed mail only through the device\'s broker, and without one the read is not offered"',
+  broker: 'spec/inbox/managedRead.md, "The agent reads managed mail through the device\'s broker when the host names one, and otherwise through its cloud link"',
   handoff: 'spec/inbox/handoff.md, "Story: Put the agent\'s words into an email draft without sending it"',
   failures: 'spec/inbox/failures.md, "Story: Know what happened when Gmail fails"',
 }
@@ -448,7 +448,7 @@ it.effect(`Open the Inbox from an ordinary tap and ask only about the exact mess
   assert.deepEqual(try openNoticeTap(ports), { phase: "ClosedAsk", failure: "NoAskFailure" })
 })
 
-it.effect(`Read the managed inbox fresh for the current account, only through the device broker, and hand a new email to the phone's composer (${story.managed}; ${story.broker}; ${story.handoff})`, effect () => {
+it.effect(`Read the managed inbox fresh for the current account, through the device broker when one is named and the cloud link otherwise, and hand a new email to the phone's composer (${story.managed}; ${story.broker}; ${story.handoff})`, effect () => {
   const cloud = fakeCloud()
   const calls = () => cloud.state.paths.length
   assert.deepEqual(try managedInboxRead(cloud.client, { query: "in:inbox" }), { kind: "refused", reason: "missing-limit" })
@@ -472,6 +472,11 @@ it.effect(`Read the managed inbox fresh for the current account, only through th
     ["http://127.0.0.1:7777/other", token], ["http://127.0.0.1/__alpha-owner-gmail", token], [brokerUrl, "short"], [brokerUrl, ""]] as const) {
     assert.isUndefined(brokerGmailReads(endpoint, bearer, fake.layer), `${story.broker}: ${endpoint} is not offered`)
   }
+  assert.strictEqual(gmailReadsOf("", token, fake.layer, () => cloud.client), cloud.client, `${story.broker}: with no broker named the cloud link reads`)
+  assert.isUndefined(gmailReadsOf("", token, fake.layer, () => undefined), `${story.broker}: no broker and no cloud link offers no read`)
+  assert.isUndefined(gmailReadsOf("http://localhost:7777/__alpha-owner-gmail", token, fake.layer, () => cloud.client), `${story.broker}: a misnamed broker does not fall back to the cloud link`)
+  const named = gmailReadsOf(brokerUrl, token, fake.layer, () => cloud.client)
+  assert.isTrue(named !== undefined && named !== cloud.client, `${story.broker}: a named broker is the only reader`)
   const reads = brokerGmailReads(brokerUrl, token, fake.layer)
   assert.isDefined(reads)
   if (reads === undefined) return
