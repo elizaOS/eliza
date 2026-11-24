@@ -24,13 +24,13 @@ export function certificationTarget(environment = "staging") {
   if (environment === "staging")
     return {
       environment,
-      sourceRef: "refs/heads/staging",
+      sourceRef: "refs/heads/staging-v3",
       baseUrl: "https://api-staging.eliza.app",
     };
   if (environment === "production")
     return {
       environment,
-      sourceRef: "refs/heads/main",
+      sourceRef: "refs/heads/main-v3",
       baseUrl: "https://api.eliza.app",
     };
   throw new Error("Unsupported certification environment");

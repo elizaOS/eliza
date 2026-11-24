@@ -55,8 +55,8 @@ jobs:
         run: |
           set -euo pipefail
           case "$TARGET_ENVIRONMENT" in
-            staging) expected_ref="refs/heads/staging" ;;
-            production) expected_ref="refs/heads/main" ;;
+            staging) expected_ref="refs/heads/staging-v3" ;;
+            production) expected_ref="refs/heads/main-v3" ;;
             *)
               echo "::error::Unsupported Headscale target environment"
               exit 1

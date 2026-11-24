@@ -57,7 +57,7 @@ const gate = required.steps.find(
 );
 assert(gate && typeof gate.run === "string");
 const promotion =
-  "(github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')";
+  "(github.event_name == 'pull_request' && github.base_ref == 'main-v3') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main-v3')";
 assert.equal(gate.env.PROMOTION, `\${{ ${promotion} }}`);
 const bindings = [
   ...gate.env.RESULTS.matchAll(
@@ -140,10 +140,10 @@ assert.equal(validateWorkflowTriggerPolicy(root).promotionPushWorkflows, 1);
 const canonical = parse(
   await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8"),
 );
-assert.equal(canonical.jobs.quint.if, "github.ref == 'refs/heads/main'");
+assert.equal(canonical.jobs.quint.if, "github.ref == 'refs/heads/main-v3'");
 assert.equal(
   canonical.jobs["quint-result"].if,
-  `\${{ always() && !cancelled() && github.ref == 'refs/heads/main' }}`,
+  `\${{ always() && !cancelled() && github.ref == 'refs/heads/main-v3' }}`,
 );
 assert.deepEqual(canonical.jobs.quint.strategy.matrix.shard, [1, 2, 3, 4]);
 assert.equal(
@@ -164,7 +164,7 @@ const canonicalGate = canonical.jobs.required.steps.find(
 );
 assert(
   canonicalGate.env.RESULTS.includes(
-    `quint-result=\${{ needs.quint-result.result }}:\${{ github.ref == 'refs/heads/main' }}`,
+    `quint-result=\${{ needs.quint-result.result }}:\${{ github.ref == 'refs/heads/main-v3' }}`,
   ),
 );
 const full = parse(
@@ -256,7 +256,15 @@ for (const event of [
   "push",
   "workflow_dispatch",
 ]) {
-  for (const branch of ["develop", "staging", "main", "feature"]) {
+  for (const branch of [
+    "develop",
+    "staging",
+    "main",
+    "develop-v3",
+    "staging-v3",
+    "main-v3",
+    "feature",
+  ]) {
     const github = {
       event_name: event,
       sha: "a".repeat(40),
@@ -286,13 +294,13 @@ for (const event of [
         }),
       );
     const prExpected =
-      branch === "main" && ["pull_request", "merge_group"].includes(event);
+      branch === "main-v3" && ["pull_request", "merge_group"].includes(event);
     assert.equal(evaluate(shardJob.if), prExpected);
     assert.equal(evaluate(shardGate.if), prExpected);
     assert.equal(evaluate(gate.env.PROMOTION), prExpected);
     // Reusable CI inherits the push/manual caller's ref; it has no independent push trigger.
     const canonicalExpected =
-      branch === "main" && ["push", "workflow_dispatch"].includes(event);
+      branch === "main-v3" && ["push", "workflow_dispatch"].includes(event);
     assert.equal(evaluate(canonical.jobs.quint.if), canonicalExpected);
     assert.equal(
       evaluate(canonical.jobs["quint-result"].if),
@@ -300,7 +308,7 @@ for (const event of [
     );
     const fullExpected =
       ["push", "workflow_dispatch"].includes(event) &&
-      ["staging", "main"].includes(branch);
+      ["staging-v3", "main-v3"].includes(branch);
     assert.equal(evaluate(fullPlan.if), fullExpected);
     eventMatrix.push({
       event,
@@ -311,7 +319,14 @@ for (const event of [
     });
   }
 }
-for (const branch of ["develop", "staging", "main"])
+for (const branch of [
+  "develop",
+  "staging",
+  "main",
+  "develop-v3",
+  "staging-v3",
+  "main-v3",
+])
   for (const kind of ["heads", "tags"]) {
     const github = {
       event_name: "workflow_dispatch",
@@ -328,7 +343,8 @@ for (const branch of ["develop", "staging", "main"])
         fromJSON: JSON.parse,
       }),
     );
-    const admitted = kind === "heads" && branch !== "develop";
+    const admitted =
+      kind === "heads" && ["staging-v3", "main-v3"].includes(branch);
     assert.equal(selected, admitted);
     const checked = spawnSync("bash", ["-c", dispatchGuard.run], {
       cwd: root,
@@ -355,8 +371,8 @@ for (const invalid of [
 ]) {
   const github = {
     event_name: "workflow_dispatch",
-    ref: "refs/heads/main",
-    ref_name: "main",
+    ref: "refs/heads/main-v3",
+    ref_name: "main-v3",
     sha: "a".repeat(40),
   };
   const selected = Boolean(
@@ -373,7 +389,7 @@ for (const invalid of [
     env: {
       ...process.env,
       GITHUB_REF: github.ref,
-      GITHUB_REF_NAME: "main",
+      GITHUB_REF_NAME: "main-v3",
       GITHUB_SHA: github.sha,
       SOURCE_SHA: invalid.source_sha,
       EFFECT_DIGEST: invalid.effect_digest,

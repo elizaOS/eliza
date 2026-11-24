@@ -23,7 +23,7 @@ permissions: {}
 jobs:
   inspect:
     name: Read binding names and types only
-    if: ${{ inputs.expected_source_commit == github.sha && ((inputs.environment == 'staging' && github.ref == 'refs/heads/staging') || (inputs.environment == 'production' && github.ref == 'refs/heads/main' && !inputs.inspect_staging_login)) }}
+    if: ${{ inputs.expected_source_commit == github.sha && ((inputs.environment == 'staging' && github.ref == 'refs/heads/staging-v3') || (inputs.environment == 'production' && github.ref == 'refs/heads/main-v3' && !inputs.inspect_staging_login)) }}
     runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     timeout-minutes: 3

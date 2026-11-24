@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Enforces one lightweight pull-request authority and one latest-tip promotion
- * authority that runs on pushes to staging and main only. Periodic and
+ * authority that runs on pushes to staging-v3 and main-v3 only. Periodic and
  * completion-chained triggers remain forbidden so the promotion workflow
  * remains the only automatic full-validation authority.
  */
@@ -19,9 +19,9 @@ const FORBIDDEN_EVENTS = new Set([
 ]);
 const CANONICAL_ADMISSION_WORKFLOW = "pr-validation.yml";
 const PROMOTION_AUTHORITY_WORKFLOW = "develop-full.yml";
-const PROMOTION_PUSH_BRANCHES = ["staging", "main"];
+const PROMOTION_PUSH_BRANCHES = ["staging-v3", "main-v3"];
 const FORBIDDEN_AUTOMATION_EVENTS = new Set(["schedule", "workflow_run"]);
-const REQUIRED_PR_BRANCHES = ["develop", "staging", "main"];
+const REQUIRED_PR_BRANCHES = ["develop-v3", "staging-v3", "main-v3"];
 const REQUIRED_PR_TYPES = [
   "opened",
   "ready_for_review",
@@ -125,7 +125,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       if (eventName !== "push") continue;
       if (!config || typeof config !== "object") {
         failures.push(
-          `${name}: push must be branch-filtered to staging and main (tag-only release pushes are allowed)`,
+          `${name}: push must be branch-filtered to ${PROMOTION_PUSH_BRANCHES.join(" and ")} (tag-only release pushes are allowed)`,
         );
         continue;
       }
@@ -136,7 +136,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
         continue;
       if (!sameStrings(branches, PROMOTION_PUSH_BRANCHES) || hasBranchIgnore) {
         failures.push(
-          `${name}: push branches must be exactly [staging, main], received ${JSON.stringify(branches)}`,
+          `${name}: push branches must be exactly ${JSON.stringify(PROMOTION_PUSH_BRANCHES)}, received ${JSON.stringify(branches)}`,
         );
         continue;
       }

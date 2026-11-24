@@ -18,7 +18,7 @@ concurrency:
 jobs:
   qualify:
     name: Staging BGE persistence and tenant isolation
-    if: github.ref == 'refs/heads/staging'
+    if: github.ref == 'refs/heads/staging-v3'
     environment: staging
     runs-on: ubuntu-24.04
     timeout-minutes: 20

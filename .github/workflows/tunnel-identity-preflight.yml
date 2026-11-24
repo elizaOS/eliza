@@ -33,7 +33,7 @@ permissions: {}
 jobs:
   inspect:
     name: Read-only tunnel node identity
-    if: ${{ (inputs.environment == 'staging' && github.ref == 'refs/heads/staging') || (inputs.environment == 'production' && github.ref == 'refs/heads/main') }}
+    if: ${{ (inputs.environment == 'staging' && github.ref == 'refs/heads/staging-v3') || (inputs.environment == 'production' && github.ref == 'refs/heads/main-v3') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     environment: ${{ inputs.environment }}

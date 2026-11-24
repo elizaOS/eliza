@@ -9,7 +9,7 @@ import {
 } from "./staging-standing-capability.ts";
 
 const config = {
-  sourceRef: "refs/heads/staging",
+  sourceRef: "refs/heads/staging-v3",
   sourceSha: "a".repeat(40),
   expectedDeploySha: "b".repeat(40),
   apiKey: "private-test-credential",

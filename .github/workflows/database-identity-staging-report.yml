@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$SOURCE_REF" != "refs/heads/staging" ]]; then
+          if [[ "$SOURCE_REF" != "refs/heads/staging-v3" ]]; then
             echo "::error::database identity report requires the trusted staging source"
             exit 1
           fi
@@ -59,7 +59,7 @@ jobs:
 
   report:
     needs: admission
-    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging'
+    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging-v3'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: staging
