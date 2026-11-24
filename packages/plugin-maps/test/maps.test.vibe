@@ -281,7 +281,6 @@ it.live('Navigate again when the phone never received my request: a lost deliver
     getService: () => linkFake().link,
     getRoom: (id: string) => Promise.resolve(id === roomId ? { id: roomId, metadata: { deviceConversation: { id: conversationId, createdAt: 1, updatedAt: 1 } } } : null),
     turnControllers: turns,
-    contexts: { tryRegister: () => true },
   } as unknown as IAgentRuntime
   try promise(() => mapsPlugin.init?.({}, runtime) ?? Promise.resolve())
   const route = mapsPlugin.routes?.[0]
