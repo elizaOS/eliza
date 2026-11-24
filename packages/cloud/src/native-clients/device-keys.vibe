@@ -466,7 +466,7 @@ effect function renewKey(context: RouteContext) {
   if (renewed.kind === "reused") throw new Refused({ refusal: reusedRefusal })
   const now = try Clock.currentTimeMillis
   return json({
-    code: renewed.code, codeType: "mobile_app_auth_code", expiresAt: iso(renewed.codeExpiresAt),
+    success: true, code: renewed.code, codeType: "mobile_app_auth_code", expiresAt: iso(renewed.codeExpiresAt),
     expiresIn: Math.floor((renewed.codeExpiresAt - now) / 1000), renewableUntil: iso(renewed.renewableUntil)
   })
 }

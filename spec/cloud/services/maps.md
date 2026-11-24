@@ -14,7 +14,9 @@ and the Quint models `maps_credit_funding`, `MapsPlaceLookup` and
 
 The `google` profile's `baseUrl` is a template with exactly one `{host}`, such
 as `https://{host}.googleapis.com`; for each call the shell puts in its place
-`places`, `maps`, `routes` or `tile`, the Google service that answers it.
+`places`, `maps`, `routes` or `tile`, the Google service that answers it. A
+legacy profile with exactly `https://maps.googleapis.com` is read as the
+public Google template above.
 
 The shell handles a request in this order: `requestAuth`, the deployment's
 capability gate, `entryOf`, the plan's standard request limit (for every

@@ -118,7 +118,7 @@ export effect function transcribeVideo(runtime: IAgentRuntime, source: string) {
   provide machine() {
     const run = try Machine
     try run.send({ type: "beginVideo", sourceRef: url.href, job: "BuildTranscript", formatName: "text", sourceAllowed: true })
-    let text = ""
+    let text: string
     if (youtubePage(url)) {
       const metadata = try probeVideo(url.href)
       text = (extractCaption(metadata)) catch () => ""

@@ -21,9 +21,9 @@ export function oneSecondWav(): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-export function recordingForm(fields: Readonly<Record<string, string>>, type = "audio/wav"): FormData {
+export function recordingForm(fields: Readonly<Record<string, string>>, type = "audio/wav", bytes = oneSecondWav()): FormData {
   const form = new FormData();
-  form.append("audio", new Blob([oneSecondWav()], { type }), "clip.wav");
+  form.append("audio", new Blob([bytes], { type }), "clip.wav");
   for (const [name, value] of Object.entries(fields)) form.append(name, value);
   return form;
 }

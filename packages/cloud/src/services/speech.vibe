@@ -116,8 +116,9 @@ function wavDurationMs(bytes: Uint8Array): number | undefined {
   return undefined
 }
 
-function uploadDurationMs(audio: Uint8Array, mimeType: string): number {
-  return wavDurationMs(audio) ?? Math.max(1000, Math.ceil(audio.length * 8 / (kilobitsPerSecond[mimeType] ?? 128)))
+function uploadDurationMs(audio: Uint8Array, mimeType: string): number | undefined {
+  if (mimeType === "audio/wav" || mimeType === "audio/x-wav") return wavDurationMs(audio)
+  return Math.max(1000, Math.ceil(audio.length * 8 / (kilobitsPerSecond[mimeType] ?? 128)))
 }
 
 effect function speechSettings(): SpeechSettings!Refused!Deployment {
@@ -252,14 +253,16 @@ effect function readUpload(context: RouteContext, profile: SpeechProfile): Uploa
     default: throw failure.reason._tag === "BodyTooLarge" || failure.reason._tag === "FileTooLarge" ? refused("ContentTooLarge") : refused("InvalidRequest");
   }
   if (audio !== undefined && audio.bytes.length > uploadLimit) throw refused("ContentTooLarge")
-  const durationMs = audio === undefined ? 0 : uploadDurationMs(audio.bytes, audio.mimeType)
+  if (audio === undefined) throw refused("InvalidRequest")
+  const durationMs = uploadDurationMs(audio.bytes, audio.mimeType)
+  if (durationMs === undefined || durationMs <= 0) throw refused("InvalidRequest")
   const checked = sttCheck(profile, {
-    audio: audio === undefined || audio.bytes.length === 0 ? { tag: "NoAudio" } : { tag: "AudioFile", mime: audio.mimeType, bytesMatch: leadingBytes[audio.mimeType]?.(audio.bytes) === true },
+    audio: audio.bytes.length === 0 ? { tag: "NoAudio" } : { tag: "AudioFile", mime: audio.mimeType, bytesMatch: Object.hasOwn(leadingBytes, audio.mimeType) && leadingBytes[audio.mimeType]?.(audio.bytes) === true },
     language: pickOf(languageCode),
     provider: pickOf(provider),
     durationMs
   })
-  if (checked.tag === "TranscriptionRefused" || audio === undefined) throw refused("InvalidRequest")
+  if (checked.tag === "TranscriptionRefused") throw refused("InvalidRequest")
   return { audio: audio.bytes, mimeType: audio.mimeType, durationMs: checked.durationMs, ...(languageCode === undefined ? {} : { languageCode }) }
 }
 
@@ -280,6 +283,6 @@ effect function hear(context: RouteContext): HttpServerResponse.HttpServerRespon
 }
 
 export const batchSpeechRoutes: ReadonlyArray<Route> = [
-  { method: "POST", path: "/api/v1/voice/tts", auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: speak },
-  { method: "POST", path: "/api/v1/voice/stt", auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", maxBodyBytes: uploadLimit, handler: hear }
+  { method: "POST", path: "/api/v1/voice/tts", auth: "ServiceAccess", area: "BatchSpeechRoutes", rateClass: "StandardRequests", handler: speak },
+  { method: "POST", path: "/api/v1/voice/stt", auth: "ServiceAccess", area: "BatchSpeechRoutes", rateClass: "StandardRequests", maxBodyBytes: uploadLimit, handler: hear }
 ]

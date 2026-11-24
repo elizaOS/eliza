@@ -42,7 +42,7 @@ import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
 import { callCloud, callDeclaring, openCloud } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
-import { recordingBytes, recordingForm } from "./support/recording.ts"
+import { oneSecondWav, recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
 import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
 import { googleMapsFake, tilePng } from "./support/maps-fake.ts"
@@ -268,7 +268,8 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         forwarded,
         missing: [elsewhere.status, (elsewhere.body as { readonly error?: string }).error, onApi.status, payerOnWeb.status],
         payer: [paid.status, String(paid.body).includes("Check the subscription"), other.status, String(other.body).includes("Checkout closed")],
-        payerScript: [/script-src/.test(paid.headers["content-security-policy"] ?? ""), /<script/.test(String(paid.body)), paid.headers["cache-control"]]
+        payerScript: [/script-src/.test(paid.headers["content-security-policy"] ?? ""), /<script/.test(String(paid.body)), paid.headers["cache-control"]],
+        unfilled: [html, String(connect.body), billingPage, String(paid.body), String(other.body)].filter((page) => page.includes("{{")).length
       },
       {
         status: 200,
@@ -287,7 +288,8 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         ],
         missing: [404, "not_found", 404, 404],
         payer: [200, true, 200, true],
-        payerScript: [false, false, "no-store"]
+        payerScript: [false, false, "no-store"],
+        unfilled: 0
       }
     ))
     provide deploymentLayer(profile, "staging") {
@@ -1334,6 +1336,9 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     const otherProvider = try stt({ provider: "elsewhere" })
     const otherLanguage = try stt({ languageCode: "fr" })
     const mislabeled = try cloud.call("/api/v1/voice/stt", { form: try Effect.try(() => recordingForm({}, "audio/mpeg")), headers: caller.headers })
+    const incomplete = try cloud.call("/api/v1/voice/stt", {
+      form: try Effect.try(() => recordingForm({}, "audio/wav", oneSecondWav().slice(0, 12))), headers: caller.headers,
+    })
     const tooLarge = try promise(() => callDeclaring(cloud.url, "/api/v1/voice/stt", 25 * 1024 * 1024 + 1, { "content-type": "multipart/form-data; boundary=x" }))
     const sentHeard = speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length])
 
@@ -1361,6 +1366,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
         otherLanguage: [otherLanguage.status, (otherLanguage.body as { readonly error: string }).error],
         mislabeled: [mislabeled.status, (mislabeled.body as { readonly error: string }).error],
+        incomplete: [incomplete.status, (incomplete.body as { readonly error: string }).error],
         tooLarge: [tooLarge.status, (tooLarge.body as { readonly error: string }).error],
         chosenId: [paidWords.status, paidWords.headers["x-eliza-tts-speed"], otherWordsSameId.status, heardSameId.status, heardAgainSameId.status, speech.synthesized.at(-1)?.body.transcript],
         usage: usage.map((row) => [row.service, Number(row.quote), Number(row.charged), row.outcome])
@@ -1388,6 +1394,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         otherProvider: [400, "invalid_request"],
         otherLanguage: [400, "invalid_request"],
         mislabeled: [400, "invalid_request"],
+        incomplete: [400, "invalid_request"],
         tooLarge: [413, "content_too_large"],
         chosenId: [200, undefined, 200, 200, 200, "Free words"],
         usage: [
@@ -1552,6 +1559,22 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
   }), 60_000)
 })
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
+  it.effect('Reads the legacy Google Maps origin as the public service template (spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile")', effect () => {
+    const profile = try sync(() => testProfile("https://provider.example"))
+    const staging = profile.environments.staging
+    const withBaseUrl = (baseUrl: string) => ({
+      ...profile,
+      environments: { ...profile.environments, staging: { ...staging, maps: { ...staging.maps, baseUrl } } },
+    })
+    const legacy = (try parseProfile(withBaseUrl("https://maps.googleapis.com"))).environments.staging.maps
+    const template = (try parseProfile(withBaseUrl("https://{host}.googleapis.com"))).environments.staging.maps
+    const otherOrigin = parseProfile(withBaseUrl("https://maps.example")) catch (failure) => failure._tag
+    try check(() => {
+      assert.deepStrictEqual(legacy, template)
+      assert.strictEqual(legacy?.provider === "google" && legacy.baseUrl, "https://{host}.googleapis.com")
+      assert.strictEqual(otherOrigin, "ProfileInvalid")
+    })
+  })
   it.live("Answer a maps request once and pay for it once, keep tiles unstored and look a place up nearby first (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\"; spec/cloud/services/maps.md, \"Story: Keep maps requests within the provider's terms\")", () => scoped(effect {
     const maps = try sync(() => googleMapsFake())
     const timer = try TestClock.make()
@@ -2118,7 +2141,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       history("&startHistoryId=0100"), history("&startHistoryId=1000&startHistoryId=1001"), history("&unexpected=1"), history("&side=agent"), cloud.call(`${path}?grantId=${grant}`)
     ])
     const otherOrganization = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
-    try sql(cloud, "UPDATE accounts SET organization_id = $1 WHERE key = $2", [device.organizationId, other.userId])
+    try sql(cloud, "ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_key", [])
+    try sql(cloud, "UPDATE accounts SET organization_id = $1, state = jsonb_set(state, '{organizationId}', to_jsonb($1::text)) WHERE key = $2", [device.organizationId, other.userId])
     const otherUser = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
     const providerCallsOnRefusal = cloud.fakes.seen.length - beforeRefusals
 

@@ -15,7 +15,6 @@ module node {
   import { registerDirectActionRoutingRule, sleepWithAbort, type Action } from "@elizaos/core"
   import type { EffectReceipt } from "@elizaos/core/protocol"
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
-  import { turnFirstCalls } from "../src/conversation/planning.vibe"
   import type { AgentPlugin } from "../src/host/module.vibe"
   import { registerDeviceProposalFamily, unoffered } from "../src/device-actions/proposal/registry.vibe"
 
@@ -64,7 +63,6 @@ module node {
       runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" })
       runtime.contexts.tryRegister({ id: "journal", label: "Journal", sensitivity: "personal" })
       await Effect.runPromise(registerDeviceProposalFamily(runtime, { ...unoffered("calendar"), types: ["calendar_named"], app: "agenda" }))
-      turnFirstCalls.set(agendaRead, (_runtime, { content }) => content.text?.startsWith("Open my agenda for ") ? {} : undefined)
       for (const app of ["agenda", "journal"]) {
         registerDirectActionRoutingRule(runtime, {
           id: `${app}.show`, actionNames: ["PLANNER_SHOW"], requiredActionTags: [], contexts: [app],
@@ -182,7 +180,7 @@ const summary = (outcome: ReplyOutcome) => outcome.kind === "Done"
 const long = "a".repeat(1500) + "é".repeat(1500) + "🙂".repeat(800)
 
 for (const rolledBack of [false, true]) {
-  it.live(`An interrupted reply keeps ${rolledBack ? "no rolled-back" : "negotiated applied"} evidence through replay (spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect")`, effect () => {
+  it.live(`An interrupted reply keeps ${rolledBack ? "no rolled-back" : "negotiated applied"} evidence and Cloud's own code through replay (spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none")`, effect () => {
     const cloud = try cloudFake(deviceKey)
     const toolRuns: string[] = []
     const effects = try Effect.sync(() => effectApp((kind) => { toolRuns.push(kind) }))
@@ -209,7 +207,7 @@ for (const rolledBack of [false, true]) {
     if (live.kind !== "Done" || old.kind !== "Done" || !("json" in replay)) return try Effect.die(new Error("The turn did not leave replayable replies"))
     try Effect.try(() => {
       const buffered = replay.json as typeof live
-      assert.strictEqual(live.failureKind, "insufficient_credits")
+      assert.deepStrictEqual([live.failureKind, live.cloudCode, buffered.cloudCode], ["insufficient_credits", "insufficient_credits", "insufficient_credits"])
       assert.strictEqual(live.cutOffEffect, expected)
       assert.strictEqual(buffered.cutOffEffect, expected)
       assert.strictEqual(buffered.messageId, live.messageId)
@@ -259,7 +257,7 @@ for (const transport of ["socket", "http"] as const) {
         { cut: { kind: "Dropped" }, broken: { kind: "Dropped" }, preview: { text: "Let me think", provisional: true } }))
     }, 120_000)
 
-    it.live('An account refusal is Done with its failure kind, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {
+    it.live('An account refusal is Done with its failure kind and Cloud\'s own code, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none")', effect () => {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
       const { id } = try conversation(agent)
@@ -269,8 +267,8 @@ for (const transport of ["socket", "http"] as const) {
       const afterEnd = try read([...chunks, ...frames(`{"type":"token","text":"more"}`)], 11)
       const outcome = refused.outcome
       try Effect.try(() => assert.deepStrictEqual(
-        { kind: outcome.kind, failureKind: outcome.kind === "Done" ? outcome.failureKind : undefined, afterEnd: afterEnd.outcome.kind === "Failed" ? afterEnd.outcome.code : afterEnd.outcome.kind },
-        { kind: "Done", failureKind: "insufficient_credits", afterEnd: REPLY_STREAM_PROTOCOL }))
+        { kind: outcome.kind, failureKind: outcome.kind === "Done" ? outcome.failureKind : undefined, cloudCode: outcome.kind === "Done" ? outcome.cloudCode : undefined, afterEnd: afterEnd.outcome.kind === "Failed" ? afterEnd.outcome.code : afterEnd.outcome.kind },
+        { kind: "Done", failureKind: "insufficient_credits", cloudCode: "insufficient_credits", afterEnd: REPLY_STREAM_PROTOCOL }))
     }, 120_000)
   })
 }
@@ -313,7 +311,7 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
 
 const planning = "spec/agent/conversation/planning.md"
 
-it.live(`Hear that the agent heard me once while work is pending, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; ${planning}, "A directly routed call acknowledges once if it is still running after 400 milliseconds"; ${planning}, "A coaching response stays in the planner transcript")`, effect () => {
+it.live(`Hear that the agent heard me once while work is pending, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; ${planning}, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; ${planning}, "A coaching response stays in the planner transcript")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -369,13 +367,14 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   const sharedUnselected = try turn("Bring up what I wrote")
   try Effect.sync(() => cloud.script(toolCalls("", { name: "AGENDA_FIND", arguments: {} }), toolCalls("", { name: "AGENDA_FIND", arguments: { name: "dentist" } }), text("Your dentist visit is Thursday.")))
   const coached = try turn("When is my dentist visit")
-  try Effect.sync(() => cloud.script(text("Nothing booked."), text("Nothing booked."), text("Nothing booked.")))
+  try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Nothing booked."), toolCalls("", agenda), text("Nothing booked."), toolCalls("", agenda), text("Nothing booked.")))
   const directFast = try turn("Open my agenda for this morning")
   const directSlow = try turn("Open my agenda for next month")
   const directQuiet = try turn("Open my agenda for next month without an acknowledgment")
   try Effect.sync(() => cloud.script(toolCalls("Let me check.", agenda), text("Friday is open.")))
   const modelQuiet = try turn("Check my availability without a cue")
 
+  try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Nothing booked.")))
   const startedBefore = slowAgendaReads.started
   const sending = fork streamed(agent, id, { text: "Open my agenda for next month, then I stop it" })
   while (slowAgendaReads.started === startedBefore) try sleep("5 millis")
@@ -386,14 +385,14 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
 
   const done = (reply: string) => ({ kind: "Done", text: reply, failureKind: undefined, keyed: true })
   const shared = (label: string) => ({ done: done("Shown."), asked: 2, acknowledgments: [], tools: [`tool:PLANNER_SHOW:${label}`], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true })
-  const direct = (acknowledgments: string[]) => ({
-    done: done("Nothing booked."), asked: 1, acknowledgments, tools: ["tool:AGENDA_READ:Using Agenda"],
-    acknowledgedBeforeTools: acknowledgments.length === 0, cueLeftTheText: true, sameWhenSplit: true,
-  })
+  const direct = {
+    done: done("Nothing booked."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"],
+    acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+  }
   try Effect.try(() => assert.deepStrictEqual({
-    exemptionInRule: [cueRule.includes("A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue"), cueRule.includes("Any question or lookup gets its cue, even one about what is on the screen."), cueRule.includes("\"Let me open Maps.\"")],
+    exemptionInRule: [cueRule.includes("A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue"), cueRule.includes("Any question or lookup gets its cue, even one about what is on the screen."), cueRule.includes("\"Let me open Maps.\""), cueRule.includes("When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup.")],
     ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
-  }, { exemptionInRule: [true, true, true], ruleInEverySystemPrompt: true }))
+  }, { exemptionInRule: [true, true, true, true], ruleInEverySystemPrompt: true }))
   try Effect.try(() => assert.deepStrictEqual({
     instruction, question, politeAsk, answer, assentWithoutWork, openAsPart, navigationOnly, calendarOnly, sharedSelected, sharedBothSelected, sharedUnselected, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
   }, {
@@ -422,9 +421,9 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     },
     navigationOnly: { done: done("Maps is open."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     calendarOnly: { done: done("Opened your calendar."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
-    directFast: direct([]),
-    directSlow: direct(["acknowledgment:One sec."]),
-    directQuiet: direct([]),
+    directFast: direct,
+    directSlow: direct,
+    directQuiet: direct,
     modelQuiet: {
       done: done("Friday is open."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,

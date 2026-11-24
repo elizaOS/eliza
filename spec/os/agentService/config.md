@@ -15,8 +15,10 @@ The host file holds os's own fields, `service` (the subclass's class name),
 `spec/agent/access/routes.md`), and the launch objects `Launch` types: `model`
 (backend, `cloudBaseUrl`, `smallModel`, `largeModel`, `imageModel`, own-key
 fields), `embeddings` and `embeddingDimensions`, `persistMemory`,
-`callerRole`, `views`, `timeZone`, `privacy`, `google`, `retention` and
-`environment`. There is no separate `cloud {…}` record. The character file is
+`callerRole`, `views`, `timeZone`, `hostContextRevision`, `privacy`,
+`google`, `retention` and `environment`. A host file without `timeZone`
+launches with the device's zone at that start. There is no separate
+`cloud {…}` record. The character file is
 `Launch`'s character and the policy file its `policy` (`actions.allowed`,
 `plugins.load`, optional `plugins.product`); a deny list or a refused-action
 list is not part of it. Reading the assets, JSON decoding, the class-name and
@@ -148,6 +150,44 @@ pure def lawLaunchNamesOnlyTheActiveKeysAccount(d: AgentData, cred: C::DeviceCre
   launchAccount(startVerdict(d, cred, worker)) == Launch::NoAccount
     or (C::activeVersion(cred) >= 1 and launchAccount(startVerdict(d, cred, worker)) == Launch::SignedIn({ userId: a.userId, organizationId: a.organizationId }))
 }
+```
+
+### A launch carries the Google consent the owner saved, else the host file's
+
+The host file's `google` is what the agent may change in the owner's Gmail
+and Calendar until the owner chooses. A service subclass that keeps the
+owner's own choice gives it once per launch, after the launch hook, and that
+launch carries it whole in place of the host file's; the rest of the
+document is unchanged. A subclass that keeps none leaves the host file's.
+The agent reads consent only from its launch, so a changed choice reaches
+it only through a new launch, and the subclass restarts the agent when the
+owner changes it. Source: a consumer's Settings switches for Gmail changes
+and Calendar edits, which its phone saved while the agent still launched
+with both off.
+
+```quint
+type SavedConsent = HostConsent | OwnerChose({ consent: Launch::GoogleConsent })
+pure def launchConsent(host: Launch::GoogleConsent, saved: SavedConsent): Launch::GoogleConsent =
+  match saved { | OwnerChose(o) => o.consent | HostConsent => host }
+pure def consentedLaunch(v: StartVerdict, saved: SavedConsent): StartVerdict = match v {
+  | LaunchReady(r) => LaunchReady({ launch: { ...r.launch, document: { ...r.launch.document, google: launchConsent(r.launch.document.google, saved) } } })
+  | LaunchWithheld(w) => LaunchWithheld(w)
+}
+pure def launchGoogle(v: StartVerdict): Launch::GoogleConsent = match v {
+  | LaunchReady(r) => r.launch.document.google
+  | _ => { gmailChanges: false, calendarEdits: false }
+}
+pure def lawLaunchCarriesTheSavedConsentElseTheHostFiles(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, saved: SavedConsent): bool = {
+  val v = startVerdict(d, cred, worker)
+  val c = consentedLaunch(v, saved)
+  val chosen = match saved { | OwnerChose(o) => o.consent | HostConsent => d.host.launch.google }
+  match v {
+    | LaunchReady(r) => launchGoogle(c) == chosen and launchAccount(c) == r.launch.document.account
+    | LaunchWithheld(w) => withheldAs(c, w.cause)
+  }
+}
+pure val savedValues = Set(HostConsent, OwnerChose({ consent: { gmailChanges: true, calendarEdits: true } }),
+  OwnerChose({ consent: { gmailChanges: false, calendarEdits: true } }), OwnerChose({ consent: { gmailChanges: false, calendarEdits: false } }))
 ```
 
 ### Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none
