@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentPolicy.Effect;
@@ -120,6 +120,12 @@ public class AgentService extends Service {
 
   protected void configureLaunch(Map<String, String> variables) throws LaunchRefused { }
 
+  /**
+   * The Google consent the owner saved for the agent, read once per launch after {@link #configureLaunch}; null launches with the
+   * host file's {@code google}. A changed choice reaches the agent only through a new launch, so the subclass restarts it.
+   */
+  protected AgentConfig.GoogleConsent googleConsent() throws LaunchRefused { return null; }
+
   protected NotificationChannel runtimeNotificationChannel() {
     return new NotificationChannel(NOTIFICATION_CHANNEL, words().channel(), NotificationManager.IMPORTANCE_LOW);
   }
@@ -144,8 +150,18 @@ public class AgentService extends Service {
     return CHANNEL.request(CallerKind.NATIVE, method, path, body);
   }
 
+  /** As {@link #request(String, String, byte[])}, carrying the device headers and client id the channel admits. */
+  public static CompletableFuture<AgentChannel.Response> request(String method, String path, byte[] body, Map<String, ?> headers) {
+    return CHANNEL.request(CallerKind.NATIVE, method, path, body, headers);
+  }
+
   public static AgentChannel.Call requestStream(String method, String path, byte[] body, AgentChannel.Listener listener) {
     return CHANNEL.requestStream(CallerKind.NATIVE, method, path, body, listener);
+  }
+
+  /** As {@link #requestStream(String, String, byte[], AgentChannel.Listener)}, carrying the device headers and client id the channel admits. */
+  public static AgentChannel.Call requestStream(String method, String path, byte[] body, Map<String, ?> headers, AgentChannel.Listener listener) {
+    return CHANNEL.requestStream(CallerKind.NATIVE, method, path, body, headers, listener);
   }
 
   public static AgentChannel.Call subscribe(Topic topic, AgentChannel.Listener listener) { return CHANNEL.subscribe(topic, listener); }
@@ -565,7 +581,7 @@ public class AgentService extends Service {
     String refusal = null;
     try {
       configureLaunch(variables);
-      document = launchDocument(config, active == null ? null : active.account(), prepared.workflowWorker(), variables);
+      document = launchDocument(config, active == null ? null : active.account(), prepared.workflowWorker(), variables, googleConsent());
     } catch (LaunchRefused | IllegalArgumentException refused) {
       refusal = refused.getMessage();
     }
@@ -835,9 +851,9 @@ public class AgentService extends Service {
 
   @SuppressWarnings("unchecked")
   private static String launchDocument(AgentConfig config, AgentCredentials.Account account, Optional<PayloadCheck.WorkflowWorker> worker,
-      Map<String, String> variables) throws LaunchRefused {
+      Map<String, String> variables, AgentConfig.GoogleConsent consent) throws LaunchRefused {
     String document = config.launchDocument(account, worker.map(staged ->
-      new AgentConfig.WorkflowWorker(staged.runtimeDir().toString(), staged.executable().toString(), staged.sha256())).orElse(null));
+      new AgentConfig.WorkflowWorker(staged.runtimeDir().toString(), staged.executable().toString(), staged.sha256())).orElse(null), consent);
     if (variables.isEmpty()) return document;
     Map<String, Object> parsed = (Map<String, Object>) RouteGate.Json.parse(document);
     Map<String, Object> environment = parsed.get("environment") instanceof Map<?, ?> set ? new LinkedHashMap<>((Map<String, Object>) set) : new LinkedHashMap<>();

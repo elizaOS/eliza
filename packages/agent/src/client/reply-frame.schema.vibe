@@ -10,6 +10,7 @@ export schema ReadyFrame { readonly type: "reply_ready"; readonly fullText: stri
 const WaitMs = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }))
 export schema ProviderWait = WaitMs
 export schema PlanAction = "sign-in" | "funding" | "retry"
+export schema CloudFundsCode = "insufficient_credits" | "allowance_exhausted"
 export schema VoiceActionLabel { readonly kind: Schema.NonEmptyString; readonly validatedCard: boolean; readonly verbatimAsked: boolean }
 export schema DoneFrame {
   readonly type: "done"
@@ -20,6 +21,7 @@ export schema DoneFrame {
   readonly actionResults: readonly ActionResultFrame[]
   readonly taskChoices?: readonly Schema.Unknown[]
   readonly failureKind?: Schema.NonEmptyString
+  readonly cloudCode?: CloudFundsCode
   readonly planAction?: PlanAction
   readonly retryAfterMs?: ProviderWait
   readonly cutOffEffect?: "applied"

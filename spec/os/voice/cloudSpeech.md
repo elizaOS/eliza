@@ -86,11 +86,21 @@ Consent and mint answer here as one; a wrong shape or a `wsUrl` off the
 deployment origin is `Misdirected`. A `401` with a credential reason goes
 to `C::rejected`; every refusal ends its request and passes on its retry
 or reset time (a `429` or `402` limit). The consent request comes before any
-paid admission, so the shell sends it once more after its connection was
-dropped: reset by the peer, or a pooled connection that ended before its
-answer (OkHttp's "unexpected end of stream"); a mint request is never sent
-again. The shell's content-free startup timings mark each consent and mint
-request's start, headers, body or failure, and a consent sent again.
+paid admission and writes nothing before the cloud's rate limiter, so the
+shell sends it once more, and only once: after its connection was dropped
+(reset by the peer, or a pooled connection that ended before its answer,
+OkHttp's "unexpected end of stream"), or after a `503` whose `Retry-After`
+is at most 2 s, once that wait is over, when the wait and one more request
+of 2 s still end before the startup deadline. A `503` without `Retry-After`
+or a second refusal ends the request as before; a mint request is never
+sent again. Before a session, the renderer may ask the shell to open its
+connection to the deployment's own origin with `GET /api/health`, which
+carries no key and asks no consent, so that the consent request, the mint
+and the socket reuse it: at most once a minute for each origin, never while
+voice is closed, in the background, in a session or on a sensitive
+surface, bounded by 5 s and silent when it fails. The shell's content-free
+startup timings mark each consent and mint request's start, headers, body
+or failure, and a consent sent again.
 
 ```quint
 type CloudAnswer = Answered | Misdirected | Unreachable | Refused({ refusal: Refusal })
@@ -148,7 +158,15 @@ pure def stepTheSessionOpensInOrder(before: CloudSpeech, after: CloudSpeech): bo
 ### Capture starts muted, and listens only once the microphone slot is granted with RECORD_AUDIO
 
 Unmuting reserves the slot as a live capture; a refused slot ends the
-session, as in develop. Each granted capture gets the next number; muting
+session, as in develop. A start that is not muted and has `RECORD_AUDIO`
+reserves the slot and opens the microphone at once, so the device's
+start-up is off the path to listening: until capture listens, each frame it
+reads is zeroed and dropped, and none is sent, kept or shown as a level.
+Unmuting then answers from that held slot; a busy slot at the start leaves
+unmuting to reserve it as before. A mute, a draft request, a focus pause or
+a start that settles muted closes it, and every end of the session closes
+it, freeing the slot before a failure is reported so that a fallback finds
+it free. Each granted capture gets the next number; muting
 releases the slot and keeps it, so a turn the capture began may finish.
 Muting a session paused by a focus loss also ends the pause.
 
@@ -208,6 +226,33 @@ pure val weight_mute = 3
 pure val weight_begin = 8
 pure val weight_consentGiven = 8
 pure def sometimesMutedCaptureFinishesItsTurn(s: CloudSpeech): bool = s.capture == Muted and ownedTurn(s)
+```
+
+### A confirmed mute whose turn has not ended in 2.5 seconds replaces the session with a fresh muted one, and the old session's late text is dropped
+
+Muting waits up to 2.5 s for the bridge to confirm the mute and for a turn
+that began before it to end. A mute the bridge does not confirm in that
+time is refused as `mute-unconfirmed`, and no other session is opened. A
+confirmed mute whose turn has not ended cannot attribute that turn's text
+safely: the device stops the session, waits until the stop is confirmed,
+and starts a fresh session under the same key, muted from the start and
+with the speaker mute it had. The unfinished turn ends with nothing heard
+for the capture it began in, anything the old session reports afterwards
+is dropped. A capture requested during replacement waits for the fresh
+muted session before it unmutes it. A reply still
+playing cannot move to another session, so a mute that would replace the
+session then is refused as `capture-unsettled`. Stopping voice while the
+old session closes joins that stop and opens nothing.
+
+```quint
+type MuteSettlement = MuteSettled | ReplaceSession | MuteUnconfirmed | CaptureUnsettled
+pure val muteSettleMs: Millis = 2500
+pure def muteSettlement(confirmed: bool, turnEnded: bool, replyPlaying: bool): MuteSettlement =
+  if (not(confirmed)) MuteUnconfirmed else if (turnEnded) MuteSettled else if (replyPlaying) CaptureUnsettled else ReplaceSession
+pure def lawOnlyAConfirmedMuteThatLostItsTurnWithNoReplyPlayingReplacesTheSession(confirmed: bool, turnEnded: bool, replyPlaying: bool): bool =
+  (muteSettlement(confirmed, turnEnded, replyPlaying) == ReplaceSession) iff (confirmed and not(turnEnded) and not(replyPlaying))
+pure def lawAnUnconfirmedMuteNeverSettles(turnEnded: bool, replyPlaying: bool): bool =
+  muteSettlement(false, turnEnded, replyPlaying) == MuteUnconfirmed
 ```
 
 ### A reply plays at a pace from 50 to 200 percent, one at a time, and never ahead of the audio received
@@ -350,6 +395,20 @@ session.
 ```quint
 pure def sometimesFocusPaused(s: CloudSpeech): bool = s.phase == Live and s.focusPaused and s.turn != NoTurn
 pure def sometimesFocusUnavailable(s: CloudSpeech): bool = s.endedBy == FocusUnavailable and failedAfterAudio(endingOf(s.phase))
+pure val eval_witness_sometimesFocusUnavailable = (
+  ("credentialChanged", 1),
+  "begin",
+  "consentGiven",
+  ("minted", Answered),
+  ("frameArrived", Rl::ReadyFrame),
+  ("frameArrived", Rl::SttFrame({ kind: Rl::SttConnected })),
+  ("unmute", true),
+  ("captureAnswered", M::NoRefusal),
+  ("outputNotice", O::PauseListening),
+  ("outputNotice", O::ResumeListening),
+  ("captureAnswered", M::NoRefusal),
+  ("deviceEnded", FocusUnavailable)
+)
 ```
 
 ## Story: Transcribe a recording or hear a reply with one cloud request

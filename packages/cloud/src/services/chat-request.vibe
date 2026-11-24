@@ -8,9 +8,7 @@ import { acceptedFields, ChatRequest, type ChatMessage, type ContentPart, type R
 export type { ChatRequest }
 
 export interface Quote {
-  /** What the hold is priced on: the input and the output held, the whole cap only when the caller set one. */
   readonly counts: TokenCounts
-  /** The output cap the provider receives. */
   readonly outputCap: number
   readonly micros: number
 }
