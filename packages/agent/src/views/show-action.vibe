@@ -1,4 +1,4 @@
-// spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"
+// spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"
 import { readViewInteractionClientId, type Action, type ActionResult, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { viewsShowsOnDevice } from "../../gen/agent__deviceActions__surfaces.ts"
 import { declaredAt, namesOf, savedNoteIntent, savedNotePreparationAllowed, type DeclaredView } from "../../gen/agent__views.effect.vibe"
@@ -129,7 +129,7 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
   const action: Action = {
     name: "VIEWS",
     similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW"],
-    description: "Show one of the owner's views, named by its id, label or alias, on the renderer of this turn. Navigation only: it does not read or change the view's records.",
+    description: "Show one of the owner's views, named by its id, label or alias, on the renderer of this turn. Navigation only: it does not read or change the view's records, and showing a view acts on nothing in it. Showing Camera takes no photo, and showing Maps finds no place, gives no directions and plans no route: when the owner asks for those, use the action that does it.",
     roleGate: { minRole: "OWNER" },
     parameters: [
       { name: "action", description: "show", required: false, schema: { type: "string", enum: ["show"] } },

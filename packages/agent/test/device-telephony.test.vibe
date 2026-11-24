@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/telephony.md, "Alternative SMS recipients are clarified before any lookup"
+// spec/agent/deviceActions/telephony.md, "The model asks which of alternative SMS recipients is meant, in its own words, before any lookup"
 // spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
 import { assert, it } from "@effect/vitest"
 import { deviceJourney } from "./support/device-agent.vibe"
@@ -178,16 +178,21 @@ module node {
     const callsBeforeChoice = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length
     const proposalsBeforeChoice = (await proposals(client)).length
     const choices = []
-    for (const words of ["Can you text Carson or Maya that dinner is covered?", "Send an SMS to Carson or 415-555-0162 saying dinner is covered."]) {
+    for (const [words, asked] of [["Can you text Carson or Maya that dinner is covered?", "Carson or Maya?"], ["Send an SMS to Carson or 415-555-0162 saying dinner is covered.", "To Carson, or to that number?"]] as const) {
+      cloud.script(reply(asked))
       const turn = (await client.call("POST", path, { text: words, metadata: direct })).json as Turn
       choices.push(turn.text)
     }
+    const choiceTools = (cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { tools?: readonly { readonly function?: { readonly name?: string; readonly description?: string } }[] } | undefined)?.tools ?? []
     const alternativeRecipients = {
       replies: choices,
       completionCalls: cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length - callsBeforeChoice,
       proposals: (await proposals(client)).length - proposalsBeforeChoice,
+      guided: choiceTools.some(({ function: tool }) => tool?.name === proposeTool && tool.description?.includes("A proposal has one recipient: when the owner gives alternatives") === true),
     }
     const alternativeInBody = await ask("Text Carson saying choose green or blue that matches.", text(named("Carson"), "choose green or blue that matches."))
+    const toldRecipient = await ask("Thank you. Can you text Carson and tell him to bring the ice and that we've got dinner covered?", text(named("Cole"), "Please bring the ice. We have dinner covered."))
+    const saidRecipient = await ask("Can you send a text to Carson and say dinner is covered?", text(named("Cole"), "dinner is covered"))
     const handedThrough = await ask("call 415-555-0100", call("6505715862"))
     const heldReply = await ask("did you set that call up?", call("4155550100"))
     const heldCall = { reply: heldReply.reply, requests: (await proposals(client)).filter(sameOperation(call("4155550100"))).map(({ state }) => state) }
@@ -306,7 +311,7 @@ module node {
     const emergencyWithAlternatives = await ask("Text Carson or Maya that I crashed. Call an ambulance now!", call("911"))
 
     return {
-      alternativeRecipients, alternativeInBody, handedThrough, heldCall, separated: { call: separatedCall, send: separatedSend, contact: separatedContact }, ownerDialForm, invented, noNumber,
+      alternativeRecipients, alternativeInBody, conversational: { told: toldRecipient, said: saidRecipient }, handedThrough, heldCall, separated: { call: separatedCall, send: separatedSend, contact: separatedContact }, ownerDialForm, invented, noNumber,
       callBack, authoredSurname, draftedSurname, surnameWithCourtesy, prefixCallback, unnamed, bodyNumber,
       keypad, dialName, emergency, emergencyWithAlternatives, emptyKeypad, writtenEmergency, spokenEmergency, spokenNines, spokenEmergencyByName, nameInNumberWords, nameInNumberWordsInvented, spokenEmergencyOtherNumber, contactNumber, contactEmail, draft, draftToNumber, draftAskFirst, unclear, composedNumber,
       contactUpdate, contactAdd, contactDelete, contactNoNumber, contactShow, contactRead, simSendToName, threadReply,
@@ -351,8 +356,12 @@ it.live('A submitted SMS receipt remains in its originating conversation and car
 it.live(`A call, dial, keypad, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, the sender is read only as asked, only what the owner asked for runs without its card, and a settled request is answered by the model from its result (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request")`, effect () => {
   const observed = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool], persistMemory: true }, "telephony from chat", telephonyFromChat)
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    alternativeRecipients: { replies: ["Which person should get the text?", "Which person should get the text?"], completionCalls: 0, proposals: 0 },
+    alternativeRecipients: { replies: ["Carson or Maya?", "To Carson, or to that number?"], completionCalls: 2, proposals: 0, guided: true },
     alternativeInBody: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "choose green or blue that matches." } },
+    conversational: {
+      told: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "Please bring the ice. We have dinner covered." } },
+      said: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "dinner is covered" } },
+    },
     handedThrough: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "4155550100" } } },
     heldCall: { reply: noNumberWritten, requests: ["pending"] },
     separated: {
