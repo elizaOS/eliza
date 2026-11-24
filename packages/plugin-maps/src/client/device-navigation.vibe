@@ -75,7 +75,7 @@ export function deviceNavigationFailure(error: MapsFailure): DeviceNavigationFai
     case "unauthorized": return coded(/subscription|balance|choose a plan/i.test(error.message) ? "MAPS_NOT_ENTITLED"
       : /account changed/i.test(error.message) ? "MAPS_PROVIDER_CHANGED" : /refused/i.test(error.message) ? "MAPS_PROVIDER_REJECTED" : "MAPS_AUTH_EXPIRED")
     case "rate-limited": return coded(/allowance/i.test(error.message) ? "MAPS_BUDGET_EXHAUSTED" : "MAPS_RATE_LIMITED")
-    case "unsupported": return coded(/no route/i.test(error.message) ? "MAPS_NOT_FOUND" : /choose an actual origin/i.test(error.message) ? "MAPS_INVALID_INPUT" : "MAPS_UNSUPPORTED_REGION")
+    case "unsupported": return coded(/no route/i.test(error.message) ? "MAPS_NOT_FOUND" : /choose an actual origin|could not use this request/i.test(error.message) ? "MAPS_INVALID_INPUT" : "MAPS_UNSUPPORTED_REGION")
     case "offline": return coded("MAPS_PROVIDER_NETWORK")
     case "timeout": return coded("MAPS_PROVIDER_TIMEOUT")
     case "invalid-response": return coded("MAPS_MALFORMED_RESPONSE")

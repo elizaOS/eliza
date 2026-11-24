@@ -203,11 +203,11 @@ effect function kit(prefix: string) {
   if (tools.kind === "missing") return undefined
   const work = try scratch(prefix)
   const signer = try Effect.try(() => testSigner(tools, work, "launcher"))
-  const other = try Effect.try(() => testSigner(tools, work, "other"))
+  const otherSigner = () => Effect.try(() => testSigner(tools, work, "other"))
   const out = path.join(work, "apks")
   const build = (name: string, manifest: string, natives: Readonly<Partial<Record<NativeAbi, Readonly<Record<string, Uint8Array>>>>> = {}, key = signer) =>
     Effect.try(() => buildApk(tools, { directory: out, manifest, signer: key, name, natives }))
-  return { work, signer, other, build, aapt: tools.aapt, apksigner: tools.apksigner, checkout: path.join(work, "aosp", "device", "google", "cuttlefish", "vendor") }
+  return { work, signer, otherSigner, build, aapt: tools.aapt, apksigner: tools.apksigner, checkout: path.join(work, "aosp", "device", "google", "cuttlefish", "vendor") }
 }
 
 effect function writeDescriptor(file: string, descriptor: unknown) {
@@ -257,7 +257,8 @@ it.effect.skipIf(skipped !== null)(`Stage a development launcher and a signer-pi
     const path = try Path.Path
     const debug = try k.build("debug", launcherManifest(LAUNCHER, true))
     const release = try k.build("release", launcherManifest(LAUNCHER, false))
-    const foreign = try k.build("foreign", launcherManifest(LAUNCHER, false), {}, k.other)
+    const foreignSigner = try k.otherSigner()
+    const foreign = try k.build("foreign", launcherManifest(LAUNCHER, false), {}, foreignSigner)
     const updater = try k.build("updater", companionManifest(COMPANION))
     const base = { aapt: k.aapt, apksigner: k.apksigner }
 
