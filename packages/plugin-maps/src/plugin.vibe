@@ -219,7 +219,7 @@ effect function findPlaces(service: MapsService, message: Memory, params: Params
   const near = point ?? nearPlace?.coordinate ?? (around === "AroundPhone" ? phone : undefined)
   const where = nearPlace !== undefined ? ` near ${nearPlace.name}` : point !== undefined ? ` near ${point.latitude}, ${point.longitude}` : near === undefined ? "" : " near you"
   const limit = typeof params.limit === "number" ? params.limit : undefined
-  const found = try service.search(searched, near, limit)
+  const found = try service.search(searched, near, limit, "distance")
   if (found.places.length === 0) return reply(true, `I couldn't find “${searched}”${where}.`, { query: searched, count: 0 })
   const ordered = near === undefined ? found.places : [...found.places].sort((a, b) => metersBetween(near, a.coordinate) - metersBetween(near, b.coordinate))
   const lines = ordered.slice(0, 5).map((item, index) => `${index + 1}. ${item.name}${item.address === undefined ? "" : `, ${item.address}`}${near === undefined ? "" : ` (${distanceText(metersBetween(near, item.coordinate))} away)`}`)

@@ -1,6 +1,6 @@
 // spec/cloud/services/maps.md, "A deployment answers capabilities always, and any other operation only when its provider serves it"; spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A tile is never stored, and none is sent without a freshly admitted hold"; spec/cloud/services/maps.md, "Every tile a process serves shares one provider tile session, started beside the hold and renewed only near its expiry or when it is refused"; spec/cloud/services/maps.md, "A route whose endpoints coincide is a zero-length route, never a malformed answer"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { billingOf, detailsPrice, geocodeBillingOf, geocodeFoundNothing, geocodePrice, nearbyPrice, offerOf, placeIdRefused, placeLookup, quoteOf, routeLine, searchPrice, supportsMode, tilePrice, tileSessionFresh, unclearAnswerIsInvalid, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
+import { billingOf, detailsPrice, geocodeBillingOf, geocodeFoundNothing, geocodePrice, nearbyPrice, offerOf, placeIdRefused, placeLookup, quoteOf, routeLine, searchPrice, supportsMode, tilePrice, tileSessionFresh, unclearAnswerIsInvalid, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type SearchRank, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
 import type { Micros } from "../../gen/cloud__shared__types.ts"
 import type { MapsSettings as MapsSettingsSchema } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
@@ -18,9 +18,14 @@ export type MapsReply<A> =
 export interface MapsTile { readonly bytes: Uint8Array; readonly contentType: "image/png" | "image/jpeg" | "image/webp"; readonly attribution: string }
 export type MapsContext = HttpClient.HttpClient | Deployment
 
+type ProviderSearch = { readonly query: string; readonly limit: number } & (
+  | { readonly rank: Extract<SearchRank, "RankByRelevance">; readonly near?: Coordinate }
+  | { readonly rank: Extract<SearchRank, "RankByDistance">; readonly near: Coordinate }
+)
+
 export interface MapsProvider {
   geocode(request: TextSearchRequest): MapsReply<MapsPlacesResponse>!!MapsContext
-  search(request: TextSearchRequest): MapsReply<MapsPlacesResponse>!!MapsContext
+  search(request: ProviderSearch): MapsReply<MapsPlacesResponse>!!MapsContext
   reverse(request: ReverseRequest): MapsReply<MapsPlaceResponse>!!MapsContext
   details(request: PlaceDetailsRequest): MapsReply<MapsPlaceResponse>!!MapsContext
   routes(request: RoutesRequest): MapsReply<MapsRoutesResponse>!!MapsContext
@@ -69,7 +74,7 @@ export function describeMaps(settings: MapsSettings | undefined, operator: strin
     },
     regions: [{ id: settings.coverage, name: settings.coverage, bounds: world }],
     capabilities: {
-      map: offer.map, search: true, placeDetails: true, geocode: true, reverseGeocode: true, placeLookup: offer.placeLookup,
+      map: offer.map, search: true, placeDetails: true, geocode: true, reverseGeocode: true, placeLookup: offer.placeLookup, distanceRank: offer.distanceRank,
       modes: ["drive", ...(["walk", "bicycle", "transit"] as const).filter((mode) => supportsMode(kind, specModeOf[mode]))], alternatives: true, traffic: offer.liveTraffic ? "live" : "none", transit: offer.scheduledTransit ? "scheduled" : "none",
       offline: { map: false, search: false, routing: false },
     },
@@ -418,7 +423,12 @@ function googleMapsProvider(settings: GoogleSettings): MapsProvider {
     search: (request) => metered(effect (meter) => {
       const point = request.near
       if (point !== undefined && !covered(point)) throw new Refused({ code: "UnsupportedRegion" })
-      const body = { textQuery: request.query, pageSize: request.limit ?? 10, ...(point === undefined ? {} : { locationBias: { circle: { center: point, radius: 50_000 } } }) }
+      const body = {
+        textQuery: request.query,
+        pageSize: request.limit,
+        ...(request.rank === "RankByDistance" ? { rankPreference: "DISTANCE" } : {}),
+        ...(point === undefined ? {} : { locationBias: { circle: { center: point, radius: 50_000 } } }),
+      }
       const reply = try decoded(try send(meter, try google(url("places", "/v1/places:searchText"), placeFields, body), searchPrice), PlacesReply)
       return answer(try places(reply.places ?? []))
     }),

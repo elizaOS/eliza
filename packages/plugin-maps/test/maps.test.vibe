@@ -511,7 +511,7 @@ it.effect('Keep my saved places safe on this phone: saving the same place again 
   }
 })
 
-function linkFake() {
+function linkFake(offered: unknown = offer) {
   const bodies: Array<{ readonly path: string; readonly body: unknown; readonly key: boolean }> = []
   const link: MapsCloudLink = {
     async request(request) {
@@ -521,7 +521,7 @@ function linkFake() {
       const chicagoUnion = place("union-chicago", "Union Station", { latitude: 41.8787, longitude: -87.6403 }, "225 S Canal St, Chicago, IL 60606, USA")
       const washingtonUnion = place("union-dc", "Union Station", { latitude: 38.8971, longitude: -77.0064 }, "50 Massachusetts Ave NE, Washington, DC 20002, USA")
       switch (request.path) {
-        case "/api/v1/maps/capabilities": return { kind: "answered", status: 200, body: offer }
+        case "/api/v1/maps/capabilities": return { kind: "answered", status: 200, body: offered }
         case "/api/v1/maps/places/search": {
           const query = (request.body as { readonly query: string }).query
           if (query === "Golden Gate Park") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("park", "Golden Gate Park", { latitude: 37.7694, longitude: -122.4862 }, "San Francisco, CA, USA"), place("district", "Golden Gate Park", { latitude: 37.77, longitude: -122.47 }, "Golden Gate Park, San Francisco, CA, USA")] } }
@@ -573,14 +573,17 @@ function messageWith(location: unknown, text = "coffee near me"): Memory {
 }
 
 it.live('Search near me with where my phone is now: a recent reported position searches around the phone at any accuracy, an old one asks the phone for its location, routes keep their alternatives and attribution, a route from here goes to the phone with its destination, a place named with its locality is never a namesake elsewhere, a landmark and its same-named area are one place while same-named branches still ask, a kind of place near a named place is searched around that place even when only the owner\'s words name it, a place not found or not one is said or asked, coordinates are looked up or searched around, a destination is searched around the start, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone\'s position"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "A route\'s destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes")', effect () => {
-  const { link, bodies } = linkFake()
-  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const { link, bodies } = linkFake({ ...offer, capabilities: { ...offer.capabilities, distanceRank: true } })
+  const older = linkFake()
+  const pluginOver = (cloud: MapsCloudLink) => createMapsPlugin({ cloud: () => cloud, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const plugin = pluginOver(link)
   const runtime = {} as IAgentRuntime
-  const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
-    const action = plugin.actions?.find((found) => found.name === name)
+  const actOn = (on: typeof plugin, name: string, message: Memory, parameters: JsonObject) => promise(async () => {
+    const action = on.actions?.find((found) => found.name === name)
     if (action === undefined) throw new Error(`${name} is not registered`)
     return await action.handler(runtime, message, undefined, { parameters })
   })
+  const act = (name: string, message: Memory, parameters: JsonObject) => actOn(plugin, name, message, parameters)
   const now = Date.now()
   const recent = messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25, capturedAt: now - 60_000 })
   const old = messageWith({ latitude: here.latitude, longitude: here.longitude, capturedAt: now - 31 * 60_000 })
@@ -609,6 +612,9 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const namesakeFromHere = try act("MAPS_ROUTE", old, { origin: "my current location", destination: "Union Square" })
   const whichAnchor = try act("MAPS_PLACE", recent, { query: "pharmacy near Union Square" })
   const second = try act("MAPS_PLACE", messageWith(undefined, "the second one"), {})
+  const olderCloud = try actOn(pluginOver(older.link), "MAPS_PLACE", recent, { query: "pharmacy", useCurrentLocation: true })
+  const ranksOf = (sent: typeof bodies, query: string) => [...new Set(sent.filter((made) => made.path === "/api/v1/maps/places/search" && (made.body as { readonly query: string }).query === query)
+    .map((made) => (made.body as { readonly rank?: string }).rank))]
   const routeText = route.text ?? ""
   const nearByCard = recognizedMapsCards(nearBy.text ?? "")[0]?.card
   const fenced = `\`\`\`\n${appendMapsCard("", { kind: "place", place: { name: "X", latitude: 1, longitude: 1, provider: "p", providerPlaceId: "x", categories: [] }, attribution: null })}\n\`\`\``
@@ -644,6 +650,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     fromHereCards: [locateCard(nearestFromHere), locateCard(namesakeFromHere)],
     whichAnchor: [whichAnchor.success, (whichAnchor.data as { readonly choice?: string }).choice],
     second: [second.success, (second.text ?? "").startsWith("Near Union Square:"), searchedNear("pharmacy")[5]],
+    ranks: [ranksOf(bodies, "pharmacy"), ranksOf(bodies, "Ferry Building"), ranksOf(bodies, "Union Square"), olderCloud.success, ranksOf(older.bodies, "pharmacy")],
   }, {
     nearby: [true, ["near", "far"]],
     searchedNear: { latitude: here.latitude, longitude: here.longitude }, keyed: true,
@@ -669,6 +676,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     fromHereCards: [["route-origin", "nearest pharmacy", undefined, "walk"], ["route-origin", "Union Square", undefined, undefined]],
     whichAnchor: [false, "place to search near"],
     second: [true, true, { latitude: 37.788, longitude: -122.4075 }],
+    ranks: [["distance"], [undefined], [undefined], true, [undefined]],
   }))
 })
 

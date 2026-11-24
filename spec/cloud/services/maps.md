@@ -46,7 +46,10 @@ under the names it already reads: `providerId`, `connectionId`, `revision`,
 `attribution`, `sources`, `disclosure`, `regions`, `capabilities` and, where
 tiles are served, `tiles`. `providerId`, `regions` and `revision` come from
 the profile's `provider`, `coverage` and `datasetRevision`, and
-`capabilities` from `offerOf` and `supportsMode`.
+`capabilities` from `offerOf` and `supportsMode`. Every deployment that
+serves search can order the returned candidates by distance, so
+`capabilities.distanceRank` is true wherever maps is available. A device
+sends `rank: "distance"` only when the deployment advertises it.
 
 ```quint
 import types.* from "../shared/types"
@@ -55,10 +58,10 @@ import rateLimit as R from "../shared/rateLimit"
 type MapsProvider = GoogleMaps | OsmMaps | NoMaps
 type MapsOperation = Geocode | Reverse | PlacesSearch | PlaceDetails | Routes | Tile | Viewport | Capabilities
 type TravelMode = Drive | Walk | Bicycle | Transit
-type MapsOffer = { available: bool, map: bool, placeLookup: bool, liveTraffic: bool, scheduledTransit: bool }
+type MapsOffer = { available: bool, map: bool, placeLookup: bool, distanceRank: bool, liveTraffic: bool, scheduledTransit: bool }
 pure def offerOf(provider: MapsProvider): MapsOffer =
-  if (provider == GoogleMaps) { available: true, map: true, placeLookup: true, liveTraffic: true, scheduledTransit: true }
-  else { available: provider == OsmMaps, map: false, placeLookup: false, liveTraffic: false, scheduledTransit: false }
+  if (provider == GoogleMaps) { available: true, map: true, placeLookup: true, distanceRank: true, liveTraffic: true, scheduledTransit: true }
+  else { available: provider == OsmMaps, map: false, placeLookup: false, distanceRank: provider == OsmMaps, liveTraffic: false, scheduledTransit: false }
 pure def serves(provider: MapsProvider, op: MapsOperation): bool =
   if (op == Capabilities) true
   else if (op == Tile or op == Viewport) offerOf(provider).map
@@ -395,4 +398,65 @@ pure def tileSessionFresh(expiresAt: Millis, now: Millis): bool = expiresAt - ti
 pure val expiresAtValues = Set(0, 3600000, 3600001, 7200000)
 pure def lawAFreshTileSessionOutlivesItsMargin(expiresAt: Millis, now: Millis): bool =
   tileSessionFresh(expiresAt, now) implies expiresAt > now + tileSessionRenewMargin
+```
+
+## Story: Find the closest places, not the closest of the most relevant
+
+> As an account owner asking for the nearest kind of place, I want the
+> closest places the provider found around my point, not the closest of
+> the few it ranked most relevant, so that "the nearest pharmacy" is the
+> nearest one.
+
+### A search ranked by distance needs a point to measure from
+
+`POST /maps/places/search` takes `rank: "distance"` beside `query`, `near`
+and `limit`, and nothing else for `rank`. A search that asks for it with
+no `near`, or on a provider whose offer has no `distanceRank`, is refused
+`400 invalid_request` before any hold is taken or provider called. A
+search without `rank` is ranked by the provider's relevance, as before.
+
+```quint
+type SearchRank = RankByRelevance | RankByDistance
+pure def searchRankAccepted(provider: MapsProvider, rank: SearchRank, hasNear: bool): bool =
+  rank == RankByRelevance or (hasNear and offerOf(provider).distanceRank)
+pure def lawADistanceRankNeedsAPoint(provider: MapsProvider, rank: SearchRank): bool =
+  searchRankAccepted(provider, rank, false) iff rank == RankByRelevance
+pure def lawEveryProviderThatSearchesRanksByDistance(provider: MapsProvider): bool =
+  serves(provider, PlacesSearch) implies searchRankAccepted(provider, RankByDistance, true)
+```
+
+### A search ranked by distance reads the provider's largest page and answers its nearest places first
+
+A search ranked by distance asks for one page of up to 20 places at the
+same quote as any search. Cloud asks Google Text Search for distance
+ranking with the existing location bias. Google applies that preference
+to supported queries. For OpenStreetMap, Cloud orders the page Nominatim
+returns. Cloud measures each returned place from `near` along the Earth's
+surface in whole metres and keeps the `limit` nearest (10 by default).
+Places the same number of metres away retain the provider's order. A
+relevance search asks for `limit` places and returns them in provider
+order without requesting distance ranking.
+
+```quint
+pure val searchPageMax: int = 20
+pure val searchLimitDefault: int = 10
+pure def searchPageSize(rank: SearchRank, limit: int): int = if (rank == RankByDistance) searchPageMax else limit
+pure def placeIndexes(meters: List[int]): List[int] = meters.foldl(List(), (indexes, place) => indexes.append(indexes.length()))
+pure def nearerThan(meters: List[int], first: int, second: int): bool =
+  meters.nthOr(first, 0) < meters.nthOr(second, 0) or (meters.nthOr(first, 0) == meters.nthOr(second, 0) and first < second)
+pure def closestFirst(meters: List[int], limit: int): List[int] = {
+  val indexes = placeIndexes(meters)
+  indexes.foldl(List(), (kept, rank) => if (kept.length() < limit) kept.concat(indexes.select(i => indexes.select(j => nearerThan(meters, j, i)).length() == rank)) else kept)
+}
+pure def lawADistanceSearchReadsTheLargestPage(limit: int): bool = searchPageSize(RankByDistance, limit) == searchPageMax
+pure def lawTheAnswerHoldsTheLimitOrTheWholePage(meters: List[int], limit: int): bool =
+  closestFirst(meters, limit).length() == (if (limit < 0) 0 else if (limit < meters.length()) limit else meters.length())
+pure def lawTheAnswerIsNearestFirst(meters: List[int], limit: int): bool = {
+  val kept = closestFirst(meters, limit)
+  placeIndexes(kept).every(at => at == 0 or nearerThan(meters, kept.nthOr(at - 1, 0), kept.nthOr(at, 0)))
+}
+pure def lawNoPlaceLeftOutIsNearer(meters: List[int], limit: int): bool = {
+  val kept = closestFirst(meters, limit)
+  placeIndexes(meters).every(left => kept.includes(left) or kept.every(taken => nearerThan(meters, taken, left)))
+}
 ```
