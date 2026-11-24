@@ -311,4 +311,72 @@ public final class BionicAsrStreamsTest {
         }
         assertEquals(0, BionicAsrStreams.decodePcm("").length);
     }
+
+    @Test
+    public void nonLoadingStatusProbeNeverRequestsContextOrAcquiresModel() throws Exception {
+        final AtomicReference<Boolean> ctxRequested = new AtomicReference<>(false);
+        final AtomicReference<String> probedBundle = new AtomicReference<>();
+        final BionicAsrStreams.Native nonLoading = new BionicAsrStreams.Native() {
+            @Override public int probeSupported(String bundleDir) {
+                probedBundle.set(bundleDir);
+                return bundleDir.isEmpty() ? 0 : 1;
+            }
+            @Override public int supported(long ctx) {
+                throw new AssertionError("supported(ctx) must not run when probeSupported answers");
+            }
+            @Override public long open(long ctx, int sampleRate) { return 1L; }
+            @Override public int feed(long stream, float[] pcm) { return pcm.length; }
+            @Override public String partial(long stream) { return ""; }
+            @Override public String finish(long stream) { return ""; }
+            @Override public void cancel(long stream) {}
+            @Override public void close(long stream) {}
+        };
+        final BionicAsrStreams probeStreams = new BionicAsrStreams(nonLoading, logs::add);
+        final BionicAsrStreams.Client c = new BionicAsrStreams.Client();
+        final JSONObject res = new JSONObject(probeStreams.handle(
+            c,
+            "asr_stream_supported",
+            new JSONObject().put("op", "asr_stream_supported").put("bundleDir", "/tmp/voice-bundle"),
+            () -> {
+                ctxRequested.set(true);
+                throw new AssertionError("asr_stream_supported must not create or reset residentCtx");
+            }));
+        assertTrue(res.getBoolean("ok"));
+        assertTrue(res.getBoolean("supported"));
+        assertFalse(ctxRequested.get());
+        assertEquals("/tmp/voice-bundle", probedBundle.get());
+    }
+
+    @Test
+    public void probeAsrStreamSupportedChecksBundleWithoutLoadingModel() throws Exception {
+        final java.io.File bundle = java.nio.file.Files.createTempDirectory("bionic-asr-probe-").toFile();
+        final java.io.File asrDir = new java.io.File(bundle, "asr");
+        final java.io.File model = new java.io.File(asrDir, "phonon-2-fv5.gguf");
+        try {
+            // Missing asr/ directory -> unavailable.
+            try {
+                ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 0);
+                throw new AssertionError("expected missing asr/ to throw");
+            } catch (IllegalStateException expected) {
+                assertTrue(expected.getMessage().contains("no asr/ model"));
+            }
+            assertTrue(asrDir.mkdir());
+            assertTrue(model.createNewFile());
+            // Cold (asrStreamSupported == 0) with asr model present and native ASR enabled -> supported (1) without load.
+            assertEquals(1, ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 0));
+            // Warm (asrStreamSupported == 1) -> supported (1).
+            assertEquals(1, ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 1));
+            // Native ASR unsupported -> unavailable.
+            try {
+                ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 0, () -> 0);
+                throw new AssertionError("expected native ASR unsupported to throw");
+            } catch (IllegalStateException expected) {
+                assertTrue(expected.getMessage().contains("native ASR unsupported"));
+            }
+        } finally {
+            model.delete();
+            asrDir.delete();
+            bundle.delete();
+        }
+    }
 }

@@ -932,3 +932,100 @@ test("an automatic live capture reopen never prompts: without permission it is r
     /live\.start\(ticket,[^;]*,Boolean\.TRUE\.equals\(call\.getBoolean\("reopen",false\)\),new LiveCaptureController\.Started\(\)\{/,
   );
 });
+
+test("voice warmup contracts: non-loading VAD probe, cloud PreBuffer FIFO/bounds, and subclass prewarm hooks", () => {
+  const strip = (file) =>
+    fs.readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+  // LiveVoiceCapture.vadAvailable never opens or tears down a native Silero VAD detector.
+  const capture = strip(path.join(voice, "LiveVoiceCapture.java"));
+  const vadAvailStart = capture.indexOf(
+    "public static boolean vadAvailable(InferenceSession inference){",
+  );
+  assert.ok(vadAvailStart >= 0, "vadAvailable method present");
+  const vadAvailBody = capture.slice(
+    vadAvailStart,
+    capture.indexOf("}", vadAvailStart) + 1,
+  );
+  assert.doesNotMatch(vadAvailBody, /openVad/);
+  assert.match(vadAvailBody, /inference\.vadAvailable\(\)/);
+
+  // SpeechStreamBridgePlugin starts AudioRecord in parallel with HTTP/WS startup and buffers in preBuffer.
+  const cloudBridge = strip(path.join(bridge, "SpeechStreamBridgePlugin.java"));
+  const startIdx = cloudBridge.indexOf("private void start(PluginCall call){");
+  const controlIdx = cloudBridge.indexOf("submit(control,", startIdx);
+  assert.ok(startIdx >= 0 && controlIdx > startIdx);
+  const beforeControl = cloudBridge.slice(startIdx, controlIdx);
+  assert.match(beforeControl, /listen\(own,initialGeneration,null\)/);
+  assert.match(cloudBridge, /preBuffer\.push\(frame,count\)/);
+  assert.match(cloudBridge, /drainPreBuffer\(peer\)/);
+
+  // LocalSpeechBridgePlugin exposes protected localEngine() and prewarm hooks for cross-package subclasses.
+  const localBridge = strip(path.join(bridge, "LocalSpeechBridgePlugin.java"));
+  assert.match(
+    localBridge,
+    /protected final LocalSpeechEngine localEngine\(\)\{return localEngine;\}/,
+  );
+  assert.match(
+    localBridge,
+    /protected final boolean prewarmLocalSpeech\(boolean ttsOnly\)/,
+  );
+  assert.match(
+    localBridge,
+    /protected final boolean prewarmLiveCapture\(\)/,
+  );
+
+  // Exercise CloudSpeechWire.PreBuffer bounded FIFO, ring eviction, and zeroing on the host JVM.
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cloud-prebuffer-"));
+  try {
+    const testJava = path.join(temp, "PreBufferTest.java");
+    fs.writeFileSync(
+      testJava,
+      `package ai.eliza.voice;
+public final class PreBufferTest {
+ static void check(boolean v, String m) { if (!v) throw new AssertionError(m); }
+ public static void main(String[] args) {
+  CloudSpeechWire.PreBuffer buf = new CloudSpeechWire.PreBuffer(8);
+  byte[] a = new byte[]{1, 2, 3, 4};
+  byte[] b = new byte[]{5, 6, 7, 8};
+  byte[] c = new byte[]{9, 10, 11, 12};
+  buf.push(a, 4);
+  buf.push(b, 4);
+  check(buf.bytes() == 8 && buf.droppedBytes() == 0, "two frames fill bound");
+  buf.push(c, 4);
+  check(buf.bytes() == 8 && buf.droppedBytes() == 4, "oldest frame evicted at bound");
+  byte[] first = buf.poll();
+  byte[] second = buf.poll();
+  check(first != null && first[0] == 5 && second != null && second[0] == 9, "FIFO order kept");
+  check(buf.isEmpty() && buf.bytes() == 0, "drained empty");
+  buf.push(a, 4);
+  byte[] peeked = buf.peek();
+  buf.clear();
+  check(buf.isEmpty() && buf.bytes() == 0, "cleared");
+  for (byte x : peeked) check(x == 0, "cleared bytes zeroed");
+  System.out.println("PASS cloud prebuffer");
+ }
+}
+`,
+    );
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "11",
+        "-d",
+        temp,
+        path.join(bridge, "CloudSpeechWire.java"),
+        testJava,
+      ],
+      { stdio: "pipe", timeout: 60000 },
+    );
+    const out = execFileSync(
+      java("java"),
+      ["-cp", temp, "ai.eliza.voice.PreBufferTest"],
+      { encoding: "utf8", timeout: 30000 },
+    );
+    assert.match(out, /^PASS cloud prebuffer/);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});

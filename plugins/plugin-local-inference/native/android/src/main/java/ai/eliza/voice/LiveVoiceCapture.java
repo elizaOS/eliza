@@ -59,9 +59,16 @@ public final class LiveVoiceCapture {
  public static final String CONVERSATION="live-voice",DICTATION="dictation";
  private static final int EMIT_WINDOWS=3; // about 96 ms per sink event
 
- /** Silero VAD is usable in this process: the bridge loads, VAD is compiled in and the bundle has its model. */
+ /**
+  * Silero VAD is usable in this process: the bridge loads, VAD is compiled in and the bundle has
+  * its model. Does not open or tear down a native Silero VAD detector on status probes.
+  */
  public static boolean vadAvailable(InferenceSession inference){
-  try{InferenceSession.Vad vad=inference.openVad();vad.close();return true;}catch(Exception|Error unavailable){return false;}
+  try{return inference!=null&&inference.vadAvailable();}catch(Exception|Error unavailable){return false;}
+ }
+ /** Advisory background prewarm of the dedicated Silero VAD context. */
+ public static void prewarmVad(InferenceSession inference){
+  if(inference!=null)inference.prewarmVad();
  }
 
  /**

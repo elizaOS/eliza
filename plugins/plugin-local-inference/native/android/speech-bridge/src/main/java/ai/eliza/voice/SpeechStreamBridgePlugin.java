@@ -108,6 +108,8 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
    own=new Session(id,environment,credential,admittedEpoch,call);own.muted=Boolean.TRUE.equals(call.getBoolean("muted",false));
    session=own;
   }mark(own,"start");own.scheduleStartupDeadline();
+  // Start AudioRecord + bounded pre-buffer immediately in parallel with consent/session/WS startup.
+  if(!own.muted){final long initialGeneration=own.muteGeneration;main.post(()->listen(own,initialGeneration,null));}
   submit(control,()->{try{
    own.check();if(focus.callActive())throw new IOException("call-active");
    own.origin=cloudOrigin(environment);
@@ -169,18 +171,17 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   boolean muted=Boolean.TRUE.equals(call.getBoolean("muted",false));
   if(!muted&&getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission required","permission-required");return;}
   own.muted=muted;long mute=++own.muteGeneration;
-  if(muted){if(own.captured)silence(own,mute,30);submit(media,()->{try{own.check();if(mute==own.muteGeneration)stopCapture(own);call.resolve();}catch(Exception failure){call.reject("Microphone could not change state");fail(own,"capture");}finally{main.post(SpeechStreamBridgePlugin.this::settleFocus);}},()->call.reject("Voice is closed"));}
-  else if(own.providerReady)main.post(()->listen(own,mute,call));
-  else call.resolve();
+  if(muted){if(own.providerReady&&own.captured)silence(own,mute,30);submit(media,()->{try{own.check();if(mute==own.muteGeneration)stopCapture(own);call.resolve();}catch(Exception failure){call.reject("Microphone could not change state");fail(own,"capture");}finally{main.post(SpeechStreamBridgePlugin.this::settleFocus);}},()->call.reject("Voice is closed"));}
+  else main.post(()->listen(own,mute,call));
  }
  private void listen(Session own,long generation,PluginCall call){
   if(own.closed.get()||session!=own){if(call!=null)call.reject("Speech session changed");return;}
-  // Paused by a transient focus loss: the regain opens capture, so a start still settles now.
-  if(own.focusPaused){if(call!=null)call.resolve();else submit(media,()->{try{own.settleStart(false);main.removeCallbacks(own.deadline);}catch(Exception closed){/* Retired meanwhile. */}},()->fail(own,"closed"));return;}
+  // Paused by a transient focus loss: the regain opens capture, so a start still settles once ready.
+  if(own.focusPaused){if(call!=null)call.resolve();else if(own.providerReady)submit(media,()->{try{own.settleStart(false);main.removeCallbacks(own.deadline);}catch(Exception closed){/* Retired meanwhile. */}},()->fail(own,"closed"));return;}
   String refused=focus.acquire();
   // A refusal leaves the session muted, so close a microphone that an overtaken mute left open.
   if(refused!=null){if(generation==own.muteGeneration){own.muted=true;submit(media,()->{if(generation==own.muteGeneration)stopCapture(own);},()->{});}if(call!=null)call.reject("Microphone could not change state",refused);else fail(own,refused);return;}
-  submit(media,()->{try{own.check();if(generation==own.muteGeneration&&own.recorder==null)own.startCapture();else if(call==null&&own.muted)own.settleStart(false);main.removeCallbacks(own.deadline);if(call!=null)call.resolve();}catch(Exception failure){if(call!=null)call.reject("Microphone could not change state");fail(own,"capture");}finally{main.post(SpeechStreamBridgePlugin.this::settleFocus);}},()->{if(call!=null)call.reject("Voice is closed");fail(own,"closed");});
+  submit(media,()->{try{own.check();if(generation==own.muteGeneration&&own.recorder==null)own.startCapture();if(own.providerReady){if(call==null&&!own.startSettled.get())own.settleStart(own.muted?false:own.echoEnabled);main.removeCallbacks(own.deadline);}if(call!=null)call.resolve();}catch(Exception failure){if(call!=null)call.reject("Microphone could not change state");fail(own,"capture");}finally{main.post(SpeechStreamBridgePlugin.this::settleFocus);}},()->{if(call!=null)call.reject("Voice is closed");fail(own,"closed");});
  }
  private void settleFocus(){Session current=session;if(current==null||current.spoken==null&&current.muted){if(current!=null)current.focusPaused=false;focus.release();}}
  /** A transient focus loss: stop the utterance (its audio-end says interrupted), close the microphone with a silence tail, keep the session. Main thread. */
@@ -193,7 +194,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
    submit(media,()->{try{if(retired.playback!=null&&!retired.playback.join(1500)){fail(own,"playback");return;}own.speakerDraining=false;}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}},()->{});
   }
   long generation=++own.muteGeneration;
-  if(own.captured)silence(own,generation,30);
+  if(own.providerReady&&own.captured)silence(own,generation,30);
   submit(media,()->{if(generation==own.muteGeneration)stopCapture(own);},()->{});
   emit(own,"focus-paused",new JSObject());
  }
@@ -201,7 +202,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  private void resumeAfterFocus(Session own){
   if(own.closed.get()||session!=own||!own.focusPaused)return;
   own.focusPaused=false;emit(own,"focus-resumed",new JSObject());
-  if(!own.muted&&own.providerReady)listen(own,own.muteGeneration,null);else settleFocus();
+  if(!own.muted)listen(own,own.muteGeneration,null);else settleFocus();
  }
  @PluginMethod public void speakCloudSpeech(PluginCall call){
   Session own=owned(call);String id=call.getString("utteranceId"),text=call.getString("text");Double pace=call.getDouble("pace",1.0);
@@ -246,7 +247,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
      throw new IOException("Speech is not ready");
     }
     if("extended".equals(type)){if(!own.extendOffered)throw new IOException("Unrequested renewal");own.expiresAt=CloudSpeechWire.renewal(row.getString("expiresAt"),own.expiresAt,System.currentTimeMillis());mark(own,"extended");arm(own);return;}
-    if("stt".equals(type)){JSONObject data=row.getJSONObject("event");String event=data.getString("type");if("connected".equals(event)){if(own.providerReady)return;own.providerReady=true;mark(own,"stt-connected");if(own.muted){own.settleStart(false);main.removeCallbacks(own.deadline);}else{long generation=own.muteGeneration;main.post(()->listen(own,generation,null));}return;}String transcript=data.optString("transcript","");if(transcript.length()>16384)throw new IOException("Transcript too large");
+    if("stt".equals(type)){JSONObject data=row.getJSONObject("event");String event=data.getString("type");if("connected".equals(event)){if(own.providerReady)return;own.providerReady=true;mark(own,"stt-connected");if(own.muted){own.preBuffer.clear();own.settleStart(false);main.removeCallbacks(own.deadline);}else{long generation=own.muteGeneration;main.post(()->{if(own.closed.get()||session!=own)return;if(own.recorder!=null||own.focusPaused){submit(media,()->{try{if(!own.startSettled.get())own.settleStart(!own.muted&&!own.focusPaused&&own.echoEnabled);main.removeCallbacks(own.deadline);}catch(Exception closed){/* Retired meanwhile. */}},()->fail(own,"closed"));}else listen(own,generation,null);});}return;}String transcript=data.optString("transcript","");if(transcript.length()>16384)throw new IOException("Transcript too large");
      if("start-of-turn".equals(event)||"turn-resumed".equals(event)){mark(own,"speech-start");emit(own,"speech-start",new JSObject());}
      else if("end-of-turn".equals(event)){mark(own,"asr-final");emit(own,"speech-end",new JSObject().put("text",transcript).put("final",true));}
      else if("transcript-update".equals(event)||"eager-end-of-turn".equals(event))emit(own,"transcript",new JSObject().put("text",transcript).put("final",false));
@@ -298,7 +299,8 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  private void arm(Session own){main.removeCallbacks(own.expiry);if(!own.closed.get())main.postDelayed(own.expiry,Math.max(1,own.expiresAt-System.currentTimeMillis()));}
  private final class Session {
   final String id,environment,credential;final long epoch,started=System.nanoTime(),diagnosticId=++timingSequence;final PluginCall startCall;final AtomicBoolean closed=new AtomicBoolean(),startSettled=new AtomicBoolean();
-  volatile String origin,token,wireToken,serverId;volatile long expiresAt,sentFrames,sentBytes,receivedFrames,receivedBytes;volatile int httpStatus;volatile boolean ready,providerReady,muted,outputMuted,captured,focusPaused,speakerDraining,extendOffered;volatile long muteGeneration;volatile Call pending;volatile WebSocket socket;volatile AudioRecord recorder;volatile AcousticEchoCanceler echo;volatile Thread capture;volatile Utterance spoken;
+  volatile String origin,token,wireToken,serverId;volatile long expiresAt,sentFrames,sentBytes,receivedFrames,receivedBytes;volatile int httpStatus;volatile boolean ready,providerReady,muted,outputMuted,captured,echoEnabled,focusPaused,speakerDraining,extendOffered;volatile long muteGeneration;volatile Call pending;volatile WebSocket socket;volatile AudioRecord recorder;volatile AcousticEchoCanceler echo;volatile Thread capture;volatile Utterance spoken;
+  final CloudSpeechWire.PreBuffer preBuffer=new CloudSpeechWire.PreBuffer();
   final long startupStartedMs=SystemClock.elapsedRealtime();
   volatile long startupEndsMs=startupStartedMs+HTTP_STARTUP_MS;
   final Runnable deadline=this::expireStartup;
@@ -328,14 +330,24 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
    check();if(getContext().checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)throw new SecurityException("Microphone permission denied");
    int minimum=AudioRecord.getMinBufferSize(16000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);if(minimum<=0)throw new IOException("Capture unavailable");
    boolean cancel=AcousticEchoCanceler.isAvailable();AudioRecord next=new AudioRecord.Builder().setAudioSource(cancel?MediaRecorder.AudioSource.VOICE_COMMUNICATION:MediaRecorder.AudioSource.VOICE_RECOGNITION).setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(16000).setChannelMask(AudioFormat.CHANNEL_IN_MONO).build()).setBufferSizeInBytes(Math.max(minimum,6400)).build();
-   recorder=next;if(next.getState()!=AudioRecord.STATE_INITIALIZED)throw new IOException("Capture unavailable");if(cancel){echo=AcousticEchoCanceler.create(next.getAudioSessionId());if(echo!=null)echo.setEnabled(true);}boolean echoEnabled=echo!=null&&echo.getEnabled();
+   recorder=next;if(next.getState()!=AudioRecord.STATE_INITIALIZED)throw new IOException("Capture unavailable");if(cancel){echo=AcousticEchoCanceler.create(next.getAudioSessionId());if(echo!=null)echo.setEnabled(true);}boolean echoActive=echo!=null&&echo.getEnabled();echoEnabled=echoActive;
    check();next.startRecording();if(next.getRecordingState()!=AudioRecord.RECORDSTATE_RECORDING)throw new IOException("Capture unavailable");captured=true;
    // Only stopCapture ends this reader: a mute that a quick unmute overtakes skips its stop, and a
    // reader that left on the brief mute would strand an open microphone that sends nothing.
-   capture=new Thread(()->{byte[] frame=new byte[1024];long levelAt=0;try{while(!closed.get()&&recorder==next){check();int count=next.read(frame,0,frame.length,AudioRecord.READ_BLOCKING);if(count<=0||count%2!=0)throw new IOException("Microphone stopped");long now=System.nanoTime();if(now-levelAt>50_000_000L){levelAt=now;emit(this,"level",new JSObject().put("peak",muted||focusPaused?0:CloudSpeechWire.peak(frame,count)));}if(!muted&&!focusPaused){check();WebSocket peer=socket;if(peer==null||peer.queueSize()>64000||!peer.send(ByteString.of(frame,0,count)))throw new IOException("Speech upload stalled");sentFrames++;sentBytes+=count;}}}catch(Exception error){if(!closed.get()&&!muted&&!focusPaused&&recorder==next)fail(this,"capture");}finally{Arrays.fill(frame,(byte)0);}},"eliza-cloud-speech-microphone");capture.setDaemon(true);capture.start();
-   settleStart(echoEnabled);
+   // Frames captured before providerReady buffer in preBuffer and flush in FIFO order once ready.
+   capture=new Thread(()->{byte[] frame=new byte[1024];long levelAt=0;try{while(!closed.get()&&recorder==next){check();int count=next.read(frame,0,frame.length,AudioRecord.READ_BLOCKING);if(count<=0||count%2!=0)throw new IOException("Microphone stopped");long now=System.nanoTime();if(now-levelAt>50_000_000L){levelAt=now;emit(this,"level",new JSObject().put("peak",muted||focusPaused?0:CloudSpeechWire.peak(frame,count)));}if(!muted&&!focusPaused){check();if(!providerReady){preBuffer.push(frame,count);}else{WebSocket peer=socket;if(peer==null)throw new IOException("Speech upload stalled");if(!preBuffer.isEmpty()){preBuffer.push(frame,count);drainPreBuffer(peer);}else{if(peer.queueSize()>64000||!peer.send(ByteString.of(frame,0,count)))throw new IOException("Speech upload stalled");sentFrames++;sentBytes+=count;}}}}}catch(Exception error){if(!closed.get()&&!muted&&!focusPaused&&recorder==next)fail(this,"capture");}finally{Arrays.fill(frame,(byte)0);}},"eliza-cloud-speech-microphone");capture.setDaemon(true);capture.start();
+   if(providerReady&&!startSettled.get())settleStart(echoActive);
   }
-  synchronized void settleStart(boolean echoEnabled)throws IOException{check();emit(this,"ready",new JSObject().put("sampleRate",16000).put("echoCancelled",echoEnabled).put("muted",muted));if(startSettled.compareAndSet(false,true))startCall.resolve(new JSObject().put("sessionId",id).put("sampleRate",16000).put("echoCancelled",echoEnabled).put("muted",muted));}
+  private void drainPreBuffer(WebSocket peer)throws IOException{
+   boolean sentAny=false;
+   for(;;){
+    byte[] head=preBuffer.peek();if(head==null)return;
+    if(peer.queueSize()+head.length>64000){if(!sentAny&&preBuffer.bytes()>=CloudSpeechWire.PRE_BUFFER_MAX_BYTES-1024)throw new IOException("Speech upload stalled");return;}
+    byte[] chunk=preBuffer.poll();if(chunk==null)return;
+    try{if(!peer.send(ByteString.of(chunk,0,chunk.length)))throw new IOException("Speech upload stalled");sentFrames++;sentBytes+=chunk.length;sentAny=true;}finally{Arrays.fill(chunk,(byte)0);}
+   }
+  }
+  synchronized void settleStart(boolean echoActive)throws IOException{check();if(startSettled.compareAndSet(false,true)){emit(this,"ready",new JSObject().put("sampleRate",16000).put("echoCancelled",echoActive).put("muted",muted));startCall.resolve(new JSObject().put("sessionId",id).put("sampleRate",16000).put("echoCancelled",echoActive).put("muted",muted));}}
  }
  private static final class Utterance {
   final String id;final float pace;final long started=System.nanoTime();volatile boolean cancelled,finished;volatile long audible,receivedBytes,playedMs;volatile StreamingSpeechPlayback playback;
@@ -346,7 +358,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  private void fail(Session own,String code){fail(own,code,null);}
  private void fail(Session own,String code,JSObject data){if(own.closed.get())return;mark(own,"error");JSObject event=new JSObject().put("code",code).put("status",own.httpStatus);if(data!=null)event.put("data",data);emit(own,"error",event);if(own.startSettled.compareAndSet(false,true))own.startCall.reject("Cloud streaming speech is unavailable",code,data);retire(own,null);}
  private void retire(Session own,String reason){if(reason!=null)emit(own,"error",new JSObject().put("code",reason));detach(own);queueCleanup(own,()->{});}
- private void detach(Session own){if(!own.closed.compareAndSet(false,true))return;mark(own,"stop");synchronized(this){if(session==own)session=null;}main.removeCallbacks(own.deadline);main.removeCallbacks(own.expiry);Call call=own.pending;if(call!=null)call.cancel();WebSocket socket=own.socket;if(socket!=null)socket.cancel();if(own.startSettled.compareAndSet(false,true))own.startCall.reject("Cloud streaming speech stopped","cancelled");Utterance u=own.spoken;if(u!=null){synchronized(u){u.cancelled=true;}if(u.playback!=null)u.playback.stop();}own.feeder.shutdown();main.post(SpeechStreamBridgePlugin.this::settleFocus);}
+ private void detach(Session own){if(!own.closed.compareAndSet(false,true))return;mark(own,"stop");synchronized(this){if(session==own)session=null;}main.removeCallbacks(own.deadline);main.removeCallbacks(own.expiry);own.preBuffer.clear();Call call=own.pending;if(call!=null)call.cancel();WebSocket socket=own.socket;if(socket!=null)socket.cancel();if(own.startSettled.compareAndSet(false,true))own.startCall.reject("Cloud streaming speech stopped","cancelled");Utterance u=own.spoken;if(u!=null){synchronized(u){u.cancelled=true;}if(u.playback!=null)u.playback.stop();}own.feeder.shutdown();main.post(SpeechStreamBridgePlugin.this::settleFocus);}
  /** Each mute (or focus pause) after the microphone first opened sends a bounded silence tail that closes Ink's current turn; a session that never captured sends none. */
  private void silence(Session own,long generation,int remaining){
   if(remaining<=0||!own.muted&&!own.focusPaused||own.muteGeneration!=generation||own.closed.get())return;
@@ -365,6 +377,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   AudioRecord recorder=own.recorder;own.recorder=null;
   if(recorder!=null)try{recorder.stop();}catch(RuntimeException ignored){}
   Thread capture=own.capture;own.capture=null;if(capture!=null&&capture!=Thread.currentThread())try{capture.join(1500);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}
+  own.preBuffer.clear();
   if(own.echo!=null){own.echo.release();own.echo=null;}if(recorder!=null)recorder.release();
  }
  private void queueCleanup(Session own,Runnable done){Runnable work=()->{cleanup(own);done.run();};submit(media,work,()->{Thread thread=new Thread(work,"eliza-cloud-speech-retire");thread.setDaemon(true);thread.start();});}

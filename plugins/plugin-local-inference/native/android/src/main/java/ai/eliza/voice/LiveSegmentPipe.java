@@ -54,6 +54,11 @@ public final class LiveSegmentPipe {
   synchronized(this){cutoff=Math.min(cutoff,at);closing=true;cancelled|=discard;if(cancelled)clearQueue();notifyAll();}
   if(discard)transport.cancelInFlight();return closed;
  }
+ /** Fails a session warm-up that exceeded its startup deadline without waiting for it to finish. */
+ public void failStartupTimeout(){
+  if(ready.isDone())return;
+  fail("TRANSPORT");
+ }
 
  private void fail(String code){
   boolean report;
@@ -98,7 +103,7 @@ public final class LiveSegmentPipe {
  private void drain(){
   boolean serverClosed=false;
   try{
-   boolean abandoned;synchronized(this){abandoned=closing;}
+   boolean abandoned;synchronized(this){abandoned=cancelled||(closing&&queued.isEmpty());}
    if(!abandoned){
     transport.check();JSONObject warm=body(new JSONObject().put("frames",new JSONArray()).put("vad",new JSONArray()));
     JSONObject response=transport.post(warm);transport.check();

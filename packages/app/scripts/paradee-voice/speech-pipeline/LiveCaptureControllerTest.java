@@ -12,11 +12,12 @@ import org.json.JSONObject;
 
 /**
  * Host-JVM ordering checks for the live capture controller with a fake source, detector and agent
- * transport (no AudioRecord, VAD model or agent): the agent session is warm before the microphone
- * opens, cancellation during startup and stale host gates refuse, replacement and cancelAll close
+ * transport (no AudioRecord, VAD model or agent): the microphone opens immediately in parallel
+ * while the agent session pipe warms (buffering pre-ready speech in LiveSegmentPipe's bounded
+ * queue), cancellation during startup and stale host gates refuse, replacement and cancelAll close
  * the earlier pipe, Stop reports the acknowledged server close, interruption reports its reason,
- * a pipe failure is reported once and stops the capture's events, and an automatic reopen after a
- * call or pause is refused until a user-initiated start.
+ * a pipe failure is reported once and stops the capture's events, background prewarm runs only
+ * while idle, and an automatic reopen after a call or pause is refused until a user-initiated start.
  */
 public final class LiveCaptureControllerTest {
  static final String A="12345678-1234-1234-1234-123456789abc",B="87654321-4321-4321-4321-cba987654321";
@@ -53,7 +54,7 @@ public final class LiveCaptureControllerTest {
   public void ended(String id,String error){events.add("ended:"+id+":"+error);ended.countDown();}
   public void transcript(String id,JSONObject value,String error){events.add("transcript:"+id+":"+(error!=null?error:value.optString("text")));}
  }
- static final class Transport implements LiveSegmentPipe.Transport {
+ static class Transport implements LiveSegmentPipe.Transport {
   final List<JSONObject> bodies=new CopyOnWriteArrayList<>();final List<String> events;volatile boolean current=true,failData;
   Transport(List<String> events){this.events=events;}
   public void check(){if(!current)throw new SecurityException("changed");}
@@ -77,14 +78,35 @@ public final class LiveCaptureControllerTest {
  public static void main(String[] args)throws Exception{
   Host host=new Host();LiveCaptureController controller=new LiveCaptureController(host);
   try{
-   // Warm before microphone; explicit Stop acknowledges the server close.
-   Transport transport=new Transport(host.events);Result started=new Result();
-   controller.start(controller.reserve(A,1),false,()->transport,"room",false,started);await(started.done);
-   check(started.refused==null&&started.piped,"piped capture started");
-   check(host.events.indexOf("warm:"+A)>=0&&host.events.indexOf("warm:"+A)<host.events.indexOf("mic:"+A),"agent session warm before microphone");
+   // Parallel startup: microphone opens immediately even while the agent session warm-up is still
+   // blocked, and explicit Stop acknowledges the server close after warm-up completes.
+   CountDownLatch warmEntered=new CountDownLatch(1),allowWarm=new CountDownLatch(1);
+   Transport transport=new Transport(host.events){
+    public JSONObject post(JSONObject body)throws Exception{
+     if(!body.optBoolean("close")&&body.getJSONArray("frames").length()==0&&warmEntered.getCount()>0){
+      warmEntered.countDown();await(allowWarm);
+     }
+     return super.post(body);
+    }
+   };
+   Result started=new Result();
+   controller.start(controller.reserve(A,1),false,()->transport,"room",false,started);
+   await(started.done);
+   check(started.refused==null&&started.piped,"piped capture started without waiting for pipe.ready()");
+   check(host.events.contains("mic:"+A)&&!host.events.contains("warm:"+A),"microphone opened immediately while pipe warm-up was still blocked");
+   await(warmEntered);
+   allowWarm.countDown();
    Stop stop=new Stop();controller.stop(A,false,System.currentTimeMillis(),stop);await(stop.done);
-   check(stop.serverClosed&&host.events.contains("close:"+A),"stop acknowledges server close");
+   check(stop.serverClosed&&host.events.contains("warm:"+A)&&host.events.contains("close:"+A),"stop acknowledges server close after warm-up");
    check(host.sources.get(0).closed.getCount()==0,"microphone released on stop");
+
+   // Background prewarm runs while idle, swallows failures, and is skipped while capturing.
+   CountDownLatch prewarmed=new CountDownLatch(1);
+   check(controller.prewarm(prewarmed::countDown),"idle prewarm queued");
+   await(prewarmed);
+   CountDownLatch throwingPrewarmDone=new CountDownLatch(1);
+   check(controller.prewarm(()->{try{throw new RuntimeException("advisory");}finally{throwingPrewarmDone.countDown();}}),"advisory prewarm failure does not kill worker");
+   await(throwingPrewarmDone);
 
    // A Stop during native startup refuses the start and closes the pipe without events.
    host.events.clear();Transport second=new Transport(host.events);Result cancelled=new Result();
@@ -105,53 +127,54 @@ public final class LiveCaptureControllerTest {
    Result unrouted=new Result();controller.start(controller.reserve(A,4),false,()->{throw new SecurityException("no owner");},null,false,unrouted);await(unrouted.done);
    check(unrouted.refused!=null&&!host.events.contains("mic:"+A),"no owner route, no microphone");
 
-   // A Stop while the agent session warms is a cancellation, never an enrollment failure.
+   // A discarded Stop while the agent session is still warming cancels the in-flight warm-up and stops the mic.
    host.events.clear();CountDownLatch warming=new CountDownLatch(1),cancelledInFlight=new CountDownLatch(1);
-   Result warmStopped=new Result();AtomicBoolean firstCancel=new AtomicBoolean();
+   Result warmRunning=new Result();
    LiveSegmentPipe.Transport slow=new LiveSegmentPipe.Transport(){
     public void check(){}
     public JSONObject post(JSONObject body)throws Exception{if(body.optBoolean("close"))return new JSONObject().put("status",200).put("body","{\"closed\":true}");warming.countDown();LiveCaptureControllerTest.check(cancelledInFlight.await(5,TimeUnit.SECONDS),"warm cancelled");throw new java.io.IOException("cancelled");}
-    public void cancelInFlight(){
-     boolean waitForResult=firstCancel.compareAndSet(false,true);
-     cancelledInFlight.countDown();
-     // Let the startup worker classify the result before the stopping caller continues. The
-     // drain thread can cancel again while settling ready(), so only the first caller waits.
-     if(waitForResult)try{await(warmStopped.done);}catch(Exception e){throw new AssertionError(e);}
-    }
+    public void cancelInFlight(){cancelledInFlight.countDown();}
    };
-   controller.start(controller.reserve(B,4),false,()->slow,null,false,warmStopped);
-   await(warming);controller.stop(B,false,System.currentTimeMillis(),new Stop());await(warmStopped.done);
-   check(LiveCaptureController.CANCELLED.equals(warmStopped.refused)&&!host.events.contains("mic:"+B),"stop during warm-up is a cancellation");
+   controller.start(controller.reserve(B,4),false,()->slow,null,false,warmRunning);
+   await(warmRunning.done);check(warmRunning.refused==null,"capture started while pipe warmed");
+   check(!controller.prewarm(()->{throw new AssertionError("prewarm must skip while active");}),"prewarm skipped while capturing");
+   await(warming);Stop discardStop=new Stop();controller.stop(B,true,System.currentTimeMillis(),discardStop);await(discardStop.done);
+   check(cancelledInFlight.getCount()==0,"discard stop cancelled in-flight warm-up");
 
-   // A call that starts while the agent session warms refuses the start with the call-active code
-   // and stops waiting for the agent; the microphone never opens.
-   host.events.clear();CountDownLatch callWarming=new CountDownLatch(1),callCancelled=new CountDownLatch(1);
+   // A call that starts while the agent session is still warming cancels the warm-up and reports call-active.
+   host.events.clear();host.ended=new CountDownLatch(1);CountDownLatch callWarming=new CountDownLatch(1),callCancelled=new CountDownLatch(1);
    LiveSegmentPipe.Transport callWarm=new LiveSegmentPipe.Transport(){
     public void check(){}
     public JSONObject post(JSONObject body)throws Exception{if(body.optBoolean("close"))return new JSONObject().put("status",200).put("body","{\"closed\":true}");callWarming.countDown();LiveCaptureControllerTest.check(callCancelled.await(5,TimeUnit.SECONDS),"warm cancelled by the call");throw new java.io.IOException("cancelled");}
     public void cancelInFlight(){callCancelled.countDown();}
    };
    Result duringCall=new Result();controller.start(controller.reserve(A,4),false,()->callWarm,null,false,duringCall);
-   await(callWarming);controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);await(duringCall.done);
-   check(LiveCaptureController.INTERRUPTED.equals(duringCall.refused)&&SpeechAudioFocusPolicy.CALL_ACTIVE.equals(duringCall.code),"call during warm-up refused as call-active: "+duringCall.refused);
-   check(!host.events.contains("mic:"+A),"no microphone after a call during warm-up");
-   // A call during native startup (after the warm-up) is refused the same way.
+   await(duringCall.done);await(callWarming);controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);await(host.ended);
+   check(host.events.contains("ended:"+A+":"+SpeechAudioFocusPolicy.CALL_ACTIVE),"call during warm-up ends capture with call-active: "+host.events);
+   await(callCancelled);
+   // A call during native startup (before mic starts) is refused as call-active with no end event.
    host.events.clear();Transport callStartup=new Transport(host.events);Result duringStartup=new Result();
    host.beforeOpen.set(()->controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE));
    controller.start(controller.reserve(B,4),false,()->callStartup,null,false,duringStartup);await(duringStartup.done);
    check(SpeechAudioFocusPolicy.CALL_ACTIVE.equals(duringStartup.code),"call during native startup refused as call-active: "+duringStartup.refused);
    check(host.events.stream().noneMatch(e->e.startsWith("ended:")),"refused start reports no end");
 
-   // An agent that fails the warm-up refuses the start with the transport failure, not a
-   // cancellation, and no transcript event goes out for a capture that never started.
+   // An agent that fails the warm-up (503) either refuses startup with TRANSPORT (if fast) or
+   // reports a single TRANSPORT transcript failure and stops the running capture (if async).
    host.events.clear();
    LiveSegmentPipe.Transport down=new LiveSegmentPipe.Transport(){
     public void check(){}
     public JSONObject post(JSONObject body)throws Exception{return new JSONObject().put("status",body.optBoolean("close")?200:503).put("body","{}");}
    };
    Result warmFailed=new Result();controller.start(controller.reserve(A,4),false,()->down,null,false,warmFailed);await(warmFailed.done);
-   check(LiveCaptureController.SESSION_UNAVAILABLE.equals(warmFailed.refused)&&"TRANSPORT".equals(warmFailed.code),"warm failure names the transport: "+warmFailed.refused+"/"+warmFailed.code);
-   check(host.events.stream().noneMatch(e->e.startsWith("transcript:")||e.startsWith("mic:")),"no transcript or microphone for a failed warm-up");
+   if(warmFailed.refused!=null){
+    check(LiveCaptureController.SESSION_UNAVAILABLE.equals(warmFailed.refused)&&"TRANSPORT".equals(warmFailed.code),"fast warm failure names the transport: "+warmFailed.refused+"/"+warmFailed.code);
+    check(host.events.stream().noneMatch(e->e.startsWith("transcript:")),"no transcript event for a refused start");
+   }else{
+    for(int i=0;i<100&&!host.events.contains("transcript:"+A+":TRANSPORT");i++)Thread.sleep(20);
+    check(host.events.stream().filter(e->e.equals("transcript:"+A+":TRANSPORT")).count()==1,"async warm failure reports TRANSPORT once: "+host.events);
+    Stop cleanup=new Stop();controller.stop(A,true,System.currentTimeMillis(),cleanup);await(cleanup.done);
+   }
 
    // A call while the prompt is open refuses the grant with the call-active code.
    LiveCaptureAdmission.Ticket callPrompt=controller.reserve(A,9);controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);

@@ -9,6 +9,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
@@ -22,9 +24,10 @@ import org.json.JSONObject;
  * <ul>
  *   <li>{@link #reserve} takes the per-capture admission before the permission prompt, so a Stop,
  *       pause or replacement during the prompt or native startup cancels it without waiting.
- *   <li>{@link #start} (on the capture worker) replaces any running capture, warms the agent's ASR
- *       session before the microphone opens, publishes cancellation before native startup and
- *       re-checks the host's gate after it.
+ *   <li>{@link #start} (on the capture worker) replaces any running capture, starts the agent's ASR
+ *       pipe warm-up in parallel with opening the microphone (so early speech buffers in the
+ *       bounded pipe queue instead of blocking {@code AudioRecord} behind session readiness),
+ *       publishes cancellation before native startup and re-checks the host's gate after it.
  *   <li>Frames, transcripts and end events reach the host only while the capture's admission and
  *       the host's {@link Host#open} gate for its epoch both hold. Piped frames are never handed to
  *       the host (the host receives an empty frame list with the VAD edges and level).
@@ -81,6 +84,7 @@ public final class LiveCaptureController {
  // being refused as busy. A second waiting task is still refused rather than queued without bound.
  private final ExecutorService stopWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
  private final ExecutorService pipeWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
+ private final ScheduledExecutorService readyTimer=Executors.newSingleThreadScheduledExecutor(work->{Thread thread=new Thread(work,"eliza-live-pipe-timer");thread.setDaemon(true);return thread;});
  private final LiveCaptureAdmission admission=new LiveCaptureAdmission();
  private final Map<String,LiveSegmentPipe> pipes=new ConcurrentHashMap<>();
  private LiveVoiceCapture live; // Confined to worker.
@@ -128,9 +132,12 @@ public final class LiveCaptureController {
     if(pipe!=null){
      pipes.put(id,pipe);
      if(!pipe.start(pipeWorker)){pipes.remove(id,pipe);result.refused("Native voice transport busy",null);return;}
-     // An interrupt before the pipe was published could not close it: stop waiting for the agent.
+     // An interrupt before the pipe was published could not close it: cancel before opening the mic.
      if(!admission.current(ticket))throw new IllegalStateException(CANCELLED);
-     if(!pipe.ready().get(PIPE_READY_MS,TimeUnit.MILLISECONDS))throw new IllegalStateException("Agent voice session unavailable");
+     // Enforce the warm-up readiness bound asynchronously so AudioRecord opens immediately in
+     // parallel and buffers pre-ready speech in LiveSegmentPipe's bounded queue.
+     final ScheduledFuture<?> readyDeadline=scheduleReadyDeadline(pipe);
+     pipe.ready().whenComplete((readyOk,err)->{if(readyDeadline!=null)readyDeadline.cancel(false);});
     }
    }catch(Exception unavailable){
     closePipe(id,true,now());
@@ -178,8 +185,12 @@ public final class LiveCaptureController {
   if(pipe!=null)pipe.cutoff(cutoff);
   // Cancelling transport can immediately wake the startup worker. Publish Stop first so that
   // worker observes cancellation when classifying an interrupted warm-up.
+  LiveVoiceCapture active=current;
+  boolean runningId=active!=null&&active.captureId().equals(id);
   admission.stop(id,discard);
-  if(pipe!=null&&(discard||!pipe.ready().isDone()))pipe.close(true,cutoff);
+  // Keep a warming pipe alive on graceful Stop once the microphone is already running so
+  // buffered pre-ready speech still flushes up to cutoff; discard or pre-mic Stop cancels now.
+  if(pipe!=null&&(discard||(!pipe.ready().isDone()&&!runningId)))pipe.close(true,cutoff);
   submit(worker,()->{
    long duration=0;
    if(live!=null&&live.captureId().equals(id)){
@@ -241,8 +252,29 @@ public final class LiveCaptureController {
  /** Runs {@code work} on the capture worker (serialized with start/stop), else {@code refused} on the caller. */
  public void onWorker(Runnable work,Runnable refused){submit(worker,work,refused);}
 
+ /**
+  * Advisory background prewarm (for example warming the voice bundle and Silero VAD context
+  * before the user taps Talk). Runs on the capture worker only while idle; skipped if a capture
+  * is active or the controller is shut down, and never throws to callers.
+  */
+ public boolean prewarm(Runnable work){
+  if(work==null||current!=null)return false;
+  try{
+   worker.execute(()->{
+    if(live!=null||current!=null)return;
+    try{work.run();}catch(Exception|Error ignored){}
+   });
+   return true;
+  }catch(RejectedExecutionException stopped){return false;}
+ }
+
  /** Terminal: cancels everything and stops the workers after their queued cleanup. */
- public void shutdown(){end(Collections.emptySet(),false);worker.shutdown();stopWorker.shutdown();pipeWorker.shutdown();}
+ public void shutdown(){end(Collections.emptySet(),false);readyTimer.shutdownNow();worker.shutdown();stopWorker.shutdown();pipeWorker.shutdown();}
+
+ private ScheduledFuture<?> scheduleReadyDeadline(LiveSegmentPipe pipe){
+  try{return readyTimer.schedule(pipe::failStartupTimeout,PIPE_READY_MS,TimeUnit.MILLISECONDS);}
+  catch(RejectedExecutionException stopped){return null;}
+ }
 
  /** A refused start: interrupted (its reason), failed in the pipe (its code) or cancelled. */
  private void refuse(LiveCaptureAdmission.Ticket ticket,Startup startup,Started result){

@@ -118,6 +118,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private final Object localCancellationGate=new Object();
  private SpeechRequestGate.Request localActiveRequest; // Guarded by localCancellationGate.
  private final AtomicBoolean localReleaseQueued=new AtomicBoolean();
+ private final AtomicBoolean localPrewarmPending=new AtomicBoolean();
  private final Runnable localIdleRelease=()->{if(!engineHold.keeps(speechForeground))queueLocalRelease();};
  private final ComponentCallbacks2 localMemoryCallbacks=new ComponentCallbacks2(){
   public void onConfigurationChanged(Configuration value){}
@@ -155,6 +156,48 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  }
  /** The private recording drafts, for the product's own storage of a finished draft. */
  protected final LocalVoiceRecording recording(){return capture;}
+ /** The shared serial local speech engine owned by this bridge (for subclass prewarm or status). */
+ protected final LocalSpeechEngine localEngine(){return localEngine;}
+ /**
+  * Advisory background prewarm of the exact shared {@link #localEngine()} on this bridge's serial
+  * speech worker, keeping idle release, memory trim and teardown ownership unified.
+  *
+  * @param ttsOnly true to load only speech synthesis (when recognition runs elsewhere)
+  * @return true when a prewarm task was queued, false if skipped, already pending, or closed
+  */
+ protected final boolean prewarmLocalSpeech(boolean ttsOnly){
+  if(destroyed||!speechForeground||sensitiveSurfaceActive()||(focus!=null&&focus.callActive()))return false;
+  if(!localPrewarmPending.compareAndSet(false,true))return false;
+  boolean queued=submitWork(()->{
+   try{
+    if(destroyed||!speechForeground||sensitiveSurfaceActive()||(focus!=null&&focus.callActive()))return;
+    main.removeCallbacks(localIdleRelease);
+    localEngine.use(engine->{
+     if(destroyed||!speechForeground||sensitiveSurfaceActive())return null;
+     if(ttsOnly)engine.prepareVoice();else engine.prepare();
+     return null;
+    });
+    if(!destroyed)scheduleLocalRelease(speechForeground?120000:30000);
+   }catch(LinkageError|OutOfMemoryError error){localEngine.release();}
+   catch(Exception ignored){/* Advisory warmup: missing bundle or teardown never fails callers. */}
+   finally{localPrewarmPending.set(false);}
+  },()->localPrewarmPending.set(false));
+  return queued;
+ }
+ /**
+  * Advisory background prewarm of the voice bundle and dedicated Silero VAD context on the live
+  * capture worker while idle.
+  */
+ protected final boolean prewarmLiveCapture(){
+  if(destroyed||!speechForeground||sensitiveSurfaceActive()||(focus!=null&&focus.callActive()))return false;
+  return live.prewarm(()->{
+   if(destroyed||!speechForeground||sensitiveSurfaceActive()||(focus!=null&&focus.callActive()))return;
+   try{
+    InferenceSession inference=VoiceAssets.sharedInference(getContext());
+    if(!destroyed&&speechForeground&&!sensitiveSurfaceActive())LiveVoiceCapture.prewarmVad(inference);
+   }catch(Exception|Error ignored){}
+  });
+ }
  protected final boolean destroyed(){return destroyed;}
  protected final Handler mainHandler(){return main;}
 

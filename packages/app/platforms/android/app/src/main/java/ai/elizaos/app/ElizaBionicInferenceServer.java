@@ -148,10 +148,17 @@ final class ElizaBionicInferenceServer {
     private final BionicAsrStreams asrStreams = new BionicAsrStreams(
         new BionicAsrStreams.Native() {
             @Override
+            public int probeSupported(String bundleDir) {
+                return probeAsrStreamSupported(
+                    bundleDir,
+                    ElizaVoiceNative::nativeAsrSupported,
+                    ElizaVoiceNative::nativeAsrStreamSupported);
+            }
+
+            @Override
             public int supported(long ctx) {
-                // stream_supported is 0 until some context has loaded the
-                // parakeet backend, so acquire "asr" first (idempotent).
-                ElizaVoiceNative.nativeMmapAcquire(ctx, "asr");
+                // Never call nativeMmapAcquire(ctx, "asr") here: /live/status is a
+                // read-only probe and must not trigger a second Phonon-2 model load.
                 return ElizaVoiceNative.nativeAsrStreamSupported();
             }
 
@@ -644,6 +651,12 @@ final class ElizaBionicInferenceServer {
             }
             String bundleDir = confined(req.optString("bundleDir", ""), "bundleDir");
             final String bundle = bundleDir.isEmpty() ? defaultBundleDir : bundleDir;
+            if ("asr_stream_supported".equals(op)) {
+                // Status probe (/live/status): never take residentLock, never create or
+                // reset residentCtx, and never mmap-acquire Phonon-2.
+                req.put("bundleDir", bundle);
+                return asrStreams.handle(client, op, req, () -> 0L);
+            }
             synchronized (residentLock) {
                 try {
                     return asrStreams.handle(client, op, req, () -> ensureResidentCtx(bundle));
@@ -1197,6 +1210,30 @@ final class ElizaBionicInferenceServer {
             at += part.length;
         }
         return toks;
+    }
+
+    /**
+     * Non-loading probe for {@code op="asr_stream_supported"} ({@code /live/status}).
+     * Verifies the bundle has an {@code asr/*.gguf} model and native ASR is built without
+     * calling {@code nativeMmapAcquire(ctx, "asr")} or creating/resetting {@code residentCtx}.
+     * On a cold/evicted context, {@code nativeAsrStreamOpen} acquires {@code "asr"} on demand
+     * and returns {@code STREAM_UNSUPPORTED} if the backend cannot stream.
+     */
+    static int probeAsrStreamSupported(
+            String bundleDir,
+            java.util.function.IntSupplier asrSupported,
+            java.util.function.IntSupplier asrStreamSupported) {
+        if (bundleDir == null || bundleDir.isEmpty()
+                || firstMatch(new File(bundleDir, "asr"), ".gguf") == null) {
+            throw new IllegalStateException("asr_stream_supported: no asr/ model in bundle");
+        }
+        if (asrSupported.getAsInt() != 1) {
+            throw new IllegalStateException("asr_stream_supported: native ASR unsupported");
+        }
+        if (asrStreamSupported.getAsInt() == 1) {
+            return 1;
+        }
+        return 1;
     }
 
     /**

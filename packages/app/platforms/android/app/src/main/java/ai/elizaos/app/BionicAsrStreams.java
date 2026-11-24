@@ -55,7 +55,15 @@ final class BionicAsrStreams {
 
     /** The JNI calls, behind an interface so the protocol is testable on the host. */
     interface Native {
-        /** Acquire the context's "asr" region; 1 when it streams (parakeet backend). */
+        /**
+         * Non-loading streaming probe for {@code bundleDir}: returns 1 (supported),
+         * 0 (unsupported), throws on unavailable ASR, or -1 to fall back to {@link #supported(long)}.
+         */
+        default int probeSupported(String bundleDir) {
+            return -1;
+        }
+
+        /** Query streaming support on an existing context; 1 when it streams (parakeet backend). */
         int supported(long ctx);
 
         /** Open a stream. Throws IllegalArgumentException when the backend cannot stream. */
@@ -148,8 +156,12 @@ final class BionicAsrStreams {
         }
         switch (op) {
             case "asr_stream_supported": {
-                final long c = ctx.get();
                 try {
+                    final int probed = nativeApi.probeSupported(req.optString("bundleDir", ""));
+                    if (probed >= 0) {
+                        return ok().put("supported", probed == 1).toString();
+                    }
+                    final long c = ctx.get();
                     return ok().put("supported", nativeApi.supported(c) == 1).toString();
                 } catch (RuntimeException unavailable) {
                     // No loadable asr/ region: neither streaming nor batch can run.
