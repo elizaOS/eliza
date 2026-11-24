@@ -100,11 +100,21 @@ function todayOf(prepared: unknown): string | undefined {
   return typeof today === "string" ? today : undefined
 }
 
+/** Today and the thirteen days after it on the owner's clock, so the model reads a weekday or a relative day from the calendar instead of counting. */
+function dayTable(today: string): string {
+  const noon = Date.parse(`${today}T12:00:00Z`)
+  return Array.from({ length: 14 }, (_, offset) => {
+    const day = new Date(noon + offset * 86_400_000).toISOString().slice(0, 10)
+    return `${longDate(day)} is ${day}${offset === 0 ? " (today)" : ""}`
+  }).join("; ")
+}
+
 function travelPrompt(text: string, today: string | undefined): string {
   return [
     "Read the owner's latest message and say whether it tells you that they themselves are away now or are back.",
     "signal: \"away\" when the owner says they are travelling, on a trip or vacation, or out of town or the office now; \"back\" when they say they are back, home or in the office again; \"none\" for anything else, including someone else's trip, a trip they only plan or ask about, and a message that does not say where they are.",
-    `until: when the signal is "away" and the owner names the day they are away until or will be back, that day as YYYY-MM-DD; write MM-DD instead when they named a month and day without a year. A weekday or a relative day is counted from today${today === undefined ? "" : `, ${longDate(today)} (${today})`}. Write the day they said even if the calendar has no such day. Otherwise an empty string.`,
+    "until: when the signal is \"away\" and the owner names the day they are away until or will be back, that day as YYYY-MM-DD; write MM-DD instead when they named a month and day without a year. Write the day they said even if the calendar has no such day. Otherwise an empty string.",
+    ...(today === undefined ? [] : [`Read a weekday or a relative day from these days on the owner's clock: ${dayTable(today)}.`]),
     `The owner's message: ${JSON.stringify(text)}`,
   ].join("\n")
 }

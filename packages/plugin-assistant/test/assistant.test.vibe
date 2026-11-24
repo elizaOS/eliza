@@ -637,11 +637,11 @@ it.effect('The model reads a trip, a return and the owner\'s own zone from the m
     const back = try said("t6", "I'm back home now", { signal: "back", until: "" }, { zone: "" })
     const tripDay = (facts: typeof away.facts) => facts.travel === undefined || facts.travel.endAt === 0 ? undefined : isoDay(facts.travel.endAt)
     try equal({
-      prompt: [asked.includes(JSON.stringify("I'm traveling until Friday")), asked.includes(`(${today})`), asked.includes("someone else's trip")],
+      prompt: [asked.includes(JSON.stringify("I'm traveling until Friday")), asked.includes(`${today} (today)`), asked.includes(`is ${inThreeDays};`), asked.includes("someone else's trip")],
       away: tripDay(away.facts), someoneElse: tripDay(someoneElse.facts), unread: [unread.invalid, tripDay(unread.facts), unread.facts.zone],
       zone: zone.facts.zone, unknownZone: unknownZone.facts.zone, back: [tripDay(back.facts), back.facts.travel?.endAt],
     }, {
-      prompt: [true, true, true],
+      prompt: [true, true, true, true],
       away: inThreeDays, someoneElse: inThreeDays, unread: [["PERSONAL_ASSISTANT_OWNER_TIMEZONE", "PERSONAL_ASSISTANT_OWNER_TRAVEL"].sort(), inThreeDays, ""],
       zone: "America/Los_Angeles", unknownZone: "America/Los_Angeles", back: [undefined, 0],
     })

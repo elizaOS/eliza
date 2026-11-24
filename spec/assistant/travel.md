@@ -14,7 +14,8 @@ themselves are away now, are back, or neither: someone else's trip, a trip
 only planned and a question are neither, and the words are never matched
 against a pattern. With "away" it writes the return the owner named as a
 day, `YYYY-MM-DD`, or `MM-DD` when they named a month and day without a
-year, counting a weekday or relative day from today on the owner's clock;
+year, reading a weekday or relative day from the owner's next fourteen
+days, which the prompt lists by date and weekday on the owner's clock;
 an output with any other signal is refused. A return is a calendar day on
 the owner's clock, and the trip ends at that day's local midnight. Each
 day is passed to the rules below as a number that orders days, with
