@@ -83,3 +83,7 @@ export interface NativeSpeechRequestBinding {
 export type NativeSpeechRequestWork<T> = (requestId: NativeSpeechRequestId, interrupted: Promise<never>, owned: AbortSignal) => Promise<T>;
 
 export type NativeSpeechRequestRunner = <T>(signal: AbortSignal, work: NativeSpeechRequestWork<T>) => Promise<T>;
+
+export function throwStale(stale: { readonly error: unknown } | undefined): void {
+  if (stale) throw stale.error;
+}

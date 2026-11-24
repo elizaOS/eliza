@@ -16,6 +16,7 @@ import type {
 } from "./definitions/voice.ts"
 import type { MuteSettlement } from "../../gen/os__voice__cloudSpeech.ts"
 import { muteSettleMs, muteSettlement } from "../../gen/os__voice__cloudSpeech.effect.vibe"
+import { throwStale } from "./definitions/voice.ts"
 
 export type * from "./definitions/voice.ts"
 
@@ -207,19 +208,17 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
   let ownerSignal: AbortSignal | undefined
   let ended: () => void = () => {}
 
-  const checkCurrent = () => {
-    if (retired) throw stopped()
-    input.assertCurrent()
-  }
-
   const stale = (): Stale => {
+    if (retired) return { error: stopped() }
     try {
-      checkCurrent()
+      input.assertCurrent()
       return undefined
     } catch (error) {
       return { error }
     }
   }
+
+  const checkCurrent = () => throwStale(stale())
 
   const ownerAborted = () => {
     void stop().catch(() => {})
