@@ -12,7 +12,8 @@ import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
 import { admitRoute } from "@elizaos/agent"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
-import { heardReply, replyKind } from "../src/replies.vibe"
+import { appliedReceipt, failedReceipt, heardReply, proven, replyKind, turnResults, type Attempt } from "../src/replies.vibe"
+import { claimSupported } from "../gen/assistant__replies.effect.vibe"
 import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, reminderKind, reminderReply, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
 import { onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
@@ -81,6 +82,22 @@ it.effect('A save that failed and then succeeded is reported saved, and one that
     try equal([recovered.success, lost.success, lost.text], [true, false, "I couldn't confirm the reminder was saved. Check your reminders before relying on it."])
     try equal(recovered.userFacingEffectReceiptIds?.length, 1)
   }
+})
+
+it.effect('A failure stays reported unless the same operation on the same record, or the same request, later applied (spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded")', effect () => {
+  const facts = (operation: string, id: string, key: string | null = null) => ({ operation, kind: "reminder", id, key, at: 1 })
+  const failed = (operation: string, id: string, key: string | null = null): Attempt => ({ actionName: "SAVE", success: false, receipts: [failedReceipt(facts(operation, id, key), "REJECTED", "rejected")] })
+  const applied = (operation: string, id: string, key: string | null = null): Attempt => ({ actionName: "SAVE", success: true, receipts: [appliedReceipt(facts(operation, id, key))] })
+  const reported = (attempts: readonly Attempt[]) => claimSupported(turnResults(attempts), "ClaimedNotDone", "", 0)
+  try equal({
+    anotherRecord: reported([failed("reminder.save", "a"), applied("reminder.save", "b")]),
+    receiptless: reported([{ actionName: "SEND", success: false, receipts: [] }, { actionName: "SEND", success: true, receipts: [appliedReceipt(facts("message.send", "b"))] }]),
+    anotherOperation: reported([failed("reminder.delete", "r1"), applied("reminder.create", "r1")]),
+    sameRequest: reported([failed("reminder.save", "r1", "k"), applied("reminder.create", "r2", "k")]),
+    unknownAcceptance: reported([{ actionName: "SAVE", success: false, receipts: [failedReceipt(facts("reminder.save", "a"), "TIMEOUT", "unknown")] }]),
+    retried: reported([failed("reminder.save", "r1"), applied("reminder.save", "r1")]),
+    retriedProven: proven([failed("reminder.save", "r1"), applied("reminder.save", "r1")], "reminder:r1").kind,
+  }, { anotherRecord: true, receiptless: true, anotherOperation: true, sameRequest: false, unknownAcceptance: false, retried: false, retriedProven: "done" })
 })
 
 it.effect('A fired reminder reaches the owner once as the exact presentation issued for it, is sent again only when nothing left, and can be dismissed by its title (spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again")', effect () => {

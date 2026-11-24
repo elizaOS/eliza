@@ -9,9 +9,11 @@ a thousand milliseconds" or "Just a moment ago the timer finished", is an
 answer, and is heard in full.
 
 What a reply says the assistant did is held to what this turn's results
-prove. Each result names the action that produced it, the record it
-targeted, and how it ended: applied, refused by the store or provider,
-ended with the provider's acceptance unknown, or only previewed.
+prove. Each result names the action that produced it, the operation it
+attempted, the record it targeted, the idempotency key of the request it
+served, and how it ended: applied, refused by the store or provider, ended
+with the provider's acceptance unknown, or only previewed. A result that
+carried no receipt names no operation, record or key.
 
 ## Story: Hear a brief acknowledgment while my request is pending, and the whole answer after
 
@@ -46,42 +48,53 @@ pure def lawACueNeverEndsTheTurn(reply: ReplyKind): bool = heardWhile(WorkSettle
 
 ```quint
 type ResultEnd = EndApplied | EndRefused | EndUnknown | EndPreviewed
-type TurnResult = { actionName: str, target: str, ended: ResultEnd }
+type TurnResult = { actionName: str, operation: str, target: str, key: str, ended: ResultEnd }
 type ClaimKind = ClaimedDone | ClaimedNotDone
-pure val noResult: TurnResult = { actionName: "", target: "", ended: EndUnknown }
+pure val noResult: TurnResult = { actionName: "", operation: "", target: "", key: "", ended: EndUnknown }
 pure def committedTo(results: List[TurnResult], target: str): bool =
   target != "" and results.some(r => r.target == target and r.ended == EndApplied)
 ```
 
 ### A claim that something was not done needs a cited result that failed and was not superseded
 
-A failure is superseded by a later result that applied the same record,
-or, for a failure that named no record, by a result of the same action
-that applied. A failure whose acceptance is unknown proves neither
-outcome, and a success of another record supersedes nothing.
+A failure is superseded only by a result that applied the same operation
+to the same record, or that applied a request with the same idempotency
+key. One turn can run an action for several records, so a success says
+nothing about a failure for another record or of another operation. A
+failure that named no record stays reported even when the same action
+later succeeded, since that success may have been for someone else. A
+failure whose acceptance is unknown proves neither outcome.
 
 ```quint
 pure def supersedes(later: TurnResult, failed: TurnResult): bool =
-  later.ended == EndApplied and ((failed.target != "" and later.target == failed.target) or (failed.target == "" and later.actionName == failed.actionName))
+  later.ended == EndApplied and failed.target != "" and ((later.target == failed.target and later.operation == failed.operation) or (failed.key != "" and later.key == failed.key))
 pure def provesNotDone(results: List[TurnResult], failed: TurnResult): bool =
   (failed.ended == EndRefused or failed.ended == EndPreviewed) and not(results.some(r => supersedes(r, failed)))
 pure def claimSupported(results: List[TurnResult], claim: ClaimKind, target: str, cited: int): bool =
   if (claim == ClaimedDone) committedTo(results, target)
   else cited >= 0 and cited < results.length() and provesNotDone(results, results.nthOr(cited, noResult))
 pure val failedValues: Set[TurnResult] = List(
-  { actionName: "SAVE", target: "r1", ended: EndRefused }, { actionName: "SAVE", target: "r1", ended: EndUnknown },
-  { actionName: "SAVE", target: "", ended: EndRefused }, { actionName: "SAVE", target: "r1", ended: EndPreviewed },
-  { actionName: "SAVE", target: "r1", ended: EndApplied }
+  { actionName: "SAVE", operation: "save", target: "r1", key: "", ended: EndRefused }, { actionName: "SAVE", operation: "save", target: "r1", key: "", ended: EndUnknown },
+  { actionName: "SAVE", operation: "", target: "", key: "", ended: EndRefused }, { actionName: "SAVE", operation: "save", target: "r1", key: "", ended: EndPreviewed },
+  { actionName: "SAVE", operation: "save", target: "r1", key: "", ended: EndApplied }, { actionName: "SAVE", operation: "delete", target: "r1", key: "", ended: EndRefused },
+  { actionName: "SAVE", operation: "save", target: "r1", key: "k1", ended: EndRefused }
 ).foldl(Set(), (acc, r) => acc.union(Set(r)))
 pure val laterValues: Set[TurnResult] = List(
-  { actionName: "SAVE", target: "r1", ended: EndApplied }, { actionName: "SAVE", target: "r2", ended: EndApplied },
-  { actionName: "OTHER", target: "r2", ended: EndApplied }, { actionName: "SAVE", target: "", ended: EndApplied },
-  { actionName: "SAVE", target: "r1", ended: EndRefused }
+  { actionName: "SAVE", operation: "save", target: "r1", key: "", ended: EndApplied }, { actionName: "SAVE", operation: "save", target: "r2", key: "", ended: EndApplied },
+  { actionName: "OTHER", operation: "save", target: "r2", key: "", ended: EndApplied }, { actionName: "SAVE", operation: "", target: "", key: "", ended: EndApplied },
+  { actionName: "SAVE", operation: "save", target: "r1", key: "", ended: EndRefused }, { actionName: "SAVE", operation: "create", target: "r1", key: "", ended: EndApplied },
+  { actionName: "SAVE", operation: "save", target: "r1", key: "k1", ended: EndApplied }, { actionName: "SAVE", operation: "create", target: "r2", key: "k1", ended: EndApplied }
 ).foldl(Set(), (acc, r) => acc.union(Set(r)))
 pure def lawALaterCommitToTheSameRecordSupersedesAFailure(failed: TurnResult, later: TurnResult): bool =
   supersedes(later, failed) implies not(claimSupported(List(failed, later), ClaimedNotDone, failed.target, 0))
 pure def lawASuccessOfAnotherRecordSupersedesNothing(failed: TurnResult, later: TurnResult): bool =
-  (failed.ended == EndRefused and failed.target != "" and later.target != failed.target) implies claimSupported(List(failed, later), ClaimedNotDone, failed.target, 0)
+  (failed.ended == EndRefused and failed.target != "" and later.target != failed.target and (failed.key == "" or later.key != failed.key)) implies claimSupported(List(failed, later), ClaimedNotDone, failed.target, 0)
+pure def lawAnotherOperationOnTheSameRecordSupersedesNothing(failed: TurnResult, later: TurnResult): bool =
+  (failed.ended == EndRefused and failed.target != "" and later.operation != failed.operation and (failed.key == "" or later.key != failed.key)) implies claimSupported(List(failed, later), ClaimedNotDone, failed.target, 0)
+pure def lawAReceiptlessFailureStaysReported(failed: TurnResult, later: TurnResult): bool =
+  (failed.ended == EndRefused and failed.target == "") implies claimSupported(List(failed, later), ClaimedNotDone, failed.target, 0)
+pure def lawTheSameIdempotencyKeySupersedes(failed: TurnResult, later: TurnResult): bool =
+  (failed.target != "" and failed.key != "" and later.key == failed.key and later.ended == EndApplied) implies not(claimSupported(List(failed, later), ClaimedNotDone, failed.target, 0))
 pure def lawAnUnknownAcceptanceProvesNeither(failed: TurnResult, later: TurnResult): bool =
   failed.ended == EndUnknown implies (not(claimSupported(List(failed), ClaimedNotDone, failed.target, 0)) and not(claimSupported(List(failed), ClaimedDone, failed.target, 0)))
 pure def lawDoneIsClaimedOnlyForAnAppliedRecord(failed: TurnResult, later: TurnResult): bool =

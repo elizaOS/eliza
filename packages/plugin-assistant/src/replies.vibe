@@ -46,9 +46,9 @@ function ended(receipt: EffectReceipt, reverted: ReadonlySet<string>): ResultEnd
 export function turnResults(attempts: readonly Attempt[]): TurnResult[] {
   const reverted = revertedEffectReceiptIds(attempts.flatMap((attempt) => attempt.receipts))
   return attempts.flatMap(({ actionName, success, receipts }) => receipts.length === 0
-    ? [{ actionName, target: "", ended: success ? "EndApplied" : "EndRefused" } satisfies TurnResult]
+    ? [{ actionName, operation: "", target: "", key: "", ended: success ? "EndApplied" : "EndRefused" } satisfies TurnResult]
     : receipts.filter((receipt) => receipt.outcome !== "rolled_back")
-      .map((receipt) => ({ actionName, target: receiptTarget(receipt), ended: ended(receipt, reverted) } satisfies TurnResult)))
+      .map((receipt) => ({ actionName, operation: receipt.operation, target: receiptTarget(receipt), key: receipt.idempotency.key ?? "", ended: ended(receipt, reverted) } satisfies TurnResult)))
 }
 
 export type Proven =
