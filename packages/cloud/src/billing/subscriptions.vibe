@@ -244,7 +244,7 @@ effect function expireDunning(store: Store.Shape, now: number): number!! {
 
 effect function refreshStale(store: Store.Shape, now: number): number!!(Deployment | HttpClient.HttpClient) {
   const due = store.transaction((tx) => tx.query(
-    "SELECT key FROM subscriptions WHERE stale_after <= $1 AND status IN ('pending', 'incomplete', 'active', 'dunning', 'past_due', 'unpaid') ORDER BY stale_after, key LIMIT $2",
+    "SELECT key FROM subscriptions WHERE stale_after <= $1 AND (status IN ('pending', 'incomplete', 'active', 'dunning', 'past_due', 'unpaid') OR state ? 'customerId') ORDER BY stale_after, key LIMIT $2",
     [now, sweepBatch]
   )) catch () => []
   let refreshed = 0

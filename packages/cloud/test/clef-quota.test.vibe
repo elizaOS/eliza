@@ -9,6 +9,7 @@ module node {
   import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { openBackupDatabase } from "./support/password-backup.ts"
   import { workerBindings } from "./support/worker.ts"
+  import { initial as noSubscription } from "../gen/cloud__billing__subscriptions.ts"
 
   export async function decideUnderEachFunding() {
     const fixture = await openBackupDatabase()
@@ -48,17 +49,21 @@ module node {
       const funded = await decide()
       await fill("clef:organization", 4000)
       const fundedSpent = await decide()
-      await fixture.db.query("INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ($1, '{}'::jsonb, 1, 'active', 'plus_monthly', $2, $3)",
-        [organization, Date.now() + 86_400_000, Date.now()])
+      const plus = { ...noSubscription, status: "Active", subscriptionId: "sub_quota", customer: { tag: "PinnedCustomer", customerId: "cus_quota" }, planKey: "PlusMonthly", periodStart: Date.now() - 1000, periodEnd: Date.now() + 86_400_000, revision: 1 }
+      await fixture.db.query("INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ($1, $4::jsonb, 1, 'active', 'plus_monthly', $2, $3)",
+        [organization, plus.periodEnd, Date.now(), JSON.stringify(plus)])
       const continued = await decide()
       await fill("clef:continuation", 60)
       const continuationSpent = await decide()
-      await fixture.db.query("UPDATE subscriptions SET status = 'canceled' WHERE key = $1", [organization])
+      await fixture.db.query("UPDATE subscriptions SET state = $2::jsonb, status = 'canceled' WHERE key = $1", [organization, JSON.stringify({ ...plus, status: "Canceled" })])
       const lapsed = await decide()
+      await fixture.db.query("UPDATE subscriptions SET state = '{\"status\":\"Gold\"}'::jsonb WHERE key = $1", [organization])
+      await fill("clef:organization", 2500)
+      const unreadablePolicy = await decide()
       const counters = await fixture.db.query<{ scope: string; hits: number }>("SELECT scope, hits FROM cloud_auth_limits WHERE scope LIKE 'clef:%' ORDER BY scope")
       const balance = await fixture.db.query<{ kind: string }>("SELECT kind FROM credit_entries WHERE organization_id = $1", [organization])
       return {
-        outcomes: { base, baseSpent, funded, fundedSpent, continued, continuationSpent, lapsed },
+        outcomes: { base, baseSpent, funded, fundedSpent, continued, continuationSpent, lapsed, unreadablePolicy },
         providerCalls,
         counters: counters.rows.map((row) => [row.scope, row.hits]),
         ledger: balance.rows.map((row) => row.kind),
@@ -83,9 +88,10 @@ it.live('A funded or subscribed organization gets more Clef decisions, and only 
       continued: [200, "subscription-minute"],
       continuationSpent: [429, "subscription-minute"],
       lapsed: [429, "organization-day"],
+      unreadablePolicy: [429, "organization-day"],
     },
     providerCalls: 3,
-    counters: [["clef:account", 3], ["clef:continuation", 60], ["clef:organization", 4000]],
+    counters: [["clef:account", 3], ["clef:continuation", 60], ["clef:organization", 2500]],
     ledger: ["add"],
   }))
 }, 30_000)
