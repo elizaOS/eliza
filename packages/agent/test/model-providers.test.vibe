@@ -313,6 +313,49 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
     [true, true, [{ expression: longArgument }]])
 })
 
+it.effect('A Qwen call on a Cerebras route reads a tool call written as text as that call only when every block names an offered tool, and every other call keeps the text (spec/agent/models/binding.md, "A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const qwen = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })
+  const plain = try cloudAgent(cloud)
+  const tools = [
+    { name: "MAPS_SEARCH", description: "Places.", parameters: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" }, open: { type: "boolean" } }, required: ["query"] } },
+    { name: "CALCULATE", description: "Arithmetic.", parameters: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] } },
+  ]
+  const xml = "Let me check.\n<tool_call>\n<function=MAPS_SEARCH>\n<parameter=query>\ncoffee near me\n</parameter>\n<parameter=limit>\n5\n</parameter>\n<parameter=open>\ntrue\n</parameter>\n</function>\n</tool_call>"
+  const json = "<tool_call>\n{\"name\": \"CALCULATE\", \"arguments\": {\"expression\": \"2 + 2\"}}\n</tool_call>\n<tool_call>\n<function=CALCULATE>\n<parameter=expression>\n3 * 3\n</parameter>\n</function>\n</tool_call>"
+  const unoffered = "Sure, one sec.\n<tool_call>\n<function=phone_agent_tool_12() {}\n</function>\n</tool_call>"
+  const mixed = `${json}\n<tool_call>\n<function=SEND_TEXT>\n</function>\n</tool_call>`
+  const unclosed = "Let me open Maps.\n\n<tool_call>\n<function=MAPS_SEARCH>"
+  const ask = (agent: { runtime: AgentRuntime }, content: string, toolChoice: "auto" | "none" = "auto") => effect {
+    try Effect.sync(() => cloud.script(text(content)))
+    const answer = try host("written tool call", () => agent.runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
+      tools, toolChoice, messages: [{ role: "user", content: "Coffee near me?" }],
+    }))
+    return typeof answer === "string" ? { text: answer, calls: [] } : {
+      text: answer.text,
+      calls: (answer.toolCalls ?? []).map((call) => ({ fresh: call.id.startsWith("call_"), name: call.name, arguments: call.arguments })),
+    }
+  }
+  const results = {
+    xml: try ask(qwen, xml),
+    json: try ask(qwen, json),
+    unoffered: try ask(qwen, unoffered),
+    mixed: try ask(qwen, mixed),
+    unclosed: try ask(qwen, unclosed),
+    noFreeChoice: try ask(qwen, xml, "none"),
+    otherModel: try ask(plain, xml),
+  }
+  assert.deepStrictEqual(results, {
+    xml: { text: "Let me check.", calls: [{ fresh: true, name: "MAPS_SEARCH", arguments: { query: "coffee near me", limit: 5, open: true } }] },
+    json: { text: "", calls: [{ fresh: true, name: "CALCULATE", arguments: { expression: "2 + 2" } }, { fresh: true, name: "CALCULATE", arguments: { expression: "3 * 3" } }] },
+    unoffered: { text: unoffered, calls: [] },
+    mixed: { text: mixed, calls: [] },
+    unclosed: { text: unclosed, calls: [] },
+    noFreeChoice: { text: xml, calls: [] },
+    otherModel: { text: xml, calls: [] },
+  })
+})
+
 it.effect('A tool is offered without its pattern constraints, and the rest of its schema is sent as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime } = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })

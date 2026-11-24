@@ -153,5 +153,16 @@ for (const transport of ["socket", "http"] as const) {
         { status: answer.status, ends: kinds(frames).filter((kind) => kind === "done" || kind === "error"), failureKind: frames.at(-1)?.failureKind },
         { status: 200, ends: ["done"], failureKind: "insufficient_credits" }))
     }, 120_000)
+
+    it.live('A tool call the model wrote as text is never streamed, not even its first characters (spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once")', effect () => {
+      const { cloud, agent, id } = try streamingConversation(transport)
+      try Effect.sync(() => cloud.script(text("Let me open Maps.\n\n<", "tool_", "call>\n<function=phone_use>"), text("I can't open Maps from this chat.")))
+      const answer = try send(agent, id, { text: "Show me coffee shops near me on the map." })
+      const frames = framesOf(answer)
+      try Effect.try(() => assert.deepStrictEqual({
+        markup: frames.some((frame) => `${frame.text ?? ""}${frame.fullText ?? ""}`.includes("<")),
+        fullText: frames.at(-1)?.fullText, rebuilt: rebuilt(frames),
+      }, { markup: false, fullText: "I can't open Maps from this chat.", rebuilt: "I can't open Maps from this chat." }))
+    }, 120_000)
   })
 }

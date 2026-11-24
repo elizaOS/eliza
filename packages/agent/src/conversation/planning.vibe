@@ -1,4 +1,4 @@
-// spec/agent/conversation/planning.md, "A planner can restore the turn's deferred history once and runs no sibling action from that response"
+// spec/agent/conversation/planning.md, "A planner can restore the turn's deferred history once and runs no sibling action from that response"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "When nothing ran in a turn, the answer it asks for is told so"
 // spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 // spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 // spec/agent/conversation/planning.md, "A response with competing terminal decisions runs no sibling action and can be repaired once"
@@ -10,16 +10,20 @@ import {
 import { tagsMayProduceEffects } from "@elizaos/core/protocol"
 import {
   acknowledges, actionNoteSent, callAdmission, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
-  admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
+  admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, nothingRan, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { composeReply, draftOf, requestIsInstruction, requestedNoCue } from "./reply-text.vibe"
+import { composeReply, draftOf, requestIsInstruction, requestedNoCue, streamable, writtenCallFree } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
 const toolNamePattern = /^[A-Za-z0-9_-]{1,64}$/
 const toolMessageLimit = 4_000
 const answerNow = "Note from the agent host, not the person: no further work will run in this turn. Answer the person's latest message now with what this turn holds."
+const answerNothingRan = "Note from the agent host, not the person: no further work will run in this turn. No action ran in it: nothing was saved, sent or changed, so do not say that anything was. Answer the person's latest message now with what this turn holds."
+const callWrittenAsText = "Note from the agent host, not the person: your last response wrote a tool call as text. Text never runs as a tool, so nothing ran, and the person did not see it."
+const callWithATool = `${callWrittenAsText} Make the call with one of the offered tools, or answer the person in words.`
+const answerInWords = `${callWrittenAsText} No tool is offered in this turn: answer the person in words.`
 const restoreContext: ToolDefinition = {
   name: "RESTORE_CONTEXT",
   description: "Restore only context named in this request’s deferral notice. Scope defaults to full. Call alone before actions. Sibling calls do not run. Use live tools for current saved records.",
@@ -307,7 +311,8 @@ function answerOf(value: unknown): { text: string; toolCalls: ToolCall[] } {
 
 function replyText(call: ToolCall): string | undefined {
   const text = paramsOf(call).text
-  return typeof text === "string" && text.trim() ? text : undefined
+  const prose = typeof text === "string" ? writtenCallFree(text).prose : ""
+  return prose.trim() ? prose : undefined
 }
 
 function shownBy(result: ActionResult, captured: readonly string[]): string[] {
@@ -384,6 +389,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let terminalCorrectionSent = false
   let restoredHistory = false
   let restoreCorrectionSent = false
+  let markupAsked = false
   const seen = new Set<string>()
   const settlements = new Map<string, ToolSettlement>()
   const execute = async (call: ToolCall): Promise<ActionResult> => {
@@ -427,6 +433,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     signal.throwIfAborted()
     const restartFirst = displayed
     let restarted = false
+    let written = ""
     streamed = ""
     const onStreamChunk = input.onStreamChunk
     let said: unknown
@@ -437,13 +444,17 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         ...(onStreamChunk === undefined ? {} : {
           stream: true,
           onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
-            streamed = accumulated ?? streamed + chunk
+            written = accumulated ?? written + chunk
+            const shown = streamable(written)
+            if (shown.length <= streamed.length) return
+            const fresh = shown.slice(streamed.length)
+            streamed = shown
             if (restartFirst && !restarted) {
               restarted = true
               input.onReplyRestart?.(streamed)
               return
             }
-            return onStreamChunk(chunk, messageId, accumulated)
+            return onStreamChunk(fresh, messageId, streamed)
           },
         }),
       })), signal)
@@ -496,15 +507,23 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     }
     const reply = dispositions.find(({ name }) => name === "REPLY")
     const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
-    const draft = draftOf(answered.text, instruction, work.length)
+    const unwritten = writtenCallFree(answered.text)
+    if (writtenMarkupOf(unwritten.markup, answered.toolCalls.length, markupAsked, maxPlanSteps - taken) === "AskForTheCall") {
+      markupAsked = true
+      if (unwritten.prose.trim()) conversation.push({ role: "assistant", content: unwritten.prose })
+      conversation.push({ role: "user", content: tools.length === 0 ? answerInWords : callWithATool })
+      continue plan
+    }
+    const words = unwritten.prose
+    const draft = draftOf(words, instruction, work.length)
     let cutOff = false
     if (work.length > 0) {
-      if (!quiet && acknowledges(draft, work.length, steps.length)) await input.onPlanningAcknowledgment?.(answered.text.trim())
+      if (!quiet && acknowledges(draft, work.length, steps.length)) await input.onPlanningAcknowledgment?.(words.trim())
       if (displayed) {
         input.onReplyRestart?.("")
         displayed = false
       }
-      conversation.push({ role: "assistant", content: answered.text || null, toolCalls: work })
+      conversation.push({ role: "assistant", content: words || null, toolCalls: work })
       seen.clear()
       for (const call of work) {
         cutOff ||= stoppedAtModelMaximum(await execute(call))
@@ -512,18 +531,18 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       }
     }
     if (reply !== undefined) {
-      prose = replyText(reply) ?? (draft === "Answer" ? answered.text : undefined)
+      prose = replyText(reply) ?? (draft === "Answer" ? words : undefined)
       break plan
     }
     if (plansOn(cutOff, taken, work.length, false)) continue plan
     if (work.length > 0) break plan
     switch (nextMove(draft, 0, maxPlanSteps - taken)) {
       case "Deliver":
-        prose = answered.text
+        prose = words
         break plan
       case "AskAgain":
-        conversation.push({ role: "assistant", content: answered.text })
-        conversation.push({ role: "user", content: answerNow })
+        conversation.push({ role: "assistant", content: words })
+        conversation.push({ role: "user", content: nothingRan(steps.flatMap(({ outcomes }) => outcomes)) ? answerNothingRan : answerNow })
         continue plan
       case "GiveUp":
       case "RunTools":

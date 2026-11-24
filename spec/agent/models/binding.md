@@ -279,6 +279,38 @@ pure def lawOnlyQwenOnACerebrasRouteSendsTheKey(family: ReasoningFamily, cerebra
   cacheKeySent(family, cerebrasRoute, true) iff (cerebrasRoute and family == QwenReasoning)
 ```
 
+### A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool
+
+`qwen-3.8-27b` sometimes writes its tool call into the text in its own
+template instead of the structured field: a `<tool_call>` block holding a
+`<function=NAME>` with a `<parameter=KEY>` value for each argument, or one
+JSON object with `name` and `arguments`. On the routes that take reasoning
+hints, a call that offers tools and leaves the model free to use them (its
+tool choice is not `none`) and gets an answer with no structured tool call
+reads each such block as a tool call when every block parses and names a
+tool the call offered: the answer carries those calls, with fresh ids, and
+its text without the blocks. A value is read as JSON when the tool's schema
+gives that parameter a type other than string and it parses, and as the
+written text otherwise. A block that does not parse or names a tool the
+call did not offer leaves the whole text as it was, for the turn to refuse
+([planning](../conversation/planning.md)). Any other model, route or call,
+and an answer that already has a structured tool call, reads its text as
+text.
+
+```quint
+pure def writtenCallsRead(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, structuredCalls: int, writtenAllOffered: bool): bool =
+  family == QwenReasoning and cerebrasRoute and freeToolChoice and structuredCalls == 0 and writtenAllOffered
+pure val structuredCallsValues = Set(0, 1, 2)
+pure def lawOnlyQwenOnACerebrasRouteReadsWrittenCalls(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, structuredCalls: int, writtenAllOffered: bool): bool =
+  writtenCallsRead(family, cerebrasRoute, freeToolChoice, structuredCalls, writtenAllOffered) implies (family == QwenReasoning and cerebrasRoute)
+pure def lawAWrittenCallNamingAnUnofferedToolIsNeverRead(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, structuredCalls: int): bool =
+  not(writtenCallsRead(family, cerebrasRoute, freeToolChoice, structuredCalls, false))
+pure def lawAStructuredCallKeepsTheTextAsText(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, writtenAllOffered: bool): bool =
+  not(writtenCallsRead(family, cerebrasRoute, freeToolChoice, 1, writtenAllOffered))
+pure def lawACallOfferingNoFreeChoiceReadsNoWrittenCall(family: ReasoningFamily, cerebrasRoute: bool, structuredCalls: int, writtenAllOffered: bool): bool =
+  not(writtenCallsRead(family, cerebrasRoute, false, structuredCalls, writtenAllOffered))
+```
+
 ## Story: Keep the account state honest
 
 > As the owner, I want to see why my agent cannot answer, from what the

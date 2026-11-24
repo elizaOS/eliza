@@ -705,3 +705,35 @@ it.effect(`Keep the calendar events I saved before this version (spec/calendar/r
   const blocked = try runCalendarAction(review, { by: "owner-entity", conversation: "room:owner", id: "message-2", text: "" }, { subaction: "create_event", title: "New", startAt: "2030-03-05T17:00:00Z", endAt: "2030-03-05T18:00:00Z", reviewBeforeCreate: false, statedClock: "none" })
   assert.deepStrictEqual([blocked.success, broken.has(rowsKey)], [false, false])
 })
+
+it.effect(`A read with no connected calendar account says that none is connected, beside what the agent's own calendar holds (spec/calendar/actions.md, "A read with no connected calendar account says that none is connected, never only that the calendar is empty")`, effect () => {
+  try TestClock.setTime(Date.parse("2030-03-03T20:00:00Z"))
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
+  const ask = { by: "owner-entity", conversation: "room:owner", id: "today", text: "What's on my calendar today?", ownerZone: "UTC" }
+  const today = { subaction: "search_events", date: "2030-03-04", timeZone: "UTC" }
+  const free = { subaction: "check_availability", timeMin: "2030-03-04T09:00:00Z", timeMax: "2030-03-04T10:00:00Z", timeZone: "UTC" }
+  const notConnected = " No calendar account is connected, so only the agent's own calendar was read."
+  const read = effect (parameters: Record<string, unknown>) => {
+    const result = try runCalendarAction(host, ask, parameters)
+    return { text: result.text, connection: at(result.data, "connection"), events: at(result.data, "events", "length") }
+  }
+
+  const empty = try read(today)
+  const unbookedHour = try read(free)
+  const dentist = try runCalendarAction(host, { ...ask, id: "dentist" }, { subaction: "create_event", title: "Dentist", startAt: "2030-03-04T15:00:00Z", endAt: "2030-03-04T16:00:00Z", timeZone: "UTC", reviewBeforeCreate: false, statedClock: "none" })
+  const residentEvent = try read(today)
+  const google = googleCalendar()
+  try host.register(google.port)
+  try host.bindAccount(owner)
+  const connected = try read(today)
+  const connectedFree = try read(free)
+
+  assert.deepStrictEqual({ empty, unbookedHour, created: dentist.success, residentEvent: [residentEvent.connection, residentEvent.events, residentEvent.text.endsWith(notConnected)], connected, connectedFree }, {
+    empty: { text: `No events match in that range.${notConnected}`, connection: "none", events: 0 },
+    unbookedHour: { text: `You're free Monday, March 4, from 9:00 AM to 10:00 AM Coordinated Universal Time.${notConnected}`, connection: "none", events: undefined },
+    created: true,
+    residentEvent: ["none", 1, true],
+    connected: { text: "No events match in that range.", connection: "connected", events: 0 },
+    connectedFree: { text: "You're free Monday, March 4, from 9:00 AM to 10:00 AM Coordinated Universal Time.", connection: "connected", events: undefined },
+  })
+})

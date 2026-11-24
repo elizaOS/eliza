@@ -369,9 +369,9 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
   }
   try Effect.try(() => assert.deepStrictEqual({
-    exemptionInRule: [cueRule.includes("A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue"), cueRule.includes("Any question or lookup gets its cue, even one about what is on the screen."), cueRule.includes("\"Let me open Maps.\""), cueRule.includes("When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup.")],
+    exemptionInRule: [cueRule.includes("A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue"), cueRule.includes("Any question or lookup gets its cue, even one about what is on the screen."), cueRule.includes("\"Let me open Maps.\""), cueRule.includes("When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup."), cueRule.includes("Say that something was saved, sent, opened or changed only when a tool result in this turn shows it")],
     ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
-  }, { exemptionInRule: [true, true, true, true], ruleInEverySystemPrompt: true }))
+  }, { exemptionInRule: [true, true, true, true, true], ruleInEverySystemPrompt: true }))
   try Effect.try(() => assert.deepStrictEqual({
     instruction, question, politeAsk, answer, assentWithoutWork, openAsPart, navigationOnly, calendarOnly, sharedSelected, sharedBothSelected, sharedUnselected, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
   }, {

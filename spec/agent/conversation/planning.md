@@ -480,6 +480,9 @@ Any question or lookup gets its cue, even one about what is on the screen. The c
 says the work is done or under way, never repeats the request, and is left
 empty, with the work still done, when the person asked for silence; later
 tool calls come with no text.
+The same rule asks the model to say that something was saved, sent,
+opened or changed only when a tool result of this turn shows it, and, when
+no offered tool can do what was asked, to say so in its own words.
 
 The shell reads the model's text as a `Cue` only when the whole of it is
 one to three sentences of the closed acknowledgment grammar (`On it`,
@@ -555,6 +558,56 @@ pure def lawNoCueOrADestinationConfirmationNeverAcknowledges(instruction: bool, 
   not(acknowledges(readDraft(Blank, instruction, calls), calls, earlierCalls)) and not(acknowledges(readDraft(OtherText, instruction, calls), calls, earlierCalls))
 pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: int, laterDraft: Draft, laterCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
+```
+
+### A tool call the model wrote as text never reaches the owner, and its step is asked again once
+
+A model may write a tool call into its text instead of making it: a
+`<tool_call>` or `</tool_call>` tag, `<function=` or `<function_call>`.
+What the [binding](../models/binding.md) did not read as a call is
+markup, never words for the owner. The stream holds the text from the
+first marker on, and a trailing `<` that could still begin one, so the
+owner never sees markup, even for a moment. A step whose answer carries
+markup and no tool call runs nothing; the model reads, after its own
+answer with the markup left out, that the tool call it wrote as text did
+not run, and is asked once more, within the step bound, to call an
+offered tool or answer in words. A second such answer in the turn, an
+answer with markup beside its tool calls, and an answer at the last step
+are read without the markup: the text before the first marker is the
+draft. A `REPLY` call's text is read the same way.
+
+```quint
+type WrittenMarkup = NoMarkup | AskForTheCall | DropTheMarkup
+pure def writtenMarkupOf(markup: bool, calls: int, markupAskedBefore: bool, stepsLeft: int): WrittenMarkup =
+  if (not(markup)) NoMarkup
+  else if (calls == 0 and not(markupAskedBefore) and stepsLeft > 0) AskForTheCall
+  else DropTheMarkup
+pure def lawWrittenMarkupIsAskedAgainAtMostOnce(calls: int, stepsLeft: int): bool =
+  writtenMarkupOf(true, calls, true, stepsLeft) == DropTheMarkup
+pure def lawMarkupBesideARealCallIsDropped(calls: int, markupAskedBefore: bool, stepsLeft: int): bool =
+  calls > 0 implies writtenMarkupOf(true, calls, markupAskedBefore, stepsLeft) == DropTheMarkup
+pure def lawMarkupAtTheLastStepIsDropped(calls: int, markupAskedBefore: bool): bool =
+  writtenMarkupOf(true, calls, markupAskedBefore, 0) == DropTheMarkup
+pure def lawTextWithoutMarkupIsReadAsItIs(calls: int, markupAskedBefore: bool, stepsLeft: int): bool =
+  writtenMarkupOf(false, calls, markupAskedBefore, stepsLeft) == NoMarkup
+```
+
+### When nothing ran in a turn, the answer it asks for is told so
+
+When a step is asked once more to answer with what the turn holds (a cue
+or a blank answer with no tool call, above) and no call of the turn was
+dispatched, so every step it holds was refused before it ran, the note
+also says that no action ran in this turn and nothing was saved, sent or
+changed, so the answer must not say that anything was. The fact is the
+turn's own record of its steps, never read from the model's words.
+
+```quint
+pure def nothingRan(outcomes: List[StepOutcome]): bool = not(outcomes.some(o => o != Rejected))
+pure val outcomesValues = Set(List(), List(Rejected), List(Applied), List(Rejected, Failed), List(NoEffect))
+pure def lawADispatchedStepIsNeverNothing(outcomes: List[StepOutcome]): bool =
+  outcomes.some(o => o != Rejected) implies not(nothingRan(outcomes))
+pure def lawRefusalsAloneAreNothing(outcomes: List[StepOutcome]): bool =
+  nothingRan(outcomes.select(o => o == Rejected))
 ```
 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
