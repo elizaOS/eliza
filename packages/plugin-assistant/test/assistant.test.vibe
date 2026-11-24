@@ -505,6 +505,44 @@ it.effect('To-dos change once per request, by their text whatever its case or pu
   }
 })
 
+it.effect('A request recorded as a no-op still refuses a different change under its key, and a re-start or re-cancel retried after the to-do moved on stays a no-op (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches")', effect () => {
+  const seen = ports()
+  const receiptOf = (result: ActionResult) => [result.success, result.effectReceipts?.[0]?.outcome, result.data?.outcome ?? null]
+  const failureCode = (result: ActionResult) => {
+    const receipt = result.effectReceipts?.[0]
+    return receipt?.outcome === "failed" ? receipt.failure.code : undefined
+  }
+  provide portsLayer(seen) {
+    try changeTodos({ op: "create", content: "Buy oat milk" }, heard("k0", "add buy oat milk"))
+    const sameName = try changeTodos({ op: "rename", target: "Buy oat milk", content: "Buy oat milk" }, heard("k1", "call it buy oat milk"))
+    const otherName = try changeTodos({ op: "rename", target: "Buy oat milk", content: "Buy almond milk" }, heard("k1", "call it buy oat milk"))
+    try equal({ sameName: receiptOf(sameName), otherName: [otherName.success, otherName.effectReceipts?.[0]?.outcome, failureCode(otherName), otherName.text], kept: (try currentTodos()).todos.map(({ content }) => content) }, {
+      sameName: [true, "noop", "unchanged"],
+      otherName: [false, "failed", "TODO_IDEMPOTENCY_CONFLICT", "That request was already used for a different change, so nothing was changed."],
+      kept: ["Buy oat milk"],
+    })
+    try changeTodos({ op: "create", content: "Ship the feature" }, heard("s0", "add ship the feature"))
+    const started = try changeTodos({ op: "start", target: "Ship the feature" }, heard("s1", "start it"))
+    const restarted = try changeTodos({ op: "start", target: "Ship the feature" }, heard("s2", "start it again"))
+    try changeTodos({ op: "reopen", target: "Ship the feature" }, heard("s3", "back to pending"))
+    const restartRetried = try changeTodos({ op: "start", target: "Ship the feature" }, heard("s2", "start it again"))
+    try changeTodos({ op: "create", content: "Old task" }, heard("x0", "add old task"))
+    const cancelled = try changeTodos({ op: "cancel", target: "Old task" }, heard("x1", "drop it"))
+    const recancelled = try changeTodos({ op: "cancel", target: "Old task" }, heard("x2", "drop it again"))
+    try changeTodos({ op: "reopen", target: "Old task" }, heard("x3", "bring it back"))
+    const recancelRetried = try changeTodos({ op: "cancel", target: "Old task" }, heard("x2", "drop it again"))
+    const listed = (try currentTodos()).todos
+    const statusOf = (content: string) => listed.find((todo) => todo.content === content)?.todoStatus
+    try equal({
+      start: [started, restarted, restartRetried].map(receiptOf), startStatus: statusOf("Ship the feature"),
+      cancel: [cancelled, recancelled, recancelRetried].map(receiptOf), cancelStatus: statusOf("Old task"),
+    }, {
+      start: [[true, "applied", null], [true, "noop", "unchanged"], [true, "noop", "replayed"]], startStatus: "TodoPending",
+      cancel: [[true, "applied", null], [true, "noop", "unchanged"], [true, "noop", "replayed"]], cancelStatus: "TodoPending",
+    })
+  }
+})
+
 it.effect('The owner\'s stated zone runs their clock, a trip overrides it only during the trip, and a statement naming no zone changes nothing (spec/assistant/timezone.md, "Story: Run my day on my own clock")', effect () => {
   const seen = ports()
   const zones = () => rowsOf(seen, goalCheckinKind).map(({ trigger }) => trigger.kind === "cron" ? trigger.tz : trigger.kind)
