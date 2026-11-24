@@ -2,9 +2,9 @@
 import { readTurnContext, type AgentModule, type AgentPlugin, type ModuleFactory } from "@elizaos/agent"
 import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
-import type { Action, ActionResult, EffectReceipt, Memory, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
+import type { Action, ActionResult, EffectReceipt, IAgentRuntime, Memory, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
 import { displayZoneSource, emptyCollectionObserved, localTimesShown, notesCapability, receiptOperation, receiptOutcome, refusalKind, type NotesCapability, type NotesRefusal, type NotesWrite } from "../gen/notes__records.effect.vibe"
-import type { NoteTarget, NotesQuery } from "./collection.vibe"
+import type { ModelPick, NoteTarget, NotesQuery } from "./collection.vibe"
 import { notesDeviceFamily } from "./device-proposals.vibe"
 import { json } from "./format.vibe"
 import { notesNamedIn, ownerRequestText } from "./lookup.vibe"
@@ -135,7 +135,51 @@ interface NotesActionSpec {
   readonly description: string
   readonly parameters: NonNullable<Action["parameters"]>
   readonly writes?: true
-  readonly run: (params: Params, message: Memory) => ActionResult!NotesFailure
+  readonly run: (params: Params, message: Memory, pick: ModelPick) => ActionResult!NotesFailure
+}
+
+type OwnerChoice = { readonly offeredIn: string; readonly candidateIds: readonly string[]; readonly usedIn?: string }
+type ChoiceCache = Pick<IAgentRuntime, "getCache" | "setCache">
+
+function choiceCache(runtime: unknown): ChoiceCache | undefined {
+  return typeof runtime === "object" && runtime !== null && "getCache" in runtime && "setCache" in runtime
+    && typeof runtime.getCache === "function" && typeof runtime.setCache === "function" ? runtime as ChoiceCache : undefined
+}
+
+function choiceKey(message: Memory): string {
+  return `notes-owner-choice:${message.roomId}`
+}
+
+function strings(value: unknown): readonly string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined
+}
+
+function ownerChoiceOf(kept: unknown): OwnerChoice | undefined {
+  if (typeof kept !== "object" || kept === null || !("offeredIn" in kept) || typeof kept.offeredIn !== "string") return undefined
+  const candidateIds = "candidateIds" in kept ? strings(kept.candidateIds) : undefined
+  const usedIn = "usedIn" in kept && typeof kept.usedIn === "string" ? kept.usedIn : undefined
+  return candidateIds === undefined ? undefined : { offeredIn: kept.offeredIn, candidateIds, ...(usedIn === undefined ? {} : { usedIn }) }
+}
+
+effect function keptChoice(cache: ChoiceCache | undefined, message: Memory): (OwnerChoice | undefined)!! {
+  if (cache === undefined || message.id === undefined) return undefined
+  return ownerChoiceOf(tryPromise(() => cache.getCache<unknown>(choiceKey(message))) catch () => undefined)
+}
+
+function chosenFor(choice: OwnerChoice | undefined, messageId: string | undefined): readonly string[] {
+  if (choice === undefined || messageId === undefined || choice.offeredIn === messageId) return []
+  return choice.usedIn === undefined || choice.usedIn === messageId ? choice.candidateIds : []
+}
+
+effect function keepChoice(cache: ChoiceCache | undefined, message: Memory, choice: OwnerChoice | undefined, result: ActionResult): boolean!! {
+  const messageId = message.id
+  if (cache === undefined || messageId === undefined) return false
+  const offered = result.data?.code === "NOTES_AMBIGUOUS_NOTE" ? strings(result.data.candidateIds) : undefined
+  const changed = result.success === true && typeof result.data?.noteId === "string" ? result.data.noteId : undefined
+  const next: OwnerChoice | undefined = offered !== undefined ? { offeredIn: messageId, candidateIds: offered }
+    : choice !== undefined && changed !== undefined && chosenFor(choice, messageId).includes(changed) ? { ...choice, usedIn: messageId }
+    : undefined
+  return next !== undefined && (tryPromise(() => cache.setCache(choiceKey(message), next)) catch () => false)
 }
 
 const capabilityTags: Readonly<Record<NotesCapability, string>> = { ReadCapability: "capability:read", WriteCapability: "capability:write" }
@@ -150,7 +194,13 @@ function notesAction(notes: NotesCollection, spec: NotesActionSpec): Action {
     roleGate: { minRole: "OWNER" },
     tags: ["resource:notes", capabilityTags[notesCapability(spec.writes === true ? "WriteCall" : "ReadCall")]],
     validate: async () => true,
-    handler: (_runtime, message, _state, options) => runPromise(Effect.catch(spec.run(paramsOf(options), message), (error) => notesRefusalResult(notes, error))),
+    handler: (runtime, message, _state, options) => runPromise(effect {
+      const cache = choiceCache(runtime)
+      const choice = try keptChoice(cache, message)
+      const result = spec.run(paramsOf(options), message, { ownerChose: chosenFor(choice, message.id) }) catch effect (error) => try notesRefusalResult(notes, error)
+      try keepChoice(cache, message, choice, result)
+      return result
+    }),
   }
 }
 
@@ -274,14 +324,14 @@ function writeActions(notes: NotesCollection): Action[] {
         { name: "color", description: "A replacement color.", required: false, schema: { type: "string", enum: ["yellow", "green", "rose", "slate"] } },
         revisionParameter,
       ],
-      run: effect (params) => {
+      run: effect (params, _message, pick) => {
         const target = targetOf(params, "noteId", "content")
         if (typeof target === "string") return missingTarget(target)
         const patch = Object.fromEntries(Object.entries({
           textEdit: params.textEdit, authoredEdit: params.authoredEdit, content: params.replacementContent,
           title: params.title, body: params.body, color: params.color,
         }).filter(([, value]) => value !== undefined))
-        const updated = try notes.update(target, patch, params.expectedRevision)
+        const updated = try notes.update(target, patch, params.expectedRevision, pick)
         return try noteChangeResult("WriteEdit", "Updated", updated.value, updated.snapshot.revision)
       },
     }),
@@ -290,10 +340,10 @@ function writeActions(notes: NotesCollection): Action[] {
       writes: true,
       description: "Move one note to Recently deleted. Pick the note the owner means from the saved notes, whatever words they used for it, and pass its exact noteId; when more than one note could be meant, ask which one instead. content deletes only the note whose exact title it gives; any other match comes back as a candidate for the owner to confirm and nothing is deleted.",
       parameters: [idParameter("Exact note ID from a current record."), contentParameter("The note's title or text.")],
-      run: effect (params) => {
+      run: effect (params, _message, pick) => {
         const target = targetOf(params, "noteId", "content")
         if (typeof target === "string") return missingTarget(target)
-        const deleted = try notes.delete(target, true)
+        const deleted = try notes.delete(target, pick)
         return try noteChangeResult("WriteDelete", "Moved to Recently deleted", deleted.value, deleted.snapshot.revision)
       },
     }),

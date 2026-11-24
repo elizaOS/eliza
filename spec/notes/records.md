@@ -89,7 +89,14 @@ in the request the host bound to this turn, never the text a route wrapped
 around it; with no bound request, it reads the message's own text with its
 envelopes removed. The model picks the note to edit or delete from the
 saved-notes index, whatever words the owner used for it, and an exact ID
-edits or deletes that note. A delete the agent asks for by content deletes
+edits or deletes that note when no other distinct note has its title, case
+and spacing aside. When another one does, the model's pick is a guess: the
+agent answers with every note of that title for the owner to choose from
+and changes nothing, unless an answer like it, in an earlier message of
+this conversation, offered that ID, so the owner has chosen since. That
+choice serves the one message that changes a note by it, and no message
+after. A change the owner makes in the Notes app by a note's ID is the
+owner's own pick and is never asked about. A delete the agent asks for by content deletes
 only the note whose exact title, case and spacing aside, that content
 gives; a match on other text offers the closest note for the owner to
 confirm and deletes nothing. Content that matches distinct notes asks the
@@ -106,6 +113,11 @@ pure def deleteByContentAllowed(isOwner: bool, givesExactTitle: bool): bool = no
 pure def lawBoundRequestWins(requestBound: bool): bool = requestBound implies ownerWordsSource(requestBound) == BoundRequestWords
 pure def lawOnlyTheOwnerReachesNotes(givesExactTitle: bool): bool = not(deleteByContentAllowed(false, givesExactTitle))
 pure def lawAnInexactMatchIsNotDeleted(isOwner: bool): bool = not(deleteByContentAllowed(isOwner, false))
+pure def pickedNoteChanged(isOwner: bool, titleShared: bool, ownerChoseEarlier: bool): bool =
+  notesAccessAllowed(isOwner) and (not(titleShared) or ownerChoseEarlier)
+pure def lawAGuessBetweenSharedTitlesAsksFirst(isOwner: bool): bool = not(pickedNoteChanged(isOwner, true, false))
+pure def lawTheOwnersChoiceIsChanged(titleShared: bool): bool = pickedNoteChanged(true, titleShared, true)
+pure def lawAnUnsharedTitleNeedsNoChoice(ownerChoseEarlier: bool): bool = pickedNoteChanged(true, false, ownerChoseEarlier)
 ```
 
 ### A move by name takes the identical copies of the note along

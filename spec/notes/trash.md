@@ -242,7 +242,13 @@ found no note answers "No matching note was shared. Nothing was deleted.",
 and one that left the choice to the owner's uncertain pick answers "The
 lookup did not establish which note you meant. Nothing was deleted. Choose
 the exact note before continuing."; neither deletes anything. A read or an
-edit lookup is never offered for deletion.
+edit lookup is never offered for deletion. The intent is the model's
+reading, not the owner's words, so the deletion review on the phone, which
+names the exact note and runs only on the owner's approval, is what stands
+between a deletion intent that text from a page, an email or a connector
+led the model to and a deleted note. A deletion intent also needs words of
+the owner's own in the message, and a title lookup's title must be words
+the owner said ([read](read.md)).
 
 ```quint
 type LookupIntent = ReadIntent | EditIntent | DeleteIntent

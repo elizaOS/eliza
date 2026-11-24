@@ -68,9 +68,8 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
   if (target === undefined) return refused("Name the view to show by its id, label or alias.")
   const exact = target === savedNoteEditor
   const query = exact ? parameterOf(options, "note") : undefined
-  if (exact && !offersEditor(message, clientId, query !== undefined, true)) {
-    return query === undefined ? coached("Name the saved note to open with note: the content argument given to NOTES_GET.") : refused("This turn cannot open a saved Notes editor.")
-  }
+  if (exact && !offersEditor(message, clientId, true, true)) return refused("This turn cannot open a saved Notes editor.")
+  if (exact && query === undefined) return coached("Name the saved note to open with note: the content argument given to NOTES_GET.")
   const noteId = exact ? resolvedNote(options) : undefined
   if (exact && noteId === undefined) return coached("Read the exact current note with NOTES_GET first. If several notes match, ask which one.")
   if (noteId !== undefined && query !== undefined) {

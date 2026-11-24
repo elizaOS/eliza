@@ -228,6 +228,15 @@ it.live('A completed turn prepares the saved editor for the note the model named
   try Effect.sync(() => { current = true })
   try Effect.sync(() => cloud.script(toolCalls("", get("Ferry checklist")), toolCalls("", view("notes-editor")), text("Which note?")))
   const unnamed = handoff(try send("Open my Ferry checklist in Notes.", metadata))
+  const modelSaw = effect (request: string, data: object, replies: () => void) => {
+    const from = cloud.calls.length
+    try Effect.sync(replies)
+    const values = handoff(try send(request, data))
+    return { values, seen: JSON.stringify(cloud.calls.slice(from).filter(({ path }) => path.endsWith("/chat/completions"))) }
+  }
+  const mismatched = try modelSaw("Open my Ferry checklist in Notes.", metadata, () => cloud.script(toolCalls("", get("Ferry checklist")), toolCalls("", editor("Calendar")), text("Which note?")))
+  const unsupported = { viewDelivery: "completed-action", viewClientId: clientId, voiceUi: { viewDelivery: "completed-action", uiClientId: clientId } }
+  const noEditor = try modelSaw("Open my Ferry checklist in Notes.", unsupported, () => cloud.script(toolCalls("", get("Ferry checklist")), toolCalls("", view("notes-editor")), text("I can't open that note here.")))
   const calendarCallStart = cloud.calls.length
   try Effect.sync(() => cloud.script(toolCalls("", view("Calendar")), text("Calendar is ready.")))
   const calendar = handoff(try send("Open Calendar.", metadata))
@@ -249,6 +258,11 @@ it.live('A completed turn prepares the saved editor for the note the model named
     assert.deepStrictEqual(applied.body, { ok: true, accepted: true })
     assert.isUndefined(stale?.navigationBinding)
     assert.isUndefined(unnamed?.navigationBinding)
+    assert.isUndefined(mismatched.values?.navigationBinding)
+    assert.include(mismatched.seen, "did not match note to the one note NOTES_GET found")
+    assert.isUndefined(noEditor.values?.navigationBinding)
+    assert.include(noEditor.seen, "This turn cannot open a saved Notes editor.")
+    assert.notInclude(noEditor.seen, "Name the saved note to open")
     assert.strictEqual(calendar?.navigationBinding?.viewId, "agenda")
     assert.isUndefined(calendar?.subview)
     assert.strictEqual(alias?.navigationBinding?.viewId, "agenda")

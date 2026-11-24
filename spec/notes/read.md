@@ -226,14 +226,19 @@ as a named update with the name and empty fields, offered wherever a named
 delete is, and for an edit of the open note as its update with empty
 fields. A title or latest lookup carries the model's intent for it, read,
 edit or delete, which the agent keeps with the lookup and never sends to the
-phone; an edit or delete intent the agent cannot keep proposes nothing. A named edit is proposed as the title lookup of that name with the
+phone; an edit or delete intent the agent cannot keep proposes nothing, and
+the owner hears that the lookup cannot be made. A lookup with the edit or
+delete intent needs words of the owner's own in this message: one whose
+text is all an external envelope proposes nothing, and the owner is asked
+which note. A named edit is proposed as the title lookup of that name with the
 edit intent, never with the model's replacement fields, and only when the
 phone negotiated the lookup; an edit of the open note is proposed as its
 selected read with the edit intent, never with replacement fields, and any
-other selected read is a read. Either edit is proposed only when the
-launch completes reads, so the shared note comes back to this conversation;
-otherwise nothing is proposed, nothing is read, and the owner hears that
-the edit cannot be prepared. The prompt to share or choose a note tells the
+other selected read is a read. Either edit, and a lookup with the edit or
+delete intent, is proposed only when the launch completes reads, so the
+shared note comes back to this conversation; otherwise nothing is proposed,
+nothing is read, and the owner hears that the edit, or for a delete intent
+the deletion, cannot be prepared. The prompt to share or choose a note tells the
 owner that sharing changes nothing and that any change gets its own review.
 A restore names only a note an applied deletion of this conversation moved
 to Recently deleted; any other note ID proposes nothing.
@@ -245,28 +250,36 @@ pure def carriesOwnerText(proposal: PhoneNotesProposal): bool =
   proposal == TitleLookup or proposal == ContentSearch or proposal == NamedDelete or proposal == NamedEdit
 pure def targetsOpenNote(proposal: PhoneNotesProposal): bool = proposal == OpenNoteTarget or proposal == OpenNoteEdit
 pure def editsANote(proposal: PhoneNotesProposal): bool = proposal == NamedEdit or proposal == OpenNoteEdit
-pure def groundPhoneNotes(proposal: PhoneNotesProposal, inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool): PhoneNotesGrounding =
-  if (carriesOwnerText(proposal) and not(inOwnerWords)) AskWhichNote
+pure def lookupAsksAChange(proposal: PhoneNotesProposal, changeAsked: bool): bool =
+  changeAsked and (proposal == TitleLookup or proposal == LatestLookup)
+pure def changesANote(proposal: PhoneNotesProposal, changeAsked: bool): bool =
+  editsANote(proposal) or lookupAsksAChange(proposal, changeAsked)
+pure def groundPhoneNotes(proposal: PhoneNotesProposal, inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool, changeAsked: bool): PhoneNotesGrounding =
+  if ((carriesOwnerText(proposal) or lookupAsksAChange(proposal, changeAsked)) and not(inOwnerWords)) AskWhichNote
   else if (targetsOpenNote(proposal) and not(matchesOpenNote)) NotTheOpenNote
-  else if (editsANote(proposal) and not(readsComplete)) EditUnavailable
+  else if (changesANote(proposal, changeAsked) and not(readsComplete)) EditUnavailable
   else if (proposal == NamedEdit) (if (lookupNegotiated) GroundedAsTitleLookup else LookupUnavailable)
   else if (proposal == OpenNoteEdit) GroundedAsSelectedRead
   else if (proposal == RestoreDeleted and not(deletedHere)) RestoreUnknown
   else GroundedAsProposed
-pure def lawUnsaidTextIsNeverProposed(proposal: PhoneNotesProposal, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool): bool =
-  carriesOwnerText(proposal) implies groundPhoneNotes(proposal, false, matchesOpenNote, lookupNegotiated, deletedHere, readsComplete) == AskWhichNote
-pure def lawANamedEditIsALookupFirst(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool): bool =
-  groundPhoneNotes(NamedEdit, inOwnerWords, matchesOpenNote, lookupNegotiated, deletedHere, readsComplete) != GroundedAsProposed
-pure def lawAnOpenNoteEditIsItsReadFirst(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool): bool =
-  groundPhoneNotes(OpenNoteEdit, inOwnerWords, matchesOpenNote, lookupNegotiated, deletedHere, readsComplete) != GroundedAsProposed
-pure def lawAnEditIsReadOnlyWhereItsReadComesBack(proposal: PhoneNotesProposal, inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool): bool =
-  editsANote(proposal) implies (
-    groundPhoneNotes(proposal, inOwnerWords, matchesOpenNote, lookupNegotiated, deletedHere, false) != GroundedAsTitleLookup
-    and groundPhoneNotes(proposal, inOwnerWords, matchesOpenNote, lookupNegotiated, deletedHere, false) != GroundedAsSelectedRead)
-pure def lawAnotherNoteIsNotTheOpenOne(proposal: PhoneNotesProposal, inOwnerWords: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool): bool =
-  targetsOpenNote(proposal) implies groundPhoneNotes(proposal, inOwnerWords, false, lookupNegotiated, deletedHere, readsComplete) == NotTheOpenNote
-pure def lawOnlyADeletedNoteIsRestored(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, readsComplete: bool): bool =
-  groundPhoneNotes(RestoreDeleted, inOwnerWords, matchesOpenNote, lookupNegotiated, false, readsComplete) == RestoreUnknown
+pure def proposes(grounding: PhoneNotesGrounding): bool =
+  grounding == GroundedAsProposed or grounding == GroundedAsTitleLookup or grounding == GroundedAsSelectedRead
+pure def lawUnsaidTextIsNeverProposed(proposal: PhoneNotesProposal, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool, changeAsked: bool): bool =
+  carriesOwnerText(proposal) implies groundPhoneNotes(proposal, false, matchesOpenNote, lookupNegotiated, deletedHere, readsComplete, changeAsked) == AskWhichNote
+pure def lawAChangeLookupNeedsTheOwnersWords(proposal: PhoneNotesProposal, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool): bool =
+  lookupAsksAChange(proposal, true) implies groundPhoneNotes(proposal, false, matchesOpenNote, lookupNegotiated, deletedHere, readsComplete, true) == AskWhichNote
+pure def lawANamedEditIsALookupFirst(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool, changeAsked: bool): bool =
+  groundPhoneNotes(NamedEdit, inOwnerWords, matchesOpenNote, lookupNegotiated, deletedHere, readsComplete, changeAsked) != GroundedAsProposed
+pure def lawAnOpenNoteEditIsItsReadFirst(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool, changeAsked: bool): bool =
+  groundPhoneNotes(OpenNoteEdit, inOwnerWords, matchesOpenNote, lookupNegotiated, deletedHere, readsComplete, changeAsked) != GroundedAsProposed
+pure def lawAnEditIsReadOnlyWhereItsReadComesBack(proposal: PhoneNotesProposal, inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool, changeAsked: bool): bool =
+  changesANote(proposal, changeAsked) implies not(proposes(groundPhoneNotes(proposal, inOwnerWords, matchesOpenNote, lookupNegotiated, deletedHere, false, changeAsked)))
+pure def lawAReadLookupNeedsNoReturnedRead(proposal: PhoneNotesProposal, matchesOpenNote: bool, lookupNegotiated: bool, deletedHere: bool): bool =
+  (proposal == TitleLookup or proposal == LatestLookup) implies groundPhoneNotes(proposal, true, matchesOpenNote, lookupNegotiated, deletedHere, false, false) == GroundedAsProposed
+pure def lawAnotherNoteIsNotTheOpenOne(proposal: PhoneNotesProposal, inOwnerWords: bool, lookupNegotiated: bool, deletedHere: bool, readsComplete: bool, changeAsked: bool): bool =
+  targetsOpenNote(proposal) implies groundPhoneNotes(proposal, inOwnerWords, false, lookupNegotiated, deletedHere, readsComplete, changeAsked) == NotTheOpenNote
+pure def lawOnlyADeletedNoteIsRestored(inOwnerWords: bool, matchesOpenNote: bool, lookupNegotiated: bool, readsComplete: bool, changeAsked: bool): bool =
+  groundPhoneNotes(RestoreDeleted, inOwnerWords, matchesOpenNote, lookupNegotiated, false, readsComplete, changeAsked) == RestoreUnknown
 ```
 
 ### A phone note is edited only from the note the owner shared, in a review of its own

@@ -1,6 +1,6 @@
 // spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A note's title and body are saved as well-formed text"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
 import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
-import { copyFate, creationReturnsExisting, deleteByContentAllowed, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, revisionAdmits } from "../gen/notes__records.effect.vibe"
+import { copyFate, creationReturnsExisting, deleteByContentAllowed, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, pickedNoteChanged, revisionAdmits } from "../gen/notes__records.effect.vibe"
 import { authoredNoteText, editAuthoredNoteFormat, type AuthoredNoteEdit } from "./format.vibe"
 import { lookupMatches, noteContentKey, sameTitle, type NoteSelector } from "./lookup.vibe"
 import { noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest } from "./records.schema.vibe"
@@ -235,10 +235,24 @@ function emptyPatch(patch: UpdateRequest): boolean {
   return Object.values(patch).every((value) => value === undefined)
 }
 
-export effect function updateIn(document: NotesDocument, target: NoteTarget, patch: UpdateRequest, expectedRevision: number | undefined, at: Instant): Change<StickyNote>!NotesRefused {
+export interface ModelPick {
+  readonly ownerChose: readonly string[]
+}
+
+effect function pickedIndex(notes: readonly StickyNote[], target: NoteTarget, pick: ModelPick | undefined): number!NotesRefused {
+  const index = try resolveIndex(notes, target)
+  const picked = notes[index]
+  if (pick === undefined || !("id" in target) || picked === undefined) return index
+  const key = noteContentKey(picked)
+  const titled = notes.filter((note) => sameTitle(note.title, picked.title))
+  if (pickedNoteChanged(true, titled.some((note) => noteContentKey(note) !== key), pick.ownerChose.includes(picked.id))) return index
+  throw refused("NOTES_AMBIGUOUS_NOTE", `${titled.length} notes are titled "${picked.title}": ask the owner which one. Nothing was changed.`, titled.map((note) => note.id))
+}
+
+export effect function updateIn(document: NotesDocument, target: NoteTarget, patch: UpdateRequest, expectedRevision: number | undefined, at: Instant, pick?: ModelPick): Change<StickyNote>!NotesRefused {
   if (emptyPatch(patch)) throw refused("NOTES_VALIDATION_FAILED", "Supply one edit: textEdit, authoredEdit, content, title, body, format or color.")
   try requireRevision(document, needsRevision(patch), expectedRevision)
-  const index = try resolveIndex(document.notes, target)
+  const index = try pickedIndex(document.notes, target, pick)
   const existing = document.notes[index]
   if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
   const updated = try applyPatch(existing, patch, at.iso)
@@ -250,12 +264,12 @@ export effect function updateIn(document: NotesDocument, target: NoteTarget, pat
   return { next: { ...document, notes }, value: updated, mutation: "note:updated" }
 }
 
-export effect function deleteIn(document: NotesDocument, target: NoteTarget, at: Instant, exactTitle: boolean): Change<StickyNote>!NotesRefused {
-  const index = try resolveIndex(document.notes, target)
+export effect function deleteIn(document: NotesDocument, target: NoteTarget, at: Instant, pick?: ModelPick): Change<StickyNote>!NotesRefused {
+  const index = try pickedIndex(document.notes, target, pick)
   const existing = document.notes[index]
   if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
   const byName = !("id" in target)
-  if (byName && exactTitle && !deleteByContentAllowed(true, sameTitle(existing.title, target.value))) {
+  if (byName && pick !== undefined && !deleteByContentAllowed(true, sameTitle(existing.title, target.value))) {
     throw refused("NOTES_DELETE_NAME_MISMATCH", `The closest note is "${existing.title}" — that isn't what you named, so nothing was deleted. Delete it?`, [existing.id])
   }
   const key = noteContentKey(existing)

@@ -214,6 +214,7 @@ function askedIntent(asked: unknown): LookupIntent {
 
 function prepared(asked: unknown): unknown {
   if (typeof asked !== "object" || asked === null || !("type" in asked) || asked.type !== "notes_query" || !("intent" in asked)) return asked
+  if (typeof asked.intent !== "string" || intentOfCall[asked.intent] === undefined) return asked
   return Object.fromEntries(Object.entries(asked).filter(([key]) => key !== "intent"))
 }
 
@@ -227,7 +228,9 @@ effect function deletedHere(turn: DeviceTurn, noteId: string) {
   })
 }
 
-const lookupUnkept = refused("NOTES_UPDATE_UNAVAILABLE", "The lookup's intent could not be kept. Nothing was read or changed.", "I can't look that note up on your phone right now.")
+const lookupUnkept = refused("NOTES_LOOKUP_UNAVAILABLE", "The lookup's intent could not be kept. Nothing was read or changed.", "I can't look that note up on your phone right now.")
+const deletionUnavailable = refused("NOTES_DELETE_UNAVAILABLE", "This phone cannot return the looked-up note to this conversation, so its deletion cannot be offered. Nothing was read or deleted.",
+  "I can't prepare that deletion on your phone right now.")
 
 effect function intended(runtime: IAgentRuntime, turn: DeviceTurn, read: DeviceOperation, intent: LookupIntent, unkept: Grounding): Grounding!! {
   const kept = try keepIntent(runtime, turn.message.id, read, intent)
@@ -238,8 +241,11 @@ effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, 
   const { proposal, said } = proposalOf(operation)
   const lookup = { type: "notes_query", query: { kind: "title", text: said ?? "" } } as const
   const deleted = operation.type === "notes_restore" && (try deletedHere(turn, operation.noteId))
-  const outcome = groundPhoneNotes(proposal, said === undefined || titleAppearsAsNamedPhrase(turn.ownerText, said),
-    sameTarget(targetOf(operation), selectedTarget(turn)), turn.admit(lookup) !== undefined, deleted, turn.completesReads)
+  const intent = operation.type === "notes_query" ? askedIntent(asked) : "ReadIntent"
+  const changeAsked = intent !== "ReadIntent"
+  const ownerSpoke = turn.ownerText.trim() !== ""
+  const outcome = groundPhoneNotes(proposal, (said === undefined || titleAppearsAsNamedPhrase(turn.ownerText, said)) && (!changeAsked || ownerSpoke),
+    sameTarget(targetOf(operation), selectedTarget(turn)), turn.admit(lookup) !== undefined, deleted, turn.completesReads, changeAsked)
   switch (outcome) {
     case "AskWhichNote":
       return refused("NOTES_LOOKUP_NOT_REQUESTED", "The note text in this operation is not words the owner said in this message. No device proposal was created. Use the owner's own words for the title, name or search, or ask which note.",
@@ -248,7 +254,8 @@ effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, 
       return refused("NOTES_TARGET_NOT_SELECTED", "The target is not the note open in Notes on the phone. No device proposal was created. Use the open note's exact target, or ask the owner to open the note.",
         "Open that note in Notes on your phone, then ask me again.")
     case "EditUnavailable":
-      return refused("NOTES_UPDATE_UNAVAILABLE", "The current note update authority is unavailable. Nothing was read or changed.", "I can't prepare that edit on your phone right now.")
+      return intent === "DeleteIntent" ? deletionUnavailable
+        : refused("NOTES_UPDATE_UNAVAILABLE", "The current note update authority is unavailable. Nothing was read or changed.", "I can't prepare that edit on your phone right now.")
     case "LookupUnavailable":
       return refused("NOTES_UPDATE_UNAVAILABLE", "Current named-note lookup access is unavailable. Nothing was read or changed.", "I can't look that note up on your phone right now.")
     case "RestoreUnknown":
@@ -261,7 +268,7 @@ effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, 
     }
     case "GroundedAsProposed":
       switch (operation.type) {
-        case "notes_query": return try intended(runtime, turn, operation, askedIntent(asked), lookupUnkept)
+        case "notes_query": return try intended(runtime, turn, operation, intent, lookupUnkept)
         case "notes_move": return operation.folder === null ? grounded(operation) : listedFolder(turn, operation.folder, operation)
         case "notes_filter": return operation.folder === undefined ? grounded(operation) : listedFolder(turn, operation.folder, operation)
         case "notes_folder_create":
