@@ -241,7 +241,7 @@ it.live("Fund chat once and stream live complete frames, even when delivery ends
     const errorEnd = streamError + doneFrame
     assert.deepStrictEqual([streamed.headers["content-type"], streamed.body, noUsage.body, truncated.body, malformedFrame.body, oversizedFrame.body, code(refused), usageNotAsked.body, reportedBeforeFailure.body],
       ["text/event-stream", cloudStream, cloudFrames.join("") + doneFrame, cloudFrames.join("") + errorEnd, cloudFrames[0] + errorEnd, errorEnd,
-        [503, "provider_unavailable"], cloudFrames.join("") + doneFrame, cloudFrames.join("") + errorEnd])
+        [429, "rate_limited"], cloudFrames.join("") + doneFrame, cloudFrames.join("") + errorEnd])
     assert.isAbove(Number(refused.headers["retry-after"]), 0)
     assert.deepStrictEqual([live.status, live.type, partial.startsWith(cloudFrames[0] ?? ""), beforeCancel?.phase, llm.aborted, decoded],
       [200, "text/event-stream", true, "dispatched", 2, [replyText, 1, "assistant", true]])

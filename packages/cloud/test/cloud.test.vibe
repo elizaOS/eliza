@@ -3402,20 +3402,23 @@ describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
     const refusedSets = [
       try run(["prices", "set", "--model", "unoffered", "--input-per-1k", "100", "--output-per-1k", "200"]),
       try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "1.5", "--output-per-1k", "200"]),
-      try run(["prices", "set", "--model", "test-chat", "--output-per-1k", "200"])
+      try run(["prices", "set", "--model", "test-chat", "--output-per-1k", "200"]),
+      try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--cached-input-per-1k", "151", "--output-per-1k", "600"])
     ]
-    const set = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
+    const sameAsInput = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
+    const set = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--cached-input-per-1k", "0", "--output-per-1k", "600"])
     const admittedAfter = try admission
     const listedAfter = try listed()
     const checkAfter = try run(["prices", "check"])
     try check(() => assert.deepStrictEqual(
-      { checkBefore, admittedBefore, listedBefore, refusedSets, set, admittedAfter, listedAfter, checkAfter },
+      { checkBefore, admittedBefore, listedBefore, refusedSets, sameAsInput, set, admittedAfter, listedAfter, checkAfter },
       {
         checkBefore: "PricesMismatched",
         admittedBefore: "model_unavailable",
         listedBefore: [200, []],
-        refusedSets: ["Refused", "PriceFlagsInvalid", "PriceFlagsInvalid"],
-        set: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, output 600 µUSD per 1,000 tokens"]}',
+        refusedSets: ["Refused", "PriceFlagsInvalid", "PriceFlagsInvalid", "Refused"],
+        sameAsInput: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, cached input 150, output 600 µUSD per 1,000 tokens"]}',
+        set: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, cached input 0, output 600 µUSD per 1,000 tokens"]}',
         admittedAfter: "admitted test-chat at 150/600 via llm",
         listedAfter: [200, ["test-chat"]],
         checkAfter: 'succeeded with {"kind":"done","lines":["0 price mismatches; usable models: test-chat","payment catalog verified"]}'

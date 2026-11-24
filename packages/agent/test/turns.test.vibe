@@ -1,7 +1,7 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
-import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+import { answerJson, held, insufficientCredits, rateLimited, refusal, requestFault, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, maxPlanSteps, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
@@ -464,7 +464,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   }))
 }, 120_000)
 
-it.live(`Each call keeps the system prompt and puts the turn's notes after the history, a contact keeps its reference from turn to turn, a host notice is not read back, a rate limit or an unparsed tool call is sent once more, and a cut-off ends the turn (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn"; ${planning}, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; ${planning}, "A call that stopped at the model's own output limit ends planning")`, effect () => {
+it.live(`Each call keeps the system prompt and puts the turn's notes after the history, a contact keeps its reference from turn to turn, a host notice is not read back, a rate limit or an unparsed tool call is sent once more, the cloud's own answer for an unparsed tool call included, and a cut-off ends the turn (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn"; ${planning}, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; ${planning}, "A call that stopped at the model's own output limit ends planning")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const actions = { load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }
   const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin }, ...actions }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
@@ -490,6 +490,11 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   const [mentioned, after] = sent().slice(-2)
   const asked = textOf(mentioned?.messages.at(-1)?.content).split("\n\n")[0] ?? ""
   const replayed = after?.messages.map(({ content }) => textOf(content)).find((content) => content.includes("] Email ")) ?? ""
+
+  try Effect.sync(() => cloud.script(requestFault("parser_error"), text("Read through the cloud.")))
+  const beforeCloudParse = completions(cloud)
+  const cloudParsed = replyOf(try send(agent, id, { text: "Work that out." }))
+  const cloudParseCalls = completions(cloud) - beforeCloudParse
 
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({ choices: [{ message: { role: "assistant", content: "A long answer that" }, finish_reason: "length" }] })))
   const beforeCut = completions(cloud)
@@ -518,11 +523,13 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     stableReference: [asked.includes("ada.lovelace@gmail.com"), asked.includes("__ELIZA_"), replayed.replace(stamp, "") === asked],
     cut: cut.text, cutCalls,
     parsed: parsed.text, parseCalls,
+    cloudParsed: cloudParsed.text, cloudParseCalls,
   }, {
     first: "First answer.", sameSystem: true, screenNoteLast: true, hostLabels: 1, screenNoteOutOfSystem: true, uncapped: true,
     waited: "After the wait.", waitedCalls: 2, noticeUnread: true, stableReference: [false, true, true],
     cut: cutOffReply, cutCalls: 1,
     parsed: "Read on the second try.", parseCalls: 2,
+    cloudParsed: "Read through the cloud.", cloudParseCalls: 2,
   }))
 }, 120_000)
 
