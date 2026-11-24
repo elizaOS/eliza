@@ -367,7 +367,7 @@ effect function connected<A>(url: string, version: string, decode: (chunk: strin
       try write(chunk)
       return try Deferred.await(closed)
     })
-    return try timeoutOrElse(awaitingPeer, { duration: drainBudget, orElse: () => succeed(false) }) catch () => false
+    return timeoutOrElse(awaitingPeer, { duration: drainBudget, orElse: () => succeed(false) }) catch () => false
   }
   return { write, closeWith, edges: Stream.fromQueue(edges) }
 }

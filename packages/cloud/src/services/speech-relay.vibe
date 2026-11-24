@@ -338,7 +338,7 @@ effect function recordWindow(ports: RelayPorts, sessionId: string, window: Windo
     pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttDrained, ttsConfirmed, dispatched: window.dispatched,
     ...(window.superseded ? { superseded: true as const } : {})
   }
-  const settled = try (effect {
+  const settled = (effect {
     try ports.session.settleWindow(sessionId, window.number, usage)
     return true
   }) catch effect (failure) => {
