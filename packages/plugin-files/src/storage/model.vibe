@@ -19,10 +19,12 @@ export type TrashEntry = {
   readonly mimeType: string
   readonly size: number
   readonly deletedAt: number
-  readonly unreadable?: true
-}
-export function unreadableTrashEntry(id: string): TrashEntry {
-  return { id, name: id, origin: "", directory: false, mimeType: "", size: 0, deletedAt: 0, unreadable: true }
+  readonly unreadable?: undefined
+} | {
+  // An item whose record cannot be read: only its trash name is known, so nothing else is claimed for it.
+  readonly id: string
+  readonly name: string
+  readonly unreadable: true
 }
 export type StorageVolume = {
   readonly id: string

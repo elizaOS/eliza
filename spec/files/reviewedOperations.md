@@ -86,23 +86,28 @@ deletion time claimed for it, even when its data is already gone, since
 nothing else would ever clear it. A restore that names it answers that item
 failed, never missing, and leaves its record and data where they are,
 while the other items in the same restore are restored as usual. Since
-its deletion time is unknown it never expires on its own: emptying it
-from the trash erases its data and its record, and is how the owner
-clears it. An item with no record at all is still missing, and a trash
-that never held anything is still an empty trash.
+its deletion time is unknown it never expires on its own and is listed
+after every readable item: emptying it from the trash erases whatever
+data it still has and its record, counts it as emptied, and is how the
+owner clears it. Emptying never erases or counts a readable record whose
+data is already gone, since that is no item the owner can see. An item
+with no record at all is still missing, and a trash that never held
+anything is still an empty trash.
 
 ```quint
 type TrashRecordRead = RecordAbsent | RecordRead | RecordUnreadable
 type TrashItemAnswer = ItemRestorable | ItemMissing | ItemUnreadable
 pure def trashItemAnswer(read: TrashRecordRead, resident: bool): TrashItemAnswer =
   if (read == RecordUnreadable) ItemUnreadable else if (read == RecordRead and resident) ItemRestorable else ItemMissing
-pure def emptyErases(read: TrashRecordRead, resident: bool): bool = resident or read != RecordAbsent
+pure def emptyErases(read: TrashRecordRead, resident: bool): bool = resident or read == RecordUnreadable
 pure def lawAnUnreadableRecordIsNeverReadAsNoRecord(read: TrashRecordRead, resident: bool): bool =
   trashItemAnswer(read, resident) == ItemMissing implies (read == RecordAbsent or not(resident)) and read != RecordUnreadable
 pure def lawEveryUnreadableItemCanBeEmptied(read: TrashRecordRead, resident: bool): bool =
   trashItemAnswer(read, resident) == ItemUnreadable implies emptyErases(read, resident)
 pure def lawNoRecordIsStillMissing(resident: bool): bool =
   trashItemAnswer(RecordAbsent, resident) == ItemMissing and emptyErases(RecordAbsent, resident) == resident
+pure def lawAReadableRecordIsEmptiedOnlyWithItsData(resident: bool): bool =
+  emptyErases(RecordRead, resident) == resident
 ```
 
 ## Story: Keep every batch outcome, including the ones I cannot be sure of

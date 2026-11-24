@@ -18,7 +18,7 @@ module browser {
 }
 import { assert, it } from "@effect/vitest"
 import { FilesVolume } from "../src/storage/volume.vibe"
-import { deletePlan, indexedLibrary, LibraryStore } from "../src/storage/library.vibe"
+import { deletePlan, indexedLibrary, LibraryStore, type LibraryRow } from "../src/storage/library.vibe"
 import { importLibraryFile, libraryVolume, librarySelections } from "../src/storage/library-volume.vibe"
 import { importLibraryFolder, saveWorkflowAttachment, workflowFiles } from "../src/storage/library-workflow.vibe"
 import { recognizeLocalText, type OcrProgress } from "../src/documents/local-ocr.vibe"
@@ -84,7 +84,7 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
   }, libraryVolume()).pipe(Effect.provide(tab))
 })
 
-it.effect('A torn browser trash record is listed as unreadable, refuses only its own restore, and can be emptied (spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied")', effect () => {
+it.effect('A torn browser trash record is listed as unreadable, refuses only its own restore, and can be emptied, even when its data is already gone (spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied")', effect () => {
   const tab = indexedLibrary(`files-trash-record-${Date.now()}`)
   try Effect.provide(effect {
     const volume = try FilesVolume
@@ -93,42 +93,59 @@ it.effect('A torn browser trash record is listed as unreadable, refuses only its
     assert.equal(try volume.createFolder("", "Download"), "Download")
     try importLibraryFile("Download", { name: "lease.pdf", mimeType: "application/pdf", bytes: bytes("%PDF-1.7") })
     try importLibraryFile("Download", { name: "memo.txt", mimeType: "text/plain", bytes: bytes("memo") })
-    const [lease, memo] = try volume.trash({ paths: ["Download/lease.pdf", "Download/memo.txt"] })
+    try importLibraryFile("Download", { name: "note.txt", mimeType: "text/plain", bytes: bytes("note") })
+    try importLibraryFile("Download", { name: "old.txt", mimeType: "text/plain", bytes: bytes("old") })
+    const [lease, memo, note, old] = try volume.trash({ paths: ["Download/lease.pdf", "Download/memo.txt", "Download/note.txt", "Download/old.txt"] })
     const torn = lease.to ?? ""
+    const gone = note.to ?? ""
+    const stale = old.to ?? ""
     const tornBytes = bytes("{not json")
-    try store.commit((rows) => {
-      const record = rows.find((row) => row.name === `${torn}.json`)
-      return { put: record === undefined ? [] : [{ ...record, bytes: tornBytes, size: tornBytes.byteLength }], remove: [] }
-    })
+    const text = (rows: readonly LibraryRow[], name: string) => {
+      const row = rows.find((found) => found.name === name)
+      return row?.bytes === undefined ? undefined : new TextDecoder().decode(row.bytes)
+    }
+    try store.commit((rows) => ({
+      put: rows.filter((row) => row.name === `${torn}.json` || row.name === `${gone}.json`).map((row) => ({ ...row, bytes: tornBytes, size: tornBytes.byteLength })),
+      remove: rows.filter((row) => row.name === gone).map((row) => row.id),
+    }))
     const listed = try volume.trashList()
-    const restored = try volume.restore([torn, memo.to ?? "", "not-a-trash-id"])
-    const kept = (try store.rows()).find((row) => row.name === `${torn}.json`)
+    const restored = try volume.restore([torn, gone, memo.to ?? "", "not-a-trash-id"])
+    const afterRestore = try store.rows()
+    const survived = [text(afterRestore, `${torn}.json`), text(afterRestore, torn), text(afterRestore, `${gone}.json`)]
     const stillListed = try volume.trashList()
-    const erased = try volume.emptyTrash([torn], true)
+    try store.commit((rows) => ({ put: [], remove: rows.filter((row) => row.name === stale).map((row) => row.id) }))
+    const erased = try volume.emptyTrash([torn, gone, stale], true)
+    const staleRecordKept = (try store.rows()).some((row) => row.name === `${stale}.json`)
+    const byId = (items: readonly { readonly id: string }[]) => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
     assert.deepEqual({
       empty,
-      trashed: [lease.status, memo.status],
-      readable: listed.filter((item) => item.unreadable !== true).map(({ name, origin }) => ({ name, origin })),
-      unreadable: listed.filter((item) => item.unreadable === true).map(({ id, name, origin }) => ({ id, name, origin })),
+      trashed: [lease.status, memo.status, note.status, old.status],
+      readable: listed.flatMap((item) => item.unreadable === true ? [] : [{ name: item.name, origin: item.origin }]).sort((a, b) => a.name < b.name ? -1 : 1),
+      unreadableLast: listed.map((item) => item.unreadable === true),
+      unreadable: byId(listed.filter((item) => item.unreadable === true)),
       restored,
-      kept: kept?.bytes === undefined ? undefined : new TextDecoder().decode(kept.bytes),
-      stillListed: stillListed.map(({ id, unreadable }) => ({ id, unreadable })),
+      survived,
+      stillListed: byId(stillListed.map(({ id, unreadable }) => ({ id, unreadable }))),
       erased,
+      staleRecordKept,
       remaining: try volume.trashList(),
-      leftBehind: (try store.rows()).some((row) => row.name === torn || row.name === `${torn}.json`),
+      leftBehind: (try store.rows()).some((row) => [torn, `${torn}.json`, `${gone}.json`].includes(row.name)),
     }, {
       empty: [],
-      trashed: ["trashed", "trashed"],
-      readable: [{ name: "memo.txt", origin: "Download/memo.txt" }],
-      unreadable: [{ id: torn, name: torn, origin: "" }],
+      trashed: ["trashed", "trashed", "trashed", "trashed"],
+      readable: [{ name: "memo.txt", origin: "Download/memo.txt" }, { name: "old.txt", origin: "Download/old.txt" }],
+      unreadableLast: [false, false, true, true],
+      unreadable: byId([{ id: torn, name: torn, unreadable: true }, { id: gone, name: gone, unreadable: true }]),
       restored: [
         { path: torn, status: "failed" },
+        { path: gone, status: "failed" },
         { path: memo.to ?? "", status: "restored", to: "Download/memo.txt" },
         { path: "not-a-trash-id", status: "missing" },
       ],
-      kept: "{not json",
-      stillListed: [{ id: torn, unreadable: true }],
-      erased: 1,
+      survived: ["{not json", "%PDF-1.7", "{not json"],
+      stillListed: byId([{ id: torn, unreadable: true }, { id: gone, unreadable: true }, { id: stale, unreadable: undefined }]),
+      erased: 2,
+      staleRecordKept: true,
       remaining: [],
       leftBehind: false,
     })

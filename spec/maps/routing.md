@@ -245,8 +245,10 @@ still a named place, and courtesy after it ("near Union Square, please")
 is not part of its name. The words before "near" name no kind of place
 when they are something the phone keeps ("photos near the Ferry
 Building") or something about the place itself ("the weather near
-Austin", "traffic near the Bay Bridge", "news around Austin"). Neither is
-searched around a named place.
+Austin", "traffic near the Bay Bridge", "news around Austin"), even when
+the words after "near" do name a place. None of these is searched around
+a named place: each searches just as it would with no place named, around
+the phone for "near me" and around nothing otherwise.
 
 ```quint
 import phonePosition as Pos from "./phonePosition"
@@ -257,8 +259,11 @@ pure def nearSearch(nearKind: NearKind, nearWords: NearWords): NearSearch =
   if (nearKind == PlaceKind and nearWords == NamedPlace) AroundTheNamedPlace else NoNamedPlaceSearch
 pure def lawTheOwnersPositionIsNeverSearchedAsANamedPlace(nearKind: NearKind, p: Pos::PhonePosition): bool =
   Pos::searchAround(nearSearch(nearKind, OwnPosition) == AroundTheNamedPlace, true, p) != Pos::AroundNamedPlace
-pure def lawWordsThatNameNoPlaceNeverMoveTheSearch(nearKind: NearKind, nearMe: bool, p: Pos::PhonePosition): bool =
-  Pos::searchAround(nearSearch(nearKind, NotAPlace) == AroundTheNamedPlace, nearMe, p) == Pos::searchAround(false, nearMe, p)
+pure def lawAKindOfPlaceNearANamedPlaceIsSearchedAroundThatPlace(nearMe: bool, p: Pos::PhonePosition): bool =
+  Pos::searchAround(nearSearch(PlaceKind, NamedPlace) == AroundTheNamedPlace, nearMe, p) == Pos::AroundNamedPlace
+pure def lawAnythingElseNeverMovesTheSearch(nearKind: NearKind, nearWords: NearWords, nearMe: bool, p: Pos::PhonePosition): bool =
+  not(nearKind == PlaceKind and nearWords == NamedPlace) implies
+    Pos::searchAround(nearSearch(nearKind, nearWords) == AroundTheNamedPlace, nearMe, p) == Pos::searchAround(false, nearMe, p)
 ```
 
 ## Story: Ask for directions to the place on my phone's map

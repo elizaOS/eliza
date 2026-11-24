@@ -31,13 +31,13 @@ module browser {
   }
 }
 import { base64, fileBlob, identityToken, shareFile, storageEstimate } from browser
-import { apply, canPrune, classifyRow, emptyErases, machineOver, initial as fresh, trashItemAnswer, type TrashRecordRead, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
+import { apply, canPrune, classifyRow, emptyErases, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { chatLimit, mailLimit, selectionReadable, textLimit } from "../../gen/files__library.effect.vibe"
 import type { FilesOp, FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
 import { fileArchive } from "../documents/archive.vibe"
-import { downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, parentOf, unreadableTrashEntry, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry } from "./model.vibe"
+import { downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry } from "./model.vibe"
 import { allocateLibraryId, deletePlan, insertPlan, LibraryStore, LIBRARY_ROOT, childrenOf, placePlan, subtreeOf, type LibraryRow } from "./library.vibe"
-import { ANSWERS, checkErase, decodeRecord, listShown, newestFirst, refused, TRASH, trashEach, type TrashRecord } from "./trash-journal.vibe"
+import { ANSWERS, checkErase, decodeRecord, listShown, listUnreadable, newestFirst, recordRead, refused, TRASH, trashEach, unrestorable, type TrashRecord } from "./trash-journal.vibe"
 import { checkSelection, FilesVolume, succeeded, type RowOutcome, type VolumeRefused } from "./volume.vibe"
 
 const WALK_LIMIT = 5_000
@@ -186,8 +186,7 @@ export function libraryVolume(archiveName = "Files.zip") {
       const trashId = folderIdAt(all, TRASH)
       const found = trashId === undefined ? undefined : childrenOf(all, trashId).find((row) => row.name === `${id}.json`)
       const kept = found?.bytes === undefined ? undefined : (decodeRecord(new TextDecoder().decode(found.bytes)) catch () => undefined)
-      const read: TrashRecordRead = found === undefined ? "RecordAbsent" : kept === undefined ? "RecordUnreadable" : "RecordRead"
-      return { found, kept, read }
+      return { found, kept, read: recordRead(found !== undefined, kept) }
     }
 
     effect function journalOf(id: string, trashId: string, base: Omit<typeof TrashRecord.Type, "row">) {
@@ -312,11 +311,7 @@ export function libraryVolume(archiveName = "Files.zip") {
           const id = name.slice(0, -".json".length)
           const { kept, read } = try recordRow(id)
           const data = children.get(id)
-          if (trashItemAnswer(read, data !== undefined) === "ItemUnreadable") {
-            items.push(unreadableTrashEntry(id))
-            continue
-          }
-          if (kept === undefined) continue
+          if (listUnreadable(items, id, read, data !== undefined) || kept === undefined) continue
           if (data === undefined) {
             if (kept.row.phase === "Expiring") try orDie(apply(kept.row, { type: "completePrune", writeAcknowledged: try eraseRecord(id) }))
             continue
@@ -338,9 +333,9 @@ export function libraryVolume(archiveName = "Files.zip") {
         for (const id of ids) {
           const data = (trashDataOf(try rows())).find((row) => row.name === id)
           const { kept, read } = try recordRow(id)
-          const answer = trashItemAnswer(read, data !== undefined)
-          if (answer !== "ItemRestorable" || data === undefined || kept === undefined) {
-            outcomes.push({ path: id, status: answer === "ItemUnreadable" ? "failed" : "missing" })
+          const unrestored = unrestorable(id, read, data !== undefined)
+          if (unrestored !== undefined || data === undefined || kept === undefined) {
+            outcomes.push(unrestored ?? { path: id, status: "missing" })
             continue
           }
           const origin = parentOf(kept.origin)

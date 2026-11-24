@@ -18,12 +18,12 @@ module node {
   }
 }
 import { identityOf, linked, trashId } from node
-import { apply, canPrune, classifyRow, emptyErases, machineOver, initial as fresh, trashItemAnswer, type TrashRecordRead, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
+import { apply, canPrune, classifyRow, emptyErases, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { renameOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
-import { baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, unreadableTrashEntry, validName, validPath, within, DOWNLOAD_FOLDER,
+import { baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER,
   type StorageEntry, type TrashEntry } from "./model.vibe"
 import { checkSelection, FilesVolume, succeeded, type RowOutcome, type VolumeRefused } from "./volume.vibe"
-import { ANSWERS, checkErase, decodeRecord, listShown, newestFirst, refused, TRASH, trashEach, type TrashRecord } from "./trash-journal.vibe"
+import { ANSWERS, checkErase, decodeRecord, listShown, listUnreadable, newestFirst, recordRead, refused, TRASH, trashEach, unrestorable, type TrashRecord } from "./trash-journal.vibe"
 
 const WALK_LIMIT = 10_000
 
@@ -111,8 +111,7 @@ export function localVolume(root: string, name = "Internal storage") {
     effect function record(id: string) {
       const raw = (fs.readFileString(trashInfo(id)) catch () => undefined)
       const kept = raw === undefined ? undefined : (decodeRecord(raw) catch () => undefined)
-      const read: TrashRecordRead = kept !== undefined ? "RecordRead" : raw !== undefined || (try exists(trashInfo(id))) ? "RecordUnreadable" : "RecordAbsent"
-      return { kept, read }
+      return { kept, read: recordRead(raw !== undefined || (try exists(trashInfo(id))), kept) }
     }
 
     effect function journalOf(id: string, base: Omit<typeof TrashRecord.Type, "row">) {
@@ -212,11 +211,7 @@ export function localVolume(root: string, name = "Internal storage") {
         for (const id of try trashIds()) {
           const { kept, read } = try record(id)
           const resident = try exists(trashFile(id))
-          if (trashItemAnswer(read, resident) === "ItemUnreadable") {
-            items.push(unreadableTrashEntry(id))
-            continue
-          }
-          if (kept === undefined) continue
+          if (listUnreadable(items, id, read, resident) || kept === undefined) continue
           if (!resident) {
             fs.remove(trashInfo(id)) catch () => undefined
             continue
@@ -233,9 +228,9 @@ export function localVolume(root: string, name = "Internal storage") {
         const outcomes: RowOutcome[] = []
         for (const id of ids) {
           const { kept, read } = try record(id)
-          const answer = trashItemAnswer(read, try exists(trashFile(id)))
-          if (answer !== "ItemRestorable" || kept === undefined) {
-            outcomes.push({ path: id, status: answer === "ItemUnreadable" ? "failed" : "missing" })
+          const unrestored = unrestorable(id, read, try exists(trashFile(id)))
+          if (unrestored !== undefined || kept === undefined) {
+            outcomes.push(unrestored ?? { path: id, status: "missing" })
             continue
           }
           const origin = parentOf(kept.origin)
