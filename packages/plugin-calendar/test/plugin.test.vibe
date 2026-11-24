@@ -198,6 +198,10 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   const series = try runCalendarAction(host, { ...ask, id: "message-6" }, { subaction: "update_event", calendarId: "work", query: "standup", ...march, title: "Standup, all", recurrenceScope: "series" })
   const seriesReview = filed.at(-1)
   assert.deepStrictEqual([series.success, at(seriesReview?.payload.change, "scope"), at(seriesReview?.payload.change, "fields", "title")], [true, "series", "Standup, all"])
+  // spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar": a queued change to an
+  // existing event names that event's start as it was read; a queued create names none. Both are filed under a calendar- id.
+  assert.deepStrictEqual([seriesReview?.payload.targetStartAt, "targetStartAt" in (reviewed?.payload ?? {}), /^calendar-[0-9a-f]{40}$/.test(seriesReview?.id ?? "")],
+    ["2030-03-05T16:00:00.000Z", false, true])
   if (seriesReview === undefined) return
   const rescoped = try host.executeApproval({ id: "approval-rescoped", action: seriesReview.action, payload: { ...seriesReview.payload, change: { ...seriesReview.payload.change, scope: "instance" } } })
   assert.deepStrictEqual([rescoped.result, rescoped.failure?.code, google.scopes], ["ChangeInvalidated", "CALENDAR_REVIEW_UNBOUND", []])

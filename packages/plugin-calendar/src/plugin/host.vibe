@@ -32,7 +32,8 @@ export interface CalendarApprovalRow {
   readonly subjectUserId: string
   readonly requestedBy: string
   readonly action: CalendarApprovalAction
-  readonly payload: { readonly change: CalendarMutationPayload; readonly digest: string }
+  /** The change, its digest and, for a change to an existing event, that event's start as it was read, so a review can read the event again. */
+  readonly payload: { readonly change: CalendarMutationPayload; readonly digest: string; readonly targetStartAt?: string }
   readonly reason: string
   readonly expiresAt: string
 }
@@ -286,7 +287,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
     const now = try Clock.currentTimeMillis
     const filed = tryPromise(() => approvals.request({
       id: request.id, subjectUserId: asked.askedBy, requestedBy: options.agentId, action: approvalAction(payload),
-      payload: { change: payload, digest }, reason: `Calendar ${payload.action.replace("_", " ")} reviewed in chat${noticeReason[notice]}`,
+      payload: { change: payload, digest, ...(asked.kind === "create" ? {} : { targetStartAt: asked.target.event.startAt }) }, reason: `Calendar ${payload.action.replace("_", " ")} reviewed in chat${noticeReason[notice]}`,
       expiresAt: new Date(now + approvalLifetimeMs).toISOString(),
     })) catch () => undefined
     return filed === undefined ? { kind: "refused", reason: "approvals_unavailable" } : { kind: "queued", request, approvalId: filed.id, notice }

@@ -120,6 +120,12 @@ public class AgentService extends Service {
 
   protected void configureLaunch(Map<String, String> variables) throws LaunchRefused { }
 
+  /**
+   * The Google consent the owner saved for the agent, read once per launch after {@link #configureLaunch}; null launches with the
+   * host file's {@code google}. A changed choice reaches the agent only through a new launch, so the subclass restarts it.
+   */
+  protected AgentConfig.GoogleConsent googleConsent() throws LaunchRefused { return null; }
+
   protected NotificationChannel runtimeNotificationChannel() {
     return new NotificationChannel(NOTIFICATION_CHANNEL, words().channel(), NotificationManager.IMPORTANCE_LOW);
   }
@@ -565,7 +571,7 @@ public class AgentService extends Service {
     String refusal = null;
     try {
       configureLaunch(variables);
-      document = launchDocument(config, active == null ? null : active.account(), prepared.workflowWorker(), variables);
+      document = launchDocument(config, active == null ? null : active.account(), prepared.workflowWorker(), variables, googleConsent());
     } catch (LaunchRefused | IllegalArgumentException refused) {
       refusal = refused.getMessage();
     }
@@ -825,9 +831,9 @@ public class AgentService extends Service {
 
   @SuppressWarnings("unchecked")
   private static String launchDocument(AgentConfig config, AgentCredentials.Account account, Optional<PayloadCheck.WorkflowWorker> worker,
-      Map<String, String> variables) throws LaunchRefused {
+      Map<String, String> variables, AgentConfig.GoogleConsent consent) throws LaunchRefused {
     String document = config.launchDocument(account, worker.map(staged ->
-      new AgentConfig.WorkflowWorker(staged.runtimeDir().toString(), staged.executable().toString(), staged.sha256())).orElse(null));
+      new AgentConfig.WorkflowWorker(staged.runtimeDir().toString(), staged.executable().toString(), staged.sha256())).orElse(null), consent);
     if (variables.isEmpty()) return document;
     Map<String, Object> parsed = (Map<String, Object>) RouteGate.Json.parse(document);
     Map<String, Object> environment = parsed.get("environment") instanceof Map<?, ?> set ? new LinkedHashMap<>((Map<String, Object>) set) : new LinkedHashMap<>();

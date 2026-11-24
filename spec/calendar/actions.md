@@ -293,7 +293,10 @@ The resident calendar can apply a write at once for the owner who asked.
 A chat create queues for approval by default and saves at once only when
 the owner explicitly chose to save it without review. A resident delete
 runs at once only as the next rule allows. Any provider calendar queues
-the exact fields for the owner's approval. A write for another account,
+the exact fields for the owner's approval. A queued change is filed with
+its change and digest and, when it changes an existing event, the start of
+that event as it was read (`targetStartAt`), so a review can read the event
+again outside the window it has loaded. A write for another account,
 or to a calendar it cannot write, is refused.
 
 ```quint
