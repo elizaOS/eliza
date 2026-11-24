@@ -34,6 +34,7 @@
     "test": "pnpm run sync:gen && vitest run"
   },
   "dependencies": {
+    "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },

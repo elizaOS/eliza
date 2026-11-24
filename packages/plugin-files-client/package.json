@@ -35,6 +35,7 @@
     "typecheck": "pnpm run sync:gen && vibelang --noEmit -p ."
   },
   "dependencies": {
+    "@elizaos/core": "workspace:*",
     "@elizaos/os-bridges": "workspace:*",
     "effect": "4.1.1",
     "pdf-lib": "1.17.1",
