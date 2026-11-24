@@ -7,7 +7,7 @@
  * module imports nothing, so they can import it without the native wire.
  */
 export const COMMIT_CONTROL =
-  /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
+  /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
 
 /**
  * Runs one fixed page command in the page. The browser extension and the
@@ -1155,6 +1155,24 @@ export function pageCommand(
         }
       const share = (root) =>
         hits.filter((hit) => within(root, hit)).length / (GRID * GRID);
+      const layered = (node) => {
+        try {
+          if (node.matches(":modal")) return true;
+        } catch {}
+        for (
+          let item = node;
+          item &&
+          item !== item.ownerDocument.body &&
+          item !== item.ownerDocument.documentElement;
+          item = item.parentElement ?? item.parentNode?.host ?? null
+        )
+          if (
+            ["fixed", "absolute", "sticky"].includes(styleOf(item).position) &&
+            !shell(item)
+          )
+            return true;
+        return false;
+      };
       const DIALOG =
         "dialog[open],[role=dialog],[role=alertdialog],[aria-modal=true]";
       const CONSENT =
@@ -1204,7 +1222,7 @@ export function pageCommand(
           )
         ) {
           const layer = layerOf(node);
-          add(layer ?? node, { overlay: !!layer || node.matches(DIALOG) });
+          add(layer ?? node, { overlay: !!layer || layered(node) });
         }
       // A sign-in wall, paywall or person check written into the page itself.
       const texts = [];
@@ -1242,7 +1260,7 @@ export function pageCommand(
             `${DIALOG},form,section,article,aside,main,[role=main]`,
           ) ?? parent;
         add(layerOf(root) ?? root, {
-          overlay: !!layerOf(root),
+          overlay: !!layerOf(root) || layered(root),
           kind,
           text: words.trim(),
         });
@@ -1339,6 +1357,7 @@ export function pageCommand(
           ...(ref !== undefined ? { ref } : {}),
           ...(rejectRef !== undefined ? { rejectRef } : {}),
           covers,
+          overlay: found.overlay,
           ...(summary ? { text: summary } : {}),
         });
       }
@@ -1685,7 +1704,7 @@ export function pageCommand(
       (node.matches(
         "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image],input[type=password]",
       ) ||
-        /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
+        /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
           label,
         ) ||
         commitPattern?.test(label))
@@ -1707,16 +1726,16 @@ export function pageCommand(
     if (
       command.subaction === "fill" &&
       (!(
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
+        is(node, "HTMLInputElement") ||
+        is(node, "HTMLTextAreaElement") ||
+        is(node, "HTMLSelectElement")
       ) ||
-        (node instanceof HTMLInputElement &&
+        (is(node, "HTMLInputElement") &&
           !["text", "email", "tel", "number", "search", "url", "date"].includes(
             node.type,
           )) ||
         // A date field takes only a real calendar day, as YYYY-MM-DD.
-        (node instanceof HTMLInputElement &&
+        (is(node, "HTMLInputElement") &&
           node.type === "date" &&
           (!/^\d{4}-\d{2}-\d{2}$/.test(command.text) ||
             command.text.startsWith("0000-") ||
@@ -1730,14 +1749,14 @@ export function pageCommand(
       return denied();
   }
   const selectedOptions =
-    command.subaction === "select" && node instanceof HTMLSelectElement
+    command.subaction === "select" && is(node, "HTMLSelectElement")
       ? [...node.options].filter(
           (option) => option.label.replace(/\s+/g, " ").trim() === command.text,
         )
       : [];
   if (
     command.subaction === "select" &&
-    (!(node instanceof HTMLSelectElement) ||
+    (!is(node, "HTMLSelectElement") ||
       node.multiple ||
       sensitivity(node) !== null ||
       selectedOptions.length !== 1 ||
@@ -1747,7 +1766,7 @@ export function pageCommand(
     return denied();
   if (
     ["fill", "select"].includes(command.subaction) &&
-    (frameOf(node) !== null || node.disabled || node.readOnly)
+    (node.disabled || node.readOnly)
   )
     return denied();
   // A control the provider disabled stays as the provider left it. A script
@@ -2439,31 +2458,26 @@ export function pageCommand(
         after: readVisibleText(document.body ?? document.documentElement),
       };
   } else if (command.subaction === "fill") {
-    if (
-      !(
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
-      ) ||
-      node.disabled ||
-      node.readOnly
-    )
+    const type = [
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      "HTMLSelectElement",
+    ].find((name) => is(node, name));
+    if (!type || node.disabled || node.readOnly)
       return {
         error: {
           kind: "UNSUPPORTED",
           message: "The target is not an editable form control.",
         },
       };
-    const prototype =
-      node instanceof HTMLInputElement
-        ? HTMLInputElement.prototype
-        : node instanceof HTMLTextAreaElement
-          ? HTMLTextAreaElement.prototype
-          : HTMLSelectElement.prototype;
+    const view = realmOf(node);
     const write = (box, text) => {
-      Object.getOwnPropertyDescriptor(prototype, "value").set.call(box, text);
-      box.dispatchEvent(new Event("input", { bubbles: true }));
-      box.dispatchEvent(new Event("change", { bubbles: true }));
+      Object.getOwnPropertyDescriptor(view[type].prototype, "value").set.call(
+        box,
+        text,
+      );
+      box.dispatchEvent(new view.Event("input", { bubbles: true }));
+      box.dispatchEvent(new view.Event("change", { bubbles: true }));
     };
     const targetRef = `${state.snapshotId}:0:${command.nodeId}`;
     if (codeBoxes) {
@@ -2499,12 +2513,13 @@ export function pageCommand(
         };
     }
   } else if (command.subaction === "select") {
+    const view = realmOf(node);
     Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
+      view.HTMLSelectElement.prototype,
       "selectedIndex",
     ).set.call(node, selectedOptions[0].index);
-    node.dispatchEvent(new Event("input", { bubbles: true }));
-    node.dispatchEvent(new Event("change", { bubbles: true }));
+    node.dispatchEvent(new view.Event("input", { bubbles: true }));
+    node.dispatchEvent(new view.Event("change", { bubbles: true }));
   } else if (command.subaction === "scroll") {
     node.scrollBy({
       top:

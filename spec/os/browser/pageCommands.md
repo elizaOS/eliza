@@ -113,8 +113,9 @@ before the page check; a grant already spent, or one that does not match,
 is refused. In the WebView the page's own channel is that peer: it spends a
 grant once for the life of its document and admits a fill or select only
 when the text hashes to the grant's value hash. The page itself refuses to
-press a commit control without the grant it carries, which the peer reports
-as `Unknown`.
+press a commit control (a submit button, or a control whose words commit,
+such as pay, confirm, send, sign in, sign on, log in or log on) without the
+grant it carries, which the peer reports as `Unknown`.
 
 ```quint
 pure def stepSpentGrantsAreKept(before: SurfaceReceiver, after: SurfaceReceiver): bool = before.spentGrants.every(g => after.spentGrants.includes(g))
@@ -188,15 +189,19 @@ blockers found in every part read, and a change in any part read makes the
 observation stale. A closed shadow root, a frame on another origin and a
 frame the page does not show (no size, hidden, or wholly outside the page)
 are never read or watched; such a frame is listed as unread, with the
-reason. A click reaches a control in a frame read by the same rules as one
-in the document; a fill, select or follow inside a frame is refused. A
+reason. A click, fill, select or verification-code fill reaches a control in
+a frame read by the same rules as one in the document; a follow inside a
+frame is refused. A
 control that would send its form says where (`sends`: the http(s) origin,
 the method and whether it opens another window, the page's base target
 included), and a form's field says where Enter would send it, or nothing
 when Enter would not submit it. The hint describes only the browser's own
 form submission, never a request a page script sends; it names no path or
-query, and it is never authority to act. Dispatching an input consumes the
-observation, so the next input needs a new read.
+query, and it is never authority to act. Each blocker the read reports says
+whether it is a layer over the page (a modal dialog, or it or a box it sits
+in is positioned fixed, absolute or sticky, other than the site's own
+full-page frame) or part of the page itself (`overlay`). Dispatching an input
+consumes the observation, so the next input needs a new read.
 
 ```quint
 pure def canSettleRead(s: SurfaceReceiver): bool = s.phase == ReceiverReading

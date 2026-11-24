@@ -65,6 +65,13 @@ const pages: Record<string, string> = {
   [`${shop}/framed-modal`]: page(`<h1>Your account</h1><iframe id="modal-frame" src="/modal-frame" title="Account" style="position:absolute;left:0;top:0;width:100%;height:100%;border:0"></iframe>`),
   [`${shop}/modal-frame`]: page(`<form><label>Email <input id="email" type="email"></label><button type="button" id="details">Show details</button></form><div role="dialog" aria-modal="true" aria-label="Session" style="position:fixed;left:0;top:0;right:0;bottom:0;background:#fff">Your session is about to end.<button type="button" id="stay">Close</button></div>`),
   [`${shop}/shadow-consent`]: page(`<h1>Opening hours</h1><p>Our branches open at nine.</p><consent-layer></consent-layer><script>customElements.define("consent-layer", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<div id="cookie-banner" style="position:fixed;left:0;right:0;bottom:0;height:140px;background:#eee">We use cookies.<button type="button" id="reject">Reject all</button><button type="button" id="accept">Accept all</button></div>'; } });</script>`),
+  [`${shop}/sign-on`]: page(`<h1>Online banking</h1><button type="button" id="sign-on">Sign On</button><button type="button" id="log-on">Log on</button><button type="button" id="hours">Branch hours</button>`),
+  [`${shop}/wall`]: page(`<h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section>`),
+  [`${shop}/static-dialog`]: page(`<h1>Opening hours</h1><div role="dialog" aria-label="Notice">We changed our opening hours for the holidays.<button type="button" id="close-notice">Close</button></div><p>Our branches open at nine.</p>`),
+  [`${shop}/absolute-wall`]: page(`<h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><div style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,.6)"><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section></div>`),
+  [`${shop}/fixed-banner`]: page(`<h1>Opening hours</h1><p>Our branches open at nine.</p><div style="position:fixed;left:0;right:0;bottom:0;height:140px;background:#eee">We use cookies to improve your visit.<button type="button" id="cookies-ok">Accept</button></div>`),
+  [`${shop}/fixed-shell`]: page(`<div id="app" style="position:fixed;left:0;top:0;right:0;bottom:0;overflow:auto"><h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section></div>`),
+  [`${shop}/absolute-shell`]: page(`<div id="app" style="position:absolute;left:0;top:0;width:100%;min-height:100%"><h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section></div>`),
   [`${shop}/covered`]: page(`<iframe id="plain-frame" src="/plain-frame" title="Sign up form" style="width:400px;height:200px"></iframe><p>Below the frame are our opening hours, our address and a map of the branch offices.</p><div role="dialog" aria-label="Notice" style="position:fixed;left:0;top:0;width:440px;height:240px;background:#fff">Please read this notice<button type="button" id="close-notice">Close</button></div>`),
   [`${secure}/dashboard`]: logon("/auth/"),
   [`${secure}/auth/`]: `<form id="logon" action="/auth/logon" method="post"><bank-field id="userId" label="Username"></bank-field><bank-field id="password" label="Password" type="password"></bank-field><label>Sign in with <select id="token"><option>Password</option><option>Token</option></select></label><a id="forgot" href="/auth/forgot">Forgot username or password?</a><button type="button" id="signin">Sign in</button></form>${field}`,
@@ -93,6 +100,8 @@ const pages: Record<string, string> = {
   [`${bank}/base`]: page(`<base target="_blank"><form action="https://pay.bank.example/form-path/receipt?form-query=1" method="post"><label>Note <input id="note" name="note"></label><button id="send-note">Send note</button></form>`),
   [`${bank}/no-enter`]: page(`<form action="/form-path/two?form-query=1"><label>First name <input id="first" name="first"></label><label>Last name <input id="last" name="last"></label></form><form action="/form-path/off?form-query=1"><label>Account nickname <input id="nickname" name="nickname"></label><button id="off" disabled>Save</button></form><form action="https://pay.bank.example/form-path/one?form-query=1"><label>Search <input id="one" name="q"></label></form>`),
   [`${bank}/other`]: page(`<form action="javascript:void 0"><button id="script">Run script</button></form><form action="mailto:help@bank.example?subject=form-query" method="post" target="_blank"><input type="submit" id="mail" value="Write to us"></form><form action="https://pay.bank.example/form-path/receipt?form-query=1" method="post" target="receipt"><button id="receipt">Open receipt</button></form><dialog open><form method="dialog"><button id="close">Close</button></form></dialog>`),
+  [`${secure}/verify`]: logon("/auth/verify"),
+  [`${secure}/auth/verify`]: `<form id="verify" action="/auth/verify" method="post"><bank-field id="otp" label="One-time code"></bank-field><button type="button" id="next">Next</button></form>${field}`,
   [`${secure}/empty`]: `<title>empty</title><button type="button" id="beacon">Telemetry</button><script>document.body.style.width = "4000px";</script>`,
 };
 
@@ -302,7 +311,7 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     expect(await presses()).toEqual([]);
   });
 
-  it("clicks in the frame only, refuses a fill, select or follow there, and stops the frame's own page change", async () => {
+  it("clicks, fills and selects in the frame only, reads the fill back, refuses a follow there and stops the frame's own page change", async () => {
     await open(`${shop}/framed-plain`);
     let state = await snapshot();
     const details = find(state, "Show details");
@@ -310,11 +319,14 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     expect(await act(state, "click", "Show details", { taskPolicy: policy(selectorOf(details)) })).toMatchObject({ dispatched: true });
     expect(await presses()).toEqual(["details"]);
     state = await snapshot();
-    expect(await refusal(state, "fill", "Email", { text: "reader@example.test", taskPolicy: policy(selectorOf(find(state, "Email")), "fill") })).toBe("POLICY_BLOCKED");
-    expect(await refusal(state, "select", "How often", { text: "Monthly", taskPolicy: policy(selectorOf(find(state, "How often")), "select") })).toBe("POLICY_BLOCKED");
+    expect(await act(state, "fill", "Email", { text: "reader@example.test", taskPolicy: policy(selectorOf(find(state, "Email")), "fill") })).toMatchObject({ dispatched: true });
+    state = await snapshot({ taskPolicy: policy("#none") });
+    expect(fields(state.value.inputReadback).matches).toBe(true);
+    expect(await act(state, "select", "How often", { text: "Monthly", taskPolicy: policy(selectorOf(find(state, "How often")), "select") })).toMatchObject({ dispatched: true });
+    state = await snapshot();
     expect(await refusal(state, "follow", "Our terms", { taskPolicy: policy(selectorOf(find(state, "Our terms")), "follow") })).toBe("POLICY_BLOCKED");
     const frame = tab.frameLocator("#plain-frame");
-    expect([await frame.locator("#email").inputValue(), await frame.locator("#often").inputValue(), tab.frames()[1]?.url()]).toEqual(["", "Weekly", `${shop}/plain-frame`]);
+    expect([await frame.locator("#email").inputValue(), await frame.locator("#often").inputValue(), tab.frames()[1]?.url()]).toEqual(["reader@example.test", "Monthly", `${shop}/plain-frame`]);
     await tab.evaluate(`document.getElementById("plain-frame").contentWindow.location.assign("/paid")`);
     await expect.poll(async () => (await snapshot({ taskPolicy: policy("#none") })).value.effectViolation).toBe("navigation");
     expect(tab.frames().find((frame) => frame.parentFrame() !== null)?.url()).toBe(`${shop}/plain-frame`);
@@ -343,16 +355,30 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
   it("reports a page layer over a frame's control as covering the target", async () => {
     await open(`${shop}/covered`);
     const state = await snapshot();
-    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "modal", covers: "target", ref: find(state, "Close").id })]);
+    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "modal", covers: "target", overlay: true, ref: find(state, "Close").id })]);
+  });
+
+  it("says a sign-in wall or a dialog written into the page, or into the site's full-page app frame, is not a layer over it, and a positioned one is", async () => {
+    for (const [path, blocker] of [
+      ["/wall", { kind: "login-wall", overlay: false }],
+      ["/fixed-shell", { kind: "login-wall", overlay: false }],
+      ["/absolute-shell", { kind: "login-wall", overlay: false }],
+      ["/static-dialog", { kind: "modal", overlay: false }],
+      ["/absolute-wall", { kind: "login-wall", overlay: true }],
+      ["/fixed-banner", { kind: "cookie-consent", overlay: true }],
+    ] as const) {
+      await open(`${shop}${path}`);
+      expect((await snapshot()).value.blockers, path).toEqual([expect.objectContaining(blocker)]);
+    }
   });
 
   it("finds a dialog in a frame and a consent layer in an open root, with the controls that close them", async () => {
     await open(`${shop}/framed-modal`);
     let state = await snapshot();
-    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "modal", covers: "viewport", ref: find(state, "Close").id })]);
+    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "modal", covers: "viewport", overlay: true, ref: find(state, "Close").id })]);
     await open(`${shop}/shadow-consent`);
     state = await snapshot();
-    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "cookie-consent", rejectRef: find(state, "Reject all").id })]);
+    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "cookie-consent", overlay: true, rejectRef: find(state, "Reject all").id })]);
   });
 
   it("rings a shadow root's box and a bordered frame's box where they are, and scrolls a frame's box into view", async () => {
@@ -389,9 +415,9 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     }
   });
 
-  it("reads a sign-in in a full-page frame's open root, refuses a fill there, and is not made stale by a hidden frame", async () => {
+  it("fills a sign-in identifier in a full-page frame's open root, never its password, and is not made stale by a hidden frame", async () => {
     await open(`${secure}/dashboard`);
-    const state = await snapshot({ taskPolicy: policy("#none", "click", secure) });
+    let state = await snapshot({ taskPolicy: policy("#none", "click", secure) });
     const user = find(state, "Username");
     expect(user).toMatchObject({ inShadowRoot: true, sensitive: null, frame: { index: 1, origin: secure, title: "logon" } });
     expect(find(state, "Password")).toMatchObject({ inShadowRoot: true, sensitive: "password" });
@@ -402,8 +428,21 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     expect(state.elements.filter((element) => element.label === "empty" || element.label === "Telemetry")).toEqual([]);
     expect(state.value.omitted).toContain("frames the page does not show (childFrames)");
     await tab.evaluate(`new Promise((resolve) => { const frame = document.querySelector('iframe[title="empty"]'); frame.contentDocument.body.append("ping"); frame.addEventListener("load", resolve, { once: true }); frame.contentWindow.location.assign("/empty?again"); })`);
-    expect(await refusal(state, "fill", "Username", { text: "reader-id", taskPolicy: policy(selectorOf(user), "fill", secure) })).toBe("POLICY_BLOCKED");
-    expect(await tab.frameLocator('iframe[name="logonbox"]').locator("#userId #input").inputValue()).toBe("");
+    expect(await refusal(state, "fill", "Password", { text: "not-a-password", taskPolicy: policy(selectorOf(find(state, "Password")), "fill", secure) })).toBe("POLICY_BLOCKED");
+    expect(await act(state, "fill", "Username", { text: "reader-id", taskPolicy: policy(selectorOf(user), "fill", secure) })).toMatchObject({ dispatched: true });
+    state = await snapshot({ taskPolicy: policy("#none", "click", secure) });
+    expect(fields(state.value.inputReadback).matches).toBe(true);
+    expect(await act(state, "select", "Sign in with", { text: "Token", taskPolicy: policy(selectorOf(find(state, "Sign in with")), "select", secure) })).toMatchObject({ dispatched: true });
+    state = await snapshot();
+    expect(await refusal(state, "follow", "Forgot username or password?", { taskPolicy: policy(selectorOf(find(state, "Forgot username or password?")), "follow", secure) })).toBe("POLICY_BLOCKED");
+    const frame = tab.frameLocator('iframe[name="logonbox"]');
+    expect([await frame.locator("#userId #input").inputValue(), await frame.locator("#password #input").inputValue(), await frame.locator("#token").inputValue()]).toEqual(["reader-id", "", "Token"]);
+    await open(`${secure}/verify`);
+    const code = selectorOf(find(await snapshot(), "One-time code"));
+    expect(code).toMatch(/^iframe.* >>> .* >>> #input$/);
+    expect((await codeFill(code, { origin: secure })).dispatched).toBe(true);
+    expect(await tab.frameLocator('iframe[name="logonbox"]').locator("#otp #input").inputValue()).toBe("123456");
+    expect(fields((await codeRead(secure)).codeReadback).matches).toBe(true);
   });
 
   it("through the browser host, presses a bound frame control once and never reads a partner origin's frame", async () => {
@@ -729,5 +768,16 @@ describe('A snapshot says where a submit or Enter would send its form (spec/os/b
     const receipt = { origin: "https://pay.bank.example", method: "post", newWindow: true };
     expect(find(state, "Open receipt").sends).toEqual(receipt);
     expect(await sentBy(() => tab.click("#receipt"))).toEqual(receipt);
+  });
+});
+
+describe('The page keeps a sign-on or log-on control the person\'s (spec/os/browser/pageCommands.md, "A commit grant is spent once, before the page sees it, even when the command is then refused")', () => {
+  it("refuses a task click on Sign On or Log on without a grant, and presses a plain control", async () => {
+    await open(`${shop}/sign-on`);
+    for (const [label, selector] of [["Sign On", "#sign-on"], ["Log on", "#log-on"]] as const)
+      expect(await refusal(await snapshot(), "click", label, { taskPolicy: policy(selector) }), label).toBe("POLICY_BLOCKED");
+    expect(await presses()).toEqual([]);
+    expect(await act(await snapshot(), "click", "Branch hours", { taskPolicy: policy("#hours") })).toMatchObject({ dispatched: true });
+    expect(await presses()).toEqual(["hours"]);
   });
 });
