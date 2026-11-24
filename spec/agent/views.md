@@ -277,7 +277,8 @@ pure def answerRequest(h: ViewHost, binding: Binding, claimId: str, reply: Reply
 ### The agent asks only a declared view, for a named capability, on a live feed
 
 The ask names the view and a nonempty capability; the agent's own code
-asks, so the owner's role is not checked again. The client must have a live
+asks, so neither the owner's role nor the capabilities the view declares
+are checked again. The client must have a live
 `view-interact` feed: zero receivers refuses the ask as unavailable. A
 refused ask publishes no frame. An admitted ask waits `interactionWaitMs`.
 

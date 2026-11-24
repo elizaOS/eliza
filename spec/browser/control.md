@@ -128,9 +128,9 @@ and the BROWSER command is not offered on that turn. The BROWSER command,
 bound to the tab the turn observed, answers a history move only on a turn
 whose device negotiated no history control and whose mounted browser takes
 agent commands. Otherwise no history move is offered. The Browser declares
-its graphical view, `browser` at `/browser`, with the `browser-command`
-capability, so the agent's [views](../agent/views.md) admit the command's
-ask.
+its graphical view, `browser` at `/browser`, so the agent's
+[views](../agent/views.md) admit the command's ask. The view also lists the
+`browser-command` capability, but the views admit an ask by its view alone.
 
 ```quint
 type HistoryHome = HistoryAsControl | HistoryAsCommand | NoHistoryMove
