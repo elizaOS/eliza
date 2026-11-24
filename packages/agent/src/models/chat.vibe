@@ -17,6 +17,7 @@ export interface Endpoint {
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
   readonly reasoningHints: boolean
+  readonly uniformToolStrictness: boolean | "OnCerebrasModels"
   readonly cloudRoute: boolean
 }
 
@@ -225,19 +226,19 @@ module wireFormat {
   }
 
   /** @throws {never} */
-  export function toolsOf(tools: readonly ToolDefinition[] | undefined): object[] | undefined {
+  export function toolsOf(tools: readonly ToolDefinition[] | undefined, uniformStrictness: boolean): object[] | undefined {
     if (tools === undefined || tools.length === 0) return undefined
+    const strictSent = !uniformStrictness || tools.every((tool) => tool.strict === true)
     return tools.map((tool) => ({ type: "function", function: {
       name: tool.name,
       ...(tool.description === undefined ? {} : { description: tool.description }),
       parameters: tool.parameters === undefined ? { type: "object", properties: {} } : advertised(tool.parameters),
-      ...(tool.strict === true ? { strict: true } : {}),
+      ...(strictSent && tool.strict === true ? { strict: true } : {}),
     } }))
   }
 
   const dataKeywords: ReadonlySet<string> = new Set(["enum", "const", "default", "examples"])
 
-  /** A tool's parameter schema as a provider is shown it: without `pattern` constraints, which a provider may refuse (Cerebras does on a closed object); the action still validates its arguments when it runs. */
   function advertised(schema: unknown): unknown {
     if (Array.isArray(schema)) return schema.map(advertised)
     if (typeof schema !== "object" || schema === null) return schema
@@ -541,7 +542,7 @@ function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTex
   const effort = endpoint.reasoningHints ? efforts[effortFor(family, hintOf(params))] : undefined
   const named = cacheKeyOf(params)
   const cacheKey = cacheKeySent(family, endpoint.reasoningHints, named !== undefined) ? named : undefined
-  const tools = toolsOf(params.tools)
+  const tools = toolsOf(params.tools, endpoint.uniformToolStrictness === "OnCerebrasModels" ? family !== "OtherReasoning" : endpoint.uniformToolStrictness)
   const toolChoice = toolChoiceOf(params.toolChoice)
   const format = responseFormatOf(params)
   return {

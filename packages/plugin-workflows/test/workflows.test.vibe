@@ -79,7 +79,6 @@ module node {
     readonly sources: readonly { readonly ownerId: string; readonly id: string; readonly source: Readonly<Record<string, unknown>>; readonly revoked: boolean }[]
   }
 
-  /** Writes the earlier plugin's `workflow` schema as that version left it: its own tables, under its own agent. */
   export function writeEarlierStore(sql: WorkflowSql, store: EarlierStore): Promise<void> {
     return sql.transaction(async (q) => {
       await q.query("DROP SCHEMA IF EXISTS workflow CASCADE")

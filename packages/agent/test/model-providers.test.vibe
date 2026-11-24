@@ -20,8 +20,23 @@ module node {
   export function digest(text: string): string {
     return createHash("sha256").update(text).digest("hex")
   }
+
+  export const cerebrasBaseUrl = "https://api.cerebras.ai/v1"
+  const routes = new Map<string, string>()
+  const sent = globalThis.fetch
+  globalThis.fetch = (input, init) => {
+    const url = input instanceof Request ? input.url : String(input)
+    const route = [...routes].find(([from]) => url.startsWith(from))
+    return sent(route === undefined ? input : route[1] + url.slice(route[0].length), init)
+  }
+
+  /** @throws {never} */
+  export function routedToFake(from: string, to: string): () => void {
+    routes.set(from, to)
+    return () => { routes.delete(from) }
+  }
 }
-import { digest } from node
+import { cerebrasBaseUrl, digest, routedToFake } from node
 
 effect function modelRuntime(agentId?: AgentRuntime["agentId"]) {
   return try Effect.try(() => new AgentRuntime({ agentId, character: { name: "Eliza", bio: [] } }))
@@ -332,6 +347,36 @@ it.effect('A tool is offered without its pattern constraints, and the rest of it
     },
   })
   assert.strictEqual(parameters.properties.placeId.pattern, handle)
+})
+
+it.effect('A Cerebras own-key call, or a Cloud call for a model Cloud serves on Cerebras, sends its tools strict only when every tool is, and any other call sends each tool as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  try acquireRelease(Effect.sync(() => routedToFake(cerebrasBaseUrl, cloud.ownKeyBaseUrl)), (restore) => Effect.sync(restore))
+  const calculate = { name: "CALCULATE", description: "Arithmetic.", parameters: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"], additionalProperties: false }, strict: true }
+  const restore = { name: "RESTORE_CONTEXT", description: "Restore context.", parameters: { type: "object", properties: { reason: { type: "string" } }, required: ["reason"], additionalProperties: false } }
+  const offered = effect (runtime: AgentRuntime, tools: readonly (typeof calculate | typeof restore)[]) => {
+    try host("tool offer", () => runtime.useModel(ModelType.TEXT_LARGE, { tools: [...tools], toolChoice: "auto", messages: [{ role: "user", content: "What is 17 * 24?" }] }))
+    return (cloud.calls.at(-1)?.body as { tools: { function: { strict?: boolean } }[] }).tools.map((tool) => tool.function.strict)
+  }
+  const cerebras = { baseUrl: cerebrasBaseUrl, small: "gpt-oss-120b", large: "gpt-oss-120b" }
+  const onCerebras = try bound({ kind: "ownKey", baseUrl: cerebras.baseUrl, smallModel: cerebras.small, largeModel: cerebras.large }, cloud.ownKey)
+  registerOwnKeyModels(onCerebras.runtime, onCerebras.binding, cerebras)
+  const elsewhere = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }
+  const offCerebras = try bound({ kind: "ownKey", baseUrl: elsewhere.baseUrl, smallModel: elsewhere.small, largeModel: elsewhere.large }, cloud.ownKey)
+  registerOwnKeyModels(offCerebras.runtime, offCerebras.binding, elsewhere)
+  const cloudQwen = try cloudAgent(cloud, { large: "qwen-3.8-27b" })
+  const cloudGptOss = try cloudAgent(cloud, { large: "cerebras/gpt-oss-120b" })
+  const cloudOther = try cloudAgent(cloud, { large: "anthropic/claude-sonnet-4.6" })
+  const sent = [
+    try offered(onCerebras.runtime, [restore, calculate]),
+    try offered(onCerebras.runtime, [calculate, { ...restore, strict: true }]),
+    try offered(offCerebras.runtime, [restore, calculate]),
+    try offered(cloudQwen.runtime, [restore, calculate]),
+    try offered(cloudQwen.runtime, [calculate, { ...restore, strict: true }]),
+    try offered(cloudGptOss.runtime, [restore, calculate]),
+    try offered(cloudOther.runtime, [restore, calculate]),
+  ]
+  assert.deepStrictEqual(sent, [[undefined, undefined], [true, true], [undefined, true], [undefined, undefined], [true, true], [undefined, undefined], [undefined, true]])
 })
 
 it.effect('An own-key overload or timeout is a provider issue and is retried, and a validation refusal ends the call (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {

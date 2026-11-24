@@ -1,0 +1,8 @@
+// spec/calendar/actions.md, "A new event the owner put on the phone's own calendar is proposed on the phone"
+import type { IAgentRuntime, Memory } from "@elizaos/core"
+import { deviceTurnFor } from "@elizaos/agent/device-actions"
+import { CALENDAR_CAPABILITY } from "../client/named-read.vibe"
+
+export function phoneCalendarOffered(runtime: IAgentRuntime, message: Memory): boolean {
+  return deviceTurnFor(runtime, message)?.capabilities.includes(CALENDAR_CAPABILITY) === true
+}
