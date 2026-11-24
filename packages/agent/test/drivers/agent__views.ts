@@ -66,7 +66,7 @@ async function send(key: string, event: Event): Promise<"accepted" | "refused"> 
     case "askView": {
       next.id = event.requestId;
       subscribed.set(event.clientId, event.subscribed ? 1 : 0);
-      const asked = await run(host.ask({ clientId: event.clientId, viewId: event.viewId, capability: event.capability, params: {} }));
+      const asked = await run(host.ask({ clientId: event.clientId, viewId: event.viewId, capability: event.capability, params: {}, grant: event.grant }));
       return accepted(asked.kind === "asked");
     }
     case "abandonRequest": return accepted(await run(host.abandon(event.requestId)));

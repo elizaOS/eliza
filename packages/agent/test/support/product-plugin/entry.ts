@@ -8,5 +8,5 @@ runAgentCli({
   bundled: [{ packageName: productPlugin.name, plugin: productPlugin }, { packageName: hostedFixtureName, plugin: undefined }],
   productPlugin: productPlugin.name,
   hostModules: new Map([[hostedFixtureName, hostedFixtureModule]]),
-  hostServices: () => Layer.succeed(FixtureSocket, { path: "SOCKET" }),
+  hostServices: (host) => Layer.succeed(FixtureSocket, { path: host.environment.FIXTURE_SOCKET ?? "SOCKET" }),
 });

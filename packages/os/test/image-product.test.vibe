@@ -2,11 +2,11 @@
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { composeProduct, enrollUpdater, packBootAnimation, type ComposeRequest, type EnrollmentRequest } from "../src/image/compose-product.vibe"
+import { loadProfile } from "../src/image/source-lock.vibe"
 import { stageLauncher, validateDescriptor } from "../src/image/stage-launcher.vibe"
-import { acmeSource } from "../gen/os__image__product.effect.vibe"
 import type { ProvisioningRequest } from "../gen/os__image__provisioning.effect.vibe"
 import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
-import { readTree, scratch, writeTree } from "./support/scratch.vibe"
+import { pinnedCheckout, readTree, scratch, writeTree } from "./support/scratch.vibe"
 
 module node {
   import { X509Certificate, createHash } from "node:crypto"
@@ -54,7 +54,6 @@ const skipped = tools.kind === "missing" ? tools.reason : null
 const suffix = skipped === null ? "" : ` (skipped: ${skipped})`
 const LAUNCHER = { brand: "acme", moduleName: "AcmeHome", packageName: "com.acme.home" }
 const PROVISIONING: ProvisioningRequest = { assistant: { tag: "LauncherAssistant" }, requires: { autofill: false, allFilesAccess: false }, telephonyRoles: false, lockScreen: "SystemOwnsLockScreen" }
-const SOURCE = { ...acmeSource, admitted: [] }
 const PIXEL = {
   schemaVersion: 1,
   target: "pixel10a",
@@ -84,6 +83,41 @@ const CUTTLEFISH = {
 }
 const FRAMES = { "desc.txt": "1080 2400 30\np 1 0 part0\np 0 0 part1\n", "part0/00000.png": "frame-a", "part0/00001.png": "frame-b", "part1/00000.png": "frame-c" }
 
+effect function pinnedSources(work: string, checkout: string) {
+  const path = try Path.Path
+  const profile = try pinnedCheckout(checkout)
+  const vendorManifest = "vendor/google_devices/stallion/vintf/vendor/manifest.xml"
+  const vendor = "<manifest><sepolicy><version>202604</version></sepolicy></manifest>\n"
+  const factory = "factory archive bytes\n"
+  const pin = (file: string, content: string) => ({ path: file, sha256: sha256(content), sizeBytes: new TextEncoder().encode(content).byteLength })
+  const inventory = (developmentOnly: boolean) => {
+    const pinned = profile(["stallion"], developmentOnly)
+    return JSON.stringify({ schema: 1, target: "pixel10a", device: { codename: "stallion", androidRelease: "17" }, developmentOnly, releaseQualified: false,
+      manifest: { ...pinned.manifest, configuration: pinned.manifestConfiguration }, factory: { ...pin("factory.zip", factory), filename: "factory.zip" },
+      projects: pinned.projects, overrides: [], ignoredInputs: [], generated: { root: "vendor/google_devices/stallion", files: [pin(vendorManifest, vendor)] } })
+  }
+  const physical = (inventoryPath: string, text: string) => ({ kind: "physical", manifest: profile(["stallion"], false).manifest, targets: ["stallion"],
+    sourceInventory: { path: inventoryPath, sha256: sha256(text) }, device: { sourceTarget: "pixel10a", codename: "stallion", androidRelease: "17", vendorApiLevel: "202604" } })
+  const released = inventory(false)
+  const unreleased = inventory(true)
+  try writeTree(checkout, { [vendorManifest]: vendor })
+  try writeTree(work, {
+    "factory.zip": factory,
+    "sources/pixel10a.json": released,
+    "sources/pixel10a-development.json": unreleased,
+    "aosp.lock.json": JSON.stringify({ schemaVersion: 1, profiles: { pixel10a: physical("sources/pixel10a.json", released), cuttlefish: profile(["cf_x86_64_phone"], false) } }),
+    "development.lock.json": JSON.stringify({ schemaVersion: 1, profiles: { pixel10a: physical("sources/pixel10a-development.json", unreleased) } }),
+    "virtual.lock.json": JSON.stringify({ schemaVersion: 1, profiles: { pixel10a: profile(["stallion"], false) } }),
+  })
+  const device = { sourceRoot: checkout, factory: path.join(work, "factory.zip"), boardConfiguration: "project-a/release/RELEASE_BOARD_API_LEVEL.textproto", vendorManifest }
+  return {
+    pixel: { ...device, profile: try loadProfile({ name: "pixel10a", lockFile: path.join(work, "aosp.lock.json") }) },
+    cuttlefish: { profile: try loadProfile({ name: "cuttlefish", lockFile: path.join(work, "aosp.lock.json") }), sourceRoot: checkout },
+    developmentPixel: { ...device, profile: try loadProfile({ name: "pixel10a", lockFile: path.join(work, "development.lock.json") }) },
+    virtualPixel: { profile: try loadProfile({ name: "pixel10a", lockFile: path.join(work, "virtual.lock.json") }), sourceRoot: checkout },
+  }
+}
+
 effect function stagedOverlay(prefix: string, partition?: "system") {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
@@ -96,8 +130,9 @@ effect function stagedOverlay(prefix: string, partition?: "system") {
   try files.writeFileString(descriptorFile, JSON.stringify(descriptor))
   const checkout = path.join(work, "aosp")
   const output = path.join(checkout, "vendor", "acme")
+  const sources = try pinnedSources(work, checkout)
   try stageLauncher({ descriptor: descriptorFile, apk: apk.apk, output, aapt: tools.aapt, apksigner: tools.apksigner, development: false })
-  return { work, checkout, output }
+  return { work, checkout, output, sources }
 }
 
 effect function writeJson(file: string, value: unknown) {
@@ -124,14 +159,22 @@ it.effect.skipIf(skipped !== null)(`Compose a Pixel 10a production product with 
     try writeTree(frames, FRAMES)
     const packed = try packBootAnimation(frames)
     const pixel = { ...PIXEL, bootAnimation: { sha256: packed.sha256 } }
-    const base = { output: staged.output, source: SOURCE, purpose: "Production" as const, provisioning: PROVISIONING, bootAnimation: { kind: "frames" as const, directory: frames } }
+    const base = { output: staged.output, source: staged.sources.pixel, purpose: "Production" as const, provisioning: PROVISIONING, bootAnimation: { kind: "frames" as const, directory: frames } }
     const at = (name: string, value: unknown) => writeJson(path.join(staged.work, `${name}.json`), value)
     const before = Object.keys(try readTree(staged.output)).sort()
 
     assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("unset", { ...pixel, model: "UNSET" }) }), ["PlaceholderInProduction"])
     assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("brand", { ...pixel, brand: "Other" }) }), ["SourceNotAdmitted"])
     assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("target", { ...pixel, productName: "acme_cf_x86_64_phone" }) }), ["SourceNotAdmitted"])
-    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("pixel", pixel), source: { ...SOURCE, lock: { ...SOURCE.lock, developmentOnly: true } } }), ["SourceNotAdmitted"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("pixel", pixel), source: staged.sources.developmentPixel }), ["SourceNotAdmitted"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("pixel", pixel), source: staged.sources.cuttlefish }), ["SourceNotAdmitted"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("pixel", pixel), source: staged.sources.virtualPixel }), ["SourceNotAdmitted"])
+    const elsewhere = path.join(staged.work, "elsewhere")
+    try files.copy(staged.output, elsewhere)
+    assert.deepStrictEqual(try problemsOf({ ...base, output: elsewhere, descriptor: try at("pixel", pixel) }), ["SourceNotAdmitted"])
+    try writeTree(staged.checkout, { "project-a/device.mk": "PRODUCT_NAME := drifted\n" })
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("pixel", pixel) }), ["SourceNotAdmitted"])
+    try writeTree(staged.checkout, { "project-a/device.mk": "PRODUCT_NAME := fixture\n" })
     assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("profile", { ...pixel, sourceProfile: "cuttlefish" }) }), ["SourceProfileNotPinned"])
     assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("collides", { ...pixel, pixelConfig: { ...pixel.pixelConfig, packageName: LAUNCHER.packageName } }) }), ["PixelConfigCollides"])
     assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("other-launcher", { ...pixel, launcher: { ...pixel.launcher, moduleName: "OtherHome" } }) }), ["LauncherDiffers"])
@@ -184,13 +227,18 @@ it.effect.skipIf(skipped !== null)(`Compose a Cuttlefish development product on 
     const files = try FileSystem.FileSystem
     const path = try Path.Path
     const at = (name: string, value: unknown) => writeJson(path.join(staged.work, `${name}.json`), value)
-    const base = { output: staged.output, source: SOURCE, provisioning: PROVISIONING }
+    const base = { output: staged.output, source: staged.sources.cuttlefish, provisioning: PROVISIONING }
     assert.deepStrictEqual(try problemsOf({ ...base, purpose: "Production", descriptor: try at("unpinned", CUTTLEFISH) }), ["CuttlefishHostUnpinned"])
     const pinned = { ...CUTTLEFISH, hostPackages: [{ name: "cuttlefish-base", version: "1.0", sha256: sha256("base") }], platformCertificateSha256: "UNSET" }
     assert.deepStrictEqual([...(try problemsOf({ ...base, purpose: "Production", descriptor: try at("certificate", pinned) }))].sort(), ["CuttlefishHostUnpinned", "PlaceholderInProduction"])
     try writeTree(staged.output, { "permissive.mk": "BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive\nPRODUCT_PACKAGES += DeskClock\nPRODUCT_PACKAGES += DeskClock\n" })
     assert.deepStrictEqual([...(try problemsOf({ ...base, purpose: "Development", descriptor: try at("development", CUTTLEFISH) }))].sort(), ["BuildSettingsChanged", "ClockNamedTwice"])
     try files.remove(path.join(staged.output, "permissive.mk"))
+    try writeTree(staged.output, { "clock.mk": "PRODUCT_PACKAGES += DeskClock Camera2\nPRODUCT_PACKAGES += DeskClock\n" })
+    assert.deepStrictEqual(try problemsOf({ ...base, purpose: "Development", descriptor: try at("development", CUTTLEFISH) }), ["ClockNamedTwice"])
+    try writeTree(staged.output, { "clock.mk": "PRODUCT_PACKAGES += \\\n    DeskClock \\\n    Camera2\nPRODUCT_PACKAGES += DeskClock\n" })
+    assert.deepStrictEqual(try problemsOf({ ...base, purpose: "Development", descriptor: try at("development", CUTTLEFISH) }), ["ClockNamedTwice"])
+    try writeTree(staged.output, { "clock.mk": "PRODUCT_PACKAGES += \\\n    DeskClock \\\n    Camera2\n" })
 
     const record = try composeProduct({ ...base, purpose: "Development", descriptor: try at("development", CUTTLEFISH) })
     const tree = try readTree(staged.output)
@@ -204,11 +252,12 @@ it.effect.skipIf(skipped !== null)(`Compose a Cuttlefish development product on 
     assert.include(makefile, "$(call inherit-product, device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk)\n$(call inherit-product, vendor/acme/product.mk)\n")
     assert.include(makefile, "PRODUCT_DEVICE := vsoc_x86_64_only\n")
     assert.include(makefile, "PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4\n")
+    assert.notInclude(makefile, "DeskClock")
 
     const system = try stagedOverlay("image-product-system", "system")
     if (system === undefined) return
     const systemDescriptor = try writeJson(path.join(system.work, "pixel.json"), PIXEL)
-    assert.deepStrictEqual(try problemsOf({ output: system.output, source: SOURCE, purpose: "Production", provisioning: PROVISIONING, descriptor: systemDescriptor }), ["LauncherOnSystemPartition"])
+    assert.deepStrictEqual(try problemsOf({ output: system.output, source: system.sources.pixel, purpose: "Production", provisioning: PROVISIONING, descriptor: systemDescriptor }), ["LauncherOnSystemPartition"])
   }
 }, 240_000)
 
@@ -219,7 +268,7 @@ it.effect.skipIf(skipped !== null)(`Enroll a composed Pixel product's update cha
     const files = try FileSystem.FileSystem
     const path = try Path.Path
     const descriptor = try writeJson(path.join(staged.work, "pixel.json"), PIXEL)
-    try composeProduct({ output: staged.output, source: SOURCE, purpose: "Production", provisioning: PROVISIONING, descriptor })
+    try composeProduct({ output: staged.output, source: staged.sources.pixel, purpose: "Production", provisioning: PROVISIONING, descriptor })
     const certificate = try path.fromFileUrl(new URL("./fixtures/product/releasekey.x509.pem", import.meta.url))
     const other = try path.fromFileUrl(new URL("./fixtures/product/otherkey.x509.pem", import.meta.url))
     const otaCertificateSha256 = fingerprint(new Uint8Array(try files.readFile(certificate)))

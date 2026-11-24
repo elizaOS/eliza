@@ -70,7 +70,7 @@ export interface MapsOffer {
   readonly recipients: ReadonlyArray<{ readonly role: string; readonly name: string; readonly operator: string }>
 }
 
-export const coordinatesProvider = "coordinates"
+const coordinatesProvider = "coordinates"
 
 export function pointRef(point: Coordinate, name: string | undefined): AgentPlaceRef {
   return { provider: coordinatesProvider, providerPlaceId: `coordinates:${point.latitude},${point.longitude}`, name: name ?? `${point.latitude}, ${point.longitude}`, coordinates: point }

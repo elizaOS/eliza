@@ -13,7 +13,7 @@ module node {
   import { vi } from "vitest"
   import { EventType, MISSED_SCHEDULED_OCCURRENCE_TEXT, stringToUuid, validateUuid, type UUID } from "@elizaos/core"
   import type { RunningAgent } from "../src/host/process.vibe"
-  import { getTrigger } from "../src/schedule/store.vibe"
+  import { getTrigger, triggerKeeping } from "../src/schedule/store.vibe"
   import { held, text, type CloudFake } from "./support/cloud-fake.ts"
   import { account, type LaunchFrame } from "./support/scratch.ts"
   import { request, type LocalRequest } from "./support/socket-client.ts"
@@ -258,6 +258,39 @@ module node {
     }
   }
 
+  export async function seedLegacyEvent(bench: Bench) {
+    const current = { triggerType: "event", eventKind: "MESSAGE_RECEIVED" }
+    const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt(current))
+    const { id } = created.body.trigger
+    const enabled = await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, { enabled: true })
+    const adapter = bench.running.runtime.adapter
+    const row = await Effect.runPromise(getTrigger(adapter, id))
+    if (row === undefined || enabled.status !== 200) throw new Error("The enabled trigger was not stored")
+    const eventKind = "ENTITY_JOINED"
+    const keeping = triggerKeeping(adapter, id, { details: { ...row.details, eventKind } })
+    await Effect.runPromise(Effect.gen(function* () {
+      const stored = yield* keeping.load()
+      yield* keeping.keep({ ...stored, eventKind })
+    }))
+    return id
+  }
+
+  export async function observeLegacyEvent(bench: Bench, id: string) {
+    const path = `/api/triggers/${id}`
+    const listed = (await ask<Replies["trigger"]>(bench, "GET", path)).body.trigger
+    const refused = await ask<Replies["any"]>(bench, "PUT", path, { enabled: true, expectedRevision: 3 })
+    const edited = await ask<Replies["trigger"]>(bench, "PUT", path, {
+      ...prompt({ triggerType: "event", eventKind: "MESSAGE_SENT" }), expectedRevision: 3,
+    })
+    const enabled = await ask<Replies["trigger"]>(bench, "PUT", path, { enabled: true, expectedRevision: 4 })
+    return {
+      listed: { enabled: listed.enabled, revision: listed.revision, instructions: listed.instructions },
+      refused: { status: refused.status, error: refused.body.error },
+      edited: { status: edited.status, revision: edited.body.trigger?.revision },
+      enabled: { status: enabled.status, enabled: enabled.body.trigger?.enabled },
+    }
+  }
+
   export async function planMissed(bench: Bench) {
     const at = Date.now() + 60_000
     const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ triggerType: "once", scheduledAtIso: new Date(at).toISOString() }))
@@ -283,7 +316,7 @@ module node {
   }
 }
 
-import { fakeClock, missedAfterRestart, planMissed, realClock, triggerJourney, type Bench } from node
+import { fakeClock, missedAfterRestart, observeLegacyEvent, planMissed, realClock, seedLegacyEvent, triggerJourney, type Bench } from node
 
 effect function agent(state: Scratch, cloud: CloudFake, socket: string, callerRole: "owner" | "user" = "owner") {
   const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
@@ -360,3 +393,19 @@ it.effect('A one-time occurrence that fell due while the agent was stopped is re
     expected: observed.expected,
   }))
 }, 300_000)
+
+it.effect('An old unsupported event trigger is disabled at boot and can be edited to an event the agent raises (spec/agent/schedule/triggers.md, "Enabling is refused past 100 active triggers, for a passed one-time trigger, and for an unsupported event")', effect () => {
+  const state = try scratch("legacy-event-trigger")
+  const cloud = try cloudFake(deviceKey)
+  const first = try agent(state, cloud, "legacy-1.sock")
+  const id = try host("seed an older event trigger", () => seedLegacyEvent(first))
+  try host("stop the first agent", () => first.running.stop())
+  const second = try agent(state, cloud, "legacy-2.sock")
+  const observed = try host("read and repair the disabled trigger", () => observeLegacyEvent(second, id))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    listed: { enabled: false, revision: 3, instructions: "Remind me to drink water" },
+    refused: { status: 400, error: "unsupported_event" },
+    edited: { status: 200, revision: 4 },
+    enabled: { status: 200, enabled: true },
+  }))
+}, 120_000)

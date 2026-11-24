@@ -89,17 +89,22 @@ pure def sometimesEditedWhileRunning(t: Trigger): bool = {
 pure def sometimesDeleted(t: Trigger): bool = t.life == Removed and t.schedule == CronSchedule
 ```
 
-### Enabling is refused past 100 active triggers, and for a one-time trigger whose time has passed
+### Enabling is refused past 100 active triggers, for a passed one-time trigger, and for an unsupported event
 
 `PUT {enabled}` toggles it. Only `activeOthers` (the owner's other enabled
 triggers, read from the store) at 100 gives 429; a passed `once` time gives
-400. Enabling a cron trigger takes the next instant `at`. A refusal changes
+400. Enabling a cron trigger takes the next instant `at`. An event kind the
+agent no longer raises cannot be enabled and gives 400 `unsupported_event`.
+Before the scheduler subscribes to events at startup, it disables each enabled
+trigger with such a kind and advances its revision once, retaining its room,
+prompt and history for the owner to edit or run manually. A refusal changes
 nothing, and so does setting the state it already has.
 
 ```quint
 pure val maxActiveTriggers: int = 100
 pure val activeOthersValues = Set(0, 99, 100)
-pure def canSetEnabled(t: Trigger, on: bool, at: int, activeOthers: int, expected: RevisionCheck): bool = t.life == Saved and revisionMatches(expected, t.revision) and (not(on) or t.enabled or (activeOthers < maxActiveTriggers and (if (t.schedule == OnceAt) t.nextAt > t.now else if (t.schedule == CronSchedule) at > t.now else true)))
+pure def eventSupported(t: Trigger): bool = t.schedule != OnRuntimeEvent or triggerEventNames.contains(t.eventKind)
+pure def canSetEnabled(t: Trigger, on: bool, at: int, activeOthers: int, expected: RevisionCheck): bool = t.life == Saved and revisionMatches(expected, t.revision) and (not(on) or (eventSupported(t) and (t.enabled or (activeOthers < maxActiveTriggers and (if (t.schedule == OnceAt) t.nextAt > t.now else if (t.schedule == CronSchedule) at > t.now else true)))))
 pure def setEnabled(t: Trigger, on: bool, at: int, activeOthers: int, expected: RevisionCheck): Trigger = { ...t, enabled: on, nextAt: if (on and not(t.enabled) and t.schedule == CronSchedule) at else t.nextAt, revision: if (on == t.enabled) t.revision else t.revision + 1 }
 pure def sometimesEnabledCron(t: Trigger): bool = t.life == Saved and t.enabled and t.schedule == CronSchedule
 ```

@@ -1,8 +1,8 @@
-// spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A claim names its request's exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"; spec/agent/views.md, "The agent asks only a declared view, for a named capability, on a live feed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after"
+// spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A claim names its request's exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"; spec/agent/views.md, "The agent asks only a declared view, for a capability the view grants the agent, on a live feed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after"
 import { logger } from "@elizaos/core"
 import {
   Machine, busy, interactionWaitMs, machine, navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs, openNavigationOf, savedNoteClaimAllowed, savedNoteResultAllowed, waiterAt,
-  type Binding, type DeclaredView, type Event, type Reply, type ViewHost as ViewHostState, type WaitOutcome,
+  type Binding, type CapabilityGrant, type DeclaredView, type Event, type Reply, type ViewHost as ViewHostState, type WaitOutcome,
 } from "../../gen/agent__views.effect.vibe"
 
 module node {
@@ -58,6 +58,7 @@ export interface ViewAsk {
   readonly viewId: string
   readonly capability: string
   readonly params: Readonly<Record<string, unknown>>
+  readonly grant: CapabilityGrant
 }
 
 export interface ViewFeedPort {
@@ -224,7 +225,7 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
       const subscribed = port.receivers(request.clientId) > 0
       const state = try send({
         type: "askView", requestId, clientId: request.clientId, viewId: request.viewId,
-        capability: request.capability, subscribed,
+        capability: request.capability, grant: request.grant, subscribed,
       })
       if (state === undefined) return subscribed ? { kind: "refused" } as const : { kind: "unavailable" } as const
       const pending = try wait(state, requestId, interactionWaitMs)

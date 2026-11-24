@@ -3,8 +3,7 @@
 The browser-safe audio helpers a screen and the voice session
 (`spec/agent/voice/session.md`) use, exported from `@elizaos/agent/voice`:
 the cumulative microphone capture and its worklet, mono PCM16 WAV encoding,
-decoding a recorded clip to bounded samples, `audioBlobBase64`, the cloud
-speech piece plan, the segmented player with its progressive attachment,
+the cloud speech piece plan, the segmented player with its progressive attachment,
 the recorded transcription controller and the draft guard. They hold no
 policy of their own: the screen owns the microphone stream, the speech
 service and what is sent. Who owns the microphone through a voice turn, and
@@ -26,20 +25,14 @@ Samples from any number of chunks are written in order with no second
 float buffer. A sample is clamped to full scale; a negative one scales by
 32,768 and a positive one by 32,767, rounded to the nearest whole value; a
 sample that is not a finite number is silence. The sample rate is a whole
-number from 8,000 to 48,000. A recorded clip is decoded to mono samples at
-16 kHz only when it is not empty, at most 16 MB and at most 60 seconds
-long; the decode stops when the caller cancels.
+number from 8,000 to 48,000.
 
 ```quint
 type SampleValue = FiniteSample({ micro: int }) | NonFiniteSample
 pure val fullScale = 1000000
 pure val wavHeaderBytes = 44
-pure val recordingSampleRate = 16000
-pure val recordingMaxBytes = 16000000
-pure val recordingMaxMs = 60000
 pure def wavRateAccepted(rate: int): bool = rate >= 8000 and rate <= 48000
 pure def wavByteLength(sampleCount: int): int = wavHeaderBytes + 2 * sampleCount
-pure def recordingDecodable(bytes: int, durationMs: int): bool = bytes > 0 and bytes <= recordingMaxBytes and durationMs > 0 and durationMs <= recordingMaxMs
 pure def floorRatio(n: int, d: int): int = if (d <= 0) 0 else if (n >= 0 or n % d == 0) n / d else n / d - 1
 pure def pcm16OfMicro(micro: int): int = {
   val c = if (micro > fullScale) fullScale else if (micro < -fullScale) -fullScale else micro

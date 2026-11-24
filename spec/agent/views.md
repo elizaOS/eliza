@@ -192,23 +192,25 @@ pure val targetValues = Set("Notes", "home", "nowhere")
 
 ### A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer
 
-A request to open a specific saved note uses VIEWS with
-`view: "notes-editor"` only after a unique successful `NOTES_GET` in
-the same turn. The canonical resident collection must still have the same
-unique match for the owner's open request. An uncertain or changed record,
-a private surface, a phone-native Notes source, or a renderer without the
-saved-editor protocol has no prepared saved-editor switch. The prepared
-action has `subview: "saved-note-v1"` and carries no note id or note text.
-A bare open request matching a declared view id, label or alias opens that
-view, including the Notes list. Explicitly naming a note (for example,
-`open my note called Calendar` or `open Calendar in Notes`) selects the
-saved-note lookup when a declared view has the same name.
+The model opens one saved note, in whatever words the owner asked for it,
+by calling VIEWS with `view: "notes-editor"` and `note` set to the note's
+title or text, only after a unique successful `NOTES_GET` in the same turn.
+The canonical resident collection must still match that `note` uniquely to
+the note the lookup found. A call without `note`, an uncertain or changed
+record, a private surface, a phone-native Notes source, or a renderer
+without the saved-editor protocol has no prepared saved-editor switch. The
+prepared action has `subview: "saved-note-v1"` and carries no note id or
+note text. Any other view name opens that view, including the Notes list,
+whatever note the call names. A renderer with the saved-editor protocol
+tells the model how to open a saved note on each of its turns.
 
 ```quint
-pure def savedNoteIntent(explicitNote: bool, declaredViewMatches: bool): bool =
-  explicitNote or not(declaredViewMatches)
-pure def savedNotePreparationAllowed(explicitOpen: bool, rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool, exactCurrentLookup: bool): bool =
-  explicitOpen and rendererBound and rendererSupports and residentSource and not(privateView) and exactCurrentLookup
+pure def savedNotePreparationAllowed(noteNamed: bool, rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool, exactCurrentLookup: bool): bool =
+  noteNamed and rendererBound and rendererSupports and residentSource and not(privateView) and exactCurrentLookup
+pure def lawAnUnnamedNoteOpensNoEditor(rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool, exactCurrentLookup: bool): bool =
+  not(savedNotePreparationAllowed(false, rendererBound, rendererSupports, residentSource, privateView, exactCurrentLookup))
+pure def lawAnUnconfirmedLookupOpensNoEditor(noteNamed: bool, rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool): bool =
+  not(savedNotePreparationAllowed(noteNamed, rendererBound, rendererSupports, residentSource, privateView, false))
 ```
 
 ### A saved Notes editor claim requires support and only its exact editor can confirm the switch
@@ -274,23 +276,36 @@ pure def answerRequest(h: ViewHost, binding: Binding, claimId: str, reply: Reply
 > answered at most once, by the renderer it was sent to, so that a lost or
 > late answer never runs it twice.
 
-### The agent asks only a declared view, for a named capability, on a live feed
+### The agent asks only a declared view, for a capability the view grants the agent, on a live feed
 
-The ask names the view and a nonempty capability; the agent's own code
-asks, so neither the owner's role nor the capabilities the view declares
-are checked again. The client must have a live
+The ask names a capability. It is admitted only when the caller's role
+meets the view's role gate, the capability is standard or the view
+declares it, the view's manifest allows it (a standard non-read-only
+surface capability needs the view's `agent-surface` grant), and the view
+does not reserve it for direct human use. The client must have a live
 `view-interact` feed: zero receivers refuses the ask as unavailable. A
 refused ask publishes no frame. An admitted ask waits `interactionWaitMs`.
 
 ```quint
+type CapabilityGrant = { roleAllowed: bool, standard: bool, declared: bool, manifestAllows: bool, agentAuthority: bool }
 pure val interactionWaitMs = 5000
-pure def canAskView(h: ViewHost, requestId: str, clientId: str, viewId: str, capability: str, subscribed: bool): bool =
-  opened(h, requestId, clientId, viewId) and capability != "" and subscribed
-pure def askView(h: ViewHost, requestId: str, clientId: str, viewId: str, capability: str, subscribed: bool): ViewHost =
+pure def viewInteractAdmitted(grant: CapabilityGrant): bool =
+  grant.roleAllowed and (grant.standard or grant.declared) and grant.manifestAllows and grant.agentAuthority
+pure def lawUndeclaredCapabilityIsRefused(grant: CapabilityGrant): bool = not(grant.standard or grant.declared) implies not(viewInteractAdmitted(grant))
+pure def lawManifestDecidesAgentAuthority(grant: CapabilityGrant): bool =
+  not(grant.manifestAllows and grant.agentAuthority) implies not(viewInteractAdmitted(grant))
+pure def canAskView(h: ViewHost, requestId: str, clientId: str, viewId: str, capability: str, grant: CapabilityGrant, subscribed: bool): bool =
+  opened(h, requestId, clientId, viewId) and capability != "" and viewInteractAdmitted(grant) and subscribed
+pure def askView(h: ViewHost, requestId: str, clientId: str, viewId: str, capability: str, grant: CapabilityGrant, subscribed: bool): ViewHost =
   withNewWaiter(Interaction, requestId, clientId, viewId, h)
 pure def sometimesInteractionAnswered(h: ViewHost): bool =
   h.requestIds.some(id => waiterAt(h, id).kind == Interaction and waiterAt(h, id).req.phase == V::Delivered)
 pure val capabilityValues = Set("get-state", "")
+pure val grantValues = Set(
+  { roleAllowed: true, standard: true, declared: false, manifestAllows: true, agentAuthority: true },
+  { roleAllowed: true, standard: false, declared: false, manifestAllows: true, agentAuthority: true },
+  { roleAllowed: true, standard: false, declared: true, manifestAllows: true, agentAuthority: false },
+  { roleAllowed: false, standard: false, declared: true, manifestAllows: true, agentAuthority: true })
 ```
 
 ### A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again
