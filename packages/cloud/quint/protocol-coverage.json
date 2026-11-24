@@ -599,6 +599,23 @@
     ]
   },
   {
+    "id": "cloud-flow-mobile-mail-lease",
+    "model": "packages/cloud/quint/MobileMailLease.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/mobile-mail-leases.ts",
+      "packages/cloud/shared/src/db/repositories/mobile-app-auth-grants.ts",
+      "packages/cloud/shared/src/lib/auth/workers-hono-auth.ts",
+      "packages/cloud/api/v1/app-auth/mobile/lease/route.ts",
+      "packages/cloud/api/__tests__/mobile-app-auth-database-lifecycle.pglite.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One acknowledged tablet sign-in, at most four refresh generations, and 12 abstract clock ticks.",
+      "The model abstracts PKCE, cryptography, native storage, and provider I/O. Legacy key renewal and full interoperation are tested separately."
+    ]
+  },
+  {
     "id": "cloud-flow-remote-session-pairing",
     "model": "packages/cloud/quint/RemoteSessionPairing.qnt",
     "sources": [

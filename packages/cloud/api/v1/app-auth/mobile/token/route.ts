@@ -53,6 +53,7 @@ app.post("/", async (c) => {
       },
       code: parsed.data.code,
       codeVerifier: parsed.data.codeVerifier,
+      mailLease: parsed.data.mailLease,
     });
     return c.json({ success: true, ...result });
   } catch (error) {

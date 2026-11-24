@@ -5,10 +5,7 @@
  * managed Google connection (with optional capability scopes).
  */
 
-import {
-  requirePrivateOwnerAccess,
-  requireUserOrApiKeyWithOrg,
-} from "@elizaos/cloud-shared/auth";
+import { requireMailUser } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
@@ -48,7 +45,6 @@ const requestSchema = z.object({
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
     // An empty or absent body means "initiate with defaults". A NON-empty
     // body that is not valid JSON is a client error and must never fall back
     // to those defaults — that turned a truncated request into an initiated
@@ -78,8 +74,7 @@ app.post("/", async (c) => {
         400,
       );
     }
-    if (parsed.data.side !== "agent" || parsed.data.purpose)
-      await requirePrivateOwnerAccess(c, user);
+    const user = await requireMailUser(c, parsed.data.side === "agent" ? "agent" : "owner");
     const result = await initiateManagedGoogleConnection({
       organizationId: user.organization_id,
       userId: user.id,

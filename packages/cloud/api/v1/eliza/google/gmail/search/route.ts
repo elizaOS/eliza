@@ -5,10 +5,7 @@
  * Google connector. Results are capped at `maxResults` (default 12).
  */
 
-import {
-  requirePrivateOwnerAccess,
-  requireUserOrApiKeyWithOrg,
-} from "@elizaos/cloud-shared/auth";
+import { requireMailUser } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -22,9 +19,8 @@ const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
     const rawSide = c.req.query("side") ?? null;
-    if (rawSide !== "agent") await requirePrivateOwnerAccess(c, user);
+    const user = await requireMailUser(c, rawSide === "agent" ? "agent" : "owner");
     const grantId = c.req.query("grantId")?.trim();
     const rawQuery = c.req.query("query") ?? null;
     const pageToken = c.req.query("pageToken");

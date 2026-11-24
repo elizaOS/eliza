@@ -23,6 +23,7 @@ import { authEvents } from "@elizaos/cloud-shared/db/schemas/auth-events";
 import { managedDomains } from "@elizaos/cloud-shared/db/schemas/managed-domains";
 import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
 import { users } from "@elizaos/cloud-shared/db/schemas/users";
+import { eq } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { mobileAppAuthClients } from "../../shared/src/db/schemas/mobile-app-auth-clients";
@@ -71,6 +72,19 @@ const { default: configApp } = await import(
 const { default: tokenApp } = await import("../v1/app-auth/mobile/token/route");
 const { default: ackApp } = await import("../v1/app-auth/mobile/ack/route");
 const { default: renewApp } = await import("../v1/app-auth/mobile/renew/route");
+const { default: leaseApp } = await import("../v1/app-auth/mobile/lease/route");
+const { requireMailUser } = await import("@elizaos/cloud-shared/auth");
+const { failureResponse } = await import("@elizaos/cloud-shared/lib/api/cloud-worker-errors");
+const { Hono } = await import("hono");
+
+const leaseIdentity = new Hono<import("@elizaos/cloud-shared/types/cloud-worker-env").AppEnv>();
+leaseIdentity.get("/", async (c) => {
+  try {
+    return c.json(await requireMailUser(c));
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+});
 
 function quote(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`;
@@ -90,6 +104,7 @@ import { readFileSync } from "node:fs";
 const migration = [
   "0572_mobile_app_auth_session_start",
   "0573_mobile_app_auth_renewal_lineage",
+  "0576_mobile_mail_leases",
 ]
   .map((tag) =>
     readFileSync(
@@ -102,6 +117,7 @@ const MIGRATED_COLUMNS = new Set([
   "session_started_at",
   "session_id",
   "renewed_from_credential_id",
+  "renewal_mail_lease_id",
 ]);
 
 beforeAll(async () => {
@@ -281,6 +297,7 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         grantType: "authorization_code",
+        mailLease: true,
         clientId: DB_CLIENT_ID,
         environment: "production",
         redirectUri: DB_REDIRECT_URI,
@@ -300,6 +317,7 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
     secret: string;
     code: string;
     status: string;
+    lease: { refresh: string };
   };
   expect(tokenBody.success).toBe(true);
   expect(tokenBody.acknowledgementRequired).toBe(true);
@@ -308,6 +326,12 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
   expect(typeof credentialId).toBe("string");
   expect(typeof secret).toBe("string");
   expect(secret.startsWith("eliza_mobile_")).toBe(true);
+  const initialRefresh = tokenBody.lease.refresh;
+  const rotate = (refresh: string) =>
+    leaseApp.request("/", { method: "POST", headers: { Authorization: `Bearer ${refresh}` } }, env() as never);
+  const mailIdentity = (access: string) =>
+    leaseIdentity.request("/", { headers: { Authorization: `Bearer ${access}` } }, env() as never);
+  expect((await rotate(initialRefresh)).status).toBe(401);
 
   // 5. Token Acknowledgement HTTP Route: Activates credential via public route
   const ackRes = await ackApp.request(
@@ -342,6 +366,18 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
   expect(ackBody.status).toBe("acknowledged");
   expect(ackBody.credentialId).toBe(credentialId);
 
+  const firstRotation = await rotate(initialRefresh);
+  expect(firstRotation.status).toBe(200);
+  const firstTokens = (await firstRotation.json()) as { refresh: string; access: string };
+  const lostReplyRetry = await rotate(initialRefresh);
+  expect(await lostReplyRetry.json()).toMatchObject(firstTokens);
+  const deniedMail = await mailIdentity(secret);
+  expect(deniedMail.status).toBe(403);
+  expect(await deniedMail.json()).toMatchObject({ details: { reason: "device_key_not_allowed" } });
+  const read = await mailIdentity(firstTokens.access);
+  expect(read.status).toBe(200);
+  expect(await read.json()).toEqual({ id: USER_ID, organization_id: ORG_ID, authMethod: "mail-lease" });
+
   // 6. Credential Resolution: Resolves client authority from database for active key
   const registration = await resolveMobileCredentialRegistration(
     env() as never,
@@ -361,6 +397,14 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
   const { authorizeMobileAppAuthRenewal } = await import(
     "@elizaos/cloud-shared/lib/services/mobile-app-auth"
   );
+  const [expiry] = await database.select({ expiresAt: apiKeys.expires_at })
+    .from(apiKeys).where(eq(apiKeys.id, credentialId));
+  expect(expiry?.expiresAt).toBeInstanceOf(Date);
+  const afterKeyExpiry = new Date(expiry!.expiresAt!.getTime() + 1000);
+  await expect(authorizeMobileAppAuthRenewal({ env: env(), secret, now: afterKeyExpiry })).rejects.toThrow();
+  await expect(authorizeMobileAppAuthRenewal({
+    env: env(), secret: firstTokens.refresh, now: afterKeyExpiry,
+  })).resolves.toMatchObject({ credentialId, userId: USER_ID, organizationId: ORG_ID });
   const { requirePrivateOwnerCredential } = await import(
     "@elizaos/cloud-shared/lib/auth/private-owner-credential"
   );

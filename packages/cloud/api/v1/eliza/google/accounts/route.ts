@@ -5,10 +5,7 @@
  * `side` query param scopes the result to OWNER, AGENT, or TEAM accounts.
  */
 
-import {
-  requirePrivateOwnerAccess,
-  requireUserOrApiKeyWithOrg,
-} from "@elizaos/cloud-shared/auth";
+import { requireMailUser } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -29,14 +26,13 @@ const ACCOUNT_ROLES = [
 
 app.get("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
     const rawSide = c.req.query("side") ?? null;
     const side = parseOAuthConnectionRole(rawSide);
     if (rawSide !== null && !side) {
       return c.json({ error: "side must be OWNER, AGENT, or TEAM." }, 400);
     }
-    if (!side || side === "OWNER") await requirePrivateOwnerAccess(c, user);
-    const sides = side ? [side] : ACCOUNT_ROLES;
+    const user = await requireMailUser(c, side && side !== "OWNER" ? "agent" : "owner");
+    const sides = side ? [side] : user.authMethod === "mail-lease" ? ["OWNER" as const] : ACCOUNT_ROLES;
     const accounts = (
       await Promise.all(
         sides.map((accountSide) =>

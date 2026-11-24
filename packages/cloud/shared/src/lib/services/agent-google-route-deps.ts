@@ -1,5 +1,6 @@
 // Coordinates cloud service agent google route deps behavior behind route handlers.
 import { requireAuthOrApiKeyWithOrg } from "../auth";
+import { requireMailUser } from "../auth/workers-hono-auth";
 import {
   AgentGoogleConnectorError,
   createManagedGoogleCalendarEvent,
@@ -21,6 +22,7 @@ import {
 
 export const agentGoogleRouteDeps = {
   requireAuthOrApiKeyWithOrg,
+  requireMailUser,
   getManagedGoogleConnectorStatus,
   listManagedGoogleConnectorAccounts,
   listManagedGoogleCalendars,

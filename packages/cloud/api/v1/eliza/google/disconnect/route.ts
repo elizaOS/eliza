@@ -5,10 +5,7 @@
  * the active connection when `connectionId` is omitted or null).
  */
 
-import {
-  requirePrivateOwnerAccess,
-  requireUserOrApiKeyWithOrg,
-} from "@elizaos/cloud-shared/auth";
+import { requireMailUser } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -29,7 +26,6 @@ const requestSchema = z
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
     const rawBody = await c.req.text();
     let bodyValue: unknown = {};
     if (rawBody.trim().length > 0) {
@@ -51,7 +47,7 @@ app.post("/", async (c) => {
       );
     }
 
-    if (parsed.data.side !== "agent") await requirePrivateOwnerAccess(c, user);
+    const user = await requireMailUser(c, parsed.data.side === "agent" ? "agent" : "owner");
     await disconnectManagedGoogleConnection({
       organizationId: user.organization_id,
       userId: user.id,

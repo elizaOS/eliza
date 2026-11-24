@@ -31,6 +31,7 @@ export const mobileAppAuthPkceBindingSchema =
 export const mobileAppAuthTokenSchema = mobileAppAuthClientBindingSchema.extend(
   {
     grantType: z.literal("authorization_code"),
+    mailLease: z.literal(true).optional(),
     code: z.string().min(1).max(256),
     state: z.string().min(1).max(256),
     codeVerifier: z.string().min(1).max(256),

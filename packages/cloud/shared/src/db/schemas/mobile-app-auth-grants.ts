@@ -80,6 +80,8 @@ export const mobileAppAuthGrants = pgTable(
      * acknowledgement re-read that row and refuse unless it is still active.
      */
     renewed_from_credential_id: uuid("renewed_from_credential_id"),
+    /** Lease authorization must still exist when this renewal code is redeemed and acknowledged. */
+    renewal_mail_lease_id: uuid("renewal_mail_lease_id"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

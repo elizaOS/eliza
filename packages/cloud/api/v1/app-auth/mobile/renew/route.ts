@@ -63,6 +63,9 @@ export interface MobileAppAuthRenewRouteDependencies {
  */
 function readPresentedCredential(c: AppContext): string | null {
   const presented = readPresentedApiKey(c);
+  if (presented?.startsWith("eliza_lease_") && c.req.header("X-API-Key")) {
+    return null;
+  }
   return presented === "conflict" ? null : presented;
 }
 

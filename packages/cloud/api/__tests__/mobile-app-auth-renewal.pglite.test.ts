@@ -375,6 +375,7 @@ const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
 const migration = [
   "0572_mobile_app_auth_session_start",
   "0573_mobile_app_auth_renewal_lineage",
+  "0576_mobile_mail_leases",
 ]
   .map((tag) =>
     readFileSync(
@@ -387,6 +388,7 @@ const MIGRATED_COLUMNS = new Set([
   "session_started_at",
   "session_id",
   "renewed_from_credential_id",
+  "renewal_mail_lease_id",
 ]);
 
 beforeAll(async () => {
@@ -440,7 +442,7 @@ beforeEach(async () => {
   limiter = "disabled";
   counters.clear();
   await pg.exec(
-    "TRUNCATE mobile_app_auth_grants, mobile_app_auth_clients, apps, api_keys, users, organizations, auth_events",
+    "TRUNCATE spent_mobile_mail_refreshes, mobile_mail_leases, mobile_app_auth_grants, mobile_app_auth_clients, apps, api_keys, users, organizations, auth_events",
   );
   for (const id of [ORG, OTHER_ORG]) {
     await pg.query(

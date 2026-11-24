@@ -129,6 +129,7 @@ export * from "./llm-trajectories";
 export * from "./managed-domains";
 export * from "./mobile-app-auth-clients";
 export * from "./mobile-app-auth-grants";
+export * from "./mobile-mail-leases";
 export * from "./model-pricing";
 export * from "./moderation-violations";
 export * from "./native-app-publishers";

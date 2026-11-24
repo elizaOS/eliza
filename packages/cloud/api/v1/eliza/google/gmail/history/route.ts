@@ -1,8 +1,5 @@
 /** Read-only owner Gmail delta feed; clients commit checkpoints after durable local persistence. */
-import {
-  requirePrivateOwnerAccess,
-  requireUserOrApiKeyWithOrg,
-} from "@elizaos/cloud-shared/auth";
+import { requireMailUser } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { fetchManagedGoogleGmailHistory } from "@elizaos/cloud-shared/lib/services/agent-google-connector";
 import { AgentGoogleConnectorError } from "@elizaos/cloud-shared/lib/services/agent-google-connector/shared";
@@ -13,8 +10,7 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   c.header("Cache-Control", "no-store");
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
-    await requirePrivateOwnerAccess(c, user);
+    const user = await requireMailUser(c);
     const query = new URL(c.req.url).searchParams;
     const allowed = new Set([
       "grantId",

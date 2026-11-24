@@ -1,0 +1,26 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/mobile-mail-leases.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-grants.ts",
+    "packages/cloud/shared/src/lib/auth/workers-hono-auth.ts",
+    "packages/cloud/api/v1/app-auth/mobile/lease/route.ts",
+    "packages/cloud/api/__tests__/mobile-app-auth-database-lifecycle.pglite.test.ts"
+  ],
+  "bounds": "One device sign-in, at most four refresh generations, and 12 abstract clock ticks.",
+  "limitations": [
+    "PKCE and token integrity are abstract authority checks.",
+    "The model covers offer retries, first use, credential custody, and revocation. Device storage, provider I/O, and the full mobile renewal model are separate."
+  ],
+  "cases": [
+    {
+      "name": "device-mail-lease",
+      "main": "MobileMailLease",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 35,
+      "samples": 3500
+    }
+  ]
+}

@@ -1,15 +1,14 @@
 import {
-  ApiError as PrivateOwnerApiError,
+  ApiError,
   safeUnknownErrorMessage,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/private-owner-credential";
 /** Updates and deletes managed Google Calendar events. */
 
 import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
 import { agentGoogleRouteDeps } from "@elizaos/cloud-shared/lib/services/agent-google-route-deps";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
-import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -70,11 +69,9 @@ function connectorFailure(error: { status: number; message: string }) {
 async function __hono_PATCH(
   request: Request,
   { params }: RouteContext<{ eventId: string }>,
-  env: AppEnv["Bindings"],
+  context: AppContext,
 ) {
   try {
-    const auth = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
-    const { user } = auth;
     const { eventId } = await params;
     const ifMatch = readIfMatch(request);
     if (!ifMatch.ok) return Response.json(INVALID_IF_MATCH, { status: 400 });
@@ -95,15 +92,7 @@ async function __hono_PATCH(
       );
     }
 
-    if (parsed.data.side !== "agent")
-      await requirePrivateOwnerCredential({
-        userId: user.id,
-        organizationId: user.organization_id,
-        authMethod: auth.authMethod,
-        apiKeyId: auth.apiKey?.id,
-        apiKeyHash: auth.apiKey?.key_hash,
-        env,
-      });
+    const user = await agentGoogleRouteDeps.requireMailUser(context, parsed.data.side === "agent" ? "agent" : "owner");
     const updated = await agentGoogleRouteDeps.updateManagedGoogleCalendarEvent(
       {
         organizationId: user.organization_id,
@@ -128,8 +117,8 @@ async function __hono_PATCH(
       etag && /^[\x20-\x7e]+$/.test(etag) ? { headers: { ETag: etag } } : {},
     );
   } catch (error) {
-    if (error instanceof PrivateOwnerApiError)
-      return Response.json({ error: error.message }, { status: error.status });
+    if (error instanceof ApiError)
+      return Response.json(error.toJSON(), { status: error.status });
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return connectorFailure(error);
     }
@@ -146,11 +135,9 @@ async function __hono_PATCH(
 async function __hono_DELETE(
   request: Request,
   { params }: RouteContext<{ eventId: string }>,
-  env: AppEnv["Bindings"],
+  context: AppContext,
 ) {
   try {
-    const auth = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
-    const { user } = auth;
     const { eventId } = await params;
     const ifMatch = readIfMatch(request);
     if (!ifMatch.ok) return Response.json(INVALID_IF_MATCH, { status: 400 });
@@ -171,15 +158,7 @@ async function __hono_DELETE(
       );
     }
 
-    if (sideRaw !== "agent")
-      await requirePrivateOwnerCredential({
-        userId: user.id,
-        organizationId: user.organization_id,
-        authMethod: auth.authMethod,
-        apiKeyId: auth.apiKey?.id,
-        apiKeyHash: auth.apiKey?.key_hash,
-        env,
-      });
+    const user = await agentGoogleRouteDeps.requireMailUser(context, sideRaw === "agent" ? "agent" : "owner");
     return Response.json(
       await agentGoogleRouteDeps.deleteManagedGoogleCalendarEvent({
         organizationId: user.organization_id,
@@ -192,8 +171,8 @@ async function __hono_DELETE(
       }),
     );
   } catch (error) {
-    if (error instanceof PrivateOwnerApiError)
-      return Response.json({ error: error.message }, { status: error.status });
+    if (error instanceof ApiError)
+      return Response.json(error.toJSON(), { status: error.status });
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return connectorFailure(error);
     }
@@ -214,7 +193,7 @@ __hono_app.patch("/", async (c) =>
     {
       params: Promise.resolve({ eventId: c.req.param("eventId")! }),
     },
-    c.env,
+    c,
   ),
 );
 __hono_app.delete("/", async (c) =>
@@ -223,7 +202,7 @@ __hono_app.delete("/", async (c) =>
     {
       params: Promise.resolve({ eventId: c.req.param("eventId")! }),
     },
-    c.env,
+    c,
   ),
 );
 export default __hono_app;

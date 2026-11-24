@@ -22,6 +22,14 @@
 import crypto from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { decryptApiKey, encryptApiKey } from "../../db/crypto/api-keys";
+import {
+  admitMobileMailRenewal,
+  type InitialMobileMailLease,
+  MAIL_LEASE_REFRESH_PATTERN,
+  type MobileMailLeasePrincipal,
+  prepareMobileMailLease,
+  readInitialMobileMailLease,
+} from "../../db/repositories/mobile-mail-leases";
 import { buildMobileAppAuthCredentialProvenance } from "../../db/mobile-app-auth-credential-policy";
 import { mobileAppAuthClientsRepository } from "../../db/repositories/mobile-app-auth-clients";
 import {
@@ -131,6 +139,19 @@ export interface MobileAppAuthCredentialResponse {
   scopes: string[];
   acknowledgementRequired: true;
   acknowledgeBy: string;
+  lease?: InitialMobileMailLease;
+}
+
+export async function verifyMobileMailLeaseRegistration(
+  env: MobileAppAuthRuntimeEnv,
+  principal: MobileMailLeasePrincipal,
+): Promise<void> {
+  await resolveMobileCredentialRegistration(env, {
+    id: principal.credentialId,
+    user_id: principal.userId,
+    organization_id: principal.organizationId,
+    source_app_id: principal.appId,
+  });
 }
 
 function invalid(code: MobileAppAuthProtocolErrorCode, message: string): never {
@@ -374,7 +395,7 @@ export async function issueMobileAppAuthCode(input: {
    * Set only by key renewal: the sign-in the successor descends from and the
    * credential that asked. A sign-in grant starts its own session.
    */
-  renewal?: { sessionStartedAt: Date; credentialId: string; keyHash: string };
+  renewal?: { sessionStartedAt: Date; credentialId: string; keyHash: string; mailLeaseId?: string };
   now?: Date;
 }): Promise<{ code: string; expiresAt: string; expiresIn: number }> {
   validateMobileAppAuthPkceBinding(input.registration, input.binding);
@@ -403,6 +424,7 @@ export async function issueMobileAppAuthCode(input: {
     // A sign-in starts its own session; a renewal joins its predecessor's,
     // which the repository reads under the session lock.
     session_id: input.renewal ? undefined : crypto.randomUUID(),
+    renewal_mail_lease_id: input.renewal?.mailLeaseId ?? null,
   } satisfies Parameters<typeof mobileAppAuthGrantsRepository.create>[0];
   if (input.renewal) {
     const renewed = await mobileAppAuthGrantsRepository.createRenewal(grant, input.renewal, now);
@@ -474,6 +496,7 @@ export interface MobileAppAuthRenewalAuthorization {
   sessionStartedAt: Date;
   /** The last instant at which this sign-in may still be renewed. */
   renewableUntil: Date;
+  mailLeaseId?: string;
 }
 
 function refuseRenewal(refusal: MobileAppAuthRenewalRefusal, message: string): never {
@@ -525,20 +548,32 @@ export async function authorizeMobileAppAuthRenewal(input: {
   now?: Date;
 }): Promise<MobileAppAuthRenewalAuthorization> {
   const now = input.now ?? new Date();
-  if (!isMobileApiKeySecret(input.secret)) {
+  const mail = MAIL_LEASE_REFRESH_PATTERN.test(input.secret) ? await admitMobileMailRenewal(input.secret, now) : undefined;
+  if (mail?.kind === "reused") {
+    await apiKeysService.revokeMobileSessionForReuse(mail.principal.credentialId, mail.principal.organizationId);
+  }
+  if (mail && mail.kind !== "admitted") {
+    return refuseRenewal("credential_invalid", "The mail lease is no longer valid");
+  }
+  if (!mail && !isMobileApiKeySecret(input.secret)) {
     return refuseRenewal("credential_invalid", "A mobile credential is required");
   }
-  const keyHash = sha256Hex(input.secret);
-  const authority = await mobileAppAuthGrantsRepository.findRenewalAuthorityByKeyHash(keyHash);
+  const authority = mail
+    ? await mobileAppAuthGrantsRepository.findRenewalAuthorityByCredentialId(mail.principal.credentialId)
+    : await mobileAppAuthGrantsRepository.findRenewalAuthorityByKeyHash(sha256Hex(input.secret));
   if (!authority)
     return refuseRenewal("credential_invalid", "Invalid or expired mobile credential");
   const { credential, grant, owner, organization } = authority;
+  const keyHash = mail ? credential.key_hash : sha256Hex(input.secret);
   if (
     !equalFixedLength(credential.key_hash, keyHash) ||
     !credential.is_active ||
     credential.deleted_at ||
     !credential.expires_at ||
-    credential.expires_at <= now ||
+    (!mail && credential.expires_at <= now) ||
+    (mail && (mail.principal.userId !== credential.user_id
+      || mail.principal.organizationId !== credential.organization_id
+      || mail.principal.sessionId !== (grant.session_id ?? grant.id))) ||
     !credential.source_app_id ||
     grant.credential_id !== credential.id ||
     grant.user_id !== credential.user_id ||
@@ -562,12 +597,12 @@ export async function authorizeMobileAppAuthRenewal(input: {
     );
   }
   const sessionStartedAt = grant.session_started_at ?? grant.created_at;
-  const renewableUntil = new Date(
+  const renewableUntil = mail?.renewableUntil ?? new Date(
     sessionStartedAt.getTime() + MOBILE_APP_AUTH_RENEWAL_CAP_SECONDS * 1000,
   );
   // No credential of a sign-in expires after its cap, so a credential that
   // already lives to the cap has nothing left to gain from a successor.
-  if (now > renewableUntil || credential.expires_at >= renewableUntil) {
+  if (now > renewableUntil || (!mail && credential.expires_at >= renewableUntil)) {
     return refuseRenewal("renewal_window_closed", "This sign-in can no longer be renewed");
   }
   return {
@@ -578,6 +613,7 @@ export async function authorizeMobileAppAuthRenewal(input: {
     organizationId: credential.organization_id,
     sessionStartedAt,
     renewableUntil,
+    ...(mail ? { mailLeaseId: mail.principal.leaseId } : {}),
   };
 }
 
@@ -609,6 +645,7 @@ export async function issueMobileAppAuthRenewalCode(input: {
       sessionStartedAt: authorization.sessionStartedAt,
       credentialId: authorization.credentialId,
       keyHash: authorization.keyHash,
+      mailLeaseId: authorization.mailLeaseId,
     },
     now,
   });
@@ -620,14 +657,16 @@ export async function issueMobileAppAuthRenewalCode(input: {
  * grant descends from. A grant without a sign-in time counts from its creation.
  */
 export function mobileCredentialExpiry(
-  grant: { session_started_at: Date | null; created_at: Date },
+  grant: { session_started_at: Date | null; created_at: Date; renewal_mail_lease_id?: string | null },
   now: Date,
   credentialTtlSeconds: number,
 ): Date {
+  const credentialExpiry = now.getTime() + credentialTtlSeconds * 1000;
+  if (grant.renewal_mail_lease_id) return new Date(credentialExpiry);
   const sessionStartedAt = grant.session_started_at ?? grant.created_at;
   return new Date(
     Math.min(
-      now.getTime() + credentialTtlSeconds * 1000,
+      credentialExpiry,
       sessionStartedAt.getTime() + MOBILE_APP_AUTH_RENEWAL_CAP_SECONDS * 1000,
     ),
   );
@@ -724,11 +763,15 @@ async function confirmCredentialDelivery(input: {
   state: MobileAppAuthGrantState;
   secret: string;
   now: Date;
+  mailLease?: boolean;
 }): Promise<MobileAppAuthCredentialResponse> {
   const credential = requireRevealableState(input.state, input.now);
   if (sha256Hex(input.secret) !== credential.key_hash) {
     throw credentialIntegrityError("Mobile App Auth credential ciphertext/hash mismatch");
   }
+  const lease = input.mailLease
+    ? await readInitialMobileMailLease(input.state.grant, input.now)
+    : undefined;
 
   // KMS work may cross the authorization deadline. Re-check the primary with
   // a fresh wall clock immediately before plaintext crosses the HTTP boundary.
@@ -753,6 +796,9 @@ async function confirmCredentialDelivery(input: {
     throw credentialIntegrityError("Mobile App Auth credential changed during delivery");
   }
   const confirmedCredential = requireRevealableState(confirmation.state, confirmationNow);
+  if (input.mailLease && !lease) {
+    return invalid("invalid_request", "This mobile exchange did not request a mail lease");
+  }
   return {
     credentialId: confirmedCredential.id,
     secret: input.secret,
@@ -765,6 +811,7 @@ async function confirmCredentialDelivery(input: {
     scopes: [...confirmation.state.grant.scopes],
     acknowledgementRequired: true,
     acknowledgeBy: confirmation.state.grant.expires_at.toISOString(),
+    ...(lease ? { lease } : {}),
   };
 }
 
@@ -772,6 +819,7 @@ async function revealCredential(
   binding: MobileAppAuthGrantBinding,
   state: MobileAppAuthGrantState,
   now: Date,
+  mailLease: boolean,
 ): Promise<MobileAppAuthCredentialResponse> {
   const credential = requireRevealableState(state, now);
   const secret = await decryptApiKey(credential.id, {
@@ -786,6 +834,7 @@ async function revealCredential(
     state,
     secret,
     now,
+    mailLease,
   });
 }
 
@@ -801,6 +850,7 @@ export async function exchangeMobileAppAuthCode(input: {
   binding: MobileAppAuthGrantRequestBinding;
   code: string;
   codeVerifier: string;
+  mailLease?: boolean;
   now?: Date;
 }): Promise<MobileAppAuthCredentialResponse> {
   validateMobileAppAuthClientBinding(input.registration, input.binding);
@@ -813,8 +863,9 @@ export async function exchangeMobileAppAuthCode(input: {
     now,
     registration: input.registration,
   });
+  const mailLease = input.mailLease === true && !existing.grant.renewed_from_credential_id;
   if (existing?.grant.status === "exchanged") {
-    return await revealCredential(binding, existing, now);
+    return await revealCredential(binding, existing, now, mailLease);
   }
   if (existing?.grant.status === "acknowledged") {
     return invalid("authorization_complete", "Authorization code has already been acknowledged");
@@ -829,7 +880,8 @@ export async function exchangeMobileAppAuthCode(input: {
     now,
     credentialTtlSeconds: input.registration.credentialTtlSeconds,
   });
-  const claim = await mobileAppAuthGrantsRepository.exchange(binding, candidate.insert, now);
+  const preparedLease = mailLease ? await prepareMobileMailLease(existing.grant.organization_id) : undefined;
+  const claim = await mobileAppAuthGrantsRepository.exchange(binding, candidate.insert, now, preparedLease);
   if (claim.kind === "invalid") {
     return rejectInvalidExchangeClaim(claim.reason);
   }
@@ -839,9 +891,10 @@ export async function exchangeMobileAppAuthCode(input: {
       state: claim.state,
       secret: candidate.secret,
       now,
+      mailLease,
     });
   }
-  return await revealCredential(binding, claim.state, now);
+  return await revealCredential(binding, claim.state, now, mailLease);
 }
 
 export async function acknowledgeMobileAppAuthCredential(input: {

@@ -84,6 +84,7 @@
     "./db/repositories/domain-purchase-attempts": "./src/db/repositories/domain-purchase-attempts.ts",
     "./db/repositories/jobs": "./src/db/repositories/jobs.ts",
     "./db/repositories/mobile-app-auth-clients": "./src/db/repositories/mobile-app-auth-clients.ts",
+    "./db/repositories/mobile-mail-leases": "./src/db/repositories/mobile-mail-leases.ts",
     "./db/repositories/org-rate-limit-overrides": "./src/db/repositories/org-rate-limit-overrides.ts",
     "./db/repositories/org-storage-quota": "./src/db/repositories/org-storage-quota.ts",
     "./db/repositories/organizations": "./src/db/repositories/organizations.ts",

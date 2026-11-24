@@ -1,7 +1,4 @@
-import {
-  requirePrivateOwnerAccess,
-  requireUserOrApiKeyWithOrg,
-} from "@elizaos/cloud-shared/auth";
+import { requireMailUser } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { managedCalendarSyncProvider } from "@elizaos/cloud-shared/lib/services/agent-google-connector/calendar-sync-managed";
 import { createCalendarSyncRoutes } from "@elizaos/cloud-shared/lib/services/agent-google-connector/calendar-sync-routes";
@@ -14,8 +11,7 @@ app.route(
   createCalendarSyncRoutes<AppEnv>({
     provider: managedCalendarSyncProvider,
     async authenticate(context) {
-      const user = await requireUserOrApiKeyWithOrg(context);
-      await requirePrivateOwnerAccess(context, user);
+      const user = await requireMailUser(context);
       return { organizationId: user.organization_id, userId: user.id };
     },
     onError: (error, context) => failureResponse(context, error),

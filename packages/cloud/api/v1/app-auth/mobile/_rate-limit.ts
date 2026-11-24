@@ -31,7 +31,7 @@ function mobileGrantAdmissionNamespace(c: AppContext): string {
 }
 
 function mobileAppAuthRateLimitConfig(
-  operation: "ack" | "config" | "renew" | "token",
+  operation: "ack" | "config" | "lease" | "renew" | "token",
   preset: Pick<RateLimitConfig, "maxRequests" | "windowMs">,
 ): RateLimitConfig {
   const namespace = `mobile-app-auth:${operation}`;
@@ -58,6 +58,11 @@ export const MOBILE_APP_AUTH_ACK_RATE_LIMIT = mobileAppAuthRateLimitConfig(
 
 export const MOBILE_APP_AUTH_RENEW_RATE_LIMIT = mobileAppAuthRateLimitConfig(
   "renew",
+  RateLimitPresets.STRICT,
+);
+
+export const MOBILE_APP_AUTH_LEASE_RATE_LIMIT = mobileAppAuthRateLimitConfig(
+  "lease",
   RateLimitPresets.STRICT,
 );
 

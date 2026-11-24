@@ -16,7 +16,7 @@
  * credential row.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lte, ne, or, type SQL, sql } from "drizzle-orm";
 import { withInferencePolicyMutation } from "../../lib/services/inference-policy-fence";
 import { type DbTransaction, dbWrite } from "../client";
 import { buildMobileAppAuthCredentialProvenance } from "../mobile-app-auth-credential-policy";
@@ -31,6 +31,7 @@ import {
 } from "../schemas/mobile-app-auth-grants";
 import { organizations } from "../schemas/organizations";
 import { users } from "../schemas/users";
+import { acknowledgeMobileMailLease, insertMobileMailLease, mailLeaseAdmitsCredential, type PreparedMobileMailLease } from "./mobile-mail-leases";
 
 export interface MobileAppAuthGrantBinding {
   codeHash: string;
@@ -282,8 +283,12 @@ async function predecessorAdmits(
   tx: DbTransaction,
   predecessorCredentialId: string | null,
   now: Date,
+  mail?: { leaseId: string; sessionId: string },
 ): Promise<boolean> {
-  if (!predecessorCredentialId) return true;
+  if (!predecessorCredentialId) return !mail;
+  if (mail && !(await mailLeaseAdmitsCredential(tx, mail.leaseId, mail.sessionId, predecessorCredentialId, now))) {
+    return false;
+  }
   const [predecessor] = await tx
     .select({ id: apiKeys.id })
     .from(apiKeys)
@@ -292,7 +297,7 @@ async function predecessorAdmits(
         eq(apiKeys.id, predecessorCredentialId),
         eq(apiKeys.is_active, true),
         isNull(apiKeys.deleted_at),
-        gt(apiKeys.expires_at, now),
+        mail ? undefined : gt(apiKeys.expires_at, now),
       ),
     )
     .for("update");
@@ -352,6 +357,10 @@ export class MobileAppAuthGrantsRepository {
       if (!origin) return { kind: "invalid", reason: "credential_invalid" };
       const sessionId = sessionIdOf(origin);
       await lockSession(tx, sessionId);
+      const leaseId = input.renewal_mail_lease_id;
+      if (leaseId && !(await mailLeaseAdmitsCredential(tx, leaseId, sessionId, predecessor.credentialId, now))) {
+        return { kind: "invalid", reason: "credential_invalid" };
+      }
       const [credential] = await tx
         .select({ id: apiKeys.id })
         .from(apiKeys)
@@ -364,7 +373,7 @@ export class MobileAppAuthGrantsRepository {
             eq(apiKeys.source_app_id, input.app_id),
             eq(apiKeys.is_active, true),
             isNull(apiKeys.deleted_at),
-            gt(apiKeys.expires_at, now),
+            leaseId ? undefined : gt(apiKeys.expires_at, now),
           ),
         )
         .for("update");
@@ -535,6 +544,16 @@ export class MobileAppAuthGrantsRepository {
   async findRenewalAuthorityByKeyHash(
     keyHash: string,
   ): Promise<MobileAppAuthRenewalAuthority | null> {
+    return await this.findRenewalAuthority(eq(apiKeys.key_hash, keyHash));
+  }
+
+  async findRenewalAuthorityByCredentialId(
+    credentialId: string,
+  ): Promise<MobileAppAuthRenewalAuthority | null> {
+    return await this.findRenewalAuthority(eq(apiKeys.id, credentialId));
+  }
+
+  private async findRenewalAuthority(condition: SQL): Promise<MobileAppAuthRenewalAuthority | null> {
     const [row] = await dbWrite
       .select({
         credential: apiKeys,
@@ -561,7 +580,7 @@ export class MobileAppAuthGrantsRepository {
       .leftJoin(users, eq(users.id, apiKeys.user_id))
       .leftJoin(organizations, eq(organizations.id, apiKeys.organization_id))
       .leftJoin(apps, eq(apps.id, mobileAppAuthGrants.app_id))
-      .where(eq(apiKeys.key_hash, keyHash))
+      .where(condition)
       .limit(1);
     if (!row) return null;
     return {
@@ -652,6 +671,7 @@ export class MobileAppAuthGrantsRepository {
     binding: MobileAppAuthGrantBinding,
     credential: NewApiKey,
     now: Date,
+    mailLease?: PreparedMobileMailLease,
   ): Promise<MobileAppAuthExchangeClaim> {
     return await withInferencePolicyMutation(
       {
@@ -672,12 +692,16 @@ export class MobileAppAuthGrantsRepository {
         // it was revoked or expired: no successor is minted for it.
         const [lineage] = await tx
           .select({
+            id: mobileAppAuthGrants.id,
+            session_id: mobileAppAuthGrants.session_id,
             predecessor: mobileAppAuthGrants.renewed_from_credential_id,
+            leaseId: mobileAppAuthGrants.renewal_mail_lease_id,
           })
           .from(mobileAppAuthGrants)
           .where(exactBindingConditions(binding, now))
           .limit(1);
-        if (lineage && !(await predecessorAdmits(tx, lineage.predecessor, now))) {
+        const mail = lineage?.leaseId ? { leaseId: lineage.leaseId, sessionId: sessionIdOf(lineage) } : undefined;
+        if (lineage && !(await predecessorAdmits(tx, lineage.predecessor, now, mail))) {
           return { kind: "invalid", reason: "grant_invalid" };
         }
 
@@ -723,6 +747,7 @@ export class MobileAppAuthGrantsRepository {
           }
           const state = { grant: boundGrant, credential: createdCredential };
           assertStateIntegrity(state);
+          if (mailLease) await insertMobileMailLease(tx, boundGrant, mailLease, now);
           return { kind: "created", state };
         }
 
@@ -750,9 +775,12 @@ export class MobileAppAuthGrantsRepository {
     // must not move a credential into an organization outside this permit.
     const [planned] = await dbWrite
       .select({
+        id: mobileAppAuthGrants.id,
+        session_id: mobileAppAuthGrants.session_id,
         userId: mobileAppAuthGrants.user_id,
         organizationId: mobileAppAuthGrants.organization_id,
         predecessor: mobileAppAuthGrants.renewed_from_credential_id,
+        leaseId: mobileAppAuthGrants.renewal_mail_lease_id,
       })
       .from(mobileAppAuthGrants)
       .where(exactBindingConditions(input.binding, input.now))
@@ -782,7 +810,8 @@ export class MobileAppAuthGrantsRepository {
         // request and this acknowledgement leaves the successor inactive, and
         // an already acknowledged successor is not confirmed again once the
         // session behind it was revoked.
-        if (!(await predecessorAdmits(tx, planned.predecessor, input.now))) {
+        const mail = planned.leaseId ? { leaseId: planned.leaseId, sessionId: sessionIdOf(planned) } : undefined;
+        if (!(await predecessorAdmits(tx, planned.predecessor, input.now, mail))) {
           const [settled] = await tx
             .select({ status: mobileAppAuthGrants.status })
             .from(mobileAppAuthGrants)
@@ -890,6 +919,7 @@ export class MobileAppAuthGrantsRepository {
           if (!receiptGrant) {
             throw grantIntegrityError("Failed to retain mobile App Auth acknowledgement receipt");
           }
+          await acknowledgeMobileMailLease(tx, receiptGrant, activated.id);
           const state = { grant: receiptGrant, credential: activated };
           assertStateIntegrity(state);
           return state;

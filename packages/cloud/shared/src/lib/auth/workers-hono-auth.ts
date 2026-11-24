@@ -482,6 +482,37 @@ export async function requireSessionUserWithOrg(c: AppContext): Promise<
   return user;
 }
 
+/** Admit a session or a native mail lease only at the Google connector boundary. */
+export async function requireMailUser(
+  c: AppContext,
+  side: "owner" | "agent" = "owner",
+): Promise<{ id: string; organization_id: string; authMethod: "session" | "mail-lease" }> {
+  const bearer = readBearer(c);
+  const apiKey = c.req.header("X-API-Key");
+  if ((bearer && isMobileApiKeySecret(bearer)) || (apiKey && isMobileApiKeySecret(apiKey))) {
+    throw new ApiError(403, "access_denied", "This device key cannot access mail or calendar", {
+      reason: "device_key_not_allowed",
+    });
+  }
+  if (bearer?.startsWith("eliza_lease_")) {
+    if (apiKey || side !== "owner") {
+      throw new ApiError(403, "access_denied", "This mail lease is only for the owner's connector");
+    }
+    const { admitMobileMailAccess } = await import("../../db/repositories/mobile-mail-leases");
+    const lease = await admitMobileMailAccess(bearer);
+    if (!lease) {
+      throw new ApiError(401, "authentication_required", "The mail lease is no longer valid", {
+        reason: "credential_unknown",
+      });
+    }
+    const { verifyMobileMailLeaseRegistration } = await import("../services/mobile-app-auth");
+    await verifyMobileMailLeaseRegistration(c.env, lease);
+    return { id: lease.userId, organization_id: lease.organizationId, authMethod: "mail-lease" };
+  }
+  const user = await requireSessionUserWithOrg(c);
+  return { id: user.id, organization_id: user.organization_id, authMethod: "session" };
+}
+
 const DEFAULT_RECENT_AUTH_MAX_AGE_SECONDS = 5 * 60;
 
 /**

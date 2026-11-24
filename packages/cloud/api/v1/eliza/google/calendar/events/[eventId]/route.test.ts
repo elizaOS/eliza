@@ -5,16 +5,14 @@ const ETAG = '"3181161784712000"';
 const calls: Array<{ op: string; input: Record<string, unknown> }> = [];
 let failWith: AgentGoogleConnectorError | null = null;
 
-mock.module("@elizaos/cloud-shared/lib/auth/private-owner-credential", () => ({
-  requirePrivateOwnerCredential: async () => {},
-}));
 mock.module(
   "@elizaos/cloud-shared/lib/services/agent-google-route-deps",
   () => ({
     agentGoogleRouteDeps: {
       AgentGoogleConnectorError,
-      requireAuthOrApiKeyWithOrg: async () => ({
-        user: { id: "owner-1", organization_id: "org-1" },
+      requireMailUser: async () => ({
+        id: "owner-1",
+        organization_id: "org-1",
         authMethod: "session",
       }),
       updateManagedGoogleCalendarEvent: async (
