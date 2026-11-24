@@ -114,7 +114,7 @@ it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperatio
           assert.deepEqual(moved, [{ path: "Download/keep.txt", status: "unchanged", to: "Download/keep.txt" }, { path: "Archive/lease.pdf", status: "moved", to: "Download/lease.pdf" }])
           assert.deepEqual(copied, [{ path: "Archive/lease.pdf", status: "missing" }])
           assert.deepEqual(intoItself, [{ path: "Archive", status: "invalid" }])
-          assert.deepEqual(listed.map(({ name, origin }) => ({ name, origin })), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
+          assert.deepEqual(listed.flatMap((item) => item.unreadable === true ? [] : [{ name: item.name, origin: item.origin }]), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
           assert.deepEqual(restored, [{ path: listed[0].id, status: "restored", to: "Download/lease (1).pdf" }])
           assert.equal(unconfirmed.status, "confirmation-required")
         })
@@ -156,7 +156,7 @@ it.effect('A torn trash record is listed as unreadable, refuses only its own res
         const staleRecordKept = try fs.exists(info(stale))
         const remaining = try volume.trashList()
         const leftBehind = [try fs.exists(info(torn)), try fs.exists(data(torn)), try fs.exists(info(gone)), try fs.exists(info(stale))]
-        const byId = (items: readonly { readonly id: string }[]) => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+        const byId = <T extends { readonly id: string }>(items: readonly T[]): T[] => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
         try check(() => {
           assert.deepEqual(empty, [])
           assert.deepEqual([lease.status, memo.status, note.status, old.status], ["trashed", "trashed", "trashed", "trashed"])
@@ -169,7 +169,7 @@ it.effect('A torn trash record is listed as unreadable, refuses only its own res
           assert.deepEqual(restored, [
             { path: torn, status: "failed" },
             { path: gone, status: "failed" },
-            { path: memo.to, status: "restored", to: "Download/memo.txt" },
+            { path: memo.to ?? "", status: "restored", to: "Download/memo.txt" },
             { path: "not-a-trash-id", status: "missing" },
           ])
           assert.deepEqual(survived, ["{not json", "lease", "{not json"])

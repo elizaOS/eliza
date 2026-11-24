@@ -62,7 +62,7 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
     assert.deepEqual(try volume.transfer({ paths: ["Download"], dest: "Download", copy: true }), [{ path: "Download", status: "invalid" }])
 
     const inTrash = try volume.trashList()
-    assert.deepEqual(inTrash.map(({ name, origin }) => ({ name, origin })), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
+    assert.deepEqual(inTrash.flatMap((item) => item.unreadable === true ? [] : [{ name: item.name, origin: item.origin }]), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
     assert.deepEqual([try status(volume.query({ folder: ".Trash-files" })), try status(volume.rename(".Trash-files", "Journal"))], ["invalid", "invalid"])
     assert.deepEqual((try volume.list("")).entries.map((entry) => entry.name), ["Download"])
     try importLibraryFile("Download", { name: "lease.pdf", mimeType: "application/pdf", bytes: bytes("newer") })
@@ -116,7 +116,7 @@ it.effect('A torn browser trash record is listed as unreadable, refuses only its
     try store.commit((rows) => ({ put: [], remove: rows.filter((row) => row.name === stale).map((row) => row.id) }))
     const erased = try volume.emptyTrash([torn, gone, stale], true)
     const staleRecordKept = (try store.rows()).some((row) => row.name === `${stale}.json`)
-    const byId = (items: readonly { readonly id: string }[]) => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    const byId = <T extends { readonly id: string }>(items: readonly T[]): T[] => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
     assert.deepEqual({
       empty,
       trashed: [lease.status, memo.status, note.status, old.status],

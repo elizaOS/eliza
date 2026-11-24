@@ -31,20 +31,17 @@ export function recordRead(present: boolean, kept: typeof TrashRecord.Type | und
   return kept !== undefined ? "RecordRead" : present ? "RecordUnreadable" : "RecordAbsent"
 }
 
-// Lists an item whose record cannot be read by its trash name alone, even when its data is gone; true when it did.
 export function listUnreadable(items: TrashEntry[], id: string, read: TrashRecordRead, resident: boolean): boolean {
   if (trashItemAnswer(read, resident) !== "ItemUnreadable") return false
   items.push({ id, name: id, unreadable: true })
   return true
 }
 
-// The answer for an item a restore cannot move back (failed when its record cannot be read, missing otherwise), or undefined when it can.
 export function unrestorable(id: string, read: TrashRecordRead, resident: boolean): RowOutcome | undefined {
   const answer = trashItemAnswer(read, resident)
   return answer === "ItemRestorable" ? undefined : { path: id, status: answer === "ItemUnreadable" ? "failed" : "missing" }
 }
 
-// Newest deletion first; an unreadable item has no known deletion time and comes last.
 export function newestFirst(items: TrashEntry[]): TrashEntry[] {
   const at = (item: TrashEntry) => item.unreadable === true ? Number.NEGATIVE_INFINITY : item.deletedAt
   return items.sort((a, b) => at(a) === at(b) ? 0 : at(b) > at(a) ? 1 : -1)

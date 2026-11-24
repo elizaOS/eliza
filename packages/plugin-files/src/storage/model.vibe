@@ -21,7 +21,6 @@ export type TrashEntry = {
   readonly deletedAt: number
   readonly unreadable?: undefined
 } | {
-  // An item whose record cannot be read: only its trash name is known, so nothing else is claimed for it.
   readonly id: string
   readonly name: string
   readonly unreadable: true
