@@ -34,7 +34,7 @@ beforeAll(async () => {
     CREATE TABLE subscription_grants (code_id uuid);`);
   const identity = await readDatabaseIdentityReceipt(client, "production");
   process.env.ELIZA_OPERATOR_ENVIRONMENT = "production";
-  process.env.GITHUB_REF = "refs/heads/main";
+  process.env.GITHUB_REF = "refs/heads/main-v3";
   process.env.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 =
     identity.clusterSha256;
   process.env.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 =
