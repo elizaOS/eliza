@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import type { ReviewOutcome } from "../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
 import { DeviceExecution, NOT_DISPATCHED, type DeviceReceipt, type DeviceAgent, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReview, type ExecutorCall, type JournalIdentity, type ScreenCheck } from "../src/client/device-execution.vibe"
-import { notDispatchedCode, readOperation, receiptOutcome, type DeviceOperation } from "../src/device-actions/operations.schema.vibe"
+import { readOperation, receiptOutcome, type DeviceOperation } from "../src/device-actions/operations.schema.vibe"
 import { changeEnrollment, offerRequest, openRequest, recordRequestDecision, recordRequestClaim, recordRequestReceipt, type RequestTerms } from "../src/device-actions/store.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
 import { fileJournal, type FileJournal } from "./support/device-journal.ts"
@@ -76,9 +76,7 @@ function agentOver(rig: Rig): DeviceAgent {
       }
       device.receipts.push(body.receipt)
       const { reported, code, ...evidence } = body.receipt
-      const verdict = receiptOutcome(checked, {
-        ...evidence, outcome: reported, ...(code === undefined ? {} : { code: code === NOT_DISPATCHED ? notDispatchedCode : code }),
-      }, proposalId)
+      const verdict = receiptOutcome(checked, { ...evidence, outcome: reported, ...(code === undefined ? {} : { code }) }, proposalId)
       if (verdict.kind === "refused") throw new Error("The agent refused the receipt")
       const kept = await runPromise(recordRequestReceipt(adapter, {
         proposalId, by: owner, providerReceipt: verdict.receipt,

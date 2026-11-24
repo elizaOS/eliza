@@ -169,7 +169,9 @@ const calendarRowSchema = Schema.Struct({
   label: Schema.String,
   accessRole: Schema.String,
   read: Schema.Boolean,
-  write: Schema.Boolean
+  write: Schema.Boolean,
+  recurrenceLines: Schema.optionalKey(Schema.Literal(true)),
+  privateCreate: Schema.optionalKey(Schema.Literal(true))
 })
 export type CalendarRow = typeof calendarRowSchema.Type
 
@@ -188,12 +190,14 @@ const calendarEventSchema = Schema.Struct({
   conferenceLink: optionalText,
   etag: optionalText,
   seriesId: optionalText,
+  recurrence: Schema.optionalKey(Schema.Array(Schema.String)),
   organizer: Schema.NullOr(Schema.Struct({ email: optionalText, displayName: optionalText, self: Schema.Boolean })),
   attendees: Schema.Array(Schema.Struct({
     email: optionalText, displayName: optionalText, responseStatus: optionalText,
     self: Schema.Boolean, organizer: Schema.Boolean, optional: Schema.Boolean
   })),
-  metadata: Schema.Struct({ iCalUID: optionalText, createdAt: optionalText, updatedAt: optionalText })
+  metadata: Schema.Struct({ iCalUID: optionalText, createdAt: optionalText, updatedAt: optionalText,
+    originalStartTime: Schema.optionalKey(Schema.String) })
 })
 export type CalendarEvent = typeof calendarEventSchema.Type
 
@@ -268,7 +272,10 @@ export function googleCalls(transport: CloudTransport) {
       const { eventId, ...target } = request
       return (await answerOf(await transport.call(routesByName.calendarEvent, { params: { eventId }, query: queryOf(target), signal: options.signal }), EventAnswer)).event
     },
-    async calendarCreate(request: CalendarWrite & { readonly idempotencyKey: IdempotencyKey; readonly event: EventFields }, options: CallOptions = {}): Promise<CalendarEvent> {
+    async calendarCreate(request: CalendarWrite & {
+      readonly idempotencyKey: IdempotencyKey
+      readonly event: EventFields & { readonly recurrence?: readonly string[]; readonly privateCreate?: true }
+    }, options: CallOptions = {}): Promise<CalendarEvent> {
       const { idempotencyKey: key, event, ...target } = request
       return (await answerOf(await transport.call(routesByName.calendarEventCreate, {
         json: { ...target, ...event }, headers: { [idempotencyKey]: key }, signal: options.signal

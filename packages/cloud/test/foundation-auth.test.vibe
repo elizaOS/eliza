@@ -390,7 +390,7 @@ const readQuoteRoute: Route = {
   }
 }
 
-effect function paidReviewSubscription(cloud: HttpFixture, fake: StripeFake, organizationId: string, plan: "plus_monthly" | "pro_monthly", now: number) {
+effect function paidCheckout(cloud: HttpFixture, fake: StripeFake, organizationId: string, plan: "plus_monthly" | "pro_monthly") {
   const price = plan === "plus_monthly" ? catalogPrices[0] : catalogPrices[1]
   const stripe = try Effect.try(() => stripeClient(fakeSecretKey, `${cloud.fakes.url}/stripe`))
   const customer = try promise(() => stripe.customers.create({ metadata: { organization_id: organizationId } }))
@@ -400,18 +400,36 @@ effect function paidReviewSubscription(cloud: HttpFixture, fake: StripeFake, org
   }))
   const paid = try Effect.try(() => fake.completeSession(checkout.id))
   try check(() => assert.equal(paid.kind, "paid"))
-  const { observation } = try promise(() => readStripeSubscription(stripe, {
+  const readProvider = promise(() => readStripeSubscription(stripe, {
     STRIPE_PLAN: plan, STRIPE_PRICE_ID: price.priceId, STRIPE_PRODUCT_ID: price.productId, CLOUD_ENVIRONMENT: "staging"
   }, customer.id))
-  return try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observation, now, { kind: "Checkout", checkoutId: checkout.id }))
+  return { stripe, customerId: customer.id, subscriptionId: paid.subscription.id, checkoutId: checkout.id, readProvider }
+}
+
+effect function paidReviewSubscription(cloud: HttpFixture, fake: StripeFake, organizationId: string, plan: "plus_monthly" | "pro_monthly", now: number) {
+  const { checkoutId, readProvider } = try paidCheckout(cloud, fake, organizationId, plan)
+  const { observation } = try readProvider
+  return try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observation, now, { kind: "Checkout", checkoutId }))
+}
+
+effect function subscriptionClock() {
+  const now = 1_800_000_000_987
+  const clock = try sync(manualClock)
+  try sync(() => clock.set(now))
+  return { now, clock }
+}
+
+effect function testUpgrade(now: number) {
+  const stripe = try sync(() => createStripeFake({ now: () => now }))
+  const provider = try sync(() => stripePlanUpgrade(stripe, () => now))
+  const cloud = try testHttp(billing.routes, provider.handler)
+  return { stripe, provider, cloud }
 }
 
 describe("Node subscriptions", () => {
   it.live("Review the exact owned plan change without mutating Stripe (spec/cloud/billing/subscriptionCommands.md, \"A review quotes an upgrade, a downgrade or an undo of a live, active subscription with no command running\")", () => scoped(effect {
-    const now = 1_800_000_000_987
+    const { now, clock } = try subscriptionClock()
     const providerAt = Math.floor(now / 1000) * 1000
-    const clock = try sync(() => manualClock())
-    try sync(() => clock.set(now))
     provide Clock.Clock = clock.clock {
       const fake = try sync(() => createStripeFake({ now: () => now }))
       let previews = (mode: string, answer: FakeAnswer): FakeAnswer | Promise<FakeAnswer> => answer
@@ -477,9 +495,7 @@ describe("Node subscriptions", () => {
   }))
 
   it.live("Schedule a downgrade once after verifying attachment and schedule binding (spec/cloud/billing/subscriptionCommands.md, \"A downgrade is scheduled once, for the quoted plan, before the command frees the slot\"; spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\")", () => scoped(effect {
-    const now = 1_800_000_000_987
-    const clock = try sync(() => manualClock())
-    try sync(() => clock.set(now))
+    const { now, clock } = try subscriptionClock()
     provide Clock.Clock = clock.clock {
       const stripe = try sync(() => createStripeFake({ now: () => now }))
       const provider = try sync(() => stripePlanDowngrade(stripe, () => now))
@@ -635,9 +651,7 @@ describe("Node subscriptions", () => {
   }))
 
   it.live("See my commands across the retained and current billing layouts (spec/cloud/billing/subscriptionCommands.md, \"Story: See my commands\")", () => scoped(effect {
-    const now = 1_800_000_000_987
-    const clock = try sync(() => manualClock())
-    try sync(() => clock.set(now))
+    const { now, clock } = try subscriptionClock()
     provide Clock.Clock = clock.clock {
       const cloud = try testHttp(billing.routes)
       const user = "command-owner", other = "command-peer", organization = `org-${user}`
@@ -704,13 +718,9 @@ describe("Node subscriptions", () => {
   }))
 
   it.live("An exact paid upgrade applies once through both allowance row formats (spec/cloud/billing/subscriptionCommands.md, \"A settled command applies only what the provider did, and an upgrade applies only once its invoice is paid\"; spec/cloud/billing/subscriptionCommands.md, \"The provider is asked once, by the claim holder, and a lost reply is recovered by a lookup, never by sending again\")", () => scoped(effect {
-    const now = 1_800_000_000_987
-    const clock = try sync(() => manualClock())
-    try sync(() => clock.set(now))
+    const { now, clock } = try subscriptionClock()
     provide Clock.Clock = clock.clock {
-      const stripe = try sync(() => createStripeFake({ now: () => now }))
-      const upgrade = try sync(() => stripePlanUpgrade(stripe, () => now))
-      const cloud = try testHttp(billing.routes, upgrade.handler)
+      const { stripe, provider: upgrade, cloud } = try testUpgrade(now)
       const buyer = sessionToken("u"), recovering = sessionToken("r")
       const root = "/api/v1/subscriptions/upgrade"
       const live = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs * 15, refreshExpiresAt: now + minuteMs * 60, stepUpAt: 0, mfaAt: 0 }
@@ -829,13 +839,9 @@ describe("Node subscriptions", () => {
   }))
 
   it.live("A voided invoice ends the reviewed upgrade without changing the plan or allowance (spec/cloud/billing/subscriptionCommands.md, \"Story: Get the plan I paid for\")", () => scoped(effect {
-    const now = 1_800_000_000_987
-    const clock = try sync(() => manualClock())
-    try sync(() => clock.set(now))
+    const { now, clock } = try subscriptionClock()
     provide Clock.Clock = clock.clock {
-      const stripe = try sync(() => createStripeFake({ now: () => now }))
-      const provider = try sync(() => stripePlanUpgrade(stripe, () => now))
-      const cloud = try testHttp(billing.routes, provider.handler)
+      const { stripe, provider, cloud } = try testUpgrade(now)
       const token = sessionToken("n")
       const path = "/api/v1/subscriptions/upgrade"
       const organizationId = "org-void-upgrade"
@@ -868,13 +874,9 @@ describe("Node subscriptions", () => {
   }))
 
   it.live("A paid upgrade over a refunded period applies the plan and moves no allowance (spec/cloud/billing/subscriptionCommands.md, \"Story: Get the plan I paid for\"; spec/cloud/billing/allowance.md, \"Story: Get more allowance when I upgrade mid-period\")", () => scoped(effect {
-    const now = 1_800_000_000_987
-    const clock = try sync(() => manualClock())
-    try sync(() => clock.set(now))
+    const { now, clock } = try subscriptionClock()
     provide Clock.Clock = clock.clock {
-      const stripe = try sync(() => createStripeFake({ now: () => now }))
-      const provider = try sync(() => stripePlanUpgrade(stripe, () => now))
-      const cloud = try testHttp(billing.routes, provider.handler)
+      const { stripe, provider, cloud } = try testUpgrade(now)
       const token = sessionToken("q")
       const path = "/api/v1/subscriptions/upgrade"
       const organizationId = "org-refunded-upgrade"
@@ -919,21 +921,9 @@ describe("Node subscriptions", () => {
     const currentSession = { live: true, epoch: 0, authAt: now - minuteMs, accessExpiresAt: now + 10 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }
     try session(cloud, owner, token, currentSession, now)
     try session(cloud, owner, oldToken, { ...currentSession, authAt: now - 2 * 60 * minuteMs }, now)
-    const price = catalogPrices[0]
-    const stripe = try Effect.try(() => stripeClient(fakeSecretKey, `${cloud.fakes.url}/stripe`))
-    const customer = try promise(() => stripe.customers.create({ metadata: { organization_id: organizationId } }))
-    const checkout = try promise(() => stripe.checkout.sessions.create({
-      customer: customer.id, mode: "subscription", line_items: [{ price: price.priceId, quantity: 1 }],
-      success_url: "https://example.com/return", cancel_url: "https://example.com/cancel"
-    }))
-    const paid = try Effect.try(() => fake.completeSession(checkout.id))
-    try check(() => assert.equal(paid.kind, "paid"))
-    const subscriptionId = paid.subscription.id
-    const readProvider = promise(() => readStripeSubscription(stripe, {
-      STRIPE_PLAN: "plus_monthly", STRIPE_PRICE_ID: price.priceId, STRIPE_PRODUCT_ID: price.productId, CLOUD_ENVIRONMENT: "staging"
-    }, customer.id))
+    const { stripe, customerId, subscriptionId, readProvider } = try paidCheckout(cloud, fake, organizationId, "plus_monthly")
     const { observation } = try readProvider
-    const legacy = { customerId: customer.id, subscriptionId, planKey: observation.plan, status: observation.status, periodEnd: observation.endsAt }
+    const legacy = { customerId, subscriptionId, planKey: observation.plan, status: observation.status, periodEnd: observation.endsAt }
     try sql(cloud, "INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,updated_at) VALUES ($1,$2,3,$3,$4,$5,$6,$7,$8)",
       [organizationId, JSON.stringify(legacy), legacy.status, legacy.planKey, legacy.customerId, subscriptionId, legacy.periodEnd, now])
     const opened = try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observation, now))
@@ -1001,7 +991,7 @@ describe("Node subscriptions", () => {
       after: [200, { action: "undo", eligible: true, expectedSubscriptionRevision: receipt.resultRevision }, beforeSnapshot.allowance, receipt.resultRevision],
       staleRevision: 409,
       undo: [409, 200, 503, [{ command_kind: "undo", reviewer_user_id: owner }], 200, "unknown", lostUndo.body,
-        "Live", 200, "succeeded", undone.body, 409, [], [{ quote_id: quote.quoteId, phase: "Applied", customer_id: customer.id }],
+        "Live", 200, "succeeded", undone.body, 409, [], [{ quote_id: quote.quoteId, phase: "Applied", customer_id: customerId }],
         200, 200, 200, "succeeded"],
       revoked: ["canceled", 200, "free", "closed", 0]
     }))
@@ -1055,7 +1045,7 @@ describe("Speech session funding (spec/cloud/services/speechRelay.md, \"Story: S
       for (const sessionId of [first.sessionId, second.sessionId]) try cloud.inside(retire(sessionId, "Stopped"))
       const reopening = cloud.inside(admitWindow(first.sessionId, 1)) catch effect (failure) => match (failure) { when Refused: failure.refusal.code; default: throw failure; }
       const windows = try Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ session_id: Schema.String, number: Schema.Number })))(try sql(cloud, "SELECT session_id, number FROM speech_windows WHERE user_id = $1 ORDER BY session_id, number", ["speech-rich"]))
-      for (const window of windows) try cloud.inside(settleWindow(window.session_id, window.number, { pcmBytes: 0, ttsChars: 0, sttDrained: true, ttsConfirmed: true, dispatched: false }))
+      for (const window of windows) try cloud.inside(settleWindow(window.session_id, window.number, { pcmBytes: 0, ttsChars: 0, sttFinal: true, ttsFinal: true, dispatched: false }))
       const closed = try sql(cloud, "SELECT phase, (state->>'admittedWindows')::int AS admitted, jsonb_array_length(state->'settledWindows') AS settled FROM speech_sessions WHERE key = $1", [first.sessionId])
       const released = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = $1", ["org-speech-rich"])
       try check(() => assert.deepStrictEqual({ reopening, closed: closed.map((row) => [row.phase, Number(row.admitted) === Number(row.settled)]), released: released.every((row) => row.phase === "released") }, { reopening: "SessionClosed", closed: [["closed", true]], released: true }))

@@ -1,4 +1,4 @@
-// spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply", "The heard part and the unheard remainder together are the whole reply"
+// spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"
 module node {
   import { Schema } from "effect"
   import { messageTextSourceDescriptor, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"

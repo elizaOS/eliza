@@ -1,8 +1,8 @@
 // spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"
-import type { AgentPlugin } from "@elizaos/agent"
+import { showsApp, type AgentPlugin } from "@elizaos/agent"
 import { inboxAccessProvider } from "./agent/access.vibe"
 import { inboxComposeAction } from "./agent/compose.vibe"
-import { inboxReadAction } from "./agent/read.vibe"
+import { inboxContext, inboxReadAction } from "./agent/read.vibe"
 
 export { inboxAccess, inboxAccessProvider, inboxAccessProviderName } from "./agent/access.vibe"
 export { emailDraftAnswer, inboxComposeAction, inboxComposeActionName, type EmailDraftHandoff } from "./agent/compose.vibe"
@@ -11,11 +11,14 @@ export { agentGmailClient, cloudLinkTransport } from "./agent/cloud.vibe"
 
 export const inboxPluginName = "@elizaos/plugin-inbox"
 
+for (const action of [inboxReadAction, inboxComposeAction]) showsApp(action, inboxContext.id)
+
 export const inboxPlugin: AgentPlugin = {
   name: inboxPluginName,
   description: "Reads the owner's connected Gmail fresh and bounded, hands a new email to the phone's own composer, and reports Gmail access; sending and mailbox changes stay with the owner in Inbox",
   actions: [inboxReadAction, inboxComposeAction],
   providers: [inboxAccessProvider],
+  init: async (_config, runtime) => { runtime.contexts.tryRegister(inboxContext) },
 }
 
 export default inboxPlugin

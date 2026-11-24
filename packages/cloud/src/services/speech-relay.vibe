@@ -19,8 +19,8 @@ export type WindowAdmission =
 export interface WindowUsage {
   readonly pcmBytes: number
   readonly ttsChars: number
-  readonly sttDrained: boolean
-  readonly ttsConfirmed: boolean
+  readonly sttFinal: boolean
+  readonly ttsFinal: boolean
   readonly dispatched: boolean
 }
 
@@ -67,6 +67,7 @@ interface Window {
   readonly number: number
   readonly expiresAt: number
   dispatched: boolean
+  settled: boolean
   pcmBytes: number
   ttsChars: number
   outputBytes: number
@@ -86,6 +87,7 @@ interface Shell {
   queued: number
   gone: boolean
   renewal: Deferred.Deferred<void> | undefined
+  settling: Deferred.Deferred<void> | undefined
 }
 
 type Arrival =
@@ -140,7 +142,7 @@ function windowOf(shell: Shell, number: number): Window | undefined {
 }
 
 function openWindow(number: number, expiresAt: number): Window {
-  return { number, expiresAt, dispatched: false, pcmBytes: 0, ttsChars: 0, outputBytes: 0 }
+  return { number, expiresAt, dispatched: false, settled: false, pcmBytes: 0, ttsChars: 0, outputBytes: 0 }
 }
 
 function iso(at: number): string {
@@ -346,6 +348,24 @@ effect function watchWindow(shell: Shell, ports: RelayPorts, sessionId: string, 
   try Queue.offer(arrivals, { kind: "deadline", window: window.number })
 }
 
+effect function settleEnded(shell: Shell, ports: RelayPorts, sessionId: string, window: Window) {
+  const previous = shell.settling
+  const settling = try Deferred.make<void>()
+  shell.settling = settling
+  fork.scoped ensuring(effect {
+    if (previous !== undefined) try Deferred.await(previous)
+    const usage: WindowUsage = { pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttFinal: true, ttsFinal: true, dispatched: window.dispatched }
+    const settled = (effect {
+      try ports.session.settleWindow(sessionId, window.number, usage)
+      return true
+    }) catch effect (failure) => {
+      try annotateLogs(logError("an ended speech window could not be settled"), { sessionId, window: window.number, failure: failure._tag })
+      return false
+    }
+    window.settled = settled
+  }, Deferred.succeed(settling, undefined))
+}
+
 effect function windowEnds(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, writer: Socket.Writer, number: number) {
   if (number !== shell.current) return
   const next = windowOf(shell, number + 1)
@@ -364,6 +384,8 @@ effect function windowEnds(shell: Shell, ports: RelayPorts, sessionId: string, a
   next.dispatched = true
   shell.current = next.number
   fork.scoped watchWindow(shell, ports, sessionId, arrivals, next)
+  const ended = windowOf(shell, number)
+  if (ended !== undefined) try settleEnded(shell, ports, sessionId, ended)
 }
 
 effect function ttsEdge(shell: Shell, writer: Socket.Writer, edge: TtsEdge) {
@@ -454,15 +476,18 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   const stt = shell.stt
   const drained = shell.graceful && stt !== undefined ? try stt.drain() : false
   const forwarded = shell.windows.reduce((sum, window) => sum + window.pcmBytes, 0)
-  const sttDrained = shell.graceful && (forwarded === 0 || drained)
-  const ttsConfirmed = shell.graceful && !shell.ttsUncertain && shell.relay.utterances.every((utterance) => utterance.stage === "UtteranceDone" || !shell.spoken.has(utterance.id))
+  const sttFinal = shell.graceful && (forwarded === 0 || drained)
+  const ttsFinal = shell.graceful && !shell.ttsUncertain && shell.relay.utterances.every((utterance) => utterance.stage === "UtteranceDone" || !shell.spoken.has(utterance.id))
   ports.session.retire(sessionId) catch effect (failure) => {
     try annotateLogs(logError("a speech session could not be retired"), { sessionId, failure: failure._tag })
   }
   const renewal = shell.renewal
   if (renewal !== undefined) try Deferred.await(renewal)
+  const settling = shell.settling
+  if (settling !== undefined) try Deferred.await(settling)
   for (const window of shell.windows) {
-    const usage: WindowUsage = { pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttDrained, ttsConfirmed, dispatched: window.dispatched }
+    if (window.settled) continue
+    const usage: WindowUsage = { pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttFinal, ttsFinal, dispatched: window.dispatched }
     ports.session.settleWindow(sessionId, window.number, usage) catch effect (failure) => {
       try annotateLogs(logError("a speech window could not be settled"), { sessionId, window: window.number, failure: failure._tag })
     }
@@ -472,7 +497,7 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
 effect function serve(ports: RelayPorts, sessionId: string, socket: Socket.Socket) {
   const shell: Shell = {
     relay: relayAtUpgrade, windows: [], current: 0, refusal: undefined, stt: undefined, tts: undefined,
-    transcripts: [], spoken: new Set(), ttsUncertain: false, graceful: false, queued: 0, gone: false, renewal: undefined
+    transcripts: [], spoken: new Set(), ttsUncertain: false, graceful: false, queued: 0, gone: false, renewal: undefined, settling: undefined
   }
   const session = effect {
     const reader = try socket.reader

@@ -1,8 +1,8 @@
-// spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "Reconciliation preserves equivalent bytes and replaces only the matching cancellation"; spec/workflow/hostedDigest.md, "Parse the complete page before durable writes and bind its acknowledgement to its final incoming row"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"
+// spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "A phone source is read for the window of the digest that reads it"; spec/workflow/hostedDigest.md, "Reconciliation preserves equivalent bytes and replaces only the matching cancellation"; spec/workflow/hostedDigest.md, "Parse the complete page before durable writes and bind its acknowledgement to its final incoming row"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"
 import * as A from "../../gen/workflow__admission.effect.vibe"
 import * as L from "../../gen/workflow__lifecycle.effect.vibe"
 import * as X from "../../gen/workflow__execution.effect.vibe"
-import { providerDigestCursor } from "../../gen/workflow__hostedDigest.effect.vibe"
+import { nativeWindow, providerDigestCursor } from "../../gen/workflow__hostedDigest.effect.vibe"
 import {
   DIGEST_MISSED_TEXT, DIGEST_OVERLAP_TEXT, DIGEST_PAGE_LIMIT, DIGEST_PAUSED_TEXT, DIGEST_SOURCE_UNAVAILABLE_TEXT, HOSTED_TEMPLATE_VERSION,
   digestCron, digestId, digestKeys, digestOccurrenceMissed, digestPhoneSpec, digestRecord, digestSourceState, digestSourceType, digestText, validateDigestSpec, type DigestRefused,
@@ -220,14 +220,15 @@ export function hostedDigests(service: WorkflowService) {
     if (try db(store.insertRun(entry, at))) try service.persist(entry)
   }
 
-  effect function liveText(source: DigestSourceRecord, at: number): string!WorkflowRefused {
+  effect function liveText(source: DigestSourceRecord, spec: DigestSpec, at: number): string!WorkflowRefused {
     const lapsed = () => new WorkflowRefused({ status: 409, message: DIGEST_SOURCE_UNAVAILABLE_TEXT })
     const live = source.live
     if (live === undefined) return source.text
     if (live.provider === "native") {
       const native = host.nativeDigests
       if (native === undefined) throw lapsed()
-      return try mapError(native.read(live, at), lapsed)
+      const window = nativeWindow(spec.template === "evening" ? "EveningTemplate" : "MorningTemplate", spec.manualOnly === true)
+      return try mapError(native.read(live, at, window === "EveningWindow" ? "evening" : "morning"), lapsed)
     }
     const google = host.google
     if (google === undefined) throw lapsed()
@@ -237,7 +238,7 @@ export function hostedDigests(service: WorkflowService) {
 
   effect function runSpec(row: DefinitionRow, spec: DigestSpec, source: DigestSourceRecord, at: number) {
     if (source.live === undefined) return row
-    const text = try liveText(source, at)
+    const text = try liveText(source, spec, at)
     const materialized = source.live.provider === "native" ? digestPhoneSpec(spec, { ...source, text })
       : { ...row.spec, steps: row.spec.steps.map((step) => step.id === "source" && step.operation === "supplied_text" ? { ...step, text } : step) }
     const phone = try mapError(validatePhoneWorkflowSpec(materialized), () => new WorkflowRefused({ status: 409, message: DIGEST_SOURCE_UNAVAILABLE_TEXT }))

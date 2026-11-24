@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
 import { sha256Hex } from "@elizaos/core"
-import { createOutcome, invitationVerdict, repeatingCreateAllowed, receiptVersion, reviewStillBinds, type InvitationChange, type InvitationVerdict, type OwnerRole } from "../../gen/calendar__actions.effect.vibe"
+import { createOutcome, invitationVerdict, managedEditTargetAllowed, repeatingCreateAllowed, receiptVersion, reviewStillBinds, type InvitationChange, type InvitationVerdict, type OwnerRole } from "../../gen/calendar__actions.effect.vibe"
 import { knownTimeZone } from "../clock.vibe"
 import { holdsRecurrence, type CalendarRecurrence } from "../series/recurrence-rule.vibe"
 import { sameSourceKey, utcInstant, type CalendarEvent, type CalendarEventFields, type CalendarSourceKey } from "../model.vibe"
@@ -97,7 +97,7 @@ export function providerMutationPort(providers: CalendarProviders): CalendarMuta
       const payload = request.payload
       if ((payload.action === "schedule_event" || payload.action === "modify_event") && !fieldsSpanValid(payload.fields)) throw refuse("CALENDAR_FIELDS_INVALID", "The reviewed start and end are not an ordered span.")
       if (payload.action === "schedule_event") {
-        const carrier = port.provider === "eliza" ? "ResidentRows" : port.recurrenceLines ? "ProviderRuleLines" : "ProviderWithoutRules"
+        const carrier = port.provider === "eliza" ? "ResidentRows" : port.recurrenceLines && writable.recurrenceLines !== false ? "ProviderRuleLines" : "ProviderWithoutRules"
         if (!repeatingCreateAllowed(payload.recurrence !== null, carrier)) {
           throw refuse("CALENDAR_RECURRENCE_UNSUPPORTED", "That calendar's provider can't save a repeating event, so it was not created.")
         }
@@ -109,6 +109,10 @@ export function providerMutationPort(providers: CalendarProviders): CalendarMuta
       const target = port.get(account, source, payload.target.eventId) catch effect () => { throw refuse("CALENDAR_SOURCE_UNAVAILABLE", "The event could not be read.", true) }
       if (target === undefined) throw refuse("CALENDAR_EVENT_NOT_FOUND", "That event is no longer in the calendar.")
       if (eventVersion(target) !== payload.target.expectedVersion) throw refuse("CALENDAR_TARGET_CHANGED", "The event changed since it was reviewed.")
+      if (port.provider === "google" && payload.action === "modify_event" &&
+        !managedEditTargetAllowed((target.recurrence?.length ?? 0) > 0, typeof target.recurringEventId === "string" && target.recurringEventId !== "")) {
+        throw refuse("CALENDAR_MANAGED_SERIES_REVIEW_REQUIRED", "Select one occurrence in the managed calendar. Nothing was changed.")
+      }
       const change = invitationChangeOf(payload.action)
       const role = ownerRole(target, writable.accountEmail)
       const verdict = invitationVerdict(change, role, port.respond !== undefined, payload.scope === "this_and_following")
@@ -124,8 +128,9 @@ export function providerMutationPort(providers: CalendarProviders): CalendarMuta
       if (payload.action === "schedule_event") {
         const made = try port.create(account, source, payload.fields, payload.recurrence, request.id)
         const read = try readBack(port, account, source, made.id)
+        const allDayZone = port.provider === "google" && payload.fields.isAllDay ? payload.fields.timeZone : undefined
         const outcome = createOutcome(true, read !== undefined, read !== undefined && fromSource(read, source),
-          read !== undefined && holdsFields(read, payload.fields) && holdsRecurrence(read.recurrence, payload.recurrence))
+          read !== undefined && holdsFields(read, payload.fields) && holdsRecurrence(read.recurrence, payload.recurrence, allDayZone))
         if (outcome !== "CreatedAndRead" || read === undefined) throw unconfirmed("CALENDAR_CREATE_UNCONFIRMED", "The created event did not read back from the same calendar.")
         return { operation: payload.action, source, eventId: read.id, providerVersion: eventVersion(read), event: read, target: null, acceptedAt: read.updatedAt } satisfies CalendarMutationReceipt
       }

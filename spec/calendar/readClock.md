@@ -35,6 +35,58 @@ pure def lawOwnerZoneOtherwise(explicit: ZoneHint, client: ZoneHint, owner: Cloc
   not(explicit.present) and not(client.present) implies requestZone(explicit, client, owner) == owner
 ```
 
+### A time sent without an offset is wall time in the request's zone
+
+A time the Calendar action receives names a real date and a real clock
+time, where 24:00 is the midnight that ends its day; anything else is
+refused as no time at all. A time that carries its own offset is an
+instant and is used as sent. Without one it is wall-clock time, and code,
+not the planner, applies the offset of that date: in the request's zone
+for a read or a change to an event; for an all-day event as that civil
+date, whatever the zone; and for a new event in the create's context
+zone. A new event's time sent with another zone, one that would move it,
+is read in that zone only when the owner's own words name it ("9am Tokyo
+time"); otherwise nothing is saved and the reply asks for the time with
+its offset. A wall time that its zone's clock skips, or shows twice,
+names no single instant: the request is refused and nothing is read or
+changed.
+
+```quint
+type InstantRead = InstantAsSent | InstantInWallZone | InstantRefused | InstantUnreal
+type WallZone = WallAsCivilDate | WallInRequestZone | WallInContextZone | WallInNamedZone | WallZoneUnsaid
+pure def clockReal(clockHour: int, clockMinute: int, clockSecond: int): bool =
+  clockHour >= 0 and clockMinute >= 0 and clockSecond >= 0 and clockMinute <= 59 and clockSecond <= 59 and
+  (clockHour <= 23 or (clockHour == 24 and clockMinute == 0 and clockSecond == 0))
+pure def instantRead(fieldsReal: bool, carriesOffset: bool, wallTimeIsOneInstant: bool): InstantRead =
+  if (not(fieldsReal)) InstantUnreal
+  else if (carriesOffset) InstantAsSent
+  else if (wallTimeIsOneInstant) InstantInWallZone
+  else InstantRefused
+pure def wallZone(wholeDay: bool, creating: bool, zoneSent: bool, sentZoneMovesIt: bool, ownerNamedIt: bool): WallZone =
+  if (wholeDay) WallAsCivilDate
+  else if (not(creating)) WallInRequestZone
+  else if (not(zoneSent) or not(sentZoneMovesIt)) WallInContextZone
+  else if (ownerNamedIt) WallInNamedZone
+  else WallZoneUnsaid
+pure def lawAnUnrealTimeIsNeverRead(carriesOffset: bool, wallTimeIsOneInstant: bool): bool =
+  instantRead(false, carriesOffset, wallTimeIsOneInstant) == InstantUnreal
+pure def lawAnOffsetIsUsedAsSent(wallTimeIsOneInstant: bool): bool =
+  instantRead(true, true, wallTimeIsOneInstant) == InstantAsSent
+pure def lawASkippedOrRepeatedWallTimeIsRefused(fieldsReal: bool): bool =
+  fieldsReal implies instantRead(fieldsReal, false, false) == InstantRefused
+pure def lawTwentyFourIsOnlyMidnight(clockMinute: int, clockSecond: int): bool =
+  clockReal(24, clockMinute, clockSecond) iff (clockMinute == 0 and clockSecond == 0)
+pure def lawAWholeDayIsItsCivilDate(creating: bool, zoneSent: bool, sentZoneMovesIt: bool, ownerNamedIt: bool): bool =
+  wallZone(true, creating, zoneSent, sentZoneMovesIt, ownerNamedIt) == WallAsCivilDate
+pure def lawAZoneTheOwnerDidNotNameNeverMovesANewEvent(zoneSent: bool, sentZoneMovesIt: bool): bool =
+  wallZone(false, true, zoneSent, sentZoneMovesIt, false) != WallInNamedZone
+pure def lawANewEventIsNeverMovedSilently(ownerNamedIt: bool): bool =
+  wallZone(false, true, true, true, ownerNamedIt) != WallInContextZone
+pure val clockHourValues = Set(0, 23, 24, 25)
+pure val clockMinuteValues = Set(0, 1, 59, 60)
+pure val clockSecondValues = Set(0, 1, 59, 60)
+```
+
 ### Display shifts the canonical instant by the zone's offset on that date
 
 A displayed time is the stored UTC minute plus the chosen zone's offset

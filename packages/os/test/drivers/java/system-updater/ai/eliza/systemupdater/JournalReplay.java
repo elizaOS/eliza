@@ -1,63 +1,183 @@
-// SPDX-License-Identifier: MIT
+// spec/os/update/updater.md, "Story: Install a verified update once"
 package ai.eliza.systemupdater;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HashMap;
+import java.util.HexFormat;
+import java.util.Locale;
+import java.util.Map;
+import org.json.JSONObject;
 
-/** Replays generated Quint operations through the production journal implementation. */
 public final class JournalReplay {
+    private static final long MAX_MANIFEST_BYTES = 65536;
+    private static final int MAX_REDIRECTS = 3;
+    private static final long MAX_PACKAGE_BYTES = 12L * 1024 * 1024 * 1024;
+
+    private final Map<String, String> digests = new HashMap<>(Map.of("", ""));
+    private UpdateJournal journal = UpdateJournal.idle();
+    private UpdateJournal verifiedBeforeIntent;
+    private UpdateJournal readyBeforeRestart;
+    private int engineCalls;
+
     public static void main(String[] args) throws Exception {
-        final String digest = "a".repeat(64);
-        UpdateJournal journal = UpdateJournal.idle();
-        int checked = 0;
-        for (String line : Files.readAllLines(Path.of(args[0]))) {
-            String[] fields = line.split("\\t");
-            if (fields[0].equals("init")) journal = UpdateJournal.idle();
-            else switch (fields[0]) {
-                case "download": journal = journal.download("source", "target", digest); break;
-                case "verify": journal = journal.verified("source", "target", digest); break;
-                case "reject": journal = journal.failedBeforeApply(); break;
-                case "withdraw": journal = journal.cancelUnapplied(); break;
-                case "apply": journal = journal.applyIntent("boot", true); break;
-                case "busy":
-                    try { journal.applyIntent("boot", false); throw new AssertionError("Busy engine accepted"); }
-                    catch (IllegalStateException expected) { }
-                    break;
-                case "acknowledge": journal = journal.applying("boot"); break;
-                case "success": journal = journal.completedApply("boot", true, 0); break;
-                case "failure": journal = journal.completedApply("boot", true, 1); break;
-                case "foreign": journal = journal.completedApply("boot", false, 0); break;
-                case "reboot": journal = journal.rebootIntent(true, true); break;
-                case "restart": journal = journal.reconcile("source", "new-boot"); break;
-                case "target": journal = journal.reconcile("target", "new-boot"); break;
-                case "retry":
-                    try { journal.applyIntent("new-boot", true); throw new AssertionError("Unknown apply replayed"); }
-                    catch (IllegalStateException expected) { }
-                    break;
-                case "stutter": break;
-                default: throw new AssertionError("Unknown operation");
-            }
-            if (!journal.phase.name().equals(fields[1])) {
-                throw new AssertionError(fields[0] + ": expected " + fields[1] + ", received " + journal.phase);
-            }
-            checked++;
+        JournalReplay replay = new JournalReplay();
+        BufferedReader input = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        PrintStream output = new PrintStream(System.out, true, StandardCharsets.UTF_8);
+        for (String line; (line = input.readLine()) != null;) {
+            if (line.isBlank()) continue;
+            try { output.println(replay.answer(new JSONObject(line))); }
+            catch (RuntimeException failure) { output.println(new JSONObject().put("error", String.valueOf(failure))); }
         }
-        Path files = Files.createTempDirectory("system-update-files");
-        String withdrawn = "b".repeat(64);
-        for (String name : new String[]{digest + ".zip", digest + ".payload", withdrawn + ".zip",
-                withdrawn + ".payload", withdrawn + ".partial", "journal"}) Files.writeString(files.resolve(name), name);
-        UpdateChannel.keepOnly(files.toFile(), digest);
-        try (var kept = Files.list(files)) {
-            if (kept.count() != 3 || !Files.exists(files.resolve(digest + ".payload"))) {
-                throw new AssertionError("A withdrawn candidate's files outlived the journal");
-            }
+    }
+
+    private JSONObject answer(JSONObject request) {
+        if (!request.has("event")) {
+            journal = UpdateJournal.idle();
+            verifiedBeforeIntent = null;
+            readyBeforeRestart = null;
+            engineCalls = 0;
+            return new JSONObject().put("state", state());
         }
-        UpdateChannel.keepOnly(files.toFile(), "");
-        try (var kept = Files.list(files)) {
-            if (!kept.map(Path::getFileName).map(Path::toString).toList().equals(java.util.List.of("journal"))) {
-                throw new AssertionError("A settled journal kept its candidate's files");
+        boolean accepted;
+        try { accepted = step(request.getJSONObject("event")); }
+        catch (IllegalStateException | IllegalArgumentException refused) { accepted = false; }
+        return new JSONObject().put("outcome", accepted ? "accepted" : "refused").put("state", state());
+    }
+
+    private boolean step(JSONObject event) {
+        String type = event.getString("type");
+        switch (type) {
+            case "download": {
+                JSONObject installed = event.getJSONObject("installed"), candidate = event.getJSONObject("candidate");
+                if (!downloadAllowed(event.getJSONObject("conditions")) || !manifestAdmitted(event.getJSONObject("manifest"))
+                        || !offered(installed, candidate)) return false;
+                journal = journal.download(installed.getString("fingerprint"), candidate.getString("fingerprint"),
+                        sha256(event.getString("digest")));
+                engineCalls = 0;
+                return true;
             }
+            case "verify": {
+                JSONObject installed = event.getJSONObject("installed"), candidate = event.getJSONObject("candidate");
+                if (!offered(installed, candidate) || !patchLevelsKept(installed, candidate)) return false;
+                journal = journal.verified(installed.getString("fingerprint"), candidate.getString("fingerprint"),
+                        sha256(event.getString("digest")));
+                return true;
+            }
+            case "reject":
+                journal = journal.failedBeforeApply();
+                return true;
+            case "applyIntent": {
+                if (!installAllowed(event.getJSONObject("conditions")) || !offerMatches(event.getJSONObject("offer"))) return false;
+                UpdateJournal verified = journal;
+                journal = journal.applyIntent(event.getString("boot"), "EngineIdle".equals(event.getString("engine")));
+                verifiedBeforeIntent = verified;
+                return true;
+            }
+            case "withdrawApplyIntent":
+                if (journal.phase != UpdateJournal.Phase.APPLY_INTENT
+                        || (journal.intentBoot.equals(event.getString("boot")) && installAllowed(event.getJSONObject("conditions")))) {
+                    return false;
+                }
+                journal = verifiedBeforeIntent;
+                return true;
+            case "applyAccepted": {
+                UpdateJournal applying = journal.applying(event.getString("boot"));
+                engineCalls++;
+                journal = applying;
+                return true;
+            }
+            case "completedApply": {
+                if (journal.phase != UpdateJournal.Phase.APPLYING) return false;
+                String boot = event.getString("boot");
+                try { journal = journal.completedApply(boot, journal.intentBoot.equals(boot), event.getInt("errorCode")); }
+                catch (IllegalStateException anotherBoot) { journal = journal.reconcile(journal.sourceBuild, boot); }
+                return true;
+            }
+            case "holdRestart":
+                return journal.phase == UpdateJournal.Phase.REBOOT_READY && !(installAllowed(event.getJSONObject("conditions"))
+                        && offerMatches(event.getJSONObject("offer")) && "EngineNeedsReboot".equals(event.getString("engine")));
+            case "rebootIntent": {
+                if (!offerMatches(event.getJSONObject("offer"))) return false;
+                UpdateJournal ready = journal;
+                journal = journal.rebootIntent(installAllowed(event.getJSONObject("conditions")),
+                        "EngineNeedsReboot".equals(event.getString("engine")));
+                readyBeforeRestart = ready;
+                return true;
+            }
+            case "withdrawRebootIntent":
+                if (journal.phase != UpdateJournal.Phase.REBOOT_INTENT || installAllowed(event.getJSONObject("conditions"))) return false;
+                journal = readyBeforeRestart;
+                return true;
+            case "reconcile":
+                if (journal.phase == UpdateJournal.Phase.IDLE) return false;
+                journal = journal.reconcile(event.getString("booted"), event.getString("boot"));
+                return true;
+            case "withdraw":
+                journal = journal.cancelUnapplied();
+                engineCalls = 0;
+                return true;
+            default:
+                throw new UnsupportedOperationException("not an updater event: " + type);
         }
-        System.out.println("PASS " + checked + " production journal states");
+    }
+
+    private static boolean downloadAllowed(JSONObject conditions) {
+        return conditions.getBoolean("systemUser") && conditions.getBoolean("unlocked") && !conditions.getBoolean("managedProfile")
+                && (conditions.getBoolean("charging") || conditions.getInt("batteryPercent") >= 50)
+                && conditions.getBoolean("unmeteredNetwork") && !conditions.getBoolean("updatePolicySet");
+    }
+
+    private static boolean installAllowed(JSONObject conditions) {
+        return downloadAllowed(conditions) && !conditions.getBoolean("screenOn") && conditions.getBoolean("phoneStateGranted")
+                && !conditions.getBoolean("inCall");
+    }
+
+    private static boolean manifestAdmitted(JSONObject manifest) {
+        long bytes = manifest.getLong("manifestBytes"), packageBytes = manifest.getLong("packageBytes");
+        int redirects = manifest.getInt("redirects");
+        return bytes > 0 && bytes <= MAX_MANIFEST_BYTES && manifest.getBoolean("https") && manifest.getBoolean("enrolledHost")
+                && !manifest.getBoolean("userInfo") && redirects >= 0 && redirects <= MAX_REDIRECTS
+                && packageBytes > 0 && packageBytes <= MAX_PACKAGE_BYTES;
+    }
+
+    private static boolean offered(JSONObject installed, JSONObject candidate) {
+        return candidate.getString("product").equals(installed.getString("product"))
+                && candidate.getString("device").equals(installed.getString("device"))
+                && candidate.getLong("buildDate") > installed.getLong("buildDate")
+                && !candidate.getString("fingerprint").equals(installed.getString("fingerprint"));
+    }
+
+    private static boolean patchLevelsKept(JSONObject installed, JSONObject candidate) {
+        return candidate.getLong("securityPatch") >= installed.getLong("securityPatch")
+                && candidate.getLong("vendorPatch") >= installed.getLong("vendorPatch");
+    }
+
+    private boolean offerMatches(JSONObject offer) {
+        return "Offered".equals(offer.getString("tag")) && offer.getString("fingerprint").equals(journal.targetBuild)
+                && sha256(offer.getString("digest")).equals(journal.packageSha256);
+    }
+
+    private String sha256(String digest) {
+        if (digest.isEmpty()) return digest;
+        try {
+            String hex = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(digest.getBytes(StandardCharsets.UTF_8)));
+            digests.put(hex, digest);
+            return hex;
+        } catch (NoSuchAlgorithmException unavailable) {
+            throw new UnsupportedOperationException(unavailable);
+        }
+    }
+
+    private JSONObject state() {
+        StringBuilder phase = new StringBuilder();
+        for (String word : journal.phase.name().split("_")) phase.append(word.charAt(0)).append(word.substring(1).toLowerCase(Locale.ROOT));
+        return new JSONObject().put("phase", phase.toString()).put("source", journal.sourceBuild).put("target", journal.targetBuild)
+                .put("digest", digests.getOrDefault(journal.packageSha256, journal.packageSha256))
+                .put("intentBoot", journal.intentBoot).put("applyCalls", engineCalls);
     }
 }

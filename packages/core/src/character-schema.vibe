@@ -1,4 +1,4 @@
-// spec/core/runtime.md, "Story: Initialize an explicit host composition"
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/models.md, "A model call takes no output cap from settings"
 import z from "zod"
 import type { Character, TemplateType } from "./types/agent.vibe"
 import type { JsonValue } from "./types/primitives.vibe"
@@ -155,7 +155,6 @@ const settingsKnownKeys = new Set([
   "alwaysRespondChannels",
   "alwaysRespondSources",
   "defaultTemperature",
-  "defaultMaxTokens",
   "maxReplyTokens",
   "defaultFrequencyPenalty",
   "defaultPresencePenalty",
@@ -171,7 +170,6 @@ export const settingsSchema = z
     alwaysRespondChannels: z.string().optional(),
     alwaysRespondSources: z.string().optional(),
     defaultTemperature: z.number().optional(),
-    defaultMaxTokens: z.number().int().optional(),
 
     maxReplyTokens: z.never().optional(),
     defaultFrequencyPenalty: z.number().optional(),
@@ -185,6 +183,7 @@ export const settingsSchema = z
     const knownValues: Record<string, JsonValue> = {}
 
     for (const [key, entryValue] of entries) {
+      if (key === "defaultMaxTokens") continue
       if (settingsKnownKeys.has(key)) {
         knownValues[key] = entryValue
       } else {

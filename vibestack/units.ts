@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type * as TS from "typescript";
-import ts from "typescript";
 import { generate, type Model, type Origin } from "./gen.ts";
 import { writeConformance } from "./conform.ts";
 import { refusalFile, simulated, witnessFile } from "./gen/harness.ts";
@@ -13,7 +12,7 @@ import { defines } from "./review.ts";
 import { act } from "./action.ts";
 import type { Memory } from "./cache.ts";
 import { plainText } from "./scan.ts";
-import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, SIMULATIONS, writeWhole, type SrcFile } from "./util.ts";
+import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, SIMULATIONS, tsApi, writeWhole, type SrcFile } from "./util.ts";
 import { effectAdapter } from "./gen/vibe.ts";
 import { reactHook } from "./gen/react.ts";
 
@@ -259,6 +258,7 @@ const definesAnything = (m: Model) => m.exports.types.length > 0 || m.exports.va
 export function proofUnits(root: string, models: Model[], srcFiles: SrcFile[] = readSrc(root)): Unit[] {
   const byName = new Map(models.map((m) => [m.name, m]));
   const withoutImports = (text: string) => {
+    const ts = tsApi();
     const file = ts.createSourceFile("unit.ts", text, ts.ScriptTarget.Latest, true);
     // `export … from` loads a module as surely as `import` does.
     const imports = file.statements.filter((d): d is TS.ImportDeclaration | TS.ExportDeclaration => ts.isImportDeclaration(d) || (ts.isExportDeclaration(d) && !!d.moduleSpecifier));
@@ -352,6 +352,7 @@ export function proofUnits(root: string, models: Model[], srcFiles: SrcFile[] = 
  * `ProofLib`, which the proof gives to Dafny's libraries. And NUL, which no source needs.
  */
 export function checkVerifiedSource(file: string, code: string) {
+  const ts = tsApi();
   const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true);
   const refuse = (at: number, why: string): never => { throw new Error(`${file}:${sf.getLineAndCharacterOfPosition(at).line + 1}: ${why}`); };
   plainText(file, code);

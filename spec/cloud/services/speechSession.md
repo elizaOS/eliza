@@ -269,7 +269,7 @@ pure def sometimesRevokedByOwner(s: Session): bool = s.phase == Retiring({ cause
 pure def sometimesEndedAtTheOldDeadlineAfterARefusal(s: Session): bool = isRetiring(s.phase) and s.windows >= 1 and fundingEnded(causeOf(s.phase))
 ```
 
-### Each window settles each direction once while retiring, and a session closes only with every receipt
+### Each window settles each direction once, an earlier window while the next one serves and the live one while retiring, and a session closes only with every receipt
 
 Each hold is settled by metering: never dispatched, `M::release` (0);
 transcription dispatched without a graceful drain, `M::settleUnknown` (the
@@ -277,25 +277,36 @@ quote); otherwise `M::settleKnown` with PCM bytes / 32000 seconds or the
 TTS `CharCount` submitted. Recording a receipt here follows that settle in
 the same transaction.
 
+A window that a renewal replaced settles while the session is active, once
+its own end passes and the next window serves: its audio and text are final
+then, so it is charged as measured, and a renewal needs credit for the live
+window and the next one, not for every window so far. The live window
+settles only while retiring, and it alone carries the quote for a
+transcription that did not drain.
+
 ```quint
 type Settlement = ReleaseHold | ChargeQuote | ChargeMeasured
 pure def settlementOf(direction: SpeechDirection, dispatched: bool, drained: bool): Settlement =
   if (not(dispatched)) ReleaseHold else if (direction == Transcribe and not(drained)) ChargeQuote else ChargeMeasured
+pure def endedWindowSettlement(dispatched: bool): Settlement = if (dispatched) ChargeMeasured else ReleaseHold
+pure def lawAnEndedWindowIsNeverChargedItsQuote(dispatched: bool): bool = endedWindowSettlement(dispatched) != ChargeQuote
 pure def settledIn(s: Session, direction: SpeechDirection): Set[int] = if (direction == Transcribe) s.sttSettled else s.ttsSettled
 pure def canRecordReceipt(s: Session, window: int, direction: SpeechDirection): bool =
-  isRetiring(s.phase) and window >= 1 and window <= s.windows and not(settledIn(s, direction).contains(window))
+  (isRetiring(s.phase) or (s.phase == Active and window < s.windows))
+  and window >= 1 and window <= s.windows and not(settledIn(s, direction).contains(window))
 pure def recordReceipt(s: Session, window: int, direction: SpeechDirection): Session =
   if (direction == Transcribe) { ...s, sttSettled: s.sttSettled.union(Set(window)) } else { ...s, ttsSettled: s.ttsSettled.union(Set(window)) }
 pure def allSettled(s: Session): bool = s.sttSettled.size() == s.windows and s.ttsSettled.size() == s.windows
 pure def canClose(s: Session): bool = isRetiring(s.phase) and allSettled(s)
 pure def close(s: Session): Session = { ...s, phase: Closed({ cause: causeOf(s.phase) }) }
-pure def alwaysReceiptsComeOnlyFromRetiredWindows(s: Session): bool =
+pure def alwaysReceiptsComeOnlyFromEndedWindows(s: Session): bool =
   s.sttSettled.forall(w => w >= 1 and w <= s.windows) and s.ttsSettled.forall(w => w >= 1 and w <= s.windows)
-  and (not(isOver(s.phase)) implies (s.sttSettled.size() == 0 and s.ttsSettled.size() == 0))
+  and (not(isOver(s.phase)) implies (s.sttSettled.forall(w => w < s.windows) and s.ttsSettled.forall(w => w < s.windows)))
   and (isClosed(s.phase) implies allSettled(s))
 pure def stepReceiptsAndCauseNeverChange(before: Session, after: Session): bool =
   before.sttSettled.subseteq(after.sttSettled) and before.ttsSettled.subseteq(after.ttsSettled)
   and (isOver(before.phase) implies causeOf(after.phase) == causeOf(before.phase))
+pure def sometimesEarlierWindowSettledWhileActive(s: Session): bool = s.phase == Active and s.sttSettled.size() >= 1
 pure def sometimesRetiringWithAnOpenReceipt(s: Session): bool = isRetiring(s.phase) and s.windows >= 1 and not(allSettled(s))
 pure def sometimesClosedAfterTwoWindows(s: Session): bool = isClosed(s.phase) and s.windows >= 2
 pure def sometimesClosedByTheDevice(s: Session): bool = s.phase == Closed({ cause: DeviceStopped })

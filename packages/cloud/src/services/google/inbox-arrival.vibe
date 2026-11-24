@@ -16,8 +16,8 @@ schema ArrivalHistory { historyId: string; history?: ArrivalRecord[]; nextPageTo
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const providerId = /^[A-Za-z0-9_-]{1,255}$/
-const historyId = /^[1-9][0-9]{0,19}$/
-const historyBefore = (earlier: string, later: string) => earlier.length < later.length || (earlier.length === later.length && earlier < later)
+export const historyId = /^[1-9][0-9]{0,19}$/
+export const historyBefore = (earlier: string, later: string) => earlier.length < later.length || (earlier.length === later.length && earlier < later)
 
 export effect function inboxWatchInput(query: URLSearchParams, caller: InboxWatchCaller) {
   const grants = query.getAll("grantId")

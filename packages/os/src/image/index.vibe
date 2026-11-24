@@ -26,6 +26,7 @@ export {
   listAndroidArtifactEntries,
   manifestFacts,
   parseXmlTree,
+  parseApkSignerDigest,
   qaEvidenceAdmission,
   readAndroidArtifactEntryBuffers,
   readApkBuildFlags,
@@ -51,7 +52,6 @@ export {
   writeProvisioningOverlay,
   writeRoleOverrides,
   writeSecureCameraOverlay,
-  type ReviewedOverride,
 } from "./provisioning.vibe"
 export { listenerPermissions, prepareListenerSystemui, prepareListenerSystemuiSet, stageListener, verifyListenerQualification, verifyListenerSystemui } from "./listener.vibe"
 export { composeProduct, enrollUpdater } from "./compose-product.vibe"

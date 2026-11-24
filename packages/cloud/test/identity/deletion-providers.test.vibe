@@ -1,13 +1,13 @@
 // spec/cloud/identity/deletion.md, "A step is finished when its call took effect, the provider no longer holds the thing, or nothing was left to do"
 import { assert, describe, it } from "@effect/vitest"
-import { billingSourceOf, cancelBilling, identifyBilling, lookUpBilling, lookUpGoogle, revokeGoogle } from "../src/identity/deletion-providers.vibe"
-import { sealTokens } from "../src/providers/google.vibe"
+import { billingSourceOf, cancelBilling, identifyBilling, lookUpBilling, lookUpGoogle, revokeGoogle } from "../../src/identity/deletion-providers.vibe"
+import { sealTokens } from "../../src/providers/google.vibe"
 import { FetchHttpClient, type HttpClient } from "effect/http"
-import { type Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
-import { Store, migrate, storeLayer } from "../src/store/store.vibe"
-import { startFakeServer, type FakeServer } from "./support/fakes.ts"
-import { deletionProviders } from "./support/fakes/deletion.ts"
-import { secrets, testProfile } from "./support/profile.ts"
+import { type Deployment, deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
+import { Store, migrate, storeLayer } from "../../src/store/store.vibe"
+import { startFakeServer, type FakeServer } from "../support/fakes.ts"
+import { deletionProviders } from "../support/fakes/deletion.ts"
+import { secrets, testProfile } from "../support/profile.ts"
 
 interface Small {
   readonly fakes: FakeServer
@@ -37,7 +37,7 @@ effect function organization(cloud: Small, id: string) {
   try sql(cloud, "INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)", [id, id, now])
 }
 
-describe("WP10 U7 deletion provider phases (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => {
+describe("Deletion provider steps (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => {
   it.live("Cancel billing and revoke Google once each, settle a lost reply by a lookup, and count an already gone thing as done", () => scoped(effect {
     const providers = try Effect.try(() => deletionProviders())
     const cloud = try smallCloud(providers)

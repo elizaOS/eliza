@@ -1,8 +1,9 @@
-// spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/core/occurrenceWindow.md, "An occurrence more than thirty minutes past its scheduled instant is missed, and stays missed"
+// spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/core/occurrenceWindow.md, "An occurrence more than thirty minutes past its scheduled instant is missed, and stays missed"; spec/workflow/execution.md, "A worker that overruns its run, its check or its line is stopped"
 import { agentProcessStartedAtMs, computeNextCronRunAtMs, ModelType, NotificationService, type IAgentRuntime, type Task, type UUID } from "@elizaos/core"
 import { cloudServiceType, type CloudLinkService } from "@elizaos/agent"
 import { createCloudClient } from "@elizaos/cloud/client"
-import type { HostedNativeSelection } from "./contract/digest.vibe"
+import { workerLineLimitBytes } from "../gen/workflow__execution.effect.vibe"
+import type { DigestTemplate, HostedNativeSelection } from "./contract/digest.vibe"
 import type { ManagedGoogleReads } from "./service/google.vibe"
 import type { PhoneDeviceTarget } from "./contract/phone.vibe"
 import type { WorkflowDeviceBinding, WorkflowDeviceOperation } from "./contract/device.vibe"
@@ -31,28 +32,48 @@ module node {
   export interface ChildLines {
     send(line: string): void
     next(): Promise<string | undefined>
+    overlong(): boolean
     alive(): boolean
     close(): void
   }
 
-  export async function openChild(host: WorkerHostService, runId: string): Promise<ChildLines> {
+  export async function openChild(host: WorkerHostService, runId: string, maximumLineBytes: number): Promise<ChildLines> {
     const child = await host.spawnWorker(["run", runId])
     const reader = createInterface({ input: child.stdout, crlfDelay: Infinity })
     const lines = reader[Symbol.asyncIterator]()
     child.stderr.resume()
     let exited = false
+    let partial = 0
+    let overlong = false
     child.once("exit", () => { exited = true })
+    const close = () => {
+      reader.close()
+      if (!exited) child.kill("SIGKILL")
+    }
+    const refuse = () => {
+      overlong = true
+      close()
+    }
+    child.stdout.on("data", (chunk: Buffer) => {
+      const end = chunk.lastIndexOf(10)
+      partial = end < 0 ? partial + chunk.length : chunk.length - end - 1
+      if (partial > maximumLineBytes) refuse()
+    })
     return {
       send: (line) => { if (!exited) child.stdin.write(line + "\n") },
       next: async () => {
+        if (overlong) return undefined
         const read = await lines.next()
-        return read.done === true ? undefined : read.value
+        if (read.done === true || overlong) return undefined
+        if (Buffer.byteLength(read.value) > maximumLineBytes) {
+          refuse()
+          return undefined
+        }
+        return read.value
       },
+      overlong: () => overlong,
       alive: () => !exited && child.exitCode === null && child.signalCode === null,
-      close: () => {
-        reader.close()
-        if (!exited) child.kill("SIGKILL")
-      },
+      close,
     }
   }
 
@@ -113,7 +134,7 @@ interface WorkflowDeviceService {
 }
 interface WorkflowNativeDigestService {
   grant(selection: HostedNativeSelection, expiresAt: number): Promise<{ readonly timeZone: string }>
-  read(selection: HostedNativeSelection, at: number): Promise<string>
+  read(selection: HostedNativeSelection, at: number, window: DigestTemplate): Promise<string>
 }
 
 function serviceWith<A>(runtime: IAgentRuntime, name: string, methods: readonly string[]): A | undefined {
@@ -126,10 +147,11 @@ function workerPort(runtime: IAgentRuntime): WorkflowWorkerPort | undefined {
   if (service === undefined) return undefined
   return {
     effect open(runId) {
-      const child = try tryPromise({ try: () => openChild(service, runId), catch: (cause) => new WorkflowWorkerUnavailable({ reason: String(cause) }) })
+      const child = try tryPromise({ try: () => openChild(service, runId, workerLineLimitBytes), catch: (cause) => new WorkflowWorkerUnavailable({ reason: String(cause) }) })
       return {
         send: (message: ParentMessage) => sync(() => child.send(JSON.stringify(message))),
-        next: map(promise(() => child.next()), (line) => {
+        next: map(promise(() => child.next()), (line): WorkerMessage | undefined => {
+          if (child.overlong()) return { type: "failed", message: `The workflow worker sent a message over ${workerLineLimitBytes / 1_048_576} MiB, so it was stopped.`, cancelled: false }
           if (line === undefined) return undefined
           try {
             return JSON.parse(line) as WorkerMessage
@@ -176,7 +198,7 @@ export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
     google: managedGoogle(runtime),
     nativeDigests: native === undefined ? undefined : {
       grant: (selection, expiresAt) => tryPromise({ try: () => native.grant(selection, expiresAt), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
-      read: (selection, at) => tryPromise({ try: () => native.read(selection, at), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
+      read: (selection, at, window) => tryPromise({ try: () => native.read(selection, at, window), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
     },
     effect notify(notice: WorkflowNotice) {
       const found = runtime.getService(NotificationService.serviceType)
