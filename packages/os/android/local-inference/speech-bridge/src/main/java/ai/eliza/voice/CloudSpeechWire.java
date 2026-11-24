@@ -6,9 +6,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -154,6 +156,43 @@ final class CloudSpeechWire {
       if (at != null && nowMs - at < WARMUP_INTERVAL_MS) return false;
       last.put(origin, nowMs);
       return true;
+    }
+  }
+
+  /** Timing rows in the order they were marked, with each session's startup marks, through {@code ready}, held apart from its later rows. */
+  static final class TimingRows<T> {
+    private record Row<T>(long sequence, T row) {}
+
+    private final int startupLimit, laterLimit;
+    private final ArrayDeque<Row<T>> startup = new ArrayDeque<>(), later = new ArrayDeque<>();
+    private long sequence;
+
+    TimingRows(int startupLimit, int laterLimit) {
+      if (startupLimit < 1 || laterLimit < 1) throw new IllegalArgumentException("Invalid timing bounds");
+      this.startupLimit = startupLimit;
+      this.laterLimit = laterLimit;
+    }
+
+    synchronized void add(T row, boolean startupMark) {
+      ArrayDeque<Row<T>> rows = startupMark ? startup : later;
+      rows.addLast(new Row<>(++sequence, row));
+      while (rows.size() > (startupMark ? startupLimit : laterLimit)) rows.removeFirst();
+    }
+
+    synchronized List<T> rows() {
+      List<T> merged = new ArrayList<>(startup.size() + later.size());
+      Iterator<Row<T>> first = startup.iterator(), second = later.iterator();
+      Row<T> a = first.hasNext() ? first.next() : null, b = second.hasNext() ? second.next() : null;
+      while (a != null || b != null) {
+        if (b == null || a != null && a.sequence() < b.sequence()) {
+          merged.add(a.row());
+          a = first.hasNext() ? first.next() : null;
+        } else {
+          merged.add(b.row());
+          b = second.hasNext() ? second.next() : null;
+        }
+      }
+      return merged;
     }
   }
 

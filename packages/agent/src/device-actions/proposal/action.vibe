@@ -52,7 +52,7 @@ module node {
     forOwner: "Your phone can't do that from chat right now.",
   }
 
-  function coached({ code, forModel }: Refusal): ActionResult {
+  function coached({ code, forModel }: Pick<Refusal, "code" | "forModel">): ActionResult {
     return {
       success: false, text: forModel, transcriptVisibility: "internal",
       data: { code, coachingFailure: true, proposalCreated: false, executed: false, retryable: true, executionStatus: "not_started" },
@@ -236,7 +236,7 @@ module node {
     const found = kept ?? open
     const answer = proposalAnswer(reply, kept !== undefined, keptState !== undefined && requestSettled(keptState.phase), open !== undefined)
     if ((answer === "ReturnedOpen" || answer === "ReturnedSettled") && found !== undefined) return reported(family, found, true, turn, earlier)
-    if (answer !== "OfferedNew" || admitted === undefined) return refused(grounded.kind === "Refused" ? grounded : unavailable)
+    if (answer !== "OfferedNew" || admitted === undefined) return grounded.kind === "Coached" ? coached(grounded) : refused(grounded.kind === "Refused" ? grounded : unavailable)
     const offer = await Effect.runPromise(offerProposal(turn, admitted, {
       readBack: turn.completesReads && completableRead(admitted.opType, "NoBinding"), grounding,
     }, turn))

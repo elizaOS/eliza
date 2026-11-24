@@ -594,7 +594,11 @@ quotes that sentence. The family's sentence still reaches the owner when
 that failure remains open under the [planning rules](../conversation/planning.md).
 A sentence the family marks as safety copy always reaches the owner as written. An operation that is not an offered form, that this
 message does not allow, or that the negotiation no longer admits, is
-refused the same way.
+refused the same way. A family may instead hand the proposal back to the
+model, when the model can correct it or ask the owner itself (a recipient it
+invented, which part of a sender): it offers nothing just the same, but the owner hears no family
+sentence; the model alone learns why, as coaching it may correct, and answers
+the owner in its own words.
 
 ```quint
 pure def lawAGroundingRefusalOffersNothing(deviceTurn: bool, availability: FormAvailability, admitted: bool, keptSettled: bool, sameOperationOpen: bool): bool =
