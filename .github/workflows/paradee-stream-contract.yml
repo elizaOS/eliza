@@ -66,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           jar="$RUNNER_TEMP/json-20250517.jar"
-          curl -fsSL --retry 3 -o "$jar" https://repo1.maven.org/maven2/org/json/json/20250517/json-20250517.jar
+          curl -fsSL --retry 3 -o "$jar" https://maven-central.storage-download.googleapis.com/maven2/org/json/json/20250517/json-20250517.jar
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum -c -
           echo "ELIZA_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - name: Fetch pinned native speech compile dependencies
@@ -77,7 +77,7 @@ jobs:
           mkdir -p "$dependencies"
           fetch() {
             local artifact="$1" checksum="$2" file="$3"
-            curl -fsSL --retry 3 -o "$dependencies/$file" "https://repo1.maven.org/maven2/$artifact"
+            curl -fsSL --retry 3 -o "$dependencies/$file" "https://maven-central.storage-download.googleapis.com/maven2/$artifact"
             echo "$checksum  $dependencies/$file" | sha256sum -c -
           }
           fetch com/squareup/okhttp3/okhttp-android/5.3.2/okhttp-android-5.3.2.aar \
