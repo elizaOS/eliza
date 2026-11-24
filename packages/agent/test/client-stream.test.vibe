@@ -431,6 +431,55 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   }))
 }, 120_000)
 
+it.live(`Hear the result after the cue, never the cue again, and only a cue I heard counts (${planning}, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[agendaApp.name, agendaApp]]),
+  })
+  const { id } = try conversation(agent)
+  const agenda = { name: "AGENDA_READ", arguments: {} }
+  const sentNote = "was already sent to the person as progress"
+  const planned = (before: number) => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").slice(before)
+    .map(({ body }) => (body as { messages: { role: string; content?: unknown; tool_calls?: unknown }[] }).messages)
+  const transcript = (messages: readonly { role: string; content?: unknown; tool_calls?: unknown }[] | undefined) => ({
+    stepText: (messages ?? []).filter(({ role, tool_calls }) => role === "assistant" && tool_calls !== undefined).map(({ content }) => content ?? null),
+    notes: (messages ?? []).filter(({ role, content }) => role === "user" && typeof content === "string" && content.includes(sentNote)).map(({ content }) => content),
+  })
+  const turn = (request: string, streams: boolean) => effect {
+    const before = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
+    if (!streams) {
+      try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`, body: { text: request } })
+      return { heard: [] as string[], ...transcript(planned(before).at(-1)) }
+    }
+    const chunks = try streamed(agent, id, { text: request })
+    const whole = try read(chunks, 0)
+    return { heard: whole.seen.filter((entry) => entry.startsWith("acknowledgment:")), ...transcript(planned(before).at(-1)) }
+  }
+
+  try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked tomorrow.")))
+  const delivered = try turn("What do I have tomorrow?", true)
+  try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked tomorrow.")))
+  const unstreamed = try turn("What do I have on Friday?", false)
+  try Effect.sync(() => cloud.script(toolCalls("Let me check.", agenda), text("Friday is open.")))
+  const quiet = try turn("Check my availability without a cue", true)
+  try Effect.sync(() => cloud.script(toolCalls("Your agenda is open.", agenda), text("Your agenda is open.")))
+  const notACue = try turn("Open my agenda", true)
+  try Effect.sync(() => cloud.script(toolCalls("", agenda), toolCalls("Let me check.", agenda), text("Nothing booked.")))
+  const laterStep = try turn("What is on my agenda this week?", true)
+
+  try Effect.try(() => assert.deepStrictEqual({ delivered, unstreamed, quiet, notACue, laterStep }, {
+    delivered: {
+      heard: ["acknowledgment:Let me check your calendar."], stepText: ["Let me check your calendar."],
+      notes: [`Note from the agent host, not the person: "Let me check your calendar." ${sentNote}. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`],
+    },
+    unstreamed: { heard: [], stepText: [null], notes: [] },
+    quiet: { heard: [], stepText: [null], notes: [] },
+    notACue: { heard: [], stepText: [null], notes: [] },
+    laterStep: { heard: [], stepText: [null, null], notes: [] },
+  }))
+}, 120_000)
+
 it.live(`See which app a call on my phone runs in, by the app its operations belong to (${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/deviceActions/index.md, "Each wire type belongs to at most one proposal family, and a family offers forms only of its own types")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({

@@ -43,7 +43,7 @@ module node {
     readonly append: (text: string, provisional?: boolean) => void
     readonly replace: (fullText: string, provisional?: boolean) => void
     readonly restart: (fullText: string, provisional?: boolean) => void
-    readonly acknowledge: (text: string) => void
+    readonly acknowledge: (text: string) => boolean
     readonly status: (activity: Activity) => void
     readonly tool: (name: string, label: string) => void
     readonly ready: (fullText: string, actionResults: readonly ActionResultFrame[]) => void
@@ -176,7 +176,7 @@ module node {
       append: (text, provisional) => { wire.append(text, provisional === true) },
       replace: (fullText, provisional) => { wire.replace(fullText, provisional === true) },
       restart: (fullText, provisional) => { wire.restart(fullText, provisional === true) },
-      acknowledge: (text) => { wire.acknowledge(text) },
+      acknowledge: (text) => wire.acknowledge(text),
       status: (activity) => { wire.progress({ tag: "Activity", activity }) },
       tool: (name, label) => { wire.progress({ tag: "ToolUse", name, label }) },
       ready: (fullText, actionResults) => { wire.ready(fullText, actionResults) },

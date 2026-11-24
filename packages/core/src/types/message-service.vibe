@@ -34,7 +34,7 @@ export interface MessageProcessingOptions {
   shouldRespondModel?: ShouldRespondModelType
   onStreamChunk?: StreamChunkCallback
 
-  onPlanningAcknowledgment?: (text: string) => void | Promise<void>
+  onPlanningAcknowledgment?: (text: string) => boolean | Promise<boolean>
 
   onActivityStatus?: (activity: {
     actionName: string
