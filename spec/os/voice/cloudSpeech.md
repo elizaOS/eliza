@@ -93,7 +93,12 @@ OkHttp's "unexpected end of stream"), or after a `503` whose `Retry-After`
 is at most 2 s, once that wait is over, when the wait and one more request
 of 2 s still end before the startup deadline. A `503` without `Retry-After`
 or a second refusal ends the request as before; a mint request is never
-sent again. The shell's content-free
+sent again. Before a session, the renderer may ask the shell to open its
+connection to the deployment's own origin with `GET /api/health`, which
+carries no key and asks no consent, so that the consent request, the mint
+and the socket reuse it: at most once a minute for each origin, never while
+voice is closed, in the background, in a session or on a sensitive
+surface, bounded by 5 s and silent when it fails. The shell's content-free
 startup timings mark each consent and mint request's start, headers, body
 or failure, and a consent sent again.
 

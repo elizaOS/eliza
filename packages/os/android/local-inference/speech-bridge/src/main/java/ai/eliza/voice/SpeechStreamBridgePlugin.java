@@ -133,7 +133,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
 
   private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
   private static final int RATE = CloudSpeechWire.RATE;
-  private static final long HTTP_STARTUP_MS = 12_000, RELAY_STARTUP_MS = 8_000, PROGRESS_MS = 100, JOIN_MS = 1500, SILENCE_MS = 32;
+  private static final long HTTP_STARTUP_MS = 12_000, RELAY_STARTUP_MS = 8_000, PROGRESS_MS = 100, JOIN_MS = 1500, SILENCE_MS = 32, WARMUP_MS = 5_000;
   private static final long LEVEL_NS = 50_000_000L, FEED_BYTES = 8 * 1024 * 1024;
   private static final int FEED_TASKS = 1024, MAX_BODY = 32768, MAX_REFUSAL = 16384, MIC_FRAME = 1024, SILENCE_FRAMES = 30;
   private static final int MAX_QUEUE = 64000, TIMINGS = 100, PLAYBACK_CAPACITY = RATE * 5, CHUNK = 1600;
@@ -154,6 +154,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       .build();
   private final SpeechOutputGate gate = new SpeechOutputGate();
   private final ArrayDeque<JSObject> timings = new ArrayDeque<>();
+  private final CloudSpeechWire.Warmups warmups = new CloudSpeechWire.Warmups();
   private SpeechAudioFocus focus;
   private Utterance focusHolder;
   private Session listener;
@@ -197,6 +198,36 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     JSArray rows = new JSArray();
     for (JSObject row : timings) rows.put(row);
     call.resolve(new JSObject().put("format", diagnosticFormat()).put("records", rows));
+  }
+
+  @PluginMethod
+  public void prewarmCloudSpeech(PluginCall call) {
+    String environment = call.getString("environment");
+    call.resolve();
+    if (environment != null && !destroyed) submit(control, () -> prewarm(environment), () -> {});
+  }
+
+  private void prewarm(String environment) {
+    try {
+      if (destroyed || !foreground || session != null || sensitiveSurfaceActive()) return;
+      String origin = cloudOrigin(environment);
+      if (!CloudSpeechWire.origin(origin) || !warmups.admit(origin, SystemClock.elapsedRealtime())) return;
+      Call warm = http.newCall(new Request.Builder().url(origin + CloudSpeechWire.HEALTH).build());
+      warm.timeout().timeout(WARMUP_MS, TimeUnit.MILLISECONDS);
+      warm.enqueue(new Callback() {
+        @Override public void onFailure(Call call, IOException failure) {}
+
+        @Override public void onResponse(Call call, Response response) {
+          try (response; InputStream in = response.body().byteStream()) {
+            byte[] chunk = new byte[4096];
+            int read = 0, n;
+            while (read <= MAX_BODY && (n = in.read(chunk)) != -1) read += n;
+          } catch (IOException unread) {
+          }
+        }
+      });
+    } catch (Exception unavailable) {
+    }
   }
 
   @PluginMethod

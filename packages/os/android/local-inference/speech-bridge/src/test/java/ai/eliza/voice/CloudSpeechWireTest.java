@@ -146,4 +146,13 @@ public final class CloudSpeechWireTest {
     require(CloudSpeechWire.consentRetryMs(503, "0", now, -1) == -1, "deadline already passed");
   }
 
+  @Test public void theConnectionIsWarmedAtMostOnceAMinuteForEachOrigin() {
+    CloudSpeechWire.Warmups warmups = new CloudSpeechWire.Warmups();
+    long now = 5_000_000;
+    require(warmups.admit("https://cloud.example", now), "first warm-up");
+    require(!warmups.admit("https://cloud.example", now + 59_999), "again within a minute");
+    require(warmups.admit("https://staging.cloud.example", now + 1), "another origin");
+    require(warmups.admit("https://cloud.example", now + 60_000), "a minute later");
+    require(!warmups.admit("https://cloud.example", now + 60_001), "counted from the last warm-up");
+  }
 }
