@@ -3,11 +3,8 @@
   "version": "4.0.0-alpha.0",
   "private": true,
   "type": "module",
-  "description": "Android device image, Android host build, app updates, native system bridges, browser surfaces and voice.",
+  "description": "Android device image, Android host build, app updates, owned Chromium browser and inference.",
   "license": "MIT",
-  "engines": {
-    "node": ">=26"
-  },
   "bin": {
     "eliza-os": "./dist/src/cli.js"
   },
@@ -33,60 +30,7 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    },
-    "./image": {
-      "eliza-source": "./src/image/index.vibe",
-      "types": "./dist/src/image/index.d.ts",
-      "import": "./dist/src/image/index.js",
-      "default": "./dist/src/image/index.js"
-    },
-    "./build": {
-      "eliza-source": "./src/build/index.vibe",
-      "types": "./dist/src/build/index.d.ts",
-      "import": "./dist/src/build/index.js",
-      "default": "./dist/src/build/index.js"
-    },
-    "./browser": {
-      "eliza-source": "./src/browser/index.vibe",
-      "types": "./dist/src/browser/index.d.ts",
-      "import": "./dist/src/browser/index.js",
-      "default": "./dist/src/browser/index.js"
-    },
-    "./browser/address": {
-      "eliza-source": "./src/browser/address.ts",
-      "types": "./dist/src/browser/address.d.ts",
-      "import": "./dist/src/browser/address.js",
-      "default": "./dist/src/browser/address.js"
-    },
-    "./browser/runtime/*": "./browser/src/*",
-    "./browser/protection/*": "./browser/protection/*",
-    "./browser/chromium/component/*": "./browser/chromium/component/*",
-    "./app-update": {
-      "eliza-source": "./src/app-update/index.vibe",
-      "types": "./dist/src/app-update/index.d.ts",
-      "import": "./dist/src/app-update/index.js",
-      "default": "./dist/src/app-update/index.js"
-    },
-    "./inference": {
-      "eliza-source": "./src/inference/index.vibe",
-      "types": "./dist/src/inference/index.d.ts",
-      "import": "./dist/src/inference/index.js",
-      "default": "./dist/src/inference/index.js"
-    },
-    "./bridges/*": {
-      "eliza-source": "./src/bridges/*.vibe",
-      "types": "./dist/src/bridges/*.d.ts",
-      "import": "./dist/src/bridges/*.js",
-      "default": "./dist/src/bridges/*.js"
-    },
-    "./bridges/definitions/*": {
-      "eliza-source": "./src/bridges/definitions/*.ts",
-      "types": "./dist/src/bridges/definitions/*.d.ts",
-      "import": "./dist/src/bridges/definitions/*.js",
-      "default": "./dist/src/bridges/definitions/*.js"
-    },
-    "./android/*": "./android/*",
-    "./aosp/*": "./aosp/*"
+    }
   },
   "publishConfig": {
     "exports": {
@@ -94,52 +38,7 @@
         "types": "./dist/src/index.d.ts",
         "import": "./dist/src/index.js",
         "default": "./dist/src/index.js"
-      },
-      "./image": {
-        "types": "./dist/src/image/index.d.ts",
-        "import": "./dist/src/image/index.js",
-        "default": "./dist/src/image/index.js"
-      },
-      "./build": {
-        "types": "./dist/src/build/index.d.ts",
-        "import": "./dist/src/build/index.js",
-        "default": "./dist/src/build/index.js"
-      },
-      "./browser": {
-        "types": "./dist/src/browser/index.d.ts",
-        "import": "./dist/src/browser/index.js",
-        "default": "./dist/src/browser/index.js"
-      },
-      "./browser/address": {
-        "types": "./dist/src/browser/address.d.ts",
-        "import": "./dist/src/browser/address.js",
-        "default": "./dist/src/browser/address.js"
-      },
-      "./browser/runtime/*": "./browser/src/*",
-      "./browser/protection/*": "./browser/protection/*",
-      "./browser/chromium/component/*": "./browser/chromium/component/*",
-      "./app-update": {
-        "types": "./dist/src/app-update/index.d.ts",
-        "import": "./dist/src/app-update/index.js",
-        "default": "./dist/src/app-update/index.js"
-      },
-      "./inference": {
-        "types": "./dist/src/inference/index.d.ts",
-        "import": "./dist/src/inference/index.js",
-        "default": "./dist/src/inference/index.js"
-      },
-      "./bridges/*": {
-        "types": "./dist/src/bridges/*.d.ts",
-        "import": "./dist/src/bridges/*.js",
-        "default": "./dist/src/bridges/*.js"
-      },
-      "./bridges/definitions/*": {
-        "types": "./dist/src/bridges/definitions/*.d.ts",
-        "import": "./dist/src/bridges/definitions/*.js",
-        "default": "./dist/src/bridges/definitions/*.js"
-      },
-      "./android/*": "./android/*",
-      "./aosp/*": "./aosp/*"
+      }
     }
   },
   "scripts": {
@@ -164,13 +63,11 @@
     "tldts": "catalog:",
     "vibelang-runtime": "0.0.13"
   },
-  "peerDependencies": {
-    "@capacitor/core": "^8.5.2"
-  },
   "devDependencies": {
-    "@capacitor/core": "8.5.2",
     "@effect/vitest": "4.1.1",
     "@elizaos/agent": "workspace:*",
+    "@elizaos/agent-host": "workspace:*",
+    "@elizaos/os-bridges": "workspace:*",
     "@types/node": "catalog:",
     "playwright": "catalog:",
     "typescript": "catalog:",

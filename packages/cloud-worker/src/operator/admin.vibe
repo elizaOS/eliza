@@ -1,0 +1,236 @@
+// spec/cloud/operator.md, "Story: Operate the deployment without reading secrets"; spec/cloud/operator.md, "A command under a refused profile or on another database is refused before any other check"
+import { identityOf, profileAccepted, type IdentityRead, type StoreIdentity } from "../../gen/cloud__deployment.effect.vibe"
+import type { AccountStatus } from "../../gen/cloud__identity__accounts.effect.vibe"
+import { decide, type OperatorCommand, type OperatorVerdict } from "../../gen/cloud__operator.effect.vibe"
+import { refusalBody, type Refusal } from "../http/refusal.vibe"
+import { deploymentLayer, Deployment, parseEnvironment, readProfile, specProfile } from "@elizaos/cloud"
+import { sha256Hex } from "../shared/credential-crypto.vibe"
+import { RowCorrupt } from "../store/rows.vibe"
+import { identityDigest, parseStoreLocation, Store, storeLayer, type StoreFailure, toText, type Tx } from "../store/store.vibe"
+import { commands as accounts } from "./accounts.vibe"
+import { commands as clients, seedClients } from "./clients.vibe"
+import { commands as deletion } from "./deletion.vibe"
+import { commands as grants } from "./grants.vibe"
+import { commands as prices, seedPrices } from "./prices.vibe"
+
+export type OperatorContext = Deployment | HttpClient.HttpClient
+
+export type AccountNamed =
+  | { readonly kind: "user"; readonly userId: string }
+  | { readonly kind: "organization"; readonly organizationId: string }
+
+export type RunningVerdict = Exclude<OperatorVerdict["tag"], "Refused">
+
+export type OperatorOutcome =
+  | { readonly kind: "done"; readonly lines: ReadonlyArray<string> }
+  | { readonly kind: "refused"; readonly refusal: Refusal }
+
+export error OperatorUsageInvalid { problem: string }
+export error OperatorRefused { refusal: Refusal }
+error SeedInvalid { problem: string }
+
+export interface OperatorDocument {
+  readonly value: unknown
+  readonly digest: string
+}
+
+export interface OperatorFlags {
+  values(name: string): ReadonlyArray<string>
+  has(name: string): boolean
+  required(name: string): string!OperatorUsageInvalid
+}
+
+export interface OperatorCommandHandler {
+  readonly words: ReadonlyArray<string>
+  readonly operatorCommand: OperatorCommand
+  readonly valued: ReadonlyArray<string>
+  readonly repeated: ReadonlyArray<string>
+  readonly switches: ReadonlyArray<string>
+  readonly account?: (flags: OperatorFlags) => AccountNamed!OperatorUsageInvalid
+  readonly document?: string
+  readonly run: (tx: Tx, flags: OperatorFlags, now: number, verdict: RunningVerdict, document: OperatorDocument | undefined) => ReadonlyArray<string>!{ readonly _tag: string }!OperatorContext
+}
+
+interface SeedHandler {
+  readonly section: string
+  readonly operatorCommand: OperatorCommand
+  readonly run: (tx: Tx, entries: unknown, now: number) => ReadonlyArray<string>!{ readonly _tag: string }!OperatorContext
+}
+
+function commandTable(): ReadonlyArray<OperatorCommandHandler> {
+  return [...accounts, ...clients, ...deletion, ...grants, ...prices]
+}
+
+function seedTable(): ReadonlyArray<SeedHandler> {
+  return [
+    { section: "clients", operatorCommand: "RegisterClient", run: seedClients },
+    { section: "prices", operatorCommand: "SetPrices", run: (tx, entries) => seedPrices(tx, entries) }
+  ]
+}
+
+const deploymentFlags = ["profile", "environment", "store"]
+const flagName = /^--([a-z][a-z0-9-]*)$/
+const batchSize = /^\d{1,9}$/
+const statusOfColumn: Readonly<Record<string, AccountStatus | undefined>> = { active: "Active", deleting: "Deleting", erased: "Erased" }
+
+effect function commandOf(args: ReadonlyArray<string>, table: ReadonlyArray<OperatorCommandHandler>): OperatorCommandHandler!OperatorUsageInvalid {
+  const handler = table.find((each) => each.words.every((word, index) => args[index] === word))
+  if (handler === undefined) throw new OperatorUsageInvalid({ problem: `the operator commands are: ${table.map((each) => each.words.join(" ")).join(" | ")}` })
+  return handler
+}
+
+effect function parseFlags(args: ReadonlyArray<string>, handler: OperatorCommandHandler, shared: ReadonlyArray<string>): OperatorFlags!OperatorUsageInvalid {
+  const command = handler.words.join(" ")
+  const valued = new Map<string, ReadonlyArray<string>>()
+  const switches = new Set<string>()
+  let index = 0
+  while (index < args.length) {
+    const name = flagName.exec(args[index] ?? "")?.[1]
+    if (name === undefined) throw new OperatorUsageInvalid({ problem: `argument ${index + 1} of ${command} is not a flag` })
+    const given = valued.get(name)
+    const repeats = handler.repeated.includes(name)
+    if (switches.has(name) || (given !== undefined && !repeats)) throw new OperatorUsageInvalid({ problem: `--${name} is given once` })
+    if (handler.switches.includes(name)) {
+      switches.add(name)
+      index += 1
+    } else {
+      const value = args[index + 1]
+      if (!repeats && !handler.valued.includes(name) && !shared.includes(name)) throw new OperatorUsageInvalid({ problem: `${command} takes no --${name}` })
+      if (value === undefined) throw new OperatorUsageInvalid({ problem: `--${name} needs a value` })
+      valued.set(name, [...(given ?? []), value])
+      index += 2
+    }
+  }
+  return {
+    values: (name) => valued.get(name) ?? [],
+    has: (name) => switches.has(name) || valued.has(name),
+    required: effect (name: string) => {
+      const value = valued.get(name)?.[0]
+      if (value === undefined) throw new OperatorUsageInvalid({ problem: `${command} needs --${name}` })
+      return value
+    }
+  }
+}
+
+effect function readDatabaseIdentity(tx: Tx): IdentityRead!! {
+  const digest = identityDigest(tx) catch () => undefined
+  return digest === undefined ? { tag: "UnreadableIdentity" } : { tag: "ReadDigest", digest }
+}
+
+function identityIn(deployment: Deployment.Shape, read: IdentityRead): StoreIdentity {
+  return identityOf(specProfile(deployment.profile), deployment.environment === "production" ? "Production" : "Staging", read)
+}
+
+effect function accountSeen(tx: Tx, named: AccountNamed): AccountStatus!(StoreFailure | RowCorrupt) {
+  const key = named.kind === "user" ? named.userId : named.organizationId
+  const row = (try tx.query(`SELECT status FROM accounts WHERE ${named.kind === "user" ? "key" : "organization_id"} = $1 FOR UPDATE`, [key]))[0]
+  if (row === undefined) return "Unopened"
+  const status = statusOfColumn[toText(row.status) ?? ""]
+  if (status === undefined) throw new RowCorrupt({ table: "accounts", key, cause: row.status })
+  return status
+}
+
+effect function verdictIn(tx: Tx, command: OperatorCommand, named: AccountNamed | undefined, confirmed: boolean, count: number): OperatorVerdict!(StoreFailure | RowCorrupt)!Deployment {
+  const deployment = try Deployment
+  const identity = identityIn(deployment, try readDatabaseIdentity(tx))
+  const account = identity === "MatchingDatabase" && named !== undefined ? try accountSeen(tx, named) : "Unopened"
+  return decide(profileAccepted(specProfile(deployment.profile)), identity, command, account, confirmed, count)
+}
+
+function outcomeOf(verdict: OperatorVerdict, lines: ReadonlyArray<string>): OperatorOutcome {
+  return verdict.tag === "Refused" ? { kind: "refused", refusal: verdict.refusal } : { kind: "done", lines }
+}
+
+effect function carryOut(handler: OperatorCommandHandler, flags: OperatorFlags, document: OperatorDocument | undefined) {
+  const named = handler.account === undefined ? undefined : try handler.account(flags)
+  const batch = flags.values("count")[0] ?? ""
+  const now = try Clock.currentTimeMillis
+  const store = try Store
+  const run = effect (tx: Tx) => {
+    const verdict = try verdictIn(tx, handler.operatorCommand, named, flags.has("confirmed-with-owner"), batchSize.test(batch) ? Number(batch) : 0)
+    if (verdict.tag === "Refused") return outcomeOf(verdict, [])
+    return outcomeOf(verdict, try handler.run(tx, flags, now, verdict.tag, document))
+  }
+  while (true) {
+    const outcome = store.transaction(run) catch effect (failure) => {
+      if (failure._tag !== "GrantRevocationMoved") throw failure
+      return undefined
+    }
+    if (outcome !== undefined) return outcome
+  }
+}
+
+export effect function report(outcome: OperatorOutcome): void!OperatorRefused {
+  if (outcome.kind === "refused") {
+    try Console.error(JSON.stringify(refusalBody(outcome.refusal)))
+    throw new OperatorRefused({ refusal: outcome.refusal })
+  }
+  for (const line of outcome.lines) try Console.log(line)
+}
+
+export effect function operate(args: ReadonlyArray<string>, table: ReadonlyArray<OperatorCommandHandler> = commandTable(), document?: OperatorDocument) {
+  const handler = try commandOf(args, table)
+  return try carryOut(handler, try parseFlags(args.slice(handler.words.length), handler, []), document)
+}
+
+effect function readDocument(handler: OperatorCommandHandler, flags: OperatorFlags) {
+  if (handler.document === undefined) return undefined
+  const file = try flags.required(handler.document)
+  const fs = try FileSystem.FileSystem
+  const text = fs.readFileString(file) catch effect () => { throw new OperatorUsageInvalid({ problem: `cannot read ${file}` }) }
+  const value = try Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => new OperatorUsageInvalid({ problem: `${file} is not JSON` }) })
+  const document: OperatorDocument = { value, digest: `sha256:${sha256Hex(text)}` }
+  return document
+}
+
+export effect function runOperator(command: string, rest: ReadonlyArray<string>) {
+  const args = [command, ...rest]
+  const handler = try commandOf(args, commandTable())
+  const flags = try parseFlags(args.slice(handler.words.length), handler, deploymentFlags)
+  const file = try flags.required("profile")
+  const environment = try parseEnvironment(try flags.required("environment"))
+  const location = try parseStoreLocation(try flags.required("store"))
+  const profile = readProfile(file) catch effect (invalid) => {
+    try annotateLogs(logError("the profile is refused"), { problem: invalid.problem })
+    return undefined
+  }
+  if (profile === undefined) return try report(outcomeOf(decide(false, "UnreadableDatabase", handler.operatorCommand, "Unopened", false, 0), []))
+  const document = try readDocument(handler, flags)
+  provide storeLayer(location), deploymentLayer(profile, environment), FetchHttpClient.layer {
+    try report(try carryOut(handler, flags, document))
+  }
+}
+
+export effect function guardMigration() {
+  const deployment = try Deployment
+  const read = try (try Store).transaction(readDatabaseIdentity)
+  if (read.tag === "ReadDigest") {
+    try report(outcomeOf(decide(profileAccepted(specProfile(deployment.profile)), identityIn(deployment, read), "Migrate", "Unopened", false, 0), []))
+  }
+}
+
+export effect function applySeed(file: string) {
+  if ((try Deployment).environment !== "staging") throw new SeedInvalid({ problem: "a seed is applied only in staging" })
+  const fs = try FileSystem.FileSystem
+  const text = fs.readFileString(file) catch effect () => { throw new SeedInvalid({ problem: `cannot read ${file}` }) }
+  const parsed = try Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => new SeedInvalid({ problem: `${file} is not JSON` }) })
+  const sections = Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(parsed) catch effect () => { throw new SeedInvalid({ problem: `${file} is not an object of seed sections` }) }
+  const table = seedTable()
+  const work: Array<{ readonly handler: SeedHandler; readonly entries: unknown }> = []
+  for (const [section, entries] of Object.entries(sections)) {
+    const handler = table.find((each) => each.section === section)
+    if (handler === undefined) throw new SeedInvalid({ problem: `no seed handler for the section ${section}; the sections are: ${table.map((each) => each.section).join(", ")}` })
+    work.push({ handler, entries })
+  }
+  const now = try Clock.currentTimeMillis
+  const seeded = try (try Store).transaction(effect (tx: Tx) => {
+    const lines: string[] = []
+    for (const { handler, entries } of work) {
+      const verdict = try verdictIn(tx, handler.operatorCommand, undefined, false, 0)
+      if (verdict.tag === "Refused") throw new OperatorRefused({ refusal: verdict.refusal })
+      lines.push(...(try handler.run(tx, entries, now)))
+    }
+    return lines
+  })
+  try annotateLogs(logInfo("seed applied"), { sections: work.map((each) => each.handler.section).join(", ") || "none", entries: seeded.length })
+}

@@ -1,5 +1,5 @@
 // spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "The resident accepts only a whole Cloud answer for the exact selected calendar"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
-import type { CloudLinkReply, CloudLinkRequest, CloudLinkService } from "@elizaos/agent"
+import type { CloudLinkReply, CloudLinkRequest, CloudLinkService } from "@elizaos/agent-host"
 import { managedCalendarAnswerAccepted, managedCatalogAccepted, type ManagedCalendarAnswer, type ManagedCalendarCall } from "../../gen/calendar__managedFeed.effect.vibe"
 import { sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarFeed, type CalendarSourceKey, type CalendarSummary } from "../model.vibe"
 import { CalendarWriteNotAccepted, CalendarWriteUnconfirmed } from "../mutations/ledger.vibe"

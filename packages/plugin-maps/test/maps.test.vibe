@@ -1,23 +1,13 @@
 // spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"
 import { assert, it, layer } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { CloudError } from "@elizaos/cloud/client"
-import { activityLabel, turnNotes } from "@elizaos/agent"
+import { CloudError } from "@elizaos/cloud"
+import { activityLabel, turnNotes } from "@elizaos/agent-host"
 import { ContextRegistry, TurnControllerRegistry, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
 import { mapsChat, mapsToolCall } from "./support/cloud.ts"
-import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
-import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
-import { MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route } from "../src/client/contracts.vibe"
 import {
-  backgroundNavigation, deviceMapsNavigation, RelayUnavailable, withMapsNavigationRelay,
-  type ActiveGuidance, type MapsNavigationSurface, type NavigationSnapshot,
-} from "../src/client/device-navigation.vibe"
-import { advanceStep, GuidanceSpeechStopped, navigationVoice } from "../src/client/guidance.vibe"
-import { nativeMapsLocation, type NativeFix, type Position } from "../src/client/location.vibe"
-import { usableNavigationFix } from "../src/client/navigation-fix.vibe"
-import { mapsObservation } from "../src/client/observation.vibe"
-import { routeProgress } from "../src/client/route-distance.vibe"
-import { savedPlaces } from "../src/client/saved-places.vibe"
+  appendMapsCard, recognizedMapsCards, withoutMapsCards, cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud, MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route, backgroundNavigation, deviceMapsNavigation, RelayUnavailable, withMapsNavigationRelay, type ActiveGuidance, type MapsNavigationSurface, type NavigationSnapshot, advanceStep, GuidanceSpeechStopped, navigationVoice, nativeMapsLocation, type NativeFix, type Position, usableNavigationFix, mapsObservation, routeProgress, savedPlaces,
+} from "@elizaos/plugin-maps-client"
 import { mapsPlugin } from "../src/index.vibe"
 import { addressArea, createMapsPlugin, phonePositionProvider } from "../src/plugin.vibe"
 import { mapsNavigationRelay, type MapsDeviceNavigation } from "../src/relay.vibe"

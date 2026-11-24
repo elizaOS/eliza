@@ -1,0 +1,176 @@
+// spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"; spec/cloud/nativeClients/registry.md, "Story: Tell a client exactly why it was refused"
+import type { Environment } from "../../gen/cloud__deployment.effect.vibe"
+import {
+  clientCheck, configAnswer, faultRefusal, maxCertFingerprints, registrationAccepted, registrationsFor, registryValid,
+  type ClientRequest, type Registration, type ReturnUrl
+} from "../../gen/cloud__nativeClients__registry.effect.vibe"
+import { Refused, refused } from "../http/refusal.vibe"
+import { json, type Route, type RouteContext } from "../http/routes.vibe"
+import { Deployment, rowOf } from "@elizaos/cloud"
+import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
+
+export error RegistrationInvalid { problem: string }
+error RegistrationRefused { clientId: string }
+error ClientNotRegistered { clientId: string }
+
+const ReverseDns = Schema.String.check(Schema.isMaxLength(200), Schema.isPattern(/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/))
+const Fingerprint = Schema.String.check(Schema.isPattern(/^[0-9A-F]{2}(?::[0-9A-F]{2}){31}$/))
+const ReturnText = Schema.String.check(Schema.isMaxLength(1024))
+
+const RegistrationFieldsSchema = Schema.Struct({
+  clientId: ReverseDns,
+  environment: Schema.Literals(["production", "staging"]),
+  displayName: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(80)),
+  androidPackage: ReverseDns,
+  certFingerprints: Schema.Array(Fingerprint).check(Schema.isMinLength(1), Schema.isMaxLength(maxCertFingerprints)),
+  signInReturn: ReturnText,
+  billingReturn: ReturnText,
+  connectReturn: Schema.optionalKey(ReturnText),
+  credentialTtlMs: Schema.Int,
+  nativeGoogle: Schema.Boolean,
+  enabled: Schema.Boolean
+})
+
+const environments: Readonly<Record<string, Environment | undefined>> = { production: "Production", staging: "Staging" }
+const wireEnvironment: Readonly<Record<Environment, "production" | "staging">> = { Production: "production", Staging: "staging" }
+const columns = "client_id, environment, display_name, android_package, cert_fingerprints, sign_in_return, billing_return, connect_return, credential_ttl_ms, native_google, enabled"
+
+export function parseReturn(raw: string): ReturnUrl | undefined {
+  if (raw.length > 1024 || raw.includes("*") || !URL.canParse(raw)) return undefined
+  const url = new URL(raw)
+  const exact = url.protocol === "https:" && url.username === "" && url.password === "" && url.port === "" && url.origin + url.pathname === raw
+  return exact ? { origin: url.origin, path: url.pathname } : undefined
+}
+
+export function returnText(url: ReturnUrl): string {
+  return url.origin + url.path
+}
+
+export effect function servedEnvironment() {
+  return (try Deployment).environment === "production" ? "Production" as const : "Staging" as const
+}
+
+export effect function decodeRegistration(input: unknown): Registration!RegistrationInvalid {
+  const fields = Schema.decodeUnknownEffect(RegistrationFieldsSchema, { onExcessProperty: "error" })(input) catch effect (failure) => {
+    throw new RegistrationInvalid({ problem: failure.message })
+  }
+  const signInReturn = parseReturn(fields.signInReturn)
+  const billingReturn = parseReturn(fields.billingReturn)
+  const connectReturn = fields.connectReturn === undefined ? undefined : parseReturn(fields.connectReturn)
+  if (signInReturn === undefined || billingReturn === undefined || (fields.connectReturn !== undefined && connectReturn === undefined)) {
+    throw new RegistrationInvalid({ problem: "a return is an https origin and path with no credentials, port, query, fragment or wildcard" })
+  }
+  return {
+    clientId: fields.clientId,
+    environment: fields.environment === "production" ? "Production" : "Staging",
+    displayName: fields.displayName,
+    androidPackage: fields.androidPackage,
+    certFingerprints: [...fields.certFingerprints],
+    signInReturn,
+    billingReturn,
+    connectReturn: connectReturn === undefined ? { tag: "NoConnectReturn" } : { tag: "ConnectsTo", url: connectReturn },
+    credentialTtl: fields.credentialTtlMs,
+    nativeGoogle: fields.nativeGoogle,
+    enabled: fields.enabled
+  }
+}
+
+function fieldsOf(row: Row): unknown {
+  const connect = toText(row.connect_return)
+  return {
+    clientId: row.client_id, environment: row.environment, displayName: row.display_name, androidPackage: row.android_package,
+    certFingerprints: row.cert_fingerprints, signInReturn: row.sign_in_return, billingReturn: row.billing_return,
+    ...(connect === undefined ? {} : { connectReturn: connect }),
+    credentialTtlMs: toInt(row.credential_ttl_ms), nativeGoogle: row.native_google, enabled: row.enabled
+  }
+}
+
+export effect function loadRegistry(tx: Tx, served: Environment): Registration[]!Refused {
+  const rows = tx.query(`SELECT ${columns} FROM native_clients ORDER BY client_id`) catch effect () => { throw refused("ServiceUnavailable") }
+  const registry = Effect.forEach(rows, (row) => decodeRegistration(fieldsOf(row))) catch effect () => { throw refused("ServiceUnavailable") }
+  if (!registryValid(registry, served)) throw refused("ServiceUnavailable")
+  return registry
+}
+
+export effect function readRegistry(tx: Tx) {
+  return try loadRegistry(tx, try servedEnvironment())
+}
+
+export effect function readClient(tx: Tx, clientId: string) {
+  return (try readRegistry(tx)).find((registration) => registration.clientId === clientId)
+}
+
+export effect function admitClient(tx: Tx, request: ClientRequest): Registration!Refused!Deployment {
+  const served = try servedEnvironment()
+  const registry = try loadRegistry(tx, served)
+  const check = clientCheck(registry, served, request)
+  if (check.tag === "ClientRefused") throw new Refused({ refusal: faultRefusal(check.fault) })
+  const [registration] = registrationsFor(registry, served, request.clientId)
+  if (registration === undefined) throw refused("InvalidClient")
+  return registration
+}
+
+effect function keep(tx: Tx, registration: Registration, now: number, replacing: boolean) {
+  const deployment = try Deployment
+  const served = try servedEnvironment()
+  try tx.query("LOCK TABLE native_clients IN SHARE ROW EXCLUSIVE MODE")
+  const registry = try loadRegistry(tx, served)
+  if (replacing && !registry.some((each) => each.clientId === registration.clientId)) throw new ClientNotRegistered({ clientId: registration.clientId })
+  if (!registrationAccepted(registry, rowOf(deployment.profile.name, deployment.settings), served, registration)) {
+    throw new RegistrationRefused({ clientId: registration.clientId })
+  }
+  try tx.query(
+    `INSERT INTO native_clients (${columns}, created_at, updated_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $12)
+     ON CONFLICT (client_id) DO UPDATE SET environment = EXCLUDED.environment, display_name = EXCLUDED.display_name,
+       android_package = EXCLUDED.android_package, cert_fingerprints = EXCLUDED.cert_fingerprints, sign_in_return = EXCLUDED.sign_in_return,
+       billing_return = EXCLUDED.billing_return, connect_return = EXCLUDED.connect_return, credential_ttl_ms = EXCLUDED.credential_ttl_ms,
+       native_google = EXCLUDED.native_google, enabled = EXCLUDED.enabled, updated_at = EXCLUDED.updated_at`,
+    [
+      registration.clientId, wireEnvironment[registration.environment], registration.displayName, registration.androidPackage,
+      JSON.stringify(registration.certFingerprints), returnText(registration.signInReturn), returnText(registration.billingReturn),
+      registration.connectReturn.tag === "ConnectsTo" ? returnText(registration.connectReturn.url) : null,
+      registration.credentialTtl, registration.nativeGoogle, registration.enabled, now
+    ]
+  )
+  return registration
+}
+
+export effect function registerClient(tx: Tx, registration: Registration, now: number) {
+  return try keep(tx, registration, now, false)
+}
+
+export effect function updateClient(tx: Tx, registration: Registration, now: number) {
+  return try keep(tx, registration, now, true)
+}
+
+export effect function disableClient(tx: Tx, clientId: string, now: number) {
+  const disabled = try tx.query("UPDATE native_clients SET enabled = false, updated_at = $2 WHERE client_id = $1 RETURNING client_id", [clientId, now])
+  if (disabled.length === 0) throw new ClientNotRegistered({ clientId })
+}
+
+effect function readConfig(context: RouteContext) {
+  const clientId = context.query.get("clientId")
+  const environment = environments[context.query.get("environment") ?? ""]
+  const redirectUri = context.query.get("redirectUri")
+  if (clientId === null || environment === undefined || redirectUri === null) throw refused("InvalidRequest")
+  const url = parseReturn(redirectUri)
+  const registration = try (try Store).transaction((tx) => admitClient(tx, {
+    clientId, environment, redirect: url === undefined ? { tag: "NoRedirect" } : { tag: "ClaimsReturn", purpose: "SignInPurpose", url }
+  }))
+  if (url === undefined) throw refused("RedirectMismatch")
+  const deployment = try Deployment
+  const answer = configAnswer(registration, rowOf(deployment.profile.name, deployment.settings).signIn, deployment.settings.google?.serverClientId ?? "")
+  return json({
+    clientId: answer.clientId,
+    environment: wireEnvironment[answer.environment],
+    redirectUri: returnText(answer.redirectUri),
+    codeChallengeMethod: answer.codeChallengeMethod,
+    credentialTtlMs: answer.credentialTtlMs,
+    methods: answer.methods,
+    google: answer.google
+  })
+}
+
+export const routes: ReadonlyArray<Route> = [
+  { method: "GET", path: "/api/v1/app-auth/mobile/config", auth: "Public", handler: readConfig }
+]

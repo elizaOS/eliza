@@ -1,5 +1,5 @@
 // spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only a reversible local operation bound to the owner's current message may run without a review"
-import { negotiation, readOperation, receiptOutcome, validate, type DeviceOperation } from "@elizaos/agent/device-actions"
+import { negotiation, readOperation, receiptOutcome, validate, type DeviceOperation } from "@elizaos/agent"
 
 export const foregroundReviewTypes = ["calendar_availability", "notes_search", "notes_named", "calendar_named", "reminder_named"] as const
 export type ForegroundReviewOperation = Extract<DeviceOperation, { readonly type: (typeof foregroundReviewTypes)[number] }>

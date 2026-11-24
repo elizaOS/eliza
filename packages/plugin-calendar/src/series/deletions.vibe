@@ -1,10 +1,10 @@
 // spec/calendar/seriesScope.md, "A pending deletion guards the same row until transaction settlement"; spec/calendar/seriesScope.md, "Publish a deletion only with the committed document"; spec/calendar/seriesScope.md, "Story: Delete the exact Calendar event or scope I selected"
 import { afterTerminalTrim, allowsPendingWrite, apply, blocksSiblingOrParent, initial, mayStageDeletion, stageSeriesAllowed, unresolvedDeletion,
   type DeadlineView, type DeleteTx, type RowMatch } from "../../gen/calendar__seriesScope.effect.vibe"
-import { clockUsable, deletionDeadline, deletionWindow, type DeletionClock, type DeletionDeadline } from "@elizaos/os/bridges/deletion-window"
+import { clockUsable, deletionDeadline, deletionWindow, type DeletionClock, type DeletionDeadline } from "@elizaos/os-bridges"
 import { findRow, removeRow, storedRow, type CalendarRow, type ReviewedRow, type SeriesReview } from "./document.vibe"
 
-export { clockUsable, deleteUndoMs, type DeletionClock, type DeletionDeadline } from "@elizaos/os/bridges/deletion-window"
+export { clockUsable, deleteUndoMs, type DeletionClock, type DeletionDeadline } from "@elizaos/os-bridges"
 
 export interface OwnerFacts {
   readonly origin: string

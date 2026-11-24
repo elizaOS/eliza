@@ -1,0 +1,115 @@
+// spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"; spec/agent/tasks/wire.md, "A choice batch is shown only when every choice is valid for the task and epoch"
+module node {
+  import { Effect, Schema } from "effect"
+  import { hashStableJson, TASK_ID_PATTERN, type IAgentRuntime } from "@elizaos/core"
+  import { validateTaskChoiceWidget, type TaskChoiceWidget } from "@elizaos/core"
+  import { chatTaskEnd, chatTaskStart, httpStatus, type OfferedChoice, type TaskError } from "../../gen/agent__tasks__wire.ts"
+  import type { Presentation } from "../../gen/agent__tasks.ts"
+  import type { TaskPresentation } from "@elizaos/agent"
+  import type { TaskHostHandle } from "./host.vibe"
+  import { taskCodes } from "./routes.vibe"
+
+  export type { TaskPresentation }
+  export interface TaskPresentationPorts {
+    format(presentation: TaskPresentation): string
+    choice?(presentation: TaskPresentation, signal: AbortSignal): Promise<TaskChoiceWidget | null>
+  }
+
+  export interface ChatTaskRefusal {
+    readonly kind: "Refused"
+    readonly status: number
+    readonly error: string
+  }
+
+  const Receipt = Schema.Struct({
+    revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    choiceDigest: Schema.NullOr(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))),
+  })
+  type Receipt = typeof Receipt.Type
+  export type ChatTaskEnding = ChatTaskRefusal | {
+    readonly kind: "Shown"
+    readonly receipt: Receipt
+    readonly choices: readonly TaskChoiceWidget[]
+  }
+
+  export interface ChatTaskTurn {
+    readonly kind: "Admitted"
+    readonly context: string
+    end(signal: AbortSignal): Promise<ChatTaskEnding>
+  }
+
+  const decodeReceipt = Schema.decodeUnknownOption(Receipt, { onExcessProperty: "error" })
+  const decodeRequest = Schema.decodeUnknownOption(Schema.Struct({
+    taskId: Schema.String.check(Schema.isPattern(TASK_ID_PATTERN)),
+    expectedEpoch: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  }), { onExcessProperty: "error" })
+  const missing: Presentation = { tag: "PresentationRefused" }
+  const presenters = new WeakMap<IAgentRuntime, { host: TaskHostHandle; ports: TaskPresentationPorts }>()
+
+  export function bindTaskPresentation(runtime: IAgentRuntime, host: TaskHostHandle, ports: TaskPresentationPorts): () => void {
+    const binding = { host, ports }
+    presenters.set(runtime, binding)
+    return () => {
+      if (presenters.get(runtime) === binding) presenters.delete(runtime)
+    }
+  }
+
+  const refusal = (error: TaskError): ChatTaskRefusal => ({ kind: "Refused", status: httpStatus(error), error: taskCodes[error] })
+
+  function choiceOf(widget: unknown): { widget: TaskChoiceWidget; digest: string; offered: OfferedChoice } | undefined {
+    try {
+      validateTaskChoiceWidget(widget)
+      if (widget.state !== "pending" || Date.parse(widget.expiresAt) <= Date.now()) return undefined
+      return {
+        widget, digest: hashStableJson(widget), offered: { tag: "Offered", taskId: widget.taskId, epoch: widget.epoch, widgetValid: true },
+      }
+    } catch { return undefined }
+  }
+
+  export function replayTaskChoices(ending: ChatTaskEnding, raw: unknown): ChatTaskEnding {
+    if (ending.kind === "Refused") return ending
+    const saved = decodeReceipt(raw)
+    if (saved._tag === "None") return { ...ending, choices: [] }
+    if (saved.value.revision !== ending.receipt.revision) return refusal("TaskStateConflict")
+    return saved.value.choiceDigest === ending.receipt.choiceDigest ? ending : { ...ending, choices: [] }
+  }
+
+  export async function beginChatTask(runtime: IAgentRuntime, raw: unknown, actorId: string): Promise<ChatTaskTurn | ChatTaskRefusal> {
+    const request = decodeRequest(raw)
+    if (request._tag === "None") return refusal("TaskInvalid")
+    const binding = presenters.get(runtime)
+    const present = () => binding === undefined || presenters.get(runtime) !== binding ? Promise.resolve(missing)
+      : Effect.runPromise(binding.host.presentationForConversation({ ...request.value, actorId })).catch(() => missing)
+    const before = await present()
+    const admitted = chatTaskStart(binding !== undefined, before)
+    if (admitted.tag === "ChatTaskRefused") return refusal(admitted.error)
+    if (binding === undefined || before.tag !== "Presented") return refusal("TaskStateConflict")
+    const presentation: TaskPresentation = { taskId: before.taskId, epoch: before.epoch, revision: before.revision }
+    let context: string
+    try { context = binding.ports.format(presentation) } catch { return refusal("TaskUnavailable") }
+    return {
+      kind: "Admitted",
+      context,
+      async end(signal) {
+        const received = binding.ports.choice === undefined ? undefined : await Effect.runPromise(Effect.tryPromise(
+          () => Promise.resolve(binding.ports.choice?.(presentation, signal)),
+        ), { signal }).catch(() => undefined)
+        if (signal.aborted) return refusal("TaskUnavailable")
+        const choice = choiceOf(received)
+        const ended = chatTaskEnd(presentation.taskId, presentation.epoch, before, await present(), choice?.offered ?? { tag: "NoChoice" })
+        if (ended.tag === "ChatTaskChanged") return refusal("TaskStateConflict")
+        const kept = ended.choices.length === 1 ? choice : undefined
+        return {
+          kind: "Shown",
+          receipt: { revision: presentation.revision, choiceDigest: kept?.digest ?? null },
+          choices: kept === undefined ? [] : [kept.widget],
+        }
+      },
+    }
+  }
+}
+
+export {
+  beginChatTask, bindTaskPresentation, replayTaskChoices,
+  type ChatTaskEnding, type ChatTaskRefusal, type ChatTaskTurn, type TaskPresentation, type TaskPresentationPorts,
+} from node

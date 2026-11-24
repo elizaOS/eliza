@@ -1,0 +1,70 @@
+{
+  "name": "@elizaos/cloud-worker",
+  "version": "4.0.0-alpha.0",
+  "type": "module",
+  "description": "Cloudflare Worker, Node HTTP server, Postgres/PGlite store, hosted return pages and operator CLI for Eliza Cloud.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=26"
+  },
+  "bin": {
+    "elizaos-cloud": "./dist/src/main.js"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "scripts": {
+    "sync:gen": "node -e \"const fs=require('node:fs'),path=require('node:path'),srcGen=path.resolve('../cloud/gen'),dstGen=path.resolve('gen');if(!fs.existsSync(srcGen))throw new Error('packages/cloud/gen is missing; run pnpm gen first');const needed=new Set(['package.json']),seen=new Set(),walk=d=>{if(!fs.existsSync(d))return;for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,e.name);if(e.isDirectory())walk(p);else if(/\\.(?:tsx?|vibe)$/.test(e.name)){for(const m of fs.readFileSync(p,'utf8').matchAll(/from\\s+['\\\"]\\.{1,3}\\/(?:\\.\\.\\/)*gen\\/([^'\\\"]+)['\\\"]/g))add(m[1]);}}},add=n=>{if(seen.has(n))return;const f=path.join(srcGen,n);if(!fs.existsSync(f))return;seen.add(n);needed.add(n);for(const m of fs.readFileSync(f,'utf8').matchAll(/from\\s+['\\\"]\\.\\/([^'\\\"]+)['\\\"]/g))add(m[1]);};walk('src');walk('test');fs.mkdirSync(dstGen,{recursive:true});for(const n of needed){const s=path.join(srcGen,n),d=path.join(dstGen,n),t=fs.readFileSync(s,'utf8');if(!fs.existsSync(d)||fs.readFileSync(d,'utf8')!==t)fs.writeFileSync(d,t);}for(const f of fs.readdirSync(dstGen))if(!needed.has(f))fs.rmSync(path.join(dstGen,f),{recursive:true,force:true});\"",
+    "build": "pnpm run sync:gen && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync('src/**/*.sql')){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),bin:Object.fromEntries(Object.entries(source.bin).map(([name,value])=>[name,target(value)])),files:['src','gen','pages'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\" && vite build",
+    "typecheck": "pnpm run sync:gen && vibelang --noEmit -p .",
+    "test": "pnpm run sync:gen && vitest run",
+    "start": "vite build && node --import vibelang/register test/support/web-front.vibe",
+    "build:worker": "pnpm run sync:gen && vibelang -p tsconfig.worker.json && node -e \"require('node:fs').cpSync('src/store/migrations','dist/src/store/migrations',{recursive:true})\""
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@effect/platform-node-shared": "4.1.1",
+    "@electric-sql/pglite": "catalog:",
+    "@elizaos/cloud": "workspace:*",
+    "@types/pg": "^8.23.1",
+    "effect": "4.1.1",
+    "jose": "6.2.17",
+    "pg": "8.23.1",
+    "stripe": "23.1.0",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@antithesishq/bombadil": "0.7.10",
+    "@effect/vitest": "4.1.1",
+    "@electric-sql/pglite-socket": "0.1.6",
+    "@repo/design-system": "workspace:*",
+    "@repo/ui": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibelang-vite": "0.0.13",
+    "vibestack": "workspace:*",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "directory": "dist",
+    "linkDirectory": false
+  }
+}

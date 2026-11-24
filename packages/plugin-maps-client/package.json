@@ -1,0 +1,49 @@
+{
+  "name": "@elizaos/plugin-maps-client",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-safe Maps contracts, cards, location, guidance voice, saved places and cloud maps client.",
+  "license": "MIT",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "import": "./dist/src/index.js",
+        "default": "./dist/src/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "sync:gen": "node -e \"const fs=require('node:fs'),path=require('node:path'),srcGen=path.resolve('../plugin-maps/gen'),dstGen=path.resolve('gen');if(!fs.existsSync(srcGen))throw new Error('packages/plugin-maps/gen is missing; run pnpm gen first');const needed=new Set(['package.json']),seen=new Set(),walk=d=>{if(!fs.existsSync(d))return;for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,e.name);if(e.isDirectory())walk(p);else if(/\\.(?:ts|vibe)$/.test(e.name)){for(const m of fs.readFileSync(p,'utf8').matchAll(/from\\s+['\\\"]\\.{1,3}\\/(?:\\.\\.\\/)*gen\\/([^'\\\"]+)['\\\"]/g))add(m[1]);}}},add=n=>{if(seen.has(n))return;const f=path.join(srcGen,n);if(!fs.existsSync(f))return;seen.add(n);needed.add(n);for(const m of fs.readFileSync(f,'utf8').matchAll(/from\\s+['\\\"]\\.\\/([^'\\\"]+)['\\\"]/g))add(m[1]);};walk('src');walk('test');fs.mkdirSync(dstGen,{recursive:true});for(const n of needed){const s=path.join(srcGen,n),d=path.join(dstGen,n),t=fs.readFileSync(s,'utf8');if(!fs.existsSync(d)||fs.readFileSync(d,'utf8')!==t)fs.writeFileSync(d,t);}for(const f of fs.readdirSync(dstGen))if(!needed.has(f))fs.rmSync(path.join(dstGen,f),{recursive:true,force:true});\"",
+    "build": "pnpm run sync:gen && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json",
+    "typecheck": "pnpm run sync:gen && vibelang --noEmit -p .",
+    "test": "pnpm run sync:gen && vitest run"
+  },
+  "dependencies": {
+    "@elizaos/cloud": "workspace:*",
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.1.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
+  }
+}

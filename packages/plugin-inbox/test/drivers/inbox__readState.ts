@@ -2,7 +2,7 @@
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/inbox__readState.conformance.ts";
 import type { ReadStateView } from "../../gen/inbox__readState.ts";
-import { mailReadStateGuard, type MailReadStateGuard } from "../../src/mailbox/read-state.vibe";
+import { mailReadStateGuard, type MailReadStateGuard } from "@elizaos/plugin-inbox-client";
 
 const guards = new Map<string, MailReadStateGuard>();
 

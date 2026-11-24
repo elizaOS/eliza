@@ -1,7 +1,6 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/checkin.md, "Story: Check in on me at the times I chose"; spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"
 import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider, type RegisteredEvaluator } from "@elizaos/core"
-import type { AgentPlugin } from "@elizaos/agent"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { type AgentPlugin, registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { briefAction } from "./brief.vibe"
 import { checkinKind, checkinRoutes, deliverCheckin, followOwnerClock } from "./checkin.vibe"
 import { reminderProposalFamily } from "./device-proposals.vibe"
@@ -25,7 +24,29 @@ export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
 export { BriefSources, PriorityModel, ownerBrief, rankOwnerEntries } from "./owner-brief.vibe"
 export { BillEvidencePort, keepObservedBill, findBillReceipt } from "./bill-evidence.vibe"
-export { reminderProposalFamily } from "./device-proposals.vibe"
+export {
+  reminderKind, reminderWhen, reminderDueWithin, remindersDoneSince, checkOriginalMessage, remindersContext, createReminder, reminderReply,
+  deliverReminder, liveReminders, namedAmong, namedReminders, answerReminder, escalateReminder, retractRecentSave, moveReminder, renameReminder,
+  listReminders, followReminderClock, setReminderIntensity, ownerRemindersAction, ownerRemindersProvider, type ReminderRequest, type ReminderOutcome,
+  type MoveRequest,
+} from "./reminders.vibe"
+export {
+  ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, statedZone, clockCapability,
+  clockRepeatCapability, clockDayNames, clockHandoffCapabilities, isClockHandoffOperation, clockHandoffDispatch, describeClockDays,
+  describeClockHandoff, normalizeClockTimeZone, phoneZone, currentClockTimeZone, ClockZoneChanged, checkClockHandoffTimeZone, ClockReceiptRefused,
+  clockHandoffReceipt, buildClockHandoffRequest, type OwnerFacts, type Travel, type ClockHandoffOperation, type ClockDay, type ClockHandoffResult,
+  type ClockHandoffHostSupport, type ClockHandoffRequest, type ClockHandoffForm, type FormRefusal,
+} from "./clock.vibe"
+export {
+  foregroundReviewTypes, isForegroundReviewType, readForegroundReviewOperation, isForegroundReviewOperation, foregroundReviewOperationAvailable,
+  ReviewResultRefused, foregroundReviewResult, type ForegroundReviewOperation,
+} from "./review.vibe"
+export {
+  goalCheckinKind, listGoals, goalStanding, followGoalClock, changeGoal, deliverGoalCheckin, ownerGoalsAction, ownerGoalsProvider, type GoalRecord,
+} from "./goals.vibe"
+export {
+  currentTodos, renderTodos, plain, changeTodos, todosAction, currentTodosProvider,
+} from "./todos.vibe"
 
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
 

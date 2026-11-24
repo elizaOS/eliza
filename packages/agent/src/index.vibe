@@ -1,21 +1,53 @@
-// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"
-export { startAgent, type AgentStatus, type RunningAgent } from "./host/process.vibe"
-export { AGENT_EXIT_CODES, exitClass, exitCode, parseLaunch, type ExitClass, type LaunchDocument } from "./host/launch.vibe"
-export { ModuleRefused, routePrefix, type AgentModule, type AgentPlugin, type ModuleContext, type ModuleFactory, type PublishEvent, type ViewFeeds } from "./host/module.vibe"
-export { admitRoute, defineRoutes, type Route, type RouteGroup, type RouteList } from "./access/routes.vibe"
-export { type ActionResultFrame, type ReplyFrame } from "./conversation/stream.vibe"
-export { publishEventServiceType, type PublishEventService } from "./conversation/events.vibe"
-export { deviceConversation, type TurnReply } from "./conversation/turns.vibe"
-export { activityLabel, offeredActions, offeredOnlyWhere, showsApp, turnNotes } from "./conversation/planning.vibe"
-export { cloudServiceType, type CloudLinkReply, type CloudLinkRequest, type CloudLinkService, type GoogleAdmission, type GoogleChange } from "./models/cloud-link.vibe"
-export { scheduledTasksServiceType, type FireResult, type ScheduledTasksApi, type VerbRequest, type VerbResult } from "./schedule/scheduled-task-routes.vibe"
-export { type Created, type DeliveryPort, type NewTask, type ScheduledTaskView } from "./schedule/scheduled-tasks.vibe"
+// spec/agent/client/runtimeClient.md, "Story: Talk to my agent over its local bridge"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/voice/session.md, "Story: Talk to my agent hands-free"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/access/routes.md, "Story: Admit only the routes a product lists"
 export {
-  createScheduledTask, getScheduledTask, listScheduledTasks, NoScheduledTask, scheduledTaskByKey, scheduledTaskKeeping, ScheduleStoreUnavailable, StaleRevision, TaskIdTaken,
-  type NewScheduledTask, type ScheduledTaskDetails, type StoredTask,
-} from "./schedule/store.vibe"
-export { readTurnContext, type TurnContext } from "./conversation/turn-context.schema.vibe"
+  createRuntimeJsonClient, RuntimeRequestError,
+  type RuntimeClientOptions, type RuntimeJsonBridge, type RuntimeJsonResponse, type RuntimeRequestHeaders, type RuntimeStatus, type RuntimeStream, type RuntimeStreamFrame,
+  DeviceExecution, NOT_DISPATCHED,
+  type ApproveResult, type DeviceAgent, type DeviceClaim, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReceipt, type DeviceReview, type DeviceReviewEvidence, type ExecutorCall, type JournalEntry, type JournalIdentity, type RecoverResult, type ReviewResult, type ScreenCheck,
+  readReplyStream, REPLY_STREAM_PROTOCOL,
+  type ReplyOutcome, type ReplyStreamHooks, type StreamedReply,
+  TaskLifecycle, TaskView, TASK_PAUSE_TIMEOUT_MS,
+  type TaskLifecycleCommand, type TaskLifecycleMessages, type TaskLifecycleRequest, type TaskLifecycleState,
+  createSurfaceClient, SurfaceProtocol, SurfaceTransport,
+  type SurfaceClient, type SurfaceClientOptions, type SurfaceCommandContext, type SurfaceFailure, type SurfaceRequest,
+  TASK_ID_PATTERN,
+  TurnController, ConversationRecord, InvalidConversation, findStoppedUserTurn,
+  type ClientMessageId, type HistoryMessage, type StopResult, type StoppedConversationTurn, type TurnMessage, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult, type TurnTransport,
+} from "./client/index.vibe"
+export type { TaskPresentation } from "./client/turn-controller.vibe"
+export * from "./conversation/turn-context.schema.vibe"
+export { textOf, unitsOf } from "./conversation/code-units.vibe"
 export {
-  workflowDeviceOffer, WorkflowStepRefused,
-  type WorkflowDeviceOffer, type WorkflowOfferTiming, type WorkflowStep, type WorkflowStepDevice, type WorkflowStepTarget,
-} from "./device-actions/workflow-offer.vibe"
+  capabilityNamesOf, deviceOperationTypes, DeviceReceipt as DeviceReceiptSchema, mayRunDirectly, notDispatchedCode, operationOf, readOperation, readResult, receiptOutcome, validate,
+  type CheckedOperation, type Classification, type DeviceOperation, type DeviceOperationType, type DeviceReceipt as DeviceOperationReceipt, type Evidence, type OperationResultOf, type ReceiptVerdict,
+  capabilitiesHeader, negotiation,
+  bindingHash, readLatestSender, type LatestSenderResult,
+  latestSenderGuidance, latestSenderReply, latestSenderReplyFor,
+} from "./device-actions/operations.vibe"
+export { offeredViewNames, openViewAllowed, readViewProfileChange, supportedViews, viewProfileWire } from "./device-actions/capabilities.vibe"
+export { firstOfLocalDay } from "./device-actions/operation-schemas/device.schema.vibe"
+export { CalendarSource, day as localCalendarDay, MapsReadSelected } from "./device-actions/operation-schemas/personal.schema.vibe"
+export { smsComposeTarget, type SmsComposeOperation } from "./device-actions/operation-schemas/telephony.vibe"
+export * from "./host/launch.schema.vibe"
+export * from "./access/routes.vibe"
+export {
+  buildVoiceTurnSignal, isNonSpeechVoiceTranscript, mayBecomeNonSpeechVoiceTranscript, scoreEndOfTurnHeuristic, shouldRespondToVoiceTurn,
+  type BuildVoiceTurnSignalContext, type HeardBody, type ReplyWindow, type ShouldRespondContext, type VoiceTurnSignal, type VoiceTurnSpeakerAttribution,
+  DraftTranscriptGuard, RecordedTranscriptionController, RecordedTranscriptionError, RecordingBoundRefused,
+  type DraftTranscriptResult, type PauseObserver, type RecordedTranscriptionCode, type RecordedTranscriptionOptions, type RecordedTranscriptionState,
+  type RecorderEvents, type RecorderPort, type RecordingChunk, type RecordingPhase, type RecordingStream, type TranscriptReceiver,
+  type CaptureEvents, type CapturePort, type ClockPort, type EndOfTurnPort, type HeardAnswer, type HeardPort, type RecognizerPort, type SpeakerEvents, type SpeakerPort, type TurnPort,
+  type VoiceReply, type VoiceReplyAction, type VoiceSessionPorts, type VoiceTurn, type VoiceUi,
+  CLOUD_FIRST_SPEECH_CHARS, CLOUD_SPEECH_REQUEST_CHARS, CloudSpeechFailed, CloudSpeechStopped, CloudSpeechWordTooLong,
+  planCloudSpeechChunks, speakCloudSpeechChunks, type CloudSpeechOptions, type SpeakCloudPiece,
+  createLiveVoiceSession, parseVoiceTranscriptEnvelope, VOICE_TRANSCRIPT_STREAM,
+  type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
+  audioBlobBase64, captureBlockSamples, decodeRecordedClip, encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
+  browserCaptureAudio, browserClipAudio,
+  attachProgressiveSpeech, SegmentedSpeechPlayback, speakerPortOf,
+  type ProgressiveSpeechAttachment, type ProgressiveSpeechOptions, type ProgressiveSpeechSource, type SegmentAttach, type SegmentedSpeechOptions,
+  type SegmentedSpeechState, type SpeakOptions, type SpeechAttachment, type SpeechAudioFrame, type SpeechPlayer,
+  jsonRequestOf, voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type RuntimeJsonRequester, type VoiceNetworkPorts,
+  defaultVoiceProfile, type StopReport, type VoiceProfile,
+} from "./voice/index.vibe"
+export { createHeardReports, type HeardReport } from "./voice/heard-reports.vibe"

@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"
 import type { IAgentRuntime, Plugin } from "@elizaos/core"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { calendarProposalFamily } from "./plugin/device-proposals.vibe"
 import { calendarAction, calendarActionName, calendarAsk, calendarContext, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
 import type { CalendarHost } from "./plugin/host.vibe"
@@ -32,9 +32,16 @@ export { calendarAction, calendarActionName, calendarAsk, calendarEffectReceipt,
 export { CalendarApprovalExecutorService, CalendarService, calendarApprovalExecutorServiceType, calendarServiceType }
 export type { CalendarEventFacts } from "./plugin/service.vibe"
 export { linkedCalendarRoutes, type LinkedRouteContext } from "./plugin/linked-routes.vibe"
-export { RecurrenceRecord, ScopeMismatch, WriteScopeRecord, type CalendarRecurrence, type CalendarWriteScope } from "./series/index.vibe"
 export { ResidentNeedsReview, importPriorResident } from "./plugin/providers.vibe"
 export { calendarProposalFamily }
+export * from "./client/index.vibe"
+export * from "./linked-sync/index.vibe"
+export * from "./availability/index.vibe"
+export * from "./feed/index.vibe"
+export * from "./series/index.vibe"
+export * from "./request-time.vibe"
+export type { DeviceCalendarPort } from "./series/index.vibe"
+export type { DeviceCalendarPort as AvailabilityDeviceCalendarPort } from "./availability/index.vibe"
 
 export const calendarPluginName = "@elizaos/plugin-calendar"
 

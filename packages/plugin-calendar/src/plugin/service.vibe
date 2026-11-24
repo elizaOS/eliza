@@ -1,5 +1,5 @@
 // spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"; spec/calendar/managedFeed.md, "An event's change time is the provider's edit time, never the refresh time"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
-import { cloudServiceType } from "@elizaos/agent"
+import { cloudServiceType } from "@elizaos/agent-host"
 import { Service, type IAgentRuntime } from "@elizaos/core"
 import { cloudCalendar, type CloudCalendarLink } from "../feed/broker.vibe"
 import { providerTimestamps } from "../feed/cache.vibe"

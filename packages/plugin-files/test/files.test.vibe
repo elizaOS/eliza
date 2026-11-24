@@ -1,19 +1,21 @@
 // spec/files/reviewedOperations.md, "Story: Act only on the file revision I reviewed"; spec/files/reviewedOperations.md, "Story: Keep every batch outcome, including the ones I cannot be sure of"; spec/files/requests.md, "Story: Open the file I asked for, and only from what I was shown"; spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import type { ElizaFilesPlugin } from "@elizaos/os/bridges/files"
-import { FilesVolume, filesReviews, filesView, nativeVolume, runBatch, undoBatch, type OpenPorts } from "../src/client.vibe"
-import { FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesContextAllowed, filesContextNotice, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner } from "../src/contract.vibe"
+import type { ElizaFilesPlugin } from "@elizaos/os-bridges"
+import {
+  FilesVolume, filesReviews, filesView, nativeVolume, runBatch, undoBatch, type OpenPorts, FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesContextAllowed, filesContextNotice, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner,
+} from "@elizaos/plugin-files-client"
 import { localVolume } from "../src/storage/local-volume.vibe"
 import { workspace } from "../src/workspace.vibe"
 import { plugin } from "../src/index.vibe"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { filesProposalFamily } from "../src/device-proposals.vibe"
 
 module node {
   import { Effect } from "effect"
   import { AgentRuntime, stringToUuid } from "@elizaos/core"
-  import { negotiatedOwnerTurn, readOperation, type DeviceTurn, type Grounding } from "@elizaos/agent/device-actions"
+  import { negotiatedOwnerTurn, type DeviceTurn, type Grounding } from "@elizaos/agent-host"
+  import { readOperation } from "@elizaos/agent"
   import { filesProposalFamily } from "../src/device-proposals.vibe"
 
   const asked = "Trash the first two files"

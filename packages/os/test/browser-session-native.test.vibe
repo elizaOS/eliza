@@ -1,0 +1,34 @@
+// spec/os/browser/tabHost/storage.md, "Story: Keep my normal tabs and history across restarts"; spec/os/browser/tabHost/storage.md, "A visit time is kept only for a kept history address, as a positive whole number of milliseconds"
+import { assert, it } from "@effect/vitest"
+import { browsingSnapshot, normalizeBrowsing } from "@elizaos/os-bridges"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import path from "node:path"
+  import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
+
+  export async function nativeSessions(records: readonly unknown[]): Promise<unknown[]> {
+    const main = "ai.eliza.plugins.browsersurface.SessionRecordJourney"
+    const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+    const out = execFileSync(java, ["-cp", await orgJsonAdapterClasspath(main), main], { input: records.map((record) => JSON.stringify(record)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
+    return out.trim().split("\n").map((line): unknown => JSON.parse(line))
+  }
+}
+import { nativeSessions } from node
+
+it.effect("The native session record keeps the same history visit times as the shared session codec (spec/os/browser/tabHost/storage.md, \"Story: Keep my normal tabs and history across restarts\"; spec/os/browser/tabHost/storage.md, \"A visit time is kept only for a kept history address, as a positive whole number of milliseconds\")", () => effect {
+  const history = ["https://news.example.test/today", "http://docs.example.test/guide"]
+  const visited = { "https://news.example.test/today": 1_700_000_000_000 }
+  const timed = browsingSnapshot(
+    { tabs: [], visits: history, cur: "", visitTimes: { ...visited, "http://docs.example.test/guide": 1.5, "https://elsewhere.example.test/": 9, "javascript:alert(1)": 7 } },
+    () => undefined,
+  )
+  assert.deepStrictEqual(timed, { history, tabs: [], cur: "", visitTimes: visited })
+  const untimed = { ...timed, visitTimes: { "http://docs.example.test/guide": 0 } }
+  const native = try tryPromise(() => nativeSessions([
+    { ...timed, visitTimes: { ...visited, "http://docs.example.test/guide": 1.5, "https://elsewhere.example.test/": 9, "javascript:alert(1)": 7 } },
+    untimed,
+    { ...untimed, visitTimes: { "http://docs.example.test/guide": 9_007_199_254_740_991, "https://news.example.test/today": 9_007_199_254_740_992 } },
+  ]))
+  assert.deepStrictEqual(native, [timed, normalizeBrowsing(untimed), { ...normalizeBrowsing(untimed), visitTimes: { "http://docs.example.test/guide": 9_007_199_254_740_991 } }])
+}, 180_000)

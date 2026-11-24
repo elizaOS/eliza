@@ -22,11 +22,11 @@ interface ProviderTextSnapshot {
 }
 
 module node {
-  import { createHash } from "node:crypto"
+  import { sha256HexSync } from "../utils/web-crypto-sync.ts"
 
   /** @throws {never} */
   export function sha256Hex(value: string | Uint8Array): string {
-    return createHash("sha256").update(value).digest("hex")
+    return sha256HexSync(value)
   }
 }
 import { sha256Hex } from node

@@ -1,0 +1,157 @@
+// spec/cloud/deployment.md, "A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve"; spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Story: Back up my passwords for another device"; spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"
+import type { Client } from "pg"
+import { CLEF_DECISIONS_PATH } from "@elizaos/cloud"
+import { clefRequest, type ClefEnv } from "../clef-worker.vibe"
+import { deviceAttachmentPath, googleRequest, googleResponse, reminderSchedule, selectedAttachmentPath, type GoogleEnv } from "../google.vibe"
+import { cloudCredential, identityRequest, inferenceAccount, sessionAccount, type IdentityEnv } from "../identity.vibe"
+import { ownsPasswordBackupPath } from "../password-backup.vibe"
+import { inboxArrivalPath } from "../services/google/inbox-arrival.vibe"
+import { limitedBody, WorkerHeaders, WorkerResponse, withRequestBody } from "../worker-platform.ts"
+import { withCloudDatabase, type WorkerDatabase } from "../worker-store.vibe"
+
+export type LegacyBindings = ClefEnv & IdentityEnv & GoogleEnv & WorkerDatabase
+
+export type DeploymentExtension<E extends LegacyBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>
+
+export interface WorkerPorts<E extends LegacyBindings> {
+  readonly extension: DeploymentExtension<E> | undefined
+  readonly providerFetch: typeof fetch
+}
+
+interface WorkerOnlyRoute<E extends LegacyBindings> {
+  readonly owns: (path: string, ports: WorkerPorts<E>) => boolean
+  readonly serve: (request: Request, env: E, db: Client, ports: WorkerPorts<E>) => Promise<Response>
+}
+
+const remindersPath = "/api/v1/calendar-reminders/device"
+const compatibleGmailPaths: ReadonlySet<string> = new Set([
+  "/api/v1/eliza/google/gmail/triage", "/api/v1/eliza/google/gmail/search", "/api/v1/eliza/google/gmail/read", inboxArrivalPath,
+])
+const refusal = (status: number, error: string) => WorkerResponse.json({ error }, { status })
+
+export async function legacyGmailResponse(request: Request, routePath: string, env: LegacyBindings, db: Client, providerFetch: typeof fetch): Promise<HttpServerResponse.HttpServerResponse | undefined> {
+  if (request.method !== "GET" || !compatibleGmailPaths.has(routePath)) return undefined
+  const credential = await cloudCredential(request)
+  if (credential === null) return undefined
+  const browser = credential.kind === "browser"
+  const account = () => browser ? sessionAccount(request, db) : inferenceAccount(request, db, env, "recorded")
+  const owner = await account()
+  if (!owner) return undefined
+  const canonical = async () => (await db.query("SELECT 1 FROM google_connections WHERE user_id = $1 AND status <> 'Pending' LIMIT 1", [owner])).rows.length > 0
+  if (await canonical()) return undefined
+  const denied = (status: number, error: string) => HttpServerResponse.jsonUnsafe({ error }, { status, headers: { "cache-control": "no-store" } })
+  if (corsFor(request, env, routePath).foreign) return denied(403, "forbidden_origin")
+  const arrival = routePath === inboxArrivalPath
+  if (!browser && !arrival) return denied(401, "authentication_required")
+  const current = async () => await account() === owner && !await canonical()
+  const response = await googleResponse(request, env, db, owner, providerFetch, arrival ? { credential, current } : undefined)
+  return response.status === 200 && !arrival && !await current() ? denied(401, "authentication_required") : response
+}
+
+async function bounded(request: Request, limit: number, serve: (request: Request) => Promise<Response>) {
+  if (request.method !== "POST") return serve(request)
+  const bytes = await limitedBody(request, limit)
+  return bytes ? serve(withRequestBody(request, bytes)) : refusal(413, "request_too_large")
+}
+
+async function health(request: Request, _env: LegacyBindings, db: Client) {
+  if (request.method !== "GET") return refusal(404, "route_not_found")
+  await db.query("SELECT 1 FROM accounts, sessions, device_grants, subscriptions, holds, usage_records LIMIT 0")
+  return WorkerResponse.json({ status: "ready" })
+}
+
+async function attachment<E extends LegacyBindings>(request: Request, env: E, db: Client, ports: WorkerPorts<E>) {
+  if (request.method !== "POST") return refusal(405, "method_not_allowed")
+  if (!request.headers.has("authorization")) return refusal(401, "device_required")
+  const owner = await inferenceAccount(request, db, env)
+  if (!owner) return refusal(401, "authentication_required")
+  const bytes = await limitedBody(request, 8704)
+  if (!bytes) return refusal(413, "request_too_large")
+  const response = await googleRequest(withRequestBody(request, bytes), env, db, owner, ports.providerFetch)
+  if (response.ok && await inferenceAccount(request, db, env) !== owner) return refusal(401, "authentication_required")
+  return response
+}
+
+async function selectedAttachment<E extends LegacyBindings>(request: Request, env: E, db: Client, ports: WorkerPorts<E>) {
+  if (request.method !== "GET") return refusal(405, "method_not_allowed")
+  const owner = await sessionAccount(request, db)
+  if (!owner) return refusal(401, "authentication_required")
+  const response = await googleRequest(request, env, db, owner, ports.providerFetch)
+  if (response.ok && await sessionAccount(request, db) !== owner) return refusal(401, "authentication_required")
+  return response
+}
+
+async function reminders(request: Request, env: LegacyBindings, db: Client) {
+  const account = await inferenceAccount(request, db, env)
+  if (!account) return refusal(401, "authentication_required")
+  if (!request.headers.has("authorization")) return refusal(403, "device_required")
+  const unserved = await db.query(`SELECT 1 WHERE EXISTS (SELECT 1 FROM google_connections WHERE user_id = $1 AND status <> 'Pending')
+    AND NOT EXISTS (SELECT 1 FROM cloud_google_connections WHERE account_id = $1 AND calendar)`, [account])
+  if (unserved.rows.length > 0) return refusal(409, "google_connection_unavailable")
+  return reminderSchedule(request, env, db, account)
+}
+
+async function decisions(request: Request, env: LegacyBindings, db: Client) {
+  const account = await inferenceAccount(request, db, env)
+  return account ? clefRequest(request, env, db, account) : refusal(401, "authentication_required")
+}
+
+async function product<E extends LegacyBindings>(request: Request, env: E, db: Client, ports: WorkerPorts<E>) {
+  const account = await sessionAccount(request, db)
+  if (!account) return refusal(401, "authentication_required")
+  return ports.extension ? ports.extension(request, env, db, account) : refusal(404, "route_not_found")
+}
+
+function workerOnlyRoutes<E extends LegacyBindings>(): ReadonlyArray<WorkerOnlyRoute<E>> {
+  return [
+    { owns: (path) => path === "/health", serve: health },
+    { owns: ownsPasswordBackupPath, serve: (request, env, db) => identityRequest(request, env, db) },
+    { owns: (path) => path.startsWith("/api/auth/"), serve: (request, env, db) => bounded(request, 8192, (body) => identityRequest(body, env, db)) },
+    { owns: (path) => path === selectedAttachmentPath, serve: selectedAttachment },
+    { owns: (path) => path === deviceAttachmentPath, serve: attachment },
+    { owns: (path) => path === remindersPath, serve: reminders },
+    { owns: (path) => path === CLEF_DECISIONS_PATH, serve: decisions },
+    { owns: (path, ports) => ports.extension !== undefined && path.startsWith("/api/product/"), serve: product }
+  ]
+}
+
+export function ownsWorkerOnly<E extends LegacyBindings>(path: string, ports: WorkerPorts<E>): boolean {
+  return workerOnlyRoutes<E>().some((route) => route.owns(path, ports))
+}
+
+function corsFor(request: Request, env: LegacyBindings, path: string) {
+  const origin = request.headers.get("origin")
+  const cors = new WorkerHeaders({
+    Vary: "Origin",
+    "Cache-Control": "no-store",
+    ...(origin ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true" } : {}),
+    ...(request.method === "OPTIONS" ? {
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": path === CLEF_DECISIONS_PATH
+        ? "Authorization, Content-Type, X-Eliza-Account"
+        : "Authorization, Content-Type, Idempotency-Key",
+    } : {}),
+  })
+  return { origin, cors, foreign: origin !== null && origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN }
+}
+
+export async function workerOnlyRequest<E extends LegacyBindings>(request: Request, env: E, ports: WorkerPorts<E>): Promise<Response> {
+  const path = new URL(request.url).pathname
+  const route = workerOnlyRoutes<E>().find((each) => each.owns(path, ports))
+  const { origin, cors, foreign } = corsFor(request, env, path)
+  if (foreign) return WorkerResponse.json({ error: "forbidden_origin" }, { status: 403 })
+  if (request.method === "OPTIONS") return new WorkerResponse(null, { status: 204, headers: cors })
+  if (request.method !== "GET" && !origin && !request.headers.has("authorization") &&
+      path !== "/api/auth/device/exchange" && !ownsPasswordBackupPath(path)) {
+    return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
+  }
+  if (route === undefined) return WorkerResponse.json({ error: "route_not_found" }, { status: 404, headers: cors })
+  try {
+    const result = await withCloudDatabase(env, (db) => route.serve(request, env, db, ports))
+    const headers = new WorkerHeaders(result.headers)
+    for (const [key, value] of cors) headers.set(key, value)
+    return new WorkerResponse(result.body, { status: result.status, headers })
+  } catch {
+    return WorkerResponse.json({ error: "service_unavailable" }, { status: 503, headers: cors })
+  }
+}

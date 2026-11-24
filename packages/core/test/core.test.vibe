@@ -1,23 +1,37 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, PseudonymSession, readJsonFile, recentLogs, recordLlmCall, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, SecretSwapSession, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
-import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
-import { removeScratch } from "./support/files.ts"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, recentLogs, recordLlmCall, registerAsyncContextStorageFactory, registerProxyInspector, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretSwapSession, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World } from "../src/index.vibe"
+import { coreDir, installPacked, packCandidate, runNode, sha256File } from "./support/child.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
 import { scriptedOAuthProvider } from "./support/oauth.ts"
-import { type Handler, loopback, loopbackTls, pinnedLookup } from "./support/servers.ts"
+import { loopback } from "./support/servers.ts"
 import { DatabaseAdapter } from "../src/database.vibe"
 import { parseAndValidateCharacter } from "../src/character-schema.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 
 module traceBoundary {
+  import { AsyncLocalStorage } from "node:async_hooks"
+  import { types } from "node:util"
+
   /** @throws {never} */
   export function throwOnRead({ failure }: { failure: Error }): () => never {
     return () => { throw failure }
   }
+
+  /** @throws {never} */
+  export function createAsyncLocalStorage<T>(): AsyncLocalStorage<T> {
+    return new AsyncLocalStorage<T>()
+  }
+
+  /** @throws {never} */
+  export function isProxy(value: unknown): boolean {
+    return types.isProxy(value)
+  }
 }
-import { throwOnRead } from traceBoundary
+import { createAsyncLocalStorage, isProxy, throwOnRead } from traceBoundary
+registerAsyncContextStorageFactory(createAsyncLocalStorage)
+registerProxyInspector(isProxy)
 
 effect function storeAt(prefix: string) {
   const directory = try scratch(prefix)
@@ -56,39 +70,6 @@ const startInChild = [
   "console.log(JSON.stringify({ id: flow.id, callback: google.consent(flow.authUrl ?? \"\", \"user-4\") }))",
   "await runtime.stop()",
   "await runtime.close()",
-].join("\n")
-
-const generateInChild = [
-  "const { Effect } = await import(\"effect\")",
-  "const { rm } = await import(\"node:fs/promises\")",
-  "const { resolve } = await import(\"node:path\")",
-  "const { writeJsonAtomicPromise } = await import(\"./src/utils/atomic-json.vibe\")",
-  "const { collectFirstPartyEntries, collectShortIdPluginMap, generateFirstPartyRegistry } = await import(\"./src/catalog/generate.vibe\")",
-  "const authoredFeatures = JSON.parse(process.argv[1])",
-  "const root = resolve(\"../..\")",
-  "const catalog = resolve(\"src/catalog\")",
-  "const settle = (run) => Effect.runPromise(Effect.match(run, { onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: (value) => value }))",
-  "const generated = async () => {",
-  "  const entries = await settle(collectFirstPartyEntries())",
-  "  return { ids: Array.isArray(entries) ? entries.map((entry) => entry.id) : entries, registry: await settle(generateFirstPartyRegistry()) }",
-  "}",
-  "const base = await generated()",
-  "for (const { id, entry } of authoredFeatures) await writeJsonAtomicPromise(`${catalog}/curated/plugins/${id}.json`, entry)",
-  "const entries = await Effect.runPromise(collectFirstPartyEntries())",
-  "const features = { features: entries.filter((entry) => entry.id === \"documents\" || entry.id === \"personal-assistant\").map((entry) => [entry.id, entry.kind, entry.subtype, entry.npmName, entry.shortIds, \"launch\" in entry, \"curatedApp\" in entry]), shortIds: await Effect.runPromise(collectShortIdPluginMap(entries)) }",
-  "for (const { id } of authoredFeatures) await rm(`${catalog}/curated/plugins/${id}.json`, { recursive: true, force: true })",
-  "await writeJsonAtomicPromise(`${catalog}/curated/plugins/bravo.json`, { id: \"bravo\", name: \"Bravo again\", kind: \"plugin\", subtype: \"other\", render: { group: \"ai\" } })",
-  "const duplicate = await generated()",
-  "await rm(`${catalog}/curated/plugins/bravo.json`, { recursive: true, force: true })",
-  "await writeJsonAtomicPromise(`${catalog}/curated/plugins/broken.json`, { id: \"Broken Id\", name: \"Broken\", kind: \"plugin\", subtype: \"other\", render: {} })",
-  "const broken = await generated()",
-  "await rm(`${catalog}/curated/plugins/broken.json`, { recursive: true, force: true })",
-  "await writeJsonAtomicPromise(`${catalog}/curated/plugins/retired-app.json`, { id: \"retired-app\", name: \"Retired app\", kind: \"app\", subtype: \"tool\", launch: { type: \"internal-tab\" }, render: { group: \"apps\" } })",
-  "const retiredApp = await generated()",
-  "await rm(`${catalog}/curated/plugins/retired-app.json`, { recursive: true, force: true })",
-  "await writeJsonAtomicPromise(`${root}/plugins/gamma/registry-entry.json`, { id: \"gamma\", name: \"Gamma\", npmName: \"@fx/plugin-gamma\", kind: \"plugin\", subtype: \"feature\", render: { group: \"ai\" }, channels: [\"discord\"] })",
-  "const conflict = await generated()",
-  "console.log(JSON.stringify({ base, features, duplicate, broken, retiredApp, conflict }))",
 ].join("\n")
 
 // spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/runtime.md, "Initialization releases waiters on success and failure"; spec/core/runtime.md, "Only open ingress admits new turns"; spec/core/runtime.md, "Story: Retire every owned operation"; spec/core/runtime.md, "Stop closes admissions and prepares services once"; spec/core/runtime.md, "Strict retirement succeeds only when original work is drained"; spec/core/runtimeShutdown.md, "Story: Join one active shutdown attempt"; spec/core/runtimeShutdown.md, "Stop ownership is published before service preparation"; spec/core/runtimeShutdown.md, "Story: Establish strict quiescence after bounded shutdown"; spec/core/runtimeShutdown.md, "All strict callers share the original strict result"; spec/core/adapterOwnership.md, "Registration captures object references and rollback preserves close ordering"; spec/core/adapterOwnership.md, "Story: Preserve adapter identity through plugin failure and migrations"; spec/core/settings.md, "Story: Resolve the same setting in every host"; spec/core/settings.md, "Resolution preserves precedence and valid false zero and empty values"; spec/core/settings.md, "Setting and clearing align live secret and constructor slots"; spec/core/connectionLocks.md, "Story: Reconcile overlapping records without lost in-process updates"; spec/core/entities.md, "Story: Observe committed mutations through fresh runtime reads"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/diagnostics.md, "A structured failure retains its identity and an unclassified one gets a code"; spec/core/index.md, "Story: Compose a kernel through explicit services"; spec/core/settings.md, "Story: Isolate settings between agents and keys"; spec/core/memoConcurrency.md, "Story: Read after a completed mutation without receiving an older snapshot"; spec/core/serviceStopObservation.md, "Story: Continue best-effort shutdown with its failures retained"; spec/core/retirementTracker.md, "Story: Drain every owned retirement operation and report retained failures"
@@ -1890,34 +1871,6 @@ it.live("Load, reload and unload plugins, services and hooks (spec/core/plugins.
   try host(() => runtime.applyPipelineHooks("post_model", next))
   const dispatched = [running.result.current, next.result.current, reported("AgentRuntime.pipelineHook")]
 
-  const binaries = try scratch("j04-bin")
-  const written = try host(() => runNode({ script: "import { chmodSync, writeFileSync } from \"node:fs\"; const dir = process.argv.at(-1); for (const [name, mode] of [[\"j04-present\", 0o755], [\"j04-noexec\", 0o644]]) { writeFileSync(`${dir}/${name}`, \"#!/bin/sh\\nexit 0\\n\"); chmodSync(`${dir}/${name}`, mode) }", args: [binaries] }))
-  try host(() => runtime.registerPlugin({ name: "j04-hooks", description: "j04", services: [HookService as ServiceClass] }))
-  const hooks = (try host(() => runtime.getServiceLoadPromise(HookService.serviceType))) as HookService
-  const seen: Array<[string, object]> = []
-  const eligibility = try Effect.scoped(effect {
-    try withEnv({ PATH: binaries })
-    const ids = [
-      ["present", { bins: ["j04-present"] }],
-      ["absent", { bins: ["j04-absent", "j04-noexec"] }],
-      ["noexec", { bins: ["j04-noexec"] }],
-      ["plain", undefined],
-    ].map(([name, requires]) => hooks.register(EventType.HOOK_TOOL_BEFORE, (payload) => {
-      seen.push([name as string, payload])
-    }, { name: name as string, requires: requires as { bins: string[] } | undefined }))
-    try host(() => runtime.emitEvent(EventType.HOOK_TOOL_BEFORE, { toolName: "j04-tool" }))
-    const checked = ids.map((id) => {
-      const result = hooks.checkEligibility(id)
-      return [result.eligible, result.reasons ?? []]
-    })
-    const revoked = try host(() => runNode({ script: "import { chmodSync } from \"node:fs\"; chmodSync(`${process.argv.at(-1)}/j04-present`, 0o644)", args: [binaries] }))
-    const cached = hooks.checkEligibility(ids[0]).eligible
-    try withEnv({ PATH: `${binaries}:` })
-    const reprobed = hooks.checkEligibility(ids[0])
-    return [checked, [revoked.status, revoked.stderr], cached, [reprobed.eligible, reprobed.reasons ?? []]]
-  })
-  const hookRun = [[written.status, written.stderr], seen.map(([name]) => name), seen.length === 2 && seen[0][1] === seen[1][1], eligibility]
-
   const pluginAdapter = try Effect.try(() => new SqliteAdapter(store, "plugin"))
   const migrationFailure = new Error("j04 migration plugin failed")
   const adapterFailure = try Effect.flip(host(() => runtime.registerPlugin({ name: "j04-adapter", description: "j04", schema: { j04_notes: { id: "text" } }, init: async () => {
@@ -2096,11 +2049,11 @@ it.live("Load, reload and unload plugins, services and hooks (spec/core/plugins.
   try Fiber.join(stopping)
   const retired = [
     [late, lazy, eager, slow].map((service) => [service.record.instances.length, service.record.stops]),
-    ["j04-late", "j04-lazy", "j04-eager", "j04-built", HookService.serviceType].map((serviceType) => runtime.getService(serviceType)),
+    ["j04-late", "j04-lazy", "j04-eager", "j04-built"].map((serviceType) => runtime.getService(serviceType)),
     reported("AgentRuntime.serviceStart").filter(([, type]) => type === "j04-late"),
   ]
 
-  try Effect.try(() => assert.deepStrictEqual([joined, rolledBack, reloaded, acquired, delivered, dispatched, hookRun, adapterKept, builderRun, eagerRun, retired], [
+  try Effect.try(() => assert.deepStrictEqual([joined, rolledBack, reloaded, acquired, delivered, dispatched, adapterKept, builderRun, eagerRun, retired], [
     [[true, true], ["init", "caller 0", "caller 1", "init"], 2, 1],
     [true, ["incumbent"], 1, 1, null, false],
     ["j04-epoch", ["TWO"], ["j04-epoch"]],
@@ -2114,21 +2067,10 @@ it.live("Load, reload and unload plugins, services and hooks (spec/core/plugins.
     ],
     [["TWO", "after reload"], ["A", "admitted"], ["B", "next"]],
     [["first", "old"], ["first", "new"], [["j04 pre_model hook failed", "j04-failing"]]],
-    [[0, ""], ["present", "plain"], true, [
-      [
-        [true, []],
-        [false, ["Required binary 'j04-absent' not found", "Required binary 'j04-noexec' not found"]],
-        [false, ["Required binary 'j04-noexec' not found"]],
-        [true, []],
-      ],
-      [0, ""],
-      true,
-      [false, ["Required binary 'j04-present' not found"]],
-    ]],
     [true, true, [["runPluginMigrations", ["j04-adapter"]]], []],
     [[["first", "first closure"], ["second", "second closure"]], false, "j04-built", ["Start function not defined for service j04-unstarted"], undefined],
     [3, [true, true], true],
-    [[[1, 1], [1, 1], [1, 1], [1, 1]], [null, null, null, null, null], [["Runtime stop requested while service j04-late was starting", "j04-late"]]],
+    [[[1, 1], [1, 1], [1, 1], [1, 1]], [null, null, null, null], [["Runtime stop requested while service j04-late was starting", "j04-late"]]],
   ]))
 }, 120_000)
 
@@ -4220,523 +4162,9 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   }))
 }), 180_000)
 
-// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"; spec/core/media.md, "Transport host spelling preserves DNS and IP certificate semantics"; spec/core/media.md, "Story: Infer media type with the established precedence"; spec/core/media.md, "Specific sniffed types win and generic containers defer to a known extension"
-it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: Fetch an attachment through its correct trust boundary\"; spec/core/media.md, \"Story: Infer media type with the established precedence\")", () => Effect.scoped(effect {
-  const bytes = (hex: string) => Uint8Array.from(hex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16))
-  const png = bytes("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
-  const zip = Uint8Array.from([...bytes("504b0304140000000800"), ...new Array<number>(40).fill(1)])
-  const dispositions = [
-    "attachment; filename*=UTF-8''na%C3%AFve%20file.txt",
-    "attachment; filename*=iso-8859-1'en'caf%E9.txt",
-    "attachment; filename=\"a;b \\\"c\\\".txt\"; size=5",
-    "attachment; filename=\"../../etc/passwd.png\"",
-  ]
-  const handler: Handler = (request, response) => {
-    const path = new URL(request.url ?? "", "http://loopback").pathname
-    if (path === "/photo") {
-      response.writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-      response.end(png)
-    } else if (path === "/report.docx") {
-      response.writeHead(200, { "content-type": "application/octet-stream" })
-      response.end(zip)
-    } else if (path.startsWith("/to/")) {
-      response.writeHead(302, { location: `http://${path.slice(4)}:${request.socket.localPort}/photo` })
-      response.end()
-    } else if (path === "/big") {
-      response.writeHead(200)
-      response.write(new Uint8Array(3000))
-      response.write(new Uint8Array(3000))
-    } else if (path === "/oversized") {
-      response.writeHead(200, { "content-length": String(60 * 1024 * 1024) })
-      response.write(new Uint8Array(1000))
-    } else if (path === "/sized") {
-      response.writeHead(200, { "content-length": "6000" })
-      response.end(new Uint8Array(6000))
-    } else if (path === "/csv") {
-      response.writeHead(200, { "content-type": "Text/CSV; charset=utf-8" })
-      response.end("a,b\n")
-    } else if (path === "/encoded") {
-      response.writeHead(200, { "content-type": "image/png", "content-encoding": "gzip" })
-      response.end(png)
-    } else if (path === "/stall" || path === "/hold") {
-      response.writeHead(200)
-      response.write("abc")
-    } else if (path.startsWith("/status/")) {
-      response.writeHead(Number(path.slice(8)))
-      response.end("s")
-    } else if (path === "/long-error") {
-      response.writeHead(500)
-      response.end("x".repeat(5000))
-    } else if (path === "/endless-error") {
-      response.writeHead(502)
-      const pump = () => {
-        let open = true
-        while (open) open = !response.destroyed && response.write("y".repeat(1000))
-      }
-      response.on("drain", pump)
-      pump()
-    } else if (path.startsWith("/name/")) {
-      response.writeHead(200, { "content-disposition": dispositions[Number(path.slice(6))] })
-      response.end("hello")
-    } else {
-      response.writeHead(404)
-      response.end()
-    }
-  }
-  const server = try acquireRelease(host(() => loopback(handler)), (opened) => orDie(host(() => opened.close())))
-  const describe = (error: unknown) => {
-    if (error instanceof MediaFetchError) {
-      const cause = error.cause instanceof Error ? error.cause.name : undefined
-      return { MediaFetchError: error.code, message: error.message, cause }
-    }
-    if (error instanceof SsrfBlockedError) return { SsrfBlockedError: error.message }
-    if (error instanceof Error) return { [error.name]: (error as { code?: unknown }).code, message: error.message }
-    return { thrown: String(error) }
-  }
-  const outcome = <A>(f: () => Promise<A>) => Effect.match(host(f), {
-    onFailure: (error) => ({ rejected: describe(error) }),
-    onSuccess: (value) => ({ resolved: value }),
-  })
-  const imageLookup = () => pinnedLookup({ "image.test": "127.0.0.1" })
-  const allowImage = { allowedHostnames: ["image.test"] }
-  const at = (path: string) => `http://image.test:${server.port}${path}`
-  type Extra = Pick<FetchMediaOptions, "maxBytes" | "timeoutMs" | "signal" | "requiredContentTypePrefix" | "rejectContentEncoding">
-  const fetchMedia = (path: string, extra: Extra = {}) => async () => {
-    const fetched = await fetchRemoteMedia({ url: at(path), lookupFn: imageLookup(), ssrfPolicy: allowImage, ...extra })
-    return { bytes: [...fetched.buffer], contentType: fetched.contentType, fileName: fetched.fileName }
-  }
-  const media = (path: string, extra: Extra = {}) => outcome(fetchMedia(path, extra))
-  const timed = <A>(f: () => Promise<A>) => effect {
-    const started = Date.now()
-    const value = try outcome(f)
-    return { value, withinDeadline: Date.now() - started < 5_000 }
-  }
-  const failure = (url: string, detail: string, code = "fetch_failed", cause?: string) => ({
-    rejected: { MediaFetchError: code, message: `Failed to fetch media from ${url}: ${detail}`, cause },
-  })
-
-  // spec/core/media.md, "Specific sniffed types win and generic containers defer to a known extension"
-  const inferred = [try media("/photo"), try media("/report.docx"), try media("/csv"), try media("/report.docx?name=x.png")]
-
-  // spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
-  const flipUrl = at("/to/cdn.test")
-  const privateUrl = at("/to/internal.test")
-  const pinnedOnce = try orDie(Effect.try(() => pinnedLookup({ "image.test": "127.0.0.1" }, { flipAfter: 1 })))
-  const pinnedHops = try orDie(Effect.try(() => pinnedLookup({ "image.test": "127.0.0.1", "cdn.test": "127.0.0.1" }, { flipAfter: 2 })))
-  const screened = [
-    try Effect.map(outcome(() => fetchRemoteMedia({ url: at("/photo"), lookupFn: pinnedOnce, ssrfPolicy: allowImage })), (r) => ["resolved" in r ? r.resolved.contentType : r, [...pinnedOnce.queries]]),
-    try Effect.map(outcome(() => fetchRemoteMedia({ url: flipUrl, lookupFn: pinnedHops, ssrfPolicy: { allowedHostnames: ["image.test", "cdn.test"] } })), (r) => ["resolved" in r ? r.resolved.contentType : r, [...pinnedHops.queries]]),
-    try outcome(() => fetchRemoteMedia({ url: privateUrl, lookupFn: pinnedLookup({ "image.test": "127.0.0.1", "internal.test": "127.0.0.1" }), ssrfPolicy: allowImage })),
-    try outcome(() => fetchWithSsrfGuard({ url: `http://127.0.0.1:${server.port}/photo` })),
-    server.requests.map((request) => request.path),
-  ]
-
-  const hold = try orDie(Effect.try(() => new AbortController()))
-  const bounded = [
-    try media("/photo", { requiredContentTypePrefix: "audio/" }),
-    try media("/encoded", { rejectContentEncoding: true }),
-    try media("/big", { maxBytes: 4000 }),
-    try media("/sized", { maxBytes: 4000 }),
-    try media("/oversized"),
-    try timed(fetchMedia("/stall", { timeoutMs: 300 })),
-    try Effect.andThen(
-      Effect.forkScoped(Effect.delay(Effect.sync(() => hold.abort()), "200 millis")),
-      timed(fetchMedia("/hold", { signal: hold.signal })),
-    ),
-    try timed(() => fetchRemoteMedia({ url: at("/photo"), lookupFn: pinnedLookup({}, { never: true }), ssrfPolicy: allowImage, timeoutMs: 300 })),
-  ]
-  const statuses = try forEach([599, 600, 999], (status) => outcome(async () => {
-    const guarded = await fetchWithSsrfGuard({ url: at(`/status/${status}`), lookupFn: imageLookup(), policy: allowImage })
-    await guarded.response.body?.cancel()
-    await guarded.release()
-    return guarded.response.status
-  }))
-
-  const errorBodies = [try media("/long-error"), try timed(fetchMedia("/endless-error"))]
-
-  const names = try forEach(dispositions, (_disposition, position) => Effect.map(media(`/name/${position}`), (named) => "resolved" in named ? named.resolved.fileName : named))
-
-  const hash = "a".repeat(64)
-  const canonical = try host(async () => trustedLocalMediaUrl(`/api/media/${hash}.png`))
-  const handles = [
-    canonical === null ? null : { hostname: canonical.hostname, pathname: canonical.pathname },
-    try outcome(async () => trustedLocalMediaUrl("/api/media/nothex.png")),
-    try outcome(async () => trustedLocalMediaUrl(`${canonical?.origin}/api/media/${hash}.png?x=1`)),
-    try outcome(async () => trustedLocalMediaUrl("/elsewhere.png")),
-    try outcome(async () => trustedLocalMediaUrl("https://example.com/a.png")),
-  ]
-
-  const index = (path: string) => server.requests.findIndex((request) => request.path === path)
-  const closed = try forEach(["/big", "/stall", "/hold", "/endless-error"], (path) => Effect.race(
-    Effect.as(host(() => server.socketClosed(index(path))), true),
-    Effect.as(Effect.sleep("2 seconds"), false),
-  ))
-
-  try Effect.try(() => assert.deepStrictEqual({ inferred, screened, bounded, statuses, errorBodies, names, handles, closed }, {
-    inferred: [
-      { resolved: { bytes: [...png], contentType: "image/png", fileName: "photo.png" } },
-      { resolved: { bytes: [...zip], contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileName: "report.docx" } },
-      { resolved: { bytes: [...new TextEncoder().encode("a,b\n")], contentType: "text/csv", fileName: "csv.csv" } },
-      { resolved: { bytes: [...zip], contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileName: "report.docx" } },
-    ],
-    screened: [
-      ["image/png", ["image.test"]],
-      ["image/png", ["image.test", "cdn.test"]],
-      failure(privateUrl, "SsrfBlockedError: Blocked: resolves to private/internal IP address", "fetch_failed", "SsrfBlockedError"),
-      { rejected: { SsrfBlockedError: "Blocked: private/internal IP address" } },
-      ["/photo", "/report.docx", "/csv", "/report.docx?name=x.png", "/photo", "/to/cdn.test", "/photo", "/to/internal.test"],
-    ],
-    bounded: [
-      failure(at("/photo"), "expected Content-Type starting with audio/", "invalid_response"),
-      failure(at("/encoded"), "encoded response bodies are not accepted", "invalid_response"),
-      { rejected: { MediaFetchError: "max_bytes", message: "Failed to fetch media from response: payload exceeds maxBytes 4000", cause: undefined } },
-      failure(at("/sized"), "content length 6000 exceeds maxBytes 4000", "max_bytes"),
-      failure(at("/oversized"), "content length 62914560 exceeds maxBytes 52428800", "max_bytes"),
-      { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
-      { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
-      { value: failure(at("/photo"), "TimeoutError: The operation was aborted due to timeout", "fetch_failed", "TimeoutError"), withinDeadline: true },
-    ],
-    statuses: [
-      { resolved: 599 },
-      { rejected: { Error: undefined, message: "invalid upstream HTTP status 600" } },
-      { rejected: { Error: undefined, message: "invalid upstream HTTP status 999" } },
-    ],
-    errorBodies: [
-      failure(at("/long-error"), `HTTP 500 Internal Server Error; body: ${"x".repeat(199)}…`, "http_error"),
-      { value: failure(at("/endless-error"), `HTTP 502 Bad Gateway; body: ${"y".repeat(199)}…`, "http_error"), withinDeadline: true },
-    ],
-    names: ["naïve file.txt", "café.txt", "a;b \"c\".txt", "passwd.png"],
-    handles: [
-      { hostname: "localhost", pathname: `/api/media/${hash}.png` },
-      { rejected: { MediaFetchError: "fetch_failed", message: "local media URL is not a canonical media-store handle", cause: undefined } },
-      { rejected: { MediaFetchError: "fetch_failed", message: "own-origin media URL is not a canonical media-store handle", cause: undefined } },
-      { resolved: null },
-      { resolved: null },
-    ],
-    closed: [true, true, true, true],
-  }))
-
-  // spec/core/media.md, "Transport host spelling preserves DNS and IP certificate semantics"
-  const secure = try acquireRelease(host(() => loopbackTls((_request, response) => {
-    response.writeHead(200, { "content-type": "image/png" })
-    response.end(png)
-  })), (opened) => orDie(host(() => opened.close())))
-  const transported = try forEach(["localhost", "127.0.0.1", "[::1]"], (name) => Effect.map(
-    outcome(() => fetchRemoteMedia({ url: `https://${name}:${secure.port}/tls.png`, ssrfPolicy: { allowPrivateNetwork: true } })),
-    (fetched) => "resolved" in fetched ? fetched.resolved.contentType : fetched,
-  ))
-  const misnamed = try outcome(() => fetchRemoteMedia({ url: `https://media.test:${secure.port}/tls.png`, lookupFn: pinnedLookup({ "media.test": "127.0.0.1" }), ssrfPolicy: { allowedHostnames: ["media.test"] } }))
-  const seen = secure.requests.map((request) => ({ host: request.host, serverName: request.serverName }))
-  try Effect.try(() => assert.deepStrictEqual({ transported, misnamed, seen }, {
-    transported: ["image/png", "image/png", "image/png"],
-    misnamed: failure(`https://media.test:${secure.port}/tls.png`, "Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames: Host: media.test. is not in the cert's altnames: DNS:localhost, IP Address:127.0.0.1, IP Address:0:0:0:0:0:0:0:1", "fetch_failed", "Error"),
-    seen: [
-      { host: `localhost:${secure.port}`, serverName: "localhost" },
-      { host: `127.0.0.1:${secure.port}`, serverName: null },
-      { host: `[::1]:${secure.port}`, serverName: null },
-    ],
-  }))
-}), 60_000)
-
-// spec/core/atomicPublication.md, "Story: Publish complete durable JSON with an honest receipt"; spec/core/atomicPublication.md, "The final path changes only after a complete temporary file is renamed"; spec/core/atomicWriters.md, "Story: Publish whole snapshots despite interleaved processes"; spec/core/atomicWriters.md, "The latest successful rename owns the whole final snapshot"; spec/core/temporaryNames.md, "Story: Give concurrent publications distinct temporary paths"; spec/core/logging/files.md, "Story: Open optional log files lazily and close their descriptors"; spec/core/logging/files.md, "A single initialization attempt opens output, prompt and chat sinks in order"; spec/core/logging/index.md, "Story: Retain recent diagnostics and notify current listeners"; spec/core/security.md, "Story: Admit content and outbound data"; spec/core/security.md, "A secret never appears in a log line"
-it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.md, \"Story: Publish complete durable JSON with an honest receipt\"; spec/core/atomicWriters.md, \"Story: Publish whole snapshots despite interleaved processes\"; spec/core/temporaryNames.md, \"Story: Give concurrent publications distinct temporary paths\"; spec/core/logging/files.md, \"Story: Open optional log files lazily and close their descriptors\"; spec/core/logging/index.md, \"Story: Retain recent diagnostics and notify current listeners\"; spec/core/security.md, \"Story: Admit content and outbound data\")", () => effect {
+// spec/core/logging/index.md, "Story: Retain recent diagnostics and notify current listeners"; spec/core/security.md, "Story: Admit content and outbound data"; spec/core/security.md, "A secret never appears in a log line"
+it.live("Retain recent diagnostics and redact secrets in log listeners (spec/core/logging/index.md, \"Story: Retain recent diagnostics and notify current listeners\"; spec/core/security.md, \"Story: Admit content and outbound data\")", () => effect {
   const time = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g
-  const core = `${coreDir}/src/index.vibe`
-  const loggerEntry = `${coreDir}/src/logger.vibe`
-  const writerScript = `${coreDir}/test/support/atomic-json-writer.ts`
-  const listing = `
-    import fs from "node:fs"
-    const [dir] = process.argv.slice(1)
-    const entries = {}
-    for (const name of fs.readdirSync(dir).sort()) {
-      const stat = fs.statSync(dir + "/" + name)
-      const key = name.replace(/\\.tmp-\\d+-\\d+-\\d+$/, ".tmp-*")
-      entries[key] = stat.isDirectory() ? "directory" : { mode: (stat.mode & 0o777).toString(8), text: fs.readFileSync(dir + "/" + name, "utf8") }
-    }
-    console.log(JSON.stringify(entries))
-  `
-  const inspect = (dir: string) => effect {
-    const out = try host(() => runNode({ script: listing, args: [dir] }))
-    return try Effect.try(() => JSON.parse(out.stdout) as Record<string, "directory" | { mode: string; text: string }>)
-  }
-  const names = (dir: string) => effect {
-    const out = try host(() => runNode({ script: `import fs from "node:fs"; console.log(JSON.stringify(fs.readdirSync(process.argv[1]).map((name) => name.replace(/\\.tmp-\\d+-\\d+-\\d+$/, ".tmp-*")).sort()))`, args: [dir] }))
-    return try Effect.try(() => JSON.parse(out.stdout) as string[])
-  }
-  const remove = (target: string) => host(() => removeScratch(target))
-  const loggingChild = (entry: string, dir: string, env: Record<string, string | undefined>) => effect {
-    const script = `
-      import fs from "node:fs"
-      const [dir] = process.argv.slice(1)
-      const { logger, logPrompt, logChatIn, logChatOut, recentLogs } = await import(${JSON.stringify(entry)})
-      void process.stderr
-      const afterImport = fs.readdirSync(dir).sort()
-      const before = fs.readdirSync("/dev/fd").length
-      logger.info({ apiKey: "sk-j12-0123456789abcdefghij" }, "j12 output")
-      const opened = fs.readdirSync("/dev/fd").length - before
-      const afterFirst = fs.readdirSync(dir).sort()
-      const slug = logPrompt("TEXT_SMALL", "j12 prompt body", { agentName: "Nova" })
-      const chatIn = logChatIn({ agentName: "Nova", agentId: "agent-j12", roomId: "room-j12-0001", messageId: "message-j12", text: "hello there", source: "test" })
-      const chatOut = logChatOut({ agentName: "Nova", agentId: "agent-j12", roomId: "room-j12-0001", action: "REPLY", text: "hi back" })
-      const kept = recentLogs().includes("j12 output")
-      console.log(JSON.stringify({ afterImport, afterFirst, opened, slug, chatIn, chatOut, kept }))
-    `
-    const out = try host(() => runNode({ script, args: [dir], vibe: true, env: { LOG_JSON_FORMAT: undefined, LOG_TIMESTAMPS: undefined, NO_COLOR: "1", FORCE_COLOR: "0", ...env } }))
-    const lines = out.stdout.trim().split("\n")
-    return { status: out.status, report: try Effect.try(() => JSON.parse(lines[lines.length - 1] ?? "") as unknown) }
-  }
-
-  const dir = try scratch("eliza-core-j12")
-  const state = `${dir}/state.json`
-  const big = "x".repeat(8 * 1024 * 1024)
-  const overlapScript = `
-    import fs from "node:fs"
-    import fsp from "node:fs/promises"
-    const [state, dir] = process.argv.slice(1)
-    const { writeJsonAtomicPromise: writeJsonAtomic, writeJsonAtomicSyncOrThrow: writeJsonAtomicSync } =
-      await import(${JSON.stringify(`${coreDir}/src/utils/atomic-json.vibe`)})
-    const big = "x".repeat(8 * 1024 * 1024)
-    const beforeRename = Promise.withResolvers()
-    const releaseRename = Promise.withResolvers()
-    const rename = fsp.rename
-    fsp.rename = async (from, to) => {
-      if (to === state) {
-        beforeRename.resolve()
-        await releaseRename.promise
-      }
-      await rename(from, to)
-    }
-    const queued = Promise.all(Array.from({ length: 10 }, (_, index) => writeJsonAtomic(state, { index, big })))
-    await Promise.race([beforeRename.promise, queued])
-    const overlapped = []
-    const synced = Array.from({ length: 10 }, (_, index) => {
-      overlapped.push(fs.readdirSync(dir).some((name) => name.includes(".tmp-")))
-      return writeJsonAtomicSync(state, { sync: index })
-    })
-    fsp.rename = rename
-    releaseRename.resolve()
-    console.log(JSON.stringify({ receipts: [await queued, synced].map((list) => list.map((receipt) => receipt === undefined ? "undefined" : receipt)), overlapped }))
-  `
-  const overlapRun = try host(() => runNode({ script: overlapScript, args: [state, dir], vibe: true }))
-  const overlap = try Effect.try(() => JSON.parse(overlapRun.stdout.trim().split("\n").at(-1) ?? "") as { receipts: unknown[][]; overlapped: boolean[] })
-  const finalState = try host(() => readJsonFile<{ index: number; big: string }>(state))
-  try Effect.try(() => assert.deepStrictEqual(overlap.overlapped, Array.from({ length: 10 }, () => true)))
-  const concurrent = [overlapRun.status, overlap.receipts, finalState === null ? null : finalState.index, try inspect(dir)]
-
-  const shared = `${dir}/shared.json`
-  try host(() => writeJsonAtomic(shared, { writer: "initial", revision: -1, payload: "" }))
-  const seen: string[] = []
-  const observed = new Set<string>()
-  const observe = effect {
-    const read = host(() => readJsonFile<{ writer: string; revision: number; payload: string }>(shared)) catch (error) => ({ torn: String(error) })
-    if (read === null) seen.push("missing")
-    else if ("torn" in read) seen.push(read.torn)
-    else if (read.revision === -1) seen.push("initial")
-    else if (read.payload === read.writer.repeat(16_384)) {
-      seen.push(read.writer)
-      observed.add(`${read.writer}:${read.revision}`)
-    } else seen.push(`partial ${read.writer} ${read.revision}`)
-    return read
-  }
-  try observe
-  const writerNames = ["a", "b"]
-  const writers = try host(async () => [spawnNode({ file: writerScript, args: [shared, "a", "sync", "pause"], vibe: true }), spawnNode({ file: writerScript, args: [shared, "b", "async", "pause"], vibe: true })])
-  const finished = try Ref.make(false)
-  const waiting = try fork(ensuring(host(() => Promise.all(writers.map((writer) => writer.exited))), Ref.set(finished, true)))
-  const release = (writer: string) => host(() => writeJsonAtomic(`${shared}.go-${writer}`, {}))
-  const coordinating = try fork(effect {
-    try host(() => Promise.all(writers.map((writer) => writer.output("paused"))))
-    const paused = try observe
-    const later = paused !== null && "writer" in paused ? paused.writer : "a"
-    const earlier = writerNames.find((writer) => writer !== later) ?? "b"
-    try release(earlier)
-    try host(() => writers[writerNames.indexOf(earlier)].exited)
-    try observe
-    try release(later)
-  })
-  while (!(try Ref.get(finished))) {
-    try observe
-    try sleep("5 millis")
-  }
-  try Fiber.join(coordinating)
-  const exits = (try Fiber.join(waiting)).map((result) => [result.status, result.signal])
-  const last = try host(() => readJsonFile<{ writer: string; revision: number; payload: string }>(shared))
-  const interleaved = [exits, [...new Set(seen)].sort(), [...observed].some((key) => !key.endsWith(":29")), last === null ? null : [last.revision, last.payload === last.writer.repeat(16_384)]]
-
-  const blocked = `${dir}/blocked`
-  try host(() => writeJsonAtomic(`${blocked}/target.json/keep.json`, { kept: true }))
-  const refused = host(() => writeJsonAtomic(`${blocked}/target.json`, { replaced: true })) catch (error) => (error as { code?: string }).code
-  const afterRefusal = [try host(() => readJsonFile(`${blocked}/target.json/keep.json`)), try inspect(blocked)]
-  try remove(`${blocked}/target.json`)
-  try host(() => writeJsonAtomic(`${blocked}/target.json`, { replaced: true }))
-  const afterRetry = [try host(() => readJsonFile(`${blocked}/target.json`)), try inspect(blocked)]
-
-  const crash = `${dir}/crash`
-  const crashed = `${crash}/crash.json`
-  try host(() => writeJsonAtomic(crashed, { writer: "initial", revision: -1, payload: "" }))
-  const kill = (boundary: string) => effect {
-    const child = try host(async () => spawnNode({ file: writerScript, args: [crashed, boundary, "async", boundary], vibe: true }))
-    try host(() => child.output(boundary))
-    try host(async () => child.kill("SIGKILL"))
-    const result = try host(() => child.exited)
-    const snapshot = try host(() => readJsonFile<{ writer: string; revision: number; payload: string }>(crashed))
-    return [result.signal, snapshot === null ? null : [snapshot.writer, snapshot.revision, snapshot.payload.length], try names(crash)]
-  }
-  const kills = [try kill("before-rename"), try kill("after-rename")]
-  try host(() => writeJsonAtomic(crashed, { writer: "later", revision: 0, payload: "" }))
-  const afterKills = try host(() => readJsonFile(crashed))
-
-  try Effect.try(() => assert.deepStrictEqual({ concurrent, interleaved, refused, afterRefusal, afterRetry, kills, afterKills }, {
-    concurrent: [
-      0,
-      [Array.from({ length: 10 }, () => "undefined"), Array.from({ length: 10 }, () => "undefined")],
-      9,
-      { "state.json": { mode: "600", text: JSON.stringify({ index: 9, big }, null, 2) } },
-    ],
-    interleaved: [[[0, null], [0, null]], ["a", "b", "initial"], true, [29, true]],
-    refused: "EISDIR",
-    afterRefusal: [{ kept: true }, { "target.json": "directory" }],
-    afterRetry: [{ replaced: true }, { "target.json": { mode: "600", text: JSON.stringify({ replaced: true }, null, 2) } }],
-    kills: [
-      ["SIGKILL", ["initial", -1, 0], ["crash.json", "crash.json.tmp-*"]],
-      ["SIGKILL", ["after-rename", 0, "after-rename".length * 16_384], ["crash.json", "crash.json.tmp-*"]],
-    ],
-    afterKills: { writer: "later", revision: 0, payload: "" },
-  }))
-
-  const logs = try scratch("eliza-core-j12-logs")
-  try host(() => runNode({ script: `import fs from "node:fs"; fs.writeFileSync(process.argv[1], "seed\\n", { mode: 0o644 }); fs.chmodSync(process.argv[1], 0o644)`, args: [`${logs}/output.log`] }))
-  const promptBlocked = try scratch("eliza-core-j12-prompt")
-  try host(() => writeJsonAtomic(`${promptBlocked}/prompts.log/keep.json`, {}))
-  const chatBlocked = try scratch("eliza-core-j12-chat")
-  try host(() => writeJsonAtomic(`${chatBlocked}/chat.log/keep.json`, {}))
-  const unwritable = try scratch("eliza-core-j12-unwritable")
-  try host(() => writeJsonAtomic(`${unwritable}/plain`, {}))
-  const silentDir = try scratch("eliza-core-j12-silent")
-  const children = try forEach([
-    [core, logs, { LOG_FILE: `${logs}/output.log`, LOG_LEVEL: "info" }],
-    [loggerEntry, promptBlocked, { LOG_FILE: `${promptBlocked}/output.log`, LOG_LEVEL: "info" }],
-    [loggerEntry, chatBlocked, { LOG_FILE: `${chatBlocked}/output.log`, LOG_LEVEL: "info" }],
-    [loggerEntry, unwritable, { LOG_FILE: `${unwritable}/plain/logs/output.log`, LOG_LEVEL: "info" }],
-    [loggerEntry, silentDir, { LOG_FILE: `${silentDir}/output.log`, LOG_LEVEL: "silent" }],
-  ] as const, ([entry, childDir, env]) => loggingChild(entry, childDir, env), { concurrency: "unbounded" })
-  const [opened, promptChild, chatChild, failed, silent] = children
-  const files = Object.fromEntries(Object.entries(try inspect(logs)).map(([name, entry]) => [name, entry === "directory" ? entry : { mode: entry.mode, text: entry.text.replace(time, "<time>") }]))
-  const order = [
-    promptChild.status,
-    (promptChild.report as { opened?: number }).opened,
-    Object.keys(try inspect(promptBlocked)),
-    chatChild.status,
-    (chatChild.report as { opened?: number }).opened,
-    Object.keys(try inspect(chatBlocked)),
-  ]
-  const quiet = [failed, Object.keys(try inspect(unwritable)), silent, Object.keys(try inspect(silentDir))]
-
-  const chatIn = "[CHAT:IN]  #agent:Nova room=room-j12 msg=message- source=test \"hello there\""
-  const chatOut = "[CHAT:OUT] #agent:Nova room=room-j12 action=REPLY len=7 \"hi back\""
-  const promptHeader = `${"=".repeat(80)}\n #0001/Nova/TEXT_SMALL  PROMPT: TEXT_SMALL (15 chars)\n <time>\n ${JSON.stringify({ agentName: "Nova", promptSlug: "#0001/Nova/TEXT_SMALL" }, null, 2)}\n${"=".repeat(80)}\n`
-  try Effect.try(() => assert.deepStrictEqual({ opened, files, order, quiet }, {
-    opened: { status: 0, report: { afterImport: ["output.log"], afterFirst: ["chat.log", "output.log", "prompts.log"], opened: 3, slug: "#0001/Nova/TEXT_SMALL", chatIn, chatOut, kept: true } },
-    files: {
-      "chat.log": { mode: "600", text: `<time> ${chatIn}\n<time> ${chatOut}\n` },
-      "output.log": { mode: "600", text: "seed\n<time> [INFO    ] j12 output (apiKey=[REDACTED])\n" },
-      "prompts.log": { mode: "600", text: `${promptHeader}j12 prompt body\n${"=".repeat(80)}\n\n` },
-    },
-    order: [0, 0, ["output.log", "prompts.log"], 0, 0, ["chat.log", "output.log", "prompts.log"]],
-    quiet: [
-      { status: 0, report: { afterImport: ["plain"], afterFirst: ["plain"], opened: 0, slug: "", chatIn, chatOut, kept: true } },
-      ["plain"],
-      { status: 0, report: { afterImport: [], afterFirst: [], opened: 0, slug: "", chatIn, chatOut, kept: false } },
-      [],
-    ],
-  }))
-
-  const closeFaultDir = try scratch("eliza-core-j12-close-reuse")
-  const closeFault = try host(() => runNode({
-    script: `
-    import fs from "node:fs"
-    import { syncBuiltinESMExports } from "node:module"
-    const [dir, entry] = process.argv.slice(1)
-    fs.mkdirSync(dir + "/chat.log")
-    const open = fs.openSync, close = fs.closeSync, write = fs.writeSync, stat = fs.fstatSync
-    const acquired = new Map(), owned = new Set(), attempts = []
-    let injected = false, victim = -1, victimOwned = false, reused = false
-    fs.openSync = (file, ...args) => {
-      const fd = open(file, ...args)
-      if (file === dir + "/output.log" || file === dir + "/prompts.log") {
-        acquired.set(file.slice(dir.length + 1), fd)
-        owned.add(fd)
-      }
-      return fd
-    }
-    fs.closeSync = (fd) => {
-      const label = owned.has(fd) ? [...acquired].find(([, handle]) => handle === fd)?.[0] : victimOwned && fd === victim ? "reused.log" : undefined
-      if (label !== undefined) attempts.push(label)
-      owned.delete(fd)
-      if (!injected && fd === acquired.get("prompts.log")) {
-        injected = true
-        close(fd)
-        victim = open(dir + "/reused.log", "a", 0o600)
-        victimOwned = true
-        reused = victim === fd
-        throw new Error("controlled close acknowledgement failure after native release")
-      }
-      if (victimOwned && fd === victim) victimOwned = false
-      return close(fd)
-    }
-    syncBuiltinESMExports()
-    const isOpen = (fd) => {
-      try { stat(fd); return true } catch { return false }
-    }
-    try {
-      const { logger, logPrompt, recentLogs } = await import(entry)
-      void process.stderr
-      const exits = process.listenerCount("exit")
-      logger.info("j12 close failure")
-      logger.info("j12 after close failure")
-      const slug = logPrompt("TEXT_SMALL", "j12 after uncertain close", { agentName: "Nova" })
-      let victimWritable = false
-      if (victim >= 0) {
-        try { write(victim, "kept\\n"); victimWritable = true } catch {}
-      }
-      const report = {
-        acquired: [...acquired.keys()], attempts: [...attempts], injected, reused,
-        originalHandlesRemaining: owned.size, outputRetired: !isOpen(acquired.get("output.log")),
-        victimWritable, slug, kept: recentLogs().includes("j12 after close failure"),
-        exitHandlersAdded: process.listenerCount("exit") - exits,
-        output: fs.readFileSync(dir + "/output.log", "utf8"),
-        prompt: fs.readFileSync(dir + "/prompts.log", "utf8"),
-        victim: fs.readFileSync(dir + "/reused.log", "utf8"),
-      }
-      console.log(JSON.stringify(report))
-    } finally {
-      fs.openSync = open
-      fs.closeSync = close
-      syncBuiltinESMExports()
-      for (const fd of owned) {
-        owned.delete(fd)
-        try { close(fd) } catch {}
-      }
-      if (victimOwned) {
-        victimOwned = false
-        try { close(victim) } catch {}
-      }
-    }
-    `,
-    args: [closeFaultDir, loggerEntry],
-    vibe: true,
-    env: { LOG_FILE: `${closeFaultDir}/output.log`, LOG_LEVEL: "info", LOG_JSON_FORMAT: undefined, LOG_TIMESTAMPS: undefined, NO_COLOR: "1", FORCE_COLOR: "0" },
-  }))
-  const closeFaultReport = try Effect.try(() => JSON.parse(closeFault.stdout.trim().split("\n").at(-1) ?? "") as unknown)
-  try Effect.try(() => assert.deepStrictEqual({ status: closeFault.status, report: closeFaultReport }, {
-    status: 0,
-    report: {
-      acquired: ["output.log", "prompts.log"], attempts: ["prompts.log", "output.log"], injected: true, reused: true,
-      originalHandlesRemaining: 0, outputRetired: true, victimWritable: true, slug: "", kept: true,
-      exitHandlersAdded: 0, output: "", prompt: "", victim: "kept\n",
-    },
-  }))
-
   const heard: Array<[number | undefined, string]> = []
   const listener = (entry: LogEntry) => {
     heard.push([entry.level, entry.msg])
@@ -4752,7 +4180,7 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     heard: [[30, "#j12  first"], [40, "#j12  second (apiKey=[REDACTED])"]],
     recent: ["<time> info #j12  first", "<time> warn #j12  second (apiKey=[REDACTED])", "<time> info #j12  third"],
   }))
-}, 300_000)
+}, 30_000)
 
 // spec/core/voice.md, "Story: Interrupt one voice turn across its consumers"; spec/core/voice.md, "Reason ownership precedes unlinking and signal abortion follows callbacks"; spec/core/voiceRegistry.md, "Story: Replace and cancel the active voice turn by room"; spec/core/outboundStyle.md, "Story: Reuse scoped rephrasing while retaining original text on failure"; spec/core/outboundStyle.md, "Cache hits move to most recent and capacity evicts only the oldest key"
 it.live("Speak a reply and interrupt it (spec/core/voice.md, \"Story: Interrupt one voice turn across its consumers\"; spec/core/voiceRegistry.md, \"Story: Replace and cancel the active voice turn by room\"; spec/core/outboundStyle.md, \"Story: Reuse scoped rephrasing while retaining original text on failure\")", () => scoped(effect {
@@ -4907,73 +4335,6 @@ it.live("Speak a reply and interrupt it (spec/core/voice.md, \"Story: Interrupt 
   }))
 }), 15_000)
 
-// spec/core/catalog.md, "Story: Discover and register first-party capabilities"
-it.live("Generate the first-party catalog from plugin-owned and curated manifests (spec/core/catalog.md, \"Story: Discover and register first-party capabilities\")", () => scoped(effect {
-  const work = try scratch("eliza-core-catalog")
-  const { root: dir, sourceDir } = try host(() => freezeCore(coreDir, work))
-  const catalog = `${sourceDir}/src/catalog`
-  const authoredFeatures = try host(async () => Promise.all(["documents", "personal-assistant"].map(async (id) => ({ id, entry: await readJsonFile(`${catalog}/curated/plugins/${id}.json`) }))))
-  try host(() => removeScratch(`${catalog}/curated`))
-  const write = (path: string, value: unknown) => host(() => writeJsonAtomic(`${dir}/${path}`, value))
-  const feature = (id: string, extra: object) => ({ id, name: id, kind: "plugin", subtype: "feature", render: { group: "feature" }, ...extra })
-  try write("plugins/beta/registry-entry.json", [
-    { id: "bravo", name: "Bravo", npmName: "@fx/plugin-bravo", kind: "plugin", subtype: "ai-provider", render: { group: "ai" }, channels: ["discord"], shortIds: ["bee", "b"], config: { BRAVO_MODEL: { type: "string", required: false }, BRAVO_API_KEY: { type: "secret", required: true, autoEnableProvider: true } } },
-    { id: "alpha-two", name: "Alpha Two", npmName: "@fx/plugin-alpha", kind: "connector", subtype: "messaging", render: { group: "connector" }, channels: ["Slack"] },
-  ])
-  try write("plugins/alphaone/registry-entry.json", { id: "alphaone", name: "Alpha One", npmName: "@fx/plugin-alpha", kind: "connector", subtype: "social", render: { group: "connector" }, channels: ["Slack"], config: { ALPHA_TOKEN: { type: "secret", required: true, autoEnableProvider: false } } })
-  try write("plugins/empty/notes.json", { id: "ignored" })
-  try write("plugins/stray.json", { id: "ignored" })
-  try write("packages/delta/registry-entry.json", feature("delta", { npmName: "@fx/plugin-delta", launch: { type: "server-launch" }, curatedApp: { slug: "delta", order: 2, aliases: ["d"] } }))
-  try write("packages/core/src/catalog/curated/plugins/echo.json", feature("echo", {}))
-  try write("packages/core/src/catalog/curated/plugins/nested/foxtrot.json", feature("foxtrot", { npmName: "@fx/plugin-foxtrot" }))
-  try write("packages/core/src/catalog/curated/connectors/charlie.json", { id: "charlie", name: "Charlie", kind: "connector", subtype: "email", render: { group: "connector" }, channels: ["telegram"] })
-  try write("packages/core/src/catalog/curated/notes.txt", { id: "ignored" })
-
-  const catalogProject = `${sourceDir}/tsconfig.catalog-test.json`
-  try host(() => writeJsonAtomic(catalogProject, {
-    extends: "./tsconfig.build.json", include: [], files: ["src/catalog/generate.vibe", "src/utils/atomic-json.vibe"],
-  }))
-  const catalogRun = try host(() => runNode({
-    script: generateInChild, args: [JSON.stringify(authoredFeatures)], cwd: sourceDir,
-    env: { VIBELANG_PROJECT: catalogProject }, vibe: true, timeoutMs: 120_000,
-  }))
-  const report = try Effect.try({ try: () => JSON.parse(catalogRun.status === 0 ? catalogRun.stdout : "") as unknown, catch: () => catalogRun })
-  const snapshots = try Schema.decodeUnknownEffect(Schema.Struct({ base: Schema.Unknown, features: Schema.Unknown, duplicate: Schema.Unknown, broken: Schema.Unknown, retiredApp: Schema.Unknown, conflict: Schema.Unknown }))(report)
-  const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
-  const bundled = (head: object, config: object, group: string, tail: object) => ({ ...head, source: "bundled", tags: [], config, render: { visible: true, pinTo: [], style: "card", group, actions: [] }, resources: {}, dependsOn: [], ...tail })
-  const featureTail = { channels: [], shortIds: [], kind: "plugin", subtype: "feature" }
-  assert.deepStrictEqual(snapshots.base, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot"], registry: {
-    full: json({ entries: [
-      bundled({ id: "alpha-two", name: "Alpha Two", npmName: "@fx/plugin-alpha" }, {}, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "messaging" }),
-      bundled({ id: "alphaone", name: "Alpha One", npmName: "@fx/plugin-alpha" }, { ALPHA_TOKEN: { type: "secret", required: true, autoEnableProvider: false } }, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "social" }),
-      bundled({ id: "bravo", name: "Bravo", npmName: "@fx/plugin-bravo" }, { BRAVO_MODEL: { type: "string", required: false }, BRAVO_API_KEY: { type: "secret", required: true, autoEnableProvider: true } }, "ai", { channels: ["discord"], shortIds: ["bee", "b"], kind: "plugin", subtype: "ai-provider" }),
-      bundled({ id: "charlie", name: "Charlie" }, {}, "connector", { channels: ["telegram"], shortIds: [], kind: "connector", subtype: "email" }),
-      bundled({ id: "delta", name: "delta", npmName: "@fx/plugin-delta" }, {}, "feature", featureTail),
-      bundled({ id: "echo", name: "echo" }, {}, "feature", featureTail),
-      bundled({ id: "foxtrot", name: "foxtrot", npmName: "@fx/plugin-foxtrot" }, {}, "feature", featureTail),
-    ] }),
-    channels: json({ Slack: "@fx/plugin-alpha", discord: "@fx/plugin-bravo" }),
-    providers: json({ BRAVO_API_KEY: "@fx/plugin-bravo" }),
-    shortIds: json({ b: "@fx/plugin-bravo", bee: "@fx/plugin-bravo" }),
-  } })
-
-  assert.deepStrictEqual(snapshots.features, { features: [
-    ["documents", "plugin", "feature", "@elizaos/plugin-knowledge", [], false, false],
-    ["personal-assistant", "plugin", "feature", "@elizaos/plugin-personal-assistant", ["selfcontrol"], false, false],
-  ], shortIds: { b: "@fx/plugin-bravo", bee: "@fx/plugin-bravo", selfcontrol: "@elizaos/plugin-personal-assistant" } })
-
-  const failing = (failure: { _tag: string; message: string }) => ({ ids: failure, registry: failure })
-  assert.deepStrictEqual(snapshots.duplicate, failing({ _tag: "DuplicateRegistryId", message: `[registry/generate] duplicate id "bravo" in ${catalog}/curated/plugins/bravo.json and ${dir}/plugins/beta/registry-entry.json` }))
-  assert.deepStrictEqual(snapshots.broken, failing({ _tag: "InvalidRegistryEntryFile", message: `[registry/generate] ${catalog}/curated/plugins/broken.json failed validation: ${JSON.stringify([
-    { origin: "string", code: "invalid_format", format: "regex", pattern: "/^[a-z0-9][a-z0-9-]*$/", path: ["id"], message: "id must be kebab-case ascii" },
-    { expected: "string", code: "invalid_type", path: ["render", "group"], message: "Invalid input: expected string, received undefined" },
-  ], null, 2)}` }))
-  const refusedApp = snapshots.retiredApp
-  assert.nestedPropertyVal(refusedApp, "ids._tag", "InvalidRegistryEntryFile")
-  assert.nestedPropertyVal(refusedApp, "registry._tag", "InvalidRegistryEntryFile")
-  assert.deepStrictEqual(snapshots.conflict, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot", "gamma"], registry: { _tag: "RegistryClaimConflict", message: "[registry/generate] channel \"discord\" claimed by both @fx/plugin-bravo and @fx/plugin-gamma" } })
-}), 300_000)
-
 // spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind"
 it.effect('An expired proposal takes its preview\'s row and the legend says a never-ran reason answers only whether the request ran (spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind")', effect () => {
   const scope = "Past recorded outcomes only."
@@ -5024,11 +4385,33 @@ it.effect('An expired proposal takes its preview\'s row and the legend says a ne
 
 // spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/release.md, "Every release check names the candidate it actually examined"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/accountBridges.md, "Each bridge slot preserves the last installed object identity"; spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/catalog.md, "A valid runtime registration overrides its id and invalidates cached indexes"
 it.live('the packed tarball installs, imports, compiles and shares state across copies (spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"; spec/core/valueGuards.md, "Plain records require the intrinsic object prototype or a null prototype")', () => effect {
+  const movedToCoreNode = new Set([
+    "CachedImageDescription", "DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES", "DEFAULT_MEDIA_FETCH_TIMEOUT_MS",
+    "FetchMediaOptions", "FetchMediaResult", "GuardedFetchOptions", "GuardedFetchResult", "HookService",
+    "LocalRequestTrustPolicy", "MediaFetchError", "MediaFetchErrorCode", "PinnedLookupFetchLike",
+    "PinnedLookupFetchParams", "RawConnectorAttachment", "ResolveOutboundAttachmentOptions",
+    "ResolvedAttachmentBytes", "VISION_IMAGE_FETCH_TIMEOUT_MS", "VISION_IMAGE_MAX_BYTES",
+    "contentTypeForMime", "copy", "createHash", "createValidatedLookup", "describeImageCached",
+    "ensureDir", "ensureSymlink", "fetchRemoteMedia", "fetchWithSsrfGuard", "firstHeaderValue",
+    "getElizaNamespace", "getLocalServerUrl", "getOptimizationRootDir", "getProvidedApiToken",
+    "isLoopbackRemoteAddress", "isRemoteAddressInCidrList", "isTrustedLocalRequest", "loadRegistry",
+    "nodeLookupFn", "nodePinnedFetch", "normalizeImageDescription", "pathExists",
+    "proxyClientHeaderBlocksLocalTrust", "readErrorBodySnippet", "readFile", "readJson", "readJsonFile",
+    "readResponseWithLimit", "readdir", "registerRegistryEntry", "remove", "resolveAttachmentBytes",
+    "resolveOAuthDir", "resolveOutboundAttachmentBytes", "resolveStateDir", "resolveUserPath",
+    "rmdir", "stat", "summarizeOutboundAttachmentUrl", "toMedia", "tokenMatches",
+    "trustedLocalMediaUrl", "unlink", "validateMcpServerConfig", "writeJson", "writeJsonAtomic",
+    "writeJsonAtomicSync",
+  ])
+  const retiredCodeSubpaths = [
+    "./logging", "./view-interaction", "./protocol", "./permissions", "./security/redact",
+    "./speech", "./task-events", "./task-widgets", "./read-memo", "./schema-types",
+    "./runtime/prepared-model-request",
+  ]
   const BASELINE = `import fs from "node:fs"; import path from "node:path";
 const read = (name) => JSON.parse(fs.readFileSync(path.resolve(JSON.parse(process.argv[1]), "../../spec/core/baseline", name), "utf8"));
-const surface = read("core-public-surface.json"); const consumers = read("core-consumers.json"); const graph = read("import-graph.json");
+const surface = read("core-public-surface.json"); const consumers = read("core-consumers.json");
 console.log(JSON.stringify({
-  closures: graph.entrypoints.map(({ entry, externalRuntimeImports }) => ({ entry, externalRuntimeImports })),
   entrypoints: surface.entrypoints.map(({ entry, conditions, exports }) => ({
     entry, conditions, exports: [
       ...exports.map(({ name, typeOnly }) => ({ name, typeOnly })),
@@ -5046,7 +4429,7 @@ console.log(JSON.stringify(names));`
   const READER_RECOVERY = String.raw`import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { TaskEventReader } from "@elizaos/core/task-events";
+import { TaskEventReader } from "@elizaos/core";
 const directory = process.argv[1];
 const event = (taskId, sequence) => ({ schemaVersion: 1, eventId: taskId + "#" + sequence, taskId, sequence, epoch: 0, at: sequence, kind: sequence === 0 ? "create" : "observe", status: "active" });
 const page = (taskId, sequence) => ({ events: [event(taskId, sequence)], cursor: sequence, hasMore: false, task: { id: taskId, revision: sequence, epoch: 0, status: "completed", hasUnknownOutcome: false } });
@@ -5200,13 +4583,14 @@ assert.strictEqual(meetingPrototypeReads, 0);
 assert.deepStrictEqual(validateMeetingArtifact(new Proxy(artifact, { getPrototypeOf() { throw prototypeFailure; } })), validation);
 console.log("null");`
   const ASSETS = `import { createHash } from "node:crypto"; import fs from "node:fs"; import path from "node:path";
-const [dir, catalogs] = JSON.parse(process.argv[1]);
+const [dir, catalogs, retired] = JSON.parse(process.argv[1]);
 const restart = await import("@elizaos/core/restart-exit-code.json", { with: { type: "json" } }).then((json) => json.default, (error) => error.code);
 const digests = {};
 for (const [entry, target] of catalogs) { const file = path.join(dir, target); digests[entry] = fs.existsSync(file) ? createHash("sha256").update(fs.readFileSync(file)).digest("hex") : null; }
-const privateSubpath = await import("@elizaos/core/runtime/prepared-model-request").then(() => "imported", (error) => error.code);
+const retiredResults = {};
+for (const entry of retired) retiredResults[entry] = await import("@elizaos/core" + entry.slice(1)).then(() => "imported", (error) => error.code);
 const guard = typeof (await import("@elizaos/core")).createPreparedModelRequestGuard;
-console.log(JSON.stringify({ restart, digests, privateSubpath, guard }));`
+console.log(JSON.stringify({ restart, digests, retiredResults, guard }));`
   const CLOSURE = `import fs from "node:fs"; import { isBuiltin } from "node:module"; import path from "node:path"; import ts from "typescript";
 const [dir, leaves] = JSON.parse(process.argv[1]); const closures = {};
 for (const [entry, target] of leaves) {
@@ -5221,28 +4605,44 @@ for (const [entry, target] of leaves) {
   closures[entry] = [...external].sort();
 }
 console.log(JSON.stringify(closures));`
-  const PROCESSLESS = `const out = process.stdout; const entries = JSON.parse(process.argv[1]); const failures = {};
-delete globalThis.process;
-for (const entry of entries) failures[entry] = await import("@elizaos/core" + entry.slice(1)).then(() => null, (error) => String(error));
-out.write(JSON.stringify(failures) + "\\n");`
+  const PROCESSLESS = `import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { pathToFileURL } from "node:url";
+const [corePkgDir, viteEntry, entries] = JSON.parse(process.argv[1]);
+const { build } = await import(pathToFileURL(viteEntry).href);
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "core-browser-"));
+const bundles = [];
+try {
+  for (const [entry, target] of entries) {
+    const outDir = path.join(tmp, entry === "." ? "root" : entry.replace(/[^a-z0-9]/gi, "_"));
+    await build({ logLevel: "silent", build: { outDir, minify: false, lib: { entry: path.join(corePkgDir, target), formats: ["es"], fileName: () => "bundle.mjs" } } });
+    bundles.push([entry, path.join(outDir, "bundle.mjs")]);
+  }
+  const out = process.stdout;
+  const failures = {};
+  delete globalThis.process;
+  for (const [entry, file] of bundles) failures[entry] = await import(pathToFileURL(file).href).then(() => null, (error) => String(error));
+  out.write(JSON.stringify(failures) + "\\n");
+} finally {
+  fs.rmSync(tmp, { recursive: true, force: true });
+}`
   const INSPECT = `import fs from "node:fs"; import path from "node:path"; import ts from "typescript";
-const [dir, core, entries] = JSON.parse(process.argv[1]); const file = path.join(dir, "entries.ts");
+const [dir, core, moved] = JSON.parse(process.argv[1]); const file = path.join(dir, "entries.ts");
+const movedSet = new Set(moved);
 const surface = JSON.parse(fs.readFileSync(path.resolve(core, "../../spec/core/baseline/core-public-surface.json"), "utf8"));
-fs.writeFileSync(file, entries.map((entry) => "import \\"@elizaos/core" + entry.slice(1) + "\\";").join("\\n") + "\\nexport {};\\n");
+fs.writeFileSync(file, "import \\"@elizaos/core\\";\\nexport {};\\n");
 const program = ts.createProgram([file], { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ES2024, strict: true, noEmit: true, types: ["node"] });
 const checker = program.getTypeChecker();
-const modules = new Map(program.getSourceFile(file).statements.filter(ts.isImportDeclaration).map((statement, index) => {
-  const symbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
-  const exports = symbol === undefined ? null : new Map(checker.getExportsOfModule(symbol).map((item) => [item.name, item]));
-  return [entries[index], exports];
-}));
-const names = Object.fromEntries([...modules].map(([entry, exports]) => [entry, exports === null ? null : [...exports.keys()].sort()]));
+const statement = program.getSourceFile(file).statements.find(ts.isImportDeclaration);
+const symbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
+const packed = symbol === undefined ? new Map() : new Map(checker.getExportsOfModule(symbol).map((item) => [item.name, item]));
+const names = { ".": [...packed.keys()].sort() };
 const keyOf = (name) => name !== undefined && (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) ? name.text : undefined;
 const tagOf = (node, source) => node === undefined || !ts.isLiteralTypeNode(node) ? undefined : ts.isStringLiteral(node.literal) || ts.isNoSubstitutionTemplateLiteral(node.literal) ? JSON.stringify(node.literal.text) : node.literal.getText(source);
 const differences = [];
+const checked = new Set();
 for (const { entry, exports } of surface.entrypoints) {
-  const packed = modules.get(entry); if (!packed) continue;
   for (const { name, declarations = [] } of exports) {
+    if (movedSet.has(name) || checked.has(name)) continue;
+    checked.add(name);
     const required = new Map();
     for (const { kind, signature } of declarations) {
       if (kind !== "InterfaceDeclaration" && kind !== "TypeAliasDeclaration") continue;
@@ -5272,7 +4672,6 @@ for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(dir
 console.log("null");`
   const COPIES = `import { pathToFileURL } from "node:url";
 const [a, b] = JSON.parse(process.argv[1]); const load = (file) => import(pathToFileURL(file).href);
-const attempt = (f) => { try { return f(); } catch (error) { return "threw: " + String(error).replace(/\\s+/g, " "); } };
 const A = await load(a.root); const B = await load(b.root);
 const anthropic = { name: "anthropic" }; const coding = { name: "coding" }; const manager = { run: (_context, fn) => fn(), active: () => undefined };
 const before = B.getTrajectoryContextManager();
@@ -5280,13 +4679,6 @@ A.setAnthropicAccountPoolBridge(anthropic); A.setCodingAgentSelectorBridge(codin
 const installed = [B.getAnthropicAccountPoolBridge() === anthropic, B.getCodingAgentSelectorBridge() === coding];
 A.setAnthropicAccountPoolBridge(null);
 A.setTrajectoryContextManager(manager);
-const bundled = attempt(() => A.loadRegistry().byId.get("agent-orchestrator") ?? null);
-B.loadRegistry();
-const registered = attempt(() => { A.registerRegistryEntry({ ...bundled, description: "registered at runtime" }); return "registered"; });
-const cached = A.loadRegistry();
-let rejectedApp = false;
-try { A.registerRegistryEntry({ ...bundled, kind: "app", subtype: "tool", launch: { type: "internal-tab" } }); } catch { rejectedApp = true; }
-const appBoundary = [rejectedApp, A.loadRegistry() === cached, B.loadRegistry().byId.get("agent-orchestrator")?.description === "registered at runtime"];
 const wire = { git: { repo: "fx/plugin", v0: {}, v1: {}, v2: {} }, npm: { repo: "@fx/plugin" }, supports: { v0: false, v1: false, v2: true }, kind: "plugin", extension: "retained" };
 const wireRefused = (input) => { try { A.decodeRuntimeRegistry(input); return false; } catch { return true; } };
 const { kind: _kind, ...unspecifiedKind } = wire;
@@ -5295,11 +4687,9 @@ const wireBoundary = [A.decodeRuntimeRegistry({ registry: { plugin: wire } }).ge
   wireRefused({ registry: { app: { ...wire, app: { launchType: "internal-tab" } } } }), wireRefused({ registry: {}, apps: { app: wire } }),
   A.decodeRuntimeRegistry({ registry: { plugin: unspecifiedKind } }).get("plugin").kind === undefined];
 console.log(JSON.stringify({
-  errors: [new A.ElizaError("journey", { code: "JOURNEY" }) instanceof B.ElizaError, A.ElizaError === (await load(a.protocol)).ElizaError, A.ElizaError === (await load(a.speech)).ElizaError],
+  errors: [new A.ElizaError("journey", { code: "JOURNEY" }) instanceof B.ElizaError],
   bridges: [...installed, B.getAnthropicAccountPoolBridge(), B.getCodingAgentSelectorBridge() === coding],
   ambient: [before !== manager, B.getTrajectoryContextManager() === manager],
-  registry: [typeof bundled === "object" && bundled !== null ? bundled.description : bundled, registered, attempt(() => A.loadRegistry().byId.get("agent-orchestrator")?.description ?? null), attempt(() => B.loadRegistry().byId.get("agent-orchestrator")?.description ?? null)],
-  appBoundary,
   wireBoundary,
 }));`
   const node = (cwd: string, script: string, input: unknown, conditions: string[] = []) => effect {
@@ -5316,8 +4706,7 @@ console.log(JSON.stringify({
   const consumer = `${root}/consumer`
   const packed = try acquireRelease(host(() => packCandidate(coreDir)), (made) => orDie(host(() => made.remove())))
   const selection = { attemptId: packed.attemptId, revision: packed.revision }
-  const { closures: baselineClosures, entrypoints: baseline, files: baselineFiles, imports: consumerImports } = (try node(coreDir, BASELINE, packed.sourceDir)) as {
-    closures: Array<{ entry: string; externalRuntimeImports: string[] }>
+  const { entrypoints: baseline, files: baselineFiles, imports: consumerImports } = (try node(coreDir, BASELINE, packed.sourceDir)) as {
     entrypoints: Array<{ entry: string; conditions: Record<string, string>; exports: Array<{ name: string; typeOnly: boolean }> }>
     files: Array<{ path: string; sha256: string }>
     imports: Array<{ file: string; line: number; module: string; kind: string; names: Array<{ name: string; typeOnly: boolean }>; text: string }>
@@ -5331,20 +4720,38 @@ console.log(JSON.stringify({
   }
   const installed = try host(() => installPacked(packed, consumer, true))
   const manifest = installed.manifest
-  const codeEntries = baseline.filter((entry) => "import" in entry.conditions).map((entry) => entry.entry)
+  const expectedEntries = [
+    ".",
+    "./catalog/channel-plugin-map.json",
+    "./catalog/generated.json",
+    "./catalog/provider-plugin-map.json",
+    "./catalog/short-id-plugin-map.json",
+    "./restart-exit-code.json",
+  ]
+  const expectedRootRuntime = [...new Set(
+    baseline.flatMap((entry) => entry.exports.filter((symbol) => !symbol.typeOnly && !movedToCoreNode.has(symbol.name)).map((symbol) => symbol.name)),
+  )]
+  const expectedRootDeclared = [...new Set(
+    baseline.flatMap((entry) => entry.exports.filter((symbol) => !movedToCoreNode.has(symbol.name)).map((symbol) => symbol.name)),
+  )]
 
   const exportMap = try record("PackedImports", "export map", [
-    ...differences("exports", Object.keys(manifest.exports), baseline.map((entry) => entry.entry)),
-    ...baseline.filter((entry) => entry.entry in manifest.exports).flatMap((entry) => differences(`${entry.entry} conditions`, Object.keys(manifest.exports[entry.entry]), Object.keys(entry.conditions))),
+    ...differences("exports", Object.keys(manifest.exports), expectedEntries),
+    ...differences(". conditions", Object.keys(manifest.exports["."] ?? {}), ["eliza-source", "types", "import", "default"]),
+    ...expectedEntries.filter((entry) => entry.endsWith(".json")).flatMap((entry) =>
+      differences(`${entry} conditions`, Object.keys(manifest.exports[entry] ?? {}), ["eliza-source", "default"])),
   ])
 
-  const runtimeNames = (try node(consumer, NAMES, codeEntries)) as Record<string, string[]>
-  const names = try record("PackedImports", "runtime names", baseline.filter((entry) => codeEntries.includes(entry.entry)).flatMap((entry) =>
-    differences(entry.entry, runtimeNames[entry.entry], entry.exports.filter((symbol) => !symbol.typeOnly).map((symbol) => symbol.name))))
+  const runtimeNames = (try node(consumer, NAMES, ["."])) as Record<string, string[]>
+  const names = try record("PackedImports", "runtime names",
+    expectedRootRuntime.filter((name) => !runtimeNames["."].includes(name)).map((name) => `.: missing ${name}`))
 
-  const sourceNames = (try node(consumer, NAMES, baseline.map((entry) => entry.entry), ["eliza-source"])) as Record<string, string[]>
-  const sourceImports = try record("PackedImports", "source-condition imports", baseline.flatMap((entry) =>
-    differences(entry.entry, sourceNames[entry.entry], entry.entry.endsWith(".json") ? ["default"] : entry.exports.filter((symbol) => !symbol.typeOnly).map((symbol) => symbol.name))))
+  const sourceNames = (try node(consumer, NAMES, expectedEntries, ["eliza-source"])) as Record<string, string[]>
+  const sourceImports = try record("PackedImports", "source-condition imports", [
+    ...differences(".", sourceNames["."], runtimeNames["."]),
+    ...expectedEntries.filter((entry) => entry.endsWith(".json")).flatMap((entry) =>
+      differences(entry, sourceNames[entry], ["default"])),
+  ])
 
   const nativeRecords = try host(() => runNode({ script: NATIVE_RECORDS, cwd: consumer, timeoutMs: 300_000 }))
   const nativeRecordChecks = try record("PackedImports", "native record observations", nativeRecords.status === 0 ? [] : [nativeRecords.stderr || nativeRecords.stdout || `node exit ${nativeRecords.status}`])
@@ -5353,28 +4760,31 @@ console.log(JSON.stringify({
   const readerRecovery = try host(() => runNode({ script: READER_RECOVERY, args: [readerDirectory], cwd: consumer, timeoutMs: 300_000 }))
   const readerRecoveryChecks = try record("RuntimeConformance", "task-event observer recovery", readerRecovery.status === 0 && readerRecovery.signal === null && readerRecovery.stdout === "" && readerRecovery.stderr === "" ? [] : [JSON.stringify(readerRecovery)])
 
-  const catalogs = baseline.filter((entry) => entry.entry.startsWith("./catalog/")).map((entry) => [entry.entry, manifest.exports[entry.entry]?.default ?? entry.conditions.default])
-  const assets = (try node(consumer, ASSETS, [`${consumer}/node_modules/@elizaos/core`, catalogs])) as { restart: unknown; digests: Record<string, string | null>; privateSubpath: string; guard: string }
+  const catalogs = expectedEntries.filter((entry) => entry.startsWith("./catalog/")).map((entry) => [entry, manifest.exports[entry]?.default])
+  const assets = (try node(consumer, ASSETS, [`${consumer}/node_modules/@elizaos/core`, catalogs, retiredCodeSubpaths])) as {
+    restart: unknown
+    digests: Record<string, string | null>
+    retiredResults: Record<string, string>
+    guard: string
+  }
   const assetChecks = try record("PackedImports", "json assets and private subpath", [
     ...(JSON.stringify(assets.restart) === JSON.stringify({ restartExitCode: 75 }) ? [] : [`restart-exit-code.json: ${JSON.stringify(assets.restart)}`]),
     ...catalogs.map(([entry]) => [entry, assets.digests[entry], baselineFiles.find((file) => file.path === `packages/core/src${entry.slice(1)}`)?.sha256]).filter(([, actual, expected]) => actual !== expected).map(([entry, actual]) => `${entry}: sha256 ${actual}`),
-    ...(assets.privateSubpath === "ERR_PACKAGE_PATH_NOT_EXPORTED" ? [] : [`runtime/prepared-model-request: ${assets.privateSubpath}`]),
+    ...retiredCodeSubpaths.filter((entry) => assets.retiredResults[entry] !== "ERR_PACKAGE_PATH_NOT_EXPORTED").map((entry) => `${entry}: ${assets.retiredResults[entry]}`),
     ...(assets.guard === "function" ? [] : [`createPreparedModelRequestGuard: ${assets.guard}`]),
   ])
 
-  const leaves = ["./protocol", "./logging", "./view-interaction", "./permissions", "./security/redact", "./speech", "./task-events", "./task-widgets", "./read-memo", "./schema-types"]
-  const closures = (try node(consumer, CLOSURE, [`${consumer}/node_modules/@elizaos/core`, [".", ...leaves].map((entry) => [entry, manifest.exports[entry].import])])) as Record<string, string[]>
-  const processless = (try node(consumer, PROCESSLESS, leaves)) as Record<string, string | null>
-  const addedRuntime = (specifier: string) => specifier === "effect" || specifier.startsWith("effect/") || specifier === "vibelang-runtime" || specifier.startsWith("vibelang-runtime/")
-  const browserSafe = try record("PackedImports", "browser-safe leaves", leaves.flatMap((leaf) => [
-    ...closures[leaf].filter((specifier) => specifier.startsWith("node:") || specifier.startsWith("@effect/platform-node") || !(addedRuntime(specifier) || (baselineClosures.find((closure) => closure.entry === leaf)?.externalRuntimeImports ?? []).includes(specifier))).map((specifier) => `${leaf}: imports ${specifier}`),
-    ...(processless[leaf] === null ? [] : [`${leaf}: without process ${processless[leaf]}`]),
-  ]))
+  const closures = (try node(consumer, CLOSURE, [`${consumer}/node_modules/@elizaos/core`, [[".", manifest.exports["."].import]]])) as Record<string, string[]>
+  const processless = (try node(consumer, PROCESSLESS, [`${consumer}/node_modules/@elizaos/core`, `${coreDir}/node_modules/vite/dist/node/index.js`, [[".", manifest.exports["."].import]]])) as Record<string, string | null>
   const packageName = (specifier: string) => specifier.split("/").slice(0, specifier.startsWith("@") ? 2 : 1).join("/")
+  const browserSafe = try record("PackedImports", "browser-safe root", [
+    ...closures["."].filter((specifier) => specifier.startsWith("node:") || specifier.startsWith("@effect/platform-node")).map((specifier) => `.: imports ${specifier}`),
+    ...(processless["."] === null ? [] : [`.: without process ${processless["."]}`]),
+  ])
   const rootBoundary = try record("PackedImports", "root boundary", closures["."].filter((specifier) =>
-    specifier.startsWith("@elizaos/") || !(specifier.startsWith("node:") || packageName(specifier) in (manifest.dependencies ?? {}))).map((specifier) => `.: imports ${specifier}`))
+    specifier.startsWith("@elizaos/") || specifier.startsWith("node:") || !(packageName(specifier) in (manifest.dependencies ?? {}))).map((specifier) => `.: imports ${specifier}`))
 
-  const required = new Map<string, { module: string; name: string; typeOnly: boolean }>()
+  const required = new Map<string, { name: string; typeOnly: boolean }>()
   const droppedConsumerNames = new Set(["@elizaos/core\u0000TrajectoryChatMessage"])
   const unlistedConsumerNames: string[] = []
   for (const site of consumerImports) {
@@ -5384,16 +4794,16 @@ console.log(JSON.stringify({
       ? [...site.text.matchAll(/import\("[^"]+"\)\.([A-Za-z_$][\w$]*)/g)].map((found) => ({ name: found[1], typeOnly: true }))
       : site.kind === "ImportDeclaration" || site.kind === "ExportDeclaration" ? site.names : []
     for (const { name, typeOnly } of named) {
-      if (name === "*" || name === "default") continue
+      if (name === "*" || name === "default" || movedToCoreNode.has(name)) continue
       const key = `${site.module}\u0000${name}`
       if (!imported.exports.some((symbol) => symbol.name === name)) {
         if (!droppedConsumerNames.has(key)) unlistedConsumerNames.push(`${site.file}:${site.line} ${site.module} ${name}: consumer import not in baseline`)
         continue
       }
-      required.set(key, { module: site.module, name, typeOnly: typeOnly && (required.get(key)?.typeOnly ?? true) })
+      required.set(name, { name, typeOnly: typeOnly && (required.get(name)?.typeOnly ?? true) })
     }
   }
-  const importsTs = [...required.values()].map((symbol, index) => `import { ${symbol.typeOnly ? "type " : ""}${symbol.name} as required${index} } from "${symbol.module}";`).concat([
+  const importsTs = [...required.values()].map((symbol, index) => `import { ${symbol.typeOnly ? "type " : ""}${symbol.name} as required${index} } from "@elizaos/core";`).concat([
     `import { privacyPlugin, Service, type Action, type IAgentRuntime, type Plugin, type PrivacyMode, type Provider } from "@elizaos/core";`,
     `const privacy: PrivacyMode = { secretSwap: true, piiSwap: true };`,
     `export const protectedAgent: Plugin = privacyPlugin(privacy);`,
@@ -5419,22 +4829,20 @@ console.log(JSON.stringify({
     names: Schema.Record(Schema.String, Schema.NullOr(Schema.Array(Schema.String))),
     fields: Schema.Array(Schema.String),
   })
-  const declared = try Schema.decodeUnknownEffect(inspection)(try node(consumer, INSPECT, [consumer, packed.sourceDir, codeEntries]))
-  const declarations = try record("PackedTypes", "declaration names", baseline.filter((entry) => codeEntries.includes(entry.entry)).flatMap((entry) =>
-    differences(entry.entry, declared.names[entry.entry] ?? [], entry.exports.map((symbol) => symbol.name))))
+  const declared = try Schema.decodeUnknownEffect(inspection)(try node(consumer, INSPECT, [consumer, packed.sourceDir, [...movedToCoreNode]]))
+  const declarations = try record("PackedTypes", "declaration names",
+    expectedRootDeclared.filter((name) => !(declared.names["."] ?? []).includes(name)).map((name) => `.: missing ${name}`))
   const fields = try record("PackedTypes", "required fields and discriminants", [...declared.fields])
 
   const other = `${root}/other`
   const otherInstalled = try host(() => installPacked(packed, other))
   try Effect.try(() => assert.notStrictEqual(installed.packageDirectory, otherInstalled.packageDirectory))
-  const files = (dir: string) => ({ root: `${dir}/node_modules/@elizaos/core/${manifest.exports["."].import}`, protocol: `${dir}/node_modules/@elizaos/core/${manifest.exports["./protocol"].import}`, speech: `${dir}/node_modules/@elizaos/core/${manifest.exports["./speech"].import}` })
+  const files = (dir: string) => ({ root: `${dir}/node_modules/@elizaos/core/${manifest.exports["."].import}` })
   const shared = (try node(consumer, COPIES, [files(consumer), files(other)])) as Record<string, unknown>
   const expectedShared: Record<string, unknown> = {
-    errors: [true, true, true],
+    errors: [true],
     bridges: [true, true, null, true],
     ambient: [true, true],
-    registry: ["Task-agent orchestration plugin - spawn and manage open-ended CLI task agents via PTY", "registered", "registered at runtime", "registered at runtime"],
-    appBoundary: [true, true, true],
     wireBoundary: ["plugin", "retained", true, true, true, true, true],
   }
   const copies = try record("PackedImports", "two copies", [
@@ -5450,7 +4858,7 @@ console.log(JSON.stringify({
     passed("PackedImports", "native record observations"),
     passed("RuntimeConformance", "task-event observer recovery"),
     passed("PackedImports", "json assets and private subpath"),
-    passed("PackedImports", "browser-safe leaves"),
+    passed("PackedImports", "browser-safe root"),
     passed("PackedImports", "root boundary"),
     passed("PackedTypes", "consumer compilation"),
     passed("PackedTypes", "source-condition compilation"),

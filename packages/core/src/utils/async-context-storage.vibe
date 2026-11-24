@@ -1,0 +1,52 @@
+// spec/core/asyncContext.md, "Nested context runs restore the previous context"
+export interface AsyncContextStorage<T> {
+  getStore(): T | undefined
+  run<R>(store: T, fn: () => R): R
+}
+
+export type AsyncContextStorageFactory = <T>() => AsyncContextStorage<T>
+
+function createStackStorage<T>(): AsyncContextStorage<T> {
+  const stack: T[] = []
+  return {
+    getStore(): T | undefined {
+      return stack.length > 0 ? stack[stack.length - 1] : undefined
+    },
+    run<R>(store: T, fn: () => R): R {
+      stack.push(store)
+      try {
+        return fn()
+      } finally {
+        stack.pop()
+      }
+    },
+  }
+}
+
+let activeFactory: AsyncContextStorageFactory = createStackStorage
+const instances = new Set<{ upgrade(factory: AsyncContextStorageFactory): void }>()
+
+export function registerAsyncContextStorageFactory(factory: AsyncContextStorageFactory): void {
+  activeFactory = factory
+  for (const instance of instances) {
+    instance.upgrade(factory)
+  }
+}
+
+export function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
+  let inner: AsyncContextStorage<T> = activeFactory<T>()
+  const holder = {
+    upgrade(factory: AsyncContextStorageFactory) {
+      inner = factory<T>()
+    },
+  }
+  instances.add(holder)
+  return {
+    getStore(): T | undefined {
+      return inner.getStore()
+    },
+    run<R>(store: T, fn: () => R): R {
+      return inner.run(store, fn)
+    },
+  }
+}

@@ -1,11 +1,11 @@
 // spec/nativeNetworkPolicy/index.md, "Story: Check the cost of the active connection before a passive download"
-import { nativeReply } from "@elizaos/os/bridges/bridge"
-import { networkPolicyPlugin } from "@elizaos/os/bridges/network-policy"
-import type { NetworkPolicyPlugin } from "@elizaos/os/bridges/definitions/network-policy"
+import { nativeReply } from "@elizaos/os-bridges"
+import { networkPolicyPlugin } from "@elizaos/os-bridges"
+import type { NetworkPolicyPlugin } from "@elizaos/os-bridges"
 import { androidCost, appleCost, mayDownload, webCost, type Hint } from "../gen/nativeNetworkPolicy.effect.vibe"
 
-export type * from "@elizaos/os/bridges/definitions/network-policy"
-export { networkPolicyClient, networkPolicyPlugin } from "@elizaos/os/bridges/network-policy"
+export type { MeteredHint, PathHints, NetworkPolicyPlugin } from "@elizaos/os-bridges"
+export { networkPolicyClient, networkPolicyPlugin } from "@elizaos/os-bridges"
 
 const NativeMetered = Schema.Struct({ metered: Schema.NullOr(Schema.Boolean), source: Schema.Literal("android-os") })
 const NativePath = Schema.Struct({ isExpensive: Schema.NullOr(Schema.Boolean), isConstrained: Schema.NullOr(Schema.Boolean), source: Schema.Literal("nw-path-monitor") })

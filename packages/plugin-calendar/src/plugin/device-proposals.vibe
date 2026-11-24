@@ -1,8 +1,9 @@
 // spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone's clock"; spec/calendar/reviewedReads.md, "A change after a shared read is the edit the model read from the owner's request, keeping every other field"; spec/calendar/availability.md, "An availability window is the one the model read from the owner's request, on the phone's clock"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"
 import { ModelType, parseJsonModelRecord, type ActionParameterSchema, type IAgentRuntime, type JSONSchema } from "@elizaos/core"
 import {
-  readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type NegotiatedDevice, type ProposalForm, type ProposalText, type ReadContinuation,
-} from "@elizaos/agent/device-actions"
+  readResult, type DeviceOperation,
+} from "@elizaos/agent"
+import type { DeviceProposalFamily, DeviceTurn, EarlierRequest, Grounding, NegotiatedDevice, ProposalForm, ProposalText, ReadContinuation } from "@elizaos/agent-host"
 import { availabilityWindowed } from "../../gen/calendar__availability.effect.vibe"
 import {
   calendarProposalAdmitted, changeReadAdmitted, namedGrounded, newEventStated, ownerWordsKept, preparedEdit, recordSource, targetGrounded,

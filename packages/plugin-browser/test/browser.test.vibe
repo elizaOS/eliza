@@ -1,8 +1,8 @@
 // spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "Story: Tell me you cannot read my page, and never reload it unasked"
 import { assert, it } from "@effect/vitest"
 import { canActionRun, ContextRegistry, resolveActionContexts, type Action, type ActionResult, type AgentRuntime, type IAgentRuntime, type Memory } from "@elizaos/core"
-import { activityLabel, offeredActions } from "@elizaos/agent"
-import { registerDeviceProposalFamily, type DeviceOperation } from "@elizaos/agent/device-actions"
+import { activityLabel, offeredActions, registerDeviceProposalFamily } from "@elizaos/agent-host"
+import type { DeviceOperation } from "@elizaos/agent"
 import {
   BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_RELOAD_WITHHELD_REFUSAL, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY,
   BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable,
@@ -233,7 +233,8 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
 
 module node {
   import type { IAgentRuntime } from "@elizaos/core"
-  import { negotiatedOwnerTurn, readOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
+  import { negotiatedOwnerTurn, type DeviceTurn } from "@elizaos/agent-host"
+  import { readOperation } from "@elizaos/agent"
   import { browserProposalFamily } from "../src/proposal.vibe"
 
   export const everyBrowserCapability = ["browser.search.v1", "browser.tabs.v1", "browser.tabs.close-all.v1", "browser.tabs.show.v1", "browser.find.v1", "browser.history.v1", "browser.open-new-tab.v1"]

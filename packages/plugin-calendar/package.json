@@ -12,8 +12,9 @@
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
+    "@elizaos/agent-host": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/os": "workspace:*",
+    "@elizaos/os-bridges": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },
@@ -32,42 +33,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    },
-    "./client": {
-      "eliza-source": "./src/client/index.vibe",
-      "types": "./dist/src/client/index.d.ts",
-      "import": "./dist/src/client/index.js",
-      "default": "./dist/src/client/index.js"
-    },
-    "./linked-sync": {
-      "eliza-source": "./src/linked-sync/index.vibe",
-      "types": "./dist/src/linked-sync/index.d.ts",
-      "import": "./dist/src/linked-sync/index.js",
-      "default": "./dist/src/linked-sync/index.js"
-    },
-    "./availability": {
-      "eliza-source": "./src/availability/index.vibe",
-      "types": "./dist/src/availability/index.d.ts",
-      "import": "./dist/src/availability/index.js",
-      "default": "./dist/src/availability/index.js"
-    },
-    "./feed": {
-      "eliza-source": "./src/feed/index.vibe",
-      "types": "./dist/src/feed/index.d.ts",
-      "import": "./dist/src/feed/index.js",
-      "default": "./dist/src/feed/index.js"
-    },
-    "./request-time": {
-      "eliza-source": "./src/request-time.vibe",
-      "types": "./dist/src/request-time.d.ts",
-      "import": "./dist/src/request-time.js",
-      "default": "./dist/src/request-time.js"
-    },
-    "./series": {
-      "eliza-source": "./src/series/index.vibe",
-      "types": "./dist/src/series/index.d.ts",
-      "import": "./dist/src/series/index.js",
-      "default": "./dist/src/series/index.js"
     }
   }
 }

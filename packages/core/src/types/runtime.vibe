@@ -1,7 +1,7 @@
 // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"
 import type { ReportedError } from "../errors.vibe"
 import type { Logger } from "../logger.vibe"
-import type { FetchLike } from "../media/fetch.vibe"
+import type { FetchLike } from "./fetch.vibe"
 import type { ConnectorInteractionCapabilityProfile } from "../messaging/interaction-profiles.vibe"
 import type { ExecutionTrace, PromptOptimizationRuntimeHooks, ScoreSignal } from "../prompt-optimization.vibe"
 import type { ContextRegistry } from "../runtime/context-registry.vibe"

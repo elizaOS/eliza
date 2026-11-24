@@ -1,7 +1,7 @@
 // spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "Only the owner's next turn answers an open question, by its position or the place's name, within ten minutes"
 import type { IAgentRuntime, Memory } from "@elizaos/core"
 import { choiceBinds, choiceOpenAt, namedOption, type ChoiceTurn } from "../gen/maps__routing.effect.vibe"
-import type { AgentPlaceRef } from "./client/device-navigation.vibe"
+import type { AgentPlaceRef } from "@elizaos/plugin-maps-client"
 
 const courtesy = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`
 const end = String.raw`(?:,?\s+(?:please|for\s+me))*\s*[.!?]*\s*$`

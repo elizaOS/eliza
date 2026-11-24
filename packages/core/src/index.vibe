@@ -51,14 +51,11 @@ export {
   getPlugins,
   indexEntries,
   type LoadedRegistry,
+  loadRegistryFromRawEntries as loadRegistryFromRawEntriesEffect,
   mergeWithRuntime,
   normalizeConnectorAuth,
   RegistryValidationError,
 } from "./catalog/loader.vibe"
-export {
-  loadRegistryOrThrow as loadRegistry,
-  registerRegistryEntryOrThrow as registerRegistryEntry,
-} from "./catalog/registry.vibe"
 export {
   type AccountAuthKind,
   type AccountConfig,
@@ -137,18 +134,6 @@ export {
   RUNTIME_DEBUG_LOG_ENABLED,
 } from "./logger.vibe"
 export type { Logger, LoggerBindings } from "./logging.vibe"
-export {
-  fetchWithSsrfGuardPromise as fetchWithSsrfGuard,
-  type GuardedFetchOptions,
-  type GuardedFetchResult,
-  type PinnedLookupFetchLike,
-  type PinnedLookupFetchParams,
-} from "./network/fetch-guard.vibe"
-export {
-  createValidatedLookup,
-  nodeLookupFn,
-  nodePinnedFetchPromise as nodePinnedFetch,
-} from "./network/node-pinned-fetch.vibe"
 export {
   assertPublicHttpsEndpointOrThrow as assertPublicHttpsEndpoint,
   assertPublicInternetAddressOrThrow as assertPublicInternetAddress,
@@ -235,14 +220,6 @@ export {
   unwrapUserMessageText,
   unwrapUserMessageTextForDetection,
 } from "./security/incoming-message-security.vibe"
-export {
-  isLoopbackRemoteAddress,
-  isRemoteAddressInCidrList,
-  isTrustedLocalRequest,
-  type LocalRequestTrustPolicy,
-  proxyClientHeaderBlocksLocalTrust,
-} from "./security/loopback-trust.vibe"
-export { validateMcpServerConfigPromise as validateMcpServerConfig } from "./security/mcp-server-config.vibe"
 export {
   buildFailureReplyPrompt,
   classifyStructuredFailureCause,
@@ -340,7 +317,6 @@ export {
   type ProcessingRequest,
   type ProcessingScope,
 } from "./security/processing-policy.vibe"
-export { firstHeaderValue, getProvidedApiToken, tokenMatches } from "./security/request-token.vibe"
 export {
   attestAuthenticatedApiDeliveryAudiencePromise as attestAuthenticatedApiDeliveryAudience,
   attestDeliveryAudienceFromCanonicalRoomPromise as attestDeliveryAudienceFromCanonicalRoom,
@@ -417,11 +393,6 @@ export {
   type TodoCutoverJsonValue,
 } from "./todo-cutover.vibe"
 export {
-  readJsonFilePromise as readJsonFile,
-  writeJsonAtomicPromise as writeJsonAtomic,
-  writeJsonAtomicSyncOrThrow as writeJsonAtomicSync,
-} from "./utils/atomic-json.vibe"
-export {
   BatchProcessor,
   BatchQueue,
   type BatchQueueOptions,
@@ -456,21 +427,6 @@ export {
   setContextRoutingMetadata,
   shouldIncludeByContext,
 } from "./utils/context-routing.vibe"
-export { createHashOrThrow as createHash } from "./utils/crypto-compat.vibe"
-export {
-  copyPromise as copy,
-  ensureDirPromise as ensureDir,
-  ensureSymlinkPromise as ensureSymlink,
-  pathExistsPromise as pathExists,
-  readdir,
-  readFile,
-  readJsonPromise as readJson,
-  removePromise as remove,
-  rmdir,
-  stat,
-  unlink,
-  writeJsonPromise as writeJson,
-} from "./utils/filesystem.vibe"
 export {
   extractUserText,
   getUserMessageText,
@@ -646,47 +602,14 @@ export {
   setInferenceModelProvider,
   timeInferenceSpanPromise as timeInferenceSpan,
 } from "./inference-timing.vibe"
+export type { FetchLike } from "./types/fetch.vibe"
 export {
-  contentTypeForMime,
-  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
-  type RawConnectorAttachment,
-  resolveAttachmentBytesPromise as resolveAttachmentBytes,
-  type ResolvedAttachmentBytes,
-  toMedia,
-} from "./media/attachments.vibe"
-export {
-  DEFAULT_MEDIA_FETCH_TIMEOUT_MS,
-  type FetchLike,
-  type FetchMediaOptions,
-  type FetchMediaResult,
-  fetchRemoteMediaPromise as fetchRemoteMedia,
-  MediaFetchError,
-  type MediaFetchErrorCode,
-  readErrorBodySnippetPromise as readErrorBodySnippet,
-  readResponseWithLimitPromise as readResponseWithLimit,
-} from "./media/fetch.vibe"
-export {
-  type CachedImageDescription,
-  describeImageCachedPromise as describeImageCached,
-  normalizeImageDescription,
-} from "./media/image-description-cache.vibe"
-export {
-  getLocalServerUrl,
-  trustedLocalMediaUrlOrThrow as trustedLocalMediaUrl,
-  VISION_IMAGE_FETCH_TIMEOUT_MS,
-  VISION_IMAGE_MAX_BYTES,
-} from "./media/local-store.vibe"
-export {
+  detectMime as detectMimeEffect,
   detectMimePromise as detectMime,
   extensionForMime,
   getFileExtension,
   sniffMimePromise as sniffMime,
 } from "./media/mime.vibe"
-export {
-  resolveOutboundAttachmentBytesPromise as resolveOutboundAttachmentBytes,
-  type ResolveOutboundAttachmentOptions,
-  summarizeOutboundAttachmentUrl,
-} from "./media/outbound.vibe"
 export {
   type AuthenticatedMessageInteractionBindings,
   type ConsumeMessageInteractionRequest,
@@ -1033,7 +956,6 @@ export {
   matchTopicRooms,
   type TopicSearchHit,
 } from "./services/channel-topics.vibe"
-export { HookService } from "./services/hook.vibe"
 export {
   NotificationNativeError,
   NotificationService,
@@ -1268,13 +1190,47 @@ export {
   type WorldScopedFilter,
   type WorldScopedMemory,
 } from "./utils/project-memory-scope.vibe"
+export { SingleFlightMemo } from "./read-memo.vibe"
 export {
-  getElizaNamespace,
-  getOptimizationRootDir,
-  resolveOAuthDir,
-  resolveStateDir,
-  resolveUserPath,
-} from "./utils/state-dir.vibe"
+  type LoggerNodeHost,
+  registerLoggerNodeHost,
+} from "./logger.vibe"
+export {
+  type AsyncContextStorage,
+  type AsyncContextStorageFactory,
+  registerAsyncContextStorageFactory,
+} from "./utils/async-context-storage.vibe"
+export {
+  type ProxyInspector,
+  registerProxyInspector,
+} from "./security/runtime-abort-signal.vibe"
+export {
+  type OptimizationRootDirResolver,
+  registerOptimizationRootDirResolver,
+} from "./runtime/agent-settings.vibe"
+export { getAmbientSingleton } from "./ambient-context.vibe"
+export { own } from "./owned.vibe"
+export { errorText } from "./utils/errors.vibe"
+export { failWhenAborted, timerDelay } from "./utils/retry.vibe"
+export { processEnv, rawEnv } from "./utils/environment.vibe"
+export { parseJSONObjectFromText } from "./utils/json5-model-output.vibe"
+export {
+  InvalidHostname,
+  MissingLookup,
+  resolvePinnedHostnameWithPolicy as resolvePinnedHostnameWithPolicyEffect,
+  UnresolvedHostname,
+} from "./network/ssrf.vibe"
+export {
+  asLegacy,
+  failingAs,
+  Foreign,
+  foreign,
+  foreignSync,
+  promised,
+  runDetached,
+  thrown,
+  thrownValue,
+} from "./edge.vibe"
 export {
   HISTORY_CONTINUITY_SOURCES,
   HISTORY_WINDOW_KEEP_SOURCES,

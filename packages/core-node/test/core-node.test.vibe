@@ -1,0 +1,258 @@
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/atomicPublication.md, "Story: Publish complete durable JSON with an honest receipt"; spec/core/catalog.md, "Story: Discover and register first-party capabilities"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import {
+  AgentRuntime,
+  createCharacter,
+  decryptStringValue,
+  encryptStringValue,
+  EventType,
+  getStreamingContext,
+  getTrajectoryContext,
+  runWithStreamingContext,
+  runWithTrajectoryContext,
+  SsrfBlockedError,
+} from "@elizaos/core"
+import {
+  createHash,
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  ensureDir,
+  fetchRemoteMedia,
+  fetchWithSsrfGuard,
+  firstHeaderValue,
+  getProvidedApiToken,
+  HookService,
+  installNodeRuntimeAdapters,
+  isLoopbackRemoteAddress,
+  isTrustedLocalRequest,
+  loadRegistry,
+  MediaFetchError,
+  pathExists,
+  readJson,
+  readJsonFile,
+  registerRegistryEntry,
+  remove,
+  resolveStateDir,
+  tokenMatches,
+  trustedLocalMediaUrl,
+  validateMcpServerConfig,
+  writeJson,
+  writeJsonAtomic,
+  writeJsonAtomicSync,
+} from "../src/index.vibe"
+
+module node {
+  import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+  import { createServer, type IncomingMessage, type Server } from "node:http"
+  import type { AddressInfo } from "node:net"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+
+  export interface LoopbackServer {
+    readonly server: Server
+    readonly port: number
+  }
+
+  /** @throws {never} */
+  export function makeTempDir(prefix: string): string {
+    return mkdtempSync(join(tmpdir(), prefix))
+  }
+
+  /** @throws {never} */
+  export function removeDir(dir: string): void {
+    rmSync(dir, { recursive: true, force: true })
+  }
+
+  /** @throws {never} */
+  export function writeBin(dir: string, name: string, mode: number): void {
+    const file = join(dir, name)
+    writeFileSync(file, "#!/bin/sh\nexit 0\n")
+    chmodSync(file, mode)
+  }
+
+  /** @throws {never} */
+  export function swapPath(nextPath: string | undefined): string | undefined {
+    const prev = process.env.PATH
+    if (nextPath === undefined) delete process.env.PATH
+    else process.env.PATH = nextPath
+    return prev
+  }
+
+  /** @throws {never} */
+  export function startLoopback(png: Uint8Array): Promise<LoopbackServer> {
+    return new Promise((resolve, reject) => {
+      const server = createServer((req, res) => {
+        const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname
+        if (path === "/photo") {
+          res.writeHead(200, { "content-type": "text/plain; charset=utf-8" })
+          res.end(png)
+        } else if (path === "/oversized") {
+          res.writeHead(200, { "content-length": "6000" })
+          res.end(new Uint8Array(6000))
+        } else {
+          res.writeHead(404)
+          res.end("missing")
+        }
+      })
+      server.once("error", reject)
+      server.listen(0, "127.0.0.1", () => {
+        resolve({ server, port: (server.address() as AddressInfo).port })
+      })
+    })
+  }
+
+  /** @throws {never} */
+  export function closeLoopback(server: Server): Promise<void> {
+    return new Promise((resolve) => server.close(() => resolve()))
+  }
+
+  /** @throws {never} */
+  export function fakeRequest(remoteAddress: string, headers: Record<string, string | string[] | undefined>): IncomingMessage {
+    return { socket: { remoteAddress }, headers } as unknown as IncomingMessage
+  }
+
+  /** @throws {never} */
+  export function randomBytesOf(size: number): Uint8Array {
+    const out = new Uint8Array(size)
+    globalThis.crypto.getRandomValues(out)
+    return out
+  }
+}
+import { closeLoopback, fakeRequest, makeTempDir, randomBytesOf, removeDir, startLoopback, swapPath, writeBin } from node
+
+it.live('Node runtime adapters isolate concurrent async contexts (spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated")', () => effect {
+  installNodeRuntimeAdapters()
+
+  const observed = try Effect.promise(async () => {
+    const first = runWithTrajectoryContext({ trajectoryStepId: "step-a" }, async () => {
+      await Effect.runPromise(Effect.sleep("15 millis"))
+      return getTrajectoryContext()?.trajectoryStepId
+    })
+    const second = runWithTrajectoryContext({ trajectoryStepId: "step-b" }, async () => {
+      await Effect.runPromise(Effect.sleep("5 millis"))
+      return getTrajectoryContext()?.trajectoryStepId
+    })
+    const streamA = runWithStreamingContext({ onStreamChunk: async () => undefined, messageId: "m-1" }, async () => {
+      await Effect.runPromise(Effect.sleep("10 millis"))
+      return getStreamingContext()?.messageId
+    })
+    const streamB = runWithStreamingContext({ onStreamChunk: async () => undefined, messageId: "m-2" }, async () => {
+      await Effect.runPromise(Effect.sleep("2 millis"))
+      return getStreamingContext()?.messageId
+    })
+    return Promise.all([first, second, streamA, streamB])
+  })
+  assert.deepStrictEqual(observed, ["step-a", "step-b", "m-1", "m-2"])
+})
+
+it.live('Atomic JSON, filesystem, state directory and crypto interop operate cleanly on Node (spec/core/atomicPublication.md, "Story: Publish complete durable JSON with an honest receipt"; spec/core/settingsKeys.md, "Story: Keep persisted settings decryptable under the selected key")', () => effect {
+  const dir = makeTempDir("core-node-fs-")
+  try ensuring(effect {
+    const nested = `${dir}/sub/state.json`
+    try Effect.promise(() => writeJsonAtomic(nested, { count: 1, label: "alpha" }))
+    const loaded = try Effect.promise(() => readJsonFile<{ count: number; label: string }>(nested))
+    assert.deepStrictEqual(loaded, { count: 1, label: "alpha" })
+
+    const syncTarget = `${dir}/sub/sync.json`
+    writeJsonAtomicSync(syncTarget, { synced: true })
+    assert.deepStrictEqual(try Effect.promise(() => readJsonFile(syncTarget)), { synced: true })
+    assert.isNull(try Effect.promise(() => readJsonFile(`${dir}/missing.json`)))
+
+    const extraDir = `${dir}/extra`
+    try Effect.promise(() => ensureDir(extraDir))
+    assert.isTrue(try Effect.promise(() => pathExists(extraDir)))
+    const jsonFile = `${extraDir}/item.json`
+    try Effect.promise(() => writeJson(jsonFile, { ok: true }))
+    assert.deepStrictEqual(try Effect.promise(() => readJson(jsonFile)), { ok: true })
+    try Effect.promise(() => remove(extraDir))
+    assert.isFalse(try Effect.promise(() => pathExists(extraDir)))
+
+    const stateDir = resolveStateDir({ ELIZA_STATE_DIR: `${dir}/eliza-state` })
+    assert.strictEqual(stateDir, `${dir}/eliza-state`)
+
+    const salt = "node-interop-test-salt-0123456789"
+    const sealed = try Effect.try(() => encryptStringValue("secret-token-value", salt))
+    assert.strictEqual(try Effect.try(() => decryptStringValue(sealed, salt)), "secret-token-value")
+    const key = try Effect.try(() => createHash("sha256").update(salt).digest())
+    const iv = randomBytesOf(12)
+    const aad = new TextEncoder().encode("core-node:test")
+    const { ciphertext, tag } = try encryptAes256Gcm(key, iv, new TextEncoder().encode("payload"), aad)
+    const opened = try decryptAes256Gcm(key, iv, ciphertext, tag, aad)
+    assert.strictEqual(new TextDecoder().decode(opened), "payload")
+  }, sync(() => removeDir(dir)))
+})
+
+it.live('Media fetch, SSRF guard, loopback trust, request token and MCP config enforce Node boundaries (spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Story: Infer media type with the established precedence")', () => effect {
+  const png = Uint8Array.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082".match(/../g) ?? [], (pair) => Number.parseInt(pair, 16))
+  const site = try Effect.promise(() => startLoopback(png))
+  try ensuring(effect {
+    const blocked = try Effect.flip(Effect.tryPromise(() => fetchWithSsrfGuard({ url: `http://127.0.0.1:${site.port}/photo` })))
+    assert.instanceOf(blocked.cause, SsrfBlockedError)
+
+    const fetched = try Effect.promise(() => fetchRemoteMedia({
+      url: `http://127.0.0.1:${site.port}/photo`,
+      ssrfPolicy: { allowPrivateNetwork: true },
+    }))
+    assert.strictEqual(fetched.contentType, "image/png")
+    assert.strictEqual(fetched.buffer.length, png.length)
+
+    const tooLarge = try Effect.flip(Effect.tryPromise(() => fetchRemoteMedia({
+      url: `http://127.0.0.1:${site.port}/oversized`,
+      maxBytes: 4000,
+      ssrfPolicy: { allowPrivateNetwork: true },
+    })))
+    assert.instanceOf(tooLarge.cause, MediaFetchError)
+
+    const validHash = "a".repeat(64)
+    const trusted = trustedLocalMediaUrl(`/api/media/${validHash}.png`)
+    assert.isNotNull(trusted)
+    assert.strictEqual(trusted?.pathname, `/api/media/${validHash}.png`)
+    assert.isNull(trustedLocalMediaUrl("https://example.com/a.png"))
+
+    assert.isTrue(isLoopbackRemoteAddress("127.0.0.1"))
+    assert.isFalse(isLoopbackRemoteAddress("8.8.8.8"))
+    const req = fakeRequest("127.0.0.1", { authorization: "Bearer secret-123" })
+    assert.isTrue(isTrustedLocalRequest(req, { localAuthRequired: false, cloudProvisioned: false }))
+    assert.strictEqual(firstHeaderValue(["one", "two"]), "one")
+    assert.strictEqual(getProvidedApiToken(req), "secret-123")
+    assert.isTrue(tokenMatches("secret-123", "secret-123"))
+    assert.isFalse(tokenMatches("secret-123", "wrong-token"))
+
+    const mcp = try Effect.promise(() => validateMcpServerConfig({ type: "stdio", command: "node", args: ["server.js"] }))
+    assert.isNull(mcp)
+  }, Effect.promise(() => closeLoopback(site.server)))
+})
+
+it.live('HookService and first-party catalog registry run on Node (spec/core/plugins.md, "Story: Load and roll back a plugin"; spec/core/catalog.md, "Story: Discover and register first-party capabilities")', () => effect {
+  provide NodeServices.layer {
+    const dir = makeTempDir("core-node-hooks-")
+    try ensuring(effect {
+      writeBin(dir, "present-bin", 0o755)
+      writeBin(dir, "noexec-bin", 0o644)
+      const previousPath = swapPath(dir)
+      const runtime = try Effect.try(() => new AgentRuntime({ character: createCharacter({ name: "NodeTest" }) }))
+      try ensuring(effect {
+        const hooks = (try Effect.promise(() => HookService.start(runtime))) as HookService
+        const seen: string[] = []
+        const presentId = hooks.register(EventType.HOOK_TOOL_BEFORE, () => { seen.push("present") }, { name: "present", requires: { bins: ["present-bin"] } })
+        const absentId = hooks.register(EventType.HOOK_TOOL_BEFORE, () => { seen.push("absent") }, { name: "absent", requires: { bins: ["noexec-bin"] } })
+        try Effect.promise(() => runtime.emitEvent(EventType.HOOK_TOOL_BEFORE, { toolName: "probe" }))
+        assert.isTrue(hooks.checkEligibility(presentId).eligible)
+        assert.isFalse(hooks.checkEligibility(absentId).eligible)
+        assert.deepStrictEqual(seen, ["present"])
+        try Effect.promise(() => hooks.stop())
+      }, sync(() => { swapPath(previousPath) }))
+
+      const reg = loadRegistry()
+      const entry = reg.byId.get("agent-orchestrator")
+      assert.isDefined(entry)
+      registerRegistryEntry({ ...entry!, description: "updated in node test" })
+      assert.strictEqual(loadRegistry().byId.get("agent-orchestrator")?.description, "updated in node test")
+      const rejected = try Effect.flip(Effect.try(() => {
+        registerRegistryEntry({ ...entry!, kind: "app", subtype: "tool", launch: { type: "internal-tab" } } as unknown as typeof entry & object)
+      }))
+      assert.isDefined(rejected)
+    }, sync(() => removeDir(dir)))
+  }
+})

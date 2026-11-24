@@ -1,6 +1,6 @@
 // spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/control.md, "A reload of a page my phone withheld runs only after my review on the phone, or as the BROWSER command only when the model says I asked for it"
 import { readTurnContext } from "@elizaos/agent"
-import { deviceTurnFor } from "@elizaos/agent/device-actions"
+import { deviceTurnFor } from "@elizaos/agent-host"
 import { readViewInteractionClientId, type Action, type ActionResult, type ContextDefinition, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { historyReport, type HistoryReceipt, type HistoryReport } from "../gen/browser__control.effect.vibe"
 import { BROWSER_RELOAD_WITHHELD_REFUSAL, browserCommandReloadRuns, browserHistoryHome } from "./contract.vibe"

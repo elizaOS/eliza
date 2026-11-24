@@ -1,23 +1,17 @@
 // spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/read.md, "Story: Search private notes and share only what I select"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/organize.md, "Story: Organize my notes only where I can see it"; spec/notes/client.md, "Story: Read and save a note under the current connection"; spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { negotiation, validate, type DeviceOperation, type DeviceTurn, type EarlierRequest } from "@elizaos/agent/device-actions"
-import type { LocalRoute } from "@elizaos/agent/routes"
+import { negotiation, validate, type DeviceOperation, type LocalRoute } from "@elizaos/agent"
+import type { DeviceTurn, EarlierRequest } from "@elizaos/agent-host"
 import { bindIncomingMessagePersistence, satisfiesContextGate, stringToUuid, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { noteChangeResult, notesPlugin, notesRefusalResult, notesRoutes } from "../src/agent.vibe"
 import { notesDeviceFamily } from "../src/device-proposals.vibe"
-import { createNotesClient, noteScheduleText, recordNoteOriginFor } from "../src/client.vibe"
-import { authoredNoteText, noteShareText, parseNoteFormat } from "../src/format.vibe"
-import { ownerRequestText } from "../src/lookup.vibe"
 import {
-  decodeNotesOrganizeOperation, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeOffered, notesOrganizeRunsDirectly, readNoteFolders,
-  type NotesOrganizeType,
-} from "../src/organize.vibe"
-import { NotesReadRefused, selectedNotes, type NotesAuthority, type NotesClaim, type NotesOwner, type NotesReadOperation,
-  type NotesReadPorts, type NotesTarget } from "../src/selected-read.vibe"
+  createNotesClient, noteScheduleText, recordNoteOriginFor, authoredNoteText, noteShareText, parseNoteFormat, decodeNotesOrganizeOperation, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeOffered, notesOrganizeRunsDirectly, readNoteFolders, type NotesOrganizeType, NotesReadRefused, selectedNotes, type NotesAuthority, type NotesClaim, type NotesOwner, type NotesReadOperation, type NotesReadPorts, type NotesTarget, type StickyNote,
+} from "@elizaos/plugin-notes-client"
+import { ownerRequestText } from "../src/lookup.vibe"
 import { notesCollection, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
 import type { NotesStorage } from "../src/store.vibe"
-import type { StickyNote } from "../src/types.vibe"
 
 const day = 86_400_000
 const start = Date.parse("2026-11-20T10:00:00.000Z")

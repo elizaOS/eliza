@@ -1,0 +1,102 @@
+// spec/core/logging/index.md, "Story: Capture logs without exposing host internals"; spec/core/asyncContext.md, "Nested context runs restore the previous context"
+import {
+  registerAsyncContextStorageFactory,
+  registerLoggerNodeHost,
+  registerOptimizationRootDirResolver,
+  registerProxyInspector,
+  type LoggerNodeHost,
+} from "@elizaos/core"
+import { getOptimizationRootDir } from "./utils/state-dir.vibe"
+
+module node {
+  import { AsyncLocalStorage } from "node:async_hooks"
+  import * as fs from "node:fs"
+  import { hostname } from "node:os"
+  import * as pathMod from "node:path"
+  import { types } from "node:util"
+  import type { AsyncContextStorage, LoggerNodeHost, ProxyInspector } from "@elizaos/core"
+
+  /** @throws {never} */
+  export function createNodeAsyncContextStorage<T>(): AsyncContextStorage<T> {
+    return new AsyncLocalStorage<T>()
+  }
+
+  /** @throws {never} */
+  export function createNodeLoggerHost(): LoggerNodeHost {
+    return {
+      processId(): number {
+        return process.pid
+      },
+      hostName(): string {
+        return hostname()
+      },
+      onProcessExit(listener: () => void): void {
+        process.on("exit", listener)
+      },
+      prepareSinkPaths(target: string, inWorkingDirectory: boolean): readonly string[] | undefined {
+        try {
+          const output = inWorkingDirectory ? pathMod.join(process.cwd(), "output.log") : target
+          const directory = pathMod.dirname(output)
+          fs.mkdirSync(directory, { recursive: true })
+          return [output, pathMod.join(directory, "prompts.log"), pathMod.join(directory, "chat.log")]
+        } catch {
+          return undefined
+        }
+      },
+      openPrivate(path: string): number | undefined {
+        try {
+          const fd = fs.openSync(path, "a", 0o600)
+          try {
+            fs.fchmodSync(fd, 0o600)
+          } catch {
+            void 0
+          }
+          return fd
+        } catch {
+          return undefined
+        }
+      },
+      closeDescriptor(fd: number): boolean {
+        try {
+          fs.closeSync(fd)
+          return true
+        } catch {
+          return false
+        }
+      },
+      writeDescriptor(fd: number, parts: readonly string[]): string | undefined {
+        try {
+          for (const part of parts) fs.writeSync(fd, part)
+          return undefined
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error)
+        }
+      },
+    }
+  }
+
+  /** @throws {never} */
+  export function nodeProxyInspector(): ProxyInspector {
+    const candidate = types?.isProxy
+    if (typeof candidate !== "function") return () => true
+    return (value: object) => candidate(value)
+  }
+}
+import { createNodeAsyncContextStorage, createNodeLoggerHost, nodeProxyInspector } from node
+
+let installed = false
+
+export function installNodeRuntimeAdapters(): void {
+  if (installed) return
+  installed = true
+  registerLoggerNodeHost(createNodeLoggerHost())
+  registerAsyncContextStorageFactory(createNodeAsyncContextStorage)
+  registerProxyInspector(nodeProxyInspector())
+  registerOptimizationRootDirResolver(getOptimizationRootDir)
+}
+
+export function createNodeLoggerHostAdapter(): LoggerNodeHost {
+  return createNodeLoggerHost()
+}
+
+installNodeRuntimeAdapters()

@@ -1,5 +1,5 @@
 // spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search runs on my words as I typed them, and a search the model words differently runs only after my review"; spec/browser/control.md, "A reload of a page my phone withheld runs only after my review on the phone, or as the BROWSER command only when the model says I asked for it"
-import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
+import { parseBrowserAddressInput } from "@elizaos/os-bridges"
 import { groundedSearch } from "../gen/browser__control.effect.vibe"
 import { closingMarkIsProse, directDestination, pageLinkDestination, proposedDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
 import { IANA_TLDS } from "./iana-tlds.vibe"
