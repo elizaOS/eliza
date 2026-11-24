@@ -1,6 +1,6 @@
 # Native contacts
 
-The [Android contacts catalog](../os/android/contacts.md) owns provider paging, receipts, and device policy. The bridge serves the local Contacts view and exposes a read/create/import capability.
+The [Android contacts catalog](../os/android/contacts.md) owns provider paging, receipts, and device policy. The bridge serves the local Contacts view and exposes a read/create capability.
 
 ## Story: Read or add contacts only within my device permissions
 
@@ -8,10 +8,10 @@ The [Android contacts catalog](../os/android/contacts.md) owns provider paging, 
 
 ### A contacts read needs a read grant and a write needs a write grant
 
-The contacts catalog hands over a provider-controlled continuation. vCard import creates local contacts only after validating the import selection and current write permission.
+The contacts catalog hands over a provider-controlled continuation.
 
 ```quint
-type ContactCapability = BrowseContacts | CreateNativeContact | ImportNativeVCard
+type ContactCapability = BrowseContacts | CreateNativeContact
 type ContactGrant = { readable: bool, writable: bool }
 type ContactPage = { maxRows: int, returnedRows: int, hasContinuation: bool }
 pure def mayUseContacts(grant: ContactGrant, op: ContactCapability): bool =

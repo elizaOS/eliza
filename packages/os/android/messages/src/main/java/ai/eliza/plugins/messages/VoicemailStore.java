@@ -34,7 +34,7 @@ import org.json.JSONObject;
  * fails the read instead of being skipped. Audio is returned whole or not at all (at most
  * {@link #MAX_AUDIO_BYTES}). A carrier transcript longer than {@link #MAX_TRANSCRIPT} characters is
  * not published (null), never clipped. Nothing here downloads from the carrier: {@link #fetch} only
- * asks the row's own source to (the {@code vvm} package is such a source when the host declares it).
+ * asks the row's own source to.
  */
 @androidx.annotation.RequiresApi(29)
 public final class VoicemailStore {

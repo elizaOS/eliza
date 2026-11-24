@@ -26,16 +26,5 @@
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
     }
-  },
-  "capacitor": {
-    "ios": {
-      "src": "ios",
-      "podName": "ElizaosCapacitorLocation"
-    }
-  },
-  "files": [
-    "dist",
-    "ios/Sources",
-    "*.podspec"
-  ]
+  }
 }

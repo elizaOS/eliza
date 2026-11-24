@@ -1,5 +1,5 @@
 // spec/nativeContacts/index.md, "Story: Read or add contacts only within my device permissions"
-export { addressBookPlugin, contactsClient, contactsPlugin, createAddressBookClient, createContactNames } from "@elizaos/os/bridges/contacts"
+export { addressBookPlugin, createAddressBookClient, createContactNames } from "@elizaos/os/bridges/contacts"
 export type * from "@elizaos/os/bridges/definitions/contacts"
 
 import { ADDRESS_BOOK_DEFAULT_PAGE } from "@elizaos/os/bridges/contacts"
