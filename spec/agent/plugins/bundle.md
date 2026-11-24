@@ -333,7 +333,7 @@ pure def lawEveryEntryNeedsTheLoadSmoke(e: BundleEntry): bool = not(entryAdmitte
 `hostModules` maps a bundled package name to a module factory;
 `hostServices(host)` builds, once per factory call, the layer of device
 services those factories need (for example `androidInferenceLayer(socket)`
-from `@elizaos/os/inference`), itself given the resident's platform layer
+from `@elizaos/os`), itself given the resident's platform layer
 (file system, path, child processes). A factory needs nothing beyond those
 services and the platform layer, so no host module starts with a missing
 service.

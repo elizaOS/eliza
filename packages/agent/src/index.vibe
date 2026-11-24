@@ -1,4 +1,4 @@
-// spec/agent/client/runtimeClient.md, "Story: Talk to my agent over its local bridge"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/voice/session.md, "Story: Talk to my agent hands-free"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/access/routes.md, "Story: Admit only the routes a product lists"
+// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/access/routes.md, "Story: Admit only the routes a product lists"
 export {
   createRuntimeJsonClient, RuntimeRequestError,
   type RuntimeClientOptions, type RuntimeJsonBridge, type RuntimeJsonResponse, type RuntimeRequestHeaders, type RuntimeStatus, type RuntimeStream, type RuntimeStreamFrame,

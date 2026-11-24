@@ -148,24 +148,32 @@ browser bundle. A code subpath the package used to export, such as
 `./protocol` or `./logging`, is no longer exported, and resolving it is
 refused. The host-only modules (media fetch, the network guard, the
 filesystem and state directory helpers, the hook service, the catalog
-generator and the Node adapters behind async context) are
-`@elizaos/core-node`'s, which a Node host imports to install those
-adapters.
+generator and the Node logger host) are `@elizaos/core-node`'s, which a
+Node host imports to install its adapters. The names the root served before
+and serves no more, each now exported by `@elizaos/core-node`, are exactly
+`CachedImageDescription`, `DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES`, `DEFAULT_MEDIA_FETCH_TIMEOUT_MS`, `FetchMediaOptions`, `FetchMediaResult`, `GuardedFetchOptions`, `GuardedFetchResult`, `HookService`, `LocalRequestTrustPolicy`, `MediaFetchError`, `MediaFetchErrorCode`, `PinnedLookupFetchLike`, `PinnedLookupFetchParams`, `RawConnectorAttachment`, `ResolveOutboundAttachmentOptions`, `ResolvedAttachmentBytes`, `VISION_IMAGE_FETCH_TIMEOUT_MS`, `VISION_IMAGE_MAX_BYTES`, `contentTypeForMime`, `copy`, `createHash`, `createValidatedLookup`, `describeImageCached`, `ensureDir`, `ensureSymlink`, `fetchRemoteMedia`, `fetchWithSsrfGuard`, `firstHeaderValue`, `getElizaNamespace`, `getLocalServerUrl`, `getOptimizationRootDir`, `getProvidedApiToken`, `isLoopbackRemoteAddress`, `isRemoteAddressInCidrList`, `isTrustedLocalRequest`, `loadRegistry`, `nodeLookupFn`, `nodePinnedFetch`, `normalizeImageDescription`, `pathExists`, `proxyClientHeaderBlocksLocalTrust`, `readErrorBodySnippet`, `readFile`, `readJson`, `readJsonFile`, `readResponseWithLimit`, `readdir`, `registerRegistryEntry`, `remove`, `resolveAttachmentBytes`, `resolveOAuthDir`, `resolveOutboundAttachmentBytes`, `resolveStateDir`, `resolveUserPath`, `rmdir`, `stat`, `summarizeOutboundAttachmentUrl`, `toMedia`, `tokenMatches`, `trustedLocalMediaUrl`, `unlink`, `validateMcpServerConfig`, `writeJson`, `writeJsonAtomic`, `writeJsonAtomicSync`. `@elizaos/core-node` reads the generated catalog through the JSON
+asset `@elizaos/core/catalog/generated.json`: an asset entry, never a code
+subpath, so the root stays the only code entry. Asynchronous context needs no
+adapter: core finds the host's own storage, and a host with none refuses a
+scope (see [asynchronous context](./asyncContext.md)).
 
 ```quint
 type CoreLeaf = LoggingLeaf | ReadMemoLeaf | ViewInteractionLeaf | SpeechLeaf | SchemaTypesLeaf | ProtocolLeaf | EventsLeaf
   | ErrorsLeaf | SpokenTextLeaf | LanguageLeaf | LogRedactionLeaf | SingleFlightMemoLeaf | TypesLeaves | ViewsLeaves
   | EmbeddingVectorSpaceLeaf | TaskWidgetsLeaf | RestartExitCodeLeaf
 type ClosureModule = BrowserModule | HostOnlyModule
-type PackedLeaf = { leaf: CoreLeaf, closure: List[ClosureModule] }
+type PackedEntry = RootEntry | CodeSubpath
+type PackedLeaf = { leaf: CoreLeaf, entry: PackedEntry, closure: List[ClosureModule] }
 pure def browserSafeClosure(closure: List[ClosureModule]): bool = not(closure.includes(HostOnlyModule))
 pure def packAdmitted(declared: Set[CoreLeaf], packed: List[PackedLeaf]): bool =
-  declared.forall(leaf => packed.some(p => p.leaf == leaf)) and packed.every(p => declared.contains(p.leaf) and browserSafeClosure(p.closure))
-pure val packedValues = Set(List(), List({ leaf: LoggingLeaf, closure: List(BrowserModule) }),
-  List({ leaf: LoggingLeaf, closure: List(BrowserModule, HostOnlyModule) }),
-  List({ leaf: LoggingLeaf, closure: List(BrowserModule) }, { leaf: EventsLeaf, closure: List() }))
+  declared.forall(leaf => packed.some(p => p.leaf == leaf))
+    and packed.every(p => declared.contains(p.leaf) and p.entry == RootEntry and browserSafeClosure(p.closure))
+pure val packedValues = Set(List(), List({ leaf: LoggingLeaf, entry: RootEntry, closure: List(BrowserModule) }),
+  List({ leaf: LoggingLeaf, entry: RootEntry, closure: List(BrowserModule, HostOnlyModule) }),
+  List({ leaf: LoggingLeaf, entry: CodeSubpath, closure: List(BrowserModule) }),
+  List({ leaf: LoggingLeaf, entry: RootEntry, closure: List(BrowserModule) }, { leaf: EventsLeaf, entry: RootEntry, closure: List() }))
 pure def lawAdmittedPackServesExactlyTheDeclaredSafeLeaves(declared: Set[CoreLeaf], packed: List[PackedLeaf], leaf: CoreLeaf): bool =
-  packAdmitted(declared, packed) implies (declared.contains(leaf) iff packed.some(p => p.leaf == leaf and browserSafeClosure(p.closure)))
+  packAdmitted(declared, packed) implies (declared.contains(leaf) iff packed.some(p => p.leaf == leaf and p.entry == RootEntry and browserSafeClosure(p.closure)))
 ```
 
 ## Story: Speak only the prose of a reply
