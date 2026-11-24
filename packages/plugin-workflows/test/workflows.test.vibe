@@ -2,8 +2,9 @@
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { TestClock } from "effect/testing"
-import { computeNextCronRunAtMs, getDirectActionRoutingRules, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
-import { activeWorkflowsProvider, workflowAction, workflowInstances } from "../src/agent.vibe"
+import { activityLabel } from "@elizaos/agent"
+import { computeNextCronRunAtMs, ContextRegistry, getDirectActionRoutingRules, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
   workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected,
@@ -176,6 +177,12 @@ effect function saved(rig: Harness, draft: PhoneWorkflowSpec, copy = "") {
   const receipt = try rig.client.savePhone(validated.spec, catalog, { mutationId, specDigest: validated.specDigest, compilerRevision: catalog.compilerRevision })
   return { catalog, receipt, mutationId, specDigest: validated.specDigest }
 }
+
+it.effect('Show Workflows while a workflow call runs, without changing which calls of it run (spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results")', effect () => {
+  const runtime = { contexts: try Effect.try(() => new ContextRegistry([workflowsContext])) } as unknown as IAgentRuntime
+  const label = try Effect.try(() => activityLabel(runtime, workflowAction))
+  assert.deepStrictEqual([label, workflowAction.contexts], ["Using Workflows", ["general", "automation", "tasks", "agent_internal"]])
+})
 
 it.live('Recover one reviewed run across an interrupted reply (spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/workflow/intents.md, "Story: Preserve the owner’s pending action across transport uncertainty"; spec/workflow/authoring.md, "Story: Review the exact typed workflow that my agent will save")', effect () => {
   provide KeyValueStore.layerMemory {

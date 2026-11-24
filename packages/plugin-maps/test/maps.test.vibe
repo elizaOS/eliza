@@ -2,7 +2,8 @@
 import { assert, it, layer } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
-import { getDirectActionRoutingRules, TurnControllerRegistry, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
+import { activityLabel } from "@elizaos/agent"
+import { ContextRegistry, getDirectActionRoutingRules, TurnControllerRegistry, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
 import { mapsChat, mapsToolCall } from "./support/cloud.ts"
 import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
 import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
@@ -244,7 +245,7 @@ it.live('Plan directions and keep me in control of guidance: an agent request wa
   }))
 })
 
-it.live('Navigate again when the phone never received my request: a lost delivery is delivered again to the same offer after its lease lapses, the phone runs it once and answers once, the agent bundle reaches the phone that opened its relay for the turn\'s conversation, and a request made once its turn has ended never reaches the phone (spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer"; spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself")', effect () => {
+it.live('Navigate again when the phone never received my request: a lost delivery is delivered again to the same offer after its lease lapses, the phone runs it once and answers once, the agent bundle reaches the phone that opened its relay for the turn\'s conversation, showing Maps while it works, and a request made once its turn has ended never reaches the phone (spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer"; spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results")', effect () => {
   const relay = try mapsNavigationRelay({ leaseMs: 40, commandMs: 3_000, liveMs: 2_000, idleMs: 30_000, pollMs: 20 })
   const conversationId = "11111111-2222-4333-8444-555555555555"
   const agent = relay.navigation("phone-scope", conversationId, () => true)
@@ -276,6 +277,7 @@ it.live('Navigate again when the phone never received my request: a lost deliver
   const roomId = "66666666-2222-4333-8444-555555555555"
   const turns = new TurnControllerRegistry()
   const runtime = {
+    contexts: try Effect.try(() => new ContextRegistry()),
     getService: () => linkFake().link,
     getRoom: (id: string) => Promise.resolve(id === roomId ? { id: roomId, metadata: { deviceConversation: { id: conversationId, createdAt: 1, updatedAt: 1 } } } : null),
     turnControllers: turns,
@@ -299,7 +301,8 @@ it.live('Navigate again when the phone never received my request: a lost deliver
   try Effect.try(() => assert.deepStrictEqual({
     available, status: status.state, route: status.route?.durationSeconds, runs, afterItsTurn: afterItsTurn?.success,
     stopped: [stopped?.success, (stopped?.data as { readonly status?: { readonly state: string } } | undefined)?.status?.state],
-  }, { available: true, status: "awaiting-confirmation", route: 720, runs: ["start", "stop"], afterItsTurn: false, stopped: [true, "stopped"] }))
+    label: activityLabel(runtime, stopAction),
+  }, { available: true, status: "awaiting-confirmation", route: 720, runs: ["start", "stop"], afterItsTurn: false, stopped: [true, "stopped"], label: "Using Maps" }))
 })
 
 it.live('A command delivered to an offer that is then replaced is abandoned rather than replayed, and a queued one reaches the new offer (spec/maps/relay.md, "A queued command waits for the phone\'s current offer and survives a new offer it never reached")', effect () => {

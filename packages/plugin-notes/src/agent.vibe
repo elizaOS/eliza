@@ -2,7 +2,7 @@
 import { readTurnContext, type AgentModule, type AgentPlugin, type ModuleFactory } from "@elizaos/agent"
 import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
-import type { Action, ActionResult, ContextDefinition, EffectReceipt, Memory, NotesRequestOperation, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
+import type { Action, ActionResult, EffectReceipt, Memory, NotesRequestOperation, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
 import { displayZoneSource, emptyCollectionObserved, localTimesShown, receiptOperation, receiptOutcome, refusalKind, type NotesRefusal, type NotesWrite } from "../gen/notes__records.effect.vibe"
 import type { NoteTarget, NotesQuery } from "./collection.vibe"
 import { notesDeviceFamily } from "./device-proposals.vibe"
@@ -15,7 +15,7 @@ import {
   notesCollection, notesServiceClass, notesStateUpdatedEvent, runtimeNotesHost,
   type NotesCollection, type NotesFailure, type NotesOptions,
 } from "./service.vibe"
-import { projectNoteForModel, reconstructNoteContent, type NotesSnapshot, type StickyNote } from "./types.vibe"
+import { notesContext, projectNoteForModel, reconstructNoteContent, type NotesSnapshot, type StickyNote } from "./types.vibe"
 
 module edge {
   import { randomUUID } from "node:crypto"
@@ -35,11 +35,6 @@ module edge {
 import { localTime, newRequestId } from edge
 
 export const notesModuleName = "@elizaos/plugin-notes"
-
-export const notesContext: ContextDefinition = {
-  id: "notes", aliases: ["note"], label: "Notes", description: "Saved notes.", descriptionCompressed: "Saved notes.",
-  sensitivity: "personal", cacheScope: "agent", roleGate: { minRole: "OWNER" },
-}
 
 type Params = Readonly<Record<string, unknown>>
 
