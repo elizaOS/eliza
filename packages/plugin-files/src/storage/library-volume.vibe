@@ -23,6 +23,7 @@ module browser {
     return new Blob([bytes], { type })
   }
 
+  /** @throws {never} */
   export function decodeUtf8(bytes: Uint8Array<ArrayBuffer>): string | undefined {
     try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes) }
     catch { return undefined }

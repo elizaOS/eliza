@@ -84,7 +84,7 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
   }, libraryVolume()).pipe(Effect.provide(tab))
 })
 
-it.effect('Retire stale selected Files reads when the selection is forgotten or renamed (spec/files/library.md, "A selection reads its file only while the file still has the revision it selected")', effect () => {
+it.effect('Retire stale Files reads (spec/files/library.md, "A selection reads its file only while the file still has the revision it selected")', effect () => {
   const tab = indexedLibrary(`files-selection-${Date.now()}`)
   type Hold = { remaining: number; entered: Deferred.Deferred<void>; release: Deferred.Deferred<void> }
   let held: Hold | undefined
