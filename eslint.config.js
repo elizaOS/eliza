@@ -268,7 +268,13 @@ export default withWorkspaceBarrels(defineConfig(
   { files: own, plugins: { code }, rules: { "no-console": "error", "code/comments": ["error", { left: commented }], "code/effects": ["error", { left: scheduled }] } },
   { files: ["packages/ui/src/components/**"], ignores: ["**/*.meta.tsx"], rules: { "code/comments": ["error", { jsdoc: true, left: commented }] } },
   { files: Object.keys(consoleCounts), rules: { "no-console": "off", "code/console": ["error", { left: consoleCounts }] } },
-), { root: import.meta.dirname })
+), {
+  root: import.meta.dirname,
+  // The Android, AOSP and browser trees os ships as files: downstream Android packaging resolves them through these keys.
+  allowExports: {
+    "packages/os/package.json": ["./browser/runtime/*", "./browser/protection/*", "./browser/chromium/component/*", "./android/*", "./aosp/*"],
+  },
+})
 
 if (import.meta.main) {
   const { spawn, spawnSync } = await import("node:child_process")

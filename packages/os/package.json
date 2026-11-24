@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Android device image, Android host build, app updates, owned Chromium browser and inference.",
   "license": "MIT",
+  "engines": {
+    "node": ">=26"
+  },
   "bin": {
     "eliza-os": "./dist/src/cli.js"
   },
@@ -30,7 +33,12 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    }
+    },
+    "./browser/runtime/*": "./browser/src/*",
+    "./browser/protection/*": "./browser/protection/*",
+    "./browser/chromium/component/*": "./browser/chromium/component/*",
+    "./android/*": "./android/*",
+    "./aosp/*": "./aosp/*"
   },
   "publishConfig": {
     "exports": {
@@ -38,7 +46,12 @@
         "types": "./dist/src/index.d.ts",
         "import": "./dist/src/index.js",
         "default": "./dist/src/index.js"
-      }
+      },
+      "./browser/runtime/*": "./browser/src/*",
+      "./browser/protection/*": "./browser/protection/*",
+      "./browser/chromium/component/*": "./browser/chromium/component/*",
+      "./android/*": "./android/*",
+      "./aosp/*": "./aosp/*"
     }
   },
   "scripts": {

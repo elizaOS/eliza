@@ -462,7 +462,9 @@ ESLint enforces workspace barrel exports (`barrel/exports` on workspace
 `package.json` manifests, including `publishConfig.exports`, and
 `barrel/no-subpath-imports` on code files, via `withWorkspaceBarrels` in
 `vibestack/eslint.ts` with `allowExports` / `allowImports` ratchets for
-adopting repositories) and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+adopting repositories; here the one ratchet keeps `@elizaos/os`'s wildcard
+exports of the Android, AOSP and browser file trees, which downstream Android
+packaging resolves) and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
 citation or tool directive, no effect hook, timer or `console`, and no inline
 config but a reasoned `eslint-disable` of another rule. `commented` and
 `scheduled` in `eslint.config.js` give each file that still breaks them the
