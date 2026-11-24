@@ -30,6 +30,21 @@ export default {
     "packages/plugin-assistant/src/host.vibe": ["exports"],
     "packages/agent/test/support/product-plugin/entry.ts": ["unlisted"],
     "packages/plugin-assistant/src/index.vibe": ["duplicates"],
+    "packages/plugin-anthropic/src/index.vibe": ["duplicates"],
+    "packages/plugin-discord/src/index.vibe": ["duplicates"],
+    "packages/plugin-elizacloud/src/index.vibe": ["duplicates"],
+    "packages/plugin-embeddings/src/index.vibe": ["duplicates"],
+    "packages/plugin-github/src/index.vibe": ["duplicates"],
+    "packages/plugin-imessage/src/index.vibe": ["duplicates"],
+    "packages/plugin-openai/src/index.vibe": ["duplicates"],
+    "packages/plugin-pdf/src/index.vibe": ["duplicates"],
+    "packages/plugin-slack/src/index.vibe": ["duplicates"],
+    "packages/plugin-telegram/src/index.vibe": ["duplicates"],
+    "packages/plugin-video/src/index.vibe": ["duplicates"],
+    "packages/plugin-vision/src/index.vibe": ["duplicates"],
+    "packages/plugin-wallet/src/index.vibe": ["duplicates"],
+    "packages/plugin-web-search/src/index.vibe": ["duplicates"],
+    "packages/plugin-x/src/index.vibe": ["duplicates"],
     "packages/plugin-browser/src/index.vibe": ["duplicates"],
     "packages/plugin-calendar/src/index.vibe": ["duplicates"],
     "packages/plugin-files/src/index.vibe": ["duplicates"],
@@ -151,6 +166,15 @@ export default {
     },
     "packages/plugin-inbox": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
+    "packages/plugin-native-browser-surface": {
+      "entry": ["resources/read-page.js"]
+    },
+    "packages/plugin-network": {
+      "ignoreDependencies": ["@mockoon/cli"]
+    },
+    "packages/plugin-trajectory-logger": {
+      "entry": ["src/TrajectoryView.tsx"]
     },
     "packages/plugin-notes": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]

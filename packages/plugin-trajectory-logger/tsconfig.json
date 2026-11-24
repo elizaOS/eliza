@@ -16,7 +16,8 @@
       ".",
       ".vibe/declarations"
     ],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
   },
   "include": [
     "src",
