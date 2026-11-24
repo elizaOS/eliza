@@ -28,17 +28,6 @@ const runStates = { Starting: "starting", Running: "running", Stopping: "stoppin
 
 export const runStateOf = (phase: AgentProcess): AgentState => runStates[agentStateOf(phase)]
 
-export function backendOf(model: LaunchDocument["model"]): Backend {
-  switch (model.backend) {
-    case "cloud":
-      return { tag: "CloudBackend", baseUrl: model.cloudBaseUrl, baseUrlShape: "HttpsOrigin", smallModel: model.smallModel, largeModel: model.largeModel, imageModel: model.imageModel }
-    case "own-key":
-      return { tag: "OwnKeyBackend", baseUrl: model.ownKeyBaseUrl, baseUrlShape: new URL(model.ownKeyBaseUrl).origin === model.ownKeyBaseUrl ? "HttpsOrigin" : "HttpsWithPath", smallModel: model.ownKeySmall, largeModel: model.ownKeyLarge }
-    case "none":
-      return { tag: "NoBackend" }
-  }
-}
-
 const backendName = { CloudBackend: "cloud", OwnKeyBackend: "own-key", NoBackend: "none" } as const
 
 function lastFailure(last: LastCloudFailure) {

@@ -1,10 +1,10 @@
-// spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"; spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one"; spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"; spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one"; spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"; spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Stdio } from "effect/Stdio"
 import { AGENT_EXIT_CODES, exitCode, readLaunch, LaunchCredentialMissing } from "./host/launch.vibe"
 import { LaunchDocumentRejected } from "./host/launch.schema.vibe"
-import { startAgent, AgentBootFailed } from "./host/process.vibe"
+import { startAgent, AgentBootFailed, AgentStoppedInBoot } from "./host/process.vibe"
 import { configureMobileDns } from "./host/mobile-dns.vibe"
 import { bundledPluginMap, BundleEntryRefused, type BundledEntry } from "./plugins/profile.vibe"
 import type { ModuleContext, ModuleFactory } from "./host/module.vibe"
@@ -58,6 +58,7 @@ type PlatformServices = Layer.Success<typeof NodeServices.layer>
 
 export interface ResidentHost {
   readonly stateDirectory: string
+  readonly environment: Readonly<Record<string, string>>
 }
 
 interface AgentCliEntries {
@@ -91,8 +92,9 @@ let released: number | undefined
 effect function serve<R>(cli: AgentCli<R>) {
   configureMobileDns() catch effect () => { throw new AgentBootFailed({ phase: "Config" }) }
   const input = try readLaunch()
-  const hostModules = residentModules(cli, { stateDirectory: input.stateDirectory })
-  const runtimeServices = cli.runtimeServices?.({ stateDirectory: input.stateDirectory })
+  const resident: ResidentHost = { stateDirectory: input.stateDirectory, environment: input.launch.environment ?? {} }
+  const hostModules = residentModules(cli, resident)
+  const runtimeServices = cli.runtimeServices?.(resident)
   const bundled = try bundledPluginMap(cli.bundled, hostedNames(cli))
   const snapshot = try tryPromise({
     try: () => bundledSnapshot(import.meta.url),
@@ -101,6 +103,7 @@ effect function serve<R>(cli: AgentCli<R>) {
   const agent = try acquireRelease(
     startAgent({ ...input, bundled, ...(hostModules === undefined ? {} : { hostModules }), ...(runtimeServices === undefined ? {} : { runtimeServices }), ...(snapshot === undefined ? {} : { snapshot }) }),
     (agent) => map(promise(() => agent.stop()), (code) => { released = code }),
+    { interruptible: true },
   )
   try sync(() => publishBundleActions(agent.runtime.actions))
   try never
@@ -111,8 +114,9 @@ effect function smoke<R>(cli: AgentCli<R>, arguments_: readonly string[]) {
   if (arguments_.length !== 3 || stateFlag !== "--state" || !stateDirectory) throw new LaunchDocumentRejected()
   const writeLine = try sync(reserveStdout)
   const bundled = try bundledPluginMap(cli.bundled, hostedNames(cli))
-  const hostModules = residentModules(cli, { stateDirectory })
-  const runtimeServices = cli.runtimeServices?.({ stateDirectory })
+  const resident: ResidentHost = { stateDirectory, environment: {} }
+  const hostModules = residentModules(cli, resident)
+  const runtimeServices = cli.runtimeServices?.(resident)
   const report = try smokeBoot({
     bundled, stateDirectory, productPlugin: cli.productPlugin,
     ...(hostModules === undefined ? {} : { hostModules }),
@@ -134,7 +138,7 @@ function exitWith(gone: Exit.Exit<unknown, unknown>): number {
   const error = Cause.squash(gone.cause)
   if (error instanceof LaunchCredentialMissing) return AGENT_EXIT_CODES.credential
   if (error instanceof AgentBootFailed) return exitCode(error.phase)
-  if (error instanceof SmokeNotReleased) return error.code
+  if (error instanceof SmokeNotReleased || error instanceof AgentStoppedInBoot) return error.code
   if (error instanceof BundleEntryRefused) return AGENT_EXIT_CODES.config
   if (typeof error === "object" && error !== null && "_tag" in error
       && (error._tag === "LaunchDocumentRejected" || error._tag === "LaunchFrameRejected")) return AGENT_EXIT_CODES.config
