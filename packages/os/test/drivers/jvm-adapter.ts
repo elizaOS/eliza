@@ -14,6 +14,7 @@ export const ANSWER_WITHIN_MS = 10_000;
 const PACKAGE = path.resolve(import.meta.dirname, "../..");
 const SOURCE_TREES = ["android", "aosp", "test/drivers/java"] as const;
 const ADAPTERS = "test/drivers/java";
+const NATIVE_ASK = "ai.eliza.os.agent.NativeAsk";
 const CACHE = path.join(PACKAGE, ".cache", "jvm");
 
 const JSON_JAVA_SHA256 = "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796";
@@ -211,13 +212,23 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
   if (adapter === undefined) throw new Error(`no JVM adapter ${main} under ${ADAPTERS}`);
   const tools = androidTools();
   const classpath = [...dependencies, ...(tools.kind === "present" ? [tools.androidJar] : [])];
+  const fallbackRoot = tools.kind === "missing" && main === NATIVE_ASK
+    ? path.join(PACKAGE, "test/fixtures/agent-service")
+    : undefined;
+  const fallbackInputs = fallbackRoot === undefined ? [] : javaFiles(fallbackRoot).sort()
+    .map((file) => ({ file, stamp: fileStamp(file) }));
+  const fixtureHash = createHash("sha256");
+  for (const { file } of fallbackInputs) {
+    fixtureHash.update(path.relative(PACKAGE, file)).update("\0").update(readFileSync(file)).update("\0");
+  }
+  const sourcepath = fallbackRoot === undefined ? found.roots : [...found.roots, fallbackRoot];
   const jars = classpath.map(identifyJar);
   const compiler = compilerInputs();
-  const inputs = [...compiler.inputs, ...jars];
+  const inputs = [...compiler.inputs, ...jars, ...fallbackInputs];
   const options = [process.env.JDK_JAVAC_OPTIONS, process.env.JAVA_TOOL_OPTIONS, process.env._JAVA_OPTIONS];
   const external = options.some(Boolean) || process.env.JDK_ALTERNATE_VM
     || Object.entries(process.env).some(([name, value]) => value && (name.endsWith("JAVA_OPTIONS") || /^(LD_|DYLD_)/.test(name)));
-  const key = [compiler.inputs.map((input) => input.stamp), jars.map((jar) => jar.digest), ...options];
+  const key = [compiler.inputs.map((input) => input.stamp), jars.map((jar) => jar.digest), ...options, ...(fallbackRoot === undefined ? [] : [fixtureHash.digest("hex")])];
   const dependencyKey = createHash("sha256").update(JSON.stringify(key)).digest("hex");
   const classes = !external && compiler.stockLauncher && jars.every((jar) => jar.selfContained)
     ? path.join(CACHE, `${found.digest}-${main}-${dependencyKey}`) : undefined;
@@ -232,7 +243,7 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
     execFileSync(compiler.command, [
       "--release", "21", "-encoding", "UTF-8", "-nowarn", "-implicit:class", "-d", staging,
       "-classpath", classpath.length ? classpath.join(path.delimiter) : staging,
-      "-sourcepath", found.roots.join(path.delimiter), adapter,
+      "-sourcepath", sourcepath.join(path.delimiter), adapter,
     ], { stdio: ["ignore", "ignore", "pipe"] });
     assertInputs(inputs);
     published = classes ?? compiledClasses(staging);
@@ -254,7 +265,7 @@ export async function orgJsonAdapterClasspath(main: string): Promise<string> {
 }
 
 const needsOrgJson = (main: string) =>
-  main.startsWith("ai.eliza.plugins.media.") || main.startsWith("ai.eliza.plugins.actionjournal.") || main === "ai.eliza.plugins.signin.ReadinessJourney" || main === "ai.eliza.plugins.browsersurface.SessionRecordJourney" || main === "ai.eliza.systemupdater.JournalReplay";
+  main === NATIVE_ASK || main.startsWith("ai.eliza.plugins.media.") || main.startsWith("ai.eliza.plugins.actionjournal.") || main === "ai.eliza.plugins.signin.ReadinessJourney" || main === "ai.eliza.plugins.browsersurface.SessionRecordJourney" || main === "ai.eliza.systemupdater.JournalReplay";
 
 export async function compileAdapters(): Promise<{ readonly compiled: readonly string[]; readonly failed: readonly string[] }> {
   const found = sources();
