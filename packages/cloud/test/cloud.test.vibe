@@ -2240,6 +2240,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     } })
     const device = try signedCaller(cloud, "mail-history")
     const other = try signedCaller(cloud, "mail-history-other")
+    const browser = try cloud.store.transaction((tx) => issueSession(tx, { ...device, assurance: "SingleFactor", accountCreated: false, now }))
+    const web = { authorization: `Bearer ${browser.accessToken}` }
     const grant = "5f0c2b7e-8d1a-4c3e-9b6f-2a7d4e1c9b30"
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
     const refresh = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
@@ -2279,7 +2281,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       try sync(() => releaseHistory.resolve())
       return [ended, try Fiber.join(reading)] as const
     }
-    const [disconnected, lostDuringRead] = try heldRead(() => cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } }))
+    const [disconnected, lostDuringRead] = try heldRead(() => cloud.call("/api/v1/eliza/google/disconnect", { headers: web, json: { grantId: grant } }))
     const relinked = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
     try cloud.inside(linkedGrant(cloud, device, grant, relinked, scopes, now - 1000))
     const [revoked, revokedDuringRead] = try heldRead(() => cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: device.headers }))

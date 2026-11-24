@@ -252,6 +252,7 @@ async function ack(key: string, event: Extract<Event, { type: "ack" }>) {
 
 async function renew(key: string, event: Extract<Event, { type: "renew" }>) {
   const held = await device(key);
+  if (await row(held.grantKey) !== undefined) return "refused" as const;
   const predecessorKey = randomUUID();
   const binding = event.predecessor.client.tag === "BoundClient" ? event.predecessor.client : originalBinding;
   await epoch(held.person, event.deviceEpoch);
@@ -280,6 +281,8 @@ async function renewAgain(key: string, event: Extract<Event, { type: "renewAgain
   const held = await device(key);
   if (held.renewedFrom === undefined || held.minted === undefined || held.renewedFrom.logicalKey !== event.fromKey) return "refused" as const;
   const refresh = held.renewedFrom.refresh;
+  const observed = await run(within((tx) => observeGrant(tx, held.grantKey)));
+  await configureClient(held.binding ?? originalBinding, observed.credentialTtl || 86_400_000, { tag: "ClientAdmitted" });
   await epoch(held.person, event.deviceEpoch);
   const answer = await attempt(within((tx) => renewGrant(tx, refresh)));
   if (!answer.accepted || answer.value.kind !== "done") return "refused" as const;

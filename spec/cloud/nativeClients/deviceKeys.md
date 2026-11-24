@@ -150,7 +150,7 @@ the sealed copy, so a lost reply is asked again with the same code and
 verifier. A wrong return, state or verifier is `401 credential_proof_invalid`
 and spends nothing; a code past its deadline is `credential_expired`, one
 whose person's device keys were revoked since `credential_revoked`, and a
-spent code `credential_unknown`.
+spent code or a lease renewal without a code `credential_unknown`.
 
 ```quint
 type GrantOutcome = Granted | GrantRefused({ refusal: Refusal })
@@ -161,7 +161,7 @@ pure def refusedFor(reason: RefusalReason): GrantOutcome = GrantRefused({ refusa
 pure def lapsed(g: Grant): bool = g.phase == Ended({ endedBy: NeverExchanged }) or g.phase == Ended({ endedBy: NeverAcknowledged })
 pure def tokenOutcome(g: Grant, client: N::ClientCheck, binding: G::CodeBinding, deviceEpoch: int): GrantOutcome =
   if (client != N::ClientAdmitted) GrantRefused({ refusal: clientRefusal(client) })
-  else if (not(isCodePending(g))) refusedFor(if (lapsed(g)) CredentialExpired else CredentialUnknown)
+  else if (not(isCodePending(g)) or isRenewal(g)) refusedFor(if (lapsed(g)) CredentialExpired else CredentialUnknown)
   else if (g.now >= g.codeExpiresAt) refusedFor(CredentialExpired)
   else if (revokedSince(g, deviceEpoch)) refusedFor(CredentialRevoked)
   else if (binding != G::BindingMatches) GrantRefused({ refusal: refuse(CredentialProofInvalid) })
