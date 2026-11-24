@@ -1,13 +1,12 @@
 // spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A named camera is captured only as the owner requested and the phone supports"
 import { assert, it } from "@effect/vitest"
 import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
-import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
-import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vibe"
+import { deviceJourney } from "./support/device-agent.vibe"
 
 module node {
   import type { AgentRuntime } from "@elizaos/core"
-  import { held, text, toolCalls, type CloudFake, type CloudReply } from "./support/cloud-fake.ts"
+  import { held, text, toolCalls, type CloudFake, type CloudReply, type Completion } from "./support/cloud-fake.ts"
   import { deviceClient, type DeviceClient } from "./support/device.ts"
 
   export const proposeTool = "PROPOSE_DEVICE_ACTION"
@@ -33,10 +32,6 @@ module node {
     readonly state: string
     readonly payload: { readonly operation: { readonly type: string } & Record<string, unknown>; readonly requestMessageId?: string }
     readonly execution?: { readonly attemptId: string }
-  }
-  interface Completion {
-    readonly messages?: readonly { readonly role?: string; readonly content?: unknown }[]
-    readonly tools?: readonly { readonly function?: { readonly name?: string; readonly description?: string; readonly parameters?: { readonly properties?: { readonly operation?: { readonly anyOf?: readonly { readonly properties?: { readonly type?: { readonly enum?: readonly string[] } } }[] } } } } }[]
   }
 
   const propose = (operation: { readonly type: string } & Readonly<Record<string, unknown>>) => ({ name: proposeTool, arguments: { operation } })
@@ -82,6 +77,7 @@ module node {
     return (settled.json as { proposal: Proposal }).proposal.state
   }
 
+  /** @throws {never} */
   export async function proposeSurfaces(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, negotiated.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
@@ -230,6 +226,7 @@ module node {
     }
   }
 
+  /** @throws {never} */
   export async function navigationHomes(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, negotiated.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
@@ -258,6 +255,7 @@ module node {
     return { sameTools: new Set([typedTools, deliveredTools, againTools, bothTools]).size === 1, typed, delivered, typedAgain, wrongHomeFirst }
   }
 
+  /** @throws {never} */
   export async function unofferedDeviceTool(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, negotiated.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
@@ -272,6 +270,7 @@ module node {
     }
   }
 
+  /** @throws {never} */
   export async function oneConversation(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const capabilities = [...negotiated, "camera.capture-lens.v1"]
     const client = deviceClient(socket, token, runtime.agentId, capabilities.join(","))
@@ -360,16 +359,7 @@ module node {
 import { navigationHomes, oneConversation, proposeSurfaces, proposeTool, retold, reviewText, unofferedDeviceTool } from node
 
 it.live(`Take a photo, open a view, read a Maps place, find and share photos and write a phone note only as the owner's words and screen name them (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails"; spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it")`, effect () => {
-  const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({
-    launch: {
-      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
-      load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"],
-    },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
-  })
-  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
-  const observed = try host("propose device surfaces", () => proposeSurfaces(agent.agent.runtime, socket, agent.frame.token, cloud))
+  const observed = try deviceJourney({ load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"] }, "propose device surfaces", proposeSurfaces)
   try Effect.try(() => assert.deepStrictEqual(observed, {
     unasked: true, photo: true, selfie: { explained: true, refused: true }, whiteboard: true, captures: 2, taken: "done", justTaken: true,
     retaken: { state: "done", told: true },
@@ -409,16 +399,7 @@ it.live(`Take a photo, open a view, read a Maps place, find and share photos and
 }, 120_000)
 
 it.live(`A device message opens a view in one place under the same tools: VIEWS where views arrive as completed actions, open_view otherwise, and the other is refused before dispatch (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch")`, effect () => {
-  const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({
-    launch: {
-      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
-      load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"],
-    },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
-  })
-  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
-  const observed = try host("offer device navigation", () => navigationHomes(agent.agent.runtime, socket, agent.frame.token, cloud))
+  const observed = try deviceJourney({ load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"] }, "offer device navigation", navigationHomes)
   try Effect.try(() => assert.deepStrictEqual(observed, {
     sameTools: true,
     typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?" },
@@ -429,16 +410,7 @@ it.live(`A device message opens a view in one place under the same tools: VIEWS 
 }, 120_000)
 
 it.live(`One device conversation sends the same tools on every message, whatever its screen or words, names what applies to each message after it, and refuses before dispatch what a message does not allow (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned")`, effect () => {
-  const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({
-    launch: {
-      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
-      load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"],
-    },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
-  })
-  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
-  const observed = try host("one device conversation", () => oneConversation(agent.agent.runtime, socket, agent.frame.token, cloud))
+  const observed = try deviceJourney({ load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"] }, "one device conversation", oneConversation)
   try Effect.try(() => assert.deepStrictEqual(observed, {
     sameTools: 1,
     tail: { hostLabels: [1], outcomesNote: false, guidanceInTool: true, guidanceInNote: false },
@@ -467,16 +439,7 @@ it.live(`One device conversation sends the same tools on every message, whatever
 }, 120_000)
 
 it.live(`A message the device tool is not offered on gets no note of it: no lead, no refusal it would not make, and nothing proposed (spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation")`, effect () => {
-  const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({
-    launch: {
-      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
-      load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "VIEWS"],
-    },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
-  })
-  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
-  const observed = try host("device tool not offered", () => unofferedDeviceTool(agent.agent.runtime, socket, agent.frame.token, cloud))
+  const observed = try deviceJourney({ load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "VIEWS"] }, "device tool not offered", unofferedDeviceTool)
   try Effect.try(() => assert.deepStrictEqual(observed, {
     deviceTool: false, views: true, ranFirst: false, proposed: 0, lead: false, refusedViews: false, formNotes: false,
   }))

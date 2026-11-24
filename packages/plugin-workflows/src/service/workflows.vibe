@@ -40,14 +40,14 @@ export error WorkflowRefused {
   expectedVersionId?: string
 }
 
-type Bag = Record<string, unknown>
-const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+export type Bag = Record<string, unknown>
+export const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 export function versionId(version: number): string {
   return `v${version}`
 }
 
-function versionOf(id: unknown): number | undefined {
+export function versionOf(id: unknown): number | undefined {
   if (typeof id !== "string") return undefined
   const found = /^v([1-9][0-9]{0,14})$/.exec(id)
   return found === null ? undefined : Number(found[1])
@@ -57,7 +57,7 @@ effect function refuse(status: number, message: string, identity: Omit<Construct
   throw new WorkflowRefused({ status, message, ...identity })
 }
 
-effect function body(value: unknown, allowed: readonly string[]): Bag!WorkflowRefused {
+export effect function body(value: unknown, allowed: readonly string[]): Bag!WorkflowRefused {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return try refuse(400, "Expected a JSON object")
   if (Object.keys(value).some((key) => !allowed.includes(key))) return try refuse(400, "Unsupported workflow field")
   return value as Bag

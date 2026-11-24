@@ -6,13 +6,7 @@ import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profil
 import { startFakeServer } from "./support/fakes.ts"
 import { pcmChunkBytes, speechFake, spokenTranscript, synthesizedAudio } from "./support/fake-speech.ts"
 import { secrets, testProfile } from "./support/profile.ts"
-
-effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
-  return match (try exit(program)) {
-    when Exit.Success: "ok";
-    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
-  }
-}
+import { outcomeTag as failureTag } from "./support/cloud.vibe"
 
 describe("WP6 Speech provider (spec/cloud/services/speechRelay.md)", () => {
   it.live("Speak, time, transcribe and stream turns through the provider, and type every refusal (spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/index.md, \"Story: Transcribe a recording\")", () => scoped(effect {

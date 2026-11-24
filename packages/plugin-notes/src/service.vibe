@@ -15,7 +15,6 @@ module edge {
   import { createHash, randomUUID } from "node:crypto"
   import { readFile } from "node:fs/promises"
   import { join } from "node:path"
-  import { Cause, Effect, Exit } from "effect"
   /** @throws {never} */
   export function sourceHash(parts: readonly string[]): string {
     return createHash("sha256").update(JSON.stringify(parts)).digest("hex")
@@ -44,14 +43,9 @@ module edge {
     const at = new Date(ms)
     return Number.isNaN(at.getTime()) ? undefined : at.toISOString()
   }
-  /** @throws {never} */
-  export async function run<A, E>(program: Effect.Effect<A, E>): Promise<A> {
-    const exit = await Effect.runPromiseExit(program)
-    if (Exit.isSuccess(exit)) return exit.value
-    throw Cause.squash(exit.cause)
-  }
 }
-import { isoOf, newUuid, priorNotesFile, readPriorNotes, run, sourceHash } from edge
+import { isoOf, newUuid, priorNotesFile, readPriorNotes, sourceHash } from edge
+import { run } from "./json.vibe"
 
 const notesServiceType = "notes"
 

@@ -1,5 +1,6 @@
 // spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
 import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
+import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { Backend, GoogleConsent } from "../../gen/agent__host__launch.ts"
 import { googleAdmitted, pluginCloudPathAllowed, type GoogleOperation } from "../../gen/agent__models__binding.effect.vibe"
@@ -78,16 +79,6 @@ effect function send(link: Link, request: CloudLinkRequest, target: URL) {
 }
 
 module edge {
-  import { Cause, Effect, Exit } from "effect"
-
-  /** @throws {never} */
-  export async function run<A>(program: Effect.Effect<A, unknown>, signal: AbortSignal | undefined): Promise<A> {
-    const exit = await Effect.runPromiseExit(program, { signal })
-    if (Exit.isSuccess(exit)) return exit.value
-    if (Cause.hasInterruptsOnly(exit.cause)) throw new DOMException("The cloud call was aborted", "AbortError")
-    throw Cause.squash(exit.cause)
-  }
-
   /** @throws {never} */
   export function targetOf(origin: string, path: string): URL | undefined {
     if (!path.startsWith("/") || path.startsWith("//")) return undefined
@@ -95,7 +86,7 @@ module edge {
     return target !== null && target.origin === origin ? target : undefined
   }
 }
-import { run, targetOf } from edge
+import { targetOf } from edge
 
 export interface CloudLinkService extends Service {
   admitGoogle(operation: GoogleChange): GoogleAdmission
@@ -125,7 +116,7 @@ export function cloudLinkServices(launch: LaunchDocument, credential: () => Reda
       if (target === undefined || !pluginCloudPathAllowed(target.pathname)) return Promise.reject(new CloudLinkRequestRefused({ path: request.path, reason: "path" }))
       const change = googleChangeOf(request.method, target.pathname)
       if (change !== undefined && admitGoogle(change).kind === "refused") return Promise.resolve({ kind: "changes-off", operation: change })
-      return run(Effect.provide(send(link, request, target), FetchHttpClient.layer), request.signal)
+      return runSquashed(Effect.provide(send(link, request, target), FetchHttpClient.layer), { signal: request.signal, message: "The cloud call was aborted" })
     }
 
     override stop(): Promise<void> {

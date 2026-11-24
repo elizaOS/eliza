@@ -1,0 +1,11 @@
+// spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"
+export function regexMatches(text: string, pattern: RegExp): RegExpExecArray[] {
+  const found: RegExpExecArray[] = []
+  pattern.lastIndex = 0
+  for (let match = pattern.exec(text); match !== null; match = pattern.exec(text)) {
+    found.push(match)
+    if (match[0] === "") pattern.lastIndex += 1
+  }
+  pattern.lastIndex = 0
+  return found
+}

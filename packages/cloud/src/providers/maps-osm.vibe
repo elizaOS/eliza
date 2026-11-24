@@ -181,7 +181,7 @@ function unroutableOf(text: string): "NoRoute" | "UnsupportedRegion" | undefined
   return undefined
 }
 
-function routeId(parts: string): string {
+export function routeId(parts: string): string {
   let low = 0x811c9dc5
   let high = 0x01000193
   for (let index = 0; index < parts.length; index += 1) {

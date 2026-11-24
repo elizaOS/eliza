@@ -427,14 +427,24 @@ const unavailable: ProviderResult = {
   data: { savedNotes: null },
 }
 
+const ownerNotes = { position: -5, contexts: ["notes", "general", "memory"], roleGate: { minRole: "OWNER" } } satisfies Partial<Provider>
+
+type Snapshot = Effect.Success<ReturnType<NotesCollection["snapshot"]>>
+
+function namedGet(notes: NotesCollection, answer: (words: string, snapshot: Snapshot, message: Memory) => ProviderResult, fallback: () => ProviderResult): Provider["get"] {
+  return (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
+    const words = try ownerRequestText(message)
+    if (words === "") return { text: "", values: {}, data: {} } satisfies ProviderResult
+    return answer(words, try notes.snapshot(), message)
+  }, fallback))
+}
+
 function providers(notes: NotesCollection): Provider[] {
   const savedNotes: Provider = {
     name: "SAVED_NOTES",
     description: "The current records of this agent's Notes collection.",
     descriptionCompressed: "this agent's Notes records",
-    position: -5,
-    contexts: ["notes", "general", "memory"],
-    roleGate: { minRole: "OWNER" },
+    ...ownerNotes,
     get: (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
       const snapshot = try notes.snapshot()
       if (snapshot.notes.length === 0) return { text: "", values: { savedNotesAvailable: true, savedNoteCount: 0 }, data: { savedNotes: [] } } satisfies ProviderResult
@@ -456,13 +466,8 @@ function providers(notes: NotesCollection): Provider[] {
     name: "NAMED_NOTES",
     description: "Current records whose titles the owner names this turn.",
     alwaysInResponseState: true,
-    position: -5,
-    contexts: ["notes", "general", "memory"],
-    roleGate: { minRole: "OWNER" },
-    get: (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
-      const words = try ownerRequestText(message)
-      if (words === "") return { text: "", values: {}, data: {} } satisfies ProviderResult
-      const snapshot = try notes.snapshot()
+    ...ownerNotes,
+    get: namedGet(notes, (words, snapshot, message) => {
       const named = notesNamedIn(words, snapshot.notes)
       const deleted = (snapshot.trash ?? []).filter((entry) => notesNamedIn(words, [entry.note]).length > 0)
         .map((entry) => ({ noteId: entry.note.id, title: entry.note.title, deletedAt: entry.deletedAt }))
@@ -478,24 +483,21 @@ function providers(notes: NotesCollection): Provider[] {
         values: {},
         data: { namedNotes: named.map(projectNoteForModel), ...(deleted.length > 0 ? { namedDeletedNotes: deleted } : {}), notesRevision: snapshot.revision },
       } satisfies ProviderResult
-    }, () => ({ text: "Current named notes could not be read. Do not claim current note contents from history.", values: {}, data: { namedNotes: null } } satisfies ProviderResult))),
+    }, () => ({ text: "Current named notes could not be read. Do not claim current note contents from history.", values: {}, data: { namedNotes: null } } satisfies ProviderResult)),
   }
   const namedNoteRouting: Provider = {
     ...namedNotes,
     name: "NAMED_NOTE_ROUTING",
     description: "Fresh authorized exact-name availability for lean context routing.",
     alwaysInResponseState: false,
-    get: (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
-      const words = try ownerRequestText(message)
-      if (words === "") return { text: "", values: {}, data: {} } satisfies ProviderResult
-      const snapshot = try notes.snapshot()
+    get: namedGet(notes, (words, snapshot) => {
       const available = notesNamedIn(words, [...snapshot.notes, ...(snapshot.trash ?? []).map((entry) => entry.note)]).length > 0
       return {
         text: available ? "Fresh exact named-note reference available in the Notes context. Availability alone does not determine current, historical, or mixed intent." : "",
         values: {},
         data: { namedNoteMatchAvailable: available },
       } satisfies ProviderResult
-    }, () => ({ text: "Current named-note match availability is unconfirmed.", values: {}, data: { namedNoteMatchAvailable: null } } satisfies ProviderResult))),
+    }, () => ({ text: "Current named-note match availability is unconfirmed.", values: {}, data: { namedNoteMatchAvailable: null } } satisfies ProviderResult)),
   }
   return [savedNotes, namedNotes, namedNoteRouting]
 }
