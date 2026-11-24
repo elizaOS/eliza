@@ -139,9 +139,11 @@ A model directory, file or install record that exists but cannot be read,
 for a permission or input/output failure rather than a missing path, leaves
 the model unreadable, with the failure's code. The agent keeps running
 without it: nothing downloads over it, no slot or activation names it, and
-its install record is kept for when the device can read it again. When the
-models directory or the install record itself cannot be read, every model
-is unreadable.
+its install record is kept for when the device can read it again. A model
+file staged on the device before the agent first ran is treated the same:
+one that exists but cannot be read is unreadable, so no download replaces
+the packaged model. When the models directory or the install record itself
+cannot be read, every model is unreadable.
 
 ```quint
 pure def canModelUnreadable(s: LocalModels, modelId: str): bool = catalog.contains(modelId) and modelOf(s, modelId).install == NotInstalled
