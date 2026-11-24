@@ -22,8 +22,7 @@ cellular is not taken for metered, nor Wi-Fi for unmetered, since a hotspot
 or a corporate plan can be either. No connectivity service, no active
 network, unreadable capabilities, a missing network-state grant, a bridge
 that is not registered or turned off, and a reply that does not parse are
-all unknown, which a download takes as "ask first". Android reports no
-path hints, which are iOS's: both are always unknown here.
+all unknown, which a download takes as "ask first".
 
 ```quint
 import bridge.* from "./bridge"

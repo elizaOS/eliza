@@ -60,11 +60,8 @@ The optional integrations and native bridge contracts are specified below.
 | `@elizaos/native-activity-tracker` | [Native activity tracker](./nativeActivityTracker/) |
 | `@elizaos/capacitor-appblocker` | [Native app blocking](./nativeAppblocker/) |
 | `@elizaos/capacitor-bun-runtime` | [Native embedded runtime bridge](./nativeBunRuntime/) |
-| `@elizaos/capacitor-calendar` | [Native calendar](./nativeCalendar/) |
-| `@elizaos/capacitor-camera` | [Native camera](./nativeCamera/) |
 | `@elizaos/capacitor-canvas` | [Native canvas](./nativeCanvas/) |
 | `@elizaos/plugin-native-contacts` | [Native contacts](./nativeContacts/) |
-| `@elizaos/capacitor-desktop` | [Native desktop](./nativeDesktop/) |
 | `@elizaos/capacitor-eliza-tasks` | [Native background tasks](./nativeElizaTasks/) |
 | `@elizaos/plugin-native-filesystem` | [Native filesystem](./nativeFilesystem/) |
 | `@elizaos/capacitor-gateway` | [Native gateway](./nativeGateway/) |
@@ -72,11 +69,9 @@ The optional integrations and native bridge contracts are specified below.
 | `@elizaos/capacitor-owned-media` | [Native media](./nativeMedia/) |
 | `@elizaos/plugin-native-messages` | [Native messages](./nativeMessages/) |
 | `@elizaos/capacitor-mobile-signals` | [Native mobile signals](./nativeMobileSignals/) |
-| `@elizaos/capacitor-network-policy` | [Native network cost hints](./nativeNetworkPolicy/) |
 | `@elizaos/capacitor-notification-mirror` | [Native notifications](./nativeNotifications/) |
 | `@elizaos/capacitor-passwords` | [Native passwords](./nativePasswords/) |
 | `@elizaos/plugin-native-phone` | [Native phone](./nativePhone/) |
-| `@elizaos/macosreminders` | [Native reminders](./nativeReminders/) |
 | `@elizaos/plugin-native-settings` | [Native settings](./nativeSettings/) |
 | `@elizaos/native-plugin-shared-types` | [Native plugin shared types](./nativeSharedTypes/) |
 | `@elizaos/capacitor-swabble` | [Native wake detection](./nativeSwabble/) |

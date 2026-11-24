@@ -189,6 +189,26 @@ public abstract class NotificationsHostPlugin extends Plugin {
   String status=delivery().receipt(call.getString("operationId"),call.getString("bindingHash"),call.getString("title"),call.getString("body"));
   JSObject result=new JSObject();result.put("status",status);call.resolve(result);
  });}
+ /** Publishes the signed-in owner (null when signed out) before touching OS notices; answers the notices it withdrew and this owner's suspended approvals. */
+ @PluginMethod public void noticeOwner(PluginCall call){noticeWork(call,"Notification owner could not be saved; retry.",()->{
+  JSONObject owner=call.getData().isNull("owner")?null:call.getObject("owner");long now=System.currentTimeMillis();
+  int withdrawn=coordinator().withdrawOtherOwners(owner,now);
+  JSObject result=new JSObject();result.put("withdrawn",withdrawn);result.put("suspended",routes().suspendedApprovals(owner,now));call.resolve(result);
+ });}
+ /** Records and posts one approval notice at most once; resolves the ledger status. */
+ @PluginMethod public void postWorkflowApproval(PluginCall call){noticeWork(call,"Approval notification could not be confirmed. It will not be repeated automatically.",()->{
+  String status=coordinator().postApproval(call.getString("id"),call.getString("bindingHash"),call.getObject("route"),call.getLong("expiresAt"),System.currentTimeMillis());
+  JSObject result=new JSObject();result.put("status",status);call.resolve(result);
+ });}
+ /** Quietly reposts a suspended approval the renderer revalidated; resolves the ledger status. */
+ @PluginMethod public void resumeWorkflowApproval(PluginCall call){noticeWork(call,"Approval notification could not be restored.",()->{
+  String status=coordinator().resumeApproval(call.getString("id"),call.getString("bindingHash"),call.getObject("route"),call.getLong("expiresAt"),System.currentTimeMillis());
+  JSObject result=new JSObject();result.put("status",status);call.resolve(result);
+ });}
+ /** Withdraws an approval notice once its approval is decided or gone. */
+ @PluginMethod public void withdrawWorkflowApproval(PluginCall call){noticeWork(call,"Approval notification could not be withdrawn; retry.",()->{
+  coordinator().withdrawApproval(call.getString("id"),System.currentTimeMillis());call.resolve();
+ });}
 
  private static String identity(StatusBarNotification row){return row.getKey()+"\n"+row.getPostTime();}
  private StatusBarNotification resolve(String id){if(id==null||id.isEmpty())return null;for(StatusBarNotification row:manager().getActiveNotifications())if(ids.names(id,identity(row)))return row;return null;}
