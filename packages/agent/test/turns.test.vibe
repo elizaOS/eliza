@@ -4,7 +4,7 @@ import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { wrapExternalContent } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, requestFault, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, maxPlanSteps, unavailableNotice } from "../gen/agent__conversation__planning.ts"
-import { groundedEventReply } from "../src/conversation/clock.vibe"
+import { ungroundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
@@ -77,15 +77,15 @@ module node {
   }
 
   /** @throws {never} */
-  export function lastTurnPrompt(cloud: CloudFake): string {
-    const body = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { messages?: { role: string; content?: unknown }[] } | undefined
+  export function lastTurnPrompt(cloud: CloudFake, back = 1): string {
+    const body = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-back)?.body as { messages?: { role: string; content?: unknown }[] } | undefined
     const turn = body?.messages?.at(-1)?.content
     return typeof turn === "string" ? turn : JSON.stringify(turn ?? "")
   }
 
   /** @throws {never} */
-  export function lastTurnHistory(cloud: CloudFake): { readonly role: string; readonly text: string }[] {
-    const body = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { messages?: { role: string; content?: unknown }[] } | undefined
+  export function lastTurnHistory(cloud: CloudFake, back = 1): { readonly role: string; readonly text: string }[] {
+    const body = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-back)?.body as { messages?: { role: string; content?: unknown }[] } | undefined
     return (body?.messages ?? []).slice(0, -1).map(({ role, content }) => ({ role, text: typeof content === "string" ? content : JSON.stringify(content ?? "") }))
   }
 
@@ -344,7 +344,7 @@ it.live(`Competing terminal decisions run no sibling tool and get one repair rou
   })
 })
 
-it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording")`, effect () => {
+it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, the model is asked once more for a failure its reply left out and the failure's own words follow only when that fails, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -356,33 +356,48 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const { id } = try conversation(agent)
   const completionsSent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { tools?: { function?: { name?: string } }[]; messages: { role: string; content?: unknown }[] })
 
+  const callsFor = effect (body: object) => {
+    const before = completions(cloud)
+    const answer = replyOf(try send(agent, id, body))
+    return { answer, calls: completions(cloud) - before }
+  }
+  const reasked = () => {
+    const body = completionsSent().at(-1) as { tool_choice?: unknown; messages: { role: string; content?: unknown }[] } | undefined
+    const [said, note] = body?.messages.slice(-2) ?? []
+    return { toolChoice: body?.tool_choice, said: said?.role === "assistant" ? said.content : undefined, note: typeof note?.content === "string" ? note.content : "" }
+  }
+  const asksAgain = "Note from the agent host, not the person: nothing has been delivered yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools.\n"
+
   try Effect.sync(() => cloud.script(toolCalls("Let me check.", { name: "CALCULATE", arguments: { expression: "3847 * 292" } }), text("That is 1,123,324.")))
-  const solved = replyOf(try send(agent, id, { text: "What is 3847 times 292?" }))
+  const { answer: solved, calls: solvedCalls } = try callsFor({ text: "What is 3847 times 292?" })
   const [asked, grounded] = completionsSent().slice(-2)
 
   try Effect.sync(() => cloud.script(text("Home is open.")))
   try send(agent, id, { text: "Show me home.", metadata: { viewDelivery: "completed-action", viewClientId: "renderer-1" } })
   const rendered = completionsSent().at(-1)
 
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat.")))
-  const unrendered = replyOf(try send(agent, id, { text: "Show me home here." }))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat."), text("I can't switch screens from this chat, so home isn't showing.")))
+  const { answer: unrendered, calls: unrenderedCalls } = try callsFor({ text: "Show me home here." })
   const declined = completionsSent().at(-1)?.messages.find(({ role }) => role === "tool")?.content
+  const unrenderedAsked = reasked()
 
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!")))
-  const failed = replyOf(try send(agent, id, { text: "Add two plus two." }))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text("I couldn't add two plus two: the calculator didn't take it.")))
+  const { answer: failed, calls: failedCalls } = try callsFor({ text: "Add two plus two." })
+  const failedAsked = reasked()
 
   try Effect.sync(() => cloud.script(toolCalls("",
     { name: "CALCULATE", arguments: { expression: "8 + 9", stray: true } },
     { name: "CALCULATE", arguments: { expression: "12 * 3" } },
-  ), text("The second result is 36.")))
-  const separate = replyOf(try send(agent, id, { text: "Calculate 8 plus 9 and 12 times 3." }))
+  ), text("The second result is 36."), text("The second result is 36. The first calculation didn't run.")))
+  const { answer: separate, calls: separateCalls } = try callsFor({ text: "Calculate 8 plus 9 and 12 times 3." })
 
   try Effect.sync(() => cloud.script(
     toolCalls("", { name: "CALCULATE", arguments: { expression: "8 + 9", stray: true } }),
     toolCalls("", { name: "CALCULATE", arguments: { expression: "8 + 9" } }),
     text("The result is 17."),
+    requestFault("invalid_request"),
   ))
-  const corrected = replyOf(try send(agent, id, { text: "Calculate 8 plus 9." }))
+  const { answer: corrected, calls: correctedCalls } = try callsFor({ text: "Calculate 8 plus 9." })
 
   try Effect.sync(() => cloud.script(text("One sec."), text("One second is 1,000 milliseconds.")))
   const duration = replyOf(try send(agent, id, { text: "How long is a second?" }))
@@ -395,31 +410,36 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     sameTools: JSON.stringify(asked?.tools) === JSON.stringify(rendered?.tools),
     declined: [typeof declined === "string" && declined.includes('"executionStatus":"not_started"') && declined.includes("did not run: answer without it or use another offered action"), unrendered.text],
     toolResult: grounded?.messages.some(({ role, content }) => role === "tool" && typeof content === "string" && content.includes("1123324")),
-    solved: solved.text,
+    solved: [solved.text, solvedCalls],
     actions: solved.actionResults.map(({ action }) => action),
-    failureReported: failed.text.startsWith("Done!") && failed.text.length > "Done!".length,
-    separate: separate.text,
-    corrected: corrected.text,
+    unrendered: [unrendered.text, unrenderedCalls, unrenderedAsked.toolChoice, unrenderedAsked.said, unrenderedAsked.note],
+    failed: [failed.text, failedCalls, failedAsked.said, failedAsked.note.startsWith(asksAgain) && failedAsked.note.includes("A step of this turn did not happen as asked.")],
+    separate: [separate.text, separateCalls],
+    corrected: [corrected.text, correctedCalls],
     refusalStatuses: [separate, corrected].map(({ actionResults }) => actionResults.map(({ data }) => data.executionStatus)),
     duration: duration.text,
     labels: { text: solved.action, voice: spoken.action },
   }, {
     offered: ["RESTORE_CONTEXT", "CALCULATE", "VIEWS"],
     sameTools: true,
-    declined: [true, `I can't switch screens from this chat.\n\n${unavailableNotice}`],
+    declined: [true, "I can't switch screens from this chat, so home isn't showing."],
     toolResult: true,
-    solved: "That is 1,123,324.",
+    solved: ["That is 1,123,324.", 2],
     actions: ["CALCULATE"],
-    failureReported: true,
-    separate: "The second result is 36.\n\nA CALCULATE call did not start.",
-    corrected: "The result is 17.\n\nA CALCULATE call did not start.",
+    unrendered: [
+      "I can't switch screens from this chat, so home isn't showing.", 3, "none", "I can't switch screens from this chat.",
+      `${asksAgain}A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${JSON.stringify(unavailableNotice)}`,
+    ],
+    failed: ["I couldn't add two plus two: the calculator didn't take it.", 3, "Done!", true],
+    separate: ["The second result is 36. The first calculation didn't run.", 3],
+    corrected: ["The result is 17.\n\nA CALCULATE call did not start.", 4],
     refusalStatuses: [["not_started", undefined], ["not_started", undefined]],
     duration: "One second is 1,000 milliseconds.",
     labels: { text: undefined, voice: { kind: "CALCULATE", validatedCard: false, verbatimAsked: true } },
   }))
 }, 120_000)
 
-it.live(`A current-time question hears the phone's clock, else the owner's launch zone, a date the clock did not observe is replaced by its reading, and what the person said earlier is read with its minute on that clock (${planning}, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; ${planning}, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading"; ${planning}, "What the person said earlier reaches the model with the minute it was said, on the turn's clock"; spec/core/context.md, "A message's stamp is its local date and minute, with the year only when it is not the newest year and an offset only when the minute alone names no one instant")`, effect () => {
+it.live(`A current-time question hears the phone's clock, else the owner's launch zone, an answer the clock observed is the model's own, a date the clock did not observe is asked for once more and replaced by its reading only when that answer is still wrong, and what the person said earlier is read with its minute on that clock (${planning}, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; ${planning}, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is asked for again, and the clock's own reading is the last resort"; ${planning}, "What the person said earlier reaches the model with the minute it was said, on the turn's clock"; spec/core/context.md, "A message's stamp is its local date and minute, with the year only when it is not the newest year and an offset only when the minute alone names no one instant")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", timeZone: "America/New_York" },
@@ -430,9 +450,19 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   const awayTokyo = localDay("Asia/Tokyo", 3)
   const awayHome = localDay("America/New_York", 3)
 
-  try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}, ${awayTokyo.monthDay} at 5 PM GMT+9.`)))
-  const invented = replyOf(try send(agent, id, { text: "What time is it now?", metadata: tokyo }))
+  const today = { tokyo: localDay("Asia/Tokyo", 0), home: localDay("America/New_York", 0) }
+  const callsFor = effect (body: object) => {
+    const before = completions(cloud)
+    const answer = replyOf(try send(agent, id, body))
+    return { answer, calls: completions(cloud) - before }
+  }
+  try Effect.sync(() => cloud.script(text(`It's ${today.tokyo.weekday}, ${today.tokyo.monthDay}.`)))
+  const { answer: observed, calls: observedCalls } = try callsFor({ text: "What time is it now?", metadata: tokyo })
   const phonePrompt = lastTurnPrompt(cloud)
+
+  try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}, ${awayTokyo.monthDay} at 5 PM GMT+9.`), text(`It's ${awayTokyo.weekday}.`)))
+  const { answer: invented, calls: inventedCalls } = try callsFor({ text: "What time is it now?", metadata: tokyo })
+  const inventedNote = lastTurnPrompt(cloud)
   const dated = [
     ["New Year's Eve.", "2025-01-01T04:30:00.000Z"], ["Spring.", "2025-03-09T07:30:00.000Z"], ["First 1:30.", "2025-11-02T05:30:00.000Z"],
     ["Second 1:30.", "2025-11-02T06:30:00.000Z"], ["After.", "2025-11-02T07:30:00.000Z"], ["Before midnight.", "2025-11-20T04:59:59.999Z"],
@@ -440,31 +470,36 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   try host("dated history", () => seedHistory(agent.agent.runtime, invented.userMessageId as UUID, dated.map(([said]) => [said, "Noted."] as const), dated.map(([, at]) => at)))
 
   try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}.`)))
-  const clause = replyOf(try send(agent, id, { text: "What time is it now that the meeting has ended?", metadata: tokyo }))
+  const { answer: clause, calls: clauseCalls } = try callsFor({ text: "What time is it now that the meeting has ended?", metadata: tokyo })
   const phoneHistory = lastTurnHistory(cloud)
 
-  try Effect.sync(() => cloud.script(text(`Today is ${awayHome.weekday}.`)))
-  const launched = replyOf(try send(agent, id, { text: "What day is it?" }))
-  const launchPrompt = lastTurnPrompt(cloud)
-  const launchHistory = lastTurnHistory(cloud)
+  try Effect.sync(() => cloud.script(text(`Today is ${awayHome.weekday}.`), text(`Today is ${today.home.weekday}.`)))
+  const { answer: launched, calls: launchedCalls } = try callsFor({ text: "What day is it?" })
+  const launchPrompt = lastTurnPrompt(cloud, 2)
+  const launchHistory = lastTurnHistory(cloud, 2)
   const saidIn = (history: readonly { readonly role: string; readonly text: string }[]) => history.filter(({ role }) => role === "user").map(({ text: said }) => said)
 
-  const today = { tokyo: localDay("Asia/Tokyo", 0), home: localDay("America/New_York", 0) }
   try Effect.try(() => assert.deepStrictEqual({
+    observed: [observed.text, observedCalls],
     invented: /^It's .+ GMT\+9\.$/.test(invented.text) && invented.text.includes(today.tokyo.monthDay),
+    inventedCalls,
+    inventedNote: inventedNote.includes("the reply stated one this turn's clock did not observe. The clock reads ") && inventedNote.includes(today.tokyo.monthDay),
     phoneClock: phonePrompt.includes(`Local date: ${today.tokyo.date} (Asia/Tokyo). `),
-    clause: clause.text,
-    launched: launched.text.startsWith("It's ") && launched.text.includes(today.home.monthDay),
+    clause: [clause.text, clauseCalls],
+    launched: [launched.text, launchedCalls],
     launchClock: launchPrompt.includes(`Local date: ${today.home.date} (America/New_York). `),
     saidOnThePhoneClock: saidIn(phoneHistory).slice(0, dated.length),
     saidOnTheLaunchClock: saidIn(launchHistory).slice(0, dated.length),
     saidThisYear: /^\[message_at=\d{2}-\d{2} \d{2}:\d{2}\] What time is it now\?$/.test(saidIn(phoneHistory)[dated.length] ?? ""),
     stampedBeyondWhatThePersonSaid: [...phoneHistory, ...launchHistory].filter(({ role }) => role !== "user").some(({ text: said }) => said.includes("message_at")),
   }, {
+    observed: [`It's ${today.tokyo.weekday}, ${today.tokyo.monthDay}.`, 1],
     invented: true,
+    inventedCalls: 2,
+    inventedNote: true,
     phoneClock: true,
-    clause: `It's ${awayTokyo.weekday}.`,
-    launched: true,
+    clause: [`It's ${awayTokyo.weekday}.`, 1],
+    launched: [`Today is ${today.home.weekday}.`, 2],
     launchClock: true,
     saidOnThePhoneClock: [
       "[message_at=2025-01-01 13:30] New Year's Eve.", "[message_at=2025-03-09 16:30] Spring.", "[message_at=2025-11-02 14:30] First 1:30.",
@@ -479,16 +514,16 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   }))
 }, 120_000)
 
-it.live(`A document reaches the model whole when it fits, a larger document reaches it by name, and an image stays an image (${planning}, "Attached documents share a bounded text allowance and images stay images")`, effect () => {
+it.live(`A document reaches the model whole when it fits, a larger document reaches it by name, the model is asked once more to say so when its reply did not, and an image stays an image (${planning}, "Attached documents share a bounded text allowance and images stay images"; ${planning}, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try cloudAgent(cloud)
   const { id } = try conversation(agent)
   const encoded = (bytes: string | readonly number[]) => Base64.encode(typeof bytes === "string" ? new TextEncoder().encode(bytes) : Uint8Array.from(bytes))
   const attached = (name: string, mimeType: string, bytes: string | readonly number[]) => ({ name, mimeType, data: encoded(bytes) })
-  const completionBody = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body
-  const turnParts = () => {
-    const body = completionBody() as { messages: { content?: unknown }[] }
-    const parts = body.messages.at(-1)?.content as readonly { type: string; text?: string; image_url?: { url: string } }[]
+  const completionBody = (back = 1) => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-back)?.body
+  const turnParts = (back = 1) => {
+    const body = completionBody(back) as { messages: { role: string; content?: unknown }[] }
+    const parts = body.messages.filter(({ role }) => role === "user").at(-1)?.content as readonly { type: string; text?: string; image_url?: { url: string } }[]
     return parts.slice(1).map((part) => part.type === "text" ? part.text : part.type === "image_url" ? part.image_url?.url : part.type)
   }
   const file = (name: string, type: string, shown: string) =>
@@ -496,7 +531,10 @@ it.live(`A document reaches the model whole when it fits, a larger document reac
   const unread = (name: string, type: string) =>
     `The person attached a file whose contents cannot be read here. Its name and type follow:\n${wrapExternalContent(`${JSON.stringify(name)} (${type})`, { source: "unknown" })}`
 
-  try Effect.sync(() => cloud.script(text("Read them."), text("Read those too."), text("Read the agenda."), text("Read the first file.")))
+  try Effect.sync(() => cloud.script(
+    text("Read them."), text("Read those too."), text("Read the agenda."), text("The agenda says to meet at nine. The other file was too long for me to read in one turn."),
+    text("Read the first file."), requestFault("invalid_request"),
+  ))
   const first = try send(agent, id, { text: "What do these say?", images: [
     attached("notes.md", "text/markdown", "# Café\nBring 2 cups."), attached("plan.json", "application/json", '{"day":"Friday"}'),
     attached("photo.png", "image/png", "not really a png"), attached("brief.pdf", "application/pdf", "%PDF-1.4 brief"),
@@ -511,18 +549,20 @@ it.live(`A document reaches the model whole when it fits, a larger document reac
   const third = try send(agent, id, { text: "What can you read?", images: [
     attached("oversized.txt", "text/plain", oversized), attached("agenda.txt", "text/plain", "Meet at nine."),
   ] })
-  const thirdParts = turnParts()
-  const wireFits = try Effect.try(() => new TextEncoder().encode(JSON.stringify(completionBody() ?? null)).byteLength <= 256 * 1024)
+  const thirdParts = turnParts(2)
+  const thirdNote = (completionBody() as { messages: { content?: unknown }[] }).messages.at(-1)?.content
+  const wireFits = try Effect.try(() => [2, 1].every((back) => new TextEncoder().encode(JSON.stringify(completionBody(back) ?? null)).byteLength <= 256 * 1024))
   const medium = "a".repeat(16 * 1024)
   const fourth = try send(agent, id, { text: "Can you read both?", images: [
     attached("first.txt", "text/plain", medium), attached("second.txt", "text/plain", medium),
   ] })
-  const fourthParts = turnParts()
+  const fourthParts = turnParts(2)
   const omitted = (name: string) =>
     `The person attached a file whose contents exceeded this turn's context allowance. Its name and type follow:\n${wrapExternalContent(`${JSON.stringify(name)} (text/plain)`, { source: "unknown" })}`
   try Effect.try(() => assert.deepStrictEqual({
     statuses: [first.status, second.status, third.status, fourth.status], firstParts, secondParts, thirdParts, fourthParts,
-    reply: replyOf(third).text, wireFits,
+    reply: replyOf(third).text, thirdNote: typeof thirdNote === "string" && thirdNote.endsWith("Some attached documents exceeded the amount of text you can read in this turn, and the reply must tell the person."),
+    fourth: replyOf(fourth).text, wireFits,
   }, {
     statuses: [200, 200, 200, 200],
     firstParts: [
@@ -535,7 +575,8 @@ it.live(`A document reaches the model whole when it fits, a larger document reac
     ],
     thirdParts: [omitted("oversized.txt"), file("agenda.txt", "text/plain", "Meet at nine.")],
     fourthParts: [file("first.txt", "text/plain", medium), omitted("second.txt")],
-    reply: "Read the agenda.\n\nSome attached documents exceeded the amount of text I can read in one turn.",
+    reply: "The agenda says to meet at nine. The other file was too long for me to read in one turn.", thirdNote: true,
+    fourth: "Read the first file.\n\nSome attached documents exceeded the amount of text I can read in one turn.",
     wireFits: true,
   }))
 }, 120_000)
@@ -752,7 +793,7 @@ it.live(`The open Browser page reaches the model once, fenced as web content fro
   }))
 }, 120_000)
 
-it.effect(`A calendar change is reported at the time it got (spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is replaced by the change's own words")`, effect () => {
+it.effect(`A calendar change is reported at the time it got, and the model is asked again with the change's own words before they replace its reply (spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort")`, effect () => {
   const own = "Updated Dentist, Mar 4, 2030, 9:00 AM."
   const changed = (id: string, version = "v2", receipt = true): ActionResult => ({
     success: true, text: own,
@@ -762,7 +803,8 @@ it.effect(`A calendar change is reported at the time it got (spec/agent/conversa
       observedAt: "2030-03-01T00:00:00.000Z", outcome: "applied", commit: { kind: "durable", id, committedAt: "2030-03-01T00:00:00.000Z" },
     }] : [],
   })
-  const reply = (said: string, results: readonly ActionResult[], request = "Move my dentist to 9am") => groundedEventReply(said, request, results, "agent-1")
+  const reply = (said: string, results: readonly ActionResult[], request = "Move my dentist to 9am") => ungroundedEventReply(said, request, results, "agent-1")?.fixed ?? said
+  const note = ungroundedEventReply("Done, your dentist is now 3–4 PM.", "Move my dentist to 9am", [changed("e1")], "agent-1")?.note ?? ""
   try Effect.try(() => assert.deepStrictEqual([
     reply("Done, your dentist is now 3–4 PM.", [changed("e1")]),
     reply("Done, your dentist is now 9–10 AM.", [changed("e1")]),
@@ -778,4 +820,5 @@ it.effect(`A calendar change is reported at the time it got (spec/agent/conversa
     own, "Done, your dentist is now 9–10 AM.", "Done, your dentist is now 09:00-10:00.", own, "Done, your dentist is now 3–4 PM UTC.", "Done, your dentist is now at 3 PM.",
     "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.",
   ]))
+  try Effect.try(() => assert.include(note, JSON.stringify(own)))
 })

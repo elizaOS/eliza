@@ -1,4 +1,4 @@
-// spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; spec/agent/conversation/planning.md, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading"; spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is replaced by the change's own words"
+// spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; spec/agent/conversation/planning.md, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is asked for again, and the clock's own reading is the last resort"; spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort"
 import type { ActionResult, Memory } from "@elizaos/core"
 import { clockSource, eventRangeIsUngrounded, statedTimeIsUngrounded, type LocalClock, type StatedTime } from "../../gen/agent__conversation__planning.ts"
 import { knownZone, readTurnContext } from "./turn-context.schema.vibe"
@@ -64,10 +64,18 @@ function standalone(reply: string): boolean {
   return reply.replace(monthDay, " ").replace(weekday, " ").replace(clockTime, " ").replace(filler, " ").replace(/[\s,.!():]/g, "") === ""
 }
 
-export function groundedTimeReply(reply: string, request: string, clock: TurnClock): string {
+export interface Ungrounded {
+  readonly note: string
+  readonly fixed: string
+}
+
+export function ungroundedTimeReply(reply: string, request: string, clock: TurnClock): Ungrounded | undefined {
   const answer = reply.trim()
-  if (!answer) return reply
-  return statedTimeIsUngrounded(timeQuestion.test(request.trim()), standalone(answer), statedTimes(answer), localClockOf(clock)) ? `It's ${clock.reading}.` : reply
+  if (!answer || !statedTimeIsUngrounded(timeQuestion.test(request.trim()), standalone(answer), statedTimes(answer), localClockOf(clock))) return undefined
+  return {
+    note: `The person asked for the current date or time, and the reply stated one this turn's clock did not observe. The clock reads ${clock.reading}. Answer from it.`,
+    fixed: `It's ${clock.reading}.`,
+  }
 }
 
 const clockRange = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\s*(?:-|–|—|to|until|till)\s*(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])|\b([01]?\d|2[0-3]):([0-5]\d)\s*(?:-|–|—|to|until|till)\s*([01]?\d|2[0-3]):([0-5]\d)\b/gi
@@ -144,7 +152,7 @@ function changedEvent(result: ActionResult, agentId: string): ChangedEvent | und
   return { key: JSON.stringify([id, version, startAt, endAt, timezone]), start, end, words }
 }
 
-export function groundedEventReply(reply: string, request: string, results: readonly ActionResult[], agentId: string): string {
+export function ungroundedEventReply(reply: string, request: string, results: readonly ActionResult[], agentId: string): Ungrounded | undefined {
   const stated = oneRange(reply)
   const changed = [...new Map(results.flatMap((result) => {
     const event = changedEvent(result, agentId)
@@ -152,5 +160,9 @@ export function groundedEventReply(reply: string, request: string, results: read
   })).values()]
   const [event] = changed
   const matches = event !== undefined && stated !== undefined && stated.start === event.start && stated.end === event.end
-  return event !== undefined && eventRangeIsUngrounded(timeQuestion.test(request.trim()), stated !== undefined, namesAZone(reply), changed.length, matches) ? event.words : reply
+  if (event === undefined || !eventRangeIsUngrounded(timeQuestion.test(request.trim()), stated !== undefined, namesAZone(reply), changed.length, matches)) return undefined
+  return {
+    note: `The calendar change this turn applied reports ${JSON.stringify(event.words)}, and the reply gave that event another time range. State the time the change reports.`,
+    fixed: event.words,
+  }
 }

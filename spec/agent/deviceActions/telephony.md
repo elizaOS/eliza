@@ -237,7 +237,10 @@ Call; the owner hears so. Only a phone that cannot open its keypad for chat
 refuses it instead, telling the owner to dial their local emergency number
 on the phone's own dialer. A number the owner wrote ("call 911") is still
 the reviewed recipient, and the phone hands an emergency number to the
-system dialer.
+system dialer. What the owner hears of the empty keypad, and of that
+refusal, is safety copy: it reaches the owner in these fixed words, alone
+for the keypad, and the model never rewrites it
+([planning](../conversation/planning.md)).
 
 ```quint
 pure def emergencyVerdict(emergency: bool, callOrKeypad: bool, namesService: bool, keypadOffered: bool, verdict: TargetVerdict): TargetVerdict =

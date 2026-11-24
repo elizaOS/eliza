@@ -327,5 +327,8 @@ const telephonyTargetCode = "DEVICE_TELEPHONY_TARGET_NOT_REQUESTED"
 
 export function telephonyTargetRefusalReply(refused: Refused, text: string, operation: DeviceOperation) {
   const contactChange = changesContacts(operation)
-  return { kind: "Refused" as const, code: telephonyTargetCode, forModel: modelText(refused, contactChange), forOwner: ownerText(refused, text, contactChange) }
+  return {
+    kind: "Refused" as const, code: telephonyTargetCode, forModel: modelText(refused, contactChange), forOwner: ownerText(refused, text, contactChange),
+    ...(refused.verdict === "EmergencyDial" ? { safetyCopy: true } : {}),
+  }
 }

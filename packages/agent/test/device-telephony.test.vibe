@@ -43,6 +43,17 @@ module node {
     return ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
   }
 
+  const reportOf = /The step's own report: (".*")$/mu
+
+  function reportedTo(calls: readonly { readonly path: string; readonly body: unknown }[]): string | undefined {
+    const note = calls.filter(({ path }) => path.endsWith("/chat/completions")).flatMap(({ body }) => {
+      const last = (body as { messages?: readonly { content?: unknown }[] }).messages?.at(-1)?.content
+      return typeof last === "string" && last.startsWith("Note from the agent host, not the person: nothing has been delivered yet.") ? [last] : []
+    }).at(-1)
+    const quoted = note === undefined ? undefined : reportOf.exec(note)?.[1]
+    return quoted === undefined ? undefined : JSON.parse(quoted) as string
+  }
+
   const sameOperation = (operation: unknown) => ({ payload }: Proposal) => JSON.stringify(payload.operation) === JSON.stringify(operation)
 
   async function applied(client: DeviceClient, proposal: Proposal, operationId: string, result: unknown): Promise<string> {
@@ -165,11 +176,14 @@ module node {
     const path = `/api/conversations/${conversation.id}/messages`
     const ask = async (words: string, operation: unknown) => {
       const before = new Set((await proposals(client)).map(({ id }) => id))
+      const sent = cloud.calls.length
       cloud.script(toolCalls("", propose(operation)), reply("Okay."))
       const turn = (await client.call("POST", path, { text: words, metadata: direct })).json as Turn
       const offered = (await proposals(client)).find(({ id }) => !before.has(id))
+      const told = reportedTo(cloud.calls.slice(sent))
       return {
-        reply: turn.text.split("\n\n").at(-1), operation: offered?.payload.operation,
+        reply: told ?? turn.text, operation: offered?.payload.operation,
+        ...(told === undefined ? {} : { heard: turn.text }),
         ...(offered !== undefined && offered.payload.requestMessageId !== turn.userMessageId ? { reviewed: true } : {}),
       }
     }
@@ -315,7 +329,7 @@ module node {
       keypad, dialName, emergency, emergencyWithAlternatives, emptyKeypad, writtenEmergency, spokenEmergency, spokenNines, spokenEmergencyByName, nameInNumberWords, nameInNumberWordsInvented, spokenEmergencyOtherNumber, contactNumber, contactEmail, draft, draftToNumber, draftAskFirst, unclear, composedNumber,
       contactUpdate, contactAdd, contactDelete, contactNoNumber, contactShow, contactRead, simSendToName, threadReply,
       draftToNobody, draftToTwoNumbers, callEveryone, partial, compound, repeatedCall, repeatedSender,
-      unbound: { reply: unbound.text.split("\n\n").at(-1), carriesMessage: reviewedCall === undefined ? undefined : reviewedCall.payload.requestMessageId !== undefined },
+      unbound: { reply: unbound.text, carriesMessage: reviewedCall === undefined ? undefined : reviewedCall.payload.requestMessageId !== undefined },
       asked, delivered, toThem, copyReference: { reply: swapped.reply, toldReference },
     }
   }
@@ -324,6 +338,7 @@ module node {
 import { proposeTool, roleGuidanceFromChat, smsReceiptFromChat, telephonyFromChat } from node
 
 const review = "Review this request on your phone before it can run."
+const heard = (copy: string) => `${copy}\n\nOkay.`
 const numberNotWritten = "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use."
 const noNumberWritten = "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts."
 const numberNotSaved = "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
@@ -368,7 +383,7 @@ it.live('A submitted SMS receipt remains in its originating conversation and car
   assert.deepStrictEqual(outcomes, { originalStatus: true, guidance: true, privateText: false, otherProposal: false, settled: ["done"] })
 }, 120_000)
 
-it.live(`A call, dial, keypad, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, the sender is read only as asked, only what the owner asked for runs without its card, and a settled request is answered by the model from its result (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request")`, effect () => {
+it.live(`A call, dial, keypad, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, the sender is read only as asked, only what the owner asked for runs without its card, and a settled request is answered by the model from its result, while the model's words follow the action's own copy, a refusal is retold by the model and the emergency keypad's copy stands alone (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails"; spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -381,36 +396,36 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
   const observed = try host("telephony from chat", () => telephonyFromChat(agent.agent.runtime, socket, agent.frame.token, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
     alternativeRecipients: { replies: ["Carson or Maya?", "To Carson, or to that number?"], completionCalls: 2, proposals: 0, guided: true },
-    alternativeInBody: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "choose green or blue that matches." } },
+    alternativeInBody: { reply: heard(review), operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "choose green or blue that matches." } },
     conversational: {
-      told: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "Please bring the ice. We have dinner covered." } },
-      said: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "dinner is covered" } },
+      told: { reply: heard(review), operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "Please bring the ice. We have dinner covered." } },
+      said: { reply: heard(review), operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "dinner is covered" } },
     },
-    handedThrough: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "4155550100" } } },
+    handedThrough: { reply: heard(review), operation: { type: "phone_call", target: { kind: "number", number: "4155550100" } } },
     heldCall: { reply: noNumberWritten, requests: ["pending"] },
     separated: {
-      call: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "4155550161" } } },
-      send: { reply: review, operation: { type: "sms_send", recipients: ["+14155550162"], body: "hi", subscriptionId: 1 } },
-      contact: { reply: review, operation: { type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["4155550163"], emailAddresses: [] } } },
+      call: { reply: heard(review), operation: { type: "phone_call", target: { kind: "number", number: "4155550161" } } },
+      send: { reply: heard(review), operation: { type: "sms_send", recipients: ["+14155550162"], body: "hi", subscriptionId: 1 } },
+      contact: { reply: heard(review), operation: { type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["4155550163"], emailAddresses: [] } } },
     },
-    ownerDialForm: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "+442079460958" } } },
-    invented: { reply: numberNotWritten, operation: undefined },
+    ownerDialForm: { reply: heard(review), operation: { type: "phone_call", target: { kind: "number", number: "+442079460958" } } },
+    invented: { reply: numberNotWritten, operation: undefined, heard: "ok" },
     noNumber: {
       reply: noNumberWritten,
-      operation: undefined,
+      operation: undefined, heard: "ok",
     },
-    callBack: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "mom" } } },
-    authoredSurname: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Sam Back" } } },
-    draftedSurname: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Sam Back" }, body: "hi" } },
-    surnameWithCourtesy: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Ana Maria Silva Back" } } },
-    prefixCallback: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Jo" } } },
+    callBack: { reply: heard(review), operation: { type: "phone_call", target: { kind: "contact", query: "mom" } } },
+    authoredSurname: { reply: heard(review), operation: { type: "phone_call", target: { kind: "contact", query: "Sam Back" } } },
+    draftedSurname: { reply: heard(review), operation: { type: "sms_compose", target: { kind: "contact", query: "Sam Back" }, body: "hi" } },
+    surnameWithCourtesy: { reply: heard(review), operation: { type: "phone_call", target: { kind: "contact", query: "Ana Maria Silva Back" } } },
+    prefixCallback: { reply: heard(review), operation: { type: "phone_call", target: { kind: "contact", query: "Jo" } } },
     unnamed: {
       reply: "I didn't set that up, because that name isn't one you wrote in your message. Nothing was called or sent. Tell me who, by their name as saved in Contacts or their number.",
-      operation: undefined,
+      operation: undefined, heard: "ok",
     },
-    bodyNumber: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Sam" }, body: "call me at 415-555-0100" } },
-    keypad: { reply: "Opening the keypad with 4153024399.", operation: { type: "phone_keypad", number: "4153024399" } },
-    dialName: { reply: "I can't set that up on this phone with that recipient. Nothing was called or sent. Tell me the number to use.", operation: undefined },
+    bodyNumber: { reply: heard(review), operation: { type: "sms_compose", target: { kind: "contact", query: "Sam" }, body: "call me at 415-555-0100" } },
+    keypad: { reply: heard("Opening the keypad with 4153024399."), operation: { type: "phone_keypad", number: "4153024399" } },
+    dialName: { reply: "I can't set that up on this phone with that recipient. Nothing was called or sent. Tell me the number to use.", operation: undefined, heard: "ok" },
     emergency: {
       reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
       operation: { type: "phone_keypad" },
@@ -419,57 +434,57 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
       reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
       operation: { type: "phone_keypad" },
     },
-    emptyKeypad: { reply: "Opening the keypad.", operation: { type: "phone_keypad" } },
-    writtenEmergency: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
-    spokenEmergency: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
-    spokenNines: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "999" } } },
+    emptyKeypad: { reply: heard("Opening the keypad."), operation: { type: "phone_keypad" } },
+    writtenEmergency: { reply: heard(review), operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
+    spokenEmergency: { reply: heard(review), operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
+    spokenNines: { reply: heard(review), operation: { type: "phone_call", target: { kind: "number", number: "999" } } },
     spokenEmergencyByName: {
       reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
       operation: { type: "phone_keypad" },
     },
-    nameInNumberWords: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Seven Eleven" } } },
-    nameInNumberWordsInvented: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Seven Eleven" } } },
+    nameInNumberWords: { reply: heard(review), operation: { type: "phone_call", target: { kind: "contact", query: "Seven Eleven" } } },
+    nameInNumberWordsInvented: { reply: heard(review), operation: { type: "phone_call", target: { kind: "contact", query: "Seven Eleven" } } },
     spokenEmergencyOtherNumber: {
       reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
       operation: { type: "phone_keypad" },
     },
-    contactNumber: { reply: numberNotSaved, operation: undefined },
+    contactNumber: { reply: numberNotSaved, operation: undefined, heard: "ok" },
     contactEmail: {
       reply: "I didn't save that, because that email address isn't one you wrote in your message. Nothing was saved. Tell me the email address to use.",
-      operation: undefined,
+      operation: undefined, heard: "ok",
     },
     draft: {
-      reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Sam" }, body: "Are we on for dinner tonight?", draft: true }, reviewed: true,
+      reply: heard(review), operation: { type: "sms_compose", target: { kind: "contact", query: "Sam" }, body: "Are we on for dinner tonight?", draft: true }, reviewed: true,
     },
-    draftToNumber: { reply: review, operation: { type: "sms_compose", target: { kind: "number", number: "4155550124" }, body: "hi", draft: true } },
-    draftAskFirst: { reply: review, operation: { type: "sms_compose", target: { kind: "number", number: "4155550124" }, body: "hi", draft: true }, reviewed: true },
-    unclear: { reply: askRecipient, operation: undefined },
-    composedNumber: { reply: review, operation: { type: "sms_compose", target: { kind: "number", number: "4155550100" }, body: "I'm running late" } },
-    contactUpdate: { reply: review, operation: { type: "contact_update", query: "Bob", set: { phoneNumbers: ["4155550177"] } } },
-    contactAdd: { reply: review, operation: { type: "contact_update", query: "Sam", add: { phoneNumbers: ["4155550188"] } } },
-    contactDelete: { reply: review, operation: { type: "contact_delete", query: "Bob" } },
-    contactNoNumber: { reply: review, operation: { type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["6505715862"], emailAddresses: [] } } },
-    contactShow: { reply: review, operation: { type: "contact_show", query: "Maya" } },
-    contactRead: { reply: review, operation: { type: "contact_read_selected" } },
+    draftToNumber: { reply: heard(review), operation: { type: "sms_compose", target: { kind: "number", number: "4155550124" }, body: "hi", draft: true } },
+    draftAskFirst: { reply: heard(review), operation: { type: "sms_compose", target: { kind: "number", number: "4155550124" }, body: "hi", draft: true }, reviewed: true },
+    unclear: { reply: askRecipient, operation: undefined, heard: "ok" },
+    composedNumber: { reply: heard(review), operation: { type: "sms_compose", target: { kind: "number", number: "4155550100" }, body: "I'm running late" } },
+    contactUpdate: { reply: heard(review), operation: { type: "contact_update", query: "Bob", set: { phoneNumbers: ["4155550177"] } } },
+    contactAdd: { reply: heard(review), operation: { type: "contact_update", query: "Sam", add: { phoneNumbers: ["4155550188"] } } },
+    contactDelete: { reply: heard(review), operation: { type: "contact_delete", query: "Bob" } },
+    contactNoNumber: { reply: heard(review), operation: { type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["6505715862"], emailAddresses: [] } } },
+    contactShow: { reply: heard(review), operation: { type: "contact_show", query: "Maya" } },
+    contactRead: { reply: heard(review), operation: { type: "contact_read_selected" } },
     simSendToName: {
       reply: "I can't set that up on this phone with that recipient. Nothing was called or sent. Tell me the number to use.",
-      operation: undefined,
+      operation: undefined, heard: "ok",
     },
-    threadReply: { reply: review, operation: { type: "sms_reply_selected", body: "I'll be there soon" } },
-    draftToNobody: { reply: askRecipient, operation: undefined },
-    draftToTwoNumbers: { reply: askRecipient, operation: undefined },
+    threadReply: { reply: heard(review), operation: { type: "sms_reply_selected", body: "I'll be there soon" } },
+    draftToNobody: { reply: askRecipient, operation: undefined, heard: "ok" },
+    draftToTwoNumbers: { reply: askRecipient, operation: undefined, heard: "ok" },
     callEveryone: {
       reply: "I didn't set that up, because that name isn't one you wrote in your message. Nothing was called or sent. Tell me who, by their name as saved in Contacts or their number.",
-      operation: undefined,
+      operation: undefined, heard: "ok",
     },
-    partial: { reply: "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable.", operation: undefined },
+    partial: { reply: "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable.", operation: undefined, heard: "ok" },
     repeatedCall: { toldModel: true, ownerHeardFixedWords: false, requests: ["done"] },
     repeatedSender: { toldModel: true, ownerHeardFixedWords: false, requests: ["done"] },
     compound: [JSON.stringify({ type: "phone_call", target: { kind: "contact", query: "dad" } }), JSON.stringify({ type: "phone_call", target: { kind: "number", number: "4155550142" } })],
-    unbound: { reply: review, carriesMessage: false },
-    asked: { reply: review, operation: { type: "sms_latest_sender", includeAddress: true } },
+    unbound: { reply: heard(review), carriesMessage: false },
+    asked: { reply: heard(review), operation: { type: "sms_latest_sender", includeAddress: true } },
     delivered: "Your latest incoming SMS came from +14155550124.",
-    toThem: { reply: review, operation: { type: "sms_compose", target: { kind: "number", number: "+14155550124" }, replyThreadId: "thread:42", body: "I'm on my way", draft: true } },
+    toThem: { reply: heard(review), operation: { type: "sms_compose", target: { kind: "number", number: "+14155550124" }, replyThreadId: "thread:42", body: "I'm on my way", draft: true } },
     copyReference: { reply: numberNotWritten, toldReference: true },
   }))
 }, 180_000)
