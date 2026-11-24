@@ -4508,8 +4508,8 @@ module node {
         new URLSearchParams({ clientId: id, environment: "staging", redirectUri: redirect }).toString()
       const offersMailLease = async (binding: CloudBindings, id = clientId, redirect = redirectUri) => {
         const response = await worker.fetch(new Request(configPath(id, redirect)), binding)
-        const config = Schema.decodeUnknownSync(Schema.Struct({ mailLease: Schema.Boolean }))(await response.json())
-        return [response.status, config.mailLease]
+        const config = Schema.decodeUnknownSync(Schema.Struct({ mailLease: Schema.optionalKey(Schema.Boolean) }))(await response.json())
+        return [response.status, config.mailLease === true]
       }
       const { DEVICE_LEASE_SEAL_KEY: _sealKey, ...withoutLeaseKey } = env
       const anotherRegistration = { ...env, NATIVE_CLIENT_REGISTRY: JSON.stringify([attachmentClient, otherRegistration]) }

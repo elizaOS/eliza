@@ -169,7 +169,7 @@ effect function readConfig(context: RouteContext) {
     redirectUri: returnText(answer.redirectUri),
     codeChallengeMethod: answer.codeChallengeMethod,
     credentialTtlMs: answer.credentialTtlMs,
-    mailLease,
+    ...(mailLease ? { mailLease: true } : {}),
     methods: answer.methods,
     google: answer.google
   })

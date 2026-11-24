@@ -7,7 +7,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, Ht
 
 import {
   accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
-  authQuery as query, accountTransaction, browserAccount, signInWithProof, openSignInFamily, renewBrowserSession, logoutBrowserSession,
+  authQuery as query, accountTransaction, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
   rateLimit, RateLimited, StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
 } from "./identity-store.vibe"
 
