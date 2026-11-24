@@ -1,4 +1,4 @@
-// spec/cloud/billing/entitlements.md, "Story: Read my billing state in one snapshot"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"
+// spec/cloud/billing/entitlements.md, "Story: Read my billing state in one snapshot"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/deployment.md, "A route of a capability the environment does not enable is refused as 404 capability_unavailable"
 import { billingSnapshot, type AllowanceView, type BillingRead } from "../../gen/cloud__billing__entitlements.effect.vibe"
 import { dunningEndsAt, type CancelControl, type ControlAction, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { AccountStatus as SpecAccountStatus } from "../../gen/cloud__identity__accounts.effect.vibe"
@@ -172,7 +172,7 @@ export const routes: ReadonlyArray<Route> = [
     method: "GET",
     path: "/api/v1/billing/limits",
     auth: "ServiceAccess",
-    capability: "billing",
+    area: "BillingSnapshotRoutes",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = owner(context.caller)

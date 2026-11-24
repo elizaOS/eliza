@@ -61,6 +61,7 @@ public final class BrowserTabHostConfig {
   public final BrowserAutofillExtras autofillExtras;
   /** Development builds only: plain-http loopback pages may prompt, read and download. */
   public final boolean allowLoopback;
+  public final boolean appLinks;
   /** Log main-frame failure codes (never addresses). */
   public final boolean debugLogging;
   public final int maxTabs;
@@ -82,6 +83,7 @@ public final class BrowserTabHostConfig {
     hostSchemes = Collections.unmodifiableSet(new LinkedHashSet<>(b.hostSchemes));
     autofillExtras = b.autofillExtras;
     allowLoopback = b.allowLoopback;
+    appLinks = b.appLinks;
     debugLogging = b.debugLogging;
     maxTabs = b.maxTabs;
     logTag = b.logTag != null ? b.logTag : "BrowserTabHost";
@@ -213,7 +215,7 @@ public final class BrowserTabHostConfig {
     private String downloadPreferences, retiredProfilePreferences, noticePreferences;
     private String appName = "this app", hostName = "this app", browserName, logTag;
     private BrowserAutofillExtras autofillExtras;
-    private boolean allowLoopback, debugLogging;
+    private boolean allowLoopback, appLinks, debugLogging;
     private int maxTabs = 8;
 
     private Builder(String persistentProfile, String privatePrefix, String storagePrefix) {
@@ -233,6 +235,7 @@ public final class BrowserTabHostConfig {
     public Builder hostScheme(String scheme) { hostSchemes.add(scheme); return this; }
     public Builder autofillExtras(BrowserAutofillExtras extras) { autofillExtras = extras; return this; }
     public Builder allowLoopback(boolean allow) { allowLoopback = allow; return this; }
+    public Builder appLinks(boolean take) { appLinks = take; return this; }
     public Builder debugLogging(boolean enabled) { debugLogging = enabled; return this; }
     public Builder maxTabs(int tabs) { maxTabs = tabs; return this; }
     public Builder logTag(String tag) { logTag = tag; return this; }

@@ -1,4 +1,4 @@
-// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"
+// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/deployment.md, "A route of a capability the environment does not enable is refused as 404 capability_unavailable"
 import { termsOf } from "../../gen/cloud__billing__plans.effect.vibe"
 import { issueEntitlement, type ClaimedStatus } from "../../gen/cloud__billing__entitlements.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
@@ -120,7 +120,7 @@ export const routes: ReadonlyArray<Route> = [
     method: "GET",
     path: "/api/v1/subscription/entitlement",
     auth: "ServiceAccess",
-    capability: "billing",
+    area: "EntitlementRoutes",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = owner(context.caller)
@@ -134,7 +134,7 @@ export const routes: ReadonlyArray<Route> = [
     method: "GET",
     path: "/api/v1/subscription/entitlement-keys",
     auth: "Public",
-    capability: "billing",
+    area: "EntitlementRoutes",
     handler: () => effect {
       const deployment = try Deployment
       return json({ keys: publishedKeys(deployment.settings.entitlement.publicKeys) }, { headers: { "cache-control": `public, max-age=${entitlementKeysMaxAgeSeconds}` } })

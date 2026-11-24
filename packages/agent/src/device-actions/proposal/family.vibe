@@ -83,27 +83,15 @@ export interface ProposalForm {
   readonly offered: (device: NegotiatedDevice) => boolean
 }
 
-export interface WholeRequestRoute {
-  readonly id: string
-  readonly replaces: readonly string[]
-  readonly tags: readonly string[]
-  readonly contexts: readonly string[]
-  readonly lead: string
-  claims(turn: DeviceTurn): readonly ProposalForm[]
-}
-
 export interface DeviceProposalFamily {
   readonly name: FamilyName
   readonly app?: AgentContext
   readonly types: readonly DeviceOperationType[]
   readonly forms: readonly ProposalForm[]
-  readonly route?: WholeRequestRoute
   readonly guidance: (device: NegotiatedDevice) => readonly string[]
   now?(turn: DeviceTurn): string | undefined
   prepare?(operation: unknown): unknown
-  clarifyRequest?(turn: DeviceTurn): string | undefined
-  wholeMessageOperation?(turn: DeviceTurn): DeviceOperation | undefined
-  ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable
+  ground(proposed: CheckedOperation, turn: DeviceTurn, asked?: unknown): Grounding!DeviceStoreUnavailable
   proposedText(operation: DeviceOperation, pending: PendingRequest): ProposalText | undefined
   settledText(operation: DeviceOperation, result: unknown, timeZone: string | undefined): ProposalText | undefined
   continueAfterRead?(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "message" | "negotiation" | "startedAt" | "timeZone">): (ReadContinuation | undefined)!DeviceStoreUnavailable

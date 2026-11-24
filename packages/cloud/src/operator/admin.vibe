@@ -6,7 +6,7 @@ import { refusalBody, type Refusal } from "../http/refusal.vibe"
 import { deploymentLayer, Deployment, parseEnvironment, readProfile, specProfile, type CloudEnvironment } from "../profile/profile.vibe"
 import { sha256Hex } from "../shared/credential-crypto.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
-import { identityDigest, migrate, observeIdentity, parseStoreLocation, Store, storeLayer, type DatabaseIdentity, type StoreFailure, type StoreLocation, toText, type Tx } from "../store/store.vibe"
+import { migrate, observeIdentity, parseStoreLocation, readIdentity, Store, storeLayer, type DatabaseIdentity, type StoreFailure, type StoreLocation, toText, type Tx } from "../store/store.vibe"
 import { commands as accounts } from "./accounts.vibe"
 import { commands as clients, seedClients } from "./clients.vibe"
 import { commands as deletion } from "./deletion.vibe"
@@ -113,8 +113,8 @@ effect function parseFlags(args: ReadonlyArray<string>, handler: OperatorCommand
 }
 
 effect function readDatabaseIdentity(tx: Tx): IdentityRead!! {
-  const digest = identityDigest(tx) catch () => undefined
-  return digest === undefined ? { tag: "UnreadableIdentity" } : { tag: "ReadDigest", digest }
+  const identity = readIdentity(tx) catch () => undefined
+  return identity?.kind === "identified" ? { tag: "ReadDigest", digest: identity.digest } : { tag: "UnreadableIdentity" }
 }
 
 function identityIn(deployment: Deployment.Shape, read: IdentityRead): StoreIdentity {

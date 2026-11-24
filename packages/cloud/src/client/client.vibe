@@ -38,9 +38,9 @@ const accountSchema = Schema.Struct({
   success: Schema.Literal(true),
   data: Schema.Struct({
     id: Schema.String,
-    email: optionalText,
-    phone: optionalText,
-    name: optionalText,
+    email: Schema.optionalKey(Schema.String),
+    phone: Schema.optionalKey(Schema.String),
+    name: Schema.optionalKey(Schema.String),
     organization_id: Schema.String,
     organization: Schema.Struct({ id: Schema.String, name: Schema.String })
   })

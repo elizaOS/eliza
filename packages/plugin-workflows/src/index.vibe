@@ -2,7 +2,6 @@
 import type { IAgentRuntime } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
 import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext, workflowStatusProvider } from "./agent.vibe"
-import { registerWorkflowRequestRouting } from "./request.vibe"
 import { workflowRoutes } from "./routes.vibe"
 import { runtimeWorkflowHost, WORKFLOW_SCHEDULE_TASK } from "./runtime.vibe"
 import { hostedDigests } from "./service/digests.vibe"
@@ -38,7 +37,6 @@ export const workflowPlugin: AgentPlugin = {
   init: async (_config, runtime) => {
     runtime.contexts.tryRegister(workflowsContext)
     const instance = await runPromise(open(runtime))
-    registerWorkflowRequestRouting(runtime)
     workflowInstances.set(runtime, instance)
     current = instance
   },

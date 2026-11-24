@@ -8,7 +8,9 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.json.JSONException;
@@ -18,8 +20,8 @@ import org.json.JSONObject;
 final class CloudSpeechWire {
   static final int RATE = 16000, MAX_UPLINK = 3200, MAX_DOWNLINK = 65536, MAX_CONTROL = 8192;
   static final int MAX_TRANSCRIPT = 16384, MAX_TEXT = 4096, MAX_PHRASE = 1024, MAX_TOKEN = 6144, MAX_BEARER = 16384;
-  static final long MAX_WINDOW_MS = 65000;
-  static final String BASE = "/api/v1/voice/speech/";
+  static final long MAX_WINDOW_MS = 65000, MAX_CONSENT_RETRY_AFTER_MS = 2000, CONSENT_RETRY_REQUEST_MS = 2000, WARMUP_INTERVAL_MS = 60_000;
+  static final String BASE = "/api/v1/voice/speech/", HEALTH = "/api/health";
   static final String EXTEND_HEADER = "X-Eliza-Speech-Extend", EXTEND_OFFER = "1";
   static final String INSUFFICIENT_CREDITS = "insufficient_credits", ALLOWANCE_EXHAUSTED = "allowance_exhausted";
   static final CloudSpeechPolicy.Frame PROTOCOL_ERROR = new CloudSpeechPolicy.Frame.Error(CloudSpeechPolicy.RelayErrorCode.PROTOCOL, false);
@@ -135,6 +137,24 @@ final class CloudSpeechWire {
     if (message == null) return false;
     if (failure instanceof java.net.SocketException) return !(failure instanceof java.net.ConnectException) && message.startsWith("Connection reset");
     return failure instanceof java.io.IOException && message.startsWith("unexpected end of stream");
+  }
+
+  static long consentRetryMs(int status, String retryAfter, long now, long remainingMs) {
+    long at = status == 503 ? retryAfter(retryAfter, now) : 0;
+    if (at <= 0) return -1;
+    long wait = Math.max(0, at - now);
+    return wait <= MAX_CONSENT_RETRY_AFTER_MS && wait + CONSENT_RETRY_REQUEST_MS <= remainingMs ? wait : -1;
+  }
+
+  static final class Warmups {
+    private final Map<String, Long> last = new HashMap<>();
+
+    synchronized boolean admit(String origin, long nowMs) {
+      Long at = last.get(origin);
+      if (at != null && nowMs - at < WARMUP_INTERVAL_MS) return false;
+      last.put(origin, nowMs);
+      return true;
+    }
   }
 
   static long millis(long pcmBytes) {

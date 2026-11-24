@@ -1,6 +1,6 @@
 // spec/cloud/billing/plans.md, "Story: Offer the paid plans as the provider sells them"; spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
-import { planOffers, paidPlanKeys, requestsPerMinute, isPaid, type PlanKey, type RateClass } from "../../gen/cloud__billing__plans.effect.vibe"
-import { priceCheck, type ProviderPrice as ObservedPrice } from "../../gen/cloud__deployment.effect.vibe"
+import { planOffers, requestsPerMinute, isPaid, type PlanKey, type RateClass } from "../../gen/cloud__billing__plans.effect.vibe"
+import { catalogProblem, type CatalogObservation, type ProviderPrice as ObservedPrice } from "../../gen/cloud__deployment.effect.vibe"
 import { Deployment, type SecretMissing } from "../profile/profile.vibe"
 import { wireName } from "../http/refusal.vibe"
 
@@ -91,30 +91,34 @@ effect function providerRead<A>(path: string, schema: Schema.Codec<A>, plan: str
   }
 }
 
+effect function observePrice(key: PlanKey): ObservedPrice!(CatalogMismatch | SecretMissing)!(Deployment | HttpClient.HttpClient) {
+  const deployment = try Deployment
+  const wire: PaidPlanKey = key === "ProMonthly" ? "pro_monthly" : "plus_monthly"
+  const binding = deployment.settings.billing?.plans[wire]
+  if (binding === undefined) throw new CatalogMismatch({ plan: wire, problem: "billing is not configured" })
+  const price = try providerRead(`/v1/prices/${encodeURIComponent(binding.priceId)}`, ProviderPrice, wire)
+  const product = try providerRead(`/v1/products/${encodeURIComponent(binding.productId)}`, ProviderProduct, wire)
+  return {
+    active: price.active,
+    currency: price.currency === "usd" && !Object.keys(price.currency_options ?? {}).some((currency) => currency !== "usd") ? "Usd" : "OtherCurrency",
+    amountCents: price.unit_amount ?? -1,
+    perUnit: price.billing_scheme === "per_unit" && price.transform_quantity === null,
+    interval: price.type === "recurring" && price.recurring?.interval === "month" && price.recurring.interval_count === 1 ? "OneMonth" : "OtherInterval",
+    usage: price.recurring?.usage_type === "licensed" ? "Licensed" : "Metered",
+    trial: (price.recurring?.trial_period_days ?? null) !== null,
+    sameProduct: price.product === binding.productId && product.id === binding.productId && product.livemode === price.livemode,
+    productActive: product.active && product.deleted !== true,
+    mode: price.livemode ? "LivePrice" : "TestPrice"
+  }
+}
+
+export effect function observeCatalog(): CatalogObservation!(CatalogMismatch | SecretMissing)!(Deployment | HttpClient.HttpClient) {
+  if ((try Deployment).settings.billing === undefined) return { tag: "NoCatalog" }
+  return { tag: "Observed", plus: try observePrice("PlusMonthly"), pro: try observePrice("ProMonthly") }
+}
+
 export effect function checkCatalog(): void!(CatalogMismatch | SecretMissing)!(Deployment | HttpClient.HttpClient) {
   const deployment = try Deployment
-  const billing = deployment.settings.billing
-  if (billing === undefined) return
-  const livemode = deployment.environment === "production"
-  for (const key of paidPlanKeys) {
-    const wire: PaidPlanKey = key === "ProMonthly" ? "pro_monthly" : "plus_monthly"
-    const binding = billing.plans[wire]
-    const price = try providerRead(`/v1/prices/${encodeURIComponent(binding.priceId)}`, ProviderPrice, wire)
-    const product = try providerRead(`/v1/products/${encodeURIComponent(binding.productId)}`, ProviderProduct, wire)
-    const observed: ObservedPrice = {
-      active: price.active,
-      currency: price.currency === "usd" && !Object.keys(price.currency_options ?? {}).some((currency) => currency !== "usd") ? "Usd" : "OtherCurrency",
-      amountCents: price.unit_amount ?? -1,
-      perUnit: price.billing_scheme === "per_unit" && price.transform_quantity === null,
-      interval: price.type === "recurring" && price.recurring?.interval === "month" && price.recurring.interval_count === 1 ? "OneMonth" : "OtherInterval",
-      usage: price.recurring?.usage_type === "licensed" ? "Licensed" : "Metered",
-      trial: (price.recurring?.trial_period_days ?? null) !== null,
-      sameProduct: price.product === binding.productId && product.id === binding.productId,
-      productActive: product.active && product.deleted !== true,
-      mode: price.livemode ? "LivePrice" : "TestPrice"
-    }
-    if (price.livemode !== product.livemode || priceCheck(key, observed, livemode ? "Production" : "Staging").tag !== "PriceFits") {
-      throw new CatalogMismatch({ plan: wire, problem: `price ${binding.priceId} is not the catalog's ${wire} as the provider sells it` })
-    }
-  }
+  const problem = catalogProblem(deployment.environment === "production" ? "Production" : "Staging", try observeCatalog())
+  if (problem.tag === "CatalogMismatch") throw new CatalogMismatch({ plan: wirePlanKey(problem.plan), problem: wireName(problem.mismatch) })
 }
