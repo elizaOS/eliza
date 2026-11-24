@@ -515,7 +515,6 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         cutOff ||= stoppedAtModelMaximum(await execute(call))
         if (cutOff) break
       }
-      // The note is read only by a later model call, so it follows a whole batch whose planning goes on.
       if (delivered && reply === undefined && plansOn(cutOff, taken, work.length, false)) conversation.push({ role: "user", content: deliveredCueNote(cue) })
     }
     if (reply !== undefined) {

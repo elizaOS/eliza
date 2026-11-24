@@ -139,11 +139,9 @@ module node {
     return { outcome, reads }
   }
 
-  // `reports` is what the display's acknowledge returns: false for a cue the stream refused, undefined for a display that reports nothing.
   export async function unheardCueTurn(runtime: AgentRuntime, roomId: string, request: string, reports: false | undefined): Promise<readonly string[]> {
     const room = await runtime.getRoom(roomId as UUID)
     if (!room) throw new Error("The conversation has no room")
-    // A cloud launch carries the scratch account, so the host owns the conversation as that account (host/process.vibe).
     const owner = { user: validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`), world: stringToUuid(`device:${runtime.agentId}`) }
     const offered: string[] = []
     await processTurn(runtime, owner, room, request, AbortSignal.timeout(60_000), {
