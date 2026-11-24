@@ -549,7 +549,8 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
     ])
     assert.deepStrictEqual(reopen.map(result => typeof result === "string" ? result : result.operation), ["DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED", samePage, samePage, samePage])
     assert.deepStrictEqual(exactReopen, [
-      "DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED",
+      "DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED",
+      { operation: { type: "browser_navigate", url: "https://bank.example.com/statement#details" }, reviewed: false }, { operation: statement, reviewed: false },
       { operation: statement, reviewed: false }, { operation: statement, reviewed: false }, { operation: dictatedSite, reviewed: false },
     ])
     assert.deepStrictEqual([unasked, sensitive, withdrawn].map((result) => [result.success, failureKind(result), result.text]), Array.from({ length: 3 }, () => [false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL]))
