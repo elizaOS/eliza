@@ -13,8 +13,7 @@ import { filesProposalFamily } from "../src/device-proposals.vibe"
 module node {
   import { Effect } from "effect"
   import { AgentRuntime, stringToUuid } from "@elizaos/core"
-  import { readOperation, type DeviceTurn, type Grounding } from "@elizaos/agent/device-actions"
-  import { negotiatedOwnerTurn } from "@elizaos/agent/device-actions"
+  import { negotiatedOwnerTurn, readOperation, type DeviceTurn, type Grounding } from "@elizaos/agent/device-actions"
   import { filesProposalFamily } from "../src/device-proposals.vibe"
 
   const asked = "Trash the first two files"

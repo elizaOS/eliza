@@ -233,8 +233,7 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
 
 module node {
   import type { IAgentRuntime } from "@elizaos/core"
-  import { readOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
-  import { negotiatedOwnerTurn } from "@elizaos/agent/device-actions"
+  import { negotiatedOwnerTurn, readOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
   import { browserProposalFamily } from "../src/proposal.vibe"
 
   export const everyBrowserCapability = ["browser.search.v1", "browser.tabs.v1", "browser.tabs.close-all.v1", "browser.tabs.show.v1", "browser.find.v1", "browser.history.v1", "browser.open-new-tab.v1"]
