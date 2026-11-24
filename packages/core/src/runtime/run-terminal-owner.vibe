@@ -123,6 +123,7 @@ export effect function requestRunTerminal(state: RunTerminalState, outcome: Turn
 
 module edge {
   import { foreign, runDetached, runDetachedSync } from "../edge.vibe"
+  import type { ElizaError } from "../errors.vibe"
   import type { ActionResult } from "../types/components.vibe"
   import type { EffectReceipt } from "../types/effects.vibe"
   import type { TurnOutcome } from "../types/message-service.vibe"
