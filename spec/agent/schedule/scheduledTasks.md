@@ -42,6 +42,34 @@ shell loads real rows through `parseState`.
 > recurring task missed while the agent was stopped, never fired, so that
 > retries, two devices and a restart never double or lose a reminder.
 
+### The scheduler driver retires only its agent's private tick rows
+
+The tick driver uses a reserved task name and the queue and repeat tags.
+Only a row with that identity, a stored ID and this agent's ID is a driver
+row. A different worker holding the reserved registration fences the old
+worker's delivery and all of its writes. Stop closes delivery admission,
+waits for any admitted driver reconciliation, and reads the actual rows
+before deleting. A lost write acknowledgement does not stand in for this
+read. Replacement reconciliation and retirement serialize for the same
+runtime, so the old worker cannot remove the replacement's rows. Owner
+reminders, check-ins and their occurrence records are kept separately.
+
+```quint
+type TickDriverRow = { hasId: bool, sameAgent: bool, sameName: bool, queue: bool, repeat: bool }
+type TickRegistration = OwnTickWorker | NoTickWorker | ReplacementTickWorker
+pure def tickDriverRowEligible(r: TickDriverRow): bool =
+  r.hasId and r.sameAgent and r.sameName and r.queue and r.repeat
+pure def tickDriverMayRun(registration: TickRegistration): bool = registration == OwnTickWorker
+pure def tickDriverMayClean(registration: TickRegistration): bool = registration == NoTickWorker
+pure val rValues = Set({ hasId: true, sameAgent: true, sameName: true, queue: true, repeat: true },
+  { hasId: true, sameAgent: false, sameName: true, queue: true, repeat: true },
+  { hasId: true, sameAgent: true, sameName: true, queue: true, repeat: false })
+pure def lawAnotherAgentsTickRowIsNeverEligible(r: TickDriverRow): bool =
+  not(r.sameAgent) implies not(tickDriverRowEligible(r))
+pure def lawAReplacementFencesTheRetiredDriver(): bool =
+  not(tickDriverMayRun(ReplacementTickWorker)) and not(tickDriverMayClean(ReplacementTickWorker))
+```
+
 ### Every change commits against the revision it read
 
 A verb or a fire reads the row and commits only if the row is still at that
