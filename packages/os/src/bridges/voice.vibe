@@ -323,6 +323,8 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     })())
 
   const replaceSession = async () => {
+    const before = stale()
+    if (before) throw before.error
     const previous = sessionId
     const unfinished = speechActive && speechGeneration === captureGeneration
     speechActive = false
