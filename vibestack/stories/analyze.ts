@@ -69,15 +69,15 @@ const moduleOf = (spec: string) => spec.replace(/^(\.\/)?spec\//, "").replace(/\
  * The generated module of `spec`: in the component's own package, or, for a shared package such as a component
  * library, in the spec's owner, else the root's (SPEC.md, "One spec tree").
  */
-const modelInputs = (abs: string, spec: string): [model: string, ...manifests: string[]] => {
+export const modelFile = (abs: string, spec: string): string | undefined => {
   const own = packageOf(dirname(abs)).dir, name = `${moduleOf(spec)}.ts`;
   const root = ancestors(own).find((dir) => existsSync(join(dir, spec)));
   const dir = root && owner(root, spec.replace(/^\.\//, ""));
   const candidates = [join(own, "gen", name), ...(root && dir ? [join(root, dir, "gen", name)] : []), ...(root ? [join(root, "gen", name)] : [])];
-  return [candidates.find(existsSync) ?? candidates[0]!, ...(root ? [join(root, "package.json")] : [])];
+  return candidates.find(existsSync);
 };
 const ancestors = (dir: string): string[] => (dirname(dir) === dir ? [dir] : [dir, ...ancestors(dirname(dir))]);
-const modelTag = (text: string) => /@model\s+(\S+)/.exec(text)?.[1];
+export const modelTag = (text: string) => /@model\s+(\S+)/.exec(text)?.[1];
 
 /** The component files the globs name, sorted: never tests, stories, metadata or anything installed. */
 export function sources(root: string, globs: string[]): string[] {
@@ -94,7 +94,8 @@ const sibling = (abs: string, name: string, kind: "meta" | "stories") => ["tsx",
 /** The files beside a component that change its stories, present or not: metadata, hand-written stories, its model. */
 export function beside(abs: string, names: string[]): string[] {
   const spec = existsSync(abs) ? modelTag(readFileSync(abs, "utf8")) : undefined;
-  return [...names.flatMap((name) => [...sibling(abs, name, "meta"), ...sibling(abs, name, "stories")]), ...(spec ? modelInputs(abs, spec) : [])];
+  const model = spec && modelFile(abs, spec);
+  return [...names.flatMap((name) => [...sibling(abs, name, "meta"), ...sibling(abs, name, "stories")]), ...(model ? [model] : [])];
 }
 
 /**
@@ -199,7 +200,9 @@ function readManual(file: string): Manual {
 
 /** A generated module as a model: its state is the type of `initial`, its events the `type`s of `Event`. */
 function readModel(checker: ts.TypeChecker, file: ts.SourceFile, spec: string): { model: Model; state: ts.Type } | undefined {
-  const exports = new Map(checker.getExportsOfModule(checker.getSymbolAtLocation(file)!).map((s) => [s.name, s]));
+  const namespace = checker.getSymbolAtLocation(file);
+  if (!namespace) return;
+  const exports = new Map(checker.getExportsOfModule(namespace).map((s) => [s.name, s]));
   const initial = exports.get("initial");
   const event = exports.get("Event");
   if (!initial) return undefined;
@@ -261,7 +264,8 @@ export function analyze(built: ts.Program, abs: string): Found[] {
   if (!file || !module) return [];
   const own = (d: ts.Declaration) => !built.isSourceFileFromExternalLibrary(d.getSourceFile()) && !built.isSourceFileDefaultLibrary(d.getSourceFile());
   const spec = modelTag(file.text);
-  const gen = spec && built.getSourceFile(modelInputs(abs, spec)[0]);
+  const model = spec && modelFile(abs, spec);
+  const gen = model && built.getSourceFile(model);
 
   const found = checker.getExportsOfModule(module).flatMap((exportOf): Found[] => {
     const symbol = exportOf.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(exportOf) : exportOf;
