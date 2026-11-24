@@ -10,6 +10,7 @@ module node {
   import type { AgentRuntime } from "@elizaos/core"
   import { held, text as reply, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
   import { deviceClient, type DeviceClient } from "./support/device.ts"
+  import { bindingHash } from "../src/device-actions/operation-schemas/telephony.vibe"
 
   export const proposeTool = "PROPOSE_DEVICE_ACTION"
   const capabilities = [
@@ -49,7 +50,8 @@ module node {
     await client.call("POST", `${at}/decision`, { digest: proposal.digest, decision: "approve" })
     const claimed = (await client.call("POST", `${at}/claim`, { digest: proposal.digest })).json as { proposal: Proposal }
     const attemptId = claimed.proposal.execution?.attemptId ?? ""
-    await client.call("POST", `${at}/receipt`, { digest: proposal.digest, attemptId, receipt: { outcome: "applied", operationId, result } })
+    const receipt = await client.call("POST", `${at}/receipt`, { digest: proposal.digest, attemptId, receipt: { outcome: "applied", operationId, result } })
+    if (receipt.status !== 200) throw new Error("The applied receipt was refused: " + JSON.stringify(receipt.json))
     return attemptId
   }
 
@@ -66,6 +68,47 @@ module node {
       if (offered !== undefined) return offered
       if (Date.now() >= deadline) throw new Error("The turn never offered its proposal")
       await wait(20)
+    }
+  }
+
+  export async function smsReceiptFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+    const client = deviceClient(socket, token, runtime.agentId, capabilities.join(","))
+    await client.call("POST", "/api/client-devices/register", { capabilities, workflowProtocol: 1 })
+    const create = async () => ((await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }).conversation.id
+    const own = await create()
+    const other = await create()
+    const send = (id: string, text: string) => client.call("POST", "/api/conversations/" + id + "/messages", { text, metadata: direct })
+    const sms = { type: "sms_send", recipients: ["+1 415 555 0162"], body: "fixture text to keep out of the receipt", subscriptionId: 1 }
+    cloud.script(toolCalls("", propose(sms)), reply("Review this send on your phone."))
+    const response = await send(own, "Send an SMS to +1 415 555 0162 saying fixture text to keep out of the receipt")
+    const turn = response.json as { actionResults?: readonly { data?: { proposalId?: string } }[] }
+    const proposalId = turn.actionResults?.[0]?.data?.proposalId
+    const pending = (await proposals(client)).find(({ id }) => id === proposalId)
+    const operation = pending?.payload.operation as typeof sms | undefined
+    if (pending === undefined || operation?.type !== "sms_send" || operation.body !== sms.body)
+      throw new Error("The turn did not offer its SMS for review")
+    const { body, recipients, subscriptionId, type } = operation
+    await applied(client, pending, pending.id, {
+      kind: "sms-send", operationId: pending.id, bindingHash: bindingHash({ body, recipients, subscriptionId, type }), subscriptionId, status: "submitted", createdAt: 1,
+      parts: [{ index: 0, recipientIndex: 0, partIndex: 0, sent: "unknown", delivery: "unknown" }],
+    })
+    const notes = async (id: string) => {
+      const starting = cloud.calls.length
+      cloud.script(reply("I checked the request history."))
+      await send(id, "What became of the request I approved?")
+      return cloud.calls.slice(starting).flatMap(({ body }) => {
+        const messages = (body as { messages?: readonly { content?: unknown }[] }).messages ?? []
+        return messages.flatMap(({ content }) => typeof content === "string" && content.includes("device request outcomes, retrieved fresh") ? [content] : [])
+      })
+    }
+    const original = await notes(own)
+    const unrelated = await notes(other)
+    return {
+      originalStatus: original.some((line) => line.includes('"smsStatus":"submitted"') && line.includes(pending.id)),
+      guidance: original.some((line) => line.includes("Submitted is not sent, and sent is not delivered")),
+      privateText: original.some((line) => line.includes(sms.body)),
+      otherProposal: unrelated.some((line) => line.includes(pending.id) || line.includes('"smsStatus"')),
+      settled: (await proposals(client)).filter(({ id }) => id === pending.id).map(({ state }) => state),
     }
   }
 
@@ -220,13 +263,25 @@ module node {
   }
 }
 
-import { proposeTool, telephonyFromChat } from node
+import { proposeTool, smsReceiptFromChat, telephonyFromChat } from node
 
 const review = "Review this request on your phone before it can run."
 const numberNotWritten = "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use."
 const noNumberWritten = "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts."
 const numberNotSaved = "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
 const askRecipient = "Which person should receive this draft? Give one recipient."
+
+it.live('A submitted SMS receipt remains in its originating conversation and carries no body (spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
+      load: [deviceActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
+  const outcomes = try host("an SMS receipt in its originating room", () => smsReceiptFromChat(agent.agent.runtime, socket, agent.frame.token, cloud))
+  assert.deepStrictEqual(outcomes, { originalStatus: true, guidance: true, privateText: false, otherProposal: false, settled: ["done"] })
+}, 120_000)
 
 it.live(`A call, dial, keypad, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, the sender is read only as asked, only what the owner asked for runs without its card, and a settled request is answered by the model from its result (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request")`, effect () => {
   const cloud = try cloudFake(deviceKey)
