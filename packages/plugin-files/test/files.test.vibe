@@ -144,6 +144,8 @@ it.effect('A torn trash record is listed as unreadable, refuses only its own res
         const stale = old.to ?? ""
         const info = (id: string) => at(`.Trash-files/info/${id}.json`)
         const data = (id: string) => at(`.Trash-files/files/${id}`)
+        const stray = "metadata"
+        try fs.writeFileString(info(stray), "{}")
         try fs.writeFileString(info(torn), "{not json")
         try fs.writeFileString(info(gone), "{not json")
         try fs.remove(data(gone))
@@ -152,7 +154,8 @@ it.effect('A torn trash record is listed as unreadable, refuses only its own res
         const survived = [try fs.readFileString(info(torn)), try fs.readFileString(data(torn)), try fs.readFileString(info(gone))]
         const stillListed = try volume.trashList()
         try fs.remove(data(stale))
-        const erased = try volume.emptyTrash([torn, gone, stale], true)
+        const erased = try volume.emptyTrash([torn, gone, stale, stray], true)
+        const strayRecordKept = try fs.exists(info(stray))
         const staleRecordKept = try fs.exists(info(stale))
         const remaining = try volume.trashList()
         const leftBehind = [try fs.exists(info(torn)), try fs.exists(data(torn)), try fs.exists(info(gone)), try fs.exists(info(stale))]
@@ -175,7 +178,7 @@ it.effect('A torn trash record is listed as unreadable, refuses only its own res
           assert.deepEqual(survived, ["{not json", "lease", "{not json"])
           assert.deepEqual(byId(stillListed.map(({ id, unreadable }) => ({ id, unreadable }))), byId([{ id: torn, unreadable: true }, { id: gone, unreadable: true }, { id: stale, unreadable: undefined }]))
           assert.equal(erased, 2)
-          assert.equal(staleRecordKept, true)
+          assert.deepEqual([staleRecordKept, strayRecordKept], [true, true])
           assert.deepEqual(remaining, [])
           assert.deepEqual(leftBehind, [false, false, false, false])
         })

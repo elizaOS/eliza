@@ -77,10 +77,13 @@ pure def sometimesMetadataCleanupRemainsPending(s: TrashRow): bool = s.phase == 
 
 ### A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied
 
-Each trashed item keeps its own record of its name, origin and deletion
-time. A record that is there but cannot be read, such as one torn by an
-interrupted write, is not an absent record, and it answers only for its
-own item. Listing the trash still lists every readable item, and shows
+In the local and browser Files volumes, each trashed item keeps its own
+record of its name, origin and deletion time. A record whose contents can
+be read but cannot be decoded, such as one torn by an interrupted write,
+is not an absent record, and it answers only for its own item. On the local
+volume, only journal files named for a generated trash ID are considered,
+and a read error prevents the operation from treating the record as torn.
+Listing the trash still lists every readable item, and shows
 the torn one by its trash name, marked unreadable, with no origin or
 deletion time claimed for it, even when its data is already gone, since
 nothing else would ever clear it. A restore that names it answers that item
