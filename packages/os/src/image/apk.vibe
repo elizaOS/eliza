@@ -663,7 +663,6 @@ function signerApi(apiLevel: number | undefined): number | undefined {
   return Number.isSafeInteger(apiLevel) && apiLevel > 0 ? apiLevel : undefined
 }
 
-/** Select a certificate from apksigner evidence under the same API rule as APK inspection. */
 export function parseApkSignerDigest(output: string, apiLevel?: number): string | undefined {
   const api = signerApi(apiLevel)
   if (api === undefined) return undefined
