@@ -1,6 +1,6 @@
-// spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "Only the owner's next turn answers an open question, by its position or the place's name, within ten minutes"
+// spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "Only the owner's next turn answers an open question, with a listed place's id the model passes, within ten minutes"
 import type { IAgentRuntime, Memory } from "@elizaos/core"
-import { choiceBinds, choiceOpenAt, namedOption, type ChoiceTurn } from "../gen/maps__routing.effect.vibe"
+import { choiceCourse, choiceOpenAt, type ChoiceTurn } from "../gen/maps__routing.effect.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
 
 const courtesy = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`
@@ -19,16 +19,11 @@ const nearbyKind = /^(\S.{0,79}?)\s+(?:nearby|around\s+here|close\s+by)$/iu
 const anchoredQuery = new RegExp(String.raw`^\s*${courtesy}(?:${findVerb})?(?:(?:is|are)\s+there\s+${notAThere})?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(\S.{0,79}?)\s+(?:near|around|close\s+to|next\s+to)\s+(\S.{0,119}?)${end}`, "iu")
 const nearNotAPlace = /^(?:home|work|the\s+office|(?:my|our)\s+.+|(?:the\s+)?(?:top|bottom|end|beginning|start|middle|deadline|weekend|holidays?)|midnight|noon|midday|dawn|dusk|sunrise|sunset|lunch(?:time)?|dinner(?:time)?|breakfast|christmas(?:\s+eve)?|thanksgiving|easter|halloween|new\s+year(?:'s|’s)?(?:\s+(?:eve|day))?|(?:mon|tues|wednes|thurs|fri|satur|sun)day|january|february|march|april|june|july|august|september|october|november|december|line\s+\d+|page\s+\d+|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.?|p\.m\.?|o'?clock)?|\d[\d,.]*\s*(?:dollars?|bucks|euros?|pounds?)(?:\s+(?:a|per)\s+(?:night|day|week|month))?|\d[\d,.]*\s+(?:a|per)\s+(?:night|day|week|month))$/iu
 const nearNotAPlaceKind = /\b(?:photos?|pictures?|pics?|images?|videos?|clips?|selfies?|screenshots?|e-?mails?|mail|messages?|texts?|chats?|notes?|files?|documents?|docs?|songs?|music|tracks?|albums?|playlists?|podcasts?|events?|meetings?|appointments?|reminders?|alarms?|contacts?|tasks?|to-?dos?|bugs?|issues?|errors?|lines?|comments?|posts?|tweets?|results?|calls?|voicemails?|weather|forecasts?|traffic|news)$/iu
-const choiceReply = /^\s*(?:(?:yes|yeah|yep|ok(?:ay)?|sure|um+|uh+|so|hmm+|let'?s\s+(?:go\s+with|do)|i\s+(?:meant?|want|mean)|go\s+with|pick|choose|use|take)[,\s]+)*(?:(?:the|number|no\.?|#|option|item)\s*)*(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th|one|two|three|four|five|six|seven|eight|nine|ten|last|top|\d{1,2})(?:\s+(?:one|option|place|result|choice))?(?:[,\s]+(?:one|please|thanks|thank\s+you))*\s*[.!?]*\s*$/iu
-const ordinals: Readonly<Record<string, number>> = {
-  first: 1, "1st": 1, one: 1, second: 2, "2nd": 2, two: 2, third: 3, "3rd": 3, three: 3, fourth: 4, "4th": 4, four: 4, fifth: 5, "5th": 5, five: 5,
-  sixth: 6, "6th": 6, six: 6, seventh: 7, "7th": 7, seven: 7, eighth: 8, "8th": 8, eight: 8, ninth: 9, "9th": 9, nine: 9, tenth: 10, "10th": 10, ten: 10, top: 1,
-}
 
 export const choiceActions = { place: "MAPS_PLACE", route: "MAPS_ROUTE", select: "MAPS_SELECT", save: "MAPS_SAVE", share: "MAPS_SHARE", "navigation-start": "MAPS_NAVIGATION_START" } as const
 export type ChoiceOperation = keyof typeof choiceActions
 
-export const mapsSelectionHandlePattern = /^maps_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/u
+const mapsSelectionHandlePattern = /^maps_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/u
 
 export function isMapsSelectionHandle(id: string | undefined): boolean {
   return id !== undefined && mapsSelectionHandlePattern.test(id)
@@ -66,29 +61,9 @@ export function openChoice(runtime: IAgentRuntime, message: Memory, choice: Plac
   openQuestions(runtime).set(conversationOf(message), { choice, askedBy: message.id, answeredBy: undefined })
 }
 
-export function choicePosition(reply: string, count: number): number | undefined {
-  if (reply.length > 60) return undefined
-  const word = choiceReply.exec(reply)?.[1]?.toLowerCase()
-  if (word === undefined || (word === "one" && /\bthe\s+one\b/iu.test(reply))) return undefined
-  return word === "last" ? count : /^\d+$/u.test(word) ? Number(word) : ordinals[word]
-}
-
 export function placeKey(value: string): string {
   return value.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/&/g, " and ").replace(/['’`]/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/^the\s+/u, "")
-}
-
-function namedPosition(reply: string, options: readonly AgentPlaceRef[]): number | undefined {
-  const key = placeKey(reply)
-  if (key === "") return undefined
-  const positions = (names: (option: AgentPlaceRef) => boolean) => options.flatMap((option, index) => names(option) ? [index + 1] : [])
-  const labelled = positions((option) => option.providerPlaceId === reply.trim() || placeKey(`${option.name} ${option.formattedAddress ?? ""}`) === key)
-  const named = positions((option) => placeKey(option.name) === key)
-  switch (namedOption(labelled.length, named.length)) {
-    case "ByListedLabel": return labelled[0]
-    case "ByNameAlone": return named[0]
-    case "NoOptionNamed": return undefined
-  }
 }
 
 function turnOf(question: OpenQuestion, message: Memory): ChoiceTurn {
@@ -116,15 +91,22 @@ export function pendingChoice(runtime: IAgentRuntime, message: Memory, now: numb
   return open !== undefined && open.turn === "NextOwnerTurn" && open.choice.options.length > 0 ? open.choice : undefined
 }
 
-export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: number): { readonly choice: PlaceChoice; readonly place: AgentPlaceRef } | undefined {
+export type ChoiceAnswer =
+  | { readonly course: "ContinueTheAskedRequest"; readonly choice: PlaceChoice; readonly place: AgentPlaceRef }
+  | { readonly course: "SendBackToPick" | "SearchTheNamedPlace"; readonly choice: PlaceChoice }
+
+export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: number, operation: ChoiceOperation, params: Readonly<Record<string, unknown>>, named: (field: PlaceChoice["field"]) => boolean): ChoiceAnswer | undefined {
   const open = questionFor(runtime, message, now)
-  if (open === undefined) return undefined
+  if (open === undefined || open.choice.operation !== operation) return undefined
   const { choice, turn } = open
-  const reply = typeof message.content.text === "string" ? message.content.text : ""
-  const position = choicePosition(reply, choice.options.length) ?? namedPosition(reply, choice.options) ?? 0
-  if (!choiceBinds({ open: true, sameConversation: true, turn, age: Math.floor(now - choice.askedAt), position, options: choice.options.length })) return undefined
+  const raw = params[choice.field]
+  const id = typeof raw === "string" && raw.trim() !== "" ? raw.trim() : undefined
+  const position = id === undefined ? 0 : choice.options.findIndex((option) => option.providerPlaceId === id) + 1
+  const answer = { open: true, sameConversation: true, turn, age: Math.floor(now - choice.askedAt), position, options: choice.options.length }
+  const course = choiceCourse(answer, id !== undefined, named(choice.field))
   const place = choice.options[position - 1]
-  return place === undefined ? undefined : { choice, place }
+  if (course === "ContinueTheAskedRequest") return place === undefined ? undefined : { course, choice, place }
+  return course === "PlanAsANewRequest" ? undefined : { course, choice }
 }
 
 export function keptRequest(runtime: IAgentRuntime, message: Memory, now: number): PlaceChoice | undefined {
