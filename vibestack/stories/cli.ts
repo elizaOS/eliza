@@ -27,7 +27,7 @@ function once(observe?: (file: string) => void): boolean {
 }
 
 if (argv.includes("--watch")) {
-  const local = watch(root, { recursive: true });
+  const local = watch(root, { recursive: true }, (_, file) => file && changed.change(file));
   const changed = listener(root, undefined, once);
-  local.on("change", (_, file) => file && changed.change(file)).once("close", changed.close);
+  local.once("close", changed.close);
 } else if (!once() && argv.includes("--check")) process.exit(1);
