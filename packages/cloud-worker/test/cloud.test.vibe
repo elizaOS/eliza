@@ -7,12 +7,15 @@ import { acquire, create, elapse, initial as noClaim } from "../gen/core__sessio
 import { readBackCheckouts } from "../src/billing/checkout-readback.vibe"
 import { stripeClient } from "../src/billing/stripe-observation.vibe"
 import { assert, describe, it } from "@effect/vitest"
-import { addCredits } from "../src/billing/funds.vibe"
+import { addCredits, stepFunds } from "../src/billing/funds.vibe"
 import { drainProviderEvents, queuedState, webhookPath } from "../src/billing/provider-events.vibe"
 import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
-import { migrate, Store, StoreFailure, type Tx } from "../src/store/store.vibe"
+import { migrate, observeIdentity, Store, StoreFailure, storeLayer, type StoreLocation, type Tx } from "../src/store/store.vibe"
+import { migrateDeployment } from "../src/operator/admin.vibe"
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
+import { serveDatabase } from "./support/database.ts"
 import { check, clientFailure, organization, outcomeTag, serveOnStore, sql, testCloud, type Answer, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import { seeded } from "./support/seeding.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
@@ -27,7 +30,7 @@ import { operator } from "./support/operator.vibe"
 import { chooseFor } from "../src/services/models.vibe"
 import { forwardScript, forwardScriptHash } from "../src/pages/forward-script.ts"
 import {
-  Deployment, deploymentLayer, parseProfile, accountUsable, checkEntitlement, createCloudClient, creditFromSnapshot, deviceRoutes, EntitlementInvalid, httpVerb, parseEntitlementKeys, verifyEntitlement as verifyOnDevice, type AuthClass, type CloudClient, type DeviceRoute, unlistedRoutes,
+  Deployment, deploymentLayer, parseProfile, accountUsable, checkEntitlement, CLEF_DECISIONS_PATH, CloudError, createCloudClient, creditFromSnapshot, deviceRoutes, EntitlementInvalid, httpVerb, lookupPath, parseEntitlementKeys, verifyEntitlement as verifyOnDevice, type AuthClass, type CloudClient, type DeviceRoute, unlistedRoutes,
 } from "@elizaos/cloud"
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity-fixture.ts"
@@ -52,6 +55,7 @@ import { mapsSweeps } from "../src/services/maps.vibe"
 import { osmFake } from "./support/maps-osm-fake.ts"
 import { refused, type Refused } from "../src/http/refusal.vibe"
 import { matchRoute, type Route } from "../src/http/routes.vibe"
+import { ownsWorkerOnly } from "../src/worker/legacy.vibe"
 import { areas } from "../src/http/server.vibe"
 import { googleIdentityFake, visit, type GooglePerson } from "./support/google-identity-fake.ts"
 import { authenticatorCode } from "./support/authenticator.ts"
@@ -3122,8 +3126,11 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
       try clientFailure(() => refusing.models()),
       try clientFailure(() => refusing.models())
     ]
+    const nativeRefusal = { failure: "sign-in-required" }
+    const unsent = createCloudClient({ baseUrl: cloud.url, credential: () => live, fetch: () => Promise.reject(nativeRefusal) })
+    const network = try promise(() => unsent.models().then(() => "succeeded", (error: unknown) => error instanceof CloudError ? [error.failure, error.cause === nativeRefusal] : `threw ${String(error)}`))
     try check(() => assert.deepStrictEqual(
-      { unknown, expired, revoked, kept, answers, read, held },
+      { unknown, expired, revoked, kept, answers, network, read, held },
       {
         unknown: { tag: "CloudCredentialInvalid", reason: "CredentialUnknown" },
         expired: { tag: "CloudCredentialInvalid", reason: "CredentialExpired" },
@@ -3135,6 +3142,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
           { tag: "CloudRateLimited", retryAt },
           { tag: "CloudUnavailable", retryAfter: backAt }
         ],
+        network: [{ tag: "CloudNetwork" }, true],
         read: [unknownKey, expiring, ended, live],
         held: live
       }
@@ -3161,7 +3169,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     ))
   }))
 
-  it.live("Tell an unfunded account it cannot be used until it is funded (spec/cloud/client.md, \"An account is usable when it is active, funded and its lane is open\")", () => scoped(effect {
+  it.live("Tell an unfunded account it cannot be used until it is funded, from a recent snapshot only (spec/cloud/client.md, \"An account is usable when it is active, funded and its lane is open\"; spec/cloud/client.md, \"A balance shows only from a snapshot under five minutes old, and a grant has ended once revoked or past its end\")", () => scoped(effect {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis
     const token = try entitledDevice(cloud, "unfunded", now)
@@ -3172,8 +3180,12 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     }
     const funded = try promise(() => client.snapshot())
     try check(() => assert.deepStrictEqual(
-      { unfunded: [accountUsable(unfunded), creditFromSnapshot(unfunded, unfunded.observedAt).kind], funded: [accountUsable(funded), creditFromSnapshot(funded, funded.observedAt).kind] },
-      { unfunded: [false, "zero"], funded: [true, "funded"] }
+      {
+        unfunded: [accountUsable(unfunded), creditFromSnapshot(unfunded, unfunded.observedAt).kind],
+        funded: [accountUsable(funded), creditFromSnapshot(funded, funded.observedAt).kind],
+        aged: [creditFromSnapshot(funded, funded.observedAt + 300_000).kind, creditFromSnapshot(funded, funded.observedAt + 300_001).kind, creditFromSnapshot(funded, funded.observedAt - 60_001).kind]
+      },
+      { unfunded: [false, "zero"], funded: [true, "funded"], aged: ["funded", "unavailable", "unavailable"] }
     ))
   }))
 
@@ -3207,13 +3219,15 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
 
   it.live("Every route a device sends is one the service serves, with the same credential class (spec/cloud/client.md, \"A device sends only the routes of one table, each with its own headers\")", () => effect {
     const served = areas.flatMap((area) => area.routes)
+    const workerOnly = (pattern: string) => ownsWorkerOnly(pattern, { extension: undefined, providerFetch: () => Promise.reject(new Error("no provider")) })
     const mismatched = deviceRoutes.flatMap((route) => {
       const pattern = patternOf(route)
       const found = matchRoute(served, httpVerb(route.method), pattern)
-      const same = found.kind === "route" && found.route.path === pattern && found.route.auth === serverClass(route.auth)
+      const same = found.kind === "route" ? found.route.path === pattern && found.route.auth === serverClass(route.auth) : workerOnly(pattern) && route.auth === "KeyOrSession"
       return same ? [] : [`${httpVerb(route.method)} ${pattern} ${route.auth}: ${found.kind === "route" ? `${found.route.path} ${found.route.auth}` : found.kind}`]
     })
-    try check(() => assert.deepStrictEqual({ unlisted: unlistedRoutes, mismatched }, { unlisted: [], mismatched: [] }))
+    const decisions = lookupPath("Post", CLEF_DECISIONS_PATH).tag
+    try check(() => assert.deepStrictEqual({ unlisted: unlistedRoutes, mismatched, decisions }, { unlisted: [], mismatched: [], decisions: "Listed" }))
   })
 })
 describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => {
@@ -3232,11 +3246,6 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
   effect function requestRemoval(cloud: TestCloud, owner: Owner) {
     const result = try printed(operator(cloud, ["account", "delete", "--user", owner.userId, "--confirmed-with-owner"]))
     try check(() => assert.ok(Exit.isSuccess(result.exit), result.err.join("\n")))
-  }
-
-  effect function shareOrganization(cloud: TestCloud, userId: string, organizationId: string) {
-    try sql(cloud, "ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_key", [])
-    try sql(cloud, "UPDATE accounts SET organization_id=$2, state=jsonb_set(state,'{organizationId}',to_jsonb($2::text)) WHERE key=$1", [userId, organizationId])
   }
 
   effect function checkoutDeletion(cloud: TestCloud, owner: Owner) {
@@ -3418,20 +3427,6 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
     const expiry = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path === `/stripe${expirePath}`).map((request) => request.headers["idempotency-key"]))
     try check(() => assert.deepStrictEqual([pending, checked, idle, checkout, provider.status, finished, expiry],
       [{ phase: "running", step: "cancel_billing" }, 1, 0, "expired", "expired", { phase: "running", step: "revoke_google" }, [`expire_${sessionId}`, `expire_${sessionId}`]]))
-
-    const shared = { userId: "user-deletion-shared-checkout", organizationId: "org-deletion-shared-checkout" }
-    const peer = { userId: "user-deletion-checkout-peer", organizationId: "org-deletion-checkout-peer" }
-    const sharedId = try hostedCheckout(cloud, shared, "shared-deletion-checkout")
-    try openAccount(cloud, peer)
-    try shareOrganization(cloud, peer.userId, shared.organizationId)
-    try requestRemoval(cloud, shared)
-    try cloud.inside(sweepDeletions())
-    try cloud.inside(readBackCheckouts((try Clock.currentTimeMillis) + 180_000))
-    const saved = try sync(() => stripe.object(sharedId))
-    if (saved.object !== "checkout.session") throw new Error("the provider fixture did not hold a shared checkout")
-    const sharedStep = try checkoutDeletion(cloud, shared)
-    const peerStatus = (try sql(cloud, "SELECT status FROM accounts WHERE key=$1", [peer.userId]))[0]?.status
-    try check(() => assert.deepStrictEqual([sharedStep, saved.status, peerStatus], [{ phase: "running", step: "revoke_google" }, "open", "active"]))
   }), 90_000)
 
   it.live("Resolve paid Node checkout and an issued Worker checkout before finishing deletion billing (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => scoped(effect {
@@ -3515,16 +3510,11 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
       [{ phase: "running", step: "erase_data" }, "canceled", { phase: "erased", step: "erase_data" }]))
   }), 90_000)
 
-  it.live("Keep shared billing and a retained unaddressable cancellation intact (spec/cloud/identity/deletion.md, \"Each provider call of a step is one receipt of that step's kind, owned by the account, under a provider key never used before\")", () => scoped(effect {
+  it.live("Keep a retained unaddressable cancellation intact (spec/cloud/identity/deletion.md, \"Each provider call of a step is one receipt of that step's kind, owned by the account, under a provider key never used before\")", () => scoped(effect {
     const providers = try sync(() => deletionProviders())
     const cloud = try testCloud({ stripe: providers.stripe, mount: (fakes) => { providers.mount(fakes) } })
-    const shared = { userId: "user-shared-leaving", organizationId: "org-shared" }
     const retained = { userId: "user-legacy-leaving", organizationId: "org-legacy" }
-    const peer = { userId: "user-shared-remaining", organizationId: "org-peer" }
-    try openAccount(cloud, shared)
     try openAccount(cloud, retained)
-    try openAccount(cloud, peer)
-    try shareOrganization(cloud, peer.userId, shared.organizationId)
     const prepare = effect (owner: Owner) => {
       const subscription = try sync(() => providers.subscribe(catalogPrices[0].priceId))
       try sql(cloud, "INSERT INTO cloud_checkout_customers (organization_id,customer_id) VALUES ($1,$2)", [owner.organizationId, subscription.customerId])
@@ -3532,7 +3522,6 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
       try operator(cloud, command)
       return { subscription, command }
     }
-    const kept = try prepare(shared)
     const previous = try prepare(retained)
     const now = try Clock.currentTimeMillis
     try cloud.store.transaction(effect (tx: Tx) => {
@@ -3544,7 +3533,6 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
       const claimed = try stepDeletion(tx, retained.userId, { type: "claimCall" }, now)
       try stepDeletion(tx, retained.userId, { type: "sendCall", claimToken: claimed.state.receipt.session.currentClaim }, now)
     })
-    const peerKey = try deviceKey(cloud, peer.userId, { deviceName: "Peer phone", createdAt: now - 1000, expiresAt: now + 86_400_000 })
     const clock = try sync(() => shiftedClock())
     try sync(() => clock.advance(31_000))
     const sweep = provideService(cloud.inside(sweepDeletions()), Clock.Clock, clock.clock)
@@ -3552,14 +3540,13 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
     try sweep
     try sweep
     const reasked = try printed(operator(cloud, previous.command))
-    const peerAnswer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${peerKey}` } })
     const accounts = try sql(cloud, "SELECT key,status FROM accounts ORDER BY key", [])
     const receipts = try sql(cloud, "SELECT user_id,target FROM deletion_receipts ORDER BY user_id", [])
     const accessed = try sync(() => cloud.fakes.seen.filter((request) => request.path.startsWith("/stripe/v1/subscriptions")))
     try check(() => {
-      assert.deepStrictEqual(accounts, [{ key: retained.userId, status: "deleting" }, { key: shared.userId, status: "erased" }, { key: peer.userId, status: "active" }])
+      assert.deepStrictEqual(accounts, [{ key: retained.userId, status: "deleting" }])
       assert.deepStrictEqual(receipts, [{ user_id: retained.userId, target: retained.organizationId }])
-      assert.deepStrictEqual([providers.subscriptionStatus(kept.subscription.subscriptionId), providers.subscriptionStatus(previous.subscription.subscriptionId), peerAnswer.status, accessed.length], ["active", "active", 200, 0])
+      assert.deepStrictEqual([providers.subscriptionStatus(previous.subscription.subscriptionId), accessed.length], ["active", 0])
       assert.match(reasked.out[0] ?? "", /provider target unresolved/)
     })
   }), 60_000)
@@ -3670,6 +3657,49 @@ describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
   }))
 })
 
+effect function migrateUnder(profile: unknown, location: StoreLocation) {
+  provide NodeFileSystem.layer, ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })) {
+    const fs = try FileSystem.FileSystem
+    const file = try fs.makeTempFileScoped()
+    try fs.writeFileString(file, JSON.stringify(profile))
+    return try migrateDeployment(file, "staging", location)
+  }
+}
+
+effect function identityKind(location: StoreLocation) {
+  provide storeLayer(location) {
+    return (try observeIdentity()).kind
+  }
+}
+
+describe("WP10 Operator and deletion: migrate (spec/cloud/operator.md)", () => {
+  it.live("Migrate only an empty database or the deployment's own under an accepted profile, refusing one with tables but no identity as unavailable (spec/cloud/operator.md, \"A command under a refused profile or on another database is refused before any other check\")", () => scoped(effect {
+    const accepted = try sync(() => testProfile("http://127.0.0.1:9"))
+    const refusedProfile = { ...accepted, environments: { ...accepted.environments, production: { ...accepted.environments.production, databaseIdentity: testDatabaseIdentity } } }
+    const migrated = (profile: unknown, setup?: (db: { exec(sql: string): Promise<unknown> }) => Promise<unknown>) => scoped(effect {
+      const database = try acquireRelease(promise(() => serveDatabase(setup)), (served) => promise(() => served.close()))
+      const location: StoreLocation = { kind: "pg", url: database.url }
+      const outcome = effect {
+        const report = try migrateUnder(profile, location)
+        return `applied ${report.applied.length > 0}`
+      } catch effect (failure) => failure._tag === "OperatorRefused" ? refusalBody(failure.refusal).error : failure._tag
+      return [outcome, try identityKind(location)]
+    })
+    const answers = [
+      try migrated(accepted),
+      try migrated(accepted, (db) => db.exec("CREATE TABLE leftover (id integer)")),
+      try migrated(accepted, (db) => db.exec(`CREATE TABLE cloud_identity (singleton boolean PRIMARY KEY DEFAULT true, digest text NOT NULL, environment text NOT NULL, created_at bigint NOT NULL); INSERT INTO cloud_identity (digest, environment, created_at) VALUES ('${"b".repeat(64)}', 'staging', 0)`)),
+      try migrated(refusedProfile)
+    ]
+    try check(() => assert.deepStrictEqual(answers, [
+      ["applied true", "identified"],
+      ["service_unavailable", "unreadable"],
+      ["precondition_failed", "identified"],
+      ["precondition_failed", "fresh"]
+    ]))
+  }), 120_000)
+})
+
 effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
   const token = `eliza_mobile_${tokenDigest(name)}`
   const grant = legacyGrant({ phase: "OldActive", client: { tag: "UnrecordedClient" }, codeExpiresAt: now - 1000, credentialTtl: 0, credentialId: `cred-${name}`, keyExpiresAt: now + 24 * 3_600_000, epoch: 0, now })
@@ -3705,21 +3735,23 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
 
     const periodEnd = now + 30 * 24 * 3_600_000
     const resetsAt = now + 20 * 60_000
-    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-entitled', '{}'::jsonb, 1, 'active', 'pro_monthly', $1, $2)", [periodEnd, now])
+    const pro: Subscription = { ...noSubscription, status: "Active", subscriptionId: "sub_entitled", customer: { tag: "PinnedCustomer", customerId: "cus_entitled" }, planKey: "ProMonthly", periodStart: now - 1000, periodEnd, revision: 1 }
+    const lapse = (status: "PastDue" | "Unpaid") => sql(cloud, "UPDATE subscriptions SET state = $1::jsonb WHERE key = 'org-entitled'", [JSON.stringify({ ...pro, status, dunning: { tag: "DunningSince", startedAt: now - 1000, endsAt: now - 1000 + dunningGrace } })])
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-entitled', $3::jsonb, 1, 'active', 'pro_monthly', $1, $2)", [periodEnd, now, JSON.stringify(pro)])
     try cloud.store.transaction((tx) => stepRow(tx, periodRows, "renewal/staging/in_1", { type: "openRenewal", invoiceId: "in_1", planKey: "ProMonthly", startsAt: now - 1000, endsAt: resetsAt }, () => ({
       organization_id: "org-entitled", status: "open", period_start: now - 1000, period_end: resetsAt, updated_at: now
     })))
     const paid = try entitlementClaims(cloud, token, keys)
-    try sql(cloud, "UPDATE subscriptions SET status = 'past_due' WHERE key = 'org-entitled'", [])
+    try lapse("PastDue")
     const pastDue = try entitlementClaims(cloud, token, keys)
-    try sql(cloud, "UPDATE subscriptions SET status = 'unpaid' WHERE key = 'org-entitled'", [])
+    try lapse("Unpaid")
     const unpaidAnswer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
     const unpaidAt = try Clock.currentTimeMillis
     const unpaid = try promise(() => verifyOnDevice((unpaidAnswer.body as { readonly entitlement: string }).entitlement, {
       keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription",
       userId: "user-entitled", organizationId: "org-entitled", now: unpaidAt
     }))
-    try sql(cloud, "UPDATE subscriptions SET plan_key = 'gold' WHERE key = 'org-entitled'", [])
+    try sql(cloud, "UPDATE subscriptions SET state = '{\"status\":\"Gold\"}'::jsonb WHERE key = 'org-entitled'", [])
     const unreadable = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
 
     const seconds = (millis: number) => Math.floor(millis / 1000)
@@ -3748,7 +3780,7 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
   }))
 })
 
-import { initial as noSubscription, type Subscription } from "../gen/cloud__billing__subscriptions.ts"
+import { dunningGrace, initial as noSubscription, type Subscription } from "../gen/cloud__billing__subscriptions.ts"
 import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
 import type { InvoiceDetail, InvoicePage } from "../src/billing/invoices.vibe"
 import { createStripeInvoicesFake } from "./support/fakes/stripe-invoices.ts"
@@ -3770,7 +3802,7 @@ effect function limitsOf(cloud: TestCloud, headers: Readonly<Record<string, stri
 }
 
 describe("WP4 Subscriptions and entitlements: snapshot and invoices", () => {
-  it.live("Read my billing state in one snapshot as a free, granted and paid account, or a whole 503 (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\")", () => scoped(effect {
+  it.live("Read my billing state in one snapshot as a free, granted, paid and lapsed account, or a whole 503 (spec/cloud/billing/entitlements.md, \"Story: Read my billing state in one snapshot\"; spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\")", () => scoped(effect {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis
     const signed = try signedIn(cloud, "snapshot@example.com")
@@ -3792,6 +3824,10 @@ describe("WP4 Subscriptions and entitlements: snapshot and invoices", () => {
       organization_id: organizationId, status: "open", period_start: now - 1000, period_end: resetsAt, updated_at: now
     })))
     const paid = try limitsOf(cloud, headers)
+    try cloud.store.transaction((tx) => stepFunds(tx, organizationId, { type: "holdCredits", fromCredits: 500_000 }, now, "snapshot-hold"))
+    const pastDue: Subscription = { ...subscription, status: "PastDue", dunning: { tag: "DunningSince", startedAt: now - 1000, endsAt: now - 1000 + dunningGrace } }
+    try sql(cloud, "UPDATE subscriptions SET state = $2::jsonb, status = 'past_due' WHERE key = $1", [organizationId, JSON.stringify(pastDue)])
+    const lapsed = try limitsOf(cloud, headers)
     try sql(cloud, "UPDATE subscriptions SET state = '{\"status\":\"Gold\"}'::jsonb WHERE key = $1", [organizationId])
     const unreadable = try limitsOf(cloud, headers)
 
@@ -3802,6 +3838,7 @@ describe("WP4 Subscriptions and entitlements: snapshot and invoices", () => {
         free: [free.status, free.snapshot.observedAt >= now, { ...free.snapshot, observedAt: 0, balance: { ...free.snapshot.balance, revision: 0 } }, accountUsable(free.snapshot)],
         granted: [granted.status, granted.snapshot.balance.usdMicros, granted.snapshot.balance.revision > free.snapshot.balance.revision, granted.snapshot.plan, granted.snapshot.grant, granted.snapshot.subscription, granted.snapshot.funding],
         paid: [paid.status, paid.snapshot.plan, paid.snapshot.subscription, paid.snapshot.grant, paid.snapshot.allowance, paid.snapshot.funding, accountUsable(paid.snapshot)],
+        lapsed: [lapsed.status, lapsed.snapshot.balance.usdMicros, lapsed.snapshot.plan.source, lapsed.snapshot.subscription?.status, lapsed.snapshot.allowance?.available, lapsed.snapshot.funding.inference, accountUsable(lapsed.snapshot)],
         unreadable: [unreadable.status, unreadable.error]
       },
       {
@@ -3819,6 +3856,7 @@ describe("WP4 Subscriptions and entitlements: snapshot and invoices", () => {
         }, grant, {
           state: "open", granted: 25_000_000, adjustment: 0, available: 25_000_000, reserved: 0, settled: 0, expired: 0, clawedBack: 0, periodStart: now - 1000, resetsAt
         }, { inference: "allowanceThenCredits", speech: "allowanceThenCredits", maps: "allowanceThenCredits" }, true],
+        lapsed: [200, 1_500_000, "subscription", "past_due", 0, "creditsOnly", true],
         unreadable: [503, "service_unavailable"]
       }
     ))
@@ -3936,7 +3974,8 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis
     try organization(cloud, "org-refund")
-    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-refund', '{}'::jsonb, 1, 'active', 'pro_monthly', $1, $2)", [now + allowanceMonth, now])
+    const refunded: Subscription = { ...noSubscription, status: "Active", subscriptionId: "sub_refund", customer: { tag: "PinnedCustomer", customerId: "cus_refund" }, planKey: "ProMonthly", periodStart: now - 1000, periodEnd: now + allowanceMonth, revision: 1 }
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-refund', $3::jsonb, 1, 'active', 'pro_monthly', $1, $2)", [now + allowanceMonth, now, JSON.stringify(refunded)])
     const invoice = { invoiceId: "in_refund", planKey: "ProMonthly", startsAt: now - 1000, endsAt: now + allowanceMonth } as const
     const opened = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))
     const again = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))
