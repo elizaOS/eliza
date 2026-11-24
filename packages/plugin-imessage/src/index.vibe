@@ -11,6 +11,7 @@ module node {
   import { DatabaseSync } from "node:sqlite"
   import { Buffer } from "node:buffer"
 
+  export const WebResponse = globalThis.Response
   export function nativeMessagesAvailable(): boolean { return platform() === "darwin" }
   export function newEffectId(): string { return randomUUID() }
   export function receiptKey(channelId: string, messageId: string): string { return `imessage:blooio-receipt:v1:${createHash("sha256").update(channelId).update("\0").update(messageId).digest("hex")}` }
@@ -46,7 +47,7 @@ end run`
     return new Promise((resolve, reject) => execFile("/usr/bin/osascript", ["-e", script, "--", group ? to.slice(8) : to, text, group ? "yes" : "no"], { signal, timeout: 30000 }, error => error ? reject(error) : resolve(`imessage-effect:${randomUUID()}`)))
   }
 }
-import { nativeMessagesAvailable, newEffectId, readNativeMessages, receiptKey, sendNativeMessages, verifyBlooioBody } from node
+import { WebResponse, nativeMessagesAvailable, newEffectId, readNativeMessages, receiptKey, sendNativeMessages, verifyBlooioBody } from node
 
 export error IMessageUnavailable { stage: string }
 
@@ -71,6 +72,13 @@ function safeBlooioMedia(value: string): boolean {
   try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && (url.hostname === "blooio.com" || url.hostname.endsWith(".blooio.com")) } catch { return false }
 }
 
+function hasC0Control(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) <= 0x1f) return true
+  }
+  return false
+}
+
 export effect function connectIMessageAccount(runtime: IAgentRuntime, config: IMessageAccount) {
   const active = try Ref.make(true)
   const native = config.transport.kind === "native" ? config.transport : undefined
@@ -80,7 +88,7 @@ export effect function connectIMessageAccount(runtime: IAgentRuntime, config: IM
   effect function send(target: TargetInfo, body: Content, idempotencyKey?: string): SendHandlerOutcome!IMessageUnavailable {
     const to = target.channelId
     const text = body.text?.trim() ?? ""
-    if (!(try Ref.get(active)) || target.accountId !== undefined && target.accountId !== config.accountId || !to || /[\x00-\x1f]/.test(to) || !text || (body.attachments?.length ?? 0) > 0) return { kind: "not_delivered", code: "IMESSAGE_INVALID_SEND", message: "iMessage needs a current account, destination and text." }
+    if (!(try Ref.get(active)) || target.accountId !== undefined && target.accountId !== config.accountId || !to || hasC0Control(to) || !text || (body.attachments?.length ?? 0) > 0) return { kind: "not_delivered", code: "IMESSAGE_INVALID_SEND", message: "iMessage needs a current account, destination and text." }
     const effectId = try Effect.try({ try: () => newEffectId(), catch: () => new IMessageUnavailable({ stage: "id" }) })
     let id: string
     if (blooio !== undefined) {
@@ -92,7 +100,7 @@ export effect function connectIMessageAccount(runtime: IAgentRuntime, config: IM
       const receiptBody = response.json catch effect () => { throw new IMessageUnavailable({ stage: "delivery-unknown" }) }
       const receipt = Schema.decodeUnknownEffect(BlooioSendReceipt)(receiptBody) catch effect () => { throw new IMessageUnavailable({ stage: "delivery-unknown" }) }
       id = (receipt.id ?? receipt.message_id ?? "").trim()
-      if (id === "" || id.length > 256 || /[\x00-\x1f\x7f]/.test(id) || receipt.success === false || receipt.error != null) throw new IMessageUnavailable({ stage: "delivery-unknown" })
+      if (id === "" || id.length > 256 || hasC0Control(id) || id.includes("\x7f") || receipt.success === false || receipt.error != null) throw new IMessageUnavailable({ stage: "delivery-unknown" })
     } else {
       id = try tryPromise({ try: signal => sendNativeMessages(to, text, signal), catch: () => new IMessageUnavailable({ stage: "automation" }) })
     }
@@ -191,22 +199,30 @@ export effect function connectIMessageAccount(runtime: IAgentRuntime, config: IM
   return { send, readBlooio, effect stop() { try Ref.set(active, false); try Fiber.interrupt(worker) } }
 }
 
+type WebhookHandler = (raw: string, signature: string) => Promise<"ignored" | "unauthorized" | "accepted">
+
 export class IMessageService extends Service {
   static override serviceType = "imessage"
   override capabilityDescription = "Reads macOS Messages or signed Blooio messages for the configured account"
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>, readonly acceptWebhook?: (raw: string, signature: string) => Promise<"ignored" | "unauthorized" | "accepted">) { super(runtime) }
+  constructor(runtime?: IAgentRuntime)
+  constructor(runtime: IAgentRuntime, close: () => Promise<void>, acceptWebhook?: WebhookHandler)
+  constructor(
+    runtime?: IAgentRuntime,
+    readonly close: () => Promise<void> = () => Promise.resolve(),
+    readonly acceptWebhook?: WebhookHandler,
+  ) { super(runtime) }
   static override async start(runtime: IAgentRuntime): Promise<IMessageService> {
-    if (runtime.getSetting("IMESSAGE_ENABLED") === "false") return new IMessageService(runtime, async () => {})
+    if (runtime.getSetting("IMESSAGE_ENABLED") === "false") return new IMessageService(runtime)
     let transport: IMessageTransport
     if (runtime.getSetting("IMESSAGE_TRANSPORT") === "blooio") {
       const key = runtime.getSetting("IMESSAGE_BLOOIO_API_KEY")
       const secret = runtime.getSetting("IMESSAGE_BLOOIO_WEBHOOK_SECRET")
       const channelId = runtime.getSetting("IMESSAGE_BLOOIO_CHANNEL_ID")
       const from = runtime.getSetting("IMESSAGE_BLOOIO_FROM_NUMBER")
-      if (typeof key !== "string" || !key || typeof secret !== "string" || !secret || typeof channelId !== "string" || !channelId) return new IMessageService(runtime, async () => {})
+      if (typeof key !== "string" || !key || typeof secret !== "string" || !secret || typeof channelId !== "string" || !channelId) return new IMessageService(runtime)
       transport = { kind: "blooio", apiKey: Redacted.make(key), webhookSecret: Redacted.make(secret), channelId, from: channelId || (typeof from === "string" ? from : "") }
     } else {
-      if (!nativeMessagesAvailable()) return new IMessageService(runtime, async () => {})
+      if (!nativeMessagesAvailable()) return new IMessageService(runtime)
       const database = runtime.getSetting("IMESSAGE_DB_PATH")
       transport = { kind: "native", ...(typeof database === "string" && database !== "" ? { database } : {}) }
     }
@@ -223,11 +239,11 @@ export class IMessageService extends Service {
 export const imessagePlugin: Plugin = { name: "@elizaos/plugin-imessage", description: "Native Messages or signed Blooio connector", services: [IMessageService] }
 export default imessagePlugin
 
-export async function handleBlooioRequest(runtime: IAgentRuntime, request: Request): Promise<Response> {
+export async function handleBlooioRequest(runtime: IAgentRuntime, request: Request): Promise<globalThis.Response> {
   const service = runtime.getService<IMessageService>(IMessageService.serviceType)
-  if (request.method !== "POST" || service?.acceptWebhook === undefined) return Response.json({ error: "unavailable" }, { status: 404 })
+  if (request.method !== "POST" || service?.acceptWebhook === undefined) return WebResponse.json({ error: "unavailable" }, { status: 404 })
   const signature = request.headers.get("x-blooio-signature")
-  if (signature === null || request.body === null) return Response.json({ error: "unauthorized" }, { status: 401 })
+  if (signature === null || request.body === null) return WebResponse.json({ error: "unauthorized" }, { status: 401 })
   const limit = 256 * 1024
   const reader = request.body.getReader()
   const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
@@ -238,14 +254,14 @@ export async function handleBlooioRequest(runtime: IAgentRuntime, request: Reque
       const read = await reader.read()
       if (read.done) break
       size += read.value.byteLength
-      if (size > limit) return Response.json({ error: "body_too_large" }, { status: 413 })
+      if (size > limit) return WebResponse.json({ error: "body_too_large" }, { status: 413 })
       raw += decoder.decode(read.value, { stream: true })
     }
     raw += decoder.decode()
     const outcome = await service.acceptWebhook(raw, signature)
-    return outcome === "unauthorized" ? Response.json({ error: "unauthorized" }, { status: 401 }) : Response.json({ outcome })
+    return outcome === "unauthorized" ? WebResponse.json({ error: "unauthorized" }, { status: 401 }) : WebResponse.json({ outcome })
   } catch {
-    return Response.json({ error: "processing_unavailable" }, { status: 503 })
+    return WebResponse.json({ error: "processing_unavailable" }, { status: 503 })
   } finally {
     await reader.cancel().catch(() => undefined)
     reader.releaseLock()

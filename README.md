@@ -14,8 +14,8 @@ starts from elizaOS/eliza-vibestack commit
 `71d7b30f404b91d7ec48741ac288d6c8d911f3e2`; its toolchain is merged from
 lalalune/vibestack commit `45cc5c35d58b8dc18b0a57b116fde2386eef5528`.
 
-The vendored Vibestack toolchain is synchronized with upstream commit
-`03ed43079689961c290d2548e850f6c0c0266a7d`. Eliza retains its [repository lint and verification policies](CONTRIBUTING.md).
+The vendored Vibestack toolchain incorporates upstream changes through
+`747bf8da8b0818062f9428936230e2fb3bffeccf`. Its simulation workers and package verification use [Vibestack `790ef39`](https://github.com/lalalune/vibestack/commit/790ef3978e2330b475ff23065a6d20a512e9dcb5). Eliza retains its [repository lint and verification policies](CONTRIBUTING.md).
 
 ## Setup and verification
 
