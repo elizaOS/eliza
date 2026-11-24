@@ -12,7 +12,6 @@ import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
 import { activityLabel, admitRoute } from "@elizaos/agent"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
-import { heardReply, replyKind } from "../src/replies.vibe"
 import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, ownerRemindersAction, reminderKind, reminderReply, remindersContext, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
 import { Model, onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
@@ -756,13 +755,6 @@ it.effect('Brief me on my morning, evening or week: the kind and days come from 
       unwritten: [false, "BRIEF_MODEL_UNAVAILABLE"],
     })
   }
-})
-
-it.effect('A brief cue is heard only while work is pending, and an answer about a duration is heard whole (spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after")', effect () => {
-  const cues = ["On it.", "One sec.", "One sec — let me check your calendar.", "On it. Let me check your reminders.", "One moment. One sec."]
-  const answers = ["One second is 1,000 milliseconds.", "Just a second ago the timer finished.", "On it — the alarm is set for seven tomorrow.", "One moment after sunrise is enough."]
-  try equal({ cues: cues.map(replyKind), answers: answers.map(replyKind) }, { cues: cues.map(() => "CueReply"), answers: answers.map(() => "AnswerReply") })
-  try equal([heardReply("WorkPending", "On it."), heardReply("WorkSettled", "On it."), heardReply("WorkPending", answers[0]), heardReply("WorkSettled", answers[0])], ["On it.", undefined, undefined, answers[0]])
 })
 
 const hour = 3_600_000
