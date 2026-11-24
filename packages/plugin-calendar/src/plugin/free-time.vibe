@@ -1,31 +1,14 @@
-// spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A free-time question reads exactly the asked window and answers only from a complete read"; spec/calendar/actions.md, "A tomorrow-morning question reads only tomorrow, from midnight to noon"; spec/calendar/actions.md, "A period is free only when no blocking event overlaps it"; spec/calendar/actions.md, "Openings are at most two quarter-hour starts of the asked length inside the window"
+// spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A free-time question reads exactly the asked window and answers only from a complete read"; spec/calendar/actions.md, "A morning-only question reads only that morning, from midnight to noon"; spec/calendar/actions.md, "A period is free only when no blocking event overlaps it"; spec/calendar/actions.md, "Openings are at most two quarter-hour starts of the asked length inside the window"
 import { alignedStart, eventBlocks, nextSearchStart, quarterHour, slotOffered } from "../../gen/calendar__actions.effect.vibe"
 import type { TimeWindow } from "../../gen/calendar__availability.effect.vibe"
-import { addDaysToLocalDate, buildUtcDateFromLocalParts, getZonedDateParts, namesCalendarDate, startOfCivilDay, type LocalDate } from "../clock.vibe"
+import { addDaysToLocalDate, buildUtcDateFromLocalParts, getZonedDateParts, startOfCivilDay, type LocalDate } from "../clock.vibe"
 import type { CalendarEvent } from "../model.vibe"
 
 const dayMs = 86_400_000
-const tomorrowMorningWords = /\btomorrow\s+morning\b/i
-const besideMorning = /\b(?:after|before|except|not)\s+tomorrow\s+morning\b/i
-const noonBound = /\b(?:until|through|to|by|before)\s+(?:noon|midday|12(?::00)?\s*p\.?\s*m)\b/gi
-const otherPeriod = /\b(?:morning|afternoon|evening|tonight|night|noon|midday|lunch(?:time)?|all\s+day|whole\s+day|full\s+day|rest\s+of\s+the\s+day|week)\b/i
-const afternoonClock = /\b(?:(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m|12:(?:0[1-9]|[1-5]\d)(?!\s*a\.?\s*m)|(?:1[3-9]|2[0-3]):[0-5]\d)\b/i
-const otherDay = /\b(?:today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\bin\s+\d+\s+days?\b/i
 
-export function asksOnlyAboutTomorrowMorning(request: string): boolean {
-  const remainder = request.replace(tomorrowMorningWords, "")
-  if (remainder === request || besideMorning.test(request)) return false
-  const others = remainder.replace(noonBound, "")
-  return !otherDay.test(remainder) && !namesCalendarDate(remainder) && !otherPeriod.test(others) && !afternoonClock.test(others)
-}
-
-export function tomorrowMorning(now: number, timeZone: string): { readonly midnight: number; readonly noon: number } | undefined {
-  const today = getZonedDateParts(new Date(now), timeZone)
-  if (today === undefined) return undefined
-  const tomorrow = addDaysToLocalDate(today, 1)
-  const midnight = buildUtcDateFromLocalParts(timeZone, { ...tomorrow, hour: 0, minute: 0, second: 0 })
-  const noon = buildUtcDateFromLocalParts(timeZone, { ...tomorrow, hour: 12, minute: 0, second: 0 })
-  return midnight === undefined || noon === undefined ? undefined : { midnight: midnight.getTime(), noon: noon.getTime() }
+export function noonOf(instant: number, timeZone: string): number | undefined {
+  const day = getZonedDateParts(new Date(instant), timeZone)
+  return day === undefined ? undefined : buildUtcDateFromLocalParts(timeZone, { year: day.year, month: day.month, day: day.day, hour: 12, minute: 0, second: 0 })?.getTime()
 }
 
 export function windowFitsWeek(begin: number, finish: number, timeZone: string): boolean {
@@ -90,6 +73,19 @@ export function openings(window: TimeWindow, durationMs: number, busy: TimeWindo
     }
   }
   return found
+}
+
+export function openingText(span: TimeWindow, timeZone: string): string {
+  try {
+    const day = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long", month: "long", day: "numeric" })
+    const clock = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit" })
+    const zoneName = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "long" }).formatToParts(new Date(span.begin)).find((part) => part.type === "timeZoneName")?.value
+    const [startDay, endDay] = [day.format(new Date(span.begin)), day.format(new Date(span.finish))]
+    const end = `${endDay === startDay ? "" : `${endDay}, `}${clock.format(new Date(span.finish))}`
+    return `${startDay}, from ${clock.format(new Date(span.begin))} to ${end}${zoneName === undefined ? "" : ` ${zoneName}`}`
+  } catch {
+    return spanText(span, timeZone)
+  }
 }
 
 export function spanText(span: TimeWindow, timeZone: string): string {

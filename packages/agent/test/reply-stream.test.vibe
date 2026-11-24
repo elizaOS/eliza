@@ -15,14 +15,14 @@ type Frame = {
 
 module node {
   import type { AgentRuntime } from "@elizaos/core"
-  import { setTimeout } from "node:timers/promises"
+  import { Effect } from "effect"
 
   /** @throws {never} */
   export function delayReplyWrite(runtime: AgentRuntime, reject: boolean): void {
     const save = runtime.createMessageMemory.bind(runtime)
     runtime.createMessageMemory = async (memory, unique) => {
       if (memory.entityId === runtime.agentId && memory.content.actions?.includes("REPLY")) {
-        await setTimeout(300)
+        await Effect.runPromise(Effect.sleep("300 millis"))
         if (reject) throw new Error("Reply storage refused the write")
       }
       return save(memory, unique)

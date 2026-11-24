@@ -4,7 +4,7 @@ import { sourceStillExact } from "../gen/notes__records.effect.vibe"
 import { cleanupVerifier, mayAcknowledgeCleanup, verifierProvedErase, type VerifierAnswer } from "../gen/notes__trash.effect.vibe"
 import {
   acknowledgeIn, clearIn, createIn, deleteIn, eraseIn, listIn, moveIn, NotesRefused, restoreIn, sameCleanup, updateIn,
-  type Instant, type NoteTarget, type NotesQuery,
+  type Instant, type ModelPick, type NoteTarget, type NotesQuery,
 } from "./collection.vibe"
 import { CleanupReceipt, CreateRequest, RestoreRequest, Revision, TrashErase, UpdateRequest } from "./records.schema.vibe"
 import type { PriorDocumentText } from "./prior.vibe"
@@ -93,8 +93,8 @@ export interface NotesCollection {
   snapshot(): NotesSnapshot!NotesFailure
   list(query: NotesQuery): { notes: StickyNote[]; revision: number }!NotesFailure
   create(input: unknown): Committed<{ note: StickyNote; replayed: boolean }>!NotesFailure
-  update(target: NoteTarget, patch: unknown, expectedRevision?: unknown, ownerWords?: string): Committed<StickyNote>!NotesFailure
-  delete(target: NoteTarget, ownerWords?: string): Committed<StickyNote>!NotesFailure
+  update(target: NoteTarget, patch: unknown, expectedRevision?: unknown, pick?: ModelPick): Committed<StickyNote>!NotesFailure
+  delete(target: NoteTarget, pick?: ModelPick): Committed<StickyNote>!NotesFailure
   restore(input: unknown): Committed<StickyNote>!NotesFailure
   clear(expectedRevision: unknown): Committed<number>!NotesFailure
   move(target: NoteTarget, folderId: string | null): Committed<StickyNote>!NotesFailure
@@ -202,15 +202,15 @@ export function notesCollection(host: NotesHost): NotesCollection {
       const id = host.newNoteId()
       return try published(try store.transact((document) => createIn(document, request, id, now)))
     },
-    update: (target, patch, expectedRevision, ownerWords) => effect {
+    update: (target, patch, expectedRevision, pick) => effect {
       const request = try mapError(updateRequest(patch), () => invalid("edit"))
       const revision = try optionalRevision(expectedRevision)
       const now = try at()
-      return try published(try store.transact((document) => updateIn(document, target, request, revision, now, ownerWords)))
+      return try published(try store.transact((document) => updateIn(document, target, request, revision, now, pick)))
     },
-    delete: (target, ownerWords) => effect {
+    delete: (target, pick) => effect {
       const now = try at()
-      return try published(try store.transact((document) => deleteIn(document, target, now, ownerWords)))
+      return try published(try store.transact((document) => deleteIn(document, target, now, pick)))
     },
     restore: (input) => effect {
       const request = try mapError(restoreRequest(input), () => invalid("restore"))
