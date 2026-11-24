@@ -9,6 +9,7 @@ name: ci
 # same locally and in CI. The self-test also installs and checks each
 # standalone example.
 on:
+  workflow_dispatch:
   pull_request:
     branches: [vibestack, develop, main]
   push:
@@ -142,7 +143,7 @@ jobs:
       - if: steps.simulations.outcome == 'failure' || steps.import-simulations.outcome == 'failure'
         run: echo "::warning::The shard receipts were not fully imported; the ordinary check will compute missing results."
       - id: verify-tasks
-        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream --concurrency=4' || '' }}
+        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream --concurrency=2' || '' }}
       - id: publish-tool-selftest
         if: >-
           github.event_name == 'push' && steps.tool-selftest-cache.outputs.key != '' &&
