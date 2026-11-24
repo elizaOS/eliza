@@ -1,9 +1,9 @@
 // spec/nativeSettings/index.md, "Story: Adjust the device settings from the local overlay"
-import { System } from "@elizaos/os/bridges/system"
-import type { ControlReading, SystemClient, SystemVolumeStream } from "@elizaos/os/bridges/definitions/system"
+import { System } from "@elizaos/os-bridges"
+import type { ControlReading, SystemClient, SystemVolumeStream } from "@elizaos/os-bridges"
 import { settingsLevelAllowed, settingsOutcome, type ControlLimit } from "../gen/nativeSettings.effect.vibe"
 
-export { systemClient } from "@elizaos/os/bridges/system"
+export { systemClient } from "@elizaos/os-bridges"
 
 export error DeviceSettingRefused { requestedLevel: number }
 

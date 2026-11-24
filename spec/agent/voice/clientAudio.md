@@ -1,7 +1,7 @@
 # Client audio
 
 The browser-safe audio helpers a screen and the voice session
-(`spec/agent/voice/session.md`) use, exported from `@elizaos/agent/voice`:
+(`spec/agent/voice/session.md`) use, exported from the `@elizaos/agent` root:
 the cumulative microphone capture and its worklet, mono PCM16 WAV encoding,
 decoding a recorded clip to bounded samples, `audioBlobBase64`, the cloud
 speech piece plan, the segmented player with its progressive attachment,

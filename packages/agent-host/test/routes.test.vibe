@@ -1,0 +1,128 @@
+// spec/agent/access/routes.md, "Story: Admit only the routes a product lists"
+import { assert, it } from "@effect/vitest"
+import { flatParam, pathLimit } from "../gen/agent__access__routes.ts"
+import { createRouter } from "../src/access/router.vibe"
+import { admitRoute, routeGate, type RouteRequest } from "@elizaos/agent"
+import { host } from "./support/kernel.vibe"
+
+const tasks = {
+  prefixes: ["/api/records"],
+  id: "[a-z]+",
+  routes: [
+    { method: "GET", path: "/api/records/tasks", query: [
+      { key: "ownerVisibleOnly", accepts: { kind: "pinned", value: "1" } },
+      { key: "view", accepts: { kind: "any" } },
+    ] },
+    { method: "GET", path: "/api/records/calendar/tasks" },
+  ],
+}
+const calendar = {
+  prefixes: ["/api/records/calendar"],
+  id: "[0-9a-f-]{36}",
+  routes: [
+    { method: "GET", path: "/api/records/calendar/feed", query: [{ key: "timeZone", accepts: { kind: "pattern", pattern: "[A-Za-z0-9_+/-]+" } }] },
+    { method: "DELETE", path: "/api/records/calendar/events/{eventId}" },
+  ],
+}
+const flat = [
+  { method: "GET", path: "/api/status" },
+  { method: "POST", path: "/api/conversations/{id}/messages/stream", stream: true, maxBodyBytes: 20 },
+  { method: "POST", path: "/api/conversations/{id}/messages", maxBodyBytes: 20 },
+]
+
+const call = (method: string, target: string, body?: string, streamed = false): RouteRequest =>
+  ({ method, target, streamed, body: body === undefined ? undefined : new TextEncoder().encode(body) })
+const tag = (list: unknown, request: RouteRequest) => admitRoute(list, request).tag
+
+it('A list refused whole leaves a gate that refuses everything (spec/agent/access/routes.md, "A list is loaded whole or not at all")', () => {
+  const gate = routeGate()
+  const status = call("GET", "/api/status")
+  assert.strictEqual(gate.admit(status).tag, "RouteRefused")
+  assert.strictEqual(gate.load(flat).tag, "Loaded")
+  assert.strictEqual(gate.admit(status).tag, "Admitted")
+  const refused = [
+    [],
+    [{ ...tasks, prefixes: ["/api/.."] }],
+    [tasks, { ...calendar, prefixes: ["/api/records"] }],
+    [{ ...tasks, routes: [{ method: "GET", path: "/api/records/tasks", query: [{ key: "view", accepts: { kind: "any" } }, { key: "view", accepts: { kind: "any" } }] }] }],
+    [{ prefixes: ["/api"], routes: [{ method: "GET", path: "/api/{id}" }] }],
+    [{ method: "GET", path: "/api/status", maxBodyBytes: 0 }],
+    [{ method: "GET", path: "/api/status", extra: true }],
+    [{ method: "TRACE", path: "/api/status" }],
+  ]
+  for (const list of refused) {
+    assert.strictEqual(gate.load(flat).tag, "Loaded")
+    assert.strictEqual(gate.load(list).tag, "Refused", JSON.stringify(list))
+    assert.strictEqual(gate.admit(status).tag, "RouteRefused", JSON.stringify(list))
+  }
+})
+
+it('The longest claiming prefix chooses the one group (spec/agent/access/routes.md, "The longest claiming prefix chooses the one group whose routes are tried")', () => {
+  const list = [tasks, calendar, { prefixes: [""], id: flatParam, routes: flat }]
+  assert.strictEqual(tag(list, call("GET", "/api/records/calendar/tasks")), "RouteRefused")
+  assert.strictEqual(tag(list, call("GET", "/api/records/calendar/feed?timeZone=Europe/Paris")), "Admitted")
+  assert.strictEqual(tag(list, call("DELETE", "/api/records/calendar/events/0b7c3a52-7e1f-4c55-9a4e-2f0d8b6c1e93")), "Admitted")
+  assert.strictEqual(tag(list, call("DELETE", "/api/records/calendar/events/not-a-uuid")), "RouteRefused")
+  assert.strictEqual(tag([tasks], call("GET", "/api/records/calendar/tasks")), "Admitted")
+  assert.strictEqual(tag(list, call("GET", "/api/status")), "Admitted")
+})
+
+it('A pinned ownerVisibleOnly=1 must be present with its value and no undeclared key is admitted (spec/agent/access/routes.md, "A request matches a route by method, delivery, every segment and every query key")', () => {
+  const list = [tasks, calendar]
+  assert.strictEqual(tag(list, call("GET", "/api/records/tasks?ownerVisibleOnly=1&view=week")), "Admitted")
+  assert.strictEqual(tag(list, call("GET", "/api/records/tasks?ownerVisibleOnly=1")), "Admitted")
+  assert.strictEqual(tag(list, call("GET", "/api/records/tasks?view=week")), "RouteRefused")
+  assert.strictEqual(tag(list, call("GET", "/api/records/tasks?ownerVisibleOnly=0&view=week")), "RouteRefused")
+  assert.strictEqual(tag(list, call("GET", "/api/records/tasks?ownerVisibleOnly=1&limit=5")), "RouteRefused")
+  assert.strictEqual(tag(list, call("GET", "/api/records/tasks?ownerVisibleOnly=1&ownerVisibleOnly=1")), "RouteRefused")
+  assert.strictEqual(tag(list, call("GET", "/api/records/calendar/feed?timeZone=Etc%2FGMT+3")), "Admitted")
+  assert.strictEqual(tag(list, call("GET", "/api/records/calendar/feed?timeZone=UTC%201")), "RouteRefused")
+})
+
+it('A stream call matches only a streaming route and a buffered call only a buffered one (spec/agent/access/routes.md, "A request matches a route by method, delivery, every segment and every query key")', () => {
+  const body = JSON.stringify({ text: "hi" })
+  assert.strictEqual(tag(flat, call("POST", "/api/conversations/c1/messages/stream", body, true)), "Admitted")
+  assert.strictEqual(tag(flat, call("POST", "/api/conversations/c1/messages/stream", body, false)), "RouteRefused")
+  assert.strictEqual(tag(flat, call("POST", "/api/conversations/c1/messages", body, false)), "Admitted")
+  assert.strictEqual(tag(flat, call("POST", "/api/conversations/c1/messages", body, true)), "RouteRefused")
+  assert.strictEqual(tag(flat, call("POST", `/api/conversations/${"c".repeat(129)}/messages`, body)), "RouteRefused")
+})
+
+it('A flawed request or body is refused before any route is tried (spec/agent/access/routes.md, "A flawed request is refused before any route is tried")', () => {
+  const list = [tasks, calendar, { prefixes: [""], id: flatParam, routes: flat }]
+  const refused = [
+    call("POST", "/api/conversations/c1/messages", "[]"),
+    call("POST", "/api/conversations/c1/messages", "{\"text\":"),
+    call("POST", "/api/conversations/c1/messages", "\"text\""),
+    call("GET", "/api/status", "{}"),
+    call("DELETE", "/api/records/calendar/events/0b7c3a52-7e1f-4c55-9a4e-2f0d8b6c1e93", "{}"),
+    call("GET", "/api/%73tatus"),
+    call("GET", "/api\\status"),
+    call("GET", "/api/status#top"),
+    call("GET", "/api/status "),
+    call("GET", "/api/status "),
+    call("GET", "/api/records/tasks?ownerVisibleOnly=1&view=%E0%A4%A"),
+    call("GET", "/api/./status"),
+    call("GET", "/api//status"),
+    call("GET", `/api/records/tasks?ownerVisibleOnly=1&view=${"w".repeat(pathLimit)}`),
+    call("HEAD", "/api/status"),
+  ]
+  for (const request of refused) assert.strictEqual(tag(list, request), "RouteRefused", request.target.slice(0, 80))
+  const fits = "/api/records/tasks?ownerVisibleOnly=1&view="
+  assert.strictEqual(tag(list, call("GET", fits + "w".repeat(pathLimit - fits.length))), "Admitted")
+  assert.strictEqual(tag(list, call("GET", fits + "w".repeat(pathLimit - fits.length + 1))), "RouteRefused")
+})
+
+it.effect('A matched body over its route limit is too large and answered 413 (spec/agent/access/routes.md, "The first matching route of the claiming group admits a request, or finds its body too large")', effect () => {
+  const body = JSON.stringify({ text: "a longer message" })
+  assert.strictEqual(tag(flat, call("POST", "/api/conversations/c1/messages", body)), "TooLarge")
+  assert.strictEqual(tag(flat, call("POST", "/api/conversations/c1/messages", JSON.stringify({ text: "short" }))), "Admitted")
+  const router = try Effect.try(() => createRouter({
+    token: Redacted.make("launch-token"),
+    epoch: 1,
+    instanceId: "instance-1",
+    routes: flat.map((route) => ({ ...route, method: route.method as "POST" | "GET", handler: () => ({ status: 200, body: {} }) })),
+  }))
+  const answer = try host("route over its limit", () => router({ ...call("POST", "/api/conversations/c1/messages", body), authorization: "Bearer launch-token" }, new AbortController().signal))
+  assert.strictEqual(answer.status, 413)
+})

@@ -1,0 +1,462 @@
+// spec/cloud/identity/secondFactor.md, "Story: Set up and change my second factor"; spec/cloud/identity/secondFactor.md, "Story: Finish sign-in with my second factor"; spec/cloud/identity/secondFactor.md, "Story: Confirm it is me before a sensitive change"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"
+import {
+  apply, challengeRefusal, decodeState, enrollmentOf, factorCodeAccepted, hasFactor, initial, isConfirmed, mayChangeFactors, noTotpStep, setupLive, totpStepAt, totpWindow,
+  type NotAState, Rejected, type Event, type FactorMethod, type FactorStep, type SecondFactor
+} from "../../gen/cloud__identity__secondFactor.effect.vibe"
+import { decodeState as decodeFamily, elapse, initial as noFamily, signIn, type Family } from "../../gen/cloud__identity__sessions.effect.vibe"
+import { sendLimits, sendPerDestination, smsBudgetRefusal, smsSendBudget, verifyPerDestination, verifyPerIp } from "../../gen/cloud__identity__codeChallenges.effect.vibe"
+import { refused, Refused, type Refusal } from "../http/refusal.vibe"
+import { authenticate, type Caller } from "../http/request-auth.vibe"
+import { json, jsonBody, type Route, type RouteContext } from "../http/routes.vibe"
+import { Deployment } from "@elizaos/cloud"
+import { deliverSms } from "../providers/sms.vibe"
+import { admitAll, admitCheck, perWindow } from "../shared/rate-limit.vibe"
+import { keyedDigest, newId, sameText, seal, unseal } from "../shared/sealing.vibe"
+import { loadRow, outputRows, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
+import { Store, toInt, toText, type Tx } from "../store/connection.vibe"
+import type { Landed } from "./accounts.vibe"
+import { clientAddress } from "./code-challenges.vibe"
+import { issueSession, recordStepUp } from "./sessions.vibe"
+
+module node {
+  import { createHmac, randomBytes, randomInt } from "node:crypto"
+
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+
+  /** @throws {never} */
+  export function newTotpSeed(): string {
+    let bits = 0
+    let value = 0
+    let out = ""
+    for (const byte of randomBytes(20)) {
+      value = ((value << 8) | byte) & 0xffff
+      bits += 8
+      while (bits >= 5) {
+        out += alphabet[(value >>> (bits - 5)) & 31]
+        bits -= 5
+      }
+    }
+    return out
+  }
+
+  /** @throws {never} */
+  export function totpCode(seed: string, step: number): string {
+    const key: number[] = []
+    let bits = 0
+    let value = 0
+    for (const letter of seed) {
+      value = ((value << 5) | alphabet.indexOf(letter)) & 0xffff
+      bits += 5
+      if (bits >= 8) {
+        key.push((value >>> (bits - 8)) & 255)
+        bits -= 8
+      }
+    }
+    const counter = Buffer.alloc(8)
+    counter.writeBigUInt64BE(BigInt(step))
+    const mac = createHmac("sha1", Buffer.from(key)).update(counter).digest()
+    const offset = mac[mac.length - 1] & 15
+    return String((mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, "0")
+  }
+
+  /** @throws {never} */
+  export function smsCode(): string {
+    return String(randomInt(0, 1_000_000)).padStart(6, "0")
+  }
+}
+import { newTotpSeed, smsCode, totpCode } from node
+
+type WireMethod = "totp" | "sms"
+
+interface MfaRequired {
+  readonly status: "mfa_required"
+  readonly challengeId: string
+  readonly methods: ReadonlyArray<WireMethod>
+  readonly expiresAt: number
+}
+
+type SessionCaller = Extract<Caller, { readonly kind: "session" }>
+
+interface Owner {
+  readonly userId: string
+  readonly organizationId: string
+  readonly email: string | null
+  readonly personEpoch: number
+}
+
+interface Held {
+  readonly totpSeed: string | undefined
+  readonly smsPhone: string | undefined
+  readonly pendingPhone: string | undefined
+  readonly setupDigest: string | undefined
+  readonly challengeId: string | undefined
+  readonly challengeDigest: string | undefined
+  readonly stepUpSession: string | undefined
+  readonly stepUpDigest: string | undefined
+}
+
+interface Observed {
+  readonly codeMatches: boolean
+  readonly matchedStep: number
+}
+
+type Outcome<A> = { readonly kind: "done"; readonly value: A } | { readonly kind: "refused"; readonly refusal: Refusal }
+
+schema CompleteBody { challengeId: string; method: "totp" | "sms"; code: string }
+schema SendBody { challengeId?: string }
+schema StepUpBody { method: "totp" | "sms"; code: string }
+schema CodeBody { code: string }
+schema PhoneBody { phone: string }
+
+const codePattern = /^\d{6}$/
+const phonePattern = /^\+[1-9]\d{7,14}$/
+const methodOf: Readonly<Record<WireMethod, FactorMethod>> = { totp: "Totp", sms: "Sms" }
+const wireOf: Readonly<Record<FactorMethod, WireMethod>> = { Totp: "totp", Sms: "sms" }
+const factorMethods: ReadonlyArray<FactorMethod> = ["Totp", "Sms"]
+const missed: Observed = { codeMatches: false, matchedStep: noTotpStep }
+
+export const storedFactorRows = outputRows("second_factors", { initial, decodeState, apply })
+
+function factorRows(caller: Family, personEpoch: number): MachineRows<SecondFactor, Event, FactorStep, Rejected, NotAState> {
+  return {
+    table: "second_factors",
+    initial: { ...initial, caller, personEpoch },
+    decodeState: (input) => decodeState(typeof input === "object" && input !== null ? { ...input, caller, personEpoch } : input),
+    apply,
+    next: (stepped) => stepped.state
+  }
+}
+
+function signInCaller(now: number, personEpoch: number): Family {
+  return signIn({ ...noFamily, now }, "SingleFactor", personEpoch)
+}
+
+function confirmedMethods(state: SecondFactor): ReadonlyArray<WireMethod> {
+  return factorMethods.filter((method) => isConfirmed(state.factors, method)).map((method) => wireOf[method])
+}
+
+function moment(at: number): number | null {
+  return at > 0 ? at : null
+}
+
+function factorsView(state: SecondFactor, now: number) {
+  return factorMethods.flatMap((method) => {
+    const enrollment = enrollmentOf(state.factors, method)
+    const id = wireOf[method]
+    if (enrollment.tag === "Confirmed") return [{ id, method: id, status: "confirmed" }]
+    if (enrollment.tag === "Pending" && setupLive(enrollment, now)) return [{ id, method: id, status: "pending", setupExpiresAt: enrollment.setupExpiresAt }]
+    return []
+  })
+}
+
+function changeRefusal(state: SecondFactor): Refused {
+  return mayChangeFactors(state) ? refused("InvalidRequest") : refused("FreshSessionRequired")
+}
+
+effect function settled<A>(outcome: Outcome<A>): A!Refused {
+  if (outcome.kind === "refused") throw new Refused({ refusal: outcome.refusal })
+  return outcome.value
+}
+
+effect function owner(tx: Tx, userId: string) {
+  const row = (try tx.query("SELECT organization_id, email, sessions_revoked_before FROM accounts WHERE key = $1 AND status = 'active' FOR UPDATE", [userId]))[0]
+  if (row === undefined) throw refused("AuthenticationRequired", "CredentialRevoked")
+  return { userId, organizationId: toText(row.organization_id) ?? "", email: toText(row.email) ?? null, personEpoch: toInt(row.sessions_revoked_before) } satisfies Owner
+}
+
+effect function held(tx: Tx, userId: string) {
+  const row = (try tx.query("SELECT totp_seed, sms_phone, pending_phone, setup_digest, challenge_id, challenge_digest, step_up_session, step_up_digest FROM second_factors WHERE key = $1 FOR UPDATE", [userId]))[0]
+  return {
+    totpSeed: toText(row?.totp_seed), smsPhone: toText(row?.sms_phone), pendingPhone: toText(row?.pending_phone), setupDigest: toText(row?.setup_digest),
+    challengeId: toText(row?.challenge_id), challengeDigest: toText(row?.challenge_digest), stepUpSession: toText(row?.step_up_session), stepUpDigest: toText(row?.step_up_digest)
+  } satisfies Held
+}
+
+effect function sessionFamily(tx: Tx, sessionKey: string, now: number) {
+  const row = (try tx.query("SELECT state FROM sessions WHERE key = $1 FOR UPDATE", [sessionKey]))[0]
+  if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const family = try decodeFamily(row.state)
+  return now > family.now ? elapse(family, now - family.now) : family
+}
+
+effect function current(tx: Tx, who: Owner, caller: Family) {
+  return (try loadRow(tx, factorRows(caller, who.personEpoch), who.userId)).state
+}
+
+effect function stepFactors(tx: Tx, who: Owner, caller: Family, event: Event, columns: Columns) {
+  return try stepRow(tx, factorRows(caller, who.personEpoch), who.userId, event, () => columns)
+}
+
+effect function totpObserved(sealed: string | undefined, code: string, state: SecondFactor) {
+  if (sealed === undefined) return missed
+  const seed = try unseal("totp-secret", sealed)
+  const at = totpStepAt(state.caller.now)
+  const matching = [at - totpWindow, at, at + totpWindow].filter((step) => step > noTotpStep && sameText(totpCode(seed, step), code))
+  const matchedStep = matching.find((step) => step > state.factors.lastTotpStep) ?? matching[0]
+  return matchedStep === undefined ? missed : { codeMatches: true, matchedStep }
+}
+
+effect function smsObserved(digest: string | undefined, binding: string, code: string) {
+  if (digest === undefined) return missed
+  return { codeMatches: sameText(digest, try keyedDigest(`${binding}:${code}`)), matchedStep: noTotpStep }
+}
+
+effect function observe(method: FactorMethod, secrets: Held, code: string, state: SecondFactor, smsBinding: string, smsDigest: string | undefined) {
+  if (method === "Totp") return try totpObserved(secrets.totpSeed, code, state)
+  return try smsObserved(smsDigest, smsBinding, code)
+}
+
+effect function sixDigits(code: string): string!Refused {
+  if (!codePattern.test(code)) throw refused("InvalidRequest")
+  return code
+}
+
+effect function sessionOf(caller: Caller): SessionCaller!Refused {
+  if (caller.kind !== "session") throw refused("AuthenticationRequired", "CredentialUnknown")
+  return caller
+}
+
+effect function sendSms(to: string, code: string) {
+  try deliverSms({ to, text: `Your verification code is ${code}. It expires in 5 minutes.` })
+}
+
+effect function sendLimited(context: RouteContext, phone: string) {
+  const deployment = try Deployment
+  const digest = try keyedDigest(phone)
+  try admitAll(sendLimits("PhoneSignIn").map((rule) => ({ subject: rule.name === sendPerDestination.name ? digest : clientAddress(context), rule })))
+  admitCheck({ subject: "deployment", rule: perWindow(smsSendBudget.name, deployment.settings.signIn.smsHourlyBudget, smsSendBudget.windowMs) }) catch effect (failure) => {
+    const wait = failure.refusal.wait
+    throw failure.refusal.code === "RateLimited" && wait.tag === "RetryAt" ? new Refused({ refusal: smsBudgetRefusal(wait.retryAtMs) }) : failure
+  }
+}
+
+effect function verifyLimited(context: RouteContext, userId: string | undefined) {
+  try admitAll([
+    { subject: clientAddress(context), rule: verifyPerIp },
+    ...(userId === undefined ? [] : [{ subject: `second-factor:${userId}`, rule: verifyPerDestination }])
+  ])
+}
+
+effect function inTransaction<A, E, R>(body: (tx: Tx) => A!E!R) {
+  const store = try Store
+  return try store.transaction(body)
+}
+
+effect function forSession<A, E, R>(caller: SessionCaller, now: number, body: (tx: Tx, who: Owner, family: Family, secrets: Held) => A!E!R) {
+  return try inTransaction(effect (tx: Tx) => {
+    const who = try owner(tx, caller.userId)
+    const family = try sessionFamily(tx, caller.sessionKey, now)
+    return try body(tx, who, family, try held(tx, who.userId))
+  })
+}
+
+effect function factorsAnswer(tx: Tx, who: Owner, family: Family, caller: SessionCaller) {
+  return { factors: factorsView(try current(tx, who, family), family.now), stepUpAt: moment(caller.stepUpAt), mfaAt: moment(caller.mfaAt) }
+}
+
+export effect function factorChallenge(tx: Tx, landed: Landed, clientId: string, now: number) {
+  const who = try owner(tx, landed.userId)
+  const caller = signInCaller(now, who.personEpoch)
+  if (!hasFactor((try current(tx, who, caller)).factors)) return undefined
+  const challengeId = newId()
+  const opened = (try stepFactors(tx, who, caller, { type: "openChallenge" }, { challenge_id: challengeId, challenge_client_id: clientId, challenge_digest: null })).state
+  return { status: "mfa_required", challengeId, methods: confirmedMethods(opened), expiresAt: opened.challenge.expiresAt } satisfies MfaRequired
+}
+
+export effect function hasAccountSecondFactor(tx: Tx, userId: string, now: number) {
+  const who = try owner(tx, userId)
+  return hasFactor((try current(tx, who, signInCaller(now, who.personEpoch))).factors)
+}
+
+export effect function afterFirstFactor(tx: Tx, landed: Landed, clientId: string, now: number) {
+  const challenge = try factorChallenge(tx, landed, clientId, now)
+  if (challenge !== undefined) return challenge
+  return try issueSession(tx, { userId: landed.userId, organizationId: landed.organizationId, assurance: "SingleFactor", accountCreated: landed.created, now })
+}
+
+effect function challengeOwner(tx: Tx, challengeId: string) {
+  const row = (try tx.query("SELECT key FROM second_factors WHERE challenge_id = $1", [challengeId]))[0]
+  if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const who = try owner(tx, toText(row.key) ?? "")
+  const secrets = try held(tx, who.userId)
+  if (secrets.challengeId !== challengeId) throw refused("AuthenticationRequired", "CredentialUnknown")
+  return { who, secrets }
+}
+
+effect function completeMfa(context: RouteContext) {
+  const body = try jsonBody(context, CompleteBody)
+  const method = methodOf[body.method]
+  const code = try sixDigits(body.code)
+  try verifyLimited(context, undefined)
+  const outcome = try inTransaction(effect (tx: Tx) => {
+    const { who, secrets } = try challengeOwner(tx, body.challengeId)
+    const caller = signInCaller(context.now, who.personEpoch)
+    const before = try current(tx, who, caller)
+    const seen = try observe(method, secrets, code, before, `challenge:${body.challengeId}`, secrets.challengeDigest)
+    const stepped = stepFactors(tx, who, caller, { type: "completeChallenge", method, ...seen }, { challenge_digest: null }) catch effect (failure) => match (failure) {
+      when Rejected: throw new Refused({ refusal: challengeRefusal(failure.state, method) });
+      default: throw failure;
+    }
+    const started = stepped.out.out.find((step) => step.tag === "StartSession")
+    if (started?.tag !== "StartSession") return { kind: "refused", refusal: challengeRefusal(stepped.state, method) } satisfies Outcome<never>
+    const session = try issueSession(tx, { userId: who.userId, organizationId: who.organizationId, assurance: started.assurance, accountCreated: false, now: context.now })
+    return { kind: "done", value: session } as const
+  })
+  return json(try settled(outcome))
+}
+
+effect function sendChallengeCode(context: RouteContext, challengeId: string) {
+  const phone = try inTransaction(effect (tx: Tx) => toText((try tx.query("SELECT sms_phone FROM second_factors WHERE challenge_id = $1", [challengeId]))[0]?.sms_phone))
+  if (phone !== undefined) try sendLimited(context, phone)
+  const code = smsCode()
+  const digest = try keyedDigest(`challenge:${challengeId}:${code}`)
+  const sent = try inTransaction(effect (tx: Tx) => {
+    const { who, secrets } = try challengeOwner(tx, challengeId)
+    const caller = signInCaller(context.now, who.personEpoch)
+    const after = (stepFactors(tx, who, caller, { type: "sendChallengeSms" }, { challenge_digest: digest }) catch effect (failure) => match (failure) {
+      when Rejected: throw new Refused({ refusal: challengeRefusal(failure.state, "Sms") });
+      default: throw failure;
+    }).state
+    return { to: secrets.smsPhone ?? "", expiresAt: after.challenge.smsCode.tag === "CodeSent" ? after.challenge.smsCode.codeExpiresAt : context.now }
+  })
+  try sendSms(sent.to, code)
+  return json({ expiresAt: sent.expiresAt })
+}
+
+effect function sendStepUpCode(context: RouteContext, caller: SessionCaller) {
+  const phone = try inTransaction(effect (tx: Tx) => toText((try tx.query("SELECT sms_phone FROM second_factors WHERE key = $1", [caller.userId]))[0]?.sms_phone))
+  if (phone === undefined) throw refused("InvalidRequest")
+  try sendLimited(context, phone)
+  const code = smsCode()
+  const digest = try keyedDigest(`step-up:${caller.sessionKey}:${code}`)
+  const expiresAt = try forSession(caller, context.now, effect (tx: Tx, who: Owner, family: Family) => {
+    const after = (stepFactors(tx, who, family, { type: "sendStepUpSms" }, { step_up_session: caller.sessionKey, step_up_digest: digest }) catch effect (failure) => match (failure) {
+      when Rejected: throw refused("InvalidRequest");
+      default: throw failure;
+    }).state
+    return after.stepUpCode.tag === "CodeSent" ? after.stepUpCode.codeExpiresAt : context.now
+  })
+  try sendSms(phone, code)
+  return json({ expiresAt })
+}
+
+effect function sendMfaSms(context: RouteContext) {
+  const body = context.request.headers["content-type"] === undefined ? {} : try jsonBody(context, SendBody)
+  if (body.challengeId !== undefined) return try sendChallengeCode(context, body.challengeId)
+  return try sendStepUpCode(context, try sessionOf(try authenticate(context.request.headers.authorization, "SignedSession")))
+}
+
+effect function stepUp(context: RouteContext) {
+  const caller = try sessionOf(context.caller)
+  const body = try jsonBody(context, StepUpBody)
+  const method = methodOf[body.method]
+  const code = try sixDigits(body.code)
+  try verifyLimited(context, caller.userId)
+  const at = try forSession(caller, context.now, effect (tx: Tx, who: Owner, family: Family, secrets: Held) => {
+    const before = try current(tx, who, family)
+    if (method === "Sms" && isConfirmed(before.factors, method) && before.stepUpCode.tag === "NoCode") {
+      throw refused("CredentialProofInvalid")
+    }
+    const bound = secrets.stepUpSession === caller.sessionKey ? secrets.stepUpDigest : undefined
+    const seen = try observe(method, secrets, code, before, `step-up:${caller.sessionKey}`, bound)
+    const accepted = factorCodeAccepted(before.factors, method, family.now, seen.codeMatches, seen.matchedStep)
+    stepFactors(tx, who, family, { type: "verifyStepUp", method, ...seen }, method === "Sms" && accepted ? { step_up_digest: null } : {}) catch effect (failure) => match (failure) {
+      when Rejected: throw isConfirmed(failure.state.factors, method) ? refused("AuthenticationRequired", "CredentialExpired") : refused("InvalidRequest");
+      default: throw failure;
+    }
+    if (!accepted) throw refused("CredentialProofInvalid")
+    try recordStepUp(tx, caller.sessionKey, family.now)
+    return family.now
+  })
+  return json({ stepUpAt: at, mfaAt: at })
+}
+
+effect function readFactors(context: RouteContext) {
+  const caller = try sessionOf(context.caller)
+  return json(try forSession(caller, context.now, effect (tx: Tx, who: Owner, family: Family) => try factorsAnswer(tx, who, family, caller)))
+}
+
+effect function enrollTotp(context: RouteContext) {
+  const caller = try sessionOf(context.caller)
+  const deployment = try Deployment
+  const issuer = deployment.profile.name
+  const seed = newTotpSeed()
+  const sealed = try seal("totp-secret", seed)
+  return json(try forSession(caller, context.now, effect (tx: Tx, who: Owner, family: Family) => {
+    const after = (stepFactors(tx, who, family, { type: "enroll", method: "Totp" }, { totp_seed: sealed }) catch effect (failure) => match (failure) {
+      when Rejected: throw changeRefusal(failure.state);
+      default: throw failure;
+    }).state
+    const query = new URLSearchParams({ secret: seed, issuer, algorithm: "SHA1", digits: "6", period: "30" })
+    return {
+      secret: seed,
+      otpauthUri: `otpauth://totp/${encodeURIComponent(`${issuer}:${who.email ?? who.userId}`)}?${query}`,
+      expiresAt: after.factors.totp.tag === "Pending" ? after.factors.totp.setupExpiresAt : family.now
+    }
+  }))
+}
+
+effect function enrollSms(context: RouteContext) {
+  const caller = try sessionOf(context.caller)
+  const body = try jsonBody(context, PhoneBody)
+  const deployment = try Deployment
+  if (!phonePattern.test(body.phone) || !deployment.settings.signIn.smsCountries.some((country) => body.phone.startsWith(country))) throw refused("InvalidRequest")
+  try sendLimited(context, body.phone)
+  const code = smsCode()
+  const digest = try keyedDigest(`setup:${caller.userId}:${code}`)
+  const expiresAt = try forSession(caller, context.now, effect (tx: Tx, who: Owner, family: Family) => {
+    const after = (stepFactors(tx, who, family, { type: "enroll", method: "Sms" }, { pending_phone: body.phone, setup_digest: digest }) catch effect (failure) => match (failure) {
+      when Rejected: throw changeRefusal(failure.state);
+      default: throw failure;
+    }).state
+    return after.factors.sms.tag === "Pending" ? after.factors.sms.setupExpiresAt : family.now
+  })
+  try sendSms(body.phone, code)
+  return json({ expiresAt })
+}
+
+effect function confirmFactor(context: RouteContext, method: FactorMethod) {
+  const caller = try sessionOf(context.caller)
+  const body = try jsonBody(context, CodeBody)
+  const code = try sixDigits(body.code)
+  try verifyLimited(context, caller.userId)
+  return json(try forSession(caller, context.now, effect (tx: Tx, who: Owner, family: Family, secrets: Held) => {
+    const before = try current(tx, who, family)
+    const seen = try observe(method, secrets, code, before, `setup:${who.userId}`, secrets.setupDigest)
+    const confirmed = factorCodeAccepted(before.factors, method, family.now, seen.codeMatches, seen.matchedStep)
+    const columns: Columns = method === "Sms" && confirmed ? { sms_phone: secrets.pendingPhone ?? null, pending_phone: null, setup_digest: null } : {}
+    stepFactors(tx, who, family, { type: "confirmEnrollment", method, ...seen }, columns) catch effect (failure) => match (failure) {
+      when Rejected: throw mayChangeFactors(failure.state) ? refused("AuthenticationRequired", "CredentialExpired") : refused("FreshSessionRequired");
+      default: throw failure;
+    }
+    if (!confirmed) throw refused("CredentialProofInvalid")
+    return try factorsAnswer(tx, who, family, caller)
+  }))
+}
+
+effect function removeFactor(context: RouteContext) {
+  const caller = try sessionOf(context.caller)
+  const wire = context.params.factorId
+  if (wire !== "totp" && wire !== "sms") throw refused("NotFound")
+  const method = methodOf[wire]
+  const cleared: Columns = method === "Totp" ? { totp_seed: null } : { sms_phone: null, pending_phone: null, setup_digest: null, challenge_digest: null, step_up_digest: null }
+  return json(try forSession(caller, context.now, effect (tx: Tx, who: Owner, family: Family) => {
+    stepFactors(tx, who, family, { type: "removeFactor", method }, cleared) catch effect (failure) => match (failure) {
+      when Rejected: throw enrollmentOf(failure.state.factors, method).tag === "Absent" ? refused("NotFound") : refused("FreshSessionRequired");
+      default: throw failure;
+    }
+    return try factorsAnswer(tx, who, family, caller)
+  }))
+}
+
+export const routes: ReadonlyArray<Route> = [
+  { method: "POST", path: "/api/v1/auth/mfa/complete", auth: "Public", maxBodyBytes: 4096, handler: completeMfa },
+  { method: "POST", path: "/api/v1/auth/mfa/sms/send", auth: "Public", maxBodyBytes: 4096, handler: sendMfaSms },
+  { method: "POST", path: "/api/v1/auth/mfa/step-up", auth: "SignedSession", maxBodyBytes: 4096, handler: stepUp },
+  { method: "GET", path: "/api/v1/auth/mfa", auth: "SignedSession", handler: readFactors },
+  { method: "POST", path: "/api/v1/auth/mfa/totp/enroll", auth: "SignedSession", maxBodyBytes: 4096, handler: enrollTotp },
+  { method: "POST", path: "/api/v1/auth/mfa/totp/confirm", auth: "SignedSession", maxBodyBytes: 4096, handler: (context) => confirmFactor(context, "Totp") },
+  { method: "POST", path: "/api/v1/auth/mfa/sms/enroll", auth: "SignedSession", maxBodyBytes: 4096, handler: enrollSms },
+  { method: "POST", path: "/api/v1/auth/mfa/sms/confirm", auth: "SignedSession", maxBodyBytes: 4096, handler: (context) => confirmFactor(context, "Sms") },
+  { method: "DELETE", path: "/api/v1/auth/mfa/:factorId", auth: "StepUp", handler: removeFactor }
+]

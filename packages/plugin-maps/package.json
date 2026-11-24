@@ -12,8 +12,10 @@
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
+    "@elizaos/agent-host": "workspace:*",
     "@elizaos/cloud": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-maps-client": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },
@@ -32,78 +34,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    },
-    "./relay": {
-      "eliza-source": "./src/relay.vibe",
-      "types": "./dist/src/relay.d.ts",
-      "import": "./dist/src/relay.js",
-      "default": "./dist/src/relay.js"
-    },
-    "./cards": {
-      "eliza-source": "./src/cards.vibe",
-      "types": "./dist/src/cards.d.ts",
-      "import": "./dist/src/cards.js",
-      "default": "./dist/src/cards.js"
-    },
-    "./client": {
-      "eliza-source": "./src/client/index.vibe",
-      "types": "./dist/src/client/index.d.ts",
-      "import": "./dist/src/client/index.js",
-      "default": "./dist/src/client/index.js"
-    },
-    "./client/cloud-provider": {
-      "eliza-source": "./src/client/cloud-provider.vibe",
-      "types": "./dist/src/client/cloud-provider.d.ts",
-      "import": "./dist/src/client/cloud-provider.js",
-      "default": "./dist/src/client/cloud-provider.js"
-    },
-    "./client/contracts": {
-      "eliza-source": "./src/client/contracts.vibe",
-      "types": "./dist/src/client/contracts.d.ts",
-      "import": "./dist/src/client/contracts.js",
-      "default": "./dist/src/client/contracts.js"
-    },
-    "./client/device-navigation": {
-      "eliza-source": "./src/client/device-navigation.vibe",
-      "types": "./dist/src/client/device-navigation.d.ts",
-      "import": "./dist/src/client/device-navigation.js",
-      "default": "./dist/src/client/device-navigation.js"
-    },
-    "./client/guidance": {
-      "eliza-source": "./src/client/guidance.vibe",
-      "types": "./dist/src/client/guidance.d.ts",
-      "import": "./dist/src/client/guidance.js",
-      "default": "./dist/src/client/guidance.js"
-    },
-    "./client/location": {
-      "eliza-source": "./src/client/location.vibe",
-      "types": "./dist/src/client/location.d.ts",
-      "import": "./dist/src/client/location.js",
-      "default": "./dist/src/client/location.js"
-    },
-    "./client/navigation-fix": {
-      "eliza-source": "./src/client/navigation-fix.vibe",
-      "types": "./dist/src/client/navigation-fix.d.ts",
-      "import": "./dist/src/client/navigation-fix.js",
-      "default": "./dist/src/client/navigation-fix.js"
-    },
-    "./client/observation": {
-      "eliza-source": "./src/client/observation.vibe",
-      "types": "./dist/src/client/observation.d.ts",
-      "import": "./dist/src/client/observation.js",
-      "default": "./dist/src/client/observation.js"
-    },
-    "./client/route-distance": {
-      "eliza-source": "./src/client/route-distance.vibe",
-      "types": "./dist/src/client/route-distance.d.ts",
-      "import": "./dist/src/client/route-distance.js",
-      "default": "./dist/src/client/route-distance.js"
-    },
-    "./client/saved-places": {
-      "eliza-source": "./src/client/saved-places.vibe",
-      "types": "./dist/src/client/saved-places.d.ts",
-      "import": "./dist/src/client/saved-places.js",
-      "default": "./dist/src/client/saved-places.js"
     }
   }
 }

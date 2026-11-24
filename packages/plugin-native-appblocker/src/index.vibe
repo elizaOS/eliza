@@ -13,7 +13,7 @@ import { native } from capacitor
 
 export const AppBlocker = native
 
-import { nativeReply } from "@elizaos/os/bridges/bridge"
+import { nativeReply } from "@elizaos/os-bridges"
 import { mayStartAppBlock, type AppBlockEngine, type AppBlockInterval } from "../gen/nativeAppblocker.effect.vibe"
 
 const BlockStatus = Schema.Struct({

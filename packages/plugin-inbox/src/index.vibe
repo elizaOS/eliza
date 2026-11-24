@@ -1,5 +1,5 @@
 // spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"
-import { showsApp, type AgentPlugin } from "@elizaos/agent"
+import { showsApp, type AgentPlugin } from "@elizaos/agent-host"
 import { inboxAccessProvider } from "./agent/access.vibe"
 import { inboxComposeAction } from "./agent/compose.vibe"
 import { inboxContext, inboxReadAction } from "./agent/read.vibe"

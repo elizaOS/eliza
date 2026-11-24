@@ -1,6 +1,6 @@
 // spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"; spec/localInference/textAndEmbeddings.md, "The operator's embedding endpoint wins, then the hosted service when chosen, then the device"; spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"; spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/localInference/speechRoute.md, "The owner's speech key speaks first, then a usable hosted account, then this device"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { ModuleRefused, type AgentModule, type AgentPlugin, type LaunchDocument, type ModuleContext, type ModuleFactory } from "@elizaos/agent"
+import { ModuleRefused, type AgentModule, type AgentPlugin, type LaunchDocument, type ModuleContext, type ModuleFactory } from "@elizaos/agent-host"
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
 import { FetchHttpClient } from "effect/http"
 import { curatedModels, type Catalog } from "./catalog.vibe"

@@ -3,7 +3,7 @@
 One camera session of a host surface: the live viewfinder, the one slot that
 a capture, a viewfinder control or a recording holds, and when a recording
 counts as saved. The `ElizaCamera` bridge client and the session shell
-(`src/bridges/camera.vibe`) follow this machine; the host decides through
+(`packages/os-bridges/src/bridges/camera.vibe`) follow this machine; the host decides through
 its ports where an explicit Keep of a capture goes, and nothing is kept,
 uploaded or handed off implicitly. The lock-screen camera is the system's
 secure camera, staged and checked by the image specs, never this session.

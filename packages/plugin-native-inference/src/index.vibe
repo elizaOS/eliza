@@ -1,8 +1,8 @@
 // spec/nativeInference/index.md, "Story: Use a native engine only for an admitted model or recognized image"
 import { normalizeRecognizedElement, type RecognizedElement } from "../gen/nativeInference.effect.vibe"
 
-export { AndroidInferenceEngine, androidInferenceEngine, androidInferenceLayer, EngineFailed, EngineUnavailable } from "@elizaos/os/inference"
-export type { Capability, EndOfTurnScore, EngineVector, InstalledModel, Pcm, SpeechReadiness, VectorSpace } from "@elizaos/os/inference"
+export { AndroidInferenceEngine, androidInferenceEngine, androidInferenceLayer, EngineFailed, EngineUnavailable } from "@elizaos/os"
+export type { Capability, EndOfTurnScore, EngineVector, InstalledModel, Pcm, SpeechReadiness, VectorSpace } from "@elizaos/os"
 
 const OcrElement = Schema.Struct({
   text: Schema.String,

@@ -260,7 +260,10 @@ Call; the owner hears so. Only a phone that cannot open its keypad for chat
 refuses it instead, telling the owner to dial their local emergency number
 on the phone's own dialer. A number the owner wrote ("call 911") is still
 the reviewed recipient, and the phone hands an emergency number to the
-system dialer.
+system dialer. What the owner hears of the empty keypad, and of that
+refusal, is safety copy: it reaches the owner in these fixed words, alone
+for the keypad, and the model never rewrites it
+([planning](../conversation/planning.md)).
 
 ```quint
 pure def emergencyVerdict(emergency: bool, callOrKeypad: bool, namesService: bool, keypadOffered: bool, verdict: TargetVerdict): TargetVerdict =
@@ -304,13 +307,17 @@ pure def lawAnEmailTheOwnerNeverWroteIsNeverSaved(written: bool): bool =
 pure def lawAMessageWithoutTheValueLeavesItToTheReview(verdict: TargetVerdict): bool = targetGrounded(contactValueVerdict(false, verdict))
 ```
 
-### A refused recipient is explained truthfully, and the owner hears that nothing ran
+### A refused recipient is explained in a sentence that says truthfully that nothing ran
 
 A recipient refusal offers nothing. Once it is refused rather than handed
-back to the model (above), the owner hears a sentence that is true
-whichever recipient was refused: that nothing was called or sent, or for a
+back to the model (above), its sentence for the owner is true whichever
+recipient was refused: it says that nothing was called or sent, or for a
 contact change that nothing in the address book was saved or changed, and what
-to tell the agent instead. A recipient this phone cannot take in its form, and
+to tell the agent instead. The model can revise its reply after a host note
+that quotes the refusal. When the failure remains open under the
+[planning rules](../conversation/planning.md), its own words reach the owner.
+The emergency refusal always reaches the owner as written. A recipient this
+phone cannot take in its form, and
 a contact it cannot save in its form, is refused in those same terms; a
 contact change's number or email address the owner never wrote is named as
 the one refused. A refused number is called missing from the message only

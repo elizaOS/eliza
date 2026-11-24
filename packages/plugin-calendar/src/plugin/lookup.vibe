@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"
 import { lookupKeeps, tripHolds } from "../../gen/calendar__actions.effect.vibe"
-import type { CalendarEvent } from "../model.vibe"
+import type { CalendarEvent } from "@elizaos/plugin-calendar-client"
 
 const unasked = new Set(["a", "an", "the", "my", "our", "your", "his", "her", "their", "with", "and", "at", "in", "on", "of", "for", "to", "from", "about", "me", "i", "is", "are",
   "was", "what", "what's", "whats", "when", "where", "which", "any", "event", "events", "calendar"])

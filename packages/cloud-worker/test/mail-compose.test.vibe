@@ -1,0 +1,79 @@
+// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"
+import { assert, describe, it } from "@effect/vitest"
+import { FetchHttpClient } from "effect/http"
+import { composeMessage } from "../src/services/google/mail-compose.vibe"
+import { deploymentLayer, parseProfile, type Deployment } from "@elizaos/cloud"
+import { requestDigest } from "../src/shared/dispatch-once.vibe"
+import { startFakeServer, type FakeServer } from "./support/fakes.ts"
+import { secrets, testProfile } from "./support/profile.ts"
+
+const headersOf: Record<string, ReadonlyArray<{ name: string; value: string }>> = {
+  "msg-one": [
+    { name: "From", value: "\"Doe, Ada\" <ada@example.org>" },
+    { name: "To", value: "me@example.com, Grace <grace@example.org>" },
+    { name: "Cc", value: "lin@example.org" },
+    { name: "Subject", value: "Plan" },
+    { name: "Message-ID", value: "<p1@example.org>" },
+    { name: "References", value: "<p0@example.org>" }
+  ],
+  "msg-two": [
+    { name: "From", value: "ada@example.org" },
+    { name: "Reply-To", value: "a@example.org, b@example.org" },
+    { name: "Subject", value: "Plan" },
+    { name: "Message-ID", value: "<p2@example.org>" }
+  ]
+}
+
+effect function setup() {
+  const fakes: FakeServer = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+  try Effect.try(() => fakes.mount("/google/api/", (request) => {
+    const id = /\/gmail\/v1\/users\/me\/messages\/([^/?]+)$/.exec(request.path)?.[1] ?? ""
+    const headers = headersOf[id]
+    return headers === undefined ? { status: 404, body: {} } : { status: 200, body: { id, threadId: `thread-${id}`, labelIds: ["INBOX"], payload: { headers } } }
+  }))
+  const profile = try parseProfile(try Effect.try(() => testProfile(fakes.url)))
+  return Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+}
+
+const context = { from: "me@example.com", requestId: "1B2C3D4E-5F60-4A7B-8C9D-0E1F2A3B4C5D", grant: { accessToken: "t" }, forwarded: undefined }
+
+function decodedText(decoded: Result.Result<Uint8Array, unknown>): string {
+  return decoded._tag === "Success" ? new TextDecoder().decode(decoded.success) : ""
+}
+
+describe("Mail composition", () => {
+  it.live("Compose, reply-all and ambiguous reply (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\")", () => scoped(effect {
+    const layer = try setup()
+    const run = <A, E>(program: A!E!(Deployment | HttpClient.HttpClient)) => Effect.provide(program, layer)
+    const pdf = Base64.encode(new TextEncoder().encode("%PDF-1.4 hello"))
+    const proposal = { kind: "send", mode: "compose", to: ["ada@example.org"], subject: "Grüße aus Zürich, a long subject that must fold across words", bodyText: "Line one\nLine two", attachments: [{ name: "a.pdf", mimeType: "application/pdf", dataBase64: pdf }] }
+    const first = try run(composeMessage(proposal, context))
+    const second = try run(composeMessage(proposal, context))
+    const mime = decodedText(Base64Url.decode(first.raw))
+    const reply = try run(composeMessage({ kind: "draft-create", mode: "reply-all", subject: "Re: Plan", bodyText: "ok", replyMessageId: "msg-one" }, context))
+    const replyMime = decodedText(Base64Url.decode(reply.raw))
+    const ambiguous = try run(Effect.flip(composeMessage({ kind: "send", mode: "reply", subject: "Re: Plan", bodyText: "ok", replyMessageId: "msg-two" }, context)))
+    const badType = try run(Effect.flip(composeMessage({ ...proposal, attachments: [{ name: "a.png", mimeType: "image/png", dataBase64: pdf }] }, context)))
+    const decodedSubject = /Subject: ((?:.|\r\n )*)\r\n/.exec(mime)?.[1]?.split("\r\n ").map((word) => decodedText(Base64.decode(word.slice(10, -2)))).join("")
+    try Effect.try(() => assert.deepStrictEqual(
+      {
+        same: [first.raw === second.raw, requestDigest(first.digestInput) === requestDigest(second.digestInput)],
+        lines: mime.split("\r\n").every((line) => line.length <= 78),
+        subject: decodedSubject,
+        attachment: [first.review.attachments.map((file) => [file.name, file.size]), mime.includes("Content-Type: multipart/mixed"), mime.includes("Content-Type: application/pdf")],
+        reply: [reply.threadId, reply.review.to, reply.review.cc, replyMime.includes("In-Reply-To: <p1@example.org>"), replyMime.includes("References: <p0@example.org>\r\n <p1@example.org>")],
+        ambiguous: [ambiguous._tag, ambiguous.refusal.code],
+        badType: badType.refusal.code
+      },
+      {
+        same: [true, true],
+        lines: true,
+        subject: proposal.subject,
+        attachment: [[["a.pdf", 14]], true, true],
+        reply: ["thread-msg-one", ["ada@example.org"], ["grace@example.org", "lin@example.org"], true, true],
+        ambiguous: ["Refused", "PreconditionFailed"],
+        badType: "InvalidRequest"
+      }
+    ))
+  }), 30_000)
+})

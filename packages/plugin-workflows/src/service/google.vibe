@@ -1,7 +1,7 @@
 // spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
-import type { CloudClient } from "@elizaos/cloud/client"
-import type { HostedLiveSelection } from "../contract/digest.vibe"
-import { phoneWorkflowBytes, workflowSha } from "../contract/phone.vibe"
+import type { CloudClient } from "@elizaos/cloud"
+import type { HostedLiveSelection } from "@elizaos/plugin-workflow-client"
+import { phoneWorkflowBytes, workflowSha } from "@elizaos/plugin-workflow-client"
 import { WorkflowRefused } from "./workflows.vibe"
 
 export type ManagedGoogleReads = Pick<CloudClient, "googleStatus" | "calendarCalendars" | "gmailSearch" | "calendarFeed">

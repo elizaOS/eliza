@@ -1,7 +1,7 @@
 # Pinned source integrity
 
 A consumer vendors Eliza at a commit it pins and builds its Android host from
-that checkout. `@elizaos/os/build` exports `verifyCommittedWorkspace`, which
+that checkout. `@elizaos/os` exports `verifyCommittedWorkspace`, which
 authenticates a prepared checkout against the pin, and
 `exportCommittedSources`, which copies pinned paths out of the commit
 (`src/build/source-integrity.vibe`). The sources are develop's
