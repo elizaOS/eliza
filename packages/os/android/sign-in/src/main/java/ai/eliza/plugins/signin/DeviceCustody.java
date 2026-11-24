@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
@@ -194,16 +194,8 @@ public final class DeviceCustody implements SignInCustody {
   }
 
   @Override public Held held(Environment environment) {
-    Authority authority = authority(environment);
-    CredentialReader.Credential current = authority.store().current();
+    CredentialReader.Credential current = authority(environment).store().current();
     if (current == null) return null;
-    if (CredentialPolicy.renewalDue(authority.store().state())) {
-      Binding binding = binding(environment);
-      DUTIES.execute(() -> {
-        authority.client().renewKey(binding);
-        authority.client().settleDuties();
-      });
-    }
     return new Held(current.version(), current.credentialId(), current.value(), current.account(), current.keyExpiresAt());
   }
 

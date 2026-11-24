@@ -1,7 +1,7 @@
 // spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle"
 import { historyAnswer, historyAskAccepted, historyCount, type HistoryAsk, type RequestedCount } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
-import { recheckServiceAccess, signed } from "../../http/request-auth.vibe"
+import { recheckAccess, signed } from "../../http/request-auth.vibe"
 import { json, type Route, type RouteContext } from "../../http/routes.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
 import { readGrantStatus, useOwnedMailReadGrant } from "./grant-access.vibe"
@@ -168,7 +168,7 @@ effect function historyRoute(context: RouteContext) {
     if (failure._tag === "Refused" && failure.refusal.code === "NotFound") return undefined
     throw failure
   }
-  try recheckServiceAccess(context.request.headers.authorization, owner)
+  try recheckAccess(context.request.headers.authorization, owner, "ServiceAccess")
   const grantCurrent = status !== undefined && status.connected && status.connectionId === grant.connectionId &&
     status.identity?.id === grant.subject && status.grantedCapabilities.includes("google.gmail.triage")
   const answer = historyAnswer({ ...observed.read, grantCurrent })

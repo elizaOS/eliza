@@ -552,38 +552,3 @@ pure def stepOneRefreshInFlight(before: DeviceCredential, via: str, after: Devic
 pure def alwaysRefreshWaitersAreCounted(s: DeviceCredential): bool = isRefreshing(s) implies waitersOf(refreshOf(s.session)) >= 0
 pure def sometimesReadersShareOneRefresh(s: DeviceCredential): bool = waitersOf(refreshOf(s.session)) >= 1
 ```
-
-## Story: Keep my key fresh without signing in again
-
-> As a person signed in on this device, I want the device to replace my key
-> before it runs out, without asking me, for as long as the cloud renews my
-> sign-in, so that my agent never stops because a key expired.
-
-### A renewal starts only for the active key in its last ten days, and runs as a sign-in that keeps that key until its successor is acknowledged
-
-The shell sends `POST /api/v1/app-auth/mobile/renew` with the active key
-and the connect body of the client's registration (its sign-in return, an S256
-challenge and a state), then exchanges and acknowledges the code it gets as
-for a sign-in (`tokenAnswered`, `acknowledged`): the successor replaces the
-key, is announced once, and the replaced key leaves with a duty naming the
-successor. A refused or unanswered renewal ends like a refused sign-in and
-keeps the active key; a `401` with a credential reason is also reported as
-`rejected` for the key, as any other request's. The shell asks once per
-start for each key, so a closed renewal window is not asked again until the
-next start; after the window the key expires and a new sign-in is needed.
-
-```quint
-pure val renewalLead: Millis = 10 * millisPerDay
-pure def renewalDue(s: DeviceCredential): bool = {
-  val c = s.custody
-  match c { | Active(a) => s.now >= a.keyExpiresAt - renewalLead and s.now < a.keyExpiresAt | _ => false }
-}
-pure def canBeginRenewal(s: DeviceCredential): bool = s.attempt == NoAttempt and renewalDue(s)
-pure def beginRenewal(s: DeviceCredential): DeviceCredential =
-  { ...s, generation: s.generation + 1, attempt: Exchanging({ attempt: s.generation + 1 }) }
-pure val weight_beginRenewal = 2
-pure def stepARenewalKeepsTheActiveKey(before: DeviceCredential, via: str, after: DeviceCredential): bool =
-  via == "beginRenewal" implies (after.custody == before.custody and after.duties == before.duties and after.session == before.session)
-pure def sometimesKeyRenewedInPlace(s: DeviceCredential): bool =
-  activeVersion(s) >= 2 and s.generation >= 2 and s.duties.some(d => d.successor == credentialIdOf(s) and d.successor != "")
-```

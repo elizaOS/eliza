@@ -36,7 +36,6 @@ lemma revokeAnswered_ensures(s: DeviceCredential, version: int, reply: RevokeRep
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepALeaseLeavesOnlyWithItsDuty(s, "revokeAnswered", revokeAnswered(s, version, reply)))
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepRestartKeepsCustody(s, "revokeAnswered", revokeAnswered(s, version, reply)))
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepOneRefreshInFlight(s, "revokeAnswered", revokeAnswered(s, version, reply), []))
-  ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepARenewalKeepsTheActiveKey(s, "revokeAnswered", revokeAnswered(s, version, reply)))
 {
   if inv(s) && canRevokeAnswered(s, version) {
     var after := revokeAnswered(s, version, reply);
@@ -81,7 +80,6 @@ lemma elapse_ensures(s: DeviceCredential, ms: int)
   ensures (inv(s) ==> canElapse(s, ms) ==> stepALeaseLeavesOnlyWithItsDuty(s, "elapse", elapse(s, ms)))
   ensures (inv(s) ==> canElapse(s, ms) ==> stepRestartKeepsCustody(s, "elapse", elapse(s, ms)))
   ensures (inv(s) ==> canElapse(s, ms) ==> stepOneRefreshInFlight(s, "elapse", elapse(s, ms), []))
-  ensures (inv(s) ==> canElapse(s, ms) ==> stepARenewalKeepsTheActiveKey(s, "elapse", elapse(s, ms)))
 {
   if inv(s) && canElapse(s, ms) {
     var after := elapse(s, ms);

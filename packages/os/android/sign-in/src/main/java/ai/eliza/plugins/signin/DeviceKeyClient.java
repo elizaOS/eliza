@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
@@ -29,7 +29,6 @@ public final class DeviceKeyClient {
   public static final String CONNECT = "/api/v1/app-auth/connect";
   public static final String TOKEN = "/api/v1/app-auth/mobile/token";
   public static final String ACK = "/api/v1/app-auth/mobile/ack";
-  public static final String RENEW = "/api/v1/app-auth/mobile/renew";
   public static final String REVOKE = "/api/v1/api-keys/current";
   static final String RENEWED_CREDENTIAL = "X-Renewed-Credential-Id";
   public static final String LEASE = "/api/v1/app-auth/mobile/lease";
@@ -98,19 +97,11 @@ public final class DeviceKeyClient {
   }
 
   public Answer<Grant> connect(String sessionToken, Binding binding, String state, String codeChallenge, String deviceName) {
-    return grant(CONNECT, sessionToken, binding, state, codeChallenge, deviceName);
-  }
-
-  public Answer<Grant> renew(String secret, Binding binding, String state, String codeChallenge, String deviceName) {
-    return grant(RENEW, secret, binding, state, codeChallenge, deviceName);
-  }
-
-  private Answer<Grant> grant(String path, String bearer, Binding binding, String state, String codeChallenge, String deviceName) {
     StringBuilder body = binding(binding).append(",\"flow\":\"mobile_pkce\",\"state\":").append(CredentialJson.quote(state))
       .append(",\"codeChallenge\":").append(CredentialJson.quote(codeChallenge))
       .append(",\"codeChallengeMethod\":\"").append(CODE_CHALLENGE_METHOD).append('"');
     if (deviceName != null) body.append(",\"deviceName\":").append(CredentialJson.quote(deviceName));
-    return ask("POST", path, bearer, body.append('}').toString(), 200,
+    return ask("POST", CONNECT, sessionToken, body.append('}').toString(), 200,
       answer -> new Grant(CredentialJson.text(answer, "code"), instant(answer, "expiresAt")));
   }
 

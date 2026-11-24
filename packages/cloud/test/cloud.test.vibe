@@ -4220,7 +4220,6 @@ module node {
   import { mimeBoundaryPayload } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
   import { registerClients, workerBindings } from "./support/worker.ts"
-  import { secrets, testProfile } from "./support/profile.ts"
 
   export function forwardedHref(script: string, html: string, address: string): string {
     const attributes: Record<string, string> = {
@@ -4495,7 +4494,7 @@ module node {
       const otherRedirect = web + "/other/auth/callback"
       const otherRegistration = { clientId: otherClient, androidPackage: otherClient, environment: "staging", displayName: "Other", signInReturn: otherRedirect,
         billingReturn: web + "/other/billing", credentialTtlMs: 86400000, certFingerprints: [Array(32).fill("BB").join(":")], enabled: true }
-      await registerClients(fixture.db, [attachmentClient, otherRegistration])
+      await registerClients(fixture.db, [attachmentClient])
       const ownDevice = await device(owner.account.id)
       const otherDevice = await device(other.account.id)
       const env = {
@@ -4518,8 +4517,10 @@ module node {
         await offersMailLease(env),
         await offersMailLease(withoutLeaseKey),
         await offersMailLease({ ...env, DEVICE_LEASE_SEAL_KEY: "invalid" }),
-        await offersMailLease(anotherRegistration, otherClient, otherRedirect),
       ]
+      await registerClients(fixture.db, [otherRegistration])
+      leaseOffers.push(await offersMailLease(anotherRegistration, otherClient, otherRedirect))
+      await fixture.db.query("DELETE FROM native_clients WHERE client_id = $1", [otherClient])
       const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
         headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
       }), env)
@@ -4788,7 +4789,7 @@ module node {
       const calendarBody = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String,
         events: Schema.Array(Schema.Struct({ externalId: Schema.String, title: Schema.String })) }))(await tabletCalendar.json())
       const deviceAndCookie = await readTablet(mailPath, { ...webHeaders, ...bearerHeaders(tablet.token) })
-      const forbiddenWrite = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/trash", {
+      const forbiddenWrite = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/operations", {
         method: "POST", headers: { ...webHeaders, ...tabletHeaders, "content-type": "application/json" }, body: "{}",
       }), env)
       const renewal = Schema.Struct({ token: Schema.String, credentialId: Schema.String })
@@ -4799,17 +4800,13 @@ module node {
       const confirmedReplacement = await deviceOperation("ack", {}, bearerHeaders(replacement.token))
       const closedLease = await deviceOperation("revoke", {}, bearerHeaders(pair.refresh))
       const afterSignOut = [await readTablet(mailPath, tabletHeaders), await readTablet(calendarPath, tabletHeaders)]
-      const stagingProfile = testProfile(api)
-      const fixtureProfile = { ...stagingProfile, environments: { ...stagingProfile.environments, staging: {
-        ...stagingProfile.environments.staging, api, web, databaseIdentity: digest, firstPartyOrigins: [web],
-      } } }
       const mobile = (path: string, method: "POST" | "DELETE", data: object, headers: Record<string, string> = {}) =>
         worker.fetch(new Request(api + "/api/v1/app-auth/" + path, {
           method, headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(data),
-        }), { ...secrets, ...env, CLOUD_PROFILE: JSON.stringify(fixtureProfile) })
+        }), env)
       const mobileBinding = { clientId, environment: "staging", redirectUri }
       const state = "q".repeat(43)
-      const begin = await mobile("connect", "POST", { ...mobileBinding, state, codeChallenge: challenge, codeChallengeMethod: "S256" }, webHeaders)
+      const begin = await mobile("connect", "POST", { ...mobileBinding, state, codeChallenge: challenge, codeChallengeMethod: "S256" }, bearerHeaders(owner.access))
       const { code } = Schema.decodeUnknownSync(Schema.Struct({ code: Schema.String }))(await begin.json())
       const mint = await mobile("mobile/token", "POST", { ...mobileBinding, grantType: "authorization_code", code, state, codeVerifier: verifier })
       const official = Schema.decodeUnknownSync(Schema.Struct({ credentialId: Schema.String, secret: Schema.String, lease: Schema.Struct({ refresh: Schema.String }) }))(await mint.json())
@@ -4919,7 +4916,7 @@ it.live('Read complete mail text, open the selected named attachment, watch for 
         renewal: [200, 200, true, true, 204],
         mail: [200, true, "hello"],
         calendar: [200, true, [{ externalId: "fixture-appointment", title: "Library visit" }]],
-        refused: [403, 401, 204, 401, 401],
+        refused: [403, 403, 204, 401, 401],
       },
       text: ["mail-whole", true, true, "Preview only",
         { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, 502],

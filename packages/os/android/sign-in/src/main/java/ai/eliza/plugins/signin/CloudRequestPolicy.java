@@ -259,7 +259,7 @@ public final class CloudRequestPolicy {
 
   private static DeviceRoute keyed(Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.KEY_OR_SESSION, List.of(header)); }
 
-  private static DeviceRoute mailed(Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.MAIL, List.of(header)); }
+  private static DeviceRoute sessionHeaders(Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.SESSION, List.of(header)); }
 
   private static List<DeviceRoute> deviceRoutes() {
     Method get = Method.GET, post = Method.POST, patch = Method.PATCH, delete = Method.DELETE;
@@ -344,9 +344,9 @@ public final class CloudRequestPolicy {
       keyed(get, api("maps", "tiles", ":z", ":x", ":y"), IDEMPOTENCY_KEY),
       route(get, google("status"), mail),
       route(get, google("accounts"), mail),
-      route(post, google("connect", "initiate"), mail),
+      route(post, google("connect", "initiate"), session),
       route(post, google("connect", "native"), key),
-      route(post, google("disconnect"), mail),
+      route(post, google("disconnect"), session),
       route(get, google("gmail", "triage"), mail),
       route(get, google("gmail", "search"), mail),
       route(get, google("gmail", "read"), mail),
@@ -356,14 +356,14 @@ public final class CloudRequestPolicy {
       route(get, google("gmail", "inbox-v1", "attachment"), mail),
       route(get, google("gmail", "inbox-v1", "drafts"), mail),
       route(get, google("gmail", "inbox-v1", "draft"), mail),
-      route(post, google("gmail", "inbox-v1", "operations"), mail),
-      route(post, google("gmail", "inbox-v1", "operations", ":requestId", "dispatch"), mail),
-      route(get, google("gmail", "inbox-v1", "operations", ":requestId"), mail),
+      route(post, google("gmail", "inbox-v1", "operations"), session),
+      route(post, google("gmail", "inbox-v1", "operations", ":requestId", "dispatch"), session),
+      route(get, google("gmail", "inbox-v1", "operations", ":requestId"), session),
       route(get, google("calendar", "calendars"), mail),
       route(get, google("calendar", "feed"), mail),
       route(get, google("calendar", "events", ":eventId"), mail),
-      mailed(post, google("calendar", "events"), IDEMPOTENCY_KEY),
-      mailed(patch, google("calendar", "events", ":eventId"), IF_MATCH),
-      mailed(delete, google("calendar", "events", ":eventId"), IF_MATCH));
+      sessionHeaders(post, google("calendar", "events"), IDEMPOTENCY_KEY),
+      sessionHeaders(patch, google("calendar", "events", ":eventId"), IF_MATCH),
+      sessionHeaders(delete, google("calendar", "events", ":eventId"), IF_MATCH));
   }
 }

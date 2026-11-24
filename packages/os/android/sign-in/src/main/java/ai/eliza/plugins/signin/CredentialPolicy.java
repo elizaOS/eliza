@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
 package ai.eliza.plugins.signin;
 
 import java.util.ArrayList;
@@ -15,7 +15,6 @@ public final class CredentialPolicy {
   public static final int SIGN_OUT_ATTEMPTS = 3;
   public static final int RESET_ATTEMPTS = 1;
   public static final int START_ATTEMPTS = 1;
-  public static final long RENEWAL_LEAD_MS = 10 * 86_400_000L;
 
   public record Account(String userId, String organizationId) {
     public static final Account NONE = new Account("", "");

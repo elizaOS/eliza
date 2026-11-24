@@ -155,7 +155,7 @@ function browserSession(account: AccountRow, access: string, refresh: string, se
   }
 }
 
-effect function openSignInFamily(db: Client, identity: Identity) {
+export effect function openSignInFamily(db: Client, identity: Identity) {
   const now = try Clock.currentTimeMillis
   const account = try accountForIdentity(db, identity, now)
   const epoch = Number(account.sessions_revoked_before)
