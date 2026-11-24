@@ -2,11 +2,11 @@
 import { offeredOnlyWhere } from "@elizaos/agent"
 import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import { promoteSubactionsToActions, type Plugin } from "@elizaos/core"
-import { browserAction, historyAsCommand } from "./native-browser.vibe"
+import { browserAction, browserView, historyAsCommand } from "./native-browser.vibe"
 import { browserProposalFamily } from "./proposal.vibe"
 
 export { BROWSER_VIEW, NativeBrowser, browserAction, browserViewAsker, historyActionResult, viewNativeBrowser } from "./native-browser.vibe"
-export type { BrowserFailureCode, BrowserViewAsked, BrowserViewAsker, BrowserViewGrant, BrowserViewWait, HistoryOutcome, HistoryRequest } from "./native-browser.vibe"
+export type { BrowserFailureCode, BrowserViewAsked, BrowserViewAsker, BrowserViewWait, HistoryOutcome, HistoryRequest } from "./native-browser.vibe"
 export { BROWSER_PROPOSAL_TYPES, browserProposalFamily } from "./proposal.vibe"
 
 const browserActions = promoteSubactionsToActions(browserAction)
@@ -16,6 +16,7 @@ export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description: "Authenticated native device browser control",
   actions: [...browserActions],
+  views: [browserView],
   init: (_config, runtime) => runPromise(registerDeviceProposalFamily(runtime, browserProposalFamily)),
 }
 

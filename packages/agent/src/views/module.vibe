@@ -25,7 +25,7 @@ function feedsOf(publishEvent: PublishEvent, viewFeeds: ViewFeeds): ViewFeedPort
 function hostService(views: ViewHost.Shape) {
   return class ViewHostService extends Service {
     static override serviceType = viewHostServiceType
-    override capabilityDescription = "The owner's declared views, the navigations and questions the agent waits on, and the view each renderer shows"
+    override capabilityDescription = "The owner's declared views, and the navigations and questions the agent waits on"
     readonly views = views
 
     static override start(runtime: IAgentRuntime): Promise<Service> {

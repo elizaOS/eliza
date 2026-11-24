@@ -127,7 +127,10 @@ forward, reload and stop are offered only as the Browser history control,
 and the BROWSER command is not offered on that turn. The BROWSER command,
 bound to the tab the turn observed, answers a history move only on a turn
 whose device negotiated no history control and whose mounted browser takes
-agent commands. Otherwise no history move is offered.
+agent commands. Otherwise no history move is offered. The Browser declares
+its graphical view, `browser` at `/browser`, with the `browser-command`
+capability, so the agent's [views](../agent/views.md) admit the command's
+ask.
 
 ```quint
 type HistoryHome = HistoryAsControl | HistoryAsCommand | NoHistoryMove
