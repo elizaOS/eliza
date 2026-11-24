@@ -73,8 +73,15 @@ lemma uninstallModel_ensures(s: LocalModels, modelId: string)
   ensures (inv(s) ==> canUninstallModel(s, modelId) ==> alwaysAssignedModelsAreInstalled(uninstallModel(s, modelId)))
   ensures (inv(s) ==> canUninstallModel(s, modelId) ==> stepOneAssignmentPerChange(s, "uninstallModel", uninstallModel(s, modelId)))
   ensures (inv(s) ==> canUninstallModel(s, modelId) ==> stepUnreadableAssignmentsAreKept(s, uninstallModel(s, modelId)))
+  ensures (inv(s) ==> canUninstallModel(s, modelId) ==> stepUnreadableModelsStayUnreadable(s, uninstallModel(s, modelId)))
 {
   if inv(s) && canUninstallModel(s, modelId) {
     LocalUninstallKeeps(s, modelId);
+    forall other | other in catalog && modelOf(s, other).install == Unreadable
+      ensures modelOf(uninstallModel(s, modelId), other).install == Unreadable
+    {
+      assert other != modelId;
+      LocalOtherModelKept(s, modelId, other);
+    }
   }
 }
