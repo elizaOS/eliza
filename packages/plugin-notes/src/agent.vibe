@@ -1,12 +1,12 @@
-// spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note's times in the owner's zone when the turn knows it"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "The proof of erase comes from the service's own verifier, else the host's verifier found when the cleanup is acknowledged, and only a literal true is proof"; spec/notes/organize.md, "A folder is named by a bounded name that is unique in the device's list"; spec/notes/read.md, "Story: Ask about or change a phone note in my own words"
+// spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note's times in the owner's zone when the turn knows it"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/records.md, "A read by a title no saved note has cites no other note and asks which one"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "The proof of erase comes from the service's own verifier, else the host's verifier found when the cleanup is acknowledged, and only a literal true is proof"; spec/notes/organize.md, "A folder is named by a bounded name that is unique in the device's list"; spec/notes/read.md, "Story: Ask about or change a phone note in my own words"
 import { readTurnContext, type LocalRoute, type RouteInput } from "@elizaos/agent"
 import { type AgentModule, type AgentPlugin, type ModuleFactory, registerDeviceProposalFamily } from "@elizaos/agent-host"
 import type { Action, ActionResult, EffectReceipt, IAgentRuntime, Memory, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
-import { displayZoneSource, emptyCollectionObserved, localTimesShown, notesCapability, receiptOperation, receiptOutcome, refusalKind, type NotesCapability, type NotesRefusal, type NotesWrite } from "../gen/notes__records.effect.vibe"
+import { displayZoneSource, emptyCollectionObserved, localTimesShown, notesCapability, receiptOperation, receiptOutcome, refusalKind, titledRead, type NotesCapability, type NotesRefusal, type NotesWrite } from "../gen/notes__records.effect.vibe"
 import { sharedTitleIds, type ModelPick, type NoteTarget, type NotesQuery } from "./collection.vibe"
 import { notesDeviceFamily } from "./device-proposals.vibe"
 import {
-  json, findNoteFolder, noteFolderId, readNoteFolders, noteIdPattern, notesContext, projectNoteForModel, reconstructNoteContent, type NotesSnapshot, type StickyNote,
+  json, findNoteFolder, noteFolderId, readNoteFolders, noteIdPattern, noteLimits, notesContext, projectNoteForModel, reconstructNoteContent, type NotesSnapshot, type StickyNote,
 } from "@elizaos/plugin-notes-client"
 import { notesNamedIn, ownerRequestText } from "./lookup.vibe"
 import {
@@ -225,6 +225,10 @@ const idParameter = (description: string) => ({ name: "noteId", description, req
 const contentParameter = (description: string) => ({ name: "content", description, required: false, schema: { type: "string" as const, maxLength: 20_241 } })
 const revisionParameter = { name: "expectedRevision", description: "notesRevision of the complete read this edit was prepared from.", required: false, schema: { type: "integer" as const, minimum: 0 } }
 
+const ownerChoice = (code: "NOTES_AMBIGUOUS_NOTE" | "NOTES_TITLE_NOT_FOUND", offered: readonly StickyNote[], candidates: readonly object[]) => ({
+  actionName: "NOTES_GET", code, awaitingUserInput: true, requiresInput: true, candidateIds: offered.map((note) => note.id), candidates: [...candidates],
+})
+
 const missingTarget = (target: "missing" | "both"): ActionResult => ({
   success: false,
   text: target === "both" ? "Identify the note by noteId or by content, not both." : "Identify the note by noteId or by its title or text.",
@@ -284,16 +288,31 @@ function readAction(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_GET",
       similes: ["NOTES_GET_NOTE"],
-      description: "Read one current note by exact noteId, or by its title or text. Several distinct matches return candidates for the owner's choice.",
-      parameters: [idParameter("Exact note ID."), contentParameter("The note's title or unique text.")],
+      description: "Read one current note by exact noteId, by the title the owner named it by, or by text it contains; give exactly one. A title no saved note has reads nothing and asks the owner which note they mean, so never cite another note in its place. Several distinct matches return candidates for the owner's choice.",
+      parameters: [
+        idParameter("Exact note ID."),
+        { name: "title", description: "The title the owner named the note by, as they said it.", required: false, schema: { type: "string", maxLength: 240 } },
+        contentParameter("Unique text the note contains, when the owner did not name its title."),
+      ],
       run: effect (params, message) => {
-        const target = targetOf(params, "noteId", "content")
-        if (typeof target === "string") return missingTarget(target)
-        const { notes: found, revision } = try notes.list("id" in target ? { noteId: target.id } : { content: target.value })
+        const title = text(params, "title")
+        const target = title === undefined ? targetOf(params, "noteId", "content")
+          : text(params, "noteId") !== undefined || text(params, "content") !== undefined ? "both"
+          : { selector: "title" as const, value: title }
+        if (typeof target === "string") return target === "both" ? { success: false, text: "Identify the note by exactly one of noteId, title or content." } : missingTarget(target)
+        const { notes: found, revision } = try notes.list("id" in target ? { noteId: target.id } : target.selector === "title" ? { title: target.value } : { content: target.value })
         const first = found[0]
+        if (!("id" in target) && target.selector === "title" && titledRead(found.length) === "AsksWhichNote") {
+          const mentioning = (try notes.list({ content: target.value })).notes
+          return {
+            success: false,
+            text: `No saved note is titled ${json(target.value.trim())}${mentioning.length === 0 ? "" : `; notes that mention it: ${mentioning.map((note) => json(note.title)).join(", ")}`}. Ask the owner which note to use before citing another one.`,
+            data: ownerChoice("NOTES_TITLE_NOT_FOUND", mentioning, mentioning.map((note) => ({ id: note.id, title: note.title }))),
+          }
+        }
         if (first === undefined) return { success: false, text: "No current note matches.", data: { code: "NOTES_NOT_FOUND" } }
         if (found.length > 1) {
-          return { success: false, text: `Several notes match: ${found.map((candidate) => noteRow(candidate)).join(", ")}. Ask which one.`, data: { actionName: "NOTES_GET", code: "NOTES_AMBIGUOUS_NOTE", candidateIds: found.map((candidate) => candidate.id) } }
+          return { success: false, text: `Several notes match: ${found.map((candidate) => noteRow(candidate)).join(", ")}. Ask which one.`, data: ownerChoice("NOTES_AMBIGUOUS_NOTE", found, found.map(projectNoteForModel)) }
         }
         const read = noteRead(first, revision, ownerZone(message))
         return { ...read, data: { ...read.data, actionName: "NOTES_GET" } }
@@ -307,10 +326,11 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_CREATE",
       writes: true,
-      description: "Create the note the owner asked to save, copying the supplied text exactly: its punctuation, whitespace and line breaks. Supplied text is literal content, not a suggestion to expand, so never add a checklist, task, summary, heading or inferred action item the owner did not ask for; actionable prose stays prose. Quotation marks that only delimit a supplied title or body are not part of it; quotes inside the content stay. If an unquoted trailing phrase could be note content or an instruction about the app, ask which before writing. Compose or reformat only when asked. A separately supplied title goes in content and the body in body. Creating a note does not open Notes.",
+      description: `Create the note the owner asked to save, copying the supplied text exactly: its punctuation, whitespace and line breaks. Supplied text is literal content, not a suggestion to expand, so never add a checklist, task, summary, heading or inferred action item the owner did not ask for; actionable prose stays prose. A new checklist the owner asks for is a creation, never items added to a checklist already saved: put the title the owner gave it alone in content and the owner's items, in their order, in checklist, at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it. Quotation marks that only delimit a supplied title or body are not part of it; quotes inside the content stay. If an unquoted trailing phrase could be note content or an instruction about the app, ask which before writing. Compose or reformat only when asked. A separately supplied title goes in content and the body in body. Creating a note does not open Notes.`,
       parameters: [
         { name: "content", description: "The exact content to save; the first line is its label.", required: true, schema: { type: "string", maxLength: 20_241 } },
         { name: "body", description: "Optional exact body when the owner supplied a separate title in content.", required: false, schema: { type: "string" } },
+        { name: "checklist", description: `Only for a new checklist the owner asked for: each item as the owner said it, in order, at most ${noteLimits.checklistItems} items. content is then the title the owner gave the checklist, alone, with no body.`, required: false, schema: { type: "array", items: { type: "string", maxLength: noteLimits.checklistItem } } },
         { name: "color", description: "Optional color: yellow, green, rose or slate.", required: false, schema: { type: "string", enum: ["yellow", "green", "rose", "slate"] } },
         { name: "creationId", description: "A client's own ID for this one creation; a repeat returns the note it made.", required: false, schema: { type: "string", maxLength: 200 } },
       ],
@@ -318,7 +338,8 @@ function writeActions(notes: NotesCollection): Action[] {
         const body = typeof params.body === "string" ? params.body : undefined
         const content = typeof params.content === "string" ? params.content : undefined
         const created = try notes.create({
-          ...(body === undefined ? { content } : { title: content ?? "", body }),
+          ...(body !== undefined ? { title: content ?? "", body } : content === undefined ? {} : { content }),
+          ...(params.checklist === undefined ? {} : { checklist: params.checklist }),
           ...(params.color === undefined ? {} : { color: params.color }),
           ...(params.creationId === undefined ? {} : { creationId: params.creationId }),
         })
@@ -329,7 +350,7 @@ function writeActions(notes: NotesCollection): Action[] {
       name: "NOTES_UPDATE",
       writes: true,
       similes: ["NOTES_PATCH", "NOTES_APPEND", "NOTES_EDIT"],
-      description: "Change one note named by noteId or content, never both, with one edit form: textEdit {field,oldText,newText} replaces one unique current match and needs no revision; textEdit {action:append,field:body,text} appends that exact suffix; textEdit {action:append,field:item,text} adds one list item in the note's own form; authoredEdit edits a checklist, transcript, summary, action or clip entry; replacementContent, title, body or color replace fields. Every form but the literal replacement needs expectedRevision from the complete read it was prepared from, never a guessed one, and any Notes change since needs a fresh read. Pick the note the owner means from the saved notes, whatever words they used for it, and pass its exact noteId. When more than one note could be meant, read them with NOTES_GET or NOTES_LIST and ask which one instead: a guessed ID for a title other notes share changes nothing until the owner has chosen, and a repaired call never replaces an ambiguous title with a guessed ID. An append keeps every existing character; a replaced body leaves the title as it is. Prefer the literal replacement for a word or phrase substitution. Never answer a requested edit with a read.",
+      description: "Change one note named by noteId or content, never both, with one edit form: textEdit {field,oldText,newText} replaces one unique current match and needs no revision; textEdit {action:append,field:body,text} appends that exact suffix; textEdit {action:append,field:item,text} adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist); authoredEdit edits a checklist, transcript, summary, action or clip entry; replacementContent, title, body or color replace fields. Every form but the literal replacement needs expectedRevision from the complete read it was prepared from, never a guessed one, and any Notes change since needs a fresh read. Pick the note the owner means from the saved notes, whatever words they used for it, and pass its exact noteId. When more than one note could be meant, read them with NOTES_GET or NOTES_LIST and ask which one instead: a guessed ID for a title other notes share changes nothing until the owner has chosen, and a repaired call never replaces an ambiguous title with a guessed ID. An append keeps every existing character; a replaced body leaves the title as it is. Prefer the literal replacement for a word or phrase substitution. Never answer a requested edit with a read.",
       parameters: [
         idParameter("Exact note ID."),
         contentParameter("The existing note's title or unique text, to find it."),
