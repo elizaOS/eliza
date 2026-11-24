@@ -1,7 +1,7 @@
-// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Where I am is the place at my phone's recent position, and only its area when that position is rough"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone's position"; spec/maps/routing.md, "A route's destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "A place's location is shared only after the owner's own later yes to sharing that place"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"
+// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Where I am is the place at my phone's recent position, and only its area when that position is rough"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone's position"; spec/maps/routing.md, "A route's destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "A place's location is shared only after the owner's own later yes to sharing that place"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/routing.md, "The phone's Maps selection ID is only for a reviewed device read"
 import { readTurnContext, type AgentPlugin } from "@elizaos/agent"
 import { nearbyPositionUsable, pointRequest, roughPosition, searchAround, whereAnswer, type PhonePosition } from "../gen/maps__phonePosition.effect.vibe"
-import { aroundTheStart, coverageAnswer, placePick, sameLandmark, sharesLocation, type ShareDecision } from "../gen/maps__routing.effect.vibe"
+import { aroundTheStart, coverageAnswer, placePick, providerPlaceReference, sameLandmark, sharesLocation, type ShareDecision } from "../gen/maps__routing.effect.vibe"
 import { appendInteractionBlock, requireConfirmation, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import { appendMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
 import { MapsFailure, TravelMode, travelModes, type Coordinate, type Place } from "./client/contracts.vibe"
@@ -32,6 +32,38 @@ function parameters(options: unknown): Params {
 
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined
+}
+
+const selectionId = /^maps_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
+const pointingAtSelection = /^(?:it|there|that(?: one| place)?|(?:the )?selected place|the place on (?:my|the) map)[.!?]*$/iu
+
+function mapPlaceParameters(params: Params, operation: ChoiceOperation): { kind: "Params"; params: Params } | { kind: "Refused"; result: ActionResult } {
+  const fields = operation === "route" ? [["originPlaceId", "origin"], ["destinationPlaceId", "destination"]] as const
+    : [["placeId", operation === "navigation-start" ? "destination" : "query"]] as const
+  let resolved: Record<string, unknown> | undefined
+
+  for (const [idKey, nameKey] of fields) {
+    const id = text(params[idKey])
+    if (id === undefined || !selectionId.test(id)) continue
+    const name = text(params[nameKey]) ?? (operation === "navigation-start" ? text(params.query) : undefined)
+    const named = name !== undefined && !selectionId.test(name) && !pointingAtSelection.test(name)
+    const located = (operation === "place" && coordinatesOf(params) !== undefined)
+      || (nameKey === "origin" && params.useCurrentLocation === true)
+    if (providerPlaceReference(true, named || located) === "NameSelection") {
+      const owner = nameKey === "origin" ? "Which place should I start from?"
+        : nameKey === "destination" ? "Which destination should I use?" : "Which place should I use?"
+      return { kind: "Refused", result: {
+        success: false,
+        text: `The phone's selection is only available through a reviewed device read. Call this tool again with the place name or address from the conversation in ${nameKey}. Ask the owner if they did not name a place.`,
+        userFacingText: owner, verifiedUserFacing: true,
+        data: { code: "MAPS_SELECTION_HANDLE", executionStatus: "not_started", field: nameKey, coachingFailure: true, retryable: false },
+      } }
+    }
+    resolved ??= { ...params }
+    delete resolved[idKey]
+    if (!named) delete resolved[nameKey]
+  }
+  return { kind: "Params", params: resolved ?? params }
 }
 
 function travelModeOf(value: unknown): TravelMode | undefined {
@@ -452,7 +484,10 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       const answered = operation === undefined ? undefined : answeredChoice(runtime, message, Date.now())
       const chosen = answered !== undefined && answered.choice.operation === operation ? answered : undefined
       if (chosen !== undefined) closeChoice(runtime, message.roomId)
-      const params = chosen === undefined ? parameters(options) : { ...chosen.choice.params, [chosen.choice.field]: chosen.place.providerPlaceId }
+      const supplied = chosen === undefined ? parameters(options) : { ...chosen.choice.params, [chosen.choice.field]: chosen.place.providerPlaceId }
+      const checked = operation === undefined ? { kind: "Params" as const, params: supplied } : mapPlaceParameters(supplied, operation)
+      if (checked.kind === "Refused") return Promise.resolve(checked.result)
+      const { params } = checked
       const ask: Ask = (field, choices, asked = params) => {
         if (operation !== undefined) openChoice(runtime, message, { operation, field, options: choices, params: asked, askedAt: Date.now() })
       }

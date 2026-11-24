@@ -83,6 +83,24 @@ pure def lawNothingFoundIsNeverTaken(qualified: bool, matching: int, near: bool)
 pure def lawOneFittingResultIsTaken(found: int, qualified: bool, near: bool): bool = found > 0 implies placePick(found, qualified, 1, near) == TakePlace
 ```
 
+### The phone's Maps selection ID is only for a reviewed device read
+
+A phone selection ID cannot be sent to the Maps provider as a place ID.
+When a call has the name, address or an otherwise valid position, it
+uses that reference. When a call has only the selection ID, it tells the
+planner to retry using a place name from this conversation and makes no
+provider request. A previously asked choice still uses its picked
+provider place ID.
+
+```quint
+type PlaceReference = UseReference | DropSelection | NameSelection
+pure def providerPlaceReference(selection: bool, namedOrLocated: bool): PlaceReference =
+  if (not(selection)) UseReference else if (namedOrLocated) DropSelection else NameSelection
+pure def lawTheProviderNeverGetsASelectionId(namedOrLocated: bool): bool =
+  providerPlaceReference(true, namedOrLocated) != UseReference
+pure def lawASelectionAloneNeedsAName: bool = providerPlaceReference(true, false) == NameSelection
+```
+
 ### A route's destination that names no locality is taken from within 100 km of its start when any result is there
 
 A route's destination is searched around its starting place: when it
