@@ -8,9 +8,19 @@ import { readPublicPageSource } from "../src/bridges/page-source.vibe"
 import { scratch } from "./support/scratch.vibe"
 
 module node {
+  import { execFileSync } from "node:child_process"
   import { createServer, type Server } from "node:http"
   import type { AddressInfo } from "node:net"
+  import path from "node:path"
   import { Window } from "happy-dom"
+  import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
+
+  export async function nativeSessions(records: readonly unknown[]): Promise<unknown[]> {
+    const main = "ai.eliza.plugins.browsersurface.SessionRecordJourney"
+    const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+    const out = execFileSync(java, ["-cp", await orgJsonAdapterClasspath(main), main], { input: records.map((record) => JSON.stringify(record)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
+    return out.trim().split("\n").map((line): unknown => JSON.parse(line))
+  }
 
   export interface Site {
     readonly server: Server
@@ -68,7 +78,7 @@ module node {
     return run().then((ok) => ({ ok }), (failed: unknown) => ({ failed }))
   }
 }
-import { close, nativeRefusal, outcome, parseHtml, serve, type Page } from node
+import { close, nativeRefusal, nativeSessions, outcome, parseHtml, serve, type Page } from node
 
 const typed = (input: string, defaultProtocol: "http:" | "https:" = "https:") => parseBrowserAddressInput(input, { defaultProtocol })
 
@@ -125,7 +135,7 @@ it("Share only plain web addresses: one test for every feature that saves, reads
   ])
 })
 
-it.effect("Keep my normal tabs and history across restarts, and restore them only into an untouched new tab (spec/os/browser/tabHost/storage.md, \"Story: Keep my normal tabs and history across restarts\"; spec/os/browser/tabHost/storage.md, \"An address is saved only when it is a web address of at most 4,096 units, and bookmarked only over HTTPS\"; spec/os/browser/tabHost/storage.md, \"A saved session keeps the first valid row of each tab and address\"; spec/os/browser/tabHost/storage.md, \"A snapshot offers the codec at most eight normal tabs whose address is known\"; spec/os/browser/tabHost/storage.md, \"Story: Restore my tabs only when nothing is open\"; spec/os/browser/tabHost/storage.md, \"Saved tabs replace only an untouched single new tab, and otherwise only history is merged\")", () => effect {
+it.effect("Keep my normal tabs and history across restarts, and restore them only into an untouched new tab (spec/os/browser/tabHost/storage.md, \"Story: Keep my normal tabs and history across restarts\"; spec/os/browser/tabHost/storage.md, \"An address is saved only when it is a web address of at most 4,096 units, and bookmarked only over HTTPS\"; spec/os/browser/tabHost/storage.md, \"A saved session keeps the first valid row of each tab and address\"; spec/os/browser/tabHost/storage.md, \"A visit time is kept only for a kept history address, as a positive whole number of milliseconds\"; spec/os/browser/tabHost/storage.md, \"A snapshot offers the codec at most eight normal tabs whose address is known\"; spec/os/browser/tabHost/storage.md, \"Story: Restore my tabs only when nothing is open\"; spec/os/browser/tabHost/storage.md, \"Saved tabs replace only an untouched single new tab, and otherwise only history is merged\")", () => effect {
   const asked: string[] = []
   const pages: Readonly<Record<string, { url?: string; title?: string }>> = {
     mail: { url: "https://user:pw@mail.example.test/", title: "Mail" },
@@ -179,11 +189,30 @@ it.effect("Keep my normal tabs and history across restarts, and restore them onl
   })
   assert.deepStrictEqual([damaged.history.length, damaged.history[0], damaged.tabs.map((tab) => tab.id), damaged.cur], [100, "https://example.test/a", many.slice(0, 8).map((tab) => tab.id), ""])
   assert.deepStrictEqual(normalizeBrowsing("garbled"), { history: [], tabs: [], cur: "" })
+  const visited = { "https://news.example.test/today": 1_700_000_000_000 }
+  const timed = browsingSnapshot(
+    { tabs: [], visits: saved.history, cur: "", visitTimes: { ...visited, "http://docs.example.test/guide": 1.5, "https://elsewhere.example.test/": 9, "javascript:alert(1)": 7 } },
+    () => undefined,
+  )
+  assert.deepStrictEqual(timed, { history: saved.history, tabs: [], cur: "", visitTimes: visited })
+  assert.deepStrictEqual(normalizeBrowsing({ ...timed, visitTimes: { "http://docs.example.test/guide": 0 } }), { history: saved.history, tabs: [], cur: "" })
+  assert.deepStrictEqual(restoreBrowsing(timed, { visits: ["https://start.example.test/"] }, false), {
+    visits: ["https://start.example.test/", ...saved.history],
+    restored: [],
+    visitTimes: visited,
+  })
+  const untimed = { ...timed, visitTimes: { "http://docs.example.test/guide": 0 } }
+  const native = try tryPromise(() => nativeSessions([
+    { ...timed, visitTimes: { ...visited, "http://docs.example.test/guide": 1.5, "https://elsewhere.example.test/": 9, "javascript:alert(1)": 7 } },
+    untimed,
+    { ...untimed, visitTimes: { "http://docs.example.test/guide": 9_007_199_254_740_991, "https://news.example.test/today": 9_007_199_254_740_992 } },
+  ]))
+  assert.deepStrictEqual(native, [timed, normalizeBrowsing(untimed), { ...normalizeBrowsing(untimed), visitTimes: { "http://docs.example.test/guide": 9_007_199_254_740_991 } }])
   assert.deepStrictEqual(
     [savedBrowserUrl(`https://example.test/${"a".repeat(4075)}`), savedBrowserUrl(`https://example.test/${"a".repeat(4076)}`), bookmarkBrowserUrl("https://example.test/"), bookmarkBrowserUrl("http://example.test/")],
     [true, false, true, false],
   )
-}.pipe(Effect.provide(NodeServices.layer)))
+}.pipe(Effect.provide(NodeServices.layer)), 180_000)
 
 it.live("Know before I ask whether this device can read a page privately: one shared query, and only a definite answer is kept (spec/os/browser/tabHost/reading.md, \"Story: Know before I ask whether this device can read a page privately\"; spec/os/browser/tabHost/reading.md, \"One native support query is shared and only a definite answer is remembered\")", () => effect {
   const answers: unknown[] = ["fail", { available: "yes" }, { available: false }]

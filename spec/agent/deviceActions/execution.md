@@ -216,7 +216,10 @@ When the agent holds the request as uncertain, the owner's review is sent
 as the `SendReview` effect for the same attempt, and only as the journal's
 evidence allows: applied for a saved applied result, not applied for a
 saved no-effect result, and unresolved only while the result is unknown,
-so a review never says more than the receipt would. Which operations may
+so a review never says more than the receipt would. An applied review
+carries the saved evidence with it, the attempt's operation id and the
+result the journal kept, so the agent can answer from it as from an
+applied receipt ([device requests](./index.md)). Which operations may
 stay unresolved is the operations' rule.
 
 ```quint

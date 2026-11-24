@@ -75,3 +75,24 @@ pure def lawSupersededDerivedSaveIsANewChange(r: SaveRequest): bool =
 pure def lawFullOwnerAddsNoPlace(r: SaveRequest): bool =
   (not(r.known) and not(r.existingPlace) and r.places >= agentPlacesLimit) implies saveCourse(r) == RefuseFull
 ```
+
+### A destination may be a place saved with the assistant, or coordinates the owner names
+
+Directions from here and a route between places take their destination
+as a place saved with the assistant, by its id in the saved list; as a
+provider place the owner chose; as coordinates, shown under the name the
+owner gave or the coordinates themselves; or by name. A saved id comes
+first and is never replaced by another reading: one that is no longer in
+the list is said, and nothing else is looked up. Coordinates outside the
+valid range are refused. The saved list names only the places saved with
+the assistant and says that places kept only on the phone's Maps screen
+are not included.
+
+```quint
+type DestinationSource = FromSavedPlace | FromPlaceId | FromCoordinates | FromName | NoDestination
+pure def destinationSource(savedId: bool, placeId: bool, point: bool, named: bool): DestinationSource =
+  if (savedId) FromSavedPlace else if (placeId) FromPlaceId else if (point) FromCoordinates else if (named) FromName else NoDestination
+pure def lawASavedIdIsNeverReadAnotherWay(placeId: bool, point: bool, named: bool): bool =
+  destinationSource(true, placeId, point, named) == FromSavedPlace
+pure def lawNothingGivenIsNoDestination(savedId: bool): bool = (destinationSource(savedId, false, false, false) == NoDestination) iff not(savedId)
+```

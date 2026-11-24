@@ -119,6 +119,8 @@ import { assert, it } from "@effect/vitest"
 import { text } from "./support/cloud-fake.ts"
 import { call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import { sendRaw, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+import { triggersModuleName } from "../src/schedule/trigger-routes.vibe"
 
 const viewsModule = "@elizaos/agent/views"
 
@@ -132,9 +134,11 @@ effect function created(agent: InProcess, title: string) {
   })
 }
 
-it.live(`Hear conversation, view, transcript and notice events over the socket, and close a slow reader (spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Stop hearing when I leave"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open")`, effect () => {
+it.live(`Hear conversation, view, transcript and notice events over the socket, and close a slow reader (spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Stop hearing when I leave"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open"; spec/agent/schedule/triggers.md, "A delivered run tells the open screen its conversation changed and sends each reply it stored, and a run without its room tells nothing")`, effect () => {
   const probe = try Effect.try(() => viewProbe(viewsModule))
-  const agent = try startInProcess({ cloud: true, launch: { callerRole: "owner", load: [viewsModule] }, modules: probe.modules })
+  const triggers = builtinModuleFactories.get(triggersModuleName)
+  if (triggers === undefined) return try Effect.die(new Error("The triggers module is not built in"))
+  const agent = try startInProcess({ cloud: true, launch: { callerRole: "owner", load: [viewsModule, triggersModuleName] }, modules: new Map([...probe.modules, [triggersModuleName, triggers] as const]) })
   const { runtime } = agent.agent
   const path = agent.transport.kind === "socket" ? agent.transport.path : ""
   const token = agent.frame.token
@@ -150,6 +154,15 @@ it.live(`Hear conversation, view, transcript and notice events over the socket, 
   try Effect.sync(() => agent.cloud?.script(text("Hello from the agent.")))
   const sent = try call(agent, { method: "POST", path: `/api/conversations/${conversation}/messages`, body: { text: "Hello" } })
   const updated = try host("conversation-updated", () => nextEvent(chat, "conversation", "conversation-updated"))
+
+  const reminder = try call(agent, { method: "POST", path: "/api/triggers", body: {
+    kind: "prompt", displayName: "Water", instructions: "Remind me to drink water", timezone: "UTC", wakeMode: "inject_now", enabled: false,
+    triggerType: "cron", cronExpression: "* * * * *", deliveryConversationId: conversation,
+  } })
+  const reminderId = "json" in reminder ? (reminder.json as { trigger?: { id?: string } }).trigger?.id : undefined
+  try Effect.sync(() => agent.cloud?.script(text("Time for water.")))
+  const ranNow = try call(agent, { method: "POST", path: `/api/triggers/${reminderId ?? "unsaved"}/execute`, body: {} })
+  const proactive = try host("proactive-message", () => nextEvent(chat, "conversation", "proactive-message"))
 
   try Effect.try(() => {
     probe.interact("view-interact", { frame: "for-b" }, "screen-b")
@@ -191,6 +204,10 @@ it.live(`Hear conversation, view, transcript and notice events over the socket, 
     assert.deepStrictEqual(third, [{ id: "feed-3", ok: false, error: "busy" }])
     assert.strictEqual(statusOf(sent), 200)
     assert.strictEqual(updated?.stream, "conversation")
+    const told = proactive?.payload as { type?: string; conversationId?: string; message?: { role?: string; text?: string } } | undefined
+    assert.deepStrictEqual(
+      { saved: statusOf(reminder), ran: statusOf(ranNow), type: told?.type, conversationId: told?.conversationId, role: told?.message?.role, text: told?.message?.text },
+      { saved: 201, ran: 200, type: "proactive-message", conversationId: conversation, role: "assistant", text: "Time for water." })
     assert.strictEqual(interaction?.stream, "view-interact")
     assert.strictEqual(strayed, 0)
     assert.deepStrictEqual(published, [true, false])

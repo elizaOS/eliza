@@ -53,7 +53,7 @@ type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
 type StepIdentity = RequestAttempt({ key: str }) | ReceiptOperation({ key: str })
 type PlanStep = { outcome: StepOutcome, identity: StepIdentity }
 pure val maxPlanSteps = 8
-pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
+pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE", "RESTORE_CONTEXT")
 pure val unavailableNotice = "I can't do that from here, so it wasn't done."
 pure def offered(registered: Set[str], allowed: Set[str], formless: Set[str]): Set[str] =
   registered.intersect(allowed).exclude(messageServiceActions).exclude(formless)
@@ -268,13 +268,86 @@ pure def lawAHostNoticeIsNeverTheAgentsWords(row: HistoryRow): bool = (row.fromA
 pure def lawWhatWasSaidIsRead(row: HistoryRow): bool = not(row.hostNotice) implies readByTheModel(row)
 ```
 
+### A planner can restore the turn's deferred history once and runs no sibling action from that response
+
+When the planner has action tools, one fixed `RESTORE_CONTEXT` form follows
+the discovery tools, even when the turn has nothing to restore. It asks for
+a nonempty reason and accepts the scopes `history`, `providers` and `full`,
+with `full` as the default. The owner-turn planner can restore only the
+deferred dialogue already read for this conversation at the start of the
+turn. It does no live provider read. The answer quotes the captured rows
+after the existing history and says when there are older rows outside that
+read. It sends the newest complete deferred rows that fit within 12,000
+UTF-8 bytes and reports how many captured rows did not fit. A request with no available context, an invalid request or a second
+restore gets a corrective result. A response containing a restore runs no
+sibling action, sends no reply or cue from that response, and consumes one
+of the bounded planner calls.
+
+```quint
+type RestoreAnswer = RestoredHistory | RestoreUnavailable | RestoreInvalid
+pure def offersContextRestore(actions: int): bool = actions > 0
+pure def contextRestoreOf(validRestore: bool, deferredHistory: bool, restoredHistory: bool): RestoreAnswer =
+  if (not(validRestore)) RestoreInvalid
+  else if (deferredHistory and not(restoredHistory)) RestoredHistory
+  else RestoreUnavailable
+pure def admitsPlannerWork(restoreCalls: int): bool = restoreCalls == 0
+pure val maxRestoredHistoryBytes = 12000
+pure val restoreCallsValues = Set(0, 1, 2)
+pure val actionsValues = Set(0, 1, 3)
+pure def lawRestoreNeedsActionTools(actions: int): bool =
+  offersContextRestore(actions) == (actions > 0)
+pure def lawRestoredHistoryIsReadOnlyOnce(validRestore: bool, deferredHistory: bool): bool =
+  contextRestoreOf(validRestore, deferredHistory, true) != RestoredHistory
+pure def lawOnlyAValidRestoreCanReturnHistory(deferredHistory: bool, restoredHistory: bool): bool =
+  contextRestoreOf(false, deferredHistory, restoredHistory) == RestoreInvalid
+pure def lawARestoreSuppressesItsSiblingActions(restoreCalls: int): bool =
+  restoreCalls > 0 implies not(admitsPlannerWork(restoreCalls))
+```
+
+### Attached documents share a bounded text allowance and images stay images
+
+The latest message's attachments follow its text in their original order.
+Images remain image parts. The agent reads plain text, CSV, Markdown and JSON
+as UTF-8, and the host's PDF service reads PDF when available. Across the
+turn, complete document text parts share 32 KiB of UTF-8, including the
+serialized name, type and external-content envelope. A document that
+would exceed the remaining allowance reaches the model by name and type.
+The reply tells the owner that some document content exceeded the limit.
+Later documents can still use the remaining allowance. The uploaded files
+stay intact. Audio, video, invalid UTF-8 and a PDF the host cannot read
+reach the model by name and type with an unreadable marker. Names, types
+and extracted text in every document part are external content. Model
+calls carry images and text parts.
+
+```quint
+type AttachedKind = AttachedImage | AttachedText | AttachedPdf | AttachedMedia
+type AttachedRead = AttachedAsImage | AttachedAsText | AttachedAsName
+pure def attachedRead(attachedKind: AttachedKind, textRead: bool): AttachedRead =
+  if (attachedKind == AttachedImage) AttachedAsImage
+  else if ((attachedKind == AttachedText or attachedKind == AttachedPdf) and textRead) AttachedAsText
+  else AttachedAsName
+pure val attachedDocumentBytes: int = 32768
+pure def documentTextFits(remaining: int, partBytes: int): bool =
+  partBytes >= 0 and partBytes <= remaining
+pure def lawOnlyAnImageReachesTheModelAsItself(attachedKind: AttachedKind, textRead: bool): bool =
+  (attachedRead(attachedKind, textRead) == AttachedAsImage) iff (attachedKind == AttachedImage)
+pure def lawAudioAndVideoReachTheModelOnlyByName(textRead: bool): bool = attachedRead(AttachedMedia, textRead) == AttachedAsName
+pure def lawOnlyAReadableDocumentCanOfferText(attachedKind: AttachedKind, textRead: bool): bool =
+  (attachedRead(attachedKind, textRead) == AttachedAsText) iff
+    ((attachedKind == AttachedText or attachedKind == AttachedPdf) and textRead)
+pure def lawIncludedTextFitsWithinTheSharedAllowance(remaining: int, partBytes: int): bool =
+  (remaining <= attachedDocumentBytes and documentTextFits(remaining, partBytes)) implies
+    (remaining - partBytes >= 0 and remaining - partBytes <= attachedDocumentBytes)
+```
+
 ### A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse
 
 A step's model call refused with a temporary rate limit waits for the time
 the refusal names, at most five seconds and five seconds when it names
 none, and is sent once more; a call the provider refused because it could
 not parse the model's tool call is sent once more at once. The wait ends
-with the turn's cancellation. A second refusal, spent credit, a used-up
+with the turn's cancellation. A dispatch that already started more than one
+provider handler uses this retry budget. A second refusal, spent credit, a used-up
 allowance and every other failure end the call as they are. A call that
 stopped at the model's own output limit is never sent again: it ran to the
 model's whole maximum, and a second try would stop the same way at the
@@ -294,6 +367,56 @@ pure val failureValues = Set(RateLimitedFor({ hintMs: 1200 }), RateLimitedFor({ 
 pure def lawACallIsSentAgainAtMostOnce(failure: CallFailure): bool = not(resends(failure, true))
 pure def lawAResendWaitsAtMostFiveSeconds(failure: CallFailure, resent: bool): bool = resendWait(failure, resent) <= resendWaitMaxMs
 pure def lawAnOutputLimitOrAnotherFailureIsNeverSentAgain(resent: bool): bool = not(resends(OutputLimitReached, resent)) and not(resends(OtherFailure, resent))
+```
+
+### A response with competing terminal decisions runs no sibling action and can be repaired once
+
+One model response can carry at most one terminal decision. If it offers
+more than one, none of its tool calls run and its draft is cleared. The
+planner can ask for a corrected decision one time within the turn's
+existing step budget. A second ambiguous response stops planning. Work
+settled by an earlier response remains in the reply's record.
+
+```quint
+type TerminalAnswer = AdmitTerminalAnswer | RepairTerminalAnswer | RefuseTerminalAnswer
+pure def terminalAnswerOf(terminalDecisions: int, terminalRepairSent: bool, hasSteps: bool): TerminalAnswer =
+  if (terminalDecisions <= 1) AdmitTerminalAnswer
+  else if (not(terminalRepairSent) and hasSteps) RepairTerminalAnswer
+  else RefuseTerminalAnswer
+pure val terminalDecisionsValues = Set(0, 1, 2, 3)
+pure def lawCompetingTerminalDecisionsAreNeverAdmitted(terminalDecisions: int, terminalRepairSent: bool, hasSteps: bool): bool =
+  terminalDecisions > 1 implies terminalAnswerOf(terminalDecisions, terminalRepairSent, hasSteps) != AdmitTerminalAnswer
+pure def lawATerminalRepairUsesOneRemainingStep(terminalDecisions: int, terminalRepairSent: bool, hasSteps: bool): bool =
+  terminalAnswerOf(terminalDecisions, terminalRepairSent, hasSteps) == RepairTerminalAnswer implies not(terminalRepairSent) and hasSteps
+```
+
+### An identical call runs at most once per model response, and a settled effect is never repeated in the turn
+
+Two calls with the same tool name and canonical arguments in one response
+are one operation even when the model gave them different ids. The second
+receives a tool result saying that it did not run. A later response can
+repeat an observation without effect-capable tags when it declares itself
+read-only, or an observation whose receipts were all fresh no-ops or previews.
+It cannot repeat an identical
+operation that succeeded, applied an effect, or has a non-retryable
+failure from its provenance, typed data or effect receipts. A receipt
+with unknown acceptance also prevents repeating the operation. A different operation or
+corrected arguments still go through the usual admission checks.
+
+```quint
+type ToolSettlement = ToolOpen | ToolSucceeded | ToolNonretryable
+type ToolDispatch = FreshCall | DuplicateInBatch | AlreadySettled | RetryRefused
+pure def toolDispatch(seen: bool, previousSettlement: ToolSettlement): ToolDispatch =
+  if (seen) DuplicateInBatch else match previousSettlement {
+    | ToolSucceeded => AlreadySettled
+    | ToolNonretryable => RetryRefused
+    | ToolOpen => FreshCall
+  }
+pure val previousSettlementValues = Set(ToolOpen, ToolSucceeded, ToolNonretryable)
+pure def lawNoSecondCallInOneResponse(previousSettlement: ToolSettlement): bool =
+  toolDispatch(true, previousSettlement) == DuplicateInBatch
+pure def lawOnlyOpenCallsRunAcrossResponses(previousSettlement: ToolSettlement): bool =
+  (toolDispatch(false, previousSettlement) == FreshCall) == (previousSettlement == ToolOpen)
 ```
 
 ### A call that stopped at the model's own output limit ends planning
@@ -448,13 +571,13 @@ after any message: `Sure.` to `Call me Bob` or `Remember that I like tea`
 is delivered, never asked again. `Sure!` before a lead form (`Sure! Let me
 check your calendar.`) is a cue after any message. The acknowledgment is
 delivered at most once per turn, as the [reply stream](./replyStream.md)'s
-`acknowledgment` frame, and only while no tool of the turn has run, a call
-the whole message asked for outright included; a cue at a later step is
+`acknowledgment` frame. A model cue is delivered only before work starts
+and is suppressed when the owner asks for silence. A call the whole message
+asked for outright has its own cue rule below. A cue at a later step is
 dropped with the rest of that step's text. A blank draft or one outside the
-grammar acknowledges nothing, after any message and with any work, so a
-navigation-only turn whose model confirms the destination alongside its
-tool call, rather than writing nothing, still gives the owner only the
-reply.
+cue grammar is never spoken as acknowledgment. A navigation-only turn whose
+model confirms the destination alongside its tool call still gives the owner
+only the reply.
 
 ```quint
 type DraftShape = Blank | GrammarCue | AssentCue | OtherText
@@ -472,27 +595,99 @@ pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: 
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
 ```
 
+### An explicit calculator command uses its literal expression first
+
+When the whole message explicitly asks for the calculator and gives one
+literal arithmetic expression ("use the calculator for 17 * 24"), the
+offered calculator evaluates exactly that expression before the model
+writes the reply. Multi-part commands and arithmetic stated in words keep
+the ordinary planner path.
+
+### A directly routed call acknowledges once if it is still running after 400 milliseconds
+
+A call the whole message asked for outright begins without waiting for
+the model. On a streaming turn it says `One sec.` at most once if it is
+still running after 400 milliseconds. It stays quiet when the call has
+already settled or the turn has already been cancelled at that point, or
+if the person asked for silence. If the cue has started going out, the
+reply waits for it to settle. The cue is never reply text.
+
+```quint
+pure val directCueDelayMs = 400
+pure def canCueDirectCall(pending: bool, elapsedMs: int, quiet: bool): bool =
+  pending and not(quiet) and elapsedMs >= directCueDelayMs
+pure val elapsedMsValues = Set(0, 399, 400, 401)
+pure def lawADirectCueWaitsUntilTheDelay(pending: bool, elapsedMs: int, quiet: bool): bool =
+  canCueDirectCall(pending, elapsedMs, quiet) implies elapsedMs >= 400
+pure def lawOnlyAPendingNonquietCallCanCue(pending: bool, elapsedMs: int, quiet: bool): bool =
+  canCueDirectCall(pending, elapsedMs, quiet) implies pending and not(quiet)
+pure def lawNoModelCueFollowsADirectCall(draft: Draft, calls: int): bool =
+  not(acknowledges(draft, calls, 1))
+```
+
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
 
 When a tool call starts, its progress carries the action's name and a
-label for the owner: `Using <label>` when, among the action's declared
-contexts (core's catalog when it declares none) other than the catch-all
-`general` and `simple` and any `system` context, exactly one applies and
-the runtime's context registry gives it a label, and `Working` otherwise.
-Contexts with the same label count once; an unlabelled context counts by
-its id, so an action that may also reach an unnamed app is `Working`. The
-registry starts empty: an app is named only once it registers its own
-labelled context when it loads (Notes registers `Notes`) and its actions
-declare that context; an action that declares no context, or only contexts
-nobody labelled, is `Working`.
+label for the owner: `Using <label>` when, among the contexts the call
+shows other than the catch-all `general` and `simple` and any `system`
+context, exactly one applies and the runtime's context registry gives it a
+label, and `Working` otherwise. A call shows the app its action names for
+its progress, and otherwise the action's declared contexts (core's catalog
+when it declares none). The device tool names its app for each call from
+its arguments: the app its operation's proposal family declares, and no app
+when that family declares none, so a device call is named only by its
+family's app and the arguments never appear in the label. Contexts with the
+same label count once; an unlabelled context counts by its id, so an action
+that may also reach an unnamed app is `Working`. The registry starts empty:
+an app is named only once it registers its own labelled context when it
+loads and its actions, or its proposal family, name that context. Maps
+registers `Maps`, Calendar `Calendar`, Browser `Browser`, Files `Files`,
+Inbox `Inbox`, Workflows `Workflows`, Notes `Notes`, and the assistant
+`Reminders` for its reminders. An action that names no app and declares no
+context, or only contexts nobody labelled, is `Working`: the assistant's
+goals, to-dos, routines and briefings, the phone's call, message and
+surface operations, the reminders family's operations, which reach both
+Reminders and Clock, and a helper such as `CALCULATE`.
+
+An action shared by several apps, such as `VIEWS`, is named by the app the
+turn is about when that settles it: the turn's selected contexts are those
+of every [direct route](../../core/registries.md) the message matches (a
+Maps route selects `maps`, a Notes route `notes`), taken once per turn by
+normalized id. When several of the contexts the call shows apply and
+exactly one labelled one is selected, the progress is `Using <that label>`;
+with none or more than one selected it stays `Working`. The selection only
+picks among the contexts the call shows, never adds one, never names a
+`system` context or an unlabelled one, and never changes the contexts the
+action runs with; a device call whose family names no app shows none, so
+no selection names it.
+
+The app a call shows is its label and nothing else. Naming it never
+changes the action's declared contexts, its role gate or the contexts the
+call runs under, so it never widens or narrows which calls run, and it is
+never part of the tools, the system prompt or the history.
 
 ```quint
 type ToolActivity = UsingApp | Working
-pure def toolActivity(applicable: int, labelled: int): ToolActivity = if (applicable == 1 and labelled == 1) UsingApp else Working
-pure val applicableValues = Set(0, 1, 2)
+pure def toolActivity(applicable: int, labelled: int, selectedLabelled: int): ToolActivity =
+  if ((applicable == 1 and labelled == 1) or (applicable > 1 and selectedLabelled == 1)) UsingApp else Working
+pure val applicableValues = Set(0, 1, 2, 3)
 pure val labelledValues = Set(0, 1, 2)
-pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
-  toolActivity(applicable, labelled) == UsingApp implies (applicable == 1 and labelled == 1)
+pure val selectedLabelledValues = Set(0, 1, 2)
+pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatAppliesOrTheTurnSelected(applicable: int, labelled: int, selectedLabelled: int): bool =
+  toolActivity(applicable, labelled, selectedLabelled) == UsingApp implies ((applicable == 1 and labelled == 1) or selectedLabelled == 1)
+pure def lawWithoutASelectionOnlyASingleAppIsNamed(applicable: int, labelled: int): bool =
+  toolActivity(applicable, labelled, 0) == UsingApp implies (applicable == 1 and labelled == 1)
+pure def lawASingleLabelledAppIsNamedWhateverTheTurnSelected(selectedLabelled: int): bool =
+  toolActivity(1, 1, selectedLabelled) == UsingApp
+pure def lawSelectingSeveralAppsNamesNone(applicable: int, labelled: int, selectedLabelled: int): bool =
+  (applicable > 1 and selectedLabelled != 1) implies toolActivity(applicable, labelled, selectedLabelled) == Working
+type DeviceFamilyApp = FamilyApp({ app: str }) | NoFamilyApp
+pure def deviceCallReach(deviceFamily: DeviceFamilyApp): Set[str] = match deviceFamily { | FamilyApp(f) => Set(f.app) | NoFamilyApp => Set() }
+pure val deviceFamilyValues = Set(FamilyApp({ app: "calendar" }), FamilyApp({ app: "notes" }), NoFamilyApp)
+pure def lawADeviceCallReachesAtMostItsFamilysApp(deviceFamily: DeviceFamilyApp): bool = match deviceFamily {
+  | FamilyApp(f) => deviceCallReach(deviceFamily).size() == 1 and deviceCallReach(deviceFamily).contains(f.app) | NoFamilyApp => deviceCallReach(deviceFamily).size() == 0 }
+pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(deviceFamily: DeviceFamilyApp, labelled: int, selectedLabelled: int): bool =
+  toolActivity(deviceCallReach(deviceFamily).size(), labelled, selectedLabelled) == UsingApp implies deviceFamily != NoFamilyApp
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other
@@ -590,6 +785,31 @@ pure def lawTheLaunchZoneIsLocalOnlyForTheOwner(launchZone: str, hostZone: str, 
   launchZone != "" implies clockSource("", launchZone, hostZone, owner) == { clockZone: launchZone, origin: LaunchZone, ownersLocal: owner }
 pure def lawTheHostClockIsNeverTheOwnersLocalTime(hostZone: str, owner: bool): bool =
   clockSource("", "", hostZone, owner) == { clockZone: hostZone, origin: HostZone, ownersLocal: false }
+```
+
+### What the person said earlier reaches the model with the minute it was said, on the turn's clock
+
+Each message of the person in the history the model reads starts with
+`[message_at=MM-DD HH:MM] `, the date and minute the message was stored,
+in the zone of the turn's clock (above), so the model can answer "what
+did I ask this morning" and order what was said against the clock line.
+The stamp is [core's](../../core/context.md): the year leads only when it
+is not the year of the turn's clock, and an offset follows only in the
+hour a zone's clocks repeat. The agent's own earlier messages carry no
+stamp. They are sent as the assistant's own words, and a stamp there
+would be read as something it said and written into its next reply; each
+reply follows the stamped request it answered. The latest message carries
+none either: the clock line states its time. A message stored without a
+time is sent as it is. A stamp depends only on the message's stored time
+and the clock's zone and year, so the history stays the same bytes from
+turn to turn while those hold.
+
+```quint
+pure def stampedForTheModel(fromPerson: bool, storedAt: int): bool = fromPerson and storedAt > 0
+pure val storedAtValues = Set(-1, 0, 1763932800000)
+pure def lawTheAgentsOwnWordsAreNeverStamped(storedAt: int): bool = not(stampedForTheModel(false, storedAt))
+pure def lawAMessageStoredWithoutATimeIsSentAsItIs(fromPerson: bool, storedAt: int): bool = storedAt <= 0 implies not(stampedForTheModel(fromPerson, storedAt))
+pure def lawWhatThePersonSaidAtAKnownTimeIsStamped(storedAt: int): bool = storedAt > 0 implies stampedForTheModel(true, storedAt)
 ```
 
 ### A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading

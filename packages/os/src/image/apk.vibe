@@ -658,9 +658,23 @@ function signerReport(output: string): SignerReport {
   }
 }
 
+function signerApi(apiLevel: number | undefined): number | undefined {
+  if (apiLevel === undefined) return 0
+  return Number.isSafeInteger(apiLevel) && apiLevel > 0 ? apiLevel : undefined
+}
+
+/** Select a certificate from apksigner evidence under the same API rule as APK inspection. */
+export function parseApkSignerDigest(output: string, apiLevel?: number): string | undefined {
+  const api = signerApi(apiLevel)
+  if (api === undefined) return undefined
+  const certificate = signerCertificate(signerForApi(signerReport(output), api))
+  return isDigest(certificate) ? hexOf(certificate) : undefined
+}
+
 export effect function readApkSigner(apk: string, options: SignerOptions = {}) {
+  const api = signerApi(options.apiLevel)
+  if (api === undefined) return { tag: "SignerRefused" } satisfies SignerObservation
   const apksigner = options.apksigner ?? (try resolveAndroidBuildTools(options.env)).apksigner
-  const api = options.apiLevel !== undefined && Number.isInteger(options.apiLevel) && options.apiLevel >= 1 ? options.apiLevel : 0
   const args = ["verify", "--print-certs", ...(api === 0 ? [] : ["--min-sdk-version", String(api), "--max-sdk-version", String(api)]), apk]
   const result = try runTool(apksigner, args, options.env)
   const unverified = result.code !== 0 && `${result.stdout}${result.stderr}`.includes("DOES NOT VERIFY")

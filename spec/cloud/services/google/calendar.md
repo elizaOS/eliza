@@ -8,7 +8,9 @@ The owner's Google Calendar, read and written by the cloud with the grant of
 `POST events`, `PATCH events/:eventId`, `DELETE events/:eventId`. Every call
 may name `grantId` and selects the connection by the rules of `connection`
 (`side` other than `owner`, several active grants, another organization's
-grant); every call needs a usable connection (`G::usable`). `sync-v1` is gone.
+grant); every call needs a usable connection (`G::usable`). When a read
+names an expected Google account, its current grant must hold that subject.
+`sync-v1` is gone.
 
 One instance of the machine is one write row (`calendar_writes`): its
 request, its target event and its one provider change
@@ -27,7 +29,8 @@ does the Google calls, the event bodies and their JSON shapes.
 `GET calendars` answers rows `{calendarId, accountId, accountEmail, label,
 accessRole, read, write}` for every calendar Google lists that is neither
 hidden nor deleted; `label` is the owner's override, else Google's summary,
-else the id, and a missing `accessRole` is `reader`.
+else the id, and a missing `accessRole` is `reader`. Each writable row also
+advertises `recurrenceLines: true` and `privateCreate: true`.
 
 ```quint
 import types.* from "../../shared/types"
@@ -49,7 +52,9 @@ pure def lawAWritableCalendarIsReadable(scopes: List[G::GoogleScope], role: Cale
 calendar whose row is readable, else `403 access_denied`. It answers
 `{calendarId, events, syncedAt}` with every page Google returns; a body over
 512 KiB is refused whole as `413 content_too_large`, never cut. A bad window
-or an unknown IANA zone is `400 invalid_request`.
+or an unknown IANA zone is `400 invalid_request`. Feed and event cards keep
+the recurrence rules Google supplies, the parent series ID of an occurrence,
+and the original start of an occurrence even when it moved to another time.
 
 ```quint
 type FeedAnswer = FeedServed | FeedRefused({ refusal: Refusal })
@@ -72,39 +77,53 @@ pure def lawAFeedRefusalNeedsANewRequest(timeMin: Millis, timeMax: Millis, zoneK
 > the version I last read, so that nothing newer is lost and nothing is
 > doubled.
 
-### A create needs an Idempotency-Key, a change or deletion one exact If-Match revision, and none takes a recurrence rule
+### A create needs an Idempotency-Key and can carry a reviewed recurrence rule. Changes and deletions need one exact If-Match revision
 
 The `If-Match` value is one event `etag` from a read: empty, `*`, a list,
 over 1,024 characters or not printable ASCII is malformed. A missing or
-malformed header is `400 invalid_request`; a recurrence rule is `400
-invalid_request` reason `unsupported_field` (deletion of an instance id
-removes one occurrence, of a series id the series); an event body over
+malformed header is `400 invalid_request`. A create can carry a reviewed
+daily, weekly or weekday rule with an optional end and excluded starts.
+Timed recurrences name an IANA time zone. All-day rules use calendar dates
+for the end and exclusions. A change or deletion cannot carry recurrence
+fields. A refused recurrence uses `400 invalid_request` with reason
+`unsupported_field`. Deletion of an instance id removes one occurrence,
+and deletion of a series id removes the series. An event body over
 256 KiB is `413 content_too_large`. Every refusal before Google is asked
 carries `outcome: not_accepted`.
+
+A create with `privateCreate: true` sets Google's event visibility to
+`private` and disables provider default reminders. Cloud confirms those
+settings in Google's response or a readback, including when retrying an
+already accepted create. It reports an unknown outcome if the event no
+longer matches the reviewed settings. Other clients can omit the option to
+use Google's defaults.
 
 ```quint
 type WriteOp = NoWrite | CreateEvent | ChangeEvent | RemoveEvent
 type RevisionHeader = NoIfMatch | MalformedIfMatch | ExactRevision({ readEtag: str })
-type WriteRequest = { op: WriteOp, keyed: bool, revision: RevisionHeader, recurrence: bool, bodyBytes: int }
+type RecurrenceFit = NoRecurrence | ReviewedRecurrence | InvalidRecurrence
+type WriteRequest = { op: WriteOp, keyed: bool, revision: RevisionHeader, recurrence: RecurrenceFit, bodyBytes: int }
 type RequestFit = RequestFits | RequestRefused({ refusal: Refusal })
 pure val writeBodyLimit: int = 256 * 1024
 pure def readEtagOf(h: RevisionHeader): str = match h { | ExactRevision(x) => x.readEtag | _ => "" }
 pure def headerFits(request: WriteRequest): bool =
   if (request.op == CreateEvent) request.keyed and request.revision == NoIfMatch
   else request.op != NoWrite and readEtagOf(request.revision) != ""
+pure def recurrenceFits(request: WriteRequest): bool =
+  request.recurrence == NoRecurrence or (request.op == CreateEvent and request.recurrence == ReviewedRecurrence)
 pure def requestFit(request: WriteRequest): RequestFit =
   if (not(headerFits(request))) RequestRefused({ refusal: refuse(InvalidRequest) })
-  else if (request.recurrence) RequestRefused({ refusal: refuseFor(InvalidRequest, UnsupportedField) })
+  else if (not(recurrenceFits(request))) RequestRefused({ refusal: refuseFor(InvalidRequest, UnsupportedField) })
   else if (request.bodyBytes > writeBodyLimit) RequestRefused({ refusal: refuse(ContentTooLarge) })
   else RequestFits
 pure val requestValues: Set[WriteRequest] = {
-  val create: WriteRequest = { op: CreateEvent, keyed: true, revision: NoIfMatch, recurrence: false, bodyBytes: 100 }
-  val change: WriteRequest = { op: ChangeEvent, keyed: false, revision: ExactRevision({ readEtag: "etag1" }), recurrence: false, bodyBytes: 100 }
-  Set(create, change, { ...change, op: RemoveEvent, bodyBytes: 0 }, { ...create, keyed: false }, { ...create, recurrence: true }, { ...change, revision: NoIfMatch }, { ...change, revision: MalformedIfMatch })
+  val create: WriteRequest = { op: CreateEvent, keyed: true, revision: NoIfMatch, recurrence: NoRecurrence, bodyBytes: 100 }
+  val change: WriteRequest = { op: ChangeEvent, keyed: false, revision: ExactRevision({ readEtag: "etag1" }), recurrence: NoRecurrence, bodyBytes: 100 }
+  Set(create, change, { ...change, op: RemoveEvent, bodyBytes: 0 }, { ...create, keyed: false }, { ...create, recurrence: ReviewedRecurrence }, { ...create, recurrence: InvalidRecurrence }, { ...change, recurrence: ReviewedRecurrence }, { ...change, revision: NoIfMatch }, { ...change, revision: MalformedIfMatch })
 }
 pure def lawARequestRefusalNeedsANewRequest(request: WriteRequest): bool = {
   val f = requestFit(request)
-  match f { | RequestRefused(x) => wellFormed(x.refusal) and not(retryableOf(x.refusal)) | RequestFits => headerFits(request) and not(request.recurrence) }
+  match f { | RequestRefused(x) => wellFormed(x.refusal) and not(retryableOf(x.refusal)) | RequestFits => headerFits(request) and recurrenceFits(request) }
 }
 ```
 

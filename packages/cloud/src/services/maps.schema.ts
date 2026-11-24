@@ -1,4 +1,4 @@
-// spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"; spec/cloud/shared/types.md, "Story: Use one vocabulary across the cloud"
+// spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"; spec/cloud/services/maps.md, "A search ranked by distance needs a point to measure from"; spec/cloud/shared/types.md, "Story: Use one vocabulary across the cloud"
 import { Schema } from "effect";
 
 const text = (maximum: number) =>
@@ -44,6 +44,9 @@ export const TextSearchRequest = Schema.Struct({
 });
 export type TextSearchRequest = typeof TextSearchRequest.Type;
 
+export const PlacesSearchRequest = Schema.Struct({ ...TextSearchRequest.fields, rank: Schema.optionalKey(Schema.Literal("distance")) });
+export type PlacesSearchRequest = typeof PlacesSearchRequest.Type;
+
 export const ReverseRequest = Schema.Struct({
   coordinate: Coordinate,
   preferPlace: Schema.optionalKey(Schema.Boolean),
@@ -88,7 +91,7 @@ export const tileAddressOf = (params: { readonly z?: string; readonly x?: string
 export const mapsRequests = {
   geocode: TextSearchRequest,
   reverse: ReverseRequest,
-  "places/search": TextSearchRequest,
+  "places/search": PlacesSearchRequest,
   "places/details": PlaceDetailsRequest,
   routes: RoutesRequest,
   "tiles/viewport": ViewportRequest,
@@ -215,6 +218,7 @@ export const MapsServiceCapabilities = Schema.Struct({
   geocode: Schema.Literal(true),
   reverseGeocode: Schema.Literal(true),
   placeLookup: Schema.Boolean,
+  distanceRank: Schema.optionalKey(Schema.Boolean),
   modes: Schema.NonEmptyArray(TravelMode).check(Schema.isUnique()),
   alternatives: Schema.Boolean,
   traffic: MapsTraffic,

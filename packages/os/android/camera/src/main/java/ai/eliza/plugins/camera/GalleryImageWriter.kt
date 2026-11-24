@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.BaseColumns
 import android.provider.MediaStore
 import java.io.File
 import java.io.IOException
@@ -42,6 +43,21 @@ internal fun galleryMediaValues(displayName: String, mimeType: String, pending: 
         values.put(MediaStore.MediaColumns.DATA, file.absolutePath)
     }
     return values
+}
+
+// spec/os/android/camera.md, "The optional library id of a saved photo names the provider's own row"
+internal fun savedImageLibraryId(resolver: ContentResolver, uri: Uri): String? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+    return try {
+        resolver.query(uri, arrayOf(BaseColumns._ID, MediaStore.MediaColumns.VOLUME_NAME), null, null, null)?.use { row ->
+            if (!row.moveToFirst() || row.isNull(0) || row.isNull(1)) null
+            else CapturedLibraryId.image(row.getString(1), row.getLong(0))
+        }
+    } catch (error: RuntimeException) {
+        // error-policy:J1 the photo is saved; only its optional library id is unavailable.
+        android.util.Log.w("ElizaCamera", "Saved photo library id unavailable: ${error.javaClass.simpleName}")
+        null
+    }
 }
 
 /** Owns one MediaStore insertion until it is published or removed. */

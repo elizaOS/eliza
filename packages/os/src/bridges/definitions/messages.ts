@@ -1,8 +1,8 @@
-// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"; spec/os/android/messages.md, "A conversation deletion removes only its settled rows up to the newest one I saw"; spec/os/android/messages.md, "A sender lookup reads only the newest incoming row's address, and names it whole only when asked"
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"; spec/os/android/messages.md, "A conversation deletion removes only its settled rows up to the newest one I saw"; spec/os/android/messages.md, "A sender lookup reads only the newest incoming row's address, and names it whole only when asked"; spec/os/android/messages.md, "Story: Keep my conversation list whole and current"; spec/os/android/messages.md, "A row the provider cannot report whole keeps its place without content, and costs the page neither its other rows nor its cursor"
 import type { Receipt } from "../../../gen/core__receipts.ts";
 import type { HandoffOutcome } from "../../../gen/os__android__bridge.ts";
 import type { CallEvidence, DeleteStatus, PartEvidence, PartState, SendAnswer } from "../../../gen/os__android__messages.ts";
-import { evidenceStatus, maxPartsPerRecipient, senderNumberAdmitted, senderSuffixDigits } from "../../../gen/os__android__messages.ts";
+import { cursorKept, evidenceStatus, maxPartsPerRecipient, rowShown, senderNumberAdmitted, senderSuffixDigits } from "../../../gen/os__android__messages.ts";
 import type { StagedDeletion } from "./action-journal.ts";
 import { normalizePhoneNumber, type PhoneNumber, type TelephonyStatus } from "./phone.ts";
 
@@ -284,8 +284,6 @@ export const MMS_MAX_RECIPIENTS = 10;
 export const MMS_MAX_ATTACHMENTS = 5;
 export const MMS_MAX_BODY = 1600;
 export const MMS_MAX_TOTAL_BYTES = 1024 * 1024;
-export const SMS_MAX_THREADS = 50;
-export const SMS_MAX_MESSAGES = 50;
 export const SMS_JOURNAL_MAX = 200;
 export const SMS_MAX_PARTS = 50;
 
@@ -551,6 +549,21 @@ export function isIncompleteSmsRow(row: ThreadRow | MessageRow): row is Incomple
   return "incomplete" in row && row.incomplete === true;
 }
 
+function incompleteReason(row: Fields, fieldCount: number): SmsIncompleteReason | undefined {
+  const reason = row.reason;
+  const reasonNamed = oneOf(SMS_INCOMPLETE_REASONS, reason);
+  const shown = row.incomplete === true && rowShown({ tag: "IncompleteRow", reasonNamed, carriesContent: Object.keys(row).length !== fieldCount });
+  return shown && reasonNamed ? reason : undefined;
+}
+
+/** @throws {never} */
+export function parseNextCursor<C extends string>(value: unknown, cursorOf: (value: unknown) => C | null, rowsListed: number, asked: C | undefined): C | null | undefined {
+  const next = fields(value)?.next;
+  if (next === null) return null;
+  const cursor = cursorOf(next);
+  return cursor !== null && cursorKept(rowsListed, { tag: "NextCursor", repeatsAsked: cursor === asked }) ? cursor : undefined;
+}
+
 function addresses(value: unknown): string[] | undefined {
   return Array.isArray(value) && value.length <= 20 && value.every((one) => text(one, 64)) ? [...value] : undefined;
 }
@@ -567,8 +580,9 @@ export function parseThreads(value: unknown, limit: number): ThreadRow[] | undef
     if (!row || id === null || seen.has(id) || !count(row.date)) return undefined;
     seen.add(id);
     if (row.incomplete !== undefined) {
-      if (row.incomplete !== true || Object.keys(row).length !== 4 || !oneOf(SMS_INCOMPLETE_REASONS, row.reason)) return undefined;
-      out.push({ id, date: row.date, incomplete: true, reason: row.reason });
+      const reason = incompleteReason(row, 4);
+      if (reason === undefined) return undefined;
+      out.push({ id, date: row.date, incomplete: true, reason });
       continue;
     }
     const listed = addresses(row.addresses);
@@ -597,8 +611,9 @@ export function parseMessages(value: unknown, threadId: ThreadId, limit: number)
     if (seen.has(id) || row.threadId !== threadId || !count(row.date)) return undefined;
     seen.add(id);
     if (row.incomplete !== undefined) {
-      if (row.incomplete !== true || Object.keys(row).length !== 6 || !oneOf(SMS_INCOMPLETE_REASONS, row.reason)) return undefined;
-      out.push({ id, kind, threadId, date: row.date, incomplete: true, reason: row.reason });
+      const reason = incompleteReason(row, 6);
+      if (reason === undefined) return undefined;
+      out.push({ id, kind, threadId, date: row.date, incomplete: true, reason });
       continue;
     }
     const direction = row.direction;

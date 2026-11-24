@@ -1,9 +1,9 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A host may shorten how long a rate limit holds the account, never past the provider's retry time"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, effortFor, failureOf, outcomeOf, retryAtOf, shellOutcome, streamIdleSeconds, usageAsked,
+  cacheKeySent, capSent, chatReturn, effortFor, failureOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked,
   type CapAsk, type ChatAsk, type ChatReturn, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
@@ -381,13 +381,12 @@ function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
     promptTokens: usage.prompt_tokens,
     completionTokens: usage.completion_tokens,
     totalTokens: usage.total_tokens,
-    ...(typeof cached === "number" && cached > 0 ? { cacheReadInputTokens: cached } : {}),
-    ...(typeof reasoning === "number" && reasoning > 0 ? { reasoningTokens: reasoning } : {}),
+    ...(typeof cached === "number" && Number.isSafeInteger(cached) && cached >= 0 ? { cacheReadInputTokens: cached } : {}),
+    ...(typeof reasoning === "number" && Number.isSafeInteger(reasoning) && reasoning >= 0 ? { reasoningTokens: reasoning } : {}),
   }
 }
 
 effect function answered(reply: Reply, ask: ChatAsk) {
-  if (reply.text.length > 32768) throw providerIssue()
   if (reply.toolCalls.some((call) => call.name.trim() === "" || call.id === "")) throw providerIssue()
   const form = chatReturn(ask, { textBlank: reply.text.trim() === "", toolCalls: reply.toolCalls.length })
   if (form === "AnswerProviderIssue") throw providerIssue()
@@ -400,13 +399,13 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   let terminal = false
   let finishReason: string | undefined
   let usage: TokenUsage | undefined
-  let argumentBytes = 0
   const calls: { id: string; name: string; arguments: string }[] = []
   const silent = () => Stream.fail(new ShellRefused({ refusal: "SilentStream" }))
   const lines = Stream.timeoutOrElse(result.stream, { duration: Duration.seconds(streamIdleSeconds), orElse: silent }).pipe(Stream.decodeText(), Stream.splitLines)
-  const collect = Stream.runForEach(lines, effect (line) => {
+  const ended = (line: string) => line.startsWith("data:") && line.slice(5).trim() === "[DONE]"
+  const collect = Stream.runForEach(Stream.takeUntil(lines, ended), effect (line) => {
     if (line.length > 262144) throw providerIssue()
-    if (!line.startsWith("data:") || terminal) return
+    if (!line.startsWith("data:")) return
     const payload = line.slice(5).trim()
     if (payload === "[DONE]") {
       terminal = true
@@ -426,13 +425,10 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
       call.id ||= piece.id ?? ""
       call.name += piece.function?.name ?? ""
       call.arguments += piece.function?.arguments ?? ""
-      argumentBytes += piece.function?.arguments?.length ?? 0
-      if (argumentBytes > 65536) throw providerIssue()
     }
     const delta = choice.delta?.content
     if (!delta) return
     text += delta
-    if (text.length > 32768) throw providerIssue()
     if (sink.onStreamChunk) try tryPromise({ try: async () => sink.onStreamChunk?.(delta, undefined, text), catch: (cause) => new StreamConsumerFailed({ cause }) })
   })
   collect catch effect (failure) => {
@@ -477,8 +473,8 @@ function holdAt(retryAt: number, now: number): Hold {
   return { retryAt: retryAt > 0 ? retryAt : undefined, retryAfterMs: retryAt < 0 ? undefined : Math.max(0, retryAt - now) }
 }
 
-function heldFor(state: ModelBinding, now: number): Hold {
-  return holdAt(state.accountState.tag === "Failing" ? retryAtOf(state.accountState.failure) : -1, now)
+function reportedFor(state: ModelBinding, now: number): Hold {
+  return holdAt(reportedRetryAt(state), now)
 }
 
 effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, callKey: string, fields: object | undefined, sink: Sink, ask: ChatAsk) {
@@ -495,7 +491,7 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
     }
     if (!(failure instanceof Refused)) throw failure
     try binding.refuseCall(started, refused, failure.cloud)
-    throw refusalOf(failure.cloud, failure.cloud.tag === "CloudRateLimited" ? heldFor(try binding.state(), refused) : unheld)
+    throw refusalOf(failure.cloud, failure.cloud.tag === "CloudRateLimited" ? reportedFor(try binding.state(), refused) : unheld)
   }
   const at = try Clock.currentTimeMillis
   try binding.answerCall(started, at)

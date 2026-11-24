@@ -52,7 +52,7 @@ const SPOKEN_DOT = compiled(SPOKEN_DOT_SOURCE, "giu")
 const HOST_LABEL_GROUP = String.raw`[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*`
 const SPOKEN_HOSTNAME = compiled(`^${HOST_LABEL_GROUP}(?:${SPOKEN_DOT_SOURCE}${HOST_LABEL_GROUP})+$`, "iu")
 const SPOKEN_PROSE_LABELS: ReadonlySet<string> = new Set("the a an my your our their his her its this that these those some any".split(" "))
-const EVERYDAY_COMMAND = String.raw`(?:take\s+me\s+to|pull\s+up|bring\s+up|show\s+me|head\s+to|browse\s+to)`
+const EVERYDAY_COMMAND = String.raw`(?:open\s+up|take\s+me\s+to|pull\s+up|bring\s+up|show\s+me|head\s+to|browse\s+to)`
 const SEARCH_COMMAND = String.raw`(?:search(?:\s+(?:the\s+)?(?:web|internet)|\s+online|\s+google)?\s+for|web\s+search(?:\s+for)?|google|look\s+up)`
 const SEARCH_SUFFIX = /[\s,]+(?:please|for\s+me|thanks|thank\s+you)[.,!?]*$|[.,!?]+$/i
 const SUFFIX = /^\s+(?:please|for\s+me|thanks|thank\s+you|(?:would|will|could|can)\s+you)[.,!?]*$/i
@@ -83,8 +83,13 @@ const TAIL_LEAD = /^[\s,:;.!?()"'”’\u2014\u2013-]*(?:(?:no|nope|nah|please|b
 const TAIL_END = /^(?:\s+(?:to|up|on|over|into|it|that|this|them|one|there|yet|now|again|please|ever|today|anymore|either|the\s+(?:link|site|website|page|url|address)))*[\s)"'”’]*(?:[.!?;,]|$)/i
 const BARE_END = /(?:^|[\s.!?,;:(])(?:don['’]?t|do\s+not|never)[\s.!?)]*$/i
 const RELOAD_WORD = String.raw`(?:re-?load|refresh|re-?open)`
-const RELOAD_TAIL = String.raw`(?:\s+(?:it|this|that|the|page|tab|site|website|article|one|again|now|please|for\s+me|once\s+more))*[)"'”’]*(?=\s*[.!?;,]|\s+(?:and|then|so)\b|\s*$)`
-const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|not|stop|no\s+need\s+to)|(?<!\b(?:ca|could|wo|would))n['’]t|\b(?:ca|could|wo|would)n['’]t(?!\s+(?:you|u)\b))\s+(?:(?:just|ever|even|you|u|please|need\s+to|have\s+to|try\s+to|bother\s+to|want\s+to|to)\s+)*${RELOAD_WORD}(?:ing)?\b`, "i")
+const REOPEN_SAME_PAGE = String.raw`(?:load|open)\s+(?:it|this|that|(?:the|this|that)\s+(?:page|site|tab))\s+again`
+const RELOAD_REFERENCE = String.raw`(?:${RELOAD_WORD}(?:ing)?|${REOPEN_SAME_PAGE})`
+const RELOAD_INTENT = String.raw`(?:try\s+${RELOAD_WORD}ing|(?:(?:try|hit|press)\s+(?:the\s+)?)?(?:${RELOAD_WORD}|${REOPEN_SAME_PAGE}))`
+const RELOAD_TAIL = String.raw`(?:\s+(?:it|this|that|the|page|tab|site|website|article|one|again|now|please|for\s+me|once\s+more))*[)"'”’]*(?=\s*[.!?;,:–—]|\s+(?:and|then|so)\b|\s*$)`
+const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|not|stop|no\s+need\s+to)|(?<!\b(?:ca|could|wo|would))n['’]t|\b(?:ca|could|wo|would)n['’]t(?!\s+(?:you|u)\b))\s+(?:(?:just|ever|even|you|u|please|need\s+to|have\s+to|try\s+to|bother\s+to|want\s+to|to)\s+)*${RELOAD_REFERENCE}\b`, "i")
+const SHORT_RELOAD_RETRACTION = /^[^.?!;,:–—]*[.?!;,:–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[ \t]*[.!?;,:–—]+(?=\s|$)|\s*$)/i
+const COORDINATED_RELOAD_RETRACTION = compiled(String.raw`(?:^|[.!?;,:–—])\s*(?:(?:actually|instead|please|pls|just|now|no|wait)\s+)*(?:don['’]?t|do\s+not|never|stop|no\s+need\s+to)\s+[^.!?;,:–—]*\b(?:and|or)\s+(?:(?:just|ever|even|please|try(?:\s+to)?)\s+)*${RELOAD_REFERENCE}\b`, "i")
 const DOTS = /[\uff0e\u3002\uff61\u2024]/g
 const HOST_RUN = /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*/gu
 const LABEL_BEFORE = /[a-z\d](?:-*|\.)$/
@@ -116,7 +121,7 @@ function patterns(assistantName: string): NamePatterns {
   const name = key.split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`\s+`)
   const lead = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:${name}[,.!]?\s+)?`
   const questionOpener = String.raw`(?:^|[.!?:,])\s*(?:(?:hey|hi|ok|okay|${name}|please|so|well|then|but|and|oh|hmm)[\s,.!]*)*`
-  const request = String.raw`(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})`
+  const request = String.raw`(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${EVERYDAY_COMMAND}|${OPEN_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})`
   const built: NamePatterns = {
     command: compiled(String.raw`${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+(\S+)(\s.*)?$`, "i"),
     directRequest: compiled(String.raw`${lead}${request}\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`, "i"),
@@ -126,7 +131,7 @@ function patterns(assistantName: string): NamePatterns {
     sentenceStart: compiled(String.raw`(?:^|[.!?:])\s*(?:(?:hey|hi|ok|okay|${name}|please)[\s,.!]*)*$`, "i"),
     questionStart: compiled(`${questionOpener}$`, "i"),
     questionStartWhy: compiled(String.raw`${questionOpener}why\s+(?:do|does|did)?$`, "i"),
-    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013])\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_WORD}${RELOAD_TAIL}`, "gi"),
+    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013])\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_INTENT}${RELOAD_TAIL}`, "gi"),
   }
   namePatterns.set(key, built)
   return built
@@ -206,8 +211,7 @@ export function authoredBrowserDestination(text: string, assistantName: string =
   return authoredBrowserOpen(text, assistantName)?.href
 }
 
-export function directBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
-  if (unreadable(text)) return undefined
+function typedBrowserOpen(text: string, assistantName: string): BrowserOpen | undefined {
   const strict = authoredBrowserOpen(text, assistantName)
   if (strict !== undefined) return strict
   const question = patterns(assistantName).directRequest.exec(text.trim())
@@ -224,6 +228,32 @@ export function directBrowserOpen(text: string, assistantName: string = DEFAULT_
   if (url === undefined || !closingMarkProse(bare, true)) return undefined
   if (FILE_TYPE_TLDS.has(topLevel(url)) && !/^(?:https?:\/\/|www\.)/i.test(bare)) return undefined
   return { href: url.href, newTab: false }
+}
+
+interface SplitTldAddress extends Word {
+  readonly token: string
+  readonly hostname: string
+}
+
+const SPLIT_TLD = /(?<!\S)((?:https?:\/\/)?[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*)\.\p{Zs}+([A-Z]{2})(?=\p{Zs})/gu
+
+function splitTldAddresses(text: string): SplitTldAddress[] {
+  return matchesOf(text, SPLIT_TLD).flatMap(({ index, 0: value, 1: host, 2: suffix }) => {
+    if (host === undefined || suffix === undefined || !IN_BROWSER.test(text.slice(index + value.length))) return []
+    const token = `${host}.${suffix.toLowerCase()}`
+    const address = webAddress(token)
+    return address === undefined ? [] : [{ value, index, token, hostname: address.hostname }]
+  })
+}
+
+function splitTldBrowserOpen(text: string, assistantName: string, split: SplitTldAddress | undefined): BrowserOpen | undefined {
+  if (split === undefined) return undefined
+  return typedBrowserOpen(`${text.slice(0, split.index)}${split.token}${text.slice(split.index + split.value.length)}`, assistantName)
+}
+
+export function directBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
+  if (unreadable(text)) return undefined
+  return typedBrowserOpen(text, assistantName) ?? splitTldBrowserOpen(text, assistantName, splitTldAddresses(text)[0])
 }
 
 export function directBrowserDestination(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
@@ -424,11 +454,14 @@ interface Evidence {
 function groundingEvidence(userText: string, proposed: URL, assistantName: string): Evidence {
   const host = proposed.hostname.replace(/^www\./, "")
   const typed = typedAddresses(userText, assistantName).filter(({ url }) => url.hostname.replace(/^www\./, "") === host)
-  const vetoed = typed.some(({ negated }) => negated) || hostWords(userText, host).some((word) => refused(userText, word, assistantName))
+  const splitAddresses = splitTldAddresses(userText)
+  const hostReferences = [...hostWords(userText, host), ...splitAddresses.filter(({ hostname }) => hostname.replace(/^www\./, "") === host)]
+  const vetoed = typed.some(({ negated }) => negated) || hostReferences.some((word) => refused(userText, word, assistantName))
+  const split = splitTldBrowserOpen(userText, assistantName, splitAddresses[0])
   const literal = typed.filter(({ piece }) => !piece)
-  if (literal.length === 0) {
-    const spoken = spokenBrowserDestination(userText, assistantName)
-    return { vetoed, candidates: spoken === undefined ? [] : [{ authoredHref: spoken, qualifies: spoken === proposed.href, rank: 1 }] }
+  if (split !== undefined || literal.length === 0) {
+    const authoredHref = split?.href ?? spokenBrowserDestination(userText, assistantName)
+    return { vetoed, candidates: authoredHref === undefined ? [] : [{ authoredHref, qualifies: authoredHref === proposed.href, rank: 1 }] }
   }
   const strict = authoredBrowserDestination(userText, assistantName)
   const strictHost = strict === undefined ? undefined : URL.parse(strict)?.host
@@ -458,11 +491,9 @@ export function groundBrowserDestination(userText: string, proposedUrl: string, 
 export function ownerAskedBrowserReload(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): boolean {
   if (unreadable(text)) return false
   const read = plain(text)
-  if (RELOAD_NEGATED.test(read) || BARE_END.test(read.slice(-200))) return false
-  return matchesOf(read, patterns(assistantName).reloadRequest).some((match) => {
-    const end = match.index + match[0].length
-    return !negatedAfter(read.slice(end, end + 200))
-  })
+  if (RELOAD_NEGATED.test(read) || COORDINATED_RELOAD_RETRACTION.test(read)) return false
+  const requested = matchesOf(read, patterns(assistantName).reloadRequest)
+  return requested.length > 0 && requested.every(match => !SHORT_RELOAD_RETRACTION.test(read.slice(match.index + match[0].length)))
 }
 
 export function containsWebAddress(text: string): boolean {

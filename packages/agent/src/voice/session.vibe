@@ -1,4 +1,4 @@
-// spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/voice/session.md, "A capture that failed to close is kept until it confirms its release, and no capture opens over it"; spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard"; spec/agent/voice/session.md, "Story: Show which phase the voice session is in"; spec/agent/voice/session.md, "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
+// spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/voice/session.md, "A capture that failed to close is kept until it confirms its release, and no capture opens over it"; spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard"; spec/agent/voice/session.md, "Story: Show which phase the voice session is in"; spec/agent/voice/session.md, "A turn taken back before its reply started is carried into the utterance in progress, and the next turn names the one it replaces"; spec/agent/voice/session.md, "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
 module browser {
   import { Effect } from "effect"
   import {
@@ -14,6 +14,11 @@ module browser {
     echoCancelled: boolean
   }
 
+  interface SentTurn {
+    readonly text: string
+    readonly clientMessageId: string
+  }
+
   interface Playback {
     readonly messageId: string
     readonly text: string
@@ -26,6 +31,7 @@ module browser {
     #capture: Capture | undefined
     #score: AbortController | undefined
     #turn: AbortController | undefined
+    #sent: SentTurn | undefined
     #playback: Playback | undefined
     #text = ""
     #speechEndedAt = 0
@@ -89,6 +95,7 @@ module browser {
       const after = Effect.runSync(this.#machine.send(event))
       if (before.utterance === "AskingEndOfTurn" && after.utterance !== "AskingEndOfTurn") this.#cancelScore()
       if (before.turn === "AwaitingReply" && after.turn === "NoTurn" && after.lastEnd === "TurnAborted") {
+        if (after.rejoined > 0) this.#text = [this.#sent?.text, this.#text].filter(Boolean).join(" ")
         this.#abortTurn(event.type === "stop" ? "Stopped" : "BargeIn")
       }
       if (before.turn === "Playing" && after.turn !== "Playing") this.#endPlayback(before, after)
@@ -174,6 +181,7 @@ module browser {
       const turn = new AbortController()
       this.#turn = turn
       const text = this.#text
+      const supersedes = this.state.rejoined > 0 ? this.#sent?.clientMessageId : undefined
       this.#text = ""
       this.#send({ type: "sendTurn" })
       const fail = () => {
@@ -183,8 +191,10 @@ module browser {
       }
       try {
         const voiceUi = this.ports.voiceUi?.()
+        const clientMessageId = this.ports.clientMessageId()
+        this.#sent = { text, clientMessageId }
         const request = { text, channelType: voiceChannelType, metadata: voiceUi === undefined ? {} : { voiceUi },
-          clientMessageId: this.ports.clientMessageId() }
+          clientMessageId, ...(supersedes === undefined ? {} : { supersedes }) }
         void this.ports.turns.send(request, turn.signal).then((reply) => {
           if (this.#turn !== turn) return
           this.#turn = undefined

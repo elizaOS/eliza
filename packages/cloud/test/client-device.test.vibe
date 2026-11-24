@@ -11,8 +11,6 @@ import { tokenDigest } from "../src/shared/sealing.vibe"
 import { revokeAll } from "../src/native-clients/device-keys.vibe"
 import { accountUsable, CloudError, createCloudClient, creditFromSnapshot, type CloudClient } from "../src/client/index.vibe"
 
-import { hostFetch } from "./zz-wp9u6-fetch-tmp.ts"
-
 effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
   return try cloud.store.transaction((tx) => tx.query(text, params))
 }
@@ -31,7 +29,7 @@ effect function entitledDevice(cloud: TestCloud, name: string, now: number, expi
   return { ...account, bearer }
 }
 function clientOf(baseUrl: string, credential: () => string): CloudClient {
-  return createCloudClient({ baseUrl, credential, fetch: hostFetch })
+  return createCloudClient({ baseUrl, credential })
 }
 effect function failureOf(run: () => Promise<unknown>) {
   return try promise(() => run().then(() => "succeeded", (error: unknown) => error instanceof CloudError ? error.failure : `threw ${String(error)}`))

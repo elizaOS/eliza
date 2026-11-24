@@ -9,7 +9,7 @@ import type { SwappedValue } from "../family.vibe"
 import { dialForms, samePhoneNumber, writesUnreadableNumber, writtenPhoneNumbers } from "./dial-number.vibe"
 import { ownerNameWithoutFiller, writesContactName } from "./names.vibe"
 import { authoredKeypadRequest, authoredTelephonyTarget, emergencyServicesRequest, namesEmergencyService, type PhoneTarget } from "./request.vibe"
-import { spokenPhoneNumbers } from "./spoken-number.vibe"
+import { completeSpokenPhoneNumber, spokenPhoneNumbers } from "./spoken-number.vibe"
 
 export type TargetRefusal = Exclude<TargetVerdict, "TargetGrounded" | "TargetHandedThrough" | "EmergencyKeypad">
 
@@ -166,7 +166,9 @@ function commandOf(operation: DeviceOperation, text: string): { readonly target:
   const written = authored.target
   const proposed = proposedTarget(operation)
   const kept = written?.kind === "contact" && proposed?.kind === "contact" && writesContactName(text, proposed.query) && ownerNameWithoutFiller(written.query, proposed.query)
-  return { target: kept ? { kind: "contact", query: proposed.query.trim() } : written }
+  const spoken = written?.kind === "contact" ? completeSpokenPhoneNumber(written.query) : undefined
+  const said = spoken !== undefined && proposed?.kind === "number" && samePhoneNumber(spoken, proposed.number)
+  return { target: kept ? { kind: "contact", query: proposed.query.trim() } : said ? { kind: "number", number: spoken } : written }
 }
 
 function handedThrough(operation: DeviceOperation, target: PhoneTarget | undefined): TargetGrounding {
@@ -272,7 +274,8 @@ function verdictOf(grounding: TargetGrounding): TargetVerdict {
 export function groundTelephonyTarget(operation: DeviceOperation, text: string, references: readonly SwappedPhoneReference[], keypadOffered: boolean): TargetGrounding {
   const grounded = ownerTarget(operation, text, references)
   const callOrDial = operation.type === "phone_call" || operation.type === "phone_dial"
-  const namesService = callOrDial && operation.target.kind === "contact" && namesEmergencyService(operation.target.query)
+  const offered = grounded.kind === "grounded" ? grounded.operation : operation
+  const namesService = [operation, offered].some((call) => (call.type === "phone_call" || call.type === "phone_dial") && call.target.kind === "contact" && namesEmergencyService(call.target.query))
   const verdict = emergencyVerdict(emergencyServicesRequest(text), callOrDial || operation.type === "phone_keypad", namesService, keypadOffered, verdictOf(grounded))
   switch (verdict) {
     case "EmergencyDial": return refusal(verdict)

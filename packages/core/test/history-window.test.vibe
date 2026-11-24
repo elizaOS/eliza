@@ -1,6 +1,6 @@
 // spec/core/context.md, "Story: Keep a long conversation within reach on a host with no reviewer"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"
 import { assert, it } from "@effect/vitest"
-import { windowHistory } from "../src/index.vibe"
+import { renderContextObject, segmentBlock, windowHistory, type ContextEvent } from "../src/index.vibe"
 
 interface Row {
   readonly id: string
@@ -57,4 +57,33 @@ it('A recalled exchange stays out of the shown history, and what a request says 
     inHistory: recalled.shown.some(({ id }) => id === "m60" || id === "m61"),
     sameHistory: recalled.shown.map(({ id }) => id).join() === plain.shown.map(({ id }) => id).join(),
   }, { recalled: ["m60", "m61"], inHistory: false, sameHistory: true })
+})
+
+function prior(at: string, text: string): ContextEvent {
+  return { id: `history:${at}`, type: "segment", source: "prior-dialogue", createdAt: Date.parse(at), segment: { id: `history:${at}`, label: "prior_message:user", content: `user: ${text}`, stable: false } }
+}
+
+function transcript(events: readonly ContextEvent[], zone?: string): string[] {
+  const current: ContextEvent = { id: "current", type: "message", createdAt: Date.parse("2026-11-20T21:19:11.219Z"), message: { id: "current", role: "user", content: "And now?" } }
+  return renderContextObject({ id: "turn", metadata: zone === undefined ? {} : { displayTimeZone: zone }, events: [...events, current] })
+    .promptSegments.filter((segment) => segment.label === "prior_message:user").map(segmentBlock)
+}
+
+it('An earlier message is read with its local date and minute, its year when that is not the newest, UTC when no zone is usable, and its offset only in the hour a zone repeats (spec/core/context.md, "Story: Know when each earlier message was said"; spec/core/context.md, "A message\'s stamp is its local date and minute, with the year only when it is not the newest year and an offset only when the minute alone names no one instant")', () => {
+  const opened = prior("2026-11-20T21:18:13.690Z", "Open Messages.")
+  assert.deepStrictEqual({
+    localMinute: transcript([prior("2026-11-20T04:59:59.999Z", "Before midnight."), opened], "America/New_York"),
+    anotherYear: transcript([prior("2025-11-20T21:18:13.690Z", "Last year."), prior("2026-01-01T04:30:00.000Z", "New Year's Eve."), prior("2026-01-01T05:30:00.000Z", "This year.")], "America/New_York"),
+    noZone: [transcript([opened]), transcript([opened], "Not/AZone")],
+    repeatedHour: transcript([
+      prior("2026-11-01T05:30:00Z", "First 1:30."), prior("2026-11-01T06:30:00Z", "Second 1:30."), prior("2026-11-01T07:30:00Z", "2:30."), prior("2026-03-08T07:30:00Z", "3:30."),
+    ], "America/New_York"),
+  }, {
+    localMinute: ["[message_at=11-19 23:59] user: Before midnight.", "[message_at=11-20 16:18] user: Open Messages."],
+    anotherYear: ["[message_at=2025-11-20 16:18] user: Last year.", "[message_at=2025-12-31 23:30] user: New Year's Eve.", "[message_at=01-01 00:30] user: This year."],
+    noZone: [["[message_at=11-20 21:18Z] user: Open Messages."], ["[message_at=11-20 21:18Z] user: Open Messages."]],
+    repeatedHour: [
+      "[message_at=11-01 01:30-04:00] user: First 1:30.", "[message_at=11-01 01:30-05:00] user: Second 1:30.", "[message_at=11-01 02:30] user: 2:30.", "[message_at=03-08 03:30] user: 3:30.",
+    ],
+  })
 })

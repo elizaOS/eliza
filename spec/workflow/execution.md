@@ -86,3 +86,91 @@ pure def sometimesTimerReservation(r: WakeupRun): bool = r.phase == WaitingTimer
 pure def sometimesWorkerUncertain(r: WakeupRun): bool = r.phase == WorkerUncertain and r.wakeId == 0
 pure def sometimesCancelledPersistedRun(r: WakeupRun): bool = r.phase == ExecutionCancelled
 ```
+
+### One unreadable run or schedule does not stop the recovery of the others
+
+When the host starts, it recovers every unfinished run and then re-arms every
+schedule, one row at a time. A row it cannot read or recover, whether it fails
+or breaks, is reported and skipped: every other run is still resumed, parked or
+settled, and every other schedule is still armed.
+
+```quint
+type RecoverySweep = { recovered: int, unreadable: int }
+pure val freshSweep: RecoverySweep = { recovered: 0, unreadable: 0 }
+pure def sweptRow(readable: bool, sweep: RecoverySweep): RecoverySweep =
+  if (readable) { ...sweep, recovered: sweep.recovered + 1 } else { ...sweep, unreadable: sweep.unreadable + 1 }
+pure def lawEveryRowIsSweptOnce(readable: bool, recovered: int, unreadable: int): bool = {
+  val after = sweptRow(readable, { recovered: recovered, unreadable: unreadable })
+  after.recovered + after.unreadable == recovered + unreadable + 1
+}
+pure def lawAnUnreadableRowKeepsWhatWasRecovered(recovered: int, unreadable: int): bool =
+  sweptRow(false, { recovered: recovered, unreadable: unreadable }).recovered == recovered
+```
+
+### A run's stored record leaves out U+0000, which the store cannot hold
+
+The store keeps a run as JSON that cannot hold the character U+0000. Text a run
+carries can still contain one: a model's reply, a step's value, an approval's
+summary. Every string in the stored record is kept without that character, so
+the run is stored and finishes as it would have without it.
+If an object key contains U+0000, the store keeps the document as escaped
+JSON text and restores the exact key when it reads the record. A key that
+contains U+0000 stays distinct from a key that already omits it.
+
+```quint
+pure def storedRunCodeUnit(codeUnit: int): bool = codeUnit != 0
+```
+
+### A stored run keeps its newest 200 progress events and every timer and approval event, and counts the ones it dropped
+
+A run's history grows with every step, and a long loop would grow its stored
+record without limit. Each time the run is stored, its oldest progress events
+beyond the newest 200 are dropped and their number is added to the run's count
+of dropped events. Timer and approval events are always kept, and so is the
+newest event. Each event keeps its original position even when an older
+progress event is dropped. A running reader receives only retained events
+whose positions are after the last event it already read.
+
+```quint
+pure val maxProgressEvents: int = 200
+pure def progressEventsDropped(progress: int): int = if (progress > maxProgressEvents) progress - maxProgressEvents else 0
+pure def historyEventAfter(position: int, lastRead: int): bool = position > lastRead
+pure val progressValues = Set(0, 1, 200, 201, 450)
+pure def lawStoredProgressIsBounded(progress: int): bool = progress - progressEventsDropped(progress) <= maxProgressEvents
+pure def lawShortHistoryIsKeptWhole(progress: int): bool = progress <= maxProgressEvents implies progressEventsDropped(progress) == 0
+pure def lawNoMoreDroppedThanNeeded(progress: int): bool = progress >= maxProgressEvents implies progress - progressEventsDropped(progress) == maxProgressEvents
+pure def lawReadHistoryDoesNotRepeat(position: int, lastRead: int): bool = historyEventAfter(position, lastRead) implies not(historyEventAfter(position, position))
+```
+
+## Story: End a run whose worker stops answering
+
+> As the owner, I want a workflow whose worker hangs or floods its channel to
+> stop with a reason, so it never holds a run, a check of its code or my chat
+> dossier open.
+
+### A worker that overruns its run, its check or its line is stopped
+
+A run's worker finishes or parks within 30 minutes of being started or
+resumed, counting the model drafts it waits on; a check of workflow code
+answers within 30 seconds; and no line the worker sends is longer than
+1 MiB. A worker past any of these is stopped: the run fails with the limit
+it overran as its error, and an overrun check refuses the code as not
+checked. A run parked for a timer, an event or an approval holds no worker,
+so its wait is not counted. A worker within all three keeps running.
+
+```quint
+type WorkerTurn = RunTurn | CheckTurn
+pure val runTurnLimitMs: int = 1800000
+pure val checkTurnLimitMs: int = 30000
+pure val workerLineLimitBytes: int = 1048576
+pure def workerTurnLimitMs(turn: WorkerTurn): int = if (turn == RunTurn) runTurnLimitMs else checkTurnLimitMs
+pure def workerOverran(turn: WorkerTurn, elapsedMs: int, lineBytes: int): bool =
+  elapsedMs > workerTurnLimitMs(turn) or lineBytes > workerLineLimitBytes
+pure val elapsedMsValues = Set(0, 30000, 30001, 1800000, 1800001)
+pure val lineBytesValues = Set(0, 1048576, 1048577)
+pure def lawAWorkerWithinItsLimitsKeepsRunning(turn: WorkerTurn): bool =
+  not(workerOverran(turn, workerTurnLimitMs(turn), workerLineLimitBytes))
+pure def lawAnOverlongLineStopsAnyWorker(turn: WorkerTurn, elapsedMs: int): bool = workerOverran(turn, elapsedMs, workerLineLimitBytes + 1)
+pure def lawACheckIsHeldToLessTimeThanARun(elapsedMs: int, lineBytes: int): bool =
+  workerOverran(RunTurn, elapsedMs, lineBytes) implies workerOverran(CheckTurn, elapsedMs, lineBytes)
+```

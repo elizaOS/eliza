@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/routines.md, "A creation with an idempotency key creates at most one definition"; spec/assistant/routines.md, "A request from the conversation changes the one routine it names, and none when it names none or several"
+// spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/reminders.md, "A reminder repeats on an interval only when the interval divides the hour or the day evenly"; spec/assistant/reminders.md, "A snooze until tonight comes at 20:00, and one until tomorrow morning at 08:00, on the owner's clock"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/routines.md, "A creation with an idempotency key creates at most one definition"; spec/assistant/routines.md, "A request from the conversation changes the one routine it names, and none when it names none or several"
 
 const Text = (most: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(most))
 const Minutes = (least: number, most: number) => Schema.Int.check(Schema.isBetween({ minimum: least, maximum: most }))
@@ -11,6 +11,7 @@ export const ReminderDue = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("local"), date: Text(10), time: Text(5) }),
   Schema.Struct({ kind: Schema.Literal("day"), date: Text(10) }),
   Schema.Struct({ kind: Schema.Literal("repeat"), time: Text(5), days: Schema.optionalKey(Weekdays) }),
+  Schema.Struct({ kind: Schema.Literal("every"), minutes: Minutes(1, 1_440) }),
 ])
 export type ReminderDue = typeof ReminderDue.Type
 
@@ -36,9 +37,10 @@ export const ReminderCheck = Schema.Struct({
 export type ReminderCheck = typeof ReminderCheck.Type
 
 export const ReminderAnswer = Schema.Struct({
-  op: Schema.Literals(["complete", "dismiss", "snooze", "acknowledge"]),
+  op: Schema.Literals(["complete", "dismiss", "snooze", "acknowledge", "skip"]),
   target: Text(200),
   minutes: Schema.optionalKey(Minutes(1, 1_440)),
+  until: Schema.optionalKey(Schema.Literals(["tonight", "tomorrow_morning"])),
 })
 export type ReminderAnswer = typeof ReminderAnswer.Type
 
@@ -59,6 +61,8 @@ export type ReminderEscalation = typeof ReminderEscalation.Type
 export const GoalRequest = Schema.Union([
   Schema.Struct({ op: Schema.Literal("create"), title: Text(200), description: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))), cadence: Schema.Literals(["none", "daily", "weekly"]) }),
   Schema.Struct({ op: Schema.Literal("update"), target: Text(200), status: Schema.Literals(["active", "paused", "archived", "satisfied"]), cadence: Schema.optionalKey(Schema.Literals(["none", "daily", "weekly"])) }),
+  Schema.Struct({ op: Schema.Literal("rename"), target: Text(200), title: Text(200) }),
+  Schema.Struct({ op: Schema.Literal("list") }),
   Schema.Struct({ op: Schema.Literal("delete"), target: Text(200) }),
   Schema.Struct({ op: Schema.Literal("dismiss_checkin"), target: Text(200), slot: Schema.Literals(["morning", "evening", "weekly"]) }),
   Schema.Struct({ op: Schema.Literal("checkin"), target: Text(200), progress: Schema.Literals(["on_track", "at_risk", "needs_attention"]), note: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))) }),
