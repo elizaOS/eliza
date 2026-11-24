@@ -85,7 +85,7 @@ function sender(value: string) {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate) ? candidate : null
 }
 
-type ReplyHeaders = Pick<MailPart, "headers">
+interface ReplyHeaders { readonly headers?: ReadonlyArray<{ readonly name: string; readonly value: string }> }
 type ReplySource = "reply-to" | "from"
 interface ReplyRecipient { readonly source: ReplySource; readonly address: string }
 
