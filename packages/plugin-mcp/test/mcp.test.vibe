@@ -14,7 +14,7 @@ module node {
   const text = { type: "string" }
   const deep = (levels: number): object => levels === 0 ? { type: "integer" } : { type: "object", properties: { next: deep(levels - 1) }, required: ["next"] }
 
-  export const tools = [
+  const tools = [
     { name: "push_files", inputSchema: { type: "object", properties: { branch: text, files: { type: "array", items: { type: "object", properties: { path: text, content: text }, required: ["path", "content"], additionalProperties: false } } }, required: ["branch", "files"] } },
     { name: "create_page", inputSchema: { type: "object", properties: { parent: { type: "object", properties: { page_id: text }, required: ["page_id"] }, title: { type: "string", minLength: 1, description: "Page title" } }, required: ["parent", "title"] } },
     { name: "sum_ids", inputSchema: { type: "object", properties: { ids: { type: "array", items: { type: "integer" } } }, required: ["ids"] } },
@@ -48,7 +48,7 @@ module node {
     return { connection: { kind: "http", url: new URL(`http://127.0.0.1:${address.port}/mcp`), fetch }, called, delivered, stop: () => new Promise<void>((resolve) => http.close(() => resolve())) }
   }
 }
-import { startServer, tools } from node
+import { startServer } from node
 
 const server = { serverId: "peer", serverEpoch: 1, transport: "HttpTransport" as const, enabled: true }
 const nested = (levels: number, leaf: unknown): unknown => levels === 0 ? leaf : { next: nested(levels - 1, leaf) }
