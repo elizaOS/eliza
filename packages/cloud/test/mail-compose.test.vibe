@@ -41,7 +41,7 @@ function decodedText(decoded: Result.Result<Uint8Array, unknown>): string {
   return decoded._tag === "Success" ? new TextDecoder().decode(decoded.success) : ""
 }
 
-describe("WP8 G4 compose", () => {
+describe("Mail composition", () => {
   it.live("Compose, reply-all and ambiguous reply (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\")", () => scoped(effect {
     const layer = try setup()
     const run = <A, E>(program: A!E!(Deployment | HttpClient.HttpClient)) => Effect.provide(program, layer)
