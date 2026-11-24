@@ -121,7 +121,7 @@ const commented = {
   "packages/os/test/image-apk.test.vibe": 2,
 }
 const scheduled = {
-  "packages/agent/src/access/socket.vibe": 3,
+  "packages/agent/src/access/socket.vibe": 2,
   "packages/agent/test/client-runtime.test.vibe": 2,
   "packages/agent/test/client-tasks.test.vibe": 1,
   "packages/agent/test/client-turns.test.vibe": 2,

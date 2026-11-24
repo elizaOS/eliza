@@ -1,7 +1,7 @@
 // spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/access/transport.md, "Story: Stream a response and end it once"; spec/agent/access/transport.md, "Story: Close the listeners once"; spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
 module node {
   import { processOwnerUid } from "../host/process-owner.vibe"
-  import { Schema, type Redacted } from "effect"
+  import { Effect, Schema, type Redacted } from "effect"
   import { once, type EventEmitter } from "node:events"
   import { chmod, lstat } from "node:fs/promises"
   import { createServer, type Socket } from "node:net"
@@ -311,9 +311,7 @@ module node {
         let dispatched = false
         exchanges.receive(conn, frame.id, inboundOf(call), { dispatch: (deadlineMs) => {
           dispatched = true
-          const timer = setTimeout(() => exchanges.expire(conn), deadlineMs)
-          handler.signal.addEventListener("abort", () => clearTimeout(timer), { once: true })
-          connection.socket.once("close", () => clearTimeout(timer))
+          Effect.runFork(Effect.sleep(deadlineMs).pipe(Effect.andThen(Effect.sync(() => exchanges.expire(conn)))), { signal: handler.signal })
         } })
         if (dispatched) void serveRequest(exchanges, connection, call, route)
         return
