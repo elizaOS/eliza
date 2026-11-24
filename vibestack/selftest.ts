@@ -296,9 +296,9 @@ pure def shifted(n: int): List[int] = List(1, 2).listMap(x => x + n)`);
     assert.ok(checked.ok, checked.out);
     const proof = model.render("");
     // LemmaScript reads past `as` beside == and takes the first record type with these field names, which may be another module's.
-    assert.match(proof, /recordOf\(n\) === typed\d+_steps\(\{ state: n, out: \[n\] \}\)/);
-    assert.doesNotMatch(proof, /=== \(\{ state: n, out: \[n\] \} as Step\)/);
-    assert.match(proof, /typed\d+_steps\(\[1, 2\]\)\.map\(/);
+    assert.match(proof, /recordOf\(n\) === typed\d+_steps\(\{ state: n, out: \(\[n\] as number\[\]\) \}\)/);
+    assert.doesNotMatch(proof, /=== \(\{ state: n, out: \(\[n\] as number\[\]\) \} as Step\)/);
+    assert.match(proof, /typed\d+_steps\(\(\[1, 2\] as number\[\]\)\)\.map\(/);
     const domain = await import(pathToFileURL(path.join(root, "gen", "steps.ts")).href);
     assert.equal(domain.lawStepIsItsRecord(3), true);
     assert.deepEqual(domain.shifted(1), [2, 3]);
