@@ -214,8 +214,8 @@ pure def retryAtIn(k: ReplyKind): int = match k { | AccountFailed(x) => B::retry
 pure def providerWaitMs(k: ReplyKind, now: int): int =
   if (retryAtIn(k) <= 0) -1 else if (retryAtIn(k) > now) retryAtIn(k) - now else 0
 pure val endedValues = Set(Answered, TimedOut, Aborted, AccountFailed({ failure: B::ProviderIssue }), AccountFailed({ failure: B::InsufficientCredits }),
-  AccountFailed({ failure: B::CredentialInvalid({ version: 1 }) }), AccountFailed({ failure: B::LimitReached({ retryAt: 0 }) }),
-  AccountFailed({ failure: B::LimitReached({ retryAt: 200000 }) }))
+  AccountFailed({ failure: B::CredentialInvalid({ version: 1 }) }), AccountFailed({ failure: B::LimitReached({ retryAt: 0, providerRetryAt: 0 }) }),
+  AccountFailed({ failure: B::LimitReached({ retryAt: 200000, providerRetryAt: 200000 }) }))
 pure def lawOnlyAnAccountFailureNamesAFix(ended: ReplyKind): bool = planActionOf(ended) != "" implies accountFailed(ended)
 pure def lawARateLimitNamesNoFix(ended: ReplyKind): bool = failureKind(ended) == "limit_reached" implies planActionOf(ended) == ""
 pure def lawOnlyARateLimitCarriesAWait(ended: ReplyKind, now: int): bool = providerWaitMs(ended, now) >= 0 implies failureKind(ended) == "limit_reached"

@@ -1,6 +1,7 @@
 // spec/agent/host/launch.md, "Text goes to the owner's cloud account, the owner's own key, or nowhere"
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import dns from "node:dns";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:https";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -47,6 +48,7 @@ export interface CloudFake {
   readonly caFile: string;
   readonly calls: readonly CloudCall[];
   readonly ownKeyBaseUrl: string;
+  readonly ownKeyCerebrasBaseUrl: string;
   readonly ownKey: string;
   acceptKey(key: string): void;
   nextCompletion(): Promise<CloudCall>;
@@ -82,6 +84,20 @@ export const answerJson = (body: unknown, status = 200): RouteReply => ({ kind: 
 export const answerStatus = (status: number): RouteReply => ({ kind: "status", status });
 
 const ownKeyPrefix = "/own-key/v1";
+const cerebrasHost = "agent-test.cerebras.ai";
+let cerebrasResolved = false;
+
+function resolveCerebrasHere(): void {
+  if (cerebrasResolved) return;
+  cerebrasResolved = true;
+  const resolve = dns.lookup;
+  dns.lookup = ((hostname: string, options: unknown, callback?: unknown) => {
+    if (hostname !== cerebrasHost) return (resolve as (...args: unknown[]) => void)(hostname, options, callback);
+    const answer = (typeof options === "function" ? options : callback) as (error: null, address: unknown, family: number) => void;
+    const all = typeof options === "object" && options !== null && (options as { all?: unknown }).all === true;
+    answer(null, all ? [{ address: "127.0.0.1", family: 4 }] : "127.0.0.1", 4);
+  }) as typeof dns.lookup;
+}
 
 const execute = promisify(execFile);
 
@@ -93,7 +109,7 @@ async function selfSigned(directory: string): Promise<{ key: string; cert: strin
     "[req]", "prompt = no", "distinguished_name = subject", "x509_extensions = ext",
     "[subject]", `CN = cloud-fake-${randomUUID()}`,
     "[ext]", "basicConstraints = critical, CA:TRUE", "keyUsage = critical, digitalSignature, keyCertSign",
-    "extendedKeyUsage = serverAuth", "subjectAltName = DNS:localhost, IP:127.0.0.1", "",
+    "extendedKeyUsage = serverAuth", `subjectAltName = DNS:localhost, DNS:${cerebrasHost}, IP:127.0.0.1`, "",
   ].join("\n"));
   await execute("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-days", "1", "-config", config, "-keyout", keyFile, "-out", caFile]);
   return { key: await readFile(keyFile, "utf8"), cert: await readFile(caFile, "utf8"), caFile };
@@ -291,6 +307,7 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     server.listen(0, "127.0.0.1", () => resolve());
   });
   const { port } = server.address() as AddressInfo;
+  resolveCerebrasHere();
   tls.setDefaultCACertificates([...tls.getCACertificates("default"), cert]);
   return {
     origin: `https://localhost:${port}`,
@@ -298,6 +315,7 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     calls,
     nextCompletion: () => new Promise<CloudCall>((resolve) => { completions.push(resolve); }),
     ownKeyBaseUrl: `https://localhost:${port}${ownKeyPrefix}`,
+    ownKeyCerebrasBaseUrl: `https://${cerebrasHost}:${port}${ownKeyPrefix}`,
     ownKey,
     route: (method, path, reply) => {
       routes.set(`${method} ${path}`, reply);

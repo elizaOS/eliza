@@ -7,8 +7,9 @@ an OpenAI-compatible endpoint, or none ([launch](../host/launch.md)). An
 account, backend or embeddings change is a new launch, decided by the host.
 Retry, fallback and cancellation are core [models](../../core/models.md):
 the cloud and own-key text handlers are each registered twice, so core
-retries a transient refusal once. A rate-limited call is re-sent once by the
-turn that made it, never by the transport ([planning](../conversation/planning.md)).
+retries a transient refusal once. A rate-limited call whose dispatch reached
+the provider once is re-sent once by the turn that made it, never by the
+transport ([planning](../conversation/planning.md)).
 This spec decides which handler a backend serves, what a call sends, how a
 cloud refusal maps onto core's outcomes and onto the account state, how long
 a rate limit holds the account, and when a pushed credential takes effect.
@@ -41,7 +42,7 @@ the credential's version, and keeps it exactly when the backend needs one.
 ```quint
 import launch.* from "../host/launch"
 type BindPhase = Unbound | Bound
-type AccountFailure = CredentialInvalid({ version: int }) | InsufficientCredits | LimitReached({ retryAt: int }) | ProviderIssue
+type AccountFailure = CredentialInvalid({ version: int }) | InsufficientCredits | LimitReached({ retryAt: int, providerRetryAt: int }) | ProviderIssue
 type AccountState = Usable | Failing({ failure: AccountFailure })
 type LastCloudFailure = NoCloudFailure | CloudFailedAt({ failure: AccountFailure, at: int })
 type Call = { id: int, credentialVersion: int }
@@ -127,10 +128,11 @@ the call. Both attempts of one call carry the same `Idempotency-Key`, fresh
 for each call, so a connection lost after the cloud dispatched the first
 attempt is answered `409 already_dispatched` instead of running and charging
 the generation again; for a rate limit, the transport never re-sends it;
-the refusal carries the time left until the account's retry time, and no
-wait at all when the provider named no retry time, and the turn that made
-the call waits for that, at most five seconds and five seconds when it
-names none, and sends it once more ([planning](../conversation/planning.md)).
+the refusal carries the time left until the retry time the provider named,
+and no wait at all when it named none, and unless the call's dispatch
+already tried the provider again, the turn that made the call waits for
+that, at most five seconds and five seconds when it names none, and sends
+it once more ([planning](../conversation/planning.md)).
 
 A refusal can also come inside a streamed answer, as a `data:` frame that
 holds `error` in place of choices. It is read as the HTTP refusal it names,
@@ -147,9 +149,10 @@ are read as the same fields of a provider's own body.
 ```quint
 import models as M from "../../core/models"
 import client as C from "../../cloud/client"
-pure def refusalWait(f: AccountFailure, t: int): int = if (namedRetryAt(f) < 0) -1 else if (namedRetryAt(f) > t) namedRetryAt(f) - t else 0
-pure def lawAHintlessLimitCarriesNoWait(t: int): bool = refusalWait(LimitReached({ retryAt: 0 }), t) < 0
-pure def lawANamedWaitEndsAtTheRetryTime(failure: AccountFailure, t: int): bool = refusalWait(failure, t) > 0 implies t + refusalWait(failure, t) == retryAtOf(failure)
+pure def providerRetryAtOf(f: AccountFailure): int = match f { | LimitReached(x) => x.providerRetryAt | _ => -1 }
+pure def refusalWait(f: AccountFailure, t: int): int = if (providerRetryAtOf(f) <= 0) -1 else if (providerRetryAtOf(f) > t) providerRetryAtOf(f) - t else 0
+pure def lawAHintlessLimitCarriesNoWait(t: int): bool = refusalWait(LimitReached({ retryAt: 0, providerRetryAt: 0 }), t) < 0
+pure def lawANamedWaitEndsAtTheProviderRetryTime(failure: AccountFailure, t: int): bool = refusalWait(failure, t) > 0 implies t + refusalWait(failure, t) == providerRetryAtOf(failure)
 pure val unreadableFrameStatus = 502
 pure def namesAStatus(status: int): bool = status >= 400 and status <= 599
 pure def frameStatus(frameCode: int, codeStatus: int): int = if (namesAStatus(frameCode)) frameCode else if (namesAStatus(codeStatus)) codeStatus else unreadableFrameStatus
@@ -298,16 +301,18 @@ pure def lawOnlyQwenOnACerebrasRouteSendsTheKey(family: ReasoningFamily, cerebra
 `credential_invalid`, `insufficient_credits` (credits or a spent allowance),
 `limit_reached` with its retry time, and `provider_issue` (an outage, a
 provider issue, a network failure, or a refused request or consent) are the one failure vocabulary: turns put
-them on the reply and status reports them. `lastCloudFailure` is
-`{kind, at, retryAt?}`, with `retryAt` only when the provider named one; it
-never holds message text or a credential.
+them on the reply and status reports them. A limit keeps the account's
+retry time and the one the provider named, `0` when it named none.
+`lastCloudFailure` is `{kind, at, retryAt?}`, with the account's `retryAt`
+only when the provider named one; it never holds message text or a
+credential.
 
 ```quint
 pure def failureOf(e: C::CloudError, version: int): AccountFailure = match e {
   | CloudCredentialInvalid(_) => CredentialInvalid({ version: version })
   | CloudInsufficientCredits => InsufficientCredits
   | CloudAllowanceExhausted(_) => InsufficientCredits
-  | CloudRateLimited(x) => LimitReached({ retryAt: x.retryAt })
+  | CloudRateLimited(x) => LimitReached({ retryAt: x.retryAt, providerRetryAt: x.retryAt })
   | _ => ProviderIssue
 }
 pure def failureName(f: AccountFailure): str = match f {
@@ -353,27 +358,35 @@ pure def sometimesProviderIssueKeepsTheLimit(s: ModelBinding): bool =
 ### A rate limit on an own key at Cerebras holds the account at most four seconds, and every other route keeps the provider's retry time
 
 On an own-key endpoint whose host is `cerebras.ai` or under it, a rate
-limit holds the account for at most four seconds after the refusal, which
-ends before the turn's five-second re-send: Cerebras's per-minute allowance
-refills all the time and admits a refused request within seconds though it
-names a minute, and a longer hold would refuse that re-send locally and fail
-every call in the minute without asking the model. Every other route, the
-cloud and any other own-key endpoint, keeps the provider's whole retry time.
-No launch setting changes either. The limit's retry time, which status
-reports and the turn's re-send waits for, is the held one.
+limit holds the account for at most four seconds after the refusal:
+Cerebras's per-minute allowance refills all the time and admits a refused
+request within seconds though it names a minute, and a longer hold would
+refuse the turn's re-send locally and fail every call in the minute without
+asking the model. Every other route, the cloud and any other own-key
+endpoint, keeps the provider's whole retry time. No launch setting changes
+either. The account's retry time, which status reports, is the held one,
+but a refusal, the provider's own or one the hold makes, carries the wait
+to the retry time the provider named; so the turn waits its five seconds
+and its re-send reaches Cerebras after a shortened hold has ended.
 
 ```quint
 import planning as P from "../conversation/planning"
 pure val cerebrasHoldMs = 4000
 pure def rateLimitHold(backend: Backend, cerebrasRoute: bool): int = if (cerebrasRoute and isOwnKey(backend)) cerebrasHoldMs else 0
 pure def heldFailure(failure: AccountFailure, t: int, maxHold: int): AccountFailure = match failure {
-  | LimitReached(x) => if (maxHold > 0 and x.retryAt > t + maxHold) LimitReached({ retryAt: t + maxHold }) else failure
+  | LimitReached(x) => if (maxHold > 0 and x.retryAt > t + maxHold) LimitReached({ ...x, retryAt: t + maxHold }) else failure
   | _ => failure
 }
-pure val failureValues = Set(LimitReached({ retryAt: 59000 }), LimitReached({ retryAt: 3 }), LimitReached({ retryAt: 0 }), ProviderIssue, InsufficientCredits)
+pure def turnResendWait(f: AccountFailure, t: int): int =
+  if (refusalWait(f, t) < 0) P::resendWait(P::RateLimitedWithoutHint, 1) else P::resendWait(P::RateLimitedFor({ hintMs: refusalWait(f, t) }), 1)
+pure val failureValues = Set(LimitReached({ retryAt: 59000, providerRetryAt: 59000 }), LimitReached({ retryAt: 4500, providerRetryAt: 4500 }), LimitReached({ retryAt: 3, providerRetryAt: 3 }),
+  LimitReached({ retryAt: 0, providerRetryAt: 0 }), ProviderIssue, InsufficientCredits)
 pure val maxHoldValues = Set(0, 4000)
-pure def lawACerebrasLimitEndsBeforeTheTurnResends(failure: AccountFailure, t: int, backend: Backend): bool =
-  (isOwnKey(backend) and t >= 0) implies retryAtOf(heldFailure(failure, t, rateLimitHold(backend, true))) < t + P::resendWaitMaxMs
+pure def lawACerebrasHoldEndsBeforeTheTurnResends(failure: AccountFailure, t: int, backend: Backend): bool = {
+  val held = heldFailure(failure, t, rateLimitHold(backend, true))
+  (isOwnKey(backend) and t >= 0 and providerRetryAtOf(failure) == retryAtOf(failure) and retryAtOf(held) < retryAtOf(failure))
+    implies retryAtOf(held) < t + turnResendWait(held, t)
+}
 pure def lawEveryOtherRouteKeepsTheProviderTime(failure: AccountFailure, t: int, backend: Backend, cerebrasRoute: bool): bool =
   not(cerebrasRoute and isOwnKey(backend)) implies heldFailure(failure, t, rateLimitHold(backend, cerebrasRoute)) == failure
 pure def lawAHoldNeverOutlastsTheProvider(failure: AccountFailure, t: int, maxHold: int): bool =
@@ -453,7 +466,7 @@ pure def failureBlocks(f: AccountFailure, t: int): bool = match f {
 pure def blocked(st: AccountState, t: int): bool = match st { | Failing(x) => failureBlocks(x.failure, t) | Usable => false }
 pure def warmAnswer(backend: Backend, st: AccountState, t: int): WarmAnswer = if (not(isCloud(backend))) WarmNoCloud else if (blocked(st, t)) WarmBlocked else WarmReady
 pure val stValues = Set(Usable, Failing({ failure: CredentialInvalid({ version: 1 }) }), Failing({ failure: InsufficientCredits }),
-  Failing({ failure: LimitReached({ retryAt: 5 }) }), Failing({ failure: ProviderIssue }))
+  Failing({ failure: LimitReached({ retryAt: 5, providerRetryAt: 5 }) }), Failing({ failure: ProviderIssue }))
 pure val tValues = Set(0, 5, 10)
 pure def lawWarmReadyOnlyWhenATextCallWouldStart(backend: Backend, st: AccountState, t: int): bool =
   warmAnswer(backend, st, t) == WarmReady implies (servedByBackend(backend, TextSmall) and not(limitedAt(st, t)))

@@ -1,0 +1,76 @@
+import { assert, it } from "@effect/vitest"
+import { AgentRuntime, ModelType, MODEL_PROVIDER_ATTEMPTS, type GenerateTextParams } from "@elizaos/core"
+import { allowanceExhausted, insufficientCredits, rateLimited, refusalFrame, type CloudFake } from "./support/cloud-fake.ts"
+import { parseLaunch } from "../src/host/launch.vibe"
+import { bindModels } from "../src/models/binding.vibe"
+import { registerCloudModels } from "../src/models/cloud-provider.vibe"
+import { openDeviceStorage } from "../src/storage/index.vibe"
+import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
+import { launchDocument, launchFrame, type Backend } from "./support/scratch.ts"
+
+effect function bound(backend: Backend, key: string) {
+  const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
+  const binding = try bindModels(parsed.launch, parsed.authority)
+  const t0 = Date.now()
+  const state = try scratch("model-providers")
+  const store = try acquireRelease(host("device storage", () => openDeviceStorage({ stateDirectory: state.path, persistMemory: false, account: null, embeddingDimensions: 0 })),
+    (opened) => orDie(host("device storage close", () => opened.adapter.close())))
+  const runtime = try Effect.try(() => new AgentRuntime({ agentId: store.agentId, character: { name: "Eliza", bio: [] } }))
+  try Effect.try(() => runtime.registerDatabaseAdapter(store.adapter))
+  console.log("ZZ storage open ms", Date.now() - t0)
+  return { binding, runtime }
+}
+
+effect function cloudAgent(cloud: CloudFake) {
+  const made = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
+  registerCloudModels(made.runtime, made.binding, { baseUrl: cloud.origin, small: "small", large: "large", image: "vision" })
+  return made
+}
+
+function completions(cloud: CloudFake): number {
+  return cloud.calls.filter((call) => call.method === "POST" && call.path.endsWith("/chat/completions")).length
+}
+
+function refusalOf(runtime: AgentRuntime, params: GenerateTextParams) {
+  return host("refused model call", () => runtime.useModel(ModelType.TEXT_SMALL, params).then(() => undefined, (failure: unknown) => failure as Record<string | symbol, unknown>))
+}
+
+it.effect("zz rate limit timing", effect () => {
+  const t0 = Date.now()
+  const cloud = try cloudFake(deviceKey)
+  console.log("ZZ fake ms", Date.now() - t0)
+  const limited = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script(rateLimited(Date.now() + 60_000)))
+  const t1 = Date.now()
+  try refusalOf(limited.runtime, { prompt: "Limited." })
+  try refusalOf(limited.runtime, { prompt: "Still limited." })
+  console.log("ZZ limited calls ms", Date.now() - t1)
+  const unfunded = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script(insufficientCredits()))
+  const t2 = Date.now()
+  try refusalOf(unfunded.runtime, { prompt: "Unfunded." })
+  console.log("ZZ unfunded call ms", Date.now() - t2)
+  const spent = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script(allowanceExhausted(Date.now() + 86_400_000)))
+  const t3 = Date.now()
+  try refusalOf(spent.runtime, { prompt: "Allowance spent." })
+  console.log("ZZ spent call ms", Date.now() - t3)
+  const replaced = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.acceptKey("rotated-device-key"))
+  const t4 = Date.now()
+  try refusalOf(replaced.runtime, { prompt: "Old key." })
+  console.log("ZZ invalid call ms", Date.now() - t4, "total", Date.now() - t0)
+}, 300_000)
+
+it.effect("zz broken frames", effect () => {
+  const cloud = try cloudFake(deviceKey)
+  for (let round = 0; round < 6; round++) {
+    const made = try cloudAgent(cloud)
+    const before = completions(cloud)
+    try Effect.sync(() => cloud.script(...[1, 2, 3, 4].map(() => refusalFrame({ error: { message: "Something broke." } }))))
+    const failure = try refusalOf(made.runtime, { prompt: "Call a tool.", stream: true, onStreamChunk: () => undefined })
+    const attempts = (failure?.[MODEL_PROVIDER_ATTEMPTS] ?? []) as { modelType: string; error?: { status?: unknown; code?: unknown; message?: unknown } }[]
+    console.log("ZZ round", round, "sent", completions(cloud) - before, "status", failure?.status, "attempts", JSON.stringify(attempts.map((a) => [a.modelType, a.error?.status, a.error?.code, a.error?.message])))
+  }
+  assert.ok(true)
+}, 600_000)

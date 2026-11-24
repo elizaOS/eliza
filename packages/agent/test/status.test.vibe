@@ -49,20 +49,23 @@ it.effect('An agent with no text backend runs but cannot respond (spec/agent/hos
   try Effect.try(() => assert.deepInclude("json" in status ? status.json as object : {}, { state: "running", canRespond: false, blocked: false, backend: "none" }))
 })
 
-it('A blocked account cannot respond and status reports the last cloud failure without text (spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text")', async () => {
+it('A blocked account cannot respond and status reports the last cloud failure without text, and a retry time only where the provider named one (spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text")', async () => {
   const backend = { tag: "CloudBackend", baseUrl: "https://cloud.example", baseUrlShape: "HttpsOrigin", smallModel: "s", largeModel: "l", imageModel: "s" } as const
   const view = (binding: BindingState, now: number) => statusRoutes({
     agentId: "a", name: "Ada", serverInstanceId: "i", backend, embeddings: "none", state: () => "running", binding: () => binding, now: () => now,
   })[0]
-  const limited = { tag: "LimitReached", retryAt: 50 } as const
-  const binding: BindingState = { accountState: { tag: "Failing", failure: limited }, lastCloudFailure: { tag: "CloudFailedAt", failure: limited, at: 40 } }
-  const read = async (now: number) => {
+  const limitedBy = (failure: { tag: "LimitReached"; retryAt: number; providerRetryAt: number }): BindingState =>
+    ({ accountState: { tag: "Failing", failure }, lastCloudFailure: { tag: "CloudFailedAt", failure, at: 40 } })
+  const read = async (binding: BindingState, now: number) => {
     const answer = await view(binding, now).handler({ parameters: new Map(), query: new Map(), headers: new Map(), body: undefined, signal: new AbortController().signal })
     const { canRespond, blocked, lastCloudFailure } = (answer as { body: Record<string, unknown> }).body
     return { canRespond, blocked, lastCloudFailure }
   }
-  assert.deepStrictEqual([await read(45), await read(50)], [
+  const limited = limitedBy({ tag: "LimitReached", retryAt: 50, providerRetryAt: 90 })
+  const hintless = limitedBy({ tag: "LimitReached", retryAt: 0, providerRetryAt: 0 })
+  assert.deepStrictEqual([await read(limited, 45), await read(limited, 50), await read(hintless, 45)], [
     { canRespond: false, blocked: true, lastCloudFailure: { kind: "limit_reached", at: 40, retryAt: 50 } },
     { canRespond: true, blocked: false, lastCloudFailure: { kind: "limit_reached", at: 40, retryAt: 50 } },
+    { canRespond: true, blocked: false, lastCloudFailure: { kind: "limit_reached", at: 40 } },
   ])
 })
