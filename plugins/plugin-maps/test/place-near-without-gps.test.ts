@@ -1,6 +1,6 @@
 /**
  * "find the nearest pharmacy" on a phone with no location fix (v612,
- * 2026-11-18). The agent never receives the phone's position, so a nearby
+ * 2026-11-18). Without a position reported with the message, a nearby
  * search hands the query to the phone in a locate card. The reply now also
  * says what to do when the phone cannot get a fix: name a place or area to
  * search near. "pharmacy near the Ferry Building" is that search: it needs no

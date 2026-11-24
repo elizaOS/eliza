@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { cloudLiveDeployedRendererOrigin } from "../cloud-live-deployed-target";
+import {
+  cloudLiveDeployedRendererOrigin,
+  STAGING_PAGES_ALIAS,
+} from "../cloud-live-deployed-target";
 import {
   CloudLiveRequiredActionUnavailableError,
   chooseCloudRuntimeUnlessIdentityStarted,
 } from "../cloud-live-optional-action";
+import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
 
 describe("deployed Cloud smoke target", () => {
   it("pins production and staging to distinct first-party origins", () => {
@@ -16,6 +20,38 @@ describe("deployed Cloud smoke target", () => {
     expect(() =>
       cloudLiveDeployedRendererOrigin("https://untrusted.example"),
     ).toThrow();
+  });
+
+  it("observes the staging Pages proxy separately from the direct API", async () => {
+    const app = cloudLiveDeployedRendererOrigin("staging");
+    const api = "https://api-staging.eliza.app";
+    await expect(
+      waitForRendererCloudApiOrigin({
+        mode: "same-origin",
+        readCloudBase: async () => STAGING_PAGES_ALIAS,
+        expectedApiOrigin: STAGING_PAGES_ALIAS,
+        timeoutMs: 0,
+      }),
+    ).resolves.toEqual({
+      cloudBase: STAGING_PAGES_ALIAS,
+      apiOrigin: STAGING_PAGES_ALIAS,
+    });
+    await expect(
+      waitForRendererCloudApiOrigin({
+        mode: "direct",
+        readCloudBase: async () => app,
+        expectedApiOrigin: api,
+        timeoutMs: 0,
+      }),
+    ).resolves.toEqual({ cloudBase: app, apiOrigin: api });
+    await expect(
+      waitForRendererCloudApiOrigin({
+        mode: "same-origin",
+        readCloudBase: async () => api,
+        expectedApiOrigin: STAGING_PAGES_ALIAS,
+        timeoutMs: 0,
+      }),
+    ).rejects.toThrow(`resolved to ${api}; expected ${STAGING_PAGES_ALIAS}`);
   });
 });
 

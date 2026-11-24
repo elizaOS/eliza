@@ -26,6 +26,7 @@ import {
   type EmbeddedWorkflowService,
   type ExecuteWorkflowOptions,
   isWorkflowRemoved,
+  workflowScheduleProblem,
 } from './embedded-workflow-service';
 import { HOSTED_SPEC, validateDigestSpec } from './hosted-digest';
 import { generatePhoneSpec, phoneGenerationInput } from './phone-workflow-generation';
@@ -460,6 +461,10 @@ export class WorkflowService extends Service {
           503
         );
       }
+      // The schedule is checked here too, so a zone the model wrote as "PST"
+      // gets the one repair pass instead of failing the save.
+      const scheduleProblem = workflowScheduleProblem(draft.schedule);
+      if (scheduleProblem) diagnostics = [...diagnostics, scheduleProblem];
       if (!diagnostics.length) return draft;
       if (attempt === 1)
         throw new WorkflowApiError(

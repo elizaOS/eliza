@@ -2567,7 +2567,8 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
  * bucket further and delays failover. A runtime never inherits another
  * runtime's cooldown. Endpoint, credential and model each retain independent
  * buckets, so interleaved credentials never erase another account's hold.
- * Entries expire at the provider's Retry-After and never block another model.
+ * Entries expire at the provider's Retry-After, or sooner where the host
+ * capped the hold (rateLimitMaxHoldMs), and never block another model.
  */
 const rateLimitCooldowns = new WeakMap<
   IAgentRuntime,
@@ -2585,6 +2586,27 @@ class ProviderRateLimitCooldownError extends Error {
     this.retryAfterMs = retryAfterMs;
   }
 }
+
+/**
+ * The longest a rate-limited model is held, where the host sets
+ * `OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS` (alias
+ * `CEREBRAS_RATE_LIMIT_MAX_HOLD_SECONDS`). A provider's Retry-After can be far
+ * longer than its limit needs. Cerebras refills a per-minute allowance all the
+ * time and does not charge a refused request: three requests it refused with
+ * Retry-After 59 were admitted 5, 14 and 27 seconds later. Holding the model
+ * for the stated minute fails every request made in it. Unset, blank or not a
+ * positive number keeps the provider's whole delay.
+ */
+function rateLimitMaxHoldMs(runtime: IAgentRuntime): number | undefined {
+  const raw =
+    getSetting(runtime, "OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS") ??
+    getSetting(runtime, "CEREBRAS_RATE_LIMIT_MAX_HOLD_SECONDS");
+  const seconds = raw?.trim() ? Number(raw) : Number.NaN;
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
+}
+
+/** A cooldown map's cap on one hold, as its runtime's host last set it. */
+const rateLimitHoldCaps = new WeakMap<Map<string, number>, number>();
 
 function runtimeRateLimitCooldowns(
   runtime: IAgentRuntime,
@@ -2609,6 +2631,9 @@ function runtimeRateLimitCooldowns(
   for (const [model, until] of models) {
     if (until <= Date.now()) models.delete(model);
   }
+  const maxHoldMs = rateLimitMaxHoldMs(runtime);
+  if (maxHoldMs === undefined) rateLimitHoldCaps.delete(models);
+  else rateLimitHoldCaps.set(models, maxHoldMs);
   return models;
 }
 
@@ -2696,8 +2721,10 @@ function noteRateLimitCooldown(
   const retryAfterMs = providerRetryAfterMs(error);
   if (retryAfterMs === undefined || retryAfterMs <= TRANSIENT_LANE_MAX_BACKOFF_MS) return;
   // The cooldown is a timestamp, not an awaited retry. Preserve the provider's
-  // whole delay so a later alias cannot resend before the stated reset.
-  const untilMs = Date.now() + retryAfterMs;
+  // whole delay so a later alias cannot resend before the stated reset, unless
+  // the host capped the hold for a provider whose delay overstates its limit.
+  const holdMs = Math.min(retryAfterMs, rateLimitHoldCaps.get(models) ?? retryAfterMs);
+  const untilMs = Date.now() + holdMs;
   const existing = models.get(modelName) ?? 0;
   if (untilMs > existing) models.set(modelName, untilMs);
   logger.warn(
@@ -2705,6 +2732,7 @@ function noteRateLimitCooldown(
       src: "plugin:openai",
       model: modelName,
       retryAfterSeconds: retryAfterMs / 1000,
+      ...(holdMs < retryAfterMs ? { heldSeconds: holdMs / 1000 } : {}),
     },
     "[OpenAI] provider rate limit reached; holding this model until the window resets"
   );

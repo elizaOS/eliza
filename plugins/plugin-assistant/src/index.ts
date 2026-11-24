@@ -8,6 +8,7 @@ import {
 } from "./runtime/assistant-reasoning.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts.ts";
+import { registerDeviceGmailDraftRouting } from "./services/device-actions/service.ts";
 import {
   registerDeviceBrowserOpenRouting,
   registerDeviceCameraCaptureRouting,
@@ -39,6 +40,7 @@ export function createAssistantPlugin(): Plugin {
       registerCoreShouldRespondRiskHook(runtime);
       registerDeviceBrowserOpenRouting(runtime);
       registerDeviceCameraCaptureRouting(runtime);
+      registerDeviceGmailDraftRouting(runtime);
       registerDeviceTelephonyRouting(runtime);
       registerDeviceKeypadRouting(runtime);
       // Registered once per runtime, after storage is ready: recovery reads the

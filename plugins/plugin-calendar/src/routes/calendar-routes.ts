@@ -23,6 +23,7 @@ import type {
   ListLifeOpsCalendarsRequest,
   PurgeLifeOpsCalendarImportedDataRequest,
   ResolveLifeOpsLinkedCalendarConflictRequest,
+  RespondLifeOpsCalendarEventRequest,
   RunLifeOpsLinkedCalendarReconciliationRequest,
   SeedLifeOpsCalendarRequest,
   SetLifeOpsCalendarIncludedRequest,
@@ -80,7 +81,7 @@ export interface CalendarRouteService {
     requestUrl: URL,
     request: Record<string, unknown> & {
       eventId: string;
-      responseStatus: "declined";
+      responseStatus: "accepted" | "declined" | "tentative";
       expectedProviderVersion: string;
     },
   ): Promise<unknown>;
@@ -494,6 +495,62 @@ export async function handleCalendarRoutes(
         );
       }
       deps.json(await deps.mutationGateway.create(url, body), 201);
+    });
+  }
+
+  const responseMatch =
+    method === "POST"
+      ? pathname.match(/^\/api\/lifeops\/calendar\/events\/([^/]+)\/response$/)
+      : null;
+  if (responseMatch) {
+    const eventId = deps.decodePathComponent(responseMatch[1], "event id");
+    if (!eventId) return true;
+    if (deps.rateLimit("calendar_update")) return true;
+    const body = await deps.readJsonBody<RespondLifeOpsCalendarEventRequest>();
+    if (!body) return true;
+    return deps.runRoute(async () => {
+      if (
+        body.responseStatus !== "accepted" &&
+        body.responseStatus !== "tentative" &&
+        body.responseStatus !== "declined"
+      ) {
+        throw deps.serviceError(
+          400,
+          "responseStatus must be accepted, tentative, or declined.",
+        );
+      }
+      if (!body.expectedProviderVersion?.trim()) {
+        throw deps.serviceError(
+          428,
+          "Calendar invitation response requires expectedProviderVersion.",
+        );
+      }
+      if (!body.idempotencyKey?.trim()) {
+        throw deps.serviceError(
+          428,
+          "Calendar invitation response requires a stable idempotencyKey.",
+        );
+      }
+      const respond = deps.mutationGateway.respond;
+      if (!respond) {
+        throw deps.serviceError(
+          501,
+          "The host calendar gateway does not support invitation responses.",
+        );
+      }
+      const event = await respond.call(deps.mutationGateway, url, {
+        eventId,
+        side: body.side ?? deps.parseConnectorSide(q.get("side")),
+        grantId: body.grantId ?? q.get("grantId") ?? undefined,
+        calendarId: body.calendarId ?? q.get("calendarId") ?? undefined,
+        responseStatus: body.responseStatus,
+        // The gateway rejects this_and_following with a 400.
+        recurrenceScope: body.recurrenceScope,
+        notifyAttendees: body.notifyAttendees === true,
+        expectedProviderVersion: body.expectedProviderVersion,
+        idempotencyKey: body.idempotencyKey,
+      });
+      deps.json({ event });
     });
   }
 

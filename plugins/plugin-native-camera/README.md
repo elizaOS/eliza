@@ -77,6 +77,9 @@ and duration stops remain retrievable. Concurrent finalization cannot start a
 competing recording. Gallery output requires Android 10+; microphone denial is an
 explicit failure. Quality, bitrate and frame rate are validated per recording;
 actual device capabilities determine output. Stop recording before switching.
+`startPreview` takes an optional photo `captureAspectRatio` (4:3 by default);
+`getDevices` lists the accepted values in `supportedCaptureAspectRatios`, which
+web and iOS omit because they ignore the option.
 
 Preview cancellation owns pending provider/permission callbacks. Frame events
 sample completed captures at approximately 2 Hz and stop with camera inactivity;

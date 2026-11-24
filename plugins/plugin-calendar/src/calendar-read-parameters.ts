@@ -184,7 +184,7 @@ export function calendarReadParameters(
         return {
           ...parameter,
           description:
-            "Exact grantId+calendarId from CALENDAR_SOURCES; omit for local.",
+            "Use eliza-calendar with calendarId primary for the built-in Eliza calendar only, or an exact pair from CALENDAR_SOURCES for a connected calendar. Omit for an unscoped read across the selected calendars.",
         };
       if (parameter.name === "calendarId")
         return {

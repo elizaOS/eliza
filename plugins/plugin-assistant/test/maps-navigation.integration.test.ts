@@ -116,6 +116,14 @@ test("Maps requests reach only their enrolled conversation, once, and require a 
           phase: "result",
           status: { state: "stopped", travelMode: ["drive"] },
         },
+        // A route summary belongs only to a planned route awaiting the user.
+        {
+          phase: "result",
+          status: {
+            state: "stopped",
+            route: { durationSeconds: 60, distanceMeters: 80, traffic: "none" },
+          },
+        },
       ]) {
         await expect(
           handleMapsNavigationRelay(runtime, credential, {
@@ -325,6 +333,22 @@ test("a phone refusal reaches the owner with the phone's own reason, not a gener
       message:
         "Maps could not be shown on the phone right now. Nothing was changed on the map.",
     });
+    // A used-up allowance and a Cloud refusal keep their own codes, so chat
+    // says neither "Maps is busy" nor "Sign in again".
+    expect(
+      await refuse({
+        code: "MAPS_BUDGET_EXHAUSTED",
+        message: "You have used your Maps allowance for this period.",
+      }),
+    ).toMatchObject({
+      code: "MAPS_BUDGET_EXHAUSTED",
+      message: "You have used your Maps allowance for this period.",
+    });
+    expect(await refuse({ code: "MAPS_PROVIDER_REJECTED" })).toMatchObject({
+      code: "MAPS_PROVIDER_REJECTED",
+      message:
+        "Cloud refused this Maps request. Nothing was changed on the map.",
+    });
     for (const message of ["x".repeat(301), "line\nbreak", "  ", 7])
       expect(await refuse({ code: "MAPS_NOT_FOUND", message })).toMatchObject({
         code: "MAPS_NOT_FOUND",
@@ -458,16 +482,23 @@ test("the shared phone client completes a Maps turn over authenticated HTTP and 
         signal.throwIfAborted();
         const operation = value as { kind: string };
         calls.push(operation.kind);
-        return {
-          state:
-            operation.kind === "select"
-              ? "selected"
-              : operation.kind === "start"
-                ? "awaiting-confirmation"
-                : operation.kind === "reroute"
-                  ? "navigating"
-                  : "stopped",
-        };
+        return operation.kind === "start"
+          ? {
+              state: "awaiting-confirmation",
+              route: {
+                durationSeconds: 480,
+                distanceMeters: 640,
+                traffic: "none",
+              },
+            }
+          : {
+              state:
+                operation.kind === "select"
+                  ? "selected"
+                  : operation.kind === "reroute"
+                    ? "navigating"
+                    : "stopped",
+            };
       },
     };
     const conversationId = randomUUID();
@@ -505,7 +536,18 @@ test("the shared phone client completes a Maps turn over authenticated HTTP and 
               },
             }),
           ).toMatchObject({
-            data: { device: { state: "awaiting-confirmation" } },
+            userFacingText:
+              "Confirm on the phone to start navigation to the destination. The route is about 8 min, 640 m.",
+            data: {
+              device: {
+                state: "awaiting-confirmation",
+                route: {
+                  durationSeconds: 480,
+                  distanceMeters: 640,
+                  traffic: "none",
+                },
+              },
+            },
           });
           expect(
             await mapsNavigationAction.handler(runtime, message, undefined, {

@@ -45,6 +45,7 @@ function fixture(options = {}) {
   const calls = {
     routes: [],
     searches: [],
+    searchNear: [],
     shares: [],
     websites: [],
     toasts: [],
@@ -70,8 +71,9 @@ function fixture(options = {}) {
   const provider = {
     providerId: "fixture",
     connectionId: "conn_fixture_123456789",
-    async search(query) {
+    async search(query, _signal, options) {
       calls.searches.push(query);
+      calls.searchNear.push(options?.near ?? null);
       return query === "nothing" ? [] : [destination];
     },
     async detail() {
@@ -827,6 +829,31 @@ test("an event hand-off searches once; Back returns to the event", async () => {
   assert.equal(inside.screen.back(), true);
 });
 
+test("a chat card's hand-off searches around its named place once, then around the map", async () => {
+  const f = fixture();
+  const ferry = { latitude: 37.7955, longitude: -122.3937 };
+  f.screen.setViewport({ latitude: 40.7, longitude: -74 }, 15);
+  f.screen.handoff("pharmacy", false, ferry);
+  await settle();
+  assert.deepEqual(f.calls.searches, ["pharmacy"]);
+  assert.deepEqual(f.calls.searchNear, [ferry]);
+  // The owner's own next search is ranked around the map again.
+  f.screen.setQuery("coffee");
+  f.screen.submit();
+  await settle();
+  assert.deepEqual(f.calls.searchNear.at(-1), {
+    latitude: 40.7,
+    longitude: -74,
+  });
+  // An invalid point is ignored, not searched around.
+  f.screen.handoff("pharmacy", false, { latitude: 200, longitude: 0 });
+  await settle();
+  assert.deepEqual(f.calls.searchNear.at(-1), {
+    latitude: 40.7,
+    longitude: -74,
+  });
+});
+
 test("without a provider an event location can be handed to a maps app on tap", async () => {
   const opened = [];
   const f = fixture({
@@ -1450,6 +1477,20 @@ test("an early search continues once the first provider becomes available", asyn
   await settle();
   assert.deepEqual(f.calls.searches, ["Destination"]);
   assert.equal(f.screen.view().results[0].name, "Destination");
+  f.screen.dispose();
+});
+
+test("a chat card's hand-off made before discovery settles keeps its search point", async () => {
+  const f = fixture({ unconfigured: true });
+  const ferry = { latitude: 37.7955, longitude: -122.3937 };
+  f.screen.setViewport({ latitude: 40.7, longitude: -74 }, 15);
+  f.screen.handoff("pharmacy", false, ferry);
+  await settle();
+  assert.equal(f.calls.searches.length, 0);
+  f.activate();
+  await settle();
+  assert.deepEqual(f.calls.searches, ["pharmacy"]);
+  assert.deepEqual(f.calls.searchNear, [ferry]);
   f.screen.dispose();
 });
 
