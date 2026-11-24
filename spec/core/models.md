@@ -227,15 +227,16 @@ retry time or hint, at most five seconds and five seconds when it names
 none, and sends the same call once more; the wait ends with the turn's
 cancellation. Spent credit, a permanent quota and a used-up period
 allowance get no re-send, nor does a rate limit named only in prose; a
-second refusal and every other failure propagate unchanged. Both passes
+failed dispatch which already started more than one provider handler gets
+no extra send. A second refusal and every other failure propagate unchanged. Both passes
 carry the caller's provider options, such as the reasoning hint
 `eliza.thinking`, and none when the caller gives none.
 
 ```quint
 type ExtractorRefusal = { status: int, hinted: bool, hintMs: int, spent: bool, period: bool }
 pure val extractorResendMaxMs = 5000
-pure def extractorResendWait(refusal: ExtractorRefusal): int =
-  if (refusal.status != 429 or refusal.spent or refusal.period) -1
+pure def extractorResendWait(refusal: ExtractorRefusal, spentDispatch: bool): int =
+  if (spentDispatch or refusal.status != 429 or refusal.spent or refusal.period) -1
   else if (not(refusal.hinted) or refusal.hintMs > extractorResendMaxMs) extractorResendMaxMs
   else if (refusal.hintMs < 0) 0
   else refusal.hintMs
@@ -246,7 +247,8 @@ pure val refusalValues = Set(
   { status: 429, hinted: true, hintMs: 1200, spent: true, period: false },
   { status: 429, hinted: true, hintMs: 1200, spent: false, period: true },
   { status: 503, hinted: false, hintMs: 0, spent: false, period: false })
-pure def lawAnExtractorWaitsAtMostFiveSeconds(refusal: ExtractorRefusal): bool = extractorResendWait(refusal) <= extractorResendMaxMs
+pure def lawAnExtractorWaitsAtMostFiveSeconds(refusal: ExtractorRefusal): bool = extractorResendWait(refusal, false) <= extractorResendMaxMs
 pure def lawOnlyATemporaryRateLimitIsSentAgain(refusal: ExtractorRefusal): bool =
-  extractorResendWait(refusal) >= 0 implies (refusal.status == 429 and not(refusal.spent) and not(refusal.period))
+  extractorResendWait(refusal, false) >= 0 implies (refusal.status == 429 and not(refusal.spent) and not(refusal.period))
+pure def lawAnExtractorDoesNotResendAfterFailover(refusal: ExtractorRefusal): bool = extractorResendWait(refusal, true) == -1
 ```

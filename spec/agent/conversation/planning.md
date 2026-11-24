@@ -310,7 +310,8 @@ A step's model call refused with a temporary rate limit waits for the time
 the refusal names, at most five seconds and five seconds when it names
 none, and is sent once more; a call the provider refused because it could
 not parse the model's tool call is sent once more at once. The wait ends
-with the turn's cancellation. A second refusal, spent credit, a used-up
+with the turn's cancellation. A dispatch that already started more than one
+provider handler uses this retry budget. A second refusal, spent credit, a used-up
 allowance and every other failure end the call as they are. A call that
 stopped at the model's own output limit is never sent again: it ran to the
 model's whole maximum, and a second try would stop the same way at the

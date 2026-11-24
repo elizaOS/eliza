@@ -74,6 +74,7 @@ import {
   modelOutputIncompleteEvidence,
   modelProviderErrorDetail,
 } from "../utils/model-errors.vibe"
+import { takeModelProviderStart } from "../utils/model-retry.vibe"
 import { captureModelLookupCaller } from "../utils/model-lookup-caller.vibe"
 import { ResponseSkeletonStreamExtractor } from "../utils/streaming.vibe"
 import { isPlainObject } from "../utils/type-guards.vibe"
@@ -970,6 +971,7 @@ effect function routeActionModel(
   modelType: keyof ModelParamsMap,
   params: unknown,
   provider: string | undefined,
+  providerStarted: (() => void) | undefined,
 ) {
   const actionRoutingCtx = getActionRoutingContext()
   if (actionRoutingCtx?.modelClass === undefined || provider !== undefined) return undefined
@@ -999,7 +1001,7 @@ effect function routeActionModel(
         strategy.confidenceThreshold,
         (resolved) =>
           Promise.resolve(runWithActionRoutingContext(nestedCtx, () =>
-            runDetached(dispatchModel(core, resolved.modelType as keyof ModelParamsMap, params, resolved.provider))
+            runDetached(dispatchModel(core, resolved.modelType as keyof ModelParamsMap, params, resolved.provider, providerStarted))
           )),
       ),
     )
@@ -1037,6 +1039,7 @@ interface DispatchRun {
   readonly requestedProvider: string | undefined
   readonly resolvedModels: ResolvedModelRegistration[]
   readonly providerAttempts: ModelProviderAttempt[]
+  readonly providerStarted: (() => void) | undefined
   readonly exhaustedProviders: Set<string>
   readonly confidentialOperation: ConfidentialInferenceOperation
   startedOutput: boolean
@@ -1101,7 +1104,7 @@ export effect function useModel<T extends keyof ModelParamsMap, R>(
   params: ModelParamsMap[T],
   provider?: string,
 ) {
-  return (try dispatchModel(core, modelType, params, provider)) as R
+  return (try dispatchModel(core, modelType, params, provider, takeModelProviderStart(params))) as R
 }
 
 effect function dispatchModel(
@@ -1109,6 +1112,7 @@ effect function dispatchModel(
   modelType: keyof ModelParamsMap,
   params: unknown,
   provider: string | undefined,
+  providerStarted: (() => void) | undefined,
 ): unknown!(Error | Foreign) {
   const explicitSignal = isPlainObject(params)
     ? (params as { signal?: AbortSignal }).signal
@@ -1123,7 +1127,7 @@ effect function dispatchModel(
   const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
     ? captureModelLookupCaller()
     : undefined
-  const routed = try routeActionModel(core, modelType, params, provider)
+  const routed = try routeActionModel(core, modelType, params, provider, providerStarted)
   if (routed) return routed.value
   const registrations = try resolveDispatchRegistrations(core, modelType, provider)
   const run: DispatchRun = {
@@ -1136,6 +1140,7 @@ effect function dispatchModel(
     lookupCaller,
     ...registrations,
     providerAttempts: [],
+    providerStarted,
     exhaustedProviders: new Set(),
     confidentialOperation: new ConfidentialInferenceOperation(),
     startedOutput: false,
@@ -1734,7 +1739,10 @@ effect function runAttempt(run: DispatchRun, attempt: Attempt) {
           handler,
           operation: run.confidentialOperation,
         },
-        () => handler(core.runtime, modelParams as Record<string, JsonValue | object>),
+        () => {
+          run.providerStarted?.()
+          return handler(core.runtime, modelParams as Record<string, JsonValue | object>)
+        },
       ))
     )
   )
