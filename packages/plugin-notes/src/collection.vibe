@@ -95,9 +95,15 @@ export effect function createIn(document: NotesDocument, request: CreateRequest,
     : request.title !== undefined ? { title: request.title.toWellFormed(), body: request.body === undefined || request.body === "" ? "" : `\n${request.body.toWellFormed()}` }
     : authored ? { title: "", body: "" }
     : try Effect.fail(refused("NOTES_VALIDATION_FAILED", "content is required."))
-  if (items !== undefined && (listed === undefined
-    || !checklistCreationAdmitted(items.length, items.filter((item) => item.trim() === "").length, request.format !== undefined || written.body.trim() !== ""))) {
-    throw refused("NOTES_VALIDATION_FAILED", "A checklist needs one or more nonblank items within the note bounds, its title alone in content, and no body or other format.")
+  if (items !== undefined) {
+    const titled = written.title.trim() !== ""
+    const blank = items.filter((item) => item.trim() === "").length
+    const longest = items.reduce((units, item) => Math.max(units, item.length), 0)
+    if (listed === undefined || !checklistCreationAdmitted(titled, items.length, blank, longest, request.format !== undefined || written.body.trim() !== "")) {
+      throw refused("NOTES_VALIDATION_FAILED", !titled
+        ? "A checklist needs the title the owner gave it. Ask the owner what to call the checklist; nothing was saved."
+        : `A checklist needs 1 to ${noteLimits.checklistItems} nonblank items of at most ${noteLimits.checklistItem} characters each, its title alone in content, and no body or other format.`)
+    }
   }
   const parts = items === undefined ? written : { title: written.title, body: "" }
   const color: StickyColor = request.color ?? "yellow"

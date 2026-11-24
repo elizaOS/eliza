@@ -9,7 +9,7 @@ import { notesDeviceFamily } from "./device-proposals.vibe"
 import { json } from "./format.vibe"
 import { notesNamedIn, ownerRequestText } from "./lookup.vibe"
 import { findNoteFolder, noteFolderId, readNoteFolders } from "./organize.vibe"
-import { noteIdPattern } from "./records.schema.vibe"
+import { noteIdPattern, noteLimits } from "./records.schema.vibe"
 import {
   notesCollection, notesServiceClass, notesStateUpdatedEvent, runtimeNotesHost,
   type NotesCollection, type NotesFailure, type NotesOptions,
@@ -227,6 +227,12 @@ const idParameter = (description: string) => ({ name: "noteId", description, req
 const contentParameter = (description: string) => ({ name: "content", description, required: false, schema: { type: "string" as const, maxLength: 20_241 } })
 const revisionParameter = { name: "expectedRevision", description: "notesRevision of the complete read this edit was prepared from.", required: false, schema: { type: "integer" as const, minimum: 0 } }
 
+// A read that waits on the owner's choice answers in one shape: the IDs it offers and the candidates shown for them. A title no saved
+// note has offers only the titles of the notes that mention it, since no other note is cited in its place.
+const ownerChoice = (code: "NOTES_AMBIGUOUS_NOTE" | "NOTES_TITLE_NOT_FOUND", offered: readonly StickyNote[], candidates: readonly object[]) => ({
+  actionName: "NOTES_GET", code, awaitingUserInput: true, requiresInput: true, candidateIds: offered.map((note) => note.id), candidates: [...candidates],
+})
+
 const missingTarget = (target: "missing" | "both"): ActionResult => ({
   success: false,
   text: target === "both" ? "Identify the note by noteId or by content, not both." : "Identify the note by noteId or by its title or text.",
@@ -297,7 +303,7 @@ function readAction(notes: NotesCollection): Action[] {
         const target = title === undefined ? targetOf(params, "noteId", "content")
           : text(params, "noteId") !== undefined || text(params, "content") !== undefined ? "both"
           : { selector: "title" as const, value: title }
-        if (typeof target === "string") return missingTarget(target)
+        if (typeof target === "string") return target === "both" ? { success: false, text: "Identify the note by exactly one of noteId, title or content." } : missingTarget(target)
         const { notes: found, revision } = try notes.list("id" in target ? { noteId: target.id } : target.selector === "title" ? { title: target.value } : { content: target.value })
         const first = found[0]
         if (!("id" in target) && target.selector === "title" && titledRead(found.length) === "AsksWhichNote") {
@@ -305,12 +311,12 @@ function readAction(notes: NotesCollection): Action[] {
           return {
             success: false,
             text: `No saved note is titled ${json(target.value.trim())}${mentioning.length === 0 ? "" : `; notes that mention it: ${mentioning.map((note) => json(note.title)).join(", ")}`}. Ask the owner which note to use before citing another one.`,
-            data: { actionName: "NOTES_GET", code: "NOTES_TITLE_NOT_FOUND", awaitingUserInput: true, requiresInput: true, candidates: mentioning.map((note) => ({ id: note.id, title: note.title })) },
+            data: ownerChoice("NOTES_TITLE_NOT_FOUND", mentioning, mentioning.map((note) => ({ id: note.id, title: note.title }))),
           }
         }
         if (first === undefined) return { success: false, text: "No current note matches.", data: { code: "NOTES_NOT_FOUND" } }
         if (found.length > 1) {
-          return { success: false, text: `Several notes match: ${found.map((candidate) => noteRow(candidate)).join(", ")}. Ask which one.`, data: { actionName: "NOTES_GET", code: "NOTES_AMBIGUOUS_NOTE", candidateIds: found.map((candidate) => candidate.id) } }
+          return { success: false, text: `Several notes match: ${found.map((candidate) => noteRow(candidate)).join(", ")}. Ask which one.`, data: ownerChoice("NOTES_AMBIGUOUS_NOTE", found, found.map(projectNoteForModel)) }
         }
         const read = noteRead(first, revision, ownerZone(message))
         return { ...read, data: { ...read.data, actionName: "NOTES_GET" } }
@@ -324,11 +330,11 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_CREATE",
       writes: true,
-      description: "Create the note the owner asked to save, copying the supplied text exactly: its punctuation, whitespace and line breaks. Supplied text is literal content, not a suggestion to expand, so never add a checklist, task, summary, heading or inferred action item the owner did not ask for; actionable prose stays prose. A new checklist the owner asks for is a creation, never items added to a checklist already saved: put its title alone in content and the owner's items, in their order, in checklist. Quotation marks that only delimit a supplied title or body are not part of it; quotes inside the content stay. If an unquoted trailing phrase could be note content or an instruction about the app, ask which before writing. Compose or reformat only when asked. A separately supplied title goes in content and the body in body. Creating a note does not open Notes.",
+      description: `Create the note the owner asked to save, copying the supplied text exactly: its punctuation, whitespace and line breaks. Supplied text is literal content, not a suggestion to expand, so never add a checklist, task, summary, heading or inferred action item the owner did not ask for; actionable prose stays prose. A new checklist the owner asks for is a creation, never items added to a checklist already saved: put the title the owner gave it alone in content and the owner's items, in their order, in checklist, at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it. Quotation marks that only delimit a supplied title or body are not part of it; quotes inside the content stay. If an unquoted trailing phrase could be note content or an instruction about the app, ask which before writing. Compose or reformat only when asked. A separately supplied title goes in content and the body in body. Creating a note does not open Notes.`,
       parameters: [
         { name: "content", description: "The exact content to save; the first line is its label.", required: true, schema: { type: "string", maxLength: 20_241 } },
         { name: "body", description: "Optional exact body when the owner supplied a separate title in content.", required: false, schema: { type: "string" } },
-        { name: "checklist", description: "Only for a new checklist the owner asked for: each item as the owner said it, in order. content is then the checklist's title alone, with no body.", required: false, schema: { type: "array", items: { type: "string" } } },
+        { name: "checklist", description: `Only for a new checklist the owner asked for: each item as the owner said it, in order, at most ${noteLimits.checklistItems} items. content is then the title the owner gave the checklist, alone, with no body.`, required: false, schema: { type: "array", items: { type: "string", maxLength: noteLimits.checklistItem } } },
         { name: "color", description: "Optional color: yellow, green, rose or slate.", required: false, schema: { type: "string", enum: ["yellow", "green", "rose", "slate"] } },
         { name: "creationId", description: "A client's own ID for this one creation; a repeat returns the note it made.", required: false, schema: { type: "string", maxLength: 200 } },
       ],
@@ -336,7 +342,7 @@ function writeActions(notes: NotesCollection): Action[] {
         const body = typeof params.body === "string" ? params.body : undefined
         const content = typeof params.content === "string" ? params.content : undefined
         const created = try notes.create({
-          ...(body === undefined ? { content } : { title: content ?? "", body }),
+          ...(body !== undefined ? { title: content ?? "", body } : content === undefined ? {} : { content }),
           ...(params.checklist === undefined ? {} : { checklist: params.checklist }),
           ...(params.color === undefined ? {} : { color: params.color }),
           ...(params.creationId === undefined ? {} : { creationId: params.creationId }),
