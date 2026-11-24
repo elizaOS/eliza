@@ -119,7 +119,7 @@ pure def api(names: List[str]): List[Segment] = List(Literal({ text: "api" }), L
 pure def apiWith(names: List[str], rest: List[Segment]): List[Segment] = api(names).concat(rest)
 pure def route(method: HttpMethod, path: List[Segment], auth: AuthClass): DeviceRoute = { method: method, path: path, auth: auth, headers: Set() }
 pure def keyed(method: HttpMethod, path: List[Segment], headers: Set[str]): DeviceRoute = { method: method, path: path, auth: KeyOrSession, headers: headers }
-pure def mailed(method: HttpMethod, path: List[Segment], headers: Set[str]): DeviceRoute = { method: method, path: path, auth: Mail, headers: headers }
+pure def sessionHeaders(method: HttpMethod, path: List[Segment], headers: Set[str]): DeviceRoute = { method: method, path: path, auth: Session, headers: headers }
 pure def google(names: List[str]): List[Segment] = api(List("eliza", "google").concat(names))
 pure val signInRoutes: List[DeviceRoute] = List(
   route(Get, lits(List("api", "public", "service")), Public),
@@ -204,9 +204,9 @@ pure val serviceRoutes: List[DeviceRoute] = List(
 pure val googleRoutes: List[DeviceRoute] = List(
   route(Get, google(List("status")), Mail),
   route(Get, google(List("accounts")), Mail),
-  route(Post, google(List("connect", "initiate")), Mail),
+  route(Post, google(List("connect", "initiate")), Session),
   route(Post, google(List("connect", "native")), KeyOrSession),
-  route(Post, google(List("disconnect")), Mail),
+  route(Post, google(List("disconnect")), Session),
   route(Get, google(List("gmail", "triage")), Mail),
   route(Get, google(List("gmail", "search")), Mail),
   route(Get, google(List("gmail", "read")), Mail),
@@ -216,15 +216,15 @@ pure val googleRoutes: List[DeviceRoute] = List(
   route(Get, google(List("gmail", "inbox-v1", "attachment")), Mail),
   route(Get, google(List("gmail", "inbox-v1", "drafts")), Mail),
   route(Get, google(List("gmail", "inbox-v1", "draft")), Mail),
-  route(Post, google(List("gmail", "inbox-v1", "operations")), Mail),
-  route(Post, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }), Literal({ text: "dispatch" }))), Mail),
-  route(Get, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }))), Mail),
+  route(Post, google(List("gmail", "inbox-v1", "operations")), Session),
+  route(Post, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }), Literal({ text: "dispatch" }))), Session),
+  route(Get, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }))), Session),
   route(Get, google(List("calendar", "calendars")), Mail),
   route(Get, google(List("calendar", "feed")), Mail),
   route(Get, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Mail),
-  mailed(Post, google(List("calendar", "events")), Set("Idempotency-Key")),
-  mailed(Patch, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")),
-  mailed(Delete, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")))
+  sessionHeaders(Post, google(List("calendar", "events")), Set("Idempotency-Key")),
+  sessionHeaders(Patch, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")),
+  sessionHeaders(Delete, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")))
 pure def joinRouteGroups(earlier: List[DeviceRoute], later: List[DeviceRoute]): List[DeviceRoute] = earlier.concat(later)
 pure val deviceRoutes: List[DeviceRoute] = joinRouteGroups(joinRouteGroups(signInRoutes, billingRoutes), joinRouteGroups(serviceRoutes, googleRoutes))
 pure def admitsHeader(r: DeviceRoute, header: str): bool = baseHeaders.contains(header) or r.headers.contains(header)
