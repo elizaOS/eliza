@@ -1,0 +1,12 @@
+// spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"
+import { assert, describe, it } from "@effect/vitest"
+import { decodeSlackText } from "../src/index.vibe"
+
+const typed = "R&D: is a < b && c > d? (&lt; stays)"
+const wire = "R&amp;D: is a &lt; b &amp;&amp; c &gt; d? (&amp;lt; stays)"
+
+describe("Answer one Slack message through its proper installation and thread (spec/slack/index.md, \"Story: Answer one Slack message through its proper installation and thread\")", () => {
+  it("The agent reads the text the member typed, decoded once (spec/slack/index.md, \"The agent reads the &, < and > a Slack member typed\")", () => {
+    assert.deepStrictEqual([decodeSlackText(wire), decodeSlackText("<@U0> &quot;hi&quot;"), decodeSlackText("&amp;amp;")], [typed, "<@U0> &quot;hi&quot;", "&amp;"])
+  })
+})

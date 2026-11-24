@@ -1,7 +1,7 @@
-// spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"; spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread"; spec/slack/index.md, "Complete, partial and unconfirmed Slack sends follow distinct part receipts"
+// spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"; spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread"; spec/slack/index.md, "Complete, partial and unconfirmed Slack sends follow distinct part receipts"; spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"
 import { App } from "@slack/bolt"
 import { ChannelType, Service, checkPairingAllowed, createUniqueUuid, fetchRemoteMedia, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
-import { enabled, initial, machineOver, slackReplyTarget, slackSendOutcome, type SlackAdmission, type SlackConversation, type SlackInbound, type SlackPartReceipt } from "../gen/slack.effect.vibe"
+import { enabled, initial, machineOver, slackEntityText, slackReplyTarget, slackSendOutcome, type SlackAdmission, type SlackConversation, type SlackInbound, type SlackPartReceipt } from "../gen/slack.effect.vibe"
 
 const envelope = Schema.Struct({ team_id: Schema.optionalKey(Schema.String), enterprise_id: Schema.optionalKey(Schema.String) })
 const slackEvent = Schema.Struct({ type: Schema.Literals(["message", "app_mention"]), channel: Schema.String, ts: Schema.String, user: Schema.optionalKey(Schema.String), bot_id: Schema.optionalKey(Schema.String), text: Schema.optionalKey(Schema.String), thread_ts: Schema.optionalKey(Schema.String), channel_type: Schema.optionalKey(Schema.String), subtype: Schema.optionalKey(Schema.String) })
@@ -27,6 +27,10 @@ export interface SlackConnection {
   readonly dmMode: SlackAdmission["dmMode"]
   readonly groupDms: boolean
   readonly requireMention: boolean
+}
+
+export function decodeSlackText(text: string): string {
+  return text.replace(/&(amp|lt|gt);/g, (_entity, name: string) => slackEntityText(name))
 }
 
 function kindOf(channelType: string | undefined): SlackConversation {
@@ -121,7 +125,7 @@ export effect function connectSlackAccount(runtime: IAgentRuntime, config: Slack
     const channelType = conversation === "SlackDirect" || conversation === "SlackHome" ? ChannelType.DM : ChannelType.GROUP
     try tryPromise(() => runtime.ensureConnection({ entityId, roomId, worldId, source: "slack", channelId: raw.channel, serverId: installation.teamId, type: channelType, metadata: { accountId: config.accountId } }))
     const claimToken = try Effect.try(() => nextSlackClaim())
-    const memory: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, createdAt: Math.trunc(Number(raw.ts) * 1000), content: { text, source: "slack", channelType }, metadata: { type: "message", slackClaimToken: claimToken } }
+    const memory: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, createdAt: Math.trunc(Number(raw.ts) * 1000), content: { text: decodeSlackText(text), source: "slack", channelType }, metadata: { type: "message", slackClaimToken: claimToken } }
     try tryPromise(() => runtime.createMemory(memory, "messages"))
     const kept = try tryPromise(() => runtime.getMemoryById(id))
     if (kept?.metadata === undefined || !("slackClaimToken" in kept.metadata) || kept.metadata.slackClaimToken !== claimToken || !(try Ref.get(active))) return

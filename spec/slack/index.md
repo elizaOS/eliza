@@ -65,6 +65,16 @@ pure def sometimesSlackMentionClaims(s: SlackSession): bool = s.claims.length() 
 pure val eval_witness_sometimesSlackMentionClaims = (("bindSlack", SlackSocket, slackSampleInstallation), ("claimSlack", SlackSocket, sampleSlackInbound, sampleSlackPolicy))
 ```
 
+### The agent reads the &, < and > a Slack member typed
+
+Slack sends a typed `&`, `<` and `>` in message text as `&amp;`, `&lt;` and `&gt;`. The text of an admitted message or mention reaches the agent with each of those three entities turned back into the character the member typed, and nothing else changed. The text is read once from left to right, so a decoded character never starts another entity: a member who typed `&lt;` (sent as `&amp;lt;`) is read as `&lt;`. Bot mentions are found in the text as Slack sent it.
+
+```quint
+pure def slackEntityText(name: str): str = if (name == "amp") "&" else if (name == "lt") "<" else if (name == "gt") ">" else ""
+pure val nameValues = Set("amp", "lt", "gt", "quot", "amp;lt", "")
+pure def lawSlackDecodesOnlyItsThreeEntities(name: str): bool = (slackEntityText(name) != "") iff (name == "amp" or name == "lt" or name == "gt")
+```
+
 ## Story: Know how much of a Slack send reached the provider
 
 > As an owner, I want a send with text or attachments to show the actual outcome when a part is refused or uncertain.
