@@ -140,8 +140,10 @@ PM"), or say noon, midnight, or half past, a quarter past or a quarter to
 the hour; written with am or pm, it is that half of the day only. A stated
 time the words do not hold changes nothing, and the result tells the model
 which time it sent, so it sends the time the owner said or says that the
-owner left the time open ("tomorrow afternoon"). A time the model does
-not call stated is kept as sent.
+owner gave none. A time the model does not call stated is kept as sent
+("tomorrow afternoon", "push it back an hour"), as is a start a change
+keeps and an all-day event's day: a time the model chose is no misread,
+and a check of every time would refuse those requests.
 
 ```quint
 type StatedClockCheck = ClockAsSent | ClockUnsaid

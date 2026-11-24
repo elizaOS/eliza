@@ -527,7 +527,7 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const misread = [try ranged("slot-4h", taco, "Taco Night lab check", "2030-03-02T22:10", "2030-03-02T22:30"), try ranged("slot-4i", labSync, "Lab sync", "2030-03-02T16:00", "2030-03-02T16:45"),
     try ranged("slot-4j", labDinner, "Lab dinner", "2030-03-02T19:00", "2030-03-02T20:00")]
   assert.deepStrictEqual(misread.map((result) => [result.success, at(result.data, "code"), result.effectReceipts?.length ?? 0]), Array.from({ length: 3 }, () => [false, "CALENDAR_CLOCK_UNSAID", 0]))
-  assert.strictEqual(misread[0]?.text, "Nothing was saved: the start you sent, 10:10 PM, is not a clock time the owner's words give. Send the time the owner said, or leave statedClock out when the owner left the time open.")
+  assert.strictEqual(misread[0]?.text, "Nothing was saved: the start time 10:10 PM is not a time the request gives.")
   const dictated = try ranged("slot-4k", taco, "Taco Night lab check", "2030-03-02T13:10", "2030-03-02T13:30")
   const written = try ranged("slot-4l", labSync, "Lab sync", "2030-03-02T15:00", "2030-03-02T15:45")
   const extended = try ranged("slot-4m", labDinner, "Lab dinner", "2030-03-02T18:00", "2030-03-02T19:00")
@@ -600,10 +600,10 @@ it.effect(`Attendees hear of a change only when the owner asked and the calendar
   const host = try calendarHost({ cache: memoryCache(rows), agentId: "agent", approvals: () => undefined })
   const ask = { by: "owner-entity", conversation: "room:owner", id: "message-1", text: "Move Planning to 11am and let Sam know" }
   const nobody = "The built-in calendar can't email attendees, so nobody was notified."
-  const moved = try runCalendarAction(host, ask, { subaction: "update_event", eventId: planning.id, startAt: "2030-03-04T19:00:00Z", endAt: "2030-03-04T20:00:00Z", notifyAttendees: true, timeZone: "UTC" })
+  const moved = try runCalendarAction(host, ask, { subaction: "update_event", eventId: planning.id, startAt: "2030-03-04T11:00:00Z", endAt: "2030-03-04T12:00:00Z", notifyAttendees: true, timeZone: "UTC" })
   const quiet = try runCalendarAction(host, { ...ask, id: "message-2", text: "Rename Planning to Sync" }, { subaction: "update_event", eventId: planning.id, title: "Sync", timeZone: "UTC" })
   assert.deepStrictEqual([moved.success, moved.text?.endsWith(nobody), at(moved.data, "event", "startAt"), quiet.success, quiet.text?.endsWith(nobody)],
-    [true, true, "2030-03-04T19:00:00.000Z", true, false])
+    [true, true, "2030-03-04T11:00:00.000Z", true, false])
   const emails = (result: { readonly data?: unknown }) => (at(result.data, "event", "attendees") as { readonly email: string | null }[] | undefined)?.map((attendee) => attendee.email)
   const guestChange = (id: string, text: string, change: Record<string, unknown>) => runCalendarAction(host, { ...ask, id, text }, { subaction: "update_event", eventId: planning.id, timeZone: "UTC", ...change })
   const routes = calendarRoutes(async () => host)

@@ -256,20 +256,21 @@ function timesRefused(subaction: Subaction, kind: "unreal" | "unresolved"): Acti
 
 type UnsaidClock = { readonly which: "start" | "end"; readonly at: number; readonly zone: string }
 
-function unsaidClock(sent: Parameters, zone: string, text: string): UnsaidClock | undefined {
-  const stated = sent.statedClock === undefined ? [] : sent.statedClock === "range" ? [["start", sent.startAt], ["end", sent.endAt]] as const : [["start", sent.startAt]] as const
-  for (const [which, time] of stated) {
+function unsaidClock(sent: Parameters, zone: string, text: string, kept?: string): UnsaidClock | undefined {
+  const sentTimes = [["start", sent.startAt], ...(sent.statedClock === "range" ? [["end", sent.endAt]] as const : [])] as const
+  for (const [which, time] of sentTimes) {
     const at = time === undefined ? Number.NaN : Date.parse(time)
-    const wall = Number.isFinite(at) ? getZonedDateParts(new Date(at), zone) : undefined
-    if (wall !== undefined && statedClockCheck(true, clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text)) === "ClockUnsaid") return { which, at, zone }
+    const wall = Number.isFinite(at) && (kept === undefined || at !== Date.parse(kept)) ? getZonedDateParts(new Date(at), zone) : undefined
+    const held = wall !== undefined && clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text)
+    if (wall !== undefined && statedClockCheck(sent.statedClock !== undefined, held) === "ClockUnsaid") return { which, at, zone }
   }
   return undefined
 }
 
 function clockRefused(subaction: Subaction, unsaid: UnsaidClock, verb: string): ActionResult {
   const clock = new Intl.DateTimeFormat("en-US", { timeZone: unsaid.zone, hour: "numeric", minute: "2-digit" }).format(new Date(unsaid.at))
-  return failed(subaction, `Nothing was ${verb}: the ${unsaid.which} you sent, ${clock}, is not a clock time the owner's words give. Send the time the owner said, or leave statedClock out when the owner left the time open.`,
-    { code: "CALENDAR_CLOCK_UNSAID", sent: new Date(unsaid.at).toISOString() })
+  return failed(subaction, `Nothing was ${verb}: the ${unsaid.which} time ${clock} is not a time the request gives.`,
+    { code: "CALENDAR_CLOCK_UNSAID", sent: new Date(unsaid.at).toISOString(), next: "Read the owner's request again and call again at once: with the clock time it states, or without statedClock when it gives no clock time." })
 }
 
 function ownerAnswerOf(parameters: Parameters): OwnerAnswer {
@@ -731,8 +732,9 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const held = pending?.eventId === found.event.id ? pending.scope : undefined
       const choice = scopeChoice(repeats(found.event), parameters.recurrenceScope !== undefined, held !== undefined, deletingResident)
       if (choice === "AskWhichOccurrences") {
-        return failed(subaction, `Nothing was ${subaction === "update_event" ? "changed" : "deleted"}: “${found.event.title}” repeats, and the occurrence found is ${wallTime(found.event, zone)}. Ask the owner, in your own words, whether to ${subaction === "update_event" ? "change" : "delete"} just that occurrence, that and every following occurrence, or the whole series; then call again with that recurrenceScope and this eventId.`,
-          { requiresInput: true, missing: ["recurrenceScope"], eventId: found.event.id, startAt: found.event.startAt })
+        return failed(subaction, `Nothing was ${subaction === "update_event" ? "changed" : "deleted"}: “${found.event.title}” repeats, and the occurrence found is ${wallTime(found.event, zone)}. The request did not say whether to ${subaction === "update_event" ? "change" : "delete"} just that occurrence, that and every following occurrence, or the whole series.`,
+          { requiresInput: true, missing: ["recurrenceScope"], eventId: found.event.id, startAt: found.event.startAt,
+            next: "Read the owner's request again. When it already says which, as \"just this one\" or \"only this time\" say instance, call again at once with that recurrenceScope and this eventId; only otherwise ask the owner, in your own words." })
       }
       const scope = choice === "ScopeHeld" ? held ?? "instance" : parameters.recurrenceScope ?? "instance"
       if (deletingResident) return try residentDelete(host, ask, found, scope, ownerAnswerOf(parameters), notifyAttendees, now, zone)
@@ -746,7 +748,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const wall = eventWallZone(parameters, false, allDay, text, { request: zone, context: createZone }) ?? zone
       const timed = timesIn(parameters, eventTimes, wall)
       if (timed.kind !== "read") return timesRefused(subaction, timed.kind)
-      const unsaid = allDay ? undefined : unsaidClock(timed.parameters, wall, text)
+      const unsaid = allDay ? undefined : unsaidClock(timed.parameters, wall, text, found.event.startAt)
       if (unsaid !== undefined) return clockRefused(subaction, unsaid, "changed")
       const fields = updatedFields(found, timed.parameters, zone, guests.attendees)
       if (Option.isNone(decodeFields(fields)) || !fieldsSpanValid(fields)) return failed(subaction, "The changed event needs a title and a start before its end.")
@@ -779,7 +781,7 @@ async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
 
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar removes one occurrence at most and runs at once only when the owner's words hold the whole title of one event, or it is the event selected on screen; otherwise nothing is deleted and the reply asks the owner, and after the owner answers call delete_event again with the eventId it returned and ownerAnswer.",
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. An event the owner asks to put on the phone's own calendar goes to the phone's calendar proposal when the phone offers one, not create_event. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar removes one occurrence at most and runs at once only when the owner's words hold the whole title of one event, or it is the event selected on screen; otherwise nothing is deleted and the reply asks the owner, and after the owner answers call delete_event again with the eventId it returned and ownerAnswer.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CALENDAR_TRIP_WINDOW", "CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [
@@ -809,8 +811,8 @@ export const calendarAction: Action = {
     { name: "addGuests", required: false, description: "For update_event: the email address of each guest to add, exactly as the owner wrote it.", schema: { type: "array", items: { type: "string" } } },
     { name: "removeGuests", required: false, description: "For update_event: each guest to remove, by the address or name the owner used.", schema: { type: "array", items: { type: "string" } } },
     { name: "notifyAttendees", required: false, description: "For update_event and delete_event: true only when the owner asked to let the event's attendees know (\"let Sam know\", \"notify the guests\"); left out when they did not, or said not to.", schema: { type: "boolean" } },
-    { name: "recurrenceScope", required: false, description: "For a repeating event: instance (this event), this_and_following, or series (all). Send it only when the owner's request says which (\"just this one\", \"this and all following\", \"the whole series\"); left out, the result asks you to ask the owner. After the owner answers, send it with the eventId the result returned.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
-    { name: "statedClock", required: false, description: "For create_event and update_event with startAt: start when the owner's words give its clock time (\"at 3pm\", \"one ten PM\", \"noon\"), range when they give both the start and the end clock times. Leave it out when the owner left the time to you (\"tomorrow afternoon\", \"push it back an hour\"). Every stated time must be the one the owner said.", schema: { type: "string", enum: ["start", "range"] } },
+    { name: "recurrenceScope", required: false, description: "For a repeating event: instance (this event), this_and_following, or series (all). Send it whenever the owner's request says which (\"just this one\", \"only this time\", \"this and all following\", \"the whole series\"); left out for a repeating event, nothing changes and you ask the owner in your own words. After the owner answers, send it with the eventId the result returned.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
+    { name: "statedClock", required: false, description: "With startAt, when the owner's words give its clock time: start (\"at 3pm\", \"one ten PM\", \"noon\", \"to 4\"), or range for a start and an end (\"from 3pm to 3:45pm\"). Leave it out when the owner gave no clock time (\"tomorrow afternoon\", \"push it back an hour\", \"move it to Friday\"). A stated start or end must be the clock time the owner said.", schema: { type: "string", enum: ["start", "range"] } },
     { name: "morningOnly", required: false, description: "For check_availability and propose_times: true when the owner asked only about a morning (\"tomorrow morning\"); the window then ends by that day's noon.", schema: { type: "boolean" } },
     { name: "ownerAnswer", required: false, description: "For delete_event on the agent's own calendar: yes when the owner agreed to delete the event you asked about, no when the owner turned the delete down. Leave it out otherwise.", schema: { type: "string", enum: ["yes", "no"] } },
   ],
