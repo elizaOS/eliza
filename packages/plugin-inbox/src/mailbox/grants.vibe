@@ -72,7 +72,7 @@ export function requiredGmailCapability(kind: GmailMailboxAction): string {
   return capabilityNames[requiredCapability(actionOf[kind])]
 }
 
-export function gmailReadable(account: GmailAccount | null | undefined): account is GmailAccount {
+export function gmailReadable(account: GmailAccount | null | undefined): account is GmailAccount & { readonly connectionId: string } {
   return account !== null && account !== undefined && accountReadable(grantOf(account))
 }
 

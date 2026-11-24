@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"
+// spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it"; spec/agent/deviceActions/index.md, "A revoked enrollment retires every open offer, and nothing offered under it is served again"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"
 import { assert, it } from "@effect/vitest"
 import type { IDatabaseAdapter } from "@elizaos/core"
 import { apply } from "../gen/agent__deviceActions.effect.vibe"
@@ -27,9 +27,17 @@ module node {
         JSON.stringify(terms.need), state.createdAt],
     )
   }
+
+  export async function refuseRequestRetirement(adapter: IDatabaseAdapter, enabled: boolean) {
+    const db = await adapter.getConnection()
+    if (!(db instanceof PGlite)) throw new Error("The enrollment fixture needs the real device database")
+    await db.query(enabled
+      ? "ALTER TABLE device_requests ADD CONSTRAINT fixture_retirement CHECK (state->'enrollment'->>'tag' <> 'Revoked')"
+      : "ALTER TABLE device_requests DROP CONSTRAINT fixture_retirement")
+  }
 }
 
-import { seedLegacyWorkflow } from node
+import { refuseRequestRetirement, seedLegacyWorkflow } from node
 
 const capability = "calendar.create.v1"
 const owner: SessionOwner = { agentId: "agent-1", actorId: "owner-1", connector: "agent-1" }
@@ -73,7 +81,7 @@ effect function listed(adapter: IDatabaseAdapter) {
   return { open: try phases("open"), settled: try phases("settled") }
 }
 
-it.live('Keep accepted device receipts across a restart and revoke the enrollment for good (spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
+it.live('Keep accepted device receipts across a restart, and serve nothing offered under a revoked enrollment after the device enrolls again (spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
   const state = try scratch("device-store")
   const before = try Clock.currentTimeMillis
   const first = try open(state.file("state"), true)
@@ -146,10 +154,40 @@ it.live('Keep accepted device receipts across a restart and revoke the enrollmen
     settled: [["p1", "Receipted", "Revoked"], ["p2", "Declined", "Revoked"], ["p3", "Retired", "Revoked"], ["p-without-result", "Receipted", "Revoked"]],
   })
   const lateOffer = try failure(offerRequest(second.adapter, offerOf("p4", try Clock.currentTimeMillis), owner, terms))
-  const reEnroll = try failure(changeEnrollment(second.adapter, register, owner))
-  assert.deepStrictEqual([lateOffer?._tag, reEnroll?._tag], ["Rejected", "Rejected"])
+  assert.strictEqual(lateOffer?._tag, "Rejected")
   assert.strictEqual((try enrollment(second.adapter)).enrollment.tag, "Revoked")
+
+  const enrolledAgain = try changeEnrollment(second.adapter, { ...register, keyHash: "key-hash-2" }, owner)
+  assert.strictEqual(enrolledAgain.enrollment.tag, "Enrolled")
+  try offerRequest(second.adapter, offerOf("p4", try Clock.currentTimeMillis), owner, terms)
+  const revokedReceipt = try recordRequestReceipt(second.adapter, { ...receipt, result: { eventId: keptResult.eventId, kind: keptResult.kind } })
+  assert.strictEqual(revokedReceipt.kind, "refused")
+  assert.deepStrictEqual(try listed(second.adapter), {
+    open: [["p4", "Offered", "Enrolled"]],
+    settled: [["p1", "Receipted", "Revoked"], ["p2", "Declined", "Revoked"], ["p3", "Retired", "Revoked"], ["p-without-result", "Receipted", "Revoked"]],
+  })
   try closed(second.adapter)
+})
+
+it.live(`A failed enrollment replacement keeps my previous key and requests, and a successful replacement refuses revocation by the previous key (spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment retires every open offer, and nothing offered under it is served again")`, effect () => {
+  const directory = try scratch("atomic-enrollment")
+  const { adapter } = try open(directory.file("state"), false)
+  const old = try changeEnrollment(adapter, register, owner)
+  try offerRequest(adapter, offerOf("p1", try Clock.currentTimeMillis), owner, terms)
+  const replace = { ...register, type: "replaceEnrollment" as const, keyHash: "key-hash-2" }
+  try host("refuse the retirement write", () => refuseRequestRetirement(adapter, true))
+  const failed = try exit(changeEnrollment(adapter, replace, owner))
+  assert.isTrue(Exit.isFailure(failed))
+  assert.deepStrictEqual((try enrollment(adapter)).enrollment, old.enrollment)
+  assert.deepStrictEqual(try listed(adapter), { open: [["p1", "Offered", "Enrolled"]], settled: [] })
+
+  try host("allow the retirement write", () => refuseRequestRetirement(adapter, false))
+  const current = try changeEnrollment(adapter, replace, owner)
+  const stale = try failure(changeEnrollment(adapter, { type: "revokeEnrolledKey", keyHash: "key-hash-1" }, owner))
+  assert.strictEqual(stale?._tag, "EnrollmentKeyChanged")
+  assert.deepStrictEqual((try enrollment(adapter)).enrollment, current.enrollment)
+  assert.deepStrictEqual(try listed(adapter), { open: [], settled: [["p1", "Retired", "Revoked"]] })
+  try closed(adapter)
 })
 
 it.effect('The view profile changes only against the revision the device read (spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read")', effect () => {

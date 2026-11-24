@@ -3,13 +3,17 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { FetchHttpClient } from "effect/http"
 import { INVENTORY_ASSET, PayloadRefused, stageRuntimePayload, type StageRuntimePayload } from "../src/build/runtime-payload.vibe"
+import { startCheck, type DeviceFile, type Extraction, type Observed } from "../gen/os__build__runtimePayload.effect.vibe"
 import { fixture, scratch, writeTree } from "./support/scratch.vibe"
 
 module node {
+  import { execFileSync } from "node:child_process"
   import { createHash } from "node:crypto"
   import { createServer, type Server } from "node:http"
   import type { AddressInfo } from "node:net"
+  import path from "node:path"
   import { crc32 } from "node:zlib"
+  import { compileAdapter } from "./drivers/jvm-adapter.ts"
 
   /** @throws {never} */
   export const sha256 = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex")
@@ -69,8 +73,16 @@ module node {
   export async function closeRelease(release: Release): Promise<void> {
     await new Promise<void>((resolve) => release.server.close(() => resolve()))
   }
+
+  /** @throws {Error} */
+  export function payloadStartErrors(assets: string, nativeLibraries: string, runtime: string): string[] {
+    const main = "ai.eliza.os.agent.PayloadStart"
+    const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+    const out = execFileSync(java, ["-cp", compileAdapter(main), main, assets, nativeLibraries, runtime, "7", "arm64-v8a"], { encoding: "utf8", timeout: 120_000 })
+    return out.split("\n").filter((line) => line !== "")
+  }
 }
-import { closeRelease, serveRelease, sha256, storedZip, type Release } from node
+import { closeRelease, payloadStartErrors, serveRelease, sha256, storedZip, type Release } from node
 
 const VERSION = "26.13.1"
 const NDK = "29.0.14206865"
@@ -188,3 +200,51 @@ it.effect("Ship the agent with a pinned Node runtime and only the files my build
     assert.deepStrictEqual(leftovers, ["admitted", "built", "sounds", "worker"])
   }
 })
+
+it.effect('Start the agent only on an intact payload: a damaged extraction is replaced once from the APK, and a payload that still differs fails the start (spec/os/build/runtimePayload.md, "Story: Start the agent only on an intact payload"; spec/os/build/runtimePayload.md, "The agent spawns only when every inventory digest matches on the device"; spec/os/build/runtimePayload.md, "A damaged extracted file is extracted again once before the start fails")', effect () => {
+  provide NodeServices.layer, FetchHttpClient.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const fixtures = try fixture("runtime-payload")
+    const root = try scratch("payload-start")
+    const elf = try files.readFile(path.join(fixtures, "node-arm64-v8a.so"))
+    const url = `${(try release(elf)).base}${ASSET}`
+    const staged = try stageRuntimePayload({ abi: ["arm64-v8a"], bundleDir: path.join(fixtures, "bundle"), lock: try lockFile(root, [{ abi: "arm64-v8a", sha256: sha256(elf), url }]), runtimes: [{ kind: "fetched", abi: "arm64-v8a", url }], output: path.join(root, "out") })
+    const main = path.join(staged.output, "android", "app", "src", "main")
+    const apkAgent = path.join(main, "assets", "agent", "agent.mjs")
+    const library = path.join(main, "jniLibs", "arm64-v8a", "libeliza_node.so")
+    const agentText = try files.readFileString(apkAgent)
+    const releases = path.join(root, "runtime", "releases")
+    try files.makeDirectory(path.join(releases, "6-stale"), { recursive: true })
+    const start = () => Effect.try(() => payloadStartErrors(path.join(main, "assets"), path.dirname(library), path.join(root, "runtime")))
+    const found = (bytes: Uint8Array | string): Observed => ({ tag: "Present", observedSha256: sha256(bytes), observedSize: bytes.length })
+    const device = (agent: string, node: Uint8Array | string): DeviceFile[] => [
+      { path: "assets/agent/agent.mjs", sha256: sha256(agentText), size: agentText.length, extracted: true, observed: found(agent) },
+      { path: "lib/arm64-v8a/libeliza_node.so", sha256: sha256(elf), size: elf.length, extracted: false, observed: found(node) },
+    ]
+    const none: Extraction = { tag: "NotExtracted" }
+    const current: Extraction = { tag: "ExtractedFor", versionCode: 7 }
+
+    assert.deepStrictEqual([startCheck(none, 7, false, [], false), startCheck(current, 7, true, device(agentText, elf), false)], ["ExtractPayload", "PayloadReady"])
+    assert.deepStrictEqual(try start(), [])
+    const extractions = try files.readDirectory(releases)
+    assert.deepStrictEqual(extractions.map((name) => name.slice(0, 2)), ["7-"])
+    const extractedAgent = path.join(releases, extractions[0] ?? "", "agent", "agent.mjs")
+
+    try writeTree(releases, { [`${extractions[0]}/agent/agent.mjs`]: "damaged", [`${extractions[0]}/agent/unlisted.mjs`]: "unlisted" })
+    assert.deepStrictEqual([startCheck(current, 7, false, device("damaged", elf), true), startCheck(current, 7, true, device(agentText, elf), false)], ["ExtractPayload", "PayloadReady"])
+    assert.deepStrictEqual(try start(), [])
+    assert.deepStrictEqual([try files.readFileString(extractedAgent), try files.exists(path.join(path.dirname(extractedAgent), "unlisted.mjs"))], [agentText, false])
+
+    try files.writeFileString(extractedAgent, "damaged")
+    try files.remove(apkAgent)
+    assert.deepStrictEqual([startCheck(current, 7, false, device("damaged", elf), false), startCheck(none, 7, true, [], false)], ["ExtractPayload", "PayloadFailed"])
+    assert.deepStrictEqual(try start(), ["Missing assets/agent/agent.mjs in the APK"])
+    try files.writeFileString(apkAgent, agentText)
+    assert.deepStrictEqual(try start(), [])
+
+    try files.writeFileString(library, "other")
+    assert.deepStrictEqual(startCheck(current, 7, false, device(agentText, "other"), false), "PayloadFailed")
+    assert.deepStrictEqual(try start(), [`Size of lib/arm64-v8a/libeliza_node.so differs: expected ${elf.length}, found 5`])
+  }
+}, 180_000)

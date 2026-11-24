@@ -69,6 +69,25 @@ pure val rootTokenValues = Set("token1", "token2")
 pure def alwaysTokenOnlyWhileServing(s: AgentChannel): bool = s.launch == NotServing implies s.rootToken == ""
 ```
 
+### The token is written only to a socket whose peer is this app
+
+Before the first byte of a call, the service reads the user id the kernel
+reports for the other end of the agent socket. A peer of another user id,
+or one whose user id cannot be read, gets no token and no request; the
+socket is closed and the call fails as a lost connection.
+
+```quint
+type SocketPeer = PeerOfUser({ uid: int }) | PeerUnread
+pure def peerTrusted(peer: SocketPeer, appUid: int): bool = match peer {
+  | PeerOfUser(p) => p.uid == appUid
+  | PeerUnread => false }
+pure val peerValues = Set(PeerOfUser({ uid: 1 }), PeerOfUser({ uid: 2 }), PeerUnread)
+pure val appUidValues = Set(1, 2)
+pure def lawOnlyThisAppsPeerGetsTheToken(peer: SocketPeer, appUid: int): bool =
+  peerTrusted(peer, appUid) implies peer == PeerOfUser({ uid: appUid })
+pure def lawAnUnreadPeerGetsNothing(appUid: int): bool = not(peerTrusted(PeerUnread, appUid))
+```
+
 ### A call is refused before any I/O unless the agent is serving, its id is free and its list admits it
 
 The checks run in this order: no serving launch is `NotReady`; an id

@@ -1,8 +1,10 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A change waiting for approval expires a day after it was asked"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request or the owner's words say"
 import { sha256Hex } from "@elizaos/core"
-import { FetchHttpClient } from "effect/http"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { attendeeNotice, eventVisible, invitationVerdict, readScope, sourceRead, writeRoute, type AttendeeNotice, type SourceRead } from "../../gen/calendar__actions.effect.vibe"
+import {
+  approvalExpiry, attendeeNotice, eventVisible, invitationVerdict, readScope, slotChecked, sourceRead, writeRoute, writeSlot, type AttendeeNotice, type SourceRead,
+} from "../../gen/calendar__actions.effect.vibe"
+import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import type { ManagedCalendarBroker } from "../feed/broker.vibe"
 import {
   sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceHealth, type CalendarSourceKey, type CalendarSourceStatus, type CalendarSummary,
@@ -14,8 +16,10 @@ import {
 import { invitationChangeOf, providerMutationPort, reviewDigest } from "../mutations/provider-port.vibe"
 import { PayloadRecord } from "../mutations/records.schema.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
+import { WriteScopeRecord } from "../series/rows.schema.vibe"
 import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
 import { eventInWindow, eventVersion, hasOtherAttendees, ownerRole, residentCalendar, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
+import { blockingSpans } from "./free-time.vibe"
 import { lookupMatches } from "./lookup.vibe"
 import { managedGoogleCalendar } from "./managed-provider.vibe"
 import { cacheKeyValueStore, type CalendarCache } from "./runtime-store.vibe"
@@ -76,14 +80,15 @@ export interface CalendarFound {
 }
 
 export type CalendarChangeRequest =
-  | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly reviewFirst?: boolean; readonly askedBy: string; readonly askId: string }
-  | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
+  | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly reviewFirst?: boolean; readonly slotZone?: string; readonly askedBy: string; readonly askId: string }
+  | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly notifyAttendees?: boolean; readonly slotZone?: string; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "respond"; readonly target: CalendarFound; readonly scope: CalendarAnswerScope; readonly response: CalendarInvitationResponse; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
 
 export type CalendarChangeResult =
-  | { readonly kind: "ran"; readonly request: CalendarMutationRequest; readonly outcome: CalendarMutationOutcome; readonly notice: AttendeeNotice }
-  | { readonly kind: "queued"; readonly request: CalendarMutationRequest; readonly approvalId: string; readonly notice: AttendeeNotice }
+  | { readonly kind: "ran"; readonly request: CalendarMutationRequest; readonly outcome: CalendarMutationOutcome; readonly notice: AttendeeNotice; readonly overlapsUnchecked: boolean }
+  | { readonly kind: "queued"; readonly request: CalendarMutationRequest; readonly approvalId: string; readonly notice: AttendeeNotice; readonly overlapsUnchecked: boolean }
+  | { readonly kind: "conflict"; readonly reason: "taken" | "unread"; readonly conflicts: readonly CalendarEvent[] }
   | { readonly kind: "refused"; readonly reason: CalendarRefusal }
 
 export type CalendarRefusal =
@@ -94,6 +99,7 @@ interface CalendarDeleteQuestion {
   readonly eventId: string
   readonly askedIn: string
   readonly askedAt: number
+  readonly scope?: CalendarWriteScope
 }
 
 export interface CalendarHostOptions {
@@ -103,9 +109,9 @@ export interface CalendarHostOptions {
   readonly managed?: ManagedCalendarBroker
 }
 
-const approvalLifetimeMs = 24 * 60 * 60 * 1000
+const dayMs = 86_400_000
 const decodePayload = Schema.decodeUnknownOption(PayloadRecord, { onExcessProperty: "error" })
-const decodeQuestion = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ eventId: Schema.String, askedIn: Schema.String, askedAt: Schema.Number })))
+const decodeQuestion = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ eventId: Schema.String, askedIn: Schema.String, askedAt: Schema.Number, scope: Schema.optionalKey(WriteScopeRecord) })))
 const questionKey = (conversation: string) => `calendar.delete-question.${encodeURIComponent(conversation)}`
 const sourceStatus: Readonly<Record<SourceRead, CalendarSourceStatus>> = { ReadFresh: "fresh", ReadStale: "stale", ReadFailed: "error" }
 const noticeReason: Readonly<Record<AttendeeNotice, string>> = {
@@ -139,7 +145,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
   const resident = try Effect.provide(residentCalendar(), rows)
   const residentAccount: CalendarAccount = { agentId: options.agentId, ownerId: "owner", accountId: `resident:${options.agentId}` }
   const managed = options.managed === undefined ? undefined
-    : try Effect.provide(Effect.provideService(managedGoogleCalendar({ broker: options.managed, owner: residentAccount, store }), Scope.Scope, try Scope.make()), FetchHttpClient.layer)
+    : try Effect.provideService(managedGoogleCalendar({ broker: options.managed, owner: residentAccount, store }), Scope.Scope, try Scope.make())
   const providers = try Ref.make(new Map<CalendarProvider, CalendarProviderPort>(managed === undefined ? [["eliza", resident]] : [["eliza", resident], ["google", managed]]))
   const active = try Ref.make<CalendarAccount | undefined>(residentAccount)
   const ledger = try calendarMutationLedger()
@@ -248,6 +254,20 @@ export effect function calendarHost(options: CalendarHostOptions) {
     return { provider, side, grantId, connectorAccountId, calendarId: chosen.row.calendarId }
   }
 
+  effect function slotOf(asked: Extract<CalendarChangeRequest, { readonly kind: "create" | "update" }>, source: CalendarSourceKey, id: string) {
+    const span = { begin: Date.parse(asked.fields.startAt), finish: Date.parse(asked.fields.endAt) }
+    const own = asked.kind === "update" ? asked.target.event : undefined
+    const moved = own === undefined || Date.parse(own.startAt) !== span.begin || Date.parse(own.endAt) !== span.finish
+    const applied = asked.slotZone === undefined ? false : (try Effect.provide(ledger.inspect(id), rows)).receipt !== undefined
+    const zone = asked.slotZone ?? "UTC"
+    const checked = slotChecked(asked.slotZone !== undefined, !asked.fields.isAllDay, moved, applied)
+    const read = checked ? try search({ timeMin: Math.max(0, span.begin - dayMs), timeMax: span.finish + dayMs }) : undefined
+    const taken = (read?.events ?? []).filter((event) => !(own !== undefined && event.id === own.id && event.calendarId === own.calendarId && event.provider === own.provider)
+      && (blockingSpans([event], zone) ?? []).some((busy) => positiveOverlap(span, busy)))
+    const targetRead = read?.sources.some((row) => sameSourceKey(row.key, source) && row.status === "fresh") === true
+    return { taken, verdict: writeSlot(checked, targetRead, read?.complete === true, taken.length) }
+  }
+
   effect function change(asked: CalendarChangeRequest): CalendarChangeResult!CalendarLedgerUnavailable {
     const account = try Ref.get(active)
     if (account === undefined) return { kind: "refused", reason: "no_account" }
@@ -280,16 +300,19 @@ export effect function calendarHost(options: CalendarHostOptions) {
     }
     const digest = reviewDigest(payload)
     const request: CalendarMutationRequest = { id: `calendar-${sha256Hex(`${asked.askId}\n${digest}`).slice(0, 40)}`, digest, payload }
-    if (route === "ApplyNow") return { kind: "ran", request, outcome: try Effect.provide(ledger.run(request, port), rows), notice }
+    const slot = asked.kind === "create" || asked.kind === "update" ? try slotOf(asked, source, request.id) : undefined
+    if (slot?.verdict === "SlotTaken" || slot?.verdict === "SlotUnread") return { kind: "conflict", reason: slot.verdict === "SlotTaken" ? "taken" : "unread", conflicts: slot.taken }
+    const overlapsUnchecked = slot?.verdict === "SlotUnchecked"
+    if (route === "ApplyNow") return { kind: "ran", request, outcome: try Effect.provide(ledger.run(request, port), rows), notice, overlapsUnchecked }
     const approvals = options.approvals()
     if (approvals === undefined) return { kind: "refused", reason: "approvals_unavailable" }
     const now = try Clock.currentTimeMillis
     const filed = tryPromise(() => approvals.request({
       id: request.id, subjectUserId: asked.askedBy, requestedBy: options.agentId, action: approvalAction(payload),
       payload: { change: payload, digest }, reason: `Calendar ${payload.action.replace("_", " ")} reviewed in chat${noticeReason[notice]}`,
-      expiresAt: new Date(now + approvalLifetimeMs).toISOString(),
+      expiresAt: new Date(approvalExpiry(now)).toISOString(),
     })) catch () => undefined
-    return filed === undefined ? { kind: "refused", reason: "approvals_unavailable" } : { kind: "queued", request, approvalId: filed.id, notice }
+    return filed === undefined ? { kind: "refused", reason: "approvals_unavailable" } : { kind: "queued", request, approvalId: filed.id, notice, overlapsUnchecked }
   }
 
   effect function executeApproval(record: CalendarApprovalRecord): CalendarLedgerOutcome!! {

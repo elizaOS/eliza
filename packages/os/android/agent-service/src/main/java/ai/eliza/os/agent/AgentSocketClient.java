@@ -1,4 +1,4 @@
-// spec/os/agentService/channel.md, "The launch's root token stays inside the service"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/agent/access/transport.md, "A request gets 10 seconds, or 600 on a message, speech or stream route"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"
+// spec/os/agentService/channel.md, "The launch's root token stays inside the service"; spec/os/agentService/channel.md, "The token is written only to a socket whose peer is this app"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/agent/access/transport.md, "A request gets 10 seconds, or 600 on a message, speech or stream route"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"
 package ai.eliza.os.agent;
 
 import android.net.LocalSocket;
@@ -92,6 +92,9 @@ public final class AgentSocketClient {
     LocalSocket socket = new LocalSocket();
     try {
       socket.connect(new LocalSocketAddress(path.toString(), LocalSocketAddress.Namespace.FILESYSTEM));
+      Integer peer;
+      try { peer = socket.getPeerCredentials().getUid(); } catch (IOException unread) { peer = null; }
+      if (!ChannelPolicy.peerTrusted(peer, android.os.Process.myUid())) throw new IOException("The agent socket's peer is not this app");
     } catch (IOException refused) {
       socket.close();
       throw refused;

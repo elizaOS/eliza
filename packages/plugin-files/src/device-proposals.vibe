@@ -1,10 +1,16 @@
 // spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
+import type { ContextDefinition } from "@elizaos/core"
 import { directRequests, readOperation, type CheckedOperation, type DeviceProposalFamily, type DeviceTurn, type Grounding, type NegotiatedDevice, type ProposalForm } from "@elizaos/agent/device-actions"
 import { chatKeepsSentIdentities, filesChatAnswer, filesChatBound } from "../gen/files__shownTargets.effect.vibe"
 import {
   decodeFilesOperation, FILES_CAPABILITY, FILES_OPERATION_TYPES, FILES_SHOWN_TARGET_CAPABILITY, filesForm, filesToolSurface,
   type FilesAgentOperation,
 } from "./contract.vibe"
+
+export const filesContext: ContextDefinition = {
+  id: "files", label: "Files", description: "The owner's files on the phone.", descriptionCompressed: "The phone's files.",
+  sensitivity: "personal", cacheScope: "agent",
+}
 
 type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
 
@@ -39,9 +45,10 @@ function sentIdentitiesDropped(operation: FilesAgentOperation): FilesAgentOperat
 
 export const filesProposalFamily: DeviceProposalFamily = {
   name: "files",
+  app: filesContext.id,
   types: FILES_OPERATION_TYPES,
   forms,
-  guidance: (turn) => [filesGuidance, ...filesToolSurface(turn.capabilities).guidance].join(" "),
+  guidance: (turn) => [filesGuidance, ...filesToolSurface(turn.capabilities).guidance],
   effect ground(proposed: CheckedOperation, turn: DeviceTurn) {
     const decoded = try Effect.result(decodeFilesOperation(proposed.operation))
     if (Result.isFailure(decoded)) return invalid(decoded.failure.reason)

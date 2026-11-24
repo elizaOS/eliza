@@ -157,10 +157,13 @@ effect function failure(call: () => Promise<unknown>) {
   return cause
 }
 
-it.live("Talk to the agent through the cloud speech relay (spec/os/voice/cloudSpeech.md, \"Story: Talk to the agent through the cloud speech relay\")", () => effect {
+it.live("Talk to the agent through the cloud speech relay (spec/os/voice/cloudSpeech.md, \"Story: Talk to the agent through the cloud speech relay\"; spec/os/voice/cloudSpeech.md, \"The speaker is muted for the whole session without ending voice, and only an open session whose bridge can mute it applies the mute\")", () => effect {
   const phone = device()
   const interim: string[] = []
   const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {}, onInterim: (text) => { interim.push(text) } }, cloudSpeech(phone))
+  const early = try failure(() => speech.setOutputMuted(true))
+  assert.instanceOf(early, CloudSpeechRefused)
+  assert.strictEqual((early as CloudSpeechRefused).reason, "output-mute-unavailable")
   const person = heard(new AbortController().signal)
   const capture = try promise(() => speech.listen(person.handlers))
   assert.isTrue(capture.fullDuplex)

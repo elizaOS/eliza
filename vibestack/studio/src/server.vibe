@@ -11,8 +11,8 @@ import { Machine, enabled, machine } from "../gen/index.effect.vibe"
 import type { Event, Session } from "../gen/index.ts"
 import { promptFor } from "./doc.ts"
 import {
-  NODE, PUBLIC, SPEC, checkCommand, createServer, finder, interactive, manifestFile, opener, ownedFiles, buildPage, appScript, servedAt, buildable, buildCommand, componentsOf,
-  planPublish, projectName, readTree, readManifest, skillPath, specStamp, stateFile, studioRoot, verdictOf, type Check, type JobView, type ProjectTree, type Publish, type Snapshot,
+  NODE, PUBLIC, SPEC, checkCommand, closePreview, createServer, finder, graphOfDraft, interactive, manifestFile, opener, ownedFiles, buildPage, appScript, servedAt, buildable, buildCommand, componentsOf,
+  planPublish, projectName, readTree, readManifest, simulateModule, skillPath, specStamp, stateFile, studioPreview, studioRoot, verdictOf, type Check, type JobView, type ProjectTree, type Publish, type Snapshot,
 } from "./project.ts"
 
 const DEEPLINK_LIMIT = 5000 // characters of a prompt a claude-cli:// link carries
@@ -74,6 +74,47 @@ const messageOf = (e: unknown) => (e instanceof Error || e instanceof Refused ? 
 const json = (status: number, body: unknown) => HttpServerResponse.jsonUnsafe(body, { status, headers: { "cache-control": "no-store" } })
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" }
 
+/** Parse a JSON object request body, enforcing application/json. */
+effect function parseJsonBody(request: HttpServerRequest.HttpServerRequest): any!Refused {
+  if (request.headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json") throw new Refused({ status: 415, message: "send application/json" })
+  const text = request.text catch () => ""
+  const body: any = text ? try Effect.try({ try: () => JSON.parse(text), catch: () => new Refused({ status: 400, message: "the body is not JSON" }) }) : {}
+  if (body === null || typeof body !== "object") throw new Refused({ status: 400, message: "the body is not a JSON object" })
+  return body
+}
+
+/** A runner bound to `root` and the current `ChildProcessSpawner`, colours off. */
+effect function makeSpawner(root: string) {
+  const spawner = try ChildProcessSpawner
+  return effect ([program, args]: [string, string[]], each: (line: string, out: boolean) => void!!, options: { input?: string; env?: Record<string, string> } = {}) =>
+    try scoped(effect {
+      const child = try spawner.spawn(ChildProcess.make(program, args, {
+        cwd: root, extendEnv: true, env: { FORCE_COLOR: "0", NO_COLOR: "1", ...options.env },
+        stdin: options.input === undefined ? "ignore" : Stream.encodeText(Stream.make(options.input)),
+      }))
+      const lines = (stream: Stream.Stream<Uint8Array, unknown>, out: boolean) => Stream.runForEach(Stream.splitLines(Stream.decodeText(stream)), (line) => each(line, out))
+      try.all [lines(child.stdout, true), lines(child.stderr, false)]
+      return try child.exitCode as number
+    })
+}
+
+/** Handle read-only POST endpoints that do not mutate session state. */
+effect function handleReadOnlyPost(root: string, route: string, body: any) {
+  if (route === "/api/graph") {
+    if (typeof body.file !== "string" || typeof body.text !== "string") throw new Refused({ status: 400, message: "file and text are required" })
+    return json(200, graphOfDraft(root, body.file, body.text))
+  }
+  if (route === "/api/sim") {
+    if (typeof body.module !== "string") throw new Refused({ status: 400, message: "module is required" })
+    const result = try tryPromise({
+      try: () => simulateModule(root, body.module, { state: body.state, event: body.event, by: body.by }),
+      catch: (e) => new Refused({ status: 500, message: messageOf(e) }),
+    })
+    return json(200, result)
+  }
+  return undefined
+}
+
 /** One project's studio: its session, its jobs, and the HTTP handler its page talks to. Lives as long as the scope. */
 effect function studio(project: Project, agents: Record<string, Agent>, tree: ProjectTree) {
   const { root } = project
@@ -81,6 +122,7 @@ effect function studio(project: Project, agents: Record<string, Agent>, tree: Pr
   const path = try Path.Path
   const spawner = try ChildProcessSpawner
   const scope = try Scope.Scope
+  try Scope.addFinalizer(scope, promise(() => closePreview(root)))
   // spec/index.md, "A studio that starts again picks up what was waiting"
   const waiting = (effect { return readManifest(root) } catch () => undefined)?.changes.length ?? 0
   const session = Context.get(try Layer.build(machine()), Machine)
@@ -107,18 +149,7 @@ effect function studio(project: Project, agents: Record<string, Agent>, tree: Pr
 
   const clearManifest = Effect.forEach([stateFile(root), manifestFile(root)], (file) => files.remove(file, { force: true }), { discard: true })
 
-  /** Run a program in the project, colours off: `each` hears every line it prints, and whether on standard output. Gives its exit code. */
-  effect function spawned([program, args]: [string, string[]], each: (line: string, out: boolean) => void!!, options: { input?: string; env?: Record<string, string> } = {}) {
-    return try scoped(effect {
-      const child = try spawner.spawn(ChildProcess.make(program, args, {
-        cwd: root, extendEnv: true, env: { FORCE_COLOR: "0", NO_COLOR: "1", ...options.env },
-        stdin: options.input === undefined ? "ignore" : Stream.encodeText(Stream.make(options.input)),
-      }))
-      const lines = (stream: Stream.Stream<Uint8Array, unknown>, out: boolean) => Stream.runForEach(Stream.splitLines(Stream.decodeText(stream)), (line) => each(line, out))
-      try.all [lines(child.stdout, true), lines(child.stderr, false)]
-      return try child.exitCode as number
-    })
-  }
+  const spawned = try makeSpawner(root)
 
   /** Run the program behind the job the session has just started; `done` hears how it ended, unless it was stopped. */
   effect function run(kind: Kind, label: string, command: [string, string[]], input: string | undefined, read: (line: string) => string | undefined, done: (job: Job, out: string) => void!unknown) {
@@ -205,8 +236,8 @@ effect function studio(project: Project, agents: Record<string, Agent>, tree: Pr
   /** Everything the page shows for the project. */
   effect function snapshot(): Snapshot!(PlatformError.PlatformError | Error) {
     // The specs; what is wrong if they cannot be read.
-    const read: Pick<Snapshot, "manifest" | "specs" | "review" | "problem"> =
-      effect { return { manifest: readManifest(root), ...readTree(tree) } } catch (e) => ({ problem: e.message, specs: [], review: [] })
+    const read: Pick<Snapshot, "manifest" | "specs" | "review" | "problem" | "graphs"> =
+      effect { return { manifest: readManifest(root), ...readTree(tree) } } catch (e) => ({ problem: e.message, specs: [], review: [], graphs: {} })
     const context = { skill: skillPath(root), check: checkCommand(root) }
     const shown = []
     for (const [id, a] of Object.entries(agents)) shown.push({
@@ -362,11 +393,13 @@ effect function studio(project: Project, agents: Record<string, Agent>, tree: Pr
         if (!index) throw new Refused({ status: 404, message: "no component catalog: run the story generator" })
         return json(200, index)
       }
+      if (method === "GET" && route === "/api/preview") {
+        return json(200, try tryPromise({ try: () => studioPreview(root), catch: (e) => new Refused({ status: 500, message: messageOf(e) }) }))
+      }
       if (method !== "POST") throw new Refused({ status: 405, message: "method not allowed" })
-      if (request.headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json") throw new Refused({ status: 415, message: "send application/json" })
-      const text = request.text catch () => ""
-      const body: any = text ? try Effect.try({ try: () => JSON.parse(text), catch: () => new Refused({ status: 400, message: "the body is not JSON" }) }) : {}
-      if (body === null || typeof body !== "object") throw new Refused({ status: 400, message: "the body is not a JSON object" })
+      const body = try parseJsonBody(request)
+      const direct = try handleReadOnlyPost(root, route, body)
+      if (direct) return direct
       return json(200, try lock.withPermits(1)(post(route, body)))
     },
   }
@@ -411,7 +444,7 @@ export effect function startStudio({ projects, open = projects[0].id, port = 432
       return try live.handle(request.method, url.pathname, request)
     } catch (e) => json(e instanceof Refused ? e.status : 400, e instanceof Refused && e.conflicts ? { error: e.message, conflicts: e.conflicts } : { error: messageOf(e) })
     return HttpServerResponse.setHeaders(response, {
-      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:*; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self' http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:*; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
       "x-content-type-options": "nosniff",
     })
   }

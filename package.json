@@ -202,6 +202,7 @@
     "./stories/storybook": "./vibestack/stories/storybook.ts",
     "./design/eslint": "./vibestack/design/eslint.ts",
     "./design/project": "./vibestack/design/project.ts",
+    "./eslint": "./vibestack/eslint.ts",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -214,6 +215,7 @@
       "./stories/storybook": "./dist/stories/storybook.js",
       "./design/eslint": "./dist/design/eslint.js",
       "./design/project": "./dist/design/project.js",
+      "./eslint": "./dist/eslint.js",
       "./package.json": "./package.json"
     }
   }

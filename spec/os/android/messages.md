@@ -1,4 +1,4 @@
-# Text messages: reviewed sends, receipts, notices and deletion
+# Text messages: reviewed sends, receipts, incoming messages, notices, reads and deletion
 
 The messages module (`packages/os/android/messages/`, from
 `plugins/plugin-native-messages/android`). A host that declares telephony
@@ -11,13 +11,16 @@ their shape checks and the capabilities `sms.send.v1`, `mms.send.v1` and
 [capabilities](../../agent/deviceActions/capabilities.md)); a request for the
 default SMS role is [system](./system.md)'s. This spec keeps what Android must
 confirm before a send, what the send journal answers, what a status may
-claim, what a new-message notice action may write, and what a deletion of a
-message or a conversation may stage in the
+claim, what the default SMS app stores and announces for an incoming text or
+picture message, what a new-message notice action may write, what a page of
+conversations or messages may hold and what opening a conversation marks
+read, and what a deletion of a message or a conversation may stage in the
 [deletion journal](./deferredDeletion.md) and report. Carrier delivery is never inferred. Calls and voicemail are
 [phone](./phone.md)'s and [voicemail](./voicemail.md)'s. A new-message
 notice is this module's own: it is posted for an incoming message, not for
 an agent result, so the account fence and tap tokens of
-[notice routes](./noticeRoutes.md) do not apply to it.
+[notice routes](./noticeRoutes.md) do not apply to it. Pages follow
+[keyset paging](./paging.md).
 
 ## Story: Send only what I reviewed, once
 
@@ -91,6 +94,16 @@ pure def stepDispatchNeedsApproval(before: SmsReview, after: SmsReview): bool =
 pure def sometimesCancelledBeforeDispatch(s: SmsReview): bool = s.result == SendCancelled and s.cancelAcknowledged
 pure def sometimesDeclinedInTheDialog(s: SmsReview): bool = s.result == SendCancelled and not(s.retired)
 pure def sometimesResultSurvivesRetirement(s: SmsReview): bool = s.result == SendSubmitted and s.retired
+pure val eval_witness_sometimesResultSurvivesRetirement = (
+  ("beginReview", "op1", NativeDialog, TextMessage, PluginRegistered,
+    { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }),
+  ("finishLookup", NoRecord, NoAnswer),
+  ("presentReview", false, 1),
+  "approveReview",
+  ("dispatchApproved", false, true, true),
+  "retireReview",
+  ("reportDispatch", SendSubmitted)
+)
 pure def sometimesComposerSendDispatched(s: SmsReview): bool = s.source == OwnerComposer and s.phase == NativeDispatched
 ```
 
@@ -217,6 +230,109 @@ pure def lawDeliveredNeedsEveryReportAndNeverMms(e: SendEvidence): bool =
 pure def lawFailedPartIsNeverHidden(e: SendEvidence): bool =
   e.parts.some(p => p.sentState == PartFailed) implies evidenceStatus(e) == SendFailed
 pure def lawRestartNeverReadsSubmitted(e: SendEvidence): bool = evidenceStatus(afterRestart(e)) != SendSubmitted
+```
+
+## Story: Keep every message I receive
+
+> As the person, with this app as my SMS app, I want every text and picture
+> message that reaches my phone stored once in its conversation and
+> announced, so that none is lost, stored twice or announced without being
+> there.
+
+### An incoming text is stored before it is announced, and only while the app holds the SMS role
+
+Android delivers an incoming text only to the default SMS app, which must
+store it. The receiver joins the parts Android delivered, takes the first
+part's sender and time, and hands the store to the module's one worker. The
+row goes to the Inbox unread before its notice is asked for, so a notice
+Android did not confirm leaves the text stored, and a text that has no
+sender or that the provider refused has no notice. Without the role
+nothing is stored or announced: Android's SMS app keeps the text. The
+broadcast is finished whether the worker stored the text, refused it or
+never ran.
+
+```quint
+type IncomingText = TextNotOurs | TextNotStored | TextStoredUnannounced | TextStoredAndAnnounced
+pure def incomingText(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool, noticeConfirmed: bool): IncomingText =
+  if (not(smsRoleHeld)) TextNotOurs
+  else if (not(senderKnown) or not(workerRan) or not(providerStored)) TextNotStored
+  else if (noticeConfirmed) TextStoredAndAnnounced
+  else TextStoredUnannounced
+pure def textKept(arrived: IncomingText): bool = arrived == TextStoredUnannounced or arrived == TextStoredAndAnnounced
+pure def lawATextIsKeptExactlyWhenTheRoleHolderStoredIt(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool, noticeConfirmed: bool): bool =
+  textKept(incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, noticeConfirmed)) iff (smsRoleHeld and senderKnown and workerRan and providerStored)
+pure def lawOnlyAStoredTextIsAnnounced(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool, noticeConfirmed: bool): bool =
+  incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, noticeConfirmed) == TextStoredAndAnnounced implies (providerStored and noticeConfirmed)
+pure def lawAnUnconfirmedNoticeNeverLosesTheText(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool): bool =
+  textKept(incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, false)) == textKept(incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, true))
+```
+
+### A picture message is downloaded once for its transaction, stored whole or not at all, and answered only once stored
+
+A WAP push is acted on only by the default SMS app, and only when it is a
+message notification that names its transaction and its content location;
+delivery and read reports are not stored, since MMS delivery is never
+claimed. A notification whose transaction is already stored starts no
+download and is answered "retrieved" again, so a carrier that missed the
+first answer stops repeating it. A new one starts one download into a
+private file. The file is stored only when Android reported the download
+done, the role is still held, the file is a retrieved message of at most
+`maxIncomingMmsBytes` and its transaction is not stored yet: the message
+row with its addresses and every part, or, if one of them fails, nothing,
+so the carrier's repeat can store it whole. The carrier is answered
+"retrieved" only for a stored message, the private file is removed in every
+case, and the notice follows the stored row as it does for a text.
+
+```quint
+type WapPush = PushNotANotice | PushNewTransaction | PushStoredTransaction
+type PushWork = PushIgnored | PushDownloaded | PushAnsweredAgain
+type MmsKept = MmsNotStored | MmsAlreadyStored | MmsStored
+pure val maxIncomingMmsBytes = 2097152
+pure def pushWork(smsRoleHeld: bool, wapPush: WapPush): PushWork =
+  if (not(smsRoleHeld) or wapPush == PushNotANotice) PushIgnored
+  else if (wapPush == PushStoredTransaction) PushAnsweredAgain
+  else PushDownloaded
+pure def keepDownloadedMms(smsRoleHeld: bool, downloadDone: bool, retrievedWithinSize: bool, transactionStored: bool, rowsWritten: bool): MmsKept =
+  if (not(smsRoleHeld) or not(downloadDone) or not(retrievedWithinSize)) MmsNotStored
+  else if (transactionStored) MmsAlreadyStored
+  else if (rowsWritten) MmsStored
+  else MmsNotStored
+pure def carrierAnswered(pushed: PushWork, kept: MmsKept): bool = pushed == PushAnsweredAgain or (pushed == PushDownloaded and kept == MmsStored)
+pure def lawARepeatedNotificationNeverDownloads(smsRoleHeld: bool): bool = pushWork(smsRoleHeld, PushStoredTransaction) != PushDownloaded
+pure def lawOnlyTheRoleHolderDownloadsOrStores(wapPush: WapPush, downloadDone: bool, retrievedWithinSize: bool, transactionStored: bool, rowsWritten: bool): bool =
+  pushWork(false, wapPush) == PushIgnored and keepDownloadedMms(false, downloadDone, retrievedWithinSize, transactionStored, rowsWritten) == MmsNotStored
+pure def lawAPictureMessageIsStoredWholeAndOnce(smsRoleHeld: bool, downloadDone: bool, retrievedWithinSize: bool, transactionStored: bool, rowsWritten: bool): bool =
+  keepDownloadedMms(smsRoleHeld, downloadDone, retrievedWithinSize, transactionStored, rowsWritten) == MmsStored iff
+    (smsRoleHeld and downloadDone and retrievedWithinSize and not(transactionStored) and rowsWritten)
+pure def lawTheCarrierIsAnsweredOnlyForAStoredMessage(smsRoleHeld: bool, downloadDone: bool, retrievedWithinSize: bool, transactionStored: bool, rowsWritten: bool): bool =
+  carrierAnswered(PushDownloaded, keepDownloadedMms(smsRoleHeld, downloadDone, retrievedWithinSize, transactionStored, rowsWritten)) implies (rowsWritten and not(transactionStored))
+```
+
+### A conversation has one notice, and a newer message replaces it without losing the texts it showed
+
+A notice is tagged with its conversation's whole thread ID, or with the
+message's own row when the provider names no thread, so two conversations
+whose IDs share a hash never share a notice or a tap. A new message builds
+the replacement from the texts the published notice shows and its own,
+retires the older notice's Mark read action and asks Android to publish it;
+the replacement counts only once Android shows it, within
+`noticeConfirmSeconds`. One that is not confirmed has its own action
+retired too ([below](#story-mark-a-conversation-read-from-its-notice-without-sending-anything)),
+and its message stays stored. The lock screen shows only "New message";
+the sender's contact name or number and the texts show once unlocked. Reply
+is offered only for a well-formed sender and Mark read only for a known
+conversation.
+
+```quint
+type ConversationNotice = { texts: int, offersReply: bool, offersMarkRead: bool }
+pure val noticeConfirmSeconds = 3
+pure def replacementNotice(shownTexts: int, senderWellFormed: bool, threadKnown: bool): ConversationNotice =
+  { texts: (if (shownTexts > 0) shownTexts else 0) + 1, offersReply: senderWellFormed, offersMarkRead: threadKnown }
+pure val shownTextsValues = Set(-1, 0, 1, 5)
+pure def lawAReplacementKeepsEveryTextAlreadyShown(shownTexts: int, senderWellFormed: bool, threadKnown: bool): bool =
+  replacementNotice(shownTexts, senderWellFormed, threadKnown).texts >= 1 and replacementNotice(shownTexts, senderWellFormed, threadKnown).texts > shownTexts
+pure def lawMarkReadIsOfferedOnlyForAKnownConversation(shownTexts: int, senderWellFormed: bool, threadKnown: bool): bool =
+  replacementNotice(shownTexts, senderWellFormed, threadKnown).offersMarkRead == threadKnown
 ```
 
 ## Story: Mark a conversation read from its notice without sending anything
@@ -356,6 +472,82 @@ pure def lawAConversationOfOnlySendsIsNeverStaged(allowed: bool, held: ThreadSee
   held.settledThrough == 0 implies threadStaged(allowed, held) != DeleteQueued
 ```
 
+## Story: Keep my conversation list whole and current
+
+> As the person, I want every conversation and message on the phone to keep
+> its place in the list, even one too large to show, and the list to refresh
+> when something changes, without the phone handing over what changed.
+
+### A row the provider cannot report whole keeps its place without content, and costs the page neither its other rows nor its cursor
+
+A conversation or message the host refuses to clip (a body, address list or
+part count beyond what a row may carry, an address it cannot read, or text
+stored as an attachment) arrives as its ID, its date and one of those named
+reasons, and nothing else. Its date keeps the page order and the cursor, so
+it counts as a row of the page: the rest of the page stays and the next
+cursor stays. A clipped row that carries any other field, or a reason that is
+not one of the named ones, refuses the whole reply as malformed. A next
+cursor is kept only after a page that listed at least one row and only when
+it differs from the cursor the page was asked with, so paging always moves
+on or ends.
+
+```quint
+type ListedRow = WholeRow | IncompleteRow({ reasonNamed: bool, carriesContent: bool })
+type PageNext = LastPage | NextCursor({ repeatsAsked: bool })
+pure def rowShown(row: ListedRow): bool = match row {
+  | WholeRow => true
+  | IncompleteRow(r) => r.reasonNamed and not(r.carriesContent)
+}
+pure def cursorKept(rowsListed: int, pageNext: PageNext): bool = match pageNext {
+  | LastPage => true
+  | NextCursor(c) => rowsListed > 0 and not(c.repeatsAsked)
+}
+pure def pageShown(listed: List[ListedRow], pageNext: PageNext): bool =
+  listed.every(row => rowShown(row)) and cursorKept(listed.length(), pageNext)
+pure val bareIncompleteRow: ListedRow = IncompleteRow({ reasonNamed: true, carriesContent: false })
+pure val listedValues = Set(List(), List(WholeRow), List(WholeRow, IncompleteRow({ reasonNamed: true, carriesContent: false })),
+  List(IncompleteRow({ reasonNamed: true, carriesContent: true }), WholeRow), List(IncompleteRow({ reasonNamed: false, carriesContent: false })))
+pure val pageNextValues = Set(LastPage, NextCursor({ repeatsAsked: false }), NextCursor({ repeatsAsked: true }))
+pure def lawAnIncompleteRowKeepsTheRestOfThePageAndItsCursor(listed: List[ListedRow], pageNext: PageNext): bool =
+  pageShown(listed, pageNext) implies pageShown(listed.append(bareIncompleteRow), pageNext)
+pure def lawNoClippedContentOrUnnamedReasonIsShown(listed: List[ListedRow], pageNext: PageNext, reasonNamed: bool, carriesContent: bool): bool =
+  (carriesContent or not(reasonNamed)) implies not(pageShown(listed.append(IncompleteRow({ reasonNamed: reasonNamed, carriesContent: carriesContent })), pageNext))
+pure def lawPagingMovesOnOrEnds(rowsListed: int): bool =
+  cursorKept(rowsListed, LastPage) and not(cursorKept(rowsListed, NextCursor({ repeatsAsked: true })))
+    and not(cursorKept(0, NextCursor({ repeatsAsked: false })))
+```
+
+### A change notice carries no message content, and a send update reaches only the handler of its own kind
+
+While the screen watches, Android's notices are passed on without what
+changed: a change in the message providers calls the change handler with
+nothing, and an SMS or MMS send update gives its own kind's handler only the
+send's operation ID. A send update whose ID is not well formed, or of a kind
+the screen did not ask to follow, reaches no handler. The watch adds its
+listeners before it turns observation on. If setup fails, the watch stops
+forwarding notices, attempts to remove every listener it added, and returns
+the setup refusal. Stopping also stops forwarding immediately, attempts to
+remove every listener, and then turns observation off even if a listener
+cannot be removed.
+
+```quint
+type ChangeNotice = MessagesChanged | SmsSendUpdated({ wellFormedId: bool }) | MmsSendUpdated({ wellFormedId: bool })
+type NoticeHandler = ChangeHandler | SmsSendHandler | MmsSendHandler | NoHandler
+pure def noticeHandler(notice: ChangeNotice, smsFollowed: bool, mmsFollowed: bool): NoticeHandler = match notice {
+  | MessagesChanged => ChangeHandler
+  | SmsSendUpdated(u) => if (u.wellFormedId and smsFollowed) SmsSendHandler else NoHandler
+  | MmsSendUpdated(u) => if (u.wellFormedId and mmsFollowed) MmsSendHandler else NoHandler
+}
+pure val noticeValues = Set(MessagesChanged, SmsSendUpdated({ wellFormedId: true }), SmsSendUpdated({ wellFormedId: false }),
+  MmsSendUpdated({ wellFormedId: true }), MmsSendUpdated({ wellFormedId: false }))
+pure def lawASendUpdateReachesOnlyItsOwnKindsHandler(notice: ChangeNotice, smsFollowed: bool, mmsFollowed: bool): bool =
+  (noticeHandler(notice, smsFollowed, mmsFollowed) == SmsSendHandler implies (notice == SmsSendUpdated({ wellFormedId: true }) and smsFollowed))
+    and (noticeHandler(notice, smsFollowed, mmsFollowed) == MmsSendHandler implies (notice == MmsSendUpdated({ wellFormedId: true }) and mmsFollowed))
+pure def lawAMalformedSendUpdateReachesNoHandler(smsFollowed: bool, mmsFollowed: bool): bool =
+  noticeHandler(SmsSendUpdated({ wellFormedId: false }), smsFollowed, mmsFollowed) == NoHandler
+    and noticeHandler(MmsSendUpdated({ wellFormedId: false }), smsFollowed, mmsFollowed) == NoHandler
+```
+
 ## Story: Name the sender of my latest text without reading it
 
 > As the person, I want the assistant to tell me who sent my newest text,
@@ -408,4 +600,74 @@ pure def lawOnlyTheAskNamesTheWholeAddress(presence: PluginPresence, facts: Host
     senderAnswer(presence, facts, AskSenderAddress, newest, fenceHolds) != SenderSuffixNamed
 pure def lawAWholeAddressIsADialableNumber(digits: int): bool =
   senderAddressNamed(senderAnswer(PluginRegistered, { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }, AskSenderAddress, SenderDialShaped({ digits: digits, plusOnlyFirst: true, thread: 0 }), true)) iff senderNumberAdmitted(digits)
+```
+
+## Story: Read my conversations a page at a time
+
+> As the person, I want to read my conversations and the messages of one,
+> newest first and a page at a time, and have opening a conversation mark
+> read only what I was shown, so that nothing is repeated, skipped or
+> marked read behind my back.
+
+### A page of conversations or messages is read only on an unlocked phone with the SMS grant, and holds 1 to 50 rows
+
+A page is a read with the SMS grant on the unlocked phone in front, admitted
+as a sender lookup is (`senderCall`), run off the main thread and fenced
+again before it is published. Its limit is 1 to `maxConversationPage` rows
+and an older-than date, when one is given, is a positive whole number of
+milliseconds; any other ask is refused before Android is asked anything.
+Messages are read newest first; at one date a picture message comes before a
+text, and the higher provider ID first, so that rows with one timestamp are
+neither repeated nor lost between two pages. A row the provider cannot
+report completely is returned with only its ID, its date and the reason,
+never cut short, and drafts and attachment bytes are never read. A
+conversation or message waiting in its
+[deletion window](./deletionWindow.md) is left off the page.
+
+```quint
+import paging as Pg from "./paging"
+type PageCheck = PageAdmitted | PageLimitRefused | PageDateRefused
+pure val maxConversationPage = 50
+pure def checkPageAsk(pageLimit: int, dated: bool, beforeDate: int): PageCheck =
+  if (pageLimit < 1 or pageLimit > maxConversationPage) PageLimitRefused
+  else if (dated and beforeDate <= 0) PageDateRefused
+  else PageAdmitted
+pure def messageKey(date: int, kind: MessageKind, rowId: int): Pg::RowKey =
+  { major: 0 - date, minor: if (kind == MultimediaMessage) 0 else 1, rowId: 0 - rowId }
+pure val pageLimitValues = Set(0, 1, 50, 51)
+pure val beforeDateValues = Set(-1, 0, 1)
+pure val dateValues = Set(1, 2)
+pure val rowIdValues = Set(1, 2)
+pure def lawAPageAskIsAdmittedOnlyWithinItsBounds(pageLimit: int, dated: bool, beforeDate: int): bool =
+  checkPageAsk(pageLimit, dated, beforeDate) == PageAdmitted iff (pageLimit >= 1 and pageLimit <= maxConversationPage and (not(dated) or beforeDate > 0))
+pure def lawNewerMessagesComeFirst(date: int, kind: MessageKind, rowId: int): bool =
+  Pg::precedes(messageKey(date + 1, kind, rowId), messageKey(date, kind, rowId)) and Pg::precedes(messageKey(date, kind, rowId + 1), messageKey(date, kind, rowId))
+    and Pg::precedes(messageKey(date, MultimediaMessage, rowId), messageKey(date, TextMessage, rowId))
+```
+
+### Opening a conversation marks read only its received messages up to the newest one shown, and only as the SMS app
+
+The owner's screen names the conversation and the date of the newest
+message it shows. As the default SMS app the module marks read, in SMS and
+then MMS, the received rows of that conversation at or before that date
+that were still unread, removes the conversation's notice and answers how
+many rows changed; a message that arrived after the shown page stays
+unread, and a sent row is never touched. Android accepts this write only
+from the default SMS app, so without the role nothing is written and the
+answer says so with no rows changed; an answer that claims rows without the
+role is refused as malformed. The call has the admission and fence of a
+read and returns no message content.
+
+```quint
+pure def openingMarksRead(smsRoleHeld: bool, received: bool, unread: bool, rowDate: int, throughDate: int): bool =
+  smsRoleHeld and received and unread and throughDate > 0 and rowDate <= throughDate
+pure def readMarkHolds(defaultSmsApp: bool, updated: int): bool = updated >= 0 and (defaultSmsApp or updated == 0)
+pure val rowDateValues = Set(1, 2, 3)
+pure val throughDateValues = Set(0, 1, 2)
+pure def lawWithoutTheRoleNothingIsMarkedRead(received: bool, unread: bool, rowDate: int, throughDate: int, updated: int): bool =
+  not(openingMarksRead(false, received, unread, rowDate, throughDate)) and (readMarkHolds(false, updated) iff updated == 0)
+pure def lawAMessageAfterTheShownPageStaysUnread(smsRoleHeld: bool, received: bool, unread: bool, rowDate: int, throughDate: int): bool =
+  rowDate > throughDate implies not(openingMarksRead(smsRoleHeld, received, unread, rowDate, throughDate))
+pure def lawOnlyReceivedUnreadMessagesAreMarked(smsRoleHeld: bool, received: bool, unread: bool, rowDate: int, throughDate: int): bool =
+  openingMarksRead(smsRoleHeld, received, unread, rowDate, throughDate) implies (received and unread)
 ```

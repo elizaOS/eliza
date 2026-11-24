@@ -290,6 +290,56 @@ it.effect('A barge-in is confirmed only by an accepted transcript or a 700 ms ho
   })
 })
 
+it.effect('Send only what I meant: a turn sent at a pause and taken back before its reply is sent again joined with the rest, naming the turn it replaces (spec/agent/voice/session.md, "A turn taken back before its reply started is carried into the utterance in progress, and the next turn names the one it replaces")', () => effect {
+  const pending: Array<{ signal: AbortSignal; complete: () => void }> = []
+  const h = harness({ send: (_turn, signal) => new Promise((resolve) => {
+    pending.push({ signal, complete: () => resolve({ messageId: `reply-${pending.length}`, text: reply }) })
+  }) })
+  h.live.start("ConversationMode", "FullDuplex", { shortGapMs: 0, longGapMs: 0, bargeInHoldMs: 400, stopReport: "StopReportsNone" })
+  h.captures[0]?.opened({ echoCancelled: true })
+  try promise(() => h.say("turn-1", "Text Sam"))
+  try promise(() => h.advance(1))
+  h.emit({ turnId: "turn-2", phase: "speech-start" })
+  try promise(() => h.advance(400))
+  const takenBack = { aborted: [...h.aborted], cancelled: pending[0]?.signal.aborted, lastEnd: h.live.state.lastEnd, phase: h.live.phase, spoken: h.spoken.length }
+  h.emit({ turnId: "turn-2", phase: "speech-end" })
+  h.emit({ turnId: "turn-2", phase: "final", text: "that I'm running late" })
+  try promise(() => h.advance(1))
+  h.emit({ turnId: "turn-3", phase: "speech-start" })
+  try promise(() => h.advance(400))
+  h.emit({ turnId: "turn-3", phase: "speech-end" })
+  h.emit({ turnId: "turn-3", phase: "final", text: "um" })
+  try promise(() => h.advance(1))
+  h.emit({ turnId: "turn-4", phase: "speech-start" })
+  try promise(() => h.advance(100))
+  h.emit({ turnId: "turn-4", phase: "speech-end" })
+  h.emit({ turnId: "turn-4", phase: "final", text: "by ten minutes" })
+  try promise(() => h.advance(1))
+  pending[3]?.complete()
+  try promise(() => h.settle())
+  const playing = h.live.state.turn
+  h.emit({ turnId: "turn-5", phase: "speech-start" })
+  try promise(() => h.advance(400))
+  h.emit({ turnId: "turn-5", phase: "speech-end" })
+  h.emit({ turnId: "turn-5", phase: "final", text: "Never mind." })
+  try promise(() => h.advance(1))
+  const cut = h.live.state.lastEnd
+  h.live.stop()
+  try promise(() => h.settle())
+  try Effect.try(() => {
+    assert.deepStrictEqual(takenBack, { aborted: ["room-1"], cancelled: true, lastEnd: "TurnAborted", phase: "PhaseListening", spoken: 0 })
+    assert.deepStrictEqual(h.sent.map(({ text, clientMessageId, supersedes }) => [text, clientMessageId, supersedes]), [
+      ["Text Sam", "client-1", undefined],
+      ["Text Sam that I'm running late", "client-2", "client-1"],
+      ["Text Sam that I'm running late", "client-3", "client-2"],
+      ["Text Sam that I'm running late by ten minutes", "client-4", "client-3"],
+      ["Never mind.", "client-5", undefined],
+    ])
+    assert.deepStrictEqual([playing, cut, h.spoken.length], ["Playing", "ReplyCut", 1])
+    assert.deepStrictEqual([h.live.state.rejoined, h.live.state.hasText, h.live.state.lastEnd, h.live.phase], [0, false, "TurnAborted", "PhaseIdle"])
+  })
+})
+
 const profileRule = "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
 
 it.effect(`An open-mic profile submits without gaps, confirms a barge-in after its 400 ms hold, sends no heard report on Stop, and an out-of-bounds profile refuses Start (spec/agent/voice/session.md, "${profileRule}")`, () => effect {
