@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
-    "test": "vitest run",
+    "test": "pnpm -w exec vitest run --root packages/plugin-sqlite",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
