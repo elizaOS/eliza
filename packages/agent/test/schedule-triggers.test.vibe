@@ -9,9 +9,11 @@ import type { CloudFake } from "./support/cloud-fake.ts"
 
 module node {
   import { setTimeout as delay } from "node:timers/promises"
+  import { Effect } from "effect"
   import { vi } from "vitest"
-  import { EventType, MISSED_SCHEDULED_OCCURRENCE_TEXT, stringToUuid, validateUuid, type Memory, type UUID } from "@elizaos/core"
+  import { EventType, MISSED_SCHEDULED_OCCURRENCE_TEXT, stringToUuid, validateUuid, type UUID } from "@elizaos/core"
   import type { RunningAgent } from "../src/host/process.vibe"
+  import { getTrigger } from "../src/schedule/store.vibe"
   import { held, text, type CloudFake } from "./support/cloud-fake.ts"
   import { account, type LaunchFrame } from "./support/scratch.ts"
   import { request, type LocalRequest } from "./support/socket-client.ts"
@@ -104,6 +106,7 @@ module node {
       prompt({ ...everyMinute, timezone: "Mars/Olympus_Mons" }),
       prompt({ triggerType: "cron", cronExpression: "every minute" }),
       prompt({ triggerType: "once", scheduledAtIso: new Date(at - 60_000).toISOString() }),
+      prompt({ triggerType: "event", eventKind: "ENTITY_JOINED" }),
       prompt({ ...everyMinute, deliveryConversationId: "no-such-conversation" }),
     ]
     const answers = []
@@ -169,23 +172,24 @@ module node {
     const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ displayName: "Echo", instructions: "Say you heard it", triggerType: "event", eventKind: "MESSAGE_RECEIVED" }))
     const id = created.body.trigger.id
     await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, { enabled: true })
-    const roomId = await roomOf(bench.running, created.body.deliveryConversationId ?? "")
-    const message: Memory = { id: stringToUuid("trigger-journey-event"), entityId: ownerOf(runtime.agentId).user, agentId: runtime.agentId, roomId, content: { text: "hello", source: "device" } }
-    bench.cloud.script(text("Heard you."))
+    bench.cloud.script(text("Hello."), text("Heard you."))
     const before = inferences(bench.cloud)
-    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message })
-    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message })
+    const said = await ask<{ readonly userMessageId: UUID }>(bench, "POST", `/api/conversations/${created.body.deliveryConversationId}/messages`, { text: "hello" })
     await settle("the event run", () => runsOf(bench, id), (answer) => answer.body.runs.length > 0)
+    const message = await runtime.getMemoryById(said.body.userMessageId)
+    if (message?.id === undefined) throw new Error("The owner's message was not stored")
+    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message })
     await delay(1_500)
     const runs = await runsOf(bench, id)
+    const stored = await Effect.runPromise(getTrigger(runtime.adapter, id))
     await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, { enabled: false })
-    return { runs: shape(runs.body.runs), inferences: inferences(bench.cloud) - before }
+    return { said: said.status, runs: shape(runs.body.runs), inferences: inferences(bench.cloud) - before, ranFor: stored?.state.seenEvents, message: message.id }
   }
 
   async function goneConversationAndCappedHistory(bench: Bench) {
     const conversation = await ask<Replies["conversation"]>(bench, "POST", "/api/conversations", { title: "Plants" })
     const chosen = conversation.body.conversation.id
-    const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ displayName: "Plants", instructions: "Water the plants", triggerType: "event", eventKind: "REACTION_RECEIVED", deliveryConversationId: chosen }))
+    const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ displayName: "Plants", instructions: "Water the plants", triggerType: "event", eventKind: "MESSAGE_SENT", deliveryConversationId: chosen }))
     const id = created.body.trigger.id
     bench.cloud.script(text("Plants watered."))
     const first = await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
@@ -197,11 +201,15 @@ module node {
     const before = inferences(bench.cloud)
     const gone = await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
     for (let run = 1; run < 100; run++) await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
+    const edited = await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, {
+      kind: "prompt", displayName: "Plants", instructions: "Water the plants twice", timezone: "UTC", triggerType: "event", eventKind: "MESSAGE_SENT",
+    })
     const runs = (await runsOf(bench, id)).body.runs
     const conversations = await bench.running.runtime.getRooms(ownerOf(bench.running.runtime.agentId).world)
     return {
       chosen: created.body.deliveryConversationId === chosen, authoredByCaller: author === ownerOf(runtime.agentId).user,
       first: first.body.result, gone: gone.body.result,
+      editedAfterGone: { status: edited.status, revision: edited.body.trigger?.revision, conversation: edited.body.deliveryConversationId === chosen },
       kept: runs.length, statuses: [...new Set(runs.map((run) => run.status))], inferences: inferences(bench.cloud) - before,
       fellBackTo: conversations.filter((room) => (room.metadata?.deviceConversation as { id?: string } | undefined)?.id === chosen).length,
     }
@@ -210,7 +218,7 @@ module node {
   async function activeLimit(bench: Bench) {
     const answers: number[] = []
     for (let n = 0; n < 101; n++) {
-      const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ displayName: `Joined ${n}`, triggerType: "event", eventKind: "ENTITY_JOINED" }))
+      const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ displayName: `Joined ${n}`, triggerType: "event", eventKind: "MESSAGE_SENT" }))
       answers.push((await ask<Replies["any"]>(bench, "PUT", `/api/triggers/${created.body.trigger.id}`, { enabled: true })).status)
     }
     const last = await ask<Replies["triggers"]>(bench, "GET", "/api/triggers")
@@ -294,7 +302,7 @@ it.effect('A trigger is saved disabled, fires once on schedule, keeps edits made
   try Effect.try(() => assert.deepStrictEqual(observed, {
     refused: [
       "400 invalid_trigger", "400 invalid_trigger", "400 invalid_trigger", "400 invalid_trigger",
-      "400 invalid_trigger", "400 invalid_trigger", "400 invalid_trigger", "409 conversation_missing",
+      "400 invalid_trigger", "400 invalid_trigger", "400 invalid_trigger", "400 invalid_trigger", "409 conversation_missing",
     ],
     unknown: 404,
     cron: {
@@ -314,9 +322,10 @@ it.effect('A trigger is saved disabled, fires once on schedule, keeps edits made
       keyed: 400, unknown: 404,
       runs: [{ status: "success", source: "scheduler" }, { status: "success", source: "manual" }],
     },
-    event: { runs: [{ status: "success", source: "event" }], inferences: 1 },
+    event: { said: 200, runs: [{ status: "success", source: "event" }], inferences: 2, ranFor: [observed.event.message], message: observed.event.message },
     gone: {
       chosen: true, authoredByCaller: true, first: { status: "success" }, gone: { status: "error", error: unavailable },
+      editedAfterGone: { status: 200, revision: 2, conversation: true },
       kept: 100, statuses: ["error"], inferences: 0, fellBackTo: 0,
     },
     limit: { accepted: 100, refused: [429], listed: 104 },

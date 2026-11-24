@@ -10,7 +10,7 @@ import {
   type StoredTrigger, type TriggerDetails, type TriggerRun as StoredRun,
 } from "./store.vibe"
 import { finishFacts, runError, triggerDelivery, type Delivery, type ResolvedRoom, type TriggerDelivery } from "./trigger-delivery.vibe"
-import { startTriggerEvents, type TriggerEventName, type TriggerEventTarget, type TriggerEvents } from "./trigger-events.vibe"
+import { startTriggerEvents, type TriggerEventTarget, type TriggerEvents } from "./trigger-events.vibe"
 import type {
   SavedTrigger, TriggerDraft, TriggerPort, TriggerRefusal, TriggerRemoval, TriggerRun, TriggerRunNow, TriggerService, TriggerTiming, TriggerWrite,
 } from "./trigger-routes.vibe"
@@ -276,13 +276,14 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     return try serial(effect {
       const row = try orDie(getTrigger(host.adapter, id))
       if (row === undefined) return { kind: "notFound" } satisfies TriggerWrite
-      const resolved = try promise(() => delivery.resolveRoom(draft.deliveryConversationId ?? row.state.room))
+      const requested = draft.deliveryConversationId
+      const resolved = requested === undefined ? undefined : try promise(() => delivery.resolveRoom(requested))
       const now = try Clock.currentTimeMillis
       const details = detailsOf(draft)
       const moved = try transition(id, {
-        type: "edit", schedule: scheduleOf[draft.timing.kind], requested: draft.deliveryConversationId ?? "",
+        type: "edit", schedule: scheduleOf[draft.timing.kind], requested: requested ?? "",
         eventKind: draft.timing.kind === "event" ? draft.timing.eventKind : "", at: atOf(draft.timing, draft.timezone, now),
-        roomExists: resolved.kind === "Resolved", expected,
+        roomExists: resolved?.kind === "Resolved", expected,
       }, details)
       const after = moved.after
       if (after !== undefined) {
@@ -291,7 +292,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       }
       if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
       if (!revisionMatches(expected, moved.before.revision)) return refusal("StaleRevision")
-      return roomRefusal(resolved)
+      return resolved === undefined ? refusal("Invalid") : roomRefusal(resolved)
     })
   }
 
@@ -352,12 +353,12 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
   }
 
   const target: TriggerEventTarget = {
-    eventTriggers: (name: TriggerEventName) => runPromise(effect {
+    eventTriggers: (name) => runPromise(effect {
       return (try saved()).flatMap((row) =>
         row.state.enabled && row.state.schedule === "OnRuntimeEvent" && row.state.eventKind === name ? [row.id] : [])
     }),
-    receiveEvent: (triggerId, eventId, name, ownRun) => runPromise(effect {
-      try whenIdle(triggerId, { type: "receiveEvent", eventId, name, ownRun })
+    receiveEvent: (triggerId, eventId, name, byTrigger) => runPromise(effect {
+      try whenIdle(triggerId, { type: "receiveEvent", eventId, name, byTrigger })
     }),
   }
 
