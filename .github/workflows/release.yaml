@@ -59,7 +59,7 @@ jobs:
         id: authority
         shell: bash
         env:
-          EXPECTED_CALLER_REF: elizaOS/eliza/.github/workflows/release.yaml@refs/heads/develop
+          EXPECTED_CALLER_REF: elizaOS/eliza/.github/workflows/release.yaml@refs/heads/develop-v3
           EXPECTED_REPOSITORY: elizaOS/eliza
           OBSERVED_REF: ${{ github.ref }}
           OBSERVED_REPOSITORY: ${{ github.repository }}
@@ -75,12 +75,12 @@ jobs:
             echo "::error::Release caller repository is $OBSERVED_REPOSITORY, expected $EXPECTED_REPOSITORY."
             exit 1
           fi
-          if [ "$OBSERVED_REF" != "refs/heads/develop" ]; then
-            echo "::error::Release caller ref is $OBSERVED_REF, expected refs/heads/develop."
+          if [ "$OBSERVED_REF" != "refs/heads/develop-v3" ]; then
+            echo "::error::Release caller ref is $OBSERVED_REF, expected refs/heads/develop-v3."
             exit 1
           fi
-          if [ "$OBSERVED_SOURCE_REF" != "refs/heads/develop" ]; then
-            echo "::error::Release source ref is $OBSERVED_SOURCE_REF, expected refs/heads/develop."
+          if [ "$OBSERVED_SOURCE_REF" != "refs/heads/develop-v3" ]; then
+            echo "::error::Release source ref is $OBSERVED_SOURCE_REF, expected refs/heads/develop-v3."
             exit 1
           fi
           if [ "$OBSERVED_WORKFLOW_REF" != "$EXPECTED_CALLER_REF" ]; then
@@ -110,7 +110,7 @@ jobs:
               --header 'Accept: application/vnd.github+json' \
               --header "Authorization: Bearer $API_TOKEN" \
               --header 'X-GitHub-Api-Version: 2022-11-28' \
-              "${GITHUB_API_URL}/repos/${EXPECTED_REPOSITORY}/git/ref/heads/develop"
+              "${GITHUB_API_URL}/repos/${EXPECTED_REPOSITORY}/git/ref/heads/develop-v3"
           } | node -e '
             let source = "";
             process.stdin.setEncoding("utf8");

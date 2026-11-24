@@ -97,7 +97,7 @@ jobs:
           # :latest tracks develop — it is what run-certification.ts boots by
           # default; :sha-<short> pins for reproducible re-runs.
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/develop-v3' }}
             type=sha,prefix=sha-,format=short
 
       - name: Build and push

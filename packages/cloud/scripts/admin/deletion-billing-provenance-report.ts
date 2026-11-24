@@ -401,7 +401,7 @@ if (import.meta.main) {
   let client: Awaited<ReturnType<typeof createRuntimePgClient>> | undefined;
   try {
     if (
-      process.env.GITHUB_REF !== "refs/heads/staging" ||
+      process.env.GITHUB_REF !== "refs/heads/staging-v3" ||
       process.env.ELIZA_DELETION_BILLING_PROVENANCE_REPORT !== "1" ||
       !process.env.DATABASE_URL
     ) {

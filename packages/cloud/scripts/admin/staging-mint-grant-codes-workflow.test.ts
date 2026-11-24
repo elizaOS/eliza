@@ -86,7 +86,7 @@ const environment = (overrides: Record<string, string>) => {
     ARGV_LOG: log,
     EXPECTED_COMMIT: COMMIT,
     CHECKED_OUT_COMMIT: COMMIT,
-    SOURCE_REF: "refs/heads/staging",
+    SOURCE_REF: "refs/heads/staging-v3",
     SINGLE_USE_COUNT: value.single_use_count,
     SINGLE_USE_LABEL: value.single_use_label,
     SHARED_MAX: value.shared_max_redemptions,

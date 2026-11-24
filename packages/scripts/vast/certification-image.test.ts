@@ -85,7 +85,7 @@ test("publication workflow rebuilds the image consumed by vast", async () => {
   assert.doesNotMatch(workflow, /cache-(?:from|to): type=gha/);
   assert.match(
     workflow,
-    /type=raw,value=latest,enable=\$\{\{ github\.ref == 'refs\/heads\/develop' \}\}/,
+    /type=raw,value=latest,enable=\$\{\{ github\.ref == 'refs\/heads\/develop-v3' \}\}/,
   );
   assert.match(workflow, /type=sha,prefix=sha-,format=short/);
   assert.match(

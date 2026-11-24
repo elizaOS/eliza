@@ -23,13 +23,13 @@ jobs:
           SOURCE_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          [[ "$SOURCE_REF" == "refs/heads/staging" ]]
+          [[ "$SOURCE_REF" == "refs/heads/staging-v3" ]]
           [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_COMMIT" == "$CHECKED_OUT_COMMIT" ]]
 
   report:
     needs: admission
-    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging'
+    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging-v3'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: staging
