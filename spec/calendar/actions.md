@@ -444,6 +444,26 @@ pure def lawASentLengthIsUsedOrRefused(lengthWhole: bool, lengthMinutes: int): b
 pure val lengthMinutesValues = Set(-1, 0, 1, 30, 44640, 44641)
 ```
 
+### A change that moves only the start keeps the event's length
+
+A change that gives a new start and no end ends as long after the new
+start as the event lasted before it ("move my 3pm to 4" keeps a one-hour
+meeting one hour long). A change that gives an end keeps that end as
+sent, and a change that gives no new start keeps the end it had.
+
+```quint
+pure def changedEndMs(oldStartMs: int, oldEndMs: int, startGiven: bool, newStartMs: int, endGiven: bool, endMs: int): int =
+  if (endGiven) endMs
+  else if (startGiven) newStartMs + (oldEndMs - oldStartMs)
+  else oldEndMs
+pure def lawAMovedStartKeepsTheLength(oldStartMs: int, oldEndMs: int, newStartMs: int, endMs: int): bool =
+  changedEndMs(oldStartMs, oldEndMs, true, newStartMs, false, endMs) - newStartMs == oldEndMs - oldStartMs
+pure def lawAChangedEndIsKept(oldStartMs: int, oldEndMs: int, startGiven: bool, newStartMs: int, endMs: int): bool =
+  changedEndMs(oldStartMs, oldEndMs, startGiven, newStartMs, true, endMs) == endMs
+pure def lawAnUnmovedEventKeepsItsEnd(oldStartMs: int, oldEndMs: int, newStartMs: int, endMs: int): bool =
+  changedEndMs(oldStartMs, oldEndMs, false, newStartMs, false, endMs) == oldEndMs
+```
+
 ### A chat create or move that overlaps a commitment is refused, naming it
 
 A new timed event, and a change of an event's start or end, asked in chat
@@ -550,8 +570,10 @@ pure def lawAnUnaskedCreateGoesOn(phoneCalendarOffered: bool): bool =
 ### A resident delete runs at once only for the one event the owner named, and otherwise asks in chat
 
 The resident calendar has no review of its own, so a delete there runs at
-once only when the model reads the owner's request as a delete and the
-owner's own words point at one event. The owner's own words are the
+once only when the model sends its reading that the owner asked to delete
+(yes, below) and the owner's own words point at one event. A delete the
+model sent without that reading, as a request it misread, deletes nothing
+and asks in chat. The owner's own words are the
 request the host bound to the turn when it holds one, else the turn's
 text. Whether the owner asked to delete, said yes or turned a delete down
 is the model's reading of the request, in any language, sent with it as
@@ -594,12 +616,14 @@ pure def deleteAnswer(askedAboutThisEvent: bool, laterRequest: bool, sinceAsked:
   else Unanswered
 pure def residentDeleteStep(pointedAt: bool, said: OwnerAnswer, answer: DeleteAnswer): ResidentDeleteStep =
   if (said == SaidNo or answer == AnsweredNo) KeepEvent
-  else if (answer == AnsweredYes or pointedAt) DeleteNow
+  else if (answer == AnsweredYes or (pointedAt and said == SaidYes)) DeleteNow
   else AskInChat
 pure def chatDeleteStep(oneOccurrence: bool, unscoped: ResidentDeleteStep): ResidentDeleteStep =
   if (oneOccurrence or unscoped == KeepEvent) unscoped else PickInCalendar
 pure def lawADeclineNeverDeletes(pointedAt: bool, answer: DeleteAnswer): bool =
   residentDeleteStep(pointedAt, SaidNo, answer) == KeepEvent
+pure def lawAnUnreadDeleteNeverDeletesAtOnce(pointedAt: bool): bool =
+  residentDeleteStep(pointedAt, SaidNeither, Unanswered) == AskInChat
 pure def lawResidentChatDeleteCannotBroaden(pointedAt: bool, said: OwnerAnswer, answer: DeleteAnswer): bool =
   chatDeleteStep(false, residentDeleteStep(pointedAt, said, answer)) != DeleteNow
 pure def lawAPartialMatchIsNeverAnImmediateDelete(onlyEventNamed: bool, everyCalendarRead: bool, said: OwnerAnswer): bool =

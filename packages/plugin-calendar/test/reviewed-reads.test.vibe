@@ -1,7 +1,7 @@
 // spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about"
 import { assert, it } from "@effect/vitest"
 import type { IAgentRuntime, UUID } from "@elizaos/core"
-import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { negotiation, readOperation, validate, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { calendarProposalFamily } from "../src/plugin/device-proposals.vibe"
 import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
   requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
@@ -135,7 +135,9 @@ it.effect('Propose on my phone only the Calendar request I made (spec/calendar/r
   const { runtime, family, asked } = phoneModel()
   const turn = (words: string, observation: DeviceTurn["observation"] = onHome, completesReads = true) => phoneTurn(runtime, words, observation, completesReads)
   const grounded = effect (operation: unknown, at: DeviceTurn) => {
-    const result = try family.ground(readOperation(operation) as CheckedOperation, at)
+    const checked = readOperation(family.prepare?.(operation) ?? operation)
+    if (checked === undefined) return "DEVICE_OPERATION_INVALID"
+    const result = try family.ground(checked, at)
     return result.kind === "Grounded" ? result.operation : result.code
   }
   const offered = (at: DeviceTurn) => family.forms.filter((form) => form.offered(at) && (form.now?.available(at) ?? true)).map(({ schema }) => JSON.stringify(schema.properties?.action?.enum ?? schema.properties?.type?.enum))
@@ -193,13 +195,16 @@ it.effect('Propose on my phone only the Calendar request I made (spec/calendar/r
     try create("Add lunch tomorrow at noon", { title: "Lunch with the board" }), try create("Add lunch with Sam at noon", { start: "2026-11-22T11:00:00.000Z", end: "2026-11-22T12:00:00.000Z" })],
     ["CALENDAR_CLOCK_UNSAID", "CALENDAR_CLOCK_UNSAID", "CALENDAR_OTHER_ZONE_NAMED", "CALENDAR_CLOCK_UNSAID", "CALENDAR_TITLE_NOT_STATED", "CALENDAR_CREATE_PAST_START"])
   assert.deepStrictEqual(try create("Add lunch with Sam every Monday at noon"), { type: "calendar_create_local", fields: proposedFields })
+  assert.deepStrictEqual([try create("put lunch with Ana on my phone calendar Friday at noon", { ...ana, start: "2026-11-27T12:00:00+01:00", end: "2026-11-27T13:00+01:00" }),
+    try create("put lunch with Ana on my phone calendar Friday at noon", { ...ana, start: "2026-11-27T11:00:00Z" }), try create("put lunch with Ana on my phone calendar Friday at noon", { ...ana, start: "2026-11-27T12:00:00" })],
+    [{ type: "calendar_create_local", fields: { ...proposedFields, ...ana } }, { type: "calendar_create_local", fields: { ...proposedFields, ...ana } }, "DEVICE_OPERATION_INVALID"])
 
   const window = { type: "calendar_availability", start: "2026-11-23T14:00:00.000Z", end: "2026-11-23T15:00:00.000Z", timeZone: "Europe/Berlin" }
   const morning = { ...window, start: "2026-11-22T23:00:00.000Z", end: "2026-11-23T11:00:00.000Z" }
   const free = (words: string, proposed: typeof window = window, observation: DeviceTurn["observation"] = onHome) => grounded(proposed, turn(words, observation))
   assert.deepStrictEqual([try free("Am I free tomorrow at 3pm?"), try free("am I free tomorrow morning?", morning), try free("Am I free tomorrow at 3pm Tokyo time?", { ...window, timeZone: "Asia/Tokyo" }),
-    try free("Am I free tomorrow at 3pm?", window, { ...onHome, timeZone: undefined })],
-    [window, morning, "CALENDAR_OTHER_ZONE_NAMED", "CALENDAR_ZONE_UNAVAILABLE"])
+    try free("Am I free tomorrow at 3pm?", window, { ...onHome, timeZone: undefined }), try free("am I free tomorrow morning?", { ...morning, start: "2026-11-23T00:00:00+01:00", end: "2026-11-23T12:00+01:00" })],
+    [window, morning, "CALENDAR_OTHER_ZONE_NAMED", "CALENDAR_ZONE_UNAVAILABLE", morning])
   assert.deepStrictEqual(asked, [])
 })
 

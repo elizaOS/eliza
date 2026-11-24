@@ -145,9 +145,11 @@ and a check of every time would refuse those requests. A time the words
 do not hold that the model calls stated, or sent without saying which,
 changes nothing, and the result tells the model which time it sent, so it
 sends the time the owner said or says that the owner gave none; so a
-misread is never saved only because the model left the choice out. A
-start or end a change keeps, and an all-day event's day, are not
-checked. A new phone event's start is always one the owner stated, so it
+misread is never saved only because the model left the choice out. An
+end is checked only when the model says the owner stated the range: an end
+the model worked out from a length ("move my 3pm to 4", an hour later) is
+no clock time the owner said. A start or end a change keeps, and an
+all-day event's day, are not checked. A new phone event's start is always one the owner stated, so it
 is always checked; a change after a shared phone read is a review on the
 phone that shows the new time before anything changes, and is not
 checked against the words.

@@ -185,7 +185,11 @@ no repeat, guests or all-day time, so the model sends those to the
 Calendar action instead; code reads no repeat words, so a one-off phone
 event the model sent for a repeating request is proposed as that one
 event, which the owner sees as one event on the review before it is saved. A description or location is kept only when its
-words are among the owner's, and is otherwise left empty.
+words are among the owner's, and is otherwise left empty. A start or end
+the model wrote with its offset ("2026-11-27T12:00:00-08:00") is that same
+instant, written in UTC before the operation is checked, for a new event
+and for an availability window alike; a time with no offset names no
+instant and is checked as sent.
 
 ```quint
 pure def newEventStated(phoneZoneKnown: bool, onPhoneZone: bool, startHeldByOwnerWords: bool, startAhead: bool, titleInOwnerWords: bool): bool =

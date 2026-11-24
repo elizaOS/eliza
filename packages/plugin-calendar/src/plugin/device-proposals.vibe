@@ -378,6 +378,19 @@ function settledSentence(operation: DeviceOperation, result: unknown): string | 
   }
 }
 
+const offsetInstant = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/
+
+function inUtc<Held extends object>(held: Held): Held {
+  const utc = (value: unknown) => typeof value === "string" && offsetInstant.test(value) && Number.isFinite(Date.parse(value)) ? new Date(Date.parse(value)).toISOString() : value
+  return { ...held, ...("start" in held ? { start: utc(held.start) } : {}), ...("end" in held ? { end: utc(held.end) } : {}) }
+}
+
+function instantsInUtc(operation: unknown): unknown {
+  if (typeof operation !== "object" || operation === null) return operation
+  if (!("fields" in operation)) return inUtc(operation)
+  return typeof operation.fields === "object" && operation.fields !== null ? { ...operation, fields: inUtc(operation.fields) } : operation
+}
+
 export function calendarProposalFamily(runtime: IAgentRuntime): DeviceProposalFamily {
   return {
     name: "calendar",
@@ -385,6 +398,7 @@ export function calendarProposalFamily(runtime: IAgentRuntime): DeviceProposalFa
     types: ["calendar_read_next", "calendar_create_local", "calendar_create", "calendar_read_selected", "calendar_update", "calendar_delete", "calendar_availability", "calendar_named"],
     forms,
     guidance: () => ["Phone-native Calendar data uses these device reviews. A next-event read works from any screen; a named event, availability check or new event on the phone's own calendar works from Home or Calendar; an operation on an exact event or calendar needs it selected on the phone. Other Calendar requests, including a new event the owner did not ask to put on the phone's calendar, and any turn with an app Calendar selection, use the CALENDAR action; a phone capability never redirects an app record."],
+    prepare: instantsInUtc,
     ground: (proposed, turn) => succeed(groundCalendar(proposed.operation, turn)),
     proposedText: proposedCalendarText,
     settledText: settledCalendarText,
