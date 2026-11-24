@@ -1,5 +1,0 @@
-// spec/nativeBrowserSurface/index.md, "Story: Keep browser commands and native page prompts within my current tab"
-import { surfacePlugin } from "@elizaos/os/bridges/surface"
-export { dockState, helperEntryState, onDockNotice, onSurfaceNotice, surfaceState, surfaceStates } from "@elizaos/os/bridges/surface"
-export type * from "@elizaos/os/bridges/definitions/surface"
-export const ElizaSurfaceManager = surfacePlugin()
