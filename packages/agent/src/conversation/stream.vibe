@@ -15,7 +15,7 @@ module node {
   export interface DoneFrame {
     readonly type: "done"; readonly fullText: string; readonly messageId: string; readonly userMessageId: string; readonly agentName: string
     readonly actionResults: readonly ActionResultFrame[]; readonly taskChoices?: readonly unknown[]; readonly failureKind?: string
-    readonly planAction?: "sign-in" | "funding" | "retry"; readonly retryAfterMs?: number
+    readonly cloudCode?: string; readonly planAction?: "sign-in" | "funding" | "retry"; readonly retryAfterMs?: number
     readonly cutOffEffect?: "applied"
     readonly action?: { readonly kind: string; readonly validatedCard: boolean; readonly verbatimAsked: boolean }
   }

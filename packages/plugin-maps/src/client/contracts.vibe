@@ -15,10 +15,15 @@ export function boundedText(value: unknown, limit: number): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= limit && !controlCharacters.test(value)
 }
 
-const Text = (limit: number) => Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, limit)))
+// eslint-disable-next-line no-control-regex -- the same listed C0 controls, around at least one non-space character.
+const displayText = { source: /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f]*\S[^\u0000-\u0008\u000b\u000c\u000e-\u001f]*$/.source, flags: "" }
+const isoInstant = { source: /^20[0-9]{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|1[0-9]|2[0-8])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$/.source, flags: "" }
+const Text = (limit: number) => Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, limit), {
+  arbitraryConstraint: { maxLength: limit, patterns: [displayText] },
+}))
 const Between = (minimum: number, maximum: number) => Schema.Finite.check(Schema.isBetween({ minimum, maximum }))
 const Meters = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
-const Instant = Text(40).check(Schema.makeFilter((value: string) => Number.isFinite(Date.parse(value))))
+const Instant = Text(40).check(Schema.makeFilter((value: string) => Number.isFinite(Date.parse(value)), { arbitraryConstraint: { patterns: [isoInstant] } }))
 
 export const travelModes = ["drive", "walk", "bicycle", "transit"] as const
 export const TravelMode = Schema.Literals(travelModes)
