@@ -204,6 +204,8 @@ pure def lawACommandHandsThroughTheOwnersRecipientOrRefuses(command: CommandReci
   commandVerdict(command, takesNames, takesNumbers) != TargetGrounded
 pure def lawASimSendNeverTakesAName(takesNumbers: bool): bool = commandVerdict(CommandName, false, takesNumbers) == RecipientForm
 pure def lawAContactQueryNeverTakesANumber(takesNames: bool): bool = commandVerdict(CommandNumber, takesNames, false) == RecipientForm
+pure def commandRecipients(verdict: TargetVerdict, proposed: int): int = if (verdict == TargetHandedThrough) 1 else proposed
+pure def lawAHandedThroughCommandOffersTheOwnersOneRecipient(proposed: int): bool = commandRecipients(TargetHandedThrough, proposed) == 1
 ```
 
 ### A request to open the dialer opens the keypad as the owner wrote it

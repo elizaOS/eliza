@@ -12,12 +12,13 @@ import { deviceKeyHex } from "./support/device.ts"
 
 module node {
   import { Effect } from "effect"
-  import { registerDirectActionRoutingRule, sleepWithAbort, stringToUuid, type Action, type AgentRuntime, type UUID } from "@elizaos/core"
+  import { registerDirectActionRoutingRule, sleepWithAbort, stringToUuid, validateUuid, type Action, type AgentRuntime, type UUID } from "@elizaos/core"
   import type { EffectReceipt } from "@elizaos/core/protocol"
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
   import type { AgentPlugin } from "../src/host/module.vibe"
   import { registerDeviceProposalFamily, unoffered } from "../src/device-actions/proposal/registry.vibe"
   import { processTurn } from "../src/conversation/turns.vibe"
+  import { account } from "./support/scratch.ts"
 
   export interface Read {
     readonly outcome: ReplyOutcome
@@ -141,7 +142,8 @@ module node {
   export async function refusedCueTurn(runtime: AgentRuntime, roomId: string, request: string): Promise<readonly string[]> {
     const room = await runtime.getRoom(roomId as UUID)
     if (!room) throw new Error("The conversation has no room")
-    const owner = { user: stringToUuid(`device-owner:${runtime.agentId}`), world: stringToUuid(`device:${runtime.agentId}`) }
+    // A cloud launch carries the scratch account, so the host owns the conversation as that account (host/process.vibe).
+    const owner = { user: validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`), world: stringToUuid(`device:${runtime.agentId}`) }
     const offered: string[] = []
     await processTurn(runtime, owner, room, request, AbortSignal.timeout(60_000), {
       display: { restart: () => undefined, acknowledge: (cue) => { offered.push(cue); return false }, tool: () => undefined, ready: () => undefined },
