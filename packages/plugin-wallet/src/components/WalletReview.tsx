@@ -1,7 +1,7 @@
 // spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "A review binds the complete immutable wallet operation"
 import { Button, Card, CardFooter } from "@repo/ui";
 import type { ManagedRuntime } from "effect";
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { useMachine } from "../../gen/wallet.react.ts";
 import type { Machine } from "../../gen/wallet.effect.vibe";
 import type { WalletOwnerDecision, WalletOwnerReviewDetails, WalletOwnerReviewResult } from "../index.vibe";
@@ -12,18 +12,25 @@ export interface WalletReviewProps {
   readonly decide: (decision: WalletOwnerDecision) => Promise<WalletOwnerReviewResult>;
 }
 
+function subscribeToFocus(notify: () => void) {
+  window.addEventListener("focus", notify);
+  return () => window.removeEventListener("focus", notify);
+}
+
 export function WalletReview({ runtime, details, decide }: WalletReviewProps) {
   const { state, cause, can } = useMachine(runtime);
   const [submitting, start] = useTransition();
   const [error, setError] = useState("");
   const matching = state?.intent.intentId === details.intent.intentId && state?.intent.commitment === details.intent.commitment;
-  const approving = {
+  const { expiresAt } = details;
+  const fresh = useSyncExternalStore(subscribeToFocus, () => Date.now() <= expiresAt, () => false);
+  const approvalAt = (wallTime: number) => ({
     type: "approveWallet" as const,
     intentId: details.intent.intentId,
     commitment: details.intent.commitment,
-    wallTime: Date.now(),
+    wallTime,
     ownerConfirmed: true,
-  };
+  });
   const ready = matching && !submitting;
   const outcome = matching && (state?.phase === "WalletInFlight" || state?.phase === "WalletUncertain") ? "Awaiting transaction outcome"
     : matching && state?.phase === "WalletSigning" ? "Preparing transaction"
@@ -32,6 +39,10 @@ export function WalletReview({ runtime, details, decide }: WalletReviewProps) {
     : "";
   const choose = (decision: WalletOwnerDecision["decision"]) => {
     setError("");
+    if (decision === "approve" && !can(approvalAt(Date.now()))) {
+      setError("This wallet review expired.");
+      return;
+    }
     start(async () => {
       try {
         await decide({ decision, intentId: details.intent.intentId, commitment: details.intent.commitment });
@@ -68,7 +79,7 @@ export function WalletReview({ runtime, details, decide }: WalletReviewProps) {
       {state.phase !== "AwaitingWalletApproval" ? null : (
         <CardFooter>
           <Button variant="outline" disabled={!ready || !can({ type: "declineWallet" })} onClick={() => choose("decline")}>Decline</Button>
-          <Button disabled={!ready || !can(approving)} onClick={() => choose("approve")}>{submitting ? "Submitting…" : "Approve and send"}</Button>
+          <Button disabled={!ready || !fresh || !can(approvalAt(expiresAt))} onClick={() => choose("approve")}>{submitting ? "Submitting…" : "Approve and send"}</Button>
         </CardFooter>
       )}
     </Card>
