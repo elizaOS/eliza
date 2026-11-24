@@ -227,8 +227,6 @@ const idParameter = (description: string) => ({ name: "noteId", description, req
 const contentParameter = (description: string) => ({ name: "content", description, required: false, schema: { type: "string" as const, maxLength: 20_241 } })
 const revisionParameter = { name: "expectedRevision", description: "notesRevision of the complete read this edit was prepared from.", required: false, schema: { type: "integer" as const, minimum: 0 } }
 
-// A read that waits on the owner's choice answers in one shape: the IDs it offers and the candidates shown for them. A title no saved
-// note has offers only the titles of the notes that mention it, since no other note is cited in its place.
 const ownerChoice = (code: "NOTES_AMBIGUOUS_NOTE" | "NOTES_TITLE_NOT_FOUND", offered: readonly StickyNote[], candidates: readonly object[]) => ({
   actionName: "NOTES_GET", code, awaitingUserInput: true, requiresInput: true, candidateIds: offered.map((note) => note.id), candidates: [...candidates],
 })
