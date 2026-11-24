@@ -127,7 +127,9 @@ forward, reload and stop are offered only as the Browser history control,
 and the BROWSER command is not offered on that turn. The BROWSER command,
 bound to the tab the turn observed, answers a history move only on a turn
 whose device negotiated no history control and whose mounted browser takes
-agent commands. Otherwise no history move is offered.
+agent commands. Otherwise no history move is offered. The Browser declares
+its graphical view, `browser` at `/browser`, and lists the `browser-command`
+capability required by the agent's [views](../agent/views.md).
 
 ```quint
 type HistoryHome = HistoryAsControl | HistoryAsCommand | NoHistoryMove
@@ -190,21 +192,27 @@ pure val receiptValues = Set(dispatchReceipt, { ...dispatchReceipt, delivered: f
 > did not type, never closes fewer tabs than I asked, and tells me how to ask
 > when it cannot.
 
-### A search carries only words I typed in this message, spelled as I typed them
+### A search runs on my words as I typed them, and a search the model words differently runs only after my review
 
-A proposed search runs only on whole words of the owner's current message:
-the query the model proposed must appear there, letter case and spacing
-aside, and the search carries the owner's own spelling of it. Words the model
-added, reordered or reworded, and a message that cannot be read, ground no
-search, and nothing is proposed.
+A proposed search whose query appears in the owner's current message as
+whole words, letter case and spacing aside, carries the owner's own spelling
+of it. A query the model added to, reordered or reworded ("look up whether
+it'll rain in Austin tomorrow" searched as "Austin weather tomorrow") is
+still offered, with the model's words, and is never bound to the message,
+so the owner reviews it on the phone (below). An empty query, one longer
+than the search limit, and a message that cannot be read ground no search,
+and nothing is proposed.
 
 ```quint
-type SearchWords = { readable: bool, typedAsWholeWords: bool, typedSpelling: str }
-pure def groundedSearch(words: SearchWords): str = if (words.readable and words.typedAsWholeWords) words.typedSpelling else ""
-pure def lawASearchIsOnlyTypedWords(words: SearchWords): bool = groundedSearch(words) != "" implies (words.typedAsWholeWords and groundedSearch(words) == words.typedSpelling)
+type SearchWords = { readable: bool, fits: bool, typedAsWholeWords: bool, typedSpelling: str, proposed: str }
+pure def groundedSearch(words: SearchWords): str =
+  if (not(words.readable) or not(words.fits)) "" else if (words.typedAsWholeWords) words.typedSpelling else words.proposed
+pure def lawATypedSearchKeepsMySpelling(words: SearchWords): bool =
+  (words.readable and words.fits and words.typedAsWholeWords) implies groundedSearch(words) == words.typedSpelling
 pure def lawAnUnreadableMessageGroundsNoSearch(words: SearchWords): bool = not(words.readable) implies groundedSearch(words) == ""
-pure val typedWords: SearchWords = { readable: true, typedAsWholeWords: true, typedSpelling: "cheap flights" }
-pure val wordsValues = Set(typedWords, { ...typedWords, typedAsWholeWords: false }, { ...typedWords, readable: false })
+pure def lawAQueryPastTheLimitGroundsNoSearch(words: SearchWords): bool = not(words.fits) implies groundedSearch(words) == ""
+pure val typedWords: SearchWords = { readable: true, fits: true, typedAsWholeWords: true, typedSpelling: "cheap flights", proposed: "Cheap  flights" }
+pure val wordsValues = Set(typedWords, { ...typedWords, typedAsWholeWords: false, proposed: "flights that are cheap" }, { ...typedWords, readable: false }, { ...typedWords, fits: false })
 ```
 
 ### A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message
@@ -212,55 +220,26 @@ pure val wordsValues = Set(typedWords, { ...typedWords, typedAsWholeWords: false
 A grounded search is bound to the owner's current message only when that
 whole message is the search and its words are the query; a tab switch or a
 find only when the owner typed its words in that message; showing the tab
-list only when the whole message asks to see it; a new tab, a tab close and a
-history move whenever they are grounded. The phone shows a review card
+list always, since it only shows the phone's own list and changes nothing; a
+new tab, a tab close and a history move whenever they are grounded, except a
+reload of a page the phone withheld, which is always reviewed (below). The phone shows a review card
 before it runs an unbound proposal. A tab close always waits for review.
 
 ```quint
 type ProposedControl = { control: BrowserControl, wholeMessage: bool, wordsTyped: bool }
 pure def controlBound(proposed: ProposedControl): bool =
   if (proposed.control == SearchControl) proposed.wholeMessage and proposed.wordsTyped
-  else if (proposed.control == TabListControl) proposed.wholeMessage
+  else if (proposed.control == TabListControl) true
   else not(needsTypedWords(proposed.control)) or proposed.wordsTyped
 pure def lawUntypedWordsAreNeverBound(proposed: ProposedControl): bool =
   (needsTypedWords(proposed.control) and not(proposed.wordsTyped)) implies not(controlBound(proposed))
 pure def lawOnlyMyWholeMessageSearchIsBound(proposed: ProposedControl): bool =
   (proposed.control == SearchControl and controlBound(proposed)) implies proposed.wholeMessage
-pure def lawOnlyMyWholeMessageTabListIsBound(proposed: ProposedControl): bool =
-  (proposed.control == TabListControl and controlBound(proposed)) implies proposed.wholeMessage
+pure def lawTheTabListIsBound(proposed: ProposedControl): bool = proposed.control == TabListControl implies controlBound(proposed)
 pure val typedSearch: ProposedControl = { control: SearchControl, wholeMessage: true, wordsTyped: true }
 pure val proposedValues = Set(typedSearch, { ...typedSearch, wholeMessage: false }, { ...typedSearch, wordsTyped: false }, { ...typedSearch, control: FindControl, wholeMessage: false },
   { ...typedSearch, control: TabSwitchControl, wordsTyped: false }, { ...typedSearch, control: HistoryControl, wordsTyped: false }, { ...typedSearch, control: TabCloseControl, wordsTyped: false },
   { ...typedSearch, control: TabListControl, wordsTyped: false }, { ...typedSearch, control: TabListControl, wholeMessage: false, wordsTyped: false })
-```
-
-### My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice
-
-When the owner's whole message asks only to see the open Browser tabs, it is
-the turn's first call to show the phone's own list of open tabs, before the
-model is asked; it is bound to that message and runs without the owner's
-review. Such a message may open with a greeting ("hey", "hi", "ok", "okay")
-and the assistant's name, Eliza where the character has none, followed by a
-space, a comma or a colon, and may ask with "please", "can you", "could you"
-or "let me" before it or ", please" after it; it then shows, lists or lets
-the owner see their (open) (browser) tabs or tab list, optionally "open" or
-"in the browser", or asks what or which tabs they have open or are open, or
-what their open tabs are. A request that also asks for something else, a
-negated one, one about another app, a name joined to the next word, or a
-request about anything other than the open tabs is not one, and is left to
-the model. The call runs first only where the phone negotiated
-`browser.tabs.show.v1`. The phone keeps the list, its titles, addresses and
-count; the agent learns only that the phone was asked to show it, and never
-says which tabs are open or how many.
-
-```quint
-pure def tabListAskedFirst(wholeMessageAsks: bool, tabListNegotiated: bool): bool = wholeMessageAsks and tabListNegotiated
-pure def lawOnlyAWholeMessageAskShowsTabsFirst(wholeMessageAsks: bool, tabListNegotiated: bool): bool =
-  tabListAskedFirst(wholeMessageAsks, tabListNegotiated) implies wholeMessageAsks
-pure def lawTheTabListIsAskedFirstOnlyWhereNegotiated(tabListNegotiated: bool): bool = tabListAskedFirst(true, tabListNegotiated) iff tabListNegotiated
-pure def lawAnAskedTabListRunsWithoutReview(wholeMessageAsks: bool, tabListNegotiated: bool): bool =
-  tabListAskedFirst(wholeMessageAsks, tabListNegotiated) implies
-    runsUnreviewed({ control: TabListControl, boundToMessage: controlBound({ control: TabListControl, wholeMessage: true, wordsTyped: false }), wordsTyped: false })
 ```
 
 ### Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed
@@ -300,12 +279,12 @@ because reloading would not let the agent read it. The
 model learns that no proposal was created and nothing ran.
 
 ```quint
-type BrowserRefusal = DestinationNotRequested | SearchNotTyped | CloseEveryUnavailable | ReloadNotRequested
+type BrowserRefusal = DestinationNotRequested | SearchWordsMissing | CloseEveryUnavailable | ReloadNotRequested
 type RefusalReply = AskForAddress | SayAddressNotOpened | AskForSearchWords | SayOneTabAtATime | SayPageNotReloaded
 pure def refusalReply(refusal: BrowserRefusal, addressInWords: bool): RefusalReply =
   match refusal {
     | DestinationNotRequested => if (addressInWords) SayAddressNotOpened else AskForAddress
-    | SearchNotTyped => AskForSearchWords
+    | SearchWordsMissing => AskForSearchWords
     | CloseEveryUnavailable => SayOneTabAtATime
     | ReloadNotRequested => SayPageNotReloaded
   }
@@ -321,30 +300,31 @@ pure def lawOnlyARefusedOpenSpeaksOfAnAddress(refusal: BrowserRefusal, addressIn
 > am on, and never to reload it unless I ask, because a reload can send a
 > form again and still leaves the page unreadable.
 
-### A reload of a page my phone withheld runs only when my message asked for it
+### A reload of a page my phone withheld runs only after my review on the phone, or as the BROWSER command only when the model says I asked for it
 
 Where the owner's current message carried a Browser page whose text the
 phone withheld, because it could not read it or because it may hold
-sign-in details, a reload of the tab, as the Browser history control or
-the BROWSER command, goes ahead only when the owner's own message asks to
-reload, refresh or reopen it, as a command or a "can you" request that
-starts a sentence or clause, and says nowhere not to; a mention, a
-question about reloading or a reload the owner says they will do is no
-request, and neither is a bare "yes". Any other reload on
-that turn is refused before anything is sent: the model learns that the
-phone shares no text of that page, only its title and address, that
-reloading does not change that and nothing was reloaded, and that it should
-answer the owner instead, without offering a reload the owner did not ask
-for. Back, forward and stop, a page the phone read and
-a message that carried no page are unchanged. An open of the page's own
-address already needs the owner's words ([request grounding](./requestGrounding.md)):
-a withheld page carries no links to ground one.
-
-The owner may withdraw a reload by naming it in a refusal or with a short
-withdrawal directly after its clause. A short withdrawal after another
-request applies to that request. Opening the same withheld page requires
-a direct request to open the exact normalized address. A fragment change
-still reaches the same page and its exact address must be authorized.
+sign-in details, a reload of that tab proposed as the Browser history
+control is always offered unbound to the message, so the phone shows its
+review card and nothing reloads until the owner approves there. No reading
+of the owner's words decides it: the card is the check, since a reload can
+send a form again and still leaves the page unreadable. The BROWSER command
+has no review card, so there the model says whether the owner asked: its
+reload carries `ownerAskedReload`, true only when the owner's current
+message itself asks to reload, refresh or reopen the page now, and never
+for a mention, a question about reloading, a reload the owner says they
+will do, a retracted request or a bare yes. Whether the words ask is the
+model's to judge; no word list decides it. A reload the model marks as
+asked runs only on the tab the turn observed, and never on a page withheld
+because it may hold sign-in details, where reloading can send a form again. Any other reload on such a turn is refused
+before anything is sent: the model learns that the phone shares no text of
+that page, only its title and address, that reloading does not change that
+and nothing was reloaded, and that it should answer the owner instead.
+Back, forward and stop, a page the phone read and a message that carried
+no page are unchanged. Opening the same withheld page by its address
+requires a direct request to open the exact normalized address; a fragment
+change still reaches the same page and its exact address must be
+authorized.
 
 ```quint
 type CarriedPage = NoPageCarried | PageTextRead | PageTextUnreadable | PageTextSensitive
@@ -352,14 +332,26 @@ type HistoryMove = MoveBack | MoveForward | MoveReload | MoveStop
 pure def pageWithheld(page: CarriedPage): bool = page == PageTextUnreadable or page == PageTextSensitive
 pure def pageReopenRefused(page: CarriedPage, samePage: bool, exactOpen: bool): bool =
   pageWithheld(page) and samePage and not(exactOpen)
-pure def historyMoveRefused(move: HistoryMove, page: CarriedPage, ownerAskedReload: bool): bool =
-  move == MoveReload and pageWithheld(page) and not(ownerAskedReload)
-pure def lawAnUnaskedReloadOfAWithheldPageIsRefused(page: CarriedPage): bool =
-  pageWithheld(page) implies historyMoveRefused(MoveReload, page, false)
-pure def lawAReloadTheOwnerAskedForGoesAhead(move: HistoryMove, page: CarriedPage): bool =
-  not(historyMoveRefused(move, page, true))
-pure def lawOnlyAReloadOfAWithheldPageIsRefused(move: HistoryMove, page: CarriedPage, ownerAskedReload: bool): bool =
-  historyMoveRefused(move, page, ownerAskedReload) implies (move == MoveReload and pageWithheld(page))
-pure def lawAReadablePageIsNeverRefusedAReload(move: HistoryMove, ownerAskedReload: bool): bool =
-  not(historyMoveRefused(move, PageTextRead, ownerAskedReload)) and not(historyMoveRefused(move, NoPageCarried, ownerAskedReload))
+pure def withheldReload(move: HistoryMove, page: CarriedPage): bool = move == MoveReload and pageWithheld(page)
+pure def lawAReloadOfAWithheldPageIsAlwaysChecked(page: CarriedPage): bool = pageWithheld(page) implies withheldReload(MoveReload, page)
+pure def lawOnlyAReloadOfAWithheldPageIsChecked(move: HistoryMove, page: CarriedPage): bool =
+  withheldReload(move, page) implies (move == MoveReload and pageWithheld(page))
+pure def lawAReadablePageIsNeverCheckedForAReload(move: HistoryMove): bool =
+  not(withheldReload(move, PageTextRead)) and not(withheldReload(move, NoPageCarried))
+type CommandReload = { move: HistoryMove, page: CarriedPage, ownerAskedReload: bool, tabObserved: bool }
+pure def commandReloadRuns(r: CommandReload): bool =
+  not(withheldReload(r.move, r.page)) or (r.page != PageTextSensitive and r.ownerAskedReload and r.tabObserved)
+pure val askedReload: CommandReload = { move: MoveReload, page: PageTextUnreadable, ownerAskedReload: true, tabObserved: true }
+pure val rValues = Set(askedReload, { ...askedReload, ownerAskedReload: false }, { ...askedReload, page: PageTextSensitive },
+  { ...askedReload, tabObserved: false }, { ...askedReload, page: PageTextRead, ownerAskedReload: false }, { ...askedReload, move: MoveBack, ownerAskedReload: false })
+pure def lawAnUnaskedWithheldReloadNeverRuns(r: CommandReload): bool =
+  (withheldReload(r.move, r.page) and not(r.ownerAskedReload)) implies not(commandReloadRuns(r))
+pure def lawASignInPageNeverReloads(r: CommandReload): bool =
+  (r.move == MoveReload and r.page == PageTextSensitive) implies not(commandReloadRuns(r))
+pure def lawAnAskedReloadRunsOnlyOnTheObservedTab(r: CommandReload): bool =
+  (withheldReload(r.move, r.page) and commandReloadRuns(r)) implies r.tabObserved
+pure def lawAnAskedReloadOfTheObservedTabRuns(r: CommandReload): bool =
+  (r == askedReload) implies commandReloadRuns(r)
+pure def lawOtherMovesAndReadablePagesAreUnchecked(r: CommandReload): bool =
+  not(withheldReload(r.move, r.page)) implies commandReloadRuns(r)
 ```

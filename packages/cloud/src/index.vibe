@@ -1,10 +1,10 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import { formatInet } from "effect/net/NetAddress"
-import { startProblem, type IdentityRead, type StartProblem } from "../gen/cloud__deployment.effect.vibe"
-import { checkCatalog, CatalogMismatch } from "./billing/plans.vibe"
+import { startProblem, type CatalogObservation, type StartProblem } from "../gen/cloud__deployment.effect.vibe"
+import { CatalogMismatch, observeCatalog } from "./billing/plans.vibe"
 import { cloudServer, listening, sweepsLayer } from "./http/server.vibe"
-import { applySeed } from "./operator/admin.vibe"
+import { applySeed, identityRead } from "./operator/admin.vibe"
 import { nodePageTemplates } from "./pages/node-templates.vibe"
 import { deploymentLayer, Deployment, parseEnvironment, parseProfile, ProfileInvalid, requireSecrets, specProfile, type SecretMissing, type CloudEnvironment, type CloudProfile } from "./profile/profile.vibe"
 import { DatabaseIdentityMismatch, DatabaseUnreadable, migrate, observeIdentity, parseStoreLocation, storeLayer, type DatabaseIdentity, type StoreFailure, type StoreLocationInvalid, type StoreLocation } from "./store/store.vibe"
@@ -26,19 +26,11 @@ export interface CloudLayerOptions {
   readonly host: string
 }
 
-function identityRead(identity: DatabaseIdentity, expected: string): IdentityRead {
-  switch (identity.kind) {
-    case "unreadable": return { tag: "UnreadableIdentity" }
-    case "fresh": return { tag: "ReadDigest", digest: expected }
-    case "identified": return { tag: "ReadDigest", digest: identity.digest }
-  }
-}
-
 effect function refuseStart(problem: StartProblem, options: CloudLayerOptions, identity: DatabaseIdentity): void!(ProfileInvalid | DatabaseUnreadable | DatabaseIdentityMismatch | SeedOutsideStaging | LoopbackOutsidePglite | CatalogMismatch) {
   const expected = options.profile.environments[options.environment].databaseIdentity
   switch (problem.tag) {
     case "NoProblem": return
-    case "CatalogMissing": return
+    case "CatalogMissing": throw new CatalogMismatch({ plan: "catalog", problem: "billing is not configured" })
     case "ProfileRefused": throw new ProfileInvalid({ problem: "the profile breaks a deployment rule" })
     case "DatabaseUnreadable": throw new DatabaseUnreadable({ problem: identity.kind === "unreadable" ? identity.problem : "the database identity could not be read" })
     case "DatabaseMismatch": throw new DatabaseIdentityMismatch({ expected, found: identity.kind === "identified" ? identity.digest : "none" })
@@ -56,17 +48,18 @@ function startupChecks(options: CloudLayerOptions) {
   return Layer.effectDiscard(effect {
     const deployment = try Deployment
     const identity = try observeIdentity()
-    const problem = startProblem(
+    const problemWith = (catalog: CatalogObservation) => startProblem(
       specProfile(options.profile),
       options.environment === "production" ? "Production" : "Staging",
       options.store.kind === "pg" ? "PostgresStore" : "PgliteStore",
       identityRead(identity, deployment.settings.databaseIdentity),
       options.seed !== undefined,
-      { tag: "NoCatalog" }
+      catalog
     )
-    try refuseStart(problem, options, identity)
+    const unobserved = problemWith({ tag: "NoCatalog" })
+    if (unobserved.tag !== "CatalogMissing") try refuseStart(unobserved, options, identity)
     try requireSecrets()
-    if (problem.tag === "CatalogMissing") try checkCatalog()
+    if (unobserved.tag === "CatalogMissing") try refuseStart(problemWith(try observeCatalog()), options, identity)
     const now = try Clock.currentTimeMillis
     const report = try migrate({ digest: deployment.settings.databaseIdentity, environment: deployment.environment, now })
     if (report.applied.length > 0) try annotateLogs(logInfo("migrations applied"), { applied: report.applied.join(", ") })

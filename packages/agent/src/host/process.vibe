@@ -3,9 +3,9 @@
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"
 
 module node {
-  import { deviceEmbeddingsPlugin, embeddingServer, localEmbeddingsBoot, type BootFailure, type LaunchDocument as LaunchModel, type LaunchFrame as FrameModel, type UrlShape } from "../../gen/agent__host__launch.ts"
+  import { deviceEmbeddingsPlugin, embeddingServer, localEmbeddingsBoot, type BootFailure, type LaunchFrame as FrameModel } from "../../gen/agent__host__launch.ts"
   import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
-  import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
+  import { backendOf, launchModel, type Endpoint, type LaunchDocument, type LaunchFrame } from "./launch.vibe"
   import type { AgentPlugin, ModuleFactory } from "./module.vibe"
   import { measureWorker, workerHost, workflowWorkerService, type WorkflowWorkerHost } from "./workflow-worker.vibe"
 
@@ -47,8 +47,9 @@ module node {
   import { Effect, Redacted, Result } from "effect"
   import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, TaskService, createCharacter, logger, privacyPlugin, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload, type ServiceClass } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
-  import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
-  import { backendOf, runStateOf, statusRoutes } from "./status.vibe"
+  import { builtinModules, hostServicesAdmitted, storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
+  import { hostModulesAdmitted } from "../../gen/agent__plugins__bundle.effect.vibe"
+  import { runStateOf, statusRoutes } from "./status.vibe"
   import { authRoutes } from "../access/auth.vibe"
   import { createRouter } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
@@ -56,50 +57,23 @@ module node {
   import { listenOnHttp } from "../access/http.vibe"
   import { conversationRoutes } from "../conversation/routes.vibe"
   import { conversationStore } from "../conversation/conversations.vibe"
-  import { createEventHub, publishEventServiceType } from "../conversation/events.vibe"
-  import { cloudServiceType } from "../models/cloud-link.vibe"
+  import { createEventHub } from "../conversation/events.vibe"
   import { accountFailureOf, ownerMessageService } from "../conversation/message-service.vibe"
   import { deviceEnrollment } from "../device-actions/enrollment.vibe"
   import { agendaOffer } from "../device-actions/agenda.vibe"
   import { deviceTurnPort } from "../device-actions/proposal/turn.vibe"
+  import { viewsActionName } from "../views/show-action.vibe"
   import { proposalReviewRoutes } from "../device-actions/proposal-review.vibe"
   import { retireAbandonedAgenda } from "../device-actions/store.vibe"
   import { readCompletionRoutes } from "../device-actions/read-completion.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { StoreFailed } from "../storage/fault.vibe"
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
-  import { bootFailureOf, composeAgent, type Privacy } from "./compose.vibe"
+  import { RuntimeFailed, bootFailureOf, composeAgent, type Privacy } from "./compose.vibe"
   import { reservedHostPrefixes } from "../plugins/product.vibe"
   import { builtinModuleFactories } from "../plugins/profile.vibe"
   import { bindModels } from "../models/binding.vibe"
   import { modelPlugin } from "../models/plugin.vibe"
-
-  function urlShape(url: string): UrlShape {
-    const address = URL.parse(url)
-    if (address === null || address.protocol !== "https:") return "NotHttps"
-    return address.origin === url ? "HttpsOrigin" : "HttpsWithPath"
-  }
-
-  function launchModel(launch: LaunchDocument): LaunchModel {
-    const backend = backendOf(launch.model)
-    return {
-      schema: launch.schema,
-      character: { name: launch.character.name, nameUnits: launch.character.name.length, systemBlank: !/\S/.test(launch.character.system) },
-      policy: {
-        actionsAllowed: [...launch.policy.actions.allowed], pluginsLoad: [...launch.policy.plugins.load],
-        productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: launch.policy.plugins.product },
-      },
-      backend: backend.tag === "NoBackend" ? backend : { ...backend, baseUrlShape: urlShape(backend.baseUrl) },
-      account: launch.account === undefined ? { tag: "NoAccount" } : { tag: "SignedIn", ...launch.account },
-      embeddings: launch.embeddings === "local" ? { tag: "LocalEmbeddings", dimensions: launch.embeddingDimensions ?? 0 } : { tag: "NoEmbeddings" },
-      persistMemory: launch.persistMemory ?? false,
-      callerRole: launch.callerRole === "owner" ? "ChatAsOwner" : "ChatAsUser",
-      google: { gmailChanges: launch.google?.gmailChanges ?? false, calendarEdits: launch.google?.calendarEdits ?? false },
-      retention: launch.retention === undefined ? { tag: "KeepLogs" }
-        : { tag: "PruneLogs", dayThousandths: Math.round(launch.retention.days * 1000), maxRowsPerRoom: launch.retention.maxRowsPerRoom, intervalMinutes: launch.retention.intervalMinutes },
-      environment: Object.entries(launch.environment ?? {}).map(([key, value]) => ({ key, keyKind: "PluginSetting", singleLine: !/[\r\n]/.test(value) })),
-    }
-  }
 
   function frameModel(frame: LaunchFrame): FrameModel {
     return {
@@ -133,15 +107,10 @@ module node {
     return privacy?.secretSwap || privacy?.piiSwap ? { kind: "on", plugin: privacyPlugin(privacy) } : { kind: "off" }
   }
 
-  function runtimeServicesAdmitted(services: readonly ServiceClass[], owned: readonly string[]): boolean {
-    const types = [...owned, ...services.map(({ serviceType }) => serviceType)]
-    return services.every(({ serviceType }) => typeof serviceType === "string" && serviceType !== "") && new Set(types).size === types.length
-  }
-
   function hostedSources(input: StartAgentInput): { bundled: ReadonlyMap<string, AgentPlugin>; modules: ReadonlyMap<string, ModuleFactory<never>> } | undefined {
     const bundled = input.bundled ?? new Map<string, AgentPlugin>()
     const hosted = input.hostModules ?? new Map<string, ModuleFactory<never>>()
-    if ([...hosted.keys()].some((name) => !bundled.has(name) || builtinModuleFactories.has(name))) return undefined
+    if (!hostModulesAdmitted([...hosted.keys()], [...bundled.keys()], builtinModules)) return undefined
     return { bundled, modules: new Map([...(input.modules ?? builtinModuleFactories), ...hosted]) }
   }
 
@@ -149,7 +118,7 @@ module node {
     return state.failure.tag === "FailedWith" ? state.failure.cause : "Agent"
   }
 
-  async function boot(input: StartAgentInput, lifecycle: Lifecycle): Promise<Result.Result<RunningAgent, BootFailure>> {
+  async function boot(input: StartAgentInput, lifecycle: Lifecycle, signal: AbortSignal): Promise<Result.Result<RunningAgent, BootFailure>> {
     const { launch, authority, binding, stateDirectory } = input
     const sources = hostedSources(input)
     if (sources === undefined || !localEmbeddingsAdmitted(launch)) return Result.fail("Config")
@@ -158,7 +127,7 @@ module node {
     let installedWorker: WorkflowWorkerHost | undefined
     const runtimeServices = input.runtimeServices ?? []
     const agentServices: ServiceClass[] = [TaskService, AgentEventService, ...(pinned === undefined ? [] : [workflowWorkerService(() => installedWorker)])]
-    if (!runtimeServicesAdmitted(runtimeServices, [...agentServices.map(({ serviceType }) => serviceType), NotificationService.serviceType, publishEventServiceType, cloudServiceType])) return Result.fail("Config")
+    if (!hostServicesAdmitted(runtimeServices.map(({ serviceType }) => serviceType), pinned !== undefined)) return Result.fail("Config")
     const sweeps = await Effect.runPromise(Effect.result(logSweeps(launch.retention)))
     if (Result.isFailure(sweeps)) return Result.fail("Config")
 
@@ -204,7 +173,7 @@ module node {
       return Result.fail(causeOf(lifecycle.get()))
     }
 
-    if (lifecycle.send({ type: "readLaunch", doc: launchModel(launch), f: frameModel(authority) }).failure.tag !== "NoFailure") return failed()
+    if (signal.aborted || lifecycle.send({ type: "readLaunch", doc: launchModel(launch), f: frameModel(authority) }).failure.tag !== "NoFailure") return failed()
     const models = await Effect.runPromise(bindModels(launch, authority))
 
     const opened = await openDeviceStorage({
@@ -222,6 +191,7 @@ module node {
     releases.set("store", () => closeStore())
     lifecycle.send({ type: "openStore", ok: true })
     lifecycle.send({ type: "migrate", ok: true })
+    if (signal.aborted) return failed()
 
     const persona = launch.character
     const examples = (persona.messageExamples ?? []).map((group) => ({
@@ -264,7 +234,12 @@ module node {
         productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" }
           : { tag: "NamedProductPlugin", name: launch.policy.plugins.product },
       },
-    })))
+    })), { signal }).catch((error: unknown) => {
+      if (signal.aborted) return undefined
+      logger.error({ src: "agent", phase: "LoadPlugins", error: String(error) }, "A listed plugin failed while loading")
+      return Result.fail(new RuntimeFailed({ cause: error }))
+    })
+    if (formed === undefined) return failed()
     if (Result.isFailure(formed)) {
       logger.error({ src: "agent", phase: "LoadPlugins", failure: formed.failure._tag }, "The agent could not be composed")
       if (bootFailureOf(formed.failure) === "Config") {
@@ -295,7 +270,7 @@ module node {
       return false
     })
     lifecycle.send({ type: "completeInitialization", ok: initialized })
-    if (!initialized) return failed()
+    if (!initialized || signal.aborted) return failed()
 
     const status: AgentStatus = {
       agentId, serverInstanceId: randomUUID(), epoch: authority.epoch, credentialVersion: authority.credential?.version ?? 0,
@@ -332,7 +307,7 @@ module node {
       const agenda = launch.callerRole === "owner" && completesReads ? agendaOffer(runtime) : undefined
       if (agenda !== undefined) await Effect.runPromise(retireAbandonedAgenda(adapter))
       const device = launch.callerRole === "owner"
-        ? deviceTurnPort(runtime, enrollment.deviceSender, { completesReads, ...(agenda === undefined ? {} : { agenda }) }) : undefined
+        ? deviceTurnPort(runtime, enrollment.deviceSender, { completesReads, viewsAllowed: composed.allowed.has(viewsActionName), ...(agenda === undefined ? {} : { agenda }) }) : undefined
       const router = createRouter({
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         health: () => healthAnswer(lifecycle.get()),
@@ -358,6 +333,7 @@ module node {
     }
     releases.set("transport", bound.close)
     lifecycle.send({ type: "bindTransport", ok: true })
+    if (signal.aborted) return failed()
 
     const workflowWorker = launch.workflowWorker === undefined || pinned === undefined ? undefined
       : workerHost(launch.workflowWorker, pinned.worker, launch.environment ?? {},
@@ -370,12 +346,14 @@ module node {
 }
 
 import type { BootFailure } from "../../gen/agent__host__launch.ts"
+import { exitedCode } from "../../gen/agent__host__process.ts"
 import { Machine, machine } from "../../gen/agent__host__process.effect.vibe"
-import { boot, type StartAgentInput } from node
+import { boot, type Lifecycle, type RunningAgent, type StartAgentInput } from node
 export { type AgentStatus, type RunningAgent, type StartAgentInput } from node
 export type { AgentProcess as ProcessPhase } from "../../gen/agent__host__process.ts"
 
 export error AgentBootFailed { phase: BootFailure }
+export error AgentStoppedInBoot { code: number }
 
 effect function processMachine() {
   provide machine() {
@@ -385,13 +363,19 @@ effect function processMachine() {
 
 export effect function startAgent(input: StartAgentInput) {
   const lifecycle = try processMachine()
-  const opened = try tryPromise({
-    try: () => boot(input, {
-      send: (event) => Effect.runSync(Effect.orDie(lifecycle.send(event))),
-      get: () => Effect.runSync(lifecycle.get()),
-    }),
-    catch: () => new AgentBootFailed({ phase: "Agent" }),
+  const port: Lifecycle = {
+    send: (event) => Effect.runSync(Effect.orDie(lifecycle.send(event))),
+    get: () => Effect.runSync(lifecycle.get()),
+  }
+  return try Effect.callback<RunningAgent, AgentBootFailed>((resume, signal) => {
+    const booting = boot(input, port, signal)
+    booting.then(
+      (opened) => resume(Result.isFailure(opened) ? Effect.fail(new AgentBootFailed({ phase: opened.failure })) : Effect.succeed(opened.success)),
+      () => resume(Effect.fail(new AgentBootFailed({ phase: "Agent" }))),
+    )
+    return Effect.flatMap(Effect.promise(() => booting.catch(() => undefined)), () => {
+      const code = exitedCode(port.get().outcome)
+      return code === 0 ? Effect.void : Effect.die(new AgentStoppedInBoot({ code }))
+    })
   })
-  if (Result.isFailure(opened)) throw new AgentBootFailed({ phase: opened.failure })
-  return opened.success
 }

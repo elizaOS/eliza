@@ -52,7 +52,7 @@ export interface FakeDraft {
 export interface FakeCalendar {
   readonly id: string;
   readonly summary: string;
-  readonly accessRole: "owner" | "writer" | "reader" | "freeBusyReader";
+  readonly accessRole?: "owner" | "writer" | "reader" | "freeBusyReader";
   readonly primary?: boolean;
   readonly timeZone: string;
 }
@@ -65,7 +65,7 @@ export interface FakeEvent {
 }
 
 export interface FakeSwitches {
-  dropNextReply: boolean;
+  dropNextChangeReply: boolean;
   failNext: FakeAnswer | undefined;
 }
 
@@ -101,7 +101,7 @@ export function googleFakeState(): GoogleFakeState {
     drafts: new Map(),
     calendars: new Map(),
     events: new Map(),
-    switches: { dropNextReply: false, failNext: undefined },
+    switches: { dropNextChangeReply: false, failNext: undefined },
     calls: [],
     history: 1000,
     issued: 0,
@@ -156,8 +156,8 @@ export function switched(state: GoogleFakeState, request: FakeRequest, handle: (
   const answer = handle();
   if (answer === undefined) return undefined;
   state.calls.push({ method: request.method, path: request.path });
-  if (!state.switches.dropNextReply) return answer;
-  state.switches.dropNextReply = false;
+  if (!state.switches.dropNextChangeReply || request.method === "GET") return answer;
+  state.switches.dropNextChangeReply = false;
   return { status: 504, body: { error: { code: 504, status: "DEADLINE_EXCEEDED" } } };
 }
 

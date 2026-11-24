@@ -63,6 +63,14 @@ so one message takes one photo; a photo asked for again in a later message is
 a request of its own, since a capture that runs without its card runs only
 for the message that asked for it.
 
+Whether a message asks for a photo at all is the model's to judge: the
+device tool's description says that the capture is how a picture, photo
+or selfie is taken and that showing Camera with `VIEWS` takes none, and a
+photo request is planned like any other message. Nothing proposes the
+capture before the model's choice, and no call is refused for the words of
+a photo request; the words above only decide whether a capture the model
+proposed may skip its card and which lens it may use.
+
 ```quint
 type CameraWords = { units: int, hasControl: bool, commanded: bool, front: bool, back: bool }
 pure val cameraWordsMaxUnits = 512
@@ -116,43 +124,18 @@ pure def lawAnUnnamedCaptureDoesNotSubstituteForAnotherLens(words: CameraWords, 
   (requestedCamera(words) != ShowingCamera) implies captureLensVerdict(words, namedLensAvailable, ShowingCamera) == SurfaceRefused
 ```
 
-### A whole-message photo command is routed to the capture, never to opening Camera
-
-Opening the Camera view takes no photo, so on an owner chat turn (a direct
-or voice message of the phone's client chat) of the enrolled phone that is
-offered the capture, a message that asks for a photo now (the rule above)
-owns the whole request. The capture is the operation that message is a
-strict command for, so an available capture is proposed as the turn's first
-call, before the model's choice ([proposals](./index.md)). An unavailable
-named capture produces no first call. The device tool's note for the
-message says first that it asks for a photo now and to use the capture only
-as requested;
-the device tool accepts no other operation on that message; and the
-[planner](../conversation/planning.md) refuses a call of the view
-navigation it replaces, so `VIEWS` never opens Camera instead. Both
-refusals are of calls the message serves elsewhere, so the owner, who
-asked only for the photo, hears no failure for either. The tools stay as
-they are on every other message. Any other message, including one that
-only mentions a photo, is planned as usual.
-
-```quint
-pure def photoCommandRouted(ownerChat: bool, captureOffered: bool, words: CameraWords): bool =
-  ownerChat and captureOffered and asksForPhotoNow(words)
-pure def lawARoutedPhotoIsOneTheOwnerAskedForNow(ownerChat: bool, captureOffered: bool, words: CameraWords): bool =
-  photoCommandRouted(ownerChat, captureOffered, words) implies captureVerdict(words) == SurfaceGrounded
-pure def lawNoRouteWithoutTheCapture(ownerChat: bool, words: CameraWords): bool = not(photoCommandRouted(ownerChat, false, words))
-pure def lawOnlyAnOwnerChatIsRouted(captureOffered: bool, words: CameraWords): bool = not(photoCommandRouted(false, captureOffered, words))
-```
-
 ### An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it
 
 How views are delivered is stated anew with each message: the phone leaves
 it out while its screen is sensitive. So a device conversation's tools keep
 both homes of a view, `VIEWS` and, where the device negotiated it, the
 `open_view` form, and each message opens a view in one of them. When the
-message's voice view context says views arrive as completed actions, the
-model opens a view with `VIEWS` directly, and `open_view`, which would ask
-the phone for a review it does not need, is refused before dispatch.
+message names its renderer for views that arrive as completed actions
+(`viewDelivery: "completed-action"` with `viewClientId`, read as
+[views](../views.md) reads them) and the product allows `VIEWS`, the model
+opens a view with `VIEWS` directly, and `open_view`, which would ask
+the phone for a review it does not need, is refused before dispatch. A
+product that does not allow `VIEWS` keeps `open_view` on every message.
 Otherwise a `VIEWS` call is refused before it runs, and a view is proposed
 with `open_view` only when the installation's
 [enabled-view profile](./capabilities.md) as it is now enables it, and
@@ -168,12 +151,14 @@ model is told which views it enables.
 ```quint
 type ViewHome = ViewsShows | OpenViewProposes
 pure def viewHome(completedNavigation: bool): ViewHome = if (completedNavigation) ViewsShows else OpenViewProposes
+pure def navigationCompletes(rendererNamed: bool, viewsAllowed: bool): bool = rendererNamed and viewsAllowed
 pure def openViewAvailable(completedNavigation: bool): bool = viewHome(completedNavigation) == OpenViewProposes
 pure def viewsShowsOnDevice(completedNavigation: bool): bool = viewHome(completedNavigation) == ViewsShows
 pure def openViewVerdict(profileEnables: bool): SurfaceVerdict = if (profileEnables) SurfaceGrounded else SurfaceRefused
 pure def lawCompletedNavigationProposesNoView(completedNavigation: bool): bool = completedNavigation implies not(openViewAvailable(completedNavigation))
 pure def lawAMessageOpensAViewInOnePlace(completedNavigation: bool): bool =
   viewsShowsOnDevice(completedNavigation) != openViewAvailable(completedNavigation)
+pure def lawWithoutViewsAViewIsProposed(rendererNamed: bool): bool = openViewAvailable(navigationCompletes(rendererNamed, false))
 pure def lawADisabledViewIsNeverProposed(profileEnables: bool): bool = not(profileEnables) implies openViewVerdict(profileEnables) == SurfaceRefused
 ```
 

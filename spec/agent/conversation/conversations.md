@@ -15,8 +15,10 @@ conversation is 404; `before`, `limit` and `offset` are core
 ### Creating a conversation gives it a fresh id and room, and a default title when blank
 
 `POST /api/conversations {title?}` answers `{conversation: {id, roomId,
-title, createdAt, updatedAt}}`. The trimmed title has at most 200 UTF-16
-units (else 400); a blank one becomes `New Chat`. Ids are never reused.
+title, createdAt, updatedAt}}`, its times ISO-8601 strings in UTC, as every
+conversation route answers a conversation. The trimmed title has at most
+200 UTF-16 units (else 400); a blank one becomes `New Chat`. Ids are never
+reused.
 
 ```quint
 import numbers.* from "../../core/numbers"

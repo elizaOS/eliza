@@ -1,4 +1,4 @@
-// spec/agent/schedule/triggers.md, "Story: Deliver a prompt only to the conversation I chose"; spec/agent/schedule/triggers.md, "An event trigger runs once for each emitted event of its name, never for its own run's events"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"
+// spec/agent/schedule/triggers.md, "Story: Deliver a prompt only to the conversation I chose"; spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run's events"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"
 import { assert, it } from "@effect/vitest"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { startAgent } from "../src/host/process.vibe"
@@ -11,7 +11,9 @@ module node {
   import { apply, initial, type Event, type Trigger } from "../gen/agent__schedule__triggers.effect.vibe"
   import type { RunningAgent } from "../src/host/process.vibe"
   import { runError, triggerDelivery, type Delivery } from "../src/schedule/trigger-delivery.vibe"
-  import { startTriggerEvents, type TriggerEventName } from "../src/schedule/trigger-events.vibe"
+  import { conversationStore } from "../src/conversation/conversations.vibe"
+  import { processTurn } from "../src/conversation/turns.vibe"
+  import { startTriggerEvents } from "../src/schedule/trigger-events.vibe"
   import { refusal, text, type CloudFake } from "./support/cloud-fake.ts"
   import { account } from "./support/scratch.ts"
 
@@ -43,7 +45,9 @@ module node {
     const signal = new AbortController().signal
     const created = await delivery.resolveRoom(undefined)
     if (created.kind !== "Resolved") throw new Error("No default conversation was resolved")
+    const pending = await conversationStore(running.runtime, ownerOf(running)).createPending("Plans · edit")
     const again = await delivery.resolveRoom(undefined)
+    const pendingChosen = await delivery.resolveRoom(pending.id)
     const chosen = await delivery.resolveRoom(created.conversationId)
     const missing = await delivery.resolveRoom("no-such-conversation")
     cloud.script(text("Water is good for you."))
@@ -66,7 +70,7 @@ module node {
     const fallbackRoom = fallback.kind === "Resolved" ? await roomOf(running, fallback.conversationId) : undefined
     return {
       sameDefault: again.kind === "Resolved" && again.conversationId === created.conversationId,
-      chosen: chosen.kind, missing: missing.kind,
+      chosen: chosen.kind, missing: missing.kind, pendingChosen: pendingChosen.kind,
       completed, completedError: runError(completed), stored,
       failed: failed.kind === "Turn" ? failed.turn : failed.kind, failedError: runError(failed),
       gone, goneError: runError(gone), missedError: runError({ kind: "Missed" }), told,
@@ -78,7 +82,8 @@ module node {
 
   export async function runOnEvents(running: RunningAgent, cloud: CloudFake) {
     const runtime = running.runtime
-    const delivery = triggerDelivery(runtime, ownerOf(running), { updated: () => undefined, proactive: () => undefined })
+    const owner = ownerOf(running)
+    const delivery = triggerDelivery(runtime, owner, { updated: () => undefined, proactive: () => undefined })
     const resolved = await delivery.resolveRoom(undefined)
     if (resolved.kind !== "Resolved") throw new Error("No conversation was resolved")
     const kept = new Map<string, Trigger>()
@@ -87,43 +92,36 @@ module node {
       if (Result.isSuccess(next)) kept.set(id, next.success)
       return Result.isSuccess(next)
     }
-    for (const id of ["trigger-a", "trigger-b"]) {
-      await send(id, { type: "create", schedule: "OnRuntimeEvent", requested: resolved.conversationId, defaultRoom: "", eventKind: "MESSAGE_RECEIVED", at: 0, roomExists: true })
+    for (const [id, eventKind] of [["on-received", "MESSAGE_RECEIVED"], ["on-sent", "MESSAGE_SENT"]] as const) {
+      await send(id, { type: "create", schedule: "OnRuntimeEvent", requested: resolved.conversationId, defaultRoom: "", eventKind, at: 0, roomExists: true })
       await send(id, { type: "setEnabled", on: true, at: 0, activeOthers: 0, expected: { tag: "AnyRevision" } })
     }
     const runs: { trigger: string; eventId: string; delivery: Delivery }[] = []
     const events = startTriggerEvents(runtime, {
-      eventTriggers: async (name: TriggerEventName) => [...kept].filter(([, t]) => t.enabled && t.eventKind === name).map(([id]) => id),
-      receiveEvent: async (triggerId, eventId, name, ownRun) => {
-        if (!await send(triggerId, { type: "receiveEvent", eventId, name, ownRun })) return
+      eventTriggers: async (name) => [...kept].filter(([, t]) => t.enabled && t.eventKind === name).map(([id]) => id),
+      receiveEvent: async (triggerId, eventId, name, byTrigger) => {
+        if (!await send(triggerId, { type: "receiveEvent", eventId, name, byTrigger })) return
         const done = await delivery.deliver(resolved.conversationId, { displayName: "Echo", instructions: `Event ${eventId} arrived` }, triggerId, new AbortController().signal)
         runs.push({ trigger: triggerId, eventId, delivery: done })
         await send(triggerId, { type: "finishRun", roomExists: done.kind === "Turn", turn: done.kind === "Turn" ? done.turn : "Failed" })
       },
     })
-    const roomId = await roomOf(running, resolved.conversationId)
-    const incoming = (id: string, metadata?: Memory["metadata"]): Memory => ({
-      id: id as UUID, entityId: ownerOf(running).user, agentId: runtime.agentId, roomId, content: { text: "hello", source: "device" },
-      ...(metadata === undefined ? {} : { metadata }),
-    })
-    const first = stringToUuid("event-1")
-    cloud.script(text("Seen once by a."), text("Seen once by b."))
-    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: incoming(first) })
-    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: incoming(first) })
-    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: { ...incoming(first), id: undefined } })
-    await runtime.emitEvent(EventType.REACTION_RECEIVED, { runtime, source: "test", message: incoming(stringToUuid("reaction-1")) })
+    const conversation = await conversationStore(runtime, owner).find(resolved.conversationId)
+    if (conversation === undefined) throw new Error("The conversation was not stored")
+    cloud.script(text("Hello to you."), text("Seen your message."), text("Seen my reply."))
+    const turn = await processTurn(runtime, owner, conversation, "hello", new AbortController().signal)
     await events.idle()
-    const raised = (await messages(running, roomId))
-      .find((memory) => (memory.metadata as { triggerId?: string } | undefined)?.triggerId === "trigger-a" && memory.entityId !== runtime.agentId)
-    if (raised?.id === undefined) throw new Error("Trigger a's run left no input memory")
-    cloud.script(text("Only b answers."))
-    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: raised })
+    const [reply] = turn.responseMessages
+    const said = await runtime.getMemoryById(turn.userMessageId)
+    if (said?.id === undefined || reply?.id === undefined) throw new Error("The owner's turn stored no message or reply")
+    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: said })
+    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: { ...said, id: undefined } })
     await events.stop()
-    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: incoming(stringToUuid("event-after-stop")) })
+    await runtime.emitEvent(EventType.MESSAGE_SENT, { runtime, source: "test", message: { ...reply, id: stringToUuid("event-after-stop") } })
     return {
       runs: runs.map(({ trigger, eventId, delivery }) => ({ trigger, eventId, turn: delivery.kind === "Turn" ? delivery.turn : delivery.kind }))
-        .sort((a, b) => a.trigger.localeCompare(b.trigger) || Number(a.eventId === raised.id) - Number(b.eventId === raised.id)),
-      first, raised: raised.id,
+        .sort((a, b) => a.trigger.localeCompare(b.trigger)),
+      said: said.id, reply: reply.id,
       seen: Object.fromEntries([...kept].map(([id, t]) => [id, t.seenEvents])),
     }
   }
@@ -144,11 +142,11 @@ effect function owned() {
   return { running, cloud }
 }
 
-it.effect('A trigger prompt reaches only its own conversation, tells the feed each reply it stored, and fails when the conversation is gone or the turn fails (spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/agent/schedule/triggers.md, "A delivered run tells the open screen its conversation changed and sends each reply it stored, and a run without its room tells nothing")', effect () => {
+it.effect('A trigger prompt reaches only its own conversation, tells the feed each reply it stored, and fails when the conversation is gone or the turn fails (spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/agent/schedule/triggers.md, "A delivered run tells the open screen its conversation changed and sends each reply it stored, and a run without its room tells nothing"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation")', effect () => {
   const { running, cloud } = try owned()
   const observed = try host("deliver journey", () => deliverToChosen(running, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    sameDefault: true, chosen: "Resolved", missing: "Missing",
+    sameDefault: true, chosen: "Resolved", missing: "Missing", pendingChosen: "Missing",
     completed: { kind: "Turn", turn: "Completed" }, completedError: undefined,
     stored: [
       { text: 'Scheduled trigger "Water" fired. Do this now: Remind me to drink water', fromAgent: false, triggerId: "trigger-1" },
@@ -167,13 +165,12 @@ it.effect('A trigger prompt reaches only its own conversation, tells the feed ea
   }))
 }, 180_000)
 
-it.effect('An event trigger runs once per event id and never for its own run (spec/agent/schedule/triggers.md, "An event trigger runs once for each emitted event of its name, never for its own run\'s events")', effect () => {
+it.effect('An owner turn runs each event trigger once, and no trigger run starts another (spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run\'s events")', effect () => {
   const { running, cloud } = try owned()
   const observed = try host("event journey", () => runOnEvents(running, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed.runs, [
-    { trigger: "trigger-a", eventId: observed.first, turn: "Completed" },
-    { trigger: "trigger-b", eventId: observed.first, turn: "Completed" },
-    { trigger: "trigger-b", eventId: observed.raised, turn: "Completed" },
+    { trigger: "on-received", eventId: observed.said, turn: "Completed" },
+    { trigger: "on-sent", eventId: observed.reply, turn: "Completed" },
   ]))
-  try Effect.try(() => assert.deepStrictEqual(observed.seen, { "trigger-a": [observed.first], "trigger-b": [observed.first, observed.raised] }))
+  try Effect.try(() => assert.deepStrictEqual(observed.seen, { "on-received": [observed.said], "on-sent": [observed.reply] }))
 }, 180_000)

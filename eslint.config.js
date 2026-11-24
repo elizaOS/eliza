@@ -25,8 +25,7 @@ const imports = {
 }
 const noReact = { patterns: [...imports.patterns, { regex: "^react(?:-dom)?(?:/|$)", message: `Tool and domain code does not import React: ${monorepo}.` }] }
 // What no tsconfig.json includes, so the type-aware rules cannot see it.
-const browserPageReader = "packages/plugin-native-browser-surface/resources/read-page.js"
-const untyped = [browserPageReader, "*.{js,ts}", "**/.storybook/**", "packages/design-system/**", "vibestack/design/test/**", "vibestack/stories/test/**"]
+const untyped = ["*.{js,ts}", "**/.storybook/**", "packages/design-system/**", "vibestack/design/test/**", "vibestack/stories/test/**"]
 // Every React interface: Studio's page is built on the same theme (vibestack/studio/vite.config.ts).
 const tsx = ["packages/ui/**/*.{ts,tsx}", "packages/cloud/src/pages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}", "vibestack/studio/src/page/**/*.{ts,tsx}"]
 const design = "packages/design-system"
@@ -104,7 +103,7 @@ const commented = {
   "packages/core/src/retrieval.vibe": 21,
 }
 const scheduled = {
-  "packages/agent/src/access/socket.vibe": 3,
+  "packages/agent/src/access/socket.vibe": 2,
   "packages/agent/test/client-runtime.test.vibe": 2,
   "packages/agent/test/client-tasks.test.vibe": 1,
   "packages/agent/test/client-turns.test.vibe": 2,
@@ -160,6 +159,7 @@ const barrelImports = {
   "packages/agent/src/tasks/chat-task.vibe": ["@elizaos/core/protocol"],
   "packages/agent/test/client-stream.test.vibe": ["@elizaos/core/protocol"],
   "packages/agent/test/tasks-chat.test.vibe": ["@elizaos/core/protocol"],
+  "packages/os/src/build/agent-config.vibe": ["@elizaos/agent/routes"],
   "packages/os/src/build/runtime-payload.vibe": ["@elizaos/os/aosp/runtime/node.lock.json"],
   "packages/os/test/agent-config.test.vibe": ["@elizaos/agent/cli", "@elizaos/agent/launch"],
   "packages/os/test/drivers/os__browser__pageCommands.ts": ["@elizaos/os/browser/runtime/surface-task-handler.mjs", "@elizaos/os/browser/runtime/task-bindings.mjs"],
@@ -176,6 +176,7 @@ const barrelImports = {
   "packages/plugin-browser/test/browser.test.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-calendar/src/index.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-calendar/src/plugin/device-proposals.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-calendar/src/plugin/phone-turn.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-calendar/src/series/deletions.vibe": ["@elizaos/os/bridges/deletion-window"],
   "packages/plugin-calendar/test/reviewed-reads.test.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-elizacloud/src/index.vibe": ["@elizaos/cloud/client"],
@@ -193,16 +194,13 @@ const barrelImports = {
   "packages/plugin-maps/test/maps.test.vibe": ["@elizaos/cloud/client"],
   "packages/plugin-maps/test/support/cloud.ts": ["@elizaos/cloud/client"],
   "packages/plugin-native-action-journal/src/index.vibe": ["@elizaos/os/bridges/action-journal"],
-  "packages/plugin-native-agent/src/index.vibe": ["@elizaos/os/bridges/agent", "@elizaos/os/bridges/definitions/agent"],
   "packages/plugin-native-appblocker/src/index.vibe": ["@elizaos/os/bridges/bridge"],
-  "packages/plugin-native-browser-surface/src/index.vibe": ["@elizaos/os/bridges/definitions/surface", "@elizaos/os/bridges/surface"],
   "packages/plugin-native-canvas/src/index.vibe": ["@elizaos/os/bridges/bridge"],
   "packages/plugin-native-contacts/src/components/ContactsPanel.tsx": ["@elizaos/os/bridges/definitions/contacts"],
   "packages/plugin-native-contacts/src/index.vibe": ["@elizaos/os/bridges/contacts", "@elizaos/os/bridges/definitions/contacts"],
   "packages/plugin-native-eliza-tasks/src/index.vibe": ["@elizaos/os/bridges/bridge"],
   "packages/plugin-native-filesystem/src/index.vibe": ["@elizaos/os/bridges/definitions/files", "@elizaos/os/bridges/files"],
   "packages/plugin-native-gateway/src/index.vibe": ["@elizaos/os/bridges/bridge"],
-  "packages/plugin-native-inference/src/index.vibe": ["@elizaos/os/inference"],
   "packages/plugin-native-location/src/index.vibe": ["@elizaos/os/bridges/definitions/location", "@elizaos/os/bridges/location"],
   "packages/plugin-native-media/src/index.vibe": ["@elizaos/os/bridges/definitions/media", "@elizaos/os/bridges/media"],
   "packages/plugin-native-messages/src/components/MessagesPanel.tsx": ["@elizaos/os/bridges/definitions/messages"],
@@ -212,7 +210,6 @@ const barrelImports = {
   "packages/plugin-native-passwords/src/index.vibe": ["@elizaos/os/bridges/definitions/passwords", "@elizaos/os/bridges/passwords"],
   "packages/plugin-native-phone/src/components/PhonePanel.tsx": ["@elizaos/os/bridges/definitions/phone"],
   "packages/plugin-native-phone/src/index.vibe": ["@elizaos/os/bridges/definitions/phone", "@elizaos/os/bridges/phone"],
-  "packages/plugin-native-secure-store/src/index.vibe": ["@elizaos/os/bridges/bridge", "@elizaos/os/bridges/definitions/secure-store", "@elizaos/os/bridges/secure-store"],
   "packages/plugin-native-settings/src/components/DeviceSettingsPanel.tsx": ["@elizaos/os/bridges/definitions/system"],
   "packages/plugin-native-settings/src/index.vibe": ["@elizaos/os/bridges/definitions/system", "@elizaos/os/bridges/system"],
   "packages/plugin-native-system/src/index.vibe": ["@elizaos/os/bridges/definitions/system", "@elizaos/os/bridges/system"],
@@ -237,8 +234,6 @@ const loose = Object.fromEntries(["no-explicit-any", "no-unsafe-argument", "no-u
 export default withWorkspaceBarrels(defineConfig(
   // Generated or disposable, .claude/worktrees holds other checkouts of this repository, and os ships the Android, AOSP, browser and Go trees it copies as files.
   globalIgnores(["**/gen/", "!vibestack/gen/", "**/.vibe/", "**/dist/", "**/.cache/", "**/.spec-cache/", "**/generated/", "**/storybook-static/", "**/test/fixtures/", "packages/os/{android,aosp,browser,native}/", "vibestack/examples/", "vibestack/fixtures/", ".claude/", ".lemmascript/", ".studio/", ".turbo/", "_apalache-out/"]),
-  // The iOS host loads this native browser resource without the TypeScript pipeline.
-  globalIgnores(["packages/plugin-native-browser-surface/resources/read-page.js"]),
   { linterOptions: { reportUnusedDisableDirectives: "error", reportUnusedInlineConfigs: "error" } },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
@@ -277,7 +272,6 @@ export default withWorkspaceBarrels(defineConfig(
     },
   },
   { files: untyped, extends: [tseslint.configs.disableTypeChecked] },
-  { files: [browserPageReader], languageOptions: { globals: { document: "readonly", getComputedStyle: "readonly", location: "readonly", NodeFilter: "readonly" } } },
   // A ratchet at today's longest (Studio's server); a test's describe block holds its cases.
   { ignores: ["**/test/**", "vibestack/selftest.ts"], rules: { "max-lines-per-function": ["error", { max: 250, skipBlankLines: true, skipComments: true }] } },
   {
@@ -315,7 +309,7 @@ export default withWorkspaceBarrels(defineConfig(
   { files: ["packages/agent/**/*.{vibe,vibex}"], rules: { "no-empty": ["error", { allowEmptyCatch: true }] } },
   { files: ["packages/agent/src/access/routes.vibe", "packages/agent/src/client/index.vibe", "packages/agent/src/host/launch.schema.vibe"], rules: { "no-control-regex": "off" } },
   { files: ["packages/**/*.{vibe,vibex}"], rules: { "no-redeclare": "off" } },
-  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "prefer-const": "off" } },
+  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "prefer-const": "off", "@typescript-eslint/no-unused-vars": ["error", { ...unused, argsIgnorePattern: "^(?:_|id$|pcm$|frame$|s$|a$|b$|d$)" }] } },
   { files: ["packages/agent/src/voice/echo-filter.ts"], rules: { "@typescript-eslint/no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^(?:_|echoOverlapPercent$|isEcho$|turnAccepted$)" }] } },
   {
     files: ["packages/core/src/utils/filesystem.vibe"],
@@ -338,8 +332,8 @@ export default withWorkspaceBarrels(defineConfig(
     rules: { "no-useless-assignment": "off" },
   },
   {
-    files: ["packages/core/src/runtime/room-handler-queue.vibe", "packages/core/src/security/pii-pseudonymizer.vibe", "packages/core/src/security/pii-scrub-seam.vibe", "packages/core/src/utils/unicode.vibe"],
-    rules: { "@typescript-eslint/no-unused-vars": ["error", { ...coreUnused, varsIgnorePattern: "^(?:_|ElizaError$|Foreign$|PiiScrubFabricationError$)" }] },
+    files: ["packages/core/src/runtime/context-registry.vibe", "packages/core/src/runtime/room-handler-queue.vibe", "packages/core/src/runtime/run-terminal-owner.vibe", "packages/core/src/security/pii-pseudonymizer.vibe", "packages/core/src/security/pii-scrub-seam.vibe", "packages/core/src/utils/unicode.vibe"],
+    rules: { "@typescript-eslint/no-unused-vars": ["error", { ...coreUnused, varsIgnorePattern: "^(?:_|ContextRegistryError$|ElizaError$|Foreign$|PiiScrubFabricationError$)" }] },
   },
   {
     files: ["packages/core/src/catalog/loader.vibe"],

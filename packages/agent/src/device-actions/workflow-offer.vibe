@@ -1,8 +1,8 @@
-// spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/index.md, "A settled request never changes again"
+// spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/capabilities.md, "A workflow step negotiates what its device declared at registration"
 import { hashStableJson, stringToUuid, type IAgentRuntime, type IDatabaseAdapter } from "@elizaos/core"
 import { beforeDeadline, canExpire, enrolledOwner, Rejected, settledApplied, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
-import { negotiation } from "./capabilities.vibe"
+import { declaredNegotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 import { enrollmentId } from "./enrollment.vibe"
 import { capabilityNamesOf, validate } from "./operations.schema.vibe"
 import { devicePayload, type WorkflowScope } from "./proposal-review.vibe"
@@ -87,7 +87,7 @@ effect function offered(adapter: IDatabaseAdapter, timing: WorkflowOfferTiming, 
   const binding = try Effect.orDie(Effect.try(() => workflowAuthority({
     kind: "WorkflowBinding", workflowId: step.workflowId, versionId: step.versionId, runId: step.runId, stepId: step.stepId, specDigest: step.specDigest,
   })))
-  const checked = validate(operation, negotiation(true, device.declared.join(",")), "WorkflowBinding")
+  const checked = validate(operation, declaredNegotiation([...device.declared]), "WorkflowBinding")
   const needs = checked === undefined ? undefined : capabilityNamesOf(checked)
   const capability = needs?.required[0] ?? needs?.oneOf.find((name) => device.declared.includes(name))
   if (binding === undefined || checked === undefined || capability === undefined) throw refused("DEVICE_STEP_UNSUPPORTED")

@@ -1,10 +1,9 @@
-// spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/control.md, "A reload of a page my phone withheld runs only when my message asked for it"
+// spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/control.md, "A reload of a page my phone withheld runs only after my review on the phone, or as the BROWSER command only when the model says I asked for it"
 import { readTurnContext } from "@elizaos/agent"
 import { deviceTurnFor } from "@elizaos/agent/device-actions"
-import { extractUserText, readViewInteractionClientId, unwrapUserMessageText, type Action, type ActionResult, type ContextDefinition, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { readViewInteractionClientId, type Action, type ActionResult, type ContextDefinition, type HandlerOptions, type IAgentRuntime, type Memory, type ViewDeclaration } from "@elizaos/core"
 import { historyReport, type HistoryReceipt, type HistoryReport } from "../gen/browser__control.effect.vibe"
-import { BROWSER_RELOAD_WITHHELD_REFUSAL, browserHistoryHome, browserHistoryRefused } from "./contract.vibe"
-import { DEFAULT_ASSISTANT_NAME, ownerAskedBrowserReload } from "./grounding.vibe"
+import { BROWSER_RELOAD_WITHHELD_REFUSAL, browserCommandReloadRuns, browserHistoryHome } from "./contract.vibe"
 import { NATIVE_HISTORY_SUBACTIONS, isNativeHistorySubaction, observedNativeHistorySelection, type NativeHistorySelection, type NativeHistorySubaction } from "./native-command.vibe"
 
 export const BROWSER_VIEW = { viewId: "browser", capability: "browser-command" } as const
@@ -12,6 +11,13 @@ export const BROWSER_VIEW = { viewId: "browser", capability: "browser-command" }
 export const browserContext: ContextDefinition = {
   id: "browser", label: "Browser", description: "The page showing in the phone's own browser.", descriptionCompressed: "The phone's browser.",
   sensitivity: "personal", cacheScope: "agent",
+}
+
+export const browserView: ViewDeclaration = {
+  id: BROWSER_VIEW.viewId, label: "Browser", path: "/browser", modalities: ["gui"], roleGate: { minRole: "OWNER" },
+  description: "The page showing in the owner's own device browser.",
+  relatedActions: ["BROWSER"],
+  capabilities: [{ id: BROWSER_VIEW.capability, description: "Go back, forward or reload the tab the turn observed." }],
 }
 
 export const TYPED_REFUSAL_CODES = ["UNAVAILABLE", "UNSUPPORTED", "STALE_REF", "SESSION_GONE", "AUTH_REQUIRED", "POLICY_BLOCKED"] as const
@@ -118,8 +124,8 @@ export function viewNativeBrowser(views: BrowserViewAsker) {
       const asked = try views.ask({
         clientId: request.clientId,
         ...BROWSER_VIEW,
-        params: { command: { subaction: request.subaction }, ...(request.selection === undefined ? {} : { selection: request.selection }) },
         grant: browserCommandGrant,
+        params: { command: { subaction: request.subaction }, ...(request.selection === undefined ? {} : { selection: request.selection }) },
       })
       if (asked.kind === "unavailable") return outcomeOf({ receipt: undelivered, code: "UNAVAILABLE", message: "The requesting native Browser client is not connected." }, request.subaction)
       if (asked.kind === "refused") return outcomeOf({ receipt: undelivered, code: "UNSUPPORTED", message: "The requesting Browser view does not take agent commands." }, request.subaction)
@@ -174,13 +180,12 @@ export function historyActionResult(outcome: HistoryOutcome): ActionResult {
 async function runHistory(runtime: IAgentRuntime, message: Memory, options: HandlerOptions | Record<string, unknown> | undefined): Promise<ActionResult> {
   const subaction = field(parametersOf(options) ?? {}, "action")
   if (!isNativeHistorySubaction(subaction)) return { success: false, text: "A supported native browser action is required." }
-  const words = deviceTurnFor(runtime, message)?.ownerText ?? extractUserText(unwrapUserMessageText(message))
-  const asked = ownerAskedBrowserReload(words, runtime.character?.name ?? DEFAULT_ASSISTANT_NAME)
-  if (browserHistoryRefused(subaction, readTurnContext(message).browserPage, asked)) return failed("POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL)
+  const selection = observedNativeHistorySelection(message, subaction)
+  const surface = { ownerAskedReload: field(parametersOf(options) ?? {}, "ownerAskedReload") === true, tabObserved: selection !== undefined }
+  if (!browserCommandReloadRuns(subaction, readTurnContext(message).browserPage, surface)) return failed("POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL)
   const clientId = readViewInteractionClientId(message)
   const views = browserViewAsker(runtime)
   if (clientId === undefined || views === undefined) return failed("UNAVAILABLE", "The requesting native browser client is unavailable.")
-  const selection = observedNativeHistorySelection(message, subaction)
   const request: HistoryRequest = selection === undefined ? { clientId, subaction } : { clientId, subaction, selection }
   const program = Effect.provide(effect {
     const browser = try NativeBrowser
@@ -205,6 +210,11 @@ export const browserAction: Action = {
     required: true,
     description: "Native browser command",
     schema: { type: "string", enum: [...NATIVE_HISTORY_SUBACTIONS] },
+  }, {
+    name: "ownerAskedReload",
+    required: false,
+    description: "For reload only: true when the owner's current message itself asks to reload, refresh or reopen this page now. Leave it out for a mention, a question about reloading, a reload the owner says they will do themselves, a request they took back, or a bare yes.",
+    schema: { type: "boolean" },
   }],
   handler: (runtime, message, _state, options) => runHistory(runtime, message, options),
 }

@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A whole-message photo command is routed to the capture, never to opening Camera"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"
+// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"
 module node {
   import { Effect } from "effect"
   import { validateSchema, type Action, type ActionContext, type ActionResult, type EffectReceipt, type IAgentRuntime, type JsonSchema, type Memory, type ProviderValue } from "@elizaos/core"
@@ -7,7 +7,7 @@ module node {
   import { completableRead, directEligible } from "../../../gen/agent__deviceActions__operations.ts"
   import { proposeDeviceAction as declared } from "../../../gen/agent__plugins__profile.ts"
   import { deviceCallReach } from "../../../gen/agent__conversation__planning.ts"
-  import { progressContexts, turnClarifications, turnElsewhere, turnFirstCalls, turnNotes, turnToolForms, type TurnToolForm } from "../../conversation/planning.vibe"
+  import { progressContexts, turnElsewhere, turnNotes, turnToolForms, type TurnToolForm } from "../../conversation/planning.vibe"
   import { gateRoles } from "../../plugins/basic-actions.vibe"
   import { bindingHash } from "../operation-schemas/telephony.vibe"
   import { deviceOperationTypes, readOperation, type DeviceOperation } from "../operations.schema.vibe"
@@ -15,11 +15,10 @@ module node {
   import type { DeviceProposalFamily, DeviceTurn, NegotiatedDevice, ProposalForm } from "./family.vibe"
   import { carriesMessage, offerProposal, proposalId } from "./offer.vibe"
   import { outcomesGuidance, proposalEffectReceipts } from "./receipts.vibe"
-  import { availableNow, familyOf, messageNote, negotiatedPart, offeredForms, registeredFamilies, routedRequest } from "./registry.vibe"
+  import { availableNow, familyOf, messageNote, negotiatedPart, offeredForms, registeredFamilies } from "./registry.vibe"
   import { deviceTurnFor } from "./turn.vibe"
   import { sharedBranches } from "./union.vibe"
 
-  export const proposeDeviceActionName = declared.name
 
   const guidance = "Proposes one operation on the phone enrolled for this owner turn. The owner reviews and approves the exact content on the unlocked phone, except a reversible local step the owner's own message asked for. This tool does not perform the operation: never report a proposal as done. Never retry or repeat an operation after an unknown, uncertain or partial outcome. Never invent IDs, revisions, paths, numbers or addresses. When the request is ambiguous about which record, time or target, ask one short clarifying question instead of proposing. Some forms depend on what the owner's message shows: the device note after the owner's latest message names each one that message does not allow. When that note says to open app views with VIEWS, ordinary navigation does not need a phone approval: use this tool only for the remaining reviewed device actions."
   const operationText = "The exact typed phone operation to show the owner for review: one of these forms that the owner's latest message allows."
@@ -38,14 +37,6 @@ module node {
     code: "DEVICE_OPERATION_NOT_OFFERED",
     forModel: "The operation is not exactly one of the tool's forms. No device proposal was created. Correct it, or answer without it.",
     forOwner: couldNotPrepare,
-  }
-
-  function routedAway(forms: readonly ProposalForm[]): Refusal {
-    return {
-      code: "DEVICE_OPERATION_ROUTED",
-      forModel: `The owner's whole message is a request for ${[...new Set(forms.flatMap(({ types }) => types))].join(", ")} only, so no other device operation is proposed for this message. No device proposal was created.`,
-      forOwner: couldNotPrepare,
-    }
   }
 
   function notNow(forms: readonly ProposalForm[]): Refusal {
@@ -103,11 +94,9 @@ module node {
 
   function withheldFor(runtime: IAgentRuntime, turn: DeviceTurn, operation: unknown): { readonly availability: FormAvailability; readonly refusal?: Refusal } {
     const forms = offeredForms(runtime, turn).filter((form) => matchesForm([form], operation))
-    const routed = routedRequest(runtime, turn)
-    const availability = formAvailability(forms.length > 0, routed !== undefined && !forms.some((form) => routed.forms.includes(form)), forms.some((form) => availableNow(form, turn)))
+    const availability = formAvailability(forms.length > 0, forms.some((form) => availableNow(form, turn)))
     switch (availability) {
       case "FormNotOffered": return { availability, refusal: notOffered }
-      case "FormRoutedAway": return { availability, refusal: routedAway(routed?.forms ?? []) }
       case "FormNotAvailableNow": return { availability, refusal: notNow(forms) }
       case "FormAvailable": return { availability }
     }
@@ -235,7 +224,7 @@ module node {
     if (proposed === undefined || family === undefined) return coached(notOffered)
     const withheld = withheldFor(runtime, turn, prepared).refusal
     if (withheld !== undefined) return withheld === notOffered ? coached(withheld) : refused(withheld)
-    const grounded = await Effect.runPromise(family.ground(proposed, turn))
+    const grounded = await Effect.runPromise(family.ground(proposed, turn, input))
     const admitted = grounded.kind === "Grounded" && family.types.includes(grounded.operation.type) ? turn.admit(grounded.operation) : undefined
     const reply = proposalReply(true, "FormAvailable", grounded.kind === "Grounded" ? "FamilyGrounded" : "FamilyRefused", admitted !== undefined)
     const sought = admitted?.operation ?? proposed.operation
@@ -295,24 +284,6 @@ module node {
     const turn = deviceTurnFor(runtime, message)
     return turn === undefined || isRefused(turn.negotiation) ? undefined : messageNote(runtime, turn)
   })
-
-  turnClarifications.set(proposeDeviceAction, (runtime, message) => {
-    const turn = deviceTurnFor(runtime, message)
-    if (turn === undefined || isRefused(turn.negotiation)) return undefined
-    for (const family of registeredFamilies(runtime)) {
-      const clarification = family.clarifyRequest?.(turn)
-      if (clarification !== undefined) return clarification
-    }
-    return undefined
-  })
-
-  turnFirstCalls.set(proposeDeviceAction, (runtime, message) => {
-    const turn = deviceTurnFor(runtime, message)
-    if (turn === undefined || isRefused(turn.negotiation)) return undefined
-    const asked = registeredFamilies(runtime).flatMap((family) => family.wholeMessageOperation?.(turn) ?? [])
-    const operation = asked[0]
-    return asked.length === 1 && withheldFor(runtime, turn, operation).availability === "FormAvailable" ? JSON.stringify({ operation }) : undefined
-  })
 }
 
-export { proposeDeviceAction, proposeDeviceActionName } from node
+export { proposeDeviceAction } from node

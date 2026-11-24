@@ -14,7 +14,6 @@
 //   entry *.meta.tsx, *.css (ui, cloud)     read by the design tool and the page's index.html
 //   entry *.schema, *.contract              imported by the tests vibestack/testing/generate.ts writes under .cache/
 //   design-system eslint, eslint-plugin-better-tailwindcss, typescript-eslint  loaded by name in vibestack/design/test/design.test.ts
-//   browser surface read-page.js           bundled and loaded by the native iOS host
 //   plugin root duplicate exports          named and default entry points for the same factory
 //   network @mockoon/cli                   spawned in the VibeLang relay test
 //   trajectory logger react, @types/react  automatic JSX runtime and types of the exported ./ui
@@ -33,7 +32,6 @@ export default {
     "packages/cloud/src/client/relay-frames.ts": ["exports"],
     "packages/plugin-assistant/src/host.vibe": ["exports"],
     "packages/agent/test/support/product-plugin/entry.ts": ["unlisted"],
-    "packages/plugin-native-browser-surface/resources/read-page.js": ["files"],
     "packages/plugin-anthropic/src/index.vibe": ["duplicates"],
     "packages/plugin-discord/src/index.vibe": ["duplicates"],
     "packages/plugin-elizacloud/src/index.vibe": ["duplicates"],
@@ -172,6 +170,9 @@ export default {
     "packages/plugin-inbox": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
+    "packages/plugin-maps": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
     "packages/plugin-network": {
       "ignoreDependencies": ["@mockoon/cli"]
     },
@@ -179,7 +180,6 @@ export default {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-trajectory-logger": {
-      "entry": ["src/TrajectoryView.tsx"],
       "ignoreDependencies": ["react", "@types/react"]
     },
     "packages/plugin-workflows": {

@@ -1,6 +1,6 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A provider's refusal of the request passes on its listed code and parameter and nothing else"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { noFault, passedFault, readsFault, type ProviderFault } from "../../gen/cloud__services__inference.effect.vibe"
+import { noFault, passedFault, providerTimeout, readsFault, type ProviderFault } from "../../gen/cloud__services__inference.effect.vibe"
 import type { Millis } from "../../gen/cloud__shared__types.ts"
 import type { InferenceSettings } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
@@ -20,7 +20,6 @@ export interface LlmAnswer {
   readonly usage?: unknown
 }
 
-const providerBudget: Millis = 800_000
 export const maxReplyBytes = 16 * 1024 * 1024
 const refusalBytes = 64 * 1024
 const FaultFields = Schema.Struct({ code: Schema.optionalKey(Schema.Unknown), param: Schema.optionalKey(Schema.Unknown) })
@@ -90,13 +89,13 @@ export effect function complete(provider: LlmProvider, body: ChatBody): LlmAnswe
     if (json === undefined) throw new ProviderInvalidResponse()
     return json.usage === undefined ? { json } : { json, usage: json.usage }
   }
-  return try timeoutOrElse(answer, { duration: providerBudget, orElse: () => fail(new ProviderTimedOut()) })
+  return try timeoutOrElse(answer, { duration: providerTimeout, orElse: () => fail(new ProviderTimedOut()) })
 }
 
 export effect function stream(provider: LlmProvider, body: ChatBody): Stream.Stream<Uint8Array, LlmFailure>!LlmFailure!LlmContext {
-  const deadline = (try Clock.currentTimeMillis) + providerBudget
+  const deadline = (try Clock.currentTimeMillis) + providerTimeout
   const forced = { ...body, stream: true, stream_options: { include_usage: true } }
-  const response = try timeoutOrElse(accepted(provider, forced), { duration: providerBudget, orElse: () => fail(new ProviderTimedOut()) })
+  const response = try timeoutOrElse(accepted(provider, forced), { duration: providerTimeout, orElse: () => fail(new ProviderTimedOut()) })
   if (!(response.headers["content-type"] ?? "").toLowerCase().startsWith("text/event-stream")) {
     try released(response)
     throw new ProviderInvalidResponse()

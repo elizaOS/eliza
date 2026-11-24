@@ -37,7 +37,7 @@ export interface TriggerRun {
   readonly error: string | undefined
 }
 
-export type TriggerRefusal = "Invalid" | "StaleRevision" | "ConversationMissing" | "ActiveLimit" | "RoomUnavailable"
+export type TriggerRefusal = "Invalid" | "StaleRevision" | "ConversationMissing" | "ActiveLimit" | "RoomUnavailable" | "UnsupportedEvent"
 
 export type TriggerWrite =
   | { readonly kind: "saved"; readonly trigger: SavedTrigger }
@@ -74,6 +74,7 @@ const refusal = {
   StaleRevision: { status: 409, error: "stale_revision" },
   ConversationMissing: { status: 409, error: "conversation_missing" },
   ActiveLimit: { status: 429, error: "active_trigger_limit" },
+  UnsupportedEvent: { status: 400, error: "unsupported_event" },
   RoomUnavailable: { status: 503, error: "conversation_unavailable" },
 } as const satisfies Record<TriggerRefusal, { status: number; error: string }>
 const wireStatus = { RunSuccess: "success", RunError: "error", RunSkipped: "skipped" } as const satisfies Record<RunStatus, string>

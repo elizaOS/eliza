@@ -4,10 +4,9 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { cloudLayer, prepare } from "./index.vibe"
 import { formatInet } from "effect/net/NetAddress"
-import { checkCatalog } from "./billing/plans.vibe"
-import { guardMigration, runOperator } from "./operator/admin.vibe"
-import { deploymentLayer, parseEnvironment, readProfile } from "./profile/profile.vibe"
-import { migrate, parseStoreLocation, storeLayer } from "./store/store.vibe"
+import { migrateDeployment, runOperator } from "./operator/admin.vibe"
+import { parseEnvironment, readProfile } from "./profile/profile.vibe"
+import { parseStoreLocation } from "./store/store.vibe"
 
 module node {
   /** @throws {never} */
@@ -19,7 +18,7 @@ import { commandLine } from node
 
 export error UsageInvalid { message: string }
 
-const usage = "usage: elizaos-cloud serve --profile <file> --environment production|staging --store pg-url|pglite[:<file>] [--seed <file>] [--port <n>] [--host <address>] | migrate --profile <file> --environment <e> --store <s> | prices check --profile <file> --environment <e> | credits add|account devices|account revoke-devices … --profile <file> --environment <e> --store <s>"
+const usage = "usage: elizaos-cloud serve --profile <file> --environment production|staging --store pg-url|pglite[:<file>] [--seed <file>] [--port <n>] [--host <address>] | migrate --profile <file> --environment <e> --store <s> | prices set|check | credits add | account devices|revoke-devices … --profile <file> --environment <e> --store <s>"
 
 effect function flags(args: ReadonlyArray<string>, allowed: ReadonlyArray<string>): ReadonlyMap<string, string>!UsageInvalid {
   const found = new Map<string, string>()
@@ -66,33 +65,14 @@ effect function serve(args: ReadonlyArray<string>) {
 
 effect function migrateOnly(args: ReadonlyArray<string>) {
   const found = try flags(args, ["profile", "environment", "store"])
-  const profile = try readProfile(try required(found, "profile"))
-  const environment = try parseEnvironment(try required(found, "environment"))
-  const location = try parseStoreLocation(try required(found, "store"))
-  const settings = profile.environments[environment]
-  provide storeLayer(location), deploymentLayer(profile, environment) {
-    try guardMigration()
-    const report = try migrate({ digest: settings.databaseIdentity, environment, now: try Clock.currentTimeMillis })
-    try annotateLogs(logInfo("migrated"), { applied: report.applied.join(", ") || "none" })
-  }
-}
-
-effect function checkPrices(args: ReadonlyArray<string>) {
-  const found = try flags(args, ["profile", "environment"])
-  const profile = try readProfile(try required(found, "profile"))
-  const environment = try parseEnvironment(try required(found, "environment"))
-  if (profile.environments[environment].billing === undefined) throw new UsageInvalid({ message: "the selected environment has no payment catalog configured" })
-  provide deploymentLayer(profile, environment), FetchHttpClient.layer {
-    try checkCatalog()
-    try annotateLogs(logInfo("price catalog verified"), { environment })
-  }
+  const report = try migrateDeployment(try required(found, "profile"), try parseEnvironment(try required(found, "environment")), try parseStoreLocation(try required(found, "store")))
+  try annotateLogs(logInfo("migrated"), { applied: report.applied.join(", ") || "none" })
 }
 
 effect function main() {
   const [command, ...rest] = commandLine()
   if (command === "serve") return try serve(rest)
   if (command === "migrate") return try migrateOnly(rest)
-  if (command === "prices" && rest[0] === "check") return try checkPrices(rest.slice(1))
   if (command === undefined) throw new UsageInvalid({ message: usage })
   try runOperator(command, rest)
 }

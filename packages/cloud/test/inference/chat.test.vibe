@@ -22,7 +22,7 @@ effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknow
 }
 
 effect function chatCloud(additionalOffers = false) {
-  const secondUpstream = "upstream-wide"
+  const secondUpstream = "@cf/qwen/qwen3.8-27b"
   const llm: LlmFake = try sync(() => llmFake([upstreamModel, secondUpstream]))
   const edit = (profile: ReturnType<typeof testProfile>) => {
     if (!additionalOffers) return profile
@@ -174,7 +174,7 @@ describe("WP5 Inference: chat completions", () => {
         upstream: [[upstreamModel, false, 4096, undefined], [upstreamModel, false, 16, undefined],
           [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
           [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
-          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["@cf/qwen/qwen3.8-27b", true, 8192, undefined]],
         idempotencyForwarded: false,
         planningForwarded: planning,
         refusedByProvider: [429, "rate_limited", "59"],
@@ -194,14 +194,16 @@ describe("WP5 Inference: chat completions", () => {
     ))
   }), 90_000)
 
-  it.live("Stream a reply in the shape clients read (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
+  it.live("Stream a reply in the shape clients read, charging a hang-up for every delivered character (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\"; spec/cloud/services/inference.md, \"A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported\")", () => scoped(effect {
     const { cloud, llm, key, chat } = try chatCloud()
     const streamed = try chat({ ...request, stream: true, stream_options: { include_usage: true } })
-    try sync(() => llm.script({ kind: "streamWithoutUsage" }, { kind: "hang", after: 2 }))
+    try sync(() => llm.script({ kind: "streamWithoutUsage" }, { kind: "hang", after: 2 }, { kind: "hangInToolCall" }))
     const withoutUsage = try chat({ ...request, stream: true })
     const hungUp = try hangUpAfterFirstBytes(cloud.url, key)
     try promise(() => llm.untilAborted(1)).pipe(Effect.timeout(Duration.seconds(10)))
-    const usage = try settledCount(cloud, "org-owner", 3)
+    const hungUpInToolCall = try hangUpAfterFirstBytes(cloud.url, key)
+    try promise(() => llm.untilAborted(2)).pipe(Effect.timeout(Duration.seconds(10)))
+    const usage = try settledCount(cloud, "org-owner", 4)
     const text = String(streamed.body)
     const parsed = try chunks(text)
     try check(() => assert.deepStrictEqual(
@@ -215,6 +217,7 @@ describe("WP5 Inference: chat completions", () => {
         withoutUsage: [withoutUsage.status, frames(String(withoutUsage.body)).at(-1)],
         upstream: llm.bodies.map((body) => [body.model, body.stream, body.stream_options]),
         hungUp,
+        hungUpInToolCall,
         aborted: llm.aborted,
         usage
       },
@@ -226,10 +229,11 @@ describe("WP5 Inference: chat completions", () => {
         usageChunks: 1,
         models: ["test-chat"],
         withoutUsage: [200, "[DONE]"],
-        upstream: [[upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }]],
+        upstream: [[upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }]],
         hungUp: [200, "text/event-stream", true],
-        aborted: 1,
-        usage: [["known", 50, 31], ["unknown", 50, 50], ["known", 50, 14]]
+        hungUpInToolCall: [200, "text/event-stream", true],
+        aborted: 2,
+        usage: [["known", 50, 31], ["unknown", 50, 50], ["known", 50, 14], ["known", 50, 43]]
       }
     ))
   }), 90_000)

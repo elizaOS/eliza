@@ -1,6 +1,7 @@
 // spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"; spec/agent/host/launch.md, "Local embeddings boot only when the device serves them: no operator endpoint or chosen hosted service takes precedence, and the local inference plugin is listed"; spec/agent/host/launch.md, "Plugin settings never set a reserved key, and log retention bounds are positive"
 import { assert, it } from "@effect/vitest"
 import { AGENT_EXIT_CODES, exitClass, exitCode, parseLaunch } from "../src/host/launch.vibe"
+import { startAgent } from "../src/host/process.vibe"
 import { agentChild, boot, host, ready, scratch } from "./support/kernel.vibe"
 import { account, launchDocument, launchFrame, writeLaunch, type LaunchOptions } from "./support/scratch.ts"
 
@@ -63,6 +64,16 @@ it.effect('Admitted documents include a path-less cloud origin, own key and loca
   ], (document) => parseLaunch(JSON.stringify(document), frame))
   try Effect.try(() => assert.strictEqual(accepted.length, 4))
 })
+
+it.effect('A retention under a thousandth of a day still has a positive age and boots (spec/agent/host/launch.md, "Plugin settings never set a reserved key, and log retention bounds are positive")', effect () => {
+  const state = try scratch("launch-short-retention")
+  const parsed = try parseLaunch(JSON.stringify(launchDocument({ retention: { days: 0.0004, maxRowsPerRoom: 10, intervalMinutes: 5 } })), JSON.stringify(launchFrame()))
+  const running = try acquireRelease(
+    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file("agent.sock") } }),
+    (agent) => orDie(host("retire agent", () => agent.stop())),
+  )
+  try Effect.try(() => assert.strictEqual(running.runtime.character.name, "Eliza"))
+}, 120_000)
 
 it.effect('View declarations are exactly {id, label, path, aliases?} within their limits (spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after")', effect () => {
   const frame = JSON.stringify(launchFrame(keyed))

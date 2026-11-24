@@ -441,7 +441,7 @@ effect function mint(context: RouteContext) {
   const { consentNonce } = try jsonBody(context, MintRequest)
   const store = try Store
   const sessionId = newId()
-  const token = secretText("eliza_speech_", 32, "base64url")
+  const token = secretText("", 32, "base64url")
   const minted = try timedPhase(bootstrap, "speech_consent_consume", store.transaction(effect (tx: Tx) => {
     try tx.query("SELECT nonce FROM speech_consents WHERE nonce = $1 FOR UPDATE", [consentNonce])
     const now = try Clock.currentTimeMillis
@@ -482,9 +482,9 @@ effect function revoke(context: RouteContext) {
 }
 
 export const sessionSpeechRoutes: ReadonlyArray<Route> = [
-  { method: "POST", path: `${speechPath}/consent`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: consent },
-  { method: "POST", path: `${speechPath}/session`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: mint },
-  { method: "POST", path: `${speechPath}/session/:sessionId/revoke`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: revoke }
+  { method: "POST", path: `${speechPath}/consent`, auth: "ServiceAccess", area: "SpeechRelayRoutes", rateClass: "StandardRequests", handler: consent },
+  { method: "POST", path: `${speechPath}/session`, auth: "ServiceAccess", area: "SpeechRelayRoutes", rateClass: "StandardRequests", handler: mint },
+  { method: "POST", path: `${speechPath}/session/:sessionId/revoke`, auth: "ServiceAccess", area: "SpeechRelayRoutes", rateClass: "StandardRequests", handler: revoke }
 ]
 
 effect function refusedOnly<A, R>(work: A!SessionFailure!R): A!Refused!R {
