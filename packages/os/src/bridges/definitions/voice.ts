@@ -32,7 +32,7 @@ export interface CloudSpeechStarted {
 }
 
 export interface CloudStreamPort {
-  startCloudSpeech(input: { sessionId: SpeechSessionId; environment: EnvironmentName; credentialId: CredentialId }): Promise<CloudSpeechStarted>;
+  startCloudSpeech(input: { sessionId: SpeechSessionId; environment: EnvironmentName; credentialId: CredentialId; muted?: true }): Promise<CloudSpeechStarted>;
   stopCloudSpeech(input: { sessionId: SpeechSessionId }): Promise<unknown>;
   setCloudSpeechOutputMuted?(input: { sessionId: SpeechSessionId; muted: boolean }): Promise<unknown>;
   setCloudSpeechMuted(input: { sessionId: SpeechSessionId; muted: boolean }): Promise<unknown>;

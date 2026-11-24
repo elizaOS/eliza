@@ -168,7 +168,13 @@ pure def sometimesListening(s: CloudSpeech): bool = s.phase == Live and s.captur
 
 A turn that starts while muted belongs to no capture, and a turn's text is
 published only for the newest capture and only if it began in it, so speech
-heard while the agent talked never becomes the next turn.
+heard while the agent talked never becomes the next turn. If a native mute
+is confirmed but the relay loses the active capture's final, a bounded
+wait ends that segment without text. With no unsettled playback, the
+bridge closes the old transport before it opens a new muted one under the
+current owner, retaining speaker mute. The retired transport can deliver
+no further text. A missing native mute acknowledgement cannot reopen the
+microphone.
 
 ```quint
 pure def turnOwner(t: Turn): int = match t { | TurnOf(x) => x.capture | NoTurn => -1 }

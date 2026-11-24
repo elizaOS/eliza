@@ -28,7 +28,7 @@ module android {
   export function cloudSpeech(phone: Phone): ElizaCloudSpeechPlugin {
     return {
       startCloudSpeech: async (input) => {
-        phone.calls.push(`start ${input.environment} ${input.credentialId}`)
+        phone.calls.push(`start ${input.environment} ${input.credentialId}${input.muted ? " muted" : ""}`)
         phone.sessionId = input.sessionId
         return { sessionId: input.sessionId, sampleRate: 16000, echoCancelled: true }
       },
@@ -273,6 +273,29 @@ it.live("A turn heard while muted never becomes the next capture's turn (spec/os
 
   const stranger = try failure(() => speech.listen(heard(new AbortController().signal).handlers))
   assert.strictEqual((stranger as CloudSpeechRefused).reason, "owner-changed")
+})
+
+it.live("A missing final after confirmed mute reopens only a muted transport (spec/os/voice/cloudSpeech.md, \"A provider speech edge belongs to the capture live when it began, and a retired capture owns none\")", () => effect {
+  const phone = device()
+  const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
+  const signal = new AbortController().signal
+  const first = heard(signal)
+  const capture = try promise(() => speech.listen(first.handlers))
+  const retiredId = phone.sessionId
+  try promise(() => speech.setOutputMuted(true))
+  emit(phone, { type: "speech-start" })
+  try promise(() => capture.close())
+  const second = heard(signal)
+  try promise(() => speech.listen(second.handlers))
+  emit(phone, { type: "speech-start" })
+  emit(phone, { sessionId: retiredId, type: "speech-end", text: "retired text" })
+  emit(phone, { type: "speech-end", text: "current text" })
+  assert.notStrictEqual(phone.sessionId, retiredId)
+  assert.deepStrictEqual(phone.calls, ["start production key-1", "unmute", "speaker off", "mute",
+    "stop", "start production key-1 muted", "speaker off", "unmute"])
+  assert.deepStrictEqual(first.events, ["speech-start", "speech-end", "segment null"])
+  assert.deepStrictEqual(second.events, ["speech-start", "speech-end", "segment current text"])
+  try promise(() => speech.stop())
 })
 
 it.live("A failure ends the session once and an owner's abort stops it (spec/os/voice/cloudSpeech.md, \"Every end of a session releases the microphone, settles the reply, revokes the session and reports a failure once\")", () => effect {
