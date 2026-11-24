@@ -6,7 +6,6 @@ import { aaptManifestTree } from "../src/image/apk.vibe"
 import {
   IMAGE_FEATURE_VERSION,
   imageFeatureName,
-  listenerStagingOf,
   provisioningComponents,
   requireClockProduct,
   verifySecureCameraSource,
@@ -15,7 +14,8 @@ import {
   writeListenerActivation,
   writeProvisioningOverlay,
   writeSecureCameraOverlay,
-} from "../src/image/provisioning.vibe"
+} from "../src/image/index.vibe"
+import { listenerStagingOf } from "../src/image/provisioning.vibe"
 import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
 import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
 

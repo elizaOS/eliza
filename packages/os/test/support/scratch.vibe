@@ -2,6 +2,17 @@
 import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function pinOf(path: string, content: string) {
+    const bytes = new TextEncoder().encode(content)
+    return { path, sizeBytes: bytes.byteLength, sha256: createHash("sha256").update(bytes).digest("hex") }
+  }
+}
+import { pinOf } from node
+
 export type Bytes = string | Uint8Array
 
 export type Entry =
@@ -97,4 +108,21 @@ export effect function scratchRepo(prefix: string, tree: Tree) {
   try git(root, ["init", "--quiet", "--initial-branch=main"])
   const repo: ScratchRepo = { root, commit: try commitTree(root, tree, "Pin the scratch tree") }
   return repo
+}
+
+effect function repoAt(directory: string, tree: Tree) {
+  const files = try FileSystem.FileSystem
+  try files.makeDirectory(directory, { recursive: true })
+  try git(directory, ["init", "--quiet", "--initial-branch=main"])
+  return try commitTree(directory, tree, "Pin the platform source")
+}
+
+export effect function pinnedCheckout(root: string) {
+  const configuration = { ".repo/manifest.xml": "<manifest/>\n", ".repo/project.list": "project-a\n" }
+  const commit = try repoAt(`${root}/.repo/manifests`, { "default.xml": "<manifest/>\n" })
+  const projects = [{ path: "project-a", commit: try repoAt(`${root}/project-a`, { "device.mk": "PRODUCT_NAME := fixture\n", "release/RELEASE_BOARD_API_LEVEL.textproto": 'name: "RELEASE_BOARD_API_LEVEL"\nvalue: { string_value: "202604" }\n' }) }]
+  try writeTree(root, configuration)
+  const manifestConfiguration = Object.entries(configuration).map(([path, content]) => pinOf(path, content))
+  return (targets: readonly string[], developmentOnly: boolean) =>
+    ({ kind: "virtual", targets: [...targets], developmentOnly, manifest: { commit, tagObject: commit, tag: "fixture" }, projects, manifestConfiguration })
 }
