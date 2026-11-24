@@ -86,3 +86,41 @@ lemma lawListingIsExactlyTheUsableModels_ensures(profile: seq<ProfiledModel>, pr
     ProofLib.FilterNone(idEq, s);
   }
 }
+
+lemma lawCostMonotoneInTokens_ensures(fewer: int, more: int, per1K: int)
+  ensures (lawCostMonotoneInTokens(fewer, more, per1K) == true)
+{
+  if 0 <= fewer <= more && isValidPrice(per1K) {
+    var half := quotient_cloud__services__models(costDivisor, 2);
+    assert half == 50000 by { reveal JSFloorDiv, MathAbs; }
+    var low := fewer * per1K * markupPercent + half;
+    var high := more * per1K * markupPercent + half;
+    assert fewer * per1K <= more * per1K by { MulLeft(fewer, more, per1K); }
+    assert 0 <= fewer * per1K by { MulLeft(0, fewer, per1K); }
+    assert 0 <= low <= high;
+    assert sideCost(fewer, per1K) == low / costDivisor;
+    assert sideCost(more, per1K) == high / costDivisor;
+    CostQuotientMonotone(low, high, costDivisor);
+  }
+}
+
+lemma MulLeft(a: int, b: int, c: int)
+  requires a <= b && c >= 0
+  ensures a * c <= b * c
+{
+  assert (b - a) * c >= 0;
+}
+
+lemma CostQuotientMonotone(smaller: int, larger: int, divisor: int)
+  requires 0 <= smaller <= larger && divisor > 0
+  ensures smaller / divisor <= larger / divisor
+{
+  var q1 := smaller / divisor;
+  var q2 := larger / divisor;
+  assert smaller == divisor * q1 + smaller % divisor;
+  assert larger == divisor * q2 + larger % divisor;
+  if q1 > q2 {
+    assert divisor * q1 >= divisor * (q2 + 1);
+    assert false;
+  }
+}

@@ -18,7 +18,8 @@ The default branch is the primary branch and the base for every pull request.
   tests and CI checks. Report the verification results in the PR.
 - For code changes, give reproduction steps and show the actual results
   before and after the change under comparable conditions. For UI changes,
-  attach screenshots of the same flow and state before and after.
+  attach desktop and mobile screenshots of the same flow and state before
+  and after.
 - Keep the diff tidy and focused. Remove unnecessary files and dead,
   redundant, or superseded code and legacy paths. Follow the code comment
   rule in AGENTS.md; keep only its permitted machine-readable directives
@@ -50,8 +51,8 @@ with the exact name below. A Markdown bullet before the field name is optional.
   For model-backed behavior, include the provider and exact model ID.
 - `UI video:` Attach before-and-after video of the same changed flow and state
   in the application or Studio. Include steps a reviewer can repeat.
-- `UI screenshots:` Attach the required before-and-after screenshots of the
-  same flow and state.
+- `UI screenshots:` Attach the required desktop and mobile before-and-after
+  screenshots of the changed flow.
 - `Benchmarks:` Show comparable base and PR runs for every performance claim.
   Give the command, workload, environment, samples, metric and units, and the
   before-and-after results. Report any quality change or failure.
