@@ -182,7 +182,9 @@ on that clock, its start is still ahead of the turn, and the title's
 words are among the owner's; the phone's operation already holds an end
 after its start. One phone event holds
 no repeat, guests or all-day time, so the model sends those to the
-Calendar action instead. A description or location is kept only when its
+Calendar action instead; code reads no repeat words, so a one-off phone
+event the model sent for a repeating request is proposed as that one
+event, which the owner sees as one event on the review before it is saved. A description or location is kept only when its
 words are among the owner's, and is otherwise left empty.
 
 ```quint
@@ -210,36 +212,39 @@ change from the words; it checks what the model returned instead. A new
 title, place or notes is kept only when its words are among the owner's;
 a start or end is a canonical UTC instant and a zone a known IANA zone;
 every part the model did not return is kept. Anything else the model
-returned is no edit, and the owner is asked again.
+returned, or no answer at all, is no edit.
 
-A read of a named event is proposed only for a change, and only when a
-change can follow it: the phone reported its zone for the turn and can
-finish a read for this turn. Otherwise it is refused with words telling the
-owner why. A selected read for which the model returns no change is
-answered as a read. An edit that the shared record still cannot hold
-offers nothing and answers the owner in fixed words instead of the
-model's: a named read that matched no event, a named read that asks for no
-change, an end not after its start, or an edit that changes nothing. A
-question the model returned is asked in its own words. A prepared edit
-answers that it is ready for its review and that nothing has changed yet.
+A read of a named event is proposed only when a change can follow it: the
+phone reported its zone for the turn and can finish a read for this turn.
+Otherwise it is refused with words telling the owner why. A read for
+which the model returns no change, or no edit it can hold, is answered as
+a read: the model answers the owner's request from the record they
+shared, in its own words, and nothing is proposed, so a question about
+the event is always answered. A question the model returned is asked in
+its own words. An edit that the shared record still cannot hold offers
+nothing and answers the owner in fixed words instead of the model's: a
+named read that matched no event, an end not after its start, or an edit
+that changes nothing. A prepared edit answers that it is ready for its
+review and that nothing has changed yet. A selected read on a phone that
+reported no zone is answered as a read and proposes no change.
 
 ```quint
 type EditRead = EditReturned | NoChangeReturned | QuestionReturned | EditUnreadable
 type EditPrepared = EditReady | NoEventMatched | EndNotAfterStart | NothingToChange | AnswersTheRead | AsksTheOwner
 pure def changeReadAdmitted(phoneZoneKnown: bool, readsComplete: bool): bool = phoneZoneKnown and readsComplete
-pure def preparedEdit(eventMatched: bool, read: EditRead, byName: bool, endAfterStart: bool, changesSomething: bool): EditPrepared =
+pure def preparedEdit(eventMatched: bool, read: EditRead, endAfterStart: bool, changesSomething: bool): EditPrepared =
   if (not(eventMatched)) NoEventMatched
-  else if (read == NoChangeReturned) (if (byName) NothingToChange else AnswersTheRead)
-  else if (read != EditReturned) AsksTheOwner
+  else if (read == NoChangeReturned or read == EditUnreadable) AnswersTheRead
+  else if (read == QuestionReturned) AsksTheOwner
   else if (not(endAfterStart)) EndNotAfterStart
   else if (not(changesSomething)) NothingToChange
   else EditReady
 pure def lawAChangeReadNeedsThePhoneZoneAndACompletedRead(phoneZoneKnown: bool, readsComplete: bool): bool =
   changeReadAdmitted(phoneZoneKnown, readsComplete) iff (phoneZoneKnown and readsComplete)
-pure def lawOnlyAHoldableEditIsReady(eventMatched: bool, read: EditRead, byName: bool, endAfterStart: bool, changesSomething: bool): bool =
-  (preparedEdit(eventMatched, read, byName, endAfterStart, changesSomething) == EditReady) iff (eventMatched and read == EditReturned and endAfterStart and changesSomething)
-pure def lawANamedReadIsNeverAnsweredAsARead(eventMatched: bool, read: EditRead, endAfterStart: bool, changesSomething: bool): bool =
-  preparedEdit(eventMatched, read, true, endAfterStart, changesSomething) != AnswersTheRead
-pure def lawAnUnreadableEditAsksTheOwner(byName: bool, endAfterStart: bool, changesSomething: bool): bool =
-  preparedEdit(true, EditUnreadable, byName, endAfterStart, changesSomething) == AsksTheOwner
+pure def lawOnlyAHoldableEditIsReady(eventMatched: bool, read: EditRead, endAfterStart: bool, changesSomething: bool): bool =
+  (preparedEdit(eventMatched, read, endAfterStart, changesSomething) == EditReady) iff (eventMatched and read == EditReturned and endAfterStart and changesSomething)
+pure def lawAnUnreadableEditAnswersTheRead(endAfterStart: bool, changesSomething: bool): bool =
+  preparedEdit(true, EditUnreadable, endAfterStart, changesSomething) == AnswersTheRead
+pure def lawAReadAskingNoChangeIsAnswered(endAfterStart: bool, changesSomething: bool): bool =
+  preparedEdit(true, NoChangeReturned, endAfterStart, changesSomething) == AnswersTheRead
 ```

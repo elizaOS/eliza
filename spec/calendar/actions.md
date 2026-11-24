@@ -524,6 +524,29 @@ pure def lawUnsaidChatCreateIsReviewed(provider: WriteProvider): bool =
   writeRoute(provider, true, true, chatCreateReviewed(false)) == QueueApproval
 ```
 
+### A new event the owner put on the phone's own calendar is proposed on the phone
+
+The phone's own calendar is written only through a review on the phone.
+Whether the owner asked to put a new event on the phone's own calendar
+is the model's reading of the request, in any language, sent with the
+create; code matches no calendar words. When the model reads that and the
+phone negotiated its own calendar for the turn, the Calendar action saves
+nothing and the result tells the model to propose the event on the phone
+instead. On a device that offers no phone calendar, or when the model did
+not read a phone calendar, the create goes on as any chat create.
+
+```quint
+type CreateStore = CreateHere | ProposeOnPhone
+pure def createStore(phoneCalendarAsked: bool, phoneCalendarOffered: bool): CreateStore =
+  if (phoneCalendarAsked and phoneCalendarOffered) ProposeOnPhone else CreateHere
+pure def lawAPhoneCalendarCreateIsNeverSavedHere(phoneCalendarOffered: bool): bool =
+  (createStore(true, phoneCalendarOffered) == CreateHere) iff not(phoneCalendarOffered)
+pure def lawWithoutAPhoneCalendarTheCreateGoesOn(phoneCalendarAsked: bool): bool =
+  createStore(phoneCalendarAsked, false) == CreateHere
+pure def lawAnUnaskedCreateGoesOn(phoneCalendarOffered: bool): bool =
+  createStore(false, phoneCalendarOffered) == CreateHere
+```
+
 ### A resident delete runs at once only for the one event the owner named, and otherwise asks in chat
 
 The resident calendar has no review of its own, so a delete there runs at
@@ -532,9 +555,12 @@ owner's own words point at one event. The owner's own words are the
 request the host bound to the turn when it holds one, else the turn's
 text. Whether the owner asked to delete, said yes or turned a delete down
 is the model's reading of the request, in any language, sent with it as
-the owner's answer; code matches no delete, yes or decline words. A
-decline the model read ("don't delete Dentist", "no, keep it") keeps the
-event and deletes nothing. The owner's words point at an event when its
+the owner's answer: yes for a request that asks to delete or agrees to it
+("delete Dentist", "yes, delete it", "sí, bórralo"), no for one that
+turns it down, in a first request or an answer ("don't delete Dentist",
+"keep Dentist", "no, keep it"); code matches no delete, yes or decline
+words. A decline keeps the event and deletes nothing, even when the
+owner's words point at it. The owner's words point at an event when its
 whole title is in them, as a reviewed phone request names an event
 ("Delete Willow Harbor QA", "歯医者を削除して"), a read of every listed
 calendar found no other event their words name, and that read was

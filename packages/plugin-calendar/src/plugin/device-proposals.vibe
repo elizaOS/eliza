@@ -115,7 +115,7 @@ function keyOf(operation: DeviceOperation): FormKey | undefined {
 const unreached: Readonly<Record<ProposalReach, string>> = {
   AnyView: "the owner's screen on this message does not allow this Calendar operation",
   HomeOrCalendar: "the owner's screen on this message is neither Home nor the phone's Calendar, or it selects an app Calendar record",
-  SelectedOnPhone: "nothing this operation needs is selected in the phone's Calendar on the owner's screen on this message, so ask the owner to select it",
+  SelectedOnPhone: "nothing this operation needs is selected in the phone's Calendar on the owner's screen on this message, so ask the owner to select it when the request is about that exact event or calendar; a new event on the phone's own calendar needs no selection and uses calendar_create_local",
 }
 
 function form(key: FormKey, schema: ActionParameterSchema, type: DeviceOperation["type"], guidance: string): ProposalForm {
@@ -129,7 +129,7 @@ const forms: readonly ProposalForm[] = [
   form("next", object({ type: typed("calendar_read_next") }), "calendar_read_next",
     "For next-event discovery use calendar_read_next; the phone fixes a window from now through the next 30 local days, discovers its readable calendars in a foreground review and shares only the approved next event, or that there is none. Never infer a calendar from what is on screen; no background access is granted."),
   form("createLocal", object({ type: typed("calendar_create_local"), fields: fieldsSchema }), "calendar_create_local",
-    "For a request to add an event to the phone's own calendar use calendar_create_local, with the title in the owner's words, description and location empty unless the owner gave them, and the day and time the owner said on the phone's clock; its start must be a clock time the owner said. It holds one timed event: repeats, guests and all-day events use the CALENDAR action. The phone saves it to its default On this phone calendar after the owner confirms it."),
+    "For a request to add an event to the phone's own calendar use calendar_create_local, sent as operation { type, fields: { title, description, location, start, end, timeZone } } with start and end as UTC instants, never startAt or a length; the title is in the owner's words, description and location empty unless the owner gave them, and the day and time the owner said on the phone's clock; its start must be a clock time the owner said. It holds one timed event: repeats, guests and all-day events use the CALENDAR action. The phone saves it to its default On this phone calendar after the owner confirms it."),
   form("create", object({ type: typed("calendar_create"), source: sourceSchema, fields: fieldsSchema }), "calendar_create",
     "calendar_create adds an event to the calendar selected on the phone; copy the selected calendar's source exactly."),
   form("readSelected", object({ type: typed("calendar_read_selected"), target: targetSchema }), "calendar_read_selected",
@@ -296,8 +296,8 @@ effect function readEdit(runtime: IAgentRuntime, request: string, fields: Calend
   const extracted = typeof answer === "string" ? parseJsonModelRecord(answer) : null
   if (extracted === null || typeof extracted.requiresInput !== "boolean") return { read: "EditUnreadable" }
   if (extracted.requiresInput) {
-    const question = typeof extracted.question === "string" && extracted.question.trim() !== "" ? extracted.question.trim() : undefined
-    return { read: "QuestionReturned", ...(question === undefined ? {} : { question }) }
+    const question = typeof extracted.question === "string" ? extracted.question.trim() : ""
+    return question === "" ? { read: "EditUnreadable" } : { read: "QuestionReturned", question }
   }
   const changes: Partial<Record<EditKey, string>> = {}
   for (const key of editKeys) {
@@ -311,7 +311,6 @@ effect function readEdit(runtime: IAgentRuntime, request: string, fields: Calend
 
 const timeReady = "The event is ready for time-change review. Confirm the new time to update it; nothing has changed yet."
 const editReady = "The event is ready for update review. Confirm the requested changes; nothing has changed yet."
-const editNeedsInput = "The requested change needs clarification. Nothing was changed."
 const editTexts: Readonly<Record<Exclude<EditPrepared, "EditReady" | "AnswersTheRead" | "AsksTheOwner">, string>> = {
   NoEventMatched: "No event matched this reviewed lookup. Nothing was changed.",
   EndNotAfterStart: "The requested end is not after the requested start. Say the new start and end again. Nothing was changed.",
@@ -321,16 +320,15 @@ const editTexts: Readonly<Record<Exclude<EditPrepared, "EditReady" | "AnswersThe
 effect function continueCalendar(runtime: IAgentRuntime, read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "startedAt" | "timeZone">): (ReadContinuation | undefined)!! {
   const zone = phoneZone(original)
   const shared = sharedEvent(read)
-  const byName = read.operation.type === "calendar_named"
   if (zone === undefined || shared === undefined) return undefined
   if (shared === "NoMatch") return { text: editTexts.NoEventMatched }
   const edit = try readEdit(runtime, original.ownerText, shared.fields, zone, original.startedAt)
   const edited: CalendarFields = { ...shared.fields, ...edit.changes }
   const changed = editKeys.filter((key) => edited[key] !== shared.fields[key])
-  const verdict = preparedEdit(true, edit.read, byName, Date.parse(edited.end) > Date.parse(edited.start), changed.length > 0)
+  const verdict = preparedEdit(true, edit.read, Date.parse(edited.end) > Date.parse(edited.start), changed.length > 0)
   switch (verdict) {
     case "AnswersTheRead": return undefined
-    case "AsksTheOwner": return { text: edit.question ?? editNeedsInput }
+    case "AsksTheOwner": return edit.question === undefined ? undefined : { text: edit.question }
     case "EditReady": return {
       operation: { type: "calendar_update", target: shared.target, fields: edited },
       text: changed.every((key) => key === "start" || key === "end" || key === "timeZone") ? timeReady : editReady,
