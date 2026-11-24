@@ -1,3 +1,4 @@
+// spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { driver } from "./drivers/cloud__services__speechRelay.ts";
@@ -8,7 +9,7 @@ import type { Session } from "../gen/cloud__services__speechRelay.ts";
 import { sessionColumns, sessionRows } from "../src/services/speech-session.vibe";
 import type { Store } from "../src/store/connection.vibe";
 
-describe("scratch U3", () => {
+describe("Speech session (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\")", () => {
   it("walks the session machine through the driver", async () => {
     await driver.reset();
     const exp = 60_000, cred = 10 ** 13;
