@@ -256,13 +256,26 @@ function clockSpellings(clock: StatedClockTime): readonly string[] {
       : minute === 45 ? [`quarter to ${next}`, `quarter to ${(hour + 1) % 12 === 0 ? 12 : (hour + 1) % 12}`] : [])]
 }
 
-function clockWords(text: string): string {
-  const words = text.normalize("NFKC").toLowerCase()
-    .replace(/\b([ap])\.?\s?m\b\.?/gu, " $1m ")
+const meridiemWord = /\b([ap])(\.?)\s?m\b(\.?)/gu
+const iAfter = /^\s+i(?![\p{L}\p{N}'’])/u
+const iBefore = /(?:^|[^\p{L}\p{N}'’])i\s+$/u
+// The verb of "am I free?" and "I am", which is no half of the day.
+const amVerb = " amverb "
+
+/** The owner's words as clock tokens: lower case, "4pm" and "4 p.m." as "4 pm", "o'clock" as "oclock", a dash as "-", other punctuation dropped. */
+function clockTokens(text: string): readonly string[] {
+  const lowered = text.normalize("NFKC").toLowerCase().replace(/(\d)(?=[a-z])/gu, "$1 ")
+  return lowered
+    .replace(meridiemWord, (found: string, half: string, dot: string, after: string, at: number) =>
+      half === "a" && dot === "" && after === "" && (iAfter.test(lowered.slice(at + found.length)) || iBefore.test(lowered.slice(0, at))) ? amVerb : ` ${half}m `)
     .replace(/\bo['’]\s?clock\b/gu, "oclock")
-    .replace(/(\d)(?=[a-z])/gu, "$1 ")
-    .replace(/\.(?!\d)|[^\p{L}\p{N}:.]+/gu, " ")
-  return ` ${words.replace(/\s+/gu, " ").trim()} `
+    .replace(/[-–—]/gu, " - ")
+    .replace(/\.(?!\d)|[^\p{L}\p{N}:.-]+/gu, " ")
+    .trim().split(/\s+/u).filter((word) => word !== "")
+}
+
+function clockWords(text: string): string {
+  return ` ${clockTokens(text).filter((word) => word !== "-").join(" ")} `
 }
 
 export function clockHeldByWords(clock: StatedClockTime, text: string): boolean {
@@ -283,29 +296,27 @@ const windowJoins = new Set(["and", "to", "until", "till", "through", "-"])
 export interface WindowSides {
   readonly start: string
   readonly end: string
+  readonly phrase: string
 }
 
-/** The clock words on each side of the first stated range in the owner's words ("between noon and five", "from 2 to 4 PM", "2pm-4pm"). */
-export function windowSidesInWords(text: string): WindowSides | undefined {
-  const words = text.normalize("NFKC").toLowerCase()
-    .replace(/(\d)(?=[a-z])/gu, "$1 ")
-    .replace(/\b([ap])\.?\s?m\b\.?/gu, " $1m ")
-    .replace(/\bo['’]\s?clock\b/gu, "oclock")
-    .replace(/[-–—]/gu, " - ")
-    .replace(/\.(?!\d)|[^\p{L}\p{N}:.-]+/gu, " ")
-    .trim().split(/\s+/u)
-  const clockWord = (at: number) => windowClockWord.test(words[at] ?? "")
+/** The clock words on each side of every stated range in the owner's words ("between noon and five", "from 2 to 4 PM", "2pm-4pm"); the "to" of "quarter to" joins nothing. */
+export function windowRangesInWords(text: string): readonly WindowSides[] {
+  const words = clockTokens(text)
+  const quarterTo = (at: number) => words[at] === "to" && words[at - 1] === "quarter"
+  const clockWord = (at: number) => windowClockWord.test(words[at] ?? "") || quarterTo(at)
+  const ranges: WindowSides[] = []
   for (let join = 1; join < words.length - 1; join += 1) {
     const joined = words[join] ?? ""
-    if (!windowJoins.has(joined)) continue
+    if (!windowJoins.has(joined) || quarterTo(join)) continue
     let from = join
     while (from > 0 && join - from < 5 && clockWord(from - 1)) from -= 1
     let to = join + 1
     while (to < words.length && to - join <= 5 && clockWord(to)) to += 1
     if (from === join || to === join + 1 || (joined === "and" && words[from - 1] !== "between")) continue
-    return { start: words.slice(from, join).join(" "), end: words.slice(join + 1, to).join(" ") }
+    ranges.push({ start: words.slice(from, join).join(" "), end: words.slice(join + 1, to).join(" "), phrase: words.slice(joined === "and" ? from - 1 : from, to).join(" ") })
+    join = to - 1
   }
-  return undefined
+  return ranges
 }
 
 const leadingDecline = /^[\s"“'‘]*(?:no(?!\s+(?:need|longer)\b)|nope|nah|wait|hold\s+on|never\s*mind|nevermind|keep\s+it|leave\s+it|forget\s+(?:it|that))\b|^\s*cancel\s+that\s*[.!]*\s*$/iu

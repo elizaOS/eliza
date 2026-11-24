@@ -138,9 +138,11 @@ A time is held by the owner's words when they write it in digits ("1:10
 pm", "13:10", "4"), spell it with its minutes ("one ten PM", "one oh five
 pm", "six PM"), or say noon, midnight, or half past, a quarter past or a
 quarter to the hour; written with am or pm, it is that half of the day
-only. A time the words hold is kept. A time the words do not hold is kept
-only when the model says the owner stated no clock time ("tomorrow
-afternoon", "push it back an hour"): a time the model chose is no misread,
+only. The "am" of "am I" and "I am" ("between 2 and 4, am I free?") is
+the verb, no half of the day. A time the words hold is kept. A time the
+words do not hold is kept only when the model says the owner stated no
+clock time ("tomorrow afternoon", "push it back an hour"): a time the
+model chose is no misread,
 and a check of every time would refuse those requests. A time the words
 do not hold that the model calls stated, or sent without saying which,
 changes nothing, and the result tells the model which time it sent, so it
@@ -206,47 +208,61 @@ pure def lawAWindowCheckNeverAsksForADeclaration(declared: bool, statedByOwner: 
 
 A free-time window the model calls a stated range is read only when the
 owner's words fit it one way on its day and that way is the window sent.
-Code finds the range in the owner's words: clock words for the start and
-for the end, joined by "and" after "between", or by "to", "until",
+Code finds every range in the owner's words: clock words for the start
+and for the end, joined by "and" after "between", or by "to", "until",
 "till", "through" or a dash ("between noon and five", "from 2 to 4 PM",
-"2pm-4pm"). It reads the start only from the clock words before the join
-and the end only from those after it, so a date or a length elsewhere in
-the request ("on the 12th", "find me 12 minutes") adds no reading. It
-takes each reading of the window's start and of its end, in either half
-of the day, that its side holds, and pairs them where the end comes after
-the start on that day. When one side holds a single reading, the other
-side takes the reading nearest it, so the window fits at most one way:
-"from 2 to 4 PM" is 2 to 4 PM, and "from 9 AM to 11" is 9 to 11 AM.
-"Between noon and five" and "from one ten PM to two PM" fit one way and
-are read. Bare hours on both sides that fit more than one way ("from 2 to
-4": 2 to 4 AM, 2 AM to 4 PM, or 2 to 4 PM) read nothing, and the result
-lists each pairing, so the model asks the owner which one they mean or,
-when the conversation already settles it, sends that window as one it
-read (statedClock none). A window the words fit one other way ("from 2 to
-4 PM" sent as 2 AM to 4 PM) reads nothing, and the result names the
-window that fits, so the model sends it. A window that runs past
-midnight, one whose request holds no such range, and one the model did
-not call a stated range, are not paired.
+"2pm-4pm"); the "to" of "quarter to" joins nothing. It reads each range's
+start only from the clock words before its join and its end only from
+those after it, so a date or a length elsewhere in the request ("on the
+12th", "find me 12 minutes", "1 to 2 hours") adds no reading. In each
+range it takes each reading of the window's start and of its end, in
+either half of the day, that its side holds, and pairs them where the end
+comes after the start on that day. A reading of the start before the
+current minute is a window no free-time question reads (actions.md, "A
+free-time window starts no earlier than the current minute") and is not
+counted, so "from 2 to 4 today" asked at 11 AM fits only 2 to 4 PM. A
+window whose start is the current minute is under way: its start is the
+one sent, which is not checked against the owner's words, and only its
+end is paired, so "between 1 and 5 today" at 1 PM is 1 to 5 PM. When one
+side holds a single reading, the other side takes the reading nearest
+it, so the window fits at most one way: "from 2 to 4 PM" is 2 to 4 PM,
+and "from 9 AM to 11" is 9 to 11 AM. "Between noon and five" and "from
+one ten PM to two PM" fit one way and are read. Bare hours on both sides
+that fit more than one way ("from 2 to 4" tomorrow: 2 to 4 AM, 2 AM to 4
+PM, or 2 to 4 PM) read nothing, and the result lists each pairing, so the
+model asks the owner which one they mean or, when the conversation
+already settles it, sends that window as one it read (statedClock none).
+A window the words fit one other way ("from 2 to 4 PM" sent as 2 AM to 4
+PM) reads nothing, and the result names the window that fits and the
+time sent on the side that differs, so the model sends it. A window whose
+request holds a range that fits it no way ("find me 12 minutes between 2
+and 4" sent from noon) reads nothing, and the result names the request's
+ranges, so the model sends the window the owner stated. A window that
+runs past midnight, one whose request holds no such range, and one the
+model did not call a stated range, are not paired.
 
 ```quint
-type WindowPairing = PairingSettled | PairingOpen | PairingOther
-pure def windowPairing(statedRange: bool, sameDay: bool, pairings: int, sentFits: bool): WindowPairing =
-  if (not(statedRange and sameDay) or pairings == 0) PairingSettled
+type WindowPairing = PairingSettled | PairingOpen | PairingOther | PairingNone
+pure def windowPairing(statedRange: bool, sameDay: bool, rangeInWords: bool, pairings: int, sentFits: bool): WindowPairing =
+  if (not(statedRange and sameDay and rangeInWords)) PairingSettled
+  else if (pairings == 0) PairingNone
   else if (pairings > 1) PairingOpen
   else if (sentFits) PairingSettled
   else PairingOther
 pure def windowFits(startReadings: int, endReadings: int, pairings: int): int =
   if ((startReadings == 1 or endReadings == 1) and pairings > 1) 1 else pairings
 pure def lawAWindowTheWordsFitMoreThanOneWayReadsNothing(pairings: int, sentFits: bool): bool =
-  (windowPairing(true, true, pairings, sentFits) == PairingOpen) iff pairings > 1
+  (windowPairing(true, true, true, pairings, sentFits) == PairingOpen) iff pairings > 1
 pure def lawAWindowTheWordsFitAnotherWayReadsNothing(sentFits: bool): bool =
-  (windowPairing(true, true, 1, sentFits) == PairingOther) iff not(sentFits)
-pure def lawAnUnstatedWindowIsNotPaired(sameDay: bool, pairings: int, sentFits: bool): bool =
-  windowPairing(false, sameDay, pairings, sentFits) == PairingSettled
-pure def lawAWindowPastMidnightIsNotPaired(statedRange: bool, pairings: int, sentFits: bool): bool =
-  windowPairing(statedRange, false, pairings, sentFits) == PairingSettled
-pure def lawAWindowWithoutARangeIsNotPaired(statedRange: bool, sameDay: bool, sentFits: bool): bool =
-  windowPairing(statedRange, sameDay, 0, sentFits) == PairingSettled
+  (windowPairing(true, true, true, 1, sentFits) == PairingOther) iff not(sentFits)
+pure def lawAWindowItsRangeFitsNoWayReadsNothing(sentFits: bool): bool =
+  windowPairing(true, true, true, 0, sentFits) == PairingNone
+pure def lawAnUnstatedWindowIsNotPaired(sameDay: bool, rangeInWords: bool, pairings: int, sentFits: bool): bool =
+  windowPairing(false, sameDay, rangeInWords, pairings, sentFits) == PairingSettled
+pure def lawAWindowPastMidnightIsNotPaired(statedRange: bool, rangeInWords: bool, pairings: int, sentFits: bool): bool =
+  windowPairing(statedRange, false, rangeInWords, pairings, sentFits) == PairingSettled
+pure def lawAWindowWithoutARangeIsNotPaired(statedRange: bool, sameDay: bool, pairings: int, sentFits: bool): bool =
+  windowPairing(statedRange, sameDay, false, pairings, sentFits) == PairingSettled
 pure def lawASideWithOneReadingFitsOneWay(readings: int, pairings: int): bool =
   windowFits(1, readings, pairings) <= 1 and windowFits(readings, 1, pairings) <= 1
 pure def lawBareSidesKeepEveryFit(pairings: int): bool = windowFits(2, 2, pairings) == pairings
