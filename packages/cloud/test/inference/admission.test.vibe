@@ -111,7 +111,7 @@ describe("WP5 Inference: chat admission", () => {
     }
     try check(() => assert.deepStrictEqual(answers, {
       unsupportedField: "400 invalid_request unsupported_field",
-      planningTurn: { counts: { inputTokens: 17, outputTokens: 8 }, micros: 39, image: false },
+      planningTurn: { counts: { inputTokens: 17, outputTokens: 8 }, outputCap: 8, micros: 39, image: false },
       emptyCacheKey: "400 invalid_request",
       emptyMessages: "400 invalid_request",
       tooManyTokens: "400 invalid_request",
@@ -119,9 +119,9 @@ describe("WP5 Inference: chat admission", () => {
       sourcelessImage: "400 invalid_request",
       openStrictSchema: "400 invalid_request",
       notJson: "400 invalid_request",
-      accepted: { counts: { inputTokens: 10, outputTokens: 64 }, micros: 166, image: true },
-      defaultOutput: { counts: { inputTokens: 10, outputTokens: 4096 }, micros: 9842, image: false },
-      shortDefaultOutput: { counts: { inputTokens: 10, outputTokens: 500 }, micros: 1212, image: false }
+      accepted: { counts: { inputTokens: 10, outputTokens: 64 }, outputCap: 64, micros: 166, image: true },
+      defaultOutput: { counts: { inputTokens: 10, outputTokens: 500 }, outputCap: 4096, micros: 1212, image: false },
+      shortDefaultOutput: { counts: { inputTokens: 10, outputTokens: 500 }, outputCap: 500, micros: 1212, image: false }
     }))
     try check(() => assert.deepStrictEqual(reached.length, 12))
   }))
