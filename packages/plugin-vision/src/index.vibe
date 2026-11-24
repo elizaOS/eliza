@@ -12,10 +12,21 @@ module node {
   import { promisify } from "node:util"
   import sharp from "sharp"
   import type { CaptureSource } from "../gen/vision.ts"
+  import { getConfiguredOwnerEntityIds, type IAgentRuntime } from "@elizaos/core"
 
   const run = promisify(execFile)
   export const captureIdentity = randomUUID
 
+  /** @throws {never} */
+  export function configuredOwnerIds(runtime: IAgentRuntime): readonly string[] {
+    try {
+      return getConfiguredOwnerEntityIds(runtime)
+    } catch {
+      return []
+    }
+  }
+
+  /** @throws {never} */
   export function hasDesktopCapture(): boolean {
     return platform === "darwin"
   }
@@ -41,7 +52,7 @@ module node {
     }
   }
 }
-import { captureIdentity, captureNative, hasDesktopCapture } from node
+import { captureIdentity, captureNative, configuredOwnerIds, hasDesktopCapture } from node
 
 export error VisionRefused { reason: string }
 
@@ -134,7 +145,7 @@ function parameter(options: unknown, key: string): unknown {
 }
 
 function owner(runtime: IAgentRuntime, message: Memory): boolean {
-  return runtime.character.ownerEntityId === message.entityId
+  return configuredOwnerIds(runtime).includes(message.entityId)
 }
 
 export const visionAction: Action = {

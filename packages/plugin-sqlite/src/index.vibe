@@ -42,7 +42,7 @@ module node {
     database.prepare("INSERT INTO eliza_sqlite_owner (singleton, agent_id) VALUES (1, ?)").run(agentId)
   }
 
-  export function applySqliteVersion(database: DatabaseSync, migration: SqliteMigration): void {
+  export function applySqliteVersion(database: DatabaseSync, migration: { readonly sql: string; readonly revision: number }): void {
     database.exec(migration.sql)
     database.exec("PRAGMA user_version = " + migration.revision)
   }

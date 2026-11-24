@@ -23,7 +23,7 @@ module node {
     readonly snapshot: () => { sequence: number; output: string }
   }
 
-  export function startPty(launch: TerminalLaunch, exited: () => void): PtyConnection {
+  export function startPty(launch: { readonly executable: string; readonly arguments: readonly string[]; readonly directory: string; readonly environment: Readonly<Record<string, string>> }, exited: () => void): PtyConnection {
     const process = spawn(launch.executable, [...launch.arguments], {
       name: "xterm-256color",
       cols: 80,
@@ -40,8 +40,13 @@ module node {
     const exit = process.onExit(exited)
     return { process, dispose, exit, snapshot: () => ({ sequence, output }) }
   }
+
+  /** @throws {never} */
+  export function terminalOutput(connection: PtyConnection): { sequence: number; output: string } {
+    return connection.snapshot()
+  }
 }
-import { startPty } from node
+import { startPty, terminalOutput } from node
 
 export effect function openTerminalSession(launch: TerminalLaunch) {
   const active = try Ref.make(initial)
@@ -59,7 +64,7 @@ export effect function openTerminalSession(launch: TerminalLaunch) {
     effect read(ownerId: string) {
       const state = try gate.get()
       try assertTerminalOwner(ownerId, launch)
-      return { phase: state.terminalPhase, epoch, ...process.snapshot() }
+      return { phase: state.terminalPhase, epoch, ...terminalOutput(process) }
     },
     effect write(ownerId: string, input: string) {
       try assertTerminalOwner(ownerId, launch)

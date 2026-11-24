@@ -39,6 +39,7 @@ module node {
   import type { NativeTransfer, WalletConfiguration, WalletCustodian } from "./custody.vibe"
   import type { WalletRun } from "../gen/wallet.ts"
 
+  /** @throws {never} */
   export function walletDigest(parts: readonly string[]): string {
     return createHash("sha256").update(JSON.stringify(parts)).digest("hex")
   }
@@ -244,6 +245,7 @@ module node {
     return writeExclusive(directory, record, "submission")
   }
 
+  /** @throws {never} */
   export function walletJournalDirectory(stateDirectory: string, agentId: string): string {
     return join(stateDirectory, "wallet", walletDigest([agentId]))
   }

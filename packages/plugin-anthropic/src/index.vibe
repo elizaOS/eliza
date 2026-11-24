@@ -1,8 +1,49 @@
 // spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"
-import { ModelType, type ChatMessage, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage } from "@elizaos/core"
+import { ModelType, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TokenUsage } from "@elizaos/core"
 import { Cause, Exit, Queue, Schema, Stream } from "effect"
 import * as Sse from "effect/encoding/Sse"
 import { Machine, anthropicOutputBudget, anthropicSampling, anthropicTransport, machine, type AnthropicAuth, type AnthropicFinish, type AnthropicOutputCap } from "../gen/anthropic.effect.vibe"
+
+type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
+
+interface StreamFinish {
+  readonly text: string
+  readonly reason: string | undefined
+  readonly usage: TokenUsage | undefined
+}
+
+module edge {
+  import { Effect } from "effect"
+  import type { TextStreamResult, TokenUsage } from "@elizaos/core"
+
+  function tracked<T>(promise: Promise<T>): Promise<T> {
+    void promise.catch(() => undefined)
+    return promise
+  }
+
+  /** @throws {never} */
+  export function streamedResult(textStream: AsyncIterable<string>, finish: Effect.Effect<{ readonly text: string; readonly reason: string | undefined; readonly usage: TokenUsage | undefined }, unknown>, signal: AbortSignal | undefined): TextStreamResult {
+    const result = tracked(Effect.runPromise(finish, { signal }))
+    return {
+      textStream,
+      text: tracked(result.then((done) => done.text)),
+      usage: tracked(result.then((done) => done.usage)),
+      finishReason: tracked(result.then((done) => done.reason)),
+    }
+  }
+
+  /** @throws {never} */
+  export function settledResult(text: string, finishReason: string | undefined, usage: TokenUsage | undefined, toolCalls: unknown): TextStreamResult {
+    return {
+      textStream: (async function* () { if (text !== "") yield text })(),
+      text: Promise.resolve(text),
+      finishReason: Promise.resolve(finishReason),
+      usage: Promise.resolve(usage),
+      toolCalls,
+    }
+  }
+}
+import { settledResult, streamedResult } from edge
 
 module node {
   import { execFile, spawn } from "node:child_process"
@@ -155,11 +196,6 @@ const events = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Struct({
   })),
 })))
 
-function tracked<T>(promise: Promise<T>): Promise<T> {
-  void promise.catch(() => undefined)
-  return promise
-}
-
 effect function streamAnthropic(response: Response, run: Machine.Shape, signal?: AbortSignal) {
   if (response.body === null || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream") {
     try Effect.ignore(tryPromise(async () => { await response.body?.cancel() }))
@@ -204,17 +240,13 @@ effect function streamAnthropic(response: Response, run: Machine.Shape, signal?:
       promptTokens, completionTokens, totalTokens: promptTokens + completionTokens,
       cacheReadInputTokens: counts.cache_read_input_tokens, cacheCreationInputTokens: counts.cache_creation_input_tokens,
     } : undefined
-    return { text, reason: terminal ?? undefined, usage }
+    const finish: StreamFinish = { text, reason: terminal ?? undefined, usage }
+    return finish
   }
-  const result = tracked(runPromise(Effect.onExit(read, (exit) => Exit.isSuccess(exit)
+  const finished = Effect.onExit(read, (exit) => Exit.isSuccess(exit)
     ? Queue.end(out)
-    : Queue.fail(out, new AnthropicFailed({ reason: "Anthropic did not complete the event stream." }))), { signal }))
-  return {
-    textStream: Stream.toAsyncIterable(Stream.fromQueue(out)),
-    text: tracked(result.then((finish) => finish.text)),
-    usage: tracked(result.then((finish) => finish.usage)),
-    finishReason: tracked(result.then((finish) => finish.reason)),
-  } satisfies TextStreamResult
+    : Queue.fail(out, new AnthropicFailed({ reason: "Anthropic did not complete the event stream." })))
+  return streamedResult(Stream.toAsyncIterable(Stream.fromQueue(out)), finished, signal)
 }
 
 effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, tier: string) {
@@ -225,7 +257,7 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
     hasSchema: params.responseSchema !== undefined, wantsStream: params.stream === true, streamingAllowed: setting(runtime, "ELIZA_ANTHROPIC_DISABLE_STREAM") !== "true",
   }
   const model = params.model || setting(runtime, "ANTHROPIC_" + tier + "_MODEL") || setting(runtime, "ANTHROPIC_MODEL") || "claude-sonnet-4-6"
-  const capacity = Number(setting(runtime, "ANTHROPIC_MAX_OUTPUT_TOKENS") || 8192)
+  const capacity = outputCapacity(runtime)
   const cap: AnthropicOutputCap = params.maxTokens === undefined || params.omitMaxTokens ? { tag: "AutoCap" } : { tag: "AskedCap", tokens: params.maxTokens }
   const maxTokens = anthropicOutputBudget(capacity, cap)
   const transport = anthropicTransport(auth, input)
@@ -282,14 +314,13 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
       ? [{ id: part.id, name: part.name, arguments: part.input }] : [])
     if (!params.stream && calls.length === 0) return text
     const usage = reply.usage
-    return {
-      textStream: (async function* () { if (text !== "") yield text })(),
-      text: Promise.resolve(text),
-      finishReason: Promise.resolve(reply.stop_reason ?? undefined),
-      usage: Promise.resolve(usage && { promptTokens: usage.input_tokens, completionTokens: usage.output_tokens, totalTokens: usage.input_tokens + usage.output_tokens, cacheReadInputTokens: usage.cache_read_input_tokens, cacheCreationInputTokens: usage.cache_creation_input_tokens }),
-      toolCalls: calls,
-    } satisfies TextStreamResult
+    const tokens: TokenUsage | undefined = usage && { promptTokens: usage.input_tokens, completionTokens: usage.output_tokens, totalTokens: usage.input_tokens + usage.output_tokens, cacheReadInputTokens: usage.cache_read_input_tokens, cacheCreationInputTokens: usage.cache_creation_input_tokens }
+    return settledResult(text, reply.stop_reason ?? undefined, tokens, calls)
   }
+}
+
+function outputCapacity(runtime: IAgentRuntime): number {
+  return Number(setting(runtime, "ANTHROPIC_MAX_OUTPUT_TOKENS") || 64000)
 }
 
 function textHandler(tier: string) {
@@ -304,7 +335,7 @@ function describe(runtime: IAgentRuntime, input: ImageDescriptionParams | string
     const candidate = /^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/.exec(params.imageUrl)
     const source = candidate === null ? { type: "url", url: params.imageUrl } : { type: "base64", media_type: candidate[1], data: candidate[2] }
     const answer = try sdkAnswer(runtime, secret, {
-      model: setting(runtime, "ANTHROPIC_IMAGE_MODEL") || "claude-sonnet-4-6", max_tokens: 4096,
+      model: setting(runtime, "ANTHROPIC_IMAGE_MODEL") || "claude-sonnet-4-6", max_tokens: outputCapacity(runtime),
       messages: [{ role: "user", content: [{ type: "image", source }, { type: "text", text: params.prompt ?? "Describe this image." }] }],
     })
     if (!["end_turn", "stop_sequence"].includes(answer.stop_reason ?? "")) throw new AnthropicFailed({ reason: "Anthropic image description did not complete." })

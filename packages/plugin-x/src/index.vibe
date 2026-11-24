@@ -17,11 +17,16 @@ export interface XAccount {
 
 const ProviderEvent = Schema.Struct({ id: Schema.String, sender_id: Schema.optionalKey(Schema.String), text: Schema.optionalKey(Schema.String), dm_conversation_id: Schema.optionalKey(Schema.String), created_at: Schema.optionalKey(Schema.String), event_type: Schema.optionalKey(Schema.String), participant_ids: Schema.optionalKey(Schema.Array(Schema.String)) })
 
+function sentDmEventId(sent: unknown): string {
+  const body = typeof sent === "object" && sent !== null && "data" in sent ? sent.data : sent
+  return typeof body === "object" && body !== null && "dm_event_id" in body && typeof body.dm_event_id === "string" ? body.dm_event_id : ""
+}
+
 function digits(value: string): number[] { return /^\d+$/.test(value) ? Array.from(value, digit => Number(digit)) : [] }
 
 export effect function connectXAccount(runtime: IAgentRuntime, config: XAccount) {
   const credential = config.credentials
-  const client = try Effect.try({ try: () => new TwitterApi(credential.kind === "oauth2" ? Redacted.value(credential.accessToken) : { appKey: credential.appKey, appSecret: Redacted.value(credential.appSecret), accessToken: Redacted.value(credential.accessToken), accessSecret: Redacted.value(credential.accessSecret) }), catch: () => new XRequestFailed({ stage: "client" }) })
+  const client = try Effect.try({ try: () => credential.kind === "oauth2" ? new TwitterApi(Redacted.value(credential.accessToken)) : new TwitterApi({ appKey: credential.appKey, appSecret: Redacted.value(credential.appSecret), accessToken: Redacted.value(credential.accessToken), accessSecret: Redacted.value(credential.accessSecret) }), catch: () => new XRequestFailed({ stage: "client" }) })
   const profile = try tryPromise({ try: () => client.v2.me(), catch: () => new XRequestFailed({ stage: "identity" }) })
   const ownId = profile.data.id
   if (ownId === "") throw new XRequestFailed({ stage: "identity" })
@@ -55,10 +60,10 @@ export effect function connectXAccount(runtime: IAgentRuntime, config: XAccount)
       journal = xDispatchDmPart(try Ref.get(active), journal)
       if (journal.phase !== "XAwaitingPart") break
       const outcome = try exit(tryPromise(() => recipient.includes("-") ? client.v2.sendDmInConversation(recipient, { text: textPart }) : client.v2.sendDmToParticipant(recipient, { text: textPart })))
-      if (Exit.isSuccess(outcome)) journal = xObserveDmPart({ tag: "XDmAccepted", receiptId: outcome.value.data.dm_event_id ?? "" }, journal)
+      if (Exit.isSuccess(outcome)) journal = xObserveDmPart({ tag: "XDmAccepted", receiptId: sentDmEventId(outcome.value) }, journal)
       else {
         const reason = Cause.findErrorOption(outcome.cause)
-        const issue = Option.isSome(reason) && reason.value instanceof Cause.UnknownError ? reason.value.error : undefined
+        const issue = Option.isSome(reason) && reason.value instanceof Cause.UnknownError ? reason.value.cause : undefined
         const observation = issue instanceof ApiResponseError && issue.code >= 400 && issue.code < 500 ? issue.code === 404 ? "XDmExplicitPermanentRefusal" : "XDmExplicitTransientRefusal" : "XDmOutcomeUnknown"
         journal = xObserveDmPart({ tag: observation }, journal)
       }
@@ -163,7 +168,7 @@ export effect function connectXAccount(runtime: IAgentRuntime, config: XAccount)
 class XConnector extends Service {
   static override serviceType = "twitter"
   override capabilityDescription = "Connects X direct messages and publishing to the selected account"
-  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void>) { super(runtime) }
+  constructor(runtime: IAgentRuntime, readonly close: () => Promise<void> = async () => {}) { super(runtime) }
   static override async start(runtime: IAgentRuntime): Promise<XConnector> {
     const accessToken = runtime.getSetting("TWITTER_ACCESS_TOKEN")
     const appKey = runtime.getSetting("TWITTER_API_KEY")
