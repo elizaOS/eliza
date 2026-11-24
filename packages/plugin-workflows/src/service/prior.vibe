@@ -220,17 +220,19 @@ effect function planImport(rows: EarlierRows, owner: string, importedAt: string)
  * again at the next start. Answers the kept receipt, if there is one.
  */
 export effect function importEarlierWorkflows(store: Store, agentId: string, owner: string, now: number): (EarlierImportReceipt | undefined)!! {
-  return try (effect {
-    const read = try store.readEarlier(agentId, owner)
-    const step = storeImport(read.kind === "kept" ? "ImportReceiptKept" : "NoImportReceipt", read.kind === "absent" ? "EarlierAbsent" : "EarlierReadable")
-    if (step === "KeepImported" && read.kind === "kept") return read.receipt
-    if (step !== "ImportEarlierStore" || read.kind !== "readable") return undefined
-    const plan = try planImport(read.rows, owner, new Date(now).toISOString())
-    const committed = try store.commitImport(agentId, plan.receipt, plan.definitions, plan.runs, plan.sources, owner)
-    if (importSettled(committed) === "ImportReceiptKept") return plan.receipt
-    const again = try store.readEarlier(agentId, owner)
-    return again.kind === "kept" ? again.receipt : undefined
-  } catch effect (error) => try warned(agentId, error))
+  return (importing(store, agentId, owner, now) catch effect (error) => try warned(agentId, error))
+}
+
+effect function importing(store: Store, agentId: string, owner: string, now: number): (EarlierImportReceipt | undefined)!unknown {
+  const read = try store.readEarlier(agentId, owner)
+  const step = storeImport(read.kind === "kept" ? "ImportReceiptKept" : "NoImportReceipt", read.kind === "absent" ? "EarlierAbsent" : "EarlierReadable")
+  if (step === "KeepImported" && read.kind === "kept") return read.receipt
+  if (step !== "ImportEarlierStore" || read.kind !== "readable") return undefined
+  const plan = try planImport(read.rows, owner, new Date(now).toISOString())
+  const committed = try store.commitImport(agentId, plan.receipt, plan.definitions, plan.runs, plan.sources, owner)
+  if (importSettled(committed) === "ImportReceiptKept") return plan.receipt
+  const again = try store.readEarlier(agentId, owner)
+  return again.kind === "kept" ? again.receipt : undefined
 }
 
 effect function warned(agentId: string, error: unknown): undefined!! {

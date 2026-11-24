@@ -76,22 +76,22 @@ pure def carriedAs(form: EarlierForm, validates: bool, sourceFound: bool, idTake
     | EarlierDigest => if (sourceFound) CarriedDigest else NotCarried
     | EarlierSource => NotCarried
   }
-pure def carriedActive(carried: CarriedAs, active: bool, removed: bool, timed: bool, enabled: bool): bool =
+pure def carriedActive(carried: CarriedAs, active: bool, removed: bool, timed: bool, presetOn: bool): bool =
   active and not(removed) and match carried {
     | CarriedTyped => timed
-    | CarriedDigest => enabled
+    | CarriedDigest => presetOn
     | NotCarried => false
   }
 pure def lawEarlierSourceIsNeverCarried(validates: bool, sourceFound: bool, idTaken: bool): bool =
   carriedAs(EarlierSource, validates, sourceFound, idTaken) == NotCarried
 pure def lawATakenIdIsNeverWrittenOver(form: EarlierForm, validates: bool, sourceFound: bool): bool =
   carriedAs(form, validates, sourceFound, true) == NotCarried
-pure def lawAnImportNeverTurnsOnAWorkflowThatWasOff(carried: CarriedAs, removed: bool, timed: bool, enabled: bool): bool =
-  not(carriedActive(carried, false, removed, timed, enabled))
-pure def lawARemovedWorkflowComesBackOff(carried: CarriedAs, active: bool, timed: bool, enabled: bool): bool =
-  not(carriedActive(carried, active, true, timed, enabled))
-pure def lawAManualTypedWorkflowComesBackOff(active: bool, removed: bool, enabled: bool): bool =
-  not(carriedActive(CarriedTyped, active, removed, false, enabled))
+pure def lawAnImportNeverTurnsOnAWorkflowThatWasOff(carried: CarriedAs, removed: bool, timed: bool, presetOn: bool): bool =
+  not(carriedActive(carried, false, removed, timed, presetOn))
+pure def lawARemovedWorkflowComesBackOff(carried: CarriedAs, active: bool, timed: bool, presetOn: bool): bool =
+  not(carriedActive(carried, active, true, timed, presetOn))
+pure def lawAManualTypedWorkflowComesBackOff(active: bool, removed: bool, presetOn: bool): bool =
+  not(carriedActive(CarriedTyped, active, removed, false, presetOn))
 ```
 
 ### Earlier runs come back as finished history, and an earlier run that had not finished never continues
@@ -111,12 +111,12 @@ carried.
 ```quint
 type EarlierRun = EarlierRunFinished | EarlierRunUnfinished
 type ImportedRun = KeptFinished | StoppedByTheUpdate | RunNotImported
-pure def importedRun(run: EarlierRun, workflowCarried: bool, idTaken: bool): ImportedRun =
+pure def importedRun(earlierRun: EarlierRun, workflowCarried: bool, idTaken: bool): ImportedRun =
   if (not(workflowCarried) or idTaken) RunNotImported
-  else if (run == EarlierRunFinished) KeptFinished
+  else if (earlierRun == EarlierRunFinished) KeptFinished
   else StoppedByTheUpdate
 pure def lawAnUnfinishedEarlierRunNeverContinues(workflowCarried: bool, idTaken: bool): bool =
   importedRun(EarlierRunUnfinished, workflowCarried, idTaken) != KeptFinished
-pure def lawRunsFollowTheirWorkflow(run: EarlierRun, idTaken: bool): bool = importedRun(run, false, idTaken) == RunNotImported
-pure def lawATakenRunIdIsNeverWrittenOver(run: EarlierRun, workflowCarried: bool): bool = importedRun(run, workflowCarried, true) == RunNotImported
+pure def lawRunsFollowTheirWorkflow(earlierRun: EarlierRun, idTaken: bool): bool = importedRun(earlierRun, false, idTaken) == RunNotImported
+pure def lawATakenRunIdIsNeverWrittenOver(earlierRun: EarlierRun, workflowCarried: bool): bool = importedRun(earlierRun, workflowCarried, true) == RunNotImported
 ```

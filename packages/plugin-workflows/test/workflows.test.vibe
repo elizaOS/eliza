@@ -889,7 +889,8 @@ it.live('Keep the workflows I saved before this version (spec/workflow/earlierSt
   const rig = try harness({ earlier: { broken: true, workflows: [], revisions: [], executions: [], sources: [] } })
   const unread = rig.service.status() as { readonly earlierImport?: unknown }
   const { receipt: own } = try saved(rig, greeting)
-  try check(() => assert.deepStrictEqual([unread.earlierImport, (try rig.service.list(false)).map((row) => row.id)], [undefined, [own.workflowId]]))
+  const listedFirst = (try rig.service.list(false)).map((row) => row.id)
+  try check(() => assert.deepStrictEqual([unread.earlierImport, listedFirst], [undefined, [own.workflowId]]))
 
   const weekday = { kind: "time", localTime: "07:30", timeZone: "Europe/Paris", days: [1, 2, 3, 4, 5] } as const
   const first = manual("Weekday note", greeting.steps, { trigger: weekday })
@@ -921,7 +922,7 @@ it.live('Keep the workflows I saved before this version (spec/workflow/earlierSt
   try promise(() => writeEarlierStore(rig.host.sql, store))
   const reopened = try openWorkflows(rig.host)
   try reopened.start()
-  const imported = (reopened.status() as { readonly earlierImport?: { readonly importedAt: string } }).earlierImport
+  const imported = (reopened.status() as { readonly earlierImport?: { readonly importedAt: string; readonly workflows: number; readonly runs: number; readonly sources: number; readonly notCarried: readonly unknown[] } }).earlierImport
   try check(() => assert.deepStrictEqual(imported, {
     importedAt: imported?.importedAt ?? "", workflows: 4, runs: 2, sources: 1,
     notCarried: [
