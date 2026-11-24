@@ -284,6 +284,26 @@ pure def selected(which: bool): Set[Field] = {
     assert.deepEqual([domain.selected(true), domain.selected(false)], [["First", "Second"], ["Second"]]);
   });
 
+  test("a record literal beside == and a mapped list literal state their types in the prover's code", async () => {
+    const root = oneRule("steps", "Step records", `type Step = { state: int, out: List[int] }
+type Other = { state: int, out: List[int], spare: bool }
+pure def recordOf(n: int): Step = { state: n, out: List(n) }
+pure def other(n: int): Other = { state: n + 1, out: List(), spare: true }
+pure def lawStepIsItsRecord(n: int): bool = recordOf(n) == { state: n, out: List(n) }
+pure def shifted(n: int): List[int] = List(1, 2).listMap(x => x + n)`);
+    const model = await gen(root, parseSpec(root, "spec/steps.md"));
+    const checked = await tool("vibelang", ["--noEmit", "--strict", "--target", "es2023", "gen/steps.ts"], root);
+    assert.ok(checked.ok, checked.out);
+    const proof = model.render("");
+    // LemmaScript reads past `as` beside == and takes the first record type with these field names, which may be another module's.
+    assert.match(proof, /recordOf\(n\) === typed\d+_steps\(\{ state: n, out: \(\[n\] as number\[\]\) \}\)/);
+    assert.doesNotMatch(proof, /=== \(\{ state: n, out: \(\[n\] as number\[\]\) \} as Step\)/);
+    assert.match(proof, /typed\d+_steps\(\(\[1, 2\] as number\[\]\)\)\.map\(/);
+    const domain = await import(pathToFileURL(path.join(root, "gen", "steps.ts")).href);
+    assert.equal(domain.lawStepIsItsRecord(3), true);
+    assert.deepEqual(domain.shifted(1), [2, 3]);
+  });
+
   test("the explore stage finds a page that breaks a property, keeps the trace, replays it first, and drops it once fixed", { skip: !["linux-x64", "linux-arm64", "darwin-arm64"].includes(`${process.platform}-${process.arch}`) }, async () => {
     if (process.env.TURBO_HASH && hostedCachedFixture()) await installChromium("full");
     const remember: Parameters<typeof explore>[1] = (_fingerprint, run) => run();
@@ -293,7 +313,7 @@ pure def selected(which: bool): Set[Field] = {
     assert.deepEqual(await explore(scratch({ "package.json": manifest({ start: "node server.js" }) }), remember), []);
     const [unserved, silent] = await Promise.all([
       explore(scratch({ "package.json": manifest({ build: "true" }), "index.html": page("") }), remember),
-      explore(scratch({ "package.json": manifest({ start: "node -e \"console.log('starting')\"" }), "index.html": page("") }), remember),
+      explore(scratch({ "package.json": manifest({ start: "node -e \"console.log('starting')\"" }), "index.html": page(""), "src/main.ts": 'import "../../";' }), () => assert.fail("an enclosing import must exercise the server again")),
     ]);
     assert.deepEqual(unserved.map(([ok, stage, summary]) => [ok, stage, summary]), [[false, "explore", "index.html is a page, and package.json has no start or dev script that serves it: add one that prints the address it serves at"]]);
     assert.deepEqual(silent.map(([ok, stage]) => [ok, stage]), [[false, "explore"]]);
@@ -1048,6 +1068,31 @@ pure def alwaysValid(n: int): bool = n <= 2`);
     assert.ok(commits.every(({ picks, result }) => picks.approved === true && JSON.stringify(result) === '{"state":2,"out":["saved"]}'));
   });
 
+  test("adding a witness keeps ordinary simulation, proof and runtime generation stable", async () => {
+    const source = [
+      "type State = { count: int }",
+      "pure val initial: State = { count: offset(1) }",
+      "pure val other = 7",
+      "pure def offset(n: int): int = { val other = n; other + base }",
+      "pure def canAdvance(s: State, amount: int): bool = amount > s.count",
+      "pure def advance(s: State, amount: int): State = { count: amount }",
+      "pure def retreat(s: State): State = { count: s.count - 1 }",
+      "pure def alwaysCounts(s: State): bool = s.count >= 0",
+      "pure val base = 2",
+    ];
+    const emit = async (lines: string[]) => {
+      const root = oneRule("counter", "Count", lines.join("\n"));
+      const m = await gen(root, readSpecs(root)[0]);
+      const runtime = await import(pathToFileURL(path.join(root, "gen", "counter.ts")).href);
+      assert.deepEqual([runtime.initial, runtime.other], [{ count: 3 }, 7]);
+      return [m.harness, m.guardHarness, m.ts, m.render("proof_", false), m.exports.types, m.exports.values];
+    };
+    const steps = Array.from({ length: 10 }, (_, i) => `("advance", other + ${i})`);
+    const guide = `pure val eval_witness_canAdvance = (${steps.join(", ")})`;
+    const [ordinary, guided] = await Promise.all([emit(source), emit([source[0], guide, ...source.slice(1)])]);
+    assert.deepEqual(guided, ordinary);
+  });
+
   test("a concrete witness uses the original guards and rules and supplies its steps to replay", async () => {
     const modelSource = `pure val initial: int = 0
 pure def publish(n: int, amount: int): int = amount
@@ -1097,6 +1142,41 @@ pure def witnessStep_sometimesDone(n: int): int = n`;
     const [command] = again.detail.split("\n").filter((line) => line.includes(`quint run ${reproduction}`));
     const rerun = await tool("quint", command.slice(command.indexOf("quint run ") + "quint ".length).split(" "), ordinary);
     assert.ok(violated(rerun), rerun.out);
+
+    const guardedPath = (first: string, target = "canFinish") => oneRule("gate", "Allow a reachable transition", [
+      "pure val initial: int = 0",
+      "pure def up(n: int, amount: int): int = n + amount",
+      "pure val amountValues = Set(1)",
+      "pure def canMark(n: int): bool = n >= 38",
+      "pure def mark(n: int): int = n + 1",
+      "pure def canFinish(n: int): bool = n >= 39",
+      "pure def finish(n: int): int = 0",
+      "pure def alwaysSafe(n: int): bool = n <= 500",
+      `pure val eval_witness_${target} = (("up", ${first}), "mark", "finish")`,
+    ].join("\n"));
+    const guidedGuard = async (root: string) => {
+      const spec = readSpecs(root)[0], model = await gen(root, spec);
+      const domain = await import(pathToFileURL(path.join(root, "gen/gate.ts")).href);
+      return simulation({ root, fresh: false, used: new Set() }, spec, [spec], model, domain, 1);
+    };
+    const direct = guardedPath("38"), stopped = guardedPath("1");
+    const [complete, fallback, bad] = await Promise.all([guidedGuard(direct), guidedGuard(stopped), guidedGuard(guardedPath("501"))]);
+    for (const result of [complete, fallback]) {
+      assert.ok(result.said.some((r) => r.ok && r.summary.includes("2 of 2 guards allow")), JSON.stringify(result.said));
+      assert.ok(result.said.some((r) => r.ok && r.stage === "replay"));
+    }
+    for (const event of [{ type: "up", amount: 38 }, { type: "mark" }, { type: "finish" }])
+      assert.ok(complete.tested?.events.some((actual) => isDeepStrictEqual(actual, event)), JSON.stringify(complete.tested?.events));
+    const positiveFile = (name: string) => `gen/traces/gate.never_allows_${name}.eval_${name}__1/0.itf.json`;
+    for (const guard of ["canMark", "canFinish"]) {
+      assert.ok(!fs.existsSync(path.join(direct, positiveFile(guard))));
+      assert.ok(fs.existsSync(path.join(stopped, positiveFile(guard))));
+    }
+    assert.ok(bad.said.some((r) => !r.ok && r.stage === "always" && r.detail.includes('up{"amount":501}')), JSON.stringify(bad.said));
+    for (const [root, error] of [
+      [guardedPath("38", "canMark"), /last transition must be guarded by canMark/],
+      [guardedPath("38", "canMissing"), /name a declared .*transition guard/],
+    ] as const) await assert.rejects(gen(root, readSpecs(root)[0]), error);
 
     const refusalSource = `type Clock = { elapsed: int }
 pure val initial: Clock = { elapsed: 0 }
@@ -1335,6 +1415,41 @@ pure val amountValues = Set(0, 1)`;
       "kit/parts/item-one.js": true, "kit/package.json": true,
       "app/gen/a.ts": true, "app/gen/b.ts": false, "aliased/gen/a.ts": true,
     }, "the page reads its code, the files and directories it names, what the packages it imports or runs export, and the generated modules it imports, or all of them where it names none; not what only its checks read, nor what a file it only scans imports");
+    const enclosing = scratch({
+      "package.json": '{"main":"./entry.js"}', "entry.js": 'export default "first";',
+      "app/package.json": "{}", "app/src/main.ts": 'import value from "../../";',
+      "app/vite.config.ts": 'export default { base: "./" };', "unrelated.txt": "outside the page",
+    });
+    const inner = path.join(enclosing, "app"), source = path.join(inner, "src/main.ts");
+    assert.equal(pageInputs(inner), undefined, "a relative import may read the enclosing package entry");
+    fs.writeFileSync(source, 'export const dir = new URL("../../", import.meta.url);');
+    assert.equal(pageInputs(inner), undefined, "a directory URL may be consumed dynamically");
+    fs.writeFileSync(source, 'import path from "node:path"; const dir = import.meta.dirname; export const parent = path.resolve(dir, "../../..");');
+    assert.equal(pageInputs(inner), undefined, "a computed path may alias the source directory");
+    fs.writeFileSync(source, 'export const valid = (part: string) => ![part].includes("..");');
+    const bounded = pageInputs(inner);
+    assert.ok(bounded, "a public Vite base does not read the directory");
+    fs.appendFileSync(path.join(enclosing, "unrelated.txt"), " unrelated edit");
+    assert.equal(pageInputs(inner), bounded);
+    fs.writeFileSync(path.join(inner, "vite.config.ts"), 'const data = { base: "./" }; export default { plugins: [readDirectory(data.base)] };');
+    assert.equal(pageInputs(inner), undefined, "a plugin can read a directory stored in its own base property");
+    fs.writeFileSync(path.join(inner, "vite.config.ts"), 'const defineConfig = (args) => readDirectory(args.base); export default defineConfig({ base: "./" });');
+    assert.equal(pageInputs(inner), undefined, "a user function can consume its base as a directory");
+    fs.writeFileSync(path.join(inner, "vite.config.ts"), 'import { defineConfig as config } from "vite"; export default config({ base: "./" });');
+    assert.ok(pageInputs(inner), "Vite's own config helper accepts a URL base through an alias");
+    fs.writeFileSync(path.join(inner, "vite.config.ts"), 'export default { base: "./" };');
+    fs.symlinkSync(enclosing, path.join(inner, "outer"), "dir");
+    fs.writeFileSync(path.join(inner, "src/main.css"), '@source "../outer";');
+    assert.equal(pageInputs(inner), undefined, "a symlinked Tailwind source is judged by its physical directory");
+    fs.writeFileSync(path.join(inner, "src/main.css"), '@source "../outer/**/*.html";');
+    assert.equal(pageInputs(inner), undefined, "an explicit Tailwind glob cannot be treated as a missing file");
+    fs.unlinkSync(path.join(inner, "outer"));
+    fs.mkdirSync(path.join(enclosing, "bounded"));
+    fs.symlinkSync(path.join(enclosing, "bounded"), path.join(inner, "outer"), "dir");
+    const retargeted = pageInputs(inner);
+    assert.ok(retargeted);
+    fs.writeFileSync(path.join(enclosing, "bounded/class.html"), '<p class="underline">');
+    assert.notEqual(pageInputs(inner), retargeted);
     const beforeBuild = pageInputs(page);
     const build = path.join(workspace, "kit/build");
     fs.mkdirSync(build);
@@ -2735,6 +2850,13 @@ function eachCheck() {
     fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\nexport {};\n");
     assert.deepEqual([commented, await checked(pages)].map((after) => after.map((key: string, i: number) => key !== keys[i])), [[false, false], [true, false]],
       "a page that runs one of the tools reads the code of them all, not their comments, and a page that runs none reads none");
+    fs.renameSync(path.join(root, "vibestack"), path.join(root, "src"));
+    fs.writeFileSync(path.join(root, "package.json"), '{"name":"vibestack","type":"module"}');
+    fs.mkdirSync(path.join(root, "dist"));
+    fs.writeFileSync(path.join(root, "dist/skill-links.js"), 'const alias = import.meta.dirname; export const dir = path.resolve(alias, "../");');
+    fs.writeFileSync(path.join(root, "runs/src/main.ts"), 'import "../../dist/skill-links.js";');
+    const built = await checked('const { pageInputs } = await import("./src/explore.ts"); console.log(JSON.stringify([pageInputs("runs"), typeof pageInputs("plain")]));');
+    assert.deepEqual(built, [null, "string"], "a built tool with a caller-dependent directory is uncacheable and an unrelated page remains cacheable");
   });
 
   test("a process that outlives a reinstall of Quint, as watch does, keys what it runs and simulates by the Quint installed now, and remembers its runs again", { skip: process.platform === "win32" }, async () => {
@@ -2779,12 +2901,17 @@ function eachCheck() {
       'const patched = await steady(async () => ({ runs: [await runs(), await runs()], simulation: await simulation() }));',
       `process.env.QUINT_HOME = ${JSON.stringify(path.join(root, "quint-home"))};`,
       `const native = ${JSON.stringify(native)};`,
-      'const simulate = (schedule, scope = memory) => steady(async () => {',
+      'const simulate = (schedule, scope = memory, after) => steady(async () => {',
       '  const key = await entry(".", "simulate", ["native"]);',
       '  await remembered(scope, key, (child) => act(child, "quint", ["run"], "simulated", {}), (r) => r.ok, schedule);',
+      '  after?.();',
       `  return { key: key.name, saved: fs.existsSync(key.file), runs: fs.readFileSync(${JSON.stringify(log)}, "utf8").trim().split("\\n").length };`,
       '});',
       'const bootstrap = await simulate(), installed = await simulate(), warm = await simulate();',
+      'const rotate = () => { fs.renameSync(native, native + ".old"); fs.writeFileSync(native, "changed", { mode: 0o755 }); };',
+      'const restore = () => fs.renameSync(native + ".old", native);',
+      'const rotated = await simulate(undefined, memory, rotate).then(() => "", (error) => error.message); restore();',
+      'const restored = await simulate(undefined, memory, () => { rotate(); restore(); }).then(() => "", (error) => error.message);',
       'const held = await entry(".", "simulate", ["native"]);',
       'const bytes = fs.readFileSync(held.file);',
       'const { used } = JSON.parse((await import("node:zlib")).zstdDecompressSync(bytes));',
@@ -2795,7 +2922,7 @@ function eachCheck() {
       'const retained = used.length > 0 && used.every((name) => scope.used.has(name) && !fs.existsSync(".spec-cache/"+name));',
       'fs.writeFileSync(native, "replacement"); const replaced = await simulate(); fs.writeFileSync(native, "replacement");',
       'const identical = await simulate(); process.env.QUINT_HOME = "quint-home";',
-      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, late, retained, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
+      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, rotated, restored, late, retained, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
     ].join("\n");
     const r = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
     assert.equal(r.status, 0, r.stderr);
@@ -2816,6 +2943,7 @@ function eachCheck() {
     assert.equal(installed.saved, true);
     assert.equal(installed.runs, bootstrap.runs + 1, "the installed evaluator runs once for its own identity");
     assert.deepEqual(warm, installed);
+    for (const changed of [said.rotated, said.restored]) assert.match(changed, /tool installation changed/);
     assert.deepEqual(said.late, warm, "a queued simulation reuses an aggregate published before its native work starts");
     assert.equal(said.retained, true, "the hit retains its action dependencies without recreating them");
     assert.equal(replaced.runs, warm.runs + 1);

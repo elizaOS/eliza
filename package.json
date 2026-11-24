@@ -36,7 +36,6 @@
     "nativeActivityTracker": "packages/plugin-native-activity-tracker",
     "nativeAgent": "packages/plugin-native-agent",
     "nativeAppblocker": "packages/plugin-native-appblocker",
-    "nativeBunRuntime": "packages/plugin-native-bun-runtime",
     "nativeCalendar": "packages/plugin-native-calendar",
     "nativeCamera": "packages/plugin-native-camera",
     "nativeCanvas": "packages/plugin-native-canvas",

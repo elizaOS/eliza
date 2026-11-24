@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 module node {
-  import { createRuntimeJsonClient, TurnController, type RuntimeJsonBridge, type RuntimeStreamFrame, type TurnResult } from "../src/client/index.vibe"
+  import { createRuntimeJsonClient, RuntimeRequestError, TurnController, type RuntimeJsonBridge, type RuntimeStreamFrame, type TurnResult } from "../src/client/index.vibe"
   import { held, text, type CloudFake } from "./support/cloud-fake.ts"
 
   interface Sent { readonly method: string; readonly path: string; readonly clientMessageId?: unknown; readonly clientId?: string }
@@ -152,8 +152,24 @@ module node {
       actedOnce: calls === 1, unknown: shown(unknown), stillBound, lost: shown(lost), unboundAfterLoss, fresh: shown(fresh),
     }
   }
+
+  export async function refusedStreams(net: Network) {
+    const client = createRuntimeJsonClient({ bridge: () => net.bridge, startupTimeoutMs: 5000, pollMs: 5, requestTimeoutMs: 60_000 })
+    const refusing = (status: number, raised?: RuntimeRequestError) => new TurnController({
+      request: (path, body, headers) => client.request(path, body, headers),
+      stream: () => Promise.resolve({
+        status, headers: {},
+        body: { [Symbol.asyncIterator]: () => ({ next: () => raised === undefined ? Promise.resolve({ done: true as const, value: undefined }) : Promise.reject(raised) }) },
+      }),
+    })
+    const posts = () => net.sent.filter(({ path }) => path.endsWith("/messages")).length
+    const before = posts()
+    const inBody = await refusing(200, new RuntimeRequestError("The agent is busy", 429, "AGENT_BUSY")).send({ text: "Are you free?" }, { stream: {} })
+    const atHead = await refusing(401).send({ text: "Who am I?" }, { stream: {} })
+    return { inBody: shown(inBody), atHead: shown(atHead), resent: posts() - before }
+  }
 }
-import { dropJourney, network, stopJourney } from node
+import { dropJourney, network, refusedStreams, stopJourney } from node
 
 effect function connected() {
   const cloud = try cloudFake(deviceKey)
@@ -174,11 +190,13 @@ it.live('Stop a reply, wait for its receipt, refuse once after an uncertain Stop
   }))
 }, 120_000)
 
-it.live('A dropped stream is resent once under the same clientMessageId and client id header and the agent acts once; a lost conversation unbinds (spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few";spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it")', effect () => {
+it.live('A dropped stream is resent once under the same clientMessageId and client id header and the agent acts once, a refused stream is never resent, and a lost conversation unbinds (spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few";spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it")', effect () => {
   const { cloud, net } = try connected()
   const observed = try host("drop journey", () => dropJourney(net, cloud))
-  try Effect.try(() => assert.deepStrictEqual(observed, {
+  const refused = try host("refused streams", () => refusedStreams(net))
+  try Effect.try(() => assert.deepStrictEqual({ ...observed, refused }, {
     resent: { kind: "Replied", text: "Back again." }, sameKey: true, clientIds: ["screen-1", "screen-1"], actedOnce: true, unknown: { kind: "MaybeAccepted" }, stillBound: true,
     lost: { kind: "ConversationLost" }, unboundAfterLoss: null, fresh: { kind: "Replied", text: "ok" },
+    refused: { inBody: { kind: "NotAccepted", status: 429 }, atHead: { kind: "NotAccepted", status: 401 }, resent: 0 },
   }))
 }, 120_000)

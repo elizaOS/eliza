@@ -16,16 +16,10 @@ export function registerMapsNavigation(runtime: IAgentRuntime, navigation: TurnN
 }
 
 const savedPlaceStores = new WeakMap<IAgentRuntime, AgentSavedPlaceStore>()
-const viewRegistries = new WeakMap<IAgentRuntime, (destination: string) => boolean>()
 
 export function registerMapsSavedPlaces(runtime: IAgentRuntime, store: AgentSavedPlaceStore | undefined): void {
   if (store === undefined) savedPlaceStores.delete(runtime)
   else savedPlaceStores.set(runtime, store)
-}
-
-export function registerMapsViews(runtime: IAgentRuntime, namesView: ((destination: string) => boolean) | undefined): void {
-  if (namesView === undefined) viewRegistries.delete(runtime)
-  else viewRegistries.set(runtime, namesView)
 }
 
 const relay = runSync(mapsNavigationRelay())
@@ -42,7 +36,6 @@ const plugin = createMapsPlugin({
   cloud: (runtime) => runtime.getService<CloudLinkService>(cloudServiceType) ?? undefined,
   navigation: (runtime, message) => navigations.get(runtime)?.(message) ?? sync(() => undefined),
   savedPlaces: (runtime) => savedPlaceStores.get(runtime),
-  namesView: (runtime, destination) => viewRegistries.get(runtime)?.(destination),
 })
 
 export const mapsPlugin: AgentPlugin = {
@@ -61,4 +54,4 @@ export { agentCloudProvider, agentPlace, mapsService, type MapsCloudLink, type M
 export { conversationNavigation, mapsNavigationPath, mapsNavigationRelay, mapsNavigationRoute, RelayRefused, type MapsDeviceNavigation, type MapsNavigationRelay, type RelayLimits, type RelayReply } from "./relay.vibe"
 export { appendMapsCard, MapsCard, mapsCardMarker, recognizedMapsCards, serializeMapsCard, withoutMapsCards, type MapsCardPlace } from "./cards.vibe"
 export { agentSaves, AgentSavedPlace, type AgentSavedPlaceStore, type AgentSaves, type SaveOutcome, type StoredSaves } from "./saves.vibe"
-export { choicePosition, nearbyPlaceKind, registerMapsRouting, requestShape, routeOf } from "./routing.vibe"
+export { choicePosition, nearbyPlaceKind } from "./routing.vibe"

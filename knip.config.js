@@ -170,6 +170,9 @@ export default {
     "packages/plugin-inbox": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
+    "packages/plugin-maps": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
     "packages/plugin-network": {
       "ignoreDependencies": ["@mockoon/cli"]
     },
@@ -177,7 +180,6 @@ export default {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-trajectory-logger": {
-      "entry": ["src/TrajectoryView.tsx"],
       "ignoreDependencies": ["react", "@types/react"]
     },
     "packages/plugin-workflows": {

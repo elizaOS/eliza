@@ -1,4 +1,4 @@
-// spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"
+// spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"
 import { extractUserText, incomingMessagePersistenceSnapshot, unwrapUserMessageText, type Memory } from "@elizaos/core"
 import { ownerWordsSource } from "../gen/notes__records.effect.vibe"
 import { authoredNoteText } from "./format.vibe"
@@ -27,6 +27,10 @@ export type NoteSelector = "title" | "query"
 
 function normalizedLookup(value: string): string {
   return value.normalize("NFC").trim().toLowerCase().normalize("NFC").replace(/\s+/gu, " ")
+}
+
+export function sameTitle(title: string, value: string): boolean {
+  return normalizedLookup(title) === normalizedLookup(value)
 }
 
 export function titleAppearsAsNamedPhrase(text: string, title: string): boolean {

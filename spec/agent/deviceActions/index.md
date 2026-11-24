@@ -35,8 +35,9 @@ A refused event answers 409 and changes nothing; a store failure answers 503.
 The installation id is the agent's own store id (`storage/database.md`),
 never a second identity. A first registration records the owner, the key
 hash and the workflow protocol, and connects the device to the bridge with
-the capabilities it declares. Registering again with the same key changes
-only the workflow protocol. The agent keeps one enrollment. When its owner
+the capabilities it declares; a registration that names none declares the
+whole vocabulary. Registering again with the same key changes only the
+workflow protocol. The agent keeps one enrollment. When its owner
 registers under another key, as a reinstalled or replaced phone does, the
 shell computes the revocation and new enrollment together and commits them
 with the retirement of earlier requests in one transaction. A failed
@@ -381,28 +382,27 @@ device conversation while the negotiation and the installation's views hold
 ([planning](../conversation/planning.md)), and nothing a message carries
 changes it. What depends on the message reaches the model after it, in
 the tool's note for the message, sent only while the tool is offered
-([planning](../conversation/planning.md)): the whole-message route that
-owns it, if any, as what to use; how views open on it; and the offered
+([planning](../conversation/planning.md)): how views open on it, and the offered
 forms the message does not allow, each reason said once with the forms it
 holds back. The note says what applies, never that a proposal was made. A form may be offered and yet not available on a message: a family
 says which of its forms depend on what the message shows, as a new phone
-note depends on the Notes screen ([surfaces](./surfaces.md)), and on a
-message a whole-message route owns only the routed forms are available.
+note depends on the Notes screen ([surfaces](./surfaces.md)).
 The turn is live
 from the owner's message until its reply ends and only while it is not
 aborted: work that still holds it afterwards has no device turn, and the
 offer checks it again just before the request is kept. The model may write
 the operation as an object or as a JSON string of one. The family of its
 wire type may first prepare it, as telephony restores the digits of a
-number the owner wrote with separators, and the operation must then match
+number the owner wrote with separators and Notes sets aside the intent the
+model gave a lookup, which stays with the agent, and the operation must then match
 one of the offered forms exactly, not only by its type, and be available
 on this message. One that matches no offered form is refused before the
 family grounds it as coaching for the planner
 ([planning](../conversation/planning.md)): the model reads that nothing
 was created, so it may correct it or answer without it, and it is no step
 of the turn, so a corrected proposal is reported alone and the owner hears
-no failure for the attempt the model corrected. One that is not the routed request's on a routed message, or
-whose form this message does not allow, is a call the message serves in
+no failure for the attempt the model corrected. One whose form this
+message does not allow is a call the message serves in
 another place: the planner refuses it before dispatch
 ([planning](../conversation/planning.md)), the model reads which it was
 and that nothing was created, so it may ask the owner or take that other
@@ -414,45 +414,40 @@ from the screen. Its family grounds
 it in the owner's words: the host-persisted text of the message, without
 its document wrapper, and none at all when that text carries an external
 envelope, so words inside a page, an email or a connector's payload never
-count as the owner's. The family may offer another operation of its own
+count as the owner's, and in the model's call as the model wrote it, so a
+field its preparation set aside still informs it. The family may offer another operation of its own
 types in its place: a recipient restored from what the owner said, a send
 turned into a draft, an update turned into the read before it. The
 grounded operation is then validated again against the turn's negotiation
 with no binding, and only then offered, on the turn's request,
 conversation and message, for ten minutes. Each operation of a compound
 request is its own proposal: a photo kept for its review card never holds
-back the text the same message asked for. A family may name the operation
-the owner's whole message is a strict command for, as the Browser does for
-"open example.com" or "show my open tabs" and the surfaces do for "take a
-picture"; where exactly one family names one and it matches a form
-available on this message (only the routed forms while a
-[whole-message route](./surfaces.md) owns the request), the tool names that
-proposal as the turn's call to run before the model's choice, and it is
-proposed, grounded and admitted as any other.
+back the text the same message asked for. Every proposal is one the model
+made: no family proposes an operation from the owner's words before the
+model's choice, and none answers or refuses the request for how it was
+worded before the model has seen it.
 
 ```quint
 type GroundingVerdict = FamilyGrounded | FamilyRefused
 type ProposalReply = ProposalOffered | RefusedBeforeDispatch
-type FormAvailability = FormNotOffered | FormRoutedAway | FormNotAvailableNow | FormAvailable
-pure def formAvailability(offeredForm: bool, routedAway: bool, availableNow: bool): FormAvailability =
-  if (not(offeredForm)) FormNotOffered else if (routedAway) FormRoutedAway else if (not(availableNow)) FormNotAvailableNow else FormAvailable
+type FormAvailability = FormNotOffered | FormNotAvailableNow | FormAvailable
+pure def formAvailability(offeredForm: bool, availableNow: bool): FormAvailability =
+  if (not(offeredForm)) FormNotOffered else if (not(availableNow)) FormNotAvailableNow else FormAvailable
 pure def proposalReply(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict, admitted: bool): ProposalReply =
   if (deviceTurn and availability == FormAvailable and verdict == FamilyGrounded and admitted) ProposalOffered else RefusedBeforeDispatch
 pure def lawOnlyAnOwnerTurnOfTheEnrolledDeviceProposes(availability: FormAvailability, verdict: GroundingVerdict, admitted: bool): bool =
   proposalReply(false, availability, verdict, admitted) == RefusedBeforeDispatch
-pure def lawOnlyAnOfferedFormIsProposed(deviceTurn: bool, routedAway: bool, availableNow: bool, verdict: GroundingVerdict, admitted: bool): bool =
-  proposalReply(deviceTurn, formAvailability(false, routedAway, availableNow), verdict, admitted) == RefusedBeforeDispatch
-pure def lawAFormThisMessageDoesNotAllowIsRefusedBeforeDispatch(deviceTurn: bool, offeredForm: bool, routedAway: bool, verdict: GroundingVerdict, admitted: bool): bool =
-  proposalReply(deviceTurn, formAvailability(offeredForm, routedAway, false), verdict, admitted) == RefusedBeforeDispatch
-pure def lawARoutedMessageProposesOnlyItsRoute(deviceTurn: bool, offeredForm: bool, availableNow: bool, verdict: GroundingVerdict, admitted: bool): bool =
-  proposalReply(deviceTurn, formAvailability(offeredForm, true, availableNow), verdict, admitted) == RefusedBeforeDispatch
+pure def lawOnlyAnOfferedFormIsProposed(deviceTurn: bool, availableNow: bool, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(deviceTurn, formAvailability(false, availableNow), verdict, admitted) == RefusedBeforeDispatch
+pure def lawAFormThisMessageDoesNotAllowIsRefusedBeforeDispatch(deviceTurn: bool, offeredForm: bool, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(deviceTurn, formAvailability(offeredForm, false), verdict, admitted) == RefusedBeforeDispatch
 pure def lawAGroundedProposalIsReadmitted(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict): bool =
   proposalReply(deviceTurn, availability, verdict, false) == RefusedBeforeDispatch
-pure def servedElsewhere(availability: FormAvailability): bool = availability == FormRoutedAway or availability == FormNotAvailableNow
+pure def servedElsewhere(availability: FormAvailability): bool = availability == FormNotAvailableNow
 pure def lawAFormServedElsewhereIsNeverProposed(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict, admitted: bool): bool =
   servedElsewhere(availability) implies proposalReply(deviceTurn, availability, verdict, admitted) == RefusedBeforeDispatch
-pure def lawAnUnmatchedOperationIsNotServedElsewhere(routedAway: bool, availableNow: bool): bool =
-  not(servedElsewhere(formAvailability(false, routedAway, availableNow)))
+pure def lawAnUnmatchedOperationIsNotServedElsewhere(availableNow: bool): bool =
+  not(servedElsewhere(formAvailability(false, availableNow)))
 ```
 
 ### The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls

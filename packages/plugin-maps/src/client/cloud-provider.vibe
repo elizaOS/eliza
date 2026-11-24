@@ -80,7 +80,6 @@ export function insideCloudCoverage(coverage: Pick<CloudMapsCoverage, "regions">
 
 const dayMs = 86_400_000
 
-/** What the owner hears for an answer from Cloud Maps that cannot be used. */
 export const unusableMapsAnswer = "Maps got an answer it couldn't use. Try again in a moment."
 
 export function cloudMapsFailure(failure: CloudFailure, now: number): MapsFailure {

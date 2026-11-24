@@ -1,4 +1,4 @@
-// spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn's own screen selects the phone's Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner's direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "Recording is offered with its own capability or with the full organize set"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly"; spec/agent/deviceActions/index.md, "A durable claim allows at most one inference, even after a lost outcome"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
+// spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn's own screen selects the phone's Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only when the model read the request as a deletion"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "Recording is offered with its own capability or with the full organize set"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly"; spec/agent/deviceActions/index.md, "A durable claim allows at most one inference, even after a lost outcome"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
 import { ModelType, parseJsonModelRecord, type ActionParameterSchema, type IAgentRuntime, type JSONSchema } from "@elizaos/core"
 import {
   bindingHash, readResult, untrustedReturnGuidance, type DeviceOperation, type DeviceOperationType, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type PendingRequest,
@@ -7,7 +7,7 @@ import {
 import {
   editRead, editReply, groundPhoneNotes, phoneNotesOffered, type EditReading, type NotesSelection, type PhoneNotesProposal, type PhoneNotesReach, type PhoneScreen, type SharedRead,
 } from "../gen/notes__read.effect.vibe"
-import { deletionCommand, deletionReply, type DeletionWords, type LookupOutcome } from "../gen/notes__trash.effect.vibe"
+import { deletionReply, type LookupIntent, type LookupOutcome } from "../gen/notes__trash.effect.vibe"
 import { folderGrounded } from "../gen/notes__organize.effect.vibe"
 import { applyPatch } from "./collection.vibe"
 import { json } from "./format.vibe"
@@ -28,6 +28,9 @@ type EditRead = { readonly reading: EditReading; readonly fields?: Fields; reado
 error NoteEditUnread { reason: string }
 
 const strict = { onExcessProperty: "error" } as const
+const lookupIntents = ["read", "edit", "delete"]
+const intentOfCall: Readonly<Record<string, LookupIntent>> = { read: "ReadIntent", edit: "EditIntent", delete: "DeleteIntent" }
+const keptIntents: readonly LookupIntent[] = ["ReadIntent", "EditIntent", "DeleteIntent"]
 const readTarget = Schema.decodeUnknownOption(NotesTargetSchema, strict)
 const readSource = Schema.decodeUnknownOption(Schema.Struct({ sourceId: NotesTargetSchema.fields.sourceId, sourceRevision: NotesTargetSchema.fields.sourceRevision }), strict)
 const readPatch = Schema.decodeUnknownOption(UpdateRequest, strict)
@@ -100,7 +103,7 @@ const noFields: ActionParameterSchema = {
   properties: { title: { type: "string", enum: [""] }, body: { type: "string", enum: [""] } },
 }
 
-const editGuidance = "To change the note open in Notes, propose notes_update with its exact target and an empty title and body; to change a phone note by the name the owner said, propose notes_named with action update, that name, and an empty title and body. Never use notes_query for an edit. The phone shares the note first; once the owner shares it, the requested change is prepared from its current text for a separate review. notes_read_selected only answers what the open note says. Never write replacement fields, never ask the owner to repeat the edit, and never report a change before its review."
+const editGuidance = "To change the note open in Notes, propose notes_update with its exact target and an empty title and body; to change a phone note by the name the owner said, propose notes_named with action update, that name, and an empty title and body. The phone shares the note first; once the owner shares it, the requested change is prepared from its current text for a separate review. notes_read_selected only answers what the open note says. Never write replacement fields, never ask the owner to repeat the edit, and never report a change before its review."
 const organizeGuidance = ["notes_filter filters the phone Notes list and returns no note content; it runs directly only when the owner's current message asked for it. notes_move, notes_folder_create and notes_restore are reviewed by the owner; notes_move takes null as its folder for no folder, and notes_restore takes the noteId of a note a deletion in this conversation moved to Recently deleted. Never guess note IDs, revisions or folder names."]
 
 const forms: readonly ProposalForm[] = [
@@ -109,7 +112,8 @@ const forms: readonly ProposalForm[] = [
       { type: "object", additionalProperties: false, required: ["kind", "text"], properties: { kind: { type: "string", enum: ["title"] }, text: spoken("The note's title") } },
       { type: "object", additionalProperties: false, required: ["kind", "by"], properties: { kind: { type: "string", enum: ["latest"] }, by: { type: "string", enum: ["created", "updated"] } } },
     ] },
-  }), ["notes_query finds one phone note from Home or Notes by its title as the owner said it, or the latest created or updated note. Candidates stay on the phone; the owner confirms exactly one note to share. Unknown dates or ties leave the choice to the owner, and an owner-choice-uncertain basis does not prove latest. When the owner's own message is a direct command to delete a note, the phone offers that note's deletion for its own review once the owner shares it. Never substitute backend Notes.", editGuidance],
+    intent: { type: "string", enum: lookupIntents, description: "What the owner's message asks to do with the note, whatever words it uses: read to answer from it, edit to change it, delete to delete it." },
+  }, ["query"]), ["notes_query finds one phone note from Home or Notes by its title as the owner said it, or the latest created or updated note. Candidates stay on the phone; the owner confirms exactly one note to share. Unknown dates or ties leave the choice to the owner, and an owner-choice-uncertain basis does not prove latest. Always set intent. Once the owner shares the note, a delete intent offers that exact note's deletion for its own review, and an edit intent of a title lookup prepares the requested change for its own review; a lookup is never deleted or changed otherwise. Never substitute backend Notes.", editGuidance],
   "ResolvedByPhone", () => [{ type: "notes_query", query: { kind: "latest", by: "created" } }]),
   form(["notes_search"], shaped("notes_search", {
     query: { anyOf: [
@@ -187,19 +191,31 @@ function listedFolder(turn: DeviceTurn, named: string, operation: Operation<"not
 
 const editUnavailable = refused("NOTES_UPDATE_UNAVAILABLE", "The edit of the open note could not be prepared. Nothing was read or changed.", "I can't prepare that edit on your phone right now.")
 
-function editKey(messageId: string, read: DeviceOperation): string | undefined {
+function intentKey(messageId: string, read: DeviceOperation): string | undefined {
   const digest = bindingHash(read)
-  return digest === undefined ? undefined : `notes-edit-read:${messageId}:${digest}`
+  return digest === undefined ? undefined : `notes-read-intent:${messageId}:${digest}`
 }
 
-effect function markEdit(runtime: IAgentRuntime, messageId: string, read: DeviceOperation): boolean!! {
-  const key = editKey(messageId, read)
-  return key !== undefined && (tryPromise(() => runtime.setCache(key, true)) catch () => false)
+effect function keepIntent(runtime: IAgentRuntime, messageId: string, read: DeviceOperation, intent: LookupIntent): boolean!! {
+  const key = intentKey(messageId, read)
+  return key !== undefined && (tryPromise(() => runtime.setCache(key, intent)) catch () => false)
 }
 
-effect function editMarked(runtime: IAgentRuntime, messageId: string, read: DeviceOperation): boolean!! {
-  const key = editKey(messageId, read)
-  return key !== undefined && (tryPromise(() => runtime.getCache<boolean>(key)) catch () => undefined) === true
+effect function keptIntent(runtime: IAgentRuntime, messageId: string, read: DeviceOperation): LookupIntent!! {
+  const key = intentKey(messageId, read)
+  const kept = key === undefined ? undefined : (tryPromise(() => runtime.getCache<unknown>(key)) catch () => undefined)
+  return keptIntents.find((intent) => intent === kept) ?? "ReadIntent"
+}
+
+function askedIntent(asked: unknown): LookupIntent {
+  const said = typeof asked === "object" && asked !== null && "intent" in asked && typeof asked.intent === "string" ? asked.intent : undefined
+  return (said === undefined ? undefined : intentOfCall[said]) ?? "ReadIntent"
+}
+
+function prepared(asked: unknown): unknown {
+  if (typeof asked !== "object" || asked === null || !("type" in asked) || asked.type !== "notes_query" || !("intent" in asked)) return asked
+  if (typeof asked.intent !== "string" || intentOfCall[asked.intent] === undefined) return asked
+  return Object.fromEntries(Object.entries(asked).filter(([key]) => key !== "intent"))
 }
 
 effect function deletedHere(turn: DeviceTurn, noteId: string) {
@@ -212,12 +228,24 @@ effect function deletedHere(turn: DeviceTurn, noteId: string) {
   })
 }
 
-effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, turn: DeviceTurn) {
+const lookupUnkept = refused("NOTES_LOOKUP_UNAVAILABLE", "The lookup's intent could not be kept. Nothing was read or changed.", "I can't look that note up on your phone right now.")
+const deletionUnavailable = refused("NOTES_DELETE_UNAVAILABLE", "This phone cannot return the looked-up note to this conversation, so its deletion cannot be offered. Nothing was read or deleted.",
+  "I can't prepare that deletion on your phone right now.")
+
+effect function intended(runtime: IAgentRuntime, turn: DeviceTurn, read: DeviceOperation, intent: LookupIntent, unkept: Grounding): Grounding!! {
+  const kept = try keepIntent(runtime, turn.message.id, read, intent)
+  return kept || intent === "ReadIntent" ? grounded(read) : unkept
+}
+
+effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, turn: DeviceTurn, asked: unknown) {
   const { proposal, said } = proposalOf(operation)
   const lookup = { type: "notes_query", query: { kind: "title", text: said ?? "" } } as const
   const deleted = operation.type === "notes_restore" && (try deletedHere(turn, operation.noteId))
-  const outcome = groundPhoneNotes(proposal, said === undefined || titleAppearsAsNamedPhrase(turn.ownerText, said),
-    sameTarget(targetOf(operation), selectedTarget(turn)), turn.admit(lookup) !== undefined, deleted, turn.completesReads)
+  const intent = operation.type === "notes_query" ? askedIntent(asked) : "ReadIntent"
+  const changeAsked = intent !== "ReadIntent"
+  const ownerSpoke = turn.ownerText.trim() !== ""
+  const outcome = groundPhoneNotes(proposal, (said === undefined || titleAppearsAsNamedPhrase(turn.ownerText, said)) && (!changeAsked || ownerSpoke),
+    sameTarget(targetOf(operation), selectedTarget(turn)), turn.admit(lookup) !== undefined, deleted, turn.completesReads, changeAsked)
   switch (outcome) {
     case "AskWhichNote":
       return refused("NOTES_LOOKUP_NOT_REQUESTED", "The note text in this operation is not words the owner said in this message. No device proposal was created. Use the owner's own words for the title, name or search, or ask which note.",
@@ -226,21 +254,21 @@ effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, 
       return refused("NOTES_TARGET_NOT_SELECTED", "The target is not the note open in Notes on the phone. No device proposal was created. Use the open note's exact target, or ask the owner to open the note.",
         "Open that note in Notes on your phone, then ask me again.")
     case "EditUnavailable":
-      return refused("NOTES_UPDATE_UNAVAILABLE", "The current note update authority is unavailable. Nothing was read or changed.", "I can't prepare that edit on your phone right now.")
+      return intent === "DeleteIntent" ? deletionUnavailable
+        : refused("NOTES_UPDATE_UNAVAILABLE", "The current note update authority is unavailable. Nothing was read or changed.", "I can't prepare that edit on your phone right now.")
     case "LookupUnavailable":
       return refused("NOTES_UPDATE_UNAVAILABLE", "Current named-note lookup access is unavailable. Nothing was read or changed.", "I can't look that note up on your phone right now.")
     case "RestoreUnknown":
       return refused("NOTES_RESTORE_UNKNOWN", "This note ID is not one a deletion applied in this conversation moved to Recently deleted. No device proposal was created. Never guess a note ID; the owner can restore the note from Recently deleted in Notes.",
         "Open Recently deleted in Notes on your phone to bring that note back.")
-    case "GroundedAsTitleLookup": return grounded(lookup)
+    case "GroundedAsTitleLookup": return try intended(runtime, turn, lookup, "EditIntent", editUnavailable)
     case "GroundedAsSelectedRead": {
       const target = targetOf(operation)
-      if (target === undefined) return editUnavailable
-      const read: DeviceOperation = { type: "notes_read_selected", target }
-      return (try markEdit(runtime, turn.message.id, read)) ? grounded(read) : editUnavailable
+      return target === undefined ? editUnavailable : try intended(runtime, turn, { type: "notes_read_selected", target }, "EditIntent", editUnavailable)
     }
     case "GroundedAsProposed":
       switch (operation.type) {
+        case "notes_query": return try intended(runtime, turn, operation, intent, lookupUnkept)
         case "notes_move": return operation.folder === null ? grounded(operation) : listedFolder(turn, operation.folder, operation)
         case "notes_filter": return operation.folder === undefined ? grounded(operation) : listedFolder(turn, operation.folder, operation)
         case "notes_folder_create":
@@ -298,21 +326,6 @@ function settledSentence(operation: DeviceOperation, result: unknown): string | 
     case "notes_named": return readResult<"notes_named">(operation, result)?.basis === "no-match" ? "Your phone found no note with that name, so nothing was deleted." : "Your phone moved that note to Recently deleted."
     default: return undefined
   }
-}
-
-const deletionCommandWords = /^(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:delete|remove|erase)\s+(?:only\s+)?(?:(?:the|this|that|my|one|a)\s+)?note\b/iu
-const withdrawnDeletion = /\b(?:do\s+not|don['’]?t|never|without)\b[\s\S]{0,80}\b(?:delet|remov|eras|chang)|\b(?:never\s+mind|cancel\s+(?:it|that|this|the\s+(?:request|deletion))|forget\s+(?:it|that)|read[- ]only|instead\s+(?:read|show))\b/iu
-const explanationAsked = /\b(?:explain|describe|teach|walk\s+me\s+through|what\s+does|what\s+is|how\s+(?:does|do|to)|why)\b|\btell\s+me\s+(?:about|what|why|how)\b/iu
-
-function clausesOf(words: string): string[] {
-  return words.toLowerCase().split(/;|(?<![a-z0-9_])(?:but|however|instead)(?![a-z0-9_])/u).map((clause) => clause.trim()).filter((clause) => clause !== "")
-}
-
-function deletionWordsOf(words: string): DeletionWords {
-  if (!deletionCommandWords.test(words.trim())) return "NoDeletionWords"
-  const clauses = clausesOf(words)
-  if (clauses.slice(1).some((clause) => explanationAsked.test(clause))) return "ExplanationAsked"
-  return clauses.some((clause) => withdrawnDeletion.test(clause)) ? "DeletionWithdrawn" : "DirectDeletion"
 }
 
 const textEdit: JSONSchema = {
@@ -376,14 +389,14 @@ const deletionReady = "The note is ready for deletion review. Approve the exact 
 const noNoteShared = "No matching note was shared. Nothing was deleted."
 const choiceUncertain = "The lookup did not establish which note you meant. Nothing was deleted. Choose the exact note before continuing."
 
-effect function edited(runtime: IAgentRuntime, original: Original, shared: SharedRead, words: DeletionWords, note: NotesTarget, fields: Fields): (ReadContinuation | undefined)!! {
-  const deleting = deletionCommand(words)
-  if (!editRead(shared, deleting)) return undefined
+effect function edited(runtime: IAgentRuntime, original: Original, shared: SharedRead, intent: LookupIntent, note: NotesTarget, fields: Fields): (ReadContinuation | undefined)!! {
+  const editing = intent === "EditIntent"
+  if (!editRead(shared, editing)) return undefined
   const read: EditRead = (readEdit(runtime, original.ownerText, fields) catch effect (unread) => {
     try sync(() => runtime.logger.warn({ src: "notes", messageId: original.message.id, reason: unread.reason }, "No phone note edit was prepared after the shared read"))
     return { reading: "NeedsMoreInput" as const }
   })
-  switch (editReply(shared, deleting, read.reading)) {
+  switch (editReply(shared, editing, read.reading)) {
     case "OffersEditReview": return read.fields === undefined ? { text: editNeedsInput } : { operation: { type: "notes_update", target: note, fields: read.fields }, text: editReady }
     case "AsksForTheEdit": return { text: read.clarification ?? editNeedsInput }
     case "SaysNothingChanged": return { text: nothingChanged }
@@ -392,23 +405,21 @@ effect function edited(runtime: IAgentRuntime, original: Original, shared: Share
 }
 
 effect function afterRead(runtime: IAgentRuntime, read: EarlierRequest, original: Original): (ReadContinuation | undefined)!! {
-  const words = deletionWordsOf(original.ownerText)
   const operation = read.operation
+  const intent = try keptIntent(runtime, original.message.id, operation)
   if (operation.type === "notes_read_selected") {
     const shared = readResult<"notes_read_selected">(operation, read.result)
-    if (shared === undefined) return undefined
-    const forEdit = try editMarked(runtime, original.message.id, operation)
-    return try edited(runtime, original, forEdit ? "OpenNoteForEdit" : "OpenNoteRead", words, operation.target, shared.fields)
+    return shared === undefined ? undefined : try edited(runtime, original, "OpenNote", intent, operation.target, shared.fields)
   }
   if (operation.type !== "notes_query") return undefined
   const result = readResult<"notes_query">(operation, read.result)
   if (result === undefined) return undefined
-  if (result.basis === "no-match") return deletionReply(words, "NoNoteFound") === "NotADeletion" ? undefined : { text: noNoteShared }
+  if (result.basis === "no-match") return deletionReply(intent, "NoNoteFound") === "NotADeletion" ? undefined : { text: noNoteShared }
   const found: LookupOutcome = result.basis === "owner-choice-uncertain" ? "ChoiceUncertain" : "NoteFound"
-  switch (deletionReply(words, found)) {
+  switch (deletionReply(intent, found)) {
     case "OffersDeletionReview": return { operation: { type: "notes_delete", target: result.target }, text: deletionReady }
     case "SaysNothingWasDeleted": return { text: choiceUncertain }
-    case "NotADeletion": return try edited(runtime, original, result.basis === "title-match" ? "TitleMatchedNote" : "OtherLookupResult", words, result.target, result.record.fields)
+    case "NotADeletion": return try edited(runtime, original, result.basis === "title-match" ? "TitleMatchedNote" : "OtherLookupResult", intent, result.target, result.record.fields)
   }
 }
 
@@ -416,8 +427,8 @@ export function notesDeviceFamily(runtime: IAgentRuntime): DeviceProposalFamily 
   return {
     name: "notes", app: notesContext.id, types: notesTypes, forms,
     guidance: () => [familyGuidance, untrustedReturnGuidance],
-    ground: (proposed, turn) => groundNotes(runtime, proposed.operation, turn),
-    proposedText, settledText,
+    ground: (proposed, turn, asked) => groundNotes(runtime, proposed.operation, turn, asked),
+    prepare: prepared, proposedText, settledText,
     continueAfterRead: (read, original) => afterRead(runtime, read, original),
   }
 }

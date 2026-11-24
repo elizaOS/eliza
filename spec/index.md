@@ -60,7 +60,6 @@ The optional integrations and native bridge contracts are specified below.
 | `@elizaos/native-activity-tracker` | [Native activity tracker](./nativeActivityTracker/) |
 | `@elizaos/capacitor-agent` | [Native agent bridge](./nativeAgent/) |
 | `@elizaos/capacitor-appblocker` | [Native app blocking](./nativeAppblocker/) |
-| `@elizaos/capacitor-bun-runtime` | [Native embedded runtime bridge](./nativeBunRuntime/) |
 | `@elizaos/capacitor-calendar` | [Native calendar](./nativeCalendar/) |
 | `@elizaos/capacitor-camera` | [Native camera](./nativeCamera/) |
 | `@elizaos/capacitor-canvas` | [Native canvas](./nativeCanvas/) |

@@ -1,22 +1,16 @@
 // spec/agent/voice/clientAudio.md, "Story: Record and play speech in the screen without losing a segment"; spec/agent/voice/clientAudio.md, "A WAV holds every sample in order as mono PCM16 behind a 44-byte header"; spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "A preview offers only new speech and never offers a failed preview again"
-import { Base64 } from "effect/encoding"
 import {
-  blockAccepted, captureWellFormed, closesContextOnRelease, fullScale, offerPreview, pcm16Of, previewDue, recordingDecodable,
-  recordingSampleRate, retainBlock, settlePreview, sharedContextAccepted, wavByteLength, wavHeaderBytes, wavRateAccepted,
+  blockAccepted, captureWellFormed, closesContextOnRelease, fullScale, offerPreview, pcm16Of, previewDue,
+  retainBlock, settlePreview, sharedContextAccepted, wavByteLength, wavHeaderBytes, wavRateAccepted,
   type CaptureBuffer, type ContextCustody, type SampleValue,
 } from "../../gen/agent__voice__clientAudio.effect.vibe"
 
 const captureWorkletUrl = new URL("./capture.worklet.mjs", import.meta.url)
-export const captureBlockSamples = 2048
 
 export error WavRateRefused { rate: number }
 export error CapturePolicyRefused { field: "sampleRate" | "maxSeconds" | "minimumNewSamples" | "previewIntervalMs" | "speechThreshold"; value: number }
 export error SharedContextRateRefused { contextRate: number; captureRate: number }
 export error CaptureUnavailable { cause: unknown }
-export error AudioReadFailed { cause: unknown }
-export error ClipRefused { bytes: number; durationMs: number }
-export error ClipCancelled
-export error ClipDecodeFailed { cause: unknown }
 
 export interface CaptureNode {
   connect(destination: unknown): unknown
@@ -40,19 +34,6 @@ export interface CaptureSamples {
 export interface CaptureAudioPort<Stream, Context extends CaptureContext<Stream>> {
   readonly open: (sampleRate: number) => Context
   readonly samples: (context: Context, receive: (block: unknown) => void) => CaptureSamples
-}
-
-export interface DecodedClip {
-  readonly duration: number
-}
-
-export interface ClipAudioPort<Decoded extends DecodedClip> {
-  readonly decode: (bytes: ArrayBuffer, sampleRate: number) => Promise<Decoded>
-  readonly render: (decoded: Decoded, length: number, sampleRate: number) => Promise<Float32Array>
-}
-
-export interface AudioBlob {
-  arrayBuffer(): Promise<ArrayBuffer>
 }
 
 export type PreviewReceiver = (chunks: readonly Float32Array[], sampleRate: number) => Promise<void>
@@ -132,11 +113,6 @@ function wavOf(chunks: readonly Float32Array[], sampleRate: number): Uint8Array 
 export effect function encodeMonoPcm16WavChunks(chunks: readonly Float32Array[], sampleRate: number): Uint8Array!WavRateRefused {
   if (!Number.isInteger(sampleRate) || !wavRateAccepted(sampleRate)) throw new WavRateRefused({ rate: sampleRate })
   return wavOf(chunks, sampleRate)
-}
-
-export effect function audioBlobBase64(blob: AudioBlob): string!AudioReadFailed {
-  const bytes = try tryPromise({ try: () => blob.arrayBuffer(), catch: (cause) => new AudioReadFailed({ cause }) })
-  return Base64.encode(new Uint8Array(bytes))
 }
 
 function safely(release: () => void): void {
@@ -263,29 +239,4 @@ export effect function startCumulativeMicrophoneCapture<Stream, Context extends 
     if (Exit.isFailure(exit)) close(c)
   }))
   return { sampleRate, snapshot: () => snapshot(c), close: () => close(c) }
-}
-
-effect function stillWanted(signal: AbortSignal): void!ClipCancelled {
-  if (signal.aborted) throw new ClipCancelled()
-}
-
-effect function decoding<A>(call: () => Promise<A>): A!ClipDecodeFailed {
-  return try tryPromise({ try: () => call(), catch: (cause) => new ClipDecodeFailed({ cause }) })
-}
-
-export effect function decodeRecordedClip<Decoded extends DecodedClip>(
-  bytes: ArrayBuffer,
-  signal: AbortSignal,
-  audio: ClipAudioPort<Decoded>,
-): Float32Array!(ClipRefused | ClipCancelled | ClipDecodeFailed) {
-  try stillWanted(signal)
-  if (!recordingDecodable(bytes.byteLength, 1)) throw new ClipRefused({ bytes: bytes.byteLength, durationMs: 0 })
-  const size = bytes.byteLength
-  const decoded = try decoding(() => audio.decode(bytes, recordingSampleRate))
-  try stillWanted(signal)
-  const durationMs = Number.isFinite(decoded.duration) ? Math.ceil(decoded.duration * 1000) : 0
-  if (!recordingDecodable(size, durationMs)) throw new ClipRefused({ bytes: size, durationMs })
-  const samples = try decoding(() => audio.render(decoded, Math.ceil(decoded.duration * recordingSampleRate), recordingSampleRate))
-  try stillWanted(signal)
-  return samples
 }

@@ -1,7 +1,7 @@
 // spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about"
 import { assert, it } from "@effect/vitest"
 import type { IAgentRuntime, UUID } from "@elizaos/core"
-import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { negotiation, readOperation, validate, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { calendarProposalFamily } from "../src/plugin/device-proposals.vibe"
 import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
   requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
@@ -99,10 +99,25 @@ it.effect('See and create times in the zone I am asking about (spec/calendar/rea
 const phoneCapabilities = ["calendar.local-event.v1", "calendar.create.v1", "calendar.next-read.v1", "calendar.availability-read.v1", "calendar.named-read.v1", "device.named-target.v1"]
 const turnStarted = Date.UTC(2026, 10, 22, 15, 0)
 
-function phoneTurn(ownerText: string, observation: DeviceTurn["observation"], actions: readonly string[] = [], completesReads = true): DeviceTurn {
+function phoneModel(replies: readonly string[] = []) {
+  const waiting = [...replies]
+  const asked: string[] = []
+  const runtime = {
+    actions: [{ name: "CALENDAR" }],
+    useModel: async (_type: unknown, params: { readonly system?: string; readonly messages?: readonly { readonly content: string }[] }) => {
+      asked.push(`${params.messages?.[0]?.content ?? ""}\n${params.system ?? ""}`)
+      const reply = waiting.shift()
+      if (reply === undefined) throw new Error("No model reply")
+      return reply
+    },
+  } as unknown as IAgentRuntime
+  return { runtime, asked, family: calendarProposalFamily(runtime) }
+}
+
+function phoneTurn(runtime: IAgentRuntime, ownerText: string, observation: DeviceTurn["observation"], completesReads = true): DeviceTurn {
   const negotiated = negotiation(true, phoneCapabilities.join(","))
   return {
-    runtime: { actions: actions.map((name) => ({ name })) } as unknown as IAgentRuntime, by: {} as DeviceTurn["by"], negotiation: negotiated,
+    runtime, by: {} as DeviceTurn["by"], negotiation: negotiated,
     capabilities: phoneCapabilities, message: { id: "00000000-0000-4000-8000-000000000001" as UUID, content: { text: ownerText } } as DeviceTurn["message"],
     ownerText, observation, completedActionNavigation: false, completesReads, conversationId: "c1", requestId: "r1", assistantName: "Eliza", swapped: [],
     startedAt: turnStarted, timeZone: observation?.timeZone, signal: new AbortController().signal,
@@ -114,33 +129,35 @@ const unzonedCalendar = { view: "calendar", revision: 1, sensitive: false, selec
 const onCalendar = { ...unzonedCalendar, timeZone: "Europe/Berlin" }
 const onHome = { view: "home", revision: 1, sensitive: false, timeZone: "Europe/Berlin" }
 const target = { sourceId: "device-home", sourceRevision: "a".repeat(64), eventId: "evt-1", revision: "b".repeat(64) }
-const proposedFields = { title: "Lunch with Sam", description: "", location: "", start: "2026-11-23T12:00:00.000Z", end: "2026-11-23T13:00:00.000Z", timeZone: "UTC" }
+const proposedFields = { title: "Lunch with Sam", description: "", location: "", start: "2026-11-23T11:00:00.000Z", end: "2026-11-23T12:00:00.000Z", timeZone: "Europe/Berlin" }
 
-effect function grounded(operation: unknown, turn: DeviceTurn) {
-  const result = try calendarProposalFamily.ground(readOperation(operation) as CheckedOperation, turn)
-  return result.kind === "Grounded" ? result.operation : result.code
-}
-
-it.effect('Propose on my phone only the Calendar request I made (spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner\'s own words ask for it, and a no keeps the event"; spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone\'s zone"; spec/calendar/reviewedReads.md, "A change after a shared read is the edits the owner\'s words gave, keeping every other field"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone\'s zone")', effect () => {
-  const offered = (turn: DeviceTurn) => calendarProposalFamily.forms.filter((form) => form.offered(turn) && (form.now?.available(turn) ?? true)).map(({ schema }) => JSON.stringify(schema.properties?.action?.enum ?? schema.properties?.type?.enum))
-  assert.deepStrictEqual(offered(phoneTurn("delete this", onCalendar)), [
+it.effect('Propose on my phone only the Calendar request I made (spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone\'s clock"; spec/calendar/availability.md, "An availability window is the one the model read from the owner\'s request, on the phone\'s clock"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner\'s words hold")', effect () => {
+  const { runtime, family, asked } = phoneModel()
+  const turn = (words: string, observation: DeviceTurn["observation"] = onHome, completesReads = true) => phoneTurn(runtime, words, observation, completesReads)
+  const grounded = effect (operation: unknown, at: DeviceTurn) => {
+    const checked = readOperation(family.prepare?.(operation) ?? operation)
+    if (checked === undefined) return "DEVICE_OPERATION_INVALID"
+    const result = try family.ground(checked, at)
+    return result.kind === "Grounded" ? result.operation : result.code
+  }
+  const offered = (at: DeviceTurn) => family.forms.filter((form) => form.offered(at) && (form.now?.available(at) ?? true)).map(({ schema }) => JSON.stringify(schema.properties?.action?.enum ?? schema.properties?.type?.enum))
+  assert.deepStrictEqual(offered(turn("delete this", onCalendar)), [
     '["calendar_read_next"]', '["calendar_create_local"]', '["calendar_read_selected"]', '["calendar_delete"]', '["read"]', '["delete"]', '["calendar_availability"]',
   ])
-  assert.deepStrictEqual(offered(phoneTurn("add lunch tomorrow at noon", { ...onHome, view: "notes" }, ["CALENDAR"])), ['["calendar_read_next"]'])
-  assert.deepStrictEqual(offered(phoneTurn("add lunch to my phone's calendar tomorrow at noon", { ...onHome, view: "notes" }, ["CALENDAR"])), ['["calendar_read_next"]'])
-  assert.deepStrictEqual(offered(phoneTurn("add lunch to my phone's calendar tomorrow at noon", onHome, ["CALENDAR"])).includes('["calendar_create_local"]'), true)
-  assert.deepStrictEqual(offered(phoneTurn("delete this", { ...onHome, view: "calendar", sensitive: true })), [])
-  assert.deepStrictEqual(offered(phoneTurn("delete this", { ...onCalendar, selectedObject: { kind: "canonical-calendar-event", id: "e" } })), [])
+  assert.deepStrictEqual(offered(turn("add lunch tomorrow at noon", { ...onHome, view: "notes" })), ['["calendar_read_next"]'])
+  assert.deepStrictEqual([offered(turn("add lunch tomorrow at noon")).includes('["calendar_create_local"]'), offered(turn("put lunch with Ana on my phone calendar Friday at noon")).includes('["calendar_create_local"]')],
+    [true, true])
+  assert.deepStrictEqual(offered(turn("delete this", { ...onHome, view: "calendar", sensitive: true })), [])
+  assert.deepStrictEqual(offered(turn("delete this", { ...onCalendar, selectedObject: { kind: "canonical-calendar-event", id: "e" } })), [])
 
   const deleting = { type: "calendar_delete", target }
-  assert.deepStrictEqual([try grounded(deleting, phoneTurn("Delete this event", onCalendar)), try grounded(deleting, phoneTurn("Delete my 3pm, I don't need it", onCalendar))], [deleting, deleting])
-  assert.deepStrictEqual([try grounded(deleting, phoneTurn("No, keep it", onCalendar)), try grounded(deleting, phoneTurn("Please don't delete it", onCalendar))],
-    ["CALENDAR_DELETE_NOT_REQUESTED", "CALENDAR_DELETE_NOT_REQUESTED"])
-  assert.strictEqual(try grounded({ ...deleting, target: { ...target, eventId: "evt-2" } }, phoneTurn("Delete this event", onCalendar)), "DEVICE_CALENDAR_TARGET_NOT_SELECTED")
+  assert.deepStrictEqual([try grounded(deleting, turn("Delete this event", onCalendar)), try grounded(deleting, turn("Delete my 3pm, I don't need it", onCalendar)), try grounded(deleting, turn("削除して", onCalendar))],
+    [deleting, deleting, deleting])
+  assert.strictEqual(try grounded({ ...deleting, target: { ...target, eventId: "evt-2" } }, turn("Delete this event", onCalendar)), "DEVICE_CALENDAR_TARGET_NOT_SELECTED")
   const lunchDelete = { type: "calendar_named", action: "delete", name: "lunch" } as const
-  assert.deepStrictEqual(try grounded(lunchDelete, phoneTurn("Cancel the lunch, we're not meeting", onHome)), lunchDelete)
-  assert.strictEqual(try grounded({ type: "calendar_named", action: "delete", name: "plumber" }, phoneTurn("Delete my dentist appointment", onHome)), "CALENDAR_NAMED_NOT_REQUESTED")
-  const unspaced = (name: string, words: string) => grounded({ type: "calendar_named", action: "delete", name }, phoneTurn(words, onHome))
+  assert.deepStrictEqual(try grounded(lunchDelete, turn("Cancel the lunch, we're not meeting")), lunchDelete)
+  assert.strictEqual(try grounded({ type: "calendar_named", action: "delete", name: "plumber" }, turn("Delete my dentist appointment")), "CALENDAR_NAMED_NOT_REQUESTED")
+  const unspaced = (name: string, words: string) => grounded({ type: "calendar_named", action: "delete", name }, turn(words))
   assert.deepStrictEqual([try unspaced("歯医者", "歯医者を削除して"), try unspaced("牙医预约", "删除牙医预约"), try unspaced("치과", "치과를 삭제해줘"),
     try unspaced("Dentist", "Delete the dentistry booking"), try unspaced("歯医者", "小児歯医者を削除して"), try unspaced("牙医预约", "删除儿童牙医预约")], [
     { type: "calendar_named", action: "delete", name: "歯医者" }, { type: "calendar_named", action: "delete", name: "牙医预约" }, { type: "calendar_named", action: "delete", name: "치과" },
@@ -148,83 +165,96 @@ it.effect('Propose on my phone only the Calendar request I made (spec/calendar/r
   ])
 
   const dentist = { type: "calendar_named", action: "read", name: "dentist appointment" }
-  const named = (words: string, observation: DeviceTurn["observation"] = onHome) => grounded(dentist, phoneTurn(words, observation))
-  assert.deepStrictEqual([try named("When is my dentist appointment?"), try named("Move my dentist appointment to Friday at 3pm"), try named("Move my dentist appointment to Friday at 3pm, not Thursday"),
-    try named("Move my dentist appointment to Friday at 3pm Tokyo time"), try named("Move my dentist appointment to 3pm tomorrow and rename it to Checkup"),
-    try named("Move my dentist appointment to 3pm Narnia time"), try named("Move my dentist appointment to 3pm and push it an hour"),
-    try named("Change my dentist appointment location to Main Street"), try named("Move my dentist appointment later"), try named("Move my dentist appointment to Friday at 3pm", { ...onHome, timeZone: undefined }),
-    try named("Push my dentist appointment back an hour"), try named("Change the location of my dentist appointment"), try named("Move my dentist appointment an hour later or earlier"),
-    try grounded(dentist, phoneTurn("Move my dentist appointment to Friday at 3pm", onHome, [], false))],
-    ["CALENDAR_NAMED_READ_NOT_A_CHANGE", dentist, dentist, dentist, dentist, "CALENDAR_CHANGE_ZONE_UNKNOWN", "CALENDAR_CHANGE_UNSUPPORTED", dentist, "CALENDAR_CHANGE_TIME_AMBIGUOUS", "CALENDAR_ZONE_UNAVAILABLE",
-      dentist, "CALENDAR_CHANGE_UNSUPPORTED", "CALENDAR_CHANGE_UNSUPPORTED", "CALENDAR_CHANGE_READ_UNAVAILABLE"])
+  const named = (words: string, observation: DeviceTurn["observation"] = onHome, completesReads = true) => grounded(dentist, turn(words, observation, completesReads))
+  assert.deepStrictEqual([try named("Move my dentist appointment to Friday at 3pm"), try named("Move my dentist appointment to 3pm Narnia time"), try named("Push my dentist appointment back an hour"),
+    try named("Move my dentist appointment to Friday at 3pm", { ...onHome, timeZone: undefined }), try named("Move my dentist appointment to Friday at 3pm", onHome, false),
+    try named("Move my plumber appointment to Friday at 3pm")],
+    [dentist, dentist, dentist, "CALENDAR_ZONE_UNAVAILABLE", "CALENDAR_CHANGE_READ_UNAVAILABLE", "CALENDAR_NAMED_NOT_REQUESTED"])
   const sharing = { type: "calendar_read_selected", target }
-  assert.deepStrictEqual([try grounded(sharing, phoneTurn("What is this meeting about?", onCalendar)), try grounded(sharing, phoneTurn("How do I move this event to tomorrow at 3pm?", onCalendar)),
-    try grounded(sharing, phoneTurn("Move this event to my work calendar tomorrow at 3pm", onCalendar)), try grounded(sharing, phoneTurn("Move this meeting to 10am", unzonedCalendar))],
-    [sharing, sharing, "CALENDAR_CHANGE_UNSUPPORTED", "CALENDAR_ZONE_UNAVAILABLE"])
+  assert.deepStrictEqual([try grounded(sharing, turn("What is this meeting about?", onCalendar)), try grounded(sharing, turn("Move this meeting to 10am", unzonedCalendar)),
+    try grounded({ ...sharing, target: { ...target, revision: "c".repeat(64) } }, turn("Move this meeting to 10am", onCalendar))],
+    [sharing, sharing, "DEVICE_CALENDAR_TARGET_NOT_SELECTED"])
 
-  const lunch = phoneTurn("Add lunch with Sam at Cafe Roma tomorrow at noon", onHome)
+  const lunch = turn("Add lunch with Sam at Cafe Roma tomorrow at noon")
   const created = try grounded({ type: "calendar_create_local", fields: { ...proposedFields, description: "Discuss the budget", location: "Cafe Roma" } }, lunch)
-  assert.deepStrictEqual(created, { type: "calendar_create_local", fields: { ...proposedFields, location: "Cafe Roma", start: "2026-11-23T11:00:00.000Z", end: "2026-11-23T12:00:00.000Z", timeZone: "Europe/Berlin" } })
+  assert.deepStrictEqual(created, { type: "calendar_create_local", fields: { ...proposedFields, location: "Cafe Roma" } })
   assert.notStrictEqual(lunch.admit(created), undefined)
-  const create = (words: string, fields = proposedFields) => grounded({ type: "calendar_create_local", fields }, phoneTurn(words, onHome))
-  assert.deepStrictEqual([try create("Add lunch with Sam every Monday at noon"), try create("Add lunch with Sam soon"), try create("Add lunch with Sam tomorrow at 3pm Tokyo time"),
-    try create("Add lunch tomorrow at noon", { ...proposedFields, title: "Lunch with the board" }), try create("Add lunch with Sam on 2027-03-28 from 1am to 2:30am"),
-    try create("Add lunch with Sam at noon"), try create("Add lunch with Sam at 6pm"), try create("Add lunch with Sam 2027年3/5 at 3pm"), try create("Add lunch with Sam 明年 3/5 at 3pm")],
-    ["CALENDAR_CREATE_UNSUPPORTED", "CALENDAR_CREATE_ORIGINAL_UNAVAILABLE", "CALENDAR_OTHER_ZONE_NAMED", "CALENDAR_TITLE_NOT_STATED", "CALENDAR_LOCAL_TIME_AMBIGUOUS",
-      "CALENDAR_CREATE_PAST_START", { type: "calendar_create_local", fields: { ...proposedFields, start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T18:00:00.000Z", timeZone: "Europe/Berlin" } },
-      ...Array.from({ length: 2 }, () => ({ type: "calendar_create_local", fields: { ...proposedFields, start: "2027-03-05T14:00:00.000Z", end: "2027-03-05T15:00:00.000Z", timeZone: "Europe/Berlin" } }))])
-
-  const window = { type: "calendar_availability", start: "2026-11-23T00:00:00.000Z", end: "2026-11-24T00:00:00.000Z", timeZone: "UTC" }
-  const free = (words: string, proposed = window) => grounded(proposed, phoneTurn(words, onHome))
-  assert.deepStrictEqual([try free("Am I free tomorrow at 3pm?"), try free("Am I free tomorrow?"), try free("Am I free at 3pm?"),
-    try free("Am I free this afternoon?", { ...window, start: "2026-11-22T15:00:00.000Z", end: "2026-11-22T17:00:00.000Z" })], [
-    { type: "calendar_availability", start: "2026-11-23T14:00:00.000Z", end: "2026-11-23T15:00:00.000Z", timeZone: "Europe/Berlin" },
-    { type: "calendar_availability", start: "2026-11-22T23:00:00.000Z", end: "2026-11-23T23:00:00.000Z", timeZone: "Europe/Berlin" },
-    { type: "calendar_availability", start: "2026-11-22T14:00:00.000Z", end: "2026-11-22T15:00:00.000Z", timeZone: "Europe/Berlin" },
-    { type: "calendar_availability", start: "2026-11-22T15:00:00.000Z", end: "2026-11-22T17:00:00.000Z", timeZone: "Europe/Berlin" },
+  const create = (words: string, fields: Partial<typeof proposedFields> = {}) => grounded({ type: "calendar_create_local", fields: { ...proposedFields, ...fields } }, turn(words))
+  const ana = { title: "Lunch with Ana", start: "2026-11-27T11:00:00.000Z", end: "2026-11-27T12:00:00.000Z" }
+  assert.deepStrictEqual([try create("put lunch with Ana on my phone calendar Friday at noon", ana), try create("Add lunch with Sam at 6pm", { start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T18:00:00.000Z" }),
+    try create("Add lunch with Sam 2027年3/5 at 3pm", { start: "2027-03-05T14:00:00.000Z", end: "2027-03-05T15:00:00.000Z" }),
+    try create("Add lunch with Sam tomorrow from one ten PM to one thirty PM", { start: "2026-11-23T12:10:00.000Z", end: "2026-11-23T12:30:00.000Z" })], [
+    { type: "calendar_create_local", fields: { ...proposedFields, ...ana } },
+    { type: "calendar_create_local", fields: { ...proposedFields, start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T18:00:00.000Z" } },
+    { type: "calendar_create_local", fields: { ...proposedFields, start: "2027-03-05T14:00:00.000Z", end: "2027-03-05T15:00:00.000Z" } },
+    { type: "calendar_create_local", fields: { ...proposedFields, start: "2026-11-23T12:10:00.000Z", end: "2026-11-23T12:30:00.000Z" } },
   ])
-  assert.deepStrictEqual([try free("Am I free sometime?"), try free("Am I free tomorrow at 3pm Tokyo time?"), try free("Am I free on 2027-03-28 from 1am to 2:30am?")],
-    ["CALENDAR_ORIGINAL_AVAILABILITY_UNAVAILABLE", "CALENDAR_OTHER_ZONE_NAMED", "CALENDAR_LOCAL_TIME_AMBIGUOUS"])
+  assert.deepStrictEqual([try create("Add lunch with Sam soon"), try create("Add lunch with Sam tomorrow from one ten PM to one thirty PM", { start: "2026-11-23T21:10:00.000Z", end: "2026-11-23T21:30:00.000Z" }),
+    try create("Add lunch with Sam tomorrow at 3pm Tokyo time", { start: "2026-11-23T06:00:00.000Z", end: "2026-11-23T07:00:00.000Z", timeZone: "Asia/Tokyo" }),
+    try create("Add lunch with Sam tomorrow at 3pm Tokyo time", { start: "2026-11-23T06:00:00.000Z", end: "2026-11-23T07:00:00.000Z" }),
+    try create("Add lunch tomorrow at noon", { title: "Lunch with the board" }), try create("Add lunch with Sam at noon", { start: "2026-11-22T11:00:00.000Z", end: "2026-11-22T12:00:00.000Z" })],
+    ["CALENDAR_CLOCK_UNSAID", "CALENDAR_CLOCK_UNSAID", "CALENDAR_OTHER_ZONE_NAMED", "CALENDAR_CLOCK_UNSAID", "CALENDAR_TITLE_NOT_STATED", "CALENDAR_CREATE_PAST_START"])
+  assert.deepStrictEqual(try create("Add lunch with Sam every Monday at noon"), { type: "calendar_create_local", fields: proposedFields })
+  assert.deepStrictEqual([try create("put lunch with Ana on my phone calendar Friday at noon", { ...ana, start: "2026-11-27T12:00:00+01:00", end: "2026-11-27T13:00+01:00" }),
+    try create("put lunch with Ana on my phone calendar Friday at noon", { ...ana, start: "2026-11-27T11:00:00Z" }), try create("put lunch with Ana on my phone calendar Friday at noon", { ...ana, start: "2026-11-27T12:00:00" })],
+    [{ type: "calendar_create_local", fields: { ...proposedFields, ...ana } }, { type: "calendar_create_local", fields: { ...proposedFields, ...ana } }, "DEVICE_OPERATION_INVALID"])
+
+  const window = { type: "calendar_availability", start: "2026-11-23T14:00:00.000Z", end: "2026-11-23T15:00:00.000Z", timeZone: "Europe/Berlin" }
+  const morning = { ...window, start: "2026-11-22T23:00:00.000Z", end: "2026-11-23T11:00:00.000Z" }
+  const free = (words: string, proposed: typeof window = window, observation: DeviceTurn["observation"] = onHome) => grounded(proposed, turn(words, observation))
+  assert.deepStrictEqual([try free("Am I free tomorrow at 3pm?"), try free("am I free tomorrow morning?", morning), try free("Am I free tomorrow at 3pm Tokyo time?", { ...window, timeZone: "Asia/Tokyo" }),
+    try free("Am I free tomorrow at 3pm?", window, { ...onHome, timeZone: undefined }), try free("am I free tomorrow morning?", { ...morning, start: "2026-11-23T00:00:00+01:00", end: "2026-11-23T12:00+01:00" })],
+    [window, morning, "CALENDAR_OTHER_ZONE_NAMED", "CALENDAR_ZONE_UNAVAILABLE", morning])
+  assert.deepStrictEqual(asked, [])
 })
 
-it.effect('A change after a shared read is the edits the owner asked for (spec/calendar/reviewedReads.md, "A change after a shared read is the edits the owner\'s words gave, keeping every other field")', effect () => {
+it.effect('A change after a shared read is the edit the model read (spec/calendar/reviewedReads.md, "A change after a shared read is the edit the model read from the owner\'s request, keeping every other field")', effect () => {
   const shared = { ...fields, title: "Standup", start: "2026-11-22T16:00:00.000Z", end: "2026-11-22T16:30:00.000Z", timeZone: "Europe/Berlin" }
   const read = { proposalId: "p1", requestMessageId: "00000000-0000-4000-8000-000000000001" as UUID, operation: { type: "calendar_read_selected", target } as const,
     result: { ...record, fields: shared }, settledAt: turnStarted }
-  const after = (words: string, observation: DeviceTurn["observation"] = onCalendar) => calendarProposalFamily.continueAfterRead?.(read, phoneTurn(words, observation)) ?? succeed(undefined)
-  const timeReview = "The event is ready for time-change review. Confirm the new time to update it; nothing has changed yet."
-  const editReview = "The event is ready for update review. Confirm the requested changes; nothing has changed yet."
-  const moved = (start: string, end: string) => ({ operation: { type: "calendar_update" as const, target, fields: { ...shared, start, end } }, text: timeReview })
-  const edited = (change: Partial<typeof shared>) => ({ operation: { type: "calendar_update", target, fields: { ...shared, ...change } }, text: editReview })
-  assert.deepStrictEqual([try after("Reschedule this meeting for tomorrow at 10am"), try after("Move this meeting to tomorrow at 10am for 2 hours"), try after("Move this meeting to 10am")], [
-    moved("2026-11-23T09:00:00.000Z", "2026-11-23T09:30:00.000Z"), moved("2026-11-23T09:00:00.000Z", "2026-11-23T11:00:00.000Z"), moved("2026-11-22T09:00:00.000Z", "2026-11-22T09:30:00.000Z"),
-  ])
-  assert.deepStrictEqual([try after("Push this meeting back an hour"), try after("Move this meeting two days earlier"), try after("Move it half an hour later"), try after("Move this meeting to Friday"),
-    try after("Push it back an hour and a half"), try after("Move it one and a half hours earlier")], [
-    moved("2026-11-22T17:00:00.000Z", "2026-11-22T17:30:00.000Z"), moved("2026-11-20T16:00:00.000Z", "2026-11-20T16:30:00.000Z"), moved("2026-11-22T16:30:00.000Z", "2026-11-22T17:00:00.000Z"),
-    moved("2026-11-27T16:00:00.000Z", "2026-11-27T16:30:00.000Z"), moved("2026-11-22T17:30:00.000Z", "2026-11-22T18:00:00.000Z"), moved("2026-11-22T14:30:00.000Z", "2026-11-22T15:00:00.000Z"),
-  ])
-  assert.deepStrictEqual([try after("Rename this to “Team sync”"), try after("Change the location to Room 4"), try after("Please set the notes for this meeting to Bring the slides.")],
-    [edited({ title: "Team sync" }), edited({ location: "Room 4" }), edited({ description: "Bring the slides" })])
-  assert.deepStrictEqual(try after("Rename this to Standup"), { text: "No requested field change was resolved. Nothing was changed." })
-  assert.deepStrictEqual([try after("Rename this to Sync and move it to 3pm"), try after("Move the event to 3pm tomorrow and rename it to Standup"),
-    try after("Change the location to Room 4 and move it to 3pm"), try after("Rename it Checkup and push it an hour")], [
-    edited({ title: "Sync", start: "2026-11-22T14:00:00.000Z", end: "2026-11-22T14:30:00.000Z" }), edited({ start: "2026-11-23T14:00:00.000Z", end: "2026-11-23T14:30:00.000Z" }),
-    edited({ location: "Room 4", start: "2026-11-22T14:00:00.000Z", end: "2026-11-22T14:30:00.000Z" }), edited({ title: "Checkup", start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T17:30:00.000Z" }),
-  ])
-  assert.deepStrictEqual([try after("Change this meeting to end at 6pm"), try after("Make it end at 6pm"), try after("Move this meeting to 3pm Tokyo time")], [
-    moved("2026-11-22T16:00:00.000Z", "2026-11-22T17:00:00.000Z"), moved("2026-11-22T16:00:00.000Z", "2026-11-22T17:00:00.000Z"),
-    { operation: { type: "calendar_update", target, fields: { ...shared, start: "2026-11-23T06:00:00.000Z", end: "2026-11-23T06:30:00.000Z", timeZone: "Asia/Tokyo" } }, text: timeReview },
-  ])
-  assert.deepStrictEqual([try after("Move this meeting to tomorrow at 10am or 11am"), try after("What is this meeting about?"), try after("How do I move this event to tomorrow at 3pm?"),
-    try after("Don't rename it to Lunch"), try after("Don't call it Standup anymore, call it Sync"), try after("Move this meeting to 10am", unzonedCalendar),
-    try after("Push it back an hour or two"), try after("Move it to 3pm and push it an hour"), try after("Make it end at 5")],
-    [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined])
   const byName = { ...read, operation: { type: "calendar_named", action: "read", name: "standup" } as const,
     result: { version: 1, kind: "calendar_named", action: "read", name: "standup", basis: "owner-chosen", operation: { type: "calendar_read_selected", target }, record: { ...record, fields: shared } } }
-  assert.deepStrictEqual(try (calendarProposalFamily.continueAfterRead?.(byName, phoneTurn("Move standup to Friday at 3pm, not Thursday", onHome)) ?? succeed(undefined)),
-    moved("2026-11-27T14:00:00.000Z", "2026-11-27T14:30:00.000Z"))
   const unmatched = { ...byName, result: { version: 1, kind: "calendar_named", action: "read", name: "standup", basis: "no-match" } }
-  assert.deepStrictEqual(try (calendarProposalFamily.continueAfterRead?.(unmatched, phoneTurn("Move standup to Friday at 3pm", onHome)) ?? succeed(undefined)),
-    { text: "No event matched this reviewed lookup. Nothing was changed." })
+  const reply = (change: Record<string, string> = {}, question?: string) => JSON.stringify({
+    requiresInput: question !== undefined, question: question ?? null, title: null, location: null, description: null, start: null, end: null, timeZone: null, ...change,
+  })
+  const after = effect (words: string, answer: string | undefined, earlier: typeof read | typeof byName | typeof unmatched = read, observation: DeviceTurn["observation"] = onCalendar) => {
+    const model = phoneModel(answer === undefined ? [] : [answer])
+    const continued = try (model.family.continueAfterRead?.(earlier, phoneTurn(model.runtime, words, observation)) ?? succeed(undefined))
+    return { continued, asked: model.asked.length }
+  }
+  const timeReview = "The event is ready for time-change review. Confirm the new time to update it; nothing has changed yet."
+  const editReview = "The event is ready for update review. Confirm the requested changes; nothing has changed yet."
+  const moved = (start: string, end: string, zone: Record<string, string> = {}) => ({ continued: { operation: { type: "calendar_update", target, fields: { ...shared, start, end, ...zone } }, text: timeReview }, asked: 1 })
+  const edited = (change: Partial<typeof shared>) => ({ continued: { operation: { type: "calendar_update", target, fields: { ...shared, ...change } }, text: editReview }, asked: 1 })
+  const told = (text: string, asked = 1) => ({ continued: { text }, asked })
+  assert.deepStrictEqual([
+    try after("Reschedule this meeting for tomorrow at 10am", reply({ start: "2026-11-23T09:00:00.000Z", end: "2026-11-23T09:30:00.000Z" })),
+    try after("Push this meeting back an hour", reply({ start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T17:30:00.000Z" })),
+    try after("move my 3pm to 4", reply({ start: "2026-11-22T15:00:00.000Z", end: "2026-11-22T15:30:00.000Z" })),
+    try after("Move this meeting to 3pm Tokyo time", reply({ start: "2026-11-23T06:00:00.000Z", end: "2026-11-23T06:30:00.000Z", timeZone: "Asia/Tokyo" })),
+  ], [
+    moved("2026-11-23T09:00:00.000Z", "2026-11-23T09:30:00.000Z"), moved("2026-11-22T17:00:00.000Z", "2026-11-22T17:30:00.000Z"), moved("2026-11-22T15:00:00.000Z", "2026-11-22T15:30:00.000Z"),
+    moved("2026-11-23T06:00:00.000Z", "2026-11-23T06:30:00.000Z", { timeZone: "Asia/Tokyo" }),
+  ])
+  assert.deepStrictEqual([try after("Rename this to “Team sync”", reply({ title: "Team sync" })), try after("Change the location to Room 4", reply({ location: "Room 4" })),
+    try after("Please set the notes for this meeting to Bring the slides.", reply({ description: "Bring the slides" })),
+    try after("Rename it Checkup and push it an hour", reply({ title: "Checkup", start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T17:30:00.000Z" }))],
+    [edited({ title: "Team sync" }), edited({ location: "Room 4" }), edited({ description: "Bring the slides" }), edited({ title: "Checkup", start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T17:30:00.000Z" })])
+  const question = "Should it start at 10am or 11am?"
+  const answered = { continued: undefined, asked: 1 }
+  assert.deepStrictEqual([try after("What is this meeting about?", reply()), try after("Rename this to Standup", reply({ title: "Standup" })),
+    try after("Move this meeting to tomorrow at 10am or 11am", reply({}, question)), try after("Make it end at 3pm", reply({ end: "2026-11-22T14:00:00.000Z" })),
+    try after("Move this meeting to 10am", undefined, read, unzonedCalendar)], [
+    answered, told("No requested field change was resolved. Nothing was changed."), told(question),
+    told("The requested end is not after the requested start. Say the new start and end again. Nothing was changed."), { continued: undefined, asked: 0 },
+  ])
+  assert.deepStrictEqual([try after("What is this meeting about?", undefined), try after("What is this meeting about?", "not json"), try after("What is this meeting about?", reply({}, "  ")),
+    try after("Rename this to Lunch", reply({ title: "Board lunch" })), try after("Move this meeting to tomorrow at 10am", reply({ start: "tomorrow at 10am" })),
+    try after("Move this meeting to tomorrow at 10am", "not json")], Array.from({ length: 6 }, () => answered))
+  assert.deepStrictEqual([try after("Move standup to Friday at 3pm, not Thursday", reply({ start: "2026-11-27T14:00:00.000Z", end: "2026-11-27T14:30:00.000Z" }), byName, onHome),
+    try after("When is standup?", reply(), byName, onHome), try after("When is standup?", undefined, byName, onHome), try after("Move standup to Friday at 3pm", "not json", byName, onHome),
+    try after("Move standup to Friday at 3pm", undefined, unmatched, onHome)], [
+    moved("2026-11-27T14:00:00.000Z", "2026-11-27T14:30:00.000Z"), answered, answered, answered, told("No event matched this reviewed lookup. Nothing was changed.", 0),
+  ])
 })
