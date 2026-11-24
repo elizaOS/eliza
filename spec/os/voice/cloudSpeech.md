@@ -164,6 +164,26 @@ pure def mute(s: CloudSpeech): SpeechStep = { state: { ...s, capture: Muted, foc
 pure def sometimesListening(s: CloudSpeech): bool = s.phase == Live and s.capture == Listening
 ```
 
+### The speaker is muted for the whole session without ending voice, and only an open session whose bridge can mute it applies the mute
+
+`setOutputMuted(muted)` asks the open session's bridge
+(`setCloudSpeechOutputMuted`) to play replies at no volume. It changes
+neither the capture nor the reply: a muted reply still plays, reports its
+first audio and settles completed, and every later reply of the session
+starts muted until the owner unmutes. Before the session is open, or on a
+bridge without the method, the request is refused as
+`output-mute-unavailable` and nothing changes. Muting the speaker is not
+muting the capture (above). The volume a muted or unmuted reply plays at
+is [speech output](./speechOutput.md)'s.
+
+```quint
+type SpeakerMuteAnswer = SpeakerMuteApplied | SpeakerMuteUnavailable
+pure def speakerMuteAnswer(sessionOpened: bool, bridgeMutesSpeaker: bool): SpeakerMuteAnswer =
+  if (sessionOpened and bridgeMutesSpeaker) SpeakerMuteApplied else SpeakerMuteUnavailable
+pure def lawASpeakerMuteNeedsAnOpenSessionWhoseBridgeCanMute(sessionOpened: bool, bridgeMutesSpeaker: bool): bool =
+  (speakerMuteAnswer(sessionOpened, bridgeMutesSpeaker) == SpeakerMuteApplied) iff (sessionOpened and bridgeMutesSpeaker)
+```
+
 ### A provider speech edge belongs to the capture live when it began, and a retired capture owns none
 
 A turn that starts while muted belongs to no capture, and a turn's text is

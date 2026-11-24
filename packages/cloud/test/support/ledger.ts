@@ -51,3 +51,33 @@ export function ledger(): Ledger {
     dispose: () => runtime.dispose(),
   };
 }
+
+export function identityDriverLedger() {
+  const cloud = ledger();
+  const emitted = new Map<string, unknown>();
+  const person = (key: string) => `person-${key}`;
+  const reset = async (organizations: ReadonlyArray<string>) => {
+    emitted.clear();
+    await cloud.reset(organizations);
+  };
+
+  return {
+    ...cloud,
+    person,
+    reset,
+    async resetPeople(keys: ReadonlyArray<string>) {
+      await reset(keys.map((key) => `org-${key}`));
+      for (const key of keys) {
+        await cloud.sql("INSERT INTO accounts (key, state, revision, organization_id, status, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', 0, 0)", [person(key), `org-${key}`]);
+      }
+    },
+    async dispatch<A, E>(key: string, program: Effect.Effect<A, E, Store>, output: (value: A) => unknown): Promise<"accepted" | "refused"> {
+      const done = await cloud.run(program);
+      emitted.set(key, done.kind === "done" ? output(done.value) : []);
+      if (done.kind === "done") return "accepted";
+      if (done.tag === "Rejected") return "refused";
+      throw new Error(`the cloud failed with ${done.tag}`, { cause: done.error });
+    },
+    observeOutput: (key: string) => emitted.get(key) ?? [],
+  };
+}

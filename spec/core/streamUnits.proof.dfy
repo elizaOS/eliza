@@ -22,6 +22,7 @@ lemma {:induction false} SlicePrefixFold(xs: seq<int>, offset: int, end: int, ac
     assert f(SliceWalk(offset, acc), xs[0]) == next;
     assert Std.Collections.Seq.FoldLeft(f, SliceWalk(offset, acc), xs) == Std.Collections.Seq.FoldLeft(f, next, xs[1..]);
     SlicePrefixFold(xs[1..], offset + 1, end, acc + [xs[0]]);
+    assert xs[1..][..end - offset - 1] == xs[1..end - offset];
     assert xs[..end - offset] == [xs[0]] + xs[1..][..end - offset - 1];
     calc {
       Std.Collections.Seq.FoldLeft(f, SliceWalk(offset, acc), xs).units;

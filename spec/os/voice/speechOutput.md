@@ -283,6 +283,27 @@ pure def sometimesDucked(s: SpeechOutput): bool = {
 }
 ```
 
+### A muted speaker keeps the reply playing at no volume, and unmuting restores the volume focus holds
+
+The owner can mute the speaker without ending voice
+(`setSpeechOutputMuted` on the device's own speech,
+`setCloudSpeechOutputMuted` on a cloud speech session). A muted reply
+keeps playing, keeps its audio focus and reports its first audio and its
+end as an audible one does; only its output volume is zero. A ducking
+focus change while muted makes nothing audible, and unmuting restores full
+volume, or the lowered one while focus is still ducked. The mute holds for
+every later reply of the session until it is lifted.
+
+```quint
+type Loudness = Inaudible | Lowered | FullyAudible
+pure def loudnessOf(speakerMuted: bool, volume: Volume): Loudness =
+  if (speakerMuted) Inaudible else if (volume == Ducked) Lowered else FullyAudible
+pure def lawOnlyAMuteSilencesTheSpeaker(speakerMuted: bool, volume: Volume): bool =
+  (loudnessOf(speakerMuted, volume) == Inaudible) iff speakerMuted
+pure def lawADuckedReplyIsLoweredOnceUnmuted(speakerMuted: bool): bool =
+  (loudnessOf(speakerMuted, Ducked) == Lowered) iff not(speakerMuted)
+```
+
 ### A listener holds focus while its microphone is open, and a transient loss pauses it until focus returns
 
 The cloud speech session asks for the same transient, duckable focus when

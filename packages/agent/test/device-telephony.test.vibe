@@ -123,6 +123,12 @@ module node {
     if (emergencyKeypad !== undefined) await applied(client, emergencyKeypad, "keypad-1", { kind: "phone-keypad", status: "opened" })
     const emptyKeypad = await ask("open the dialer", { type: "phone_keypad" })
     const writtenEmergency = await ask("call 911", call("911"))
+    const spokenEmergency = await ask("call nine one one", call("911"))
+    const spokenNines = await ask("call nine nine nine", call("999"))
+    const spokenEmergencyByName = await ask("my dad fell, call nine one one", callContact("nine one one"))
+    const nameInNumberWords = await ask("call Seven Eleven", callContact("Seven Eleven"))
+    const nameInNumberWordsInvented = await ask("call Seven Eleven", call("6505715862"))
+    const spokenEmergencyOtherNumber = await ask("call nine one one", call("112"))
     const contactNumber = await ask("save Ana as a contact with 415-555-0199", {
       type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["6505715862"], emailAddresses: [] },
     })
@@ -211,7 +217,7 @@ module node {
     return {
       alternativeRecipients, alternativeInBody, handedThrough, heldCall, separated: { call: separatedCall, send: separatedSend, contact: separatedContact }, ownerDialForm, invented, noNumber,
       callBack, authoredSurname, draftedSurname, surnameWithCourtesy, prefixCallback, unnamed, bodyNumber,
-      keypad, dialName, emergency, emptyKeypad, writtenEmergency, contactNumber, contactEmail, draft, draftToNumber, draftAskFirst, unclear, composedNumber,
+      keypad, dialName, emergency, emptyKeypad, writtenEmergency, spokenEmergency, spokenNines, spokenEmergencyByName, nameInNumberWords, nameInNumberWordsInvented, spokenEmergencyOtherNumber, contactNumber, contactEmail, draft, draftToNumber, draftAskFirst, unclear, composedNumber,
       contactUpdate, contactAdd, contactDelete, contactNoNumber, contactShow, contactRead, simSendToName, threadReply,
       draftToNobody, draftToTwoNumbers, callEveryone, partial, compound, repeatedCall, repeatedSender,
       unbound: { reply: unbound.text.split("\n\n").at(-1), carriesMessage: reviewedCall === undefined ? undefined : reviewedCall.payload.requestMessageId !== undefined },
@@ -273,6 +279,18 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
     },
     emptyKeypad: { reply: "Opening the keypad.", operation: { type: "phone_keypad" } },
     writtenEmergency: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
+    spokenEmergency: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
+    spokenNines: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "999" } } },
+    spokenEmergencyByName: {
+      reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
+      operation: { type: "phone_keypad" },
+    },
+    nameInNumberWords: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Seven Eleven" } } },
+    nameInNumberWordsInvented: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Seven Eleven" } } },
+    spokenEmergencyOtherNumber: {
+      reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
+      operation: { type: "phone_keypad" },
+    },
     contactNumber: { reply: numberNotSaved, operation: undefined },
     contactEmail: {
       reply: "I didn't save that, because that email address isn't one you wrote in your message. Nothing was saved. Tell me the email address to use.",
