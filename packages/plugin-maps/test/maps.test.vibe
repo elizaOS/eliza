@@ -1,5 +1,4 @@
 // spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"
-import { randomUUID } from "node:crypto"
 import { assert, it, layer } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
@@ -880,8 +879,11 @@ function memoryStore(): AgentSavedPlaceStore {
   }
 }
 
+let ownerTurnSequence = 0
+
 function ownerTurn(text: string, roomId = "00000000-0000-4000-8000-000000000002"): Memory {
-  return { id: randomUUID(), entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text, source: "device" } } as unknown as Memory
+  const id = `00000000-0000-4000-8000-${String(++ownerTurnSequence).padStart(12, "0")}`
+  return { id, entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text, source: "device" } } as unknown as Memory
 }
 
 it.live('An unrelated owner turn closes the Maps choice, while routing the immediate answer twice keeps it tied to the original request (spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes")', effect () => {
