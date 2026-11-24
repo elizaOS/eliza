@@ -448,17 +448,17 @@ it.live("While a recording runs, only one zoom or torch change runs at a time (s
   const session = sessionOn(phone, client, host)
   try promise(() => session.start())
 
-  const starting = session.startRecording()
+  const starting = try Effect.try(() => session.startRecording())
   const whileStarting = try promise(() => session.control(() => client.setZoom({ zoom: 2 }), "zoom"))
-  recordingStart.open()
+  try Effect.try(() => recordingStart.open())
   const recording = try promise(() => starting)
 
   const unnamed = try promise(() => session.control(() => client.setSettings({ settings: { flash: "on" } })))
   const zoomHeld = gate()
-  const zoom = session.control(async () => {
+  const zoom = try Effect.try(() => session.control(async () => {
     await zoomHeld.passed
     await client.setZoom({ zoom: 3 })
-  }, "zoom")
+  }, "zoom"))
   const torchBesideZoom = try promise(() => session.control(async () => {}, "torch"))
   const besideZoom = {
     controlBusy: session.controlBusy,
@@ -466,7 +466,7 @@ it.live("While a recording runs, only one zoom or torch change runs at a time (s
     capture: try promise(() => session.exclusive(async () => "photo")),
     secondStart: try promise(() => session.startRecording()),
   }
-  zoomHeld.open()
+  try Effect.try(() => zoomHeld.open())
   const zoomed = try promise(() => zoom)
   const torch = try promise(() => session.control(async () => {}, "torch"))
   const torchRefused = try promise(() => session.control(async () => {
@@ -474,19 +474,19 @@ it.live("While a recording runs, only one zoom or torch change runs at a time (s
   }, "torch"))
   const afterChanges = { controlBusy: session.controlBusy, recording: session.recording }
 
-  const finishing = session.finishRecording()
+  const finishing = try Effect.try(() => session.finishRecording())
   const whileFinishing = try promise(() => session.control(async () => {}, "torch"))
   const finished = try promise(() => finishing)
   const readyAgain = try promise(() => session.control(() => client.setSettings({ settings: { flash: "off" } })))
 
   try promise(() => session.startRecording())
   const staleHeld = gate()
-  const staleZoom = session.control(async () => {
+  const staleZoom = try Effect.try(() => session.control(async () => {
     await staleHeld.passed
-  }, "zoom")
+  }, "zoom"))
   try promise(() => session.control(async () => {}, "torch"))
   try promise(() => session.stop())
-  staleHeld.open()
+  try Effect.try(() => staleHeld.open())
   const settledAfterStop = try promise(() => staleZoom)
 
   try Effect.try(() => assert.deepStrictEqual(

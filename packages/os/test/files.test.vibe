@@ -8,13 +8,13 @@ module android {
   import { createHash, randomUUID } from "node:crypto"
   import path from "node:path"
   import type { ElizaFilesPlugin, FileOutcomeRow, TrashEntry } from "../src/bridges/definitions/files.ts"
-  import { compileAdapter } from "./drivers/jvm-adapter.ts"
+  import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
 
   const BROWSING = "ai.eliza.files.StorageBrowsingCheck"
   const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
 
-  export function storageBrowsing(): string {
-    return execFileSync(java, ["-cp", compileAdapter(BROWSING), BROWSING], { encoding: "utf8", timeout: 120_000 }).trim()
+  export async function storageBrowsing(): Promise<string> {
+    return execFileSync(java, ["-cp", await orgJsonAdapterClasspath(BROWSING), BROWSING], { encoding: "utf8", timeout: 120_000 }).trim()
   }
 
   interface Stored {
@@ -219,6 +219,6 @@ it.live("Move only what I reviewed, trash and restore it, erase Trash only when 
 })
 
 it.effect('Browse hidden entries only when asked, never the Trash, and move or copy into another volume (spec/os/android/files/storage.md, "A listing or folder walk shows dot entries only when asked, and never the Trash under any spelling"; spec/os/android/files/storage.md, "A move into another volume takes the copy path, and its copy is written and cleaned up on that volume")', () => effect {
-  const answer = try Effect.try(() => storageBrowsing())
+  const answer = try tryPromise(() => storageBrowsing())
   try Effect.try(() => assert.match(answer, /^StorageBrowsingCheck checks: (18|21)$/))
 }, 180_000)
