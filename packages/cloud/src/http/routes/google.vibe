@@ -16,7 +16,7 @@ effect function status(context: RouteContext) {
   if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
   if (context.query.has("purpose")) throw refused("InvalidRequest")
   const grantId = context.query.get("grantId")?.trim() || undefined
-  return json(try readGrantStatus(caller, grantId, context.query.get("side"), context.now))
+  return json({ accountId: caller.userId, ...try readGrantStatus(caller, grantId, context.query.get("side"), context.now) })
 }
 
 effect function accounts(context: RouteContext) {
@@ -67,9 +67,9 @@ const googlePath = "/api/v1/eliza/google"
 
 export const area: Area = {
   routes: [
-    { method: "GET", path: `${googlePath}/status`, auth: "ServiceAccess", handler: status },
-    { method: "GET", path: `${googlePath}/accounts`, auth: "ServiceAccess", handler: accounts },
-    { method: "POST", path: `${googlePath}/disconnect`, auth: "ServiceAccess", handler: disconnect },
+    { method: "GET", path: `${googlePath}/status`, auth: "MailAccess", handler: status },
+    { method: "GET", path: `${googlePath}/accounts`, auth: "MailAccess", handler: accounts },
+    { method: "POST", path: `${googlePath}/disconnect`, auth: "SignedSession", handler: disconnect },
     { method: "POST", path: `${googlePath}/connect/native`, auth: "ServiceAccess", maxBodyBytes: 16 * 1024, handler: connectNative },
     ...browserConnectRoutes,
     ...mailReadRoutes,

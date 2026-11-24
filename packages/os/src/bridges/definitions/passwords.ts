@@ -82,6 +82,7 @@ export interface ElizaPasswordsPlugin {
   unlock(): Promise<{ unlocked: true; unlockRemainingMs: PasswordsStatus["unlockRemainingMs"] }>;
   lock(): Promise<{ locked: true }>;
   list(): Promise<{ entries: PasswordEntrySummary[] }>;
+  anySaved(): Promise<{ saved: boolean }>;
   save(input: PasswordSaveInput): Promise<PasswordSaveResult>;
   openEditor(input?: PasswordEditorInput): Promise<PasswordEditorResult>;
   remove(input: { id: string; expectedRevision?: number }): Promise<{ removed: true }>;
