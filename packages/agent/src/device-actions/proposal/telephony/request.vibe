@@ -1,25 +1,6 @@
-// spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"
-import { phoneDialNumber } from "./dial-number.vibe"
-import { isWrittenCallbackName, namesSomeone } from "./names.vibe"
-import { completeSpokenPhoneNumber } from "./spoken-number.vibe"
-
+// spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"
 export type PhoneTarget = { readonly kind: "number"; readonly number: string } | { readonly kind: "contact"; readonly query: string }
-export type AuthoredTelephonyRequest = "call" | "text" | "sender"
-export type DraftRecipient = PhoneTarget | { readonly kind: "previous-sender" } | { readonly kind: "ambiguous" } | { readonly kind: "unaddressed" }
-type SenderDisclosure = "address" | "last-four" | "clarify"
 
-const targetOf = (names: "{0,2}" | "{0,2}?") =>
-  String.raw`(?:\+?[\d(][\d\s().-]{5,}\d|\d{3,6}|[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*)${names})`
-const trailing = String.raw`(?:,?\s+(?:please|now|right\s+now|right\s+away|again|back|asap|for\s+me))`
-const trailingWord = new RegExp(`${trailing}$`, "iu")
-const courtesy = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
-const callCommand = new RegExp(`${courtesy}(?:call|ring|phone|dial)\\s+(${targetOf("{0,2}")})(${trailing}*)[.!?]*$`, "iu")
-const thanks = String.raw`(?:(?:thanks|thank\s+you)[,.!]\s+(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?)?`
-const textCommand = (recipient: string) => new RegExp(
-  `${courtesy}${thanks}(?:text|sms|send\\s+(?:an?\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${recipient})\\s*,?\\s+(?:saying|that|to\\s+say|and\\s+say|and\\s+tell\\s+(?:him|her|them)\\s+(?:to|that))\\s+\\S[\\s\\S]*$`, "iu",
-)
-const textRequest = textCommand(targetOf("{0,2}"))
-const textRecipient = textCommand(targetOf("{0,2}?"))
 const emergencyService = String.raw`(?:(?:an?|the|my\s+local|local)\s+)?(?:ambulances?|paramedics?|police|cops|fire\s+(?:department|brigade|service|truck)s?|fire\s*fighters?|emergency(?:\s+(?:services?|number|line))?(?!\s+contacts?)|9-?1-?1|1-?1-?2|9-?9-?9|nine[\s-]+one[\s-]+one|one[\s-]+one[\s-]+two|nine[\s-]+nine[\s-]+nine)(?![\p{L}\p{N}])`
 const emergencyEnd = String.raw`(?:\s+(?:now|right\s+now|right\s+away|immediately|please|asap|quick(?:ly)?|here|over\s+here|for\s+(?:me|us|him|her|them)|(?:to|at)\s+[^.!?;]+))*\s*(?:[,.!?;:]|$)`
 const emergencyRequest = new RegExp(
@@ -27,22 +8,6 @@ const emergencyRequest = new RegExp(
   "iu",
 )
 const emergencyQuery = new RegExp(String.raw`^(?:for\s+)?(?:${emergencyService}|help)[.!?]*$`, "iu")
-const notAPhoneTarget = /^(?:me|myself|us|it|this|that|them|him|her|back|off|out|up|in|a|an|the|someone|somebody|anyone|for|police|cops|emergency|ambulance|paramedics?)\b|\b(?:on|via|in|through|using|with|over|from|at|tomorrow|later|tonight|today|and|or)\b|&|^(?:dialer|dial\s?-?\s?pad|key\s?-?\s?pad|pad|number\s+pad|app)[.!?]*$/iu
-const keypad = String.raw`(?:(?:the|my|your)\s+)?(?:phone(?:['’]s)?\s+)?(?:dialer|dial\s?-?\s?pad|key\s?-?\s?pad|number\s+pad)(?:\s+(?:app|screen|tab))?`
-const openVerb = String.raw`(?:open(?:\s+up)?|show(?:\s+me)?|bring\s+up|pull\s+up|get\s+me|give\s+me|go\s+to|switch\s+to|take\s+me\s+to|launch)`
-const keypadNumber = String.raw`(\+?[\d(][\d\s().-]*\d)`
-const fillIn = String.raw`(?:,?\s+(?:and\s+)?(?:type|enter|put|punch|key|fill)(?:\s+in)?\s+${keypadNumber}(?:\s+(?:in|on\s+it|there))?|\s+(?:with|for)\s+(?:the\s+number\s+)?${keypadNumber}(?:\s+(?:filled\s+in|typed\s+in|in\s+it|on\s+it))?)`
-const keypadRequest = new RegExp(`${courtesy}(?:(${openVerb})\\s+)?${keypad}(?:${fillIn})?(?:,?\\s+(?:please|now|for\\s+me))?[.!?]*$`, "iu")
-
-const draftCommand = /^(?:(?:please|can you|could you|would you)\s+)?(?:(?:draft|write|prepare|compose)\s+(?:me\s+)?(?:(?:a|the)\s+)?(?:(?:short|quick|brief)\s+)?(?:sms|text(?: message)?|message|reply)|reply)\b\s*/i
-const draftThreadObject = /^(?:it|this|that)$|^(?:this|that|the|my)\s+(?:(?:last|latest|newest|most recent|current|open|selected)\s+)?(?:conversation|thread|chat|message|text|sms)\b|['’]s\s+(?:(?:last|latest|newest|most recent)\s+)?(?:conversation|thread|chat|message|text|sms)\b/iu
-const correctedRecipient = /\b(?:actually|instead|rather)\s*[:,]?\s*(?:to|for|use|(?:send|address|forward|write|make) (?:it|that|the (?:draft|message|reply|text)) (?:to|for))\b|\b(?:scratch that|change the recipient|correct the number|(?:to|for) [^.!?;,]{1,64} instead)\b|[,;.!?]\s*(?:no[, ]+wait[, ]+(?:to|for)\b|I mean\s+(?!(?:it|that|what|to)\b)[\p{L}\p{N}+])|(?:^|[,;.!?]|\b(?:and|but)\b)\s*(?:(?:actually|instead)[, ]*)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\b/iu
-const sendItTo = /(?:^|[,;]|\b(?:and|then|but)\b)\s*(?:then\s+)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\s+/iu
-const quoted = /“[^”]*”|"(?:\\.|[^"\\])*"/gu
-const clauseEnd = /\s+(?:(?:and\s+)?(?:say(?:ing)?|ask(?:ing)?|tell(?:ing)?|remind(?:ing)?|let(?:ting)?|about|with|that|to (?:say|ask|tell|remind|let|see|check))\b)|\s*[:“"]|[.!?]$/iu
-const namedSender = /\bfrom\s+(?!(?:what|which|who|whom|where)\b|(?:this|my|the)\s+phone\b|(?:today|tonight|yesterday|earlier)\b|(?:this|last)\s+(?:morning|afternoon|evening|night|hour|week)\b)[\p{L}\p{N}+(]/iu
-const reviewAsked = /\b(?:show|open|present) (?:me )?(?:an? |the )?(?:review|approval)|\b(?:ask|check with) me (?:first|before|to approve)|\b(?:require|wait for|after) (?:my |me to )?(?:approval|confirmation|approve)|\b(?:review|approve) (?:the |this )?(?:lookup|read|action|request)\b/i
-const otherService = /\b(?:on|in|via|through|using|over|from)\s+(?:(?:my|the)\s+)?(?:slack|discord|whats\s?app|telegram|signal|i-?message|messenger|facebook|instagram|wechat|google\s+chat|teams|bluesky|nostr|twitter|x|linkedin|gmail|outlook|e-?mail|mail)\b/iu
 
 export function emergencyServicesRequest(text: string): boolean {
   const request = text.trim()
@@ -51,128 +16,4 @@ export function emergencyServicesRequest(text: string): boolean {
 
 export function namesEmergencyService(query: string): boolean {
   return emergencyQuery.test(query.trim())
-}
-
-export function asksForReview(text: string): boolean {
-  return reviewAsked.test(text.trim())
-}
-
-function isSmsSenderLookup(text: string): boolean {
-  const request = text.trim()
-  return /^(?:(?:please|can you|could you)\s+)?(?:who\b|what(?:['’]s| is| was)\b|show\b|look up\b|find\b|check\b|tell me\b)/i.test(request) &&
-    /\b(?:who|whose|sender|number)\b/i.test(request) && !namedSender.test(request) && !otherService.test(request) &&
-    /\b(?:last|latest|newest|most recent)\s+(?:(?:incoming|received|unread)\s+)?(?:sms|text|message)\b|\b(?:who (?:just |last )?(?:texted|messaged) me|(?:texted|messaged) me (?:last|most recently))\b/i.test(request)
-}
-
-export function smsSenderDisclosure(text: string): SenderDisclosure {
-  const suffix = /\b(?:last|final|trailing|ending)\s+(?:four|4)\b/i.test(text)
-  const otherScope = /\b(?:first|prefix|middle|leading|one|two|three|five|six|seven|eight|nine|ten)\b|\b(?!4\b)\d+\b/i.test(text)
-  if (/\b(?:don['’]t|do not|never|without|hide|omit|exclude|no)\s+(?:(?:show|give|share|display|reveal)(?:ing)?\s+)?(?:me\s+)?(?:any\s+|the\s+)?(?:last|final|ending|digits?|number|address)\b/i.test(text)) return "clarify"
-  if (suffix && !otherScope) return "last-four"
-  if (suffix || otherScope || /\b(?:digits?|ending|ends|suffix|mask(?:ed)?|redact(?:ed)?|partial|hide|omit|exclude|except|only|without|no|not|don['’]t)\b/i.test(text)) return "clarify"
-  return isSmsSenderLookup(text) ? "address" : "last-four"
-}
-
-export function smsDraftRequestAlsoSends(text: string): boolean {
-  const instructions = text.trim().replace(quoted, "")
-  return draftCommand.test(instructions) &&
-    /(?:[,;]|\b(?:and|then)\b)\s*(?:then\s+)?send(?: (?:it|that|the (?:draft|message|reply|text)))?(?: (?:to|for)\b[^.!?;]*)?\s*(?:(?:now|right away|immediately|please)\s*)?[.!]?$/iu.test(instructions)
-}
-
-export function requestedSmsDraftRecipient(text: string): DraftRecipient | undefined {
-  const request = text.trim()
-  const command = draftCommand.exec(request)
-  if (command === null) return undefined
-  let remainder = request.slice(command[0].length)
-  let instructions = remainder.replace(quoted, "")
-  const sendTo = /^(?:to|for)\b/i.test(remainder) ? null : sendItTo.exec(instructions)
-  if (sendTo !== null) {
-    if (correctedRecipient.test(instructions.slice(0, sendTo.index))) return { kind: "ambiguous" }
-    instructions = `to ${instructions.slice(sendTo.index + sendTo[0].length)}`
-    remainder = instructions
-  }
-  if (correctedRecipient.test(instructions)) return { kind: "ambiguous" }
-  if (/^(?:to|for|asking|telling|reminding)\s+(?:them|him|her|that sender|the (?:last|latest|newest) sender)\b(?!\s+(?:and|or|&|instead)\b)/i.test(remainder)) {
-    return { kind: "previous-sender" }
-  }
-  const addressed = /^(?:to|for)\s+(.+)$/is.exec(remainder)
-  if (addressed === null) return { kind: "unaddressed" }
-  const [raw = ""] = (addressed[1] ?? "").split(clauseEnd, 1)
-  const query = raw.trim().replace(/,$/u, "")
-  if (draftThreadObject.test(query)) return { kind: "unaddressed" }
-  const spoken = completeSpokenPhoneNumber(query)
-  if (spoken !== undefined) return { kind: "number", number: spoken }
-  if (/[,&;]|\b(?:and|or|but|not|them|him|her)\b/iu.test(query)) return { kind: "ambiguous" }
-  if (/^\+?\(?\d/.test(query)) {
-    const number = phoneDialNumber(query)
-    return number === undefined ? { kind: "ambiguous" } : { kind: "number", number }
-  }
-  if (/^[\p{L}\p{M}][\p{L}\p{M} ’'.-]{0,127}$/u.test(query) && namesSomeone(query)) return { kind: "contact", query }
-  return { kind: "ambiguous" }
-}
-
-function namesAPhoneTarget(written: string): boolean {
-  return !notAPhoneTarget.test(written) && (/^[+\d(]/.test(written) || namesSomeone(written))
-}
-
-function authoredTelephonyRequest(text: string): AuthoredTelephonyRequest | undefined {
-  const request = text.trim()
-  if (request.length > 400) return undefined
-  const call = callCommand.exec(request)
-  if (call !== null && namesAPhoneTarget(call[1] ?? "")) return "call"
-  if (requestedSmsDraftRecipient(request)?.kind === "previous-sender") return "text"
-  if (isSmsSenderLookup(request)) return "sender"
-  const sms = textRequest.exec(request)
-  if (sms !== null && namesAPhoneTarget(sms[1] ?? "")) return "text"
-  return undefined
-}
-
-export interface AuthoredTelephonyTarget {
-  readonly request: AuthoredTelephonyRequest
-  readonly target?: PhoneTarget
-}
-
-function stripTimingSuffixes(targetText: string): string {
-  let written = targetText.replace(/[.!?]+$/u, "")
-  let suffix = trailingWord.exec(written)
-  while (suffix !== null && !isWrittenCallbackName(suffix[0].trim())) {
-    written = written.slice(0, suffix.index)
-    suffix = trailingWord.exec(written)
-  }
-  return written
-}
-
-export function authoredTelephonyTarget(text: string): AuthoredTelephonyTarget | undefined {
-  const request = authoredTelephonyRequest(text)
-  if (request === undefined) return undefined
-  const matched = (request === "call" ? callCommand : textRecipient).exec(text.trim())
-  const captured = matched?.[1]
-  if (captured === undefined) return { request }
-  const numeric = /^[+\d(]/.test(captured)
-  const trailer = numeric ? "" : (matched?.[2] ?? "")
-  const written = stripTimingSuffixes(captured + trailer)
-    .replace(/['’]s\s+(?:cell(?:\s+phone)?|mobile(?:\s+phone)?|phone|work(?:\s+phone)?|home(?:\s+phone)?|office|landline)(?:\s+(?:number|line))?$/iu, "")
-    .trim()
-  if (written === "") return { request }
-  if (numeric) {
-    const number = phoneDialNumber(written)
-    return number === undefined ? { request } : { request, target: { kind: "number", number } }
-  }
-  const query = written
-    .replace(/^(?:my|our)\s+/iu, "")
-    .replace(/[.!?]+$/u, "")
-    .replace(/(?:\s+(?:back|again))+$/u, "")
-    .replace(/['’]s\s+(?:cellphone|cell|mobile|phone|number|landline)(?:\s+(?:phone|number))?$/iu, "")
-  return query === "" ? { request } : { request, target: { kind: "contact", query } }
-}
-
-export function authoredKeypadRequest(text: string): { readonly number?: string } | undefined {
-  const request = text.trim()
-  if (request.length > 200) return undefined
-  const found = keypadRequest.exec(request)
-  const written = found?.[2] ?? found?.[3]
-  if (found === null || (found[1] === undefined && written === undefined)) return undefined
-  if (written === undefined) return {}
-  const number = phoneDialNumber(written)
-  return number === undefined ? undefined : { number }
 }

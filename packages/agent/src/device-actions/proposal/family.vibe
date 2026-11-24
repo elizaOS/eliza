@@ -51,6 +51,7 @@ export interface DeviceTurn extends NegotiatedDevice {
 export type Grounding =
   | { readonly kind: "Grounded"; readonly operation: DeviceOperation; readonly grounding?: ProposalGrounding }
   | { readonly kind: "Refused"; readonly code: string; readonly forModel: string; readonly forOwner: string }
+  | { readonly kind: "Coached"; readonly code: string; readonly forModel: string }
 
 export interface ReadContinuation {
   readonly operation?: DeviceOperation
@@ -91,7 +92,7 @@ export interface DeviceProposalFamily {
   readonly guidance: (device: NegotiatedDevice) => readonly string[]
   now?(turn: DeviceTurn): string | undefined
   prepare?(operation: unknown): unknown
-  ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable
+  ground(proposed: CheckedOperation, turn: DeviceTurn, asked?: unknown): Grounding!DeviceStoreUnavailable
   proposedText(operation: DeviceOperation, pending: PendingRequest): ProposalText | undefined
   settledText(operation: DeviceOperation, result: unknown, timeZone: string | undefined): ProposalText | undefined
   continueAfterRead?(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "message" | "negotiation" | "startedAt" | "timeZone">): (ReadContinuation | undefined)!DeviceStoreUnavailable
