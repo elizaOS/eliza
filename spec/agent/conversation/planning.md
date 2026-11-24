@@ -80,13 +80,13 @@ names, each in the form the turn gives it (below), so they change only
 when what the turn offers does: no action's own check of a message
 changes them, and an action family's description is stated on the first
 of its offered actions by name. Nothing a message carries changes them:
-not its words, its screen, a whole-request route it matches, nor how its
+not its words, its screen, nor how its
 views are delivered, which a phone states anew with each message. Only
 what the launch allows, what the device negotiated, the installation's
 enabled views and the browser the agent can command shape them, so the
 tools of a phone conversation are the same bytes on every message while
 those hold. What applies to one message only (which device operations its
-screen allows, the route that owns it, how its views open) reaches the
+screen allows, how its views open) reaches the
 model after the history, in the note of the offered action it concerns,
 and a call that message serves in another place is refused before
 dispatch (below). The history follows, then the person's latest message,
@@ -127,9 +127,9 @@ pure def lawTheConstantPartsLead(p: PromptPart): bool = not(changesPerTurn(p)) i
 pure def hostNoteLabels(hostNotes: int): int = if (hostNotes > 0) 1 else 0
 pure def lawTheHostNotesShareOneLabel(hostNotes: int): bool = hostNoteLabels(hostNotes) <= 1
 pure def lawTheLabelComesExactlyWithANote(hostNotes: int): bool = (hostNoteLabels(hostNotes) == 1) == (hostNotes > 0)
-type ToolFact = LaunchAllowed | DeviceNegotiation | InstallationViews | BrowserCommanded | MessageWords | ScreenShown | ViewDelivery | WholeRequestRoute
+type ToolFact = LaunchAllowed | DeviceNegotiation | InstallationViews | BrowserCommanded | MessageWords | ScreenShown | ViewDelivery
 pure def shapesTools(f: ToolFact): bool = f == LaunchAllowed or f == DeviceNegotiation or f == InstallationViews or f == BrowserCommanded
-pure def carriedByMessage(f: ToolFact): bool = f == MessageWords or f == ScreenShown or f == ViewDelivery or f == WholeRequestRoute
+pure def carriedByMessage(f: ToolFact): bool = f == MessageWords or f == ScreenShown or f == ViewDelivery
 pure def lawNothingAMessageCarriesShapesTheTools(f: ToolFact): bool = carriedByMessage(f) implies not(shapesTools(f))
 ```
 
@@ -170,82 +170,43 @@ pure def lawAParameterTheTurnDoesNotNameKeepsItsRegisteredSchema(params: Set[str
   params.forall(p => not(narrowed.contains(p)) implies not(turnNarrowed(params, narrowed).contains(p)))
 ```
 
-### A call my whole message asked for outright runs first, without waiting on the model's choice
+### Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn
 
-An offered action may name, for this turn, the one call the person's whole
-message is a strict command for, such as the device tool's open of the
-address in "open example.com". When exactly one offered action names one,
-the turn runs that call as its first step, before the model is asked, with
-the person's authority as any planned call; the model then sees the call
-and its result in the turn and answers or plans on, under the same tools
-and step bound. With no such call, or more than one, the model plans as it
-always does.
-
-```quint
-pure def callRunsFirst(askedCalls: int): bool = askedCalls == 1
-pure val askedCallsValues = Set(0, 1, 2, 3)
-pure def lawOnlyOneAskedCallRunsFirst(askedCalls: int): bool = callRunsFirst(askedCalls) implies askedCalls == 1
-pure def lawTwoAskedCallsLeaveTheChoiceToTheModel(askedCalls: int): bool = askedCalls > 1 implies not(callRunsFirst(askedCalls))
-```
-
-### A route that owns the whole request refuses the actions it replaces while its own actions are offered
-
-A plugin may register a direct route ([routing registries](../../core/registries.md))
-that owns the whole request. When the turn's message matches such a route
-and every action it routes to is offered this turn, a call of an action it
-names as replaced is refused before it runs, so the model cannot plan that
-request another way, such as opening the Camera view for "take a picture"
-([device surfaces](../deviceActions/surfaces.md)). The route is something
-the message carries, so the tools stay as they are (above). The refused
-call runs nothing, not even its action's own check; the model reads in its
-result that the whole request is routed elsewhere and that the action did
-not run. It is no step of the turn, since the person never asked for it,
-so the reply reports no failure for it. A route that does not own the
-whole request, does not match, or routes to an action this turn does not
-offer refuses nothing, and no route refuses an action it does not name.
-
-```quint
-pure def refusedByRoute(ownsWholeRequest: bool, matched: bool, routedOffered: bool, replaced: bool): bool =
-  ownsWholeRequest and matched and routedOffered and replaced
-pure def lawARouteWhoseActionsAreNotOfferedRefusesNothing(ownsWholeRequest: bool, matched: bool, replaced: bool): bool =
-  not(refusedByRoute(ownsWholeRequest, matched, false, replaced))
-pure def lawARouteRefusesOnlyWhatItReplaces(ownsWholeRequest: bool, matched: bool, routedOffered: bool): bool =
-  not(refusedByRoute(ownsWholeRequest, matched, routedOffered, false))
-pure def lawARouteThatDoesNotOwnTheRequestRefusesNothing(matched: bool, routedOffered: bool, replaced: bool): bool =
-  not(refusedByRoute(false, matched, routedOffered, replaced))
-```
-
-### A call this message serves in another place is refused before it runs, and is no step of the turn
+The model sees the person's message before anything runs, and every call
+of the turn is one it made: no call runs before its first response, no
+reply is given before it is asked, and no call is refused because of how
+the person worded the request. What the words ask for, which app serves
+them and when to ask a question back are the model's to judge; the
+actions check what it proposed, and the tool descriptions and notes say
+which action serves what.
 
 An action whose tool is the same on every message may say, from what a
 message carries, that a call of it has another home on that message:
 `VIEWS` on a device message whose views are not delivered as completed
 actions, where the device tool's `open_view` serves it
 ([device surfaces](../deviceActions/surfaces.md)), and a device operation
-the message does not allow or that a whole-message route does not own
-([proposals](../deviceActions/index.md)). The planner asks before it
-dispatches each call, after the route (above). Such a call runs nothing,
-not even its action's own check, and the model reads in its result where
-the message is served and that nothing ran, so it may take that way, ask
-or answer. Like a call a route refuses, it is no step of the turn: the
-person's request was not refused, only one way of serving it, which the
-tool offers on other messages, so the reply never reports a failure for
-it. A call the action itself refuses (one matching none of its forms, one
-its own check declines, one its handler refuses) is a step as before.
-An action may also give the turn a note on what this message allows of
-it, such as the device tool's route lead; it is sent after the person's
-latest message only while that action is offered, so it never tells the
-model of a tool, a route or a refusal the turn does not have.
+the message does not allow ([proposals](../deviceActions/index.md)). The
+planner asks before it dispatches each call. Such a call runs nothing, not
+even its action's own check, and the model reads in its result where the
+message is served and that nothing ran, so it may take that way, ask or
+answer. It is no step of the turn: the person's request was not refused,
+only one way of serving it, which the tool offers on other messages, so
+the reply never reports a failure for it. A call the action itself
+refuses (one matching none of its forms, one its own check declines, one
+its handler refuses) is a step as before. An action may also give the
+turn a note on what this message allows of it, such as the device tool's
+note on how views open; it is sent after the person's latest message
+only while that action is offered, so it never tells the model of a tool
+or a refusal the turn does not have.
 
 ```quint
-type CallAdmission = Dispatched | RefusedByItsRoute | ServedElsewhere
-pure def callAdmission(routeRefuses: bool, servedElsewhere: bool): CallAdmission =
-  if (routeRefuses) RefusedByItsRoute else if (servedElsewhere) ServedElsewhere else Dispatched
+type CallAdmission = Dispatched | ServedElsewhere
+pure def callAdmission(servedElsewhere: bool): CallAdmission = if (servedElsewhere) ServedElsewhere else Dispatched
 pure def isTurnStep(a: CallAdmission): bool = a == Dispatched
-pure def lawACallRefusedBeforeDispatchIsNoStep(routeRefuses: bool, servedElsewhere: bool): bool =
-  (routeRefuses or servedElsewhere) implies not(isTurnStep(callAdmission(routeRefuses, servedElsewhere)))
-pure def lawACallNothingRefusesIsDispatched(routeRefuses: bool, servedElsewhere: bool): bool =
-  not(routeRefuses or servedElsewhere) implies callAdmission(routeRefuses, servedElsewhere) == Dispatched
+pure def lawACallServedElsewhereIsNoStep(servedElsewhere: bool): bool =
+  servedElsewhere implies not(isTurnStep(callAdmission(servedElsewhere)))
+pure def lawACallNothingRefusesIsDispatched(servedElsewhere: bool): bool =
+  not(servedElsewhere) implies callAdmission(servedElsewhere) == Dispatched
 pure def actionNoteSent(actionOffered: bool, noted: bool): bool = actionOffered and noted
 pure def lawOnlyAnOfferedActionNotesTheMessage(noted: bool): bool = not(actionNoteSent(false, noted))
 ```
@@ -503,7 +464,9 @@ The system prompt's cue rule asks the model to write, with its first tool
 calls, only a brief cue that it heard the request: `Let me check.` or
 `Let me check your calendar.` (or the owner's notes, inbox, messages,
 reminders, tasks, files, photos or contacts) for a question or a lookup, a
-request asked as a question (`Can you text Sam?`) included; `Let me open
+request asked as a question (`Can you text Sam?`) included, naming a source
+only for one simple lookup, so a message asking for several lookups or about
+several named people or items gets the plain `Let me check.`; `Let me open
 Maps.` when opening an app is part of other planned work, naming the app
 asked for by its bare name (Calendar, Notes, Inbox, Maps, Files, Photos,
 Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock)
@@ -572,8 +535,7 @@ is delivered, never asked again. `Sure!` before a lead form (`Sure! Let me
 check your calendar.`) is a cue after any message. The acknowledgment is
 delivered at most once per turn, as the [reply stream](./replyStream.md)'s
 `acknowledgment` frame. A model cue is delivered only before work starts
-and is suppressed when the owner asks for silence. A call the whole message
-asked for outright has its own cue rule below. A cue at a later step is
+and is suppressed when the owner asks for silence. A cue at a later step is
 dropped with the rest of that step's text. A blank draft or one outside the
 cue grammar is never spoken as acknowledgment. A navigation-only turn whose
 model confirms the destination alongside its tool call still gives the owner
@@ -593,36 +555,6 @@ pure def lawNoCueOrADestinationConfirmationNeverAcknowledges(instruction: bool, 
   not(acknowledges(readDraft(Blank, instruction, calls), calls, earlierCalls)) and not(acknowledges(readDraft(OtherText, instruction, calls), calls, earlierCalls))
 pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: int, laterDraft: Draft, laterCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
-```
-
-### An explicit calculator command uses its literal expression first
-
-When the whole message explicitly asks for the calculator and gives one
-literal arithmetic expression ("use the calculator for 17 * 24"), the
-offered calculator evaluates exactly that expression before the model
-writes the reply. Multi-part commands and arithmetic stated in words keep
-the ordinary planner path.
-
-### A directly routed call acknowledges once if it is still running after 400 milliseconds
-
-A call the whole message asked for outright begins without waiting for
-the model. On a streaming turn it says `One sec.` at most once if it is
-still running after 400 milliseconds. It stays quiet when the call has
-already settled or the turn has already been cancelled at that point, or
-if the person asked for silence. If the cue has started going out, the
-reply waits for it to settle. The cue is never reply text.
-
-```quint
-pure val directCueDelayMs = 400
-pure def canCueDirectCall(pending: bool, elapsedMs: int, quiet: bool): bool =
-  pending and not(quiet) and elapsedMs >= directCueDelayMs
-pure val elapsedMsValues = Set(0, 399, 400, 401)
-pure def lawADirectCueWaitsUntilTheDelay(pending: bool, elapsedMs: int, quiet: bool): bool =
-  canCueDirectCall(pending, elapsedMs, quiet) implies elapsedMs >= 400
-pure def lawOnlyAPendingNonquietCallCanCue(pending: bool, elapsedMs: int, quiet: bool): bool =
-  canCueDirectCall(pending, elapsedMs, quiet) implies pending and not(quiet)
-pure def lawNoModelCueFollowsADirectCall(draft: Draft, calls: int): bool =
-  not(acknowledges(draft, calls, 1))
 ```
 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
@@ -652,7 +584,7 @@ Reminders and Clock, and a helper such as `CALCULATE`.
 An action shared by several apps, such as `VIEWS`, is named by the app the
 turn is about when that settles it: the turn's selected contexts are those
 of every [direct route](../../core/registries.md) the message matches (a
-Maps route selects `maps`, a Notes route `notes`), taken once per turn by
+Notes route selects `notes`), taken once per turn by
 normalized id. When several of the contexts the call shows apply and
 exactly one labelled one is selected, the progress is `Using <that label>`;
 with none or more than one selected it stays `Working`. The selection only
