@@ -8,7 +8,6 @@ import { workerBindings } from "./worker.ts";
 
 type BackupDatabase = Awaited<ReturnType<typeof openBackupDatabase>>;
 
-/** Signs an email owner in on a fresh cloud identity and serves Clef decisions from a Worker whose inference binding is `ai`. */
 export async function clefWorker(fixture: BackupDatabase, digest: string, email: string, ai: CloudBindings["AI"]) {
   await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest]);
   const owner = await Effect.runPromise(Effect.provide(signInWithProof(fixture.db, {

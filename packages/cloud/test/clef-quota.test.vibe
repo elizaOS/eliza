@@ -3,7 +3,6 @@ import { assert, it } from "@effect/vitest"
 import { check } from "./support/cloud.vibe"
 
 module node {
-  import { Effect } from "effect"
   import { CLEF_DECISIONS_PATH, type ClefDecisionRequest } from "../src/clef-decisions.vibe"
   import { openBackupDatabase } from "./support/password-backup.ts"
   import { clefWorker } from "./support/clef.ts"

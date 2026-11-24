@@ -7,7 +7,6 @@ import type { DeviceTurn } from "./proposal/family.vibe"
 export type OwnerTurnFields = Omit<DeviceTurn, "negotiation" | "capabilities" | "admit" | "signal" | "earlier" | "swapped" | "assistantName">
   & Partial<Pick<DeviceTurn, "earlier" | "swapped" | "assistantName">>
 
-/** An owner turn whose live enrollment negotiated exactly `capabilities`, re-admitting each proposal with no read binding: the turn a proposal family grounds against outside a running agent. */
 export function negotiatedOwnerTurn(capabilities: readonly string[], fields: OwnerTurnFields): DeviceTurn {
   const negotiated = negotiation(true, capabilities.join(","))
   return {
