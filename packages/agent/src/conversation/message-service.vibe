@@ -372,6 +372,10 @@ async function respond(
         const outcome = signal.aborted
           ? { status: "cancelled" as const, reason: "aborted", effects: terminal.effects }
           : { status: "failed" as const, error: { kind: named?.kind ?? "generation", transient: named === undefined, message: "The reply could not be generated" }, effects: terminal.effects }
+        if (!signal.aborted && responseMessages.length > 0) {
+          await terminal.request(outcome).catch(() => undefined)
+          return { didRespond: true, responseContent: { text: written }, responseMessages, outcome }
+        }
         const applied = carriesCutOffEffect(signal.aborted || kind !== undefined, hasFreshAppliedEffect(outcome.effects, began, Date.now()))
         const cloudCode = !signal.aborted && error instanceof ModelRefusal ? error.cloudCode : undefined
         const content = { text: written, ...(kind === undefined ? {} : { failureKind: kind }), ...(cloudCode === undefined ? {} : { cloudCode }), ...(applied ? { cutOffEffect: "applied" } : {}) }

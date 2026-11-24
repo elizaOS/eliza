@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { wrapExternalContent } from "@elizaos/core"
-import { answerJson, held, insufficientCredits, rateLimited, refusal, requestFault, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+import { answerJson, held, insufficientCredits, rateLimited, refusal, requestFault, text, toolCalls, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, maxPlanSteps, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
 import { composeReply } from "../src/conversation/reply-text.vibe"
@@ -118,6 +118,23 @@ module node {
     return id
   }
 
+  /** @throws {never} */
+  export function loseRoomOwnershipOnceReplied(runtime: AgentRuntime): () => void {
+    const save = runtime.createMessageMemory
+    const queue = runtime.roomHandlerQueue
+    runtime.createMessageMemory = async (memory, unique) => {
+      const stored = await save.call(runtime, memory, unique)
+      if (memory.entityId === runtime.agentId && memory.content.inReplyTo !== undefined) {
+        Object.defineProperty(queue, "ownsLease", { value: () => false, configurable: true, writable: true })
+      }
+      return stored
+    }
+    return () => {
+      runtime.createMessageMemory = save
+      Reflect.deleteProperty(queue, "ownsLease")
+    }
+  }
+
   export async function roomMessages(runtime: AgentRuntime, roomId: UUID): Promise<Memory[]> {
     return runtime.getMemories({ tableName: "messages", roomId, count: 1000 })
   }
@@ -173,7 +190,7 @@ module node {
     return text
   }
 }
-import { completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, nearestCafes, overlapping, plainLog, roomMessages, seedHistory, storeNotice } from node
+import { completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceReplied, nearestCafes, overlapping, plainLog, roomMessages, seedHistory, storeNotice } from node
 
 effect function cloudAgent(cloud: CloudFake, state?: Scratch) {
   return try startInProcess({
@@ -225,7 +242,7 @@ it.live('A reply quotes only the selected message in its own conversation and re
   })
 })
 
-it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind only on the agent\'s reply"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text")', effect () => {
+it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, a failure after the reply is stored adds no second message, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind only on the agent\'s reply"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const state = try scratch("turns")
   const first = try cloudAgent(cloud, state)
@@ -249,6 +266,13 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   const unnamed = try send(first, id, { text: "Say something.", clientMessageId: "m-5" })
   const unnamedAgain = try send(first, id, { text: "Say something.", clientMessageId: "m-5" })
   const storedUnnamed = try host("stored unnamed failure", () => first.agent.runtime.getMemoryById(replyOf(unnamed).messageId as UUID))
+
+  try Effect.sync(() => cloud.script(unavailable(1), text("Recovered answer.")))
+  const regain = try Effect.sync(() => loseRoomOwnershipOnceReplied(first.agent.runtime))
+  const lateFailure = try send(first, id, { text: "Answer after the outage." })
+  try Effect.sync(regain)
+  const lateRows = (try host("rows after a late failure", () => roomMessages(first.agent.runtime, roomId)))
+    .filter((memory: Memory) => memory.entityId === first.agent.runtime.agentId && memory.content.inReplyTo === replyOf(lateFailure).userMessageId)
 
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const unfunded = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
@@ -296,6 +320,10 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
       status: unnamed.status, text: replyOf(unnamed).text, failureKind: replyOf(unnamed).failureKind, planAction: replyOf(unnamed).planAction,
       replayed: replyOf(unnamedAgain).messageId === replyOf(unnamed).messageId, stored: storedUnnamed?.content.failureKind,
     }, { status: 200, text: "", failureKind: "provider_issue", planAction: "retry", replayed: true, stored: "provider_issue" })
+    assert.deepStrictEqual({
+      status: lateFailure.status, text: replyOf(lateFailure).text, failureKind: replyOf(lateFailure).failureKind,
+      rows: lateRows.map((memory: Memory) => [memory.id === replyOf(lateFailure).messageId, memory.content.text, memory.content.failureKind]),
+    }, { status: 200, text: "Recovered answer.", failureKind: undefined, rows: [[true, "Recovered answer.", undefined]] })
     assert.deepStrictEqual({
       status: unfunded.status, failureKind: replyOf(unfunded).failureKind, cloudCode: replyOf(unfunded).cloudCode, planAction: replyOf(unfunded).planAction,
       replayed: [replyOf(unfundedAgain).messageId === replyOf(unfunded).messageId, replyOf(unfundedAgain).cloudCode],

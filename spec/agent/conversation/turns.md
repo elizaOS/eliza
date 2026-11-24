@@ -269,16 +269,18 @@ names (a call that threw outside the binding, storage that could not be
 read, a turn whose steps produced no reply) is one a later send may get
 past, so it is stored as `provider_issue`: the owner sees a failed reply
 that offers Retry, not 503 and nothing in the conversation. Once the
-turn's reply is stored, a later unnamed failure stores no second message.
+turn's reply is stored, a later failure stores no second message, even
+one the binding named (a provider issue a retry got past earlier in the
+turn), and the turn answers with the reply it stored.
 
 ```quint
 pure def storedFailureName(named: str, replied: bool): str =
-  if (named != "") named else if (replied) "" else B::failureName(B::ProviderIssue)
+  if (replied) "" else if (named != "") named else B::failureName(B::ProviderIssue)
 pure val namedValues = Set("", "credential_invalid", "insufficient_credits", "limit_reached", "provider_issue")
-pure def lawANamedFailureKeepsItsKind(named: str, replied: bool): bool = named != "" implies storedFailureName(named, replied) == named
+pure def lawANamedFailureBeforeAnyReplyKeepsItsKind(named: str): bool = named != "" implies storedFailureName(named, false) == named
 pure def lawAnUnnamedFailureBeforeAnyReplyIsAProviderIssueThatOffersRetry(named: str): bool =
   named == "" implies (storedFailureName(named, false) == failureKind(AccountFailed({ failure: B::ProviderIssue })) and planActionOf(AccountFailed({ failure: B::ProviderIssue })) == "retry")
-pure def lawAStoredReplyIsNeverFollowedByAnUnnamedFailure(named: str): bool = named == "" implies storedFailureName(named, true) == ""
+pure def lawAStoredReplyIsNeverFollowedByASecondMessage(named: str): bool = storedFailureName(named, true) == ""
 ```
 
 ### An interrupted reply keeps proof of an applied effect
