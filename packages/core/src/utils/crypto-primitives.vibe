@@ -11,13 +11,13 @@ module platform {
   import type { SecretCipher } from "./crypto-primitives.vibe"
 
   interface NodeCipherModule {
-    createCipheriv(algorithm: string, key: Uint8Array, iv: Uint8Array): {
+    createCipheriv(algorithm: string, key: Uint8Array, iv: Uint8Array, options?: { authTagLength: number }): {
       setAAD(aad: Uint8Array): unknown
       update(data: Uint8Array): Uint8Array
       final(): Uint8Array
       getAuthTag(): Uint8Array
     }
-    createDecipheriv(algorithm: string, key: Uint8Array, iv: Uint8Array): {
+    createDecipheriv(algorithm: string, key: Uint8Array, iv: Uint8Array, options?: { authTagLength: number }): {
       setAAD(aad: Uint8Array): unknown
       setAuthTag(tag: Uint8Array): unknown
       update(data: Uint8Array): Uint8Array
@@ -64,6 +64,16 @@ module platform {
     return hex
   }
 
+  const AES_256_KEY_BYTES = 32
+  const GCM_IV_BYTES = 12
+  const GCM_TAG_BYTES = 16
+  const CBC_IV_BYTES = 16
+
+  /** @throws {RangeError} */
+  function requireLength(label: string, bytes: Uint8Array, expected: number): void {
+    if (bytes.length !== expected) throw new RangeError(`Invalid ${label} length: ${bytes.length} bytes. Expected ${expected} bytes.`)
+  }
+
   /** @throws {never} */
   export function nodeSecretCipher(source: unknown): SecretCipher | undefined {
     const candidate = source as Partial<NodeCipherModule> | null | undefined
@@ -72,20 +82,27 @@ module platform {
     return {
       /** @throws {Error} */
       encryptAes256Gcm(key: Uint8Array, iv: Uint8Array, plaintext: Uint8Array, aad: Uint8Array) {
-        const cipher = nodeCrypto.createCipheriv("aes-256-gcm", key, iv)
+        requireLength("AES-256 key", key, AES_256_KEY_BYTES)
+        requireLength("AES-GCM IV", iv, GCM_IV_BYTES)
+        const cipher = nodeCrypto.createCipheriv("aes-256-gcm", key, iv, { authTagLength: GCM_TAG_BYTES })
         cipher.setAAD(aad)
         const ciphertext = joined(cipher.update(plaintext), cipher.final())
         return { ciphertext, tag: Uint8Array.from(cipher.getAuthTag()) }
       },
       /** @throws {Error} */
       decryptAes256Gcm(key: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array, tag: Uint8Array, aad: Uint8Array) {
-        const decipher = nodeCrypto.createDecipheriv("aes-256-gcm", key, iv)
+        requireLength("AES-256 key", key, AES_256_KEY_BYTES)
+        requireLength("AES-GCM IV", iv, GCM_IV_BYTES)
+        requireLength("AES-GCM tag", tag, GCM_TAG_BYTES)
+        const decipher = nodeCrypto.createDecipheriv("aes-256-gcm", key, iv, { authTagLength: GCM_TAG_BYTES })
         decipher.setAAD(aad)
         decipher.setAuthTag(tag)
         return joined(decipher.update(ciphertext), decipher.final())
       },
       /** @throws {Error} */
       decryptAes256Cbc(key: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array) {
+        requireLength("AES-256 key", key, AES_256_KEY_BYTES)
+        requireLength("AES-CBC IV", iv, CBC_IV_BYTES)
         const decipher = nodeCrypto.createDecipheriv("aes-256-cbc", key, iv)
         return joined(decipher.update(ciphertext), decipher.final())
       },

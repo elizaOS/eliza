@@ -52,7 +52,7 @@ it.live('A host with no asynchronous context storage refuses a scope rather than
 })
 
 // spec/core/settingsKeys.md, "Story: Keep persisted settings decryptable under the selected key"; spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
-it.live('Envelopes and a pseudonym map that node:crypto wrote still open, ids and digests keep their published values, and a host with no cipher refuses (spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/settingsKeys.md, "Story: Keep persisted settings decryptable under the selected key"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins")', () => effect {
+it.live('Envelopes and a pseudonym map that node:crypto wrote still open, ids and digests keep their published values, truncated GCM tags and wrong key or IV lengths are refused, and a host with no cipher refuses (spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/settingsKeys.md, "Story: Keep persisted settings decryptable under the selected key"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins")', () => effect {
   const fromHex = (text: string) => Uint8Array.from(text.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16))
   const toHex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
   const salt = "fixture-private-salt-5b2e"
@@ -77,6 +77,27 @@ it.live('Envelopes and a pseudonym map that node:crypto wrote still open, ids an
     v1: decryptStringValue(v1Envelope, salt),
     map: try Effect.promise(() => store.load()),
   }
+  const rejected = (run: () => unknown) => effect {
+    const error = try Effect.flip(Effect.try({ try: run, catch: (cause) => cause }))
+    return error instanceof RangeError ? error.message : String(error)
+  }
+  const truncatedStored = new Map<string, unknown>([["pii:pseudonym-map:v1", `${mapBlob.slice(0, mapBlob.lastIndexOf(":"))}:3478cc31`]])
+  const truncatedStore = try Effect.orDie(Effect.try(() => new EncryptedCachePseudonymMapStore({
+    getCache: async <T,>(key: string) => truncatedStored.get(key) as T | undefined,
+    setCache: async <T,>(key: string, value: T) => { truncatedStored.set(key, value); return true },
+  }, { encryptionSalt: salt })))
+  const truncatedMap = try Effect.flip(Effect.tryPromise({ try: () => truncatedStore.load(), catch: (error) => error }))
+  const refusedLengths = {
+    tags: [
+      try rejected(() => native!.decryptAes256Gcm(nistKey, nistIv, nist.ciphertext, nist.tag.slice(0, 4), nistAad)),
+      try rejected(() => native!.decryptAes256Gcm(nistKey, nistIv, nist.ciphertext, nist.tag.slice(0, 12), nistAad)),
+      try rejected(() => native!.decryptAes256Gcm(nistKey, nistIv, nist.ciphertext, nist.tag.slice(0, 15), nistAad)),
+    ],
+    map: truncatedMap instanceof Error && truncatedMap.message.includes("Invalid AES-GCM tag length: 4 bytes. Expected 16 bytes."),
+    key: try rejected(() => native!.encryptAes256Gcm(nistKey.slice(0, 16), nistIv, nistPlaintext, nistAad)),
+    gcmIv: try rejected(() => native!.encryptAes256Gcm(nistKey, nistIv.slice(0, 8), nistPlaintext, nistAad)),
+    cbcIv: try rejected(() => native!.decryptAes256Cbc(nistKey, nistIv, nistPlaintext.slice(0, 16))),
+  }
   const refused = try ensuring(effect {
     try sync(() => registerSecretCipher(undefined))
     const read = try Effect.flip(Effect.try({ try: () => decryptStringValue(v2Envelope, salt), catch: (error) => error }))
@@ -92,6 +113,7 @@ it.live('Envelopes and a pseudonym map that node:crypto wrote still open, ids an
     nist: [toHex(nist.ciphertext), toHex(nist.tag), toHex(native!.decryptAes256Gcm(nistKey, nistIv, nist.ciphertext, nist.tag, nistAad))],
     uuids: [stringToUuid("hello world"), stringToUuid("j01-agent"), stringToUuid("caf\u00e9 \u{1F600}"), stringToUuid(42)],
     digests: [toHex(sha1Digest("abc")), toHex(sha1Digest("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")), sha256HexDigest(""), sha256HexDigest("abc"), sha256HexDigest("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")],
+    refusedLengths,
     refused,
   }, {
     opened: { v2: "sk-fixture-v2-\u00e9\u{1F511}", v1: "legacy-cbc-fixture-value", map: { version: 1, salt: "fixture-mint-salt", clusters: [] } },
@@ -109,6 +131,17 @@ it.live('Envelopes and a pseudonym map that node:crypto wrote still open, ids an
       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
       "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
     ],
+    refusedLengths: {
+      tags: [
+        "Invalid AES-GCM tag length: 4 bytes. Expected 16 bytes.",
+        "Invalid AES-GCM tag length: 12 bytes. Expected 16 bytes.",
+        "Invalid AES-GCM tag length: 15 bytes. Expected 16 bytes.",
+      ],
+      map: true,
+      key: "Invalid AES-256 key length: 16 bytes. Expected 32 bytes.",
+      gcmIv: "Invalid AES-GCM IV length: 8 bytes. Expected 12 bytes.",
+      cbcIv: "Invalid AES-CBC IV length: 12 bytes. Expected 16 bytes.",
+    },
     refused: { read: ["SETTING_DECRYPTION_FAILED", true], map: [true, true] },
   })
 })
