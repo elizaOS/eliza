@@ -268,6 +268,24 @@ pure def lawAHostNoticeIsNeverTheAgentsWords(row: HistoryRow): bool = (row.fromA
 pure def lawWhatWasSaidIsRead(row: HistoryRow): bool = not(row.hostNotice) implies readByTheModel(row)
 ```
 
+### History includes a short reference to earlier attachments in this conversation
+
+An earlier message remains in its place when it contained an attachment
+without a caption. The model sees only a short reference to prior attachments
+of this conversation, including when it restores a deferred row. The reference
+may describe the attachment's display name, media type and description. It
+carries no attachment bytes, locations or identifiers and authorizes no action.
+The caption remains the text used for quotations, matching and standing
+instructions. The current turn's supplied attachments keep their usual route.
+
+```quint
+pure val historyAttachmentSlots = 3
+pure val historyAttachmentBytes = 512
+pure def retainsDialogueRow(textUnits: int, described: bool): bool = textUnits > 0 or described
+pure def lawAnAttachmentOnlyRowRemains(textUnits: int): bool = retainsDialogueRow(textUnits, true)
+pure def lawAnEmptyRowIsOmitted(described: bool): bool = retainsDialogueRow(0, described) iff described
+```
+
 ### A planner can restore the turn's deferred history once and runs no sibling action from that response
 
 When the planner has action tools, one fixed `RESTORE_CONTEXT` form follows

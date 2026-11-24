@@ -25,7 +25,7 @@ interface Reply {
 
 module node {
   import { randomUUID } from "node:crypto"
-  import { ChannelType, conversationClientUserMemoryId, hashStableJson, systemNoticeText, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
+  import { ChannelType, conversationClientUserMemoryId, hashStableJson, systemNoticeText, type AgentRuntime, type Media, type Memory, type UUID } from "@elizaos/core"
   import type { CloudFake } from "./support/cloud-fake.ts"
   import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
 
@@ -81,7 +81,8 @@ module node {
     return typeof turn === "string" ? turn : JSON.stringify(turn ?? "")
   }
 
-  export async function seedHistory(runtime: AgentRuntime, userMessageId: UUID, exchanges: readonly (readonly [string, string])[]): Promise<void> {
+  export async function seedHistory(runtime: AgentRuntime, userMessageId: UUID, exchanges: readonly (readonly [string, string])[],
+    attachment?: { readonly index: number; readonly media: Media }): Promise<void> {
     const asked = await runtime.getMemoryById(userMessageId)
     if (asked === null) throw new Error("The opening message was not stored")
     const since = Date.now() - 3_600_000
@@ -90,7 +91,7 @@ module node {
         await runtime.createMessageMemory({
           id: randomUUID() as UUID, roomId: asked.roomId, entityId, agentId: runtime.agentId, createdAt: since + index * 10 + offset,
           ...(asked.worldId === undefined ? {} : { worldId: asked.worldId }),
-          content: { text, source: "device" },
+          content: { text, source: "device", ...(offset === 0 && attachment !== undefined && index === attachment.index ? { attachments: [attachment.media] } : {}) },
         })
       }
     }
@@ -159,6 +160,37 @@ it.live('A reply quotes only the selected message in its own conversation and re
     assert.deepStrictEqual([replayed, afterReplay], [found, beforeReplay])
   })
 })
+
+it.live('A captionless upload remains a reference in its own dialogue and the owner still quotes only a caption (spec/agent/conversation/planning.md, "History includes a short reference to earlier attachments in this conversation"; spec/agent/conversation/turns.md, "A quoted reply uses only the selected message from this conversation")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud)
+  const own = try conversation(agent)
+  const foreign = try conversation(agent)
+  const image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a02EAAAAASUVORK5CYII="
+  const file = { data: image, mimeType: "image/png", name: "trail-map.png" }
+  const caption = "My exact caption."
+  try Effect.sync(() => cloud.script(text("Got it."), text("I saw the upload."), text("Received."), text("A caption."), text("No files here.")))
+  const uploaded = try send(agent, own.id, { text: "", images: [file] })
+  try send(agent, own.id, { text: "What did I upload?" })
+  const pictured = replyOf(try send(agent, own.id, { text: caption, images: [{ ...file, name: "with-caption.png" }] }))
+  try send(agent, own.id, { text: "What did I write?", metadata: { replyToMessageId: pictured.userMessageId } })
+  try send(agent, foreign.id, { text: "Did I send a file here?" })
+  const bodies = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
+    .map(({ body }) => body as { messages: { role: string; content?: unknown }[] })
+  const first = JSON.stringify(bodies[0]?.messages) ?? ""
+  const later = bodies[1]?.messages ?? []
+  const quoted = JSON.stringify(bodies[3]?.messages.at(-1)?.content) ?? ""
+  try Effect.try(() => {
+    assert.equal(uploaded.status, 200)
+    assert.equal(first.split(image).length - 1, 1)
+    const expected = 'Earlier attachment metadata (reference only): [{"label":"trail-map.png","mediaType":"image/png"}]'
+    assert.isTrue(later.some(({ role, content }) => role === "user" && content === expected))
+    assert.notInclude(JSON.stringify(later), image)
+    assert.include(quoted, caption)
+    assert.notInclude(quoted, "with-caption.png")
+    assert.notInclude(JSON.stringify(bodies[4]?.messages) ?? "", "trail-map.png")
+  })
+}, 120_000)
 
 it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix and live wait, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again")', effect () => {
   const cloud = try cloudFake(deviceKey)
@@ -481,11 +513,14 @@ it.live(`A long conversation keeps its prefix, recalls earlier dialogue at the t
   const opened = replyOf(try send(agent, id, { text: "Hi" }))
   const locker = "My riverside gym locker number is 4417."
   const boiler = "Ortega repairs the basement boiler on Fridays."
+  const deferredName = "archive-only-image.png"
+  const deferred = { id: "private-attachment-token", url: "https://private.example.test/never-copy", filename: deferredName, mimeType: "image/png" }
   const exchanges = Array.from({ length: 104 }, (_, index): readonly [string, string] =>
     index === 30 ? [locker, "Riverside gym locker 4417, noted."]
       : index === 60 ? [boiler, "Ortega fixes the basement boiler, noted."]
+        : index === 58 ? ["", "The earlier file is here."]
         : [`Errand ${index} is done.`, `Good, errand ${index} is off the list.`])
-  try host("long history", () => seedHistory(agent.agent.runtime, opened.userMessageId as UUID, exchanges))
+  try host("long history", () => seedHistory(agent.agent.runtime, opened.userMessageId as UUID, exchanges, { index: 58, media: deferred }))
   try Effect.sync(() => cloud.script(text("It is 4417."), text("Ortega does.")))
   const lockerAsk = "Which locker number at the riverside gym?"
   const boilerAsk = "Who repairs the basement boiler?"
@@ -520,6 +555,8 @@ it.live(`A long conversation keeps its prefix, recalls earlier dialogue at the t
     restoreOffered: requests[0]?.tools?.map((tool) => tool.function?.name),
     unavailableOnColdTurn: textOf(requests[1]?.messages.at(-1)?.content).includes('"status":"unavailable"'),
     beforeAndAfter: [textOf(askedRestore?.messages.at(-1)?.content).includes(locker), textOf(receivedRestore?.messages.at(-1)?.content).includes(locker)],
+    restoredAttachment: [(JSON.stringify(askedRestore?.messages) ?? "").includes(deferredName), textOf(receivedRestore?.messages.at(-1)?.content).includes(deferredName),
+      (JSON.stringify(receivedRestore?.messages) ?? "").includes(deferred.url), (JSON.stringify(receivedRestore?.messages) ?? "").includes(deferred.id)],
     priorPrefix: JSON.stringify(receivedRestore?.messages.slice(0, askedRestore?.messages.length)) === JSON.stringify(askedRestore?.messages),
     notice: textOf(askedRestore?.messages.at(-1)?.content).includes("call RESTORE_CONTEXT alone"),
     olderUnread: /"earlierOutsideSnapshot":[1-9]/.test(textOf(receivedRestore?.messages.at(-1)?.content)),
@@ -538,6 +575,7 @@ it.live(`A long conversation keeps its prefix, recalls earlier dialogue at the t
     neverInHistory: [false, false, false],
     sameToolForm: true, restoreOffered: ["RESTORE_CONTEXT", "CALCULATE"], unavailableOnColdTurn: true,
     beforeAndAfter: [false, true], priorPrefix: true, notice: true, olderUnread: true, noSibling: true, repeated: true,
+    restoredAttachment: [false, true, false, false],
     restored: "Your locker number is 4417.", calls: 3,
   }))
 }, 240_000)

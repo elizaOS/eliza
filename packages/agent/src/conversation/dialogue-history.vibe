@@ -1,0 +1,48 @@
+// spec/agent/conversation/planning.md, "History includes a short reference to earlier attachments in this conversation"
+import type { HistorySource, Media } from "@elizaos/core"
+import { historyAttachmentBytes, historyAttachmentSlots } from "../../gen/agent__conversation__planning.ts"
+
+export interface DialogueSource extends HistorySource {
+  readonly attachmentReference?: string
+}
+
+const lead = "Earlier attachment metadata (reference only): "
+const encoder = new TextEncoder()
+const uri = /(?:https?|file|blob|data):/iu
+const mediaType = /^(?:[a-z0-9][a-z0-9.+_-]{0,23}\/[a-z0-9][a-z0-9.+_-]{0,39}|audio|image|video|document)$/iu
+
+function safeText(value: unknown, units: number, entry: Media): string | undefined {
+  if (typeof value !== "string") return undefined
+  const sample = value.slice(0, units).toWellFormed().replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, " ").trim()
+  if (sample === "" || uri.test(sample) || sample === entry.id) return undefined
+  if (typeof entry.url === "string" && entry.url !== "" && sample.includes(entry.url)) return undefined
+  if (typeof entry.id === "string" && entry.id.length >= 8 && sample.includes(entry.id)) return undefined
+  return sample
+}
+
+export function attachmentReference(attachments: readonly Media[] | undefined): string | undefined {
+  if (!attachments?.length) return undefined
+  const shown: string[] = []
+  for (const entry of attachments.slice(0, historyAttachmentSlots)) {
+    if (entry === null || typeof entry !== "object") continue
+    const label = safeText(entry.filename ?? entry.title, 72, entry)
+    const type = entry.mimeType ?? entry.contentType
+    const description = safeText(entry.description, 80, entry)
+    const detail = JSON.stringify({
+      label: label !== undefined && !/[\\/]/u.test(label) ? label : "attachment",
+      ...(typeof type === "string" && mediaType.test(type) ? { mediaType: type } : {}),
+      ...(description === undefined ? {} : { description }),
+    })
+    const proposed = lead + "[" + [...shown, detail].join(",") + "]"
+    if (encoder.encode(proposed).length > historyAttachmentBytes) {
+      if (shown.length === 0) shown.push('{"label":"attachment"}')
+      break
+    }
+    shown.push(detail)
+  }
+  return shown.length === 0 ? undefined : lead + "[" + shown.join(",") + "]"
+}
+
+export function dialogueText({ text, attachmentReference }: DialogueSource): string {
+  return attachmentReference === undefined ? text : text === "" ? attachmentReference : `${text}\n\n${attachmentReference}`
+}
