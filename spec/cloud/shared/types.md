@@ -155,13 +155,15 @@ pure def lawEveryCodeHasAClassStatus(code: RefusalCode): bool = statusOf(code) !
 `authentication_required` always carries a credential reason; a missing or
 malformed bearer is `credential_unknown`. `account_inactive` answers an action
 on an account that is not Active (the operator adding credits, a redeem).
+`provider_rate_limited` marks a `rate_limited` that the model provider set,
+so a caller can tell it from a limit of Cloud's own.
 
 ```quint
 type RefusalReason =
   NoReason | GrantRequired | UnsupportedField
   | CredentialExpired | CredentialRevoked | CredentialUnknown
   | ChallengeLocked | GoogleAccountChanged | AccountInactive | CapabilityMissing
-  | GoogleNotConfigured
+  | GoogleNotConfigured | ProviderRateLimited
 pure def isCredentialReason(reason: RefusalReason): bool = Set(CredentialExpired, CredentialRevoked, CredentialUnknown).contains(reason)
 pure def reasonFits(code: RefusalCode, reason: RefusalReason): bool =
   if (code == AuthenticationRequired) isCredentialReason(reason)
@@ -169,6 +171,7 @@ pure def reasonFits(code: RefusalCode, reason: RefusalReason): bool =
   else if (code == InvalidRequest) Set(GrantRequired, UnsupportedField).contains(reason)
   else if (code == AccessDenied) Set(ChallengeLocked, GoogleAccountChanged, AccountInactive, CapabilityMissing).contains(reason)
   else if (code == ProviderUnavailable) reason == GoogleNotConfigured
+  else if (code == RateLimited) reason == ProviderRateLimited
   else false
 ```
 

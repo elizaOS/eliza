@@ -143,29 +143,33 @@ it.effect('An outage or a dropped connection is retried on the next registration
   assert.strictEqual(view.lastCloudFailure?.kind, "provider_issue")
 })
 
-it.effect('A rate limit ends the call, blocks the next one without reaching the cloud, and funding is not retried, carrying Cloud\'s own code only when its 402 names one (spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud\'s own code, and no other refusal carries one")', effect () => {
+it.effect('A rate limit ends the call, blocks the next one without reaching the cloud, and funding is not retried, carrying Cloud\'s own code only when its 402 names one (spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud\'s own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const limited = try refusedCloudAgent(cloud)
   const retryAt = Date.now() + 60_000
   try Effect.sync(() => cloud.script(rateLimited(retryAt)))
   const ended = try refusalOf(limited.runtime, { prompt: "Limited." })
   const blocked = try refusalOf(limited.runtime, { prompt: "Still limited." })
-  assert.deepStrictEqual([ended?.code, ended?.cloudCode], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined])
-  assert.deepStrictEqual([blocked?.code, blocked?.cloudCode], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined])
+  assert.deepStrictEqual([ended?.code, ended?.cloudCode, ended?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined, "CloudSetLimit"])
+  assert.deepStrictEqual([blocked?.code, blocked?.cloudCode, blocked?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined, undefined])
   assert.strictEqual(completions(cloud), 1)
   const view = try limited.binding.read()
   assert.deepStrictEqual([view.accountState, view.blocked, view.lastCloudFailure?.retryAt], ["limit_reached", true, retryAt])
+  const upstream = try refusedCloudAgent(cloud)
+  try Effect.sync(() => cloud.script(refusal(429, "rate_limited", { retryable: true, retryAt, reason: "provider_rate_limited" })))
+  const passedOn = try refusalOf(upstream.runtime, { prompt: "Provider limited." })
+  assert.deepStrictEqual([passedOn?.code, passedOn?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "ProviderSetLimit"])
   const unfunded = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const denied = try refusalOf(unfunded.runtime, { prompt: "Unfunded." })
-  assert.deepStrictEqual([denied?.code, denied?.status, denied?.cloudCode], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, "insufficient_credits"])
-  assert.strictEqual(completions(cloud), 2)
+  assert.deepStrictEqual([denied?.code, denied?.status, denied?.cloudCode, denied?.limitOrigin], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, "insufficient_credits", undefined])
+  assert.strictEqual(completions(cloud), 3)
   assert.strictEqual((try unfunded.binding.read()).accountState, "insufficient_credits")
   const spent = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(allowanceExhausted(Date.now() + 86_400_000)))
   const exhausted = try refusalOf(spent.runtime, { prompt: "Allowance spent." })
   assert.deepStrictEqual([exhausted?.code, exhausted?.status, exhausted?.cloudCode], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, "allowance_exhausted"])
-  assert.strictEqual(completions(cloud), 3)
+  assert.strictEqual(completions(cloud), 4)
   assert.strictEqual((try spent.binding.read()).accountState, "insufficient_credits")
   const uncoded = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(refusal(402, "payment_required")))
@@ -176,7 +180,7 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   try Effect.sync(() => cloud.acceptKey("rotated-device-key"))
   const invalid = try refusalOf(replaced.runtime, { prompt: "Old key." })
   assert.strictEqual(invalid?.status, 401)
-  assert.strictEqual(completions(cloud), 5)
+  assert.strictEqual(completions(cloud), 6)
   assert.strictEqual((try replaced.binding.read()).accountState, "credential_invalid")
 })
 
@@ -196,7 +200,7 @@ it.live('A caller abort ends the call without an account failure (spec/agent/mod
   assert.deepStrictEqual([view.accountState, view.lastCloudFailure], ["usable", undefined])
 })
 
-it.effect('The own-key backend answers text and image description, classifies its refusals into the same states with no Cloud code, probes its key and holds only a key its slot accepts (spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud\'s own code, and no other refusal carries one")', effect () => {
+it.effect('The own-key backend answers text and image description, classifies its refusals into the same states with no Cloud code, probes its key and holds only a key its slot accepts (spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud\'s own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }
   const good = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
@@ -205,7 +209,7 @@ it.effect('The own-key backend answers text and image description, classifies it
   const answered = try host("own-key text", () => good.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hi." }))
   const limited = try refusalOf(good.runtime, { prompt: "Again." })
   assert.strictEqual(answered, "own answer")
-  assert.strictEqual(limited?.code, "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED")
+  assert.deepStrictEqual([limited?.code, limited?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "ProviderSetLimit"])
   assert.notStrictEqual(good.runtime.getModel(ModelType.IMAGE_DESCRIPTION), undefined)
   assert.strictEqual((try good.binding.read()).accountState, "limit_reached")
   provide FetchHttpClient.layer {
@@ -225,6 +229,11 @@ it.effect('The own-key backend answers text and image description, classifies it
   try Effect.sync(() => cloud.script(refusal(429, "insufficient_quota")))
   const spent = try refusalOf(quota.runtime, { prompt: "Quota spent." })
   assert.deepStrictEqual([spent?.code, spent?.status, spent?.cloudCode, (try quota.binding.read()).accountState], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, undefined, "insufficient_credits"])
+  const busy = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
+  registerOwnKeyModels(busy.runtime, busy.binding, own)
+  try Effect.sync(() => cloud.script(...Array.from({ length: 4 }, () => refusal(529, "overloaded_error"))))
+  const overloaded = try refusalOf(busy.runtime, { prompt: "Overloaded." })
+  assert.deepStrictEqual([overloaded?.limitOrigin, (try busy.binding.read()).accountState], [undefined, "provider_issue"])
   const keyed = (backend: Backend, key: string) => parseLaunch(JSON.stringify(launchDocument({ backend })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
   const oversized = try Effect.flip(keyed({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, "k".repeat(1025)))
   const unbound = try keyed({ kind: "none" }, cloud.ownKey)

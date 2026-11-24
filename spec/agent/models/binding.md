@@ -354,6 +354,31 @@ pure def lawTheCodeIsTheOneCloudNamed(cloudRoute: bool, refusalStatus: int, body
 pure def lawAnOwnKeyRefusalCarriesNoCode(refusalStatus: int, bodyCode: str): bool = fundsCodeOf(false, refusalStatus, bodyCode) == NoFundsCode
 ```
 
+### A rate limit names whether the model provider or Cloud set it, and no other refusal names one
+
+A refused call that is rate limited names who set the limit, so a reply can
+be traced to its limiter afterwards: `provider` on an own-key endpoint, and
+on the cloud route when Cloud's refusal carries `provider_rate_limited`;
+`cloud` on the cloud route otherwise, for a limit of Cloud's own. Any other
+refusal, and a call the binding refuses itself because a limit is still in
+force, names none.
+
+```quint
+type LimitOrigin = NoLimitOrigin | ProviderSetLimit | CloudSetLimit
+pure def limitOriginOf(cloudRoute: bool, limited: bool, bodyReason: str): LimitOrigin =
+  if (not(limited)) NoLimitOrigin
+  else if (not(cloudRoute) or bodyReason == "provider_rate_limited") ProviderSetLimit
+  else CloudSetLimit
+pure def limitOriginName(origin: LimitOrigin): str = match origin { | NoLimitOrigin => "" | ProviderSetLimit => "provider" | CloudSetLimit => "cloud" }
+pure val limitedValues = Set(true, false)
+pure val bodyReasonValues = Set("", "provider_rate_limited", "google_not_configured")
+pure def lawOnlyARateLimitNamesAnOrigin(cloudRoute: bool, limited: bool, bodyReason: str): bool =
+  (limitOriginOf(cloudRoute, limited, bodyReason) != NoLimitOrigin) iff limited
+pure def lawAnOwnKeyLimitIsTheProviders(bodyReason: str): bool = limitOriginOf(false, true, bodyReason) == ProviderSetLimit
+pure def lawCloudsOwnLimitNamesCloud(bodyReason: str): bool =
+  (limitOriginOf(true, true, bodyReason) == CloudSetLimit) iff (bodyReason != "provider_rate_limited")
+```
+
 ### No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force
 
 A refused credential, spent credits or a newer limit replace a limit.

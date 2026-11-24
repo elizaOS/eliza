@@ -260,6 +260,26 @@ pure def lawSpentCreditsCarriesTheCodeTheRefusalNamed(refused: B::FundsCode): bo
   cloudCodeOn(AccountFailed({ failure: B::InsufficientCredits }), refused) == B::fundsCodeName(refused)
 ```
 
+### A rate-limited reply stores who set the limit, and every other reply stores none
+
+A turn ended `limit_reached` by a model refusal that names who set the limit
+(the [binding](../models/binding.md)'s `provider` or `cloud`) stores it with
+the reply as `limitOrigin`, so the stored conversation tells a limit of
+Cloud's own from the model provider's. Every other reply stores none: an
+answer, another kind, and a limit the binding enforced from an earlier
+refusal. The origin is never part of the reply's text.
+
+```quint
+pure def limitOriginOn(stored: str, origin: B::LimitOrigin): str =
+  if (stored == B::failureName(B::LimitReached({ retryAt: 0 }))) B::limitOriginName(origin) else ""
+pure val storedValues = Set("", "limit_reached", "provider_issue", "aborted")
+pure val originValues = Set(B::NoLimitOrigin, B::ProviderSetLimit, B::CloudSetLimit)
+pure def lawOnlyARateLimitedReplyStoresAnOrigin(stored: str, origin: B::LimitOrigin): bool =
+  limitOriginOn(stored, origin) != "" implies stored == "limit_reached"
+pure def lawARateLimitedReplyKeepsTheOriginTheRefusalNamed(origin: B::LimitOrigin): bool =
+  limitOriginOn("limit_reached", origin) == B::limitOriginName(origin)
+```
+
 ### A turn that failed before any reply, for no cause the binding named, is stored as a provider issue
 
 A turn that fails without being stopped stores what it wrote with the

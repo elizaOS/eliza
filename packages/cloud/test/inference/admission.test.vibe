@@ -133,10 +133,10 @@ describe("WP5 Inference: chat admission", () => {
       { concurrency: 8 }
     )
     const over = try call({ headers: { ...caller.headers }, json: { model: "test-chat", messages: [{ role: "user", content: "hello" }] } })
-    const overBody = over.body as { readonly error: string; readonly retryAt?: number }
+    const overBody = over.body as { readonly error: string; readonly retryAt?: number; readonly reason?: string }
     try check(() => assert.deepStrictEqual(
-      [statuses.every((status) => status === 401), over.status, overBody.error, overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length],
-      [true, 429, "rate_limited", Math.floor(startedAt / minuteMs) * minuteMs + minuteMs, true, 0]
+      [statuses.every((status) => status === 401), over.status, overBody.error, overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length, overBody.reason],
+      [true, 429, "rate_limited", Math.floor(startedAt / minuteMs) * minuteMs + minuteMs, true, 0, undefined]
     ))
   }), 180_000)
 })
