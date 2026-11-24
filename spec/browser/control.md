@@ -353,6 +353,13 @@ substitute for that authorization.
 type CarriedPage = NoPageCarried | PageTextRead | PageTextUnreadable | PageTextSensitive
 type HistoryMove = MoveBack | MoveForward | MoveReload | MoveStop
 type ReloadEvidence = { requested: bool, namedWithdrawal: bool, adjacentWithdrawal: bool }
+pure val evidenceValues = Set(
+  { requested: false, namedWithdrawal: false, adjacentWithdrawal: false },
+  { requested: true, namedWithdrawal: false, adjacentWithdrawal: false },
+  { requested: true, namedWithdrawal: true, adjacentWithdrawal: false },
+  { requested: true, namedWithdrawal: false, adjacentWithdrawal: true },
+  { requested: true, namedWithdrawal: true, adjacentWithdrawal: true }
+)
 pure def reloadAuthorized(evidence: ReloadEvidence): bool =
   evidence.requested and not(evidence.namedWithdrawal or evidence.adjacentWithdrawal)
 pure def lawReloadWithdrawalRefuses(evidence: ReloadEvidence): bool =
