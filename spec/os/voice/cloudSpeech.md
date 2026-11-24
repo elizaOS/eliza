@@ -100,9 +100,11 @@ and the socket reuse it: at most once a minute for each origin, never while
 voice is closed, in the background, in a session or on a sensitive
 surface, bounded by 5 s and silent when it fails. The shell's content-free
 startup timings mark each consent and mint request's start, headers, body
-or failure, and a consent sent again. A session's marks up to `ready` are
-kept apart from the later per-utterance marks, each with its own bound, so a
-long session's utterances never evict how it started.
+or failure, and a consent sent again. A session's marks up to and including
+`ready` are kept apart from its later per-utterance marks, and the first
+session's start is kept apart from later sessions' starts, each with its own
+bound, so neither a long session's utterances nor later warm starts evict how
+a session started.
 
 ```quint
 type CloudAnswer = Answered | Misdirected | Unreachable | Refused({ refusal: Refusal })

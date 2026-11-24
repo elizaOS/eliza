@@ -10,7 +10,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -159,13 +159,28 @@ final class CloudSpeechWire {
     }
   }
 
-  /** Timing rows in the order they were marked, with each session's startup marks, through {@code ready}, held apart from its later rows. */
+  /**
+   * Timing rows in the order they were marked. A session's startup marks, through {@code ready}, are held apart from
+   * its later rows, and the first session's startup (the cold one) is held apart from later sessions' startups, so
+   * neither a long session's utterances nor later warm starts evict how a session started. A session that never
+   * reaches {@code ready} keeps all its rows with its startup, and a row from a session older than the last few is a
+   * later row.
+   */
   static final class TimingRows<T> {
+    static final String STARTED = "ready";
+    private static final int TRACKED_SESSIONS = 8;
+
     private record Row<T>(long sequence, T row) {}
 
     private final int startupLimit, laterLimit;
-    private final ArrayDeque<Row<T>> startup = new ArrayDeque<>(), later = new ArrayDeque<>();
-    private long sequence;
+    private final ArrayDeque<Row<T>> cold = new ArrayDeque<>(), startup = new ArrayDeque<>(), later = new ArrayDeque<>();
+    private final Map<Long, Boolean> started = new LinkedHashMap<>() {
+      @Override protected boolean removeEldestEntry(Map.Entry<Long, Boolean> eldest) {
+        return size() > TRACKED_SESSIONS;
+      }
+    };
+    private long sequence, newestSession;
+    private Long coldSession;
 
     TimingRows(int startupLimit, int laterLimit) {
       if (startupLimit < 1 || laterLimit < 1) throw new IllegalArgumentException("Invalid timing bounds");
@@ -173,26 +188,30 @@ final class CloudSpeechWire {
       this.laterLimit = laterLimit;
     }
 
-    synchronized void add(T row, boolean startupMark) {
-      ArrayDeque<Row<T>> rows = startupMark ? startup : later;
+    /** Sessions are numbered in the order they begin, from 1. */
+    synchronized void add(long session, String stage, T row) {
+      if (session < 1) throw new IllegalArgumentException("Invalid timing session");
+      if (session > newestSession) {
+        newestSession = session;
+        started.put(session, false);
+        if (coldSession == null) coldSession = session;
+      }
+      boolean startupMark = Boolean.FALSE.equals(started.get(session));
+      if (startupMark && STARTED.equals(stage)) started.put(session, true);
+      ArrayDeque<Row<T>> rows = !startupMark ? later : coldSession == session ? cold : startup;
       rows.addLast(new Row<>(++sequence, row));
       while (rows.size() > (startupMark ? startupLimit : laterLimit)) rows.removeFirst();
     }
 
     synchronized List<T> rows() {
-      List<T> merged = new ArrayList<>(startup.size() + later.size());
-      Iterator<Row<T>> first = startup.iterator(), second = later.iterator();
-      Row<T> a = first.hasNext() ? first.next() : null, b = second.hasNext() ? second.next() : null;
-      while (a != null || b != null) {
-        if (b == null || a != null && a.sequence() < b.sequence()) {
-          merged.add(a.row());
-          a = first.hasNext() ? first.next() : null;
-        } else {
-          merged.add(b.row());
-          b = second.hasNext() ? second.next() : null;
-        }
-      }
-      return merged;
+      List<Row<T>> merged = new ArrayList<>(cold.size() + startup.size() + later.size());
+      merged.addAll(cold);
+      merged.addAll(startup);
+      merged.addAll(later);
+      merged.sort((a, b) -> Long.compare(a.sequence(), b.sequence()));
+      List<T> rows = new ArrayList<>(merged.size());
+      for (Row<T> row : merged) rows.add(row.row());
+      return rows;
     }
   }
 
