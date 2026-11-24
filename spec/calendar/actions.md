@@ -30,34 +30,43 @@ pure val activeAccountValues = Set("owner", "other")
 
 ### The managed Google calendar is read and changed as one of the active account's calendars
 
-When the host names the Cloud's [managed Google](./managedFeed.md)
-connection through its private broker, the calendars that broker lists are
-listed calendars of the account in use, beside the resident calendar.
-Searches, lookups, free-time questions, trip questions, the agent's context
-and the client's feed read them, through the broker for the exact calendar
-and window. Each answer lists every calendar it read with whether that read
-was fresh, held only kept events (stale), or failed. A broker read that
-fails answers from the events the last good read of that calendar kept, and
-the answer is never complete. A change to one of them waits for the owner's
-approval like any provider calendar. That calendar creates events and edits
-one occurrence; it cannot email attendees, answer invitations, delete
-events, or edit more than one occurrence of a repeating event, so such a
-request is refused before anything is queued or changed. A broker address
-or token that is not the device's private one stops the calendar from
-starting rather than reading without it.
+When the agent holds the owner's [cloud link](../agent/models/binding.md),
+the calendars the Cloud's [managed Google](./managedFeed.md) calendar lists
+as readable for each connected Google account are listed calendars of the
+account in use, beside the resident calendar. Searches, lookups, free-time
+questions, trip questions, the agent's context and the client's feed read
+them, through the Cloud for the exact calendar and window. Each answer
+lists every calendar it read with whether that read was fresh, held only
+kept events (stale), or failed. A Cloud read that fails answers from the
+events the last good read of that calendar kept, and the answer is never
+complete. A change to one of them waits for the owner's approval like any
+provider calendar, goes to Google only at the revision that was read, and
+is refused without reaching the Cloud while the owner has calendar edits
+turned off. A managed create requires the selected calendar to advertise
+support for private visibility with Google default reminders disabled. A
+repeating create also requires support for saving the reviewed rules. A
+create without the required support is refused before reaching Google.
+The agent edits one occurrence at a time, at its reviewed revision. A series
+master with its own recurrence rule cannot be the target of an occurrence
+edit. It cannot email attendees, answer invitations or delete events. An
+agent without the cloud link lists only the resident calendar.
 
 ```quint
 type ManagedChange = ManagedCreate | ManagedEdit | ManagedDelete | ManagedAnswer
 type SourceRead = ReadFresh | ReadStale | ReadFailed
-pure def managedChangeAllowed(change: ManagedChange, oneOccurrence: bool): bool =
-  change == ManagedCreate or (change == ManagedEdit and oneOccurrence)
+pure def managedChangeAllowed(change: ManagedChange, oneOccurrence: bool, recurringCreate: bool): bool =
+  (change == ManagedCreate and (oneOccurrence or recurringCreate)) or (change == ManagedEdit and oneOccurrence)
+pure def managedEditTargetAllowed(holdsRules: bool, hasParentSeries: bool): bool = not(holdsRules) or hasParentSeries
 pure def sourceRead(answered: bool, complete: bool, keptEvents: bool): SourceRead =
   if (answered and complete) ReadFresh
   else if (answered or keptEvents) ReadStale
   else ReadFailed
-pure def lawAManagedDeleteIsRefused(oneOccurrence: bool): bool = not(managedChangeAllowed(ManagedDelete, oneOccurrence))
-pure def lawAManagedAnswerIsRefused(oneOccurrence: bool): bool = not(managedChangeAllowed(ManagedAnswer, oneOccurrence))
-pure def lawOnlyACreateSpansASeries(change: ManagedChange): bool = change != ManagedCreate implies not(managedChangeAllowed(change, false))
+pure def lawAManagedDeleteIsRefused(oneOccurrence: bool, recurringCreate: bool): bool = not(managedChangeAllowed(ManagedDelete, oneOccurrence, recurringCreate))
+pure def lawAManagedAnswerIsRefused(oneOccurrence: bool, recurringCreate: bool): bool = not(managedChangeAllowed(ManagedAnswer, oneOccurrence, recurringCreate))
+pure def lawOnlyAnOfferedCreateSpansASeries(change: ManagedChange, recurringCreate: bool): bool =
+  managedChangeAllowed(change, false, recurringCreate) iff (change == ManagedCreate and recurringCreate)
+pure def lawAManagedOccurrenceEditDoesNotTargetTheSeriesMaster(holdsRules: bool, hasParentSeries: bool): bool =
+  (holdsRules and not(hasParentSeries)) implies not(managedEditTargetAllowed(holdsRules, hasParentSeries))
 pure def lawOnlyAnAnsweredCompleteReadIsFresh(answered: bool, complete: bool, keptEvents: bool): bool =
   sourceRead(answered, complete, keptEvents) == ReadFresh iff (answered and complete)
 ```

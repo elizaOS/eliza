@@ -1,4 +1,4 @@
-// spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"
+// spec/calendar/managedFeed.md, "The resident accepts only a whole Cloud answer for the exact selected calendar"
 import { sampledWireInstant } from "../availability/availability.schema.vibe"
 
 const NonBlank = Schema.String.check(Schema.isPattern(/\S/))
@@ -15,6 +15,24 @@ export const ManagedGoogleCalendar = Schema.Struct({
   foregroundColor: NullableNonBlank,
   timeZone: NullableNonBlank,
   selected: Schema.Boolean,
+})
+
+export const ManagedGoogleAccount = Schema.Struct({
+  connected: Schema.Boolean,
+  connectionId: NullableNonBlank,
+  grantedCapabilities: Schema.Array(Schema.String),
+})
+
+export const ManagedGoogleCalendarRow = Schema.Struct({
+  calendarId: NonBlank,
+  accountId: NonBlank,
+  accountEmail: Schema.String,
+  label: Schema.String,
+  accessRole: NonBlank,
+  read: Schema.Boolean,
+  write: Schema.Boolean,
+  recurrenceLines: Schema.optionalKey(Schema.Literal(true)),
+  privateCreate: Schema.optionalKey(Schema.Literal(true)),
 })
 
 export const ManagedGoogleAttendee = Schema.Struct({
@@ -42,6 +60,17 @@ export const ManagedGoogleEvent = Schema.Struct({
   organizer: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
   metadata: Schema.Record(Schema.String, Schema.Unknown),
   attendees: Schema.Array(ManagedGoogleAttendee),
+  etag: Schema.optionalKey(NullableNonBlank),
+  seriesId: Schema.optionalKey(NullableNonBlank),
+  recurrence: Schema.optionalKey(Schema.Array(NonBlank)),
+})
+
+export const ManagedGoogleEventAnswer = Schema.Struct({ event: ManagedGoogleEvent })
+
+export const ManagedGoogleRefusal = Schema.Struct({
+  error: NonBlank,
+  retryable: Schema.Boolean,
+  outcome: Schema.optionalKey(Schema.String),
 })
 
 export const ManagedGoogleFeed = Schema.Struct({
@@ -53,6 +82,10 @@ export const ManagedGoogleFeed = Schema.Struct({
 })
 
 export type ManagedGoogleCalendar = typeof ManagedGoogleCalendar.Type
+
+export type ManagedGoogleAccount = typeof ManagedGoogleAccount.Type
+
+export type ManagedGoogleCalendarRow = typeof ManagedGoogleCalendarRow.Type
 
 export type ManagedGoogleEvent = typeof ManagedGoogleEvent.Type
 
@@ -67,6 +100,17 @@ export error ManagedGoogleWireInvalid
 const decodeCalendars = Schema.decodeUnknownEffect(Schema.Array(ManagedGoogleCalendar))
 const decodeFeed = Schema.decodeUnknownEffect(ManagedGoogleFeed)
 
+export const isManagedGoogleAccounts = Schema.is(Schema.Array(ManagedGoogleAccount))
+export const isManagedGoogleCalendarRows = Schema.is(Schema.Array(ManagedGoogleCalendarRow))
+export const isManagedGoogleFeed = Schema.is(ManagedGoogleFeed)
+export const isManagedGoogleEventAnswer = Schema.is(ManagedGoogleEventAnswer)
+export const isManagedGoogleRefusal = Schema.is(ManagedGoogleRefusal)
+
+export function exactFeedEvents(events: readonly ManagedGoogleEvent[], calendarId: string): boolean {
+  return events.every((event) => event.calendarId === calendarId && Date.parse(event.endAt) >= Date.parse(event.startAt))
+    && new Set(events.map((event) => event.externalId)).size === events.length
+}
+
 export effect function parseManagedGoogleCalendars(data: unknown): readonly ManagedGoogleCalendar[]!ManagedGoogleWireInvalid {
   const calendars = decodeCalendars(data) catch effect () => { throw new ManagedGoogleWireInvalid() }
   if (new Set(calendars.map((calendar) => calendar.calendarId)).size !== calendars.length) throw new ManagedGoogleWireInvalid()
@@ -75,9 +119,6 @@ export effect function parseManagedGoogleCalendars(data: unknown): readonly Mana
 
 export effect function parseManagedGoogleCalendarFeed(value: unknown, calendarId: string): ManagedGoogleCalendarFeed!ManagedGoogleWireInvalid {
   const feed = decodeFeed(value) catch effect () => { throw new ManagedGoogleWireInvalid() }
-  const exact = feed.calendarId === calendarId
-    && feed.events.every((event) => event.calendarId === calendarId && Date.parse(event.endAt) >= Date.parse(event.startAt))
-    && new Set(feed.events.map((event) => event.externalId)).size === feed.events.length
-  if (!exact) throw new ManagedGoogleWireInvalid()
+  if (feed.calendarId !== calendarId || !exactFeedEvents(feed.events, calendarId)) throw new ManagedGoogleWireInvalid()
   return { calendarId, events: feed.events, syncedAt: feed.syncedAt }
 }
