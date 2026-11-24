@@ -1,16 +1,16 @@
 // spec/agent/conversation/planning.md, "A planner can restore the turn's deferred history once and runs no sibling action from that response"
 // spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/conversation/planning.md, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 // spec/agent/conversation/planning.md, "A response with competing terminal decisions runs no sibling action and can be repaired once"
 // spec/agent/conversation/planning.md, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type AgentContext, type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify, wrapExternalContent,
 } from "@elizaos/core"
 import { tagsMayProduceEffects } from "@elizaos/core/protocol"
 import {
-  acknowledges, actionNoteSent, callAdmission, cueDelivered, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
+  acknowledges, actionNoteSent, answerableLater, answeredAgain, callAdmission, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
   admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
@@ -21,6 +21,7 @@ type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 const toolNamePattern = /^[A-Za-z0-9_-]{1,64}$/
 const toolMessageLimit = 4_000
 const answerNow = "Note from the agent host, not the person: no further work will run in this turn. Answer the person's latest message now with what this turn holds."
+const answerAgain = "Note from the agent host, not the person: your reply is not final yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools."
 const deliveredCueNote = (cue: string) =>
   `Note from the agent host, not the person: ${JSON.stringify(cue)} was already sent to the person as progress. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`
 const restoreContext: ToolDefinition = {
@@ -44,12 +45,36 @@ export interface PlannedStep {
   readonly result: ActionResult
   readonly shown: readonly string[]
   readonly outcomes: readonly PlanStep[]
+  readonly response: number
+}
+
+export interface FailureNotice {
+  readonly words: string
+  readonly safetyCopy: boolean
+  readonly verified: boolean
+  readonly answerableLater: boolean
+}
+
+export function failureNote({ words, verified, answerableLater }: FailureNotice): string {
+  const cut = words.length > toolMessageLimit ? `${words.slice(0, toolMessageLimit)}…` : words
+  const report = `The step's own report: ${verified ? JSON.stringify(cut) : wrapExternalContent(cut, { source: "unknown" })}`
+  return answerableLater
+    ? `A step of this turn did not happen as asked, and a later call of the same action did run. If that later call did what this step was for, leave this step out and give your reply exactly as it was, word for word: the person needs only what happened. If it did not, the reply must tell the person truthfully that this step did not happen. ${report}`
+    : `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. ${report}`
 }
 
 export interface PlannedTurn {
   readonly reply: string
+  readonly notices: readonly FailureNotice[]
+  readonly cutOff: boolean
   readonly steps: readonly PlannedStep[]
   readonly streamed: string
+  readonly reask: (notes: readonly string[]) => Promise<Reasked>
+}
+
+export interface Reasked {
+  readonly revised: string | undefined
+  readonly stoodBy: boolean
 }
 
 export interface PlanInput {
@@ -318,13 +343,16 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
   return captured.map((text) => text.trim()).filter(Boolean)
 }
 
-function failureNotice(step: PlannedStep): string {
+function failureNotice(step: PlannedStep): { readonly words: string; readonly verified: boolean } {
   if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) {
-    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return unavailableNotice
+    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return { words: unavailableNotice, verified: true }
     const words = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
-    return words || `A ${step.action} call did not start.`
+    return { words: words || `A ${step.action} call did not start.`, verified: true }
   }
-  return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
+  const own = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
+  if (own) return { words: own, verified: true }
+  const words = (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim()
+  return words ? { words, verified: false } : { words: `The ${step.action} action did not complete.`, verified: true }
 }
 
 export function activityLabel(runtime: IAgentRuntime, action: Action | undefined, params: Record<string, unknown> = {}, selected: ReadonlySet<string> = new Set()): string {
@@ -350,18 +378,44 @@ function entryKey({ outcome, identity }: PlanStep): string {
   return `${outcome}\u0000${identity.tag}\u0000${identity.key}`
 }
 
-function settleReply(steps: readonly PlannedStep[], prose: string | undefined): string {
+function safetyCopyOf(result: ActionResult): boolean {
+  return result.verifiedUserFacing === true && result.data?.safetyCopy === true
+}
+
+function laterRunOf(steps: readonly PlannedStep[], failed: PlannedStep): boolean {
+  const later = steps.slice(steps.indexOf(failed) + 1).filter(({ action, outcomes }) => action === failed.action
+    && outcomes.some(({ outcome }) => outcome === "Applied" || outcome === "Proposed" || outcome === "NoEffect"))
+  return answerableLater((failed.result.effectReceipts ?? []).length === 0, later.some(({ response }) => response > failed.response), later.length > 0)
+}
+
+interface SettledReply {
+  readonly notices: readonly FailureNotice[]
+  readonly compose: (prose: string | undefined) => string
+}
+
+function settleReply(steps: readonly PlannedStep[]): SettledReply {
   const plan = steps.flatMap(({ outcomes }) => outcomes)
   const open = openOutcomes(plan)
   const failed = failedOpen(plan)
   const delivered = steps.filter(({ outcomes }) => outcomes.some(({ outcome }) => outcome === "Applied" || outcome === "Proposed" || outcome === "NoEffect"))
   const toolText = [...new Set(delivered.flatMap(({ shown }) => shown))].join("\n\n")
   const ownCopy = open.some(({ outcome }) => outcome === "Proposed")
-  const composed = composeReply(toolText || undefined, prose, ownCopy)
+  const alone = delivered.some(({ result }) => safetyCopyOf(result))
   const failedKeys = new Set(failed.map(entryKey))
-  const notices = [...new Set(steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry)))).map(failureNotice))]
-    .filter((notice) => !composed.includes(notice))
-  return [composed, ...notices].filter((part) => part.trim()).join("\n\n")
+  const notices = new Map<string, FailureNotice>()
+  for (const step of steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry))))) {
+    const { words, verified } = failureNotice(step)
+    const earlier = notices.get(words)
+    const laterRan = laterRunOf(steps, step)
+    notices.set(words, {
+      words, safetyCopy: earlier?.safetyCopy === true || alone || safetyCopyOf(step.result), verified: (earlier?.verified ?? true) && verified,
+      answerableLater: (earlier?.answerableLater ?? true) && laterRan,
+    })
+  }
+  return {
+    notices: [...notices.values()],
+    compose: (prose) => composeReply(toolText || undefined, prose, ownCopy, alone),
+  }
 }
 
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
@@ -384,6 +438,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let displayed = false
   let streamed = ""
   let prose: string | undefined
+  let stoppedShort = false
   let terminalCorrectionSent = false
   let restoredHistory = false
   let restoreCorrectionSent = false
@@ -421,7 +476,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     settlements.set(identity, toolSettlement(result, named.get(call.name)))
     if (!plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)) {
       await input.onStepResult?.(result)
-      steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
+      steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result), response: taken })
     }
     conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
     return result
@@ -453,6 +508,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     } catch (error: unknown) {
       if (signal.aborted || !stoppedAtOutputLimit(error)) throw error
       prose = cutOffReply
+      stoppedShort = true
       break plan
     }
     const answered = answerOf(said)
@@ -536,5 +592,25 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         break plan
     }
   }
-  return { reply: settleReply(steps, prose), steps, streamed }
+  const settled = settleReply(steps)
+  const reply = settled.compose(prose)
+  const reask = async (notes: readonly string[]): Promise<Reasked> => {
+    try {
+      const said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
+        system: input.system, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
+        messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...notes].join("\n") }],
+        ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }),
+      })), signal)
+      const answer = answerOf(said).text
+      const revised = settled.compose(answer)
+      const draft = draftOf(answer, instruction, 0)
+      const sameAsFirst = revised.trim() === reply.trim()
+      const spoken = revised !== settled.compose(undefined)
+      return { revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined, stoodBy: spoken && standsBy(draft, sameAsFirst) }
+    } catch (error: unknown) {
+      if (signal.aborted) throw error
+      return { revised: undefined, stoodBy: false }
+    }
+  }
+  return { reply, notices: settled.notices, cutOff: stoppedShort, steps, streamed, reask }
 }

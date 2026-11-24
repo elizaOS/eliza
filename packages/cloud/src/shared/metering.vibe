@@ -6,7 +6,7 @@ import { creditAvailable, readFunds, stepFunds, type FundsFailure } from "../bil
 import { laneFor, type FundingLane } from "../billing/policy.vibe"
 import type { WireAllowanceState } from "../client/views.vibe"
 import { refused, type Refused, wireName } from "../http/refusal.vibe"
-import { recheckServiceAccess, type Signed } from "../http/request-auth.vibe"
+import { recheckAccess, type Signed } from "../http/request-auth.vibe"
 import { loadRow, machineRows, type RowConflict, RowCorrupt, stepRow } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 
@@ -238,7 +238,7 @@ export effect function settle(key: string, settlement: Settlement): Hold!Meterin
 
 export effect function keepStanding(authorization: string | undefined, caller: Signed, service: HoldKey["service"], ticket: Extract<HoldTicket, { replayed: false }>) {
   const standing = effect {
-    try recheckServiceAccess(authorization, caller)
+    try recheckAccess(authorization, caller, "ServiceAccess")
     const store = try Store
     const now = try Clock.currentTimeMillis
     const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, service, now))

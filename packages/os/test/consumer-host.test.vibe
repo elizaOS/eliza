@@ -1,10 +1,26 @@
-// spec/os/build/sourceIntegrity.md, "Story: Build and register only the plugins my host selected"
+// spec/os/build/sourceIntegrity.md, "Story: Build and register only the plugins my host selected"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device out"; spec/cloud/identity/sessions.md, "Story: Stay signed in"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { consumerBuildNames, consumerImageNames, consumerPathNames, consumerPaths, withdrawnFromConsumers } from "../gen/os.effect.vibe"
 import * as buildEntry from "../src/build/index.vibe"
 import * as imageEntry from "../src/image/index.vibe"
 import { scratch, writeTree } from "./support/scratch.vibe"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import path from "node:path"
+  import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
+
+  const ACCOUNT_JOURNEY = "ai.eliza.plugins.securestore.nativeonly.CloudDeviceAccountJourney"
+  const ACCOUNT_SOURCES = ["android/secure-store/src/main/java", "test/fixtures/cloud-account", "test/drivers/java/media-checks/android-stubs"]
+  const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+
+  export async function walkDeviceAccount(): Promise<unknown> {
+    const classpath = await orgJsonAdapterClasspath(ACCOUNT_JOURNEY, ACCOUNT_SOURCES)
+    return JSON.parse(execFileSync(java, ["-cp", classpath, ACCOUNT_JOURNEY], { encoding: "utf8", timeout: 120_000 }))
+  }
+}
+import { walkDeviceAccount } from node
 
 interface ConsumerHost {
   readonly generateAndroidConsumerHost: (options: Readonly<Record<string, unknown>>) => void
@@ -77,6 +93,7 @@ it.effect('Build and register only the plugins my host selected: a parent pnpm w
       "ai/eliza/plugins/agent/runtime/AndroidRuntimeDirectories.java",
       "ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java",
       "ai/eliza/plugins/securestore/nativeonly/CloudDeviceAccount.java",
+      "ai/eliza/plugins/securestore/nativeonly/MailReadRoutes.java",
       "ai/eliza/plugins/securestore/nativeonly/PasswordBackupApproval.java",
       "ai/eliza/plugins/securestore/nativeonly/CloudPasswordBackup.java",
       "ai/eliza/plugins/securestore/google/NativeGoogleAuthorization.java",
@@ -115,3 +132,39 @@ it.effect('Keep building my product against the paths and names I import (spec/o
     )
   }
 })
+
+it.effect('The packaged device account keeps mail on a lease the agent never holds: it rotates the lease once for every waiting reader, presents the same refresh again after a lost reply, renews its key only past half its life, signs out completely when the lease is revoked, and keeps the lease of a native Google key on the canonical routes (spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device out"; spec/cloud/identity/sessions.md, "Story: Stay signed in")', effect () => {
+  const seen = try tryPromise(() => walkDeviceAccount())
+  try Effect.try(() => assert.deepStrictEqual(seen, {
+    signedIn: true,
+    legacyVaultBindingMatches: true,
+    renewedBeforeHalfLife: false,
+    refreshesForFourReaders: 1,
+    readersShareOneAccess: true,
+    scopedMailRead: [true, true, 200],
+    search: "200 limit=10&q=from%3Aanna%20is%3Aunread",
+    created: '200 tea-2026-11-22 {"summary":"Tea"}',
+    deleted: '200 "v7"',
+    redirectNotFollowed: true,
+    refusedRoutes: 5,
+    lostReply: [true, true, 200, 0],
+    renewedAfterHalfLife: true,
+    vaultBindingAfterRenewalRestart: true,
+    renewal: [true, true, true, 1],
+    afterRenewal: [0, 200, 0],
+    signedOut: [401, true, true, true, 1],
+    dutiesAfterRefusedRevoke: 0,
+    signedInAgain: true,
+    leaseOutlivesKey: [true, true],
+    lapsedKeyRevokedByLease: ["lease 204", true, true, 0],
+    nativeSignedIn: true,
+    nativeMail: 200,
+    nativeRenewed: true,
+    nativeRenewal: [true, true, true, 200],
+    nativeSignedOut: [true, true, 0],
+    nativeNeverUsedWorkerRoutes: true,
+    cookieOrOrigin: false,
+    newEnrollmentSurvivedLateRefreshRefusal: true,
+    newEnrollmentSurvivedLateRenewalRefusal: true,
+  }))
+}, 300_000)

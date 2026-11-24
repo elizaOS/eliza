@@ -99,6 +99,8 @@ export interface ElizaSignInPlugin {
   startEmail(options: { environment: EnvironmentName; email: string }): Promise<unknown>;
   startPhone(options: { environment: EnvironmentName; phone: string }): Promise<unknown>;
   startGoogle(options: EnvironmentOptions): Promise<unknown>;
+  upgradeMailLease(options: EnvironmentOptions): Promise<unknown>;
+  cancelMailLeaseUpgrade(options: EnvironmentOptions): Promise<unknown>;
   reauthenticate(options: SignInOptions): Promise<unknown>;
   resend(options: AttemptOptions): Promise<unknown>;
   verify(options: { attempt: SignInAttempt; code: SignInCode; method?: SecondFactor }): Promise<unknown>;
@@ -112,6 +114,8 @@ export interface ElizaSignInPlugin {
 
 export interface SignInClient {
   start(options: SignInOptions): Promise<SignInReceipt>;
+  upgradeMailLease(options: EnvironmentOptions): Promise<SignInReceipt>;
+  cancelMailLeaseUpgrade(options: EnvironmentOptions): Promise<boolean>;
   reauthenticate(options: SignInOptions): Promise<SignInReceipt>;
   resend(options: AttemptOptions): Promise<SignInReceipt>;
   verify(options: VerifyOptions): Promise<SignInReceipt>;
