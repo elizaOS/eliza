@@ -169,6 +169,30 @@ pure def lawAnUndeclaredUnheldTimeChangesNothing(statedByOwner: bool): bool =
   statedClockCheck(false, statedByOwner, false) == ClockUndeclared
 ```
 
+### A free-time window's clock times the owner stated are ones the owner's words hold
+
+A free-time question through the Calendar action says, as a create does,
+which of its window's clock times the owner stated: the start, the start
+and the end, or none. An owner who names the window ("between noon and
+five", "from 2 to 4", "from one ten PM to two PM") states its start and
+its end. Each stated clock time is checked against the owner's words as a
+new event's is: one the words hold is read, and one they do not hold reads
+nothing, and the result names the time sent so the model sends the window
+the owner said. A window the model did not call stated, or called none, is
+read as asked: a window the model chose ("tomorrow afternoon", "is
+Wednesday free?") holds no clock time the owner said.
+
+```quint
+pure def windowClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): StatedClockCheck =
+  if (declared) statedClockCheck(true, statedByOwner, heldByOwnerWords) else ClockAsSent
+pure def lawAStatedWindowClockTheWordsDoNotHoldReadsNothing(heldByOwnerWords: bool): bool =
+  (windowClockCheck(true, true, heldByOwnerWords) == ClockUnsaid) iff not(heldByOwnerWords)
+pure def lawAnUndeclaredWindowIsReadAsAsked(statedByOwner: bool, heldByOwnerWords: bool): bool =
+  windowClockCheck(false, statedByOwner, heldByOwnerWords) == ClockAsSent
+pure def lawAWindowCheckNeverAsksForADeclaration(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): bool =
+  windowClockCheck(declared, statedByOwner, heldByOwnerWords) != ClockUndeclared
+```
+
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first
 
 When a create's request names a date or a year, the year comes from the

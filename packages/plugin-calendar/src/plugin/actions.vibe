@@ -1,12 +1,12 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A change waiting for approval expires a day after it was asked"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request says"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/actions.md, "A morning-only question reads only that morning, from midnight to noon"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"; spec/calendar/actions.md, "A new event the owner put on the phone's own calendar is proposed on the phone"; spec/calendar/actions.md, "A change that moves only the start keeps the event's length"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A change waiting for approval expires a day after it was asked"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request says"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/actions.md, "A morning-only question reads only that morning, from midnight to noon"; spec/calendar/actions.md, "An afternoon-only question reads only that afternoon, from noon to five"; spec/calendar/readClock.md, "A free-time window's clock times the owner stated are ones the owner's words hold"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"; spec/calendar/actions.md, "A new event the owner put on the phone's own calendar is proposed on the phone"; spec/calendar/actions.md, "A change that moves only the start keeps the event's length"
 import { readTurnContext, showsApp } from "@elizaos/agent"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type ContextDefinition, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  changedEndMs, changeTarget, chatCreateReviewed, chatDeleteStep, contextLookahead, createEndMs, createLength, dayRead, deleteAnswer, freeTimeRead, guestChange, intervalFree, lookupDaysAhead, lookupDaysBack, lookupNearAhead,
+  afternoonAdmission, changedEndMs, changeTarget, chatCreateReviewed, chatDeleteStep, contextLookahead, createEndMs, createLength, dayRead, deleteAnswer, freeTimeRead, guestChange, intervalFree, lookupDaysAhead, lookupDaysBack, lookupNearAhead,
   lookupNearBack, lookupReadLimit, lookupSpanDays, lookupStep, morningAdmission, occurrenceChoice, offDay, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, createStore, type GuestChange, type OwnerAnswer,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
-import { clockReal, instantRead, statedClockCheck, wallZone } from "../../gen/calendar__readClock.effect.vibe"
+import { clockReal, instantRead, statedClockCheck, wallZone, windowClockCheck } from "../../gen/calendar__readClock.effect.vibe"
 import { scopeChoice } from "../../gen/calendar__seriesScope.effect.vibe"
 import {
   addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate,
@@ -19,7 +19,7 @@ import { addressWrittenInWords, clockHeldByWords, eventDayInWords, eventNamedInW
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { tripEvents } from "./lookup.vibe"
 import { phoneCalendarOffered } from "./phone-turn.vibe"
-import { blockingSpans, noonOf, openingText, openings, spanText, windowFitsWeek } from "./free-time.vibe"
+import { blockingSpans, hourOfDay, openingText, openings, spanText, windowFitsWeek } from "./free-time.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearch, CalendarSearchResult } from "./host.vibe"
 import { guestAddresses } from "./providers.vibe"
@@ -69,6 +69,7 @@ const Parameters = Schema.Struct({
   statedClock: Schema.optionalKey(Schema.Literals(["start", "range", "none"])),
   phoneCalendar: Schema.optionalKey(Schema.Boolean),
   morningOnly: Schema.optionalKey(Schema.Boolean),
+  afternoonOnly: Schema.optionalKey(Schema.Boolean),
   ownerAnswer: Schema.optionalKey(Schema.Literals(["yes", "no"])),
   repeat: Schema.optionalKey(RecurrenceRecord.fields.rule),
   repeatUntil: Schema.optionalKey(Instant),
@@ -259,27 +260,30 @@ function timesRefused(subaction: Subaction, kind: "unreal" | "unresolved"): Acti
 type UnsaidClock = { readonly check: "ClockUnsaid" | "ClockUndeclared"; readonly which: "start" | "end"; readonly at: number; readonly zone: string }
 type KeptTimes = { readonly start?: string; readonly end?: string }
 
-function unsaidClock(sent: Parameters, zone: string, text: string, kept: KeptTimes = {}): UnsaidClock | undefined {
+function unsaidClock(sent: Parameters, zone: string, text: string, kept: KeptTimes = {}, clockCheck = statedClockCheck): UnsaidClock | undefined {
   const endChecked = sent.statedClock === "range"
   const sentTimes = [["start", sent.startAt, kept.start], ...(endChecked ? [["end", sent.endAt, kept.end]] as const : [])] as const
   for (const [which, time, keptTime] of sentTimes) {
     const at = time === undefined ? Number.NaN : Date.parse(time)
     const wall = Number.isFinite(at) && (keptTime === undefined || at !== Date.parse(keptTime)) ? getZonedDateParts(new Date(at), zone) : undefined
     if (wall === undefined) continue
-    const check = statedClockCheck(sent.statedClock !== undefined, sent.statedClock === "start" || sent.statedClock === "range", clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text))
+    const check = clockCheck(sent.statedClock !== undefined, sent.statedClock === "start" || sent.statedClock === "range", clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text))
     if (check !== "ClockAsSent") return { check, which, at, zone }
   }
   return undefined
 }
 
-function clockRefused(subaction: Subaction, unsaid: UnsaidClock, verb: string): ActionResult {
+const unsaidEventNext = "Read the owner's request again and call again at once: with the clock time it states and statedClock start when it states only the start (leave endAt out to keep the event's length), range when it states the start and the end, or none when it gives no clock time."
+const unsaidWindowNext = "Read the owner's request again and call again at once with the window it states: statedClock range when it gives the window's start and end (\"between noon and five\", \"from one ten PM to two PM\"), start when it gives only the start, or none when you chose the window."
+
+function clockRefused(subaction: Subaction, unsaid: UnsaidClock, verb: string, unsaidNext = unsaidEventNext): ActionResult {
   const clock = new Intl.DateTimeFormat("en-US", { timeZone: unsaid.zone, hour: "numeric", minute: "2-digit" }).format(new Date(unsaid.at))
   const sent = new Date(unsaid.at).toISOString()
   return unsaid.check === "ClockUndeclared"
     ? failed(subaction, `Nothing was ${verb} yet: the ${unsaid.which} time ${clock} is not in the request, and the call did not say whether the request gives a clock time.`,
       { code: "CALENDAR_CLOCK_UNDECLARED", sent, next: "The time can stand. If the owner gave no clock time and you chose this one (\"tomorrow afternoon\", \"push it back an hour\"), call again at once with the same times and statedClock none. If the owner said a clock time, call again with that time and statedClock start, or range with its end." })
     : failed(subaction, `Nothing was ${verb}: the ${unsaid.which} time ${clock} is not a time the request gives.`,
-      { code: "CALENDAR_CLOCK_UNSAID", sent, next: "Read the owner's request again and call again at once: with the clock time it states and statedClock start when it states only the start (leave endAt out to keep the event's length), range when it states the start and the end, or none when it gives no clock time." })
+      { code: "CALENDAR_CLOCK_UNSAID", sent, next: unsaidNext })
 }
 
 function ownerAnswerOf(parameters: Parameters): OwnerAnswer {
@@ -600,7 +604,7 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
   }
 }
 
-effect function freeTime(host: CalendarHost, parameters: Parameters, zone: string): ActionResult!! {
+effect function freeTime(host: CalendarHost, parameters: Parameters, zone: string, text: string): ActionResult!! {
   const subaction = parameters.subaction === "propose_times" ? "propose_times" : "check_availability"
   const propose = subaction === "propose_times"
   const begin = parameters.timeMin === undefined ? Number.NaN : Date.parse(parameters.timeMin)
@@ -611,11 +615,18 @@ effect function freeTime(host: CalendarHost, parameters: Parameters, zone: strin
   if (freeTimeRead(windowValid, durationValid, true) === "RefuseWindow") {
     return failed(subaction, "I need the exact window (timeMin and timeMax, at most seven days apart) and, for openings, the asked length in minutes from 5 to 480.", { code: "CALENDAR_AVAILABILITY_INVALID_WINDOW" })
   }
-  const noon = noonOf(begin, zone)
+  const noon = hourOfDay(begin, zone, 12)
   if (morningAdmission(parameters.morningOnly === true, noon === undefined || finish > noon) === "RefuseOutsideMorning") {
     return failed(subaction, "The owner asked only about a morning. Keep the window on that morning's date and end it by noon in the request's zone; for a shorter opening inside the morning, use propose_times.",
       { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
   }
+  const five = hourOfDay(begin, zone, 17)
+  if (afternoonAdmission(parameters.afternoonOnly === true, noon === undefined || begin < noon, five === undefined || finish > five) === "RefuseOutsideAfternoon") {
+    return failed(subaction, "The owner asked only about an afternoon. Keep the window on that afternoon, from noon to 5 PM in the request's zone; for a shorter opening inside the afternoon, use propose_times.",
+      { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
+  }
+  const unsaid = unsaidClock({ ...parameters, startAt: new Date(begin).toISOString(), endAt: new Date(finish).toISOString() }, zone, text, {}, windowClockCheck)
+  if (unsaid !== undefined) return clockRefused(subaction, unsaid, "read", unsaidWindowNext)
   const found = try host.search({ timeMin: Math.max(0, begin - day), timeMax: finish + day, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
   if (found === undefined) return failed(subaction, "No calendar account is active right now.")
   const asked = { begin, finish }
@@ -682,7 +693,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
     }
     case "check_availability":
     case "propose_times":
-      return try freeTime(host, parameters, zone)
+      return try freeTime(host, parameters, zone, text)
     case "create_event": {
       if (createStore(parameters.phoneCalendar === true, ask.phoneCalendar === true) === "ProposeOnPhone") {
         return failed(subaction, "Nothing was saved here: this event goes on your phone's own calendar, which you review on the phone.",
@@ -798,14 +809,14 @@ async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
 
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. An event the owner asks to put on the phone's own calendar goes to the phone's calendar proposal when the phone offers one, not create_event. A create_event or update_event with a new startAt carries statedClock: start or range for a clock time the owner said, none for a time you chose. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar removes one occurrence at most and runs at once only when you send ownerAnswer yes and the owner's words hold the whole title of one event, or it is the event selected on screen; otherwise nothing is deleted and the reply asks the owner, and after the owner answers call delete_event again with the eventId it returned and ownerAnswer.",
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon, an afternoon runs from noon to 5 PM, and a window the owner names, such as between noon and five, is that window); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. An event the owner asks to put on the phone's own calendar goes to the phone's calendar proposal when the phone offers one, not create_event. A create_event or update_event with a new startAt, and a check_availability or propose_times window, carries statedClock: start or range for a clock time the owner said, none for a time you chose. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar removes one occurrence at most and runs at once only when you send ownerAnswer yes and the owner's words hold the whole title of one event, or it is the event selected on screen; otherwise nothing is deleted and the reply asks the owner, and after the owner answers call delete_event again with the eventId it returned and ownerAnswer.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CALENDAR_TRIP_WINDOW", "CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [
     { name: "subaction", required: true, description: "What to do.", schema: { type: "string", enum: [...subactions] } },
     { name: "query", required: false, description: "Words of the event to look for: its title, notes, place or a guest. For trip_window, the place.", schema: { type: "string" } },
     { name: "timeMin", required: false, description: "Start of the range to read: ISO 8601 with an offset, or wall time without one (2030-03-04T09:00), read in the request's zone. Required for check_availability and propose_times.", schema: { type: "string" } },
-    { name: "timeMax", required: false, description: "End of the range to read, written like timeMin. Required for check_availability and propose_times; a morning-only request ends no later than noon in the request's zone.", schema: { type: "string" } },
+    { name: "timeMax", required: false, description: "End of the range to read, written like timeMin. Required for check_availability and propose_times; a morning-only request ends no later than noon, and an afternoon-only request runs from noon to no later than 5 PM, in the request's zone.", schema: { type: "string" } },
     { name: "date", required: false, description: "For search_events over whole days: the first local day, YYYY-MM-DD. Code finds the midnights in the request's zone. Leave out timeMin and timeMax.", schema: { type: "string" } },
     { name: "endDate", required: false, description: "For search_events over several whole days: the last day included, YYYY-MM-DD. Needs date.", schema: { type: "string" } },
     { name: "eventId", required: false, description: "The id of the event to change, from an earlier result.", schema: { type: "string" } },
@@ -829,9 +840,10 @@ export const calendarAction: Action = {
     { name: "removeGuests", required: false, description: "For update_event: each guest to remove, by the address or name the owner used.", schema: { type: "array", items: { type: "string" } } },
     { name: "notifyAttendees", required: false, description: "For update_event and delete_event: true only when the owner asked to let the event's attendees know (\"let Sam know\", \"notify the guests\"); left out when they did not, or said not to.", schema: { type: "boolean" } },
     { name: "recurrenceScope", required: false, description: "For a repeating event: instance (this event), this_and_following, or series (all). Send it whenever the owner's request says which (\"just this one\", \"only this time\", \"this and all following\", \"the whole series\"); left out for a repeating event, nothing changes and you ask the owner in your own words. After the owner answers, send it with the eventId the result returned.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
-    { name: "statedClock", required: false, description: "With a new startAt or endAt: start when the owner's words give the start's clock time (\"at 3pm\", \"one ten PM\", \"noon\", \"to 4\"), range when they give a start and an end (\"from 3pm to 3:45pm\"), none when they give no clock time and you chose the time (\"tomorrow afternoon\", \"push it back an hour\", \"move it to Friday\"). A stated start or end must be the clock time the owner said; a time that is not in the owner's words is kept only with none.", schema: { type: "string", enum: ["start", "range", "none"] } },
+    { name: "statedClock", required: false, description: "With a new startAt or endAt, or a free-time window's timeMin and timeMax: start when the owner's words give the start's clock time (\"at 3pm\", \"one ten PM\", \"noon\", \"to 4\"), range when they give a start and an end (\"from 3pm to 3:45pm\", \"between noon and five\", \"from one ten PM to two PM\"), none when they give no clock time and you chose the time (\"tomorrow afternoon\", \"push it back an hour\", \"move it to Friday\"). A stated start or end must be the clock time the owner said; a time that is not in the owner's words is kept only with none.", schema: { type: "string", enum: ["start", "range", "none"] } },
     { name: "phoneCalendar", required: false, description: "For create_event: true only when the owner asked to put the event on the phone's own native calendar (\"on my phone calendar\", \"in my Samsung calendar\"), in any language. Left out for the agent's own built-in Eliza calendar and for a connected account.", schema: { type: "boolean" } },
     { name: "morningOnly", required: false, description: "For check_availability and propose_times: true when the owner asked only about a morning (\"tomorrow morning\"); the window then ends by that day's noon.", schema: { type: "boolean" } },
+    { name: "afternoonOnly", required: false, description: "For check_availability and propose_times: true when the owner asked only about an afternoon (\"tomorrow afternoon\", \"30 minutes tomorrow afternoon\", \"tomorrow when I can pick up groceries in the afternoon\"); the window then runs from that day's noon to no later than 5 PM.", schema: { type: "boolean" } },
     { name: "ownerAnswer", required: false, description: "For delete_event on the agent's own calendar, in the owner's request or their answer to your question: yes when the owner asks to delete the event or agrees to it (\"delete Dentist\", \"yes, delete it\", \"sí, bórralo\"), no when the owner turns the delete down (\"don't delete Dentist\", \"keep Dentist\", \"no, keep it\"), which keeps the event. Leave it out when the owner did neither.", schema: { type: "string", enum: ["yes", "no"] } },
   ],
   roleGate: { minRole: "OWNER" },

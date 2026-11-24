@@ -205,6 +205,29 @@ pure def lawWiderRequestIsRead(endsAfterNoon: bool): bool =
   morningAdmission(false, endsAfterNoon) == ReadMorning
 ```
 
+### An afternoon-only question reads only that afternoon, from noon to five
+
+The model reads from the owner's request whether it asks about an
+afternoon and no other period ("am I free tomorrow afternoon?", "find me
+30 minutes tomorrow afternoon"), also when an errand explains the time
+("tomorrow when I can pick up groceries in the afternoon"), and says so
+with the request; code reads no period words. Such a window starts no
+earlier than noon of the day it starts on and ends no later than five PM
+that day in the request's zone; a window that starts before noon or runs
+past five is refused before anything is read, pointing to a slot search
+for a shorter opening. Noon and five are inside the afternoon. A request
+the model does not call afternoon-only is read as asked.
+
+```quint
+type AfternoonAdmission = ReadAfternoon | RefuseOutsideAfternoon
+pure def afternoonAdmission(afternoonOnly: bool, startsBeforeNoon: bool, endsAfterFive: bool): AfternoonAdmission =
+  if (afternoonOnly and (startsBeforeNoon or endsAfterFive)) RefuseOutsideAfternoon else ReadAfternoon
+pure def lawAfternoonReadStaysInAfternoon(startsBeforeNoon: bool, endsAfterFive: bool): bool =
+  afternoonAdmission(true, startsBeforeNoon, endsAfterFive) == ReadAfternoon implies not(startsBeforeNoon) and not(endsAfterFive)
+pure def lawWiderAfternoonRequestIsRead(startsBeforeNoon: bool, endsAfterFive: bool): bool =
+  afternoonAdmission(false, startsBeforeNoon, endsAfterFive) == ReadAfternoon
+```
+
 ### A period is free only when no blocking event overlaps it
 
 An event blocks the time it overlaps with positive length; a zero-length
