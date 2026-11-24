@@ -1,5 +1,5 @@
 {
-  "repository": "https://repo.maven.apache.org/maven2/",
+  "repository": "https://maven-central.storage-download.googleapis.com/maven2/",
   "consumer": "plugins/plugin-local-inference/native/android/consumer.gradle",
   "consumerDependency": "com.squareup.okhttp3:okhttp:5.3.2",
   "artifacts": [
