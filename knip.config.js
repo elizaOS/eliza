@@ -172,6 +172,9 @@ export default {
     "packages/plugin-inbox": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
+    "packages/plugin-maps": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
     "packages/plugin-network": {
       "ignoreDependencies": ["@mockoon/cli"]
     },
