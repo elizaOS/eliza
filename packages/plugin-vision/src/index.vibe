@@ -1,5 +1,5 @@
 // spec/vision/index.md, "Story: Control which of my visual sources the assistant can use"; spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
-import { ModelType, Service, type Action, type IAgentRuntime, type Memory, type Plugin } from "@elizaos/core"
+import { ModelType, Service, resolveCanonicalOwnerId, validateUuid, type Action, type IAgentRuntime, type Memory, type Plugin } from "@elizaos/core"
 import { Machine, machine, releaseVisionImage, sourceAllowed, type CapturePurpose, type CaptureSource, type VisionMode } from "../gen/vision.effect.vibe"
 
 module node {
@@ -16,6 +16,7 @@ module node {
   const run = promisify(execFile)
   export const captureIdentity = randomUUID
 
+  /** @throws {never} */
   export function hasDesktopCapture(): boolean {
     return platform === "darwin"
   }
@@ -134,7 +135,8 @@ function parameter(options: unknown, key: string): unknown {
 }
 
 function owner(runtime: IAgentRuntime, message: Memory): boolean {
-  return runtime.character.ownerEntityId === message.entityId
+  const configured = validateUuid(resolveCanonicalOwnerId(runtime))
+  return configured !== null && configured === message.entityId
 }
 
 export const visionAction: Action = {

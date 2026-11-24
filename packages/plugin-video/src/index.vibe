@@ -13,6 +13,7 @@ module node {
 
   const run = promisify(execFile)
 
+  /** @throws {never} */
   export function approvedVideoSource(raw: string): URL | undefined {
     const url = URL.parse(raw)
     if (!url || url.protocol !== "https:" || url.username || url.password) return undefined

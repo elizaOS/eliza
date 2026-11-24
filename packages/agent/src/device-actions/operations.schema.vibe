@@ -5,6 +5,7 @@ import {
 } from "../../gen/agent__deviceActions__operations.effect.vibe"
 import { capabilityName, type Need, type Negotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 import type { ReceiptOutcome } from "../../gen/agent__deviceActions.effect.vibe"
+import { NOT_DISPATCHED } from "../client/device-execution.vibe"
 import type { FamilySchemas, OperationOf, OperationSchema } from "./operation-schemas/family.vibe"
 import { personalFamilies } from "./operation-schemas/personal.schema.vibe"
 import { deviceOperations } from "./operation-schemas/device.schema.vibe"
@@ -89,7 +90,7 @@ export type DeviceReceipt = typeof DeviceReceipt.Type
 
 const decodeReceipt = Schema.decodeUnknownOption(DeviceReceipt, strict)
 
-export const notDispatchedCode = "DEVICE_NOT_DISPATCHED"
+export const notDispatchedCode = NOT_DISPATCHED
 
 const reportedOf = { applied: "ReportsApplied", failed: "ReportsFailed", unknown: "ReportsUnknown" } as const satisfies Record<DeviceReceipt["outcome"], ReportedOutcome>
 

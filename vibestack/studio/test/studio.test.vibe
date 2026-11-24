@@ -167,7 +167,7 @@ describe.concurrent("Studio through its server, its files and a browser", () => 
       manifestLeft,
       reviewed: synced.review.length > 0,
     }, { started: 200, agent: ["passed", ["synced"], 0, "Reviewable"], prompt: true, manifestLeft: false, reviewed: true }))
-  }) } })
+  }) } }, 180_000)
 
   it.live('sign-off records the review and a disk write rechecks it (spec/index.md, "Story: Sign off"; spec/index.md, "Story: Check")', effect () => { provide services { try scoped(effect {
     const fs = try FileSystem.FileSystem

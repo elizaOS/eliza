@@ -1,7 +1,7 @@
 // spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"; spec/elizaCloud/index.md, "Story: See which configured Cloud models can answer my request"
 import { cloudServiceType, type CloudLinkRequest, type CloudLinkService } from "@elizaos/agent"
 import { creditFromSnapshot, snapshotFromResponse } from "@elizaos/cloud/client"
-import { type Action, type IAgentRuntime, type Plugin, type Provider } from "@elizaos/core"
+import { resolveCanonicalOwnerId, validateUuid, type Action, type IAgentRuntime, type Memory, type Plugin, type Provider } from "@elizaos/core"
 import { Schema } from "effect"
 import { Machine, cloudTextReadiness, effectiveCloudModel, machine } from "../gen/elizaCloud.effect.vibe"
 
@@ -60,12 +60,17 @@ export effect function accountStatus(runtime: IAgentRuntime) {
   }
 }
 
+function isAccountOwner(runtime: IAgentRuntime, message: Memory): boolean {
+  const owner = validateUuid(resolveCanonicalOwnerId(runtime))
+  return owner !== null && owner === message.entityId
+}
+
 export const accountStatusAction: Action = {
   name: "CLOUD_ACCOUNT_STATUS",
   description: "Show the owner's current Eliza Cloud funding and configured model availability.",
-  validate: (runtime, message) => Promise.resolve(runtime.character.ownerEntityId === message.entityId && getLink(runtime) !== undefined),
+  validate: (runtime, message) => Promise.resolve(isAccountOwner(runtime, message) && getLink(runtime) !== undefined),
   handler: (runtime, message) => runPromise(effect {
-    if (runtime.character.ownerEntityId !== message.entityId) throw new CloudAccountUnavailable({ reason: "Cloud account status is visible only to the configured owner." })
+    if (!isAccountOwner(runtime, message)) throw new CloudAccountUnavailable({ reason: "Cloud account status is visible only to the configured owner." })
     const status = try accountStatus(runtime)
     const text = status.readiness === "TextModelsAvailable"
       ? "Cloud is connected and both configured text models are available."

@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, PseudonymSession, readJsonFile, recentLogs, recordLlmCall, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, SecretSwapSession, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, PseudonymSession, readJsonFile, recentLogs, recordLlmCall, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, SecretSwapSession, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -8,6 +8,7 @@ import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from
 import { scriptedOAuthProvider } from "./support/oauth.ts"
 import { type Handler, loopback, loopbackTls, pinnedLookup } from "./support/servers.ts"
 import { DatabaseAdapter } from "../src/database.vibe"
+import { parseAndValidateCharacter } from "../src/character-schema.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 
 module traceBoundary {
@@ -1001,7 +1002,7 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
 }, 60_000)
 
 // spec/core/models.md, "Story: Dispatch a complete admitted request"; spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Story: Select registered model handlers in order"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/journey.md, "Model invocation retains the admitted request through fallback and failure"; spec/core/preparedRequests.md, "Story: Bind every transport retry to the admitted request"; spec/core/preparedRequests.md, "Only the admitted body can supply its input token count"; spec/core/modelAttemptLeases.md, "Story: Issue a turn-scoped model allowance"; spec/core/pseudonymSession.md, "Story: Keep substitutions reversible across repeated model calls"; spec/core/secretSession.md, "Story: Restore known placeholders while keeping credentials out of replies"; spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"; spec/core/streamRevisions.md, "Story: Distinguish a new stream attempt from prior chunks"; spec/core/skeletonStreamState.md, "Story: Stream exact visible text without losing partial parser state"; spec/core/unicode.md, "Story: Preserve Unicode in provider requests and diagnostics"; spec/core/modelDiagnostics.md, "Story: Finish every diagnostic write before storage closes"
-it.live("Dispatch a model request through failover, swaps, streams, cancellation and a turn allowance (spec/core/models.md, \"Story: Dispatch a complete admitted request\")", () => Effect.scoped(effect {
+it.live("Dispatch a model request through failover, swaps, streams, cancellation and a turn allowance (spec/core/models.md, \"Story: Dispatch a complete admitted request\"; spec/core/models.md, \"A failure is eligible only as a refused connection, a busy or failing provider or a spent retry budget, and never for speech\")", () => Effect.scoped(effect {
   const EMAIL = "jane.okafor@acmecapital.com"
   const ADDRESS = "1600 Pennsylvania Avenue NW"
   const KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123"
@@ -1669,7 +1670,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
 }), 60_000)
 
 // spec/core/models.md, "Story: Get a whole answer from a busy provider"; spec/core/models.md, "A model call takes no output cap from settings"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"
-it.live("Get a whole answer from a busy provider: no setting caps output, and each extractor pass waits out a rate limit once (spec/core/models.md, \"Story: Get a whole answer from a busy provider\")", () => scoped(effect {
+it.live("Get a whole answer from a busy provider: no setting caps output, an older character loads without its cap, and each extractor pass waits out a rate limit once (spec/core/models.md, \"Story: Get a whole answer from a busy provider\")", () => scoped(effect {
   const limited = () => Object.assign(new Error("Too many requests"), { status: 429, retryAfterMs: 200 })
   const models = try Effect.try(() => scriptedModels("busy", 10, {
     [ModelType.TEXT_LARGE]: [{ fail: limited() }, { reply: "unreadable" }, { fail: limited() }, { reply: "ok" }, { fail: limited() }, { fail: limited() }],
@@ -1683,13 +1684,16 @@ it.live("Get a whole answer from a busy provider: no setting caps output, and ea
   const waited = Date.now() - began
   const refused = try host(() => runExtractorPipeline({ runtime, prompt: "Plan another.", parser }).then(() => "resolved", (error: unknown) => (error as { status?: unknown }).status))
   const sent = models.seen.map(({ params }) => params as { prompt?: unknown; maxTokens?: unknown; temperature?: unknown; providerOptions?: { eliza?: { modelInputBudget?: unknown } } })
+  const legacy = parseAndValidateCharacter(JSON.stringify({ name: "legacy-character", settings: { defaultMaxTokens: 16, defaultTemperature: 0.25 } }))
   try Effect.try(() => assert.deepStrictEqual({
+    legacy: { success: legacy.success, settings: legacy.data?.settings },
     repaired, refused, waitedForBoth: waited >= 400,
     sent: sent.map(({ prompt, maxTokens, temperature, providerOptions: options }) => {
       const { modelInputBudget: _budget, ...eliza } = options?.eliza ?? {}
       return { prompt, capped: maxTokens !== undefined, temperature, options: Object.keys(eliza).length ? { ...options, eliza } : undefined }
     }),
   }, {
+    legacy: { success: true, settings: { defaultTemperature: 0.25 } },
     repaired: { parsed: "ok", raw: "ok", repaired: true }, refused: 429, waitedForBoth: true,
     sent: [
       { prompt: "Plan the reminder.", capped: false, temperature: 0.2, options: providerOptions },
@@ -1700,6 +1704,23 @@ it.live("Get a whole answer from a busy provider: no setting caps output, and ea
       { prompt: "Plan another.", capped: false, temperature: 0.2, options: undefined },
     ],
   }))
+}), 60_000)
+
+it.live('An extractor pass that already tried two providers keeps the original refusal (spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more")', () => scoped(effect {
+  const refusal = Object.freeze(Object.assign(new Error("Temporary refusal"), { status: 429, retryAfterMs: 0 }))
+  const primary = try Effect.try(() => scriptedModels("first-provider", 10, {
+    [ModelType.TEXT_LARGE]: [{ fail: providerError("socket") }, { reply: "unexpected resend" }],
+  }))
+  const secondary = try Effect.try(() => scriptedModels("second-provider", 0, {
+    [ModelType.TEXT_LARGE]: [{ fail: refusal }],
+  }))
+  const runtime = try kernel({})
+  try Effect.sync(() => { primary.register(runtime); secondary.register(runtime) })
+  const failure = try host(() => runExtractorPipeline({
+    runtime, prompt: "Plan the reminder.", parser: (raw) => raw,
+  }).then(() => undefined, (error: unknown) => error))
+  assert.strictEqual(failure, refusal)
+  assert.deepStrictEqual([primary.seen.length, secondary.seen.length], [1, 1])
 }), 60_000)
 
 // spec/core/plugins.md, "Story: Load and roll back a plugin"; spec/core/plugins.md, "Duplicate callers share the registration outcome"; spec/core/plugins.md, "Cleanup removes only owned contributions"; spec/core/plugins.md, "Service start remains owned across rollback and unload"; spec/core/pluginServices.md, "Story: Retry and reload plugins without losing epoch ownership"; spec/core/pluginServices.md, "A retired epoch cannot mutate a replacement epoch"; spec/core/pluginServices.md, "Story: Withdraw plugin declarations without losing asynchronous instances"; spec/core/services.md, "Story: Acquire a declared service"; spec/core/services.md, "Concurrent acquisition joins the original startup"; spec/core/services.md, "An observer failure retains the running service"; spec/core/services.md, "Story: Stop a late or removed service once"; spec/core/services.md, "Late startup enters retirement without publication"; spec/core/serviceInstances.md, "Story: Share starts and stop each returned object once"; spec/core/eagerServices.md, "Story: Retry transient eager startup without restarting shutdown work"; spec/core/eagerServices.md, "Backoff starts only after rejection and uses the declared delay sequence"; spec/core/registries.md, "Story: Register actions providers and evaluators"; spec/core/registries.md, "Plugin contributions cannot displace an incumbent component"; spec/core/registries.md, "Story: Remove only registrations owned by a plugin epoch"; spec/core/messaging.md, "A captured handler survives registry removal and replacement"; spec/core/concurrentConnectors.md, "Story: Retain captured transports during registry replacement"; spec/core/hooks.md, "Story: Dispatch an immutable phase snapshot"; spec/core/hooks.md, "Each phase dispatch captures the current handler identities"; spec/core/hookService.md, "Story: Dispatch eligible event hooks in a stable order"; spec/core/hookService.md, "Eligibility returns every failure in source order and caches successful binary probes"; spec/core/adapterOwnership.md, "Story: Preserve adapter identity through plugin failure and migrations"; spec/core/concurrentHooks.md, "Story: Replace hooks while independent phase calls are in flight"; spec/core/serviceAcquisitionResult.md, "Story: Explain a service acquisition failure with every original cause"; spec/core/serviceBuilder.md, "Story: Build independent service classes from a mutable builder"
@@ -4953,6 +4974,54 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
   assert.deepStrictEqual(snapshots.conflict, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot", "gamma"], registry: { _tag: "RegistryClaimConflict", message: "[registry/generate] channel \"discord\" claimed by both @fx/plugin-bravo and @fx/plugin-gamma" } })
 }), 300_000)
 
+// spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind"
+it.effect('An expired proposal takes its preview\'s row and the legend says a never-ran reason answers only whether the request ran (spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind")', effect () => {
+  const scope = "Past recorded outcomes only."
+  const proposal = (id: string, ended: boolean) => normalizeEffectReceipt({
+    receiptId: id,
+    operation: "device.sms_compose",
+    resource: { kind: "device.approval", id },
+    artifacts: [],
+    idempotency: { key: ended ? null : `device:${id}`, replayed: false },
+    observedAt: "2026-11-20T21:15:04.179Z",
+    ...(ended ? { outcome: "noop", reason: "Expired; it never ran." } : { outcome: "preview" }),
+  })
+  const record = (id: string, recordScope: string, outcomes: readonly (readonly [boolean, unknown])[]) => ({
+    id,
+    label: "runtime:historical_effects",
+    stable: false,
+    content: JSON.stringify({
+      requestSourceEventId: "history:a",
+      scope: recordScope,
+      outcomes: outcomes.map(([success, receipt]) => ({ actionName: "PROPOSE_DEVICE_ACTION", success, receipt })),
+    }),
+  })
+  const folded = compactHistoricalReceiptSegments([
+    record("historical-effects:a", scope, [[true, proposal("p", false)], [true, proposal("q", false)]]),
+    record("historical-proposal-terminal:p", "Authoritative later proposal state: expired. This supersedes the earlier preview of proposal p only.", [[false, proposal("p", true)]]),
+  ])
+  assert.deepStrictEqual(folded.map(({ id, label }) => [id, label]), [
+    ["receipt_wire_1", "runtime:historical_receipt_encoding"],
+    ["historical-effects:a", "runtime:historical_effects"],
+  ])
+  assert.deepStrictEqual(try Effect.try(() => JSON.parse(folded[0].content) as unknown), {
+    id: "receipt_wire_1",
+    encoding: "row=[requestSourceEventId,[[actionName,success,receipt],...]]; receipt=[shape,[operation,[resourceKind,resourceId],outcome]]; shape 1 adds reason, 2 adds [commitKind], 3 adds [failureCode,failureRetryable,failureAcceptance]; other receipts are objects. history:hN names history source hN. Values are exact. A preview records a proposal, not its completion; a later proposal state takes its place. A reason that says it never ran means the owner declined it or it expired: that answers whether the request ran, not what the resource holds now. Each [id,row] segment with this id holds one row under this scope at its own chronological position.",
+    scope,
+  })
+  assert.deepStrictEqual(try Effect.try(() => JSON.parse(folded[1].content) as unknown), [
+    "receipt_wire_1",
+    [
+      "history:a",
+      [
+        ["PROPOSE_DEVICE_ACTION", false, [1, ["device.sms_compose", ["device.approval", "p"], "noop", "Expired; it never ran."]]],
+        ["PROPOSE_DEVICE_ACTION", true, [0, ["device.sms_compose", ["device.approval", "q"], "preview"]]],
+      ],
+    ],
+  ])
+  assert.isFalse(folded.some((segment) => segment.content.includes("Authoritative later proposal state")))
+})
+
 // spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/release.md, "Every release check names the candidate it actually examined"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/accountBridges.md, "Each bridge slot preserves the last installed object identity"; spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/catalog.md, "A valid runtime registration overrides its id and invalidates cached indexes"
 it.live('the packed tarball installs, imports, compiles and shares state across copies (spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"; spec/core/valueGuards.md, "Plain records require the intrinsic object prototype or a null prototype")', () => effect {
   const BASELINE = `import fs from "node:fs"; import path from "node:path";
@@ -4964,6 +5033,7 @@ console.log(JSON.stringify({
     entry, conditions, exports: [
       ...exports.map(({ name, typeOnly }) => ({ name, typeOnly })),
       ...(entry === "." ? [{ name: "PrivacyMode", typeOnly: true }, { name: "privacyPlugin", typeOnly: false }] : []),
+      ...(entry === "." || entry === "./protocol" ? [{ name: "modelAttemptCapture", typeOnly: false }] : []),
     ],
   })),
   files: surface.files.map(({ path, sha256 }) => ({ path, sha256 })),

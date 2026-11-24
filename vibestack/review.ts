@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+import type * as TS from "typescript";
 import { readSpecs, isStd, bareQuint as bare, heading, type Import, type Spec, type Story, type Rule } from "./parse.ts";
-import { short, readSrc, indent, writeWhole, citations } from "./util.ts";
+import { short, readSrc, indent, writeWhole, citations, tsApi } from "./util.ts";
 import { DECLASSIFY } from "./gen/secrecy.ts";
 
 /**
@@ -256,8 +256,9 @@ export function acceptAllReviews(root: string, specs: Spec[], src = readSrc(root
  * annotation after code on the same line; source validation rejects occurrences in strings or block comments.
  */
 function contractOf(file: string, code: string): string[] {
+  const ts = tsApi();
   const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true);
-  const named = (n: ts.Node): string | undefined =>
+  const named = (n: TS.Node): string | undefined =>
     // A local variable is not a declaration a contract is about; a constant of the file is.
     ts.isVariableStatement(n) ? (ts.isSourceFile(n.parent) ? n.declarationList.declarations.map((d) => d.name.getText(sf)).join(", ") : undefined)
     : (ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n) || ts.isClassDeclaration(n) || ts.isInterfaceDeclaration(n) || ts.isTypeAliasDeclaration(n)
@@ -265,8 +266,8 @@ function contractOf(file: string, code: string): string[] {
   /** The names of the declarations around a position, outermost first; a comment belongs to the declaration it leads. */
   const owners = (at: number): string[] => {
     const chain: string[] = [];
-    for (let n: ts.Node | undefined = sf; n; ) {
-      const inner: ts.Node | undefined = n.getChildren(sf).find((c) => c.getFullStart() <= at && at < c.getEnd());
+    for (let n: TS.Node | undefined = sf; n; ) {
+      const inner: TS.Node | undefined = n.getChildren(sf).find((c) => c.getFullStart() <= at && at < c.getEnd());
       const name = inner && named(inner);
       if (name) chain.push(name);
       n = inner;

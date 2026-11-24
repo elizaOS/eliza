@@ -1,10 +1,11 @@
-// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "The claim commits the dispatch once, before the deadline"; spec/agent/deviceActions/index.md, "Only the exact binding decides an open offer before its deadline"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"
+// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment retires every open offer, and nothing offered under it is served again"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "The claim commits the dispatch once, before the deadline"; spec/agent/deviceActions/index.md, "Only the exact binding decides an open offer before its deadline"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"
 import type { IDatabaseAdapter } from "@elizaos/core"
-import { apply, initial, machineOver, noOwner, step, type DeviceRequest, type Rejected } from "../../gen/agent__deviceActions.effect.vibe"
+import { apply, enrollmentKeyMatches, initial, machineOver, noOwner, replacesEnrollment, step, type DeviceRequest, type Rejected } from "../../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
 import type { DeviceView, RevisionRead, ViewProfile } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 
 export error DeviceStoreUnavailable { step: string; cause: unknown }
+export error EnrollmentKeyChanged {}
 export error StaleDeviceRow { table: "device_enrollment" | "device_requests"; id: string; revision: number }
 export error ProposalIdTaken { proposalId: string }
 
@@ -149,8 +150,10 @@ module node {
     return id
   }
 
-  async function enrollmentIn(sql: Sql): Promise<EnrollmentRow | undefined> {
-    const found = await sql.query<{ revision: number; state: unknown }>("SELECT revision, state FROM device_enrollment WHERE singleton")
+  async function enrollmentIn(sql: Sql, lock = false): Promise<EnrollmentRow | undefined> {
+    const found = await sql.query<{ revision: number; state: unknown }>(
+      `SELECT revision, state FROM device_enrollment WHERE singleton${lock ? " FOR UPDATE" : ""}`,
+    )
     const row = found.rows[0]
     return row === undefined ? undefined : { revision: row.revision, state: parsed("enrollment", row.state) }
   }
@@ -180,7 +183,7 @@ module node {
 
   export function seedRequest(adapter: IDatabaseAdapter, enrollment: number, offered: DeviceRequest, terms: RequestTerms): Promise<Seeded> {
     return within(adapter, async (sql) => {
-      const current = await enrollmentIn(sql)
+      const current = await enrollmentIn(sql, true)
       if ((current?.revision ?? 0) !== enrollment) return "stale"
       const authority = typeof terms.binding === "string" ? undefined : decodeAuthority(terms.binding)
       const checked = decodeTerms({ ...terms, binding: authority?.kind ?? terms.binding })
@@ -231,6 +234,7 @@ module node {
   export interface RequestReview extends RequestClaim {
     readonly attemptId: string
     readonly review: ReviewOutcome
+    readonly evidence?: { readonly providerReceipt: DeviceReceipt; readonly result: unknown }
   }
   export type ReviewCommit =
     | { readonly kind: "reviewed"; readonly state: DeviceRequest; readonly claim: ClaimBinding; readonly providerReceipt: DeviceReceipt }
@@ -301,15 +305,23 @@ module node {
     })
   }
 
+  async function lockedUnsettled(sql: Sql, filter: string, params: unknown[] = []) {
+    const { rows } = await sql.query<{ proposal_id: string; revision: number; state: unknown }>(
+      `SELECT proposal_id, revision, state FROM device_requests WHERE NOT settled${filter} ORDER BY proposal_id FOR UPDATE`, params,
+    )
+    return rows.map((row) => ({ proposalId: row.proposal_id, revision: row.revision, state: atWallTime(parsed(`request ${row.proposal_id}`, row.state)) }))
+  }
+
   export function retireAbandonedAgendaRows(adapter: IDatabaseAdapter): Promise<void> {
     return within(adapter, async (sql) => {
-      const { rows } = await sql.query<{ proposal_id: string; revision: number; state: unknown }>(
-        "SELECT proposal_id, revision, state FROM device_requests WHERE binding = 'AgendaBinding' AND NOT settled ORDER BY proposal_id FOR UPDATE",
-      )
-      for (const row of rows) {
-        await retireOffer(sql, row.proposal_id, row.revision, atWallTime(parsed(`request ${row.proposal_id}`, row.state)))
-      }
+      for (const row of await lockedUnsettled(sql, " AND binding = 'AgendaBinding'")) await retireOffer(sql, row.proposalId, row.revision, row.state)
     })
+  }
+
+  async function expireLapsedOffers(sql: Sql, filter: string, params?: unknown[]): Promise<void> {
+    for (const row of await lockedUnsettled(sql, filter, params)) {
+      if (canExpire(row.state)) await retireOffer(sql, row.proposalId, row.revision, row.state)
+    }
   }
 
   export function writeDecision(adapter: IDatabaseAdapter, { proposalId, digest, by, approved }: RequestDecision): Promise<DecisionCommit> {
@@ -326,7 +338,7 @@ module node {
     })
   }
 
-  export function writeReview(adapter: IDatabaseAdapter, { proposalId, digest, by, attemptId, review }: RequestReview): Promise<ReviewCommit> {
+  export function writeReview(adapter: IDatabaseAdapter, { proposalId, digest, by, attemptId, review, evidence }: RequestReview): Promise<ReviewCommit> {
     return within(adapter, async (sql) => {
       const row = await requestIn(sql, proposalId, true)
       if (row === undefined) return { kind: "missing" }
@@ -335,10 +347,14 @@ module node {
       const current = atWallTime(row.state)
       if (providerReceipt === undefined || !canReconcile(current, by, digest, claim.modelAttemptId, review)) return { kind: "refused" }
       const reviewed = step(current, { type: "reconcile", digest, attemptId: claim.modelAttemptId, review }, by)
-      if (reviewed.phase.tag !== current.phase.tag && await keepRequest(sql, proposalId, row.revision, reviewed) !== "written") {
+      if (reviewed.phase.tag === current.phase.tag) return { kind: "reviewed", state: reviewed, claim, providerReceipt }
+      const kept = evidence === undefined ? undefined : {
+        kind: "receipt" as const, result: JSON.stringify(evidence.result) ?? null, providerReceipt: JSON.stringify(evidence.providerReceipt) ?? null,
+      }
+      if (await keepRequest(sql, proposalId, row.revision, reviewed, kept) !== "written") {
         throw new Error(`The locked review for ${proposalId} could not be saved`)
       }
-      return { kind: "reviewed", state: reviewed, claim, providerReceipt }
+      return { kind: "reviewed", state: reviewed, claim, providerReceipt: evidence?.providerReceipt ?? providerReceipt }
     })
   }
 
@@ -416,6 +432,7 @@ module node {
   export function reviewRows(adapter: IDatabaseAdapter, by: SessionOwner, scope: ProposalReviewScope): Promise<RequestRow[]> {
     return within(adapter, async (sql) => {
       const filter = reviewFilter(scope)
+      await expireLapsedOffers(sql, filter)
       const found = await sql.query<Row>(
         `SELECT ${columns} FROM device_requests WHERE NOT settled${filter}
          UNION ALL
@@ -431,6 +448,7 @@ module node {
 
   export function conversationRows(adapter: IDatabaseAdapter, by: SessionOwner, conversationId: string, which: Settled, limit: number): Promise<RequestRow[]> {
     return within(adapter, async (sql) => {
+      await expireLapsedOffers(sql, " AND state->'origin'->>'conversationId' = $1", [conversationId])
       const found = await sql.query<Row>(
         `SELECT ${columns} FROM device_requests WHERE state->'origin'->>'conversationId' = $1 AND settled = $2 ORDER BY created_at DESC, proposal_id DESC LIMIT $3`,
         [conversationId, which === "settled", limit],
@@ -518,20 +536,25 @@ export effect function enrollment(adapter: IDatabaseAdapter): DeviceRequest!Devi
   return (try currentEnrollment(adapter)).state
 }
 
-export effect function changeEnrollment(adapter: IDatabaseAdapter, event: EnrollmentEvent, by: SessionOwner) {
-  const reads = new Map<number, number>()
-  const load = effect function (): DeviceRequest!DeviceStoreUnavailable {
+export type EnrollmentChange = EnrollmentEvent
+  | (Omit<Extract<EnrollmentEvent, { type: "registerDevice" }>, "type"> & { type: "replaceEnrollment" })
+  | { type: "revokeEnrolledKey"; keyHash: string }
+
+export effect function changeEnrollment(adapter: IDatabaseAdapter, change: EnrollmentChange, by: SessionOwner) {
+  const revoke = { type: "revokeEnrollment" } as const
+  const event: EnrollmentEvent = change.type === "replaceEnrollment" ? { ...change, type: "registerDevice" }
+    : change.type === "revokeEnrolledKey" ? revoke : change
+  uninterruptible {
     const row = try currentEnrollment(adapter)
-    reads.set(try currentFiber(), row.revision)
-    return row.state
+    if (change.type === "revokeEnrolledKey" && !enrollmentKeyMatches(row.state, by, change.keyHash))
+      throw new EnrollmentKeyChanged()
+    const retiring = change.type === "replaceEnrollment" && replacesEnrollment(row.state, by, change.keyHash)
+    const previous = retiring ? step(row.state, revoke, by) : row.state
+    const next = try apply(previous, event, by)
+    const written = try stored("keep the enrollment", () => writeEnrollment(adapter, row.revision, next, retiring ? revoke : event, by))
+    if (written === "stale") try die(new StaleDeviceRow({ table: "device_enrollment", id: "enrollment", revision: row.revision }))
+    return next
   }
-  const keep = effect function (next: DeviceRequest): void!! {
-    const read = try readBy(reads)
-    const written = try orDie(stored("keep the enrollment", () => writeEnrollment(adapter, read, next, event, by)))
-    if (written === "stale") try die(new StaleDeviceRow({ table: "device_enrollment", id: "enrollment", revision: read }))
-  }
-  const machine = try machineOver(load, keep)
-  return try machine.send(event, by)
 }
 
 export effect function requestSnapshot(adapter: IDatabaseAdapter, proposalId: string, scope?: ProposalReviewScope): (RequestRow | undefined)!DeviceStoreUnavailable {

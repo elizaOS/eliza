@@ -22,19 +22,25 @@ effect function needed(flags: OperatorFlags, name: string): string!PriceFlagsInv
   return value
 }
 
-effect function per1K(flags: OperatorFlags, name: string): number!PriceFlagsInvalid {
-  const text = try needed(flags, name)
+effect function per1K(name: string, text: string): number!PriceFlagsInvalid {
   if (!/^\d{1,15}$/.test(text)) throw new PriceFlagsInvalid({ problem: `--${name} must be a whole number of µUSD per 1,000 tokens` })
   return Number(text)
 }
 
+effect function neededPer1K(flags: OperatorFlags, name: string): number!PriceFlagsInvalid {
+  return try per1K(name, try needed(flags, name))
+}
+
 effect function setFromFlags(tx: Tx, flags: OperatorFlags) {
+  const cached = flags.values("cached-input-per-1k")[0]
+  const cachedInputPer1K = cached === undefined ? undefined : try per1K("cached-input-per-1k", cached)
   const row = try setModelPrice(tx, try offered(), {
     modelId: try needed(flags, "model"),
-    inputPer1K: try per1K(flags, "input-per-1k"),
-    outputPer1K: try per1K(flags, "output-per-1k")
+    inputPer1K: try neededPer1K(flags, "input-per-1k"),
+    outputPer1K: try neededPer1K(flags, "output-per-1k"),
+    ...(cachedInputPer1K === undefined ? {} : { cachedInputPer1K })
   })
-  return [`priced ${row.modelId}: input ${row.inputPer1K}, output ${row.outputPer1K} µUSD per 1,000 tokens`]
+  return [`priced ${row.modelId}: input ${row.inputPer1K}, cached input ${row.cachedInputPer1K}, output ${row.outputPer1K} µUSD per 1,000 tokens`]
 }
 
 effect function checkFromFlags(tx: Tx) {
@@ -55,6 +61,6 @@ export effect function seedPrices(tx: Tx, entries: unknown) {
 }
 
 export const commands: ReadonlyArray<OperatorCommandHandler> = [
-  { words: ["prices", "set"], operatorCommand: "SetPrices", valued: ["model", "input-per-1k", "output-per-1k"], repeated: [], switches: [], run: setFromFlags },
+  { words: ["prices", "set"], operatorCommand: "SetPrices", valued: ["model", "input-per-1k", "cached-input-per-1k", "output-per-1k"], repeated: [], switches: [], run: setFromFlags },
   { words: ["prices", "check"], operatorCommand: "CheckPrices", valued: [], repeated: [], switches: [], run: checkFromFlags }
 ]

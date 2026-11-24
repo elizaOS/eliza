@@ -83,6 +83,7 @@ export const VoiceUiContext = Schema.Struct({
   viewDelivery: Schema.optionalKey(Schema.Literal("completed-action")),
   uiClientId: Schema.optionalKey(Schema.String),
   agentActionMode: Schema.optionalKey(Schema.Literal("direct-request-v1")),
+  uiNotesEditor: Schema.optionalKey(Schema.Literal("saved-note-v1")),
 })
 
 export type Observation = typeof Observation.Type
@@ -264,7 +265,7 @@ function stated<None, Allowed, Other>(value: unknown, allowed: string, none: Non
 function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<VoiceUiContext, VoiceUiFacts> {
   const fields = table(input)
   if (fields === undefined) return { kind: "refused", facts: undefined }
-  const { uiViewPath, uiViewSubview, uiTimeZone, uiBrowserSurface, viewDelivery, uiClientId, agentActionMode } = fields
+  const { uiViewPath, uiViewSubview, uiTimeZone, uiBrowserSurface, viewDelivery, uiClientId, agentActionMode, uiNotesEditor } = fields
   const routing = parseViewInteractionClientId(uiClientId)
   const facts: VoiceUiFacts = {
     viewPath: textOf(uiViewPath),
@@ -274,6 +275,7 @@ function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<Vo
     delivery: stated(viewDelivery, "completed-action", "NoDelivery", "CompletedAction", "OtherDelivery"),
     routingId: uiClientId === undefined ? "NoRouting" : routing !== undefined && (clientId === undefined || routing === clientId) ? "Routing" : "MalformedRouting",
     actionMode: stated(agentActionMode, "direct-request-v1", "NoActionMode", "DirectRequest", "OtherActionMode"),
+    noteEditor: stated(uiNotesEditor, "saved-note-v1", "NoNoteEditor", "SavedNoteEditor", "OtherNoteEditor"),
   }
   switch (voiceUiOutcome(facts)) {
     case "ContextCarried": return { kind: "carried", value: {
@@ -284,6 +286,7 @@ function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<Vo
       ...(viewDelivery === "completed-action" ? { viewDelivery } : {}),
       ...(routing === undefined ? {} : { uiClientId: routing }),
       ...(agentActionMode === "direct-request-v1" ? { agentActionMode } : {}),
+      ...(uiNotesEditor === "saved-note-v1" ? { uiNotesEditor } : {}),
     } }
     case "ContextDropped":
     case "TurnRefused": return { kind: "refused", facts }

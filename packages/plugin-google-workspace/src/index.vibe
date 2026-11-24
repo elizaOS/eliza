@@ -1,7 +1,5 @@
 // spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"; spec/googleWorkspace/index.md, "Story: Send Gmail to the confirmed recipient"
-import * as HttpClient from "effect/unstable/http/HttpClient"
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { selectRecipient, workspaceAllowed, type GoogleScope, type MailboxClaim, type WorkspaceAccount } from "../gen/googleWorkspace.effect.vibe"
 
 export error WorkspaceAccessRefused { accountId: string }
