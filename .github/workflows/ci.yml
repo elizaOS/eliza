@@ -4,9 +4,9 @@ name: ci
 # Consumer verification can precompute root simulations on four runners.
 on:
   pull_request:
-    branches: [vibestack, develop, main]
+    branches: [develop, staging, main]
   push:
-    branches: [vibestack, develop, main]
+    branches: [develop, staging, main]
 
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_attempt == '1' && github.ref || github.run_id }}

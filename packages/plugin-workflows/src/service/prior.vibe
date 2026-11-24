@@ -214,11 +214,6 @@ effect function planImport(rows: EarlierRows, owner: string, importedAt: string)
   return { receipt, definitions, runs, sources: kept }
 }
 
-/**
- * Imports the earlier workflow store of this agent once. It never fails the
- * service: a store that cannot be read or committed is logged and imported
- * again at the next start. Answers the kept receipt, if there is one.
- */
 export effect function importEarlierWorkflows(store: Store, agentId: string, owner: string, now: number): (EarlierImportReceipt | undefined)!! {
   return (importing(store, agentId, owner, now) catch effect (error) => try warned(agentId, error))
 }
