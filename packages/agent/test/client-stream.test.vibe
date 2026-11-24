@@ -139,14 +139,15 @@ module node {
     return { outcome, reads }
   }
 
-  export async function refusedCueTurn(runtime: AgentRuntime, roomId: string, request: string): Promise<readonly string[]> {
+  // `reports` is what the display's acknowledge returns: false for a cue the stream refused, undefined for a display that reports nothing.
+  export async function unheardCueTurn(runtime: AgentRuntime, roomId: string, request: string, reports: false | undefined): Promise<readonly string[]> {
     const room = await runtime.getRoom(roomId as UUID)
     if (!room) throw new Error("The conversation has no room")
     // A cloud launch carries the scratch account, so the host owns the conversation as that account (host/process.vibe).
     const owner = { user: validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`), world: stringToUuid(`device:${runtime.agentId}`) }
     const offered: string[] = []
     await processTurn(runtime, owner, room, request, AbortSignal.timeout(60_000), {
-      display: { restart: () => undefined, acknowledge: (cue) => { offered.push(cue); return false }, tool: () => undefined, ready: () => undefined },
+      display: { restart: () => undefined, acknowledge: (cue) => { offered.push(cue); return reports }, tool: () => undefined, ready: () => undefined },
     })
     return offered
   }
@@ -159,7 +160,7 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, refusedCueTurn, slowAgendaReads } from node
+import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads, unheardCueTurn } from node
 
 schema Created { conversation: { id: string; roomId: string } }
 const created = Schema.decodeUnknownOption(Created)
@@ -517,10 +518,14 @@ it.live(`Hear the result after the cue, never the cue again, and only a cue I he
   const laterStep = try turn("What is on my agenda this week?", true)
   try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked on Sunday.")))
   const refusedFrom = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
-  const offered = try host("a turn whose reply stream refuses its cue", () => refusedCueTurn(agent.agent.runtime, roomId, "What do I have on Sunday?"))
+  const offered = try host("a turn whose reply stream refuses its cue", () => unheardCueTurn(agent.agent.runtime, roomId, "What do I have on Sunday?", false))
   const refused = { offered, ...transcript(planned(refusedFrom).at(-1)) }
+  try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked on Saturday.")))
+  const unreportedFrom = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
+  const reportedNothing = try host("a turn whose display reports nothing about its cue", () => unheardCueTurn(agent.agent.runtime, roomId, "What do I have on Saturday?", undefined))
+  const unreported = { offered: reportedNothing, ...transcript(planned(unreportedFrom).at(-1)) }
 
-  try Effect.try(() => assert.deepStrictEqual({ delivered, unstreamed, quiet, notACue, laterStep, refused }, {
+  try Effect.try(() => assert.deepStrictEqual({ delivered, unstreamed, quiet, notACue, laterStep, refused, unreported }, {
     delivered: {
       heard: ["acknowledgment:Let me check your calendar."], stepText: ["Let me check your calendar."],
       notes: [`Note from the agent host, not the person: "Let me check your calendar." ${sentNote}. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`],
@@ -530,6 +535,7 @@ it.live(`Hear the result after the cue, never the cue again, and only a cue I he
     notACue: { heard: [], stepText: [null], notes: [] },
     laterStep: { heard: [], stepText: [null, null], notes: [] },
     refused: { offered: ["Let me check your calendar."], stepText: [null], notes: [] },
+    unreported: { offered: ["Let me check your calendar."], stepText: [null], notes: [] },
   }))
 }, 120_000)
 

@@ -565,7 +565,7 @@ a draft that is not the turn's acknowledgment and a cue the stream refused
 or did not report taking deliver nothing. The planner's transcript keeps the
 text a step wrote beside its tool calls only when that text is the delivered
 cue, so the model never takes text the owner did not receive as said. After the tool calls that came
-with a delivered cue have run, the model is told once, quoting the cue, that
+with a delivered cue have all run and planning goes on, the model is told once, quoting the cue, that
 it was already sent to the owner as progress: the reply does not repeat or
 paraphrase it, goes straight to the result, any blocker or the question the
 turn needs answered, and the cue is not evidence that any work succeeded. A

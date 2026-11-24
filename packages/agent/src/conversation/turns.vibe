@@ -139,7 +139,7 @@ module node {
 
   export interface TurnDisplay {
     readonly restart: (fullText: string) => void
-    readonly acknowledge: (text: string) => boolean
+    readonly acknowledge: (text: string) => boolean | void
     readonly tool: (name: string, label: string) => void
     readonly ready: (fullText: string, ran: TurnReply["actionResults"]) => void
   }
