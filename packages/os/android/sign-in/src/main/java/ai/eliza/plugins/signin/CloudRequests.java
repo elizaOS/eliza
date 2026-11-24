@@ -1,10 +1,12 @@
-// spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "A cancel disconnects only the page's own call still in flight, which then settles once as cancelled"
+// spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "A cancel disconnects only the page's own call still in flight, which then settles once as cancelled"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CloudRequestPolicy.Attach;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Handoff;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Holding;
 import ai.eliza.plugins.signin.CloudRequestPolicy.KeyRejected;
+import ai.eliza.plugins.signin.CloudRequestPolicy.LeaseRejected;
+import ai.eliza.plugins.signin.CloudRequestPolicy.RefreshLeaseFirst;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Planned;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Refusal;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Refuse;
@@ -12,8 +14,11 @@ import ai.eliza.plugins.signin.CloudRequestPolicy.RefreshSessionFirst;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Send;
 import ai.eliza.plugins.signin.CloudRequestPolicy.SessionRejected;
 import ai.eliza.plugins.signin.CloudRequestPolicy.WithKey;
+import ai.eliza.plugins.signin.CloudRequestPolicy.WithLease;
+import ai.eliza.plugins.signin.CredentialPolicy.LeaseUse;
 import ai.eliza.plugins.signin.CloudRequestPolicy.WithSession;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -24,14 +29,24 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class CloudRequests {
-  public record Custody(DeviceCredentialStore credentials, AccountSession session) {}
+  public record MailAuthority(CredentialPolicy.Account account, int version) {}
+
+  public record Custody(DeviceCredentialStore credentials, AccountSession session, DeviceLease lease) {
+    public MailAuthority mailAuthority() { return authorityOf(credentials.state()); }
+  }
+
+  private static MailAuthority authorityOf(CredentialPolicy.State state) {
+    int version = CredentialPolicy.leaseVersionOf(state.lease());
+    return version > 0 && version == CredentialPolicy.activeVersion(state)
+      ? new MailAuthority(CredentialPolicy.accountOf(state), version) : null;
+  }
 
   public sealed interface Outcome permits Answered, Failed {}
   public record Answered(int status, String etag, String contentType, String retryAfter, byte[] body, LargeBodyGrant.Grant grant) implements Outcome {}
   public record Failed(Failure failure) implements Outcome {}
 
   public enum Failure {
-    NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED, REPLY_TOO_LARGE, NETWORK, NAME_IN_USE, CANCELLED;
+    NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, MAIL_LEASE_UPGRADE_REQUIRED, REAUTH_REQUIRED, REPLY_TOO_LARGE, NETWORK, NAME_IN_USE, CANCELLED;
     static Failure of(Refusal refusal) {
       return switch (refusal) {
         case NO_ORIGIN -> NO_ORIGIN;
@@ -39,6 +54,7 @@ public final class CloudRequests {
         case BODY_TOO_LARGE -> BODY_TOO_LARGE;
         case HEADER_REFUSED -> HEADER_REFUSED;
         case SIGN_IN_REQUIRED -> SIGN_IN_REQUIRED;
+        case MAIL_LEASE_UPGRADE_REQUIRED -> MAIL_LEASE_UPGRADE_REQUIRED;
         case REAUTH_REQUIRED -> REAUTH_REQUIRED;
       };
     }
@@ -61,6 +77,10 @@ public final class CloudRequests {
     this.grants = grants;
   }
 
+  public static CloudRequests forMailReads(File cacheDirectory) {
+    return new CloudRequests(CloudRequestPolicy.forMailReads(), new LargeBodyGrant(cacheDirectory));
+  }
+
   public boolean cancel(String name) {
     Call call = name == null ? null : calls.get(name);
     if (call == null || call.cancelled) return false;
@@ -78,37 +98,58 @@ public final class CloudRequests {
     Call call = new Call();
     if (name != null && calls.putIfAbsent(name, call) != null) return new Failed(Failure.NAME_IN_USE);
     try {
-      Outcome outcome = sent(call, apiOrigin, custody, method, target, headers, body);
+      Outcome outcome = sent(call, apiOrigin, custody, method, target, headers, body, null);
       return call.cancelled ? new Failed(Failure.CANCELLED) : outcome;
     } finally {
       if (name != null) calls.remove(name, call);
     }
   }
 
-  private Outcome sent(Call call, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body) {
+  public Outcome readMail(String apiOrigin, Custody custody, MailAuthority expected, String target, Map<String, String> headers) {
+    if (expected == null) return new Failed(Failure.SIGN_IN_REQUIRED);
+    return sent(new Call(), apiOrigin, custody, "GET", target, headers, null, expected);
+  }
+
+  private Outcome sent(Call call, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body, MailAuthority expected) {
     DeviceCredentialStore store = custody.credentials();
     CredentialReader.Credential key = store.current();
-    int version = key == null ? 0 : key.version();
+    CredentialPolicy.State snapshot = store.state();
+    if (expected != null && !expected.equals(authorityOf(snapshot))) return new Failed(Failure.SIGN_IN_REQUIRED);
+    int active = CredentialPolicy.activeVersion(snapshot);
+    int version = key == null || key.version() != active ? 0 : active;
     CloudRequestPolicy.Origin origin = CloudRequestPolicy.originOf(apiOrigin);
-    Planned planned = policy.plan(new Holding(version, false, false), origin, method, target, headers, body);
+    boolean leaseHeld = CredentialPolicy.leaseVersionOf(snapshot.lease()) >= 1;
+    Planned planned = policy.plan(new Holding(version, false, false, leaseHeld, false), origin, method, target, headers, body);
+    if (expected != null && planned.route().auth() != CloudRequestPolicy.Auth.MAIL) return new Failed(Failure.NOT_LISTED);
     String session = null;
+    DeviceLease.Held lease = null;
     if (planned.plan() instanceof Refuse refuse && refuse.why() == Refusal.REAUTH_REQUIRED) {
       session = custody.session().accessToken();
-      planned = policy.plan(new Holding(version, session != null, session != null), origin, method, target, headers, body);
+      planned = policy.plan(new Holding(version, session != null, session != null, leaseHeld, false), origin, method, target, headers, body);
+    } else if (planned.plan() instanceof RefreshLeaseFirst) {
+      lease = custody.lease().accessToken();
+      CredentialPolicy.State current = store.state();
+      if (expected != null && !expected.equals(authorityOf(current))) return new Failed(Failure.SIGN_IN_REQUIRED);
+      int leaseVersion = CredentialPolicy.leaseVersionOf(current.lease());
+      boolean bound = lease != null && lease.version() == leaseVersion && CredentialPolicy.leaseUsable(current);
+      planned = policy.plan(new Holding(CredentialPolicy.activeVersion(current), false, false, leaseVersion >= 1, bound), origin, method, target, headers, body);
     }
     Attach attach;
     switch (planned.plan()) {
       case Refuse refuse -> { return new Failed(Failure.of(refuse.why())); }
       case RefreshSessionFirst refresh -> { return new Failed(Failure.REAUTH_REQUIRED); }
+      case RefreshLeaseFirst refresh -> { return new Failed(Failure.NETWORK); }
       case Send send -> attach = send.attach();
     }
     String bearer = switch (attach) {
       case WithKey k -> key.value();
       case WithSession s -> session;
+      case WithLease l -> lease.token();
       case CloudRequestPolicy.Bare b -> null;
     };
     HttpURLConnection connection = null;
     try {
+      if (expected != null && !expected.equals(custody.mailAuthority())) return new Failed(Failure.SIGN_IN_REQUIRED);
       connection = (HttpURLConnection) URI.create(apiOrigin + target).toURL().openConnection();
       call.connection = connection;
       if (call.cancelled) return new Failed(Failure.CANCELLED);
@@ -126,11 +167,14 @@ public final class CloudRequests {
         try (OutputStream out = connection.getOutputStream()) { out.write(body); }
       }
       int status = connection.getResponseCode();
-      Answered answered = answer(connection, status);
+      if (expected != null && !expected.equals(custody.mailAuthority())) return new Failed(Failure.SIGN_IN_REQUIRED);
+      Answered answered = answer(connection, status, expected == null);
+      if (expected != null && !expected.equals(custody.mailAuthority())) return new Failed(Failure.SIGN_IN_REQUIRED);
       if (status == UNAUTHORIZED) {
         String text = answered.body() == null ? null : new String(answered.body(), StandardCharsets.UTF_8);
         switch (CloudRequestPolicy.reportOf(attach, planned.route(), status, CloudRequestPolicy.reasonOf(text))) {
           case KeyRejected rejected -> store.rejected(rejected.version(), rejected.reason(), rejected.on());
+          case LeaseRejected rejected -> store.leaseRejected(rejected.version(), rejected.reason(), LeaseUse.ACCESS_USE);
           case SessionRejected rejected -> custody.session().drop();
           case CloudRequestPolicy.NoReport none -> { }
         }
@@ -147,9 +191,10 @@ public final class CloudRequests {
     }
   }
 
-  private Answered answer(HttpURLConnection connection, int status) throws IOException {
+  private Answered answer(HttpURLConnection connection, int status, boolean allowGrant) throws IOException {
     String etag = connection.getHeaderField("ETag"), contentType = connection.getContentType(), retryAfter = connection.getHeaderField("Retry-After");
-    if (CloudRequestPolicy.handoffOf(connection.getContentLengthLong()) == Handoff.REPLY_TOO_LARGE) throw new LargeBodyGrant.Oversize();
+    long limit = allowGrant ? CloudRequestPolicy.REPLY_LIMIT : CloudRequestPolicy.INLINE_LIMIT;
+    if (connection.getContentLengthLong() > limit) throw new LargeBodyGrant.Oversize();
     InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
     if (stream == null) return new Answered(status, etag, contentType, retryAfter, new byte[0], null);
     try (InputStream in = stream) {
@@ -157,8 +202,10 @@ public final class CloudRequests {
       byte[] buffer = new byte[64 << 10];
       for (int n; (n = in.read(buffer, 0, (int) Math.min(buffer.length, CloudRequestPolicy.INLINE_LIMIT + 1 - head.size()))) > 0;) {
         head.write(buffer, 0, n);
-        if (CloudRequestPolicy.handoffOf(head.size()) == Handoff.CACHED_BODY)
+        if (CloudRequestPolicy.handoffOf(head.size()) == Handoff.CACHED_BODY) {
+          if (!allowGrant) throw new LargeBodyGrant.Oversize();
           return new Answered(status, etag, contentType, retryAfter, null, grants.spill(head.toByteArray(), in, contentType));
+        }
       }
       return new Answered(status, etag, contentType, retryAfter, head.toByteArray(), null);
     }
