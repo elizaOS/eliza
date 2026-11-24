@@ -1,6 +1,7 @@
-// spec/network/index.md, "Availability uses the member's own evidence and calendar window"; spec/network/index.md, "Only the authenticated turn may request a state write or relay"; spec/network/index.md, "A successful Network action requires its own matching receipt"; spec/network/index.md, "Only unseen updates for the bound member appear in the read acknowledgement"
+// spec/network/index.md, "Availability uses the member's own evidence and calendar window"; spec/network/index.md, "A stated weekday or day of the month is read on the member's own calendar"; spec/network/index.md, "Only the authenticated turn may request a state write or relay"; spec/network/index.md, "A successful Network action requires its own matching receipt"; spec/network/index.md, "Only unseen updates for the bound member appear in the read acknowledgement"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { Action, ActionResult, Memory, Plugin } from "@elizaos/core"
+import { isoEpochDay, statedNetworkWindow } from "./dates.vibe"
 import { initial, machineOver, effectiveNetworkAvailability, networkWindow, validNetworkAvailability, type Availability, type AvailabilityCue, type AvailabilityRequest, type MemberTurn, type NetworkAction, type NetworkOutcome } from "../gen/network.effect.vibe"
 
 module node {
@@ -70,12 +71,6 @@ export effect function postNetwork(options: NetworkServiceOptions, path: "/inter
 
 function units(text: string): number[] { return Array.from({ length: text.length }, (_, index) => text.charCodeAt(index)) }
 function parameters(raw: unknown): unknown { return typeof raw === "object" && raw !== null && "parameters" in raw ? raw.parameters : raw }
-function day(value: string | undefined): number {
-  if (value === undefined || value === "") return -1
-  if (!/^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value)) return -2
-  const parsed = Date.parse(value)
-  return Number.isFinite(parsed) ? Math.floor(parsed / 86400000) : -2
-}
 function isoDay(value: number): string | null { return value < 0 ? null : new Date(value * 86400000).toISOString() }
 function cue(text: string): AvailabilityCue {
   if (/\b(?:travel(?:ing|ling)?|out of town|away)\b/i.test(text)) return "TravelCue"
@@ -112,10 +107,8 @@ export function createNetworkEdgePlugin(options: { readonly service: NetworkServ
     const input = try Schema.decodeUnknownEffect(SetStateParameters)(parameters(raw))
     const evidence = input.evidence?.trim() || host.text
     const at = try Clock.currentTimeMillis
-    const localDay = day(new Intl.DateTimeFormat("en-CA", { timeZone: host.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at))
-    const stated = [...host.text.matchAll(/\b(from|until|through)\s+(\d{4}-\d{2}-\d{2})\b/gi)]
-    const statedDay = (beginning: boolean) => day(stated.find((match) => (match[1]?.toLowerCase() === "from") === beginning)?.[2])
-    const request: AvailabilityRequest = { requested: availabilityOf[input.state], suggested: { begins: day(input.from), ends: day(input.until) }, today: localDay, words: { bodyUnits: turn.messageUnits, quoteUnits: units(evidence), quoteOffset: host.text.indexOf(evidence), cue: cue(evidence), statedWindow: { begins: statedDay(true), ends: statedDay(false) } } }
+    const localDay = isoEpochDay(new Intl.DateTimeFormat("en-CA", { timeZone: host.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at))
+    const request: AvailabilityRequest = { requested: availabilityOf[input.state], suggested: { begins: isoEpochDay(input.from), ends: isoEpochDay(input.until) }, today: localDay, words: { bodyUnits: turn.messageUnits, quoteUnits: units(evidence), quoteOffset: host.text.indexOf(evidence), cue: cue(evidence), statedWindow: localDay < 0 ? { begins: -1, ends: -1 } : statedNetworkWindow(host.text, localDay) } }
     if ((input.note?.length ?? 0) > 280 || !validNetworkAvailability(request)) return failed("Those dates or that availability do not match the member's request.")
     const next: NetworkAction = { tag: "SetAvailability", availability: effectiveNetworkAvailability(request), window: networkWindow(request) }
     try journal.send({ type: "setNetworkAvailability", availabilityRequest: request }, "NetworkHost")

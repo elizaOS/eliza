@@ -42,6 +42,45 @@ pure val requestValues = Set({ requested: OpenAvailability, suggested: { begins:
 pure def lawOpenNetworkHasNoDates(request: AvailabilityRequest): bool = request.requested == OpenAvailability implies networkWindow(request) == { begins: absentDay, ends: absentDay }
 ```
 
+### A stated weekday or day of the month is read on the member's own calendar
+
+The route parser reads a date directly after "from", "until" or "through"
+in the member's words, letter case aside and with a typographic apostrophe
+read as a typed one: an ISO date `YYYY-MM-DD`, a weekday, or a day of the
+month written "the 14th", "the 14" or "14th". A bare weekday names its next
+occurrence after today, at most a week ahead. A weekday the member places
+in next week names that weekday of the next calendar week, which starts on
+Monday: "next Friday", "Friday next week", "Friday of next week", "Friday
+Next Week", "next week Friday", "next week's Friday", "next week on Friday"
+and "next week, on Friday" all do. A day of the month names its next
+occurrence counting today, so "until the 14th" said on the 14th ends today
+and "from the 14th until the 20th" said on the 14th starts today; a day the
+month lacks moves to the next month that has it. In a range, a starting
+weekday is in next week when the message says "next week" anywhere, and an
+end weekday or day of the month that does not come after the start is read
+again from the start, so "from next week Tuesday until Friday" ends on the
+Friday after that Tuesday. Every other wording states no date, and the
+proposed date applies.
+
+```quint
+pure def networkWeekday(epochDay: int): int = (epochDay + 4) % 7
+pure def daysToNextMonday(today: int): int = if ((8 - networkWeekday(today)) % 7 == 0) 7 else (8 - networkWeekday(today)) % 7
+pure def statedNetworkWeekday(today: int, weekday: int, nextWeek: bool): int =
+  if (nextWeek) today + daysToNextMonday(today) + (weekday + 6) % 7
+  else if ((weekday - networkWeekday(today) + 7) % 7 == 0) today + 7
+  else today + (weekday - networkWeekday(today) + 7) % 7
+pure val todayValues = Set(20737, 20738, 20739, 20740, 20741, 20742, 20743)
+pure val weekdayValues = Set(0, 1, 2, 3, 4, 5, 6)
+pure def lawABareWeekdayComesWithinAWeek(today: int, weekday: int): bool =
+  (today >= 0 and weekday >= 0 and weekday <= 6) implies
+    (statedNetworkWeekday(today, weekday, false) > today and statedNetworkWeekday(today, weekday, false) <= today + 7
+      and networkWeekday(statedNetworkWeekday(today, weekday, false)) == weekday)
+pure def lawANextWeekWeekdayIsInTheNextCalendarWeek(today: int, weekday: int): bool =
+  (today >= 0 and weekday >= 0 and weekday <= 6) implies
+    (statedNetworkWeekday(today, weekday, true) >= today + daysToNextMonday(today) and statedNetworkWeekday(today, weekday, true) < today + daysToNextMonday(today) + 7
+      and networkWeekday(today + daysToNextMonday(today)) == 1 and networkWeekday(statedNetworkWeekday(today, weekday, true)) == weekday)
+```
+
 ### Only the authenticated turn may request a state write or relay
 
 The member ID, app, route generation and message ID come from host turn authority. A state write sends the effective state and window. A relay forwards the member's original nonempty text of up to 2,000 code units and the exact active item selected in the turn, or delegates target selection to the service. Repeated operations have the same stable keys and cannot change their request after dispatch.

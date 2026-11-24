@@ -1,0 +1,60 @@
+// spec/network/index.md, "A stated weekday or day of the month is read on the member's own calendar"; spec/network/index.md, "Availability uses the member's own evidence and calendar window"
+import { assert, it } from "@effect/vitest"
+import { networkWindow, validNetworkAvailability, type AvailabilityRequest } from "../gen/network.effect.vibe"
+import { isoEpochDay, statedNetworkWindow } from "../src/dates.vibe"
+
+const on = (iso: string) => isoEpochDay(iso)
+const stated = (text: string, today: string) => {
+  const window = statedNetworkWindow(text, on(today))
+  return [text, window.begins < 0 ? null : new Date(window.begins * 86_400_000).toISOString().slice(0, 10), window.ends < 0 ? null : new Date(window.ends * 86_400_000).toISOString().slice(0, 10)]
+}
+const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
+
+it.effect('A weekday placed in next week, in any of its wordings or letter cases, ends on that weekday of the next calendar week, and a bare weekday on its next occurrence (spec/network/index.md, "A stated weekday or day of the month is read on the member\'s own calendar")', effect () => {
+  const wednesday = "2026-10-14"
+  const texts = [
+    "I'm in Lisbon until Friday next week", "I'm in Lisbon until Friday of next week", "I'm in Lisbon until Friday Next Week", "I'm in Lisbon until next week Friday",
+    "I'm in Lisbon until next week's Friday", "I'm in Lisbon until next week’s Friday", "I'm in Lisbon until Next week Friday", "I'm in Lisbon until next week on Friday",
+    "I'm in Lisbon until next week, on Friday", "I'm in Lisbon until next Friday", "I'm away until Monday next week", "I'm away until next week Monday", "I'm in Lisbon until Friday",
+    "I'm in Lisbon until Wednesday",
+  ]
+  try equal(texts.map((text) => stated(text, wednesday)), [
+    ["I'm in Lisbon until Friday next week", null, "2026-10-23"], ["I'm in Lisbon until Friday of next week", null, "2026-10-23"],
+    ["I'm in Lisbon until Friday Next Week", null, "2026-10-23"], ["I'm in Lisbon until next week Friday", null, "2026-10-23"],
+    ["I'm in Lisbon until next week's Friday", null, "2026-10-23"], ["I'm in Lisbon until next week’s Friday", null, "2026-10-23"],
+    ["I'm in Lisbon until Next week Friday", null, "2026-10-23"], ["I'm in Lisbon until next week on Friday", null, "2026-10-23"],
+    ["I'm in Lisbon until next week, on Friday", null, "2026-10-23"], ["I'm in Lisbon until next Friday", null, "2026-10-23"],
+    ["I'm away until Monday next week", null, "2026-10-19"], ["I'm away until next week Monday", null, "2026-10-19"],
+    ["I'm in Lisbon until Friday", null, "2026-10-16"], ["I'm in Lisbon until Wednesday", null, "2026-10-21"],
+  ])
+})
+
+it.effect('A range starts in next week when the member says next week, and an end that does not come after its start is read again from the start (spec/network/index.md, "A stated weekday or day of the month is read on the member\'s own calendar")', effect () => {
+  const monday = "2026-10-12"
+  const texts = ["I'm away from next week Tuesday until Friday", "I'm away next week from Tuesday until Friday", "I'm away from Tuesday until Friday next week", "I'm away from Tuesday until Friday"]
+  try equal(texts.map((text) => stated(text, monday)), [
+    ["I'm away from next week Tuesday until Friday", "2026-10-20", "2026-10-23"], ["I'm away next week from Tuesday until Friday", "2026-10-20", "2026-10-23"],
+    ["I'm away from Tuesday until Friday next week", "2026-10-20", "2026-10-23"], ["I'm away from Tuesday until Friday", "2026-10-13", "2026-10-16"],
+  ])
+  try equal(stated("I'm away from next week Tuesday until Friday", "2026-10-14"), ["I'm away from next week Tuesday until Friday", "2026-10-20", "2026-10-23"])
+})
+
+it.effect('A day of the month that falls today keeps today, a passed one moves to its next month, and a range starting on it starts today (spec/network/index.md, "A stated weekday or day of the month is read on the member\'s own calendar"; spec/network/index.md, "Availability uses the member\'s own evidence and calendar window")', effect () => {
+  const wednesday = "2026-10-14"
+  const texts = ["I'm in Lisbon until the 14th", "I'm in Lisbon until 14th", "I'm in Lisbon until the 14", "I'm in Lisbon until the 13th", "I'm in Lisbon until the 31st", "I'm in Lisbon from the 14th until the 20th", "I'm in Lisbon until 2026-10-20", "I'm in Lisbon until 14", "I'm in Lisbon until next week"]
+  try equal(texts.map((text) => stated(text, wednesday)), [
+    ["I'm in Lisbon until the 14th", null, "2026-10-14"], ["I'm in Lisbon until 14th", null, "2026-10-14"], ["I'm in Lisbon until the 14", null, "2026-10-14"],
+    ["I'm in Lisbon until the 13th", null, "2026-11-13"], ["I'm in Lisbon until the 31st", null, "2026-10-31"],
+    ["I'm in Lisbon from the 14th until the 20th", "2026-10-14", "2026-10-20"], ["I'm in Lisbon until 2026-10-20", null, "2026-10-20"],
+    ["I'm in Lisbon until 14", null, null], ["I'm in Lisbon until next week", null, null],
+  ])
+  const text = "I'm in Lisbon from the 14th until the 20th"
+  const units = Array.from(text, (unit) => unit.charCodeAt(0))
+  const request: AvailabilityRequest = {
+    requested: "TravelingAvailability", suggested: { begins: -1, ends: on("2026-10-20") }, today: on(wednesday),
+    words: { bodyUnits: units, quoteUnits: units, quoteOffset: 0, cue: "TravelCue", statedWindow: statedNetworkWindow(text, on(wednesday)) },
+  }
+  try equal([validNetworkAvailability(request), networkWindow(request)], [true, { begins: -1, ends: on("2026-10-20") }])
+  const today = { ...request, words: { ...request.words, statedWindow: statedNetworkWindow("I'm in Lisbon until the 14th", on(wednesday)) } }
+  try equal([validNetworkAvailability(today), networkWindow(today)], [true, { begins: -1, ends: on(wednesday) }])
+})
