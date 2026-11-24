@@ -141,6 +141,18 @@ is that clock written in digits. Any other request, a range whose end is not
 after its start, or a wall time the zone skips or repeats keeps the times
 the model sent.
 
+```quint
+type CreateRangeSource = StatedCreateRange | ModelCreateRange
+pure def createRangeSource(timed: bool, wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): CreateRangeSource =
+  if (timed and wholeRequestStated and wallResolved and endAfterStart) StatedCreateRange else ModelCreateRange
+pure def lawStatedRangeOverridesModelOnTimedCreate(timed: bool, wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): bool =
+  createRangeSource(timed, wholeRequestStated, wallResolved, endAfterStart) == StatedCreateRange iff (timed and wholeRequestStated and wallResolved and endAfterStart)
+pure def lawAllDayCreateKeepsModelRange(wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): bool =
+  createRangeSource(false, wholeRequestStated, wallResolved, endAfterStart) == ModelCreateRange
+pure def lawUnresolvedOrReversedRangeKeepsModelRange(timed: bool, wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): bool =
+  (not(wallResolved) or not(endAfterStart)) implies createRangeSource(timed, wholeRequestStated, wallResolved, endAfterStart) == ModelCreateRange
+```
+
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first
 
 When a create's request names a date or a year, the year comes from the
