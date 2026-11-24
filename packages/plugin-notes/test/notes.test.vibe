@@ -98,6 +98,11 @@ function roomCache() {
       kept.set(key, value)
       return true
     },
+    age: (ms: number) => {
+      for (const [key, value] of kept) {
+        if (typeof value === "object" && value !== null && "offeredAt" in value && typeof value.offeredAt === "number") kept.set(key, { ...value, offeredAt: value.offeredAt - ms })
+      }
+    },
   }
 }
 
@@ -183,14 +188,20 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(try code(notes.update({ selector: "query", value: "lists" }, renumber)), "NOTES_AMBIGUOUS_NOTE")
   assert.equal((try notes.update({ id: lists[0] ?? "" }, renumber)).value.body, "\n1")
   const updating = action(plugin, "NOTES_UPDATE", room)
+  const reading = action(plugin, "NOTES_LIST", room)
   const second = { noteId: lists[1] ?? "", textEdit: { field: "body", oldText: "two", newText: "2" } }
+  const firstList = { noteId: lists[0] ?? "", textEdit: { field: "body", oldText: "1", newText: "one" } }
   const bodyOf = (id: string) => effect () => (try notes.snapshot()).notes.find((note) => note.id === id)?.body
+  const read = try reading(message("number my lists note", undefined, turnId(3)), { content: "lists" })
   const unasked = try updating(message("number my lists note", undefined, turnId(3)), second)
+  try reading(message("the second one", undefined, turnId(4)), { content: "lists" })
   const chosen = try updating(message("the second one", undefined, turnId(4)), second)
-  const later = try updating(message("and put a 1 back in the first lists note", undefined, turnId(5)), { noteId: lists[0] ?? "", textEdit: { field: "body", oldText: "1", newText: "one" } })
-  const unique = try updating(message("add oat to my groceries note", undefined, turnId(6)), { noteId: "note-1", textEdit: { field: "body", oldText: "eggs", newText: "oat eggs" } })
-  assert.deepEqual([unasked.data?.code, unasked.data?.candidateIds, chosen.success, try bodyOf(lists[1] ?? "")(), later.data?.code, try bodyOf(lists[0] ?? "")(), unique.success],
-    ["NOTES_AMBIGUOUS_NOTE", [...lists].reverse(), true, "\n2", "NOTES_AMBIGUOUS_NOTE", "\n1", true])
+  const later = try updating(message("and put a 1 back in the first lists note", undefined, turnId(5)), firstList)
+  try Effect.sync(() => room.age(11 * 60_000))
+  const expired = try updating(message("the first one", undefined, turnId(6)), firstList)
+  const unique = try updating(message("add oat to my groceries note", undefined, turnId(7)), { noteId: "note-1", textEdit: { field: "body", oldText: "eggs", newText: "oat eggs" } })
+  assert.deepEqual([read.success, unasked.data?.code, unasked.data?.candidateIds, chosen.success, try bodyOf(lists[1] ?? "")(), later.data?.code, expired.data?.code, try bodyOf(lists[0] ?? "")(), unique.success],
+    [true, "NOTES_AMBIGUOUS_NOTE", [...lists].reverse(), true, "\n2", "NOTES_AMBIGUOUS_NOTE", "NOTES_AMBIGUOUS_NOTE", "\n1", true])
 
   const folders = readNoteFolders({ notesFolders: [{ id: "folder-home", name: "Home  stuff" }, { id: "folder-work", name: "Work" }] })
   const home = findNoteFolder(folders ?? [], "home stuff")

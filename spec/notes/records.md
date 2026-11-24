@@ -92,10 +92,12 @@ saved-notes index, whatever words the owner used for it, and an exact ID
 edits or deletes that note when no other distinct note has its title, case
 and spacing aside. When another one does, the model's pick is a guess: the
 agent answers with every note of that title for the owner to choose from
-and changes nothing, unless an answer like it, in an earlier message of
-this conversation, offered that ID, so the owner has chosen since. That
-choice serves the one message that changes a note by it, and no message
-after. A change the owner makes in the Notes app by a note's ID is the
+and changes nothing, unless a Notes read or an answer like it, in an
+earlier message of this conversation and in the last ten minutes, returned
+that ID among the notes of its title, so the model could ask and the owner
+has chosen since. A read again of the same notes keeps the message that
+first returned them. That choice serves the one message that changes a
+note by it, and no message after. A change the owner makes in the Notes app by a note's ID is the
 owner's own pick and is never asked about. A delete the agent asks for by content deletes
 only the note whose exact title, case and spacing aside, that content
 gives; a match on other text offers the closest note for the owner to

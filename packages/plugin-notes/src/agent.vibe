@@ -4,7 +4,7 @@ import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
 import type { Action, ActionResult, EffectReceipt, IAgentRuntime, Memory, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
 import { displayZoneSource, emptyCollectionObserved, localTimesShown, notesCapability, receiptOperation, receiptOutcome, refusalKind, type NotesCapability, type NotesRefusal, type NotesWrite } from "../gen/notes__records.effect.vibe"
-import type { ModelPick, NoteTarget, NotesQuery } from "./collection.vibe"
+import { sharedTitleIds, type ModelPick, type NoteTarget, type NotesQuery } from "./collection.vibe"
 import { notesDeviceFamily } from "./device-proposals.vibe"
 import { json } from "./format.vibe"
 import { notesNamedIn, ownerRequestText } from "./lookup.vibe"
@@ -138,8 +138,10 @@ interface NotesActionSpec {
   readonly run: (params: Params, message: Memory, pick: ModelPick) => ActionResult!NotesFailure
 }
 
-type OwnerChoice = { readonly offeredIn: string; readonly candidateIds: readonly string[]; readonly usedIn?: string }
+type OwnerChoice = { readonly offeredIn: string; readonly offeredAt: number; readonly candidateIds: readonly string[]; readonly usedIn?: string }
 type ChoiceCache = Pick<IAgentRuntime, "getCache" | "setCache">
+
+const choiceLifetimeMs = 10 * 60_000
 
 function choiceCache(runtime: unknown): ChoiceCache | undefined {
   return typeof runtime === "object" && runtime !== null && "getCache" in runtime && "setCache" in runtime
@@ -156,9 +158,10 @@ function strings(value: unknown): readonly string[] | undefined {
 
 function ownerChoiceOf(kept: unknown): OwnerChoice | undefined {
   if (typeof kept !== "object" || kept === null || !("offeredIn" in kept) || typeof kept.offeredIn !== "string") return undefined
+  if (!("offeredAt" in kept) || typeof kept.offeredAt !== "number") return undefined
   const candidateIds = "candidateIds" in kept ? strings(kept.candidateIds) : undefined
   const usedIn = "usedIn" in kept && typeof kept.usedIn === "string" ? kept.usedIn : undefined
-  return candidateIds === undefined ? undefined : { offeredIn: kept.offeredIn, candidateIds, ...(usedIn === undefined ? {} : { usedIn }) }
+  return candidateIds === undefined ? undefined : { offeredIn: kept.offeredIn, offeredAt: kept.offeredAt, candidateIds, ...(usedIn === undefined ? {} : { usedIn }) }
 }
 
 effect function keptChoice(cache: ChoiceCache | undefined, message: Memory): (OwnerChoice | undefined)!! {
@@ -166,18 +169,33 @@ effect function keptChoice(cache: ChoiceCache | undefined, message: Memory): (Ow
   return ownerChoiceOf(tryPromise(() => cache.getCache<unknown>(choiceKey(message))) catch () => undefined)
 }
 
-function chosenFor(choice: OwnerChoice | undefined, messageId: string | undefined): readonly string[] {
-  if (choice === undefined || messageId === undefined || choice.offeredIn === messageId) return []
+function chosenFor(choice: OwnerChoice | undefined, messageId: string | undefined, now: number): readonly string[] {
+  if (choice === undefined || messageId === undefined || choice.offeredIn === messageId || now - choice.offeredAt > choiceLifetimeMs) return []
   return choice.usedIn === undefined || choice.usedIn === messageId ? choice.candidateIds : []
 }
 
-effect function keepChoice(cache: ChoiceCache | undefined, message: Memory, choice: OwnerChoice | undefined, result: ActionResult): boolean!! {
+function returnedIds(result: ActionResult): readonly string[] {
+  const data = result.data
+  if (data?.code === "NOTES_AMBIGUOUS_NOTE") return strings(data.candidateIds) ?? []
+  if (result.success !== true || data?.readOnlyOperation !== true) return []
+  const rows: readonly unknown[] = Array.isArray(data.notes) ? data.notes : data.note === undefined ? [] : [data.note]
+  return rows.flatMap((row) => typeof row === "object" && row !== null && "id" in row && typeof row.id === "string" ? [row.id] : [])
+}
+
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id) => b.includes(id))
+}
+
+effect function keepChoice(notes: NotesCollection, cache: ChoiceCache | undefined, message: Memory, choice: OwnerChoice | undefined, result: ActionResult, now: number): boolean!! {
   const messageId = message.id
   if (cache === undefined || messageId === undefined) return false
-  const offered = result.data?.code === "NOTES_AMBIGUOUS_NOTE" ? strings(result.data.candidateIds) : undefined
-  const changed = result.success === true && typeof result.data?.noteId === "string" ? result.data.noteId : undefined
-  const next: OwnerChoice | undefined = offered !== undefined ? { offeredIn: messageId, candidateIds: offered }
-    : choice !== undefined && changed !== undefined && chosenFor(choice, messageId).includes(changed) ? { ...choice, usedIn: messageId }
+  const returned = returnedIds(result)
+  const live: readonly StickyNote[] = returned.length < 2 ? [] : (map(notes.snapshot(), (snapshot) => snapshot.notes) catch () => [])
+  const offered = sharedTitleIds(live, live.filter((note) => returned.includes(note.id)))
+  const changed = result.success === true && result.data?.readOnlyOperation !== true && typeof result.data?.noteId === "string" ? result.data.noteId : undefined
+  const fresh = choice === undefined || choice.usedIn !== undefined || now - choice.offeredAt > choiceLifetimeMs || !sameSet(choice.candidateIds, offered)
+  const next: OwnerChoice | undefined = offered.length > 0 && fresh ? { offeredIn: messageId, offeredAt: now, candidateIds: offered }
+    : choice !== undefined && changed !== undefined && chosenFor(choice, messageId, now).includes(changed) ? { ...choice, usedIn: messageId }
     : undefined
   return next !== undefined && (tryPromise(() => cache.setCache(choiceKey(message), next)) catch () => false)
 }
@@ -197,8 +215,9 @@ function notesAction(notes: NotesCollection, spec: NotesActionSpec): Action {
     handler: (runtime, message, _state, options) => runPromise(effect {
       const cache = choiceCache(runtime)
       const choice = try keptChoice(cache, message)
-      const result = spec.run(paramsOf(options), message, { ownerChose: chosenFor(choice, message.id) }) catch effect (error) => try notesRefusalResult(notes, error)
-      try keepChoice(cache, message, choice, result)
+      const now = try Clock.currentTimeMillis
+      const result = spec.run(paramsOf(options), message, { ownerChose: chosenFor(choice, message.id, now) }) catch effect (error) => try notesRefusalResult(notes, error)
+      try keepChoice(notes, cache, message, choice, result, now)
       return result
     }),
   }
@@ -312,7 +331,7 @@ function writeActions(notes: NotesCollection): Action[] {
       name: "NOTES_UPDATE",
       writes: true,
       similes: ["NOTES_PATCH", "NOTES_APPEND", "NOTES_EDIT"],
-      description: "Change one note named by noteId or content, never both, with one edit form: textEdit {field,oldText,newText} replaces one unique current match and needs no revision; textEdit {action:append,field:body,text} appends that exact suffix; textEdit {action:append,field:item,text} adds one list item in the note's own form; authoredEdit edits a checklist, transcript, summary, action or clip entry; replacementContent, title, body or color replace fields. Every form but the literal replacement needs expectedRevision from the complete read it was prepared from, never a guessed one, and any Notes change since needs a fresh read. Pick the note the owner means from the saved notes, whatever words they used for it, and pass its exact noteId; when more than one note could be meant, ask which one instead, and a repaired call never replaces an ambiguous title with a guessed ID. An append keeps every existing character; a replaced body leaves the title as it is. Prefer the literal replacement for a word or phrase substitution. Never answer a requested edit with a read.",
+      description: "Change one note named by noteId or content, never both, with one edit form: textEdit {field,oldText,newText} replaces one unique current match and needs no revision; textEdit {action:append,field:body,text} appends that exact suffix; textEdit {action:append,field:item,text} adds one list item in the note's own form; authoredEdit edits a checklist, transcript, summary, action or clip entry; replacementContent, title, body or color replace fields. Every form but the literal replacement needs expectedRevision from the complete read it was prepared from, never a guessed one, and any Notes change since needs a fresh read. Pick the note the owner means from the saved notes, whatever words they used for it, and pass its exact noteId. When more than one note could be meant, read them with NOTES_GET or NOTES_LIST and ask which one instead: a guessed ID for a title other notes share changes nothing until the owner has chosen, and a repaired call never replaces an ambiguous title with a guessed ID. An append keeps every existing character; a replaced body leaves the title as it is. Prefer the literal replacement for a word or phrase substitution. Never answer a requested edit with a read.",
       parameters: [
         idParameter("Exact note ID."),
         contentParameter("The existing note's title or unique text, to find it."),
@@ -338,7 +357,7 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_DELETE",
       writes: true,
-      description: "Move one note to Recently deleted. Pick the note the owner means from the saved notes, whatever words they used for it, and pass its exact noteId; when more than one note could be meant, ask which one instead. content deletes only the note whose exact title it gives; any other match comes back as a candidate for the owner to confirm and nothing is deleted.",
+      description: "Move one note to Recently deleted. Pick the note the owner means from the saved notes, whatever words they used for it, and pass its exact noteId. When more than one note could be meant, read them with NOTES_GET or NOTES_LIST and ask which one instead: a guessed ID for a title other notes share deletes nothing until the owner has chosen. content deletes only the note whose exact title it gives; any other match comes back as a candidate for the owner to confirm and nothing is deleted.",
       parameters: [idParameter("Exact note ID from a current record."), contentParameter("The note's title or text.")],
       run: effect (params, _message, pick) => {
         const target = targetOf(params, "noteId", "content")

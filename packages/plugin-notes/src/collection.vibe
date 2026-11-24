@@ -239,14 +239,21 @@ export interface ModelPick {
   readonly ownerChose: readonly string[]
 }
 
+export function sharedTitleIds(notes: readonly StickyNote[], among: readonly StickyNote[]): string[] {
+  const shared = among.flatMap((picked) => {
+    const titled = notes.filter((note) => sameTitle(note.title, picked.title))
+    return titled.some((note) => noteContentKey(note) !== noteContentKey(picked)) ? titled.map((note) => note.id) : []
+  })
+  return [...new Set(shared)]
+}
+
 effect function pickedIndex(notes: readonly StickyNote[], target: NoteTarget, pick: ModelPick | undefined): number!NotesRefused {
   const index = try resolveIndex(notes, target)
   const picked = notes[index]
   if (pick === undefined || !("id" in target) || picked === undefined) return index
-  const key = noteContentKey(picked)
-  const titled = notes.filter((note) => sameTitle(note.title, picked.title))
-  if (pickedNoteChanged(true, titled.some((note) => noteContentKey(note) !== key), pick.ownerChose.includes(picked.id))) return index
-  throw refused("NOTES_AMBIGUOUS_NOTE", `${titled.length} notes are titled "${picked.title}": ask the owner which one. Nothing was changed.`, titled.map((note) => note.id))
+  const shared = sharedTitleIds(notes, [picked])
+  if (pickedNoteChanged(true, shared.length > 0, pick.ownerChose.includes(picked.id))) return index
+  throw refused("NOTES_AMBIGUOUS_NOTE", `${shared.length} notes are titled "${picked.title}", so nothing was changed. Which one do you mean?`, shared)
 }
 
 export effect function updateIn(document: NotesDocument, target: NoteTarget, patch: UpdateRequest, expectedRevision: number | undefined, at: Instant, pick?: ModelPick): Change<StickyNote>!NotesRefused {
