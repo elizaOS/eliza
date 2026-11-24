@@ -5,7 +5,7 @@ import { calendarAnswerAdmitted } from "../../gen/calendar__requestRouting.ts"
 import { selectedCalendarDeleteTarget } from "../../gen/calendar__requestRouting.effect.vibe"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  availabilityRequestTimeAdmitted, chatCreateReviewed, deleteAnswer, deleteQuestionLifetime, deleteQuestionMatches, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
+  availabilityRequestTimeAdmitted, chatCreateReviewed, chatDeleteStep, deleteAnswer, deleteQuestionLifetime, deleteQuestionMatches, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, statedYearCreate } from "../clock.vibe"
@@ -320,31 +320,38 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
   }
   const answer = deleteAnswer(allowStoredAnswer && exact, question !== undefined && question.askedIn !== ask.id, question === undefined ? -1 : now - question.askedAt,
     saysYes(text) || exactTitleAnswer(event.title, text), declines, text.normalize("NFKC").includes("?"))
+  const confirmed = answer === "AnsweredYes" ? question : undefined
+  const effectiveScope = confirmed?.scope ?? scope
   const selected = selectedCalendarDeleteTarget(denseDeleteTarget(text) !== undefined, ask.selected === event.id)
-  switch (residentDeleteStep(ownerPointedAt(titled, read.only, read.complete, selected), asksToDeleteInWords(text), declines, answer)) {
+  const step = residentDeleteStep(ownerPointedAt(titled, read.only, read.complete, selected), asksToDeleteInWords(text), declines, answer)
+  switch (chatDeleteStep(scope === "instance" && effectiveScope === "instance", step)) {
     case "KeepEvent": {
       if (exact && question !== undefined) try host.settleDeleteQuestion(conversation, question.askedIn)
       return failed(subaction, `Nothing was deleted. You turned down deleting “${event.title}”, so it stays on your calendar.`, { declined: true, eventId: event.id })
     }
     case "AskInChat": {
       const unread = read.complete ? "" : " Another calendar could not be read, so the event you meant may be there."
-      const which = scope === "series" ? "the entire series" : scope === "this_and_following" ? "this and following occurrences" : "it"
       const notice = notifyAttendees ? " and notify its attendees" : ""
-      const prompt = `Nothing was deleted. Your request didn't name one exact event; the closest match is “${event.title}”, ${wallTime(event, zone)}.${unread} Should I delete ${which}${notice}?`
+      const prompt = `Nothing was deleted. Your request didn't name one exact event; the closest match is “${event.title}”, ${wallTime(event, zone)}.${unread} Should I delete it${notice}?`
       try host.askToDelete(conversation, { eventId: event.id, source: found.source, version: eventVersion(event),
-        scope, notifyAttendees, askedIn: ask.id, askedAt: now, prompt })
+        scope: "instance", notifyAttendees, askedIn: ask.id, askedAt: now, prompt })
       return { ...failed(subaction, prompt, { requiresInput: true, missing: ["delete confirmation"], eventId: event.id, targetEvent: event }),
         verifiedUserFacing: true, userFacingText: prompt }
     }
+    case "PickInCalendar":
+      return pickCalendarOccurrence(event, scope === "instance" ? effectiveScope : scope)
     case "DeleteNow": {
-      const confirmed = answer === "AnsweredYes" ? question : undefined
-      const result = host.change({ kind: "delete", target: found, scope: confirmed?.scope ?? scope,
+      const result = host.change({ kind: "delete", target: found, scope: "instance",
         notifyAttendees: confirmed?.notifyAttendees ?? notifyAttendees, askedBy: ask.by,
         askId: confirmed === undefined ? `${ask.id}:${subaction}` : `${confirmed.askedIn}:${subaction}:confirmed` }) catch () => undefined
       if (exact && question !== undefined && result?.kind === "ran") try host.settleDeleteQuestion(conversation, question.askedIn)
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
   }
+}
+
+function pickCalendarOccurrence(event: CalendarEvent, scope: CalendarWriteScope): ActionResult {
+  return failed("delete_event", `Nothing was deleted. From chat I can delete only one occurrence of “${event.title}”. To delete more of the series, choose it in Calendar.`, { eventId: event.id, recurrenceScope: scope })
 }
 
 const selectedAvailabilityWords = /\b(?:on|in|using|from)\s+(?:this|the selected|the open)\s+calendar\b/iu
@@ -457,7 +464,9 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
         isAllDay: parameters.isAllDay ?? false, timeZone: createZone, ...(guests.attendees === undefined ? {} : { attendees: guests.attendees }),
       })
       if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return failed(subaction, "A new event needs a title and a start before its end.")
-      const { fields: asked, move } = statedYearCreate(fields.value, askTextOf(ask), new Date(now))
+      const timed = statedYearCreate(fields.value, askTextOf(ask), new Date(now))
+      if (timed === undefined) return failed(subaction, "That start time doesn't exist in the requested year and time zone.")
+      const { fields: asked, move } = timed
       const recurrence = parameters.repeat === undefined ? Option.some(null) : decodeRecurrence({ rule: parameters.repeat,
         ...(parameters.repeatUntil === undefined ? {} : { until: move(canonical(parameters.repeatUntil)) }),
         ...(parameters.skipStarts === undefined ? {} : { excluded: parameters.skipStarts.map((start) => move(canonical(start))) }) })
@@ -557,7 +566,8 @@ effect function applyDeleteAnswer(host: CalendarHost, ask: CalendarAsk, message:
   const target = try host.find(held.eventId, held.source.calendarId, held.source)
   if (target === undefined || eventVersion(target.event) !== held.version)
     return failed("delete_event", "The event changed since I asked. Nothing was deleted.")
-  const result = host.change({ kind: "delete", target, scope: held.scope, notifyAttendees: held.notifyAttendees,
+  if (chatDeleteStep(held.scope === "instance", "DeleteNow") === "PickInCalendar") return pickCalendarOccurrence(target.event, held.scope)
+  const result = host.change({ kind: "delete", target, scope: "instance", notifyAttendees: held.notifyAttendees,
     askedBy: ask.by, askId: `${held.askedIn}:delete_event:confirmed` }) catch () => undefined
   if (result?.kind === "ran") try host.settleDeleteQuestion(conversation, held.askedIn)
   return result === undefined ? failed("delete_event", ledgerDown) : changeResult("delete_event", result, requestTimeZone(zonesOf(ask)))
@@ -576,7 +586,7 @@ async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
 /** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar runs at once only when the owner's words ask to delete and hold the whole title of one event, or it is the event selected on screen. When the owner answers a Calendar confirmation and the host offers answer_delete, use that subaction alone.",
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. Chat creates are reviewed unless the owner plainly asked to save now; a chat delete removes at most one occurrence on the agent's own calendar and runs at once only when the owner's words ask to delete and hold the whole title of one event, or it is the event selected on screen. When the owner answers a Calendar confirmation and the host offers answer_delete, use that subaction alone.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CALENDAR_TRIP_WINDOW", "CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [

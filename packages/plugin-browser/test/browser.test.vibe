@@ -299,6 +299,23 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     try propose("open example.com", navigate("https://evil.example/")),
     try propose("do that in the browser", navigate("https://example.com/")),
   ]
+  const dictatedOperation = navigate("https://alphacompute.ai/")
+  const dictatedPage = { ...frontPage(), links: [{ text: "The first story", url: "https://alphacompute.ai/" }] }
+  const dictated = [
+    [try propose("Can you open alphacompute. AI in the browser, please?", dictatedOperation), direct(dictatedOperation)],
+    [try propose("Can you open up alphacompute.ai in the browser?", dictatedOperation), direct(dictatedOperation)],
+    [try propose("Open up alphacompute.ai", dictatedOperation), direct(dictatedOperation)],
+    [try propose("Can you open alphacompute. AI in the browser, please?", navigate("https://example.com/")), notRequested],
+    [try propose("Can you open alphacompute. AI in the browser, please?", navigate("https://alphacompute.ai/extra")), notRequested],
+    [try propose("Can you open alphacompute.ai/path. ZZ in the browser?", navigate("https://alphacompute.ai/path.zz")), notRequested],
+    [try propose("Summarize alphacompute. AI in the browser, please.", dictatedOperation), notRequested],
+    [try propose("Can you open alphacompute. AI in the browser or open example.com?", dictatedOperation), notRequested],
+    [try propose("Can you open alphacompute. AI in the browser? Actually, don't.", dictatedOperation), notRequested],
+    [try propose("Can you open alphacompute. ZZ in the browser, please?", navigate("https://alphacompute.zz/")), notRequested],
+    [try propose("Can you open alphacompute. AI, please?", dictatedOperation), notRequested],
+    [try propose("Open alphacompute.ai. Don't open alphacompute. AI in the browser.", dictatedOperation), notRequested],
+    [try propose("Open the first story, but don't open alphacompute. AI in the browser.", dictatedOperation, everyBrowserCapability, dictatedPage), notRequested],
+  ]
   const refusedOpen = effect (ownerText: string, operation: unknown) => {
     const grounding = try browserProposalFamily.ground(try Effect.try(() => checked(operation)), ownerTurn(ownerText, everyBrowserCapability))
     return grounding.kind === "Refused" ? { code: grounding.code, userFacingText: grounding.forOwner } : grounding.kind
@@ -348,6 +365,8 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     ...["open example.com in a new tab", "Hey Eliza, visit wikipedia.org.", "can you open example.com?", "example.com", "open example dot com", "don't open example.com"]
       .map((text) => ownerTurn(text, everyBrowserCapability)),
     ownerTurn("open example.com", []),
+    ownerTurn("Can you open alphacompute. AI in the browser, please?", everyBrowserCapability),
+    ownerTurn("Open up alphacompute.ai", everyBrowserCapability),
   ].map((turn) => browserProposalFamily.wholeMessageOperation?.(turn))
   const tabsAsked = [
     ownerTurn("show my open tabs", everyBrowserCapability), ownerTurn("Hey Eliza, what tabs do I have open?", ["browser.tabs.show.v1"]),
@@ -386,6 +405,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
       reviewed(navigate("https://example.com/")), reviewed(navigate("https://example.com/", true)), reviewed(navigate("https://example.com/")),
       notRequested, notRequested,
     ])
+    assert.deepStrictEqual(dictated.map(([actual]) => actual), dictated.map(([, expected]) => expected))
     assert.deepStrictEqual(refusedOpens, [
       { code: notRequested, userFacingText: "Tell me the address, like example.com." },
       { code: notRequested, userFacingText: "I didn't open that address." },
@@ -414,7 +434,9 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     assert.deepStrictEqual(tabsAsked, [{ type: "browser_tabs_show" }, { type: "browser_tabs_show" }, { type: "browser_tabs_show" }, undefined, undefined, undefined, undefined, undefined])
     assert.deepStrictEqual(tabListAsks.filter((text) => !tabsAskedOfAlpha(text)), [])
     assert.deepStrictEqual(notTabListAsks.filter(tabsAskedOfAlpha), [])
-    assert.deepStrictEqual(outright, [navigate("https://example.com/"), navigate("https://wikipedia.org/"), undefined, undefined, undefined, undefined, undefined])
+    assert.deepStrictEqual(outright, [
+      navigate("https://example.com/"), navigate("https://wikipedia.org/"), undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+    ])
     assert.deepStrictEqual(asked, direct(navigate("https://example.com/", true)))
     assert.deepStrictEqual(offeredForms(ownerTurn("", everyBrowserCapability)), [
       "browser_navigate url newTab", "browser_search query", "browser_tab_new private", "browser_tab_switch target", "browser_tab_close target all", "browser_tabs_show",

@@ -375,9 +375,15 @@ An affirmative answer must be a complete assent or the exact title.
 An assent followed by another instruction does not confirm the question.
 Retries of a confirmed question keep its mutation identity.
 
+A chat delete removes one occurrence at most. A request with a wider
+scope (this and following, or the whole series) deletes nothing and asks
+nothing. The reply directs the owner to select the occurrence and scope
+in Calendar. An earlier saved question for a wider scope also cannot
+authorize a chat delete. A decline still keeps the event.
+
 ```quint
 type DeleteAnswer = Unanswered | AnsweredYes | AnsweredNo
-type ResidentDeleteStep = DeleteNow | AskInChat | KeepEvent
+type ResidentDeleteStep = DeleteNow | AskInChat | KeepEvent | PickInCalendar
 pure val deleteQuestionLifetime: int = 1800000
 pure def deleteQuestionMatches(eventMatches: bool, sourceMatches: bool, versionMatches: bool): bool =
   eventMatches and sourceMatches and versionMatches
@@ -396,8 +402,12 @@ pure def residentDeleteStep(pointedAt: bool, asksToDelete: bool, declines: bool,
   if (declines or answer == AnsweredNo) KeepEvent
   else if (answer == AnsweredYes or (pointedAt and asksToDelete)) DeleteNow
   else AskInChat
+pure def chatDeleteStep(oneOccurrence: bool, unscoped: ResidentDeleteStep): ResidentDeleteStep =
+  if (oneOccurrence or unscoped == KeepEvent) unscoped else PickInCalendar
 pure def lawADeclineNeverDeletes(pointedAt: bool, asksToDelete: bool, answer: DeleteAnswer): bool =
   residentDeleteStep(pointedAt, asksToDelete, true, answer) == KeepEvent
+pure def lawResidentChatDeleteCannotBroaden(pointedAt: bool, asksToDelete: bool, declines: bool, answer: DeleteAnswer): bool =
+  chatDeleteStep(false, residentDeleteStep(pointedAt, asksToDelete, declines, answer)) != DeleteNow
 pure def lawUnaskedWordsNeverDeleteAtOnce(pointedAt: bool): bool =
   residentDeleteStep(pointedAt, false, false, Unanswered) == AskInChat
 pure def lawAPartialMatchIsNeverAnImmediateDelete(onlyEventNamed: bool, everyCalendarRead: bool, asksToDelete: bool): bool =
