@@ -20,11 +20,11 @@ export function decideReleaseAdmission({
     if (
       eventName !== "workflow_dispatch" ||
       targetEnvironment !== "staging" ||
-      ref !== "refs/heads/staging" ||
+      ref !== "refs/heads/staging-v3" ||
       force
     ) {
       throw new Error(
-        "Deployed-renderer staging proof requires a non-forced workflow_dispatch from refs/heads/staging targeting staging",
+        "Deployed-renderer staging proof requires a non-forced workflow_dispatch from refs/heads/staging-v3 targeting staging",
       );
     }
 
@@ -35,7 +35,7 @@ export function decideReleaseAdmission({
     eventName === "pull_request" ||
     eventName === "workflow_dispatch" ||
     targetEnvironment === "production" ||
-    ref === "refs/heads/main" ||
+    ref === "refs/heads/main-v3" ||
     force
   ) {
     return { shouldDeploy: true, reason: "non-supersedable-release" };
