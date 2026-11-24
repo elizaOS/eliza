@@ -96,7 +96,7 @@ effect function hangUpAfterFirstBytes(url: string, key: string) {
 }
 
 describe("WP5 Inference: chat completions", () => {
-  it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent and answering a provider's refusal of the request as the caller's (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
+  it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent and answering a provider's refusal of the request as the caller's (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/inference.md, \"A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
     const { cloud, llm, chat } = try chatCloud(true)
     const { model, messages } = request
     const unbounded = { model, messages }
@@ -108,11 +108,12 @@ describe("WP5 Inference: chat completions", () => {
     const callsBeforeAdmission = llm.bodies.length
     const whole = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
     const again = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
-    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 }))
+    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 }, { kind: "reject", status: 418 }))
     const refusedByProvider = try chat(request)
     const unreadable = try chat(request)
     const rejectedByProvider = try chat(request)
     const providerAuthFailed = try chat(request)
+    const unlistedProviderFailure = try chat(request)
     const planning = {
       tools: [{ type: "function", function: { name: "SEARCH", parameters: { type: "object", properties: {} } } }],
       tool_choice: { type: "function", function: { name: "SEARCH" } },
@@ -121,7 +122,7 @@ describe("WP5 Inference: chat completions", () => {
     const legacy = try chat({ ...request, ...planning, model: "legacy-chat", max_completion_tokens: 64 })
     const wide = try chat({ ...unbounded, model: "wide-chat", stream: true })
     const answer = whole.body as { readonly model: string; readonly choices: ReadonlyArray<{ readonly message: { readonly content: string } }> }
-    const usage = try settledCount(cloud, "org-owner", 7)
+    const usage = try settledCount(cloud, "org-owner", 8)
     const holds = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = 'org-owner' ORDER BY phase", [])
     const funds = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = 'org-owner'", [])
     const brokeUsage = try usageRows(cloud, "org-broke")
@@ -136,11 +137,12 @@ describe("WP5 Inference: chat completions", () => {
         whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], status(again)],
         upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens, body.max_completion_tokens]),
         idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
-        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[5]?.[field]])),
+        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[6]?.[field]])),
         refusedByProvider: status(refusedByProvider),
         unreadable: status(unreadable),
         rejectedByProvider: status(rejectedByProvider),
         providerAuthFailed: status(providerAuthFailed),
+        unlistedProviderFailure: status(unlistedProviderFailure),
         usage,
         brokeUsage,
         holds: holds.map((row) => row.phase),
@@ -156,17 +158,18 @@ describe("WP5 Inference: chat completions", () => {
         whole: [200, "test-chat", replyText, "no-store", [409, "already_dispatched", undefined]],
         upstream: [[upstreamModel, false, 4096, undefined], [upstreamModel, false, 16, undefined],
           [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
-          [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
         idempotencyForwarded: false,
         planningForwarded: planning,
         refusedByProvider: [503, "provider_unavailable", "7"],
         unreadable: [502, "provider_invalid_response", undefined],
         rejectedByProvider: [400, "invalid_request", undefined],
         providerAuthFailed: [503, "provider_unavailable", "5"],
-        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["known", 166, 31], ["known", 19673, 31]],
+        unlistedProviderFailure: [503, "provider_unavailable", "5"],
+        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["unknown", 50, 50], ["known", 166, 31], ["known", 19673, 31]],
         brokeUsage: [],
-        holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled"],
-        balance: 1_000_000 - 31 * 3 - 50
+        holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled"],
+        balance: 1_000_000 - 31 * 3 - 50 * 2
       }
     ))
   }), 90_000)

@@ -208,6 +208,11 @@ pure def sometimesSeededMemoryServes(s: Store): bool = s.phase == Open and s.see
 
 ### Queries run only while the store is open, and close waits for every one in flight
 
+A bounded read of unfiltered messages in one room gets only its requested
+page from the database. The page uses the same creation-time and record-key
+order as an unbounded read. An unfiltered count of room messages reads no
+message bodies. These queries leave all earlier originals in the store.
+
 A query or write admitted before close runs to its end; no new one starts
 once close begins, and the store closes only when none is left and no sweep
 runs. A committed row is removed only by a retention sweep.

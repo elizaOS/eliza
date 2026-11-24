@@ -1,21 +1,23 @@
-// spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"; spec/cloud/identity/federatedSignIn.md, "A code is redeemed once, while live, only with its own return and verifier, and starts a session or a second-factor challenge, never both"
+// spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"; spec/cloud/identity/federatedSignIn.md, "A code is redeemed once, while live, only with its own return and verifier, and starts a session or a second-factor challenge, never both"; spec/cloud/identity/federatedSignIn.md, "A client address may call the Google sign-in routes 30 times a minute, and over that is refused before anything is stored"
 import { methodRefusal } from "../../gen/cloud__deployment.effect.vibe"
 import {
-  apply, authorizeRefusal, canBegin, canExchange, canExpireCode, canExpireNative, canIssueNative, codeRefusal, decodeState, elapse, initial, isIssued, isOpen, lateCallbackError, nativeBackupVerdict, nativeRefusal, nativeVerdict,
+  apply, authorizeRefusal, googleSignInPerIp, canBegin, canExchange, canExpireCode, canExpireNative, canIssueNative, codeRefusal, decodeState, elapse, initial, isIssued, isOpen, lateCallbackError, nativeBackupVerdict, nativeRefusal, nativeVerdict,
   type AttemptStep, type AuthorizeRequest, type CodeBinding, type Event, type GoogleAttempt, type GoogleCallback, type NativeBackupBinding, type NativeBackupPresenter, type NativeProof, type NativePurpose, type NativeVerdict, type NotAState, type PkceMethod, type Rejected, type ReturnError
 } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { clientCheck, nativeGoogleCheck, nativeGoogleRefusal, type ClientRequest } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { FirstFactorOutcome } from "../../gen/cloud__identity__secondFactor.effect.vibe"
 import { refused, Refused, wireName, type Refusal } from "../http/refusal.vibe"
-import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
+import { json, jsonBody, type Handler, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { admitClient, parseReturn, readRegistry, returnText, servedEnvironment } from "../native-clients/registry.vibe"
 import { Deployment, rowOf } from "../profile/profile.vibe"
 import { authorizeUrl, exchangeGoogleCode, readIdToken, type GoogleProfile } from "../providers/google-identity.vibe"
 import { s256 } from "../shared/credential-crypto.vibe"
+import { admitCheck } from "../shared/rate-limit.vibe"
 import { newId, sameText, secretText, tokenDigest } from "../shared/sealing.vibe"
 import { loadRow, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
 import { Store, toText, type Row, type Tx } from "../store/connection.vibe"
 import { landAccount, type Identity } from "./accounts.vibe"
+import { clientAddress } from "./code-challenges.vibe"
 import { afterFirstFactor } from "./second-factor.vibe"
 
 export type Presenter =
@@ -473,26 +475,33 @@ effect function sweepAttempts() {
   }
 }
 
+function perAddress(handler: Handler): Handler {
+  return (context) => effect {
+    try admitCheck({ subject: clientAddress(context), rule: googleSignInPerIp })
+    return try handler(context)
+  }
+}
+
 export const routes: ReadonlyArray<Route> = [
-  { method: "GET", path: "/api/v1/auth/google/authorize", auth: "Public", handler: authorize },
-  { method: "GET", path: callbackPath, auth: "Public", handler: callback },
+  { method: "GET", path: "/api/v1/auth/google/authorize", auth: "Public", handler: perAddress(authorize) },
+  { method: "GET", path: callbackPath, auth: "Public", handler: perAddress(callback) },
   {
     method: "POST",
     path: "/api/v1/auth/google/exchange",
     auth: "Public",
-    handler: (context) => effect {
+    handler: perAddress((context) => effect {
       const body = try jsonBody(context, ExchangeBody)
       return json(try settle(try inTransaction((tx: Tx) => redeem(tx, body, context.now))))
-    }
+    })
   },
   {
     method: "POST",
     path: "/api/v1/auth/google/native/challenge",
     auth: "Public",
-    handler: (context) => effect {
+    handler: perAddress((context) => effect {
       const body = try jsonBody(context, NativeBody)
       return json(try openNative({ tag: "NativeSignIn" }, body, context.now))
-    }
+    })
   }
 ]
 

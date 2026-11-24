@@ -152,6 +152,17 @@ pure def sometimesControlOnReadyPreview(s: CameraView): bool = s.work == CameraC
 pure def sometimesRecording(s: CameraView): bool = s.work == RecordingActive
 ```
 
+### The optional library id of a saved photo names the provider's own row
+
+After a photo is saved, including a thumbnail capture, Android 10 or later
+may return `libraryId` in the form `m:<volume>:i:<id>`. The two fields come
+from the saved MediaStore row, since the capture URI can name the aggregate
+`external` collection. Its volume has at most 80 letters, digits, underscores
+or hyphens and is neither `internal` nor `external`. The row id is a positive
+signed 64-bit integer. Without a usable row, or on an earlier Android version,
+the saved photo is returned with its usual fields and no library id. A photo
+outside the gallery has no such id.
+
 ### While a recording runs, only one zoom or torch change runs at a time
 
 A running recording holds the slot, so a capture, a second recording start
