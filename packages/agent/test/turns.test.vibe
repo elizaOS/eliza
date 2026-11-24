@@ -34,7 +34,7 @@ module node {
   import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 
   export const movedDentist = "Updated Dentist, Mar 4, 2030, 9:00 AM."
-  export const unsaidMove = "Nothing was changed: the start time 8:00 AM is not a time the request gives."
+  export const unsaidMove = "Nothing was changed: that start time is not a time the request gives."
   const refusing = { moves: 0 }
 
   /** @throws {never} */
@@ -521,6 +521,14 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   ))
   const { answer: correctedAgain, calls: correctedAgainCalls } = try callsFor({ text: "Calculate 8 plus 9." })
   const correctedNote = lastTurnPrompt(cloud)
+  try Effect.sync(() => cloud.script(
+    toolCalls("", { name: "CALCULATE", arguments: { expression: "8 + 9", stray: true } }),
+    toolCalls("", { name: "CALCULATE", arguments: { expression: "12 * 3" } }),
+    text("The result is 36."),
+    text("12 times 3 is 36. I couldn't work out 8 plus 9."),
+  ))
+  const { answer: otherLater, calls: otherLaterCalls } = try callsFor({ text: "Calculate 8 plus 9 and 12 times 3." })
+  const otherLaterNote = lastTurnPrompt(cloud)
 
   try Effect.sync(() => cloud.script(text("One sec."), text("One second is 1,000 milliseconds.")))
   const duration = replyOf(try send(agent, id, { text: "How long is a second?" }))
@@ -543,6 +551,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     separate: [separate.text, separateCalls],
     corrected: [corrected.text, correctedCalls],
     correctedAgain: [correctedAgain.text, correctedAgainCalls, correctedNote.includes("a later call of the same action did run") && correctedNote.includes("A CALCULATE call did not start.")],
+    otherLater: [otherLater.text, otherLaterCalls, otherLaterNote.includes("unless that later call did what this step was for")],
     refusalStatuses: [separate, corrected].map(({ actionResults }) => actionResults.map(({ data }) => data.executionStatus)),
     duration: duration.text,
     labels: { text: solved.action, voice: spoken.action },
@@ -564,6 +573,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     separate: ["The second result is 36. The first calculation didn't run.", 3],
     corrected: ["The result is 17.\n\nA CALCULATE call did not start.", 4],
     correctedAgain: ["The result is 17.", 4, true],
+    otherLater: ["12 times 3 is 36. I couldn't work out 8 plus 9.", 4, true],
     refusalStatuses: [["not_started", undefined], ["not_started", undefined]],
     duration: "One second is 1,000 milliseconds.",
     labels: { text: undefined, voice: { kind: "CALCULATE", validatedCard: false, verbatimAsked: true } },
@@ -1105,15 +1115,20 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   const cuedAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("One sec.")])
   const toldAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("Your dentist is now 9–10 AM.")])
   const rangeWrongAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("Done, your dentist moved from 3 PM to 4 PM.")])
+  const wrongRange = "Done, your dentist is now 3–4 PM."
+  const heldButMistimed = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(`${unsaidMove} ${wrongRange}`), text("Done, your dentist is now 2–3 PM.")])
+  const mistimedTwice = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(wrongRange), text("Done, your dentist is now 2–3 PM.")])
   const quoted = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(`${right} ${unsaidMove}`)])
   const sameResponse = try turn(1, () => [toolCalls("", misread, move), text(right), text(right)])
   const neverMoved = try turn(2, () => [toolCalls("", misread), toolCalls("", move), text("Done!"), text("Done!")])
-  try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, rangeWrongAgain, quoted, sameResponse, neverMoved }, {
+  try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, rangeWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved }, {
     sameAgain: { reply: right, calls: 4, laterRunNote: true },
     failedAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     cuedAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     toldAgain: { reply: "Your dentist is now 9–10 AM.", calls: 4, laterRunNote: true },
     rangeWrongAgain: { reply: right, calls: 4, laterRunNote: true },
+    heldButMistimed: { reply: `${movedDentist}\n\n${unsaidMove}`, calls: 4, laterRunNote: false },
+    mistimedTwice: { reply: `${movedDentist}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     quoted: { reply: `${right} ${unsaidMove}`, calls: 3, laterRunNote: false },
     sameResponse: { reply: `${right}\n\n${unsaidMove}`, calls: 3, laterRunNote: false },
     neverMoved: { reply: `Done!\n\n${unsaidMove}`, calls: 4, laterRunNote: false },

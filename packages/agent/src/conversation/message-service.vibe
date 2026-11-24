@@ -276,7 +276,7 @@ async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded:
     case "ModelReply": return withWords(planned.reply, safetyCopy)
     case "RevisedReply": return withWords(revised ?? "", safetyCopy)
     case "FixedWords": return withWords(wrong?.fixed ?? planned.reply, [
-      ...planned.notices.flatMap(({ words, answerableLater, safetyCopy: kept }) => followsTheReply(answerableLater, answered, kept) ? [words] : []),
+      ...planned.notices.flatMap((notice) => followsTheReply(notice.answerableLater, asked.includes(notice), answered, wrong === undefined, notice.safetyCopy) ? [notice.words] : []),
       ...(omitted ? [omittedDocuments] : []),
     ])
   }

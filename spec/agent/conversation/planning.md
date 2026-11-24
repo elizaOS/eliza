@@ -514,19 +514,33 @@ the failed one was for. When the reply leaves it out, its host note says a
 later call of that action ran and that the reply must say the failed step
 did not happen unless that later call did what it was for. When the model
 answers that note (with anything but a blank or a pending-work cue, read as
-below), the failure's own words do not follow the reply, whichever reply
-the rules above keep. When the call fails or the model gives no answer,
-they follow it as for any failure. A failure with a receipt, a failure in
-the same planner response as the later call, and safety copy are reported
-as above.
+below; the first reply again is an answer, as the model stands by it) and
+the reply delivered is the model's own (its second answer or its first
+reply, not the clock's or the change's words), the failure's own words do
+not follow it. Otherwise they follow it as for any failure: when the call
+fails, when the model gives no answer, when the failure was never put to
+the model, or when the host's words take the reply's place. A failure with
+a receipt, a failure in the same planner response as the later call, and
+safety copy are reported as above.
 
 ```quint
 pure def answerableLater(receiptless: bool, seenFirst: bool, ranLater: bool): bool = receiptless and seenFirst and ranLater
-pure def followsTheReply(answerable: bool, answered: bool, safetyCopy: bool): bool = safetyCopy or not(answerable and answered)
-pure def lawAnAnsweredFailureALaterRunMayHaveAnsweredDoesNotFollow(safetyCopy: bool): bool = followsTheReply(true, true, safetyCopy) == safetyCopy
-pure def lawWithNoAnswerTheFailureStillFollows(answerable: bool, safetyCopy: bool): bool = followsTheReply(answerable, false, safetyCopy)
-pure def lawAFailureWithAReceiptStillFollows(seenFirst: bool, ranLater: bool, answered: bool): bool = followsTheReply(answerableLater(false, seenFirst, ranLater), answered, false)
-pure def lawAFailureInTheSameResponseStillFollows(receiptless: bool, ranLater: bool, answered: bool): bool = followsTheReply(answerableLater(receiptless, false, ranLater), answered, false)
+pure def gaveAnAnswer(draft: Draft): bool = draft == Answer
+pure def followsTheReply(answerable: bool, asked: bool, answered: bool, modelsReply: bool, safetyCopy: bool): bool =
+  safetyCopy or not(answerable and asked and answered and modelsReply)
+pure def lawACueOrSilenceGivesNoAnswer(draft: Draft): bool = gaveAnAnswer(draft) == (draft == Answer)
+pure def lawAnAnsweredFailureALaterRunMayHaveAnsweredDoesNotFollowTheModelsReply(safetyCopy: bool): bool =
+  followsTheReply(true, true, true, true, safetyCopy) == safetyCopy
+pure def lawWithNoAnswerTheFailureStillFollows(answerable: bool, asked: bool, modelsReply: bool, safetyCopy: bool): bool =
+  followsTheReply(answerable, asked, false, modelsReply, safetyCopy)
+pure def lawAFailureNeverPutToTheModelStillFollows(answerable: bool, answered: bool, modelsReply: bool): bool =
+  followsTheReply(answerable, false, answered, modelsReply, false)
+pure def lawUnderTheHostsWordsTheFailureStillFollows(answerable: bool, asked: bool, answered: bool): bool =
+  followsTheReply(answerable, asked, answered, false, false)
+pure def lawAFailureWithAReceiptStillFollows(seenFirst: bool, ranLater: bool, asked: bool, answered: bool, modelsReply: bool): bool =
+  followsTheReply(answerableLater(false, seenFirst, ranLater), asked, answered, modelsReply, false)
+pure def lawAFailureInTheSameResponseStillFollows(receiptless: bool, ranLater: bool, asked: bool, answered: bool, modelsReply: bool): bool =
+  followsTheReply(answerableLater(receiptless, false, ranLater), asked, answered, modelsReply, false)
 ```
 
 ### A coaching response stays in the planner transcript
