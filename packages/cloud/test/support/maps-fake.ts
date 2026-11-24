@@ -1,4 +1,5 @@
 // spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A route whose endpoints coincide is a zero-length route, never a malformed answer"; spec/cloud/services/maps.md, "A search ranked by distance reads the provider's largest page and answers its nearest places first"
+import { Effect } from "effect";
 import type { FakeAnswer, FakeHandler, FakeRequest } from "./fakes.ts";
 
 export type GoogleOperation = "searchText" | "searchNearby" | "details" | "geocode" | "computeRoutes" | "createSession" | "tile" | "viewport";
@@ -185,7 +186,7 @@ export function googleMapsFake(): GoogleMapsFake {
       calls.push({ operation, request });
       if (operation === "createSession") sessionAsked();
       if (keyOf(request) !== googleKey) return { status: 403, body: { error: { code: 403, status: "PERMISSION_DENIED" } } };
-      const session: GoogleScript = sessionDelayMs > 0 ? { kind: "hold", wait: () => new Promise<void>((resolve) => setTimeout(resolve, sessionDelayMs)) } : { kind: "answer" };
+      const session: GoogleScript = sessionDelayMs > 0 ? { kind: "hold", wait: () => Effect.runPromise(Effect.sleep(sessionDelayMs)) } : { kind: "answer" };
       return scripted(operation === "createSession" ? session : queue.shift() ?? { kind: "answer" }, operation, request);
     },
     calls,
