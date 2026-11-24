@@ -2736,6 +2736,28 @@ function eachCheck() {
       "a page that runs one of the tools reads the code of them all, not their comments, and a page that runs none reads none");
   });
 
+  test("opening an installed checker keeps older program files used by another check", { skip: process.platform === "win32" }, async () => {
+    const root = toolchain(scratch({}), "lsc");
+    stockQuint(root, "");
+    const cache = path.join(root, "cache");
+    const programs = path.join(cache, "vibestack/programs/1");
+    const previous = path.join(programs, "another-check");
+    const entry = path.join(previous, "main.mjs");
+    fs.mkdirSync(previous, { recursive: true });
+    fs.writeFileSync(entry, "export default 19;\n");
+    const old = new Date(Date.now() - 77 * 60_000);
+    fs.utimesSync(previous, old, old);
+    for (let index = 0; index < 8; index++) fs.mkdirSync(path.join(programs, `newer-${index}`));
+    const code = [
+      `import { installedProgram } from ${JSON.stringify(path.join(root, "vibestack/cache.ts"))};`,
+      'if (!installedProgram(".", "quint")?.isolated) throw new Error("the checker was not isolated");',
+      `console.log((await import(${JSON.stringify(pathToFileURL(entry).href)})).default);`,
+    ].join("\n");
+    const result = await exec(process.execPath, ["--input-type=module", "--eval", code], root, { ...process.env, XDG_CACHE_HOME: cache });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.stdout.trim(), "19");
+  });
+
   test("a process that outlives a reinstall of Quint, as watch does, keys what it runs and simulates by the Quint installed now, and remembers its runs again", { skip: process.platform === "win32" }, async () => {
     const root = toolchain(scratch({}), "lsc");
     const log = path.join(root, "quint.log");

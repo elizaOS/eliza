@@ -544,8 +544,7 @@ function packageGraph(exe: string, name: string) {
 export const installedPackages = (exe: string, name: string) => packageGraph(exe, name).graph.map((p) => p.version).sort();
 
 const MAX_LATEST_PROGRAMS = 8;
-const MAX_CACHED_VIEWS = 8;
-let prunedViews = false;
+let prunedInstallationIndex = false;
 
 function resolvedNodeForShim(exe: string): string {
   const commandPath = process.env.PATH ?? "";
@@ -569,38 +568,6 @@ function touchIfStale(target: string, maxAgeMs = 60_000) {
     const stat = fs.lstatSync(target, { throwIfNoEntry: false });
     if (stat && now - stat.mtimeMs > maxAgeMs) fs.utimesSync(target, new Date(now), new Date(now));
   } catch { /* optional touch */ }
-}
-
-function prunePrograms(programsDir: string, keepViews: ReadonlySet<string>, cacheDir: string) {
-  const now = Date.now();
-  const expired = now - 30 * 24 * 60 * 60 * 1000;
-  const recentGrace = now - 60 * 60 * 1000;
-  if (fs.existsSync(programsDir)) {
-    const views: { path: string; mtimeMs: number; keep: boolean }[] = [];
-    for (const entry of fs.readdirSync(programsDir, { withFileTypes: true })) {
-      const full = path.join(programsDir, entry.name);
-      const stat = fs.lstatSync(full, { throwIfNoEntry: false });
-      if (!stat) continue;
-      if (entry.name.startsWith(".building-")) {
-        if (stat.mtimeMs < recentGrace) fs.rmSync(full, { recursive: true, force: true });
-      } else if (entry.isDirectory()) {
-        views.push({ path: full, mtimeMs: stat.mtimeMs, keep: keepViews.has(entry.name) });
-      } else {
-        fs.rmSync(full, { recursive: true, force: true });
-      }
-    }
-    views.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    views.forEach((view, index) => {
-      if (!view.keep && (view.mtimeMs < expired || (index >= MAX_CACHED_VIEWS && view.mtimeMs < recentGrace))) {
-        fs.rmSync(view.path, { recursive: true, force: true });
-      }
-    });
-  }
-  for (const entry of fs.readdirSync(cacheDir, { withFileTypes: true })) {
-    if (entry.isFile() && /^installed-(?:[a-f0-9]{24}|lsc|quint|quint-host)\.json\.zst$/.test(entry.name)) {
-      fs.rmSync(path.join(cacheDir, entry.name), { force: true });
-    }
-  }
 }
 
 let programSource: string | undefined;
@@ -632,17 +599,12 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
       latest.set(latestKey, entry);
       return entry;
     };
-    const cleanup = (isolated?: Isolated) => {
-      const keepViews = new Set<string>();
-      for (const item of latest.values()) if (item.isolated) keepViews.add(path.basename(path.dirname(item.isolated.script)));
-      if (isolated) keepViews.add(path.basename(path.dirname(isolated.script)));
-      if (isolated) touchIfStale(path.dirname(isolated.script));
+    const cleanupIndex = () => {
       touchIfStale(index);
-      if (prunedViews) return;
-      prunedViews = true;
+      if (prunedInstallationIndex) return;
+      prunedInstallationIndex = true;
       try {
         pruneCache(directory, new Set([name]), (file) => /^installed-[a-f0-9]{24}\.json\.zst$/.test(file));
-        prunePrograms(path.join(cacheDir, "programs", "1"), keepViews, cacheDir);
       } catch { /* optional cache cleanup */ }
     };
     if (!installed) {
@@ -658,8 +620,8 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
           if (!unsure) {
             try {
               writeWhole(index, zstdCompressSync(JSON.stringify([indexKey, id, [...files], [...links], isolated])));
-              prunedViews = false;
-              cleanup(isolated);
+              prunedInstallationIndex = false;
+              cleanupIndex();
             } catch { /* optional cache */ }
           }
         }
@@ -668,7 +630,7 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
         && (installed ? resolvedNodeForShim(exe) === resolvedNode : process.env.PATH === commandPath) && unchanged();
       previous = rememberLatest(installed ? { exe, ...installed, unchanged: stable } : { exe, id: undefined, unchanged: stable });
     } else {
-      cleanup(installed.isolated);
+      cleanupIndex();
       const stable = installed.unchanged;
       previous = rememberLatest({ exe, ...installed, unchanged: () => process.env.NODE_PATH === searchPath && resolvedNodeForShim(exe) === resolvedNode && nodeFlags() === nodeOptions && stable() });
     }
