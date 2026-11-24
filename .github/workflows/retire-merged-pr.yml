@@ -3,7 +3,7 @@ name: Retire merged PR verification
 on:
   pull_request_target:
     types: [closed]
-    branches: [vibestack, develop, main]
+    branches: [develop, staging, main]
 
 permissions: {}
 

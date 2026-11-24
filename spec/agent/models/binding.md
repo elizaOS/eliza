@@ -193,7 +193,11 @@ the provider sends in a last chunk without choices, and a call that is not
 streamed sends no stream options. A tool's parameter schema is sent without
 its `pattern` constraints: a provider may refuse a whole call over one
 (Cerebras does on a closed object), and the action validates its arguments
-against its own schema when it runs. Token use carries the provider's
+against its own schema when it runs. A Cerebras own-key endpoint is sent its
+tools as strict only when every one of them is: Cerebras refuses a whole call
+whose tools mix strict and non-strict schemas, and a planner call that
+offers actions also offers its non-strict context restore. Any other endpoint gets each
+tool's own strictness. Token use carries the provider's
 cache-read and reasoning counts when supplied, including an explicit zero.
 A missing count stays absent, so a streamed call is measured as a whole one is.
 
