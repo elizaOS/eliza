@@ -116,7 +116,7 @@ export function packageRoots(exe: string, name: string, exists: (file: string) =
 
 const evaluatorVersion = lastingFile("quint-eval-ver", (bytes) => bytes.toString("utf8").match(/QUINT_EVALUATOR_VERSION\s*=\s*['"]([^'"]+)['"]/)?.[1]);
 
-export function evaluatorIdentity(root: string): string | undefined {
+function readEvaluator(root: string, observed?: string[]): string | undefined {
   const exe = findBin("quint", root);
   if (!exe) return undefined;
   const roots = new Set(packageRoots(exe, "@informalsystems/quint"));
@@ -134,8 +134,27 @@ export function evaluatorIdentity(root: string): string | undefined {
       fs.accessSync(file, fs.constants.X_OK);
       const stat = fs.statSync(file, { bigint: true });
       if (!stat.isFile()) return undefined;
-      digests.add(executableDigest(file, formatStamp(stat)));
+      const at = formatStamp(stat);
+      if (observed) {
+        const directory = path.dirname(file);
+        observed.push(exe, manager, stamp([manager]), file, fs.realpathSync(file), at,
+          formatStamp(fs.lstatSync(home, { bigint: true })), formatStamp(fs.lstatSync(directory, { bigint: true })), stamp([directory]));
+      }
+      digests.add(executableDigest(file, at));
     } catch { return undefined; }
   }
   return [...digests].join(" ");
+}
+
+export const evaluatorIdentity = (root: string) => readEvaluator(root);
+
+export interface Evaluator { id: string; unchanged: () => boolean }
+
+export function installedEvaluator(root: string): Evaluator | undefined {
+  const observed: string[] = [];
+  const id = readEvaluator(root, observed);
+  return id ? { id, unchanged: () => {
+    const current: string[] = [];
+    return readEvaluator(root, current) === id && current.length === observed.length && current.every((value, i) => value === observed[i]);
+  } } : undefined;
 }

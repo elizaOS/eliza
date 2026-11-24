@@ -17,7 +17,7 @@ import { abandonedProof, ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, typ
 import { bin, exec, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, collectGarbage, evaluatorForCheck, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, collectGarbage, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { tests, VITEST_CONFIG } from "./testing/check.ts";
@@ -211,7 +211,7 @@ async function precomputedSimulations(root: string, specs: Spec[], targets: read
         const simulations = await allDone([...requested].map((name) => started.get(name)).filter((result) => result !== undefined));
         certifyInstallation();
         const results = simulations.flatMap(({ said }) => said);
-        if (!receipts || (started.size && evaluatorForCheck(root) !== evaluatorIdentity(root))) return { results };
+        if (!receipts) return { results };
         const complete = receipts.typechecks.size === selected.size && receipts.simulations.size === started.size && results.every((row) => row.ok);
         return { results, captured: { complete, receipts: new Map([...receipts.typechecks, ...receipts.simulations]) } };
       } finally {

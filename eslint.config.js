@@ -321,7 +321,7 @@ export default withWorkspaceBarrels(defineConfig(
   { files: ["packages/agent/**/*.{vibe,vibex}"], rules: { "no-empty": ["error", { allowEmptyCatch: true }] } },
   { files: ["packages/agent/src/access/routes.vibe", "packages/agent/src/client/index.vibe", "packages/agent/src/host/launch.schema.vibe"], rules: { "no-control-regex": "off" } },
   { files: ["packages/**/*.{vibe,vibex}"], rules: { "no-redeclare": "off" } },
-  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "prefer-const": "off" } },
+  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "prefer-const": "off", "@typescript-eslint/no-unused-vars": ["error", { ...unused, argsIgnorePattern: "^(?:_|id$|pcm$|frame$|s$|a$|b$|d$)" }] } },
   { files: ["packages/agent/src/voice/echo-filter.ts"], rules: { "@typescript-eslint/no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^(?:_|echoOverlapPercent$|isEcho$|turnAccepted$)" }] } },
   {
     files: ["packages/core/src/utils/filesystem.vibe"],
