@@ -298,7 +298,7 @@ pure def lawOnlyARefusedOpenSpeaksOfAnAddress(refusal: BrowserRefusal, addressIn
 > am on, and never to reload it unless I ask, because a reload can send a
 > form again and still leaves the page unreadable.
 
-### A reload of a page my phone withheld runs only after my review on the phone, and the BROWSER command never reloads it
+### A reload of a page my phone withheld runs only after my review on the phone, or as the BROWSER command only when the model says I asked for it
 
 Where the owner's current message carried a Browser page whose text the
 phone withheld, because it could not read it or because it may hold
@@ -307,7 +307,14 @@ control is always offered unbound to the message, so the phone shows its
 review card and nothing reloads until the owner approves there. No reading
 of the owner's words decides it: the card is the check, since a reload can
 send a form again and still leaves the page unreadable. The BROWSER command
-has no review card, so a reload it is asked for on such a turn is refused
+has no review card, so there the model says whether the owner asked: its
+reload carries `ownerAskedReload`, true only when the owner's current
+message itself asks to reload, refresh or reopen the page now, and never
+for a mention, a question about reloading, a reload the owner says they
+will do, a retracted request or a bare yes. Whether the words ask is the
+model's to judge; no word list decides it. A reload the model marks as
+asked runs only on the tab the turn observed, and never on a page withheld
+because it may hold sign-in details, where reloading can send a form again. Any other reload on such a turn is refused
 before anything is sent: the model learns that the phone shares no text of
 that page, only its title and address, that reloading does not change that
 and nothing was reloaded, and that it should answer the owner instead.
@@ -329,4 +336,20 @@ pure def lawOnlyAReloadOfAWithheldPageIsChecked(move: HistoryMove, page: Carried
   withheldReload(move, page) implies (move == MoveReload and pageWithheld(page))
 pure def lawAReadablePageIsNeverCheckedForAReload(move: HistoryMove): bool =
   not(withheldReload(move, PageTextRead)) and not(withheldReload(move, NoPageCarried))
+type CommandReload = { move: HistoryMove, page: CarriedPage, ownerAskedReload: bool, tabObserved: bool }
+pure def commandReloadRuns(r: CommandReload): bool =
+  not(withheldReload(r.move, r.page)) or (r.page != PageTextSensitive and r.ownerAskedReload and r.tabObserved)
+pure val askedReload: CommandReload = { move: MoveReload, page: PageTextUnreadable, ownerAskedReload: true, tabObserved: true }
+pure val rValues = Set(askedReload, { ...askedReload, ownerAskedReload: false }, { ...askedReload, page: PageTextSensitive },
+  { ...askedReload, tabObserved: false }, { ...askedReload, page: PageTextRead, ownerAskedReload: false }, { ...askedReload, move: MoveBack, ownerAskedReload: false })
+pure def lawAnUnaskedWithheldReloadNeverRuns(r: CommandReload): bool =
+  (withheldReload(r.move, r.page) and not(r.ownerAskedReload)) implies not(commandReloadRuns(r))
+pure def lawASignInPageNeverReloads(r: CommandReload): bool =
+  (r.move == MoveReload and r.page == PageTextSensitive) implies not(commandReloadRuns(r))
+pure def lawAnAskedReloadRunsOnlyOnTheObservedTab(r: CommandReload): bool =
+  (withheldReload(r.move, r.page) and commandReloadRuns(r)) implies r.tabObserved
+pure def lawAnAskedReloadOfTheObservedTabRuns(r: CommandReload): bool =
+  (r == askedReload) implies commandReloadRuns(r)
+pure def lawOtherMovesAndReadablePagesAreUnchecked(r: CommandReload): bool =
+  not(withheldReload(r.move, r.page)) implies commandReloadRuns(r)
 ```
