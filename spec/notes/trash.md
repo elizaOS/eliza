@@ -197,3 +197,33 @@ pure val callValues = Set(
   { dispatched: true, cancelled: false, published: true },
   { dispatched: true, cancelled: false, published: false })
 ```
+
+
+## Story: Confirm recording erase after the device host becomes available
+
+> As the owner, I want an erased recording's pending cleanup to be
+> verifiable when my device host becomes available, so startup order
+> cannot leave the cleanup unfinished.
+
+### An explicit verifier takes precedence and only affirmative device evidence counts
+
+Resolve the device verifier for the exact pending receipt when the
+acknowledgement is requested. Use an explicitly supplied verifier when
+present. Otherwise resolve the current registered host verifier. Absence,
+refusal and verification failure leave the cleanup pending. Only an
+answer of literal true supplies device erase evidence. A refusal or
+failure by the explicit verifier does not fall back to the host.
+
+```quint
+type CleanupVerifierChoice = ExplicitCleanupVerifier | RegisteredCleanupVerifier | NoCleanupVerifier
+pure def cleanupVerifierChoice(explicit: bool, registered: bool): CleanupVerifierChoice =
+  if (explicit) ExplicitCleanupVerifier else if (registered) RegisteredCleanupVerifier else NoCleanupVerifier
+pure def cleanupDeviceErased(choice: CleanupVerifierChoice, exactTrue: bool): bool =
+  choice != NoCleanupVerifier and exactTrue
+pure def lawExplicitVerifierTakesPrecedence(registered: bool): bool =
+  cleanupVerifierChoice(true, registered) == ExplicitCleanupVerifier
+pure def lawUnavailableVerifierCannotSupplyEraseEvidence(exactTrue: bool): bool =
+  not(cleanupDeviceErased(NoCleanupVerifier, exactTrue))
+pure def lawVerifierNeedsAffirmativeEvidence(choice: CleanupVerifierChoice): bool =
+  not(cleanupDeviceErased(choice, false))
+```

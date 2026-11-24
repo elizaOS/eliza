@@ -132,7 +132,9 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
 }
 pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: Set() }), Negotiated({ capabilities: Set(ClockHandoffV1) }),
   Negotiated({ capabilities: Set(ClockHandoffV1, ClockHandoffV2) }), Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV1, NotesLocalRecordV1) }),
-  Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV2, CalendarAgendaReadV1, NotesQueryV1, NotesLocalRecordV1) }))
+  Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV2, CalendarAgendaReadV1, NotesQueryV1, NotesLocalRecordV1) }),
+  Negotiated({ capabilities: Set(NotesRecordV1) }), Negotiated({ capabilities: Set(NotesOrganizeV1) }),
+  Negotiated({ capabilities: Set(NotesOrganizeV1, NotesLocalRecordV1) }))
 pure def clockOnly(neg: Negotiation): bool = allCapabilities.forall(c => negotiatedHas(neg, c) implies (c == ClockHandoffV1 or c == ClockHandoffV2))
 pure def lawEveryOperationNamesANeed(t: OperationType, versionTwo: bool): bool =
   namesSome(operationNeed(t, versionTwo).required) or namesSome(operationNeed(t, versionTwo).oneOf)
@@ -142,6 +144,25 @@ pure def lawANamedEditNeedsTheNamedTarget(t: OperationType, versionTwo: bool, ne
   ((t == NotesNamed or t == CalendarNamedEdit or t == ReminderNamed) and meets(neg, operationNeed(t, versionTwo))) implies negotiatedHas(neg, NamedTargetV1)
 pure def lawNewerReminderTimingIsNeverDowngraded(t: OperationType, neg: Negotiation): bool =
   ((family(t) == ReminderFamily or t == ReminderNamed) and meets(neg, operationNeed(t, true))) implies negotiatedHas(neg, RemindersLocalRecordV2)
+```
+
+### Recording a voice note needs recording authority or the full Notes organization pair
+
+A device can offer start and stop recording through `notes.record.v1` even
+when it keeps no local Notes records. Existing devices that negotiate both
+`notes.organize.v1` and `notes.local-record.v1` can still record. A proposal
+retains the need that admitted its recording, preferring the separate
+recording capability when the header names it. Other Notes operations keep
+their own requirements.
+
+```quint
+pure def negotiatedOperationNeed(t: OperationType, versionTwo: bool, neg: Negotiation): Need =
+  if (t == NotesRecord and negotiatedHas(neg, NotesRecordV1)) needOne(NotesRecordV1) else operationNeed(t, versionTwo)
+pure def lawRecordingNeedsItsOwnCapabilityOrBothLegacyCapabilities(neg: Negotiation): bool =
+  meets(neg, negotiatedOperationNeed(NotesRecord, false, neg)) iff
+    (negotiatedHas(neg, NotesRecordV1) or (negotiatedHas(neg, NotesOrganizeV1) and negotiatedHas(neg, NotesLocalRecordV1)))
+pure def lawRecordingCapabilityChangesOnlyRecordingNeed(t: OperationType, versionTwo: bool, neg: Negotiation): bool =
+  t != NotesRecord implies (meets(neg, negotiatedOperationNeed(t, versionTwo, neg)) iff meets(neg, operationNeed(t, versionTwo)))
 ```
 
 ### A proposal is valid only when its shape, its need and its binding all hold
@@ -160,13 +181,14 @@ type Proposal = { opType: OperationType, versionTwo: bool, binding: ReadBinding,
 pure def bindingAdmitted(prop: Proposal, neg: Negotiation): bool =
   if (prop.binding == AgendaBinding) prop.opType == ReadCalendarRange and negotiatedHas(neg, CalendarAgendaReadV1)
   else family(prop.opType) != WorkflowFamily or prop.binding == WorkflowBinding
-pure def validate(prop: Proposal, neg: Negotiation): bool = prop.shapeValid and meets(neg, operationNeed(prop.opType, prop.versionTwo)) and bindingAdmitted(prop, neg)
+pure def validate(prop: Proposal, neg: Negotiation): bool = prop.shapeValid and meets(neg, negotiatedOperationNeed(prop.opType, prop.versionTwo, neg)) and bindingAdmitted(prop, neg)
 pure val propValues: Set[Proposal] = Set(
   { opType: ReadCalendarRange, versionTwo: false, binding: AgendaBinding, shapeValid: true },
   { opType: ReadSelectedNotes, versionTwo: false, binding: NoBinding, shapeValid: true },
   { opType: ReadSelectedNotes, versionTwo: false, binding: WorkflowBinding, shapeValid: true },
   { opType: NotesQuery, versionTwo: false, binding: AgendaBinding, shapeValid: true },
   { opType: NotesQuery, versionTwo: false, binding: NoBinding, shapeValid: true },
+  { opType: NotesRecord, versionTwo: false, binding: NoBinding, shapeValid: true },
   { opType: NotesQuery, versionTwo: false, binding: NoBinding, shapeValid: false },
   { opType: ClockHandoff, versionTwo: true, binding: NoBinding, shapeValid: true },
   { opType: FilesOpen, versionTwo: false, binding: NoBinding, shapeValid: true },

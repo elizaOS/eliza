@@ -71,6 +71,15 @@ it('Propose only operations the device can check: one schema per wire type of th
   assert.strictEqual(checked?.opType, "NotesFilter")
   assert.isTrue(checked !== undefined && mayRunDirectly(checked, "NoBinding", true))
   assert.isFalse(checked !== undefined && mayRunDirectly(checked, "NoBinding", false))
+  const recordingOnly = negotiation(true, "notes.record.v1")
+  for (const action of ["start", "stop"]) {
+    const recording = { type: "notes_record", action }
+    assert.deepStrictEqual(validate(recording, recordingOnly, "NoBinding")?.need, { required: ["NotesRecordV1"], oneOf: [] })
+    assert.sameMembers(validate(recording, notes, "NoBinding")?.need.required ?? [], ["NotesOrganizeV1", "NotesLocalRecordV1"])
+    assert.isUndefined(validate(recording, negotiation(true, "notes.organize.v1"), "NoBinding"))
+    assert.isUndefined(validate(recording, negotiation(true, "notes.local-record.v1"), "NoBinding"))
+  }
+  assert.isUndefined(validate(filter, recordingOnly, "NoBinding"))
   const handoff = validate(alarm, v1, "NoBinding")
   assert.isFalse(handoff !== undefined && mayRunDirectly(handoff, "NoBinding", true))
 })

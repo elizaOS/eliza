@@ -1,0 +1,38 @@
+// spec/notes/trash.md, "Story: Confirm recording erase after the device host becomes available"; spec/notes/trash.md, "An explicit verifier takes precedence and only affirmative device evidence counts"
+import { cleanupDeviceErased, cleanupVerifierChoice } from "../gen/notes__trash.effect.vibe"
+
+export interface RecordingCleanupReceipt {
+  readonly operationId: string
+  readonly noteId: string
+  readonly audioId: string
+  readonly deletedAt: string
+}
+
+export interface RecordingCleanupVerifier {
+  verifyRecordingCleanup(receipt: RecordingCleanupReceipt, signal: AbortSignal): Promise<unknown>
+}
+
+export error RecordingCleanupVerificationFailed { cause: unknown }
+
+export effect function verifyRecordingErase(
+  receipt: RecordingCleanupReceipt,
+  verifiers: {
+    readonly explicit?: RecordingCleanupVerifier
+    readonly registered: () => unknown
+  },
+): boolean!RecordingCleanupVerificationFailed {
+  const exact = Object.freeze({ ...receipt })
+  return try tryPromise({
+    try: async (signal) => {
+      const explicit = verifiers.explicit
+      const registered = explicit === undefined ? verifiers.registered() : undefined
+      const verifier = explicit ?? registered
+      const method = verifier !== null && typeof verifier === "object" && "verifyRecordingCleanup" in verifier
+        ? verifier.verifyRecordingCleanup : undefined
+      const choice = cleanupVerifierChoice(explicit !== undefined, typeof method === "function")
+      const answer: unknown = typeof method === "function" ? await Reflect.apply(method, verifier, [exact, signal]) : undefined
+      return cleanupDeviceErased(choice, answer === true)
+    },
+    catch: (cause) => new RecordingCleanupVerificationFailed({ cause }),
+  })
+}

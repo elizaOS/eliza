@@ -141,11 +141,14 @@ pure val viewIdValues = Set("chat", "notes", "files")
 ### Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed
 
 A navigation the renderer already claimed is being applied, so a second
-one could commit out of order; the client must wait for its result. The
+one could commit out of order. The prepare entry points wait up to four
+seconds for the renderer's current claim to settle, then try against the
+current state. The machine refuses preparation while the claim holds. The
 superseded navigation's wait ends with the outcome `Superseded`. A client's
 only pending navigation is therefore its latest.
 
 ```quint
+pure val navigationBusyWaitMs = 4000
 pure def openNavigationOf(h: ViewHost, clientId: str): str =
   if (h.openNavigation.keys().contains(clientId)) h.openNavigation.get(clientId) else ""
 pure def busy(h: ViewHost, clientId: str): bool = {
@@ -203,6 +206,27 @@ pure val bindingValues = Set(
   { requestId: "r2", clientId: "c1", viewId: "chat", installationId: "i1" }, { requestId: "r2", clientId: "c2", viewId: "notes", installationId: "i2" },
   { requestId: "r3", clientId: "c1", viewId: "chat", installationId: "i1" }, { requestId: "r1", clientId: "c2", viewId: "chat", installationId: "i9" })
 pure val claimIdValues = Set("k1", "k2", "")
+```
+
+### A lost navigation claim releases the renderer after a short lease
+
+The host starts a ten-second lease once it grants a navigation claim.
+If the exact claim is still pending when the lease elapses, the host
+abandons that request. The waiter sees `Unknown`, a late result is
+refused, and a subsequent request may use the renderer. The lease
+never abandons an interaction or a superseding request.
+
+```quint
+pure val navigationClaimLeaseMs = 10000
+pure def navigationLeaseHolds(w: Waiter, claimId: str): bool =
+  w.kind == Navigation and pending(w) and claimId != "" and claimIdOf(w.claim) == claimId
+pure def lawLeaseNeverHoldsAnInteraction(w: Waiter, claimId: str): bool =
+  w.kind == Interaction implies not(navigationLeaseHolds(w, claimId))
+pure def lawLeaseRequiresAnExactPendingClaim(w: Waiter, claimId: str): bool =
+  navigationLeaseHolds(w, claimId) implies pending(w) and isClaimed(w.claim) and claimIdOf(w.claim) == claimId
+pure val wValues = Set(noWaiter,
+  { ...noWaiter, req: V::request(V::initial, "r1", "c1", "i1", "chat"), kind: Navigation, claim: Claimed({ claimId: "k1" }) },
+  { ...noWaiter, req: V::request(V::initial, "r2", "c1", "i1", "chat"), claim: Claimed({ claimId: "k2" }) })
 ```
 
 ### A result is accepted once, with its claim id, and a navigation result says whether it switched

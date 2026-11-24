@@ -1,6 +1,7 @@
 // spec/agent/views.md, "Story: Switch to the view the agent named"; spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "A claim names its request's exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"
 import type { LocalRoute, RouteInput } from "../access/routes.vibe"
 import { replyOf, type ViewBinding, type ViewHost } from "./host.vibe"
+import { opened } from "../../gen/agent__views.effect.vibe"
 
 const ClientId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,128}$/))
 const RequestId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._:-]{1,128}$/))
@@ -58,6 +59,8 @@ export function viewRoutes(views: ViewHost.Shape): LocalRoute[] {
         const viewId = input.parameters.get("id") ?? ""
         const requestId = sent.completedActionHandoffId
         return runPromise(effect {
+          if (!opened(try views.current(), requestId, clientId, viewId)) return failure(409, "navigation_refused")
+          try views.awaitNavigationIdle(clientId)
           const pending = try views.prepare(requestId, clientId, viewId)
           if (pending === undefined) return failure(409, "navigation_refused")
           return {

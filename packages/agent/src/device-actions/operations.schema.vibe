@@ -1,17 +1,17 @@
 // spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "Only a reversible local operation bound to the owner's current message may run without a review"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran"
 import {
-  mayRunDirectly as runsDirectly, operationNeed, receiptOutcome as admission, validate as admitted,
+  mayRunDirectly as runsDirectly, negotiatedOperationNeed, operationNeed, receiptOutcome as admission, validate as admitted,
   type DeviceReceipt as ReceiptFacts, type FailureCode, type OperationType, type ReadBinding, type ReportedOutcome, type ResultEvidence, type Settlement,
 } from "../../gen/agent__deviceActions__operations.effect.vibe"
 import type { Need, Negotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 import type { ReceiptOutcome } from "../../gen/agent__deviceActions.effect.vibe"
 import type { FamilySchemas, OperationOf, OperationSchema } from "./operation-schemas/family.vibe"
-import { personalOperations } from "./operation-schemas/personal.schema.vibe"
+import { personalFamilies } from "./operation-schemas/personal.schema.vibe"
 import { deviceOperations } from "./operation-schemas/device.schema.vibe"
 
 export type { Classification, Evidence, FamilySchemas, OperationSchema } from "./operation-schemas/family.vibe"
 
-const families = { ...personalOperations, ...deviceOperations } satisfies FamilySchemas
+const families = { ...personalFamilies, ...deviceOperations } satisfies FamilySchemas
 
 export type DeviceOperation = OperationOf<typeof families>
 export type DeviceOperationType = DeviceOperation["type"]
@@ -51,7 +51,7 @@ export function readOperation(input: unknown): CheckedOperation | undefined {
 export function validate(input: unknown, negotiation: Negotiation, binding: ReadBinding): CheckedOperation | undefined {
   const checked = readOperation(input)
   return checked !== undefined && admitted({ opType: checked.opType, versionTwo: checked.versionTwo, binding, shapeValid: true }, negotiation)
-    ? checked
+    ? { ...checked, need: negotiatedOperationNeed(checked.opType, checked.versionTwo, negotiation) }
     : undefined
 }
 
