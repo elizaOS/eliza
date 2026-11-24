@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_cloud_commit:
-        description: Exact reviewed main commit
+        description: Exact reviewed main-v3 commit
         required: true
         type: string
       mint:
@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   grant:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main-v3'
     environment: production
     runs-on: ubuntu-24.04
     timeout-minutes: 35
