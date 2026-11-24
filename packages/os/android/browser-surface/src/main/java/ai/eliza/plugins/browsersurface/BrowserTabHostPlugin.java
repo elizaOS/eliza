@@ -951,6 +951,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   try{
    org.json.JSONObject state=new org.json.JSONObject();
    state.put("history",call.getArray("history",new JSArray()));state.put("tabs",call.getArray("tabs",new JSArray()));state.put("cur",call.getString("cur",""));
+   JSObject visitTimes=call.getObject("visitTimes");if(visitTimes!=null)state.put("visitTimes",visitTimes);
    call.resolve(JSObject.fromJSONObject(sessionStore.write(state)));
   }catch(Exception unavailable){call.reject("Tabs and history could not be saved.");}
  }); }

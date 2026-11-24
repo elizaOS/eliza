@@ -87,6 +87,7 @@ export interface BrowserSavedState {
   readonly history: string[];
   readonly tabs: { id: string; url: string; title: string }[];
   readonly cur: string;
+  readonly visitTimes?: Readonly<Record<string, number>>;
 }
 
 export interface BrowserBookmarkList {

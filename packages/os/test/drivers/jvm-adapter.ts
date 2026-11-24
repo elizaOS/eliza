@@ -259,7 +259,7 @@ export async function compileAdapters(): Promise<{ readonly compiled: readonly s
   const failed: string[] = [];
   for (const main of found.adapters.keys()) {
     try {
-      const needsJson = main.startsWith("ai.eliza.plugins.media.") || main === "ai.eliza.plugins.signin.ReadinessJourney";
+      const needsJson = main.startsWith("ai.eliza.plugins.media.") || main === "ai.eliza.plugins.signin.ReadinessJourney" || main === "ai.eliza.plugins.browsersurface.SessionRecordJourney";
       compiled.push(compileAdapter(main, found, needsJson ? [await jsonJavaArtifact()] : []));
     } catch (error) {
       failed.push(error instanceof Error ? error.message : String(error));

@@ -78,6 +78,35 @@ pure def lawSelectionNamesAKeptTab(codec: SessionCodec, record: SavedSession): b
 }
 ```
 
+### A visit time is kept only for a kept history address, as a positive whole number of milliseconds
+
+A saved session may carry the time each history address was last visited,
+so that the history can be shown by day. Either codec keeps a time only
+for an address its history kept, the first one given for that address, and
+only when it is a whole number of milliseconds from 1 to
+9,007,199,254,740,991. A session with no kept time carries none, and a
+restore offers the saved times of the history it merged.
+
+```quint
+type VisitTime = { visited: str, millis: int }
+pure val maxVisitMillis = 9007199254740991
+pure def mayKeepVisitTime(hrefs: List[str], keptTimes: List[VisitTime], stamp: VisitTime): bool =
+  stamp.millis > 0 and stamp.millis <= maxVisitMillis and hrefs.includes(stamp.visited) and not(keptTimes.some(k => k.visited == stamp.visited))
+pure def keepVisitTime(hrefs: List[str], keptTimes: List[VisitTime], stamp: VisitTime): List[VisitTime] =
+  if (mayKeepVisitTime(hrefs, keptTimes, stamp)) keptTimes.append(stamp) else keptTimes
+pure def retainedVisitTimes(hrefs: List[str], stamps: List[VisitTime]): List[VisitTime] =
+  stamps.foldl(List(), (held, seen) => keepVisitTime(hrefs, held, seen))
+pure val keptVisit: VisitTime = { visited: "https://example.test/", millis: 5 }
+pure val hrefsValues = Set(List(), List("https://example.test/"))
+pure val keptTimesValues = Set(List(), List(keptVisit))
+pure val stampValues = Set(keptVisit, { ...keptVisit, millis: 0 }, { ...keptVisit, visited: "https://other.test/" })
+pure def lawOnlyATimeOfKeptHistoryIsKept(hrefs: List[str], keptTimes: List[VisitTime], stamp: VisitTime): bool =
+  keepVisitTime(hrefs, keptTimes, stamp) != keptTimes implies (hrefs.includes(stamp.visited) and stamp.millis > 0 and stamp.millis <= maxVisitMillis)
+pure def lawNoHistoryKeepsNoVisitTime(keptTimes: List[VisitTime], stamp: VisitTime): bool = keepVisitTime(List(), keptTimes, stamp) == keptTimes
+pure def lawTheFirstTimeOfAnAddressWins(hrefs: List[str], keptTimes: List[VisitTime], stamp: VisitTime): bool =
+  keptTimes.some(k => k.visited == stamp.visited) implies keepVisitTime(hrefs, keptTimes, stamp) == keptTimes
+```
+
 ### A snapshot offers the codec at most eight normal tabs whose address is known
 
 The renderer skips private tabs before it asks for their address, and

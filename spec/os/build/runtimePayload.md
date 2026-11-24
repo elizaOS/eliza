@@ -191,29 +191,61 @@ pure val extractionValues = Set(NotExtracted, ExtractedFor({ versionCode: 1 }), 
 ### The agent spawns only when every inventory digest matches on the device
 
 The inventory is read from the signed APK's assets, not from the
-extracted copy. A missing file or another digest or size fails the start
-with `Failed(Payload)`; nothing is spawned.
+extracted copy. The payload is intact only when every listed file is
+present with its digest and size and the extraction holds no file the
+inventory does not list. The agent is never spawned from anything else:
+the start check below replaces a damaged extraction once and otherwise
+fails the start with `Failed(Payload)`.
 
 ```quint
 type Observed = Missing | Present({ observedSha256: str, observedSize: int })
-type DeviceFile = { path: str, sha256: str, size: int, observed: Observed }
-type StartCheck = ExtractPayload | PayloadReady | PayloadFailed
+type DeviceFile = { path: str, sha256: str, size: int, extracted: bool, observed: Observed }
 pure def observedMatches(observed: Observed, expectedSha256: str, expectedSize: int): bool = match observed {
   | Present(o) => o.observedSha256 == expectedSha256 and o.observedSize == expectedSize
   | Missing => false }
 pure def fileIntact(f: DeviceFile): bool = observedMatches(f.observed, f.sha256, f.size)
-pure def startCheck(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile]): StartCheck =
-  if (not(extractionCurrent(extraction, versionCode))) ExtractPayload
-  else if (deviceFiles.length() > 0 and deviceFiles.every(f => fileIntact(f))) PayloadReady
-  else PayloadFailed
+pure def payloadIntact(deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  not(unlisted) and deviceFiles.length() > 0 and deviceFiles.every(f => fileIntact(f))
 pure val versionCodeValues = Set(1, 2)
 pure val deviceFilesValues = Set(
   List(),
-  List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, observed: Present({ observedSha256: "b1", observedSize: 4 }) }),
-  List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, observed: Present({ observedSha256: "b2", observedSize: 4 }) }),
-  List({ path: "lib/arm64-v8a/libeliza_node.so", sha256: "a1", size: 9, observed: Missing }, { path: "assets/agent/agent.mjs", sha256: "b1", size: 4, observed: Present({ observedSha256: "b1", observedSize: 4 }) }))
-pure def lawStaleExtractionNeverSpawns(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile]): bool =
-  not(extractionCurrent(extraction, versionCode)) implies startCheck(extraction, versionCode, deviceFiles) == ExtractPayload
-pure def lawReadyMeansEveryFileMatches(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile]): bool =
-  startCheck(extraction, versionCode, deviceFiles) == PayloadReady implies deviceFiles.every(f => f.observed == Present({ observedSha256: f.sha256, observedSize: f.size }))
+  List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, extracted: true, observed: Present({ observedSha256: "b1", observedSize: 4 }) }),
+  List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, extracted: true, observed: Present({ observedSha256: "b2", observedSize: 4 }) }),
+  List({ path: "lib/arm64-v8a/libeliza_node.so", sha256: "a1", size: 9, extracted: false, observed: Missing }, { path: "assets/agent/agent.mjs", sha256: "b1", size: 4, extracted: true, observed: Present({ observedSha256: "b1", observedSize: 4 }) }))
+pure def lawIntactMeansEveryFileMatches(deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  payloadIntact(deviceFiles, unlisted) implies deviceFiles.every(f => f.observed == Present({ observedSha256: f.sha256, observedSize: f.size }))
+pure def lawAnUnlistedFileIsNeverIntact(deviceFiles: List[DeviceFile]): bool = not(payloadIntact(deviceFiles, true))
+```
+
+### A damaged extracted file is extracted again once before the start fails
+
+One check decides each start. The service removes the extraction of
+another package version before it extracts this one, and never starts
+from it. When a file of this version's extraction is missing, changed or
+unlisted, the service replaces the whole extraction from the signed APK
+once and checks it again. A second mismatch, an extraction the APK could
+not supply this start, or a native library that differs fails the start
+with `Failed(Payload)`: the package installer placed the native
+libraries, and the service cannot replace them.
+
+```quint
+type StartCheck = ExtractPayload | PayloadReady | PayloadFailed
+pure def extractionDamaged(deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  unlisted or deviceFiles.some(f => f.extracted and not(fileIntact(f)))
+pure def startCheck(extraction: Extraction, versionCode: int, extractedThisStart: bool, deviceFiles: List[DeviceFile], unlisted: bool): StartCheck =
+  if (not(extractionCurrent(extraction, versionCode)) and extractedThisStart) PayloadFailed
+  else if (not(extractionCurrent(extraction, versionCode))) ExtractPayload
+  else if (payloadIntact(deviceFiles, unlisted)) PayloadReady
+  else if (extractionDamaged(deviceFiles, unlisted) and not(extractedThisStart)) ExtractPayload
+  else PayloadFailed
+pure def lawOnlyACurrentIntactPayloadStarts(extraction: Extraction, versionCode: int, extractedThisStart: bool, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  (startCheck(extraction, versionCode, extractedThisStart, deviceFiles, unlisted) == PayloadReady) iff (extractionCurrent(extraction, versionCode) and payloadIntact(deviceFiles, unlisted))
+pure def lawStaleExtractionIsReplacedFirst(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  not(extractionCurrent(extraction, versionCode)) implies startCheck(extraction, versionCode, false, deviceFiles, unlisted) == ExtractPayload
+pure def lawAnExtractionIsReplacedAtMostOnce(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  startCheck(extraction, versionCode, true, deviceFiles, unlisted) != ExtractPayload
+pure def lawADamagedExtractionIsReplacedOnce(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  (extractionCurrent(extraction, versionCode) and extractionDamaged(deviceFiles, unlisted)) implies startCheck(extraction, versionCode, false, deviceFiles, unlisted) == ExtractPayload
+pure def lawADifferingNativeLibraryAloneIsNeverRepaired(extraction: Extraction, versionCode: int, extractedThisStart: bool, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  (extractionCurrent(extraction, versionCode) and not(extractionDamaged(deviceFiles, unlisted))) implies startCheck(extraction, versionCode, extractedThisStart, deviceFiles, unlisted) != ExtractPayload
 ```
