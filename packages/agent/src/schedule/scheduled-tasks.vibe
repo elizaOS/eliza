@@ -1,11 +1,12 @@
 // spec/agent/schedule/scheduledTasks.md, "Story: Keep a recurring task exact through retries, races and restarts"; spec/agent/schedule/scheduledTasks.md, "Every change commits against the revision it read"; spec/agent/schedule/scheduledTasks.md, "An occurrence is delivered at most once"; spec/agent/schedule/scheduledTasks.md, "A delivery that cannot happen now is retried at most three times, then the occurrence fails"; spec/agent/schedule/scheduledTasks.md, "An occurrence of a recurring task that came due before the agent started is recorded once as missed and never runs"; spec/agent/schedule/scheduledTasks.md, "A keyed verb applies once per key"; spec/agent/schedule/scheduledTasks.md, "Each verb does only what it names, and only to a row it applies to"; spec/agent/schedule/scheduledTasks.md, "A verb's reply says whether it was applied, refused, or reached no task"; spec/agent/schedule/scheduledTasks.md, "Fire now reports fired, skipped, deferred, failed or raced"; spec/core/taskServiceOwners.md, "Exclusive tasks observe every active invocation of the same task"; spec/core/taskServiceOwners.md, "Stop joins scheduler drain, current tick, and then its pending-operation snapshot"; spec/core/scheduling.md, "Story: Execute due work within its owning agent"; spec/workflow/schedule.md, "Story: An automation runs at its reviewed local time or records why it skipped"
 import {
   ServiceType, agentProcessStartedAtMs, computeNextCronRunAtMs, parseCronExpression,
-  type IAgentRuntime, type IDatabaseAdapter, type NotificationService, type TaskWorker,
+  type IAgentRuntime, type IDatabaseAdapter, type NotificationService, type Task, type TaskWorker,
 } from "@elizaos/core"
 import {
-  canFire, claimOutcome, dueInstant, fireReply, fireable, initial, isReplay, machineOver, ownerFireEnded, verbReply,
-  type Delivery, type Due, type Event, type FireOutcome, type RequestKey, type ScheduledTask, type Verb,
+  canFire, claimOutcome, dueInstant, fireReply, fireable, initial, isReplay, machineOver, ownerFireEnded,
+  tickDriverMayClean, tickDriverMayRun, tickDriverRowEligible, verbReply,
+  type Delivery, type Due, type Event, type FireOutcome, type RequestKey, type ScheduledTask, type TickRegistration, type Verb,
 } from "../../gen/agent__schedule__scheduledTasks.effect.vibe"
 import {
   createScheduledTask, getScheduledTask, listScheduledTasks, scheduledTaskKeeping,
@@ -68,9 +69,11 @@ export type Created =
 
 error TaskRefused { reason: string }
 error DeliveryFailed { cause: unknown }
+error TickDriverCleanupFailed { cause: unknown }
 
 export const scheduledTasksTick = "AGENT_SCHEDULED_TASKS"
 const scheduledTasksTickMs = 60_000
+const tickDriverLocks = new WeakMap<IAgentRuntime, Semaphore.Semaphore>()
 const missedOccurrenceLog = "missed_occurrence"
 
 const noMore: Due = { tag: "NoMoreOccurrences" }
@@ -334,46 +337,80 @@ export function scheduledTaskPort(tasks: ScheduledTasks): ScheduledTaskPort {
   }
 }
 
-effect function bootWrite(runtime: IAgentRuntime) {
-  const adapter = runtime.adapter
-  const found = (try tryPromise(() => adapter.getTasksByName(scheduledTasksTick)))
-    .flatMap(({ id }) => id === undefined ? [] : [id])
+function isTickDriver(runtime: IAgentRuntime, task: Task): boolean {
+  return tickDriverRowEligible({ hasId: task.id !== undefined, sameAgent: task.agentId === runtime.agentId,
+    sameName: task.name === scheduledTasksTick, queue: task.tags?.includes("queue") === true, repeat: task.tags?.includes("repeat") === true })
+}
+
+effect function driverRows(runtime: IAgentRuntime) {
+  const rows = try tryPromise(() => runtime.getTasks({ tags: ["queue", "repeat"] }))
+  return rows.flatMap((task) => task.id !== undefined && isTickDriver(runtime, task) ? [task.id] : [])
+}
+
+effect function bootWrite(runtime: IAgentRuntime, admitted: () => boolean) {
+  if (!admitted()) return
+  const found = try driverRows(runtime)
+  if (!admitted()) return
   const [kept, ...surplus] = found
-  if (surplus.length > 0) try tryPromise(() => adapter.deleteTasks(surplus))
+  if (surplus.length > 0) try tryPromise(() => runtime.deleteTasks(surplus))
+  if (!admitted()) return
   const metadata = { updateInterval: scheduledTasksTickMs, baseInterval: scheduledTasksTickMs, blocking: true }
   if (kept === undefined) {
-    try tryPromise(() => adapter.createTasks([{
+    try tryPromise(() => runtime.createTask({
       name: scheduledTasksTick, description: "Fire the scheduled tasks that have come due", tags: ["queue", "repeat"],
       agentId: runtime.agentId, metadata: { ...metadata, updatedAt: 0 },
-    }]))
+    }))
   } else {
-    try tryPromise(() => adapter.updateTasks([{ id: kept, task: { metadata } }]))
+    try tryPromise(() => runtime.updateTask(kept, { metadata }))
   }
 }
 
-effect function bootQuietly(runtime: IAgentRuntime) {
-  bootWrite(runtime) catch (failure) => runtime.reportError("ScheduledTasks.boot", failure, { task: scheduledTasksTick })
-}
-
 export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: ScheduledTasks): Ticking!! {
+  const lock = tickDriverLocks.get(runtime) ?? Semaphore.makeUnsafe(1)
+  tickDriverLocks.set(runtime, lock)
+  let retiring = false
+  const registration = (): TickRegistration => {
+    const current = runtime.getTaskWorker(scheduledTasksTick)
+    return current === worker ? "OwnTickWorker" : current === undefined ? "NoTickWorker" : "ReplacementTickWorker"
+  }
+  const admitted = () => !retiring && tickDriverMayRun(registration())
   const worker: TaskWorker = {
     name: scheduledTasksTick,
-    execute: () => runPromise(effect {
+    shouldRun: (_runtime, task) => Promise.resolve(admitted() && isTickDriver(runtime, task)),
+    execute: (_runtime, _options, task) => runPromise(effect {
+      if (!admitted() || !isTickDriver(runtime, task)) return { preserveTask: true }
       const fired = try tasks.tick()
       if (fired.length > 0) runtime.logger.info({ src: "agent", agentId: runtime.agentId, fired }, "Scheduled tasks fired")
       return undefined
     }),
   }
   try sync(() => runtime.registerTaskWorker(worker))
-  const boot = fork.detached bootQuietly(runtime)
+  const boot = fork.detached lock.withPermits(1)(effect {
+    bootWrite(runtime, admitted) catch (failure) => runtime.reportError("ScheduledTasks.boot", failure, { task: scheduledTasksTick })
+  })
+  function prepareStop(): void {
+    retiring = true
+    if (registration() === "OwnTickWorker") runtime.unregisterTaskWorker(scheduledTasksTick)
+  }
+  const stop = try Effect.cached(Effect.uninterruptible(effect {
+    try sync(prepareStop)
+    try Fiber.await(boot)
+    try lock.withPermits(1)(effect {
+      if (!tickDriverMayClean(registration())) return
+      const rows = try driverRows(runtime)
+      if (rows.length > 0 && tickDriverMayClean(registration())) try tryPromise(() => runtime.deleteTasks(rows))
+    }) catch (failure) => {
+      runtime.reportError("ScheduledTasks.cleanup", failure, { task: scheduledTasksTick })
+      throw new TickDriverCleanupFailed({ cause: failure })
+    }
+  }))
   return {
-    stop: effect function () {
-      try join boot
-      runtime.unregisterTaskWorker(scheduledTasksTick)
-    },
+    prepareStop,
+    stop: () => stop,
   }
 }
 
 export interface Ticking {
-  stop(): void!!
+  prepareStop(): void
+  stop(): void!TickDriverCleanupFailed
 }

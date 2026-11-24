@@ -8,7 +8,7 @@ import type { LocalRoute } from "../access/routes.vibe"
 import type { AgentModule, AgentPlugin, ModuleContext, ModuleFactory, ModuleRefused } from "../host/module.vibe"
 import {
   runtimeTaskHost, scheduledTaskPort, scheduledTaskService, startScheduledTaskTicks,
-  type Created, type DeliveryPort, type NewTask, type ScheduledTaskView, type ScheduledTasks,
+  type Created, type DeliveryPort, type NewTask, type ScheduledTaskView, type ScheduledTasks, type Ticking,
 } from "./scheduled-tasks.vibe"
 
 export const scheduledTasksModuleName = "@elizaos/agent/scheduled-tasks"
@@ -218,7 +218,7 @@ function scheduledTasksApi(tasks: ScheduledTasks): ServiceClass {
   return class ScheduledTasksModule extends Service implements ScheduledTasksApi {
     static override serviceType = scheduledTasksServiceType
     override capabilityDescription = "Create, answer and fire the owner's scheduled tasks against the revision a plugin read"
-    ticks: { readonly stop: () => void!never!never } | undefined
+    ticks: Ticking | undefined
 
     static override async start(runtime: IAgentRuntime): Promise<Service> {
       const service = new ScheduledTasksModule(runtime)
@@ -248,6 +248,10 @@ function scheduledTasksApi(tasks: ScheduledTasks): ServiceClass {
 
     fire(taskId: string, seenRevision?: number): Promise<FireResult> {
       return runPromise(tasks.fire(taskId, seenRevision))
+    }
+
+    override prepareStop(): void {
+      this.ticks?.prepareStop()
     }
 
     override stop(): Promise<void> {

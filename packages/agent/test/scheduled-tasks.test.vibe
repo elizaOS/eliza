@@ -2,7 +2,10 @@
 import { assert, it } from "@effect/vitest"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { startAgent } from "../src/host/process.vibe"
-import { scheduledTasksModuleName } from "../src/schedule/scheduled-task-routes.vibe"
+import type { ModuleFactory } from "../src/host/module.vibe"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+import { scheduledTasksModuleFactory, scheduledTasksModuleName } from "../src/schedule/scheduled-task-routes.vibe"
+import { scheduledTasksTick } from "../src/schedule/scheduled-tasks.vibe"
 import { host, scratch } from "./support/kernel.vibe"
 import { scheduledProductPlugin } from "./support/product-plugin/index.ts"
 import { launchDocument, launchFrame, type Scratch } from "./support/scratch.ts"
@@ -27,6 +30,30 @@ module node {
 
   export function realClock(): void {
     vi.useRealTimers()
+  }
+
+  export async function observeRetirement(running: RunningAgent, release: () => void) {
+    let stopped = false
+    const stop = running.stop().then((code) => { stopped = true; return code })
+    const joined = running.stop()
+    let beforeAck: { stopped: boolean; workerRegistered: boolean }
+    try {
+      await sleep(650)
+      beforeAck = { stopped, workerRegistered: running.runtime.getTaskWorker(scheduledTasksTick) !== undefined }
+    } finally {
+      release()
+    }
+    return { beforeAck, codes: await Promise.all([stop, joined]) }
+  }
+
+  export async function installedTick(running: RunningAgent) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const rows = await running.runtime.getTasksByName(scheduledTasksTick)
+      const driver = rows.find((row) => row.tags?.includes("queue") && row.tags.includes("repeat"))
+      if (driver?.id !== undefined) return driver.id
+      await sleep(50)
+    }
+    throw new Error("The scheduled task tick was never installed")
   }
 
   interface Reach {
@@ -232,11 +259,11 @@ module node {
     attempts: 0,
   }
 }
-import { afterRestart, answerFromTheList, expectedAnswers, expectedRestart, realClock, setClock, start } from node
+import { afterRestart, answerFromTheList, expectedAnswers, expectedRestart, installedTick, observeRetirement, realClock, setClock, start } from node
 
 const fixture = scheduledProductPlugin.name
 
-effect function launched(state: Scratch, socketName: string) {
+effect function launched(state: Scratch, socketName: string, modules?: ReadonlyMap<string, ModuleFactory<never>>) {
   const frame = launchFrame()
   const document = launchDocument({ persistMemory: true, load: [scheduledTasksModuleName], productPlugin: fixture })
   const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
@@ -244,7 +271,7 @@ effect function launched(state: Scratch, socketName: string) {
   const agent = try acquireRelease(
     startAgent({
       ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket },
-      bundled: new Map([[fixture, scheduledProductPlugin]]),
+      bundled: new Map([[fixture, scheduledProductPlugin]]), ...(modules === undefined ? {} : { modules }),
     }),
     (running) => orDie(host("retire agent", () => running.stop())),
   )
@@ -261,4 +288,39 @@ it.live('The owner answers a product\'s scheduled tasks from the list, and a rec
   const second = try launched(state, "agent-second.sock")
   const restarted = try host("tick after the restart", () => afterRestart(second.agent, second.reach, hourly))
   try Effect.try(() => assert.deepStrictEqual({ observed, restarted }, { observed: expectedAnswers, restarted: expectedRestart }))
+}, 180_000)
+
+it.live('Retiring the resident removes the tick driver after a lost write acknowledgement (spec/agent/schedule/scheduledTasks.md, "The scheduler driver retires only its agent\'s private tick rows")', effect () => {
+  const state = try scratch("tick-retirement")
+  const committed = Promise.withResolvers<string>()
+  const acknowledgement = Promise.withResolvers<void>()
+  const wrap: ModuleFactory<never> = effect (context) => {
+    const adapter = context.runtime.adapter
+    const create = adapter.createTasks.bind(adapter)
+    adapter.createTasks = async (rows) => {
+      const ids = await create(rows)
+      const [id] = ids
+      if (id !== undefined && rows.some((row) => row.name === scheduledTasksTick && row.tags?.includes("repeat"))) {
+        committed.resolve(id)
+        await acknowledgement.promise
+        throw new Error("The driver write committed without acknowledgement")
+      }
+      return ids
+    }
+    return try scheduledTasksModuleFactory(context)
+  }
+  const modules = new Map(builtinModuleFactories).set(scheduledTasksModuleName, wrap)
+  const first = try launched(state, "tick-first.sock", modules)
+  try acquireRelease(Effect.void, () => Effect.sync(() => acknowledgement.resolve()))
+  const abandoned = try host("wait for committed driver", () => committed.promise)
+  const unrelated = try host("save an unrelated task with the same name", () => first.agent.runtime.createTask({
+    name: scheduledTasksTick, tags: ["fixture"], agentId: first.agent.runtime.agentId,
+  }))
+  const retired = try host("join resident retirement", () => observeRetirement(first.agent, acknowledgement.resolve))
+  const second = try launched(state, "tick-second.sock")
+  const replacement = try host("read replacement tick driver", () => installedTick(second.agent))
+  const rows = try host("read surviving tasks", () => second.agent.runtime.getTasksByName(scheduledTasksTick))
+  try Effect.try(() => assert.deepStrictEqual({ retired, replaced: replacement !== abandoned, ids: rows.map(({ id }) => id).sort() }, {
+    retired: { beforeAck: { stopped: false, workerRegistered: false }, codes: [0, 0] }, replaced: true, ids: [unrelated, replacement].sort(),
+  }))
 }, 180_000)

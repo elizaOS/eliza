@@ -74,6 +74,7 @@ module node {
   import { builtinModuleFactories } from "../plugins/profile.vibe"
   import { bindModels } from "../models/binding.vibe"
   import { modelPlugin } from "../models/plugin.vibe"
+  import { scheduledTasksServiceType } from "../schedule/scheduled-task-routes.vibe"
 
   function urlShape(url: string): UrlShape {
     const address = URL.parse(url)
@@ -287,7 +288,14 @@ module node {
     startCoreStop = () => {
       detachReports()
       detachInbox()
-      coreStop ??= events.stop().then(() => runtime.stop({ fast: true }))
+      if (coreStop !== undefined) return
+      const scheduler = runtime.getService(scheduledTasksServiceType)
+      const driver = Promise.resolve().then(() => scheduler?.stop())
+      const core = events.stop().then(() => runtime.stop({ fast: true }))
+      coreStop = Promise.allSettled([core, driver]).then(([main, scheduled]) => {
+        if (main.status === "rejected") throw main.reason
+        if (scheduled.status === "rejected") throw scheduled.reason
+      })
     }
     releases.set("runtime", () => coreStop ?? Promise.resolve())
     releases.set("plugins", () => Promise.resolve())

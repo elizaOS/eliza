@@ -227,6 +227,9 @@ pure def sometimesStoppedDuringBoot(s: AgentProcess): bool = s.runtime.stopPhase
 Once core has stopped (after any initialization in progress settles), the
 held resources are released through `RS`; a failed release is recorded and
 the rest still run. The store's release is core's `closeAdapter`.
+When the scheduled-tasks module is loaded, the runtime release also waits
+for its private tick driver to finish retiring. The store stays open for
+that read and delete even when core's fast service-stop wait expires.
 
 ```quint
 pure def canFinishStop(s: AgentProcess): bool = R::canFinishStop(s.runtime) and s.runtime.initPhase != R::Initializing
