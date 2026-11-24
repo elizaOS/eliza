@@ -12,11 +12,12 @@ import { deviceKeyHex } from "./support/device.ts"
 
 module node {
   import { Effect } from "effect"
-  import { registerDirectActionRoutingRule, sleepWithAbort, type Action } from "@elizaos/core"
+  import { registerDirectActionRoutingRule, sleepWithAbort, stringToUuid, type Action, type AgentRuntime, type UUID } from "@elizaos/core"
   import type { EffectReceipt } from "@elizaos/core/protocol"
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
   import type { AgentPlugin } from "../src/host/module.vibe"
   import { registerDeviceProposalFamily, unoffered } from "../src/device-actions/proposal/registry.vibe"
+  import { processTurn } from "../src/conversation/turns.vibe"
 
   export interface Read {
     readonly outcome: ReplyOutcome
@@ -137,6 +138,17 @@ module node {
     return { outcome, reads }
   }
 
+  export async function refusedCueTurn(runtime: AgentRuntime, roomId: string, request: string): Promise<readonly string[]> {
+    const room = await runtime.getRoom(roomId as UUID)
+    if (!room) throw new Error("The conversation has no room")
+    const owner = { user: stringToUuid(`device-owner:${runtime.agentId}`), world: stringToUuid(`device:${runtime.agentId}`) }
+    const offered: string[] = []
+    await processTurn(runtime, owner, room, request, AbortSignal.timeout(60_000), {
+      display: { restart: () => undefined, acknowledge: (cue) => { offered.push(cue); return false }, tool: () => undefined, ready: () => undefined },
+    })
+    return offered
+  }
+
   export async function leftRead(): Promise<boolean> {
     const leave = new AbortController()
     const reason = new Error("Stop")
@@ -145,7 +157,7 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads } from node
+import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, refusedCueTurn, slowAgendaReads } from node
 
 schema Created { conversation: { id: string; roomId: string } }
 const created = Schema.decodeUnknownOption(Created)
@@ -471,7 +483,7 @@ it.live(`Hear the result after the cue, never the cue again, and only a cue I he
     launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
     frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[agendaApp.name, agendaApp]]),
   })
-  const { id } = try conversation(agent)
+  const { id, roomId } = try conversation(agent)
   const agenda = { name: "AGENDA_READ", arguments: {} }
   const sentNote = "was already sent to the person as progress"
   const planned = (before: number) => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").slice(before)
@@ -501,8 +513,12 @@ it.live(`Hear the result after the cue, never the cue again, and only a cue I he
   const notACue = try turn("Open my agenda", true)
   try Effect.sync(() => cloud.script(toolCalls("", agenda), toolCalls("Let me check.", agenda), text("Nothing booked.")))
   const laterStep = try turn("What is on my agenda this week?", true)
+  try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked on Sunday.")))
+  const refusedFrom = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
+  const offered = try host("a turn whose reply stream refuses its cue", () => refusedCueTurn(agent.agent.runtime, roomId, "What do I have on Sunday?"))
+  const refused = { offered, ...transcript(planned(refusedFrom).at(-1)) }
 
-  try Effect.try(() => assert.deepStrictEqual({ delivered, unstreamed, quiet, notACue, laterStep }, {
+  try Effect.try(() => assert.deepStrictEqual({ delivered, unstreamed, quiet, notACue, laterStep, refused }, {
     delivered: {
       heard: ["acknowledgment:Let me check your calendar."], stepText: ["Let me check your calendar."],
       notes: [`Note from the agent host, not the person: "Let me check your calendar." ${sentNote}. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`],
@@ -511,6 +527,7 @@ it.live(`Hear the result after the cue, never the cue again, and only a cue I he
     quiet: { heard: [], stepText: [null], notes: [] },
     notACue: { heard: [], stepText: [null], notes: [] },
     laterStep: { heard: [], stepText: [null, null], notes: [] },
+    refused: { offered: ["Let me check your calendar."], stepText: [null], notes: [] },
   }))
 }, 120_000)
 

@@ -64,7 +64,7 @@ export interface PlanInput {
   readonly signal: AbortSignal
   readonly onStreamChunk?: StreamChunkCallback
   readonly onReplyRestart?: (fullText: string) => void
-  readonly onPlanningAcknowledgment?: (text: string) => boolean | Promise<boolean>
+  readonly onPlanningAcknowledgment?: (text: string) => boolean | void | Promise<boolean | void>
   readonly onActivityStatus?: (activity: { actionName: string; label: string }) => void | Promise<void>
   readonly onStepResult?: (result: ActionResult) => void | Promise<void>
 }
