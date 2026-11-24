@@ -1,7 +1,7 @@
 // spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"
 import { type Clock, Effect } from "effect";
-import { CloudError } from "@elizaos/cloud/client";
-import { parseLaunch, startAgent, type AgentPlugin, type CloudLinkReply, type CloudLinkRequest, type RunningAgent } from "@elizaos/agent";
+import { CloudError } from "@elizaos/cloud";
+import { parseLaunch, startAgent, type AgentPlugin, type CloudLinkReply, type CloudLinkRequest, type RunningAgent } from "@elizaos/agent-host";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getCACertificates, setDefaultCACertificates } from "node:tls";
 import { promisify } from "node:util";
-import type { MapsCloud } from "../../src/client/cloud-provider.vibe";
+import type { MapsCloud } from "@elizaos/plugin-maps-client";
 import { gate, type Gate } from "./gates.ts";
 
 export const offer = {

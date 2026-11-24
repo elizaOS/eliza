@@ -119,7 +119,10 @@ the UI stories and the design theme before analysis reads their outputs.
 
 Eliza's vendored toolchain incorporates upstream changes through [Vibestack `b7f1827`](https://github.com/lalalune/vibestack/commit/b7f1827be748d4a97aee094d9961371d553012a7), with later [page exploration](https://github.com/lalalune/vibestack/pull/271), [witness verification](https://github.com/lalalune/vibestack/pull/270), [model generation](https://github.com/lalalune/vibestack/pull/272) and [incremental story generation](https://github.com/lalalune/vibestack/pull/269) updates.
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
-and workspace and CI integration.
+and workspace and CI integration, and spec companions: `specCompanions` in the root `package.json`,
+read by `specCompanionPaths`, `areaDirs` and `codeDirs` (`vibestack/util.ts`), `mirrorGen`'s owner
+directories (`vibestack/units.ts`) and the companion counting in `vibestack/testing/check.ts`
+(SPEC.md, "One spec tree"). These are not upstream yet; a sync from Vibestack keeps them.
 
 | File | Role |
 |---|---|
@@ -462,7 +465,9 @@ ESLint enforces workspace barrel exports (`barrel/exports` on workspace
 `package.json` manifests, including `publishConfig.exports`, and
 `barrel/no-subpath-imports` on code files, via `withWorkspaceBarrels` in
 `vibestack/eslint.ts` with `allowExports` / `allowImports` ratchets for
-adopting repositories) and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+adopting repositories; here the one ratchet keeps `@elizaos/os`'s wildcard
+exports of the Android, AOSP and browser file trees, which downstream Android
+packaging resolves) and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
 citation or tool directive, no effect hook, timer or `console`, and no inline
 config but a reasoned `eslint-disable` of another rule. `commented` and
 `scheduled` in `eslint.config.js` give each file that still breaks them the

@@ -1,0 +1,46 @@
+// spec/os/android/camera.md, "A preview binds its photo stream only at an aspect ratio the device lists"; spec/os/android/noticeRoutes.md, "An approval notice's title is part of its receipt, and a call that names no title means the configured one"; spec/os/android/notificationProjection.md, "A new-mail count counts the notices still unread, a notice the shade cap withdrew included"; spec/os/android/files/storage.md, "A listing or folder walk shows dot entries only when asked, and never the Trash under any spelling"; spec/os/android/files/storage.md, "A move into another volume takes the copy path, and its copy is written and cleaned up on that volume"
+import { assert, it } from "@effect/vitest"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import path from "node:path"
+  import { compileAdapter, orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
+
+  const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+
+  export function aspectRatioChecks(): string {
+    const main = "ai.eliza.plugins.camera.CaptureAspectRatiosTest"
+    return execFileSync(java, ["-cp", compileAdapter(main), main], { encoding: "utf8", timeout: 120_000 }).trim()
+  }
+
+  export async function hostChecks(check: "NoticeTitlesTest" | "MailCountTest"): Promise<string> {
+    const main = `ai.eliza.plugins.notifications.${check}`
+    return execFileSync(java, ["-cp", await orgJsonAdapterClasspath(main), main], { encoding: "utf8", timeout: 120_000 }).trim()
+  }
+
+  export async function storageBrowsing(): Promise<string> {
+    const main = "ai.eliza.files.StorageBrowsingCheck"
+    return execFileSync(java, ["-cp", await orgJsonAdapterClasspath(main), main], { encoding: "utf8", timeout: 120_000 }).trim()
+  }
+}
+import { aspectRatioChecks, hostChecks, storageBrowsing } from node
+
+it.effect("A preview binds its photo stream only at an aspect ratio the device lists (spec/os/android/camera.md, \"A preview binds its photo stream only at an aspect ratio the device lists\")", () => effect {
+  const answer = try Effect.try(() => aspectRatioChecks())
+  try Effect.try(() => assert.strictEqual(answer, "CaptureAspectRatiosTest checks: 12"))
+}, 180_000)
+
+it.effect('An approval notice\'s title is part of its receipt, and a call that names no title means the configured one (spec/os/android/noticeRoutes.md, "An approval notice\'s title is part of its receipt, and a call that names no title means the configured one")', () => effect {
+  const answer = try tryPromise(() => hostChecks("NoticeTitlesTest"))
+  try Effect.try(() => assert.strictEqual(answer, "NoticeTitlesTest checks: 19"))
+}, 180_000)
+
+it.effect('A new-mail count counts the notices still unread, a notice the shade cap withdrew included (spec/os/android/notificationProjection.md, "A new-mail count counts the notices still unread, a notice the shade cap withdrew included")', () => effect {
+  const answer = try tryPromise(() => hostChecks("MailCountTest"))
+  try Effect.try(() => assert.strictEqual(answer, "MailCountTest checks: 6"))
+}, 180_000)
+
+it.effect('Browse hidden entries only when asked, never the Trash, and move or copy into another volume (spec/os/android/files/storage.md, "A listing or folder walk shows dot entries only when asked, and never the Trash under any spelling"; spec/os/android/files/storage.md, "A move into another volume takes the copy path, and its copy is written and cleaned up on that volume")', () => effect {
+  const answer = try tryPromise(() => storageBrowsing())
+  try Effect.try(() => assert.match(answer, /^StorageBrowsingCheck checks: (18|21)$/))
+}, 180_000)

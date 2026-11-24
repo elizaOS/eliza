@@ -1,8 +1,8 @@
 // spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"
 import type { EffectReceipt } from "@elizaos/core"
 import { agentChangesLimit, agentPlacesLimit, saveCommitted, saveCourse } from "../gen/maps__savedPlaces.effect.vibe"
-import { boundedText, MapsFailure } from "./client/contracts.vibe"
-import { AgentPlaceRef } from "./client/device-navigation.vibe"
+import { boundedText, MapsFailure } from "@elizaos/plugin-maps-client"
+import { AgentPlaceRef } from "@elizaos/plugin-maps-client"
 
 module node {
   /** @throws {never} */

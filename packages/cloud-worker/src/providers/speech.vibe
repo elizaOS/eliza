@@ -1,0 +1,403 @@
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"
+import { Base64 } from "effect/encoding"
+import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
+import { Socket } from "effect/socket"
+import type { SttEventKind } from "../../gen/cloud__services__speechRelay.ts"
+import type { Millis } from "../../gen/cloud__shared__types.ts"
+import type { SpeechSettings as SpeechProfile } from "@elizaos/cloud"
+import { Deployment } from "@elizaos/cloud"
+import { ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, retryAfter } from "./llm.vibe"
+import { headerWebSocket } from "./socket.ts"
+
+export { ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable }
+
+export type SpeechFailure = ProviderRefused | ProviderUnreachable | ProviderTimedOut | ProviderInvalidResponse
+export type SpeechSettings = typeof SpeechProfile.Type
+
+export interface Synthesis {
+  readonly text: string
+  readonly previousText?: string
+  readonly nextText?: string
+  readonly voiceId: string
+  readonly modelId: string
+  readonly format: "mp3" | "wav"
+  readonly speed: number
+  readonly applyTextNormalization: "auto" | "off"
+}
+
+export interface SynthesizedAudio {
+  readonly audio: Uint8Array
+  readonly contentType: "audio/mpeg" | "audio/wav"
+}
+
+export interface Alignment {
+  readonly characters: ReadonlyArray<string>
+  readonly characterStartTimesSeconds: ReadonlyArray<number>
+  readonly characterEndTimesSeconds: ReadonlyArray<number>
+}
+
+export interface TimedFrame {
+  readonly audioBase64: string
+  readonly alignment: Alignment | null
+}
+
+export interface Recording {
+  readonly audio: Uint8Array
+  readonly mimeType: string
+  readonly languageCode?: string
+}
+
+export interface TimedSpan {
+  readonly text: string
+  readonly startMs: number
+  readonly endMs: number
+}
+
+export interface Transcription {
+  readonly transcript: string
+  readonly durationMs: number
+  readonly segments?: ReadonlyArray<TimedSpan>
+  readonly words?: ReadonlyArray<TimedSpan>
+}
+
+export interface SttEdge {
+  readonly kind: SttEventKind
+  readonly transcript: string
+}
+
+export type TtsEdge =
+  | { readonly kind: "audio"; readonly id: string; readonly pcm: Uint8Array }
+  | { readonly kind: "flushed"; readonly id: string }
+  | { readonly kind: "completed"; readonly id: string }
+
+export interface SttLink {
+  readonly send: (pcm: Uint8Array) => void!SpeechFailure
+  readonly drain: () => boolean!!
+  readonly edges: Stream.Stream<SttEdge, SpeechFailure>
+}
+
+export interface TtsLink {
+  readonly speak: (id: string, text: string, flush: boolean) => void!SpeechFailure
+  readonly finish: (id: string) => void!SpeechFailure
+  readonly cancel: (id: string) => void!SpeechFailure
+  readonly edges: Stream.Stream<TtsEdge, SpeechFailure>
+}
+
+const synthesisBudget: Millis = 30_000
+const transcriptionBudget: Millis = 120_000
+export const realtimeOpenBudget: Millis = 8_000
+const drainBudget: Millis = 1_500
+const maxProviderPcmBytes = 65_536
+const realtimeSampleRate = 16_000
+
+export service ProviderSockets {
+  static readonly key = "@elizaos/cloud/providers/ProviderSockets"
+  static readonly defaultValue = () => ({
+    open: (url: string, headers: Readonly<Record<string, string>>) => Socket.fromWebSocket(acquireRelease(
+      Effect.try({
+        try: () => headerWebSocket(url, { headers }),
+        catch: (cause) => new Socket.SocketError({ reason: new Socket.SocketOpenError({ kind: "Unknown", cause }) }),
+      }),
+      (socket) => Effect.ignore(Effect.try(() => socket.close(1000)))
+    ), { openTimeout: realtimeOpenBudget })
+  })
+  readonly open: (url: string, headers: Readonly<Record<string, string>>) => Socket.Socket!!
+}
+
+const restVersion = "2025-04-16"
+const sttVersion = "2026-08-14"
+const ttsVersion = "2026-03-01"
+const batchSttModel = "ink-whisper"
+const realtimeSttModel = "ink-2"
+const base64Text = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+
+const sttKinds: Readonly<Record<string, SttEventKind>> = {
+  connected: "SttConnected",
+  "turn.start": "StartOfTurn",
+  "turn.resume": "TurnResumed",
+  "turn.update": "TranscriptUpdate",
+  "turn.eager_end": "EagerEndOfTurn",
+  "turn.end": "EndOfTurn"
+}
+
+const spokenKinds: ReadonlySet<SttEventKind> = new Set(["TranscriptUpdate", "EagerEndOfTurn", "EndOfTurn"])
+
+const ProviderAlignment = Schema.Struct({
+  characters: Schema.Array(Schema.String),
+  character_start_times_seconds: Schema.Array(Schema.Number),
+  character_end_times_seconds: Schema.Array(Schema.Number)
+})
+const TimedLine = Schema.Struct({ audio_base64: Schema.String, alignment: Schema.optionalKey(Schema.NullOr(ProviderAlignment)) })
+const ProviderSpan = Schema.Struct({ start: Schema.Number, end: Schema.Number })
+const ProviderTranscript = Schema.Struct({
+  text: Schema.String,
+  duration: Schema.Number,
+  words: Schema.optionalKey(Schema.Array(Schema.Struct({ ...ProviderSpan.fields, word: Schema.String }))),
+  segments: Schema.optionalKey(Schema.Array(Schema.Struct({ ...ProviderSpan.fields, text: Schema.String })))
+})
+const SttMessage = Schema.Struct({ type: Schema.String, transcript: Schema.optionalKey(Schema.String) })
+const TtsMessage = Schema.Struct({ type: Schema.String, context_id: Schema.optionalKey(Schema.String), data: Schema.optionalKey(Schema.String) })
+
+type Decoded<A> = { readonly kind: "edge"; readonly edge: A } | { readonly kind: "skip" } | { readonly kind: "invalid" } | { readonly kind: "failed" }
+type Edges<A> = Queue.Queue<A, SpeechFailure | Cause.Done>
+type SpeechContext = Deployment | HttpClient.HttpClient
+
+function jsonOf(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
+}
+
+function decodedWith<A>(shape: Schema.Codec<A>, input: unknown): A | undefined {
+  return Option.getOrUndefined(Schema.decodeUnknownOption(shape)(input))
+}
+
+function ordered(starts: ReadonlyArray<number>, ends: ReadonlyArray<number>): boolean {
+  return starts.every((start, index) => {
+    const end = ends[index] ?? -1
+    const previous = index === 0 ? undefined : { start: starts[index - 1] ?? 0, end: ends[index - 1] ?? 0 }
+    return Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end >= start && end <= 3600 &&
+      (previous === undefined || (start >= previous.start && end >= previous.end))
+  })
+}
+
+function alignmentOf(raw: typeof ProviderAlignment.Type): Alignment | undefined {
+  const { characters, character_start_times_seconds: starts, character_end_times_seconds: ends } = raw
+  if (characters.length !== starts.length || characters.length !== ends.length) return undefined
+  if (characters.some((character) => character.length === 0 || character.length > 16) || !ordered(starts, ends)) return undefined
+  return { characters, characterStartTimesSeconds: starts, characterEndTimesSeconds: ends }
+}
+
+function timedFrameOf(line: string): TimedFrame | undefined {
+  const parsed = decodedWith(TimedLine, jsonOf(line))
+  if (parsed === undefined || parsed.audio_base64.length === 0 || parsed.audio_base64.length % 4 !== 0 || !base64Text.test(parsed.audio_base64)) return undefined
+  if (parsed.alignment === undefined || parsed.alignment === null) return { audioBase64: parsed.audio_base64, alignment: null }
+  const alignment = alignmentOf(parsed.alignment)
+  return alignment === undefined ? undefined : { audioBase64: parsed.audio_base64, alignment }
+}
+
+function spansOf(spans: ReadonlyArray<{ readonly start: number; readonly end: number }>, text: (index: number) => string): ReadonlyArray<TimedSpan> | undefined {
+  const timed = spans.map((span, index) => ({ text: text(index).trim(), startMs: Math.round(span.start * 1000), endMs: Math.round(span.end * 1000), start: span.start, end: span.end }))
+  if (timed.some((span) => span.text.length === 0 || !Number.isFinite(span.start) || !Number.isFinite(span.end) || span.start < 0 || span.end < span.start)) return undefined
+  return timed.map(({ text: spoken, startMs, endMs }) => ({ text: spoken, startMs, endMs }))
+}
+
+function transcriptionOf(input: unknown): Transcription | undefined {
+  const parsed = decodedWith(ProviderTranscript, input)
+  if (parsed === undefined || !Number.isFinite(parsed.duration) || parsed.duration <= 0) return undefined
+  const words = parsed.words === undefined ? [] : spansOf(parsed.words, (index) => parsed.words?.[index]?.word ?? "")
+  const segments = parsed.segments === undefined ? [] : spansOf(parsed.segments, (index) => parsed.segments?.[index]?.text ?? "")
+  if (words === undefined || segments === undefined) return undefined
+  return {
+    transcript: parsed.text,
+    durationMs: Math.max(1, Math.round(parsed.duration * 1000)),
+    ...(segments.length === 0 ? {} : { segments }),
+    ...(words.length === 0 ? {} : { words })
+  }
+}
+
+function pcmOf(data: string): Uint8Array | undefined {
+  if (data.length === 0 || data.length > Math.ceil(maxProviderPcmBytes / 3) * 4 || !base64Text.test(data)) return undefined
+  const decoded = Base64.decode(data)
+  if (Result.isFailure(decoded)) return undefined
+  const pcm = decoded.success
+  return pcm.byteLength > 0 && pcm.byteLength <= maxProviderPcmBytes && pcm.byteLength % 2 === 0 ? pcm : undefined
+}
+
+function sttEdgeOf(chunk: string | Uint8Array): Decoded<SttEdge> {
+  if (typeof chunk !== "string") return { kind: "invalid" }
+  const message = decodedWith(SttMessage, jsonOf(chunk))
+  const kind = message === undefined ? undefined : sttKinds[message.type]
+  if (message === undefined || kind === undefined) return { kind: "invalid" }
+  if (spokenKinds.has(kind) && message.transcript === undefined) return { kind: "invalid" }
+  return { kind: "edge", edge: { kind, transcript: message.transcript ?? "" } }
+}
+
+function ttsEdgeOf(chunk: string | Uint8Array): Decoded<TtsEdge> {
+  if (typeof chunk !== "string") return { kind: "invalid" }
+  const message = decodedWith(TtsMessage, jsonOf(chunk))
+  if (message === undefined) return { kind: "invalid" }
+  if (message.type === "error") return { kind: "failed" }
+  const id = message.context_id
+  if (id === undefined) return { kind: "invalid" }
+  switch (message.type) {
+    case "chunk": {
+      const pcm = message.data === undefined ? undefined : pcmOf(message.data)
+      return pcm === undefined ? { kind: "invalid" } : { kind: "edge", edge: { kind: "audio", id, pcm } }
+    }
+    case "flush_done":
+      return { kind: "edge", edge: { kind: "flushed", id } }
+    case "done":
+      return { kind: "edge", edge: { kind: "completed", id } }
+    case "timestamps":
+      return { kind: "skip" }
+    default:
+      return { kind: "invalid" }
+  }
+}
+
+function synthesisBody(synthesis: Synthesis): Readonly<Record<string, unknown>> {
+  return {
+    model_id: synthesis.modelId,
+    transcript: synthesis.text,
+    voice: { mode: "id", id: synthesis.voiceId },
+    output_format: synthesis.format === "mp3"
+      ? { container: "mp3", sample_rate: 44_100, bit_rate: 128_000 }
+      : { container: "wav", encoding: "pcm_s16le", sample_rate: 44_100 },
+    speed: synthesis.speed,
+    apply_text_normalization: synthesis.applyTextNormalization,
+    ...(synthesis.previousText === undefined ? {} : { previous_text: synthesis.previousText }),
+    ...(synthesis.nextText === undefined ? {} : { next_text: synthesis.nextText })
+  }
+}
+
+module node {
+  /** @throws {unknown} */
+  export function recordingForm(audio: Uint8Array, mimeType: string, model: string, language: string | undefined): FormData {
+    const form = new FormData()
+    form.append("file", new Blob([new Uint8Array(audio)], { type: mimeType }), "audio")
+    form.append("model", model)
+    if (language !== undefined) form.append("language", language)
+    form.append("timestamp_granularities[]", "word")
+    return form
+  }
+}
+import { recordingForm } from node
+
+effect function released(response: HttpClientResponse.HttpClientResponse): void!! {
+  Stream.runHead(response.stream) catch () => undefined
+}
+
+effect function accepted(settings: SpeechSettings, request: HttpClientRequest.HttpClientRequest): HttpClientResponse.HttpClientResponse!(ProviderRefused | ProviderUnreachable)!SpeechContext {
+  const key = try orDie((try Deployment).secret(settings.apiKeyEnv))
+  const keyed = request.pipe(HttpClientRequest.setHeaders({ "x-api-key": key, "cartesia-version": restVersion }))
+  const response = Effect.provideService(HttpClient.execute(keyed), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new ProviderUnreachable() }
+  if (response.status >= 200 && response.status < 300) return response
+  try released(response)
+  const wait = retryAfter(response.headers["retry-after"])
+  throw new ProviderRefused(wait === undefined ? { status: response.status } : { status: response.status, retryAfter: wait })
+}
+
+effect function within<A, R>(budget: Millis, call: A!SpeechFailure!R): A!SpeechFailure!R {
+  return try timeoutOrElse(call, { duration: budget, orElse: () => fail(new ProviderTimedOut()) })
+}
+
+export effect function synthesize(settings: SpeechSettings, synthesis: Synthesis): SynthesizedAudio!SpeechFailure!SpeechContext {
+  return try within(synthesisBudget, effect {
+    const request = HttpClientRequest.post(`${settings.baseUrl}/tts/bytes`).pipe(HttpClientRequest.bodyText(JSON.stringify(synthesisBody(synthesis)), "application/json"))
+    const response = try accepted(settings, request)
+    const declared = (response.headers["content-type"] ?? "").toLowerCase()
+    const body = response.arrayBuffer catch effect () => { throw new ProviderUnreachable() }
+    if (body.byteLength === 0 || !declared.startsWith("audio/")) throw new ProviderInvalidResponse()
+    return { audio: new Uint8Array(body), contentType: synthesis.format === "mp3" ? "audio/mpeg" : "audio/wav" }
+  })
+}
+
+export effect function synthesizeTimed(settings: SpeechSettings, synthesis: Synthesis): ReadonlyArray<TimedFrame>!SpeechFailure!SpeechContext {
+  return try within(synthesisBudget, effect {
+    const request = HttpClientRequest.post(`${settings.baseUrl}/tts/timestamps`).pipe(HttpClientRequest.bodyText(JSON.stringify(synthesisBody(synthesis)), "application/json"))
+    const response = try accepted(settings, request)
+    const text = response.text catch effect () => { throw new ProviderUnreachable() }
+    const frames = text.split("\n").filter((line) => line.trim().length > 0).map(timedFrameOf)
+    const valid = frames.filter((frame): frame is TimedFrame => frame !== undefined)
+    if (valid.length === 0 || valid.length !== frames.length) throw new ProviderInvalidResponse()
+    return valid
+  })
+}
+
+export effect function prepareTranscription(settings: SpeechSettings, recording: Recording): (Transcription!SpeechFailure!SpeechContext)!ProviderUnreachable {
+  const form = try Effect.try({ try: () => recordingForm(recording.audio, recording.mimeType, batchSttModel, recording.languageCode === undefined ? undefined : (recording.languageCode.split("-")[0] ?? "").toLowerCase()), catch: () => new ProviderUnreachable() })
+  return within(transcriptionBudget, effect {
+    const request = HttpClientRequest.post(`${settings.baseUrl}/stt`).pipe(HttpClientRequest.bodyFormData(form))
+    const response = try accepted(settings, request)
+    const body = response.json catch effect () => { throw new ProviderInvalidResponse() }
+    const transcription = transcriptionOf(body)
+    if (transcription === undefined) throw new ProviderInvalidResponse()
+    return transcription
+  })
+}
+
+effect function speechSettings(): SpeechSettings!ProviderUnreachable!Deployment {
+  const settings = (try Deployment).settings.speech
+  if (settings === undefined) throw new ProviderUnreachable()
+  return settings
+}
+
+effect function pump<A>(reader: Socket.Reader, edges: Edges<A>, closed: Deferred.Deferred<boolean>, decode: (chunk: string | Uint8Array) => Decoded<A>): void!! {
+  const reading: void!(Socket.SocketError | SpeechFailure) = effect {
+    while (true) {
+      const chunks = try reader.pull
+      for (const chunk of chunks) {
+        const decoded = decode(chunk)
+        if (decoded.kind === "invalid") throw new ProviderInvalidResponse()
+        if (decoded.kind === "failed") throw new ProviderUnreachable()
+        if (decoded.kind === "edge") try Queue.offer(edges, decoded.edge)
+      }
+    }
+  }
+  reading catch effect (failure) => {
+    const clean = failure._tag === "SocketError" && failure.reason._tag === "SocketCloseError" && failure.reason.code === 1000
+    try Deferred.succeed(closed, clean)
+    if (clean) {
+      try Queue.end(edges)
+    } else {
+      try Queue.fail(edges, failure._tag === "SocketError" ? new ProviderUnreachable() : failure)
+    }
+  }
+}
+
+effect function connected<A>(url: string, version: string, decode: (chunk: string | Uint8Array) => Decoded<A>) {
+  const settings = try speechSettings()
+  const key = try orDie((try Deployment).secret(settings.apiKeyEnv))
+  const socket = try (try ProviderSockets).open(url, { "x-api-key": key, "cartesia-version": version })
+  const reader = socket.reader catch effect () => { throw new ProviderUnreachable() }
+  const writer = try socket.writer
+  const edges = try Queue.unbounded<A, SpeechFailure | Cause.Done>()
+  const closed = try Deferred.make<boolean>()
+  fork.scoped pump(reader, edges, closed, decode)
+  const write = effect (chunk: string | Uint8Array) => {
+    writer.write(chunk) catch effect () => { throw new ProviderUnreachable() }
+  }
+  return { settings, write, closed, edges: Stream.fromQueue(edges) }
+}
+
+export effect function openStt(): SttLink!SpeechFailure!(Deployment | Scope.Scope) {
+  const settings = try speechSettings()
+  const query = new URLSearchParams({
+    model: realtimeSttModel, encoding: "pcm_s16le", sample_rate: String(realtimeSampleRate), cartesia_version: sttVersion,
+    turn_start_threshold: "0.5", turn_eager_end_threshold: "0.3", turn_end_threshold: "0.1", turn_end_timeout_ms: "8000"
+  })
+  const link = try connected(`${settings.realtimeUrl}/stt/turns/websocket?${query.toString()}`, sttVersion, sttEdgeOf)
+  return {
+    send: (pcm: Uint8Array) => link.write(pcm),
+    drain: effect () => {
+      const sent = link.write(JSON.stringify({ type: "close" })) catch () => false
+      if (sent === false) return false
+      return try timeoutOrElse(Deferred.await(link.closed), { duration: drainBudget, orElse: () => succeed(false) })
+    },
+    edges: link.edges
+  }
+}
+
+export effect function openTts(): TtsLink!SpeechFailure!(Deployment | Scope.Scope) {
+  const settings = try speechSettings()
+  const link = try connected(`${settings.realtimeUrl}/tts/websocket`, ttsVersion, ttsEdgeOf)
+  const phrase = (id: string, text: string, continuation: boolean, flush: boolean) => link.write(JSON.stringify({
+    model_id: settings.tts.defaultModelId,
+    transcript: text,
+    voice: { mode: "id", id: settings.tts.defaultVoiceId },
+    language: "en",
+    context_id: id,
+    output_format: { container: "raw", encoding: "pcm_s16le", sample_rate: realtimeSampleRate },
+    continue: continuation,
+    flush
+  }))
+  return {
+    speak: (id: string, text: string, flush: boolean) => phrase(id, text, true, flush),
+    finish: (id: string) => phrase(id, "", false, false),
+    cancel: (id: string) => link.write(JSON.stringify({ context_id: id, cancel: true })),
+    edges: link.edges
+  }
+}

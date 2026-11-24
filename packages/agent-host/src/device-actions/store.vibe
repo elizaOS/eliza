@@ -1,0 +1,624 @@
+// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment retires every open offer, and nothing offered under it is served again"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "The claim commits the dispatch once, before the deadline"; spec/agent/deviceActions/index.md, "Only the exact binding decides an open offer before its deadline"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"
+import type { IDatabaseAdapter } from "@elizaos/core"
+import { apply, enrollmentKeyMatches, initial, machineOver, noOwner, replacesEnrollment, step, type DeviceRequest, type Rejected } from "../../gen/agent__deviceActions.effect.vibe"
+import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
+import type { DeviceView, RevisionRead, ViewProfile } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
+import { currentFiber, readFirst } from "../storage/transaction.vibe"
+
+export error DeviceStoreUnavailable { step: string; cause: unknown }
+export error EnrollmentKeyChanged {}
+export error StaleDeviceRow { table: "device_enrollment" | "device_requests"; id: string; revision: number }
+export error ProposalIdTaken { proposalId: string }
+
+module node {
+  import { AsyncLocalStorage } from "node:async_hooks"
+  import { randomUUID } from "node:crypto"
+  import { Schema } from "effect"
+  import { validateUuid, type IDatabaseAdapter, type UUID } from "@elizaos/core"
+  import { canClaim, canClaimCompletion, canDecide, canDeliverCompletion, canEndTurn, canExpire, canReceipt, canReconcile, exactBinding, noOwner, parseState, requestSettled, step, type CompletionHint, type DeviceRequest, type Event, type ReviewOutcome } from "../../gen/agent__deviceActions.ts"
+  import type { SessionOwner } from "../../gen/core__sessions.ts"
+  import { allCapabilities, canSetViewProfile, setViewProfile, type DeviceView, type Need, type RevisionRead, type ViewProfile } from "../../gen/agent__deviceActions__capabilities.ts"
+  import type { ReadBinding } from "../../gen/agent__deviceActions__operations.ts"
+  import { CalendarSource, DeviceReceiptSchema, readOperation, type DeviceOperationReceipt } from "@elizaos/agent"
+  import { sqlConnection, withinTransaction, type Sql } from "../storage/transaction.vibe"
+
+  export type EnrollmentEvent = Extract<Event, { type: "registerDevice" | "revokeEnrollment" }>
+  export type OfferEvent = Extract<Event, { type: "offer" }>
+  export type ProposalReviewScope = "workflow" | "agenda-and-workflow"
+
+  const WorkflowId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/))
+  const WorkflowDigest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+  const WorkflowAuthority = Schema.Struct({
+    kind: Schema.Literal("WorkflowBinding"), workflowId: WorkflowId, versionId: WorkflowId,
+    runId: WorkflowId, stepId: WorkflowId, specDigest: WorkflowDigest,
+  })
+  const Authority = Schema.Union([WorkflowAuthority, Schema.Struct({ kind: Schema.Literal("AgendaBinding"), ...CalendarSource.fields })])
+  type BindingAuthority = typeof Authority.Type
+  const decodeWorkflowAuthority = Schema.decodeUnknownOption(WorkflowAuthority, { onExcessProperty: "error" })
+
+  export function workflowAuthority(binding: unknown): typeof WorkflowAuthority.Type | undefined {
+    const found = decodeWorkflowAuthority(binding)
+    return found._tag === "Some" ? found.value : undefined
+  }
+
+  export interface RequestTerms {
+    readonly operation: unknown
+    readonly binding: Extract<ReadBinding, "NoBinding"> | BindingAuthority
+    readonly boundProfile: RevisionRead
+    readonly need: Need
+    readonly reviewed?: boolean
+  }
+
+  export interface RetainedRequestTerms extends Omit<RequestTerms, "binding"> {
+    readonly binding: ReadBinding | BindingAuthority
+  }
+
+  export interface ClaimBinding {
+    readonly modelAttemptId: number
+    readonly wireAttemptId: UUID
+  }
+
+  export interface RequestRow {
+    readonly proposalId: string
+    readonly revision: number
+    readonly state: DeviceRequest
+    readonly terms: RetainedRequestTerms
+    readonly claim: ClaimBinding | undefined
+    readonly providerReceipt: DeviceOperationReceipt | undefined
+    readonly result: unknown
+    readonly createdAt: number
+  }
+
+  export interface EnrollmentRow {
+    readonly revision: number
+    readonly state: DeviceRequest
+  }
+
+  export type Written = "written" | "stale"
+  export type Seeded = "seeded" | "taken" | "stale"
+  export type ProfileChange = { readonly kind: "set" | "stale"; readonly profile: ViewProfile }
+  export type Settled = "open" | "settled"
+
+  type Row = {
+    proposal_id: string; revision: number; state: unknown; operation: unknown; binding: string
+    binding_authority: unknown; wire_attempt_id: unknown; bound_profile: unknown; need: unknown; result: unknown; provider_receipt: unknown; created_at: number | string
+    reviewed: boolean
+  }
+
+  const views = {
+    HomeView: true, NotesView: true, RemindersView: true, BrowserView: true, CalendarView: true, FilesView: true,
+    PhotosView: true, CameraView: true, MapsView: true, InboxView: true, SettingsView: true, WorkflowsView: true,
+    PhoneView: true, MessagesView: true, ContactsView: true,
+  } satisfies Record<DeviceView, true>
+  const View = Schema.Literals(Object.keys(views) as DeviceView[])
+  const Capabilities = Schema.Array(Schema.Literals(allCapabilities))
+  const Terms = Schema.Struct({
+    binding: Schema.Literals(["NoBinding", "WorkflowBinding", "AgendaBinding"]),
+    boundProfile: Schema.Union([
+      Schema.Struct({ tag: Schema.Literal("NoRevisionRead") }),
+      Schema.Struct({ tag: Schema.Literal("ReadAt"), revision: Schema.String }),
+    ]),
+    need: Schema.Struct({ required: Capabilities, oneOf: Capabilities }),
+  })
+  const Views = Schema.Array(View)
+  const decodeTerms = Schema.decodeUnknownSync(Terms)
+  const decodeProviderReceipt = Schema.decodeUnknownSync(DeviceReceiptSchema, { onExcessProperty: "error" })
+  const decodeAuthority = Schema.decodeUnknownSync(Authority, { onExcessProperty: "error" })
+  const decodeViews = Schema.decodeUnknownSync(Views)
+  const columns = "proposal_id, revision, state, operation, binding, binding_authority, wire_attempt_id, bound_profile, need, result, provider_receipt, created_at, reviewed"
+
+  const within = <A>(adapter: IDatabaseAdapter, work: (sql: Sql) => Promise<A>): Promise<A> => withinTransaction(adapter, "device request store", work)
+
+  function parsed(what: string, raw: unknown): DeviceRequest {
+    const state = parseState(raw)
+    if (state === undefined) throw new TypeError(`The stored ${what} holds no device request state`)
+    return state
+  }
+
+  function request(row: Row): RequestRow {
+    const terms = decodeTerms({ binding: row.binding, boundProfile: row.bound_profile, need: row.need })
+    const binding = row.binding_authority === null ? terms.binding : decodeAuthority(row.binding_authority)
+    if (typeof binding !== "string" && binding.kind !== terms.binding) throw new TypeError("Stored device authority does not match its binding")
+    const state = parsed(`request ${row.proposal_id}`, row.state)
+    const claim = row.wire_attempt_id === null ? undefined : {
+      modelAttemptId: state.session.currentClaim, wireAttemptId: keptAttemptId(row.wire_attempt_id),
+    }
+    return {
+      proposalId: row.proposal_id, revision: row.revision, state, claim,
+      terms: {
+        operation: row.operation, binding, boundProfile: terms.boundProfile, need: { required: [...terms.need.required], oneOf: [...terms.need.oneOf] },
+        ...(row.reviewed ? { reviewed: true } : {}),
+      },
+      result: row.result, providerReceipt: row.provider_receipt === null ? undefined : decodeProviderReceipt(row.provider_receipt),
+      createdAt: Number(row.created_at),
+    }
+  }
+
+  function keptAttemptId(raw: unknown): UUID {
+    const id = validateUuid(raw)
+    if (id === null) throw new TypeError("The stored device attempt is invalid")
+    return id
+  }
+
+  async function enrollmentIn(sql: Sql, lock = false): Promise<EnrollmentRow | undefined> {
+    const found = await sql.query<{ revision: number; state: unknown }>(
+      `SELECT revision, state FROM device_enrollment WHERE singleton${lock ? " FOR UPDATE" : ""}`,
+    )
+    const row = found.rows[0]
+    return row === undefined ? undefined : { revision: row.revision, state: parsed("enrollment", row.state) }
+  }
+
+  export function readEnrollment(adapter: IDatabaseAdapter): Promise<EnrollmentRow | undefined> {
+    return within(adapter, enrollmentIn)
+  }
+
+  export function writeEnrollment(adapter: IDatabaseAdapter, read: number, next: DeviceRequest, event: EnrollmentEvent, by: SessionOwner): Promise<Written> {
+    return within(adapter, async (sql) => {
+      const state = JSON.stringify(next)
+      const kept = read === 0
+        ? await sql.query("INSERT INTO device_enrollment (singleton, revision, state) VALUES (true, 1, $1::jsonb) ON CONFLICT (singleton) DO NOTHING", [state])
+        : await sql.query("UPDATE device_enrollment SET revision = revision + 1, state = $2::jsonb WHERE singleton AND revision = $1", [read, state])
+      if (kept.affectedRows !== 1) return "stale"
+      const found = await sql.query<{ proposal_id: string; state: unknown }>("SELECT proposal_id, state FROM device_requests ORDER BY proposal_id FOR UPDATE")
+      for (const row of found.rows) {
+        const after = step(parsed(`request ${row.proposal_id}`, row.state), event, by)
+        await sql.query(
+          "UPDATE device_requests SET revision = revision + 1, state = $2::jsonb, settled = $3 WHERE proposal_id = $1",
+          [row.proposal_id, JSON.stringify(after), requestSettled(after.phase)],
+        )
+      }
+      return "written"
+    })
+  }
+
+  export function seedRequest(adapter: IDatabaseAdapter, enrollment: number, offered: DeviceRequest, terms: RequestTerms): Promise<Seeded> {
+    return within(adapter, async (sql) => {
+      const current = await enrollmentIn(sql, true)
+      if ((current?.revision ?? 0) !== enrollment) return "stale"
+      const authority = typeof terms.binding === "string" ? undefined : decodeAuthority(terms.binding)
+      const checked = decodeTerms({ ...terms, binding: authority?.kind ?? terms.binding })
+      if (authority?.kind === "AgendaBinding") {
+        const operation = readOperation(terms.operation)?.operation
+        if (operation?.type !== "read_calendar_range" || operation.calendarIds.length !== 1 ||
+          operation.calendarIds[0] !== authority.sourceId || offered.origin.inReplyTo === "") {
+          throw new TypeError("A standalone agenda offer needs the reviewed source and original message")
+        }
+      }
+      const inserted = await sql.query(
+        `INSERT INTO device_requests (${columns}, settled) VALUES ($1, 1, $2::jsonb, $3::jsonb, $4, $5::jsonb, NULL, $6::jsonb, $7::jsonb, NULL, NULL, $8, $9, $10)
+           ON CONFLICT (proposal_id) DO NOTHING`,
+        [offered.proposalId, JSON.stringify(offered), JSON.stringify(terms.operation), checked.binding,
+          authority === undefined ? null : JSON.stringify(authority),
+          JSON.stringify(checked.boundProfile), JSON.stringify(checked.need), offered.createdAt, terms.reviewed === true, requestSettled(offered.phase)],
+      )
+      return inserted.affectedRows === 1 ? "seeded" : "taken"
+    })
+  }
+
+  const reviewFilter = (scope?: ProposalReviewScope) =>
+    scope === "workflow" ? " AND binding = 'WorkflowBinding' AND binding_authority IS NOT NULL" : ""
+
+  async function requestIn(sql: Sql, proposalId: string, lock = false, scope?: ProposalReviewScope): Promise<RequestRow | undefined> {
+    const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE proposal_id = $1${reviewFilter(scope)}${lock ? " FOR UPDATE" : ""}`, [proposalId])
+    const row = found.rows[0]
+    return row === undefined ? undefined : request(row)
+  }
+
+  export function readRequest(adapter: IDatabaseAdapter, proposalId: string, scope?: ProposalReviewScope): Promise<RequestRow | undefined> {
+    return within(adapter, (sql) => requestIn(sql, proposalId, false, scope))
+  }
+
+  export type ReceiptEvent = Extract<Event, { type: "receipt" }>
+  export type RequestEvent = Exclude<Event, ReceiptEvent | Extract<Event, { type: "claim" | "decide" }>>
+  export interface RequestClaim {
+    readonly proposalId: string
+    readonly digest: string
+    readonly by: SessionOwner
+  }
+  export interface RequestDecision extends RequestClaim {
+    readonly approved: boolean
+  }
+  export type DecisionCommit =
+    | { readonly kind: "decided"; readonly state: DeviceRequest }
+    | { readonly kind: "missing" | "refused" }
+  export interface RequestReview extends RequestClaim {
+    readonly attemptId: string
+    readonly review: ReviewOutcome
+    readonly evidence?: { readonly providerReceipt: DeviceOperationReceipt; readonly result: unknown }
+  }
+  export type ReviewCommit =
+    | { readonly kind: "reviewed"; readonly state: DeviceRequest; readonly claim: ClaimBinding; readonly providerReceipt: DeviceOperationReceipt }
+    | { readonly kind: "missing" | "refused" | "attempt_refused" }
+  export type ClaimCommit =
+    | { readonly kind: "claimed"; readonly state: DeviceRequest; readonly binding: ClaimBinding }
+    | { readonly kind: "missing" | "refused" }
+
+  export type AdmittedRequestReceipt = {
+    readonly proposalId: string
+    readonly by: SessionOwner
+    readonly event: ReceiptEvent
+  } & (
+    | { readonly result: unknown; readonly providerReceipt?: never }
+    | { readonly providerReceipt: DeviceOperationReceipt; readonly result?: never }
+  )
+
+  export type ReceiptCommit =
+    | { readonly kind: "recorded"; readonly state: DeviceRequest }
+    | { readonly kind: "missing" | "refused" }
+
+  type ExtraEvidence =
+    | { readonly kind: "receipt"; readonly result: string | null; readonly providerReceipt: string | null }
+    | { readonly kind: "claim"; readonly value: UUID }
+
+  const evidenceColumns = { receipt: "result = $5::jsonb, provider_receipt = $6::jsonb", claim: "wire_attempt_id = $5::uuid" } as const
+
+  async function keepRequest(sql: Sql, proposalId: string, read: number, next: DeviceRequest, evidence?: ExtraEvidence): Promise<Written> {
+    const fields = evidence === undefined ? "" : `, ${evidenceColumns[evidence.kind]}`
+    const params = [proposalId, read, JSON.stringify(next), requestSettled(next.phase)]
+    const written = await sql.query(
+      `UPDATE device_requests SET revision = revision + 1, state = $3::jsonb, settled = $4${fields} WHERE proposal_id = $1 AND revision = $2`,
+      evidence === undefined ? params : evidence.kind === "claim"
+        ? [...params, evidence.value] : [...params, evidence.result, evidence.providerReceipt],
+    )
+    return written.affectedRows === 1 ? "written" : "stale"
+  }
+
+  export function writeRequest(adapter: IDatabaseAdapter, proposalId: string, read: number, next: DeviceRequest): Promise<Written> {
+    return within(adapter, (sql) => keepRequest(sql, proposalId, read, next))
+  }
+
+  function atWallTime(state: DeviceRequest): DeviceRequest {
+    const elapsed = Date.now() - state.session.now
+    return elapsed > 0 ? step(state, { type: "elapse", elapsed }, noOwner) : state
+  }
+
+  async function lockedRequest(sql: Sql, proposalId: string) {
+    const found = await sql.query<{ revision: number; state: unknown }>(
+      "SELECT revision, state FROM device_requests WHERE proposal_id = $1 FOR UPDATE", [proposalId],
+    )
+    return found.rows[0]
+  }
+
+  async function retireOffer(sql: Sql, proposalId: string, revision: number, state: DeviceRequest): Promise<void> {
+    if (!canEndTurn(state)) return
+    const next = step(state, canExpire(state) ? { type: "expire" } : { type: "endTurn" }, state.session.owner)
+    const written = await keepRequest(sql, proposalId, revision, next)
+    if (written !== "written") throw new Error(`The locked offer for ${proposalId} could not be retired`)
+  }
+
+  export function retireTurnRequest(adapter: IDatabaseAdapter, { proposalId, by, digest }: RequestClaim): Promise<void> {
+    return within(adapter, async (sql) => {
+      const row = await lockedRequest(sql, proposalId)
+      if (row === undefined) return
+      const current = atWallTime(parsed(`request ${proposalId}`, row.state))
+      if (exactBinding(current, by, digest)) await retireOffer(sql, proposalId, row.revision, current)
+    })
+  }
+
+  async function lockedUnsettled(sql: Sql, filter: string, params: unknown[] = []) {
+    const { rows } = await sql.query<{ proposal_id: string; revision: number; state: unknown }>(
+      `SELECT proposal_id, revision, state FROM device_requests WHERE NOT settled${filter} ORDER BY proposal_id FOR UPDATE`, params,
+    )
+    return rows.map((row) => ({ proposalId: row.proposal_id, revision: row.revision, state: atWallTime(parsed(`request ${row.proposal_id}`, row.state)) }))
+  }
+
+  export function retireAbandonedAgendaRows(adapter: IDatabaseAdapter): Promise<void> {
+    return within(adapter, async (sql) => {
+      for (const row of await lockedUnsettled(sql, " AND binding = 'AgendaBinding'")) await retireOffer(sql, row.proposalId, row.revision, row.state)
+    })
+  }
+
+  async function expireLapsedOffers(sql: Sql, filter: string, params?: unknown[]): Promise<void> {
+    for (const row of await lockedUnsettled(sql, filter, params)) {
+      if (canExpire(row.state)) await retireOffer(sql, row.proposalId, row.revision, row.state)
+    }
+  }
+
+  function withLocked<A>(adapter: IDatabaseAdapter, proposalId: string, work: (sql: Sql, row: NonNullable<Awaited<ReturnType<typeof lockedRequest>>>, current: DeviceRequest) => Promise<A>): Promise<A | { readonly kind: "missing" }> {
+    return within(adapter, async (sql) => {
+      const row = await lockedRequest(sql, proposalId)
+      if (row === undefined) return { kind: "missing" as const }
+      return await work(sql, row, atWallTime(parsed(`request ${proposalId}`, row.state)))
+    })
+  }
+
+  export function writeDecision(adapter: IDatabaseAdapter, { proposalId, digest, by, approved }: RequestDecision): Promise<DecisionCommit> {
+    return withLocked(adapter, proposalId, async (sql, row, current): Promise<DecisionCommit> => {
+      if (!canDecide(current, by, digest, approved)) return { kind: "refused" }
+      const decided = step(current, { type: "decide", digest, approved }, by)
+      if (decided.phase.tag !== current.phase.tag && await keepRequest(sql, proposalId, row.revision, decided) !== "written") {
+        throw new Error(`The locked decision for ${proposalId} could not be saved`)
+      }
+      return { kind: "decided", state: decided }
+    })
+  }
+
+  export function writeReview(adapter: IDatabaseAdapter, { proposalId, digest, by, attemptId, review, evidence }: RequestReview): Promise<ReviewCommit> {
+    return within(adapter, async (sql) => {
+      const row = await requestIn(sql, proposalId, true)
+      if (row === undefined) return { kind: "missing" }
+      const { claim, providerReceipt } = row
+      if (claim === undefined || claim.wireAttemptId !== attemptId) return { kind: "attempt_refused" }
+      const current = atWallTime(row.state)
+      if (providerReceipt === undefined || !canReconcile(current, by, digest, claim.modelAttemptId, review)) return { kind: "refused" }
+      const reviewed = step(current, { type: "reconcile", digest, attemptId: claim.modelAttemptId, review }, by)
+      if (reviewed.phase.tag === current.phase.tag) return { kind: "reviewed", state: reviewed, claim, providerReceipt }
+      const kept = evidence === undefined ? undefined : {
+        kind: "receipt" as const, result: JSON.stringify(evidence.result) ?? null, providerReceipt: JSON.stringify(evidence.providerReceipt) ?? null,
+      }
+      if (await keepRequest(sql, proposalId, row.revision, reviewed, kept) !== "written") {
+        throw new Error(`The locked review for ${proposalId} could not be saved`)
+      }
+      return { kind: "reviewed", state: reviewed, claim, providerReceipt: evidence?.providerReceipt ?? providerReceipt }
+    })
+  }
+
+  export function writeClaim(adapter: IDatabaseAdapter, { proposalId, digest, by }: RequestClaim): Promise<ClaimCommit> {
+    return withLocked(adapter, proposalId, async (sql, row, current): Promise<ClaimCommit> => {
+      if (!canClaim(current, by, digest)) return { kind: "refused" }
+      const claimed = step(current, { type: "claim", digest }, by)
+      const wireAttemptId = keptAttemptId(randomUUID())
+      const written = await keepRequest(sql, proposalId, row.revision, claimed, { kind: "claim", value: wireAttemptId })
+      if (written !== "written") throw new Error(`The locked claim for ${proposalId} could not be saved`)
+      return { kind: "claimed", state: claimed, binding: { modelAttemptId: claimed.session.currentClaim, wireAttemptId } }
+    })
+  }
+
+  export function writeReceipt(adapter: IDatabaseAdapter, { proposalId, by, event, providerReceipt, result }: AdmittedRequestReceipt): Promise<ReceiptCommit> {
+    return within(adapter, async (sql) => {
+      const resultJson = JSON.stringify(providerReceipt === undefined ? result : providerReceipt.result) ?? null
+      const receiptJson = JSON.stringify(providerReceipt) ?? null
+      const found = await sql.query<{ revision: number; state: unknown; same_evidence: boolean }>(
+        `SELECT revision, state,
+            (result IS NOT DISTINCT FROM $2::jsonb AND provider_receipt IS NOT DISTINCT FROM $3::jsonb) AS same_evidence
+         FROM device_requests WHERE proposal_id = $1 FOR UPDATE`,
+        [proposalId, resultJson, receiptJson],
+      )
+      const row = found.rows[0]
+      if (row === undefined) return { kind: "missing" }
+      const current = atWallTime(parsed(`request ${proposalId}`, row.state))
+      if (!canReceipt(current, by, event.digest, event.attemptId, event.reportedOutcome)) return { kind: "refused" }
+      if (current.phase.tag === "Receipted") return row.same_evidence ? { kind: "recorded", state: current } : { kind: "refused" }
+      const settled = step(current, event, by)
+      const written = await keepRequest(sql, proposalId, row.revision, settled, { kind: "receipt", result: resultJson, providerReceipt: receiptJson })
+      if (written !== "written") throw new Error(`The locked receipt for ${proposalId} could not be saved`)
+      return { kind: "recorded", state: settled }
+    })
+  }
+
+  export interface ReadCompletionPublication {
+    readonly adapter: IDatabaseAdapter
+    readonly messageId: UUID
+    readonly hint: CompletionHint
+    readonly by: SessionOwner
+  }
+
+  const completingRead = new AsyncLocalStorage<ReadCompletionPublication>()
+
+  export function withReadCompletionPublication<A>(publication: ReadCompletionPublication, publish: () => Promise<A>): Promise<A> {
+    return completingRead.run(publication, publish)
+  }
+
+  export function readCompletionPublication(adapter: IDatabaseAdapter, messageId: UUID): ReadCompletionPublication | undefined {
+    const publication = completingRead.getStore()
+    return publication?.adapter === adapter && publication.messageId === messageId ? publication : undefined
+  }
+
+  export async function commitReadCompletion(tx: IDatabaseAdapter, { hint, by }: ReadCompletionPublication): Promise<boolean> {
+    const sql = sqlConnection(await tx.getConnection(), "device request store")
+    const row = await lockedRequest(sql, hint.proposalId)
+    if (row === undefined) return false
+    const current = atWallTime(parsed(`request ${hint.proposalId}`, row.state))
+    if (!canClaimCompletion(current, by, hint) || !canDeliverCompletion(current)) return false
+    const delivered = step(current, { type: "deliverCompletion" }, by)
+    return await keepRequest(sql, hint.proposalId, row.revision, delivered) === "written"
+  }
+
+  export function requestRows(adapter: IDatabaseAdapter, which: Settled): Promise<RequestRow[]> {
+    return within(adapter, async (sql) => {
+      const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE settled = $1 ORDER BY created_at, proposal_id`, [which === "settled"])
+      return found.rows.map(request)
+    })
+  }
+
+  export function reviewRows(adapter: IDatabaseAdapter, by: SessionOwner, scope: ProposalReviewScope): Promise<RequestRow[]> {
+    return within(adapter, async (sql) => {
+      const filter = reviewFilter(scope)
+      await expireLapsedOffers(sql, filter)
+      const found = await sql.query<Row>(
+        `SELECT ${columns} FROM device_requests WHERE NOT settled${filter}
+         UNION ALL
+         (SELECT ${columns} FROM device_requests WHERE settled${filter} ORDER BY created_at DESC, proposal_id DESC LIMIT 50)
+         ORDER BY created_at DESC, proposal_id DESC`,
+      )
+      return found.rows.map(request).flatMap((row) => {
+        const state = atWallTime(row.state)
+        return exactBinding(state, by, state.digest) ? [{ ...row, state }] : []
+      })
+    })
+  }
+
+  export function conversationRows(adapter: IDatabaseAdapter, by: SessionOwner, conversationId: string, which: Settled, limit: number): Promise<RequestRow[]> {
+    return within(adapter, async (sql) => {
+      await expireLapsedOffers(sql, " AND state->'origin'->>'conversationId' = $1", [conversationId])
+      const found = await sql.query<Row>(
+        `SELECT ${columns} FROM device_requests WHERE state->'origin'->>'conversationId' = $1 AND settled = $2 ORDER BY created_at DESC, proposal_id DESC LIMIT $3`,
+        [conversationId, which === "settled", limit],
+      )
+      return found.rows.map(request).filter(({ state }) => exactBinding(state, by, state.digest))
+    })
+  }
+
+  async function profileIn(sql: Sql): Promise<ViewProfile> {
+    const found = await sql.query<{ revision: string; views: unknown }>("SELECT revision, views FROM device_view_profile WHERE singleton")
+    const row = found.rows[0]
+    return row === undefined ? { tag: "NoProfile" } : { tag: "Profile", revision: row.revision, views: [...decodeViews(row.views)] }
+  }
+
+  export function readViewProfile(adapter: IDatabaseAdapter): Promise<ViewProfile> {
+    return within(adapter, profileIn)
+  }
+
+  export function writeViewProfile(adapter: IDatabaseAdapter, read: RevisionRead, wanted: readonly DeviceView[]): Promise<ProfileChange> {
+    return within(adapter, async (sql) => {
+      const profile = await profileIn(sql)
+      const fresh = randomUUID()
+      if (!canSetViewProfile(profile, read, fresh)) return { kind: "stale", profile }
+      const next = setViewProfile(profile, [...decodeViews(wanted)], fresh)
+      if (next.tag === "Profile") {
+        await sql.query(
+          `INSERT INTO device_view_profile (singleton, revision, views) VALUES (true, $1, $2::jsonb)
+             ON CONFLICT (singleton) DO UPDATE SET revision = EXCLUDED.revision, views = EXCLUDED.views`,
+          [next.revision, JSON.stringify(next.views)],
+        )
+      }
+      return { kind: "set", profile: next }
+    })
+  }
+}
+import {
+  conversationRows, readEnrollment, readRequest, readViewProfile, requestRows, retireAbandonedAgendaRows, retireTurnRequest, reviewRows, seedRequest, writeClaim, writeDecision, writeEnrollment, writeReceipt, writeRequest, writeReview, writeViewProfile,
+  type AdmittedRequestReceipt, type ClaimBinding, type ClaimCommit, type DecisionCommit, type EnrollmentEvent, type EnrollmentRow, type OfferEvent, type ProfileChange, type ProposalReviewScope,
+  type ReceiptCommit, type RequestClaim, type RequestDecision, type RequestEvent, type RequestReview, type RequestRow, type RequestTerms, type RetainedRequestTerms, type ReviewCommit, type Settled,
+} from node
+export type { AdmittedRequestReceipt, ClaimCommit, DecisionCommit, EnrollmentEvent, OfferEvent, ProfileChange, ProposalReviewScope, ReceiptCommit, RequestClaim, RequestDecision, RequestEvent, RequestReview, RequestRow, RequestTerms, RetainedRequestTerms, ReviewCommit, Settled } from node
+export { commitReadCompletion, readCompletionPublication, withReadCompletionPublication, workflowAuthority } from node
+
+type RequestMachine = Effect.Success<ReturnType<typeof machineOver>>
+
+export interface DeviceRequestRecord {
+  readonly machine: {
+    readonly get: RequestMachine["get"]
+    readonly send: (event: RequestEvent, by: SessionOwner) => ReturnType<RequestMachine["send"]>
+  }
+  readonly result: unknown
+  readonly claim: ClaimBinding | undefined
+  readonly providerReceipt: RequestRow["providerReceipt"]
+  readonly proposalId: string
+  readonly terms: RetainedRequestTerms
+  readonly createdAt: number
+}
+
+effect function stored<A>(step: string, call: () => Promise<A>) {
+  return try tryPromise({ try: () => call(), catch: (cause) => new DeviceStoreUnavailable({ step, cause }) })
+}
+
+effect function caughtUp(state: DeviceRequest) {
+  const now = try Clock.currentTimeMillis
+  return now > state.session.now ? step(state, { type: "elapse", elapsed: now - state.session.now }, noOwner) : state
+}
+
+effect function currentEnrollment(adapter: IDatabaseAdapter): EnrollmentRow!DeviceStoreUnavailable {
+  const row = try stored("read the enrollment", () => readEnrollment(adapter))
+  return { revision: row?.revision ?? 0, state: try caughtUp(row?.state ?? initial) }
+}
+
+export effect function enrollment(adapter: IDatabaseAdapter): DeviceRequest!DeviceStoreUnavailable {
+  return (try currentEnrollment(adapter)).state
+}
+
+export type EnrollmentChange = EnrollmentEvent
+  | (Omit<Extract<EnrollmentEvent, { type: "registerDevice" }>, "type"> & { type: "replaceEnrollment" })
+  | { type: "revokeEnrolledKey"; keyHash: string }
+
+export effect function changeEnrollment(adapter: IDatabaseAdapter, change: EnrollmentChange, by: SessionOwner) {
+  const revoke = { type: "revokeEnrollment" } as const
+  const event: EnrollmentEvent = change.type === "replaceEnrollment" ? { ...change, type: "registerDevice" }
+    : change.type === "revokeEnrolledKey" ? revoke : change
+  uninterruptible {
+    const row = try currentEnrollment(adapter)
+    if (change.type === "revokeEnrolledKey" && !enrollmentKeyMatches(row.state, by, change.keyHash))
+      throw new EnrollmentKeyChanged()
+    const retiring = change.type === "replaceEnrollment" && replacesEnrollment(row.state, by, change.keyHash)
+    const previous = retiring ? step(row.state, revoke, by) : row.state
+    const next = try apply(previous, event, by)
+    const written = try stored("keep the enrollment", () => writeEnrollment(adapter, row.revision, next, retiring ? revoke : event, by))
+    if (written === "stale") try die(new StaleDeviceRow({ table: "device_enrollment", id: "enrollment", revision: row.revision }))
+    return next
+  }
+}
+
+export effect function requestSnapshot(adapter: IDatabaseAdapter, proposalId: string, scope?: ProposalReviewScope): (RequestRow | undefined)!DeviceStoreUnavailable {
+  const row = try stored("read a device request", () => readRequest(adapter, proposalId, scope))
+  return row === undefined ? undefined : { ...row, state: try caughtUp(row.state) }
+}
+
+export effect function openRequest(adapter: IDatabaseAdapter, proposalId: string): (DeviceRequestRecord | undefined)!DeviceStoreUnavailable {
+  const row = try stored("read a device request", () => readRequest(adapter, proposalId))
+  if (row === undefined) return undefined
+  const reads = new Map<number, number>()
+  const load = effect function (): DeviceRequest!DeviceStoreUnavailable {
+    const current = try stored("read a device request", () => readRequest(adapter, proposalId))
+    if (current === undefined) return try die(new Error(`The device request ${proposalId} is gone`))
+    reads.set(try currentFiber(), current.revision)
+    return try caughtUp(current.state)
+  }
+  const keep = effect function (next: DeviceRequest): void!! {
+    const read = try readFirst(reads, "device")
+    const written = try orDie(stored("keep a device request", () => writeRequest(adapter, proposalId, read, next)))
+    if (written === "stale") try die(new StaleDeviceRow({ table: "device_requests", id: proposalId, revision: read }))
+  }
+  const machine = try machineOver(load, keep)
+  return { proposalId, machine, result: row.result, claim: row.claim, providerReceipt: row.providerReceipt, terms: row.terms, createdAt: row.createdAt }
+}
+
+export effect function offerRequest(adapter: IDatabaseAdapter, offer: OfferEvent, by: SessionOwner, terms: RequestTerms): DeviceRequestRecord!(DeviceStoreUnavailable | Rejected | ProposalIdTaken) {
+  const enrolled = try currentEnrollment(adapter)
+  const offered = try apply(enrolled.state, offer, by)
+  const seeded = try stored("seed a device request", () => seedRequest(adapter, enrolled.revision, offered, terms))
+  if (seeded === "taken") throw new ProposalIdTaken({ proposalId: offer.proposalId })
+  if (seeded === "stale") return try offerRequest(adapter, offer, by, terms)
+  const record = try openRequest(adapter, offer.proposalId)
+  return record ?? try die(new Error(`The seeded device request ${offer.proposalId} is gone`))
+}
+
+export effect function retireAbandonedAgenda(adapter: IDatabaseAdapter): void!DeviceStoreUnavailable {
+  return try stored("retire Agenda offers from a prior Agent process", () => retireAbandonedAgendaRows(adapter))
+}
+
+export effect function retireRequest(adapter: IDatabaseAdapter, offer: RequestClaim): void!DeviceStoreUnavailable {
+  return try stored("retire the turn's device offer", () => retireTurnRequest(adapter, offer))
+}
+
+export effect function deviceReviewRows(adapter: IDatabaseAdapter, by: SessionOwner, scope: ProposalReviewScope): RequestRow[]!DeviceStoreUnavailable {
+  return try stored("list the device's proposals", () => reviewRows(adapter, by, scope))
+}
+
+export effect function recordRequestDecision(adapter: IDatabaseAdapter, decision: RequestDecision): DecisionCommit!DeviceStoreUnavailable {
+  return try stored("keep a device decision", () => writeDecision(adapter, decision))
+}
+
+export effect function recordRequestClaim(adapter: IDatabaseAdapter, claim: RequestClaim): ClaimCommit!DeviceStoreUnavailable {
+  return try stored("keep a device claim", () => writeClaim(adapter, claim))
+}
+
+export effect function recordRequestReview(adapter: IDatabaseAdapter, review: RequestReview): ReviewCommit!DeviceStoreUnavailable {
+  return try stored("keep a device review", () => writeReview(adapter, review))
+}
+
+export effect function recordRequestReceipt(adapter: IDatabaseAdapter, receipt: AdmittedRequestReceipt): ReceiptCommit!DeviceStoreUnavailable {
+  return try stored("keep a device receipt", () => writeReceipt(adapter, receipt))
+}
+
+export effect function listRequests(adapter: IDatabaseAdapter, which: Settled): RequestRow[]!DeviceStoreUnavailable {
+  const rows = try stored("list device requests", () => requestRows(adapter, which))
+  const listed: RequestRow[] = []
+  for (const row of rows) listed.push({ ...row, state: try caughtUp(row.state) })
+  return listed
+}
+
+export effect function conversationRequests(adapter: IDatabaseAdapter, by: SessionOwner, conversationId: string, which: Settled, limit: number): RequestRow[]!DeviceStoreUnavailable {
+  const rows = try stored("list the conversation's device requests", () => conversationRows(adapter, by, conversationId, which, limit))
+  if (which === "settled") return rows
+  const listed: RequestRow[] = []
+  for (const row of rows) listed.push({ ...row, state: try caughtUp(row.state) })
+  return listed
+}
+
+export effect function viewProfile(adapter: IDatabaseAdapter): ViewProfile!DeviceStoreUnavailable {
+  return try stored("read the view profile", () => readViewProfile(adapter))
+}
+
+export effect function changeViewProfile(adapter: IDatabaseAdapter, read: RevisionRead, views: readonly DeviceView[]): ProfileChange!DeviceStoreUnavailable {
+  return try stored("change the view profile", () => writeViewProfile(adapter, read, views))
+}

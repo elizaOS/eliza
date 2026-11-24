@@ -2,8 +2,8 @@
 import { Clock, Effect, Exit, Fiber } from "effect";
 import type { Driver, Options } from "../../gen/maps__requests.conformance.ts";
 import type { MapRequests } from "../../gen/maps__requests.ts";
-import { cloudMaps, type CloudMaps } from "../../src/client/cloud-provider.vibe";
-import type { MapsProvider } from "../../src/client/contracts.vibe";
+import { cloudMaps, type CloudMaps } from "@elizaos/plugin-maps-client";
+import type { MapsProvider } from "@elizaos/plugin-maps-client";
 import { cloudFailure, heldCloud, manualClock } from "../support/cloud.ts";
 import { until } from "../support/gates.ts";
 

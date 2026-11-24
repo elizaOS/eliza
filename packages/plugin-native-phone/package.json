@@ -3,24 +3,21 @@
   "version": "4.0.0-alpha.0",
   "private": true,
   "type": "module",
-  "description": "Phone app for Eliza \u2014 Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+  "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
-    "@elizaos/os": "workspace:*",
+    "@elizaos/os-bridges": "workspace:*",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "@repo/ui": "workspace:*",
-    "react": "catalog:"
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vibelang": "0.0.13",
-    "@types/react": "catalog:"
+    "vibelang": "0.0.13"
   },
   "exports": {
     ".": {
@@ -28,18 +25,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    },
-    "./bridge": {
-      "eliza-source": "./src/index.vibe",
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "default": "./dist/src/index.js"
-    },
-    "./ui": {
-      "eliza-source": "./src/components/PhonePanel.tsx",
-      "types": "./dist/src/components/PhonePanel.d.ts",
-      "import": "./dist/src/components/PhonePanel.js",
-      "default": "./dist/src/components/PhonePanel.js"
     }
   }
 }

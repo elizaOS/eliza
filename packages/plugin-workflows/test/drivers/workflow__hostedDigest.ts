@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import * as KeyValueStore from "effect/persistence/KeyValueStore";
 import type { Driver } from "../../gen/workflow__hostedDigest.conformance.ts";
 import type { Event } from "../../gen/workflow__hostedDigest.ts";
-import { digestInbox, type DigestInbox } from "../../src/digests/inbox.vibe";
+import { digestInbox, type DigestInbox } from "@elizaos/plugin-workflow-client";
 import { outcome } from "../support/service.ts";
 
 const inboxes = new Map<string, DigestInbox>();

@@ -1,0 +1,51 @@
+{
+  "origin": "journey \"Story: Keep no grant longer than it can be used\" / \"Cleanup ends a lapsed code or an unacknowledged grant, and closes an expired key, never a live one\"",
+  "seed": 1,
+  "trace": [
+    [
+      "device",
+      {
+        "type": "renew",
+        "fromKey": "g1",
+        "predecessor": {
+          "phase": {
+            "tag": "Expired"
+          },
+          "origin": {
+            "tag": "Connected"
+          },
+          "client": {
+            "tag": "BoundClient",
+            "clientId": "app.one",
+            "environment": "Staging",
+            "signInReturn": {
+              "origin": "https://www.staging.example.com",
+              "path": "/apps/conformance-1/sign-in"
+            }
+          },
+          "codeExpiresAt": 300000,
+          "credentialTtl": 86400000,
+          "credentialId": "k1",
+          "epoch": 0,
+          "now": 0
+        },
+        "leaseLive": true,
+        "credentialTtl": 86400000,
+        "credentialId": "k1",
+        "deviceEpoch": 0
+      }
+    ],
+    [
+      "device",
+      {
+        "type": "token",
+        "client": {
+          "tag": "ClientAdmitted"
+        },
+        "binding": "BindingMatches",
+        "credentialId": "k1",
+        "deviceEpoch": 0
+      }
+    ]
+  ]
+}

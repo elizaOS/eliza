@@ -5,19 +5,8 @@ import {
   approvalExpiry, attendeeNotice, eventVisible, invitationVerdict, readScope, slotChecked, sourceRead, writeRoute, writeSlot, type AttendeeNotice, type SourceRead,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
-import type { ManagedCalendarBroker } from "../feed/broker.vibe"
-import {
-  sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceHealth, type CalendarSourceKey, type CalendarSourceStatus, type CalendarSummary,
-} from "../model.vibe"
-import {
-  calendarMutationLedger, type CalendarLedgerUnavailable,
-  type CalendarAnswerScope, type CalendarInvitationResponse, type CalendarMutationOutcome, type CalendarMutationPayload, type CalendarMutationRequest,
-} from "../mutations/ledger.vibe"
+import { type ManagedCalendarBroker, sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceHealth, type CalendarSourceKey, type CalendarSourceStatus, type CalendarSummary, calendarMutationLedger, type CalendarLedgerUnavailable, type CalendarAnswerScope, type CalendarInvitationResponse, type CalendarMutationOutcome, type CalendarMutationPayload, type CalendarMutationRequest, PayloadRecord, type CalendarWriteScope, WriteScopeRecord, type CalendarRecurrence } from "@elizaos/plugin-calendar-client"
 import { invitationChangeOf, providerMutationPort, reviewDigest } from "../mutations/provider-port.vibe"
-import { PayloadRecord } from "../mutations/records.schema.vibe"
-import type { CalendarWriteScope } from "../series/document.vibe"
-import { WriteScopeRecord } from "../series/rows.schema.vibe"
-import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
 import { eventInWindow, eventVersion, hasOtherAttendees, ownerRole, residentCalendar, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
 import { blockingSpans } from "./free-time.vibe"
 import { lookupMatches } from "./lookup.vibe"

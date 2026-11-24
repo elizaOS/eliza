@@ -1,0 +1,292 @@
+// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/connection.md, "The callback returns connected only with the grant stored, denied when the owner refused at Google, and failed otherwise, and an unconsumed attempt never returns to the app"
+import { appReturnFit, callbackAnswerOf, initiateAdmitted, initiateRefusal, stateLifetime, type AppReturnFit, type CallbackKind, type Connection, type ConnectRequest, type Event } from "../../../gen/cloud__services__google__connection.effect.vibe"
+import { returnsAt, type ReturnUrl } from "../../../gen/cloud__nativeClients__registry.effect.vibe"
+import { Refused, refused } from "../../http/refusal.vibe"
+import { json, jsonBody, owner, type Route, type RouteContext, type Sweep } from "../../http/routes.vibe"
+import { parseReturn, readRegistry, returnText, servedEnvironment } from "../../native-clients/registry.vibe"
+import { connectedBrowserPage } from "../../native-clients/return-routes.vibe"
+import { capabilityEnabled, Deployment } from "@elizaos/cloud"
+import type { GoogleProfile } from "../../providers/google.vibe"
+import { sealTokens } from "../../providers/google.vibe"
+import { s256 } from "../../shared/credential-crypto.vibe"
+import { keyedDigest, newId, sameText, seal, secretText, tokenDigest, unseal } from "../../shared/sealing.vibe"
+import { loadRow, stepRow, type Columns } from "../../store/rows.vibe"
+import { Store, toText, type Tx } from "../../store/connection.vibe"
+import { atTime, capabilityKind, connectionColumns, connectionRows, googleCapabilities, knownScopes, prepareManagedGrant, scopesRequested, sideOf, storeGrant, type ManagedLanding, type Owner } from "./grant-access.vibe"
+import { redeemManagedCode, unlinked, type GoogleLinkFault } from "./managed-grants.vibe"
+
+const callbackPath = "/api/v1/oauth/google/callback"
+const noStore = { "cache-control": "no-store", "referrer-policy": "no-referrer" }
+const appStatePattern = /^[A-Za-z0-9_-]{43}$/
+const signedStatePattern = /^([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})\.([0-9a-f]{64})$/
+const connectBody = Schema.Struct({
+  side: Schema.optionalKey(Schema.String),
+  capabilities: Schema.Array(Schema.Literals(googleCapabilities)),
+  redirectUrl: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2048)))
+})
+
+type AppReturn =
+  | { readonly kind: "none" }
+  | { readonly kind: "malformed" }
+  | { readonly kind: "app"; readonly url: ReturnUrl; readonly state: string }
+
+type BrowserInput =
+  | { readonly kind: "error"; readonly callback: CallbackKind }
+  | { readonly kind: "code"; readonly code: string }
+
+interface Attempt {
+  readonly key: string
+  readonly owner: Owner
+  readonly target: AppReturn
+}
+
+type Consumed =
+  | { readonly kind: "refused" }
+  | { readonly kind: "settled"; readonly attempt: Attempt; readonly connection: Connection }
+  | { readonly kind: "exchange"; readonly attempt: Attempt; readonly verifier: string; readonly code: string }
+
+function parseAppReturn(raw: string | undefined): AppReturn {
+  if (raw === undefined) return { kind: "none" }
+  if (!raw.includes("?") || !URL.canParse(raw)) return { kind: "malformed" }
+  const url = new URL(raw)
+  const base = raw.slice(0, raw.indexOf("?"))
+  const target = parseReturn(base)
+  const state = url.searchParams.get("state") ?? ""
+  if (target === undefined || url.hash !== "" || url.searchParams.size !== 1 || !appStatePattern.test(state)) return { kind: "malformed" }
+  return { kind: "app", url: target, state }
+}
+
+effect function returnFit(tx: Tx, target: AppReturn): AppReturnFit!Refused!Deployment {
+  if (target.kind === "none") return "NoAppReturn"
+  if (target.kind === "malformed") return "MalformedReturnState"
+  const registry = try readRegistry(tx)
+  return appReturnFit(returnsAt(registry, try servedEnvironment(), target.url), true)
+}
+
+function appReturnText(target: AppReturn): string | null {
+  return target.kind === "app" ? `${returnText(target.url)}?${new URLSearchParams({ state: target.state })}` : null
+}
+
+effect function signature(key: string, nonce: string) {
+  return try keyedDigest(JSON.stringify(["managed-google-connect", (try Deployment).environment, key, nonce]))
+}
+
+effect function trustedState(raw: string) {
+  const matched = signedStatePattern.exec(raw)
+  if (matched === null) return undefined
+  const [, key = "", nonce = "", claimed = ""] = matched
+  return sameText(try signature(key, nonce), claimed) ? { key, digest: tokenDigest(raw) } : undefined
+}
+
+effect function step(tx: Tx, key: string, at: number, event: Event, columns: Columns = {}) {
+  return (try stepRow(tx, connectionRows, key, { at, event }, (state) => ({
+    ...connectionColumns(columns)(state),
+    ...(state.status === "Pending" ? { expires_at: state.stateExpiresAt } : {})
+  }))).state
+}
+
+effect function googleForConnect() {
+  const { settings } = try Deployment
+  return capabilityEnabled(settings, "managedGoogle") ? settings.google : undefined
+}
+
+effect function callbackUrl() {
+  return `${(try Deployment).settings.api}${callbackPath}`
+}
+
+function authorizeUrl(google: GoogleProfile, callback: string, state: string, verifier: string, scopes: ReadonlyArray<string>) {
+  return `${google.accountsUrl}?${new URLSearchParams({
+    client_id: google.clientId, redirect_uri: callback, response_type: "code", state,
+    code_challenge: s256(verifier), code_challenge_method: "S256", scope: scopes.join(" "),
+    access_type: "offline", include_granted_scopes: "false", prompt: "consent select_account"
+  })}`
+}
+
+effect function init(context: RouteContext) {
+  const caller = owner(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const body = try jsonBody(context, connectBody)
+  const target = parseAppReturn(body.redirectUrl)
+  const google = try googleForConnect()
+  const store = try Store
+  const capabilities = body.capabilities.map(capabilityKind)
+  const key = newId()
+  const nonce = secretText("", 32, "base64url")
+  const signed = `${key}.${nonce}.${try signature(key, nonce)}`
+  const verifier = secretText("", 48, "base64url")
+  const keptVerifier = try seal("provider-secret", verifier)
+  const at = context.now
+  try store.transaction(effect (tx: Tx) => {
+    const request: ConnectRequest = { side: sideOf(body.side), capabilities, appReturn: try returnFit(tx, target) }
+    if (!initiateAdmitted(google !== undefined, request)) throw new Refused({ refusal: initiateRefusal(google !== undefined, request) })
+    const opened = try step(tx, key, at, { type: "begin", supported: true, configured: true, request }, { organization_id: caller.organizationId, user_id: caller.userId })
+    try tx.query(
+      "INSERT INTO google_connect_states (state_digest, organization_id, user_id, capabilities, redirect_url, verifier, expires_at) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)",
+      [tokenDigest(signed), caller.organizationId, caller.userId, JSON.stringify(body.capabilities), appReturnText(target), keptVerifier, opened.stateExpiresAt]
+    )
+    try step(tx, key, at, { type: "createResult", success: true })
+  })
+  if (google === undefined) throw refused("ProviderUnavailable", "GoogleNotConfigured")
+  const authUrl = authorizeUrl(google, try callbackUrl(), signed, verifier, scopesRequested(capabilities))
+  try store.transaction(effect (tx: Tx) => {
+    try step(tx, key, at, { type: "startProviderResult", success: true })
+    try step(tx, key, at, { type: "writeStart", write: "WriteAcknowledged" })
+  })
+  return json({ authUrl, ...(target.kind === "app" ? { appReturn: 2 } : {}) })
+}
+
+function googleInput(query: URLSearchParams): BrowserInput {
+  const codes = query.getAll("code")
+  const errors = query.getAll("error")
+  const code = codes[0] ?? ""
+  if (codes.length === 1 && errors.length === 0 && code.length > 0 && code.length <= 2048) return { kind: "code", code }
+  return { kind: "error", callback: codes.length === 0 && errors.length === 1 && errors[0] === "access_denied" ? "DeniedCallback" : "IncompleteCallback" }
+}
+
+effect function removePending(tx: Tx, key: string) {
+  try tx.query("DELETE FROM google_connections WHERE key = $1 AND status = 'Pending'", [key])
+}
+
+effect function finishFailure(tx: Tx, key: string, at: number) {
+  const state = try step(tx, key, at, { type: "writeFailure", write: "WriteAcknowledged" })
+  try removePending(tx, key)
+  return state
+}
+
+effect function consume(tx: Tx, key: string, digest: string, query: URLSearchParams, at: number): Consumed!({ readonly _tag: string })!Deployment {
+  const row = (try tx.query(
+    `SELECT s.organization_id, s.user_id, s.redirect_url, s.verifier, s.consumed_at
+     FROM google_connect_states s JOIN google_connections c ON c.key = $2 AND c.organization_id = s.organization_id AND c.user_id = s.user_id
+     WHERE s.state_digest = $1 FOR UPDATE OF s`, [digest, key]
+  ))[0]
+  if (row === undefined || row.consumed_at !== null) return { kind: "refused" }
+  const identity = { organizationId: toText(row.organization_id) ?? "", userId: toText(row.user_id) ?? "" }
+  const pending = atTime((try loadRow(tx, connectionRows, key)).state, at)
+  if (pending.flow.phase !== "AwaitingCallback") return { kind: "refused" }
+  const parsed = parseAppReturn(toText(row.redirect_url))
+  const fit = try returnFit(tx, parsed)
+  const target = fit === "NoAppReturn" || fit === "RegisteredConnectReturn" ? parsed : { kind: "malformed" } as const
+  const attempt: Attempt = { key, owner: identity, target }
+  const input = target.kind === "malformed" ? { kind: "error", callback: "IncompleteCallback" } as const : googleInput(query)
+  const ciphertext = toText(row.verifier) ?? ""
+  const verifier = unseal("provider-secret", ciphertext) catch () => undefined
+  try step(tx, key, at, { type: "beginCallback", verifierPresent: verifier !== undefined, verifierRequired: true })
+  const after = try step(tx, key, at, { type: "consume", pendingAndUnexpired: pending.now < pending.stateExpiresAt,
+    inputError: input.kind !== "code", providerInstalled: true, callback: input.kind === "code" ? "CodeCallback" : input.callback })
+  try tx.query("UPDATE google_connect_states SET consumed_at = $2, verifier = '' WHERE state_digest = $1", [digest, at])
+  if (after.flow.phase === "ProviderPending" && input.kind === "code" && verifier !== undefined) return { kind: "exchange", attempt, verifier, code: input.code }
+  const connection = after.flow.phase === "FailureWritePending" ? try finishFailure(tx, key, at) : after
+  if (after.flow.phase !== "FailureWritePending") try removePending(tx, key)
+  return { kind: "settled", attempt, connection }
+}
+
+effect function exchange(attempt: Attempt, code: string, verifier: string) {
+  const google = try googleForConnect()
+  if (google === undefined) return unlinked("google_not_configured")
+  return redeemManagedCode(google, { kind: "browser", code, verifier, redirect: try callbackUrl() }) catch effect (failure) => {
+    try annotateLogs(logWarning("Managed Google browser exchange failed"), { attemptId: attempt.key, failure: failure._tag })
+    return unlinked("google_unavailable")
+  }
+}
+
+effect function recordProviderFailure(attempt: Attempt, code: GoogleLinkFault) {
+  try annotateLogs(logWarning("Google could not complete the managed connection"), { attemptId: attempt.key, failure: code })
+  const at = try Clock.currentTimeMillis
+  const store = try Store
+  return try store.transaction(effect (tx: Tx) => {
+    try step(tx, attempt.key, at, { type: "providerResult", success: false, hasAccount: true, subject: "", granted: [], lifetime: 0, refreshable: false })
+    return try finishFailure(tx, attempt.key, at)
+  })
+}
+
+effect function keepConnection(tx: Tx, attempt: Attempt, landing: ManagedLanding) {
+  const { grant, subjectHeld } = try prepareManagedGrant(tx, landing, attempt.key)
+  if (subjectHeld) {
+    try storeGrant(tx, grant)
+    try step(tx, attempt.key, landing.now, { type: "accountResult", success: true, subjectHeld: true })
+  } else {
+    const tokens = try sealTokens(grant.tokens)
+    try step(tx, attempt.key, landing.now, { type: "accountResult", success: true, subjectHeld: false }, {
+      subject: grant.subject, email: grant.email, granted_scopes: JSON.stringify(grant.grantedScopes), tokens, linked_at: landing.now
+    })
+  }
+  return grant.connectionId
+}
+
+effect function storeConnected(attempt: Attempt, landing: Omit<ManagedLanding, "owner">) {
+  const store = try Store
+  const { key } = attempt
+  const { subject, grantedScopes, tokens, now } = landing
+  try store.transaction((tx) => step(tx, key, now, {
+    type: "providerResult", success: true, hasAccount: true, subject, granted: knownScopes(grantedScopes),
+    lifetime: tokens.expiresAt - now, refreshable: tokens.refreshToken !== ""
+  }))
+  const retained = store.transaction((tx) => keepConnection(tx, attempt, { ...landing, owner: attempt.owner })) catch effect (failure) => {
+    try annotateLogs(logWarning("Managed Google grant could not be stored"), { attemptId: key, failure: failure._tag })
+    return undefined
+  }
+  if (retained === undefined) {
+    const connection = try store.transaction(effect (tx: Tx) => {
+      try step(tx, key, now, { type: "accountResult", success: false, subjectHeld: false })
+      try step(tx, key, now, { type: "compensate", supported: false, success: true })
+      return try finishFailure(tx, key, now)
+    })
+    return { connection, connectionId: undefined }
+  }
+  const connection = try store.transaction(effect (tx: Tx) => {
+    const completed = try step(tx, key, now, { type: "writeSuccess", write: "WriteAcknowledged", selectedStatus: "CompletedState" })
+    try removePending(tx, key)
+    return completed
+  })
+  return { connection, connectionId: retained }
+}
+
+function failedPage(denied = false) {
+  return HttpServerResponse.text(denied ? "Google connection declined." : "Google connection failed. Start again from Cloud.", { status: 400, headers: noStore })
+}
+
+effect function resultPage(attempt: Attempt, connection: Connection, connectionId?: string) {
+  const answer = callbackAnswerOf(connection)
+  if (answer.tag !== "ReturnResult" || attempt.target.kind === "malformed") return failedPage()
+  const result = answer.result === "Connected" ? "connected" : answer.result === "Denied" ? "denied" : "failed"
+  if (result === "connected" && connectionId === undefined) return failedPage()
+  if (attempt.target.kind !== "app") return result === "connected" ? try connectedBrowserPage() : failedPage(result === "denied")
+  const target = attempt.target
+  const store = try Store
+  if ((try store.transaction((tx) => returnFit(tx, target))) !== "RegisteredConnectReturn") return failedPage()
+  const fields = { state: target.state, result, ...(result === "connected" && connectionId !== undefined ? { connectionId } : {}) }
+  return HttpServerResponse.redirect(`${returnText(target.url)}#${new URLSearchParams(fields)}`, { status: 302, headers: noStore })
+}
+
+effect function callback(context: RouteContext) {
+  const states = context.query.getAll("state")
+  if (states.length !== 1) return failedPage()
+  const valid = try trustedState(states[0] ?? "")
+  if (valid === undefined) return failedPage()
+  const store = try Store
+  const used = try store.transaction((tx) => consume(tx, valid.key, valid.digest, context.query, context.now))
+  if (used.kind === "refused") return failedPage()
+  if (used.kind === "settled") return try resultPage(used.attempt, used.connection)
+  const redeemed = try exchange(used.attempt, used.code, used.verifier)
+  if (!redeemed.connected) return try resultPage(used.attempt, try recordProviderFailure(used.attempt, redeemed.code))
+  const { connection, connectionId } = try storeConnected(used.attempt, redeemed.landing)
+  return try resultPage(used.attempt, connection, connectionId)
+}
+
+effect function sweepAttempts() {
+  const store = try Store
+  const at = try Clock.currentTimeMillis
+  store.transaction(effect (tx: Tx) => {
+    try tx.query("DELETE FROM google_connect_states WHERE expires_at <= $1", [at])
+    try tx.query("DELETE FROM google_connections WHERE status = 'Pending' AND expires_at > 0 AND expires_at <= $1", [at - stateLifetime])
+  }) catch effect (failure) => {
+    try annotateLogs(logWarning("Managed Google attempts could not be cleared"), { failure: failure._tag })
+  }
+}
+
+export const browserConnectRoutes: ReadonlyArray<Route> = [
+  { method: "POST", path: "/api/v1/eliza/google/connect/initiate", auth: "SignedSession", maxBodyBytes: 16 * 1024, handler: init },
+  { method: "GET", path: callbackPath, auth: "Public", handler: callback }
+]
+
+export const browserConnectSweep: Sweep = { name: "google-connect-attempts", everyMs: stateLifetime, run: sweepAttempts() }

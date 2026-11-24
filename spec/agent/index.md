@@ -1,22 +1,23 @@
 # On-device agent
 
-The agent package runs one owner's agent on the owner's device: one Node
+The agent packages run one owner's agent on the owner's device: one Node
 process, started by the device host from a [launch](./host/launch.md), with
 one PGlite store, one bound model backend and a local API reached over a
-private Unix socket or loopback HTTP. It also ships the libraries a screen
-uses to talk to that agent (`@elizaos/agent/client`, `@elizaos/agent/voice`),
-the launch decoders (`@elizaos/agent/launch`), the route gate
-(`@elizaos/agent/routes`), the bundle builder
-(`@elizaos/agent/bundle`), the process entry a bundle starts
-(`@elizaos/agent/cli`) and the browser-safe device-operation decoders
-(`@elizaos/agent/operations`, also served as `@elizaos/agent/device-actions`). The device-action routes (enrollment, proposal
+private Unix socket or loopback HTTP. They also ship the libraries a screen
+uses to talk to that agent. Each package exports its code from one root
+entry. `@elizaos/agent` is the browser-safe half: the client and voice
+libraries, the launch decoders, the route gate, the turn context and the
+device-operation decoders. `@elizaos/agent-host` is the Node half: the
+process, its storage and model binding, the modules below, the bundle builder
+and the process entry a bundle starts. The host imports the browser-safe
+half, never the reverse. The device-action routes (enrollment, proposal
 review and read completion) are always served and are not a module a load
 list names. Optional modules (approvals, notifications, views, the device
 proposal action, reply draft, triggers, scheduled tasks, interactive tasks and
 the page command channel)
 load only when the launch's [plugin plan](./plugins/profile.md) names them.
 
-The package does not own the kernel: identity, model dispatch,
+The packages do not own the kernel: identity, model dispatch,
 authorization, sessions, scheduling and receipts are [core](../core/index.md)'s.
 The device side (agent service, native bridge, keystore, native audio,
 executors and review screens) is os's, and os imports agent specs; no agent

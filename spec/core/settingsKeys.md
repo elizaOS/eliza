@@ -106,6 +106,17 @@ recognized envelope preserves it, so encryption never wraps ciphertext twice.
 Non-envelopes remain plaintext on reading. Authentication failure carries
 `SETTING_DECRYPTION_FAILED` and its original cause.
 
+The AES operations run on the host's Node `crypto` module: core finds it on
+a Node host, and `@elizaos/core-node` installs it when it loads. A host with
+neither, such as a browser, refuses to encrypt or decrypt with
+`SecretCipherUnavailableError` and never substitutes another implementation,
+so a refused read fails as any other failed decryption does. The cipher
+accepts only a 32-byte key, a 12-byte GCM IV with a 16-byte tag, and a
+16-byte CBC IV, and refuses any other length before the host's cipher runs,
+because some hosts accept truncated GCM tags. The key
+derivation's SHA-256 is the audited `@noble/hashes` implementation, which
+gives the same digest on every host.
+
 ```quint
 type EnvelopeKind = Plaintext | LegacyCbc | AuthenticatedGcm
 type DecryptionResult = OriginalText | DecryptedText | SettingDecryptionFailed

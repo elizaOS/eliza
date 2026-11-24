@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 // spec/cloud/client.md, "Story: Use the cloud from the device as configured"
 import { assert, describe, expect, it } from "vitest"
-import { createCloudClient } from "../src/client/index.vibe"
+import { createCloudClient } from "../src/index.vibe"
 
 const sources: Readonly<Record<string, string>> = import.meta.glob(["../src/**/*.{vibe,ts}", "../gen/*.{vibe,ts}"], { query: "?raw", import: "default", eager: true })
 
@@ -35,7 +35,7 @@ function reachable(entry: string): { readonly files: ReadonlyArray<string>; read
 
 describe("Cloud client in Chromium", () => {
   it("Reads the held credential for each request (spec/cloud/client.md, \"Every call reads the credential when it is sent\")", async () => {
-    const graph = reachable("../src/client/index.vibe")
+    const graph = reachable("../src/index.vibe")
     const missing = graph.files.filter((file) => sources[file] === undefined)
     const serverFiles = graph.files.filter((file) => /^\.\.\/src\/(http|store)\//.test(file))
     const forbidden = graph.packages.filter((name) => name.startsWith("node:") || name.startsWith("@elizaos/") || !/^(effect|vibelang-runtime)(\/|$)/.test(name))

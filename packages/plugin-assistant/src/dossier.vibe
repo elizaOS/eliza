@@ -1,6 +1,6 @@
 // spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/scheduledDossiers.md, "A change of the dossier's control starts a new generation and drops any admission"; spec/assistant/scheduledDossiers.md, "Only the owner's own foreground or unlock activity is admitted, once per owner day"; spec/assistant/scheduledDossiers.md, "The dossier fires automatically only on the day of a current admission, and consumes it"
 import { createReminderPresentation, type IAgentRuntime } from "@elizaos/core"
-import type { AgentPlugin } from "@elizaos/agent"
+import type { AgentPlugin } from "@elizaos/agent-host"
 import { Machine, canAdmitActivity, canFireDossier, canSetDossierControl, dayMinutes, stored, type ActivityKind, type DossierControl } from "../gen/assistant__scheduledDossiers.effect.vibe"
 import { collectFacts } from "./checkin.vibe"
 import { Facts, Model, Presenter, onAgent } from "./host.vibe"

@@ -1,6 +1,7 @@
 // spec/discord/index.md, "Account DM and guild rules decide admission before an agent turn"; spec/discord/index.md, "Every accepted Discord event keeps the captured account and channel"; spec/discord/index.md, "A stale response is tagged, suppressed, or left alone by its policy"; spec/discord/index.md, "Each Discord reply part is stored once even when its send is repeated"
 import { Client, Events, GatewayIntentBits, Partials, type AttachmentPayload, type Message, type SendableChannels } from "discord.js"
-import { ChannelType, Service, checkPairingAllowed, chunkText, createUniqueUuid, fetchRemoteMedia, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
+import { ChannelType, Service, checkPairingAllowed, chunkText, createUniqueUuid, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
+import { fetchRemoteMedia } from "@elizaos/core-node"
 import { initial, machineOver, discordStalenessDecision, type DiscordPolicy } from "../gen/discord.effect.vibe"
 
 module node {
