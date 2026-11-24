@@ -430,7 +430,9 @@ interface TargetAsk {
 type Lookup =
   | { readonly kind: "found"; readonly found: CalendarFound }
   | { readonly kind: "ambiguous"; readonly matches: readonly CalendarEvent[]; readonly offDay: boolean }
-  | { readonly kind: "unread" | "missing" | "badRange" }
+  | { readonly kind: "unread" }
+  | { readonly kind: "missing" }
+  | { readonly kind: "badRange" }
 
 effect function target(host: CalendarHost, asked: TargetAsk): Lookup!! {
   const { parameters, now, zone } = asked
