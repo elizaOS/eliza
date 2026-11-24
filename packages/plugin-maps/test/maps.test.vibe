@@ -503,9 +503,12 @@ layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Map
         route: answer.actionResults[0]?.data.card?.kind ?? recognizedMapsCards(answer.text)[0]?.card.kind,
         named: answer.text.includes("Coit Tower"),
         falseFailure: /did not start|did not complete|MAPS_SELECTION_HANDLE/iu.test(answer.text),
+        cardShown: recognizedMapsCards(answer.text).map(({ card }) => card.kind),
+        modelWords: [withoutMapsCards(answer.text).trim(), answer.text.includes("Open them in your maps app")],
       }, {
         sawSelection: true, priorPlace: true, coached: true, lookupsOfHandle: 0, searches: [{ query: "Coit Tower" }, { query: "Coit Tower", limit: 5 }],
         actions: ["MAPS_NAVIGATION_START"], route: "handoff", named: true, falseFailure: false,
+        cardShown: ["handoff"], modelWords: ["Here are directions to Coit Tower.", false],
       })
     })
   })
