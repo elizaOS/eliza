@@ -45,7 +45,7 @@ import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
 import { callCloud, callDeclaring, openCloud } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
-import { recordingBytes, recordingForm } from "./support/recording.ts"
+import { oneSecondWav, recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
 import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
 import { googleMapsFake, tilePng } from "./support/maps-fake.ts"
@@ -1340,7 +1340,18 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     const heard = try stt({ languageCode: "en-US", provider: "speech" })
     const otherProvider = try stt({ provider: "elsewhere" })
     const otherLanguage = try stt({ languageCode: "fr" })
+    const mislabeled = try cloud.call("/api/v1/voice/stt", { form: try Effect.try(() => recordingForm({}, "audio/mpeg")), headers: caller.headers })
+    const incomplete = try cloud.call("/api/v1/voice/stt", {
+      form: try Effect.try(() => recordingForm({}, "audio/wav", oneSecondWav().slice(0, 12))), headers: caller.headers,
+    })
     const tooLarge = try promise(() => callDeclaring(cloud.url, "/api/v1/voice/stt", 25 * 1024 * 1024 + 1, { "content-type": "multipart/form-data; boundary=x" }))
+    const sentHeard = speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length])
+
+    const chosenId = { ...caller.headers, "x-request-id": "client-chosen-0001" }
+    const paidWords = try cloud.call("/api/v1/voice/tts", { json: { text: "Paid words" }, headers: chosenId })
+    const otherWordsSameId = try cloud.call("/api/v1/voice/tts", { json: { text: "Free words" }, headers: chosenId })
+    const heardSameId = try cloud.call("/api/v1/voice/stt", { form: try Effect.try(() => recordingForm({})), headers: chosenId })
+    const heardAgainSameId = try cloud.call("/api/v1/voice/stt", { form: try Effect.try(() => recordingForm({})), headers: chosenId })
 
     const usage = try sql(cloud, "SELECT service, quote, charged, outcome FROM usage_records WHERE organization_id = $1 ORDER BY settled_at, hold_key", [caller.organizationId])
     try check(() => assert.deepStrictEqual(
@@ -1356,10 +1367,13 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         down: [down.status, (down.body as { readonly error: string }).error, down.headers["retry-after"]],
         keyed: [firstKeyed.status, retriedKeyed.status, retriedKeyed.body === firstKeyed.body, otherWords.status, refusedKeyed.status, retriedRefusal.status, (retriedRefusal.body as { readonly error: string }).error, malformedKey.status, (malformedKey.body as { readonly error: string }).error, synthesizedWithKeys],
         heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
-        sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
+        sentHeard,
         otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
         otherLanguage: [otherLanguage.status, (otherLanguage.body as { readonly error: string }).error],
+        mislabeled: [mislabeled.status, (mislabeled.body as { readonly error: string }).error],
+        incomplete: [incomplete.status, (incomplete.body as { readonly error: string }).error],
         tooLarge: [tooLarge.status, (tooLarge.body as { readonly error: string }).error],
+        chosenId: [paidWords.status, paidWords.headers["x-eliza-tts-speed"], otherWordsSameId.status, heardSameId.status, heardAgainSameId.status, speech.synthesized.at(-1)?.body.transcript],
         usage: usage.map((row) => [row.service, Number(row.quote), Number(row.charged), row.outcome])
       },
       {
@@ -1384,7 +1398,10 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
         otherProvider: [400, "invalid_request"],
         otherLanguage: [400, "invalid_request"],
+        mislabeled: [400, "invalid_request"],
+        incomplete: [400, "invalid_request"],
         tooLarge: [413, "content_too_large"],
+        chosenId: [200, undefined, 200, 200, 200, "Free words"],
         usage: [
           ["speech", 396, 396, "known"],
           ["speech", 216, 216, "known"],
@@ -1394,6 +1411,10 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
           ["speech", 504, 504, "known"],
           ["speech", 504, 504, "known"],
           ["speech", 468, 0, "known"],
+          ["speech", 120, 360, "known"],
+          ["speech", 360, 360, "known"],
+          ["speech", 360, 360, "known"],
+          ["speech", 120, 360, "known"],
           ["speech", 120, 360, "known"]
         ]
       }
@@ -1464,7 +1485,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const shown = (seen: ReadonlyArray<Received>) => seen.map((received) => received.kind === "text" ? received.frame : received.kind === "binary" ? { audio: received.bytes.length, head: Array.from(received.bytes.subarray(0, 9)) } : { close: received.code })
     try check(() => assert.deepStrictEqual(
       {
-        minted: [minted.status, minted.headers["x-eliza-speech-extend"], session.wsUrl.endsWith(`/api/v1/voice/speech/ws?sessionId=${session.sessionId}`)],
+        minted: [minted.status, minted.headers["x-eliza-speech-extend"], session.wsUrl.endsWith(`/api/v1/voice/speech/ws?sessionId=${session.sessionId}`), /^[A-Za-z0-9_-]{43}$/.test(session.token)],
         phases: [consent.headers["server-timing"], minted.headers["server-timing"]].map((value) => (value ?? "").split(", ").map((entry) => entry.replace(/;dur=\d+$/, ""))),
         second: [second.status, (second.body as { readonly error?: string }).error],
         opened: shown(opened),
@@ -1479,7 +1500,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         spent: [spent.status, (spent.body as { readonly error?: string }).error]
       },
       {
-        minted: [200, "1", true],
+        minted: [200, "1", true, true],
         phases: [["speech_identity_rate", "speech_consent_write"], ["speech_identity_rate", "speech_consent_consume"]],
         second: [410, "session_closed"],
         opened: [
@@ -1543,6 +1564,22 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
   }), 60_000)
 })
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
+  it.effect('Reads the legacy Google Maps origin as the public service template (spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile")', effect () => {
+    const profile = try sync(() => testProfile("https://provider.example"))
+    const staging = profile.environments.staging
+    const withBaseUrl = (baseUrl: string) => ({
+      ...profile,
+      environments: { ...profile.environments, staging: { ...staging, maps: { ...staging.maps, baseUrl } } },
+    })
+    const legacy = (try parseProfile(withBaseUrl("https://maps.googleapis.com"))).environments.staging.maps
+    const template = (try parseProfile(withBaseUrl("https://{host}.googleapis.com"))).environments.staging.maps
+    const otherOrigin = parseProfile(withBaseUrl("https://maps.example")) catch (failure) => failure._tag
+    try check(() => {
+      assert.deepStrictEqual(legacy, template)
+      assert.strictEqual(legacy?.provider === "google" && legacy.baseUrl, "https://{host}.googleapis.com")
+      assert.strictEqual(otherOrigin, "ProfileInvalid")
+    })
+  })
   it.live("Answer a maps request once and pay for it once, keep tiles unstored and look a place up nearby first (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\"; spec/cloud/services/maps.md, \"Story: Keep maps requests within the provider's terms\")", () => scoped(effect {
     const maps = try sync(() => googleMapsFake())
     const timer = try TestClock.make()
@@ -1819,7 +1856,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const osm = try sync(() => osmFake())
     const cloud = try testCloud({
       mount: (fakes) => fakes.mount("/maps/", osm.handler),
-      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, maps: { provider: "osm", baseUrl: profile.environments.staging.maps.baseUrl, coverage: "europe", datasetRevision: "osm-2026-11" } } } })
+      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, maps: { provider: "osm", baseUrl: profile.environments.staging.maps.baseUrl.replace("/{host}.googleapis.com", ""), coverage: "europe", datasetRevision: "osm-2026-11" } } } })
     })
     const caller = try signedCaller(cloud, "osm-mapper")
     const post = (path: string, key: string, body: unknown) => cloud.call(`/api/v1/maps/${path}`, { json: body, headers: { ...caller.headers, "idempotency-key": key } })
@@ -2768,17 +2805,23 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
   const calendarBase = "/api/v1/eliza/google/calendar"
 
   it.live("Read my calendars, a window of events and one event, refusing a window that is empty or in no time zone (spec/cloud/services/google/calendar.md, \"Story: Read my calendar for a window\")", () => scoped(effect {
-    const { cloud, google, headers } = try calendarSetup("calendar-reads@example.com")
-    try Effect.try(() => seedEvent(google, "own@example.com", "standup-moved", {
-      summary: "Moved standup", start: { dateTime: "2026-12-01T10:00:00Z" }, end: { dateTime: "2026-12-01T10:15:00Z" },
-      recurringEventId: "daily-standup", originalStartTime: { dateTime: "2026-12-01T09:00:00Z" },
-    }))
+    const { google, cloud, headers } = try calendarSetup("calendar-reads@example.com")
+    try Effect.try(() => {
+      seedCalendar(google, { id: "busy@example.com", summary: "Busy", accessRole: "freeBusyReader", timeZone: "UTC" })
+      seedCalendar(google, { id: "plain@example.com", summary: "Plain", timeZone: "UTC" })
+      seedEvent(google, "own@example.com", "standup-moved", {
+        summary: "Moved standup", start: { dateTime: "2026-12-01T10:00:00Z" }, end: { dateTime: "2026-12-01T10:15:00Z" },
+        recurringEventId: "daily-standup", originalStartTime: { dateTime: "2026-12-01T09:00:00Z" },
+      })
+    })
     const window = "timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z"
     const calendars = try cloud.call(`${calendarBase}/calendars`, { headers })
     const feed = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Europe/Berlin`, { headers })
     const reversed = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-02T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
     const empty = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
     const noZone = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Mars/Olympus`, { headers })
+    const busyFeed = try cloud.call(`${calendarBase}/feed?${window}&calendarId=busy@example.com`, { headers })
+    const plainFeed = try cloud.call(`${calendarBase}/feed?${window}&calendarId=plain@example.com`, { headers })
     const one = try cloud.call(`${calendarBase}/events/standup?expectedAccountId=subject-cal`, { headers })
     const wrongOwner = try cloud.call(`${calendarBase}/feed?${window}&expectedAccountId=subject-other`, { headers })
     const wrongEventOwner = try cloud.call(`${calendarBase}/events/standup?expectedAccountId=subject-other`, { headers })
@@ -2792,6 +2835,7 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
         moved: [events[1]?.seriesId, events[1]?.metadata.originalStartTime],
         wrongOwner: [wrongOwner, wrongEventOwner].map((reply) => [reply.status, ...calendarRefusal(reply.body)]),
         refused: [reversed.status, empty.status, noZone.status, calendarRefusal(reversed.body)],
+        rowAccess: [busyFeed.status, calendarRefusal(busyFeed.body), plainFeed.status],
         one: [one.status, (one.body as { readonly event: { readonly externalId: string } }).event.externalId],
         missing: [missing.status, calendarRefusal(missing.body)],
         anonymous: anonymous.status
@@ -2799,12 +2843,15 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
       {
         calendars: [200, [
           { calendarId: "own@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Own", accessRole: "owner", read: true, write: true, recurrenceLines: true, privateCreate: true },
-          { calendarId: "team@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Team", accessRole: "reader", read: true, write: false }
+          { calendarId: "team@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Team", accessRole: "reader", read: true, write: false },
+          { calendarId: "busy@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Busy", accessRole: "freeBusyReader", read: false, write: false },
+          { calendarId: "plain@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Plain", accessRole: "reader", read: true, write: false }
         ]],
         feed: [200, "primary", [["standup", "Standup", true], ["standup-moved", "Moved standup", true]], "string"],
         moved: ["daily-standup", "2026-12-01T09:00:00Z"],
         wrongOwner: [[403, "access_denied", "google_account_changed", undefined], [403, "access_denied", "google_account_changed", undefined]],
         refused: [400, 400, 400, ["invalid_request", undefined, undefined]],
+        rowAccess: [403, ["access_denied", undefined, undefined], 200],
         one: [200, "standup"],
         missing: [404, ["not_found", undefined, undefined]],
         anonymous: 401
@@ -2820,10 +2867,18 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
     const first = try create("lunch-key-0001", lunch)
     const again = try create("lunch-key-0001", lunch)
     const other = try create("lunch-key-0001", { ...lunch, title: "Dinner" })
+    const ownCalendar = { id: "own@example.com", summary: "Own", primary: true, timeZone: "Europe/Berlin" }
+    try Effect.try(() => seedCalendar(google, { ...ownCalendar, accessRole: "reader" }))
+    const replayedAsReader = try create("lunch-key-0001", lunch)
+    try Effect.try(() => seedCalendar(google, { ...ownCalendar, accessRole: "owner" }))
     const inserts = google.calls.filter((call) => call.method === "POST" && call.path.endsWith("/events")).length
-    google.switches.dropNextReply = true
+    google.switches.dropNextChangeReply = true
     const dropped = try create("coffee-key-0001", { title: "Coffee", startAt: "2026-12-01T15:00:00Z", endAt: "2026-12-01T15:30:00Z" })
     const changedAccount = try create("tea-key-00000001", { ...lunch, title: "Tea", expectedAccountId: "subject-elsewhere" })
+    const readerCalendar = try create("team-key-0000001", { ...lunch, calendarId: "team@example.com" })
+    const recurring = try create("weekly-key-00001", { ...lunch, recurrence: ["RRULE:FREQ=WEEKLY"] })
+    const oversized = try create("large-key-000001", { ...lunch, description: "x".repeat(256 * 1024) })
+    const teamInserts = google.calls.filter((call) => call.method === "POST" && call.path.includes("/calendars/team%40example.com/")).length
     try check(() => assert.equal(first.status, 201, JSON.stringify(first.body)))
     const created = (first.body as { readonly event: { readonly externalId: string; readonly etag: string; readonly title: string } }).event
     const eventPath = `${calendarBase}/events/${created.externalId}`
@@ -2840,8 +2895,10 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
         unkeyed: [unkeyed.status, calendarRefusal(unkeyed.body)],
         once: [first.status, created.title, again.status, (again.body as { readonly event: { readonly externalId: string } }).event.externalId === created.externalId, inserts],
         other: [other.status, calendarRefusal(other.body)],
+        replayedAsReader: [replayedAsReader.status, (replayedAsReader.body as { readonly event?: { readonly externalId: string } }).event?.externalId === created.externalId],
         dropped: [dropped.status, (dropped.body as { readonly event: { readonly title: string } }).event.title],
         changedAccount: [changedAccount.status, calendarRefusal(changedAccount.body)],
+        beforeGoogle: [readerCalendar.status, calendarRefusal(readerCalendar.body), teamInserts, recurring.status, calendarRefusal(recurring.body), oversized.status, calendarRefusal(oversized.body)],
         noRevision: [noRevision.status, calendarRefusal(noRevision.body)],
         changed: [changed.status, current.title, current.etag !== created.etag, changed.headers.etag === current.etag],
         stale: [stale.status, calendarRefusal(stale.body)],
@@ -2853,8 +2910,10 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
         unkeyed: [400, ["invalid_request", undefined, "not_accepted"]],
         once: [201, "Lunch", 201, true, 1],
         other: [409, ["idempotency_conflict", undefined, "not_accepted"]],
+        replayedAsReader: [201, true],
         dropped: [201, "Coffee"],
         changedAccount: [403, ["access_denied", "google_account_changed", "not_accepted"]],
+        beforeGoogle: [403, ["access_denied", undefined, "not_accepted"], 0, 400, ["invalid_request", "unsupported_field", "not_accepted"], 413, ["content_too_large", undefined, "not_accepted"]],
         noRevision: [400, ["invalid_request", undefined, "not_accepted"]],
         changed: [200, "Long lunch", true, true],
         stale: [412, ["precondition_failed", undefined, "not_accepted"]],
@@ -2875,7 +2934,7 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
     const conflict = try create("calendar-series-01", { ...day, recurrence: ["RRULE:FREQ=WEEKLY"] })
     const timed = { title: "Weekly note", startAt: "2026-12-01T09:00:00+01:00", endAt: "2026-12-01T09:20:00+01:00", recurrence: ["RRULE:FREQ=WEEKLY"] }
     const unzoned = try create("calendar-series-02", timed)
-    google.switches.dropNextReply = true
+    google.switches.dropNextChangeReply = true
     const recovered = try create("calendar-series-02", { ...timed, timeZone: "Europe/Berlin" })
     const written = (reply: typeof made) => (reply.body as { readonly event: { readonly externalId: string; readonly recurrence: readonly string[]; readonly etag: string } }).event
     const patch = try cloud.call(`${calendarBase}/events/${written(made).externalId}`, {
