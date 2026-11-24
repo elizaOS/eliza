@@ -377,6 +377,20 @@ session.
 ```quint
 pure def sometimesFocusPaused(s: CloudSpeech): bool = s.phase == Live and s.focusPaused and s.turn != NoTurn
 pure def sometimesFocusUnavailable(s: CloudSpeech): bool = s.endedBy == FocusUnavailable and failedAfterAudio(endingOf(s.phase))
+pure val eval_witness_sometimesFocusUnavailable = (
+  ("credentialChanged", 1),
+  "begin",
+  "consentGiven",
+  ("minted", Answered),
+  ("frameArrived", Rl::ReadyFrame),
+  ("frameArrived", Rl::SttFrame({ kind: Rl::SttConnected })),
+  ("unmute", true),
+  ("captureAnswered", M::NoRefusal),
+  ("outputNotice", O::PauseListening),
+  ("outputNotice", O::ResumeListening),
+  ("captureAnswered", M::NoRefusal),
+  ("deviceEnded", FocusUnavailable)
+)
 ```
 
 ## Story: Transcribe a recording or hear a reply with one cloud request
