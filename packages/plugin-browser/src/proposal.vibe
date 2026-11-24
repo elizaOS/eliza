@@ -45,7 +45,7 @@ const REFUSALS: Readonly<Record<BrowserRefusal, { readonly code: string; readonl
 }
 
 const REPLIES: Readonly<Record<RefusalReply, string>> = {
-  AskForAddress: 'Tell me the address, like "open nytimes.com".',
+  AskForAddress: "Tell me the address, like example.com.",
   SayAddressNotOpened: "I didn't open that address.",
   AskForSearchWords: 'Tell me the words to search for, like "search for weather in Paris".',
   SayOneTabAtATime: "Your phone's Browser closes one tab at a time, so nothing was closed. I can close the tab that's showing, or one you name.",
@@ -54,7 +54,7 @@ const REPLIES: Readonly<Record<RefusalReply, string>> = {
 
 const tabWord = "A word of the tab's title or site exactly as the owner said it"
 
-function form(type: BrowserProposalType, fields: Record<string, ActionParameterSchema>, required: readonly string[], offered: (device: NegotiatedDevice) => boolean, guidance?: string): ProposalForm {
+function form(type: BrowserProposalType, fields: Record<string, ActionParameterSchema>, required: readonly string[], offered: (device: NegotiatedDevice) => boolean, guidance?: readonly string[]): ProposalForm {
   return {
     types: [type], offered, ...(guidance === undefined ? {} : { guidance }),
     schema: { type: "object", additionalProperties: false, required: ["type", ...required], properties: { type: { type: "string", enum: [type] }, ...fields } },
@@ -71,21 +71,21 @@ function newTabOpen(turn: DeviceTurn): string | undefined {
 const address: ActionParameterSchema = { type: "string" }
 
 const FORMS: readonly ProposalForm[] = [
-  form("browser_navigate", { url: address }, ["url"], (device) => !opensInItsOwnTab(device) && opensAddresses(device), NAVIGATE_GUIDANCE),
+  form("browser_navigate", { url: address }, ["url"], (device) => !opensInItsOwnTab(device) && opensAddresses(device), [NAVIGATE_GUIDANCE]),
   form("browser_navigate", { url: address, newTab: { type: "boolean", description: "true when the owner asks to open the address in a new tab" } }, ["url"],
-    (device) => opensInItsOwnTab(device) && opensAddresses(device), `${NAVIGATE_GUIDANCE} ${NEW_TAB_GUIDANCE}`),
+    (device) => opensInItsOwnTab(device) && opensAddresses(device), [NAVIGATE_GUIDANCE, NEW_TAB_GUIDANCE]),
   form("browser_search", { query: { type: "string", description: "The search words exactly as the owner typed them in this message" } }, ["query"],
-    negotiated("browser_search"), SEARCH_GUIDANCE),
+    negotiated("browser_search"), [SEARCH_GUIDANCE]),
   form("browser_tab_new", { private: { type: "boolean", description: "true only when the owner asks for a private tab" } }, [], negotiated("browser_tab_new")),
   form("browser_tab_switch", { target: { type: "string", description: `${tabWord}, such as example.com or bbc` } }, ["target"], negotiated("browser_tab_switch")),
   form("browser_tab_close", {
     target: { type: "string", description: `${tabWord}. Leave it and all out to close only the tab that is showing.` },
     all: { type: "boolean", enum: [true], description: "true when the owner asks to close all or every open tab; never with target. Without it exactly one tab closes." },
   }, [], negotiated("browser_tab_close")),
-  form("browser_tabs_show", {}, [], negotiated("browser_tabs_show"), TABS_SHOW_GUIDANCE),
-  form("browser_find", { text: { type: "string", description: "The text to find on the page" } }, ["text"], negotiated("browser_find"), FIND_GUIDANCE),
+  form("browser_tabs_show", {}, [], negotiated("browser_tabs_show"), [TABS_SHOW_GUIDANCE]),
+  form("browser_find", { text: { type: "string", description: "The text to find on the page" } }, ["text"], negotiated("browser_find"), [FIND_GUIDANCE]),
   form("browser_history", { action: { type: "string", enum: [...BROWSER_HISTORY_ACTIONS] } }, ["action"],
-    (device) => browserHistoryHome(device.capabilities, false) === "HistoryAsControl", HISTORY_GUIDANCE),
+    (device) => browserHistoryHome(device.capabilities, false) === "HistoryAsControl", [HISTORY_GUIDANCE]),
 ]
 
 function field(value: unknown, key: string): unknown {
@@ -198,7 +198,7 @@ export const browserProposalFamily: DeviceProposalFamily = {
   app: browserContext.id,
   types: BROWSER_PROPOSAL_TYPES,
   forms: FORMS,
-  guidance: (device) => browserControlCapabilityAvailable("browser_tab_new", device.capabilities) ? TABS_GUIDANCE : undefined,
+  guidance: (device) => browserControlCapabilityAvailable("browser_tab_new", device.capabilities) ? [TABS_GUIDANCE] : [],
   ground,
   wholeMessageOperation,
   proposedText: (operation, { direct }) => direct ? directText(operation) : undefined,

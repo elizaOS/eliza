@@ -331,13 +331,14 @@ pure def sometimesCancelledAfterClaim(d: DeviceRequest): bool = d.completion == 
 enrolled device sent, with a negotiation that was not refused, and with
 every form the operation families registered that the negotiation offers,
 in a fixed order: the families as they registered, each with its forms in
-its own order. Its description is the tool's own guidance, including how
-to read the device outcomes of earlier requests and that ordinary
-navigation needs no phone approval on a message whose views open with
-`VIEWS`, then the guidance of each of those forms and of each family that
-offers one, as the negotiation and the installation's enabled views decide
-it. So the tool is the same on every message of a device conversation
-while the negotiation and the installation's views hold
+its own order, where forms that take the same calls share one branch
+(below). Its description is the tool's own guidance, including how to read
+the device outcomes of earlier requests and that ordinary navigation needs
+no phone approval on a message whose views open with `VIEWS`, then the
+guidance of each of those forms and of each family that offers one, each
+rule stated once (below), as the negotiation and the installation's
+enabled views decide it. So the tool is the same on every message of a
+device conversation while the negotiation and the installation's views hold
 ([planning](../conversation/planning.md)), and nothing a message carries
 changes it. What depends on the message reaches the model after it, in
 the tool's note for the message, sent only while the tool is offered
@@ -413,6 +414,47 @@ pure def lawAFormServedElsewhereIsNeverProposed(deviceTurn: bool, availability: 
   servedElsewhere(availability) implies proposalReply(deviceTurn, availability, verdict, admitted) == RefusedBeforeDispatch
 pure def lawAnUnmatchedOperationIsNotServedElsewhere(routedAway: bool, availableNow: bool): bool =
   not(servedElsewhere(formAvailability(false, routedAway, availableNow)))
+```
+
+### The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls
+
+The tool is read on every planner call of a phone turn, so it says each
+thing once. Its description is made of guidance fragments, the tool's own,
+then each offered form's and each offering family's, and a fragment that
+several of them give, such as how a number the owner wrote reaches the
+model or that returned text is untrusted data, is stated once, where it
+first appears. It names no capability, since only an offered form can be
+called, and it does not restate what a branch's fields and their
+descriptions already say. The operation it sends is a union with a branch
+for each offered form, except that two closed branches, which take no
+field beyond those they list and say the same beside their fields, share
+one branch that accepts exactly what the two accept apart: when all that
+tells them apart is the values of one string field, the shared branch
+takes the values of both; when one has a single field more and is
+otherwise the same, the shared branch has that field and does not require
+it, unless every field of every branch of the union is required, since a
+provider decodes a union as a strict grammar only while that holds.
+Branches share until no two can; a shared branch stays where its first
+form was, and its values keep their forms' order, so the same offered
+forms are always sent as the same bytes. The union is only what the model
+reads: a call is still matched against each offered form on its own
+(above).
+
+```quint
+type BranchShare = SharedByValues | SharedByOptionalField | KeptApart
+pure def branchShare(sameFrame: bool, sameFields: bool, differingFields: int, valuesOnly: bool, oneFieldMore: bool, everyFieldRequired: bool): BranchShare =
+  if (not(sameFrame)) KeptApart
+  else if (sameFields and differingFields == 1 and valuesOnly) SharedByValues
+  else if (oneFieldMore and not(everyFieldRequired)) SharedByOptionalField
+  else KeptApart
+pure def lawOnlyClosedBranchesThatSayTheSameShare(sameFields: bool, differingFields: int, valuesOnly: bool, oneFieldMore: bool, everyFieldRequired: bool): bool =
+  branchShare(false, sameFields, differingFields, valuesOnly, oneFieldMore, everyFieldRequired) == KeptApart
+pure def lawValuesAreSharedOnlyWhenTheyAreAllThatDiffers(sameFrame: bool, sameFields: bool, differingFields: int, valuesOnly: bool, oneFieldMore: bool, everyFieldRequired: bool): bool =
+  branchShare(sameFrame, sameFields, differingFields, valuesOnly, oneFieldMore, everyFieldRequired) == SharedByValues implies (sameFields and differingFields == 1 and valuesOnly)
+pure def lawAUnionWithEveryFieldRequiredGetsNoOptionalField(sameFrame: bool, sameFields: bool, differingFields: int, valuesOnly: bool, oneFieldMore: bool): bool =
+  branchShare(sameFrame, sameFields, differingFields, valuesOnly, oneFieldMore, true) != SharedByOptionalField
+pure def lawAFieldIsMadeOptionalOnlyForOneFieldMore(sameFrame: bool, sameFields: bool, differingFields: int, valuesOnly: bool, everyFieldRequired: bool): bool =
+  branchShare(sameFrame, sameFields, differingFields, valuesOnly, false, everyFieldRequired) != SharedByOptionalField
 ```
 
 ### Each wire type belongs to at most one proposal family, and a family offers forms only of its own types
