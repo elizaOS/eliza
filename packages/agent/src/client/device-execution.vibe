@@ -30,7 +30,6 @@ export type JournalEntry = typeof Entry.Type
 
 export interface DeviceJournal {
   get(proposalId: string): Promise<unknown>
-  /** A false result is a definitive refusal. A rejection can follow a committed write. */
   edit(proposalId: string, expectedRevision: number, next: JournalEntry): Promise<boolean>
   list(): Promise<readonly unknown[]>
 }
@@ -50,7 +49,6 @@ export interface DeviceReceipt {
 
 export type DeviceReview = "applied" | "not_applied" | "unresolved"
 
-/** The saved evidence an applied review carries: the operation id and typed result the journal kept for the attempt. */
 export interface DeviceReviewEvidence {
   readonly operationId: string
   readonly result?: unknown

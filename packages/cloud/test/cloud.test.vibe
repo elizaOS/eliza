@@ -2104,7 +2104,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       history("&startHistoryId=0100"), history("&startHistoryId=1000&startHistoryId=1001"), history("&unexpected=1"), history("&side=agent"), cloud.call(`${path}?grantId=${grant}`)
     ])
     const otherOrganization = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
-    try sql(cloud, "UPDATE accounts SET organization_id = $1 WHERE key = $2", [device.organizationId, other.userId])
+    try sql(cloud, "ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_key", [])
+    try sql(cloud, "UPDATE accounts SET organization_id = $1, state = jsonb_set(state, '{organizationId}', to_jsonb($1::text)) WHERE key = $2", [device.organizationId, other.userId])
     const otherUser = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
     const providerCallsOnRefusal = cloud.fakes.seen.length - beforeRefusals
 

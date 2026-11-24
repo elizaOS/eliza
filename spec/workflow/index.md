@@ -11,6 +11,7 @@ remove it. Every run is bound to the exact version the owner reviewed.
 | Running | [Schedule occurrences](./schedule.md), [execution and wakeups](./execution.md), [approvals](./approvals.md), [run scope](./runScope.md) |
 | Hosted digests | [Offers and delivery](./hostedDigest.md) |
 | Notices | [Run notices](./notices.md) |
+| Updating | [Workflows saved by the earlier version](./earlierStore.md) |
 
 The client and agent keep separate records. The [request archive](./intents.md)
 owns the local revision. The [workflow definition](./admission.md) owns
