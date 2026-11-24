@@ -1,7 +1,7 @@
 // spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A claim names its request's exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown"; spec/agent/views.md, "The agent asks only a declared view, for a capability the view grants the agent, on a live feed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after"
 import { logger } from "@elizaos/core"
 import {
-  Machine, busy, interactionWaitMs, machine, navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs, openNavigationOf, shownViewOf, waiterAt,
+  Machine, busy, interactionWaitMs, machine, navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs, openNavigationOf, savedNoteClaimAllowed, savedNoteResultAllowed, shownViewOf, waiterAt,
   type Binding, type CapabilityGrant, type DeclaredView, type Event, type Reply, type ViewHost as ViewHostState, type WaitOutcome,
 } from "../../gen/agent__views.effect.vibe"
 
@@ -24,6 +24,11 @@ export interface ViewInteractFrame {
   readonly capability: string
   readonly params: Readonly<Record<string, unknown>>
   readonly requestId: string
+}
+
+export interface ViewClaim {
+  readonly claimId: string
+  readonly target?: { readonly kind: "saved-note"; readonly noteId: string }
 }
 
 export interface ViewAnswer {
@@ -67,7 +72,8 @@ export service ViewHost {
   boot(views: DeclaredView[]): boolean!!
   prepare(requestId: string, clientId: string, viewId: string): (PendingView | undefined)!!
   show(requestId: string, clientId: string, target: string): (PendingView | undefined)!!
-  claim(binding: Binding): (string | undefined)!!
+  showSavedNote(requestId: string, clientId: string, noteId: string): (PendingView | undefined)!!
+  claim(binding: Binding, targetProtocol?: "saved-note-v1"): (ViewClaim | undefined)!!
   answer(binding: Binding, claimId: string, reply: Reply, answer: ViewAnswer): boolean!!
   ask(request: ViewAsk): Asked!!
   abandon(requestId: string): boolean!!
@@ -82,7 +88,16 @@ export function replyOf(answer: ViewAnswer): Reply {
   return answer.success && result.switched ? "Switched" : "NotSwitched"
 }
 
+function shownNoteOf(answer: ViewAnswer, reply: Reply): string {
+  const result = answer.result
+  if (reply !== "Switched" || typeof result !== "object" || result === null || !("shown" in result)) return ""
+  const shown = result.shown
+  if (typeof shown !== "object" || shown === null || !("kind" in shown) || shown.kind !== "saved-note" || !("noteId" in shown)) return ""
+  return typeof shown.noteId === "string" ? shown.noteId : ""
+}
+
 interface Waiting {
+  readonly savedNoteId: string
   readonly done: Deferred.Deferred<WaitResult>
   answered?: { readonly reply: Reply; readonly answer: ViewAnswer }
 }
@@ -148,9 +163,9 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
     if (ended) try abandonOne(requestId)
   }
 
-  effect function wait(state: ViewHostState, requestId: string, waitMs: number) {
+  effect function wait(state: ViewHostState, requestId: string, waitMs: number, savedNoteId = "") {
     const done = Deferred.makeUnsafe<WaitResult>()
-    waiting.set(requestId, { done })
+    waiting.set(requestId, { done, savedNoteId })
     const clientId = waiterAt(state, requestId).req.clientId
     if (!watched.has(clientId)) {
       watched.add(clientId)
@@ -166,10 +181,10 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
     if (claimed !== undefined) try timeoutOption(Deferred.await(claimed.done), navigationBusyWaitMs)
   }
 
-  effect function navigation(event: Event, requestId: string, clientId: string) {
+  effect function navigation(event: Event, requestId: string, clientId: string, savedNoteId = "") {
     try settledFor(clientId)
     const state = try send(event)
-    return state === undefined ? undefined : try wait(state, requestId, navigationWaitMs)
+    return state === undefined ? undefined : try wait(state, requestId, navigationWaitMs, savedNoteId)
   }
 
   effect function publish(clientId: string, frame: ViewInteractFrame) {
@@ -185,16 +200,22 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
       navigation({ type: "prepareNavigation", requestId, clientId, viewId }, requestId, clientId),
     show: (requestId: string, clientId: string, target: string) =>
       navigation({ type: "showView", requestId, clientId, target }, requestId, clientId),
-    claim: effect (binding: Binding) => {
+    showSavedNote: (requestId: string, clientId: string, noteId: string) =>
+      noteId === "" ? Effect.succeed(undefined)
+        : navigation({ type: "prepareNavigation", requestId, clientId, viewId: "notes" }, requestId, clientId, noteId),
+    claim: effect (binding: Binding, targetProtocol?: "saved-note-v1") => {
+      const entry = waiting.get(binding.requestId)
+      const noteId = entry?.savedNoteId ?? ""
+      if (!savedNoteClaimAllowed(noteId, targetProtocol === "saved-note-v1")) return undefined
       const claimId = newId()
       const state = try send({ type: "claimRequest", binding, claimId })
       if (state === undefined) return undefined
-      const entry = waiting.get(binding.requestId)
       if (entry !== undefined && waiterAt(state, binding.requestId).kind === "Navigation") fork.detached expire(binding.requestId, entry.done, navigationClaimLeaseMs)
-      return claimId
+      return noteId === "" ? { claimId } : { claimId, target: { kind: "saved-note" as const, noteId } }
     },
     answer: effect (binding: Binding, claimId: string, reply: Reply, answer: ViewAnswer) => {
       const entry = waiting.get(binding.requestId)
+      if (!savedNoteResultAllowed(entry?.savedNoteId ?? "", reply === "NotSwitched", shownNoteOf(answer, reply))) return false
       if (entry !== undefined) entry.answered = { reply, answer }
       const state = try send({ type: "answerRequest", binding, claimId, reply })
       if (state === undefined && entry !== undefined) entry.answered = undefined

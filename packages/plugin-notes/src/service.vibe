@@ -288,6 +288,11 @@ export function notesServiceClass(notes: NotesCollection): ServiceClass {
       return run(notes.snapshot())
     }
 
+    async matchesSavedEditor(noteId: string, query: string): Promise<boolean> {
+      const { notes: matches } = await run(notes.list({ content: query }))
+      return matches.length === 1 && matches[0]?.id === noteId
+    }
+
     acknowledgeTrashRecordingCleanup(receipt: unknown, signal?: AbortSignal): Promise<boolean> {
       return run(notes.acknowledgeTrashRecordingCleanup(receipt, signal))
     }
