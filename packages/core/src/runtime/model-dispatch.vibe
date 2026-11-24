@@ -2402,6 +2402,7 @@ export effect function recordFailedModelTrajectory(core: DispatchCore, args: Fai
 
 module edge {
   import { runDetached, runDetachedSync } from "../edge.vibe"
+  import type { ElizaError } from "../errors.vibe"
   import { isModelProviderFallbackError } from "../security/model-failure.vibe"
   import type { ModelParamsMap, ModelRegistrationInfo, ModelRegistrationMetadata, ModelResultMap, ModelTypeName } from "../types/model.vibe"
   import type { IAgentRuntime } from "../types/runtime.vibe"
