@@ -664,6 +664,31 @@ pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: 
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
 ```
 
+### A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence
+
+A cue is delivered only when the turn's [reply stream](./replyStream.md)
+took it as the turn's acknowledgment: a quiet turn, a send with no stream,
+a draft that is not the turn's acknowledgment and a cue the stream refused
+or did not report taking deliver nothing. The planner's transcript keeps the
+text a step wrote beside its tool calls only when that text is the delivered
+cue, so the model never takes text the owner did not receive as said. After the tool calls that came
+with a delivered cue have all run and planning goes on, the model is told once, quoting the cue, that
+it was already sent to the owner as progress: the reply does not repeat or
+paraphrase it, goes straight to the result, any blocker or the question the
+turn needs answered, and the cue is not evidence that any work succeeded. A
+turn that delivered no cue is told nothing about one.
+
+```quint
+pure def cueDelivered(draft: Draft, calls: int, earlierCalls: int, quiet: bool, streamTook: bool): bool =
+  acknowledges(draft, calls, earlierCalls) and not(quiet) and streamTook
+pure def lawOnlyACueTheStreamTookIsDelivered(draft: Draft, calls: int, earlierCalls: int, quiet: bool): bool =
+  not(cueDelivered(draft, calls, earlierCalls, quiet, false))
+pure def lawAQuietTurnDeliversNoCue(draft: Draft, calls: int, earlierCalls: int, streamTook: bool): bool =
+  not(cueDelivered(draft, calls, earlierCalls, true, streamTook))
+pure def lawOnlyTheTurnsAcknowledgmentIsDelivered(draft: Draft, calls: int, earlierCalls: int, quiet: bool, streamTook: bool): bool =
+  cueDelivered(draft, calls, earlierCalls, quiet, streamTook) implies acknowledges(draft, calls, earlierCalls)
+```
+
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
 
 When a tool call starts, its progress carries the action's name and a
