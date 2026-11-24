@@ -33,6 +33,9 @@ public final class BrowserExternalLinkPolicy {
   public static final Set<String> FORBIDDEN_DATA =
       Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
           "file", "content", "javascript", "data", "blob", "about", "intent", "android-app")));
+  private static final Set<String> NOT_APP_LINKS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+      "http", "https", "about", "blob", "data", "file", "content", "javascript", "filesystem", "ws", "wss",
+      "chrome", "android-app")));
 
   public enum Handoff {
     /** {@code ACTION_SENDTO} with the {@code mailto:}, {@code sms:} or {@code smsto:} address. */
@@ -61,6 +64,12 @@ public final class BrowserExternalLinkPolicy {
   /** Whether the browser hands this link to another app instead of loading it. */
   public static boolean external(String raw) {
     return SCHEMES.contains(scheme(raw));
+  }
+
+  public static boolean appLink(String raw, Set<String> hostSchemes) {
+    String scheme = scheme(raw);
+    return clean(raw) && !scheme.isEmpty() && !SCHEMES.contains(scheme) && !NOT_APP_LINKS.contains(scheme)
+        && (hostSchemes == null || !hostSchemes.contains(scheme));
   }
 
   /**

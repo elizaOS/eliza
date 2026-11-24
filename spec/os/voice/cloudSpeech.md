@@ -86,11 +86,21 @@ Consent and mint answer here as one; a wrong shape or a `wsUrl` off the
 deployment origin is `Misdirected`. A `401` with a credential reason goes
 to `C::rejected`; every refusal ends its request and passes on its retry
 or reset time (a `429` or `402` limit). The consent request comes before any
-paid admission, so the shell sends it once more after its connection was
-dropped: reset by the peer, or a pooled connection that ended before its
-answer (OkHttp's "unexpected end of stream"); a mint request is never sent
-again. The shell's content-free startup timings mark each consent and mint
-request's start, headers, body or failure, and a consent sent again.
+paid admission and writes nothing before the cloud's rate limiter, so the
+shell sends it once more, and only once: after its connection was dropped
+(reset by the peer, or a pooled connection that ended before its answer,
+OkHttp's "unexpected end of stream"), or after a `503` whose `Retry-After`
+is at most 2 s, once that wait is over, when the wait and one more request
+of 2 s still end before the startup deadline. A `503` without `Retry-After`
+or a second refusal ends the request as before; a mint request is never
+sent again. Before a session, the renderer may ask the shell to open its
+connection to the deployment's own origin with `GET /api/health`, which
+carries no key and asks no consent, so that the consent request, the mint
+and the socket reuse it: at most once a minute for each origin, never while
+voice is closed, in the background, in a session or on a sensitive
+surface, bounded by 5 s and silent when it fails. The shell's content-free
+startup timings mark each consent and mint request's start, headers, body
+or failure, and a consent sent again.
 
 ```quint
 type CloudAnswer = Answered | Misdirected | Unreachable | Refused({ refusal: Refusal })
@@ -148,7 +158,15 @@ pure def stepTheSessionOpensInOrder(before: CloudSpeech, after: CloudSpeech): bo
 ### Capture starts muted, and listens only once the microphone slot is granted with RECORD_AUDIO
 
 Unmuting reserves the slot as a live capture; a refused slot ends the
-session, as in develop. Each granted capture gets the next number; muting
+session, as in develop. A start that is not muted and has `RECORD_AUDIO`
+reserves the slot and opens the microphone at once, so the device's
+start-up is off the path to listening: until capture listens, each frame it
+reads is zeroed and dropped, and none is sent, kept or shown as a level.
+Unmuting then answers from that held slot; a busy slot at the start leaves
+unmuting to reserve it as before. A mute, a draft request, a focus pause or
+a start that settles muted closes it, and every end of the session closes
+it, freeing the slot before a failure is reported so that a fallback finds
+it free. Each granted capture gets the next number; muting
 releases the slot and keeps it, so a turn the capture began may finish.
 Muting a session paused by a focus loss also ends the pause.
 

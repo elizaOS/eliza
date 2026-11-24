@@ -241,7 +241,7 @@ function splitTldBrowserOpen(text: string, assistantName: string, split: SplitTl
   return typedBrowserOpen(`${text.slice(0, split.index)}${split.token}${text.slice(split.index + split.value.length)}`, assistantName)
 }
 
-export function directBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
+function directBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
   if (unreadable(text)) return undefined
   return typedBrowserOpen(text, assistantName) ?? splitTldBrowserOpen(text, assistantName, splitTldAddresses(text)[0])
 }

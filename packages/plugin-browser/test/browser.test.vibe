@@ -364,6 +364,8 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
   ]
   const outright = [
     try propose("open example.com in a new tab", navigate("https://example.com/")),
+    try propose("open example.com in a new tab", navigate("https://example.com/", true)),
+    try propose("open example.com in a new tab", navigate("https://example.com/", true), tabsOnly),
     try propose("Hey Eliza, visit wikipedia.org.", navigate("https://wikipedia.org/")),
   ]
   const shown = (try Effect.try(() => checked({ type: "browser_tabs_show" }))).operation
@@ -380,7 +382,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
   const rival = try Effect.result(registerDeviceProposalFamily(runtime, { ...browserProposalFamily, name: "files" }))
   try Effect.try(() => {
     assert.deepStrictEqual(opened, [
-      direct(navigate("https://wikipedia.org/", true)), direct(navigate("https://example.com/docs")), reviewed(navigate("https://example.com/")),
+      direct(navigate("https://wikipedia.org/")), direct(navigate("https://example.com/docs")), reviewed(navigate("https://example.com/")),
       reviewed(navigate("https://example.com/")), reviewed(navigate("https://example.com/")), notRequested, reviewed(navigate("https://example.com/")),
     ])
     assert.deepStrictEqual(dictated.map(([actual]) => actual), dictated.map(([, expected]) => expected))
@@ -390,7 +392,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
       { code: notRequested, userFacingText: "I didn't open that address." },
     ])
     assert.deepStrictEqual(tabbed, [
-      direct(navigate("https://wikipedia.org/", true)), reviewed(navigate("https://example.com/", true)), direct(navigate("https://wikipedia.org/")),
+      direct(emptyTab), direct(emptyTab), direct(emptyTab),
       direct({ type: "browser_tab_new", private: true }), direct(emptyTab),
     ])
     assert.deepStrictEqual(linked, [
@@ -409,7 +411,9 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     assert.strictEqual(toldShown?.forOwner, "Doing that in Browser.")
     assert.match(toldShown?.forModel ?? "", /has not run yet/)
     assert.isUndefined(browserProposalFamily.settledText(shown, { outcome: "applied" }, undefined))
-    assert.deepStrictEqual(outright, [direct(navigate("https://example.com/", true)), direct(navigate("https://wikipedia.org/"))])
+    assert.deepStrictEqual(outright, [
+      direct(navigate("https://example.com/")), direct(navigate("https://example.com/", true)), direct(navigate("https://example.com/")), direct(navigate("https://wikipedia.org/")),
+    ])
     assert.deepStrictEqual(offeredForms(ownerTurn("", everyBrowserCapability)), [
       "browser_navigate url newTab", "browser_search query", "browser_tab_new private", "browser_tab_switch target", "browser_tab_close target all", "browser_tabs_show",
       "browser_find text", "browser_history action",
