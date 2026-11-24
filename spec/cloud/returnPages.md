@@ -35,7 +35,7 @@ type AppLink = { target: ReturnUrl, androidPackage: str }
 type PageAction = OpenApp({ link: AppLink }) | NoAction
 type ReturnPage = { serviceName: str, appName: str, purpose: PagePurpose, offer: PageAction }
 type PayerOutcome = PaidOutcome | CanceledOutcome
-type Page = ReturnToApp(ReturnPage) | CheckoutOutcome({ shown: PayerOutcome })
+type Page = ReturnToApp(ReturnPage) | CheckoutOutcome({ shown: PayerOutcome, serviceName: str })
 type RegistryRead = UnreadableRegistry | ReadRegistry({ registrations: List[Registration] })
 type PageAnswer = Shows({ page: Page }) | Refused({ refusal: Refusal })
 pure def pagePurposeOf(purpose: ReturnPurpose): PagePurpose =
@@ -220,20 +220,21 @@ subscription route, so without the billing capability it answers
 `404 capability_unavailable` (`deployment`). It reads no registry, session,
 account, plan or payment state, and never claims a payment was made: the paid
 copy asks the person to check the subscription in the app, which shows it
-once the payment provider confirms it.
+once the payment provider confirms it. The page names only the deployment's
+display name.
 
 ```quint
 pure val payerPath = "/api/v1/subscriptions/checkout/payer"
 pure def isPayerUrl(row: EnvironmentProfile, url: ReturnUrl): bool = url.origin == row.api and url.path == payerPath
 pure def payerOutcome(reported: str): PayerOutcome = if (reported == "paid") PaidOutcome else CanceledOutcome
 pure def payerAnswer(row: EnvironmentProfile, reported: str): PageAnswer =
-  if (routeOpen(row.capabilities, gateOf(SubscriptionRoutes))) Shows({ page: CheckoutOutcome({ shown: payerOutcome(reported) }) })
+  if (routeOpen(row.capabilities, gateOf(SubscriptionRoutes))) Shows({ page: CheckoutOutcome({ shown: payerOutcome(reported), serviceName: row.name }) })
   else Refused({ refusal: capabilityRefusal })
 pure val reportedValues = Set("paid", "canceled", "success")
 pure def lawThePayerPageReadsOnlyTheOutcome(row: EnvironmentProfile, registry: List[Registration], readable: bool, served: Environment, reported: str): bool = {
   val url = { origin: row.api, path: payerPath }
   val answer = answerAt(row, readOf(registry, readable), served, url, reported)
   answer == answerAt(row, UnreadableRegistry, otherEnvironment(served), url, reported)
-    and (answer == Shows({ page: CheckoutOutcome({ shown: PaidOutcome }) }) iff (reported == "paid" and row.capabilities.contains(BillingCapability)))
+    and (answer == Shows({ page: CheckoutOutcome({ shown: PaidOutcome, serviceName: row.name }) }) iff (reported == "paid" and row.capabilities.contains(BillingCapability)))
 }
 ```

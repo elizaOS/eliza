@@ -80,7 +80,7 @@ describe("Device key renewal (spec/cloud/nativeClients/deviceKeys.md)", () => {
     const old = try signedInDevice(cloud, signed.accessToken)
     const bySession = try renew(cloud, signed.accessToken, "a")
     const renewed = try renew(cloud, old.secret, "b")
-    const opened = renewed.answer.body as { readonly code: string; readonly codeType: string; readonly expiresIn: number; readonly renewableUntil: string }
+    const opened = renewed.answer.body as { readonly success: unknown; readonly code: string; readonly codeType: string; readonly expiresIn: number; readonly renewableUntil: string }
     const successor = try finish(cloud, opened.code, renewed.state, renewed.verifier)
     const recorded = try sql(cloud, "SELECT g.sign_in_at, g.renewed_from = p.key AS linked FROM device_grants g JOIN device_grants p ON p.credential_id = $2 WHERE g.credential_id = $1", [successor.key.credentialId, old.credentialId])
     const bothUsable = [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
@@ -88,7 +88,7 @@ describe("Device key renewal (spec/cloud/nativeClients/deviceKeys.md)", () => {
     const afterRetirement = [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
     try check(() => assert.deepStrictEqual({
       bySession: [bySession.answer.status, failure(bySession.answer.body)],
-      renewed: [renewed.answer.status, /^emac_[0-9a-f]{64}$/.test(opened.code), opened.codeType, opened.expiresIn, opened.renewableUntil],
+      renewed: [renewed.answer.status, opened.success, /^emac_[0-9a-f]{64}$/.test(opened.code), opened.codeType, opened.expiresIn, opened.renewableUntil],
       successor: [successor.minted.status, successor.acked.status, successor.key.credentialId !== old.credentialId],
       recorded: [Number(recorded[0]?.sign_in_at), recorded[0]?.linked],
       bothUsable,
@@ -96,7 +96,7 @@ describe("Device key renewal (spec/cloud/nativeClients/deviceKeys.md)", () => {
       afterRetirement
     }, {
       bySession: [401, ["authentication_required", "credential_unknown"]],
-      renewed: [200, true, "mobile_app_auth_code", 300, new Date(start + renewalCap).toISOString()],
+      renewed: [200, true, true, "mobile_app_auth_code", 300, new Date(start + renewalCap).toISOString()],
       successor: [200, 200, true],
       recorded: [start, true],
       bothUsable: [200, 200],
