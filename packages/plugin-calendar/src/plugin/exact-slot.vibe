@@ -1,0 +1,86 @@
+// spec/calendar/actions.md, "A complete request for an exact slot runs its Calendar read first"
+import { slotMinutesAllowed } from "../../gen/calendar__actions.effect.vibe"
+import { buildUtcDateFromLocalParts, knownTimeZone } from "../clock.vibe"
+import { parseExactStatedClock, parseExplicitLocalDate, type StatedClockTime } from "../request-time.vibe"
+
+const units = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+const tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+const request = /^(?:find(?: me)?|show me|suggest) (?:a )?(?<duration>\d{1,3}|[a-z]+(?:[ -][a-z]+)?)[ -]minutes? (?:slot|gap|opening)(?: for (?<topic>[\p{L}\p{M}]+))? (?<window>.+?)(?: for (?<purpose>(?:(?:a|an) )?[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)?))?(?<resident> (?:on|in) (?:my|the) built[ -]in (?:eliza )?calendar)?$/u
+const constraint = /\b(?:today|tomorrow|yesterday|next|last|before|after|during|until|between|unless|if|when|while|then|and|or|with|without|except|on|in|at|past|not|only|calendar|noon|midnight)\b/u
+const civilDay = String.raw`(?:today|tomorrow|(?:the )?day after tomorrow|\d{4}-\d{2}-\d{2})`
+const leadingDay = new RegExp(`^(${civilDay}) (.+)$`, "u")
+const trailingDay = new RegExp(`^(.+?) (${civilDay})$`, "u")
+const between = /^between (.+) and (.+)$/u
+const from = /^from (.+) (?:to|until) (.+)$/u
+const spokenClock = new RegExp(
+  String.raw`^(${units.slice(1, 13).join("|")})(?:\s+(?:oh\s+)?([a-z]+(?:[ -][a-z]+)?))?\s+([ap]\.?m\.?)$`,
+  "u",
+)
+
+function quantity(text: string): number {
+  if (/^\d{1,3}$/u.test(text)) return Number(text)
+  const named = units.indexOf(text)
+  if (named > 0) return named
+  const [decade, word] = text.split(/[ -]/u)
+  const decadeIndex = tens.findIndex((entry, index) => index >= 2 && entry === decade)
+  const unitIndex = word === undefined ? 0 : units.indexOf(word)
+  return decadeIndex >= 2 && unitIndex >= 0 && unitIndex < 10 ? decadeIndex * 10 + unitIndex : 0
+}
+
+function clockOptions(text: string): readonly StatedClockTime[] {
+  const spoken = spokenClock.exec(text)
+  if (spoken?.[1] !== undefined && spoken[3] !== undefined) {
+    const minute = spoken[2] === undefined ? 0 : quantity(spoken[2])
+    if ((spoken[2] !== undefined && minute === 0) || minute > 59) return []
+    const clock = parseExactStatedClock(`${quantity(spoken[1])}:${String(minute).padStart(2, "0")}${spoken[3]}`)
+    return clock === undefined ? [] : [clock]
+  }
+  const explicit = parseExactStatedClock(text)
+  if (explicit !== undefined) return [explicit]
+  const numeric = /^(\d{1,2})(?::([0-5]\d))?$/u.exec(text)
+  const hour = numeric === null ? quantity(text) : Number(numeric[1])
+  const minute = Number(numeric?.[2] ?? 0)
+  if (hour < 1 || hour > 23 || (numeric === null && hour > 12)) return []
+  return hour <= 12 ? [{ hour: hour % 12, minute }, { hour: (hour % 12) + 12, minute }] : [{ hour, minute }]
+}
+
+export interface ExactCalendarSlot {
+  readonly scope: "active-account" | "resident"
+  readonly timeMin: string
+  readonly timeMax: string
+  readonly durationMinutes: number
+  readonly timeZone: string
+}
+
+export function exactCalendarSlot(text: string, timeZone: string, observedAt: number): ExactCalendarSlot | undefined {
+  const input = request.exec(text.trim().toLowerCase().replace(/\s+/gu, " ").replace(/[.!?]$/u, ""))?.groups
+  if (!input?.duration || !input.window || (input.topic && (!input.resident || input.purpose))
+    || !Number.isFinite(observedAt) || !knownTimeZone(timeZone)) return undefined
+  const now = new Date(observedAt)
+  const topic = input.topic ?? input.purpose
+  if (topic && (constraint.test(topic) || parseExplicitLocalDate(topic, timeZone, now) !== undefined)) return undefined
+  const durationMinutes = quantity(input.duration)
+  if (!slotMinutesAllowed(durationMinutes)) return undefined
+
+  const leading = leadingDay.exec(input.window)
+  const trailing = trailingDay.exec(input.window)
+  const date = parseExplicitLocalDate(leading?.[1] ?? trailing?.[2] ?? "", timeZone, now)
+  const window = leading?.[2] ?? trailing?.[1]
+  if (date === undefined || window === undefined) return undefined
+  const range = between.exec(window) ?? from.exec(window)
+  if (range?.[1] === undefined || range[2] === undefined) return undefined
+  const endOptions = clockOptions(range[2])
+  const minuteOfDay = (clock: StatedClockTime) => clock.hour * 60 + clock.minute
+  const pairs = clockOptions(range[1]).flatMap(start =>
+    endOptions.filter(end => minuteOfDay(end) > minuteOfDay(start)).map(end => [start, end] as const))
+  const [pair] = pairs
+  if (pairs.length !== 1 || pair === undefined) return undefined
+
+  const [start, end] = pair.map(clock => buildUtcDateFromLocalParts(timeZone, { ...date, ...clock, second: 0 }, "reject"))
+  if (start === undefined || end === undefined || start.getTime() < observedAt
+    || end.getTime() - start.getTime() < durationMinutes * 60_000) return undefined
+  return {
+    scope: input.resident ? "resident" : "active-account",
+    timeMin: start.toISOString(), timeMax: end.toISOString(), durationMinutes, timeZone,
+  }
+}

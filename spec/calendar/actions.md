@@ -145,6 +145,17 @@ pure def lawSlotLengthIsBounded(minutes: int): bool =
 pure val minutesValues = Set(4, 5, 480, 481)
 ```
 
+### A complete request for an exact slot runs its Calendar read first
+
+In the owner's private turn, a whole request for a slot of stated length
+between two unambiguous times on a named day uses the client's admitted
+zone and the time of the request. The Calendar read runs before the first
+reply model call, and the reply uses the observed result. If the owner
+names only the built-in Calendar, the read uses the resident calendar of
+the active account even if a connected calendar has the same ID. A phone
+selection, sensitive context, or an ambiguous time keeps the existing
+routing. A stopped turn cannot deliver a later answer from the read.
+
 ### A tomorrow-morning question reads only tomorrow, from midnight to noon
 
 When the owner's words ask about tomorrow morning and no other period,

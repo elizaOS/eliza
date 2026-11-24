@@ -15,7 +15,7 @@ import { invitationChangeOf, providerMutationPort, reviewDigest } from "../mutat
 import { PayloadRecord } from "../mutations/records.schema.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
-import { eventInWindow, eventVersion, hasOtherAttendees, ownerRole, residentCalendar, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
+import { eventInWindow, eventVersion, hasOtherAttendees, ownerRole, residentCalendar, residentSource, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
 import { lookupMatches } from "./lookup.vibe"
 import { managedGoogleCalendar } from "./managed-provider.vibe"
 import { cacheKeyValueStore, type CalendarCache } from "./runtime-store.vibe"
@@ -58,6 +58,7 @@ export interface CalendarSearch {
   readonly timeMax: number
   readonly query?: string
   readonly calendarId?: string
+  readonly residentOnly?: true
 }
 
 export interface CalendarSearchResult {
@@ -153,13 +154,17 @@ export effect function calendarHost(options: CalendarHostOptions) {
     try Ref.set(active, account)
   }
 
-  effect function listed(account: CalendarAccount) {
+  effect function listed(account: CalendarAccount, scope?: CalendarSourceKey) {
     const found: { readonly port: CalendarProviderPort; readonly row: CalendarSummary }[] = []
     const unavailable: CalendarProvider[] = []
     for (const provider of (try Ref.get(providers)).values()) {
+      if (scope !== undefined && provider.provider !== scope.provider) continue
       const rows = provider.sources(account) catch () => undefined
       if (rows === undefined) { unavailable.push(provider.provider); continue }
-      for (const row of rows) if (row.connectorAccountId === account.accountId && row.provider === provider.provider) found.push({ port: provider, row })
+      for (const row of rows) {
+        if (row.connectorAccountId === account.accountId && row.provider === provider.provider && (scope === undefined || sameSourceKey(row, scope)))
+          found.push({ port: provider, row })
+      }
     }
     return { found, unavailable }
   }
@@ -177,13 +182,14 @@ export effect function calendarHost(options: CalendarHostOptions) {
   effect function search(request: CalendarSearch): (CalendarSearchResult | undefined)!! {
     const account = try Ref.get(active)
     if (account === undefined) return undefined
-    const { found, unavailable } = try listed(account)
+    const scope = request.residentOnly === true ? residentSource(account) : undefined
+    const { found, unavailable } = try listed(account, scope)
     const events: CalendarEvent[] = []
     const sources: CalendarSourceHealth[] = []
-    let complete = unavailable.length === 0
+    let complete = unavailable.length === 0 && (scope === undefined || found.length > 0)
     const seen = new Set<string>()
     const readAt = new Date(try Clock.currentTimeMillis).toISOString()
-    const calendarId = narrowedTo(found, request.calendarId)
+    const calendarId = scope === undefined ? narrowedTo(found, request.calendarId) : scope.calendarId
     for (const { port, row } of found) {
       if (calendarId !== undefined && row.calendarId !== calendarId) continue
       const read = port.read(account, row, request.timeMin, request.timeMax) catch () => undefined

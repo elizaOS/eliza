@@ -1,8 +1,10 @@
 // spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"
 import { assert, it } from "@effect/vitest"
+import { call, cloudFake, deviceKey, startInProcess } from "../../agent/test/support/kernel.vibe"
+import { text as modelReply } from "../../agent/test/support/cloud-fake.ts"
 import { attestAuthenticatedApiDeliveryAudience, canActionRun, disclosureGateFailure, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
 import {
-  calendarAction, calendarAsk, calendarHost, calendarProvider, calendarRoutes, CalendarWriteNotAccepted, runCalendarAction,
+  calendarAction, calendarAsk, calendarHost, calendarProvider, calendarRoutes, CalendarService, CalendarWriteNotAccepted, runCalendarAction,
   type CalendarAccount, type CalendarApprovalRow, type CalendarCache, type CalendarEvent, type CalendarProviderPort, type CalendarRouteInput,
 } from "../src/index.vibe"
 
@@ -103,6 +105,63 @@ effect function ownerTurn(participants: readonly UUID[]) {
   try tryPromise(() => attestAuthenticatedApiDeliveryAudience(runtime, message, { kind: "owner_session", principalId: "owner" }))
   return message
 }
+
+it.live('The first reply model call sees the exact Calendar read (spec/calendar/actions.md, "A complete request for an exact slot runs its Calendar read first")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const calendar = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
+  try calendar.bindAccount(owner)
+  class CalendarFixture extends CalendarService {
+    static override start(runtime: IAgentRuntime): Promise<CalendarService> {
+      return Promise.resolve(new CalendarFixture(runtime, calendar))
+    }
+  }
+  const name = "calendar-slot-fixture"
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [name], allowed: ["REPLY", "IGNORE", "NONE", "CALENDAR"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map([[name, { name, description: "Resident Calendar fixture", actions: [calendarAction], services: [CalendarFixture] }]]),
+  })
+  const opened = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
+  const id = "json" in opened ? at(opened.json, "conversation", "id") : undefined
+  assert.isString(id)
+  const before = cloud.calls.length
+  cloud.script(modelReply("There is an opening at noon."))
+  const response = try call(agent, {
+    method: "POST", path: "/api/conversations/" + String(id) + "/messages",
+    body: {
+      text: "Find a thirty-minute opening tomorrow between noon and five p.m. for a grocery run.",
+      metadata: { voiceUi: { uiTimeZone: "America/Los_Angeles" } },
+    },
+  })
+  const calls = cloud.calls.slice(before).filter(({ path }) => path.endsWith("/chat/completions"))
+  assert.equal(calls.length, 1)
+  const messages = (calls[0]?.body as { readonly messages?: readonly { readonly role: string; readonly name?: string; readonly content?: unknown }[] }).messages ?? []
+  assert.isTrue(messages.some(({ role, content }) => role === "tool" && typeof content === "string" && content.includes("durationMinutes") && content.includes("openings")))
+  assert.equal("json" in response ? at(response.json, "text") : undefined, "There is an opening at noon.")
+}, 120_000)
+
+it.effect('An exact built-in slot reads only the resident source (spec/calendar/actions.md, "A complete request for an exact slot runs its Calendar read first")', effect () => {
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
+  const { port } = googleCalendar()
+  const counts = { list: 0, read: 0 }
+  try host.bindAccount(owner)
+  try host.register({
+    ...port,
+    effect sources(account) {
+      counts.list++
+      return (try port.sources(account)).map(row => ({ ...row, calendarId: "primary" }))
+    },
+    effect read(account, source, timeMin, timeMax) {
+      counts.read++
+      return try port.read(account, source, timeMin, timeMax)
+    },
+  })
+  const range = { timeMin: Date.parse("2026-11-21T20:00:00Z"), timeMax: Date.parse("2026-11-22T01:00:00Z") }
+  const local = try host.search({ ...range, residentOnly: true })
+  assert.deepStrictEqual([counts.list, counts.read, local?.complete, local?.sources.map(source => source.key.provider)], [0, 0, true, ["eliza"]])
+  const active = try host.search(range)
+  assert.deepStrictEqual([counts.list, counts.read, active?.sources.map(source => source.key.provider)], [1, 1, ["eliza", "google"]])
+})
 
 it.effect(`Change my calendar only as I asked and know it happened (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A calendar the active account does not list never narrows a read"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all")`, effect () => {
   const filed: CalendarApprovalRow[] = []

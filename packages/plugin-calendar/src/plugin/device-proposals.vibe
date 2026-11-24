@@ -92,8 +92,7 @@ interface Screen {
   readonly calendar: CalendarSource | undefined
 }
 
-function screenOf(turn: DeviceTurn): Screen | undefined {
-  const observed = turn.observation
+function screenOf(observed: DeviceTurn["observation"]): Screen | undefined {
   if (observed === undefined) return undefined
   const selected = observed.selectedObject
   const event = namedCalendarReadTarget({ view: observed.view, sensitive: observed.sensitive, selectedObject: selected })
@@ -107,6 +106,10 @@ function screenOf(turn: DeviceTurn): Screen | undefined {
   }
 }
 
+export function appCalendarRecords(observed: DeviceTurn["observation"]): boolean {
+  return observed === undefined || screenOf(observed)?.source === "AppRecords"
+}
+
 const reachOf: Readonly<Record<FormKey, ProposalReach>> = {
   next: "AnyView", createLocal: "HomeOrCalendar", create: "SelectedOnPhone", readSelected: "SelectedOnPhone", delete: "SelectedOnPhone",
   namedRead: "HomeOrCalendar", namedDelete: "HomeOrCalendar", availability: "HomeOrCalendar",
@@ -117,7 +120,7 @@ const needOf: Readonly<Record<FormKey, readonly string[]>> = {
 }
 
 function admitted(turn: DeviceTurn, key: FormKey): boolean {
-  const screen = screenOf(turn)
+  const screen = screenOf(turn.observation)
   if (screen === undefined || !has(turn, ...needOf[key])) return false
   const unnamedLocalCreate = key === "createLocal" && turn.runtime.actions.some(({ name }) => name === calendarActionName) && !phoneCalendarWords.test(turn.ownerText)
   const selectionFits = key === "create" ? screen.calendar !== undefined : key === "readSelected" || key === "delete" ? screen.event !== undefined : true
@@ -394,7 +397,7 @@ function changeRead(turn: DeviceTurn, name: string | undefined): Refusal | undef
 
 function groundCalendar(operation: DeviceOperation, turn: DeviceTurn): Grounding {
   const key = keyOf(operation)
-  const screen = screenOf(turn)
+  const screen = screenOf(turn.observation)
   if (key === undefined || screen === undefined || !admitted(turn, key)) return notHere
   const asksDelete = deleteAsked(asksToDeleteInWords(turn.ownerText), declinesInWords(turn.ownerText, deleteWords))
   switch (operation.type) {

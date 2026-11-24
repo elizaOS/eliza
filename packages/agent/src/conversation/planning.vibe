@@ -82,6 +82,10 @@ export const turnClarifications = new WeakMap<Action, (runtime: IAgentRuntime, m
 
 export const turnFirstCalls = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => ToolCall["arguments"] | undefined>()
 
+export function registerTurnFirstCall(action: Action, resolve: NonNullable<ReturnType<typeof turnFirstCalls.get>>) {
+  turnFirstCalls.set(action, resolve)
+}
+
 export interface ServedElsewhere {
   readonly code: string
   readonly text: string

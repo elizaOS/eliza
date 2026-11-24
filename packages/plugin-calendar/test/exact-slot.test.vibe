@@ -1,0 +1,29 @@
+// spec/calendar/actions.md, "A complete request for an exact slot runs its Calendar read first"
+import { assert, it } from "@effect/vitest"
+import { exactCalendarSlot } from "../src/plugin/exact-slot.vibe"
+
+const now = Date.parse("2026-11-20T19:00:00.000Z")
+const zone = "America/Los_Angeles"
+
+it.effect('Exact slot commands carry only the authored window and scope (spec/calendar/actions.md, "A complete request for an exact slot runs its Calendar read first")', effect () => {
+  const find = (words: string) => exactCalendarSlot(words, zone, now)
+  assert.deepStrictEqual(find("Find a thirty-minute opening tomorrow between noon and five p.m. for a grocery run."), {
+    scope: "active-account", timeMin: "2026-11-21T20:00:00.000Z", timeMax: "2026-11-22T01:00:00.000Z", durationMinutes: 30, timeZone: zone,
+  })
+  assert.deepStrictEqual(find("Find a 20 minute slot for groceries tomorrow between noon and 5 on my built-in Eliza calendar."), {
+    scope: "resident", timeMin: "2026-11-21T20:00:00.000Z", timeMax: "2026-11-22T01:00:00.000Z", durationMinutes: 20, timeZone: zone,
+  })
+  assert.equal(find("Show me a 25-minute gap from four twenty p.m. to five p.m. 2026-11-22")?.timeMin, "2026-11-23T00:20:00.000Z")
+  for (const words of [
+    "Find a 20 minute slot tomorrow between 2 and 5",
+    "Find a 20 minute slot tomorrow between noon and 5 on my phone calendar",
+    "Find a 20 minute slot tomorrow between noon and 5 on Google Calendar",
+    "Find a 20 minute slot tomorrow between noon and 5 and book it",
+    "Find a 20 minute slot tomorrow between noon and 5 for when Maya is free",
+    "Find a 20 minute slot tomorrow between noon and 5 for a run after work",
+    "Find a 20 minute slot today between 9 am and 10 am",
+    "Find a 50 minute slot tomorrow between noon and 12:30 pm",
+  ]) assert.equal(find(words), undefined, words)
+  assert.equal(exactCalendarSlot("Find a 20 minute slot 2026-11-01 from 1:30 am to 3:00 am", zone, Date.parse("2026-10-30T19:00:00Z")), undefined)
+  assert.equal(exactCalendarSlot("Find a 20 minute slot 2027-03-14 from 2:30 am to 4:00 am", zone, now), undefined)
+})

@@ -171,6 +171,18 @@ function clockOf(hourText: string | undefined, minuteText: string | undefined, h
   return { hour: (hour % 12) + (half.toLowerCase().startsWith("p") ? 12 : 0), minute }
 }
 
+const exactClockMention = compiled(`^(?:${clockMentionSource})$`, "i")
+
+function clockMention(match: RegExpMatchArray): StatedClockTime | undefined {
+  if (match[4] !== undefined) return { hour: match[4].toLowerCase() === "noon" ? 12 : 0, minute: 0 }
+  return match[5] === undefined ? clockOf(match[1], match[2], match[3]) : clockOf(match[5], match[6], undefined)
+}
+
+export function parseExactStatedClock(text: string): StatedClockTime | undefined {
+  const match = exactClockMention.exec(text)
+  return match === null ? undefined : clockMention(match)
+}
+
 export function parseStatedClockTimes(value: string): StatedClockTimes {
   const text = normalized(value)
   const range = clockRange.exec(text)
@@ -185,8 +197,7 @@ export function parseStatedClockTimes(value: string): StatedClockTimes {
   }
   const mentions: StatedClockTime[] = []
   for (const match of remainder.matchAll(compiled(clockMentionSource, "gi"))) {
-    const mention = match[4] !== undefined ? { hour: match[4].toLowerCase() === "noon" ? 12 : 0, minute: 0 }
-      : match[5] !== undefined ? clockOf(match[5], match[6], undefined) : clockOf(match[1], match[2], match[3])
+    const mention = clockMention(match)
     if (mention === undefined) return { kind: "several" }
     mentions.push(mention)
   }
