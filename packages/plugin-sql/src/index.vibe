@@ -17,7 +17,7 @@ export interface MigrationTransaction {
 }
 
 export service SqlMigrationStore {
-  exclusive<A, E, R>(run: (transaction: MigrationTransaction) => A!E!R): A!E | SqlMigrationFailed!R
+  exclusive<A, E, R>(run: (transaction: MigrationTransaction) => A!E!R): A!(E | SqlMigrationFailed)!R
 }
 
 export effect function prepareSqlStore(desired: readonly SqlMigration[]) {
