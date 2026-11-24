@@ -596,7 +596,7 @@ const modeParameter = {
   schema: { type: "string" as const, enum: [...travelModes] },
 }
 
-export const mapsContextDefinition: ContextDefinition = {
+const mapsContextDefinition: ContextDefinition = {
   id: mapsContext, aliases: ["map", "location", "travel", "directions"], label: "Maps",
   description: "Places, addresses, nearby search, directions, routes, travel time and navigation.", descriptionCompressed: "Places, nearby search, directions and routes.",
   sensitivity: "personal", cacheScope: "agent", roleGate: ownerOnly,
