@@ -1,7 +1,7 @@
 // spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/cloud/services/maps.md, "Every operation except capabilities and viewport needs an idempotency key and runs over one hold of the calling credential"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner's words, naming the place a start could not look up"
 import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent"
 import { readCloudError } from "@elizaos/cloud/client"
-import { cloudMapsFailure, isInvalidPlaceIdBody, unusableMapsAnswer } from "./client/cloud-provider.vibe"
+import { cloudMapsFailure, unusableMapsAnswer } from "./client/cloud-provider.vibe"
 import { boundedText, type Coordinate, MapsFailure, place, route, TravelMode, type Place, type Route } from "./client/contracts.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
 import { isMapsSelectionHandle } from "./routing.vibe"
@@ -48,6 +48,11 @@ export interface PlaceResults {
   readonly places: readonly Place[]
 }
 
+type PlaceDetails =
+  | { readonly kind: "DetailsFound"; readonly place: Place }
+  | { readonly kind: "DetailsUnknown" }
+  | { readonly kind: "DetailsRefused"; readonly failure: MapsFailure }
+
 export interface RouteResults {
   readonly providerId: string
   readonly attribution: string
@@ -90,17 +95,19 @@ export function mapsService(link: MapsCloudLink) {
     })
   }
 
-  effect function decode<A>(reply: CloudLinkReply, schema: Schema.Codec<A>): A!MapsFailure {
+  effect function refusal(reply: Extract<CloudLinkReply, { kind: "refused" }>) {
+    const body = JSON.stringify(reply.body ?? null)
     const now = try Clock.currentTimeMillis
+    const error = try tryPromise({
+      try: () => readCloudError({ status: reply.status, headers: { get: () => null }, text: () => Promise.resolve(body) }, now),
+      catch: unreachable,
+    })
+    return { cause: error.failure, failure: cloudMapsFailure(error.failure, now) }
+  }
+
+  effect function decode<A>(reply: CloudLinkReply, schema: Schema.Codec<A>): A!MapsFailure {
     if (reply.kind === "changes-off") throw new MapsFailure({ code: "unauthorized", message: "Cloud refused this Maps request." })
-    if (reply.kind === "refused") {
-      const body = JSON.stringify(reply.body ?? null)
-      const refused = try tryPromise({
-        try: () => readCloudError({ status: reply.status, headers: { get: () => null }, text: () => Promise.resolve(body) }, now),
-        catch: unreachable,
-      })
-      throw cloudMapsFailure(refused.failure, now)
-    }
+    if (reply.kind === "refused") throw (try refusal(reply)).failure
     return try mapError(Schema.decodeUnknownEffect(schema)(reply.body), unusable)
   }
 
@@ -136,12 +143,16 @@ export function mapsService(link: MapsCloudLink) {
     return { providerId: answer.providerId, attribution: answer.attribution, places }
   }
 
-  effect function detail(id: string): (Place | null)!MapsFailure {
-    if (isMapsSelectionHandle(id) || !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/.test(id)) return null
+  effect function detail(id: string): PlaceDetails!MapsFailure {
+    if (isMapsSelectionHandle(id) || !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/.test(id)) return { kind: "DetailsUnknown" }
     const reply = try send({ method: "POST", path: "/api/v1/maps/places/details", body: { id } }, true)
-    if (reply.kind === "refused" && reply.status === 400 && isInvalidPlaceIdBody(reply.body)) return null
+    if (reply.kind === "refused") {
+      const { cause, failure } = try refusal(reply)
+      if (cause.tag === "CloudRefused" && (cause.code === "InvalidRequest" || cause.code === "UnsupportedRegion")) return { kind: "DetailsRefused", failure }
+      throw failure
+    }
     const answer = try decode(reply, Detail)
-    return answer.place === null ? null : try mapError(place(answer.place, answer.providerId), unusable)
+    return answer.place === null ? { kind: "DetailsUnknown" } : { kind: "DetailsFound", place: try mapError(place(answer.place, answer.providerId), unusable) }
   }
 
   effect function reverse(at: Coordinate): { readonly attribution: string; readonly place: Place | null }!MapsFailure {
