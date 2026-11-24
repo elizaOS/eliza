@@ -84,6 +84,90 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
   }, libraryVolume()).pipe(Effect.provide(tab))
 })
 
+it.effect('Retire stale selected Files reads when the selection is forgotten or renamed (spec/files/library.md, "A selection reads its file only while the file still has the revision it selected")', effect () => {
+  const tab = indexedLibrary(`files-selection-${Date.now()}`)
+  type Hold = { remaining: number; entered: Deferred.Deferred<void>; release: Deferred.Deferred<void> }
+  let held: Hold | undefined
+  let holdingCommit: Hold | undefined
+  const bridged = Layer.effect(LibraryStore, effect {
+    const store = try LibraryStore
+    return {
+      effect rows() {
+        const rows = try store.rows()
+        const pause = held
+        if (pause !== undefined) {
+          pause.remaining -= 1
+          if (pause.remaining === 0) {
+            held = undefined
+            try Deferred.succeed(pause.entered, undefined)
+            try Deferred.await(pause.release)
+          }
+        }
+        return rows
+      },
+      effect commit(plan) {
+        try store.commit(plan)
+        const pause = holdingCommit
+        if (pause !== undefined) {
+          holdingCommit = undefined
+          try Deferred.succeed(pause.entered, undefined)
+          try Deferred.await(pause.release)
+        }
+      },
+    } satisfies LibraryStore.Shape
+  }).pipe(Layer.provide(tab))
+  try Effect.provide(effect {
+    try importLibraryFile("", { name: "memo.txt", mimeType: "text/plain", bytes: bytes("memo") })
+    const selections = try librarySelections()
+    const attachment = try selections.select("memo.txt")
+    const binary = try selections.select("memo.txt")
+    const renamed = try selections.select("memo.txt")
+    const hold = effect (remaining: number) => {
+      const pause: Hold = { remaining, entered: try Deferred.make<void>(), release: try Deferred.make<void>() }
+      held = pause
+      return pause
+    }
+
+    const finalRead = try hold(2)
+    const pendingAttachment = fork status(selections.attachment(attachment.selectionId, "chat"))
+    try Effect.ensuring(effect {
+      try Deferred.await(finalRead.entered)
+      try selections.forget(attachment.selectionId)
+    }, Deferred.succeed(finalRead.release, undefined))
+    const forgottenAttachment = try join pendingAttachment
+
+    const onlyRead = try hold(1)
+    const pendingBytes = fork status(selections.bytes(binary.selectionId))
+    try Effect.ensuring(effect {
+      try Deferred.await(onlyRead.entered)
+      try selections.forget(binary.selectionId)
+    }, Deferred.succeed(onlyRead.release, undefined))
+    const forgottenBytes = try join pendingBytes
+
+    const oldRead = try hold(1)
+    const pendingName = fork status(selections.attachment(renamed.selectionId))
+    try Effect.ensuring(effect {
+      try Deferred.await(oldRead.entered)
+      try selections.rename(renamed.selectionId, "notes.txt")
+    }, Deferred.succeed(oldRead.release, undefined))
+    const staleName = try join pendingName
+    assert.deepEqual([forgottenAttachment, forgottenBytes, staleName], ["changed", "changed", "changed"])
+    assert.deepEqual(try selections.attachment(renamed.selectionId), { name: "notes.txt", mimeType: "text/plain", dataBase64: "bWVtbw==" })
+
+    const receipt: Hold = { remaining: 0, entered: try Deferred.make<void>(), release: try Deferred.make<void>() }
+    holdingCommit = receipt
+    const pendingRename = fork status(selections.rename(renamed.selectionId, "draft.txt"))
+    try Effect.ensuring(effect {
+      try Deferred.await(receipt.entered)
+      try selections.forget(renamed.selectionId)
+    }, Deferred.succeed(receipt.release, undefined))
+    assert.equal(try join pendingRename, "changed")
+    assert.equal(try status(selections.attachment(renamed.selectionId)), "changed")
+    const reopened = try selections.select("draft.txt")
+    assert.deepEqual(try selections.readText(reopened.selectionId), { kind: "read", text: "memo", mimeType: "text/plain", bytes: 4 })
+  }, bridged)
+})
+
 it.effect('Keep every browser file and journal entry when Trash is unreadable (spec/files/library.md, "An unreadable Trash journal refuses the request and keeps the stored rows")', effect () => {
   const tab = indexedLibrary(`files-trash-corrupt-${Date.now()}`)
   const competing: { row?: LibraryRow } = {}

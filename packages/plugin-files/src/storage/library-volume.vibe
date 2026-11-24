@@ -508,12 +508,13 @@ export type SelectedText =
   | { readonly kind: "binary"; readonly mimeType: string; readonly bytes: number }
 
 export type SelectedFile = { readonly selectionId: string; readonly name: string; readonly mimeType: string; readonly size: number }
+type SelectionBinding = { readonly id: string; readonly revision: string }
 
 const TEXT_TYPES = ["application/json", "application/xml", "application/javascript"]
 
 export effect function librarySelections() {
   const library = try LibraryStore
-  const bound = try Ref.make(new Map<string, { readonly id: string; readonly revision: string }>())
+  const bound = try Ref.make(new Map<string, SelectionBinding>())
 
   effect function bind(row: LibraryRow | undefined): SelectedFile!VolumeRefused {
     if (row === undefined || row.directory || row.bytes === undefined) throw refused("missing", "Choose a file.")
@@ -522,12 +523,18 @@ export effect function librarySelections() {
     return { selectionId, name: row.name, mimeType: row.mimeType, size: row.size }
   }
 
-  effect function current(selectionId: string, limit: number): (LibraryRow & { readonly bytes: Uint8Array<ArrayBuffer> })!VolumeRefused {
+  effect function capture(selectionId: string): SelectionBinding!VolumeRefused {
     const binding = (try Ref.get(bound)).get(selectionId)
+    if (binding === undefined) throw refused("changed", "Select this file again.")
+    return binding
+  }
+
+  effect function current(selectionId: string, binding: SelectionBinding, limit: number): (LibraryRow & { readonly bytes: Uint8Array<ArrayBuffer> })!VolumeRefused {
     const all = try mapError(library.rows(), (failure) => refused("unavailable", failure.message))
-    const row = binding === undefined ? undefined : all.find((candidate) => candidate.id === binding.id)
-    const readable = selectionReadable({ present: row?.bytes !== undefined, revisionMatches: row?.revision === binding?.revision, bytes: row?.bytes?.byteLength ?? 0, limit })
-    if (row?.bytes === undefined || binding === undefined || row.revision !== binding.revision) throw refused("changed", "Select this file again.")
+    const row = all.find((candidate) => candidate.id === binding.id)
+    const bindingMatches = (try Ref.get(bound)).get(selectionId) === binding
+    const readable = selectionReadable({ present: row?.bytes !== undefined, bindingMatches, revisionMatches: row?.revision === binding.revision, bytes: row?.bytes?.byteLength ?? 0, limit })
+    if (row?.bytes === undefined || !bindingMatches || row.revision !== binding.revision) throw refused("changed", "Select this file again.")
     if (!readable) throw refused("invalid", limit === chatLimit ? "Choose a file up to 20 MiB." : "Choose a file up to 5 MiB.")
     return { ...row, bytes: row.bytes }
   }
@@ -551,36 +558,53 @@ export effect function librarySelections() {
       throw refused("missing", "Choose a file.")
     },
     effect readText(selectionId: string): SelectedText!VolumeRefused {
-      const row = try current(selectionId, Number.MAX_SAFE_INTEGER)
-      if (row.bytes.byteLength > textLimit) return { kind: "large" }
-      if (!row.mimeType.startsWith("text/") && !TEXT_TYPES.includes(row.mimeType)) return { kind: "binary", mimeType: row.mimeType, bytes: row.size }
-      const text = (Effect.try(() => new TextDecoder("utf-8", { fatal: true }).decode(row.bytes)) catch () => undefined)
+      const binding = try capture(selectionId)
+      const row = try current(selectionId, binding, Number.MAX_SAFE_INTEGER)
+      const large = row.bytes.byteLength > textLimit
+      const textual = row.mimeType.startsWith("text/") || TEXT_TYPES.includes(row.mimeType)
+      const text = !large && textual ? decodeUtf8(row.bytes) : undefined
+      try current(selectionId, binding, Number.MAX_SAFE_INTEGER)
+      if (large) return { kind: "large" }
       if (text === undefined || text.includes("\0")) return { kind: "binary", mimeType: row.mimeType, bytes: row.size }
-      try current(selectionId, Number.MAX_SAFE_INTEGER)
       return { kind: "read", text, mimeType: row.mimeType, bytes: row.size }
     },
     effect attachment(selectionId: string, purpose: "mail" | "chat" = "mail") {
+      if (purpose !== "mail" && purpose !== "chat") throw refused("invalid", "Unknown attachment purpose.")
       const limit = purpose === "chat" ? chatLimit : mailLimit
-      const row = try current(selectionId, limit)
-      const bytes = row.bytes.slice()
-      try current(selectionId, limit)
-      return { name: row.name, mimeType: row.mimeType, dataBase64: base64(bytes) }
+      const binding = try capture(selectionId)
+      const row = try current(selectionId, binding, limit)
+      const dataBase64 = base64(row.bytes)
+      try current(selectionId, binding, limit)
+      return { name: row.name, mimeType: row.mimeType, dataBase64 }
     },
     effect rename(selectionId: string, newName: string): SelectedFile!VolumeRefused {
-      const row = try current(selectionId, Number.MAX_SAFE_INTEGER)
+      const binding = try capture(selectionId)
+      const row = try current(selectionId, binding, Number.MAX_SAFE_INTEGER)
       const valid = validName(newName)
       if (valid === undefined || valid.startsWith(".")) throw refused("invalid", "Invalid name")
-      if (nameClash(try mapError(library.rows(), (failure) => refused("unavailable", failure.message)), row, valid)) throw refused("exists", "A file with that name is already there")
-      try mapError(library.commit(placePlan({ id: row.id, expectedRevision: row.revision, destinationId: row.parentId, name: valid }, try Clock.currentTimeMillis)),
+      const change = placePlan({ id: row.id, expectedRevision: row.revision, destinationId: row.parentId, name: valid }, try Clock.currentTimeMillis)
+      const committed: { row?: LibraryRow } = {}
+      try mapError(library.commit((rows) => {
+        const plan = change(rows)
+        if (typeof plan === "string") return plan
+        if (nameClash(rows, row, valid)) return "LibraryNameTaken"
+        committed.row = plan.put[0]
+        return plan
+      }),
         (failure) => failure._tag === "LibraryRefused" ? refused(failure.answer === "LibraryNameTaken" ? "exists" : "changed", failure.message) : refused("unavailable", failure.message))
-      const renamed = (try mapError(library.rows(), (failure) => refused("unavailable", failure.message))).find((candidate) => candidate.id === row.id)
+      const renamed = committed.row
       if (renamed === undefined) throw refused("changed", "Select this file again.")
-      try Ref.update(bound, (map) => new Map(map).set(selectionId, { id: renamed.id, revision: renamed.revision }))
+      const renewed = try Ref.modify(bound, (map): [boolean, Map<string, SelectionBinding>] => map.get(selectionId) === binding
+        ? [true, new Map(map).set(selectionId, { id: renamed.id, revision: renamed.revision })]
+        : [false, map])
+      if (!renewed) throw refused("changed", "Select this file again.")
       return { selectionId, name: renamed.name, mimeType: renamed.mimeType, size: renamed.size }
     },
     effect bytes(selectionId: string) {
-      const row = try current(selectionId, Number.MAX_SAFE_INTEGER)
+      const binding = try capture(selectionId)
+      const row = try current(selectionId, binding, Number.MAX_SAFE_INTEGER)
       const blob = try Effect.try({ try: () => fileBlob(row.bytes, row.mimeType), catch: () => refused("unavailable", "The file could not be opened.") })
+      try current(selectionId, binding, Number.MAX_SAFE_INTEGER)
       return { name: row.name, mimeType: row.mimeType, blob }
     },
     forget: (selectionId: string) => Ref.update(bound, (map) => {

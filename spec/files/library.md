@@ -148,24 +148,30 @@ pure def lawOrphanedTrashNeverAdmitsARequest(journal: TrashJournalRead): bool =
 ### A selection reads its file only while the file still has the revision it selected
 
 Selecting a file binds the selection to the row and its revision. Reading
-its bytes or text, or making an attachment of it, checks the row again
-before and after the read; a row changed or gone since is refused, and the
-owner selects again. A mail attachment holds at most 5 MiB and a chat one
+its bytes or text, or making an attachment of it, checks that original
+binding and row before and after reading. Forgetting or rebinding the
+selection ends the old read. A row changed or gone since is refused, and
+the owner selects again. A mail attachment holds at most 5 MiB and a chat one
 at most 20 MiB, and text is read only from a text file of at most 2 MB that
 decodes as UTF-8 without a NUL. Renaming a selected file renames that row
 only at the revision the selection holds, to a valid name no other row of
-its folder uses in any case, and binds the selection to the renamed
-revision, so the owner keeps reading the file they renamed.
+its folder uses in any case. The rename binds only to the revision it
+committed, and only while the original binding still exists, so the owner
+keeps reading the file they renamed without reopening a forgotten selection.
 
 ```quint
-type SelectionRead = { present: bool, revisionMatches: bool, bytes: int, limit: int }
-pure def selectionReadable(s: SelectionRead): bool = s.present and s.revisionMatches and s.bytes >= 0 and s.bytes <= s.limit
+type SelectionRead = { present: bool, bindingMatches: bool, revisionMatches: bool, bytes: int, limit: int }
+pure def selectionReadable(s: SelectionRead): bool = s.present and s.bindingMatches and s.revisionMatches and s.bytes >= 0 and s.bytes <= s.limit
 pure val mailLimit = 5242880
 pure val chatLimit = 20971520
 pure val textLimit = 2000000
-pure val sValues = Set({ present: true, revisionMatches: true, bytes: 10, limit: 5242880 }, { present: true, revisionMatches: false, bytes: 10, limit: 5242880 },
-  { present: false, revisionMatches: true, bytes: 10, limit: 5242880 }, { present: true, revisionMatches: true, bytes: 5242881, limit: 5242880 })
-pure def lawAChangedSelectionIsNeverRead(s: SelectionRead): bool = selectionReadable(s) implies s.present and s.revisionMatches
+pure val sValues = Set({ present: true, bindingMatches: true, revisionMatches: true, bytes: 10, limit: 5242880 },
+  { present: true, bindingMatches: false, revisionMatches: true, bytes: 10, limit: 5242880 },
+  { present: true, bindingMatches: true, revisionMatches: false, bytes: 10, limit: 5242880 },
+  { present: false, bindingMatches: true, revisionMatches: true, bytes: 10, limit: 5242880 },
+  { present: true, bindingMatches: true, revisionMatches: true, bytes: 5242881, limit: 5242880 },
+  { present: true, bindingMatches: true, revisionMatches: true, bytes: 5242881, limit: 20971520 })
+pure def lawAChangedSelectionIsNeverRead(s: SelectionRead): bool = selectionReadable(s) implies s.present and s.bindingMatches and s.revisionMatches
 ```
 
 ## Story: Let a workflow save and read my browser files without repeating or half-reading anything
