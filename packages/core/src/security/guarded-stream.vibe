@@ -289,7 +289,7 @@ export effect function transformGuardedText(
   }
   if (piiSession) safe = piiSession.substituteText(safe)
   const restoredPii = piiSession ? piiSession.restoreText(safe) : safe
-  const visible = secretSession ? secretSession.restoreUserReplyText(restoredPii) : restoredPii
+  const visible = secretSession ? secretSession.redactRestoredSecretValues(restoredPii) : restoredPii
   return { safe, visible }
 }
 

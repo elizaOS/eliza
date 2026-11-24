@@ -5,8 +5,10 @@ cut using known token lengths, whitespace, grouped number, phone and
 mnemonic runs, credential openers, armor blocks and known token crossings.
 The normalized intervals below represent those detector results. The
 shell's detector-to-interval adapter must preserve that classification.
-Secret substitution precedes PII substitution; visible text restores PII
-and applies the secret reply policy.
+Secret substitution precedes PII substitution. Visible text restores
+PII, then applies the secret reply policy to placeholders and to known
+credential values that the restored text may contain. The masked
+version remains the one used by the model pipeline.
 
 ## Story: Retain incomplete sensitive text across stream chunks
 

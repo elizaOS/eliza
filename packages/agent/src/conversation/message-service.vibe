@@ -1,12 +1,12 @@
 // spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
-// spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"
+// spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"; spec/agent/conversation/ownerAudience.md, "Visible replies restore references only for the verified owner of the current turn"
 import {
   type Action, type ActionResult, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
-  attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, evaluateOwnerExclusiveDisclosure, executePlannedToolCall, getTrajectoryContext, historyWindowNotice, OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
+  attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, evaluateOwnerExclusiveDisclosure, executePlannedToolCall, getTrajectoryContext, historyWindowNotice, OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS, PII_SWAP_ENABLED_SETTING, readSystemNotice, SECRET_SWAP_ENABLED_SETTING, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
 // spec/agent/conversation/ownerAudience.md, "The agent checks the stored room when an owner turn offers a disclosure-gated tool"; spec/agent/conversation/ownerAudience.md, "The audience lease ends with the turn"
-import { privateAudienceCheckNeeded } from "../../gen/agent__conversation__ownerAudience.ts"
+import { admitsVisibleReferenceRestoration, privateAudienceCheckNeeded, privateReplyCheckNeeded } from "../../gen/agent__conversation__ownerAudience.ts"
 import { revertedEffectReceiptIds, type EffectReceipt } from "@elizaos/core/protocol"
 import { hostNoteLabels, offersContextRestore } from "../../gen/agent__conversation__planning.ts"
 import { carriesCutOffEffect, replyQuoteChars } from "../../gen/agent__conversation__turns.ts"
@@ -181,12 +181,11 @@ function evaluateLater(runtime: AgentRuntime, message: Memory, state: State, res
 
 function turnScope<T>(message: Memory, run: () => Promise<T>): Promise<T> {
   const { secretSwapSession, piiSwapSession, ...outer } = getTrajectoryContext() ?? {}
-  const sameRoom = outer.roomId === message.roomId
+  const sameTurn = outer.roomId === message.roomId && message.id !== undefined && outer.messageId === message.id
   return Promise.resolve(runWithTrajectoryContext({
-    ...outer, roomId: message.roomId,
-    ...(message.id === undefined ? {} : { messageId: message.id }),
-    ...(sameRoom && secretSwapSession !== undefined ? { secretSwapSession } : {}),
-    ...(sameRoom && piiSwapSession !== undefined ? { piiSwapSession } : {}),
+    ...outer, roomId: message.roomId, messageId: message.id,
+    ...(sameTurn && secretSwapSession !== undefined ? { secretSwapSession } : {}),
+    ...(sameTurn && piiSwapSession !== undefined ? { piiSwapSession } : {}),
   }, run))
 }
 
@@ -228,7 +227,16 @@ async function respond(
         const history = historyOf(window.shown)
         const actions = offeredActions(runtime, message, actionGate)
         const owner = roles.includes("OWNER")
-        if (privateAudienceCheckNeeded(owner, actions.some(({ disclosureGate }) => disclosureGate !== undefined))) {
+        const privacyEnabled = [SECRET_SWAP_ENABLED_SETTING, PII_SWAP_ENABLED_SETTING].some((key) => {
+          const value = runtime.getSetting(key)
+          if (typeof value === "boolean") return value
+          const normalized = typeof value === "string" ? value.trim().toLowerCase() : ""
+          if (["false", "0", "no", "off"].includes(normalized)) return false
+          return ["true", "1", "yes", "on"].includes(normalized)
+            || ["true", "1", "yes", "on"].includes(globalThis.process?.env[key]?.trim().toLowerCase() ?? "")
+        })
+        if (privateReplyCheckNeeded(owner, privacyEnabled)
+          || privateAudienceCheckNeeded(owner, actions.some(({ disclosureGate }) => disclosureGate !== undefined))) {
           const audience = await attestDeliveryAudienceFromCanonicalRoom(runtime, message).catch(() => undefined)
           signal.throwIfAborted()
           if (audience !== undefined) releaseAudience = beginTrustedDeliveryAudienceTurn(runtime, message, { signal })
@@ -236,7 +244,21 @@ async function respond(
         const disclosure = releaseAudience === undefined ? undefined : evaluateOwnerExclusiveDisclosure(message)
         const previous = recent.find(({ id }) => id !== message.id)
         const previousAsk = previous?.content.inReplyTo
-        const privateOwner = disclosure?.allowed && disclosure.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+        const privateOwner = disclosure?.allowed === true && disclosure.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+        const currentTurn = getTrajectoryContext()
+        const visibleText = (text: string): string => {
+          const sameRoom = currentTurn?.roomId === message.roomId
+          const sameMessage = message.id !== undefined && currentTurn?.messageId === message.id
+          if (currentTurn === undefined || !sameRoom || !sameMessage) return text
+          const { piiSwapSession, secretSwapSession } = currentTurn
+          if (admitsVisibleReferenceRestoration(privateOwner, sameRoom, sameMessage)) {
+            const named = piiSwapSession?.restoreText(text) ?? text
+            return secretSwapSession?.redactRestoredSecretValues(named) ?? named
+          }
+          const masked = secretSwapSession?.substituteText(text) ?? text
+          return piiSwapSession?.substituteText(masked) ?? masked
+        }
+        const canStream = onStreamChunk !== undefined && (!privacyEnabled || privateOwner)
         const previousReply = privateOwner && previous?.entityId === runtime.agentId && typeof previousAsk === "string"
           && previous.content.failureKind === undefined && previous.content.systemNotice === undefined
           ? await storedText(runtime.adapter, previous).then((text) => ({ askedIn: previousAsk, text: heardView(previous, text).heard }), () => undefined)
@@ -279,7 +301,7 @@ async function respond(
             try: () => terminal.recordActionResult(result),
             catch: toElizaError,
           })),
-          ...(onStreamChunk === undefined ? {} : {
+          ...(!canStream || onStreamChunk === undefined ? {} : {
             onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
               written = accumulated ?? written + chunk
               return onStreamChunk(chunk, messageId, accumulated)
@@ -289,25 +311,30 @@ async function respond(
             written = fullText
             options.onReplyRestart?.(fullText)
           } }),
-          ...(options?.onPlanningAcknowledgment === undefined ? {} : { onPlanningAcknowledgment: options.onPlanningAcknowledgment }),
+          ...(options?.onPlanningAcknowledgment === undefined ? {} : {
+            onPlanningAcknowledgment: (text: string) => options.onPlanningAcknowledgment?.(visibleText(text)),
+          }),
           ...(options?.onActivityStatus === undefined ? {} : { onActivityStatus: options.onActivityStatus }),
         }, actions))
         planningLive = false
         signal.throwIfAborted()
-        const replyText = groundedEventReply(groundedTimeReply(planned.reply, asked, clock), asked, planned.steps.map(({ result }) => result), runtime.agentId)
+        const grounded = groundedEventReply(groundedTimeReply(planned.reply, asked, clock), asked, planned.steps.map(({ result }) => result), runtime.agentId)
+        const replyText = visibleText(grounded)
         if (!replyText.trim()) throw new Error("The turn produced no reply")
         if (onStreamChunk !== undefined && replyText !== written) options?.onReplyRestart?.(replyText)
         written = replyText
         const ran = planned.steps.map(({ action, result: step }): ActionResult => ({ ...step, data: { ...step.data, actionName: action } }))
         const result = await withRoomDeliverySettlement(runtime, message.roomId, lease, async () => {
-          const delivered = await executePlannedToolCall(runtime, {
+          const delivered = await runWithTrajectoryContext({
+            ...currentTurn, piiSwapSession: undefined, secretSwapSession: undefined,
+          }, () => executePlannedToolCall(runtime, {
             message, state, activeContexts: ["general"], userRoles: roles, previousResults: planned.steps.map(({ result }) => result),
             callback: async (content, actionName) => {
               const stored = await callback?.(content, actionName) ?? []
               responseMessages.push(...stored)
               return stored
             },
-          }, { name: "REPLY", params: { text: replyText } }, { abortSignal: signal })
+          }, { name: "REPLY", params: { text: replyText } }, { abortSignal: signal }))
           if (delivered.success && responseMessages.length > 0) options?.onReplyStored?.(replyText, ran)
           return delivered
         })

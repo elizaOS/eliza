@@ -70,6 +70,18 @@ module node {
     actions: [agendaRead, agendaFind, plannerShow],
   }
 
+  export const privateNarrationApp = (narrate: () => string): AgentPlugin => ({
+    name: "private-narration-fixture",
+    description: "Reads a fixture result and narrates it.",
+    actions: [{
+      name: "FIXTURE_READ", description: "Reads the fixture result.", validate: async () => true,
+      handler: async (_runtime, _message, _state, _options, callback) => {
+        await callback?.({ text: narrate() })
+        return { success: true, text: "Read complete." }
+      },
+    }],
+  })
+
   export const privateEffectPayload = "private-fixture-effect-payload"
   export const appliedReceiptId = "private-fixture-applied-receipt"
   const fixtureEffect = (rolledBack: boolean, record: (effect: "applied" | "rolled_back") => void): Action => ({
@@ -142,7 +154,7 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads } from node
+import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, privateNarrationApp, readErrorBeforeEof, readSplit, slowAgendaReads } from node
 
 schema Created { conversation: { id: string; roomId: string } }
 const created = Schema.decodeUnknownOption(Created)
@@ -173,6 +185,58 @@ const frames = (...payloads: string[]) => payloads.map((payload) => `data: ${pay
 const summary = (outcome: ReplyOutcome) => outcome.kind === "Done"
   ? { kind: outcome.kind, text: outcome.text, failureKind: outcome.failureKind, keyed: outcome.messageId !== "" && outcome.userMessageId !== "" }
   : outcome
+
+it.live('Owner voice replies and keyed replay restore only current references after action narration (spec/agent/conversation/ownerAudience.md, "Visible replies restore references only for the verified owner of the current turn")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const sourceAddress = "123 Cedar Avenue"
+  const fixtureCredential = "synthetic-api-key-for-reply-fixture-0346"
+  const seeded = `Remember this address: ${sourceAddress} | API_KEY=${fixtureCredential}`
+  let alias = ""
+  const plugin = privateNarrationApp(() => `Read ${alias}. Credential: ${fixtureCredential}.`)
+  const agent = try startInProcess({
+    launch: {
+      callerRole: "owner", privacy: { secretSwap: true, piiSwap: true },
+      backend: { kind: "cloud", origin: cloud.origin },
+      load: [plugin.name], allowed: ["REPLY", "IGNORE", "NONE", "FIXTURE_READ"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+    bundled: new Map([[plugin.name, plugin]]),
+  })
+  const { id } = try conversation(agent)
+  try Effect.sync(() => cloud.script(text("Saved for this fixture.")))
+  try streamed(agent, id, { text: seeded })
+  const modelCalls = () => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions")
+  const seedWire = JSON.stringify(modelCalls().at(-1)?.body ?? {})
+  alias = /Remember this address: ([^|]+) \|/.exec(seedWire)?.[1]?.trim() ?? ""
+  try Effect.try(() => {
+    assert.ok(alias.length > 0 && alias !== sourceAddress)
+    assert.ok(!seedWire.includes(sourceAddress) && !seedWire.includes(fixtureCredential))
+  })
+
+  const message = { text: "Read the fixture address.", channelType: "VOICE_DM", clientMessageId: "restored-reply" }
+  const action = { name: "FIXTURE_READ", arguments: {} }
+  try Effect.sync(() => cloud.script(toolCalls("Let me check.", action), text("Read complete.")))
+  const chunks = try streamed(agent, id, message)
+  const live = try read(chunks, 9)
+  const beforeReplay = modelCalls().length
+  const replayed = try read(try streamed(agent, id, message), 9)
+  const afterReplay = modelCalls().length
+  const other = try conversation(agent)
+  try Effect.sync(() => cloud.script(text(`I found ${alias}.`)))
+  const unrelated = try read(try streamed(agent, other.id, { text: "What did you find?" }), 9)
+
+  try Effect.try(() => {
+    assert.ok(live.outcome.kind === "Done" && replayed.outcome.kind === "Done" && unrelated.outcome.kind === "Done")
+    assert.ok(live.outcome.text.includes(`Read ${sourceAddress}.`))
+    assert.ok(live.outcome.text.includes("[redacted credential]"))
+    assert.ok(!chunks.join("").includes(fixtureCredential))
+    assert.ok(live.seen.includes("acknowledgment:Let me check."))
+    assert.strictEqual(replayed.outcome.text, live.outcome.text)
+    assert.strictEqual(replayed.outcome.messageId, live.outcome.messageId)
+    assert.strictEqual(afterReplay, beforeReplay)
+    assert.ok(!unrelated.outcome.text.includes(sourceAddress))
+  })
+}, 120_000)
 
 const long = "a".repeat(1500) + "é".repeat(1500) + "🙂".repeat(800)
 

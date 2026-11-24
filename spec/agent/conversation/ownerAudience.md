@@ -26,6 +26,30 @@ pure def lawEveryProtectedOwnerTurnChecksTheRoom(ownerRole: bool, offersDisclosu
   (ownerRole and offersDisclosureGate) implies privateAudienceCheckNeeded(ownerRole, offersDisclosureGate)
 ```
 
+### Visible replies restore references only for the verified owner of the current turn
+
+> As the owner, I hear and see the contact references I recognize in
+> action narration and replies, while credentials stay redacted.
+
+When reply privacy is enabled, the host checks the same stored audience
+even on a reply without tools. An owner-exclusive delivery may restore
+only references from the exact active room and message. It restores
+personal references before applying the credential reply policy, including
+to credentials a restored reference contains. A denied destination receives
+masked text and no optimistic stream of restored text. Acknowledgments,
+the settled reply and its durable copy use the same projection. Only the
+settled copy goes to the terminal REPLY action. Earlier action inputs,
+receipts and model history retain their separate boundaries.
+
+```quint
+pure def privateReplyCheckNeeded(ownerRole: bool, privacyEnabled: bool): bool =
+  ownerRole and privacyEnabled
+pure def admitsVisibleReferenceRestoration(privateOwner: bool, sameRoom: bool, sameMessage: bool): bool =
+  privateOwner and sameRoom and sameMessage
+pure def lawVisibleReferencesStayInTheOwnerTurn(privateOwner: bool, sameRoom: bool, sameMessage: bool): bool =
+  admitsVisibleReferenceRestoration(privateOwner, sameRoom, sameMessage) implies (privateOwner and sameRoom and sameMessage)
+```
+
 ### The audience lease ends with the turn
 
 Core binds the attestation to the exact message and runtime. The host
