@@ -172,6 +172,10 @@ apart.
 
 ### Spoken text keeps the prose of a reply and drops reasoning, tool calls, code, addresses, markup and stage directions
 
+The speech entry can also mask a reply's stage directions while preserving
+its UTF-16 source positions for playback receipts. Emphasized prose stays
+available to the speech planner.
+
 Reasoning and tool-call blocks, including one left open at the end of a
 reply, code fences, including an unterminated one, web addresses, markup
 and stage directions are not spoken. Prose is spoken in order, and inline

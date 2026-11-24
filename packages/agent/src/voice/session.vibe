@@ -7,8 +7,8 @@ module browser {
   } from "../../gen/agent__voice__session.effect.vibe"
   import { createHeardReports } from "./heard-reports.vibe"
   import { endOfTurnText, heardTurnFor } from "./heuristics.vibe"
-  import { speechSegmentsWithSource, type SpeechSegmentSource } from "./playback.vibe"
-  import type { RecognizerPort, VoiceReply, VoiceSessionPorts } from "./ports.vibe"
+  import { speechSegmentsWithSource } from "./playback.vibe"
+  import type { PreparedVoiceReply, RecognizerPort, VoiceReply, VoiceSessionPorts } from "./ports.vibe"
 
   interface Capture {
     echoCancelled: boolean
@@ -17,7 +17,7 @@ module browser {
   interface Playback {
     readonly messageId: string
     readonly text: string
-    readonly segments: readonly SpeechSegmentSource[]
+    readonly sourceEnds: readonly number[]
     endedAt: number | undefined
   }
 
@@ -201,16 +201,37 @@ module browser {
       try { void this.ports.turns.abort(this.ports.roomId, reason).catch(() => undefined) } catch {}
     }
 
+    #prepare(reply: VoiceReply): PreparedVoiceReply {
+      const speaker = this.ports.speaker
+      if (speaker.prepare !== undefined) return speaker.prepare(reply)
+      const segments = speechSegmentsWithSource(reply.text, reply.action?.verbatimAsked === true)
+      return {
+        sourceEnds: segments.map(({ sourceEnd }) => sourceEnd),
+        play: events => speaker.speak(segments.map(({ text }) => text), events),
+      }
+    }
+
     #speak(reply: VoiceReply): void {
-      const segments = speechSegmentsWithSource(reply.text)
-      if (!this.#send({ type: "replyStarted", segments: segments.length }) || segments.length === 0) return
-      const playback: Playback = { ...reply, segments, endedAt: undefined }
+      let prepared: PreparedVoiceReply
+      try {
+        prepared = this.#prepare(reply)
+      } catch {
+        this.#send({ type: "replyFailed" })
+        return
+      }
+      const sourceEnds = [...prepared.sourceEnds]
+      if (sourceEnds.some((end, index) => !Number.isSafeInteger(end) || end <= (sourceEnds[index - 1] ?? 0) || end > reply.text.length)) {
+        this.#send({ type: "replyFailed" })
+        return
+      }
+      if (!this.#send({ type: "replyStarted", segments: sourceEnds.length }) || sourceEnds.length === 0) return
+      const playback: Playback = { ...reply, sourceEnds, endedAt: undefined }
       this.#playback = playback
       const send = (event: Event) => {
         if (this.#playback === playback && playback.endedAt === undefined) this.#send(event)
       }
       try {
-        this.ports.speaker.speak(segments.map(({ text }) => text), {
+        prepared.play({
           segmentPlayed: () => send({ type: "segmentPlayed" }),
           broke: () => send({ type: "playbackBroke" }),
         })
@@ -225,7 +246,7 @@ module browser {
         try { this.ports.speaker.stop() } catch {}
       }
       if (after.receipts.length === before.receipts.length) return
-      const sourceEnd = playback.segments[before.played - 1]?.sourceEnd ?? 0
+      const sourceEnd = playback.sourceEnds[before.played - 1] ?? 0
       void this.#reports.report({ reply: before.reply, conversationId: this.ports.conversationId,
         messageId: playback.messageId, heardText: playback.text.slice(0, sourceEnd),
         nothingHeard: before.played === 0 }).catch(() => undefined)

@@ -52,6 +52,11 @@ function peelStarSpan(
   return opensSentence && /\s/u.test(inner.trim()) ? " " : inner
 }
 
+export function maskSpokenStageDirections(input: string): string {
+  return input.replace(STAR_SPAN_PATTERN, (match, inner, offset, source) =>
+    peelStarSpan(match, inner, offset, source) === " " ? " ".repeat(match.length) : match)
+}
+
 const BALANCED_DIRECTION_PATTERNS = [
   /\([^()]*\)/g,
   /\[[^[\]]*\]/g,

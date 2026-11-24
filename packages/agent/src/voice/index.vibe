@@ -9,7 +9,7 @@ export {
   type RecorderEvents, type RecorderPort, type RecordingChunk, type RecordingPhase, type RecordingStream, type TranscriptReceiver,
 } from "./recorded-transcription.vibe"
 export type {
-  CaptureEvents, CapturePort, ClockPort, EndOfTurnPort, HeardAnswer, HeardPort, RecognizerPort, SpeakerEvents, SpeakerPort, TurnPort,
+  CaptureEvents, CapturePort, ClockPort, EndOfTurnPort, HeardAnswer, HeardPort, PreparedVoiceReply, RecognizerPort, SpeakerEvents, SpeakerPort, TurnPort,
   VoiceReply, VoiceReplyAction, VoiceSessionPorts, VoiceTurn, VoiceUi,
 } from "./ports.vibe"
 export {
@@ -34,3 +34,4 @@ export {
 } from "./agent-ports.vibe"
 export { parseVoiceUiContext, type VoiceUiContext } from "../conversation/turn-context.schema.vibe"
 export { defaultVoiceProfile, type StopReport, type VoiceProfile } from "../../gen/agent__voice__session.effect.vibe"
+export { speechSegmentsWithSource, type SpeechSegmentSource } from "./playback.vibe"

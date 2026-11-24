@@ -315,6 +315,11 @@ when none had (a failure before any played reports nothing and keeps the
 stored reply whole). The report is keyed by the reply and kept until it
 settles. A half-duplex session then reopens the microphone.
 
+Speech preparation can name ordered segment ends in the stored reply.
+The speaker completes a logical segment after its audio has played.
+The heard report uses the original prefix through the last completed
+segment. A prepared reply with zero audible segments finishes silently.
+
 ```quint
 pure def reserved(s: VoiceSession): List[HeardReceipt] =
   s.receipts.append({ reply: s.reply, attempts: 0, phase: ReportDue, nothingHeard: s.played == 0 })

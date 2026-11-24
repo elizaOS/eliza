@@ -1,4 +1,5 @@
 // spec/agent/voice/clientAudio.md, "A segment is played only once its input has ended and its audio has played"; spec/agent/voice/clientAudio.md, "Segments play in order once each, and Stop silences the reply at once"; spec/agent/voice/clientAudio.md, "The progressive attachment is ready at its first appended frame, or at the end without streaming"
+import { maskSpokenStageDirections } from "@elizaos/core/speech"
 import {
   attachmentReady, cancelsUpstream, mediaWaitMs, replyAfter, replyIdle, segmentAfter, segmentStart,
   type ReplyRun, type SegmentSignal,
@@ -144,7 +145,10 @@ function sentenceEnd(text: string, at: number): boolean {
   const before = text[at - 1]
   const after = text[at + 1]
   if (before !== undefined && /\d/.test(before) && (after === undefined || /\d/.test(after))) return false
-  return !abbreviation.test(text.slice(0, at))
+  const prefix = text.slice(0, at)
+  if (/\b\d{1,2}(?::[0-5]\d)?[ \t]*[ap]\.[ \t]*m$/i.test(prefix) &&
+      /^[ \t]*[-–—−][ \t]*\d/.test(text.slice(at + 1))) return false
+  return !abbreviation.test(prefix)
 }
 
 function firstSegment(value: string): readonly [string, string] {
@@ -176,11 +180,12 @@ export interface SpeechSegmentSource {
   readonly sourceEnd: number
 }
 
-export function speechSegmentsWithSource(source: string): SpeechSegmentSource[] {
+export function speechSegmentsWithSource(source: string, verbatim = false): SpeechSegmentSource[] {
+  const spoken = verbatim ? source : maskSpokenStageDirections(source)
   let sourceEnd = 0
-  return splitSpeechSegments(source).map((text) => {
+  return splitSpeechSegments(spoken).map((text) => {
     for (const word of text.split(" ")) {
-      while (/\s/u.test(source.charAt(sourceEnd))) sourceEnd += 1
+      while (/\s/u.test(spoken.charAt(sourceEnd))) sourceEnd += 1
       sourceEnd += word.length
     }
     return { text, sourceEnd }

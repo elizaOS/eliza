@@ -62,7 +62,13 @@ export interface SpeakerEvents {
   broke(cause: unknown): void
 }
 
+export interface PreparedVoiceReply {
+  readonly sourceEnds: readonly number[]
+  play(events: SpeakerEvents): void
+}
+
 export interface SpeakerPort {
+  prepare?(reply: VoiceReply): PreparedVoiceReply
   speak(segments: readonly string[], events: SpeakerEvents): void
   stop(): void
 }

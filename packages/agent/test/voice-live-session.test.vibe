@@ -1,7 +1,7 @@
 // spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"; spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
 import { assert, it } from "@effect/vitest"
 import { createLiveVoiceSession, parseVoiceTranscriptEnvelope } from "../src/voice/live-session.vibe"
-import type { CaptureEvents, HeardBody, SpeakerEvents, VoiceSessionPorts, VoiceTurn } from "../src/voice/ports.vibe"
+import type { CaptureEvents, HeardBody, SpeakerEvents, SpeakerPort, VoiceSessionPorts, VoiceTurn } from "../src/voice/ports.vibe"
 
 const sessionId = "live-session-1"
 const reply = "Your dentist appointment is at three this afternoon."
@@ -11,7 +11,7 @@ interface Spoken {
   readonly events: SpeakerEvents
 }
 
-function harness(options: { endOfTurn?: VoiceSessionPorts["endOfTurn"]; send?: VoiceSessionPorts["turns"]["send"] } = {}) {
+function harness(options: { endOfTurn?: VoiceSessionPorts["endOfTurn"]; send?: VoiceSessionPorts["turns"]["send"]; prepare?: SpeakerPort["prepare"] } = {}) {
   const timers: Array<{ at: number; run: () => void }> = []
   const listeners = new Set<(envelope: unknown) => void>()
   const captures: CaptureEvents[] = []
@@ -37,7 +37,8 @@ function harness(options: { endOfTurn?: VoiceSessionPorts["endOfTurn"]; send?: V
       heard.push(body)
       return { status: 200, body: { ok: true, messageId, changed: true } }
     },
-    speaker: { speak: (segments, events) => { spoken.push({ segments, events }) }, stop: () => { counts.stops += 1 } },
+    speaker: { ...(options.prepare === undefined ? {} : { prepare: options.prepare }),
+      speak: (segments, events) => { spoken.push({ segments, events }) }, stop: () => { counts.stops += 1 } },
     clock: { now: () => now, after: (ms, run) => { timers.push({ at: now + ms, run }) } },
     clientMessageId: () => `client-${sent.length + 1}`,
   }
@@ -91,6 +92,35 @@ function harness(options: { endOfTurn?: VoiceSessionPorts["endOfTurn"]; send?: V
   }
   return { live, listeners, captures, sent, aborted, heard, spoken, counts, advance, emit, say, settle, open, replyPlaying }
 }
+
+it.effect('A prepared reply reports the stored prefix through each completed audible segment (spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard")', () => effect {
+  const first = "*sighs* Here are the first details."
+  const text = first + " There is more after that."
+  const playback: { events?: SpeakerEvents } = {}
+  const h = harness({
+    send: async () => ({ messageId: "reply-source", text }),
+    prepare: ({ text }) => ({ sourceEnds: [first.length, text.length], play: events => { playback.events = events } }),
+  })
+  try promise(() => h.replyPlaying(true))
+  assert.equal(h.live.state.turn, "Playing")
+  playback.events?.segmentPlayed()
+  h.live.stop()
+  try promise(() => h.settle())
+  assert.equal(h.heard.length, 1)
+  assert.deepStrictEqual(h.heard[0], { heardText: first })
+})
+
+it.effect('Ordinary speech omits stage directions and a direction-only reply finishes silently (spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard")', () => effect {
+  const h = harness({ send: async () => ({ messageId: "ordinary", text: "Sure. *leans in closer* Your train leaves at nine." }) })
+  try promise(() => h.replyPlaying(true))
+  assert.deepStrictEqual(h.spoken[0]?.segments, ["Sure.", "Your train leaves at nine."])
+  h.live.stop()
+
+  const silent = harness({ send: async () => ({ messageId: "silent", text: "**laughs**" }) })
+  try promise(() => silent.replyPlaying(false))
+  assert.deepStrictEqual([silent.spoken.length, silent.live.state.turn, silent.heard.length], [0, "NoTurn", 0])
+  silent.live.stop()
+})
 
 it.effect("A barge-in is confirmed only by an accepted transcript or a 700 ms hold: held speech cuts the playing reply and reserves its heard report", () => effect {
   const h = harness()
