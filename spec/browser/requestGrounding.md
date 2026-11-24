@@ -83,6 +83,35 @@ pure def lawWithoutAPageOnlyTypedAddressesGround(readable: bool, https: bool, ve
   pageLinkDestination(readable, https, vetoed, candidates, List(), proposedLink) == groundProposedDestination(readable, https, vetoed, candidates)
 ```
 
+### An address the model proposes for a site my message does not name opens only after my review
+
+The owner may name a site without typing its address ("take me to the New
+York Times site"), and the model may then propose the address it knows for
+it. A proposed address that neither the owner's message nor the page it
+carried grounds (above) is still offered when it is a valid web address:
+HTTPS, every label well formed, a top-level domain IANA lists, and no port.
+It is always offered unbound to the message, so the owner reviews it on the
+phone before it loads. This holds only for a host the owner's message does
+not name at all, typed, spoken or split across words: an address whose host
+the message names is decided by the owner's words as above, so a host the
+owner refused, or an open they took back, is never offered. A message that
+cannot be read offers nothing, and an address that is not valid is refused
+as before. Whether the words ask for a site at all
+is the model's to judge; the card is the owner's check.
+
+```quint
+pure def proposedDestination(linked: str, readable: bool, validAddress: bool, hostNamed: bool, proposedAddress: str): str =
+  if (linked != "") linked else if (readable and validAddress and not(hostNamed)) proposedAddress else ""
+pure val linkedValues = Set("", "https://one.example/story")
+pure val proposedAddressValues = Set("", "https://news.example/")
+pure def lawAHostMyMessageNamesIsDecidedByMyWords(readable: bool, validAddress: bool, proposedAddress: str): bool =
+  proposedDestination("", readable, validAddress, true, proposedAddress) == ""
+pure def lawAnInvalidAddressIsNeverProposed(readable: bool, hostNamed: bool, proposedAddress: str): bool =
+  proposedDestination("", readable, false, hostNamed, proposedAddress) == ""
+pure def lawAnUnreadableMessageProposesNoUnstatedAddress(validAddress: bool, hostNamed: bool, proposedAddress: str): bool =
+  proposedDestination("", false, validAddress, hostNamed, proposedAddress) == ""
+```
+
 ### An open runs without my review only when my whole message asked to open that address
 
 A grounded open is bound to the owner's current message only when that
@@ -91,7 +120,8 @@ command, a polite question, an everyday command or the bare address. An
 address the owner only mentioned, one whose dots they spoke as words, and
 a link of the page their message carried are grounding evidence alone: such
 an open is offered unbound to the message, so the owner reviews it on the
-phone before it loads.
+phone before it loads, as is an address the model proposed that the message
+does not state (above).
 
 ```quint
 pure def openBound(pageLink: bool, wholeMessageOpen: bool): bool = not(pageLink) and wholeMessageOpen
