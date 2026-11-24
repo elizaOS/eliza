@@ -1,5 +1,5 @@
 // spec/vision/index.md, "Story: Control which of my visual sources the assistant can use"; spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
-import { ModelType, Service, resolveCanonicalOwnerId, validateUuid, type Action, type IAgentRuntime, type Memory, type Plugin } from "@elizaos/core"
+import { ModelType, resolveCanonicalOwnerId, validateUuid, type Action, type IAgentRuntime, type Memory, type Plugin, type Service } from "@elizaos/core"
 import { Machine, machine, releaseVisionImage, sourceAllowed, type CapturePurpose, type CaptureSource, type VisionMode } from "../gen/vision.effect.vibe"
 
 module node {

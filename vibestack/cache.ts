@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { gunzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { sha, tokenize } from "./util.ts";
-import { evaluatorIdentity, executableDigest, InstallationChanged, LASTING, lasting, packageLocation, packageRoots } from "./installed.ts";
+import { type Evaluator, installedEvaluator, executableDigest, InstallationChanged, LASTING, lasting, packageLocation, packageRoots } from "./installed.ts";
 import { NEEDS_DAFNY, findBin, formatStamp, exec, onPath, stamp, writeWhole } from "./run.ts";
 
 export { executableDigest };
@@ -115,10 +115,10 @@ const dafnySaid = (version: string | undefined, stopped?: string, out = "") => {
 type Check = {
   installation?: DafnyInstall | { at: string; files?: undefined };
   programs: Map<string, Program | undefined>;
-  evaluators: Map<string, string>;
+  evaluators: Map<string, Evaluator>;
   pending: Map<string, Buffer>;
   pendingDafny: Map<string, Buffer>;
-  verify: Set<Program>;
+  verify: Set<Pick<Program, "unchanged">>;
   solverAt?: string;
   dafnyBytes: number;
   touched: Set<string>;
@@ -141,6 +141,7 @@ function pendingLimit(check: Check) {
 
 function includePrograms(check: Check) {
   for (const program of check.programs.values()) if (program?.id) check.verify.add(program);
+  for (const evaluator of check.evaluators.values()) check.verify.add(evaluator);
 }
 
 function resetPending(check: Check) {
@@ -153,7 +154,7 @@ function resetPending(check: Check) {
 
 function verifyPrograms(check: Check, complete: boolean): boolean {
   if (complete) includePrograms(check);
-  const replaced = [...check.verify].some((program) => !program.unchanged());
+  const replaced = [...check.verify].some((tool) => !tool.unchanged());
   if (!replaced && !check.changed) return true;
   check.changed = true;
   resetPending(check);
@@ -705,13 +706,13 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
   return program;
 }
 
-export function evaluatorForCheck(root: string): string | undefined {
+export function evaluatorForCheck(root: string): Evaluator | undefined {
   const scope = checking.getStore();
   const known = scope?.evaluators.get(root);
   if (known) return known;
-  const id = evaluatorIdentity(root);
-  if (id) scope?.evaluators.set(root, id);
-  return id;
+  const evaluator = installedEvaluator(root);
+  if (evaluator) scope?.evaluators.set(root, evaluator);
+  return evaluator;
 }
 
 export function stableInstallation(same: boolean) {
@@ -952,7 +953,7 @@ export interface Memory {
   captureReceipt?: (receipt: { name: string; bytes: Uint8Array }) => void;
 }
 /** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
-interface Entry { name: string; file: string; reusable: boolean; evaluator?: string }
+interface Entry { name: string; file: string; reusable: boolean; evaluator?: Evaluator }
 const formats = [["zst", zstdDecompressSync], ["gz", gunzipSync]] as const;
 const primaryExtension = `.${formats[0][0]}`;
 const localCache = (root: string) => path.join(root, ".spec-cache");
@@ -969,7 +970,7 @@ export async function withFormalCache<T>(directory: string, run: () => Promise<T
 
 export async function entry(root: string, stage: Stage, key: (string | undefined)[], evaluates = ["simulate", "tests", "traces", "explore"].includes(stage)): Promise<Entry> {
   const evaluator = evaluates ? evaluatorForCheck(root) : undefined;
-  const inputs = [await toolchainId(root, stage), ...evaluates ? [evaluator] : [], ...key];
+  const inputs = [await toolchainId(root, stage), ...evaluates ? [evaluator?.id] : [], ...key];
   const reusable = inputs.every((input) => input !== undefined);
   const name = `${stage}-${sha(...inputs.map((input) => input ?? "")).slice(0, 24)}.json${primaryExtension}`;
   return { name, file: cacheFile(root, name), reusable, evaluator };
@@ -1039,7 +1040,10 @@ export function store(memory: Memory, raw: Entry, value: unknown, source?: { pro
   if (!projected) memory.used.add(raw.name);
   const check = checking.getStore();
   if (unsure || check?.changed || check?.closed || !reusable) return;
-  if (evaluator !== undefined && !stableInstallation(evaluatorIdentity(memory.root) === evaluator)) return;
+  if (evaluator) {
+    if (check) check.verify.add(evaluator);
+    else if (!evaluator.unchanged()) return;
+  }
   const action = source === "dafny" ? undefined : source;
   if (action && !check && !action.program.unchanged()) return;
   const compact = projected && memory.actionProjection?.encode(value);
