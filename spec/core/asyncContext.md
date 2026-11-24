@@ -7,6 +7,14 @@ inheritance and restoration for logical continuations. The future Effect
 adapter must preserve the public `run` and `active` behavior through real
 asynchronous and exceptional continuations.
 
+Core is browser-safe, so it names no Node module: it finds the host's own
+`AsyncLocalStorage` (Node's `process.getBuiltinModule`), and a host may
+register another storage. A host with none cannot keep a context across
+`await`, so entering a scope there is refused with
+`AsyncContextUnavailableError` before its callback runs: a synchronous stack
+would drop the context at the scope's first continuation, and a check that
+reads it there, such as the action gate's request policy, would pass open.
+
 ## Story: Keep concurrent turn context isolated
 
 > As a runtime caller, I want the context I enter to reach only my own

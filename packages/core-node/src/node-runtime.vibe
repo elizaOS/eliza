@@ -1,4 +1,4 @@
-// spec/core/logging/index.md, "Story: Capture logs without exposing host internals"; spec/core/asyncContext.md, "Nested context runs restore the previous context"
+// spec/core/logging/files.md, "Story: Open optional log files lazily and close their descriptors"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"
 import {
   registerAsyncContextStorageFactory,
   registerLoggerNodeHost,

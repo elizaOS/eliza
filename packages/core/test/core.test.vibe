@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, recentLogs, recordLlmCall, registerAsyncContextStorageFactory, registerProxyInspector, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretSwapSession, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World } from "../src/index.vibe"
+import { type Action, addLogListener, asyncContextStorageFactoryFor, AsyncContextUnavailableError, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, recentLogs, recordLlmCall, registerProxyInspector, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretSwapSession, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World } from "../src/index.vibe"
 import { coreDir, installPacked, packCandidate, runNode, sha256File } from "./support/child.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
@@ -11,7 +11,6 @@ import { parseAndValidateCharacter } from "../src/character-schema.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 
 module traceBoundary {
-  import { AsyncLocalStorage } from "node:async_hooks"
   import { types } from "node:util"
 
   /** @throws {never} */
@@ -20,18 +19,26 @@ module traceBoundary {
   }
 
   /** @throws {never} */
-  export function createAsyncLocalStorage<T>(): AsyncLocalStorage<T> {
-    return new AsyncLocalStorage<T>()
-  }
-
-  /** @throws {never} */
   export function isProxy(value: unknown): boolean {
     return types.isProxy(value)
   }
 }
-import { createAsyncLocalStorage, isProxy, throwOnRead } from traceBoundary
-registerAsyncContextStorageFactory(createAsyncLocalStorage)
+import { isProxy, throwOnRead } from traceBoundary
 registerProxyInspector(isProxy)
+
+// spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"
+it.live('A host with no asynchronous context storage refuses a scope rather than drop it at the first await, and Node keeps each scope without any registration (spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated")', () => effect {
+  let entered = false
+  const refusing = asyncContextStorageFactoryFor({})<string>()
+  const refused = try Effect.flip(Effect.try({ try: () => refusing.run("turn-one", () => { entered = true }), catch: (error) => error }))
+  const node = asyncContextStorageFactoryFor(globalThis)<string>()
+  const observed = try Effect.promise(() => Promise.all([
+    node.run("turn-one", async () => { await Effect.runPromise(Effect.sleep("10 millis")); return node.getStore() }),
+    node.run("turn-two", async () => { await Effect.runPromise(Effect.sleep("2 millis")); return node.getStore() }),
+    runWithTrajectoryContext({ runId: "run-one" }, async () => { await Effect.runPromise(Effect.sleep("5 millis")); return getTrajectoryContext()?.runId }),
+  ]))
+  assert.deepStrictEqual([refused instanceof AsyncContextUnavailableError, entered, refusing.getStore(), observed, node.getStore()], [true, false, undefined, ["turn-one", "turn-two", "run-one"], undefined])
+})
 
 effect function storeAt(prefix: string) {
   const directory = try scratch(prefix)

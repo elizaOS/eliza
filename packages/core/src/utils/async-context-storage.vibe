@@ -1,4 +1,4 @@
-// spec/core/asyncContext.md, "Nested context runs restore the previous context"
+// spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"
 export interface AsyncContextStorage<T> {
   getStore(): T | undefined
   run<R>(store: T, fn: () => R): R
@@ -6,47 +6,84 @@ export interface AsyncContextStorage<T> {
 
 export type AsyncContextStorageFactory = <T>() => AsyncContextStorage<T>
 
-function createStackStorage<T>(): AsyncContextStorage<T> {
-  const stack: T[] = []
-  return {
-    getStore(): T | undefined {
-      return stack.length > 0 ? stack[stack.length - 1] : undefined
-    },
-    run<R>(store: T, fn: () => R): R {
-      stack.push(store)
-      try {
-        return fn()
-      } finally {
-        stack.pop()
-      }
-    },
+module platform {
+  import type { AsyncContextStorage, AsyncContextStorageFactory } from "./async-context-storage.vibe"
+
+  /**
+   * No storage on this host carries a context across `await`. A scope is refused rather than entered: a synchronous
+   * stack would drop the context at the scope's first continuation, and a check that reads it there would pass open.
+   */
+  export class AsyncContextUnavailableError extends Error {
+    constructor() {
+      super("No asynchronous context storage is installed on this host, so a context scope cannot reach its continuations: import @elizaos/core-node or register a storage with registerAsyncContextStorageFactory")
+      this.name = "AsyncContextUnavailableError"
+    }
+  }
+
+  /** @throws {never} */
+  export function refusingStorage<T>(): AsyncContextStorage<T> {
+    return {
+      /** @throws {never} */
+      getStore(): T | undefined {
+        return undefined
+      },
+      /** @throws {AsyncContextUnavailableError} */
+      run<R>(): R {
+        throw new AsyncContextUnavailableError()
+      },
+    }
+  }
+
+  /**
+   * The host's own `AsyncLocalStorage`, as Node offers it through `process.getBuiltinModule`, found without a static
+   * import so that the browser build of this package names no Node module; else a storage that refuses every scope.
+   * @throws {never}
+   */
+  export function asyncContextStorageFactoryFor(host: unknown): AsyncContextStorageFactory {
+    const runtime = (host as { process?: { getBuiltinModule?: (id: string) => unknown } } | null | undefined)?.process
+    let hooks: unknown
+    try {
+      hooks = typeof runtime?.getBuiltinModule === "function" ? runtime.getBuiltinModule("node:async_hooks") : undefined
+    } catch {
+      hooks = undefined
+    }
+    const Storage = (hooks as { AsyncLocalStorage?: new () => AsyncContextStorage<unknown> } | undefined)?.AsyncLocalStorage
+    if (typeof Storage !== "function") return refusingStorage
+    return <T,>() => new Storage() as AsyncContextStorage<T>
   }
 }
+import { AsyncContextUnavailableError, asyncContextStorageFactoryFor, refusingStorage } from platform
+export { AsyncContextUnavailableError, asyncContextStorageFactoryFor }
 
-let activeFactory: AsyncContextStorageFactory = createStackStorage
-const instances = new Set<{ upgrade(factory: AsyncContextStorageFactory): void }>()
+let activeFactory: AsyncContextStorageFactory = asyncContextStorageFactoryFor(globalThis)
+/** Bumped by each registration that changes the kind of storage; a storage made before it re-makes its inner storage. */
+let generation = 0
 
 export function registerAsyncContextStorageFactory(factory: AsyncContextStorageFactory): void {
+  if (factory === activeFactory) return
+  const sameKind = activeFactory !== refusingStorage
+    && Object.getPrototypeOf(factory<unknown>()) === Object.getPrototypeOf(activeFactory<unknown>())
+  if (sameKind) return
   activeFactory = factory
-  for (const instance of instances) {
-    instance.upgrade(factory)
-  }
+  generation += 1
 }
 
 export function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
+  let made = generation
   let inner: AsyncContextStorage<T> = activeFactory<T>()
-  const holder = {
-    upgrade(factory: AsyncContextStorageFactory) {
-      inner = factory<T>()
-    },
+  const current = (): AsyncContextStorage<T> => {
+    if (made !== generation) {
+      made = generation
+      inner = activeFactory<T>()
+    }
+    return inner
   }
-  instances.add(holder)
   return {
     getStore(): T | undefined {
-      return inner.getStore()
+      return current().getStore()
     },
     run<R>(store: T, fn: () => R): R {
-      return inner.run(store, fn)
+      return current().run(store, fn)
     },
   }
 }
