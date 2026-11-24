@@ -477,6 +477,8 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   } as Memory
   const handed = emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], subject: "Lunch", body: "Noon?" } })
   assert.deepEqual(handed?.values?.emailDraft, { version: 1, requestMessageId: request.id, to: ["bo@example.com"], subject: "Lunch", body: "Noon?" })
+  assert.deepEqual([handed?.success, handed?.userFacingText, handed?.verifiedUserFacing], [true, undefined, undefined])
+  assert.match(handed?.text ?? "", /Inbox composer for the owner to review, change and send\. Nothing was sent/u)
   assert.equal(emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], body: "Noon?", cc: ["cy@example.com"] } })?.data?.handoff, "inbox")
   assert.isUndefined(emailDraftAnswer({ ...request, content: { text: "Email Bo", source: "discord" } }, { parameters: { to: ["bo@example.com"], body: "Noon?" } }))
   assert.equal(cloud.state.dispatches, 0)

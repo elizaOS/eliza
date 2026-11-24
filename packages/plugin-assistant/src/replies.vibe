@@ -52,17 +52,13 @@ export function turnResults(attempts: readonly Attempt[]): TurnResult[] {
 }
 
 export type Proven =
-  | { readonly kind: "done"; readonly receiptIds: readonly string[] }
+  | { readonly kind: "done" }
   | { readonly kind: "notDone"; readonly cited: number }
   | { readonly kind: "unproven" }
 
 export function proven(attempts: readonly Attempt[], target: string): Proven {
   const results = turnResults(attempts)
-  if (claimSupported(results, "ClaimedDone", target, 0)) {
-    const receipts = attempts.flatMap((attempt) => attempt.receipts)
-    const reverted = revertedEffectReceiptIds(receipts)
-    return { kind: "done", receiptIds: receipts.filter((receipt) => receiptTarget(receipt) === target && ended(receipt, reverted) === "EndApplied").map((receipt) => receipt.receiptId) }
-  }
+  if (claimSupported(results, "ClaimedDone", target, 0)) return { kind: "done" }
   const cited = results.findIndex((_, index) => claimSupported(results, "ClaimedNotDone", target, index) && results[index]?.target === target)
   return cited >= 0 ? { kind: "notDone", cited } : { kind: "unproven" }
 }
@@ -77,10 +73,7 @@ export function attributed(attempts: readonly Attempt[], target: string, telling
   const effectReceipts = attempts.flatMap((attempt) => attempt.receipts)
   const proof = proven(attempts, target)
   switch (proof.kind) {
-    case "done": return {
-      success: true, text: telling.done, userFacingText: telling.done, verifiedUserFacing: true,
-      effectReceipts, userFacingEffectReceiptIds: proof.receiptIds, data,
-    }
+    case "done": return { success: true, text: telling.done, effectReceipts, data }
     case "notDone": return { success: false, text: telling.notDone, effectReceipts, data: { ...data, failedResult: proof.cited + 1 } }
     case "unproven": return { success: false, text: telling.unproven, effectReceipts, data }
   }

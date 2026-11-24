@@ -155,9 +155,10 @@ the page looks.
 
 The mounted browser answers a history command it took with a receipt. Only
 an explicit receipt that says dispatched, not completed, and asks for a
-readback counts, and it is reported as dispatched: the action's own sentence
-says the browser was asked and that the page may still be loading, it ends
-the turn, and it marks the execution dispatched, never completed. Where the
+readback counts, and it is reported as dispatched: the action tells the
+model that the browser was asked and that the page may still be loading,
+the model words the reply from that, it ends the turn, and it marks the
+execution dispatched, never completed. Where the
 device has no read command the report asks for no readback. A refusal the
 browser gave with a typed code before it acted is reported with that code,
 nothing done. A command never handed to the browser is reported not sent.
