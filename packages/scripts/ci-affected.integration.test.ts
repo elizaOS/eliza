@@ -185,7 +185,13 @@ cat "$RUNNER_TEMP/candidates-$branch"
       event = "push",
       fail?: string,
     ) => {
-      for (const name of ["develop-v3", "staging-v3", "main-v3"]) {
+      for (const name of [
+        "develop-v3",
+        "staging-v3",
+        "main-v3",
+        "staging",
+        "main",
+      ]) {
         writeFileSync(
           path.join(runner, `candidates-${name}`),
           `${(candidates[name] ?? []).join("\n")}\n`,
@@ -223,11 +229,21 @@ cat "$RUNNER_TEMP/candidates-$branch"
       "staging-v3": ["malformed", diverged, trusted],
     });
     assert.equal(promoted.base, trusted);
-    assert.deepEqual(promoted.requests, ["main-v3", "staging-v3"]);
+    assert.deepEqual(promoted.requests, ["main-v3", "main", "staging-v3"]);
     assert.deepEqual(
       new Set(git("rev-list", `${promoted.base}..${head}`).split("\n")),
       new Set([unvalidated, head]),
       "all unvalidated commits remain in the scan range",
+    );
+    assert.deepEqual(
+      select("main-v3", { main: [diverged, trusted], "staging-v3": [head] }),
+      { base: trusted, requests: ["main-v3", "main"] },
+      "the pre-cutover main history is the destination lineage",
+    );
+    assert.deepEqual(
+      select("staging-v3", { staging: [trusted] }),
+      { base: trusted, requests: ["staging-v3", "staging"] },
+      "the pre-cutover staging history is the destination lineage",
     );
     assert.equal(
       select("main-v3", { "main-v3": [trusted], "staging-v3": [unvalidated] })
@@ -242,7 +258,7 @@ cat "$RUNNER_TEMP/candidates-$branch"
     );
     assert.deepEqual(select("staging-v3", { "develop-v3": [trusted] }), {
       base: zero,
-      requests: ["staging-v3"],
+      requests: ["staging-v3", "staging"],
     });
     assert.equal(
       select("main-v3", { "staging-v3": [diverged] }).base,

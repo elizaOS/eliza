@@ -79,18 +79,25 @@ jobs:
           set -euo pipefail
           base=0000000000000000000000000000000000000000
           if [ "$EVENT_NAME" = push ]; then
-            # A first promotion to main-v3 has no destination history. Staging-v3
-            # can supply an ancestor with identical, successfully validated
+            # main-v3 and staging-v3 continue the main and staging histories
+            # that moved to the vibestack tree on 2026-11-24, so a validated
+            # ancestor from that lineage is destination evidence. The ancestry
+            # check excludes the unrelated vibestack commits. Staging-v3 can
+            # also supply an ancestor with identical, successfully validated
             # source. A prior push or deployment alone is not evidence.
             branches=("$GITHUB_REF_NAME")
-            if [ "$GITHUB_REF_NAME" = main-v3 ]; then branches+=(staging-v3); fi
+            lineage=
+            case "$GITHUB_REF_NAME" in
+              main-v3) lineage=main; branches+=(main staging-v3) ;;
+              staging-v3) lineage=staging; branches+=(staging) ;;
+            esac
             for branch in "${branches[@]}"; do
               if gh api --method GET "/repos/$GITHUB_REPOSITORY/actions/workflows/develop-full.yml/runs" \
                 -f "branch=$branch" -f status=success -f per_page=100 \
                 --jq '.workflow_runs[].head_sha' > "$RUNNER_TEMP/validated-ancestors"; then
                 while IFS= read -r candidate; do
                   if [[ "$candidate" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$candidate" "$GITHUB_SHA"; then
-                    if [ "$branch" != "$GITHUB_REF_NAME" ] && ! git diff --quiet "$candidate" "$GITHUB_SHA" --; then
+                    if [ "$branch" != "$GITHUB_REF_NAME" ] && [ "$branch" != "$lineage" ] && ! git diff --quiet "$candidate" "$GITHUB_SHA" --; then
                       continue
                     fi
                     base="$candidate"
