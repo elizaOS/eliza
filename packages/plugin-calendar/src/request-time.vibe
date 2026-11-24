@@ -293,7 +293,6 @@ export function clockHeldByWords(clock: StatedClockTime, text: string): boolean 
 const windowClockWord = /^(?:\d{1,2}(?:[:.]\d{2})?|am|pm|oclock|noon|midday|midnight|half|past|quarter|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)$/u
 const windowJoins = new Set(["and", "to", "until", "till", "through", "-"])
 const durationUnit = /^(?:seconds?|minutes?|hours?|days?|weeks?|months?)$/u
-// A hedge before a clock ("between noon and around 5", "from noon till about five") leaves the range a range.
 const windowHedges = new Set(["around", "about", "approximately", "roughly", "circa"])
 
 export interface WindowSides {
@@ -302,8 +301,6 @@ export interface WindowSides {
   readonly phrase: string
 }
 
-// A hyphen inside a spoken clock ("five-thirty", "one-twenty-five", "five-oh-five") is part of the clock, no join;
-// one between two hour names ("nine-ten") still joins a range.
 const spokenHour = /^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)$/u
 const spokenMinuteLead = /^(?:oh|o|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)$/u
 const spokenMinuteTail = /^(?:twenty|thirty|forty|fifty|oh|o)$/u

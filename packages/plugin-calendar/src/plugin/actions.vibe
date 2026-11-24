@@ -627,12 +627,10 @@ function windowPairings(begin: number, finish: number, zone: string, text: strin
     .filter((at): at is number => at !== undefined)
   const thisMinute = now - now % 60000
   const nextMinute = thisMinute + 60000
-  // Each start reading by the current minute counts only while the window to its nearest end reading is under way, and then from now.
   const reading = (from: number, ends: readonly number[]) => {
     const later = ends.filter((to) => to > from)
     return startReading(from < nextMinute, later.length > 0 && Math.min(...later) > now)
   }
-  // A window starting this minute has no start reading of the sent clock: its start side's readings are each minute of the day so far that the side holds.
   const readingsByNow = (side: string) => Array.from({ length: start.hour * 60 + start.minute + 1 }, (_, minute) => minute)
     .filter((minute) => clockHeldByWords({ hour: Math.floor(minute / 60), minute: minute % 60 }, side))
     .map((minute) => onDay(Math.floor(minute / 60), minute % 60))

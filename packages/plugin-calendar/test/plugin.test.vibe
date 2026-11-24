@@ -429,7 +429,6 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const quarterToTwo = try asked("Am I free tomorrow from quarter to 2 to 4 PM?", { ...twoToFourPm, timeMin: "2030-03-04T13:45:00-08:00" })
   assert.deepStrictEqual([hoursTillAbout.success, at(hoursTillAbout.data, "slots", "0", "startAt"), headCountAround.success, at(headCountAround.data, "isFree"), headCountWindow.success, at(headCountWindow.data, "isFree"),
     dashed.success, at(dashed.data, "isFree"), quarterToTwo.success, at(quarterToTwo.data, "isFree")], [true, "2030-03-04T20:00:00.000Z", true, true, true, true, true, true, true, true])
-  // A hyphen inside a spoken clock is part of the clock, no join: "five-thirty" is one end, "one-thirty" one start.
   const toFiveThirty = try asked("Am I free tomorrow between noon and five-thirty?", { ...noonToFive, timeMax: "2030-03-04T17:30:00-08:00" })
   const oneThirtyToThreePm = { ...noonToFive, timeMin: "2030-03-04T13:30:00-08:00", timeMax: "2030-03-04T15:00:00-08:00" }
   const fromOneThirty = try asked("Am I free tomorrow from one-thirty to three?", oneThirtyToThreePm)
