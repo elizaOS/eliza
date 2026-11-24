@@ -159,9 +159,10 @@ function readAction(notes: NotesCollection): Action[] {
         const first = found[0]
         if (first === undefined) return { success: false, text: "No current note matches.", data: { code: "NOTES_NOT_FOUND" } }
         if (found.length > 1) {
-          return { success: false, text: `Several notes match: ${found.map((candidate) => noteRow(candidate)).join(", ")}. Ask which one.`, data: { code: "NOTES_AMBIGUOUS_NOTE", candidateIds: found.map((candidate) => candidate.id) } }
+          return { success: false, text: `Several notes match: ${found.map((candidate) => noteRow(candidate)).join(", ")}. Ask which one.`, data: { actionName: "NOTES_GET", code: "NOTES_AMBIGUOUS_NOTE", candidateIds: found.map((candidate) => candidate.id) } }
         }
-        return noteResult("Read", first, revision)
+        const read = noteResult("Read", first, revision)
+        return { ...read, data: { ...read.data, actionName: "NOTES_GET" } }
       },
     }),
   ]
