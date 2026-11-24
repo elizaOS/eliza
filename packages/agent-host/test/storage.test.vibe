@@ -50,7 +50,7 @@ interface Owner {
 
 schema Agent { id: string }
 schema Agents { agents: [Agent] }
-schema Listing { id: string; updatedAt: number }
+schema Listing { id: string; updatedAt: string }
 schema Created { conversation: Listing }
 schema Listed { conversations: Listing[] }
 const storageExit = 74

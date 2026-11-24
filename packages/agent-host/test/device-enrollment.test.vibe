@@ -105,16 +105,12 @@ it.live('The agent offers its whole vocabulary and changes the view profile only
     method: "POST", path: "/api/client-devices/view-profile", body: { version: 1, expectedRevision, views },
   })
   const readProfile: Asked = { method: "GET", path: "/api/client-devices/view-profile" }
-  const offered = try device(running, agentId, { method: "GET", path: "/api/client-devices/capabilities" })
-  const offeredByPost = try device(running, agentId, { method: "POST", path: "/api/client-devices/capabilities", body: {} })
-  assert.deepStrictEqual(offered.json.deviceActions, { protocol: 1, capabilities: vocabulary })
-  assert.deepStrictEqual(offeredByPost.json, offered.json)
-  assert.strictEqual(new Set(vocabulary).size, vocabulary.length)
-  assert.isTrue(vocabulary.every((name) => /\.v[0-9]+$/.test(name)))
-
   const unenrolled = try device(running, agentId, readProfile)
   assert.strictEqual(unenrolled.status, 401)
-  try device(running, agentId, register(1))
+  const offered = try device(running, agentId, register(1))
+  assert.deepStrictEqual(offered.json.capabilities, vocabulary)
+  assert.strictEqual(new Set(vocabulary).size, vocabulary.length)
+  assert.isTrue(vocabulary.every((name) => /\.v[0-9]+$/.test(name)))
   const empty = try device(running, agentId, readProfile)
   assert.deepStrictEqual([empty.status, empty.json.profile, (empty.json.supportedViews as string[]).includes("notes")], [200, null, true])
   const unknownView = try device(running, agentId, profileChange(null, ["gmail"]))
