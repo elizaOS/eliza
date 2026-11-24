@@ -32,14 +32,22 @@ lemma IdsBridge(s: Todos)
   }
 }
 
+lemma FreshStatusKey(s: Todos, key: string, request: TodoRequest, verdict: TodoOutcome, targetId: int, at: int)
+  requires alwaysKeysAreUnique(s) && !replayed(s, key)
+  ensures alwaysKeysAreUnique(recordStatusMutation(key, request, s, verdict, targetId, at))
+  ensures recordStatusMutation(key, request, s, verdict, targetId, at).todos == s.todos
+{
+  KeysBridge(s);
+  KeysBridge(recordStatusMutation(key, request, s, verdict, targetId, at));
+  ProofLib.DistinctByConcat(s.mutations, [MutationRecord(key, request, targetId, at, verdict.Applied? && targetId > 0)], (o: MutationRecord) => o.key);
+}
+
 lemma FreshKey(s: Todos, key: string, request: TodoRequest, verdict: TodoOutcome)
   requires alwaysKeysAreUnique(s) && !replayed(s, key)
   ensures alwaysKeysAreUnique(recordMutation(key, request, s, verdict))
   ensures recordMutation(key, request, s, verdict).todos == s.todos
 {
-  KeysBridge(s);
-  KeysBridge(recordMutation(key, request, s, verdict));
-  ProofLib.DistinctByConcat(s.mutations, [MutationRecord(key, request)], (o: MutationRecord) => o.key);
+  FreshStatusKey(s, key, request, verdict, 0, 0);
 }
 
 lemma FilterKeepsTodos(s: Todos, p: Todo -> bool, after: Todos)
@@ -85,23 +93,38 @@ lemma createTodo_ensures(s: Todos, key: string, content: string, affirmed: bool)
   }
 }
 
-lemma setTodoStatus_ensures(s: Todos, key: string, content: string, status: TodoStatus, at: int)
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> alwaysKeysAreUnique(setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> alwaysTodoIdsAreUnique(setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> alwaysNextIdIsPositive(setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> alwaysCompletionTimeMatchesStatus(setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> stepNoChangeKeepsItems(s, setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "setTodoStatus", setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> stepClearKeepsUnpreviewedItems(s, "setTodoStatus", setTodoStatus(s, key, content, status, at)))
+lemma setTodoStatus_ensures(s: Todos, key: string, content: string, targetId: int, status: TodoStatus, at: int)
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, targetId, status, at) ==> alwaysKeysAreUnique(setTodoStatus(s, key, content, targetId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, targetId, status, at) ==> alwaysTodoIdsAreUnique(setTodoStatus(s, key, content, targetId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, targetId, status, at) ==> alwaysNextIdIsPositive(setTodoStatus(s, key, content, targetId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, targetId, status, at) ==> alwaysCompletionTimeMatchesStatus(setTodoStatus(s, key, content, targetId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, targetId, status, at) ==> stepNoChangeKeepsItems(s, setTodoStatus(s, key, content, targetId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, targetId, status, at) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "setTodoStatus", setTodoStatus(s, key, content, targetId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, targetId, status, at) ==> stepClearKeepsUnpreviewedItems(s, "setTodoStatus", setTodoStatus(s, key, content, targetId, status, at)))
 {
-  if inv(s) && canSetTodoStatus(s, key, content, status, at) && !replayed(s, key) {
-    var mid := s.(todos := (var s_map := s.todos; seq(|s_map|, i_map requires 0 <= i_map < |s_map| => var t := s_map[i_map]; (if (t.content == content) then t.(todoStatus := status, completedAt := (if status.TodoCompleted? then at else 0)) else t))));
-    FreshKey(s, key, statusRequest(content, status), TodoOutcome.Missed);
-    FreshKey(s, key, statusRequest(content, status), TodoOutcome.AlreadySet);
-    IdsBridge(s);
-    IdsBridge(mid);
-    assert forall i :: 0 <= i < |s.todos| ==> mid.todos[i].todoId == s.todos[i].todoId;
-    FreshKey(mid, key, statusRequest(content, status), TodoOutcome.Applied);
+  if inv(s) && canSetTodoStatus(s, key, content, targetId, status, at) && !replayed(s, key) {
+    var request := statusRequest(content, targetId, status);
+    var targets := statusTargets(s, content, targetId);
+    if |targets| != 1 {
+      FreshKey(s, key, request, TodoOutcome.Missed);
+    } else {
+      var target := targets[0];
+      if target.todoStatus == status {
+        var prior := if status.TodoCompleted? || status.TodoCancelled? then appliedStatusTime(s, request, target.todoId) else 0;
+        if prior > 0 {
+          FreshStatusKey(s, key, request, TodoOutcome.ReplayedStatus, target.todoId, prior);
+        } else {
+          FreshKey(s, key, request, TodoOutcome.AlreadySet);
+        }
+      } else {
+        var mid := s.(todos := seq(|s.todos|, i requires 0 <= i < |s.todos| =>
+          var t := s.todos[i]; if statusMatches(t, content, targetId) then t.(todoStatus := status, completedAt := (if status.TodoCompleted? then at else 0)) else t));
+        IdsBridge(s);
+        IdsBridge(mid);
+        assert forall i :: 0 <= i < |s.todos| ==> mid.todos[i].todoId == s.todos[i].todoId;
+        FreshStatusKey(mid, key, request, TodoOutcome.Applied, target.todoId, at);
+      }
+    }
   }
 }
 

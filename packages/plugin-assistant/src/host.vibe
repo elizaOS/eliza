@@ -120,11 +120,14 @@ export service Facts {
 export const scheduledTasksServiceType = "scheduled-tasks"
 
 const storePrefix = "eliza:personal-assistant:v1:"
+const runtimeStores = new WeakMap<IAgentRuntime, KeyValueStore.KeyValueStore>()
 
 function runtimeStore(runtime: IAgentRuntime): KeyValueStore.KeyValueStore {
+  const known = runtimeStores.get(runtime)
+  if (known !== undefined) return known
   const refused = (method: string, key?: string) => (cause: unknown) => new KeyValueStore.KeyValueStoreError({ message: `The agent store refused ${method}`, method, key, cause })
   const unlisted = (method: string) => Effect.fail(new KeyValueStore.KeyValueStoreError({ message: "The agent store keeps no key listing", method }))
-  return KeyValueStore.makeStringOnly({
+  const store = KeyValueStore.makeStringOnly({
     get: (key) => effect {
       const found = try tryPromise({ try: () => runtime.getCache<unknown>(storePrefix + key), catch: refused("get", key) })
       return typeof found === "string" ? found : undefined
@@ -140,6 +143,8 @@ function runtimeStore(runtime: IAgentRuntime): KeyValueStore.KeyValueStore {
     size: unlisted("size"),
     keys: unlisted("keys"),
   })
+  runtimeStores.set(runtime, store)
+  return store
 }
 
 export effect function readRecord<A>(key: string, decode: (raw: unknown) => Option.Option<A>) {

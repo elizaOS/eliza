@@ -21,17 +21,19 @@ changes nothing. A key seen before with a different request is refused.
 type TodoStatus = TodoPending | TodoInProgress | TodoCompleted | TodoCancelled
 type Todo = { todoId: int, content: str, todoStatus: TodoStatus, completedAt: int }
 type TodoOp = CreateOp | StatusOp | RenameOp | DeleteOp | PreviewClearOp | ConfirmClearOp
-type TodoRequest = { op: TodoOp, requestContent: str, requestStatus: TodoStatus, affirmed: bool, requestRenamed: str }
-type MutationRecord = { key: str, request: TodoRequest }
-type TodoOutcome = NoOutcome | Applied | Missed | Duplicate | AlreadySet
+type TodoRequest = { op: TodoOp, requestContent: str, requestItem: int, requestStatus: TodoStatus, affirmed: bool, requestRenamed: str }
+type MutationRecord = { key: str, request: TodoRequest, statusItemId: int, statusAppliedAt: int, appliedStatus: bool }
+type TodoOutcome = NoOutcome | Applied | Missed | Duplicate | AlreadySet | ReplayedStatus
 type Todos = { todos: List[Todo], nextId: int, mutations: List[MutationRecord], clearPreviewed: bool, previewIds: Set[int], lastOutcome: TodoOutcome }
 pure val initial: Todos = { todos: List(), nextId: 1, mutations: List(), clearPreviewed: false, previewIds: Set(), lastOutcome: NoOutcome }
 pure val keyValues = Set("k1", "k2", "k3", "k4", "k5")
 pure val contentValues = Set("milk", "call mom")
 pure def keyAdmits(s: Todos, key: str, request: TodoRequest): bool = s.mutations.every(m => m.key != key or m.request == request)
 pure def replayed(s: Todos, key: str): bool = s.mutations.some(m => m.key == key)
+pure def recordStatusMutation(key: str, request: TodoRequest, s: Todos, verdict: TodoOutcome, itemId: int, appliedAt: int): Todos =
+  { ...s, mutations: s.mutations.append({ key: key, request: request, statusItemId: itemId, statusAppliedAt: appliedAt, appliedStatus: verdict == Applied and itemId > 0 }), lastOutcome: verdict }
 pure def recordMutation(key: str, request: TodoRequest, s: Todos, verdict: TodoOutcome): Todos =
-  { ...s, mutations: s.mutations.append({ key: key, request: request }), lastOutcome: verdict }
+  recordStatusMutation(key, request, s, verdict, 0, 0)
 pure def alwaysKeysAreUnique(s: Todos): bool = s.mutations.every(m => s.mutations.select(o => o.key == m.key).length() == 1)
 ```
 
@@ -43,7 +45,7 @@ case, punctuation and spacing: the shell then asks about the new item
 with that open item's text, so "buy milk." is a duplicate of "Buy milk".
 
 ```quint
-pure def createRequest(content: str, affirmed: bool): TodoRequest = { op: CreateOp, requestContent: content, requestStatus: TodoPending, affirmed: affirmed, requestRenamed: "" }
+pure def createRequest(content: str, affirmed: bool): TodoRequest = { op: CreateOp, requestContent: content, requestItem: 0, requestStatus: TodoPending, affirmed: affirmed, requestRenamed: "" }
 pure def openWith(s: Todos, content: str): bool = s.todos.some(t => t.content == content and (t.todoStatus == TodoPending or t.todoStatus == TodoInProgress))
 pure def canCreateTodo(s: Todos, key: str, content: str, affirmed: bool): bool = keyAdmits(s, key, createRequest(content, affirmed))
 pure def createTodo(s: Todos, key: str, content: str, affirmed: bool): Todos =
@@ -70,32 +72,56 @@ the new text, the request is recorded and the item stays as it was. A
 rename gives the one matching item its new, nonblank text and keeps its
 status.
 
+An exact t-N status request uses that item even if another to-do has the
+same title. When a completion or cancellation changes nothing, it is a
+replayed result only if an earlier applied request in this owner's list
+had the same selector and status and changed that exact item. The item's
+value and completion time stay as they were. An older mutation record
+without an item and applied time cannot prove a replay.
+
 ```quint
 pure def matching(s: Todos, content: str): List[Todo] = s.todos.select(t => t.content == content)
-pure def statusRequest(content: str, status: TodoStatus): TodoRequest = { op: StatusOp, requestContent: content, requestStatus: status, affirmed: false, requestRenamed: "" }
-pure def canSetTodoStatus(s: Todos, key: str, content: str, status: TodoStatus, at: int): bool = keyAdmits(s, key, statusRequest(content, status)) and at > 0
-pure def setTodoStatus(s: Todos, key: str, content: str, status: TodoStatus, at: int): Todos =
+pure def statusMatches(t: Todo, content: str, targetId: int): bool = if (targetId > 0) t.todoId == targetId else t.content == content
+pure def statusTargets(s: Todos, content: str, targetId: int): List[Todo] = s.todos.select(t => statusMatches(t, content, targetId))
+pure def statusRequest(content: str, targetId: int, status: TodoStatus): TodoRequest = { op: StatusOp, requestContent: content, requestItem: targetId, requestStatus: status, affirmed: false, requestRenamed: "" }
+pure def appliedStatusTime(s: Todos, request: TodoRequest, itemId: int): int =
+  s.mutations.foldl(0, (time, m) => if (m.appliedStatus and m.request == request and m.statusItemId == itemId) m.statusAppliedAt else time)
+pure def canSetTodoStatus(s: Todos, key: str, content: str, targetId: int, status: TodoStatus, at: int): bool =
+  targetId >= 0 and keyAdmits(s, key, statusRequest(content, targetId, status)) and at > 0
+pure def setUniqueTodoStatus(key: str, request: TodoRequest, target: Todo, at: int, s: Todos): Todos = {
+  val status = request.requestStatus
+  val prior = if (status == TodoCompleted or status == TodoCancelled) appliedStatusTime(s, request, target.todoId) else 0
+  if (target.todoStatus != status) recordStatusMutation(key, request,
+    { ...s, todos: s.todos.listMap(t => if (statusMatches(t, request.requestContent, request.requestItem)) { ...t, todoStatus: status, completedAt: if (status == TodoCompleted) at else 0 } else t) },
+    Applied, target.todoId, at)
+  else if (prior > 0) recordStatusMutation(key, request, s, ReplayedStatus, target.todoId, prior)
+  else recordMutation(key, request, s, AlreadySet)
+}
+pure def setTodoStatus(s: Todos, key: str, content: str, targetId: int, status: TodoStatus, at: int): Todos = {
+  val request = statusRequest(content, targetId, status)
+  val targets = statusTargets(s, content, targetId)
   if (replayed(s, key)) s
-  else if (matching(s, content).length() != 1) recordMutation(key, statusRequest(content, status), s, Missed)
-  else if (matching(s, content).some(t => t.todoStatus == status)) recordMutation(key, statusRequest(content, status), s, AlreadySet)
-  else recordMutation(key, statusRequest(content, status),
-    { ...s, todos: s.todos.listMap(t => if (t.content == content) { ...t, todoStatus: status, completedAt: if (status == TodoCompleted) at else 0 } else t) }, Applied)
+  else if (targets.length() != 1) recordMutation(key, request, s, Missed)
+  else setUniqueTodoStatus(key, request, targets.nth(0), at, s)
+}
+pure val targetIdValues = Set(0, 1, 2, 3)
 pure val renamedValues = Set("oat milk", "milk")
-pure def renameRequest(content: str, renamed: str): TodoRequest = { op: RenameOp, requestContent: content, requestStatus: TodoPending, affirmed: false, requestRenamed: renamed }
+pure def renameRequest(content: str, renamed: str): TodoRequest = { op: RenameOp, requestContent: content, requestItem: 0, requestStatus: TodoPending, affirmed: false, requestRenamed: renamed }
 pure def canRenameTodo(s: Todos, key: str, content: str, renamed: str): bool = keyAdmits(s, key, renameRequest(content, renamed)) and renamed != ""
 pure def renameTodo(s: Todos, key: str, content: str, renamed: str): Todos =
   if (replayed(s, key)) s
   else if (matching(s, content).length() != 1) recordMutation(key, renameRequest(content, renamed), s, Missed)
   else if (renamed == content) recordMutation(key, renameRequest(content, renamed), s, AlreadySet)
   else recordMutation(key, renameRequest(content, renamed), { ...s, todos: s.todos.listMap(t => if (t.content == content) { ...t, content: renamed } else t) }, Applied)
-pure def deleteRequest(content: str): TodoRequest = { op: DeleteOp, requestContent: content, requestStatus: TodoPending, affirmed: false, requestRenamed: "" }
+pure def deleteRequest(content: str): TodoRequest = { op: DeleteOp, requestContent: content, requestItem: 0, requestStatus: TodoPending, affirmed: false, requestRenamed: "" }
 pure def canDeleteTodo(s: Todos, key: str, content: str): bool = keyAdmits(s, key, deleteRequest(content))
 pure def deleteTodo(s: Todos, key: str, content: str): Todos =
   if (replayed(s, key)) s
   else if (matching(s, content).length() != 1) recordMutation(key, deleteRequest(content), s, Missed)
   else recordMutation(key, deleteRequest(content), { ...s, todos: s.todos.select(t => t.content != content) }, Applied)
 pure def stepNoChangeKeepsItems(before: Todos, after: Todos): bool =
-  ((after.lastOutcome == Missed or after.lastOutcome == AlreadySet) and after.mutations.length() > before.mutations.length()) implies after.todos == before.todos
+  ((after.lastOutcome == Missed or after.lastOutcome == AlreadySet or after.lastOutcome == ReplayedStatus)
+    and after.mutations.length() > before.mutations.length()) implies after.todos == before.todos
 pure def sometimesStatusAlreadySet(s: Todos): bool = s.lastOutcome == AlreadySet
 ```
 
@@ -116,8 +142,8 @@ would remove. Only an affirmative reply to that preview removes them;
 any other reply cancels the clear. Items added after the preview stay.
 
 ```quint
-pure val previewRequest: TodoRequest = { op: PreviewClearOp, requestContent: "", requestStatus: TodoPending, affirmed: false, requestRenamed: "" }
-pure def confirmRequest(affirmed: bool): TodoRequest = { op: ConfirmClearOp, requestContent: "", requestStatus: TodoPending, affirmed: affirmed, requestRenamed: "" }
+pure val previewRequest: TodoRequest = { op: PreviewClearOp, requestContent: "", requestItem: 0, requestStatus: TodoPending, affirmed: false, requestRenamed: "" }
+pure def confirmRequest(affirmed: bool): TodoRequest = { op: ConfirmClearOp, requestContent: "", requestItem: 0, requestStatus: TodoPending, affirmed: affirmed, requestRenamed: "" }
 pure def canPreviewClear(s: Todos, key: str): bool = keyAdmits(s, key, previewRequest)
 pure def previewClear(s: Todos, key: str): Todos =
   if (replayed(s, key)) s
