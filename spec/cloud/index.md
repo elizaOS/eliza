@@ -378,7 +378,10 @@ pure def lawBackupApprovalCannotBeReplayed(approved: PasswordBackupPurpose, requ
 ### Shared native approval authorizes only the enrolled owner’s requested backup operation
 
 Shared Cloud requires consent in the native flow and a fresh Google proof for
-the subject already linked to the current owner. The active device enrollment
+the subject already linked to the current owner. That link is read after
+Google's signing keys are fetched, and again when the granted operation is
+used, so a subject unlinked in between is refused and nothing is granted or
+changed. The active device enrollment
 must name that account and organization and match the exact registered app,
 environment and callback. The unspent proof must match the requested purpose,
 state and PKCE verifier. A refusal grants nothing. Owner verification returns
