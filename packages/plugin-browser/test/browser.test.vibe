@@ -487,7 +487,7 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
   ]
   const laterOtherWithdrawal = "Reload this page. Send the email. Actually, don't."
   const withdrawn = ["Reload this page — wait, do not.", "Reload this page. Actually, do not close the tab or reload it.", "Reload this page. Never mind."]
-  const withdrawnProposals = []
+  const withdrawnProposals: unknown[] = []
   for (const words of withdrawn) withdrawnProposals.push(try outcome(words, reload, withheld("unreadable")))
   const authorizedDespiteOtherWithdrawal = try outcome(laterOtherWithdrawal, reload, withheld("unreadable"))
 
@@ -511,7 +511,7 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
   const command = (text: string, browserPage: unknown) => promise(() => reloadCommand!.handler(device.runtime, commandTurn(text, browserPage), undefined, {}))
   const unasked = try command(summarize, withheld("unreadable", "tab-a", "r1"))
   const sensitive = try command(summarize, withheld("sensitive-page", "tab-a", "r1"))
-  const forbidden = []
+  const forbidden: ActionResult[] = []
   for (const words of withdrawn) forbidden.push(try command(words, withheld("unreadable", "tab-a", "r1")))
   const asksAfterRefusal = device.asks.length
   const askedDespiteOtherWithdrawal = try command(laterOtherWithdrawal, withheld("unreadable", "tab-a", "r1"))
