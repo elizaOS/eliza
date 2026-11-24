@@ -90,7 +90,7 @@ export function environmentProfile(fakeUrl: string, api: string, web: string) {
       tts: { defaultVoiceId: "voice-1", defaultModelId: "model-1", voiceIds: ["voice-1"], modelIds: ["model-1"], microsPerCharacter: 30 },
       stt: { languageCodes: ["en", "en-US"], microsPerSecond: 100 },
     },
-    maps: { provider: "google", baseUrl: `${fakeUrl}/maps`, apiKeyEnv: "MAPS_API_KEY", coverage: "global", datasetRevision: "2026-11" },
+    maps: { provider: "google", baseUrl: `${fakeUrl}/maps/{host}.googleapis.com`, apiKeyEnv: "MAPS_API_KEY", coverage: "global", datasetRevision: "2026-11" },
   };
 }
 

@@ -95,7 +95,7 @@ export const SpeechSettings = Schema.Struct({
 });
 
 export const MapsSettings = Schema.Union([
-  Schema.Struct({ provider: Schema.Literal("google"), baseUrl: ProviderUrl, apiKeyEnv: SecretName, coverage: text(64), datasetRevision: text(64) }),
+  Schema.Struct({ provider: Schema.Literal("google"), baseUrl: pattern(/^https?:\/\/(?:[^\s/?#{}]*\{host\}[^\s/?#{}]*(?:\/[^\s?#{}]*)?|[^\s/?#{}]+\/[^\s?#{}]*\{host\}[^\s?#{}]*)$/), apiKeyEnv: SecretName, coverage: text(64), datasetRevision: text(64) }),
   Schema.Struct({ provider: Schema.Literal("osm"), baseUrl: ProviderUrl, coverage: text(64), datasetRevision: text(64) }),
   Schema.Struct({ provider: Schema.Literal("none") }),
 ]);
