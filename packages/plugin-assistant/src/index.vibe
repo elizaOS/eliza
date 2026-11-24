@@ -69,7 +69,7 @@ export class PersonalAssistantService extends Service {
     return new PersonalAssistantService(runtime)
   }
 
-  /** The zone the owner's calendar reads: the zone the owner stated, else the agent's. */
+  // spec/assistant/timezone.md, "The calendar reads the stored zone, or the agent's zone when none is stored"
   ownerCalendarZone(): Promise<string> {
     return onAgent(this.runtime, ownerCalendarZone())
   }

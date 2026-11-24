@@ -325,7 +325,6 @@ it.effect('A trigger is saved disabled, fires once on schedule, keeps edits made
 }, 300_000)
 
 it.effect('A one-time occurrence that fell due while the agent was stopped is recorded once as skipped, never run, and stays listed disabled for Run now (spec/agent/schedule/triggers.md, "An occurrence fires once, and one missed while the agent was not running is recorded and never run")', effect () => {
-  // The private state directory also holds the two Unix sockets.
   const state = try scratch("missed-trigger")
   const cloud = try cloudFake(deviceKey)
   try acquireRelease(Effect.sync(() => fakeClock(Date.now() - 2 * 3_600_000)), () => Effect.sync(() => realClock()))
