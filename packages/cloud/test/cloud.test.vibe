@@ -2423,10 +2423,10 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     }, {
       missing: empty, unauthorized: 401, live: active, accounts: [200, "no-store", [full]],
       denied: [[404, "not_found"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]], lapsed: { ...active, connected: false, reason: "token_missing" },
-      several: [[400, "invalid_request"], "grant_required"], named: [200, old],
+      several: [[400, "invalid_request"], "grant_required"], named: [200, { ...old, accountId: caller.userId }],
       listed: [200, [legacyStatus("unverified-old", start + 200, false), old, { ...full, connected: false, reason: "token_missing" }, revoked]],
       unchanged: [["status-live", 1, null], ["status-revoked", 2, null], ["unverified-old", 1, start + 200], ["verified-old", 1, start + 100]], refreshes: 0,
-      off: [200, { ...empty, configured: false, reason: "config_missing" }, 200, []]
+      off: [200, { ...empty, configured: false, reason: "config_missing", accountId: caller.userId }, 200, []]
     }))
     }
   }), 120_000)
@@ -2460,9 +2460,10 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     try sql(cloud, `INSERT INTO google_connections (key, state, revision, organization_id, user_id, subject, email, status, tokens, granted_scopes, expires_at, linked_at) VALUES ('legacy', $1::jsonb, 1, $2, $3, 'legacy-subject', 'legacy@example.com', 'Active', $4, $5::jsonb, $6, $7)`, [JSON.stringify(state), caller.organizationId, caller.userId, legacy, JSON.stringify(scopes), expiresAt, now])
 
     const root = "/api/v1/eliza/google"
-    const disconnect = (json?: unknown) => cloud.call(`${root}/disconnect`, { method: "POST", headers: caller.headers, json })
+    const disconnect = (json?: unknown) => cloud.call(`${root}/disconnect`, { method: "POST", headers: { authorization: `Bearer ${session.accessToken}` }, json })
     const revokes = () => cloud.fakes.seen.filter(({ path }) => path === "/google/revoke").map(({ body }) => new URLSearchParams(body).get("token"))
     const unauthenticated = try cloud.call(`${root}/disconnect`, { method: "POST" })
+    const mailAccess = try cloud.call(`${root}/disconnect`, { method: "POST", headers: caller.headers, json: { grantId: "racing" } })
     const [ambiguous, foreign, wrongSide, conflict] = try all([
       disconnect(), disconnect({ connectionId: "another-owner" }), disconnect({ side: "agent", connectionId: "racing" }),
       disconnect({ connectionId: "legacy", grantId: "racing" })
@@ -2479,14 +2480,14 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     const clean = try sql(cloud, "SELECT key, status, tokens IS NULL AS erased, expires_at, refreshing_until, granted_scopes, revision FROM google_connections ORDER BY key", [])
     const ended = try promise(() => client.googleStatus({ grantId: "legacy" }))
     try check(() => assert.deepStrictEqual({
-      denied: [unauthenticated.status, errorOf(ambiguous), errorOf(foreign), errorOf(wrongSide), errorOf(conflict)],
+      denied: [unauthenticated.status, errorOf(mailAccess), errorOf(ambiguous), errorOf(foreign), errorOf(wrongSide), errorOf(conflict)],
       ambiguousReason: (ambiguous.body as { readonly reason: string }).reason, refusedCalls,
       dropped: errorOf(dropped), repeated: [repeated.status, repeated.body], failedRevoke: [failedRevoke.status, failedRevoke.body],
       revokes: revokes(), providerRevoked: [...google.revoked], refreshes: google.tokenCalls,
       clean: clean.map((row) => [row.key, row.status, row.erased, Number(row.expires_at), Number(row.refreshing_until), row.granted_scopes, Number(row.revision)]),
       ended: [ended.connected, ended.reason, ended.expiresAt, ended.hasRefreshToken, ended.grantedScopes, ended.grantedCapabilities]
     }, {
-      denied: [401, [400, "invalid_request"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]],
+      denied: [401, [403, "access_denied"], [400, "invalid_request"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]],
       ambiguousReason: "grant_required", refusedCalls: [], dropped: [409, "google_reauth_required"],
       repeated: [200, { ok: true }], failedRevoke: [200, { ok: true }], revokes: [refreshToken, accessToken], providerRevoked: [refreshToken], refreshes: 1,
       clean: [["another-owner", "Active", false, expiresAt, 0, scopes, 1], ["legacy", "Revoked", true, 0, 0, [], 3], ["racing", "Revoked", true, 0, 0, [], 3]],
