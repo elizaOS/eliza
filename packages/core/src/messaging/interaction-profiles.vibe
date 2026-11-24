@@ -773,6 +773,7 @@ export effect function registerInteractionProfile(
 
 module edge {
   import { runDetachedSync } from "../edge.vibe"
+  import type { ElizaError } from "../errors.vibe"
   import {
     type ConnectorInteractionCapabilityProfile,
     registerInteractionProfile,
