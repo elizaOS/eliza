@@ -115,6 +115,7 @@ from its name and signature:
 | `pure val idValues = Set(1, 2, 3)` | what the simulator tries for a parameter named `id`. It must be a set whose elements match the parameter type; any supported Quint is allowed in it | nothing: it never reaches TypeScript |
 | `pure val weight_pay = 5` | how often the simulator tries `pay`: a whole number from 1 to 100, times as often as an event of weight 1 (the default). For deep interleavings, such as a message lost, repeated and reordered | nothing |
 | `pure val eval_witness_sometimesPaid = (("authorize", 8), ("pay", 8), "finish")` | an example path from `initial` to the named `sometimes` rule | nothing |
+| `pure val eval_witness_canPay = (("authorize", 8), ("pay", 8))` | an example path from `initial` whose final transition is guarded by `canPay` | nothing |
 | `pure val eval_refuse_canElapse = { elapsed: -1 }` | concrete arguments for a transition guard to refuse in `initial` | nothing |
 | `pure val fair_pay = "weak"` or `"strong"` | an assumption for `leadsTo` rules: a fair run does not put `pay` off for ever while its guard keeps allowing it (`"weak"`), or while it allows it again and again (`"strong"`) | nothing |
 | `pure val within_leadsToPaid = 3` | a bound for a `leadsTo` rule: every run meets it within 3 events, from 1 to 100 | a search of simulated traces for a run that does not ("Liveness", below) |
@@ -138,6 +139,13 @@ example stops short of the goal. The safety and probe samples stay the same, and
 trace that reaches the goal or breaks a rule goes through the usual replay.
 An ordinary simulation can reuse its results when only an unused guide changes.
 The check preserves the input files for replay when one of these ordinary runs fails.
+
+An `eval_witness_<guard>` uses the same transition syntax. Its last transition
+must have the named guard. When an allowance along the path is still missing,
+Quint tries the path from the initial state. A completed path shows each fired
+transition's guard allowed it. The checker replays the path through generated
+TypeScript and runs the usual search for each allowance still missing. A state
+or step rule broken along the path fails the check.
 
 An `eval_refuse_<guard>` record has one field for each of the guard's
 sampled arguments. In a model without opaque functions, if other traces

@@ -221,6 +221,8 @@ export function harness(
     ]),
     `  val inv = ${opaques.length ? "not(settled) or " : ""}and { lawsHold, ${[...(refines ? ["refined"] : []), ...always.map((a) => `M::${a}(state)`), ...steps.map((r) => `(not(moved) or M::${r.name}(prev, ${r.via ? "last, " : ""}state${r.out ? ", emitted" : ""}))`), "true"].join(", ")} }`,
     // A witness search also stops at a broken rule, so that no run can step over one unreported.
+    ...[...witnesses ?? []].filter(([goal]) => transitions.some((t) => t.guard === goal)).map(([guard, steps]) =>
+      `  val never_allows_${guard} = inv and ${WITNESS_INDEX} < ${steps.length}`),
     ...sometimes.map((w) => `  val never_${w} = inv and not(${opaques.length ? "settled and " : ""}M::${w}(state))`),
     // A guard's witnesses, for the `probe` step: breaking `never_allows_X` shows a reachable state and values for
     // which X allows its event, breaking `never_refuses_X` one for which it refuses it. Each reads the result the
