@@ -141,7 +141,7 @@ effect function executeSearch(runtime: IAgentRuntime, query: string) {
   const stored: unknown = try tryPromise(() => runtime.getCache<unknown>("browser.search-profile"))
   const selection = browserSelection(stored, runtime)
   const browser: unknown = runtime.getService("browser")
-  const url = searchUrl(query)
+  const url = try Effect.try({ try: () => searchUrl(query), catch: () => new WebSearchFailed({ reason: "The search query URL could not be built." }) })
   const open: SearchCommand = { subaction: "open", url: url.href }
   const target = selection.tag === "Ready" && isDispatcher(browser)
     ? (try tryPromise(() => browser.resolveTarget(selection.targetId, open)))
@@ -178,7 +178,7 @@ effect function executeSearch(runtime: IAgentRuntime, query: string) {
       const snapshot = try Schema.decodeUnknownEffect(browserReceipt)(try tryPromise(() => browser.execute({ subaction: "snapshot", url: url.href, id: tabId }, route.target)))
       const frames = snapshot.value.result.frames ?? []
       const main = frames.find((frame) => frame.frameId === 0)
-      const page = main === undefined ? undefined : readUrl(main.url)
+      const page = main === undefined ? undefined : try Effect.try({ try: () => readUrl(main.url), catch: () => new WebSearchFailed({ reason: "The browser returned an invalid search URL." }) })
       if (snapshot.targetId !== route.target || snapshot.value.profileId !== route.profile || snapshot.value.result.id !== tabId ||
         page === undefined || page.origin !== url.origin || page.pathname !== url.pathname || page.searchParams.get("q") !== query) {
         throw new WebSearchFailed({ reason: "The browser search page no longer matches the dispatched query." })
