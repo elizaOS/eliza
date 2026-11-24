@@ -1,10 +1,10 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import { formatInet } from "effect/net/NetAddress"
-import { startProblem, type CatalogObservation, type IdentityRead, type StartProblem } from "../gen/cloud__deployment.effect.vibe"
+import { startProblem, type CatalogObservation, type StartProblem } from "../gen/cloud__deployment.effect.vibe"
 import { CatalogMismatch, observeCatalog } from "./billing/plans.vibe"
 import { cloudServer, listening, sweepsLayer } from "./http/server.vibe"
-import { applySeed } from "./operator/admin.vibe"
+import { applySeed, identityRead } from "./operator/admin.vibe"
 import { nodePageTemplates } from "./pages/node-templates.vibe"
 import { deploymentLayer, Deployment, parseEnvironment, parseProfile, ProfileInvalid, requireSecrets, specProfile, type SecretMissing, type CloudEnvironment, type CloudProfile } from "./profile/profile.vibe"
 import { DatabaseIdentityMismatch, DatabaseUnreadable, migrate, observeIdentity, parseStoreLocation, storeLayer, type DatabaseIdentity, type StoreFailure, type StoreLocationInvalid, type StoreLocation } from "./store/store.vibe"
@@ -24,14 +24,6 @@ export interface CloudLayerOptions {
   readonly seed: string | undefined
   readonly port: number
   readonly host: string
-}
-
-function identityRead(identity: DatabaseIdentity, expected: string): IdentityRead {
-  switch (identity.kind) {
-    case "unreadable": return { tag: "UnreadableIdentity" }
-    case "fresh": return { tag: "ReadDigest", digest: expected }
-    case "identified": return { tag: "ReadDigest", digest: identity.digest }
-  }
 }
 
 effect function refuseStart(problem: StartProblem, options: CloudLayerOptions, identity: DatabaseIdentity): void!(ProfileInvalid | DatabaseUnreadable | DatabaseIdentityMismatch | SeedOutsideStaging | LoopbackOutsidePglite | CatalogMismatch) {

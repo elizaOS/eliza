@@ -14,6 +14,7 @@ export type LlmScript =
   | { readonly kind: "refuse"; readonly retryAfterSeconds?: number }
   | { readonly kind: "reject"; readonly status: number; readonly body?: object }
   | { readonly kind: "hang"; readonly after: number }
+  | { readonly kind: "hangInToolCall" }
   | { readonly kind: "notJson" };
 
 export const replyText = "Héllo";
@@ -51,6 +52,11 @@ export const contentFrames: ReadonlyArray<string> = [
   frame(chunk({ content: replyText.slice(2) }, null)),
   frame(chunk({}, "stop")),
 ];
+
+const toolCallFrame = frame(chunk({
+  role: "assistant", content: null, reasoning_content: "Need the weather.",
+  tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "SEARCH", arguments: '{"query":"weather in Paris"}' } }],
+}, null));
 
 export const usageFrame = frame({ id: "chatcmpl-fake", object: "chat.completion.chunk", created: 1_790_000_000, model: upstreamModel, choices: [], usage });
 export const doneFrame = frame("[DONE]");
@@ -99,6 +105,8 @@ function answerFor(script: LlmScript, cut: () => void): FakeAnswer {
       return { status: script.status, body: script.body ?? { error: { code: "context_length_exceeded", param: "messages", message: "too long" } } };
     case "hang":
       return { status: 200, chunks: contentFrames, hangAfter: script.after, onClose: (finished) => { if (!finished) cut(); } };
+    case "hangInToolCall":
+      return { status: 200, chunks: [toolCallFrame, ...contentFrames], hangAfter: 1, onClose: (finished) => { if (!finished) cut(); } };
     case "notJson":
       return { status: 200, body: "<html>upstream gateway</html>", headers: { "content-type": "text/html" } };
   }
