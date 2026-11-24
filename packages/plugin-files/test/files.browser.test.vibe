@@ -84,7 +84,7 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
   }, libraryVolume()).pipe(Effect.provide(tab))
 })
 
-it.effect('A torn browser trash record is listed as unreadable, refuses only its own restore, and can be emptied, even when its data is already gone (spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied")', effect () => {
+it.effect('Torn browser trash record (spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied")', effect () => {
   const tab = indexedLibrary(`files-trash-record-${Date.now()}`)
   try Effect.provide(effect {
     const volume = try FilesVolume
