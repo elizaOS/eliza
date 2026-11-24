@@ -37,10 +37,14 @@ pure def lawCaptionLimitHolds(input: VideoInput, bytesRead: int): bool =
 
 ### Manual English captions outrank automatic English captions and audio
 
-For a selected English manual track, use SRT, WebVTT, or an untyped
-variant, in that order. For automatic captions use JSON or an untyped
-variant. Fall back to transcription after a missing or unusable caption
-path. The shell validates and normalizes metadata, caption text, and
+A manual track keyed `en`, or `en-` and a region or name such as `en-US`
+or `en-GB`, is an English manual track. The `en` track is tried first, then
+the others in the order the extractor lists them, and the first that has a
+usable SRT, WebVTT or untyped variant is selected, ahead of automatic
+captions and audio. For the selected English manual track, use SRT, WebVTT,
+or an untyped variant, in that order. For automatic captions use JSON or an
+untyped variant. Fall back to transcription after a missing or unusable
+caption path. The shell validates and normalizes metadata, caption text, and
 extractor formats independently of selection.
 
 ```quint
@@ -53,6 +57,16 @@ pure def selectVideoCaption(manualSrt: str, manualVtt: str, manualUnknown: str, 
   else if (autoJson != "") { sourceUrl: autoJson, formatKind: JsonCaptions }
   else if (autoUnknown != "") { sourceUrl: autoUnknown, formatKind: UntypedCaptions }
   else { sourceUrl: "", formatKind: ExtractAudio }
+type ManualCaptionTrack = { primaryEnglish: bool, srtUrl: str, vttUrl: str, untypedUrl: str }
+pure val noManualCaptionTrack: ManualCaptionTrack = { primaryEnglish: false, srtUrl: "", vttUrl: "", untypedUrl: "" }
+pure def manualCaptionUsable(track: ManualCaptionTrack): bool = track.srtUrl != "" or track.vttUrl != "" or track.untypedUrl != ""
+pure def selectManualCaptionTrack(tracks: List[ManualCaptionTrack]): ManualCaptionTrack = {
+  val primary = tracks.select(track => track.primaryEnglish and manualCaptionUsable(track))
+  val regional = tracks.select(track => not(track.primaryEnglish) and manualCaptionUsable(track))
+  if (primary.length() > 0) primary.nth(0) else if (regional.length() > 0) regional.nth(0) else noManualCaptionTrack
+}
+pure val tracksValues = Set(List(), List({ ...noManualCaptionTrack, srtUrl: "en-GB.srt" }), List({ ...noManualCaptionTrack, srtUrl: "en-US.srt" }, { ...noManualCaptionTrack, primaryEnglish: true, vttUrl: "en.vtt" }), List({ ...noManualCaptionTrack, primaryEnglish: true }, { ...noManualCaptionTrack, untypedUrl: "en-US" }))
+pure def lawAUsableEnglishTrackIsSelected(tracks: List[ManualCaptionTrack]): bool = tracks.some(track => manualCaptionUsable(track)) iff manualCaptionUsable(selectManualCaptionTrack(tracks))
 pure def lawManualSrtWins(manualSrt: str, manualVtt: str, manualUnknown: str, autoJson: str, autoUnknown: str): bool =
   manualSrt != "" implies selectVideoCaption(manualSrt, manualVtt, manualUnknown, autoJson, autoUnknown) == { sourceUrl: manualSrt, formatKind: Srt }
 pure def leapVideoYear(year: int): bool = year % 400 == 0 or (year % 4 == 0 and year % 100 != 0)
