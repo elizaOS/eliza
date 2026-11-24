@@ -8,7 +8,7 @@ The connected GitHub account supplies pull requests, inbox notifications and iss
 
 ### Pull request listing requires an explicit repository or author, and me uses the selected account's login
 
-Repository components and login names come from the GitHub boundary parser. When the owner names both a repository and an author, both apply. Notification triage requests the selected account's own notifications without obtaining mutation authority.
+Repository components and login names come from the GitHub boundary parser, which reads the operation and the pull request state without surrounding space or letter case. When the owner names both a repository and an author, both apply. Notification triage requests the selected account's own notifications without obtaining mutation authority.
 
 ```quint
 type GitHubPrState = OpenPrs | ClosedPrs | AllPrs
@@ -27,7 +27,7 @@ pure def lawMeIsSelectedGitHubAccount(accountLogin: str): bool = effectiveGitHub
 
 ### Each GitHub mutation requires the fields appropriate to its operation
 
-A new issue needs a title. Existing issue operations need a positive issue number. Assign and label need names, and commenting needs a body. A pull request review binds its approval, change request or comment event. The selected account, credential epoch, repository and request identifier travel with the complete operation.
+A new issue needs a title. Existing issue operations need a positive issue number. Assign and label need names, and commenting needs a body. A pull request review binds its approval, change request or comment event; the boundary parser reads the operation and review action without surrounding space or letter case, and `request_changes` names the change request as `request-changes` does. The selected account, credential epoch, repository and request identifier travel with the complete operation.
 
 ```quint
 type GitHubReviewKind = ApproveReview | RequestChanges | ReviewComment

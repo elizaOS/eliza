@@ -431,6 +431,40 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   }))
 }, 120_000)
 
+it.live(`Hear bare assent as a cue only in its own short forms, only with work after an instruction, and a lead form after Sure! after any message (${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[agendaApp.name, agendaApp]]),
+  })
+  const { id } = try conversation(agent)
+  const agenda = { name: "AGENDA_READ", arguments: {} }
+  const heard = (request: string, cue: string) => effect {
+    try Effect.sync(() => cloud.script(toolCalls(cue, agenda), text("Done.")))
+    const chunks = try streamed(agent, id, { text: request })
+    const whole = try read(chunks, 0)
+    const said = whole.outcome.kind === "Done" ? whole.outcome.text : whole.outcome.kind
+    return [request, cue, whole.seen.filter((entry) => entry.startsWith("acknowledgment:")).map((entry) => entry.slice("acknowledgment:".length)), said] as const
+  }
+  const instruction = "Text Sam that I'm late"
+  const rejectedForms: (readonly [string, string, readonly string[], string])[] = []
+  for (const cue of ["Okay.", "Got it.", "Sure thing.", "Sure, sure.", "Sure one sec."]) rejectedForms.push(try heard(instruction, cue))
+  const beforeAnswers: (readonly [string, string, readonly string[], string])[] = []
+  for (const cue of ["Sure, your dentist is Thursday.", "Sure, I've texted Sam.", "Sure, done."]) beforeAnswers.push(try heard(instruction, cue))
+  const leadForms: (readonly [string, string, readonly string[], string])[] = []
+  for (const request of ["Am I free Friday", "Any meetings today", instruction]) leadForms.push(try heard(request, "Sure! Let me check your calendar."))
+  const twoSentences = try heard(instruction, "Sure, one sec. Let me check your calendar.")
+  const afterFillers: (readonly [string, string, readonly string[], string])[] = []
+  for (const request of ["Hey, text Sam I'm late", "Okay, Eliza, set an alarm for 7:30", "hey alpha text Sam I'm late"]) afterFillers.push(try heard(request, "Sure."))
+  try Effect.try(() => assert.deepStrictEqual({ rejectedForms, beforeAnswers, leadForms, twoSentences, afterFillers }, {
+    rejectedForms: ["Okay.", "Got it.", "Sure thing.", "Sure, sure.", "Sure one sec."].map((cue) => [instruction, cue, [], "Done."]),
+    beforeAnswers: ["Sure, your dentist is Thursday.", "Sure, I've texted Sam.", "Sure, done."].map((cue) => [instruction, cue, [], "Done."]),
+    leadForms: ["Am I free Friday", "Any meetings today", instruction].map((request) => [request, "Sure! Let me check your calendar.", ["Sure! Let me check your calendar."], "Done."]),
+    twoSentences: [instruction, "Sure, one sec. Let me check your calendar.", ["Sure, one sec. Let me check your calendar."], "Done."],
+    afterFillers: ["Hey, text Sam I'm late", "Okay, Eliza, set an alarm for 7:30", "hey alpha text Sam I'm late"].map((request) => [request, "Sure.", ["Sure."], "Done."]),
+  }))
+}, 120_000)
+
 it.live(`Hear the result after the cue, never the cue again, and only a cue I heard counts (${planning}, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({

@@ -1,9 +1,9 @@
-// spec/os/agentService/lifecycle.md, "A stop before the spawn spawns nothing, and a stop of a live child waits for its exit"; spec/os/agentService/lifecycle.md, "A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "A stop before the spawn spawns nothing, and a stop of a live child waits for its exit"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/lifecycle.md, "A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 import { createHash } from "node:crypto";
 import readline from "node:readline";
 import type { Driver } from "../../gen/_conformance.ts";
 import type { Options } from "../../gen/os__agentService__lifecycle.conformance.ts";
-import type { AgentService, Event, ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
+import type { AgentService, Event, NoticeChannel, ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
 import { jvmDriver } from "./jvm-adapter.ts";
 
 const KEY = "device";
@@ -33,6 +33,7 @@ export type LifecyclePhase =
 
 export interface LifecycleView {
   readonly phase: LifecyclePhase;
+  readonly notice: NoticeChannel;
   readonly epoch: number;
   readonly attempt: number;
   readonly hold: { readonly tag: "NotHeld" } | { readonly tag: "Held" | "Unconfirmed"; readonly targetCode: number; readonly targetDigest: string };
@@ -47,6 +48,7 @@ interface AdapterState extends LifecycleView {
 
 const nativeView = (state: AdapterState): LifecycleView => ({
   phase: state.phase,
+  notice: state.notice,
   epoch: state.epoch,
   attempt: state.attempt,
   hold: state.hold,
@@ -101,6 +103,7 @@ export const options: Options<LifecycleView> = {
     phase: phase.tag === "Starting" ? { tag: "Starting", stage: phase.step }
       : phase.tag === "Stopping" ? { tag: "Stopping" }
       : phase,
+    notice: phase.tag === "Stopped" ? "NoNotice" : phase.tag === "Failed" ? "AlertsChannel" : "StatusChannel",
     epoch,
     attempt,
     hold: expectedHold(hold),

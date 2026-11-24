@@ -120,7 +120,7 @@ const checkSystem = [
 export effect function checkOriginalMessage(text: string) {
   if (text.trim() === "") return undefined
   const model = try Model
-  const said = model.complete(checkSystem, text) catch () => ""
+  const said = model.complete(checkSystem, text, "low") catch () => ""
   const check = decodeCheck(said.trim().replace(/^```(?:json)?\s*|\s*```$/gu, ""))
   return Option.isSome(check) ? check.value : undefined
 }
