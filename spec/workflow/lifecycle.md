@@ -115,6 +115,25 @@ pure def lawAnotherChangeIsRefused(command: WorkflowCommand, proposed: ProposedW
   (command != NoCommand and proposed != ProposedRead and not(commandMatches(command, proposed))) implies bindToCommand(command, proposed) == RefuseConflict
 ```
 
+### A whole-message workflow command is routed to the workflow action, and showing the workflows stays navigation
+
+A whole-message command owns its request: on a turn that offers the
+workflow action, opening a view is refused for it before it runs, so
+"create a workflow called Alpha device test" is never answered by opening
+Workflows or by asking what the owner meant. Only "show (me) my workflows"
+is left to navigation, since it names the Workflows view as well as the
+list; "list my workflows" and "what workflows do I have" are the list.
+Words that are no command are routed nowhere.
+
+```quint
+pure def commandOwnsRequest(command: WorkflowCommand, showWording: bool): bool =
+  command != NoCommand and not(command == ListCommand and showWording)
+pure def lawWordsThatAreNoCommandAreNotRouted(showWording: bool): bool = not(commandOwnsRequest(NoCommand, showWording))
+pure def lawAChangeCommandOwnsItsRequest(command: WorkflowCommand, showWording: bool): bool =
+  (command != NoCommand and command != ListCommand) implies commandOwnsRequest(command, showWording)
+pure def lawShowingTheWorkflowsStaysNavigation(showWording: bool): bool = commandOwnsRequest(ListCommand, showWording) iff not(showWording)
+```
+
 ### A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name
 
 A name is compared after NFKC folding, lowercasing, dropping quotes and
@@ -231,7 +250,12 @@ returned, may have committed: the reply asks the owner to check before
 trying again, and the planner is told not to retry. A failed read says the
 read failed. The workflows context the agent reads reports a failed read as
 a failure, never as the owner having no workflows, and a search that
-matches nothing says so.
+matches nothing says so. Every refusal names its code as the result's
+error, where the phone reads it to offer the Workflows view for an edit or
+a switch-on that belongs there, and in its failure provenance with whether
+it may be retried: a failed read or an unwritten change may be, a change
+that may have committed may not, and a refusal that waits on the owner's
+answer says so itself.
 
 ```quint
 type FailureReport = ReadFailed | NothingChanged | ReconcileFirst
@@ -246,4 +270,7 @@ pure def lawOnlyAnUnwrittenChangeSaysNothingChanged(read: bool, beforeWrite: boo
 pure def lawAFailedReadIsNeverEmpty(searched: bool, shown: int): bool = workflowListing(false, searched, shown) == ListingFailed
 pure def lawAReadWorkflowIsListedOrSaidMissing(searched: bool, shown: int): bool =
   workflowListing(true, searched, shown) != ListingFailed
+pure def retryAllowed(report: FailureReport): bool = report != ReconcileFirst
+pure def lawOnlyAChangeThatMayHaveCommittedIsNotRetried(read: bool, beforeWrite: bool): bool =
+  retryAllowed(failureReport(read, beforeWrite)) iff (read or beforeWrite)
 ```

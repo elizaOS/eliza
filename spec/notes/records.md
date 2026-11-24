@@ -65,7 +65,9 @@ pure def lawBlankNoteRefused(titleUnits: int, bodyUnits: int, uniqueId: bool): b
 ### The agent reads and changes Notes only for the owner, on the owner's own words in the bound request
 
 Only the owner reaches the Notes actions, the saved-notes context and the
-owner routes. A name fence, a named read and a re-resolved ID read the words
+owner routes. The actions are offered on every owner turn, in the general
+context as well as the Notes one, so a request about a note needs no
+earlier Notes turn. A name fence, a named read and a re-resolved ID read the words
 the owner typed in the request the host bound to this turn, never the text a
 route wrapped around it; with no bound request, they read the message's own
 text with its envelopes removed. A delete by name happens only when those
@@ -74,11 +76,17 @@ nothing is deleted. A delete by an ID those words do not carry, of a note
 whose title they name, is a delete by that title: notes that share the
 title ask the owner which one, and nothing is deleted. A delete by an ID
 the owner's words carry, or of a note they do not name, deletes that note.
+An edit by an ID is read the same way: an ID those words do not carry, for
+a note whose title they name, is an edit by that title, so two notes that
+share the title ask the owner which one and nothing is changed.
 
 ```quint
 type OwnerWords = BoundRequestWords | MessageWords
 pure def ownerWordsSource(requestBound: bool): OwnerWords = if (requestBound) BoundRequestWords else MessageWords
 pure def notesAccessAllowed(isOwner: bool): bool = isOwner
+type NotesTurnContext = GeneralContext | NotesContext | AnotherContext
+pure def notesOffered(isOwner: bool, context: NotesTurnContext): bool = notesAccessAllowed(isOwner) and context != AnotherContext
+pure def lawNotesNeedNoEarlierNotesTurn(isOwner: bool): bool = notesOffered(isOwner, GeneralContext) == notesOffered(isOwner, NotesContext)
 pure def deleteByNameAllowed(isOwner: bool, wordsNameTitle: bool): bool = notesAccessAllowed(isOwner) and wordsNameTitle
 pure def lawBoundRequestWins(requestBound: bool): bool = requestBound implies ownerWordsSource(requestBound) == BoundRequestWords
 pure def lawOnlyTheOwnerReachesNotes(wordsNameTitle: bool): bool = not(deleteByNameAllowed(false, wordsNameTitle))
@@ -86,6 +94,9 @@ pure def lawUnnamedNoteIsNotDeleted(isOwner: bool): bool = not(deleteByNameAllow
 pure def idDeleteByTitle(idInOwnerWords: bool, wordsNameItsTitle: bool): bool = not(idInOwnerWords) and wordsNameItsTitle
 pure def lawATypedIdDeletesThatNote(wordsNameItsTitle: bool): bool = not(idDeleteByTitle(true, wordsNameItsTitle))
 pure def lawAPlannerIdForANamedTitleIsReresolved(idInOwnerWords: bool): bool = idDeleteByTitle(false, true) and not(idDeleteByTitle(idInOwnerWords, false))
+pure def idEditByTitle(idInOwnerWords: bool, wordsNameItsTitle: bool): bool = not(idInOwnerWords) and wordsNameItsTitle
+pure def lawATypedIdEditsThatNote(wordsNameItsTitle: bool): bool = not(idEditByTitle(true, wordsNameItsTitle))
+pure def lawAPlannerIdForANamedTitleIsReresolvedForAnEdit(idInOwnerWords: bool): bool = idEditByTitle(false, true) and not(idEditByTitle(idInOwnerWords, false))
 ```
 
 ### A move by name takes the identical copies of the note along
@@ -102,6 +113,96 @@ pure def lawResolvedNoteMoves(byName: bool, identicalCopy: bool): bool = moveTak
 pure def lawMoveByIdLeavesOtherNotes(identicalCopy: bool): bool = not(moveTakesCopy(false, false, identicalCopy))
 pure def lawMoveByNameLeavesNoCopyBehind(resolvedNote: bool): bool = moveTakesCopy(true, resolvedNote, true)
 pure def lawDifferentNoteStays(byName: bool): bool = not(moveTakesCopy(byName, false, false))
+```
+
+### A delete or an edit by name leaves no identical copy behind
+
+A delete that names the note by its words moves every identical copy to
+Recently deleted with it, so none survives the deletion the owner just
+confirmed. An edit that names the note changes that note and drops its
+identical copies, and any plain note the edit made it identical to, so one
+note holds the result. A delete or an edit by ID changes only that note,
+and a note that differs is never touched.
+
+```quint
+type NoteChange = DeletesNote | EditsNote
+type CopyFate = CopyStays | CopyTrashed | CopyDropped
+pure def copyFate(change: NoteChange, byName: bool, identicalBefore: bool, identicalAfter: bool): CopyFate =
+  if (not(byName)) CopyStays
+  else if (change == DeletesNote) (if (identicalBefore) CopyTrashed else CopyStays)
+  else if (identicalBefore or identicalAfter) CopyDropped
+  else CopyStays
+pure def lawAChangeByIdLeavesEveryOtherNote(change: NoteChange, identicalBefore: bool, identicalAfter: bool): bool =
+  copyFate(change, false, identicalBefore, identicalAfter) == CopyStays
+pure def lawADeleteByNameTrashesEveryCopy(identicalAfter: bool): bool = copyFate(DeletesNote, true, true, identicalAfter) == CopyTrashed
+pure def lawADeleteNeverDropsANote(byName: bool, identicalBefore: bool, identicalAfter: bool): bool =
+  copyFate(DeletesNote, byName, identicalBefore, identicalAfter) != CopyDropped
+pure def lawAnEditByNameKeepsOneNote(identicalAfter: bool): bool = copyFate(EditsNote, true, true, identicalAfter) == CopyDropped
+pure def lawANoteThatDiffersIsNeverTouched(change: NoteChange, byName: bool): bool = copyFate(change, byName, false, false) == CopyStays
+```
+
+### A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on
+
+A create, edit, move, delete or restore asked in chat answers with one
+durable receipt of kind notes.note for the note's ID at the collection
+revision the change produced, named notes.note.create, notes.note.update,
+notes.note.delete or notes.note.restore, with the same operation and note
+ID in its data; a move is an update. The phone follows the change to that
+revision. A creation that returned the note already saved is a replayed
+no-op, never a second commit, and a read carries no receipt. A refusal
+that needs the owner's choice between notes, or the owner's word that the
+closest note is the one meant, says it waits on the owner and carries the
+candidates. A refused edit the planner can correct from a fresh read (a
+stale or missing revision, old text that is absent or matches twice, a
+rich note edited as plain text) is coaching for the planner, not an
+outcome the owner is told. Every other refusal is an outcome. A list of
+the whole collection that finds no note says the collection is empty at
+that revision.
+
+```quint
+type NotesWrite = WriteCreate | WriteEdit | WriteMove | WriteDelete | WriteRestore
+type ReceiptOutcome = AppliedReceipt | ReplayedReceipt
+pure def receiptOperation(write: NotesWrite): str =
+  if (write == WriteCreate) "notes.note.create"
+  else if (write == WriteDelete) "notes.note.delete"
+  else if (write == WriteRestore) "notes.note.restore"
+  else "notes.note.update"
+pure def receiptOutcome(write: NotesWrite, replayed: bool): ReceiptOutcome =
+  if (write == WriteCreate and replayed) ReplayedReceipt else AppliedReceipt
+type NotesRefusal = AmbiguousNote | NameMismatch | EditConflict | RevisionRequired | TextNotFound | TextAmbiguous | RichEditRequired | OtherRefusal
+type RefusalKind = RefusalWaitsOnOwner | RefusalCoachesPlanner | RefusalIsOutcome
+pure def refusalKind(refusal: NotesRefusal): RefusalKind =
+  if (refusal == AmbiguousNote or refusal == NameMismatch) RefusalWaitsOnOwner
+  else if (refusal == OtherRefusal) RefusalIsOutcome
+  else RefusalCoachesPlanner
+pure def emptyCollectionObserved(filtered: bool, found: int): bool = not(filtered) and found == 0
+pure val foundValues = Set(0, 1, 2)
+pure def lawOnlyARepeatedCreationIsANoOp(write: NotesWrite, replayed: bool): bool =
+  receiptOutcome(write, replayed) == ReplayedReceipt iff (write == WriteCreate and replayed)
+pure def lawAMoveIsAnUpdate(replayed: bool): bool =
+  receiptOperation(WriteMove) == receiptOperation(WriteEdit) and receiptOutcome(WriteMove, replayed) == AppliedReceipt
+pure def lawAChoiceBetweenNotesIsNeverCoaching(refusal: NotesRefusal): bool =
+  refusalKind(refusal) == RefusalWaitsOnOwner iff (refusal == AmbiguousNote or refusal == NameMismatch)
+pure def lawAFilteredReadNeverSaysTheCollectionIsEmpty(found: int): bool = not(emptyCollectionObserved(true, found))
+```
+
+### A read tells a note's times in the owner's zone when the turn knows it
+
+A read gives each note's created and updated times as instants. When the
+turn carries the owner's zone, the one the phone observed or else the one
+its interface reported, and the host knows that zone, each note read also
+carries the two times as that zone's local date and time, so "my latest
+note" is named on the owner's day, not on UTC's. With no known zone the
+instants stand alone and no local date is guessed.
+
+```quint
+type DisplayZone = ObservedZone | InterfaceZone | NoOwnerZone
+pure def displayZoneSource(observedKnown: bool, interfaceKnown: bool): DisplayZone =
+  if (observedKnown) ObservedZone else if (interfaceKnown) InterfaceZone else NoOwnerZone
+pure def localTimesShown(source: DisplayZone): bool = source != NoOwnerZone
+pure def lawTheObservedZoneWins(interfaceKnown: bool): bool = displayZoneSource(true, interfaceKnown) == ObservedZone
+pure def lawNoLocalDateIsGuessed(observedKnown: bool, interfaceKnown: bool): bool =
+  localTimesShown(displayZoneSource(observedKnown, interfaceKnown)) iff (observedKnown or interfaceKnown)
 ```
 
 ### A calendar draft made from a note is admitted only while that exact note is unchanged

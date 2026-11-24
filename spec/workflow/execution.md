@@ -86,3 +86,36 @@ pure def sometimesTimerReservation(r: WakeupRun): bool = r.phase == WaitingTimer
 pure def sometimesWorkerUncertain(r: WakeupRun): bool = r.phase == WorkerUncertain and r.wakeId == 0
 pure def sometimesCancelledPersistedRun(r: WakeupRun): bool = r.phase == ExecutionCancelled
 ```
+
+## Story: End a run whose worker stops answering
+
+> As the owner, I want a workflow whose worker hangs or floods its channel to
+> stop with a reason, so it never holds a run, a check of its code or my chat
+> dossier open.
+
+### A worker that overruns its run, its check or its line is stopped
+
+A run's worker finishes or parks within 30 minutes of being started or
+resumed, counting the model drafts it waits on; a check of workflow code
+answers within 30 seconds; and no line the worker sends is longer than
+1 MiB. A worker past any of these is stopped: the run fails with the limit
+it overran as its error, and an overrun check refuses the code as not
+checked. A run parked for a timer, an event or an approval holds no worker,
+so its wait is not counted. A worker within all three keeps running.
+
+```quint
+type WorkerTurn = RunTurn | CheckTurn
+pure val runTurnLimitMs: int = 1800000
+pure val checkTurnLimitMs: int = 30000
+pure val workerLineLimitBytes: int = 1048576
+pure def workerTurnLimitMs(turn: WorkerTurn): int = if (turn == RunTurn) runTurnLimitMs else checkTurnLimitMs
+pure def workerOverran(turn: WorkerTurn, elapsedMs: int, lineBytes: int): bool =
+  elapsedMs > workerTurnLimitMs(turn) or lineBytes > workerLineLimitBytes
+pure val elapsedMsValues = Set(0, 30000, 30001, 1800000, 1800001)
+pure val lineBytesValues = Set(0, 1048576, 1048577)
+pure def lawAWorkerWithinItsLimitsKeepsRunning(turn: WorkerTurn): bool =
+  not(workerOverran(turn, workerTurnLimitMs(turn), workerLineLimitBytes))
+pure def lawAnOverlongLineStopsAnyWorker(turn: WorkerTurn, elapsedMs: int): bool = workerOverran(turn, elapsedMs, workerLineLimitBytes + 1)
+pure def lawACheckIsHeldToLessTimeThanARun(elapsedMs: int, lineBytes: int): bool =
+  workerOverran(RunTurn, elapsedMs, lineBytes) implies workerOverran(CheckTurn, elapsedMs, lineBytes)
+```

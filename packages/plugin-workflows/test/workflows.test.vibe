@@ -1,7 +1,8 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { computeNextCronRunAtMs, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { TestClock } from "effect/testing"
+import { computeNextCronRunAtMs, getDirectActionRoutingRules, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
@@ -9,16 +10,19 @@ import {
   type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun,
 } from "../src/client/index.vibe"
 import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
+import { registerWorkflowRequestRouting } from "../src/request.vibe"
 import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
 import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
-import { inProcessWorkerPort } from "../src/service/host.vibe"
+import { inProcessWorkerPort, type WorkflowWorkerPort } from "../src/service/host.vibe"
+import { runtimeWorkflowHost } from "../src/runtime.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
 import { workflowHttpError } from "../src/client/workflow-client.vibe"
 import type { ManagedGoogleReads } from "../src/service/google.vibe"
 
 module node {
   import { PGlite } from "@electric-sql/pglite"
+  import { spawn } from "node:child_process"
   import { mkdtemp, mkdir, readdir, realpath, rm, writeFile, chmod } from "node:fs/promises"
   import { tmpdir } from "node:os"
   import { join } from "node:path"
@@ -56,6 +60,10 @@ module node {
     return join(...parts)
   }
 
+  export function floodingWorker(bytes: number) {
+    return { spawnWorker: async () => spawn(process.execPath, ["-e", `process.stdout.write("x".repeat(${bytes}))`]) }
+  }
+
   export interface Answer { readonly status: number; readonly body: unknown }
 
   export async function call(routes: readonly LocalRoute[], target: string, body: unknown): Promise<Answer> {
@@ -74,7 +82,7 @@ module node {
     return { status: 404, body: { error: "No route" } }
   }
 }
-import { call, joinPath, listEntries, openDatabase, readText, scratch, writeTree } from node
+import { call, floodingWorker, joinPath, listEntries, openDatabase, readText, scratch, writeTree } from node
 
 const owner = "owner"
 const device = { installationId: "phone-1", enrollmentId: "enrollment-1" }
@@ -88,7 +96,7 @@ interface Phone {
   notes: readonly { readonly id: string; readonly title: string; readonly text: string }[]
 }
 
-effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests } = {}) {
+effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests; readonly worker?: WorkflowWorkerPort } = {}) {
   const db = try acquireRelease(promise(() => openDatabase()), (opened) => promise(() => opened.close()))
   const wakeups = new Map<string, { readonly dueAt: number; readonly metadata: Readonly<Record<string, string | number>> }>()
   const notices: WorkflowNotice[] = []
@@ -105,7 +113,7 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
   }
   const draft = options.draft
   const host: WorkflowHost = {
-    sql: db.sql as WorkflowSql, owner, agentId: "agent", origin: "agent:test", worker: try inProcessWorkerPort(), device: port,
+    sql: db.sql as WorkflowSql, owner, agentId: "agent", origin: "agent:test", worker: options.worker ?? try inProcessWorkerPort(), device: port,
     draft: draft === undefined ? undefined : (prompt) => Effect.suspend(() => {
       const text = draft(prompt)
       return text === undefined ? Effect.never : succeed(text)
@@ -279,7 +287,7 @@ it.live('Remove a workflow only when its runs are settled and restore it safely 
   try check(() => assert.deepStrictEqual(phone.performed, []))
 })
 
-it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
+it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A whole-message workflow command is routed to the workflow action, and showing the workflows stays navigation"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
   const rig = try harness({ draft: () => JSON.stringify({ name: "Drafted", description: "Drafts a summary", source: generatedSource }) })
   const morning = (try saved(rig, greeting)).receipt
   const garden = (try saved(rig, manual("Garden digest", greeting.steps))).receipt
@@ -318,6 +326,10 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   const listed = try say("list my workflows", { action: "list", limit: 2 })
   const found = try say("which workflow drafts a summary?", { action: "search", query: "summary drafts" })
   const ran = try say("run the Garden digest workflow", { action: "run", workflowName: "Garden digest" })
+  const inView = try say("make the Garden digest workflow shorter", { action: "modify", workflowName: "Garden digest" })
+  registerWorkflowRequestRouting(runtime)
+  const route = getDirectActionRoutingRules(runtime).find((rule) => rule.id === "workflow.authored-request")
+  const owned = (words: string) => route?.wholeRequest?.matches(words, { content: { text: words } } as Memory)
   const dossier = try say("give me today's dossier", { action: "dossier" })
   const context = (words: string) => promise(() => activeWorkflowsProvider.get(runtime, { content: { text: words } } as Memory, {} as Parameters<Provider["get"]>[2]))
   const matching = try context("which workflow drafts a summary")
@@ -334,6 +346,8 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     twins: (twins.data as { readonly matches?: readonly unknown[] } | undefined)?.matches?.length,
     ownerZone: twins.userFacingText?.includes(`created ${kiritimati}`),
     confirm: partial.userFacingText,
+    refusals: [inView, removedId, unknown].map((result) => [result.error, result.failureProvenance]),
+    routed: [owned("Please create a workflow called Alpha device test"), owned("list my workflows"), owned("show me my workflows"), owned("open my settings"), route?.replacesActionNames],
     names,
   }, {
     codes: [
@@ -348,6 +362,12 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     twins: 2,
     ownerZone: true,
     confirm: "Do you mean “Garden digest”? I left it unchanged.",
+    refusals: [
+      ["WORKFLOW_EDIT_IN_VIEW", { kind: "handler_error", boundary: "handler", code: "WORKFLOW_EDIT_IN_VIEW", retryable: true }],
+      ["WORKFLOW_REMOVED", { kind: "handler_error", boundary: "handler", code: "WORKFLOW_REMOVED", retryable: false }],
+      ["WORKFLOW_NOT_FOUND", { kind: "handler_error", boundary: "handler", code: "WORKFLOW_NOT_FOUND", retryable: true }],
+    ],
+    routed: [true, true, false, false, ["VIEWS", "VIEWS_SHOW"]],
     names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Reading list", "Twin", "Twin"],
   }))
 })
@@ -493,7 +513,7 @@ it.live('Acknowledge a page of digests only after it is stored (spec/workflow/ho
   }
 })
 
-it.live('Run a digest over a live Google source read through managed Google (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible")', effect () => {
+it.live('Run a digest over a live Google source read through managed Google (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "Story: Read my evening brief over the evening\'s window")', effect () => {
   provide KeyValueStore.layerMemory {
     const prompts: string[] = []
     const google = {
@@ -519,7 +539,7 @@ it.live('Run a digest over a live Google source read through managed Google (spe
         }
         return { timeZone: "UTC" }
       },
-      read: (selection) => sync(() => { reads.push(selection.sourceId); return "Water the plants" }),
+      read: (selection, _at, window) => sync(() => { reads.push(`${selection.sourceId}:${window}`); return "Water the plants" }),
     }
     const rig = try harness({ google, native, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
     const protocol = hostedDigestProtocol(rig.request)
@@ -545,6 +565,12 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     const phoneLive = { provider: "native", ownerId: owner, agentId: "agent", ...device, sourceId: "tasks", revision: "a".repeat(64) }
     const phoneSaved = try protocol.mutate("sources", { id: "phone-1", kind: "tasks", label: "Tasks", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live: phoneLive, confirmed: true })
     const phoneRevision = (phoneSaved.source as { readonly revision: string }).revision
+    const evening = try protocol.mutate("loops", { mutationId: "loop-evening", confirmed: true, spec: { version: 1, template: "evening", sourceId: "phone-1", sourceRevision: phoneRevision, timeZone: "UTC", localTime, enabled: true } })
+    const eveningReceipt = evening.receipt as { readonly workflowId: string; readonly versionId: string }
+    try rig.service.fire({ workflowId: eveningReceipt.workflowId, armVersion: Number(eveningReceipt.versionId.slice(1)), scheduledAt: minute }, rig.digests.fire)
+    const [eveningRun] = try rig.client.executions(eveningReceipt.workflowId)
+    const eveningDone = try settled(rig.client, eveningRun)
+    try check(() => assert.equal(eveningDone.status, "finished", eveningDone.error))
     const asked = { sourceId: "phone-1", sourceRevision: phoneRevision, mutationId: "dossier-1", confirmed: true }
     const granting = try Deferred.make<void>()
     const release = try Deferred.make<void>()
@@ -561,7 +587,7 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     const afterRevoke = try Effect.flip(rig.request("/api/workflow/hosted/dossier", { ...asked, mutationId: "dossier-2" }))
     try check(() => assert.deepStrictEqual(
       [(meanwhile.source as { readonly id: string }).id, (replayed.execution as { readonly id: string }).id, afterRevoke._tag === "WorkflowHttpError" ? afterRevoke.status : 0, reads],
-      ["notes-1", dossierRun, 409, ["tasks"]]))
+      ["notes-1", dossierRun, 409, ["tasks:evening", "tasks:morning"]]))
   }
 })
 
@@ -577,7 +603,15 @@ export default async function (ctx: WorkflowContext) {
 }
 `
 
-it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes")', effect () => {
+it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/generated.md, "A draft the check refuses is repaired once before it is refused"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes")', effect () => {
+  const asked: string[] = []
+  const leaky = `import { readFileSync } from "node:fs"\n${generatedSource}`
+  const repairing = try harness({ draft: (prompt) => { asked.push(prompt); return JSON.stringify({ name: "Summary", description: "", source: asked.length === 1 ? leaky : generatedSource }) } })
+  const repaired = (try repairing.request("/api/workflow/workflows/generate", { prompt: "Summarize my week" })) as { readonly ok: boolean; readonly source: string }
+  const unrepairable = try harness({ draft: (prompt) => { asked.push(prompt); return JSON.stringify({ name: "Leaky", description: "", source: leaky }) } })
+  const refusedTwice = (try unrepairable.request("/api/workflow/workflows/generate", { prompt: "Read a file" })) as { readonly ok: boolean }
+  try check(() => assert.deepStrictEqual(
+    [repaired.ok, repaired.source === generatedSource, refusedTwice.ok, asked.map((prompt) => prompt.includes("rejectedDraft"))], [true, true, false, [false, true, false, true]]))
   let drafts = 0
   const rig = try harness({ draft: () => { drafts += 1; return "Your summary" } })
   const refusedImport = try Effect.flip(rig.request("/api/workflow/workflows", { name: "Leaky", source: `import { readFileSync } from "node:fs"\n${generatedSource}`, mutationId: "33333333-3333-4333-8333-333333333333" }))
@@ -626,6 +660,34 @@ it.live('Turn on generated code only after review and resume it without repeatin
   try sleep("2 seconds")
   const limited = try settled(rig.client, longRun)
   try check(() => assert.deepStrictEqual([limited.status, drafts], ["failed", 1]))
+})
+
+it.effect('End a run whose worker stops answering (spec/workflow/execution.md, "Story: End a run whose worker stops answering"; spec/workflow/execution.md, "A worker that overruns its run, its check or its line is stopped")', effect () => {
+  try TestClock.setTime(Date.now())
+  const silent: WorkflowWorkerPort = { open: () => succeed({ send: () => Effect.void, next: Effect.never, alive: succeed(true), close: Effect.void }) }
+  const rig = try harness({ worker: silent })
+  const morning = (try saved(rig, greeting)).receipt
+  const checking = fork Effect.flip(rig.service.checkSource(generatedSource))
+  const started = try rig.service.run(morning.workflowId, { submissionId: "silent-run", expectedVersionId: morning.versionId })
+  for (let minute = 0; minute < 120; minute++) {
+    const current = try rig.service.execution(started.execution.id)
+    if (current.execution.finished) break
+    try TestClock.adjust("1 minute")
+    try TestClock.withLive(sleep("5 millis"))
+  }
+  const unchecked = join checking
+  const stopped = (try rig.service.execution(started.execution.id)).execution
+  const flooding = runtimeWorkflowHost({ agentId: "agent", getService: (name: string) => name === "workflow-worker" ? floodingWorker(2_000_000) : undefined } as unknown as IAgentRuntime).worker
+  if (flooding === undefined) return try die(new Error("The flooding worker was not installed"))
+  const connection = try flooding.open("flooding")
+  const flooded = try connection.next
+  try connection.close
+  try check(() => assert.deepStrictEqual([unchecked.message, stopped.status, stopped.error?.message, flooded], [
+    "The workflow compiler did not answer within 30 seconds",
+    "failed",
+    "The workflow ran for more than 30 minutes without finishing or waiting, so it was stopped.",
+    { type: "failed", message: "The workflow worker sent a message over 1 MiB, so it was stopped.", cancelled: false },
+  ]))
 })
 
 it.live('Import only complete reviewed workflow source, and run only a worker built and installed intact (spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"; spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets")', effect () => {
