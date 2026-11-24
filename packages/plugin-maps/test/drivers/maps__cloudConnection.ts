@@ -2,7 +2,7 @@
 import { Effect, Exit, Fiber } from "effect";
 import type { Driver, Options } from "../../gen/maps__cloudConnection.conformance.ts";
 import type { MapsBinding, MapsConnection } from "../../gen/maps__cloudConnection.ts";
-import { cloudMaps, type CloudMaps, type MapsCloud } from "../../src/client/cloud-provider.vibe";
+import { cloudMaps, type CloudMaps, type MapsCloud } from "@elizaos/plugin-maps-client";
 import { cloudFailure, heldCloud, offer } from "../support/cloud.ts";
 import { until } from "../support/gates.ts";
 

@@ -2,8 +2,8 @@
 import {
   phoneWorkflowBytes, phoneWorkflowLocalDay, resolvePhoneCalendarRange, validatePhoneWorkflowSpec, workflowSha, SELECTED_REMINDERS_WINDOW,
   type PhoneStep, type PhoneWorkflowSpec,
-} from "../contract/phone.vibe"
-import type { WorkflowDeviceOperation } from "../contract/device.vibe"
+} from "@elizaos/plugin-workflow-client"
+import type { WorkflowDeviceOperation } from "@elizaos/plugin-workflow-client"
 import { ParentLine } from "./messages.schema.vibe"
 import { checkGeneratedSource, type GeneratedCheck } from "./compiler.vibe"
 import { runGenerated, type CheckpointAnswer, type EffectAnswer, type EngineMessage, type GeneratedStart } from "./engine.vibe"

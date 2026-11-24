@@ -1,0 +1,2 @@
+// spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets"; spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity"
+export * from "./artifact.vibe"

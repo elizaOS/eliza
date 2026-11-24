@@ -1,0 +1,55 @@
+// spec/cloud/deployment.md, "An instance starts only for an accepted profile, on its environment's own readable database, seeded only in staging, with loopback delivery only on PGlite"; spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"
+import { FetchHttpClient, HttpClient, type HttpClientRequest } from "effect/http"
+import { loopbackAllowed, usesLoopback } from "../../gen/cloud__deployment.effect.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
+import { json, type Route, type RouteContext } from "../http/routes.vibe"
+import { Deployment, rowOf } from "@elizaos/cloud"
+import { Store, toInt, toText } from "../store/connection.vibe"
+
+export type DeliveryContext = Deployment | Store | HttpClient.HttpClient
+
+const deliveryBudget = 10_000
+
+const loopbackAddress = /^(?:127(?:\.\d{1,3}){3}|::1|::ffff:127(?:\.\d{1,3}){3})$/
+
+export effect function posted(request: HttpClientRequest.HttpClientRequest): void!Refused!HttpClient.HttpClient {
+  const sent = effect {
+    provide FetchHttpClient.RequestInit = { redirect: "manual" } {
+      const response = try HttpClient.execute(request)
+      response.text catch () => ""
+      return response.status
+    }
+  }
+  const status = timeoutOrElse(sent, { duration: deliveryBudget, orElse: () => fail(refused("ProviderUnavailable")) }) catch effect () => { throw refused("ProviderUnavailable") }
+  if (status < 200 || status >= 300) throw refused("ProviderUnavailable")
+}
+
+export effect function keepLoopback(destination: string, text: string): void!Refused!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  store.transaction((tx) => tx.query("INSERT INTO loopback_messages (destination, text, created_at) VALUES ($1, $2, $3)", [destination, text, now])) catch effect () => { throw refused("ProviderUnavailable") }
+}
+
+effect function inboxOpen(context: RouteContext): boolean!!(Deployment | Store) {
+  const deployment = try Deployment
+  const store = try Store
+  const remote = Option.getOrElse(context.request.remoteAddress, () => "")
+  return deployment.environment === "staging"
+    && usesLoopback(rowOf(deployment.profile.name, deployment.settings))
+    && loopbackAllowed(store.location.kind === "pglite" ? "PgliteStore" : "PostgresStore")
+    && loopbackAddress.test(remote)
+}
+
+effect function latestMessage(context: RouteContext) {
+  if (!(try inboxOpen(context))) throw refused("NotFound")
+  const destination = context.params.destination ?? ""
+  const store = try Store
+  const row = (try store.transaction((tx) => tx.query("SELECT text, created_at FROM loopback_messages WHERE destination = $1 ORDER BY seq DESC LIMIT 1", [destination])))[0]
+  const text = toText(row?.text)
+  if (text === undefined) throw refused("NotFound")
+  return json({ destination, text, createdAt: toInt(row?.created_at) })
+}
+
+export const routes: ReadonlyArray<Route> = [
+  { method: "GET", path: "/api/test/inbox/:destination", auth: "Public", handler: latestMessage }
+]

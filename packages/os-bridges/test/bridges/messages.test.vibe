@@ -1,0 +1,703 @@
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"; spec/os/android/messages.md, "Story: Delete a conversation I chose"; spec/os/android/messages.md, "Story: Name the sender of my latest text without reading it"
+import { assert, it } from "@effect/vitest"
+import { createDeferredDeletions } from "../../src/bridges/action-journal.vibe"
+import { MalformedReply, rejectionCode } from "../../src/bridges/bridge.vibe"
+import {
+  InvalidMessageRequest,
+  SmsJournalRefused,
+  SmsReviewPending,
+  SmsSendNotAttempted,
+  SmsSendRefused,
+  messagesClient,
+  type DirectSmsReview,
+  type MessageId,
+  type MessageRow,
+  type OperationId,
+  type ThreadCursor,
+  type ThreadId,
+} from "../../src/bridges/messages.vibe"
+import { reviewMms, reviewSms } from "../../src/bridges/definitions/messages.ts"
+
+module android {
+  import { Buffer } from "node:buffer"
+  import { createHash } from "node:crypto"
+  import { CapacitorException } from "@capacitor/core"
+  import { Effect } from "effect"
+  import { mmsBindingText, smsBindingText, type MessagesNativePlugin } from "../../src/bridges/definitions/messages.ts"
+  import type { PhoneNumber } from "../../src/bridges/definitions/phone.ts"
+  import type { ActionJournalPlugin } from "../../src/bridges/definitions/action-journal.ts"
+
+  type Choice = "approve" | "reject" | "cancel"
+  type Receipts = "none" | "sent" | "delivered" | "lost" | "failed"
+  type Stored = { id: number; kind: "sms" | "mms"; thread: number; date: number; box: "inbox" | "sent" | "outbox"; read: boolean; body: string }
+  type Staged = { id: string; kind: string; target: Record<string, unknown>; phase: string; deadline: { expiresAt: number } }
+
+  export interface Phone {
+    unlocked: boolean
+    sendGrant: boolean
+    smsCapable: boolean
+    roleHeld: boolean
+    subscriptions: number[]
+    dialog: "approve" | "reject" | "ask"
+    receipts: Receipts
+    busy: boolean
+    lie: boolean
+    forge: ((record: Record<string, unknown>) => unknown) | undefined
+    hold: Promise<void> | undefined
+    asks: Map<string, (choice: Choice) => void>
+    inFlight: Set<string>
+    journal: Map<string, Record<string, unknown>>
+    dropped: Set<string>
+    dispatched: string[]
+    rows: Stored[]
+    staged: Staged[]
+    deleteReply: unknown
+    readReply: unknown
+    senderAddress: string
+    senderReply: unknown
+    composed: string[][]
+  }
+
+  /** @throws {never} */
+  export function device(changes: Partial<Phone> = {}): Phone {
+    return {
+      unlocked: true,
+      sendGrant: true,
+      smsCapable: true,
+      roleHeld: true,
+      subscriptions: [1],
+      dialog: "approve",
+      receipts: "none",
+      busy: false,
+      lie: false,
+      forge: undefined,
+      hold: undefined,
+      asks: new Map(),
+      inFlight: new Set(),
+      journal: new Map(),
+      dropped: new Set(),
+      dispatched: [],
+      rows: [
+        { id: 11, kind: "sms", thread: 1, date: 1000, box: "inbox", read: false, body: "Are you coming?" },
+        { id: 12, kind: "sms", thread: 1, date: 2000, box: "sent", read: true, body: "On my way" },
+        { id: 13, kind: "mms", thread: 1, date: 3000, box: "inbox", read: false, body: "" },
+        { id: 14, kind: "sms", thread: 1, date: 4000, box: "outbox", read: true, body: "Almost there" },
+        { id: 21, kind: "sms", thread: 2, date: 500, box: "inbox", read: true, body: "Old note" },
+      ],
+      staged: [],
+      deleteReply: undefined,
+      readReply: undefined,
+      senderAddress: "+1 (555) 010-0101",
+      senderReply: undefined,
+      composed: [],
+      ...changes,
+    }
+  }
+
+  /** @throws {never} */
+  function sha256(bytes: Uint8Array | string): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  function stage(phone: Phone, kind: string, target: Record<string, unknown>): Staged {
+    const row = { id: `staged-${phone.staged.length + 1}`, kind, target, phase: "queued", deadline: { expiresAt: 1700000010000 } }
+    phone.staged.push(row)
+    return row
+  }
+
+  /** @throws {never} */
+  export function androidJournal(phone: Phone): ActionJournalPlugin {
+    const unused = async (): Promise<never> => { throw new Error("Not a deletion call") }
+    return {
+      reserve: unused,
+      markApplying: unused,
+      finish: unused,
+      get: unused,
+      list: unused,
+      dismiss: unused,
+      pending: async () => ({ pending: phone.staged.map((row) => ({ ...row, window: "open" })) }),
+      undo: async ({ kind, id }) => {
+        const row = phone.staged.find((one) => one.kind === kind && one.id === id)
+        if (row !== undefined && row.phase === "queued") row.phase = "undone"
+        return { phase: row?.phase ?? "unknown" }
+      },
+    }
+  }
+
+  /** @throws {never} */
+  export function androidTelephony(phone: Phone): MessagesNativePlugin {
+    const rejection = (message: string, code: string) => Object.assign(new CapacitorException(message), { code })
+    const front = () => {
+      if (!phone.unlocked) throw rejection("Unlock the phone and open this app", "unavailable")
+    }
+    const keep = (record: Record<string, unknown>) => {
+      phone.journal.set(String(record.operationId), record)
+      return phone.forge === undefined ? record : phone.forge(record)
+    }
+    const decide = (operationId: string): Promise<Choice> | Choice =>
+      phone.dialog === "ask" ? new Promise((resolve) => phone.asks.set(operationId, resolve)) : phone.dialog
+    const status = () => {
+      const direct = phone.smsCapable && phone.sendGrant
+      return {
+      version: 2,
+      voiceCapable: true,
+      smsCapable: phone.smsCapable,
+      permissions: { contacts: "granted", phoneState: "granted", sms: "granted", sendSms: phone.sendGrant ? "granted" : "denied" },
+      sendMode: direct ? "direct" : "handoff",
+      mmsSend: direct && (phone.roleHeld || phone.lie),
+      roles: { dialer: { available: true, held: false, eligible: true }, sms: { available: true, held: phone.roleHeld, eligible: true } },
+      defaultDialer: "com.android.dialer",
+      defaultSms: phone.roleHeld ? "ai.eliza.app" : "com.android.messaging",
+      subscriptions: phone.subscriptions.map((id, slot) => ({ id, slot, displayName: `Line ${slot + 1}`, carrierName: "Carrier", defaultSms: slot === 0, defaultVoice: slot === 0 })),
+      defaultSmsSubscriptionId: phone.subscriptions[0] ?? null,
+      }
+    }
+    const partsOf = (recipients: number, perRecipient: number) => {
+      const out: Record<string, unknown>[] = []
+      for (let recipientIndex = 0; recipientIndex < recipients; recipientIndex++)
+        for (let partIndex = 0; partIndex < perRecipient; partIndex++) {
+          const last = recipientIndex === recipients - 1 && partIndex === perRecipient - 1
+          const sent = phone.receipts === "sent" || phone.receipts === "delivered" ? "success" : phone.receipts === "failed" && last ? "failed" : "unknown"
+          out.push({ index: out.length, recipientIndex, partIndex, sent, delivery: phone.receipts === "delivered" ? "success" : "unknown" })
+        }
+      return out
+    }
+    const statusOf = (): string =>
+      ({ none: "submitted", sent: "sent", delivered: "delivered", lost: "unknown", failed: "failed" } as const)[phone.receipts]
+    const row = (one: Stored) => ({
+      id: `${one.kind}:${one.id}`,
+      kind: one.kind,
+      threadId: `thread:${one.thread}`,
+      direction: one.box === "inbox" ? "incoming" : "outgoing",
+      status: one.box === "inbox" ? (one.read ? "read" : "received") : one.box === "outbox" ? "pending" : "sent",
+      date: one.date,
+      read: one.read,
+      subscriptionId: 1,
+      addresses: ["+15550100101"],
+      body: one.body,
+      deliveryReport: one.kind === "sms" && one.box !== "inbox" ? "pending" : null,
+      attachments: one.kind === "mms" ? 1 : 0,
+    })
+    return {
+      status: async () => status(),
+      composeSms: async ({ recipients }) => {
+        front()
+        phone.composed.push(recipients)
+        return { status: "handed-off", target: "sms", handler: "com.android.messaging", message: "Your messages app is open with the text." }
+      },
+      sendSms: async ({ operationId, recipients, body, subscriptionId }) => {
+        front()
+        if (phone.busy) return { kind: "sms-send-not-attempted", operationId, reason: "busy" }
+        const bindingHash = sha256(smsBindingText({ recipients: recipients as PhoneNumber[], body, subscriptionId }))
+        const record = (status: string, parts: Record<string, unknown>[]) => ({ kind: "sms-send", operationId, subscriptionId, bindingHash, status, parts, createdAt: 1700000000000 })
+        if (phone.dropped.has(operationId)) throw rejection("This request is too old to read back. Nothing was sent again.", "expired")
+        const existing = phone.journal.get(operationId)
+        if (existing !== undefined) {
+          if (existing.bindingHash !== bindingHash) throw rejection("This request was already used for a different message. Nothing was sent.", "invalid")
+          return existing
+        }
+        const choice = await decide(operationId)
+        phone.asks.delete(operationId)
+        if (choice !== "approve") return keep(record("cancelled", []))
+        const perRecipient = body.length <= 160 ? 1 : Math.ceil(body.length / 153)
+        if (!phone.sendGrant || perRecipient > 10) return keep(record("denied", []))
+        phone.dispatched.push(operationId)
+        phone.inFlight.add(operationId)
+        if (phone.hold !== undefined) await phone.hold
+        phone.inFlight.delete(operationId)
+        return keep(record(statusOf(), partsOf(recipients.length, perRecipient)))
+      },
+      sendMms: async ({ operationId, recipients, body, attachments, subscriptionId }) => {
+        front()
+        const binding = {
+          recipients: recipients as PhoneNumber[],
+          body,
+          subscriptionId,
+          attachments: attachments.map((one) => ({ contentType: one.contentType, name: one.name, size: one.size, sha256: sha256(Buffer.from(one.data, "base64")) })),
+        }
+        const record = (status: string) => ({ kind: "mms-send", operationId, subscriptionId, bindingHash: sha256(mmsBindingText(binding)), status, createdAt: 1700000000000 })
+        if (await decide(operationId) !== "approve") return keep(record("cancelled"))
+        if (!phone.roleHeld && !phone.lie) return keep(record("denied"))
+        phone.dispatched.push(operationId)
+        return keep(record("submitted"))
+      },
+      cancelSmsReview: async ({ operationId }) => {
+        const ask = phone.asks.get(operationId)
+        if (ask !== undefined && !phone.inFlight.has(operationId)) ask("cancel")
+        return undefined
+      },
+      smsSendHistory: async () => ({ receipts: [...phone.journal.values()].filter((one) => one.kind === "sms-send") }),
+      smsSendResult: async ({ operationId }) => phone.journal.get(operationId) ?? Promise.reject(rejection("No send with this operation", "not-found")),
+      mmsSendResult: async ({ operationId }) => phone.journal.get(operationId) ?? Promise.reject(rejection("No send with this operation", "not-found")),
+      listThreads: async ({ limit }) => {
+        front()
+        const threads = [...new Set(phone.rows.map((one) => one.thread))].map((thread) => {
+          const rows = phone.rows.filter((one) => one.thread === thread).sort((x, y) => y.date - x.date)
+          const latest = rows[0] as Stored
+          return { id: `thread:${thread}`, date: latest.date, messageCount: rows.length, snippet: latest.body, unread: rows.some((one) => !one.read), addresses: ["+15550100101"] }
+        })
+        return { threads: [...threads, { id: "thread:3", date: 100, incomplete: true, reason: "too-many-addresses" }].slice(0, limit), next: null }
+      },
+      listMessages: async ({ threadId, limit, before }) => {
+        front()
+        const rows = phone.rows
+          .filter((one) => `thread:${one.thread}` === threadId && (before === undefined || one.date < before))
+          .sort((x, y) => y.date - x.date)
+          .slice(0, limit)
+        return { messages: rows.map(row), next: null }
+      },
+      latestIncomingSender: async (options) => {
+        front()
+        if (phone.senderReply !== undefined) return phone.senderReply
+        const newest = phone.rows.filter((one) => one.kind === "sms" && one.box === "inbox").sort((x, y) => y.date - x.date || y.id - x.id)[0]
+        if (newest === undefined) return { status: "empty" }
+        if (!/^[0-9+(). -]+$/.test(phone.senderAddress)) return { status: "sender-unavailable" }
+        const digits = phone.senderAddress.replace(/[^0-9]/g, "")
+        if (options?.includeAddress !== true) return digits.length >= 4 ? { status: "found", numberEnding: digits.slice(-4) } : { status: "sender-unavailable" }
+        const number = phone.senderAddress.replace(/[(). -]/g, "")
+        return /^\+?[0-9]{2,20}$/.test(number) ? { status: "found", address: number, threadId: `thread:${newest.thread}` } : { status: "sender-unavailable" }
+      },
+      markThreadRead: async ({ threadId, throughDate }) => {
+        if (phone.readReply !== undefined) return phone.readReply
+        if (!phone.roleHeld) return { defaultSmsApp: false, updated: 0 }
+        const unread = phone.rows.filter((one) => `thread:${one.thread}` === threadId && one.box === "inbox" && !one.read && one.date <= throughDate)
+        for (const one of unread) one.read = true
+        return { defaultSmsApp: true, updated: unread.length }
+      },
+      deleteMessage: async (message) => {
+        front()
+        if (phone.deleteReply !== undefined) return phone.deleteReply
+        const found = phone.rows.find((one) => `${one.kind}:${one.id}` === message.id)
+        const answer = (status: string) => ({ status, message: { ...message } })
+        if (found === undefined) return answer("not-found")
+        if (`thread:${found.thread}` !== message.threadId || found.date !== message.date) return answer("stale")
+        if (found.box === "outbox") return answer("not-settled")
+        return { ...answer("queued"), deletion: stage(phone, "message", { ...message }) }
+      },
+      deleteThread: async (thread) => {
+        front()
+        const rows = phone.rows.filter((one) => `thread:${one.thread}` === thread.threadId && one.date <= thread.through)
+        const answer = (status: string) => ({ status, thread: { ...thread } })
+        if (rows.some((one) => one.box !== "outbox")) return { ...answer("queued"), deletion: stage(phone, "thread", { ...thread }) }
+        return answer(rows.length > 0 ? "not-settled" : "not-found")
+      },
+      observeMessages: async () => undefined,
+      addListener: async () => ({ remove: async () => undefined }),
+    }
+  }
+
+  /** @throws {never} */
+  export function holdDispatch(phone: Phone): () => void {
+    const held = Promise.withResolvers<void>()
+    phone.hold = held.promise
+    return () => held.resolve()
+  }
+
+  /** @throws {never} */
+  export async function until(condition: () => boolean): Promise<void> {
+    while (!condition()) await Effect.runPromise(Effect.sleep(1))
+  }
+
+  /** @throws {never} */
+  export function paged(plugin: MessagesNativePlugin, threads: unknown, messages: unknown): MessagesNativePlugin {
+    return { ...plugin, listThreads: async () => threads, listMessages: async () => messages }
+  }
+
+  export interface Watch {
+    plugin: MessagesNativePlugin
+    listeners: [string, (data: unknown) => void][]
+    removed: string[]
+    observing: boolean[]
+  }
+
+  /** @throws {never} */
+  export function watching(plugin: MessagesNativePlugin, refused: { event?: string; observe?: boolean; remove?: string } = {}): Watch {
+    const listeners: Watch["listeners"] = []
+    const removed: string[] = []
+    const observing: boolean[] = []
+    const rejection = (message: string, code: string) => Object.assign(new CapacitorException(message), { code })
+    const watched: MessagesNativePlugin = {
+      ...plugin,
+      observeMessages: async ({ enabled }) => {
+        if (enabled && refused.observe === true) throw rejection("Allow this app to read your messages", "permission-required")
+        observing.push(enabled)
+        return undefined
+      },
+      addListener: async (event, listener) => {
+        if (event === refused.event) throw rejection("This notice cannot be followed now", "unavailable")
+        listeners.push([event, listener])
+        return { remove: async () => {
+          removed.push(event)
+          if (event === refused.remove) throw rejection("This listener could not be removed", "remove-failed")
+        } }
+      },
+    }
+    return { plugin: watched, listeners, removed, observing }
+  }
+}
+import { androidJournal, androidTelephony, device, holdDispatch, paged, until, watching } from android
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (cause instanceof InvalidMessageRequest) return `request refused ${cause.problem}`
+  if (cause instanceof SmsSendRefused) return `send refused ${cause.admission}`
+  if (cause instanceof SmsReviewPending) return "review pending"
+  if (cause instanceof SmsSendNotAttempted) return `not attempted ${cause.reason}`
+  if (cause instanceof SmsJournalRefused) return `journal refused ${cause.answer}`
+  if (cause instanceof MalformedReply) return `malformed ${cause.method}`
+  return `rejected ${rejectionCode(cause)}`
+}
+
+const op = (id: string) => id as OperationId
+const brief = (result: { status: string; parts?: { sent: string; delivery: string }[] }) =>
+  `${result.status}${result.parts === undefined ? "" : ` ${result.parts.map((part) => `${part.sent}/${part.delivery}`).join(",")}`}`
+
+it.live("Send only what I reviewed, once: a repeated operation answers its record, a cancel before dispatch retires the send, and a status claims only what every part shows (spec/os/android/messages.md, \"Story: Send only what I reviewed, once\"; spec/os/android/messages.md, \"Native confirmation and current ownership precede dispatch, and a cancel is refused once Android has the message\"; spec/os/android/messages.md, \"A repeated operation ID answers its journal record and never sends again\"; spec/os/android/messages.md, \"A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role\"; spec/os/android/messages.md, \"A message's status is supported by the evidence of every part, and an interrupted send reads unknown\")", () => effect {
+  const phone = device({ receipts: "sent" })
+  const client = messagesClient(androidTelephony(phone))
+  const status = try promise(() => client.status())
+  const draft = { recipients: ["+1 (555) 010-0101", "555 0102"], body: "Running late" }
+  const reviewed = reviewSms(draft, status, "direct")
+  const review = ("review" in reviewed ? reviewed.review : reviewed) as DirectSmsReview
+  const checks = {
+    tooMany: reviewSms({ ...draft, recipients: ["1", "2", "3", "4", "5", "6"] }, status, "direct"),
+    tooLong: reviewSms({ ...draft, body: "x".repeat(1601) }, status, "direct"),
+    empty: reviewSms({ ...draft, body: "  " }, status, "direct"),
+    handoffSim: reviewSms({ ...draft, subscriptionId: 1 }, status),
+    simRequired: reviewSms(draft, { ...status, subscriptions: [...(status.subscriptions ?? []), { id: 2, slot: 1, displayName: "Line 2", carrierName: "Carrier", defaultSms: false, defaultVoice: false }] }, "direct"),
+    mmsWithoutRole: reviewMms({ ...draft, attachments: [] }, { ...status, roles: { ...status.roles, sms: { ...status.roles.sms, held: false } } }),
+  }
+
+  const sent = try promise(() => client.sendSms(review, op("op-1")))
+  const again = try promise(() => client.sendSms(review, op("op-1")))
+  const reused = try refusal(() => client.sendSms({ ...review, body: "Something else" }, op("op-1")))
+  phone.dropped.add("op-old")
+  const expired = try refusal(() => client.sendSms(review, op("op-old")))
+  const tooManyParts = try promise(() => client.sendSms({ ...review, body: "y".repeat(1600) }, op("op-long")))
+
+  phone.dialog = "ask"
+  const { pending, cancel, cancelled } = try promise(async () => {
+    const asking = client.sendSms(review, op("op-2"))
+    await until(() => phone.asks.has("op-2"))
+    const pending = await client.sendSms(review, op("op-2")).then(() => "sent twice", (cause) => cause instanceof SmsReviewPending ? "review pending" : String(cause))
+    const [cancel, cancelled] = await Promise.all([client.cancelSmsReview(op("op-2")), asking])
+    return { pending, cancel, cancelled }
+  })
+
+  phone.receipts = "none"
+  const [refusedCancel, submitted] = try promise(async () => {
+    const release = holdDispatch(phone)
+    const dispatching = client.sendSms(review, op("op-3"))
+    await until(() => phone.asks.has("op-3"))
+    phone.asks.get("op-3")?.("approve")
+    await until(() => phone.inFlight.has("op-3"))
+    const lateCancel = client.cancelSmsReview(op("op-3"))
+    release()
+    const settled = await Promise.all([lateCancel, dispatching])
+    phone.hold = undefined
+    return settled
+  })
+  const otherCancel = try promise(() => client.cancelSmsReview(op("op-9")))
+
+  phone.dialog = "approve"
+  phone.receipts = "lost"
+  const interrupted = try promise(() => client.sendSms(review, op("op-4")))
+  phone.receipts = "failed"
+  const failedPart = try promise(() => client.sendSms(review, op("op-5")))
+  phone.receipts = "delivered"
+  const delivered = try promise(() => client.sendSms(review, op("op-6")))
+  phone.receipts = "none"
+  phone.forge = (record) => ({ ...record, status: "sent" })
+  const overclaimed = try refusal(() => client.sendSms(review, op("op-7")))
+  phone.forge = undefined
+  phone.busy = true
+  const busy = try refusal(() => client.sendSms(review, op("op-8")))
+  phone.busy = false
+  phone.sendGrant = false
+  const ungranted = try refusal(() => client.sendSms(review, op("op-10")))
+  phone.sendGrant = true
+  phone.smsCapable = false
+  const noSms = try refusal(() => client.sendSms(review, op("op-11")))
+  phone.smsCapable = true
+  phone.unlocked = false
+  const locked = try refusal(() => client.sendSms(review, op("op-12")))
+  phone.unlocked = true
+  const badId = try refusal(() => client.sendSms(review, op("bad id")))
+
+  const picture = { recipients: review.recipients, body: "Here it is", attachments: [{ contentType: "image/png" as const, name: "map.png", bytes: new Uint8Array([1, 2, 3]) }], subscriptionId: 1 }
+  phone.roleHeld = false
+  const mmsDenied = try refusal(() => client.sendMms(picture, op("mms-1")))
+  phone.lie = true
+  const mmsWithoutRole = try refusal(() => client.sendMms(picture, op("mms-2")))
+  phone.lie = false
+  phone.roleHeld = true
+  const mms = try promise(() => client.sendMms(picture, op("mms-3")))
+  const mmsAgain = try promise(() => client.mmsSendResult(picture, op("mms-3")))
+
+  const recorded = try promise(() => client.smsSendResult(review, op("op-1")))
+  const history = try promise(() => client.smsSendHistory())
+  const handed = try promise(() => client.composeSms({ recipients: review.recipients, body: "Running late", subscriptionId: null }))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      review, checks, sent: brief(sent), again: again.createdAt === sent.createdAt && brief(again) === brief(sent), reused, expired, tooManyParts: brief(tooManyParts),
+      pending, cancel, cancelled: brief(cancelled), refusedCancel, submitted: brief(submitted), otherCancel,
+      interrupted: brief(interrupted), failedPart: brief(failedPart), delivered: brief(delivered), overclaimed, busy, ungranted, noSms, locked, badId,
+      mmsDenied, mmsWithoutRole, mms: mms.status, mmsAgain: mmsAgain.status, recorded: brief(recorded),
+      history: history.map((one) => `${one.operationId} ${one.status}`), handed: { outcome: handed.outcome, receipt: handed.receipt.receiptKind },
+      dispatched: phone.dispatched, composed: phone.composed,
+    },
+    {
+      review: { recipients: ["+15550100101", "5550102"], body: "Running late", subscriptionId: 1 },
+      checks: {
+        tooMany: { problem: "too-many-recipients" },
+        tooLong: { problem: "body-too-long" },
+        empty: { problem: "empty-body" },
+        handoffSim: { problem: "sim-not-selectable" },
+        simRequired: { problem: "sim-required" },
+        mmsWithoutRole: { problem: "mms-unavailable" },
+      },
+      sent: "sent success/unknown,success/unknown",
+      again: true,
+      reused: "rejected invalid",
+      expired: "journal refused RecordExpired",
+      tooManyParts: "denied ",
+      pending: "review pending",
+      cancel: "cancelled",
+      cancelled: "cancelled ",
+      refusedCancel: "refused",
+      submitted: "submitted unknown/unknown,unknown/unknown",
+      otherCancel: "refused",
+      interrupted: "unknown unknown/unknown,unknown/unknown",
+      failedPart: "failed unknown/unknown,failed/unknown",
+      delivered: "delivered success/success,success/success",
+      overclaimed: "malformed sendSms",
+      busy: "not attempted busy",
+      ungranted: "send refused PermissionRequired",
+      noSms: "send refused DeviceUnsupported",
+      locked: "rejected unavailable",
+      badId: "request refused invalid-operation",
+      mmsDenied: "send refused DeviceUnsupported",
+      mmsWithoutRole: "malformed sendMms",
+      mms: "submitted",
+      mmsAgain: "submitted",
+      recorded: "sent success/unknown,success/unknown",
+      history: ["op-1 sent", "op-long denied", "op-2 cancelled", "op-3 submitted", "op-4 unknown", "op-5 failed", "op-6 delivered", "op-7 submitted"],
+      handed: { outcome: "Opened", receipt: "Preview" },
+      dispatched: ["op-1", "op-3", "op-4", "op-5", "op-6", "op-7", "mms-2", "mms-3"],
+      composed: [["+15550100101", "5550102"]],
+    },
+  ))
+})
+
+it.live("Mark a conversation read only while the app holds the SMS role, and never accept a write claimed without it (spec/os/android/messages.md, \"Story: Mark a conversation read from its notice without sending anything\"; spec/os/android/messages.md, \"A notice action writes only for its own conversation and only while its ticket is current\"; spec/os/android/messages.md, \"Story: Read my conversations a page at a time\"; spec/os/android/messages.md, \"Opening a conversation marks read only its received messages up to the newest one shown, and only as the SMS app\")", () => effect {
+  const phone = device({ roleHeld: false })
+  const client = messagesClient(androidTelephony(phone))
+  const thread = "thread:1" as ThreadId
+  const withoutRole = try promise(() => client.markThreadRead(thread, 5000))
+  phone.readReply = { defaultSmsApp: false, updated: 2 }
+  const claimed = try refusal(() => client.markThreadRead(thread, 5000))
+  phone.readReply = undefined
+  phone.roleHeld = true
+  const throughFirst = try promise(() => client.markThreadRead(thread, 1000))
+  const rest = try promise(() => client.markThreadRead(thread, 5000))
+  const otherThread = phone.rows.filter((one) => one.thread === 2).map((one) => one.read)
+  const badThread = try refusal(() => client.markThreadRead("1" as ThreadId, 5000))
+  const badDate = try refusal(() => client.markThreadRead(thread, 0))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { withoutRole, claimed, throughFirst, rest, otherThread, badThread, badDate, sent: phone.dispatched },
+    {
+      withoutRole: { defaultSmsApp: false, updated: 0 },
+      claimed: "malformed markThreadRead",
+      throughFirst: { defaultSmsApp: true, updated: 1 },
+      rest: { defaultSmsApp: true, updated: 1 },
+      otherThread: [true],
+      badThread: "request refused invalid-thread",
+      badDate: "request refused invalid-date",
+      sent: [],
+    },
+  ))
+})
+
+it.live("Delete exactly the settled message or conversation I chose, hidden while its Undo window is queued and back on Undo (spec/os/android/messages.md, \"Story: Delete one message I chose\"; spec/os/android/messages.md, \"A deletion removes only the selected settled row and confirms only a removal Android reported\"; spec/os/android/messages.md, \"Story: Delete a conversation I chose\"; spec/os/android/messages.md, \"A conversation deletion removes only its settled rows up to the newest one I saw\"; spec/os/android/deletionWindow.md, \"A record waiting in its window is hidden from its list until Undo or the provider settles it\")", () => effect {
+  const phone = device()
+  const journal = androidJournal(phone)
+  const client = messagesClient(androidTelephony(phone), journal)
+  const deletions = createDeferredDeletions(journal)
+  const threads = try promise(() => client.listThreads())
+  const thread = "thread:1" as ThreadId
+  const first = try promise(() => client.listMessages(thread, 2))
+  const last = first.at(-1)
+  const second = try promise(() => client.listMessages(thread, 2, last?.date))
+  const page = try promise(() => client.messagePage(thread))
+  const ids = (rows: readonly MessageRow[]) => rows.map((row) => row.id)
+  const reference = (id: string, date: number) => ({ id: id as MessageId, kind: id.startsWith("mms") ? "mms" as const : "sms" as const, threadId: thread, date })
+
+  const queued = try promise(() => client.deleteMessage(reference("sms:11", 1000)))
+  const hidden = ids(try promise(() => client.listMessages(thread)))
+  const inSend = try promise(() => client.deleteMessage(reference("sms:14", 4000)))
+  const moved = try promise(() => client.deleteMessage(reference("sms:12", 2500)))
+  phone.deleteReply = { status: "queued", message: reference("sms:12", 2000), deletion: { id: "staged-9", kind: "message", deadline: { expiresAt: 1 } } }
+  const otherRow = try refusal(() => client.deleteMessage(reference("sms:13", 3000)))
+  phone.deleteReply = { status: "queued", message: reference("sms:13", 3000), deletion: { id: "staged-9", kind: "thread", deadline: { expiresAt: 1 } } }
+  const otherKind = try refusal(() => client.deleteMessage(reference("sms:13", 3000)))
+  phone.deleteReply = undefined
+  const invalid = try refusal(() => client.deleteMessage(reference("sms:0", 1000)))
+  const tooMany = try refusal(() => client.listThreads(51))
+  const kept = try promise(() => deletions.undo({ kind: "MessageRecord", id: "staged-1" }))
+  const shownAgain = ids(try promise(() => client.listMessages(thread)))
+  const conversation = try promise(() => client.deleteThread({ threadId: "thread:2" as ThreadId, through: 500 }))
+  const threadsHidden = (try promise(() => client.threadPage())).rows.map((row) => row.id)
+  phone.rows.push({ id: 41, kind: "sms", thread: 4, date: 700, box: "outbox", read: true, body: "Almost sent" })
+  const onlySends = try promise(() => client.deleteThread({ threadId: "thread:4" as ThreadId, through: 700 }))
+  const empty = try promise(() => client.deleteThread({ threadId: "thread:9" as ThreadId, through: 700 }))
+  const badThread = try refusal(() => client.deleteThread({ threadId: "9" as ThreadId, through: 1 }))
+
+  const status = (result: { status: string; deleteStatus: string }) => `${result.status} ${result.deleteStatus}`
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      threads: threads.map((row) => ("incomplete" in row ? `${row.id} incomplete ${row.reason}` : `${row.id} ${row.messageCount} ${row.unread ? "unread" : "read"}`)),
+      first: ids(first), second: ids(second), page: { rows: ids(page.rows), next: page.next },
+      queued, hidden, inSend: status(inSend), moved: status(moved), otherRow, otherKind, invalid, tooMany, kept, shownAgain,
+      conversation: [status(conversation), "deletion" in conversation ? conversation.deletion : null], threadsHidden,
+      onlySends: status(onlySends), empty: status(empty), badThread,
+    },
+    {
+      threads: ["thread:1 4 unread", "thread:2 1 read", "thread:3 incomplete too-many-addresses"],
+      first: ["sms:14", "mms:13"],
+      second: ["sms:12", "sms:11"],
+      page: { rows: ["sms:14", "mms:13", "sms:12", "sms:11"], next: null },
+      queued: {
+        status: "queued",
+        deleteStatus: "DeleteQueued",
+        message: reference("sms:11", 1000),
+        deletion: { kind: "MessageRecord", id: "staged-1", expiresAt: 1700000010000 },
+      },
+      hidden: ["sms:14", "mms:13", "sms:12"],
+      inSend: "not-settled MessageNotSettled",
+      moved: "stale MessageStale",
+      otherRow: "malformed deleteMessage",
+      otherKind: "malformed deleteMessage",
+      invalid: "request refused invalid-message",
+      tooMany: "request refused invalid-limit",
+      kept: { kind: "Kept" },
+      shownAgain: ["sms:14", "mms:13", "sms:12", "sms:11"],
+      conversation: ["queued DeleteQueued", { kind: "ThreadRecord", id: "staged-2", expiresAt: 1700000010000 }],
+      threadsHidden: ["thread:1", "thread:3"],
+      onlySends: "not-settled MessageNotSettled",
+      empty: "not-found MessageNotFound",
+      badThread: "request refused invalid-thread",
+    },
+  ))
+})
+
+it.live("Name the sender of my latest text by its last four digits, and whole with its thread only when asked (spec/os/android/messages.md, \"Story: Name the sender of my latest text without reading it\"; spec/os/android/messages.md, \"A sender lookup reads only the newest incoming row's address, and names it whole only when asked\")", () => effect {
+  const phone = device()
+  const client = messagesClient(androidTelephony(phone))
+  const suffix = try promise(() => client.latestIncomingSender())
+  const whole = try promise(() => client.latestIncomingSender(true))
+  phone.senderReply = { status: "found", address: "+15550100101" }
+  const addressNotAsked = try refusal(() => client.latestIncomingSender())
+  phone.senderReply = { status: "found", numberEnding: "0101", body: "Are you coming?" }
+  const extraField = try refusal(() => client.latestIncomingSender())
+  phone.senderReply = { status: "found", address: "+1555+0100101", threadId: "thread:1" }
+  const notDialable = try refusal(() => client.latestIncomingSender(true))
+  phone.senderReply = undefined
+  phone.senderAddress = "Carrier"
+  const named = try promise(() => client.latestIncomingSender(true))
+  phone.rows = phone.rows.filter((one) => one.box !== "inbox")
+  const empty = try promise(() => client.latestIncomingSender())
+  phone.unlocked = false
+  const locked = try refusal(() => client.latestIncomingSender())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { suffix, whole, addressNotAsked, extraField, notDialable, named, empty, locked, sent: phone.dispatched },
+    {
+      suffix: { status: "found", numberEnding: "0101" },
+      whole: { status: "found", address: "+15550100101", threadId: "thread:1" },
+      addressNotAsked: "malformed latestIncomingSender",
+      extraField: "malformed latestIncomingSender",
+      notDialable: "malformed latestIncomingSender",
+      named: { status: "sender-unavailable" },
+      empty: { status: "empty" },
+      locked: "rejected unavailable",
+      sent: [],
+    },
+  ))
+})
+
+it.live("Keep my conversation list whole and current: a row too large to show keeps the rest of its page and the cursor, and change notices carry no content and stop cleanly (spec/os/android/messages.md, \"Story: Keep my conversation list whole and current\"; spec/os/android/messages.md, \"A row the provider cannot report whole keeps its place without content, and costs the page neither its other rows nor its cursor\"; spec/os/android/messages.md, \"A change notice carries no message content, and a send update reaches only the handler of its own kind\")", () => effect {
+  const phone = device()
+  const thread = "thread:1" as ThreadId
+  const whole = { id: "thread:1", date: 4000, messageCount: 4, snippet: "Almost there", unread: true, addresses: ["+15550100101"] }
+  const clipped = { id: "thread:3", date: 100, incomplete: true, reason: "too-many-addresses" }
+  const long = { id: "sms:15", kind: "sms", threadId: "thread:1", date: 900, incomplete: true, reason: "body-too-long" }
+  const noThreads = { threads: [], next: null }
+  const noMessages = { messages: [], next: null }
+  const pages = (threads: unknown, messages: unknown) => messagesClient(paged(androidTelephony(phone), threads, messages), androidJournal(phone))
+  const kept = pages({ threads: [whole, clipped], next: "100:thread:3" }, { messages: [long], next: "900:sms:15" })
+  const threadPage = try promise(() => kept.threadPage())
+  const messagePage = try promise(() => kept.messagePage(thread))
+  const onlyClipped = try promise(() => pages({ threads: [clipped], next: "100:thread:3" }, noMessages).threadPage())
+  const snippetRides = try refusal(() => pages({ threads: [{ ...clipped, snippet: "hi" }], next: null }, noMessages).threadPage())
+  const unnamedReason = try refusal(() => pages({ threads: [{ ...clipped, reason: "other" }], next: null }, noMessages).threadPage())
+  const bodyRides = try refusal(() => pages(noThreads, { messages: [{ ...long, body: "x".repeat(10) }], next: null }).messagePage(thread))
+  const otherKind = try refusal(() => pages(noThreads, { messages: [{ ...long, kind: "mms" }], next: null }).messagePage(thread))
+  const sameCursor = try refusal(() => pages({ threads: [clipped], next: "100:thread:3" }, noMessages).threadPage("100:thread:3" as ThreadCursor))
+  const emptyWithCursor = try refusal(() => pages({ threads: [], next: "100:thread:3" }, noMessages).threadPage())
+
+  const heard: string[] = []
+  const follow = (watch: ReturnType<typeof watching>, everyKind: boolean) => messagesClient(watch.plugin, androidJournal(phone)).observeMessages(
+    (...given: unknown[]) => { heard.push(`changed with ${given.length} values`) },
+    everyKind ? (id) => { heard.push(`sms ${id}`) } : undefined,
+    everyKind ? (id) => { heard.push(`mms ${id}`) } : undefined,
+  )
+  const all = watching(androidTelephony(phone))
+  const stop = try promise(() => follow(all, true))
+  for (const [event, listener] of all.listeners)
+    try Effect.try(() => listener(event === "messagesChanged" ? { sequence: 1, body: "Are you coming?" } : { operationId: event === "mmsSendUpdated" ? "mms-1" : "op-1", body: "On my way" }))
+  for (const [event, listener] of all.listeners) if (event !== "messagesChanged") try Effect.try(() => listener({ operationId: "bad id!" }))
+  const watched = all.listeners.map(([event]) => event)
+  try promise(stop)
+  const changeOnly = watching(androidTelephony(phone))
+  try promise(() => follow(changeOnly, false))
+  const observeRefused = watching(androidTelephony(phone), { observe: true })
+  const observeFailure = try refusal(() => follow(observeRefused, true))
+  const listenerRefused = watching(androidTelephony(phone), { event: "mmsSendUpdated", remove: "messagesChanged" })
+  const listenerFailure = try refusal(() => follow(listenerRefused, true))
+  const removeRefused = watching(androidTelephony(phone), { remove: "messagesChanged" })
+  const stopAfterRefusedRemoval = try promise(() => follow(removeRefused, true))
+  const removeFailure = try refusal(stopAfterRefusedRemoval)
+  for (const watch of [listenerRefused, removeRefused])
+    for (const [, listener] of watch.listeners) try Effect.try(() => listener({ operationId: "op-after-stop" }))
+
+  const left = (watch: ReturnType<typeof watching>) => ({ removed: watch.removed, observing: watch.observing })
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      threadPage, messagePage, onlyClipped, snippetRides, unnamedReason, bodyRides, otherKind, sameCursor, emptyWithCursor,
+      watched, heard, stopped: left(all), changeOnly: changeOnly.listeners.map(([event]) => event),
+      observeRefused: [observeFailure, left(observeRefused)], listenerRefused: [listenerFailure, left(listenerRefused)],
+      removeRefused: [removeFailure, left(removeRefused)],
+    },
+    {
+      threadPage: { rows: [whole, clipped], next: "100:thread:3" },
+      messagePage: { rows: [long], next: "900:sms:15" },
+      onlyClipped: { rows: [clipped], next: "100:thread:3" },
+      snippetRides: "malformed listThreads",
+      unnamedReason: "malformed listThreads",
+      bodyRides: "malformed listMessages",
+      otherKind: "malformed listMessages",
+      sameCursor: "malformed listThreads",
+      emptyWithCursor: "malformed listThreads",
+      watched: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"],
+      heard: ["changed with 0 values", "sms op-1", "mms mms-1"],
+      stopped: { removed: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"], observing: [true, false] },
+      changeOnly: ["messagesChanged"],
+      observeRefused: ["rejected permission-required", { removed: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"], observing: [] }],
+      listenerRefused: ["rejected unavailable", { removed: ["messagesChanged", "smsSendUpdated"], observing: [] }],
+      removeRefused: ["rejected remove-failed", { removed: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"], observing: [true, false] }],
+    },
+  ))
+})

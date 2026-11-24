@@ -1,0 +1,223 @@
+// spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"; spec/os/browser/address.md, "Story: Classify what I typed"; spec/os/browser/address.md, "Story: Share only plain web addresses"
+export * from "./browser/address.ts"
+export { browserAddressInput, refusalReason } from "./browser/address-input.ts"
+
+export * from "./bridges/bridge.vibe"
+export * from "./bridges/action-journal.vibe"
+export * from "./bridges/agent.vibe"
+export * from "./bridges/browsing-session.vibe"
+export * from "./bridges/calendar.vibe"
+export * from "./bridges/camera.vibe"
+export * from "./bridges/cloud.vibe"
+export * from "./bridges/contacts.vibe"
+export * from "./bridges/deep-links.vibe"
+export * from "./bridges/deletion-window.vibe"
+export * from "./bridges/files.vibe"
+export * from "./bridges/location.vibe"
+export * from "./bridges/media.vibe"
+export * from "./bridges/messages.vibe"
+export * from "./bridges/network-policy.vibe"
+export {
+  ApprovalNoticeReadFailed,
+  InvalidApprovalNotice,
+  NoticeTapAborted,
+  NoticeTapReadFailed,
+  noticeOwnerFence,
+  noticesClient,
+  notificationsPlugin,
+  resolveNoticeTap,
+  restoreSuspendedApprovals,
+  revalidateWorkflowApprovalNotice,
+  workflowApprovalNoticeIdentity,
+} from "./bridges/notices.vibe"
+export * from "./bridges/page-reading.vibe"
+export * from "./bridges/page-source.vibe"
+export * from "./bridges/passwords.vibe"
+export * from "./bridges/phone.vibe"
+export * from "./bridges/reminders.vibe"
+export * from "./bridges/reset.vibe"
+export * from "./bridges/secure-store.vibe"
+export * from "./bridges/sense.vibe"
+export {
+  signInClient,
+  signInPlugin,
+  SignInRefused,
+} from "./bridges/sign-in.vibe"
+export * from "./bridges/surface.vibe"
+export * from "./bridges/system.vibe"
+export * from "./bridges/tab-host.vibe"
+export * from "./bridges/voice.vibe"
+export * from "./bridges/wifi.vibe"
+
+export {
+  AlbumList,
+  AlbumWritten,
+  BatchReport,
+  ChangedItem,
+  DocumentHandoff,
+  DocumentText,
+  EditPreview,
+  EditReceipt,
+  KeepOutcome,
+  LibraryAccess,
+  LibraryPage,
+  LibraryScope,
+  LibrarySummary,
+  MediaId,
+  MediaItem,
+  MediaPage,
+  MediaRevision,
+  PdfPage,
+  PreparedTrash,
+  Reset as MediaResetSchema,
+  SelectedDocument,
+  ShareOpened,
+  SharedMany,
+  Thumbnails,
+  TrashReceipt,
+  Validated,
+  VideoEditSession,
+  Watching,
+} from "./bridges/media.schema.vibe"
+export {
+  Copied,
+  Listed,
+  Locked,
+  PasswordBinding,
+  PasswordEditorInput,
+  PasswordEditorResult,
+  PasswordEntrySummary,
+  PasswordExportResult,
+  PasswordImportResult,
+  PasswordsErrorCode,
+  PasswordsStatus,
+  Rejection,
+  Removed,
+  Reset as PasswordResetSchema,
+  Revealed,
+  Saved,
+  SettingsOpened,
+  Unlocked,
+} from "./bridges/passwords.schema.vibe"
+export * from "./bridges/sign-in.schema.vibe"
+
+export type {
+  ActionJournalClient,
+  ActionJournalEntry,
+  ActionJournalPhase,
+  ActionJournalPlugin,
+  ActionJournalStatus,
+  ActionJournalTarget,
+  JournalFinish,
+  JournalNextStep,
+  JournalReservation,
+  JournalScope,
+  OperationHash,
+  OperationId as ActionJournalOperationId,
+  ProposalId,
+  ReservedEntry,
+  ApplyingEntry,
+  TerminalEntry,
+} from "./bridges/definitions/action-journal.ts"
+export * from "./bridges/definitions/agent.ts"
+export * from "./bridges/definitions/browser-surface.ts"
+export * from "./bridges/definitions/calendar.ts"
+export * from "./bridges/definitions/camera.ts"
+export type {
+  BodyGrantId,
+  BodyHandoff,
+  CallRefusal,
+  CloudClient,
+  CloudFailure,
+  CloudMethod,
+  CloudPath,
+  CloudReply,
+  CloudRequest,
+  ElizaCloudPlugin,
+  ExternalLinkOptions,
+  NativeCloudRequest,
+} from "./bridges/definitions/cloud.ts"
+export * from "./bridges/definitions/contacts.ts"
+export * from "./bridges/definitions/deep-links.ts"
+export * from "./bridges/definitions/files.ts"
+export * from "./bridges/definitions/location.ts"
+export type {
+  AlbumChange,
+  AlbumId,
+  AlbumRevision,
+  CropRect,
+  DeviceLibraryClient,
+  DeviceLibraryPlugin,
+  DocumentStatus,
+  EditOperationId,
+  EditSessionId,
+  EditStatus,
+  FlagChange,
+  HandoffStatus,
+  KindAccess,
+  LibraryChange,
+  LibraryFilter,
+  LibraryPageOptions,
+  LibraryScopeKind,
+  ListOptions,
+  MediaCursor,
+  MediaKind,
+  OwnedAlbum,
+  OwnedListOptions,
+  PermittedPhotosClient,
+  PermittedPhotosPlugin,
+  PhotoEdit,
+  PhotosClient,
+  PhotosPlugin,
+  Reviewed,
+  RowOutcome,
+  RowStatus,
+  SelectedDocumentsClient,
+  SelectedDocumentsPlugin,
+  SelectionId,
+  Thumbnail,
+  TrashConfirmation,
+  TrashSelection,
+  VideoEdit,
+} from "./bridges/definitions/media.ts"
+export * from "./bridges/definitions/messages.ts"
+export type { OperationId } from "./bridges/definitions/messages.ts"
+export * from "./bridges/definitions/network-policy.ts"
+export * from "./bridges/definitions/notices.ts"
+export type {
+  ElizaPasswordsPlugin,
+  ElizaPasswordTransferPlugin,
+  PasswordAutofillSelection,
+  PasswordBindingKind,
+  PasswordGenerateOptions,
+  PasswordSaveInput,
+  PasswordSaveResult,
+} from "./bridges/definitions/passwords.ts"
+export * from "./bridges/definitions/phone.ts"
+export * from "./bridges/definitions/reminders.ts"
+export * from "./bridges/definitions/reset.ts"
+export * from "./bridges/definitions/secure-store.ts"
+export * from "./bridges/definitions/sense.ts"
+export * from "./bridges/definitions/sign-in.ts"
+export * from "./bridges/definitions/surface.ts"
+export * from "./bridges/definitions/system.ts"
+export * from "./bridges/definitions/tab-host.ts"
+export type {
+  AssistantCapture,
+  AssistantListenHandlers,
+  CloudSpeechListenerHandle,
+  CloudSpeechStarted,
+  CloudStreamEvent,
+  CloudStreamEventType,
+  CloudStreamingSpeech,
+  CloudStreamingSpeechOptions,
+  CloudStreamPort,
+  ElizaCloudSpeechPlugin,
+  NativeSpeechRequestBinding,
+  NativeSpeechRequestId,
+  NativeSpeechRequestRunner,
+  NativeSpeechRequestWork,
+  SpeechSessionId,
+  UtteranceId,
+} from "./bridges/definitions/voice.ts"
+export * from "./bridges/definitions/wifi.ts"

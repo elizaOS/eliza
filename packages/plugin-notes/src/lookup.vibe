@@ -1,8 +1,8 @@
 // spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"
 import { extractUserText, incomingMessagePersistenceSnapshot, unwrapUserMessageText, type Memory } from "@elizaos/core"
 import { ownerWordsSource } from "../gen/notes__records.effect.vibe"
-import { authoredNoteText } from "./format.vibe"
-import { reconstructNoteContent, type StickyNote } from "./types.vibe"
+import { authoredNoteText } from "@elizaos/plugin-notes-client"
+import { reconstructNoteContent, type StickyNote } from "@elizaos/plugin-notes-client"
 
 module edge {
   /** @throws {never} */

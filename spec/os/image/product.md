@@ -5,7 +5,7 @@ the two device profiles the os package pins: a Pixel 10a (`stallion`) kept
 on its stock factory vendor partition, or the Cuttlefish x86_64 phone
 (`cf_x86_64_phone`). The os package names no product and ships no default
 identity. The writer is `composeProduct` and `enrollUpdater` in
-`src/image/compose-product.vibe`, exported from `@elizaos/os/image`; the
+`src/image/compose-product.vibe`, exported from `@elizaos/os`; the
 sources are develop's `pixel10a-product.ts`, `pixel10a-brand-assets.mjs`,
 `cuttlefish-product.mjs`, `system-updater-staging.mjs`,
 `build-bootanimation.ts` and the brand-config schema.

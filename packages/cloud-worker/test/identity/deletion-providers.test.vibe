@@ -1,0 +1,93 @@
+// spec/cloud/identity/deletion.md, "A step is finished when its call took effect, the provider no longer holds the thing, or nothing was left to do"
+import { assert, describe, it } from "@effect/vitest"
+import { billingSourceOf, cancelBilling, identifyBilling, lookUpBilling, lookUpGoogle, revokeGoogle } from "../../src/identity/deletion-providers.vibe"
+import { sealTokens } from "../../src/providers/google.vibe"
+import { FetchHttpClient, type HttpClient } from "effect/http"
+import { type Deployment, deploymentLayer, parseProfile } from "@elizaos/cloud"
+import { Store, migrate, storeLayer } from "../../src/store/store.vibe"
+import { startFakeServer, type FakeServer } from "../support/fakes.ts"
+import { deletionProviders } from "../support/fakes/deletion.ts"
+import { secrets, testProfile } from "../support/profile.ts"
+
+interface Small {
+  readonly fakes: FakeServer
+  readonly store: Store.Shape
+  inside<A, E>(body: A!E!(Store | Deployment | HttpClient.HttpClient)): A!E
+}
+
+effect function smallCloud(providers: ReturnType<typeof deletionProviders>) {
+  const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+  try sync(() => {
+    fakes.mount("/stripe/", providers.stripe.handler)
+    providers.mount(fakes)
+  })
+  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
+  const built = try Layer.build(Layer.mergeAll(deploymentLayer(profile, "staging"), storeLayer({ kind: "pglite", file: undefined }), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))))
+  const now = try Clock.currentTimeMillis
+  try Effect.provideContext(migrate({ digest: profile.environments.staging.databaseIdentity, environment: "staging", now }), built)
+  return { fakes, store: Context.get(built, Store), inside: <A, E>(body: A!E!(Store | Deployment | HttpClient.HttpClient)) => Effect.provideContext(body, built) } satisfies Small
+}
+
+effect function sql(cloud: Small, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+effect function organization(cloud: Small, id: string) {
+  const now = try Clock.currentTimeMillis
+  try sql(cloud, "INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)", [id, id, now])
+}
+
+describe("Deletion provider steps (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => {
+  it.live("Cancel billing and revoke Google once each, settle a lost reply by a lookup, and count an already gone thing as done", () => scoped(effect {
+    const providers = try Effect.try(() => deletionProviders())
+    const cloud = try smallCloud(providers)
+    const now = try Clock.currentTimeMillis
+    const stored = try Effect.try(() => providers.subscribe("price_plus"))
+    const worker = try Effect.try(() => providers.subscribe("price_plus"))
+    for (const id of ["org-del", "org-worker", "org-none"]) try organization(cloud, id)
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, customer_id, provider_subscription_id, updated_at) VALUES ($1, '{}'::jsonb, 1, 'active', 'plus_monthly', $2, $3, $4)", ["org-del", stored.customerId, stored.subscriptionId, now])
+    try sql(cloud, "INSERT INTO cloud_checkout_customers (organization_id, customer_id) VALUES ($1, $2)", ["org-worker", worker.customerId])
+    const persisted = try cloud.store.transaction((tx) => billingSourceOf(tx, "org-del"))
+    const customerOnly = try cloud.store.transaction((tx) => billingSourceOf(tx, "org-worker"))
+    const absent = try cloud.store.transaction((tx) => billingSourceOf(tx, "org-none"))
+    if (persisted === undefined || customerOnly === undefined) throw new Error("The provider fixture lost a billing source")
+    const storedTarget = try cloud.inside(identifyBilling(persisted))
+    const workerTarget = try cloud.inside(identifyBilling(customerOnly))
+    if (storedTarget === undefined || workerTarget === undefined) throw new Error("The provider fixture lost a Stripe subscription")
+    try Effect.try(() => providers.loseNextCancelReply(stored.subscriptionId))
+    const lost = try cloud.inside(cancelBilling(storedTarget, now + 30_000))
+    const statusAfterLost = try Effect.try(() => providers.subscriptionStatus(stored.subscriptionId))
+    const hidden = try cloud.inside(lookUpBilling(storedTarget))
+    try Effect.try(() => providers.revealCanceled(stored.subscriptionId))
+    const seen = try cloud.inside(lookUpBilling(storedTarget))
+    const again = try cloud.inside(cancelBilling(storedTarget, now + 30_000))
+    const workerCancel = try cloud.inside(cancelBilling(workerTarget, now + 30_000))
+    const workerSeen = try cloud.inside(lookUpBilling(workerTarget))
+    const refresh = try Effect.try(() => providers.grant("subject-del"))
+    const kept = try Effect.try(() => providers.grant("subject-kept"))
+    const tokens = try cloud.inside(sealTokens({ refreshToken: refresh, accessToken: "access-old", expiresAt: now }))
+    const keptTokens = try cloud.inside(sealTokens({ refreshToken: kept, accessToken: "access-kept", expiresAt: now }))
+    const connection = { kind: "layered", sealed: tokens } as const
+    const keptBefore = try cloud.inside(lookUpGoogle({ kind: "layered", sealed: keptTokens }))
+    try Effect.try(() => providers.loseNextRevokeReply(refresh))
+    const revokeLost = try cloud.inside(revokeGoogle(connection))
+    const revokedAtGoogle = try Effect.try(() => providers.revoked(refresh))
+    const revokeSeen = try cloud.inside(lookUpGoogle(connection))
+    const revokeAgain = try cloud.inside(revokeGoogle(connection))
+    const unreadable = try cloud.inside(revokeGoogle({ kind: "layered", sealed: "not-sealed" }))
+    const workerStatus = try Effect.try(() => providers.subscriptionStatus(worker.subscriptionId))
+    try Effect.try(() => assert.deepStrictEqual({
+      lost: lost.kind, statusAfterLost, hidden: hidden.kind, seen, again, workerCancel, workerStatus, workerSeen, absent,
+      cancelCalls: providers.cancelCalls(cloud.fakes, stored.subscriptionId),
+      keptBefore, revokeLost: revokeLost.kind, revokedAtGoogle, revokeSeen, revokeAgain, unreadable, revokeCalls: providers.revokeCalls(), keptRevoked: providers.revoked(kept)
+    }, {
+      lost: "unknown", statusAfterLost: "canceled", hidden: "unknown", seen: { kind: "applied", value: { tag: "EffectSeen" } },
+      again: { kind: "applied", value: undefined },
+      workerCancel: { kind: "applied", value: undefined }, workerStatus: "canceled", workerSeen: { kind: "applied", value: { tag: "EffectSeen" } },
+      absent: undefined,
+      cancelCalls: 1,
+      keptBefore: { kind: "applied", value: { tag: "NothingSeen" } }, revokeLost: "unknown", revokedAtGoogle: true, revokeSeen: { kind: "applied", value: { tag: "EffectSeen" } },
+      revokeAgain: { kind: "applied", value: undefined }, unreadable: { kind: "refused", code: "SealingFailed" }, revokeCalls: 2, keptRevoked: false
+    }))
+  }))
+})

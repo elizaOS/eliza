@@ -31,9 +31,10 @@ import { BundleFacts, NodeLockFile, NodeRuntimeBuild, type AndroidAbi } from "./
 
 module node {
   import { createHash } from "node:crypto"
+  import { existsSync } from "node:fs"
   import { lstat, readdir } from "node:fs/promises"
   import { availableParallelism } from "node:os"
-  import { join } from "node:path"
+  import { dirname, join } from "node:path"
   import { fileURLToPath } from "node:url"
   import { inflateRawSync } from "node:zlib"
 
@@ -55,8 +56,16 @@ module node {
     return availableParallelism()
   }
 
-  export function filePath(url: string): string {
-    return fileURLToPath(url)
+  export function defaultNodeLockPath(moduleUrl: string): string {
+    let dir = dirname(fileURLToPath(moduleUrl))
+    for (let depth = 0; depth < 6; depth += 1) {
+      const candidate = join(dir, "aosp", "runtime", "node.lock.json")
+      if (existsSync(candidate)) return candidate
+      const parent = dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    throw new Error("The packaged Node lock cannot be found")
   }
 
   export async function listRegularFiles(root: string): Promise<Listing> {
@@ -131,7 +140,7 @@ module node {
     return false
   }
 }
-import { cpuCount, filePath, isAndroidExecutable, isElfFor, listRegularFiles, sha256Hex, zipEntry, type Listing } from node
+import { cpuCount, defaultNodeLockPath, isAndroidExecutable, isElfFor, listRegularFiles, sha256Hex, zipEntry, type Listing } from node
 
 export type { AndroidAbi }
 
@@ -272,7 +281,7 @@ effect function regularFiles(root: string) {
 }
 
 effect function readLock(file: string | undefined) {
-  const path = file ?? (try Effect.try({ try: () => filePath(import.meta.resolve("@elizaos/os/aosp/runtime/node.lock.json")), catch: (cause) => new PayloadInputInvalid({ reason: `The packaged Node lock cannot be found: ${String(cause)}` }) }))
+  const path = file ?? (try Effect.try({ try: () => defaultNodeLockPath(import.meta.url), catch: (cause) => new PayloadInputInvalid({ reason: `The packaged Node lock cannot be found: ${String(cause)}` }) }))
   return try decodeJson(NodeLockFile, path)
 }
 

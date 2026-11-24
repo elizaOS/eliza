@@ -1,0 +1,287 @@
+// spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "The model's own recipient is grounded as it proposed it, and an invented one is handed back once"; spec/agent/deviceActions/telephony.md, "A request to open the dialer is the model's keypad, filled only with a number the owner wrote"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained in a sentence that says truthfully that nothing ran"
+import {
+  contactValueVerdict, emailVerdict, emergencyVerdict, nameVerdict, numberVerdict, ownedMatch, refusalReply, targetGrounded,
+  type NumberMatch, type TargetVerdict,
+} from "../../../../gen/agent__deviceActions__telephony.effect.vibe"
+import { smsComposeTarget, type DeviceOperation } from "@elizaos/agent"
+import type { Grounding, SwappedValue } from "../family.vibe"
+import { dialForms, samePhoneNumber, writesUnreadableNumber, writtenPhoneNumbers } from "./dial-number.vibe"
+import { writesContactName } from "./names.vibe"
+import { emergencyServicesRequest, namesEmergencyService, type PhoneTarget } from "./request.vibe"
+import { spokenPhoneNumbers } from "./spoken-number.vibe"
+
+export type TargetRefusal = Exclude<TargetVerdict, "TargetGrounded" | "EmergencyKeypad">
+
+export type TargetGrounding =
+  | { readonly kind: "grounded"; readonly operation: DeviceOperation }
+  | { readonly kind: "refused"; readonly verdict: TargetRefusal; readonly references: readonly string[] }
+
+export type Refused = Extract<TargetGrounding, { kind: "refused" }>
+type Owned<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly refused: Refused }
+type Tiers = readonly [written: readonly string[], spoken: readonly string[]]
+type ContactValues = Extract<DeviceOperation, { type: "contact_create" | "contact_update" }>
+type Values = { readonly phoneNumbers?: readonly string[]; readonly emailAddresses?: readonly string[] }
+
+interface ValueOwner {
+  readonly numbers: Tiers | undefined
+  readonly emails: readonly string[]
+  readonly references: readonly SwappedPhoneReference[]
+  readonly text: string
+}
+
+export interface SwappedPhoneReference {
+  readonly placeholder: string
+  readonly number: string
+}
+
+const referencePrefix = "__ELIZA_CONTACT_"
+const wordCharacter = /[\p{L}\p{N}]/u
+
+function refusal(verdict: TargetRefusal, references: readonly string[] = []): Refused {
+  return { kind: "refused", verdict, references }
+}
+
+function refusalOf(verdict: TargetVerdict): TargetRefusal | undefined {
+  return verdict === "TargetGrounded" || verdict === "EmergencyKeypad" ? undefined : verdict
+}
+
+function decided(verdict: TargetVerdict, operation: DeviceOperation): TargetGrounding {
+  const refused = refusalOf(verdict)
+  return refused === undefined ? { kind: "grounded", operation } : refusal(refused)
+}
+
+function ownerTiers(text: string): Tiers {
+  const written = writtenPhoneNumbers(text)
+  return [written, spokenPhoneNumbers(text).filter((number) => !written.includes(number))]
+}
+
+export function swappedPhoneReferences(entries: readonly SwappedValue[], text: string): SwappedPhoneReference[] {
+  const written = writtenPhoneNumbers(text)
+  return entries.flatMap(({ kind, placeholder, value }) => {
+    const [number] = kind === "phone" && placeholder.startsWith(referencePrefix) ? dialForms(value) : []
+    return number !== undefined && text.includes(value) && written.some((owned) => samePhoneNumber(owned, number)) ? [{ placeholder, number }] : []
+  })
+}
+
+function ownerNumber(proposed: string, [written, spoken]: Tiers): { readonly owned: NumberMatch; readonly number: string | undefined } {
+  const digits = proposed.replace("+", "")
+  const exact = (tier: readonly string[]) => tier.find((number) => number.replace("+", "") === digits)
+  const same = (tier: readonly string[]) => tier.filter((number) => samePhoneNumber(number, proposed))
+  const exactWritten = exact(written), exactSpoken = exact(spoken), sameWritten = same(written), sameSpoken = same(spoken)
+  const owned = ownedMatch(exactWritten !== undefined, sameWritten.length, exactSpoken !== undefined, sameSpoken.length)
+  switch (owned) {
+    case "WrittenOwnerNumber": return { owned, number: exactWritten ?? sameWritten[0] }
+    case "SpokenOwnerNumber": return { owned, number: exactSpoken ?? sameSpoken[0] }
+    case "NoOwnerNumber":
+    case "SeveralOwnerNumbers": return { owned, number: undefined }
+  }
+}
+
+function bodyOccurrences(text: string, body: string): number[] {
+  const haystack = text.toLowerCase(), needle = body.toLowerCase()
+  const bounded = (at: number) =>
+    !(wordCharacter.test(needle.slice(0, 1)) && wordCharacter.test(haystack.slice(at - 1, at))) &&
+    !(wordCharacter.test(needle.slice(-1)) && wordCharacter.test(haystack.slice(at + needle.length, at + needle.length + 1)))
+  const found: number[] = []
+  for (let at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + 1)) {
+    if (bounded(at)) found.push(at)
+  }
+  return found
+}
+
+function textWithoutBody(text: string, body: string | undefined, keeps: (rest: string) => boolean = () => true): { readonly text: string; readonly bodyNumbers: readonly string[] } {
+  const trimmed = body?.trim() ?? ""
+  if (trimmed === "") return { text, bodyNumbers: [] }
+  const cuts = bodyOccurrences(text, trimmed).map((at) => `${text.slice(0, at)} ${text.slice(at + trimmed.length)}`).reverse()
+  const [last] = cuts
+  if (last !== undefined) return { text: cuts.find(keeps) ?? last, bodyNumbers: [] }
+  const [written, spoken] = ownerTiers(trimmed)
+  return { text, bodyNumbers: [...written, ...spoken] }
+}
+
+function numbersIn(rest: string, bodyNumbers: readonly string[]): Tiers {
+  const outsideBody = (number: string) => !bodyNumbers.some((inBody) => samePhoneNumber(inBody, number))
+  const [written, spoken] = ownerTiers(rest)
+  return [written.filter(outsideBody), spoken.filter(outsideBody)]
+}
+
+function recipientNumbers(text: string, body: string | undefined, proposed: string): Tiers {
+  const { text: rest, bodyNumbers } = textWithoutBody(text, body, (candidate) => ownerNumber(proposed, numbersIn(candidate, [])).number !== undefined)
+  return numbersIn(rest, bodyNumbers)
+}
+
+function groundedNumber(proposed: string, owned: Tiers, references: readonly SwappedPhoneReference[], text: string): Owned<string> {
+  const found = ownerNumber(proposed, owned)
+  const ownerNumbers = [...owned[0], ...owned[1]]
+  const copyable = references.filter((reference) => ownerNumbers.some((number) => samePhoneNumber(number, reference.number))).map(({ placeholder }) => placeholder)
+  const refused = refusalOf(numberVerdict(found.owned, copyable.length > 0, writesUnreadableNumber(text, proposed)))
+  if (refused === undefined && found.number !== undefined) return { ok: true, value: found.number }
+  return { ok: false, refused: refusal(refused ?? "NumberNotWritten", refused === "NumberCopyReference" ? copyable : []) }
+}
+
+function groundTarget(target: PhoneTarget, text: string, body: string | undefined, references: readonly SwappedPhoneReference[]): Owned<PhoneTarget> {
+  if (target.kind === "number") {
+    const number = groundedNumber(target.number, recipientNumbers(text, body, target.number), references, textWithoutBody(text, body).text)
+    return number.ok ? { ok: true, value: { kind: "number", number: number.value } } : number
+  }
+  const named = (rest: string) => writesContactName(rest, target.query)
+  const verdict = nameVerdict(named(textWithoutBody(text, body, named).text))
+  return verdict === "ContactNotWritten" ? { ok: false, refused: refusal(verdict) } : { ok: true, value: target }
+}
+
+function recipientsGrounded(operation: Extract<DeviceOperation, { type: "sms_send" }>, text: string, references: readonly SwappedPhoneReference[]): TargetGrounding {
+  const rest = textWithoutBody(text, operation.body).text
+  const recipients: string[] = []
+  for (const recipient of operation.recipients) {
+    const number = groundedNumber(recipient, recipientNumbers(text, operation.body, recipient), references, rest)
+    if (!number.ok) return number.refused
+    if (!recipients.includes(number.value)) recipients.push(number.value)
+  }
+  return decided("TargetGrounded", { ...operation, recipients })
+}
+
+function writtenEmailAddresses(text: string): string[] {
+  return [...text.matchAll(/[^\s@<>()[\]"'“”‘’,;:]+@[^\s@<>()[\]"'“”‘’,;:]+/gu)].map(([found]) => found.replace(/[.!?]+$/u, "").toLowerCase())
+}
+
+function ownNumbers(numbers: readonly string[], owner: ValueOwner): Owned<readonly string[]> {
+  if (owner.numbers === undefined) return { ok: true, value: numbers }
+  const grounded: string[] = []
+  for (const number of numbers) {
+    const own = groundedNumber(number, owner.numbers, owner.references, owner.text)
+    if (!own.ok) return own
+    if (!grounded.includes(own.value)) grounded.push(own.value)
+  }
+  return { ok: true, value: grounded }
+}
+
+function ownValues<T extends Values>(values: T, owner: ValueOwner): Owned<T> {
+  const numbers = values.phoneNumbers === undefined ? undefined : ownNumbers(values.phoneNumbers, owner)
+  if (numbers !== undefined && !numbers.ok) return numbers
+  const writesAny = owner.emails.length > 0
+  const stray = (values.emailAddresses ?? []).find((address) => !targetGrounded(contactValueVerdict(writesAny, emailVerdict(owner.emails.includes(address.toLowerCase())))))
+  if (stray !== undefined) return { ok: false, refused: refusal("EmailNotWritten") }
+  return { ok: true, value: numbers === undefined ? values : { ...values, phoneNumbers: numbers.value } }
+}
+
+function ownPart<T extends Values>(values: T | undefined, owner: ValueOwner): Owned<T | undefined> {
+  return values === undefined ? { ok: true, value: undefined } : ownValues(values, owner)
+}
+
+function contactGrounded(operation: ContactValues, text: string, references: readonly SwappedPhoneReference[]): TargetGrounding {
+  const [written, spoken] = ownerTiers(text)
+  const owner: ValueOwner = { numbers: written.length + spoken.length > 0 ? [written, spoken] : undefined, emails: writtenEmailAddresses(text), references, text }
+  if (operation.type === "contact_create") {
+    const contact = ownValues(operation.contact, owner)
+    return contact.ok ? decided("TargetGrounded", { ...operation, contact: contact.value }) : contact.refused
+  }
+  const set = ownPart(operation.set, owner)
+  if (!set.ok) return set.refused
+  const add = ownPart(operation.add, owner)
+  if (!add.ok) return add.refused
+  const remove = ownPart(operation.remove, owner)
+  if (!remove.ok) return remove.refused
+  return decided("TargetGrounded", {
+    ...operation,
+    ...(set.value === undefined ? {} : { set: set.value }), ...(add.value === undefined ? {} : { add: add.value }),
+    ...(remove.value === undefined ? {} : { remove: remove.value }),
+  })
+}
+
+function ownerTarget(operation: DeviceOperation, text: string, references: readonly SwappedPhoneReference[]): TargetGrounding {
+  switch (operation.type) {
+    case "phone_call":
+    case "phone_dial": {
+      const target = groundTarget(operation.target, text, undefined, references)
+      return target.ok ? decided("TargetGrounded", { ...operation, target: target.value }) : target.refused
+    }
+    case "sms_compose": {
+      const target = groundTarget(smsComposeTarget(operation), text, operation.body, references)
+      if (!target.ok) return target.refused
+      return decided("TargetGrounded", "target" in operation ? { ...operation, target: target.value } : operation)
+    }
+    case "sms_send":
+      return recipientsGrounded(operation, text, references)
+    case "phone_keypad": {
+      if (operation.number === undefined) return decided("TargetGrounded", operation)
+      const number = groundedNumber(operation.number, ownerTiers(text), references, text)
+      return number.ok ? decided("TargetGrounded", { ...operation, number: number.value }) : number.refused
+    }
+    case "contact_create":
+    case "contact_update":
+      return contactGrounded(operation, text, references)
+    default:
+      return decided("TargetGrounded", operation)
+  }
+}
+
+function verdictOf(grounding: TargetGrounding): TargetVerdict {
+  return grounding.kind === "refused" ? grounding.verdict : "TargetGrounded"
+}
+
+export function groundTelephonyTarget(operation: DeviceOperation, text: string, references: readonly SwappedPhoneReference[], keypadOffered: boolean): TargetGrounding {
+  const grounded = ownerTarget(operation, text, references)
+  const callOrDial = operation.type === "phone_call" || operation.type === "phone_dial"
+  const offered = grounded.kind === "grounded" ? grounded.operation : operation
+  const namesService = [operation, offered].some((call) => (call.type === "phone_call" || call.type === "phone_dial") && call.target.kind === "contact" && namesEmergencyService(call.target.query))
+  const verdict = emergencyVerdict(emergencyServicesRequest(text), callOrDial || operation.type === "phone_keypad", namesService, keypadOffered, verdictOf(grounded))
+  switch (verdict) {
+    case "EmergencyDial": return refusal(verdict)
+    case "EmergencyKeypad": return decided(verdict, { type: "phone_keypad" })
+    default: return grounded
+  }
+}
+
+function copyText(references: readonly string[], nothingRan: string): string {
+  return references.length > 0
+    ? `The current original request does not contain this phone number. The owner's number reaches you only as a contact reference, so digits you write for it are invented. Copy ${references.length === 1 ? "this reference" : "one of these references"} verbatim as the number, every character and underscore (a country code such as +1 before it is allowed): ${references.join(", ")}. No proposal was created; ${nothingRan}.`
+    : `The current original request does not contain this phone number. Use only a number the owner wrote in this message, by copying its contact reference exactly. No proposal was created; ${nothingRan}.`
+}
+
+function modelText({ verdict, references }: Refused, contactChange: boolean): string {
+  const nothingRan = contactChange ? "nothing was saved or changed" : "nothing was called or sent"
+  switch (verdict) {
+    case "EmergencyDial": return "The owner asked for emergency services, and this phone cannot open its keypad. No proposal was created; nothing was called. Tell the owner to dial their local emergency number on the phone's own dialer now."
+    case "NumberUnreadable": return `The owner wrote a phone number this request cannot read as one dial number (mixed or unusual separators). No proposal was created; ${nothingRan}. Ask the owner to type the number again with digits only.`
+    case "RecipientForm": return `This phone cannot take ${contactChange ? "the contact" : "the recipient"} the owner wrote in this form. No proposal was created; ${nothingRan}.`
+    case "ContactNotWritten": return `The current original request does not name this contact. Use only the name the owner wrote in this message. No proposal was created; ${nothingRan}.`
+    case "EmailNotWritten": return `The current original request does not contain this email address. Use only an email address the owner wrote in this message. No proposal was created; ${nothingRan}.`
+    case "NumberCopyReference":
+    case "NumberNotWritten": return copyText(references, nothingRan)
+  }
+}
+
+function changesContacts(operation: DeviceOperation): boolean {
+  return operation.type === "contact_create" || operation.type === "contact_update"
+}
+
+function ownerText(refused: Refused, text: string, contactChange: boolean): string {
+  switch (refusalReply(refused.verdict, contactChange, /\d/.test(text) || spokenPhoneNumbers(text).length > 0)) {
+    case "ReplyDialEmergency": return "I can't open the keypad on this phone. For an emergency, dial your local emergency number (911 in the US and Canada, 112 in most of Europe) on your phone's dialer now."
+    case "ReplyRetypeSavedNumber": return "I couldn't read that as one phone number, so I didn't save it. Nothing was saved. Type the number again with digits only, like 4155550100."
+    case "ReplyRetypeNumber": return "I couldn't read that as one phone number, so I didn't set it up. Nothing was called or sent. Type the number again with digits only, like 4155550100."
+    case "ReplyNumberNotSaved": return "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
+    case "ReplyEmailNotSaved": return "I didn't save that, because that email address isn't one you wrote in your message. Nothing was saved. Tell me the email address to use."
+    case "ReplyNoNumberWritten": return "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts."
+    case "ReplyRecipientForm": return "I can't set that up on this phone with that recipient. Nothing was called or sent. Tell me the number to use."
+    case "ReplyContactForm": return "I can't save that contact on this phone in that form. Nothing in your contacts was changed. Tell me the name, number or email address to use."
+    case "ReplyNameNotWritten": return "I didn't set that up, because that name isn't one you wrote in your message. Nothing was called or sent. Tell me who, by their name as saved in Contacts or their number."
+    case "NoRefusalReply":
+    case "ReplyNumberNotWritten": return "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use."
+  }
+}
+
+const telephonyTargetCode = "DEVICE_TELEPHONY_TARGET_NOT_REQUESTED"
+
+const correctIt = "Propose again with the owner's own, or answer the owner in your own words."
+
+export function telephonyTargetRefusalReply(refused: Refused, text: string, operation: DeviceOperation, handBack: boolean): Grounding {
+  const contactChange = changesContacts(operation)
+  const forModel = modelText(refused, contactChange)
+  return handBack
+    ? { kind: "Coached", code: telephonyTargetCode, forModel: `${forModel} ${correctIt}` }
+    : {
+      kind: "Refused", code: telephonyTargetCode, forModel, forOwner: ownerText(refused, text, contactChange),
+      ...(refused.verdict === "EmergencyDial" ? { safetyCopy: true } : {}),
+    }
+}
