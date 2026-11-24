@@ -47,3 +47,40 @@ pure def aliasIsAmbiguous(s: Corpus, alias: str): bool = aliasOwners(s, alias).s
 pure def sometimesAmbiguousAlias(s: Corpus): bool = s.clusters.some(cluster => cluster.aliases.exists(alias => aliasIsAmbiguous(s, alias)))
 pure def sometimesCollisionReminted(s: Corpus): bool = s.clusters.some(cluster => cluster.superseded.size() > 0)
 ```
+
+### Scrub items that assemble the pseudonym map do so one at a time, so every pseudonym they mint stays in the stored map
+
+The PII scrub service drains two items at once. An item that brings no
+context pack and no pseudonym assignments of its own assembles them from
+the stored corpus map: it loads the map, mints a pseudonym for each person
+the map does not hold yet, hands those pseudonyms to the scrub model, and
+saves its whole copy of the map, which replaces the stored one. Only one
+such item holds that stage at a time, from loading the map to saving it,
+so two items naming two people in one drain both keep their pseudonyms,
+and the pseudonym an item's scrubbed text carries is the one the stored
+map keeps for that person. An item whose scrub fails saves nothing and
+releases the stage, and its retry waits behind any item already waiting
+for the stage. An item that brings its own context pack or assignments
+never waits for the stage.
+
+```quint
+type MapEntry = { person: str, token: int }
+pure val mapStagePermits = 1
+pure def stagedPseudonym(stored: List[MapEntry], person: str): int =
+  stored.select(entry => entry.person == person).nthOr(0, { person: "", token: 0 }).token
+pure def stageItem(stored: List[MapEntry], person: str, completed: bool): List[MapEntry] =
+  if (not(completed) or stagedPseudonym(stored, person) != 0) stored
+  else stored.append({ person: person, token: stored.length() + 1 })
+pure def oneAtATime(stagedPeople: List[str]): List[MapEntry] = stagedPeople.foldl(List(), (stored, person) => stageItem(stored, person, true))
+pure val stagedPeopleValues = Set(List(), List("ada"), List("ada", "grace"), List("grace", "ada"), List("ada", "ada"), List("ada", "grace", "ada"))
+pure val storedValues: Set[List[MapEntry]] = Set(List(), List({ person: "ada", token: 1 }), List({ person: "ada", token: 1 }, { person: "grace", token: 2 }))
+pure def lawEveryStagedPersonKeepsAPseudonym(stagedPeople: List[str]): bool =
+  stagedPeople.every(person => stagedPseudonym(oneAtATime(stagedPeople), person) != 0)
+pure def lawTwoPeopleNeverShareAPseudonym(stagedPeople: List[str]): bool =
+  oneAtATime(stagedPeople).every(entry => oneAtATime(stagedPeople).select(other => other.token == entry.token).length() == 1)
+pure val personValues = Set("ada", "grace", "lin")
+pure val laterPersonValues = Set("ada", "grace", "lin")
+pure def lawALaterItemKeepsAnEarlierPseudonym(stored: List[MapEntry], person: str, laterPerson: str, completed: bool): bool =
+  stagedPseudonym(stageItem(stored, laterPerson, completed), person) == stagedPseudonym(stored, person) or stagedPseudonym(stored, person) == 0
+pure def lawAFailedItemSavesNothing(stored: List[MapEntry], person: str): bool = stageItem(stored, person, false) == stored
+```
