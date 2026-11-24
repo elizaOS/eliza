@@ -150,32 +150,33 @@ it.effect('A fired reminder reaches the owner once as the exact presentation iss
   }
 })
 
-it.effect('A later message saying "actually, don\'t save that one" or "no, don’t keep it" takes back only the reminder just saved, within five minutes, and "don’t forget to set it for 9" takes back nothing (spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes")', effect () => {
+it.effect('The model\'s retract on a later message takes back only the reminder just saved, within five minutes, in any words, and a retract on the saving message, naming another reminder or after five minutes takes back nothing (spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes")', effect () => {
   const seen = ports()
-  seen.answers.push(check({}), check({}), check({}))
+  seen.answers.push(check({}), check({}), check({}), check({}))
   const roomId = "room-2" as UUID
   const said = (messageId: string, text: string) => ({ messageId, text, roomId })
+  const outcome = (result: { readonly success: boolean; readonly data?: unknown }) => [result.success, (result.data as { readonly outcome?: string } | undefined)?.outcome]
   provide portsLayer(seen) {
     try createReminder({ ...asked("r1"), roomId })
     const ignored = [
       try retractRecentSave(said("r1", "actually don't save that one"), undefined),
       try retractRecentSave(said("r2", "Actually don’t save that one"), "water the plants"),
-      try retractRecentSave(said("r3", "don't forget to set it for 9"), undefined),
-      try retractRecentSave(said("r3b", "don’t forget to set it for 9"), undefined),
-    ]
+    ].map(outcome)
     const retracted = try retractRecentSave(said("r4", "Actually don’t save that one"), "that one")
     const [first] = rowsOf(seen, reminderKind)
+    const nothingLeft = outcome(try retractRecentSave(said("r4b", "never mind"), undefined))
     try createReminder({ ...asked("r5"), plan: { ...plan, title: "Water the plants" }, roomId })
     seen.now += 6 * 60_000
-    const stale = try retractRecentSave(said("r6", "never mind"), undefined)
-    try equal({ ignored, retracted: [retracted?.success, retracted?.text], first: first?.status, stale, live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
-      ignored: [undefined, undefined, undefined, undefined], retracted: [true, 'Okay — I removed "Call the dentist". Nothing is saved for it now.'],
-      first: "Dismissed", stale: undefined, live: ["Dismissed", "Scheduled"],
+    const stale = outcome(try retractRecentSave(said("r6", "never mind"), undefined))
+    try equal({ ignored, retracted: [retracted.success, retracted.text], first: first?.status, nothingLeft, stale, live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
+      ignored: [[false, "not_found"], [false, "not_found"]], retracted: [true, 'Okay — I removed "Call the dentist". Nothing is saved for it now.'],
+      first: "Dismissed", nothingLeft: [false, "not_found"], stale: [false, "not_found"], live: ["Dismissed", "Scheduled"],
     })
     try createReminder({ ...asked("r7"), plan: { ...plan, title: "Stretch" }, roomId })
-    const typographic = try retractRecentSave(said("r8", "no, don’t keep it"), undefined)
-    try equal({ typographic: [typographic?.success, typographic?.text], live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
-      typographic: [true, 'Okay — I removed "Stretch". Nothing is saved for it now.'], live: ["Dismissed", "Scheduled", "Dismissed"],
+    const spanish = try retractRecentSave(said("r8", "olvídalo, no lo guardes"), undefined)
+    try createReminder({ ...asked("r9"), plan: { ...plan, title: "Call Sam" }, roomId })
+    try equal({ spanish: [spanish.success, spanish.text], live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
+      spanish: [true, 'Okay — I removed "Stretch". Nothing is saved for it now.'], live: ["Dismissed", "Scheduled", "Dismissed", "Scheduled"],
     })
   }
 })

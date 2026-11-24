@@ -68,7 +68,7 @@ commands, examples and generated files. The MIT license is in [LICENSE](LICENSE)
 
 ## Contributing
 
-`vibestack` is the primary branch and the base for every pull request.
+The default branch is `main`. Open contribution pull requests against `develop`.
 Verify through the application's normal entry points that the top-level
 stories, rules, and Quint models are fully implemented and integrated.
 Every change must follow them exactly. Run the full `pnpm verify` suite
