@@ -96,9 +96,18 @@ depends only on its record and the label of its request, so the same input
 gives the same bytes. A request inside the current dialogue window is named
 `history:hN`, the label the request already carries, as are its
 interruption and read-continuation notes. A later proposal state takes the
-place of the one preview it supersedes, in that preview's own row.
+place of the one preview it supersedes, in that preview's own row. Since that
+row drops the ending's own scope, the proposal legend also says that a reason
+saying a request never ran means the owner declined it or it expired, which
+answers whether the request ran, not what the resource holds now.
 
 ```quint
+type ProposalEnding = OwnerDeclinedEnding | ExpiredEnding
+pure def endingSaysTheRequestRan(ending: ProposalEnding): bool = false
+pure def endingSaysWhatTheResourceHolds(ending: ProposalEnding): bool = false
+pure val endingValues = Set(OwnerDeclinedEnding, ExpiredEnding)
+pure def lawAnEndingAnswersOnlyWhetherTheRequestRan(ending: ProposalEnding): bool =
+  not(endingSaysTheRequestRan(ending)) and not(endingSaysWhatTheResourceHolds(ending))
 type ReceiptField = OperationField | ResourceField | ArtifactsField | OutcomeField | ReasonField | CommitField | FailureField | RollbackField | ReceiptIdField | IdempotencyField | ObservedAtField
 pure def slimKeeps(part: ReceiptField, rolledBack: bool): bool =
   if (part == IdempotencyField or part == ObservedAtField) false
