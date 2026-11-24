@@ -62,6 +62,21 @@ pure def lawBlankNoteRefused(titleUnits: int, bodyUnits: int, uniqueId: bool): b
   not(noteRecordAdmitted(titleUnits, bodyUnits, false, uniqueId))
 ```
 
+### A note's title and body are saved as well-formed text
+
+A note's title and body are made well-formed before they are saved, by every
+creation and edit: a surrogate code unit that is not half of a high and low
+pair is saved as U+FFFD, and every other unit is kept as written, so no length
+changes. Content is made well-formed before its first line becomes the title.
+
+```quint
+pure def surrogateCodeUnit(codeUnit: int): bool = codeUnit >= 55296 and codeUnit <= 57343
+pure def savedNoteCodeUnit(codeUnit: int, paired: bool): int = if (surrogateCodeUnit(codeUnit) and not(paired)) 65533 else codeUnit
+pure val codeUnitValues = Set(65, 55295, 55296, 56319, 56320, 57343, 57344, 65533)
+pure def lawLoneSurrogateSavedAsReplacement(codeUnit: int): bool = surrogateCodeUnit(codeUnit) implies savedNoteCodeUnit(codeUnit, false) == 65533
+pure def lawPairedOrPlainUnitKept(codeUnit: int, paired: bool): bool = (paired or not(surrogateCodeUnit(codeUnit))) implies savedNoteCodeUnit(codeUnit, paired) == codeUnit
+```
+
 ### The agent reads and changes Notes only for the owner, on the owner's own words in the bound request
 
 Only the owner reaches the Notes actions, the saved-notes context and the

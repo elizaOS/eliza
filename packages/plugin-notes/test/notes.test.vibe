@@ -97,7 +97,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string) {
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner\'s own words in the bound request")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner\'s own words in the bound request"; spec/notes/records.md, "A note\'s title and body are saved as well-formed text")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -212,6 +212,14 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   const oversized = { field: "checklist", index: 0, expectedText: "tent", text: "x".repeat(262_145) } as const
   assert.equal(try code(notes.update({ id: camp.value.note.id }, { authoredEdit: oversized }, camp.snapshot.revision)), "NOTES_VALIDATION_FAILED")
   assert.equal((try notes.snapshot()).revision, camp.snapshot.revision)
+
+  const lone = try notes.create({ content: "Trip \uD83C\nTent \uDC00 poles 🏕" })
+  const retitled = try notes.update({ id: lone.value.note.id }, { title: "Camp \uDFD5 trip" }, lone.snapshot.revision)
+  const literalLone = try notes.update({ id: lone.value.note.id }, { textEdit: { field: "body", oldText: "poles", newText: "pegs \uD800" } })
+  const titled = try notes.create({ title: "Hike \uDC00", body: "boots" })
+  assert.deepEqual(
+    [lone.value.note.title, lone.value.note.body, retitled.value.title, literalLone.value.body, titled.value.note.title, (try notes.create({ title: "Hike \uDC00", body: "boots" })).value.note.id],
+    ["Trip �", "\nTent � poles 🏕", "Camp � trip", "\nTent � pegs � 🏕", "Hike �", titled.value.note.id])
 })
 
 it.effect('Restore a deleted note exactly, at the revision the owner saw (spec/notes/trash.md, "Story: Recover a deleted note")', effect () => {
