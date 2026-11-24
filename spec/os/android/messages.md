@@ -356,6 +356,82 @@ pure def lawAConversationOfOnlySendsIsNeverStaged(allowed: bool, held: ThreadSee
   held.settledThrough == 0 implies threadStaged(allowed, held) != DeleteQueued
 ```
 
+## Story: Keep my conversation list whole and current
+
+> As the person, I want every conversation and message on the phone to keep
+> its place in the list, even one too large to show, and the list to refresh
+> when something changes, without the phone handing over what changed.
+
+### A row the provider cannot report whole keeps its place without content, and costs the page neither its other rows nor its cursor
+
+A conversation or message the host refuses to clip (a body, address list or
+part count beyond what a row may carry, an address it cannot read, or text
+stored as an attachment) arrives as its ID, its date and one of those named
+reasons, and nothing else. Its date keeps the page order and the cursor, so
+it counts as a row of the page: the rest of the page stays and the next
+cursor stays. A clipped row that carries any other field, or a reason that is
+not one of the named ones, refuses the whole reply as malformed. A next
+cursor is kept only after a page that listed at least one row and only when
+it differs from the cursor the page was asked with, so paging always moves
+on or ends.
+
+```quint
+type ListedRow = WholeRow | IncompleteRow({ reasonNamed: bool, carriesContent: bool })
+type PageNext = LastPage | NextCursor({ repeatsAsked: bool })
+pure def rowShown(row: ListedRow): bool = match row {
+  | WholeRow => true
+  | IncompleteRow(r) => r.reasonNamed and not(r.carriesContent)
+}
+pure def cursorKept(rowsListed: int, pageNext: PageNext): bool = match pageNext {
+  | LastPage => true
+  | NextCursor(c) => rowsListed > 0 and not(c.repeatsAsked)
+}
+pure def pageShown(listed: List[ListedRow], pageNext: PageNext): bool =
+  listed.every(row => rowShown(row)) and cursorKept(listed.length(), pageNext)
+pure val bareIncompleteRow: ListedRow = IncompleteRow({ reasonNamed: true, carriesContent: false })
+pure val listedValues = Set(List(), List(WholeRow), List(WholeRow, IncompleteRow({ reasonNamed: true, carriesContent: false })),
+  List(IncompleteRow({ reasonNamed: true, carriesContent: true }), WholeRow), List(IncompleteRow({ reasonNamed: false, carriesContent: false })))
+pure val pageNextValues = Set(LastPage, NextCursor({ repeatsAsked: false }), NextCursor({ repeatsAsked: true }))
+pure def lawAnIncompleteRowKeepsTheRestOfThePageAndItsCursor(listed: List[ListedRow], pageNext: PageNext): bool =
+  pageShown(listed, pageNext) implies pageShown(listed.append(bareIncompleteRow), pageNext)
+pure def lawNoClippedContentOrUnnamedReasonIsShown(listed: List[ListedRow], pageNext: PageNext, reasonNamed: bool, carriesContent: bool): bool =
+  (carriesContent or not(reasonNamed)) implies not(pageShown(listed.append(IncompleteRow({ reasonNamed: reasonNamed, carriesContent: carriesContent })), pageNext))
+pure def lawPagingMovesOnOrEnds(rowsListed: int): bool =
+  cursorKept(rowsListed, LastPage) and not(cursorKept(rowsListed, NextCursor({ repeatsAsked: true })))
+    and not(cursorKept(0, NextCursor({ repeatsAsked: false })))
+```
+
+### A change notice carries no message content, and a send update reaches only the handler of its own kind
+
+While the screen watches, Android's notices are passed on without what
+changed: a change in the message providers calls the change handler with
+nothing, and an SMS or MMS send update gives its own kind's handler only the
+send's operation ID. A send update whose ID is not well formed, or of a kind
+the screen did not ask to follow, reaches no handler. The watch adds its
+listeners before it turns observation on. If setup fails, the watch stops
+forwarding notices, attempts to remove every listener it added, and returns
+the setup refusal. Stopping also stops forwarding immediately, attempts to
+remove every listener, and then turns observation off even if a listener
+cannot be removed.
+
+```quint
+type ChangeNotice = MessagesChanged | SmsSendUpdated({ wellFormedId: bool }) | MmsSendUpdated({ wellFormedId: bool })
+type NoticeHandler = ChangeHandler | SmsSendHandler | MmsSendHandler | NoHandler
+pure def noticeHandler(notice: ChangeNotice, smsFollowed: bool, mmsFollowed: bool): NoticeHandler = match notice {
+  | MessagesChanged => ChangeHandler
+  | SmsSendUpdated(u) => if (u.wellFormedId and smsFollowed) SmsSendHandler else NoHandler
+  | MmsSendUpdated(u) => if (u.wellFormedId and mmsFollowed) MmsSendHandler else NoHandler
+}
+pure val noticeValues = Set(MessagesChanged, SmsSendUpdated({ wellFormedId: true }), SmsSendUpdated({ wellFormedId: false }),
+  MmsSendUpdated({ wellFormedId: true }), MmsSendUpdated({ wellFormedId: false }))
+pure def lawASendUpdateReachesOnlyItsOwnKindsHandler(notice: ChangeNotice, smsFollowed: bool, mmsFollowed: bool): bool =
+  (noticeHandler(notice, smsFollowed, mmsFollowed) == SmsSendHandler implies (notice == SmsSendUpdated({ wellFormedId: true }) and smsFollowed))
+    and (noticeHandler(notice, smsFollowed, mmsFollowed) == MmsSendHandler implies (notice == MmsSendUpdated({ wellFormedId: true }) and mmsFollowed))
+pure def lawAMalformedSendUpdateReachesNoHandler(smsFollowed: bool, mmsFollowed: bool): bool =
+  noticeHandler(SmsSendUpdated({ wellFormedId: false }), smsFollowed, mmsFollowed) == NoHandler
+    and noticeHandler(MmsSendUpdated({ wellFormedId: false }), smsFollowed, mmsFollowed) == NoHandler
+```
+
 ## Story: Name the sender of my latest text without reading it
 
 > As the person, I want the assistant to tell me who sent my newest text,

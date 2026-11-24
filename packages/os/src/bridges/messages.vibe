@@ -29,6 +29,7 @@ import {
   parseLatestSender,
   parseMessages,
   parseMmsSendResult,
+  parseNextCursor,
   parseSmsJournal,
   parseSmsSendResult,
   parseThreads,
@@ -348,18 +349,11 @@ effect function listMessages(plugin: MessagesNativePlugin, journal: ActionJourna
   return try withoutQueued(journal, "message", try checked("listMessages", (raw) => parseMessages(raw, thread, limit), try nativeCall(PLUGIN, "listMessages", () => plugin.listMessages({ threadId: thread, ...page }))))
 }
 
-function nextOf<C extends string>(raw: unknown, cursorOf: (value: unknown) => C | null, rows: number, after: C | undefined): C | null | undefined {
-  const next = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>).next : undefined
-  if (next === null) return null
-  const cursor = cursorOf(next)
-  return cursor === null || rows === 0 || cursor === after ? undefined : cursor
-}
-
 effect function threadPage(plugin: MessagesNativePlugin, journal: ActionJournalPlugin, cursor: ThreadCursor | undefined) {
   if (cursor !== undefined && threadCursorOf(cursor) === null) try refuse("invalid-cursor")
   const raw = try nativeCall(PLUGIN, "listThreads", () => plugin.listThreads(cursor === undefined ? { limit: READ_ALL } : { limit: READ_ALL, cursor }))
   const rows = try checked("listThreads", (value) => parseThreads(value, READ_ALL), raw)
-  const next = try checked("listThreads", (value) => nextOf(value, threadCursorOf, rows.length, cursor), raw)
+  const next = try checked("listThreads", (value) => parseNextCursor(value, threadCursorOf, rows.length, cursor), raw)
   return { rows: try withoutQueued(journal, "thread", rows), next }
 }
 
@@ -368,7 +362,7 @@ effect function messagePage(plugin: MessagesNativePlugin, journal: ActionJournal
   if (cursor !== undefined && messageCursorOf(cursor) === null) try refuse("invalid-cursor")
   const raw = try nativeCall(PLUGIN, "listMessages", () => plugin.listMessages(cursor === undefined ? { threadId: thread, limit: READ_ALL } : { threadId: thread, limit: READ_ALL, cursor }))
   const rows = try checked("listMessages", (value) => parseMessages(value, thread, READ_ALL), raw)
-  const next = try checked("listMessages", (value) => nextOf(value, messageCursorOf, rows.length, cursor), raw)
+  const next = try checked("listMessages", (value) => parseNextCursor(value, messageCursorOf, rows.length, cursor), raw)
   return { rows: try withoutQueued(journal, "message", rows), next }
 }
 
@@ -415,26 +409,38 @@ effect function observeMessages(
   onSendUpdated: ((operationId: OperationId) => void) | undefined,
   onMmsSendUpdated: ((operationId: OperationId) => void) | undefined,
 ) {
+  let watching = true
   const forward = (handler: (operationId: OperationId) => void) => (data: unknown) => {
+    if (!watching) return
     const id = operationIdOf(typeof data === "object" && data !== null ? (data as Record<string, unknown>).operationId : undefined)
     if (id !== null) handler(id)
   }
-  const wanted: (readonly ["smsSendUpdated" | "mmsSendUpdated", (data: unknown) => void])[] = []
+  const wanted: (readonly ["messagesChanged" | "smsSendUpdated" | "mmsSendUpdated", (data: unknown) => void])[] = [["messagesChanged", () => {
+    if (watching) onChange()
+  }]]
   if (onSendUpdated !== undefined) wanted.push(["smsSendUpdated", forward(onSendUpdated)])
   if (onMmsSendUpdated !== undefined) wanted.push(["mmsSendUpdated", forward(onMmsSendUpdated)])
-  const handles = try promise(async () => {
-    const added = [await plugin.addListener("messagesChanged", () => onChange())]
-    for (const [event, listener] of wanted) added.push(await plugin.addListener(event, listener))
-    return added
-  })
-  const removeAll = () => Promise.all(handles.map((handle) => handle.remove()))
+  const added: { remove(): Promise<void> }[] = []
+  const removeAll = () => {
+    watching = false
+    return Promise.allSettled(added.map(async (handle) => handle.remove()))
+  }
+  for (const [event, listener] of wanted) {
+    const handle = nativeCall(PLUGIN, "addListener", () => plugin.addListener(event, listener)) catch effect (failure) => {
+      try promise(removeAll)
+      throw failure
+    }
+    added.push(handle as { remove(): Promise<void> })
+  }
   nativeCall(PLUGIN, "observeMessages", () => plugin.observeMessages({ enabled: true })) catch effect (failure) => {
     try promise(removeAll)
     throw failure
   }
   return async () => {
-    await removeAll()
+    const removed = await removeAll()
     await settled(nativeCall(PLUGIN, "observeMessages", () => plugin.observeMessages({ enabled: false })))
+    const failed = removed.find((answer) => answer.status === "rejected")
+    if (failed !== undefined) throw failed.reason
   }
 }
 

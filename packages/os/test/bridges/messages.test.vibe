@@ -13,6 +13,7 @@ import {
   type MessageId,
   type MessageRow,
   type OperationId,
+  type ThreadCursor,
   type ThreadId,
 } from "../../src/bridges/messages.vibe"
 import { reviewMms, reviewSms } from "../../src/bridges/definitions/messages.ts"
@@ -296,8 +297,45 @@ module android {
   export async function until(condition: () => boolean): Promise<void> {
     while (!condition()) await new Promise((resolve) => setTimeout(resolve, 1))
   }
+
+  /** @throws {never} */
+  export function paged(plugin: MessagesNativePlugin, threads: unknown, messages: unknown): MessagesNativePlugin {
+    return { ...plugin, listThreads: async () => threads, listMessages: async () => messages }
+  }
+
+  export interface Watch {
+    plugin: MessagesNativePlugin
+    listeners: [string, (data: unknown) => void][]
+    removed: string[]
+    observing: boolean[]
+  }
+
+  /** @throws {never} */
+  export function watching(plugin: MessagesNativePlugin, refused: { event?: string; observe?: boolean; remove?: string } = {}): Watch {
+    const listeners: Watch["listeners"] = []
+    const removed: string[] = []
+    const observing: boolean[] = []
+    const rejection = (message: string, code: string) => Object.assign(new CapacitorException(message), { code })
+    const watched: MessagesNativePlugin = {
+      ...plugin,
+      observeMessages: async ({ enabled }) => {
+        if (enabled && refused.observe === true) throw rejection("Allow this app to read your messages", "permission-required")
+        observing.push(enabled)
+        return undefined
+      },
+      addListener: async (event, listener) => {
+        if (event === refused.event) throw rejection("This notice cannot be followed now", "unavailable")
+        listeners.push([event, listener])
+        return { remove: async () => {
+          removed.push(event)
+          if (event === refused.remove) throw rejection("This listener could not be removed", "remove-failed")
+        } }
+      },
+    }
+    return { plugin: watched, listeners, removed, observing }
+  }
 }
-import { androidJournal, androidTelephony, device, holdDispatch, until } from android
+import { androidJournal, androidTelephony, device, holdDispatch, paged, until, watching } from android
 
 effect function refusal(call: () => Promise<unknown>) {
   const { cause } = try flip(tryPromise(() => call()))
@@ -585,6 +623,80 @@ it.live("Name the sender of my latest text by its last four digits, and whole wi
       empty: { status: "empty" },
       locked: "rejected unavailable",
       sent: [],
+    },
+  ))
+})
+
+it.live("Keep my conversation list whole and current: a row too large to show keeps the rest of its page and the cursor, and change notices carry no content and stop cleanly (spec/os/android/messages.md, \"Story: Keep my conversation list whole and current\"; spec/os/android/messages.md, \"A row the provider cannot report whole keeps its place without content, and costs the page neither its other rows nor its cursor\"; spec/os/android/messages.md, \"A change notice carries no message content, and a send update reaches only the handler of its own kind\")", () => effect {
+  const phone = device()
+  const thread = "thread:1" as ThreadId
+  const whole = { id: "thread:1", date: 4000, messageCount: 4, snippet: "Almost there", unread: true, addresses: ["+15550100101"] }
+  const clipped = { id: "thread:3", date: 100, incomplete: true, reason: "too-many-addresses" }
+  const long = { id: "sms:15", kind: "sms", threadId: "thread:1", date: 900, incomplete: true, reason: "body-too-long" }
+  const noThreads = { threads: [], next: null }
+  const noMessages = { messages: [], next: null }
+  const pages = (threads: unknown, messages: unknown) => messagesClient(paged(androidTelephony(phone), threads, messages), androidJournal(phone))
+  const kept = pages({ threads: [whole, clipped], next: "100:thread:3" }, { messages: [long], next: "900:sms:15" })
+  const threadPage = try promise(() => kept.threadPage())
+  const messagePage = try promise(() => kept.messagePage(thread))
+  const onlyClipped = try promise(() => pages({ threads: [clipped], next: "100:thread:3" }, noMessages).threadPage())
+  const snippetRides = try refusal(() => pages({ threads: [{ ...clipped, snippet: "hi" }], next: null }, noMessages).threadPage())
+  const unnamedReason = try refusal(() => pages({ threads: [{ ...clipped, reason: "other" }], next: null }, noMessages).threadPage())
+  const bodyRides = try refusal(() => pages(noThreads, { messages: [{ ...long, body: "x".repeat(10) }], next: null }).messagePage(thread))
+  const otherKind = try refusal(() => pages(noThreads, { messages: [{ ...long, kind: "mms" }], next: null }).messagePage(thread))
+  const sameCursor = try refusal(() => pages({ threads: [clipped], next: "100:thread:3" }, noMessages).threadPage("100:thread:3" as ThreadCursor))
+  const emptyWithCursor = try refusal(() => pages({ threads: [], next: "100:thread:3" }, noMessages).threadPage())
+
+  const heard: string[] = []
+  const follow = (watch: ReturnType<typeof watching>, everyKind: boolean) => messagesClient(watch.plugin, androidJournal(phone)).observeMessages(
+    (...given: unknown[]) => { heard.push(`changed with ${given.length} values`) },
+    everyKind ? (id) => { heard.push(`sms ${id}`) } : undefined,
+    everyKind ? (id) => { heard.push(`mms ${id}`) } : undefined,
+  )
+  const all = watching(androidTelephony(phone))
+  const stop = try promise(() => follow(all, true))
+  for (const [event, listener] of all.listeners)
+    try Effect.try(() => listener(event === "messagesChanged" ? { sequence: 1, body: "Are you coming?" } : { operationId: event === "mmsSendUpdated" ? "mms-1" : "op-1", body: "On my way" }))
+  for (const [event, listener] of all.listeners) if (event !== "messagesChanged") try Effect.try(() => listener({ operationId: "bad id!" }))
+  const watched = all.listeners.map(([event]) => event)
+  try promise(stop)
+  const changeOnly = watching(androidTelephony(phone))
+  try promise(() => follow(changeOnly, false))
+  const observeRefused = watching(androidTelephony(phone), { observe: true })
+  const observeFailure = try refusal(() => follow(observeRefused, true))
+  const listenerRefused = watching(androidTelephony(phone), { event: "mmsSendUpdated", remove: "messagesChanged" })
+  const listenerFailure = try refusal(() => follow(listenerRefused, true))
+  const removeRefused = watching(androidTelephony(phone), { remove: "messagesChanged" })
+  const stopAfterRefusedRemoval = try promise(() => follow(removeRefused, true))
+  const removeFailure = try refusal(stopAfterRefusedRemoval)
+  for (const watch of [listenerRefused, removeRefused])
+    for (const [, listener] of watch.listeners) try Effect.try(() => listener({ operationId: "op-after-stop" }))
+
+  const left = (watch: ReturnType<typeof watching>) => ({ removed: watch.removed, observing: watch.observing })
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      threadPage, messagePage, onlyClipped, snippetRides, unnamedReason, bodyRides, otherKind, sameCursor, emptyWithCursor,
+      watched, heard, stopped: left(all), changeOnly: changeOnly.listeners.map(([event]) => event),
+      observeRefused: [observeFailure, left(observeRefused)], listenerRefused: [listenerFailure, left(listenerRefused)],
+      removeRefused: [removeFailure, left(removeRefused)],
+    },
+    {
+      threadPage: { rows: [whole, clipped], next: "100:thread:3" },
+      messagePage: { rows: [long], next: "900:sms:15" },
+      onlyClipped: { rows: [clipped], next: "100:thread:3" },
+      snippetRides: "malformed listThreads",
+      unnamedReason: "malformed listThreads",
+      bodyRides: "malformed listMessages",
+      otherKind: "malformed listMessages",
+      sameCursor: "malformed listThreads",
+      emptyWithCursor: "malformed listThreads",
+      watched: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"],
+      heard: ["changed with 0 values", "sms op-1", "mms mms-1"],
+      stopped: { removed: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"], observing: [true, false] },
+      changeOnly: ["messagesChanged"],
+      observeRefused: ["rejected permission-required", { removed: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"], observing: [] }],
+      listenerRefused: ["rejected unavailable", { removed: ["messagesChanged", "smsSendUpdated"], observing: [] }],
+      removeRefused: ["rejected remove-failed", { removed: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"], observing: [true, false] }],
     },
   ))
 })
