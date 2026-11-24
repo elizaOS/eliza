@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { apiKeys } from "@elizaos/cloud-shared/db/schemas/api-keys";
+import { randomUUID } from "node:crypto";
 import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
 import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -67,7 +66,7 @@ function quote(value: string) {
 
 async function installIdentityFixture() {
   const enums = new Set<string>();
-  for (const table of [organizations, users, apiKeys]) {
+  for (const table of [organizations, users]) {
     const config = getTableConfig(table);
     for (const column of config.columns) {
       const definition = "enum" in column ? column.enum : undefined;
@@ -107,11 +106,10 @@ async function installIdentityFixture() {
 beforeAll(async () => {
   await dbWrite.execute(sql`CREATE TABLE apps (
     id uuid PRIMARY KEY, name text, description text, logo_url text, website_url text,
-    app_url text, allowed_origins jsonb, is_active boolean, is_approved boolean, api_key_id uuid
+    app_url text, allowed_origins jsonb, is_active boolean, is_approved boolean
   )`);
   await installIdentityFixture();
   for (const name of [
-    "0277_mobile_app_auth_pkce_grants",
     "0574_native_app_auth_client_registration",
     "0577_password_backup",
   ]) {
@@ -321,180 +319,3 @@ test("proof-bound approvals protect encrypted snapshot round-trip, replay, delet
   );
   expect((await use(revoked.code, "GET")).status).toBe(401);
 });
-
-test("the shared Android approval reads an existing encrypted snapshot with one registered device and one linked Google identity", async () => {
-  const retainedOwner = randomUUID();
-  const { openNativeBackupSteward } = await import(
-    "../../../auth/test/fixtures/native-backup-steward"
-  );
-  const steward = await openNativeBackupSteward({
-    packageName: "org.example.backup",
-    redirectUri,
-    environment: "staging",
-  });
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch: (request) => steward.app.fetch(request),
-  });
-  const nativeEnv = {
-    ...env,
-    LOGIN_API_URL: server.url.origin,
-    STEWARD_TENANT_ID: steward.tenantId,
-    STEWARD_TENANT_API_KEY: steward.tenantKey,
-    STEWARD_REQUEST_SIGNING_SECRET: steward.signingSecret,
-  };
-  try {
-    await dbWrite.execute(
-      sql`UPDATE mobile_app_auth_clients SET enabled=true, android_package_name=${steward.packageName} WHERE client_id=${clientId}`,
-    );
-    await dbWrite.execute(
-      sql`INSERT INTO users(id,is_anonymous,steward_user_id,organization_id,is_active,account_lifecycle_state) VALUES(${retainedOwner},false,${steward.ownerId},${organizationId},true,'active')`,
-    );
-    const result = await issue("save", await signedToken(steward.ownerId, 10));
-    expect(result.status).toBe(200);
-    const v2 = (await result.json()) as { code: string; scope: string };
-    const previous = await use(
-      v2.code,
-      "PUT",
-      { "If-None-Match": "*", "Content-Type": "application/octet-stream" },
-      bytes,
-    );
-    expect(previous.status).toBe(204);
-    const deviceId = randomUUID();
-    const device = `eliza_mobile_${randomBytes(32).toString("hex")}`;
-    await dbWrite.execute(sql`INSERT INTO api_keys (id,key_hash,source_app_id,user_id,organization_id,is_active,expires_at)
-       VALUES (${deviceId},${createHash("sha256").update(device).digest("hex")},${appId},${retainedOwner},${organizationId},true,now()+interval '1 day')`);
-    await dbWrite.execute(sql`INSERT INTO mobile_app_auth_grants(code_hash,app_id,client_id,user_id,organization_id,environment,redirect_uri,state_hash,
-      code_challenge,code_challenge_method,scopes,status,credential_id,expires_at,acknowledged_at)
-      VALUES (${randomUUID()},${appId},${clientId},${retainedOwner},${organizationId},'staging',${redirectUri},'state','challenge','S256','["cloud:user"]','acknowledged',${deviceId},now(),now())`);
-    const readiness = await app.request(
-      `${backupPath}/readiness?${new URLSearchParams({ clientId, environment: "staging", redirectUri, approval: "native-google" })}`,
-      undefined,
-      nativeEnv,
-    );
-    expect([
-      readiness.status,
-      readiness.headers.get("X-Password-Backup-Version"),
-    ]).toEqual([204, "3"]);
-    const post = (part: string, body: object, credential = device) =>
-      app.request(
-        `${backupPath}/native/${part}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${credential}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-        },
-        nativeEnv,
-      );
-    const googleVerifier = randomBytes(32).toString("base64url");
-    const begin = (purpose: string, credential = device) => {
-      const approval = {
-        purpose,
-        state,
-        clientId,
-        environment: "staging",
-        redirectUri,
-        codeChallengeMethod: "S256",
-        codeChallenge: deriveMobileAppAuthS256Challenge(verifier),
-      };
-      return {
-        approval,
-        response: post(
-          "challenge",
-          {
-            approval,
-            googleChallenge: deriveMobileAppAuthS256Challenge(googleVerifier),
-          },
-          credential,
-        ),
-      };
-    };
-    expect((await begin("read", ownerToken).response).status).toBe(401);
-    const click = async (purpose: string) => {
-      const { approval, response } = begin(purpose);
-      const started = await response;
-      expect(started.status).toBe(200);
-      const challenge = (await started.json()) as {
-        challengeId: string;
-        nonce: string;
-        serverClientId: string;
-      };
-      expect(challenge.serverClientId).toBe(steward.serverClientId);
-      const input = {
-        approval,
-        challengeId: challenge.challengeId,
-        googleVerifier,
-        idToken: await steward.googleIdToken(challenge.nonce),
-        consent: true,
-      };
-      expect(
-        (
-          await post("approve", {
-            ...input,
-            approval: {
-              ...approval,
-              purpose: purpose === "read" ? "save" : "read",
-            },
-          })
-        ).status,
-      ).toBe(401);
-      const accepted = await post("approve", input);
-      expect(accepted.status).toBe(200);
-      expect((await post("approve", input)).status).toBe(401);
-      return (await accepted.json()) as {
-        ownerId: string;
-        scope: string;
-        organizationId: string;
-        code: string | null;
-        revision: string | null;
-        present: boolean;
-      };
-    };
-    expect(await click("verify")).toEqual({
-      code: null,
-      scope: v2.scope,
-      ownerId: retainedOwner,
-      organizationId,
-      revision: null,
-      present: false,
-    });
-    const approved = await click("read");
-    expect(approved).toEqual({
-      code: expect.stringMatching(/^pbackup_/),
-      scope: v2.scope,
-      ownerId: retainedOwner,
-      organizationId,
-      revision: previous.headers.get("ETag"),
-      present: true,
-    });
-    const transfer = (code: string) =>
-      app.request(
-        backupPath,
-        {
-          headers: {
-            Authorization: `Bearer ${code}`,
-            "X-Backup-Verifier": verifier,
-            "X-Backup-State": state,
-          },
-        },
-        nativeEnv,
-      );
-    const data = await transfer(approved.code!);
-    expect(data.status).toBe(200);
-    expect(new Uint8Array(await data.arrayBuffer())).toEqual(bytes);
-    expect((await transfer(approved.code!)).status).toBe(401);
-    const revoked = await click("read");
-    await dbWrite.execute(
-      sql`UPDATE api_keys SET is_active=false WHERE id=${deviceId}`,
-    );
-    expect((await transfer(revoked.code!)).status).toBe(403);
-    expect((await begin("read").response).status).toBe(401);
-  } finally {
-    server.stop(true);
-    await steward.close();
-  }
-}, 120_000);

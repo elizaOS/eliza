@@ -18,5 +18,5 @@ export async function requireRegisteredMobileApp(
       "invalid_client",
       "Unknown mobile App Auth client",
     );
-  return { ...record, registration };
+  return { app: record.app, registration };
 }
