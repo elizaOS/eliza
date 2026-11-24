@@ -134,34 +134,39 @@ it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperatio
   }
 })
 
-it.effect('A trash record that cannot be read is a failure, never an empty trash (spec/files/reviewedOperations.md, "A trash record that cannot be read fails the trash listing and a restore, and never reads as no record")', effect () => {
+it.effect('A torn trash record is listed as unreadable, refuses only its own restore, and can be emptied (spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied")', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const { root, fs, at } = try storage({ "Download/lease.pdf": "lease", "Download/memo.txt": "memo" })
       provide localVolume(root) {
         const volume = try FilesVolume
         const empty = try volume.trashList()
-        const [lease] = try volume.trash({ paths: ["Download/lease.pdf"] })
-        const info = at(`.Trash-files/info/${lease.to}.json`)
+        const [lease, memo] = try volume.trash({ paths: ["Download/lease.pdf", "Download/memo.txt"] })
+        const torn = lease.to ?? ""
+        const info = at(`.Trash-files/info/${torn}.json`)
         try fs.writeFileString(info, "{not json")
-        const listed = try Effect.flip(volume.trashList())
-        const restored = try Effect.flip(volume.restore([lease.to ?? ""]))
-        const [memo] = try volume.trash({ paths: ["Download/memo.txt"] })
+        const listed = try volume.trashList()
+        const restored = try volume.restore([torn, memo.to ?? "", "not-a-trash-id"])
         const kept = try fs.readFileString(info)
-        const stillListed = try Effect.flip(volume.trashList())
-        try fs.remove(info)
-        const unknown = try volume.restore(["not-a-trash-id"])
+        const stillListed = try volume.trashList()
+        const erased = try volume.emptyTrash([torn], true)
         const remaining = try volume.trashList()
+        const leftBehind = [try fs.exists(info), try fs.exists(at(`.Trash-files/files/${torn}`))]
         try check(() => {
           assert.deepEqual(empty, [])
-          assert.equal(lease.status, "trashed")
-          assert.deepEqual([listed.status, listed.message], ["failed", "The trash could not be read."])
-          assert.deepEqual([restored.status, restored.message], ["failed", "The trash could not be read."])
-          assert.equal(memo.status, "trashed")
+          assert.deepEqual([lease.status, memo.status], ["trashed", "trashed"])
+          assert.deepEqual(listed.filter((item) => item.unreadable !== true).map(({ name, origin }) => ({ name, origin })), [{ name: "memo.txt", origin: "Download/memo.txt" }])
+          assert.deepEqual(listed.filter((item) => item.unreadable === true).map(({ id, name, origin }) => ({ id, name, origin })), [{ id: torn, name: torn, origin: "" }])
+          assert.deepEqual(restored, [
+            { path: torn, status: "failed" },
+            { path: memo.to, status: "restored", to: "Download/memo.txt" },
+            { path: "not-a-trash-id", status: "missing" },
+          ])
           assert.equal(kept, "{not json")
-          assert.equal(stillListed.status, "failed")
-          assert.deepEqual(unknown, [{ path: "not-a-trash-id", status: "missing" }])
-          assert.deepEqual(remaining.map(({ name, origin }) => ({ name, origin })), [{ name: "memo.txt", origin: "Download/memo.txt" }])
+          assert.deepEqual(stillListed.map(({ id, unreadable }) => ({ id, unreadable })), [{ id: torn, unreadable: true }])
+          assert.equal(erased, 1)
+          assert.deepEqual(remaining, [])
+          assert.deepEqual(leftBehind, [false, false])
         })
       }
     })

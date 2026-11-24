@@ -249,13 +249,16 @@ Austin", "traffic near the Bay Bridge", "news around Austin"). Neither is
 searched around a named place.
 
 ```quint
+import phonePosition as Pos from "./phonePosition"
 type NearWords = NamedPlace | OwnPosition | NotAPlace
 type NearKind = PlaceKind | NotAPlaceKind
 type NearSearch = AroundTheNamedPlace | NoNamedPlaceSearch
 pure def nearSearch(nearKind: NearKind, nearWords: NearWords): NearSearch =
   if (nearKind == PlaceKind and nearWords == NamedPlace) AroundTheNamedPlace else NoNamedPlaceSearch
-pure def lawOnlyAPlaceKindNearANamedPlaceIsSearchedAroundIt(nearKind: NearKind, nearWords: NearWords): bool =
-  nearSearch(nearKind, nearWords) == AroundTheNamedPlace iff (nearKind == PlaceKind and nearWords == NamedPlace)
+pure def lawTheOwnersPositionIsNeverSearchedAsANamedPlace(nearKind: NearKind, p: Pos::PhonePosition): bool =
+  Pos::searchAround(nearSearch(nearKind, OwnPosition) == AroundTheNamedPlace, true, p) != Pos::AroundNamedPlace
+pure def lawWordsThatNameNoPlaceNeverMoveTheSearch(nearKind: NearKind, nearMe: bool, p: Pos::PhonePosition): bool =
+  Pos::searchAround(nearSearch(nearKind, NotAPlace) == AroundTheNamedPlace, nearMe, p) == Pos::searchAround(false, nearMe, p)
 ```
 
 ## Story: Ask for directions to the place on my phone's map

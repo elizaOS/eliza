@@ -75,26 +75,34 @@ pure def sometimesFailedMoveRetainsJournal(s: TrashRow): bool = s.phase == MoveF
 pure def sometimesMetadataCleanupRemainsPending(s: TrashRow): bool = s.phase == Expiring and s.journal and not(s.resident)
 ```
 
-### A trash record that cannot be read fails the trash listing and a restore, and never reads as no record
+### A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied
 
 Each trashed item keeps its own record of its name, origin and deletion
 time. A record that is there but cannot be read, such as one torn by an
-interrupted write, is not an absent record: listing the trash fails with
-"The trash could not be read." rather than answering a trash without that
-item, and a restore that names it fails the same way before anything is
-moved, rather than answering that the item is missing. Neither overwrites
-the record. An item with no record at all is still missing, and a trash
-that never held anything is still an empty, readable trash.
+interrupted write, is not an absent record, and it answers only for its
+own item. Listing the trash still lists every readable item, and shows
+the torn one by its trash name, marked unreadable, with no origin or
+deletion time claimed for it, even when its data is already gone, since
+nothing else would ever clear it. A restore that names it answers that item
+failed, never missing, and leaves its record and data where they are,
+while the other items in the same restore are restored as usual. Since
+its deletion time is unknown it never expires on its own: emptying it
+from the trash erases its data and its record, and is how the owner
+clears it. An item with no record at all is still missing, and a trash
+that never held anything is still an empty trash.
 
 ```quint
 type TrashRecordRead = RecordAbsent | RecordRead | RecordUnreadable
-type TrashReadAnswer = TrashReadable | TrashUnreadable
-pure val trashUnreadableMessage = "The trash could not be read."
-pure def trashReadAnswer(recordReads: List[TrashRecordRead]): TrashReadAnswer =
-  if (recordReads.some(read => read == RecordUnreadable)) TrashUnreadable else TrashReadable
-pure val recordReadsValues = Set(List(), List(RecordRead), List(RecordAbsent), List(RecordRead, RecordUnreadable), List(RecordUnreadable, RecordAbsent))
-pure def lawAnUnreadableRecordIsNeverReadAsNoRecord(recordReads: List[TrashRecordRead]): bool =
-  recordReads.some(read => read == RecordUnreadable) iff trashReadAnswer(recordReads) == TrashUnreadable
+type TrashItemAnswer = ItemRestorable | ItemMissing | ItemUnreadable
+pure def trashItemAnswer(read: TrashRecordRead, resident: bool): TrashItemAnswer =
+  if (read == RecordUnreadable) ItemUnreadable else if (read == RecordRead and resident) ItemRestorable else ItemMissing
+pure def emptyErases(read: TrashRecordRead, resident: bool): bool = resident or read != RecordAbsent
+pure def lawAnUnreadableRecordIsNeverReadAsNoRecord(read: TrashRecordRead, resident: bool): bool =
+  trashItemAnswer(read, resident) == ItemMissing implies (read == RecordAbsent or not(resident)) and read != RecordUnreadable
+pure def lawEveryUnreadableItemCanBeEmptied(read: TrashRecordRead, resident: bool): bool =
+  trashItemAnswer(read, resident) == ItemUnreadable implies emptyErases(read, resident)
+pure def lawNoRecordIsStillMissing(resident: bool): bool =
+  trashItemAnswer(RecordAbsent, resident) == ItemMissing and emptyErases(RecordAbsent, resident) == resident
 ```
 
 ## Story: Keep every batch outcome, including the ones I cannot be sure of
