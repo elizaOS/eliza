@@ -26,7 +26,7 @@ export async function protectedStageOperator(signal: AbortSignal) {
       maintenanceReceipt = env.PITR_WRITER_MAINTENANCE_RECEIPT ?? "";
     if (
       env.GITHUB_ACTIONS !== "true" ||
-      env.GITHUB_REF !== "refs/heads/main" ||
+      env.GITHUB_REF !== "refs/heads/main-v3" ||
       env.GITHUB_REPOSITORY !== "elizaOS/eliza" ||
       !COMMIT.test(source) ||
       !COMMIT.test(backupSource) ||
@@ -50,7 +50,7 @@ export async function protectedStageOperator(signal: AbortSignal) {
     const sourceFresh = async () => {
       try {
         const result = (await github.json(
-          "repos/elizaOS/eliza/git/ref/heads/main",
+          "repos/elizaOS/eliza/git/ref/heads/main-v3",
         )) as { object?: { sha?: unknown } };
         return result.object?.sha === source;
       } catch {

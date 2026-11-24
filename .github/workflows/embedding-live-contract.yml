@@ -23,7 +23,7 @@ concurrency:
 jobs:
   qualify:
     name: Authenticated canonical BGE contract
-    if: ${{ (inputs.environment == 'staging' && github.ref == 'refs/heads/staging') || (inputs.environment == 'production' && github.ref == 'refs/heads/main') }}
+    if: ${{ (inputs.environment == 'staging' && github.ref == 'refs/heads/staging-v3') || (inputs.environment == 'production' && github.ref == 'refs/heads/main-v3') }}
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -60,7 +60,7 @@ export function assertStagingOperatorEnvironment(
 ): void {
   if (
     environment.ELIZA_OPERATOR_ENVIRONMENT !== "staging" ||
-    environment.GITHUB_REF !== "refs/heads/staging"
+    environment.GITHUB_REF !== "refs/heads/staging-v3"
   ) {
     throw new StagingDatabaseIdentityError(
       "staging_operator_environment_required",

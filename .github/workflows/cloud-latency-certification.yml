@@ -54,7 +54,7 @@ concurrency:
 jobs:
   token-identity-preflight:
     # The selected protected environment supplies credentials; source refs remain fixed.
-    if: ${{ (inputs.token_identity_preflight || inputs.token_permissions_preflight) && ((inputs.environment == 'production' && github.ref == 'refs/heads/main') || (inputs.environment != 'production' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/staging'))) }}
+    if: ${{ (inputs.token_identity_preflight || inputs.token_permissions_preflight) && ((inputs.environment == 'production' && github.ref == 'refs/heads/main-v3') || (inputs.environment != 'production' && (github.ref == 'refs/heads/develop-v3' || github.ref == 'refs/heads/staging-v3'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     environment: ${{ inputs.environment || 'staging' }}
@@ -80,8 +80,8 @@ jobs:
             echo '{"failure":"unsupported_environment"}'
             exit 1
           fi
-          if [[ "$CERTIFICATION_ENVIRONMENT" == "production" && "$GITHUB_REF" != "refs/heads/main" ]] ||
-             [[ "$CERTIFICATION_ENVIRONMENT" != "production" && "$GITHUB_REF" != "refs/heads/develop" && "$GITHUB_REF" != "refs/heads/staging" ]]; then
+          if [[ "$CERTIFICATION_ENVIRONMENT" == "production" && "$GITHUB_REF" != "refs/heads/main-v3" ]] ||
+             [[ "$CERTIFICATION_ENVIRONMENT" != "production" && "$GITHUB_REF" != "refs/heads/develop-v3" && "$GITHUB_REF" != "refs/heads/staging-v3" ]]; then
             echo '{"failure":"untrusted_ref"}'
             exit 1
           fi
@@ -117,9 +117,9 @@ jobs:
             echo "::error::expected_deploy_sha must be a lowercase 40-character commit."
             exit 1
           fi
-          expected_ref="refs/heads/staging"
+          expected_ref="refs/heads/staging-v3"
           if [[ "$CERTIFICATION_ENVIRONMENT" == "production" ]]; then
-            expected_ref="refs/heads/main"
+            expected_ref="refs/heads/main-v3"
             if [[ "$RUN_AUTH" == "true" || "$RUN_SUSPENDED" == "true" ]]; then
               echo "::error::Auth cache probes are supported only in staging."
               exit 1
