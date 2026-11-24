@@ -35,8 +35,9 @@ A refused event answers 409 and changes nothing; a store failure answers 503.
 The installation id is the agent's own store id (`storage/database.md`),
 never a second identity. A first registration records the owner, the key
 hash and the workflow protocol, and connects the device to the bridge with
-the capabilities it declares. Registering again with the same key changes
-only the workflow protocol. The agent keeps one enrollment. When its owner
+the capabilities it declares; a registration that names none declares the
+whole vocabulary. Registering again with the same key changes only the
+workflow protocol. The agent keeps one enrollment. When its owner
 registers under another key, as a reinstalled or replaced phone does, the
 shell computes the revocation and new enrollment together and commits them
 with the retirement of earlier requests in one transaction. A failed
