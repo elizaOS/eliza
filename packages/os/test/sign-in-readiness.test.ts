@@ -3,10 +3,8 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import * as spec from "../gen/os__signIn__readiness.ts";
 import { compileAdapter, orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts";
+import { expectCasesAgree, javaTool, type Case } from "./support/law-cases.ts";
 
-interface Case { readonly fn: string; readonly args: readonly unknown[]; readonly result: unknown }
-
-const javaTool = (name: string) => process.env.JAVA_HOME ? `${process.env.JAVA_HOME}/bin/${name}` : name;
 function javaLines(main: string, classpath: string = compileAdapter(main)): unknown[] {
   const out = execFileSync(javaTool("java"), ["-cp", classpath, main], { encoding: "utf8", maxBuffer: 1 << 28, timeout: 120_000 });
   return out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as unknown);
@@ -27,14 +25,10 @@ describe("Show only the methods the cloud is ready for", () => {
     const names = new Set(cases.map((c) => c.fn));
     expect(cases.length).toBeGreaterThan(1000);
     expect([...names].filter((name) => typeof functions[name] !== "function")).toEqual([]);
-    const differing = cases.filter((c) => JSON.stringify(functions[c.fn](...c.args)) !== JSON.stringify(c.result));
-    expect(differing.slice(0, 5)).toEqual([]);
+    expectCasesAgree(cases, (c) => functions[c.fn](...c.args));
     const opened = (handlers: readonly string[]) => cases.filter((c) => c.fn === "browserToOpen" && JSON.stringify(c.args[0]) === JSON.stringify(handlers)).map((c) => c.result);
     expect(new Set(opened(["ai.example.phone", "org.chromium.webview_shell"]))).toEqual(new Set([""]));
     expect(new Set(opened(["org.chromium.webview_shell", "com.android.chrome"]))).toEqual(new Set(["com.android.chrome"]));
-    for (const law of [...names].filter((name) => name.startsWith("law"))) {
-      expect(cases.filter((c) => c.fn === law && c.result !== true)).toEqual([]);
-    }
   });
 
   it("serves a fresh answer at once, measures behind it, keeps it through no reading and announces only a change", async () => {

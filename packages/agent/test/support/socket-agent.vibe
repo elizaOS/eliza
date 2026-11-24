@@ -1,0 +1,22 @@
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/resources.md, "Story: Release everything I acquired, once"
+import { parseLaunch } from "../../src/host/launch.vibe"
+import { startAgent } from "../../src/host/process.vibe"
+import { host } from "./kernel.vibe"
+import { launchDocument, launchFrame, type FrameOptions, type LaunchOptions, type Scratch } from "./scratch.ts"
+
+export type ParsedLaunch = Effect.Success<ReturnType<typeof parseLaunch>>
+
+export effect function agentOnSocket(parsed: ParsedLaunch, state: Scratch, retire = "retire agent") {
+  return try acquireRelease(
+    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file("agent.sock") } }),
+    (agent) => orDie(host(retire, () => agent.stop())),
+  )
+}
+
+export effect function launchOnSocket(state: Scratch, options: LaunchOptions, frameOptions: FrameOptions) {
+  const frame = launchFrame(frameOptions)
+  const document = try Effect.try(() => launchDocument(options))
+  const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
+  const running = try agentOnSocket(parsed, state)
+  return { socket: state.file("agent.sock"), frame, parsed, running }
+}

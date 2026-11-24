@@ -1,9 +1,11 @@
 // spec/agent/deviceActions/telephony.md, "The model asks which of alternative SMS recipients is meant, in its own words, before any lookup"
 // spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
 import { assert, it } from "@effect/vitest"
-import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
-import { builtinModuleFactories } from "../src/plugins/profile.vibe"
-import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vibe"
+import type { DeviceOperation } from "../src/device-actions/operations.schema.vibe"
+import { phoneDialNumber, writtenPhoneNumbers } from "../src/device-actions/proposal/telephony/dial-number.vibe"
+import { groundTelephonyTarget } from "../src/device-actions/proposal/telephony/grounding.vibe"
+import { requestedSmsDraftRecipient } from "../src/device-actions/proposal/telephony/request.vibe"
+import { deviceJourney } from "./support/device-agent.vibe"
 
 module node {
   import { setTimeout as wait } from "node:timers/promises"
@@ -71,6 +73,7 @@ module node {
     }
   }
 
+  /** @throws {never} */
   export async function roleGuidanceFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, capabilities.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities, workflowProtocol: 1 })
@@ -117,6 +120,7 @@ module node {
     }
   }
 
+  /** @throws {never} */
   export async function smsReceiptFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, capabilities.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities, workflowProtocol: 1 })
@@ -158,6 +162,7 @@ module node {
     }
   }
 
+  /** @throws {never} */
   export async function telephonyFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, capabilities.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities, workflowProtocol: 1 })
@@ -330,16 +335,7 @@ const numberNotSaved = "I didn't save that, because that number isn't one you wr
 const askRecipient = "Which person should receive this draft? Give one recipient."
 
 it.live('An admitted contact target tells the planner to propose a role directly (spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query")', effect () => {
-  const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({
-    launch: {
-      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1, persistMemory: true,
-      load: [deviceActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool],
-    },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
-  })
-  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
-  const observed = try host("role guidance at the chat provider", () => roleGuidanceFromChat(agent.agent.runtime, socket, agent.frame.token, cloud))
+  const observed = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool], persistMemory: true }, "role guidance at the chat provider", roleGuidanceFromChat)
   try Effect.try(() => assert.deepStrictEqual(observed, {
     stable: true,
     guidance: [
@@ -357,28 +353,12 @@ it.live('An admitted contact target tells the planner to propose a role directly
 }, 120_000)
 
 it.live('A submitted SMS receipt remains in its originating conversation and carries no body (spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running")', effect () => {
-  const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({
-    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
-      load: [deviceActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool] },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
-  })
-  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
-  const outcomes = try host("an SMS receipt in its originating room", () => smsReceiptFromChat(agent.agent.runtime, socket, agent.frame.token, cloud))
+  const outcomes = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool] }, "an SMS receipt in its originating room", smsReceiptFromChat)
   assert.deepStrictEqual(outcomes, { originalStatus: true, guidance: true, privateText: false, otherProposal: false, settled: ["done"] })
 }, 120_000)
 
 it.live(`A call, dial, keypad, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, the sender is read only as asked, only what the owner asked for runs without its card, and a settled request is answered by the model from its result (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request")`, effect () => {
-  const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({
-    launch: {
-      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1, persistMemory: true,
-      load: [deviceActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool],
-    },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
-  })
-  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
-  const observed = try host("telephony from chat", () => telephonyFromChat(agent.agent.runtime, socket, agent.frame.token, cloud))
+  const observed = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool], persistMemory: true }, "telephony from chat", telephonyFromChat)
   try Effect.try(() => assert.deepStrictEqual(observed, {
     alternativeRecipients: { replies: ["Carson or Maya?", "To Carson, or to that number?"], completionCalls: 2, proposals: 0, guided: true },
     alternativeInBody: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "choose green or blue that matches." } },
@@ -473,3 +453,72 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
     copyReference: { reply: numberNotWritten, toldReference: true },
   }))
 }, 180_000)
+
+const telephony = "spec/agent/deviceActions/telephony.md"
+
+it.effect(`A written number is read as its one dial form: one digit may follow a country code, and a trunk (0) is dropped after +44, +49 and +41 and kept as a 0 after +39, +378 and +225 (${telephony}, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; ${telephony}, "A whole-message call, text or dial command hands through the owner's own recipient")`, effect () => {
+  const forms = [
+    "+33 1 23 45 67 89", "+61 2 9876 5432", "+54 9 11 1234-5678", "+33 1 2 34 56 78",
+    "+44 (0)20 7946 0958", "+49(0)30 1234567", "+41 (0) 44 668 18 00", "+39 (0)55 123 4567", "+39 (0)6 1234 5678",
+    "+378 (0)549 882 123", "+225 (0)7 07 12 34 56", "+44 (0)",
+  ]
+  const call = (number: string) => ({ type: "phone_call", target: { kind: "number", number } }) as DeviceOperation
+  try Effect.try(() => assert.deepStrictEqual({
+    dialForms: forms.map((written) => [written, phoneDialNumber(written)]),
+    written: [writtenPhoneNumbers("+39 (0)55 123 4567"), writtenPhoneNumbers("+44 (0)20 7946 0958")],
+    handedThrough: [
+      groundTelephonyTarget(call("+39551234567"), "call +39 (0)55 123 4567", [], false),
+      groundTelephonyTarget(call("+442079460958"), "call +44 (0)20 7946 0958", [], false),
+    ],
+  }, {
+    dialForms: [
+      ["+33 1 23 45 67 89", "+33123456789"], ["+61 2 9876 5432", "+61298765432"], ["+54 9 11 1234-5678", "+5491112345678"], ["+33 1 2 34 56 78", undefined],
+      ["+44 (0)20 7946 0958", "+442079460958"], ["+49(0)30 1234567", "+49301234567"], ["+41 (0) 44 668 18 00", "+41446681800"],
+      ["+39 (0)55 123 4567", "+390551234567"], ["+39 (0)6 1234 5678", "+390612345678"], ["+378 (0)549 882 123", "+3780549882123"],
+      ["+225 (0)7 07 12 34 56", "+2250707123456"], ["+44 (0)", undefined],
+    ],
+    written: [["+390551234567"], ["+442079460958"]],
+    handedThrough: [
+      { kind: "grounded", operation: call("+390551234567"), handedThrough: true },
+      { kind: "grounded", operation: call("+442079460958"), handedThrough: true },
+    ],
+  }))
+})
+
+it.effect(`A text keeps the recipient's name when the words to send are inside it (${telephony}, "A proposed contact name is one the owner wrote as whole words, outside the text to send")`, effect () => {
+  const named = (query: string, body: string) => ({ type: "sms_compose", target: { kind: "contact", query }, body }) as DeviceOperation
+  const requests: ReadonlyArray<readonly [string, string, string]> = [
+    ["Phil", "hi", "text Phil hi"],
+    ["Sophie", "hi", "text Sophie hi"],
+    ["Sophie", "hi", "send Sophie a text saying hi"],
+    ["Phil", "hi", "send Phil a text saying hi"],
+    ["Brooke", "ok", "send Brooke a text: ok"],
+    ["Sophia", "hi", "text Sophia hi"],
+    ["Noah", "no", "message Noah: no"],
+    ["Brooke", "ok", "send a text to Brooke: ok"],
+    ["Sam", "hi", "text Sam hi"],
+  ]
+  try Effect.try(() => assert.deepStrictEqual(
+    requests.map(([query, body, request]): readonly [string, unknown] => [request, groundTelephonyTarget(named(query, body), request, [], false)]),
+    requests.map(([query, body, request]): readonly [string, unknown] => [request, { kind: "grounded", operation: named(query, body), handedThrough: false }]),
+  ))
+})
+
+it.effect(`A drafted text's recipient ends where a clause of what to say begins (${telephony}, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there")`, effect () => {
+  const toSam = [
+    "Draft a text to Sam to ask him about dinner tonight",
+    "Write a message to Sam to tell him I'm running late",
+    "Draft a text to Sam to remind him about the tripod",
+    "Draft a text to Sam to see if he's free tonight",
+    "Draft a text to Sam to check if he got home",
+    "Draft a text to Sam to let him know I'm running late",
+    "Draft a text to Sam letting him know I'm running late",
+  ]
+  try Effect.try(() => assert.deepStrictEqual({
+    toSam: toSam.map((request) => [request, requestedSmsDraftRecipient(request)]),
+    toNumber: requestedSmsDraftRecipient("Draft a text to +1 (415) 555-0124 to ask about the tripod"),
+  }, {
+    toSam: toSam.map((request) => [request, { kind: "contact", query: "Sam" }]),
+    toNumber: { kind: "number", number: "+14155550124" },
+  }))
+})
