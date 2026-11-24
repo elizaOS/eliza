@@ -40,7 +40,7 @@ effect function chatCloud(additionalOffers = false) {
   const settings = profile.environments.staging.inference
   if (settings === undefined) return try Effect.die("the test profile offers no inference")
   for (const offer of settings.models) {
-    try cloud.store.transaction((tx) => setModelPrice(tx, settings, { modelId: offer.id, inputPer1K: 1000, outputPer1K: 2000 }))
+    try cloud.store.transaction((tx) => setModelPrice(tx, settings, { modelId: offer.id, inputPer1K: 1000, outputPer1K: 2000, ...(offer.id === "wide-chat" ? { cachedInputPer1K: 0 } : {}) }))
   }
   const { bearer: key } = try signedCaller(cloud, "owner")
   provide Store = cloud.store {
@@ -67,6 +67,11 @@ effect function settledCount(cloud: TestCloud, organizationId: string, count: nu
 function status(answer: { readonly status: number; readonly body: unknown; readonly headers: Readonly<Record<string, string>> }): unknown {
   const body = answer.body as { readonly error?: string }
   return [answer.status, body.error, answer.headers["retry-after"]]
+}
+
+function fault(answer: { readonly body: unknown }): unknown {
+  const body = answer.body as { readonly code?: unknown; readonly param?: unknown; readonly message?: unknown }
+  return [body.code, body.param, body.message]
 }
 
 function frames(text: string): ReadonlyArray<string> {
@@ -96,7 +101,7 @@ effect function hangUpAfterFirstBytes(url: string, key: string) {
 }
 
 describe("WP5 Inference: chat completions", () => {
-  it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent and answering a provider's refusal of the request as the caller's (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
+  it.live("Answer a chat completion once and charge it once, including provider errors, rate limits and cached prompt reads (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/models.md, \"Each side costs its tokens at its price plus 20 percent, rounded half up to a whole micro-dollar\"; spec/cloud/services/inference.md, \"A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A provider's refusal of the request passes on its listed code and parameter and nothing else\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
     const { cloud, llm, chat } = try chatCloud(true)
     const { model, messages } = request
     const unbounded = { model, messages }
@@ -108,11 +113,19 @@ describe("WP5 Inference: chat completions", () => {
     const callsBeforeAdmission = llm.bodies.length
     const whole = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
     const again = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
-    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 }))
+    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 59 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 },
+      { kind: "reject", status: 400, body: { code: "parser_error", param: "prompt", type: "generation_error", message: "Failed to parse tool call" } },
+      { kind: "reject", status: 400, body: { error: { code: "insufficient_quota", param: "tools", message: "You exceeded your current quota" } } },
+      { kind: "reject", status: 422, body: { code: "parser_error", param: "tool_calls" } },
+      { kind: "reject", status: 418 }))
     const refusedByProvider = try chat(request)
     const unreadable = try chat(request)
     const rejectedByProvider = try chat(request)
     const providerAuthFailed = try chat(request)
+    const unparsedByProvider = try chat(request)
+    const unlistedByProvider = try chat(request)
+    const unprocessableByProvider = try chat(request)
+    const unlistedProviderFailure = try chat(request)
     const planning = {
       tools: [{ type: "function", function: { name: "SEARCH", parameters: { type: "object", properties: {} } } }],
       tool_choice: { type: "function", function: { name: "SEARCH" } },
@@ -121,7 +134,7 @@ describe("WP5 Inference: chat completions", () => {
     const legacy = try chat({ ...request, ...planning, model: "legacy-chat", max_completion_tokens: 64 })
     const wide = try chat({ ...unbounded, model: "wide-chat", stream: true })
     const answer = whole.body as { readonly model: string; readonly choices: ReadonlyArray<{ readonly message: { readonly content: string } }> }
-    const usage = try settledCount(cloud, "org-owner", 7)
+    const usage = try settledCount(cloud, "org-owner", 11)
     const holds = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = 'org-owner' ORDER BY phase", [])
     const funds = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = 'org-owner'", [])
     const brokeUsage = try usageRows(cloud, "org-broke")
@@ -136,11 +149,15 @@ describe("WP5 Inference: chat completions", () => {
         whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], status(again)],
         upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens, body.max_completion_tokens]),
         idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
-        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[5]?.[field]])),
+        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[9]?.[field]])),
         refusedByProvider: status(refusedByProvider),
         unreadable: status(unreadable),
-        rejectedByProvider: status(rejectedByProvider),
-        providerAuthFailed: status(providerAuthFailed),
+        rejectedByProvider: [status(rejectedByProvider), fault(rejectedByProvider)],
+        providerAuthFailed: [status(providerAuthFailed), fault(providerAuthFailed)],
+        unparsedByProvider: [status(unparsedByProvider), fault(unparsedByProvider)],
+        unlistedByProvider: [status(unlistedByProvider), fault(unlistedByProvider)],
+        unprocessableByProvider: [status(unprocessableByProvider), fault(unprocessableByProvider)],
+        unlistedProviderFailure: status(unlistedProviderFailure),
         usage,
         brokeUsage,
         holds: holds.map((row) => row.phase),
@@ -156,17 +173,23 @@ describe("WP5 Inference: chat completions", () => {
         whole: [200, "test-chat", replyText, "no-store", [409, "already_dispatched", undefined]],
         upstream: [[upstreamModel, false, 4096, undefined], [upstreamModel, false, 16, undefined],
           [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
-          [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
         idempotencyForwarded: false,
         planningForwarded: planning,
-        refusedByProvider: [503, "provider_unavailable", "7"],
+        refusedByProvider: [429, "rate_limited", "59"],
         unreadable: [502, "provider_invalid_response", undefined],
-        rejectedByProvider: [400, "invalid_request", undefined],
-        providerAuthFailed: [503, "provider_unavailable", "5"],
-        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["known", 166, 31], ["known", 19673, 31]],
+        rejectedByProvider: [[400, "invalid_request", undefined], ["context_length_exceeded", "messages", undefined]],
+        providerAuthFailed: [[503, "provider_unavailable", "5"], [undefined, undefined, undefined]],
+        unparsedByProvider: [[400, "invalid_request", undefined], ["parser_error", undefined, undefined]],
+        unlistedByProvider: [[400, "invalid_request", undefined], [undefined, "tools", undefined]],
+        unprocessableByProvider: [[400, "invalid_request", undefined], [undefined, undefined, undefined]],
+        unlistedProviderFailure: [503, "provider_unavailable", "5"],
+        usage: [["known", 1212, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0],
+          ["unknown", 50, 50], ["known", 166, 31], ["known", 1212, 27]],
         brokeUsage: [],
-        holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled"],
-        balance: 1_000_000 - 31 * 3 - 50
+        holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled"],
+        balance: 1_000_000 - 31 * 2 - 27 - 50 * 2
       }
     ))
   }), 90_000)

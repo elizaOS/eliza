@@ -2,7 +2,7 @@
 module node {
   import { Effect, Option, Schema } from "effect"
   import type { IDatabaseAdapter } from "@elizaos/core"
-  import { canExpire, showsReadReplyOrigin, type DeviceRequest, type ReviewOutcome } from "../../gen/agent__deviceActions.effect.vibe"
+  import { canExpire, reviewEvidenceAdmitted, showsReadReplyOrigin, type DeviceRequest, type ReviewEvidence, type ReviewOutcome } from "../../gen/agent__deviceActions.effect.vibe"
   import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
   import type { LocalRoute, RouteInput } from "../access/routes.vibe"
   import { capabilitiesHeader, negotiation, openViewAllowed } from "./capabilities.vibe"
@@ -18,7 +18,10 @@ module node {
   const Decision = Schema.Struct({ digest: Digest, decision: Schema.Literals(["approve", "reject"]) })
   const Claim = Schema.Struct({ digest: Digest })
   const Receipt = Schema.Struct({ digest: Digest, attemptId: AttemptId, receipt: Schema.Unknown })
-  const Reconciliation = Schema.Struct({ digest: Digest, attemptId: AttemptId, review: Schema.Literals(["applied", "not_applied", "unresolved"]) })
+  const AppliedEvidence = Schema.Struct({ operationId: Schema.String, result: Schema.optionalKey(Schema.Unknown) })
+  const Reconciliation = Schema.Struct({
+    digest: Digest, attemptId: AttemptId, review: Schema.Literals(["applied", "not_applied", "unresolved"]), applied: Schema.optionalKey(AppliedEvidence),
+  })
   const decision = Schema.decodeUnknownOption(Decision, { onExcessProperty: "error" })
   const claim = Schema.decodeUnknownOption(Claim, { onExcessProperty: "error" })
   const receipt = Schema.decodeUnknownOption(Receipt, { onExcessProperty: "error" })
@@ -78,6 +81,19 @@ module node {
     }
   }
 
+  type AdmittedEvidence = { readonly verdict: ReviewEvidence; readonly providerReceipt?: DeviceReceipt; readonly result?: unknown }
+
+  function reviewEvidence(checked: CheckedOperation, applied: typeof AppliedEvidence.Type | undefined, proposalId: string): AdmittedEvidence {
+    if (applied === undefined) return { verdict: "NoReviewEvidence" }
+    const verdict = receiptOutcome(checked, { outcome: "applied", ...applied }, proposalId)
+    if (verdict.kind !== "admitted" || verdict.reported !== "ReportedApplied") return { verdict: "RefusedReviewEvidence" }
+    const { outcome, operationId } = verdict.receipt
+    return {
+      verdict: "AppliedReviewEvidence", result: verdict.result,
+      providerReceipt: { outcome, ...(operationId === undefined ? {} : { operationId }), ...(verdict.result === undefined ? {} : { result: verdict.result }) },
+    }
+  }
+
   function reviewedOf(record: Pick<RequestRow, "terms">, header: string | undefined): Reviewed | undefined {
     const { binding, boundProfile } = record.terms
     const scope = scopeOf(binding)
@@ -119,7 +135,7 @@ module node {
   function observedPhase({ state, claim, providerReceipt }: Pick<RequestRow, "state" | "claim" | "providerReceipt">): ProposalState | undefined {
     switch (state.phase.tag) {
       case "Offered": return { state: canExpire(state) ? "expired" : "pending" }
-      case "Approved": return { state: "approved" }
+      case "Approved": return { state: canExpire(state) ? "expired" : "approved" }
       case "Declined": return { state: "rejected" }
       case "Expired":
       case "Retired": return { state: "expired" }
@@ -189,8 +205,12 @@ module node {
             : failure(409, "receipt_refused")
         }
         if (event.kind === "reconciliation") {
+          const review = reviews[event.value.review]
+          const evidence = reviewEvidence(terms.checked, event.value.applied, proposalId)
+          if (!reviewEvidenceAdmitted(review, evidence.verdict)) return failure(409, "reconciliation_refused")
           const kept = await Effect.runPromise(recordRequestReview(adapter, {
-            ...request, attemptId: event.value.attemptId, review: reviews[event.value.review],
+            ...request, attemptId: event.value.attemptId, review,
+            ...(evidence.providerReceipt === undefined ? {} : { evidence: { providerReceipt: evidence.providerReceipt, result: evidence.result } }),
           }))
           if (kept.kind === "attempt_refused") return failure(409, "attempt_refused")
           const phase = kept.kind === "reviewed" ? observedPhase(kept) : undefined

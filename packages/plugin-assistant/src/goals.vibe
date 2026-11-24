@@ -1,10 +1,10 @@
-// spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/goals.md, "A new goal is refused only when an active goal has the same title"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/goals.md, "A check-in the owner dismissed never comes back for the same slot"; spec/assistant/goals.md, "The owner's answer to a fired check-in sets the goal's review state"; spec/assistant/goals.md, "Story: Review how my goals are going"; spec/assistant/goals.md, "A review reads one named goal's latest answer, or groups every active goal by how it is going, and changes nothing"
-import { createReminderPresentation, type Action, type ActionResult, type Provider, type UUID } from "@elizaos/core"
-import { Machine, answerFresh, answeredRecently, canFireCheckin, cadenceSlots, checkinLogLimit, duplicatesGoal, reviewGroup, stored, type Cadence, type Goal, type GoalStatus, type ReviewGroup, type ReviewState } from "../gen/assistant__goals.effect.vibe"
+// spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/goals.md, "A new goal is refused only when an active goal has the same title"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/goals.md, "A check-in the owner dismissed never comes back for the same slot"; spec/assistant/goals.md, "The owner's answer to a fired check-in sets the goal's review state"; spec/assistant/goals.md, "Story: Review how my goals are going"; spec/assistant/goals.md, "A review reads one named goal's latest answer, or groups every active goal by how it is going, and changes nothing"; spec/assistant/goals.md, "A message may ask for several goals, and a goal is renamed only to a nonblank title no other active goal has"; spec/assistant/goals.md, "A list tells every goal the owner keeps with its status, and changes nothing"; spec/assistant/names.md, "Story: Name what I keep without repeating its whole title"
+import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type Provider, type UUID } from "@elizaos/core"
+import { Machine, answerFresh, answeredRecently, canFireCheckin, cadenceSlots, checkinLogLimit, duplicatesGoal, goalListed, renameGoalAdmitted, reviewGroup, stored, type Cadence, type Goal, type GoalStatus, type ReviewGroup, type ReviewState } from "../gen/assistant__goals.effect.vibe"
 import { Facts, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, requestOf, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attempt } from "./replies.vibe"
 import { noteOwnerAnswer } from "./escalation.vibe"
-import { liveReminders, reminderWhen } from "./reminders.vibe"
+import { liveReminders, namedAmong, reminderWhen } from "./reminders.vibe"
 import { GoalRequest } from "./requests.schema.vibe"
 import { listRoutines, routineTimes } from "./routines.vibe"
 import { currentTodos, renderTodos } from "./todos.vibe"
@@ -126,8 +126,7 @@ effect function changed(record: GoalRecord, event: GoalEvent, key: string, done:
 }
 
 effect function named(target: string, key: string) {
-  const name = titleKey(target)
-  const matches = (try listGoals()).filter(({ record }) => record.goalId === target || titleKey(record.title) === name)
+  const matches = namedAmong(try listGoals(), target, ({ record }) => record.goalId, ({ record }) => record.title)
   if (matches.length === 1) return matches[0]
   const at = try (try Facts).now()
   return {
@@ -192,13 +191,22 @@ export effect function changeGoal(input: unknown, messageId: string) {
     const title = request.title.trim()
     const same = (try listGoals()).find(({ record, goal }) => duplicatesGoal(goal.status, titleKey(record.title), titleKey(title)))
     if (same !== undefined) return { success: true, text: `"${same.record.title}" is already one of your goals.`, data: { goalId: same.record.goalId, outcome: "existing" } } satisfies ActionResult
-    const record: GoalRecord = { goalId: `goal-${messageId}`, title, description: request.description ?? "", cadence: request.cadence, tasks: {}, generations: {}, lastFired: 0, log: [] }
+    const titleId = try Effect.orDie(Effect.try(() => stringToUuid(titleKey(title))))
+    const record: GoalRecord = { goalId: `goal-${messageId}-${titleId}`, title, description: request.description ?? "", cadence: request.cadence, tasks: {}, generations: {}, lastFired: 0, log: [] }
     const checkins = cadenceSlots(cadences[request.cadence]).length
-    return try changed(record, { type: "createGoal", cadence: cadences[request.cadence] }, key,
+    return try changed(record, { type: "createGoal", cadence: cadences[request.cadence] }, `${key}:${titleId}`,
       `Saved the goal "${title}"${checkins === 0 ? "" : request.cadence === "daily" ? ", with morning and evening check-ins" : ", with a weekly check-in"}.`,
       `The goal "${title}" was not saved.`)
   }
   if (request.op === "review") return try reviewGoals(request.target, key)
+  if (request.op === "list") {
+    const goals = (try listGoals()).filter(({ goal }) => goalListed(goal.status))
+    const lines = goals.map(({ record, goal }) => `- "${record.title}" (${statusWord(goal.status)}${record.cadence === "none" ? "" : `, ${record.cadence} check-ins`})`)
+    return {
+      success: true, text: lines.length === 0 ? "You have no goals saved." : ["Your goals:", ...lines].join("\n"),
+      data: { goals: goals.map(({ record, goal }) => ({ goalId: record.goalId, title: record.title, status: statusWord(goal.status), cadence: record.cadence })) },
+    } satisfies ActionResult
+  }
   const found = try named(request.target, key)
   if (!("record" in found)) return found
   const { record, goal } = found
@@ -207,6 +215,25 @@ export effect function changeGoal(input: unknown, messageId: string) {
       const cadence = request.cadence ?? record.cadence
       return try changed({ ...record, cadence }, { type: "updateGoal", status: statuses[request.status], cadence: cadences[cadence] }, key,
         `"${record.title}" is now ${request.status}${request.status === "active" && cadence !== "none" ? `, with ${cadence} check-ins` : ""}.`, `"${record.title}" was not changed.`)
+    }
+    case "rename": {
+      const title = request.title.trim()
+      const taken = (try listGoals()).some((other) => other.record.goalId !== record.goalId && duplicatesGoal(other.goal.status, titleKey(other.record.title), titleKey(title)))
+      if (!renameGoalAdmitted(title, taken)) {
+        return {
+          success: false, text: title === "" ? "What should the goal be called?" : `"${title}" is already one of your goals, so "${record.title}" was not renamed.`,
+          data: { outcome: title === "" ? "GOAL_TITLE_MISSING" : "existing", goalId: record.goalId },
+        } satisfies ActionResult
+      }
+      const scheduler = try Scheduler
+      for (const [slot, taskId] of Object.entries(record.tasks)) {
+        scheduler.edit(taskId, { promptInstructions: `Check in on "${title}"` }, `${key}:slot:${slot}`) catch () => undefined
+      }
+      try keepRecord({ ...record, title })
+      const receipt = appliedReceipt({ operation: "goal.rename", kind: "goal", id: record.goalId, key, at: try (try Facts).now() })
+      return attributed([{ actionName: goalsAction, success: true, receipts: [receipt] }], `goal:${record.goalId}`, {
+        done: `Renamed the goal "${record.title}" to "${title}".`, notDone: `"${record.title}" was not renamed.`, unproven: `I couldn't confirm "${record.title}" was renamed.`,
+      }, { goalId: record.goalId })
     }
     case "delete": return try changed(record, { type: "deleteGoal" }, key, `Deleted the goal "${record.title}".`, `"${record.title}" was not deleted.`)
     case "dismiss_checkin": {
@@ -251,14 +278,14 @@ export effect function deliverGoalCheckin(task: TaskRow) {
 
 export const ownerGoalsAction: Action = {
   name: goalsAction,
-  description: "Create, update, pause, archive, delete, check in on or review the owner's goals. A daily goal checks in morning and evening, a weekly goal once a week; a dismissed check-in never comes back. Review one goal by its target, or every active goal this week with no target.",
+  description: "Create, update, rename, pause, archive, delete, check in on, list or review the owner's goals. A message that asks for several goals creates each. A daily goal checks in morning and evening, a weekly goal once a week; a dismissed check-in never comes back. List every goal with its status (op list), paused and archived ones too. Review one goal by its target, or every active goal this week with no target.",
   similes: ["GOALS", "SET_GOAL", "UPDATE_GOAL", "REVIEW_GOALS", "GOAL_CHECKIN"],
   parameters: [
-    { name: "op", required: true, description: "create, update, delete, dismiss_checkin, checkin or review.", schema: { type: "string", enum: ["create", "update", "delete", "dismiss_checkin", "checkin", "review"] } },
-    { name: "title", required: false, description: "For create: the goal.", schema: { type: "string" } },
+    { name: "op", required: true, description: "create, update, rename, delete, dismiss_checkin, checkin, list or review.", schema: { type: "string", enum: ["create", "update", "rename", "delete", "dismiss_checkin", "checkin", "list", "review"] } },
+    { name: "title", required: false, description: "For create: the goal. For rename: its new title.", schema: { type: "string" } },
     { name: "description", required: false, description: "For create: what the goal means.", schema: { type: "string" } },
     { name: "cadence", required: false, description: "none, daily or weekly check-ins.", schema: { type: "string", enum: ["none", "daily", "weekly"] } },
-    { name: "target", required: false, description: "The goal's title or id; leave it out of review for the weekly review of every active goal.", schema: { type: "string" } },
+    { name: "target", required: false, description: "The goal's title, words from it, or its id; leave it out of review for the weekly review of every active goal.", schema: { type: "string" } },
     { name: "status", required: false, description: "For update: active, paused, archived or satisfied.", schema: { type: "string", enum: ["active", "paused", "archived", "satisfied"] } },
     { name: "slot", required: false, description: "For dismiss_checkin: morning, evening or weekly.", schema: { type: "string", enum: ["morning", "evening", "weekly"] } },
     { name: "progress", required: false, description: "For checkin: on_track, at_risk or needs_attention.", schema: { type: "string", enum: ["on_track", "at_risk", "needs_attention"] } },

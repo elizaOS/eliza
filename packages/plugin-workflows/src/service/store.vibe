@@ -1,4 +1,4 @@
-// spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"
+// spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"; spec/workflow/execution.md, "A run's stored record leaves out U+0000, which the store cannot hold"
 import type { Lifecycle } from "../../gen/workflow__lifecycle.effect.vibe"
 import type { Workflow as Admission } from "../../gen/workflow__admission.effect.vibe"
 import type { WakeupRun } from "../../gen/workflow__execution.effect.vibe"
@@ -64,6 +64,7 @@ export interface ApprovalRow {
   readonly decidedAt?: string
 }
 export interface RunEvent { readonly type: string; readonly timestamp: string; readonly nodeId?: string }
+export interface StoredRunEvent extends RunEvent { readonly ordinal?: number }
 export interface RunRow {
   readonly id: string
   readonly workflowId: string
@@ -89,7 +90,8 @@ export interface RunRow {
   readonly next: number
   readonly allowed: boolean
   readonly approvals: readonly ApprovalRow[]
-  readonly events: readonly RunEvent[]
+  readonly events: readonly StoredRunEvent[]
+  readonly eventsDropped?: number
   readonly cancellationRequestedAt?: string
   readonly hostedDigest?: Readonly<Record<string, unknown>>
   readonly waitingSignal?: string
@@ -122,8 +124,23 @@ module node {
 
   export interface Stored<A> { readonly revision: number; readonly row: A }
 
+  const escapedKeys = "workflow-json-keys-v1"
+
   function parsed<A>(value: unknown): A {
-    return (typeof value === "string" ? JSON.parse(value) : value) as A
+    const document: unknown = typeof value === "string" ? JSON.parse(value) : value
+    if (Array.isArray(document) && document.length === 2 && document[0] === escapedKeys && typeof document[1] === "string") {
+      return JSON.parse(document[1]) as A
+    }
+    return document as A
+  }
+
+  function jsonb(value: unknown): string {
+    let hasEscapedKey = false
+    const document = JSON.stringify(value, (key, item: unknown) => {
+      if (key.includes("\u0000")) hasEscapedKey = true
+      return typeof item === "string" ? item.replaceAll("\u0000", "") : item
+    })
+    return hasEscapedKey ? JSON.stringify([escapedKeys, document]) : document
   }
 
   export function migrate(sql: WorkflowSql, statements: string): Promise<void> {
@@ -132,11 +149,15 @@ module node {
     })
   }
 
-  export function definitions<A>(sql: WorkflowSql, owner: string): Promise<Stored<A>[]> {
+  export function definitionRecords(sql: WorkflowSql, owner: string) {
     return sql.transaction(async (q) => {
-      const found = await q.query<{ revision: number; data: unknown }>("SELECT revision, data FROM workflow_definitions WHERE owner = $1 ORDER BY id", [owner])
-      return found.rows.map((row) => ({ revision: row.revision, row: parsed<A>(row.data) }))
+      const found = await q.query<{ id: string; revision: number; data: unknown }>("SELECT id, revision, data FROM workflow_definitions WHERE owner = $1 ORDER BY id", [owner])
+      return found.rows
     })
+  }
+
+  export async function definitions<A>(sql: WorkflowSql, owner: string): Promise<Stored<A>[]> {
+    return (await definitionRecords(sql, owner)).map((row) => ({ revision: row.revision, row: parsed<A>(row.data) }))
   }
 
   export function definition<A>(sql: WorkflowSql, id: string): Promise<Stored<A> | undefined> {
@@ -149,7 +170,7 @@ module node {
 
   async function putReceipt(q: WorkflowQuery, receipt: { mutationId: string; owner: string; kind: string; data: unknown } | undefined): Promise<void> {
     if (receipt === undefined) return
-    await q.query("INSERT INTO workflow_receipts (mutation_id, owner, kind, data) VALUES ($1, $2, $3, $4::jsonb)", [receipt.mutationId, receipt.owner, receipt.kind, JSON.stringify(receipt.data)])
+    await q.query("INSERT INTO workflow_receipts (mutation_id, owner, kind, data) VALUES ($1, $2, $3, $4::jsonb)", [receipt.mutationId, receipt.owner, receipt.kind, jsonb(receipt.data)])
   }
 
   export function writeDefinition(
@@ -157,7 +178,7 @@ module node {
     receipt?: { mutationId: string; owner: string; kind: string; data: unknown },
   ): Promise<"written" | "stale"> {
     return sql.transaction(async (q) => {
-      const data = JSON.stringify(next)
+      const data = jsonb(next)
       const result = read === 0
         ? await q.query("INSERT INTO workflow_definitions (id, owner, revision, data) VALUES ($1, $2, 1, $3::jsonb) ON CONFLICT (id) DO NOTHING", [id, owner, data])
         : await q.query("UPDATE workflow_definitions SET revision = revision + 1, data = $3::jsonb WHERE id = $1 AND revision = $2", [id, read, data])
@@ -175,14 +196,24 @@ module node {
     })
   }
 
-  export function runs<A>(sql: WorkflowSql, filter: { workflowId?: string; unfinished?: boolean; owner: string }): Promise<A[]> {
+  export function runRecords(sql: WorkflowSql, filter: { workflowId?: string; unfinished?: boolean; owner: string }) {
     return sql.transaction(async (q) => {
-      const found = await q.query<{ data: unknown }>(
-        `SELECT data FROM workflow_runs WHERE owner = $1 AND ($2::text IS NULL OR workflow_id = $2) AND ($3::boolean IS NULL OR finished = NOT $3) ORDER BY created_at, id`,
+      const found = await q.query<{ id: string; data: unknown }>(
+        `SELECT id, data FROM workflow_runs WHERE owner = $1 AND ($2::text IS NULL OR workflow_id = $2) AND ($3::boolean IS NULL OR finished = NOT $3) ORDER BY created_at, id`,
         [filter.owner, filter.workflowId ?? null, filter.unfinished ?? null],
       )
-      return found.rows.map((row) => parsed<A>(row.data))
+      return found.rows
     })
+  }
+
+  export async function runs<A>(sql: WorkflowSql, filter: { workflowId?: string; unfinished?: boolean; owner: string }): Promise<A[]> {
+    return (await runRecords(sql, filter)).map((row) => parsed<A>(row.data))
+  }
+
+  export async function readRecoveryRow<A extends { readonly id: string; readonly owner: string }>(id: string, owner: string, data: unknown): Promise<A> {
+    const row = parsed<A>(data)
+    if (row?.id !== id || row.owner !== owner) throw new Error("Stored workflow identity does not match its row")
+    return row
   }
 
   export function run<A>(sql: WorkflowSql, id: string): Promise<A | undefined> {
@@ -197,10 +228,10 @@ module node {
     sql: WorkflowSql, definition: { id: string; read: number; next: unknown }, created: { id: string; workflowId: string; owner: string; at: number; data: unknown },
   ): Promise<"written" | "stale"> {
     return sql.transaction(async (q) => {
-      const moved = await q.query("UPDATE workflow_definitions SET revision = revision + 1, data = $3::jsonb WHERE id = $1 AND revision = $2", [definition.id, definition.read, JSON.stringify(definition.next)])
+      const moved = await q.query("UPDATE workflow_definitions SET revision = revision + 1, data = $3::jsonb WHERE id = $1 AND revision = $2", [definition.id, definition.read, jsonb(definition.next)])
       if (moved.affectedRows !== 1) return "stale"
       await q.query("INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ($1, $2, $3, false, $4, $5::jsonb)",
-        [created.id, created.workflowId, created.owner, created.at, JSON.stringify(created.data)])
+        [created.id, created.workflowId, created.owner, created.at, jsonb(created.data)])
       return "written"
     })
   }
@@ -208,23 +239,23 @@ module node {
   export function insertRun(sql: WorkflowSql, created: { id: string; workflowId: string; owner: string; at: number; finished: boolean; data: unknown }): Promise<boolean> {
     return sql.transaction(async (q) => {
       const result = await q.query("INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ($1, $2, $3, $4, $5, $6::jsonb) ON CONFLICT (id) DO NOTHING",
-        [created.id, created.workflowId, created.owner, created.finished, created.at, JSON.stringify(created.data)])
+        [created.id, created.workflowId, created.owner, created.finished, created.at, jsonb(created.data)])
       return result.affectedRows === 1
     })
   }
 
   export function writeRun(sql: WorkflowSql, id: string, finished: boolean, data: unknown, digest?: { owner: string; runId: string; workflowId: string; result: unknown }): Promise<void> {
     return sql.transaction(async (q) => {
-      await q.query("UPDATE workflow_runs SET finished = $2, data = $3::jsonb WHERE id = $1", [id, finished, JSON.stringify(data)])
+      await q.query("UPDATE workflow_runs SET finished = $2, data = $3::jsonb WHERE id = $1", [id, finished, jsonb(data)])
       if (digest === undefined) return
       await q.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [JSON.stringify(["workflow.hosted-results", digest.owner])])
       const existing = await q.query<{ data: unknown }>("SELECT data FROM workflow_digest_results WHERE run_id = $1", [digest.runId])
       const prior = existing.rows[0] === undefined ? undefined : parsed<{ status?: unknown }>(existing.rows[0].data)
       if (prior === undefined) {
-        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, JSON.stringify(digest.result)])
+        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, jsonb(digest.result)])
       } else if (prior.status === "cancelled" && (digest.result as { status?: unknown }).status === "failed") {
         await q.query("DELETE FROM workflow_digest_results WHERE run_id = $1", [digest.runId])
-        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, JSON.stringify(digest.result)])
+        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, jsonb(digest.result)])
       }
     })
   }
@@ -238,7 +269,7 @@ module node {
 
   export function saveSource(sql: WorkflowSql, owner: string, id: string, data: unknown): Promise<void> {
     return sql.transaction(async (q) => {
-      await q.query("INSERT INTO workflow_digest_sources (owner, id, data) VALUES ($1, $2, $3::jsonb) ON CONFLICT (owner, id) DO UPDATE SET data = EXCLUDED.data", [owner, id, JSON.stringify(data)])
+      await q.query("INSERT INTO workflow_digest_sources (owner, id, data) VALUES ($1, $2, $3::jsonb) ON CONFLICT (owner, id) DO UPDATE SET data = EXCLUDED.data", [owner, id, jsonb(data)])
     })
   }
 
@@ -264,7 +295,7 @@ module node {
 }
 
 import {
-  acknowledgeDigest, admitRun, definition, definitions, digestPage, insertRun, migrate, receipt, run, runs, saveSource, sources, writeDefinition, writeRun,
+  acknowledgeDigest, admitRun, definition, definitionRecords, definitions, digestPage, insertRun, migrate, readRecoveryRow, receipt, run, runRecords, runs, saveSource, sources, writeDefinition, writeRun,
   type Stored, type WorkflowSql,
 } from node
 export type { Stored, WorkflowQuery, WorkflowSql } from node
@@ -283,6 +314,10 @@ export function workflowStore(sql: WorkflowSql) {
     receipt: (mutationId: string) => stored("read a receipt", () => receipt<Readonly<Record<string, unknown>>>(sql, mutationId)),
     runs: (filter: { readonly owner: string; readonly workflowId?: string; readonly unfinished?: boolean }) => stored("list runs", () => runs<RunRow>(sql, filter)),
     run: (id: string) => stored("read a run", () => run<RunRow>(sql, id)),
+    recoveryRuns: (owner: string) => map(stored("list unfinished runs", () => runRecords(sql, { owner, unfinished: true })), (rows) =>
+      rows.map(({ id, data }) => ({ id, read: stored("decode an unfinished run", () => readRecoveryRow<RunRow>(id, owner, data)) }))),
+    recoveryDefinitions: (owner: string) => map(stored("list recovery schedules", () => definitionRecords(sql, owner)), (rows) =>
+      rows.map(({ id, data }) => ({ id, read: stored("decode a recovery schedule", () => readRecoveryRow<DefinitionRow>(id, owner, data)) }))),
     admitRun: (stored_: { readonly id: string; readonly read: number; readonly next: DefinitionRow }, created: RunRow, at: number) =>
       stored("admit a run", () => admitRun(sql, stored_, { id: created.id, workflowId: created.workflowId, owner: created.owner, at, data: created })),
     insertRun: (created: RunRow, at: number) =>

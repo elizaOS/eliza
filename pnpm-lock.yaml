@@ -1848,9 +1848,6 @@ importers:
       '@capacitor/core':
         specifier: 8.4.0
         version: 8.4.0
-      '@elizaos/os':
-        specifier: workspace:*
-        version: link:../os
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -1895,9 +1892,6 @@ importers:
       '@capacitor/core':
         specifier: 8.4.0
         version: 8.4.0
-      '@elizaos/os':
-        specifier: workspace:*
-        version: link:../os
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -2298,9 +2292,6 @@ importers:
 
   packages/plugin-trajectory-logger:
     dependencies:
-      '@repo/ui':
-        specifier: workspace:*
-        version: link:../ui
       effect:
         specifier: 4.1.1
         version: 4.1.1

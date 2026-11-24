@@ -252,7 +252,6 @@ export const TELEPHONY_DEFAULT_PAGE = 25;
 export const VOICEMAIL_AUDIO_MAX_BYTES = 8 * 1024 * 1024;
 export const VOICEMAIL_PCM_RATE_HZ = 16000;
 export const WAV_HEADER_BYTES = 44;
-export const PHONE_INFO_MAX_LINES = 4;
 export const TELEPHONY_MAX_SUBSCRIPTIONS = 8;
 
 const PERMISSIONS: readonly TelephonyPermissionState[] = ["granted", "denied", "prompt", "prompt-with-rationale"];

@@ -38,7 +38,7 @@ const register = (workflowProtocol: number): Asked => ({ method: "POST", path: "
 const context: Asked = { method: "GET", path: "/api/client-devices/context" }
 const revoke: Asked = { method: "POST", path: "/api/client-devices/revoke", body: {} }
 
-it.live('Enroll my device under its own key, read its context and revoke it for good, across a restart (spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
+it.live('Enroll my device under its own key, read its context, revoke it and enroll again under a new key, across a restart (spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
   const state = try scratch("device-enrollment")
   const first = try booted(true, state)
   const agentId = first.agent.status.agentId
@@ -60,9 +60,8 @@ it.live('Enroll my device under its own key, read its context and revoke it for 
   assert.deepStrictEqual(registered.json, { installationId: agentId, enrollmentId, capabilities: vocabulary, viewProfileVersion: 1 })
   assert.match(String(enrollmentId), /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)
   const again = try device(first, agentId, register(3))
-  const anotherKey = try device(first, agentId, register(1), otherKey)
   const anotherKeyContext = try device(first, agentId, context, otherKey)
-  assert.deepStrictEqual([again.status, again.json.enrollmentId, anotherKey.status, anotherKeyContext.status], [200, enrollmentId, 409, 401])
+  assert.deepStrictEqual([again.status, again.json.enrollmentId, anotherKeyContext.status], [200, enrollmentId, 401])
 
   const served = try device(first, agentId, context)
   const subjectUserId = try Schema.decodeUnknownEffect(Schema.String)(served.json.subjectUserId)
@@ -80,12 +79,23 @@ it.live('Enroll my device under its own key, read its context and revoke it for 
   const revoked = try device(second, agentId, revoke)
   const revokedContext = try device(second, agentId, context)
   const revokedAgain = try device(second, agentId, revoke)
-  const reEnroll = try device(second, agentId, register(1))
-  const freshKey = try device(second, agentId, register(1), otherKey)
   assert.deepStrictEqual(
-    [wrongRevoke.status, revoked.status, revoked.json, revokedContext.status, revokedAgain.status, reEnroll.status, freshKey.status],
-    [401, 200, { revoked: true }, 401, 401, 409, 409],
+    [wrongRevoke.status, revoked.status, revoked.json, revokedContext.status, revokedAgain.status],
+    [401, 200, { revoked: true }, 401, 401],
   )
+
+  const reEnrolled = try device(second, agentId, register(1))
+  const reEnrolledContext = try device(second, agentId, context)
+  const replaced = try device(second, agentId, register(1), otherKey)
+  const replacedContext = try device(second, agentId, context)
+  const replacedRevoke = try device(second, agentId, revoke)
+  const refusedReplacement = try device(second, agentId, register(6))
+  const current = try device(second, agentId, context, otherKey)
+  assert.deepStrictEqual(
+    [reEnrolled.status, reEnrolledContext.status, replaced.status, replacedContext.status, replacedRevoke.status, refusedReplacement.status, current.status, current.json.enrollmentId],
+    [200, 200, 200, 401, 401, 409, 200, replaced.json.enrollmentId],
+  )
+  assert.notStrictEqual(replaced.json.enrollmentId, enrollmentId)
 }, 180_000)
 
 it.live('The agent offers its whole vocabulary and changes the view profile only against the revision the device read (spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views")', effect () => {

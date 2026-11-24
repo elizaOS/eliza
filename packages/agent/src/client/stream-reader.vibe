@@ -100,7 +100,7 @@ effect function read(bytes: AsyncIterable<Uint8Array>, hooks: ReplyStreamHooks):
         const payload = data
         data = undefined
         if (payload !== undefined) try sync(() => deliver(payload.join("\n")))
-        if (refused !== undefined) break
+        if (refused !== undefined || ending?.kind === "Failed") break
         continue
       }
       const { name, value } = field(line)

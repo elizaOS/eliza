@@ -90,9 +90,6 @@ pure def sometimesPendingForkUnlisted(s: Conversations): bool = s.conversations.
 
 History is ordered by `at`, then message id. A read without a cursor
 answers the newest 200, and `hasMore` exactly when older messages exist.
-A row is `{id, role, text, timestamp}`, `timestamp` in milliseconds; an
-owner message sent under a `clientMessageId` also carries that key, so a
-client finds its own turn (`client/turns.md`).
 A message shows its whole stored text: a text too long to keep inline is
 read back whole from its stored segments, and a segment that is missing,
 belongs to another room or message, or does not match the text's digest
@@ -108,6 +105,29 @@ pure def recentPage(rows: List[Row]): Page = { rows: newest(rows, recentWindow),
 pure val rowsValues = Set(List(), List({ id: 1, at: 1 }, { id: 2, at: 2 }, { id: 3, at: 2 }), List({ id: 1, at: 1 }, { id: 4, at: 3 }, { id: 5, at: 3 }, { id: 6, at: 4 }))
 pure val nValues = Set(0, 1, 2, 50)
 pure def lawPageIsTheNewest(rows: List[Row], n: int): bool = rows.every(r => newest(rows, n).includes(r) or newest(rows, n).every(q => precedes(r, q)))
+```
+
+### A history row carries its send key only on the owner's message, and a failure kind only on the agent's reply
+
+Every row is `{id, role, text, timestamp}`, `timestamp` in epoch
+milliseconds. The owner's message sent under a `clientMessageId` also
+carries that key, so a client finds the row of a turn it stopped
+([client turns](../client/turns.md)). An agent reply stored with a failure
+kind ([turns](./turns.md)) carries `failureKind`, so a reopened conversation
+marks a failed or stopped reply instead of showing it as an answer. A row
+never carries the other side's field, and carries neither when its message
+has none.
+
+```quint
+type RowMarks = { sendKey: str, failed: str }
+pure def rowMarks(author: Author, sendKey: str, failed: str): RowMarks =
+  if (author == User) { sendKey: sendKey, failed: "" } else { sendKey: "", failed: failed }
+pure val sendKeyValues = Set("", "m-1")
+pure val failedValues = Set("", "aborted")
+pure def lawOnlyTheOwnersRowCarriesASendKey(sendKey: str, failed: str): bool =
+  rowMarks(Agent, sendKey, failed).sendKey == "" and rowMarks(User, sendKey, failed).sendKey == sendKey
+pure def lawOnlyTheAgentsRowCarriesAFailureKind(sendKey: str, failed: str): bool =
+  rowMarks(User, sendKey, failed).failed == "" and rowMarks(Agent, sendKey, failed).failed == failed
 ```
 
 ### An older page holds only messages before its cursor, and hasMore says whether any are left

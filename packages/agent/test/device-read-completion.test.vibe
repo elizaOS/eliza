@@ -413,7 +413,9 @@ module node {
   const workflowList = Schema.decodeUnknownSync(Schema.Struct({ proposals: Schema.Array(Schema.Unknown) }))
   const workflowProposal = Schema.decodeUnknownOption(WorkflowProposal)
   const proposalOf = Schema.decodeUnknownSync(Schema.Struct({
-    proposal: Schema.Struct({ state: Schema.String, execution: Schema.optionalKey(Schema.Struct({ attemptId: Schema.String })) }),
+    proposal: Schema.Struct({
+      state: Schema.String, execution: Schema.optionalKey(Schema.Struct({ attemptId: Schema.String, providerReceipt: Schema.optionalKey(Schema.Unknown) })),
+    }),
   }))
 
   export async function workflowStepsOffered(running: RunningAgent, socket: string, token: string) {
@@ -470,7 +472,15 @@ module node {
     const attemptId = typeof claimed === "number" ? "" : claimed.execution?.attemptId ?? ""
     const uncertain = await stateOf(`${at}/receipt`, { digest: speak.digest, attemptId, receipt: { outcome: "unknown", operationId: speak.id } })
     const wrongAttempt = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId: "another-attempt", review: "applied" })
-    const reviewed = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId, review: "applied" })
+    const evidenceNotApplied = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId, review: "not_applied", applied: { operationId: speak.id } })
+    const evidenceWithAResultSpeechNeverHas = await stateOf(`${at}/reconciliation`, {
+      digest: speak.digest, attemptId, review: "applied", applied: { operationId: speak.id, result: { spoken: true } },
+    })
+    const evidenceWithAnExtraField = await stateOf(`${at}/reconciliation`, {
+      digest: speak.digest, attemptId, review: "applied", applied: { operationId: speak.id, confirmed: true },
+    })
+    const stillUncertain = (await Effect.runPromise(requestSnapshot(adapter, speak.id)))?.state.phase
+    const reviewed = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId, review: "applied", applied: { operationId: speak.id } })
     const sameReview = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId, review: "applied" })
     const otherReview = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId, review: "not_applied" })
     const result = await spoken
@@ -486,6 +496,11 @@ module node {
       offered: { state: speak.state, operation: speak.payload.operation, installation: speak.payload.installationId === device.installationId, enrollment: speak.payload.enrollmentId === device.enrollmentId },
       states: [approved, claimed, uncertain].map((answer) => typeof answer === "number" ? answer : answer.state),
       reconciliation: { wrongAttempt, reviewed: typeof reviewed === "number" ? reviewed : reviewed.state, sameReview: typeof sameReview === "number" ? sameReview : sameReview.state, otherReview },
+      evidence: {
+        notApplied: evidenceNotApplied, resultSpeechNeverHas: evidenceWithAResultSpeechNeverHas, extraField: evidenceWithAnExtraField, stillUncertain,
+        kept: typeof reviewed !== "number" && isDeepStrictEqual(reviewed.execution?.providerReceipt, { outcome: "applied", operationId: speak.id }),
+        keptAfterRepeat: typeof sameReview !== "number" && isDeepStrictEqual(sameReview.execution?.providerReceipt, { outcome: "applied", operationId: speak.id }),
+      },
       result, declined: [typeof rejected === "number" ? rejected : rejected.state, await declined], retargeted,
     }
   }
@@ -557,6 +572,10 @@ it.effect('A workflow step is offered to the enrolled device, settles only by it
     offered: { state: "pending", operation: { type: "speak_text", text: "The reviewed notice" }, installation: true, enrollment: true },
     states: ["approved", "executing", "reconciliation_required"],
     reconciliation: { wrongAttempt: 409, reviewed: "done", sameReview: "done", otherReview: 409 },
+    evidence: {
+      notApplied: 409, resultSpeechNeverHas: 409, extraField: 400, stillUncertain: { tag: "Receipted", reported: "ReportedUnknown" },
+      kept: true, keptAfterRepeat: true,
+    },
     result: null, declined: ["rejected", "DEVICE_STEP_DECLINED"], retargeted: "DEVICE_TARGET_CHANGED",
   })
 }, 120_000)

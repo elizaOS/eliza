@@ -168,6 +168,7 @@ export interface NoticeRowRef {
 }
 
 export interface NotificationsNativePlugin {
+  workflowPresentationCapabilities(): Promise<unknown>;
   pendingWorkflowTap(): Promise<unknown>;
   consumeWorkflowTap(input: { token: string; unavailable?: boolean; discard?: boolean; noticeRevision?: string }): Promise<unknown>;
   postWorkflow(input: { operationId: string; bindingHash: string; route: WorkflowNoticeRoute; title: string; body: string }): Promise<unknown>;
@@ -198,6 +199,7 @@ export interface NoticesClientOptions {
 }
 
 export interface NoticesClient {
+  presentsWorkflow(): Promise<boolean>;
   pendingTap(): Promise<Partial<PendingNoticeTap>>;
   consumeTap(input: { token: string; unavailable?: boolean; discard?: boolean; noticeRevision?: string }): Promise<void>;
   postWorkflow(input: { operationId: string; bindingHash: string; route: WorkflowNoticeRoute; title: string; body: string }): Promise<WorkflowNoticeStatus>;

@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "The device context is served only for a live enrollment"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views"
+// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment retires every open offer, and nothing offered under it is served again"; spec/agent/deviceActions/index.md, "The device context is served only for a live enrollment"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views"
 module node {
   import { createHash, timingSafeEqual } from "node:crypto"
 
@@ -20,7 +20,7 @@ import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
 import type { LocalRoute, RouteInput } from "../access/routes.vibe"
 import type { ModuleContext } from "../host/module.vibe"
 import { capabilitiesHeader, negotiation, offeredViewNames, readViewProfileChange, viewProfileWire } from "./capabilities.vibe"
-import { changeEnrollment, changeViewProfile, enrollment, viewProfile, DeviceStoreUnavailable, type EnrollmentEvent } from "./store.vibe"
+import { changeEnrollment, changeViewProfile, enrollment, viewProfile, DeviceStoreUnavailable, EnrollmentKeyChanged, type EnrollmentChange } from "./store.vibe"
 import { hashOf, sameHash } from node
 
 const deviceIdHeader = "x-eliza-device-id"
@@ -77,7 +77,7 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
     return liveFor(try enrollment(adapter), keyHash) ? owner : undefined
   }
 
-  effect function changed(event: EnrollmentEvent, by: SessionOwner): (DeviceRequest | undefined)!DeviceStoreUnavailable {
+  effect function changed(event: EnrollmentChange, by: SessionOwner): (DeviceRequest | undefined)!(DeviceStoreUnavailable | EnrollmentKeyChanged) {
     return lock.withPermits(1)(changeEnrollment(adapter, event, by)) catch effect (error) => match (error) {
       when Rejected: undefined;
       default: throw error;
@@ -93,16 +93,24 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
     const capabilities = sent.value.capabilities ?? offeredCapabilities
     if (!capabilities.every(isCapabilityName) || !distinctNames([...capabilities])) return failure(400, "invalid_capabilities")
     if (workflowProtocol > workflowProtocolLimit) return failure(409, "unsupported_workflow_protocol")
-    const next = try changed({ type: "registerDevice", keyHash, capabilities: [...capabilities], workflowProtocol }, owner)
+    const next = changed({ type: "replaceEnrollment", keyHash, capabilities: [...capabilities], workflowProtocol }, owner) catch effect (error) => match (error) {
+      when EnrollmentKeyChanged: undefined;
+      default: throw error;
+    }
     if (next === undefined) return failure(409, "registration_refused")
     return { status: 200, body: { installationId: agentId, enrollmentId: enrollmentId(next), capabilities: offeredCapabilities, viewProfileVersion: 1 } }
   }
 
   effect function revoke(input: RouteInput): Answer!DeviceStoreUnavailable {
-    const by = try deviceSender(input)
-    if (by === undefined) return failure(401, "device_unauthorized")
-    const next = try changed({ type: "revokeEnrollment" }, by)
-    return next === undefined ? failure(409, "revoke_refused") : { status: 200, body: { revoked: true } }
+    const keyHash = presentedKeyHash(input)
+    if (keyHash === undefined) return failure(401, "device_unauthorized")
+    return (effect {
+      const next = try changed({ type: "revokeEnrolledKey", keyHash }, owner)
+      return next === undefined ? failure(409, "revoke_refused") : { status: 200, body: { revoked: true } }
+    }) catch effect (error) => match (error) {
+      when EnrollmentKeyChanged: failure(401, "device_unauthorized");
+      default: throw error;
+    }
   }
 
   effect function served(input: RouteInput): Answer!DeviceStoreUnavailable {
