@@ -93,6 +93,35 @@ function matchesNavigationStep(
   );
 }
 
+/** The authenticated phone will receive this requested address after the reply. */
+function readPreparedBrowserPresentation(step: PlannerStep) {
+  const { toolCall: call, result } = step;
+  const data = result?.data;
+  const operation = call?.params?.operation;
+  if (
+    step.terminalOnly ||
+    (call?.name !== "DEVICE_BROWSER_OPEN" &&
+      !(
+        call?.name === "PROPOSE_DEVICE_ACTION" &&
+        record(operation) &&
+        operation.type === "browser_navigate"
+      )) ||
+    result?.success !== true ||
+    result.transcriptVisibility !== "internal" ||
+    result.modelReplyRequired !== true ||
+    !record(data) ||
+    data.state !== "pending" ||
+    data.executed !== false ||
+    data.directRequest !== true ||
+    data.awaitingDeviceExecution !== true ||
+    data.approvalRequired !== false ||
+    !record(data.presentsView) ||
+    data.presentsView.viewId !== "browser"
+  )
+    return;
+  return data.presentsView;
+}
+
 /** Look only at this turn's verified handoff, never a model citation or view snapshot. */
 export function requiredViewNavigationStatus(
   trajectory: PlannerTrajectory,
@@ -117,7 +146,21 @@ export function requiredViewNavigationStatus(
     ...trajectory.steps,
   ].reverse()) {
     const receipt = readViewNavigationReceipt(step);
-    if (!receipt) continue;
+    if (!receipt) {
+      if (
+        required.viewId === "browser" &&
+        required.noteEditor !== true &&
+        trajectory.steps.includes(step)
+      ) {
+        const presentation = readPreparedBrowserPresentation(step);
+        if (presentation)
+          return presentation.clientId === required.clientId &&
+            presentation.installationId === required.installationId
+            ? "prepared"
+            : "missing";
+      }
+      continue;
+    }
     if (
       receipt.handoff.viewId !== required.viewId ||
       (required.noteEditor === true &&
