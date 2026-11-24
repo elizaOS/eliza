@@ -3,20 +3,19 @@ import type { Driver, Options } from "../../gen/cloud__identity__sessions.confor
 import type { Event, Family } from "../../gen/cloud__identity__sessions.ts";
 import { familyRows, stepFamily } from "../../src/identity/sessions.vibe";
 import { loadRow } from "../../src/store/rows.vibe";
-import { ledger, within } from "../support/ledger.ts";
+import { identityDriverLedger, within } from "../support/ledger.ts";
 
-const cloud = ledger();
+const cloud = identityDriverLedger();
 const keys = ["a", "b"];
 const family = (key: string) => `family-${key}`;
-const person = (key: string) => `person-${key}`;
-const emitted = new Map<string, unknown>();
 
 async function dispatch(key: string, event: Event) {
-  const done = await cloud.run(within((tx) => stepFamily(tx, family(key), event, 0, (next) => ({ user_id: person(key), access_digest: `${key}-access`, refresh_digest: `${key}-refresh`, ...(next.kind.tag === "DeviceLease" ? { kind: "device_lease", grant_key: next.kind.grantKey } : {}) }))));
-  emitted.set(key, done.kind === "done" ? done.value.out : []);
-  if (done.kind === "done") return "accepted" as const;
-  if (done.tag === "Rejected") return "refused" as const;
-  throw new Error(`the cloud failed with ${done.tag}`, { cause: done.error });
+  return cloud.dispatch(key, within((tx) => stepFamily(tx, family(key), event, 0, (next) => ({
+    user_id: cloud.person(key),
+    access_digest: `${key}-access`,
+    refresh_digest: `${key}-refresh`,
+    ...(next.kind.tag === "DeviceLease" ? { kind: "device_lease", grant_key: next.kind.grantKey } : {}),
+  }))), (value) => value.out);
 }
 
 async function observe(key: string): Promise<Family> {
@@ -26,16 +25,10 @@ async function observe(key: string): Promise<Family> {
 }
 
 export const driver: Driver & AsyncDisposable = {
-  reset: async () => {
-    emitted.clear();
-    await cloud.reset(keys.map((key) => `org-${key}`));
-    for (const key of keys) {
-      await cloud.sql("INSERT INTO accounts (key, state, revision, organization_id, status, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', 0, 0)", [person(key), `org-${key}`]);
-    }
-  },
+  reset: () => cloud.resetPeople(keys),
   dispatch,
   observe,
-  observeOutput: (key) => emitted.get(key) ?? [],
+  observeOutput: cloud.observeOutput,
   [Symbol.asyncDispose]: () => cloud.dispose(),
 };
 
