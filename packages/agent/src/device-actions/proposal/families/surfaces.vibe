@@ -70,11 +70,6 @@ const openViewNow: MessageAvailability = {
 const captureForm: ProposalForm = {
   types: ["camera_capture_photo"],
   schema: branch("camera_capture_photo", [], {}), guidance: [cameraGuidance], offered: needed("CameraCapturePhoto"),
-  now: {
-    unavailable: "the showing lens cannot substitute for the requested lens",
-    servedBy: "explain the lens limitation or ask the owner to choose one lens if the request conflicts",
-    available: (turn) => cameraVerdict(turn, "ShowingCamera") !== "SurfaceRefused",
-  },
 }
 
 function offersLens(device: NegotiatedDevice): boolean {
@@ -86,11 +81,12 @@ function namedCapture(choice: "FrontCamera" | "BackCamera"): ProposalForm {
   return {
     types: ["camera_capture_photo"],
     schema: branch("camera_capture_photo", ["lens"], { lens: { type: "string", enum: [lens] } }),
-    guidance: ["Name lens front for a selfie or a request for the front camera, and lens back for the back, rear or main camera. Carry only the lens the owner's whole message requested. A photo of the owner without a named camera uses the camera already showing."],
+    guidance: ["Name lens front for a selfie or a request for the front camera, and lens back for the back, rear or main camera. Name no lens when the owner named no camera: the photo uses the camera already showing. When the owner asked for both cameras at once, ask which one they want."],
     offered: offersLens,
     now: {
-      unavailable: "the named camera form requires the owner's request to name that lens",
-      available: (turn) => cameraVerdict(turn, choice) !== "SurfaceRefused",
+      unavailable: "a named camera is captured only in the owner's own chat",
+      servedBy: "explain that this conversation cannot choose a camera lens",
+      available: canNameCamera,
     },
   }
 }
