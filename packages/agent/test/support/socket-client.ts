@@ -30,6 +30,40 @@ export interface Subscription {
   close(): void;
 }
 
+export function frameWaiters(received: unknown[]) {
+  const waiters: Array<{ predicate: (frame: unknown) => boolean; resolve: (frame: unknown) => void; reject: (error: Error) => void }> = [];
+  let delivered = 0;
+  let ended: Error | undefined;
+  const settle = () => {
+    for (const waiter of [...waiters]) {
+      const found = received.slice(delivered).find(waiter.predicate);
+      if (found !== undefined) {
+        delivered = received.indexOf(found) + 1;
+        waiters.splice(waiters.indexOf(waiter), 1);
+        waiter.resolve(found);
+      } else if (ended !== undefined) {
+        waiters.splice(waiters.indexOf(waiter), 1);
+        waiter.reject(ended);
+      }
+    }
+  };
+  return {
+    settle,
+    end: (error: Error) => {
+      ended = error;
+      settle();
+    },
+    rejectWaiting: (error: Error) => {
+      for (const waiter of waiters.splice(0)) waiter.reject(error);
+    },
+    next: (predicate: (frame: unknown) => boolean = () => true) =>
+      new Promise<unknown>((resolve, reject) => {
+        waiters.push({ predicate, resolve, reject });
+        settle();
+      }),
+  };
+}
+
 type Frame = Record<string, unknown>;
 
 function isFrame(value: unknown): value is Frame {
@@ -159,8 +193,7 @@ export async function requestStream(socketPath: string, call: LocalRequest, cut?
 export function subscribe(socketPath: string, options: { streams: readonly string[]; clientId?: string; token?: string }): Subscription {
   const id = randomUUID();
   const received: unknown[] = [];
-  const waiters: Array<{ predicate: (frame: unknown) => boolean; resolve: (frame: unknown) => void; reject: (error: Error) => void }> = [];
-  let delivered = 0;
+  const waiting = frameWaiters(received);
   const socket = open(socketPath, JSON.stringify({
     id,
     method: "events_subscribe",
@@ -170,34 +203,12 @@ export function subscribe(socketPath: string, options: { streams: readonly strin
       ...(options.token === undefined ? {} : { headers: { authorization: `Bearer ${options.token}` } }),
     },
   }));
-  const settle = () => {
-    for (const waiter of [...waiters]) {
-      const found = received.slice(delivered).find(waiter.predicate);
-      if (found !== undefined) {
-        delivered = received.indexOf(found) + 1;
-        waiters.splice(waiters.indexOf(waiter), 1);
-        waiter.resolve(found);
-      }
-    }
-  };
   frames(socket, (frame) => {
     received.push(frame);
-    settle();
+    waiting.settle();
   }).then(
-    () => {
-      for (const waiter of waiters.splice(0)) waiter.reject(new Error("event subscription closed"));
-    },
-    (error: Error) => {
-      for (const waiter of waiters.splice(0)) waiter.reject(error);
-    },
+    () => waiting.rejectWaiting(new Error("event subscription closed")),
+    (error: Error) => waiting.rejectWaiting(error),
   );
-  return {
-    frames: received,
-    next: (predicate = () => true) =>
-      new Promise((resolve, reject) => {
-        waiters.push({ predicate, resolve, reject });
-        settle();
-      }),
-    close: () => socket.destroy(),
-  };
+  return { frames: received, next: waiting.next, close: () => socket.destroy() };
 }

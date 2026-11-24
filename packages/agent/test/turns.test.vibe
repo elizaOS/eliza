@@ -9,9 +9,8 @@ import { composeReply } from "../src/conversation/reply-text.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
-import { call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { answerOf, call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { Scratch } from "./support/scratch.ts"
-import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 
 interface Reply {
   readonly text: string
@@ -176,8 +175,6 @@ module node {
 }
 import { completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, nearestCafes, overlapping, plainLog, roomMessages, seedHistory, storeNotice } from node
 
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
-
 effect function cloudAgent(cloud: CloudFake, state?: Scratch) {
   return try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true }, frame: { credential: { version: 1, value: deviceKey } },
@@ -228,7 +225,7 @@ it.live('A reply quotes only the selected message in its own conversation and re
   })
 })
 
-it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind only on the agent\'s reply"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none")', effect () => {
+it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind only on the agent\'s reply"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const state = try scratch("turns")
   const first = try cloudAgent(cloud, state)
@@ -277,13 +274,14 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   const history = answerOf(try call(second, { method: "GET", path: `/api/conversations/${id}/messages` }))
 
   try Effect.try(() => {
-    const rows = (history.body as { messages: readonly { role: string; clientMessageId?: string; failureKind?: string }[] }).messages
+    const rows = (history.body as { messages: readonly { role: string; clientMessageId?: string; failureKind?: string; abortCause?: string }[] }).messages
     assert.deepStrictEqual({
       status: history.status,
       sendKeys: rows.filter((row) => row.role === "user").flatMap((row) => row.clientMessageId ?? []).sort(),
       failureKinds: rows.filter((row) => row.role === "assistant").flatMap((row) => row.failureKind ?? []).sort(),
-      crossed: rows.filter((row) => row.role === "user" ? row.failureKind !== undefined : row.clientMessageId !== undefined).length,
-    }, { status: 200, sendKeys: ["m-1", "m-2", "m-3", "m-4", "m-5", "m-cut"], failureKinds: ["aborted", "insufficient_credits", "limit_reached", "provider_issue"], crossed: 0 })
+      abortCauses: rows.flatMap((row) => row.abortCause ?? []),
+      crossed: rows.filter((row) => row.role === "user" ? row.failureKind !== undefined || row.abortCause !== undefined : row.clientMessageId !== undefined).length,
+    }, { status: 200, sendKeys: ["m-1", "m-2", "m-3", "m-4", "m-5", "m-cut"], failureKinds: ["aborted", "insufficient_credits", "limit_reached", "provider_issue"], abortCauses: ["restart"], crossed: 0 })
     const p = replyOf(plain)
     assert.deepStrictEqual({ status: plain.status, text: p.text, actionResults: p.actionResults, failureKind: p.failureKind }, { status: 200, text: "Hello there.", actionResults: [], failureKind: undefined })
     assert.deepStrictEqual(

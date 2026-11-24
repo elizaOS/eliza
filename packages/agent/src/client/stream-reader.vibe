@@ -1,6 +1,7 @@
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds"; spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark"; spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written"; spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"
 import { applyFrame, markOf, type Frame } from "../../gen/agent__conversation__replyStream.effect.vibe"
 import { ReplyFrame, type ActionResultFrame, type DoneFrame } from "./reply-frame.schema.vibe"
+import { textOf, unitsOf } from "../conversation/code-units.vibe"
 
 export const REPLY_STREAM_PROTOCOL = "REPLY_STREAM_PROTOCOL"
 
@@ -26,13 +27,6 @@ const knownTypes: ReadonlySet<string> = new Set(["token", "acknowledgment", "sta
 const typeOf = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ type: Schema.String })))
 const malformed: ReplyOutcome = { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame does not match the reply protocol" }
 const afterEnd: ReplyOutcome = { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame came after its terminal frame" }
-
-const unitsOf = (text: string): number[] => Array.from({ length: text.length }, (_, at) => text.charCodeAt(at))
-function textOf(units: readonly number[]): string {
-  let text = ""
-  for (let at = 0; at < units.length; at += 8192) text += String.fromCharCode(...units.slice(at, at + 8192))
-  return text
-}
 
 function textFrame(frame: { readonly text?: string; readonly fullText?: string; readonly provisional?: boolean }): Frame {
   const provisional = frame.provisional === true

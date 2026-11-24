@@ -155,4 +155,19 @@ public final class CloudSpeechWireTest {
     require(warmups.admit("https://cloud.example", now + 60_000), "a minute later");
     require(!warmups.admit("https://cloud.example", now + 60_001), "counted from the last warm-up");
   }
+
+  @Test public void aLongSessionsUtteranceRowsNeverEvictHowItStarted() {
+    CloudSpeechWire.TimingRows<String> rows = new CloudSpeechWire.TimingRows<>(4, 3);
+    for (String stage : List.of("start", "consent", "mint", "ready")) rows.add(stage, true);
+    for (int i = 1; i <= 100; i++) rows.add("tts-request-" + i, false);
+    require(rows.rows().equals(List.of("start", "consent", "mint", "ready", "tts-request-98", "tts-request-99", "tts-request-100")),
+        "startup kept, only the newest later rows: " + rows.rows());
+    rows.add("start-2", true);
+    rows.add("asr-final", false);
+    rows.add("ready-2", true);
+    require(rows.rows().equals(List.of("mint", "ready", "tts-request-99", "tts-request-100", "start-2", "asr-final", "ready-2")),
+        "each buffer evicts only its own oldest rows, and the order of marking holds: " + rows.rows());
+    require(new CloudSpeechWire.TimingRows<String>(1, 1).rows().isEmpty(), "nothing marked");
+    require(refused(() -> new CloudSpeechWire.TimingRows<String>(0, 100)), "a startup bound of at least one row");
+  }
 }

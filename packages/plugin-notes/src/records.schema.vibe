@@ -1,4 +1,4 @@
-// spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+// spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
 import { SchemaGetter } from "effect"
 import { authoredNoteText, parseNoteFormat } from "./format.vibe"
 import { STICKY_COLORS, type NoteFormat } from "./types.vibe"
@@ -7,7 +7,7 @@ export const noteIdPattern = /^(?:[a-z][a-z0-9-]{2,127}|[0-9a-fA-F]{8}-[0-9a-fA-
 
 export const recordingIdPattern = /^[A-Za-z0-9_-]{1,100}$/
 
-export const noteLimits = { title: 240, body: 20_001, content: 20_241, trash: 10_000, cleanup: 10_000, creationId: 200 } as const
+export const noteLimits = { title: 240, body: 20_001, content: 20_241, trash: 10_000, cleanup: 10_000, creationId: 200, checklistItems: 100, checklistItem: 240 } as const
 
 export const NoteId = Schema.String.check(Schema.isPattern(noteIdPattern))
 
@@ -137,6 +137,7 @@ const NoteDraftFields = {
 
 export const CreateRequest = Schema.Struct({
   ...NoteDraftFields,
+  checklist: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isMaxLength(noteLimits.checklistItem))).check(Schema.isMaxLength(noteLimits.checklistItems))),
   forceNew: Schema.optionalKey(Schema.Boolean),
   creationId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.creationId))),
 })

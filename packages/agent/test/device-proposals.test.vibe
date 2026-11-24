@@ -1,8 +1,6 @@
 // spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
 import { assert, it } from "@effect/vitest"
-import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
-import { builtinModuleFactories } from "../src/plugins/profile.vibe"
-import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vibe"
+import { deviceJourney } from "./support/device-agent.vibe"
 
 module node {
   import { Effect, Result } from "effect"
@@ -12,7 +10,7 @@ module node {
   import { telephonyFamily } from "../src/device-actions/proposal/families/telephony.vibe"
   import type { MessageAvailability } from "../src/device-actions/proposal/family.vibe"
   import { openRequest } from "../src/device-actions/store.vibe"
-  import { text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+  import { text, toolCalls, type CloudFake, type Completion } from "./support/cloud-fake.ts"
   import { deviceClient, type DeviceClient } from "./support/device.ts"
 
   export const proposeTool = "PROPOSE_DEVICE_ACTION"
@@ -55,10 +53,6 @@ module node {
     readonly state: string
     readonly payload: Record<string, unknown>
     readonly execution?: { readonly attemptId: string; readonly reconciliation?: { readonly review: string } }
-  }
-  interface Completion {
-    readonly messages?: readonly { readonly role?: string; readonly content?: unknown }[]
-    readonly tools?: readonly { readonly function?: { readonly name?: string; readonly description?: string; readonly parameters?: { readonly properties?: { readonly operation?: { readonly anyOf?: readonly { readonly properties?: { readonly type?: { readonly enum?: readonly string[] } } }[] } } } } }[]
   }
 
   const reminder = (title: string) => ({ name: proposeTool, arguments: { operation: { type: "create_reminder", title, dueAt } } })
@@ -154,6 +148,7 @@ module node {
     })))
   }
 
+  /** @throws {never} */
   export async function alphaTool(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, alphaPhone.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities: alphaPhone, workflowProtocol: 1 })
@@ -185,6 +180,7 @@ module node {
     }
   }
 
+  /** @throws {never} */
   export async function proposeFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const registration = {
       first: await registered(runtime, remindersFamily), again: await registered(runtime, remindersFamily),
@@ -331,17 +327,7 @@ module node {
 import { alphaTool, proposeFromChat, proposeTool, sharedRules } from node
 
 it.live(`An owner's chat request becomes one reviewed device proposal in its own words, a refusal offers nothing, and later turns learn what applied and what never ran (spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "Each wire type belongs to at most one proposal family, and a family offers forms only of its own types"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
-  const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({
-    launch: {
-      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
-      load: [deviceActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool],
-    },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
-  })
-  const { runtime } = agent.agent
-  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
-  const observed = try host("propose from chat", () => proposeFromChat(runtime, socket, agent.frame.token, cloud))
+  const observed = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool] }, "propose from chat", proposeFromChat)
   const { expectedPayload, ...seen } = observed
   try Effect.try(() => assert.deepStrictEqual(seen, {
     registration: { first: "registered", again: "registered", rival: "FamilyConflict", foreignForm: "FamilyConflict" },
@@ -367,22 +353,13 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
 }, 120_000)
 
 it.live(`The device tool an Alpha phone is sent states each rule once, names no capability and shares a branch only where it accepts exactly what the forms accept (spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
-  const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({
-    launch: {
-      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
-      load: [deviceActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool],
-    },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
-  })
-  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
-  const { size, ...observed } = try host("the Alpha phone's device tool", () => alphaTool(agent.agent.runtime, socket, agent.frame.token, cloud))
+  const { size, ...observed } = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool] }, "the Alpha phone's device tool", alphaTool)
   try Effect.try(() => {
     assert.deepStrictEqual(observed, {
       stated: sharedRules.map((rule) => [rule, 1]),
       capabilitiesNamed: [],
       sameBytes: true,
-      shape: { forms: 23, branches: 17, sameTypes: true },
+      shape: { forms: 23, branches: 18, sameTypes: true },
       everyFormSampled: true,
       differing: [],
       compared: { inForms: true, outsideForms: true },

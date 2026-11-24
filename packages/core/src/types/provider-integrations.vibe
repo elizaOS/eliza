@@ -731,6 +731,7 @@ export effect function consumeCapabilityAuthorization(
 module edge {
   import { Semaphore } from "effect"
   import { runDetached, runDetachedSync } from "../edge.vibe"
+  import type { ElizaError } from "../errors.vibe"
   import {
     type BoundCapabilityRequest,
     type CapabilityAuthorizationConsumer,

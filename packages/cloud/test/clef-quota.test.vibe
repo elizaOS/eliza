@@ -1,25 +1,15 @@
 // spec/cloud/index.md, "A dispatch uses the current account and its available quota slots"
 import { assert, it } from "@effect/vitest"
+import { check } from "./support/cloud.vibe"
 
 module node {
-  import { Effect } from "effect"
-  import { SecureRandom } from "effect/crypto"
   import { CLEF_DECISIONS_PATH, type ClefDecisionRequest } from "../src/clef-decisions.vibe"
-  import { signInWithProof } from "../src/identity-store.vibe"
-  import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { openBackupDatabase } from "./support/password-backup.ts"
-  import { workerBindings } from "./support/worker.ts"
+  import { clefWorker } from "./support/clef.ts"
 
   export async function decideUnderEachFunding() {
     const fixture = await openBackupDatabase()
     try {
-      const digest = "e".repeat(64)
-      await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
-      const owner = await Effect.runPromise(Effect.provide(signInWithProof(fixture.db, {
-        provider: "email", subject: "quota@example.test", email: "quota@example.test",
-      }), SecureRandom.layerWebCrypto))
-      const web = "https://app.example.test"
-      const api = "https://api.example.test"
       let providerCalls = 0
       async function run(id: string, input: Record<string, unknown>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<Response>
       async function run(id: string, input: unknown): Promise<unknown>
@@ -28,10 +18,7 @@ module node {
         providerCalls += 1
         return { model: "clef-flash", answers: { target: { type: "choice", choice: "hours", confidence: .9, probabilities: { hours: .9, none: .1 } } } }
       }
-      const env = {
-        ...workerBindings({ api, web, digest }), AI: { run }, DATABASE_URL: fixture.databaseUrl,
-      } satisfies CloudBindings
-      const worker = cloudWorker()
+      const { owner, web, api, env, worker } = await clefWorker(fixture, "e".repeat(64), "quota@example.test", { run })
       const body: ClefDecisionRequest = { kind: "choice", goal: "Find opening hours", candidates: [{ id: "hours", label: "Opening hours" }] }
       const headers = { origin: web, cookie: "__Host-eliza-session=" + owner.access, "content-type": "application/json" }
       const decide = async () => {
@@ -67,10 +54,6 @@ module node {
   }
 }
 import { decideUnderEachFunding } from node
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 it.live('A funded or subscribed organization gets more Clef decisions, and only a subscription continues past the day (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideUnderEachFunding())

@@ -1,7 +1,7 @@
-// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A note's title and body are saved as well-formed text"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/records.md, "A read by a title no saved note has cites no other note and asks which one"; spec/notes/records.md, "A note's title and body are saved as well-formed text"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
 import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
-import { copyFate, creationReturnsExisting, deleteByContentAllowed, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, pickedNoteChanged, revisionAdmits } from "../gen/notes__records.effect.vibe"
-import { authoredNoteText, editAuthoredNoteFormat, type AuthoredNoteEdit } from "./format.vibe"
+import { checklistCreationAdmitted, copyFate, creationForcesNew, creationReturnsExisting, deleteByContentAllowed, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, pickedNoteChanged, revisionAdmits } from "../gen/notes__records.effect.vibe"
+import { authoredNoteText, editAuthoredNoteFormat, parseNoteFormat, type AuthoredNoteEdit } from "./format.vibe"
 import { lookupMatches, noteContentKey, sameTitle, type NoteSelector } from "./lookup.vibe"
 import { noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest } from "./records.schema.vibe"
 import type { NoteFormat, NotesSnapshot, NotesTrashErase, NotesTrashRecordingCleanup, StickyColor, StickyNote, TrashedNote } from "./types.vibe"
@@ -41,6 +41,7 @@ export interface Instant {
 
 export interface NotesQuery {
   readonly content?: string
+  readonly title?: string
   readonly noteId?: string
   readonly latestBy?: "createdAt" | "updatedAt"
   readonly dateRange?: { readonly field: "createdAt" | "updatedAt"; readonly start?: string; readonly end?: string }
@@ -86,22 +87,36 @@ effect function checked(written: StickyNote): StickyNote!NotesRefused {
 }
 
 export effect function createIn(document: NotesDocument, request: CreateRequest, id: string, at: Instant): Change<{ note: StickyNote; replayed: boolean }>!NotesRefused {
-  const authored = authoredNoteText(request.format).trim() !== ""
-  const parts = request.content !== undefined ? try contentParts(request.content, authored)
+  const items = request.checklist
+  const listed = items === undefined ? undefined : parseNoteFormat({ kind: "list", data: { items: items.map((t) => ({ t, done: false })) } })
+  const format = items === undefined ? request.format : listed
+  const authored = authoredNoteText(format).trim() !== ""
+  const written = request.content !== undefined ? try contentParts(request.content, authored)
     : request.title !== undefined ? { title: request.title.toWellFormed(), body: request.body === undefined || request.body === "" ? "" : `\n${request.body.toWellFormed()}` }
     : authored ? { title: "", body: "" }
     : try Effect.fail(refused("NOTES_VALIDATION_FAILED", "content is required."))
+  if (items !== undefined) {
+    const titled = written.title.trim() !== ""
+    const blank = items.filter((item) => item.trim() === "").length
+    const longest = items.reduce((units, item) => Math.max(units, item.length), 0)
+    if (listed === undefined || !checklistCreationAdmitted(titled, items.length, blank, longest, request.format !== undefined || written.body.trim() !== "")) {
+      throw refused("NOTES_VALIDATION_FAILED", !titled
+        ? "A checklist needs the title the owner gave it. Ask the owner what to call the checklist; nothing was saved."
+        : `A checklist needs 1 to ${noteLimits.checklistItems} nonblank items of at most ${noteLimits.checklistItem} characters each, its title alone in content, and no body or other format.`)
+    }
+  }
+  const parts = items === undefined ? written : { title: written.title, body: "" }
   const color: StickyColor = request.color ?? "yellow"
   const createdId = request.creationId === undefined ? undefined : document.creations[request.creationId]
   const kept = createdId === undefined ? undefined
     : document.notes.find((note) => note.id === createdId) ?? document.trash.find((entry) => entry.note.id === createdId)?.note
-  const plain = request.format === undefined
+  const plain = format === undefined
     ? document.notes.find((note) => note.format === undefined && note.title === parts.title && note.body === parts.body && note.color === color)
     : undefined
   const replay = {
     creationKnown: createdId !== undefined,
     createdNoteKept: kept !== undefined,
-    forceNew: request.forceNew === true || request.format !== undefined || request.creationId !== undefined,
+    forceNew: creationForcesNew(request.forceNew === true, format !== undefined, request.creationId !== undefined),
     plainMatch: plain !== undefined,
   }
   const existing = kept ?? plain
@@ -111,7 +126,7 @@ export effect function createIn(document: NotesDocument, request: CreateRequest,
   }
   const note = try checked({
     id, title: parts.title, body: parts.body, color,
-    ...(request.format === undefined ? {} : { format: structuredClone(request.format) }),
+    ...(format === undefined ? {} : { format: structuredClone(format) }),
     createdAt: at.iso, updatedAt: at.iso,
   })
   return {
@@ -442,7 +457,8 @@ export effect function listIn(notes: readonly StickyNote[], query: NotesQuery): 
   const end = try bound(range?.end)
   if (start !== undefined && end !== undefined && start >= end) throw refused("NOTES_VALIDATION_FAILED", "dateRange start must be before its end.")
   const content = query.content
-  const named = content === undefined || content.trim() === "" ? notes : lookupMatches(notes, "query", content).map(({ note }) => note)
+  const named = query.title !== undefined ? lookupMatches(notes, "title", query.title).map(({ note }) => note)
+    : content === undefined || content.trim() === "" ? notes : lookupMatches(notes, "query", content).map(({ note }) => note)
   const windowed = named.filter((note) => {
     if (query.noteId !== undefined && note.id !== query.noteId) return false
     if (range === undefined) return true
