@@ -47,6 +47,7 @@ function query(entries: Readonly<Record<string, string | undefined>>): string {
 }
 
 const hinted = { MarkUnknown: {}, MarkAttached: { hasAttachments: true }, MarkPlain: { hasAttachments: false } } as const
+const literalMailAddress = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
 
 function senderEmail(from: string): string | null {
   const candidate = (/<([^<>]+)>\s*$/.exec(from)?.[1] ?? from).trim()
@@ -54,8 +55,8 @@ function senderEmail(from: string): string | null {
 }
 
 effect function messageOf(card: typeof MailCardWire.Type): GmailMessage!MailProtocolFailed {
-  const address = senderEmail(card.replyTo ?? "")
-  const replyTo = replyToKept(typeof card.replyTo === "string", address !== null) ? address : null
+  const address = card.replyTo ?? ""
+  const replyTo = replyToKept(typeof card.replyTo === "string", address.length <= 254 && literalMailAddress.test(address)) ? address.toLowerCase() : null
   return {
     id: try present(card.id),
     threadId: try present(card.threadId),

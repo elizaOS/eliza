@@ -18,9 +18,16 @@ const headersOf: Record<string, ReadonlyArray<{ name: string; value: string }>> 
   ],
   "msg-two": [
     { name: "From", value: "ada@example.org" },
-    { name: "Reply-To", value: "a@example.org, b@example.org" },
+    { name: "Reply-To", value: "First <a@example.org>, Second <b@example.org>" },
     { name: "Subject", value: "Plan" },
     { name: "Message-ID", value: "<p2@example.org>" }
+  ],
+  "msg-three": [
+    { name: "From", value: "ada@example.org" },
+    { name: "Reply-To", value: "a@example.org" },
+    { name: "reply-to", value: "b@example.org" },
+    { name: "Subject", value: "Plan" },
+    { name: "Message-ID", value: "<p3@example.org>" }
   ]
 }
 
@@ -41,7 +48,7 @@ function decodedText(decoded: Result.Result<Uint8Array, unknown>): string {
   return decoded._tag === "Success" ? new TextDecoder().decode(decoded.success) : ""
 }
 
-describe("WP8 G4 compose", () => {
+describe("Mail composition", () => {
   it.live("Compose, reply-all and ambiguous reply (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\")", () => scoped(effect {
     const layer = try setup()
     const run = <A, E>(program: A!E!(Deployment | HttpClient.HttpClient)) => Effect.provide(program, layer)
@@ -53,6 +60,7 @@ describe("WP8 G4 compose", () => {
     const reply = try run(composeMessage({ kind: "draft-create", mode: "reply-all", subject: "Re: Plan", bodyText: "ok", replyMessageId: "msg-one" }, context))
     const replyMime = decodedText(Base64Url.decode(reply.raw))
     const ambiguous = try run(Effect.flip(composeMessage({ kind: "send", mode: "reply", subject: "Re: Plan", bodyText: "ok", replyMessageId: "msg-two" }, context)))
+    const duplicate = try run(Effect.flip(composeMessage({ kind: "send", mode: "reply", subject: "Re: Plan", bodyText: "ok", replyMessageId: "msg-three" }, context)))
     const badType = try run(Effect.flip(composeMessage({ ...proposal, attachments: [{ name: "a.png", mimeType: "image/png", dataBase64: pdf }] }, context)))
     const decodedSubject = /Subject: ((?:.|\r\n )*)\r\n/.exec(mime)?.[1]?.split("\r\n ").map((word) => decodedText(Base64.decode(word.slice(10, -2)))).join("")
     try Effect.try(() => assert.deepStrictEqual(
@@ -63,6 +71,7 @@ describe("WP8 G4 compose", () => {
         attachment: [first.review.attachments.map((file) => [file.name, file.size]), mime.includes("Content-Type: multipart/mixed"), mime.includes("Content-Type: application/pdf")],
         reply: [reply.threadId, reply.review.to, reply.review.cc, replyMime.includes("In-Reply-To: <p1@example.org>"), replyMime.includes("References: <p0@example.org>\r\n <p1@example.org>")],
         ambiguous: [ambiguous._tag, ambiguous.refusal.code],
+        duplicate: [duplicate._tag, duplicate.refusal.code],
         badType: badType.refusal.code
       },
       {
@@ -72,6 +81,7 @@ describe("WP8 G4 compose", () => {
         attachment: [[["a.pdf", 14]], true, true],
         reply: ["thread-msg-one", ["ada@example.org"], ["grace@example.org", "lin@example.org"], true, true],
         ambiguous: ["Refused", "PreconditionFailed"],
+        duplicate: ["Refused", "PreconditionFailed"],
         badType: "InvalidRequest"
       }
     ))

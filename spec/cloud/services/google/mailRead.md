@@ -112,8 +112,10 @@ pure def lawAScoreIsWithinItsRange(signals: TriageSignals): bool =
 
 Every message row, in triage, a search page, a message read and a thread
 page, carries `replyTo`: the single literal address its `Reply-To` header
-names, or null when the message has no such header or the header names
-anything else. [The reviewed operations](./mailOperations.md) bind a reply
+names, or null when the message has no such header, has repeated headers,
+or names more than one address. Field names compare without case, and the
+same mailbox parser is used by the row and its reviewed reply operation.
+[The reviewed operations](./mailOperations.md) bind a reply
 to that header, so a client can address the reply where the review will
 accept it. It also carries `hasAttachments`: true when the message's outer
 part is a `multipart/mixed` container, which is all a header read learns,

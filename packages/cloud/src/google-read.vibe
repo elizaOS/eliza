@@ -40,6 +40,7 @@ const gmail = "https://gmail.googleapis.com/gmail/v1/users/me"
 const calendar = "https://www.googleapis.com/calendar/v3/calendars"
 const attachments = /^[a-zA-Z0-9_-]{1,1024}$/
 export const mailAddress = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
+export const managedMailAddress = /^[A-Za-z0-9.!#$%&'*+\-/=?^_`{|}~]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}$/
 export const hasControlCharacter = (text: string) => [...text].some((character) => character.charCodeAt(0) <= 0x1f || character.charCodeAt(0) === 0x7f)
 const rfcMessageId = /^<[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9.-]+>$/
 const history = /^[0-9]+$/
@@ -84,10 +85,44 @@ function sender(value: string) {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate) ? candidate : null
 }
 
-export function mailReplyAddress(headers: ReadonlyMap<string, string>): string | null {
-  const named = headers.get("reply-to")
-  const address = named === undefined ? null : sender(named)
-  return replyAddressNamed(named !== undefined, address !== null) ? address : null
+type ReplyHeaders = Pick<MailPart, "headers">
+type ReplySource = "reply-to" | "from"
+interface ReplyRecipient { readonly source: ReplySource; readonly address: string }
+
+const mailboxSyntax = {
+  legacy: /^(?:"(?:[^"\\]|\\.)*"|[^<>,@]*)\s*<([^<>]+)>$/,
+  managed: /^(?:"(?:[^"\\]|\\.)*"|[^<>,@"]*)\s*<([^<>]+)>$/,
+}
+
+function mailboxOf(entry: string, mode: keyof typeof mailboxSyntax): string | undefined {
+  const address = (mailboxSyntax[mode].exec(entry)?.[1] ?? entry).trim()
+  const literal = mode === "managed" ? managedMailAddress : mailAddress
+  return address.length <= 254 && literal.test(address) ? address : undefined
+}
+
+export function managedMailboxAddress(entry: string): string | undefined {
+  return mailboxOf(entry, "managed")
+}
+
+function headerValues(payload: ReplyHeaders | undefined, name: string): readonly string[] {
+  return (payload?.headers ?? []).filter((field) => field.name.toLowerCase() === name).map((field) => field.value.trim())
+}
+
+function replyRecipient(payload: ReplyHeaders | undefined, mode: keyof typeof mailboxSyntax): ReplyRecipient | undefined {
+  const explicit = headerValues(payload, "reply-to")
+  const source: ReplySource = explicit.length > 0 ? "reply-to" : "from"
+  const values = source === "reply-to" ? explicit : headerValues(payload, source)
+  if (values.length !== 1) return undefined
+  const address = mailboxOf(values[0] ?? "", mode)
+  return address === undefined ? undefined : { source, address }
+}
+
+export function managedReplyRecipient(payload: ReplyHeaders | undefined): ReplyRecipient | undefined {
+  return replyRecipient(payload, "managed")
+}
+
+export function explicitReplyAddress(recipient: ReplyRecipient | undefined): string | null {
+  return replyAddressNamed(recipient?.source === "reply-to", recipient !== undefined) ? recipient?.address ?? null : null
 }
 
 export function mailAttachmentHint(payload: MailPart | undefined): boolean {
@@ -146,7 +181,7 @@ effect function mailCard(message: MailMessage, selfEmail: string) {
   return {
     ...mailTriageFields(labels, headers, selfEmail),
     id: message.id, externalId: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from, fromEmail: sender(from),
-    replyTo: mailReplyAddress(headers), hasAttachments: mailAttachmentHint(message.payload), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
+    replyTo: explicitReplyAddress(replyRecipient(message.payload, "legacy")), hasAttachments: mailAttachmentHint(message.payload), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
     receivedAt, labels,
     htmlLink: `https://mail.google.com/mail/u/0/#all/${message.id}`, metadata: { historyId: message.historyId ?? null }
   }
@@ -164,19 +199,13 @@ effect function readMessage<E, R>(api: GoogleReadApi<E, R>, id: string, format: 
 
 function replyTarget(message: MailMessage) {
   if (message.labelIds?.includes("TRASH")) return null
-  const fields = message.payload?.headers ?? []
-  const all = (name: string) => fields.filter((field) => field.name.toLowerCase() === name).map((field) => field.value.trim())
-  const replyTo = all("reply-to")
-  const addressFields = replyTo.length ? replyTo : all("from")
-  const messageIds = all("message-id")
-  const subjects = all("subject")
-  if (addressFields.length !== 1 || messageIds.length !== 1 || subjects.length > 1) return null
-  const source = addressFields[0]
-  const mailbox = /^(?:"(?:[^"\\]|\\.)*"|[^<>,@]*)\s*<([^<>]+)>$/.exec(source)
-  const recipient = mailbox?.[1].trim() ?? source
+  const recipient = replyRecipient(message.payload, "legacy")?.address
+  const messageIds = headerValues(message.payload, "message-id")
+  const subjects = headerValues(message.payload, "subject")
+  if (recipient === undefined || messageIds.length !== 1 || subjects.length > 1) return null
   const messageId = messageIds[0]
   const subject = subjects[0] ?? ""
-  if (!recipient || recipient.length > 254 || !mailAddress.test(recipient) || !rfcMessageId.test(messageId) ||
+  if (!rfcMessageId.test(messageId) ||
       messageId.length > 250 || subject.length > 120 || hasControlCharacter(subject) ||
       !attachments.test(message.threadId)) return null
   return { recipient, subject, messageId, threadId: message.threadId }

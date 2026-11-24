@@ -3,12 +3,11 @@ import type { Driver, Options } from "../../gen/cloud__identity__codeChallenges.
 import type { Challenge, Event } from "../../gen/cloud__identity__codeChallenges.ts";
 import { challengeRows } from "../../src/identity/code-challenges.vibe";
 import { loadRow, stepRow } from "../../src/store/rows.vibe";
-import { ledger, within } from "../support/ledger.ts";
+import { identityDriverLedger, within } from "../support/ledger.ts";
 
-const cloud = ledger();
+const cloud = identityDriverLedger();
 const keys = ["a", "b"];
 const challenge = (key: string) => `challenge-${key}`;
-const emitted = new Map<string, unknown>();
 
 function columns(key: string) {
   return (state: Challenge) => ({
@@ -26,11 +25,7 @@ function columns(key: string) {
 }
 
 async function dispatch(key: string, event: Event) {
-  const done = await cloud.run(within((tx) => stepRow(tx, challengeRows, challenge(key), { event, now: 0 }, columns(key))));
-  emitted.set(key, done.kind === "done" ? done.value.out.out : []);
-  if (done.kind === "done") return "accepted" as const;
-  if (done.tag === "Rejected") return "refused" as const;
-  throw new Error(`the cloud failed with ${done.tag}`, { cause: done.error });
+  return cloud.dispatch(key, within((tx) => stepRow(tx, challengeRows, challenge(key), { event, now: 0 }, columns(key))), (value) => value.out.out);
 }
 
 async function observe(key: string): Promise<Challenge> {
@@ -41,13 +36,12 @@ async function observe(key: string): Promise<Challenge> {
 
 export const driver: Driver & AsyncDisposable = {
   reset: async () => {
-    emitted.clear();
     await cloud.reset([]);
     await cloud.sql("TRUNCATE code_challenges");
   },
   dispatch,
   observe,
-  observeOutput: (key) => emitted.get(key) ?? [],
+  observeOutput: cloud.observeOutput,
   [Symbol.asyncDispose]: () => cloud.dispose(),
 };
 
