@@ -1,9 +1,9 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 /** Presentation-only notification routes. No producer URL, auth/runtime switch,
  * nested command or mutable component crosses this closed navigation policy. */
-final class NativeNotificationRoute {
-    static String view(String deepLink) {
+public final class NativeNotificationRoute {
+    public static String view(String deepLink) {
         if (deepLink == null) return null;
         switch (deepLink) {
             case "/chat": return "chat";

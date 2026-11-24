@@ -1,12 +1,12 @@
 // spec/os/android/notificationProjection.md, "An occurrence alert leaves the updates channel only while the owner left that channel as the host made it"
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.os.Build;
 
-/** Shared channel policy for FCM and native canonical inbox delivery. */
-final class NativeNotificationChannels {
+/** Channel policy for the alerts the native inbox posts. */
+public final class NativeNotificationChannels {
     private NativeNotificationChannels() {}
     /**
      * Channel group IDs that the host itself assigns to eliza_updates. By default (empty) any group
@@ -17,10 +17,10 @@ final class NativeNotificationChannels {
      * instead of escaping to a channel outside that group.
      */
     private static volatile java.util.Set<String> hostAssignedGroups = java.util.Set.of();
-    static void setHostAssignedGroups(java.util.Collection<String> groups) {
+    public static void setHostAssignedGroups(java.util.Collection<String> groups) {
         hostAssignedGroups = java.util.Set.copyOf(groups);
     }
-    /** One channel authority for cold FCM and foreground LocalNotifications. */
+    /** The one channel an alert of this priority and owner type is posted on. */
     static NotificationChannel resolveReminderChannel(NotificationManager manager, String priority, String ownerType) {
         if ("high".equals(priority) && "occurrence".equals(ownerType)) {
             NotificationChannel previous = manager.getNotificationChannel("eliza_updates");

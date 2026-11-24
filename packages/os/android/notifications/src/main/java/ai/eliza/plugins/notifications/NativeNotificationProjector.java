@@ -1,4 +1,4 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 import android.Manifest;
 import android.app.Activity;
@@ -23,15 +23,15 @@ import java.nio.file.Path;
 import java.util.UUID;
 import org.json.JSONObject;
 
-/** Non-GMS native projection. Transport/inbox authority stays outside the presentation layer.
- * Never consumes FCM receipts or accepts a producer-provided component, scheme or external URL. */
-final class NativeNotificationProjector {
+/** Native projection of inbox notices. Transport/inbox authority stays outside the presentation layer.
+ * Never accepts a producer-provided component, scheme or external URL. */
+public final class NativeNotificationProjector {
     private static final String PREFS = "eliza_native_notification_taps";
     private static final String OWNER = "elizaNativeNotificationOwner", TOKEN = "elizaNativeNotificationToken";
     private static final String TAG = "eliza.native.notification:";
     private static final String GROUP = "elizaNativeNotificationGroup";
 
-    static boolean post(Context context, Class<? extends Activity> tapComponent, String owner, JSONObject notification) throws Exception {
+    public static boolean post(Context context, Class<? extends Activity> tapComponent, String owner, JSONObject notification) throws Exception {
         java.util.Objects.requireNonNull(tapComponent);
         if (!validOwner(owner)) throw new SecurityException("Invalid notification presentation owner");
         JSONObject item = NativeNotificationInbox.checked(notification);
@@ -111,7 +111,7 @@ final class NativeNotificationProjector {
     }
 
     /** Call before native deep-link capture. Only current-profile, private-token taps become routes. */
-    static boolean onOpened(Context context, Class<? extends Activity> tapComponent, Intent intent, String currentOwner) {
+    public static boolean onOpened(Context context, Class<? extends Activity> tapComponent, Intent intent, String currentOwner) {
         if (intent == null || !intent.hasExtra(OWNER)) return false;
         String owner = intent.getStringExtra(OWNER), id = intent.getStringExtra("notificationId");
         SharedPreferences receipts = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -137,7 +137,7 @@ final class NativeNotificationProjector {
         return true;
     }
     /** Retire only this transport's exact owner scope, including NMS posts still pending visibility. */
-    static void retireOwner(Context context, String owner) throws IOException {
+    public static void retireOwner(Context context, String owner) throws IOException {
         if (!validOwner(owner)) throw new SecurityException("Invalid notification retirement owner");
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         SharedPreferences receipts = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -163,7 +163,7 @@ final class NativeNotificationProjector {
     private static boolean validOwner(String value) { return value != null && value.matches("[a-f0-9]{64}"); }
     private static boolean validId(String value) { return value != null && value.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"); }
 
-    static void syncDirectory(Path directory) throws IOException {
+    public static void syncDirectory(Path directory) throws IOException {
         FileDescriptor descriptor = null;
         try { descriptor = Os.open(directory.toString(), OsConstants.O_RDONLY, 0); Os.fsync(descriptor); }
         catch (android.system.ErrnoException error) { throw new IOException("Native notification directory could not be synced", error); }

@@ -1,4 +1,4 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -19,11 +19,11 @@ import org.json.JSONObject;
 /** Native per-owner inbox reconciliation. A committed dispatch marker precedes every OS effect.
  * The initial full snapshot is history, not new alerts. Later snapshots recover missed new records.
  * Unknown posts never replay after process death or a lost acknowledgement. */
-final class NativeNotificationInbox {
-    interface Projector { boolean post(JSONObject notification) throws Exception; }
-    interface DirectorySync { void sync(Path directory) throws IOException; }
-    interface AuthorityCheck { void current() throws Exception; }
-    /** Installed no-backup directory name; {@link ElizaDataResetStores} lists it. */
+public final class NativeNotificationInbox {
+    public interface Projector { boolean post(JSONObject notification) throws Exception; }
+    public interface DirectorySync { void sync(Path directory) throws IOException; }
+    public interface AuthorityCheck { void current() throws Exception; }
+    /** Installed no-backup directory name. */
     static final String DIRECTORY_NAME = "native-notification-inbox";
     private static final int MAX_SEEN = 10000, MAX_BUFFERED = 128, MAX_BYTES = 4 * 1024 * 1024;
     private static final ConcurrentHashMap<Path, Object> LOCKS = new ConcurrentHashMap<>();
@@ -34,11 +34,11 @@ final class NativeNotificationInbox {
     private final AuthorityCheck authority;
     private interface Locked<T> { T run(JSONObject state) throws Exception; }
 
-    NativeNotificationInbox(Path root, String ownerFingerprint, Projector projector, DirectorySync sync) throws IOException {
+    public NativeNotificationInbox(Path root, String ownerFingerprint, Projector projector, DirectorySync sync) throws IOException {
         this(root, ownerFingerprint, projector, sync, () -> {});
     }
 
-    NativeNotificationInbox(Path root, String ownerFingerprint, Projector projector, DirectorySync sync, AuthorityCheck authority) throws IOException {
+    public NativeNotificationInbox(Path root, String ownerFingerprint, Projector projector, DirectorySync sync, AuthorityCheck authority) throws IOException {
         if (ownerFingerprint == null || !ownerFingerprint.matches("[a-f0-9]{64}")) throw new SecurityException("Invalid notification owner");
         Path nativeRoot = root.toRealPath();
         if (!root.toAbsolutePath().normalize().equals(nativeRoot)) throw new IOException("Native inbox root must not be a symlink");
@@ -50,20 +50,20 @@ final class NativeNotificationInbox {
         file = directory.resolve(owner + ".json"); lock = directory.resolve(owner + ".lock");
     }
 
-    void beginBaseline() throws Exception {
+    public void beginBaseline() throws Exception {
         locked(state -> { state.put("baselineReady", false); save(state); return null; });
     }
 
     /** The request cursor is durable; reconnect and process restart resume the same append fence. */
-    JSONObject pageCursor() throws Exception {
+    public JSONObject pageCursor() throws Exception {
         return locked(this::cursor);
     }
 
-    void restartEpoch() throws Exception {
+    public void restartEpoch() throws Exception {
         locked(state -> { state.put("resetEpoch", true).put("page", JSONObject.NULL).put("bufferedMatches", new JSONObject()); save(state); return null; });
     }
 
-    JSONObject acceptLive(JSONObject notification) throws Exception {
+    public JSONObject acceptLive(JSONObject notification) throws Exception {
         JSONObject copy = checked(notification);
         return locked(state -> {
             String id = copy.getString("id");
@@ -101,7 +101,7 @@ final class NativeNotificationInbox {
 
     /** Only a fully validated, fully processed page closes its range. An incomplete
      * page closes through its last emitted row; only complete=true closes deleted tail gaps. */
-    boolean acceptPage(JSONObject envelope, JSONObject requestedCursor) throws Exception {
+    public boolean acceptPage(JSONObject envelope, JSONObject requestedCursor) throws Exception {
         JSONObject page = NativeNotificationWire.page(envelope, requestedCursor);
         return locked(state -> {
             JSONObject actual = cursor(state);
@@ -206,7 +206,7 @@ final class NativeNotificationInbox {
         return result;
     }
 
-    JSONObject status() throws Exception {
+    public JSONObject status() throws Exception {
         return locked(state -> {
             int accepted = 0, declined = 0, unknown = 0;
             JSONObject seen = state.getJSONObject("seen"), legacy = state.getJSONObject("legacySeen");

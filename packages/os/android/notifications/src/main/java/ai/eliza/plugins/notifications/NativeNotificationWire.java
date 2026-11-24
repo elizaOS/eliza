@@ -1,11 +1,11 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 import java.nio.charset.StandardCharsets;
 import org.json.JSONObject;
 
 /** The existing dashboard event protocol, not the separate Gateway RPC protocol. */
-final class NativeNotificationWire {
-    static JSONObject notification(String frame) throws Exception {
+public final class NativeNotificationWire {
+    public static JSONObject notification(String frame) throws Exception {
         if (frame.getBytes(StandardCharsets.UTF_8).length > 4 * 1024 * 1024)
             throw new IllegalArgumentException("Native notification frame too large");
         JSONObject event = new JSONObject(frame);
@@ -47,7 +47,7 @@ final class NativeNotificationWire {
         return path.append("&limit=128").toString();
     }
 
-    static JSONObject page(JSONObject input, JSONObject cursor) throws Exception {
+    public static JSONObject page(JSONObject input, JSONObject cursor) throws Exception {
         pagePath(cursor);
         // The HTTP reader already rejects a raw body over 256 KiB. Measuring
         // JSONObject.toString() again is wrong: Android's JSONStringer writes
