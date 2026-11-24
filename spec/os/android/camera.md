@@ -152,6 +152,39 @@ pure def sometimesControlOnReadyPreview(s: CameraView): bool = s.work == CameraC
 pure def sometimesRecording(s: CameraView): bool = s.work == RecordingActive
 ```
 
+### The optional library id of a saved photo names the provider's own row
+
+After a photo is saved, including a thumbnail capture, Android 10 or later
+may return `libraryId` in the form `m:<volume>:i:<id>`. The two fields come
+from the saved MediaStore row, since the capture URI can name the aggregate
+`external` collection. The provider must return one published row with the
+same positive signed 64-bit id as the capture URI. Its volume has at most 80
+letters, digits, underscores or hyphens and is neither `internal` nor
+`external`. Without a usable row, or on an earlier Android version, the
+saved photo is returned with its usual fields and no library id. The bridge
+preserves a valid id only on a requested gallery capture with a saved path.
+An invalid optional id leaves the rest of the photo receipt intact.
+
+```quint
+type GalleryRow = { uriId: int, rowId: int, published: bool, singleRow: bool, concreteVolume: bool }
+pure def galleryRowIdentifiesPhoto(row: GalleryRow): bool =
+  row.published and row.singleRow and row.concreteVolume and
+  row.rowId == row.uriId and row.rowId > 0
+pure def captureLibraryIdAllowed(galleryRequested: bool, pathPresent: bool, idValid: bool): bool =
+  galleryRequested and pathPresent and idValid
+pure val exactGalleryRow: GalleryRow =
+  { uriId: 7, rowId: 7, published: true, singleRow: true, concreteVolume: true }
+pure val rowValues = Set(exactGalleryRow, { ...exactGalleryRow, rowId: 8 },
+  { ...exactGalleryRow, published: false }, { ...exactGalleryRow, singleRow: false },
+  { ...exactGalleryRow, concreteVolume: false }, { ...exactGalleryRow, uriId: 0, rowId: 0 })
+pure def lawOnlyThePublishedExactRowIdentifiesThePhoto(row: GalleryRow): bool =
+  galleryRowIdentifiesPhoto(row) implies (row.rowId == row.uriId and row.published and row.singleRow and row.concreteVolume and row.rowId > 0)
+pure def lawTheExactPublishedPhotoHasAnId(rowId: int): bool =
+  (rowId > 0) implies galleryRowIdentifiesPhoto({ ...exactGalleryRow, rowId: rowId, uriId: rowId })
+pure def lawOnlyARequestedGallerySaveWithAPathKeepsAValidId(galleryRequested: bool, pathPresent: bool, idValid: bool): bool =
+  captureLibraryIdAllowed(galleryRequested, pathPresent, idValid) iff (galleryRequested and pathPresent and idValid)
+```
+
 ### While a recording runs, only one zoom or torch change runs at a time
 
 A running recording holds the slot, so a capture, a second recording start
