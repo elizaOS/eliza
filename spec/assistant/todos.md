@@ -41,6 +41,12 @@ Each new item takes the next id, counting up from one, so no two items
 share an id. An open item says the same when its text matches apart from
 case, punctuation and spacing: the shell then asks about the new item
 with that open item's text, so "buy milk." is a duplicate of "Buy milk".
+The owner confirms the duplicate with a reply that the confirmation reader
+of [Confirmation replies](../core/confirmation.md) takes for a yes: a
+refusal anywhere in the reply wins over an opening yes, a question or a
+bare thanks is not a yes, and yes and no are read in English, Spanish,
+French, German, Korean, Chinese and Japanese. So "yes, actually no" and
+"ok?" add nothing, and "sí" adds the copy.
 
 ```quint
 pure def createRequest(content: str, affirmed: bool): TodoRequest = { op: CreateOp, requestContent: content, requestStatus: TodoPending, affirmed: affirmed, requestRenamed: "" }
@@ -112,8 +118,9 @@ pure def alwaysCompletionTimeMatchesStatus(s: Todos): bool = s.todos.every(t => 
 ### Clearing the list removes only the previewed items, and only after the owner confirms
 
 A clear asked for by the agent first records a preview of the items it
-would remove. Only an affirmative reply to that preview removes them;
-any other reply cancels the clear. Items added after the preview stay.
+would remove. Only a reply to that preview that the same reader takes
+for a yes removes them; any other reply, a refusal after an opening yes
+included, cancels the clear. Items added after the preview stay.
 
 ```quint
 pure val previewRequest: TodoRequest = { op: PreviewClearOp, requestContent: "", requestStatus: TodoPending, affirmed: false, requestRenamed: "" }

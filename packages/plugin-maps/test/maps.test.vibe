@@ -478,7 +478,7 @@ layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Map
       const searches = bodies.filter(({ path }) => path.endsWith("/places/search"))
       assert.deepStrictEqual({
         sawSelection: prompts[0]?.includes(selectedObject.id),
-        priorPlace: planningRequest.messages.some(({ role, content }) => role === "user" && content === "Show me Coit Tower on the map."),
+        priorPlace: planningRequest.messages.some(({ role, content }) => role === "user" && typeof content === "string" && content.endsWith("] Show me Coit Tower on the map.")),
         coached: prompts[1]?.includes("MAPS_SELECTION_HANDLE") && prompts[1]?.includes("destination"),
         lookupsOfHandle: sentDetails.length,
         searches: searches.map(({ body }) => body),

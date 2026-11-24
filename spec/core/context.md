@@ -182,3 +182,40 @@ pure def lawNoteLeavesWithItsRequest(requestShown: bool, replyShown: bool): bool
 pure def lawUnboundNoteStaysInline(requestShown: bool, replyShown: bool): bool =
   noteShown(false, requestShown, replyShown)
 ```
+
+## Story: Know when each earlier message was said
+
+> As the owner, I want the agent to know when each earlier message was
+> said, so that it can answer "what did I ask this morning" and order what
+> was said against the clock.
+
+### A message's stamp is its local date and minute, with the year only when it is not the newest year and an offset only when the minute alone names no one instant
+
+A historical message reaches the model as `[message_at=MM-DD HH:MM] `
+followed by its own text: the date and minute it was recorded, in the
+display zone its host names. Position already orders the messages within
+a minute, and the clock line states the zone, so the stamp carries no
+seconds, milliseconds or offset. `YYYY-` leads the date when the
+message's local year is not the year of the newest event shown with it: a
+recalled exchange can be older than that. With no usable display zone the
+stamp is the UTC date and minute followed by `Z`. In the hour a zone sets
+its clocks back the same minute is shown twice, and only there the stamp
+ends with its `+HH:MM` or `-HH:MM` offset; the hour skipped in spring is
+shown by no clock and needs none. A message with no recorded time, or one
+that is not a positive whole number of milliseconds, carries no stamp.
+Nothing parses a stamp back, and the stored text is never changed.
+Reading the zone's calendar is the shell's.
+
+```quint
+type StampOffset = OffsetOmitted | UtcMarked | OffsetNamed
+pure def stampNamesYear(messageYear: str, newestYear: str): bool = messageYear != newestYear
+pure def stampOffset(zoneUsable: bool, minuteRepeats: bool): StampOffset =
+  if (not(zoneUsable)) UtcMarked else if (minuteRepeats) OffsetNamed else OffsetOmitted
+pure val messageYearValues = Set("2025", "2026")
+pure val newestYearValues = Set("", "2025", "2026")
+pure def lawAMessageOfTheNewestYearOmitsIt(messageYear: str): bool = not(stampNamesYear(messageYear, messageYear))
+pure def lawAnyOtherYearIsNamed(messageYear: str, newestYear: str): bool = messageYear != newestYear implies stampNamesYear(messageYear, newestYear)
+pure def lawWithoutAUsableZoneTheStampIsMarkedUtc(minuteRepeats: bool): bool = stampOffset(false, minuteRepeats) == UtcMarked
+pure def lawOnlyARepeatedLocalMinuteNamesItsOffset(zoneUsable: bool, minuteRepeats: bool): bool =
+  (stampOffset(zoneUsable, minuteRepeats) == OffsetNamed) iff (zoneUsable and minuteRepeats)
+```

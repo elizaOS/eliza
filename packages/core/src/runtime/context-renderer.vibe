@@ -1,4 +1,5 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/context.md, "A message's stamp is its local date and minute, with the year only when it is not the newest year and an offset only when the minute alone names no one instant"
+import { stampNamesYear, stampOffset } from "../../gen/core__context.ts"
 import type { ChatMessage, ChatMessageRole, PromptSegment } from "../types/model.vibe"
 import { isPlainObject } from "../utils/type-guards.vibe"
 import type {
@@ -84,20 +85,24 @@ function repeatsWallClock(at: number, zone: unknown, clock: WallClock): boolean 
   return false
 }
 
-function historyMessageStamp(
-  segment: ContextObjectPromptSegment,
-): string | undefined {
-  if (!isHistoricalDialogueSegment(segment)) return undefined
-  const at = segment.createdAt
+function messageStamp(at: unknown, zone: unknown, newestYear: unknown): string | undefined {
   if (typeof at !== "number" || !Number.isSafeInteger(at) || at <= 0) {
     return undefined
   }
-  const zone = segment.metadata?.displayTimeZone
   const clock = wallClock(at, zone)
   if (!clock) return undefined
-  const year = clock.year === segment.metadata?.displayYear ? "" : `${clock.year}-`
-  const offset = !clock.local ? "Z" : repeatsWallClock(at, zone, clock) ? clock.offset : ""
-  return `${year}${clock.minute}${offset}`
+  const year = stampNamesYear(clock.year, typeof newestYear === "string" ? newestYear : "") ? `${clock.year}-` : ""
+  const offset = stampOffset(clock.local, clock.local && repeatsWallClock(at, zone, clock))
+  return `${year}${clock.minute}${offset === "UtcMarked" ? "Z" : offset === "OffsetNamed" ? clock.offset : ""}`
+}
+
+export function stampYear(newest: number, zone: unknown): string | undefined {
+  return newest > 0 ? wallClock(newest, zone)?.year : undefined
+}
+
+export function stampedMessage(content: string, at: unknown, zone: unknown, newestYear: unknown): string {
+  const stamp = messageStamp(at, zone, newestYear)
+  return stamp === undefined ? content : `[message_at=${stamp}] ${content}`
 }
 
 const GMT_PREFIX = /^GMT/
@@ -123,9 +128,8 @@ function displayZoneFormatter(zone: string): Intl.DateTimeFormat {
 }
 
 export function segmentBlock(segment: ContextObjectPromptSegment): string {
-  const timestamp = historyMessageStamp(segment)
-  const content = timestamp
-    ? `[message_at=${timestamp}] ${segment.content}`
+  const content = isHistoricalDialogueSegment(segment)
+    ? stampedMessage(segment.content, segment.createdAt, segment.metadata?.displayTimeZone, segment.metadata?.displayYear)
     : segment.content
   const label = segment.label
   if (
@@ -630,7 +634,7 @@ export function renderContextObject(
     : undefined
   const newest = context.events.reduce((latest, event) =>
     typeof event.createdAt === "number" && Number.isSafeInteger(event.createdAt) && event.createdAt > latest ? event.createdAt : latest, 0)
-  const displayYear = newest > 0 ? wallClock(newest, displayTimeZone)?.year : undefined
+  const displayYear = stampYear(newest, displayTimeZone)
   const display = {
     ...(displayTimeZone ? { displayTimeZone } : {}),
     ...(displayYear ? { displayYear } : {}),
