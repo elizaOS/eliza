@@ -1,0 +1,7 @@
+== TkAppend
+Dafny program verifier finished with 2 verified, 0 errors
+== release_ensures
+Dafny program verifier finished with 24 verified, 0 errors
+== lawALostKnownKeyIsNeverCreatedAgain_ensures
+Dafny program verifier finished with 3 verified, 0 errors
+ALLDONE

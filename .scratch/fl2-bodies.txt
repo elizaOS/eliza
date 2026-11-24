@@ -1,0 +1,30 @@
+cloudAnswered_ensures
+{
+  if inv(s) && canCloudAnswered(s, attempt, reply) {
+    FlowReceipts(cloudAnswered(s, attempt, reply).out);
+  }
+}
+exchangeSettled_ensures
+{
+  if inv(s) && canExchangeSettled(s, credentialAttempt, key) {
+    FlowReceipts(exchangeSettled(s, credentialAttempt, key).out);
+  }
+}
+pickerAnswered_ensures
+{
+  if inv(s) && canPickerAnswered(s, attempt, picked) {
+    FlowReceipts(pickerAnswered(s, attempt, picked).out);
+  }
+}
+googleConnected_ensures
+{
+  if inv(s) && canGoogleConnected(s, attempt, connected) {
+    FlowReceipts(googleConnected(s, attempt, connected).out);
+  }
+}
+cancel_ensures
+{
+  if inv(s) && canCancel(s, attempt) {
+    FlowReceipts(cancel(s, attempt).out);
+  }
+}

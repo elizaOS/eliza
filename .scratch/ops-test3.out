@@ -1,0 +1,25 @@
+== V4
+ops-test3.dfy(2063,27): Error: unresolved identifier: OpsAnyButClock
+ops-test3.dfy(2063,41): Error: expected method call, found expression
+ops-test3.dfy(2064,23): Error: unresolved identifier: OpsAnyButClock
+ops-test3.dfy(2064,37): Error: expected method call, found expression
+4 resolution/type errors detected in ops-test3.dfy
+== V3
+ops-test3.dfy(2063,27): Error: unresolved identifier: OpsAnyButClock
+ops-test3.dfy(2063,41): Error: expected method call, found expression
+ops-test3.dfy(2064,23): Error: unresolved identifier: OpsAnyButClock
+ops-test3.dfy(2064,37): Error: expected method call, found expression
+4 resolution/type errors detected in ops-test3.dfy
+== V2
+ops-test3.dfy(2063,27): Error: unresolved identifier: OpsAnyButClock
+ops-test3.dfy(2063,41): Error: expected method call, found expression
+ops-test3.dfy(2064,23): Error: unresolved identifier: OpsAnyButClock
+ops-test3.dfy(2064,37): Error: expected method call, found expression
+4 resolution/type errors detected in ops-test3.dfy
+== V1
+ops-test3.dfy(2063,27): Error: unresolved identifier: OpsAnyButClock
+ops-test3.dfy(2063,41): Error: expected method call, found expression
+ops-test3.dfy(2064,23): Error: unresolved identifier: OpsAnyButClock
+ops-test3.dfy(2064,37): Error: expected method call, found expression
+4 resolution/type errors detected in ops-test3.dfy
+ALLDONE

@@ -1,0 +1,29 @@
+lawEveryOperationNamesANeed_ensures
+{
+  var n := operationNeed(t, versionTwo);
+  if family(t).ClockFamily? {
+    if versionTwo { OpsNamesFirst(n.required); } else { OpsNamesFirst(n.oneOf); }
+  } else {
+    OpsFamilyNeed(family(t), t, versionTwo);
+    if |n.required| > 0 { OpsNamesFirst(n.required); } else { OpsNamesFirst(n.oneOf); }
+  }
+}
+lawAClockOnlyDeviceReceivesOnlyClockHandoffs_ensures
+{
+  var n := operationNeed(t, versionTwo);
+  if clockOnly(neg) && agent__deviceActions__capabilities_meets(neg, n) && !t.ClockHandoff? {
+    OpsClockFamily(t);
+    OpsFamilyNeed(family(t), t, versionTwo);
+    var c: agent__deviceActions__capabilities_Capability;
+    if |n.required| > 0 {
+      c := n.required[0];
+      assert c in n.required;
+    } else {
+      OpsNamesFirst(n.oneOf);
+      c :| c in n.oneOf && c in neg.capabilities;
+    }
+    agent__deviceActions__capabilities_lawTheVocabularyListsEveryCapability_ensures(c);
+    assert agent__deviceActions__capabilities_negotiatedHas(neg, c);
+    assert false;
+  }
+}

@@ -283,6 +283,26 @@ pure def selected(which: bool): Set[Field] = {
     assert.deepEqual([domain.selected(true), domain.selected(false)], [["First", "Second"], ["Second"]]);
   });
 
+  test("a record literal beside == and a mapped list literal state their types in the prover's code", async () => {
+    const root = oneRule("steps", "Step records", `type Step = { state: int, out: List[int] }
+type Other = { state: int, out: List[int] }
+pure def step(n: int): Step = { state: n, out: List(n) }
+pure def other(n: int): Other = { state: n + 1, out: List() }
+pure def lawStepIsItsRecord(n: int): bool = step(n) == { state: n, out: List(n) }
+pure def shifted(n: int): List[int] = List(1, 2).listMap(x => x + n)`);
+    const model = await gen(root, parseSpec(root, "spec/steps.md"));
+    const checked = await tool("vibelang", ["--noEmit", "--strict", "--target", "es2023", "gen/steps.ts"], root);
+    assert.ok(checked.ok, checked.out);
+    const proof = model.render("");
+    // LemmaScript reads past `as` beside == and would take Other, the first record type with these field names.
+    assert.match(proof, /step\(n\) === typed\d+_steps\(\{ state: n, out: \[n\] \}\)/);
+    assert.doesNotMatch(proof, /=== \(\{ state: n, out: \[n\] \} as Step\)/);
+    assert.match(proof, /typed\d+_steps\(\[1, 2\]\)\.map\(/);
+    const domain = await import(pathToFileURL(path.join(root, "gen", "steps.ts")).href);
+    assert.equal(domain.lawStepIsItsRecord(3), true);
+    assert.deepEqual(domain.shifted(1), [2, 3]);
+  });
+
   test("the explore stage finds a page that breaks a property, keeps the trace, replays it first, and drops it once fixed", { skip: !["linux-x64", "linux-arm64", "darwin-arm64"].includes(`${process.platform}-${process.arch}`) }, async () => {
     if (process.env.TURBO_HASH && hostedCachedFixture()) await installChromium("full");
     const remember: Parameters<typeof explore>[1] = (_fingerprint, run) => run();

@@ -1,0 +1,8 @@
+== CrFilterSame
+cr-t.dfy(5970,44): Error: Verification out of resource (CrFilterSame)
+Dafny program verifier finished with 21 verified, 0 errors, 1 out of resource
+== lawACancelChangesOnlyItsOwnCallInFlight_ensures
+cr-t.dfy(4782,0): Error: a postcondition could not be proved on this return path
+cr-t.dfy(4781,64): Related location: this is the postcondition that could not be proved
+Dafny program verifier finished with 15 verified, 1 error
+ALLDONE

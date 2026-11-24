@@ -1,0 +1,13 @@
+== FlowReceipts
+Dafny program verifier finished with 25 verified, 0 errors
+== cancel_ensures
+fl-t.dfy(2975,37): Error: a postcondition could not be proved on this return path
+fl-t.dfy(2969,79): Related location: this is the postcondition that could not be proved
+fl-t.dfy(2419,92): Related location: this proposition could not be proved
+Dafny program verifier finished with 40 verified, 1 error
+== cloudAnswered_ensures
+fl-t.dfy(2644,51): Error: a postcondition could not be proved on this return path
+fl-t.dfy(2638,93): Related location: this is the postcondition that could not be proved
+fl-t.dfy(2419,92): Related location: this proposition could not be proved
+Dafny program verifier finished with 40 verified, 1 error
+ALLDONE

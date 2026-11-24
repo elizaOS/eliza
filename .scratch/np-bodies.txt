@@ -1,0 +1,13 @@
+lawCappingAShownNoticeKeepsTheCount_ensures
+{
+  NpCountAppend(notices, cappedMail);
+  NpCountAppend(notices, mail);
+}
+lawReadOrDeletedMailIsNeverCounted_ensures
+{
+  NpCountAppend(notices, readOrDeletedMail);
+}
+lawTheNewNoticeCountsItself_ensures
+{
+  NpCountAppend(notices, MailNotice(MailNoticePhase.MailPending, false));
+}

@@ -1,0 +1,9 @@
+== NpCountAppend
+Dafny program verifier finished with 2 verified, 0 errors
+== lawCappingAShownNoticeKeepsTheCount_ensures
+Dafny program verifier finished with 1 verified, 0 errors
+== lawReadOrDeletedMailIsNeverCounted_ensures
+Dafny program verifier finished with 1 verified, 0 errors
+== lawTheNewNoticeCountsItself_ensures
+Dafny program verifier finished with 1 verified, 0 errors
+ALLDONE

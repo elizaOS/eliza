@@ -1,0 +1,6 @@
+== lawAnExtraHostOrPathNeverAdmits_ensures
+br-test.dfy(2520,0): Error: a postcondition could not be proved on this return path
+br-test.dfy(2519,58): Related location: this is the postcondition that could not be proved
+br-test.dfy(2525,10): Error: cannot establish the existence of LHS values that satisfy the such-that predicate
+Dafny program verifier finished with 5 verified, 2 errors
+ALLDONE

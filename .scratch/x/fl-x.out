@@ -1,0 +1,27 @@
+== FRa
+Dafny program verifier finished with 14 verified, 0 errors
+== XA_cloudAnswered
+Dafny program verifier finished with 41 verified, 0 errors
+== XB_cloudAnswered
+fl-x.dfy(2419,15): Related location: this proposition could not be proved
+fl-x.dfy(3914,18): Error: a postcondition could not be proved on this return path
+fl-x.dfy(3905,93): Related location: this is the postcondition that could not be proved
+fl-x.dfy(2419,42): Related location: this proposition could not be proved
+fl-x.dfy(3914,18): Error: a postcondition could not be proved on this return path
+fl-x.dfy(3905,93): Related location: this is the postcondition that could not be proved
+fl-x.dfy(2419,92): Related location: this proposition could not be proved
+Dafny program verifier finished with 43 verified, 3 errors
+== XA_cancel
+Dafny program verifier finished with 41 verified, 0 errors
+== XB_cancel
+fl-x.dfy(2419,15): Related location: this proposition could not be proved
+fl-x.dfy(3962,18): Error: a postcondition could not be proved on this return path
+fl-x.dfy(3953,79): Related location: this is the postcondition that could not be proved
+fl-x.dfy(2419,42): Related location: this proposition could not be proved
+fl-x.dfy(3962,18): Error: a postcondition could not be proved on this return path
+fl-x.dfy(3953,79): Related location: this is the postcondition that could not be proved
+fl-x.dfy(2419,92): Related location: this proposition could not be proved
+Dafny program verifier finished with 43 verified, 3 errors
+== XA_exchangeSettled
+Dafny program verifier finished with 41 verified, 0 errors
+ALLDONE

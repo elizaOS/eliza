@@ -1,0 +1,32 @@
+== InsHolds
+Dafny program verifier finished with 7 verified, 0 errors
+== InsAdd
+Dafny program verifier finished with 8 verified, 0 errors
+== InsRelease
+ins-t.dfy(909,45): Error: a postcondition could not be proved on this return path
+ins-t.dfy(904,27): Related location: this is the postcondition that could not be proved
+ins-t.dfy(557,148): Related location: this proposition could not be proved
+Dafny program verifier finished with 9 verified, 1 error
+== dropPlan_ensures
+Dafny program verifier finished with 28 verified, 0 errors
+== changeChannel_ensures
+Dafny program verifier finished with 28 verified, 0 errors
+== requestHold_ensures
+Dafny program verifier finished with 28 verified, 0 errors
+== releaseUnhandedHold_ensures
+Dafny program verifier finished with 28 verified, 0 errors
+== observeInstall_ensures
+ins-t.dfy(500,28): Error: a postcondition could not be proved on this return path
+ins-t.dfy(487,95): Related location: this is the postcondition that could not be proved
+ins-t.dfy(582,27): Related location: this proposition could not be proved
+Dafny program verifier finished with 48 verified, 1 error
+== abandonUnknown_ensures
+Dafny program verifier finished with 50 verified, 0 errors
+== observeHealth_ensures
+ins-t.dfy(622,45): Error: a postcondition could not be proved on this return path
+ins-t.dfy(614,97): Related location: this is the postcondition that could not be proved
+ins-t.dfy(679,54): Related location: this proposition could not be proved
+Dafny program verifier finished with 23 verified, 1 error
+== denyRecovery_ensures
+Dafny program verifier finished with 28 verified, 0 errors
+ALLDONE

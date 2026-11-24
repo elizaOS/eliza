@@ -1,0 +1,47 @@
+lawASentRequestIsAdmittedOnTheOrigin_ensures
+{
+  var a := agent__access__routes_admission(routes, request);
+  var found := deviceRouteOf((if ((0 <= 0) && (0 < |agent__access__routes_admittedRoute(a)|)) then agent__access__routes_admittedRoute(a)[0] else agent__access__routes_noTemplate));
+  var d := (if ((0 <= 0) && (0 < |found|)) then found[0] else noDeviceRoute);
+  if cloud__client_originAccepted(origin) && !a.TooLarge? && |agent__access__routes_admittedRoute(a)| == 1 && |found| == 1
+    && !(exists x :: x in headers && !(headerAllowed(d, x))) {
+    assert !headerAllowed(d, "Authorization");
+    assert !("Authorization" in headers);
+  } else {
+    assert refused(planRequest(routes, h, origin, request, headers));
+  }
+}
+lawASession401NeverReachesTheKey_ensures
+{
+}
+lawACancelChangesOnlyItsOwnCallInFlight_ensures
+{
+  var after := cancelCall(calls, name);
+  assert |after| == |calls|;
+  assert forall i :: 0 <= i < |after| ==> after[i].name == calls[i].name;
+  var other := (c: PageCall) => (c.name != name);
+  var settled := (c: PageCall) => c.status.CallSettled?;
+  ProofLib.FilterPointwise(other, other, (x: PageCall, y: PageCall) => x.name != name ==> x == y, after, calls);
+  ProofLib.FilterPointwise(settled, settled, (x: PageCall, y: PageCall) => x.status.CallSettled? ==> x == y, after, calls);
+  var ka := Std.Collections.Seq.Filter(other, after);
+  var kc := Std.Collections.Seq.Filter(other, calls);
+  assert forall i :: 0 <= i < |ka| ==> other(ka[i]);
+  assert forall i :: 0 <= i < |ka| ==> ka[i] == kc[i];
+  assert ka == kc;
+  var sa := Std.Collections.Seq.Filter(settled, after);
+  var sc := Std.Collections.Seq.Filter(settled, calls);
+  assert forall i :: 0 <= i < |sa| ==> settled(sa[i]);
+  assert forall i :: 0 <= i < |sa| ==> sa[i] == sc[i];
+  assert sa == sc;
+  forall c | c in after
+    ensures !(c.name == name && c.status.CallInFlight?)
+  {
+    var i :| 0 <= i < |after| && after[i] == c;
+  }
+}
+lawAGrantReadsOnce_ensures
+{
+  var r := redeem(grants, grant).grants;
+  assert forall i :: 0 <= i < |r| ==> r[i].grant != grant;
+  ProofLib.FilterNone((g: Grant) => (g.grant == grant), r);
+}

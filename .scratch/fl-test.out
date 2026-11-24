@@ -1,0 +1,25 @@
+== cancel_ensures
+fl-test.dfy(2414,15): Related location: this proposition could not be proved
+fl-test.dfy(2961,0): Error: a postcondition could not be proved on this return path
+fl-test.dfy(2956,79): Related location: this is the postcondition that could not be proved
+fl-test.dfy(2414,42): Related location: this proposition could not be proved
+fl-test.dfy(2961,0): Error: a postcondition could not be proved on this return path
+fl-test.dfy(2956,79): Related location: this is the postcondition that could not be proved
+fl-test.dfy(2414,92): Related location: this proposition could not be proved
+Dafny program verifier finished with 37 verified, 3 errors
+== pickerAnswered_ensures
+Dafny program verifier finished with 40 verified, 0 errors
+== googleConnected_ensures
+Dafny program verifier finished with 40 verified, 0 errors
+== exchangeSettled_ensures
+Dafny program verifier finished with 40 verified, 0 errors
+== cloudAnswered_ensures
+fl-test.dfy(2414,15): Related location: this proposition could not be proved
+fl-test.dfy(2638,0): Error: a postcondition could not be proved on this return path
+fl-test.dfy(2633,93): Related location: this is the postcondition that could not be proved
+fl-test.dfy(2414,42): Related location: this proposition could not be proved
+fl-test.dfy(2638,0): Error: a postcondition could not be proved on this return path
+fl-test.dfy(2633,93): Related location: this is the postcondition that could not be proved
+fl-test.dfy(2414,92): Related location: this proposition could not be proved
+Dafny program verifier finished with 37 verified, 3 errors
+ALLDONE

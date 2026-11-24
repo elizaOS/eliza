@@ -1,0 +1,14 @@
+== OpsFilterMember
+ops-t.dfy(2036,51): Error: possible violation of postcondition of forall statement
+ops-t.dfy(2096,14): Error: a postcondition could not be proved on this return path
+ops-t.dfy(2092,49): Related location: this is the postcondition that could not be proved
+Dafny program verifier finished with 10 verified, 2 errors
+== OpsAnyButClock
+ops-t.dfy(2051,27): Error: assertion might not hold
+ops-t.dfy(2052,2): Error: assertion might not hold
+Dafny program verifier finished with 6 verified, 2 errors
+== lawEveryOperationNamesANeed_ensures
+Dafny program verifier finished with 6 verified, 0 errors
+== lawAClockOnlyDeviceReceivesOnlyClockHandoffs_ensures
+Dafny program verifier finished with 10 verified, 0 errors
+ALLDONE

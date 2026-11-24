@@ -1,0 +1,20 @@
+cloudAnswered_ensures
+{
+  reveal Std.Collections.Seq.Filter();
+}
+exchangeSettled_ensures
+{
+  reveal Std.Collections.Seq.Filter();
+}
+pickerAnswered_ensures
+{
+  reveal Std.Collections.Seq.Filter();
+}
+googleConnected_ensures
+{
+  reveal Std.Collections.Seq.Filter();
+}
+cancel_ensures
+{
+  reveal Std.Collections.Seq.Filter();
+}

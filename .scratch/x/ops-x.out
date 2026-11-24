@@ -1,0 +1,11 @@
+== OAa
+Dafny program verifier finished with 6 verified, 0 errors
+== OAc
+ops-x.dfy(2139,12): Error: possible violation of postcondition of forall statement
+ops-x.dfy(2139,34): Error: possible violation of postcondition of forall statement
+Dafny program verifier finished with 3 verified, 2 errors
+== XTab_ensures
+Dafny program verifier finished with 8 verified, 0 errors
+== XLens_ensures
+Dafny program verifier finished with 11 verified, 0 errors
+ALLDONE

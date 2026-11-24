@@ -1,0 +1,16 @@
+== ExpA
+ops-exp-test.dfy(2047,0): Error: a postcondition could not be proved on this return path
+ops-exp-test.dfy(2045,77): Related location: this is the postcondition that could not be proved
+ops-exp-test.dfy(2048,63): Error: cannot establish the existence of LHS values that satisfy the such-that predicate
+ops-exp-test.dfy(2049,42): Error: possible violation of postcondition of forall statement
+Dafny program verifier finished with 2 verified, 3 errors
+== ExpB
+ops-exp-test.dfy(2057,0): Error: a postcondition could not be proved on this return path
+ops-exp-test.dfy(2055,77): Related location: this is the postcondition that could not be proved
+ops-exp-test.dfy(2059,27): Error: assertion might not hold
+Dafny program verifier finished with 3 verified, 2 errors
+== ExpC
+ops-exp-test.dfy(2067,0): Error: a postcondition could not be proved on this return path
+ops-exp-test.dfy(2066,10): Related location: this is the postcondition that could not be proved
+Dafny program verifier finished with 1 verified, 1 error
+ALLDONE

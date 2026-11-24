@@ -1,0 +1,10 @@
+lawAnExtraHostOrPathNeverAdmits_ensures
+{
+  forall p: string -> bool, xs: seq<string> | |Std.Collections.Seq.Filter(p, xs)| > 0
+    ensures exists x :: x in xs && p(x)
+  {
+    ProofLib.FilterNone(p, xs);
+    var i :| 0 <= i < |xs| && p(xs[i]);
+    assert xs[i] in xs;
+  }
+}
