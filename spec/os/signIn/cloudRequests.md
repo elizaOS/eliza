@@ -169,13 +169,14 @@ pure def reportOf(attach: Attach, d: DeviceRoute, status: int, reason: RefusalRe
     | Bare => NoReport
   }
 pure def isKeyReport(r: CredentialReport): bool = match r { | KeyRejected(k) => true | _ => false }
+pure def carriesKey(a: Attach): bool = match a { | WithKey(k) => true | _ => false }
 pure val attachValues = Set(Bare, WithKey({ version: 1 }), WithSession({ version: 1 }))
 pure val dValues = Set(noDeviceRoute, { method: Get, path: api(List("user")), auth: KeyOrSession, headers: Set() })
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
 pure def lawOnlyA401WithACredentialIsReported(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
   (reportOf(attach, d, status, reason) != NoReport) iff (status == 401 and attach != Bare)
 pure def lawASession401NeverReachesTheKey(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
-  isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and keyOf(attach) >= 1)
+  isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and carriesKey(attach))
 ```
 
 ### A cancel disconnects only the page's own call still in flight, which then settles once as cancelled

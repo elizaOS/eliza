@@ -116,9 +116,10 @@ pure def sometimesEffectUnknown(r: GeneratedRun): bool = r.phase == EffectUnknow
 
 ### A wait parks the run until its own approval, signal or timer resolves it
 
-The code parks on an approval, a named signal or a timer. Only the wait the
-run is parked on resumes it, and its result is journaled before the code
-runs again. A settled, diverged or effect-unknown run never changes again.
+The code parks on an approval, a named signal or a timer, and only with no
+effect pending. Only the wait the run is parked on resumes it, and its
+result is journaled before the code runs again. A settled, diverged or
+effect-unknown run never changes again.
 
 ```quint
 pure def waitCall(w: Wait): str = match w { | WaitApproval(a) => a.call | WaitSignal(s) => s.call | WaitTimer(t) => t.call | NoWait => "" }
@@ -130,7 +131,7 @@ pure def resumeWait(r: GeneratedRun, call: str, digest: str): GeneratedRun = { .
 pure def canSettleRun(r: GeneratedRun): bool = r.phase == Replaying and r.pending == ""
 pure def settleRun(r: GeneratedRun): GeneratedRun = { ...r, phase: Settled }
 pure val waitValues = Set(WaitApproval({ call: "review" }), WaitSignal({ call: "ready", signal: "go" }), WaitTimer({ call: "pause", due: 1000 }), NoWait)
-pure def alwaysWaitingHasOneWait(r: GeneratedRun): bool = (r.phase == Waiting) == (r.wait != NoWait) and (r.phase == Waiting implies not(journaled(r, waitCall(r.wait))))
+pure def alwaysWaitingHasOneWait(r: GeneratedRun): bool = (r.phase == Waiting) == (r.wait != NoWait) and (r.phase == Waiting implies (not(journaled(r, waitCall(r.wait))) and r.pending == ""))
 pure def stepEndedRunStaysEnded(before: GeneratedRun, after: GeneratedRun): bool =
   (before.phase == Settled or before.phase == Diverged or before.phase == EffectUnknown) implies after == before
 pure def sometimesResumedAfterSignal(r: GeneratedRun): bool = r.phase == Settled and r.journal.select(e => e.kind == SignalCall).length() > 0 and r.effectsSent == 1
