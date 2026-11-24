@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { TestClock } from "effect/testing"
 import { activityLabel } from "@elizaos/agent"
-import { computeNextCronRunAtMs, ContextRegistry, getDirectActionRoutingRules, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { computeNextCronRunAtMs, ContextRegistry, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
@@ -11,7 +11,6 @@ import {
   type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun,
 } from "../src/client/index.vibe"
 import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
-import { registerWorkflowRequestRouting } from "../src/request.vibe"
 import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
 import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
@@ -347,7 +346,7 @@ it.live('Remove a workflow only when its runs are settled and restore it safely 
   try check(() => assert.deepStrictEqual(phone.performed, []))
 })
 
-it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A whole-message workflow command is routed to the workflow action, and showing the workflows stays navigation"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
+it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A workflow change runs as the planner proposed it, which is the model\'s reading of the owner\'s request"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
   const rig = try harness({ draft: () => JSON.stringify({ name: "Drafted", description: "Drafts a summary", source: generatedSource }) })
   const morning = (try saved(rig, greeting)).receipt
   const garden = (try saved(rig, manual("Garden digest", greeting.steps))).receipt
@@ -361,9 +360,8 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     promise(() => workflowAction.handler(runtime, { content: { text: words, metadata } as Content } as Memory, undefined, { parameters }) as Promise<ActionResult>)
   const code = (result: ActionResult) => result.success ? "applied" : (result.data as { readonly code?: string } | undefined)?.code
 
-  const conflict = try say("rename the workflow Morning note to Evening note", { action: "remove", workflowName: "Morning note" })
-  const renamed = try say("rename the workflow Morning note to Evening note", { action: "rename", workflowName: "Garden digest", name: "Something else" })
-  const partial = try say("delete the Garden workflow", { action: "remove", workflowId: garden.workflowId })
+  const renamed = try say("rename the workflow Morning note to Evening note", { action: "rename", workflowName: "Morning note", name: "Evening note" })
+  const partial = try say("delete the Garden workflow", { action: "remove", workflowName: "Garden" })
   const descriptive = try say("delete the new workflow", { action: "remove", workflowName: "Garden" })
   const mispaired = try say("pause it", { action: "deactivate", workflowId: morning.workflowId, workflowName: "Garden digest" })
   const twins = try say("run Twin", { action: "run", workflowName: "Twin" }, { voiceUi: { uiTimeZone: "Pacific/Kiritimati" } })
@@ -372,14 +370,14 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   const exactName = try say("delete the Backup workflow", { action: "remove", workflowName: "Backup" })
   const removedId = try say("run it", { action: "run", workflowId: backup.workflowId })
   const currentId = try say("bring it back", { action: "restore_removed", workflowId: garden.workflowId })
-  const taken = try say("create a workflow called Garden digest", { action: "create", name: "Fresh" })
-  const created = try say("create a workflow called Fresh one", { action: "create", name: "Something else" })
+  const taken = try say("create a workflow called Garden digest", { action: "create", name: "Garden digest" })
+  const created = try say("create a workflow called Fresh one", { action: "create", name: "Fresh one" })
   const unknown = try say("show me the Payroll workflow", { action: "get", workflowName: "Payroll" })
   const quoted = [
-    try say("rename the workflow 'Evening note' to 'Parents' Day'", { action: "rename", workflowName: "Evening note'", name: "Parents' Day'" }),
-    try say("Create a workflow called ‘Morning brief’.", { action: "create", name: "Morning brief’" }),
-    try say("create a workflow called Mom’s birthday", { action: "create", name: "Mom" }),
-    try say("create a workflow called 'Reading list.'", { action: "create", name: "Reading list.'" }),
+    try say("rename the workflow 'Evening note' to 'Parents' Day'", { action: "rename", workflowName: "Evening note", name: "Parents' Day" }),
+    try say("Create a workflow called ‘Morning brief’.", { action: "create", name: "Morning brief" }),
+    try say("create a workflow called Mom’s birthday", { action: "create", name: "Mom’s birthday" }),
+    try say("create a workflow called 'Reading list.'", { action: "create", name: "Reading list" }),
   ]
   const again = try say("remove it", { action: "remove", workflowId: backup.workflowId })
   const names = ((try rig.service.list(false)) as { readonly name: string }[]).map(({ name }) => name).sort()
@@ -387,9 +385,6 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   const found = try say("which workflow drafts a summary?", { action: "search", query: "summary drafts" })
   const ran = try say("run the Garden digest workflow", { action: "run", workflowName: "Garden digest" })
   const inView = try say("make the Garden digest workflow shorter", { action: "modify", workflowName: "Garden digest" })
-  registerWorkflowRequestRouting(runtime)
-  const route = getDirectActionRoutingRules(runtime).find((rule) => rule.id === "workflow.authored-request")
-  const owned = (words: string) => route?.wholeRequest?.matches(words, { content: { text: words } } as Memory)
   const dossier = try say("give me today's dossier", { action: "dossier" })
   const context = (words: string) => promise(() => activeWorkflowsProvider.get(runtime, { content: { text: words } } as Memory, {} as Parameters<Provider["get"]>[2]))
   const matching = try context("which workflow drafts a summary")
@@ -397,7 +392,7 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   const namesOf = (data: unknown) => ((data as { readonly workflows?: readonly { readonly name: string }[] } | undefined)?.workflows ?? []).map(({ name }) => name)
   const widget = (result: ActionResult) => (result.data as { readonly widget?: { readonly type: string; readonly workflowId: string } } | undefined)?.widget
   try check(() => assert.deepStrictEqual({
-    codes: [conflict, renamed, partial, descriptive, mispaired, twins, taken, created, unknown, exactName, removedId, currentId, again, dossier].map(code),
+    codes: [renamed, partial, descriptive, mispaired, twins, taken, created, unknown, exactName, removedId, currentId, again, dossier].map(code),
     quoted: quoted.map(code),
     listed: { ...(listed.data as { readonly total: number; readonly truncated: boolean }), workflows: namesOf(listed.data).length },
     found: namesOf(found.data).sort(),
@@ -407,11 +402,10 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     ownerZone: twins.userFacingText?.includes(`created ${kiritimati}`),
     confirm: partial.userFacingText,
     refusals: [inView, removedId, unknown].map((result) => [result.error, result.failureProvenance]),
-    routed: [owned("Please create a workflow called Alpha device test"), owned("list my workflows"), owned("show me my workflows"), owned("open my settings"), route?.replacesActionNames],
     names,
   }, {
     codes: [
-      "WORKFLOW_REQUEST_CONFLICT", "applied", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_REF_MISMATCH", "WORKFLOW_AMBIGUOUS", "WORKFLOW_NAME_TAKEN", "applied",
+      "applied", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_REF_MISMATCH", "WORKFLOW_AMBIGUOUS", "WORKFLOW_NAME_TAKEN", "applied",
       "WORKFLOW_NOT_FOUND", "applied", "WORKFLOW_REMOVED", "WORKFLOW_NOT_REMOVED", "WORKFLOW_REMOVED", "NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED",
     ],
     quoted: ["applied", "applied", "applied", "applied"],
@@ -427,12 +421,11 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
       ["WORKFLOW_REMOVED", { kind: "handler_error", boundary: "handler", code: "WORKFLOW_REMOVED", retryable: false }],
       ["WORKFLOW_NOT_FOUND", { kind: "handler_error", boundary: "handler", code: "WORKFLOW_NOT_FOUND", retryable: true }],
     ],
-    routed: [true, true, false, false, ["VIEWS", "VIEWS_SHOW"]],
     names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Reading list", "Twin", "Twin"],
   }))
 })
 
-it.live('Change only the workflow I named in chat, whatever workflow the planner proposed (spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name")', effect () => {
+it.live('Change only the workflow the planner\'s name and ID agree on (spec/workflow/lifecycle.md, "A workflow change runs as the planner proposed it, which is the model\'s reading of the owner\'s request"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name")', effect () => {
   const rig = try harness()
   const named = (try saved(rig, manual("Lunch and Learn", greeting.steps))).receipt.workflowId
   const other = (try saved(rig, manual("Evening digest", greeting.steps))).receipt.workflowId
@@ -440,12 +433,12 @@ it.live('Change only the workflow I named in chat, whatever workflow the planner
   workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
   const said = (text: string, parameters: JsonObject) => promise(() => workflowAction.handler(runtime, { content: { text } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
   const command = "Please rename workflow “Lunch and Learn” to “Talk and Learn: Q4”."
-  const conflicting = try said(command, { action: "remove", workflowId: other })
-  const renamed = try said(command, { action: "rename", workflowId: other, name: "Night brief" })
+  const mispaired = try said(command, { action: "rename", workflowId: other, workflowName: "Lunch and Learn", name: "Talk and Learn: Q4" })
+  const renamed = try said(command, { action: "rename", workflowId: named, workflowName: "Lunch and Learn", name: "Talk and Learn: Q4" })
   const [first, second] = [try rig.client.detail(named), try rig.client.detail(other)]
   try check(() => assert.deepStrictEqual(
-    [(conflicting.data as { readonly code?: string } | undefined)?.code, renamed.success, first.name, second.name, second.removed],
-    ["WORKFLOW_REQUEST_CONFLICT", true, "Talk and Learn: Q4", "Evening digest", false]))
+    [(mispaired.data as { readonly code?: string } | undefined)?.code, renamed.success, first.name, second.name, second.removed],
+    ["WORKFLOW_REF_MISMATCH", true, "Talk and Learn: Q4", "Evening digest", false]))
 })
 
 it.live('Decide one reviewed approval once and run its device step only as reviewed (spec/workflow/approvals.md, "Story: Decide one reviewed approval once and run its device step only as reviewed"; spec/workflow/runScope.md, "Story: A reviewed calendar read stays inside its run\'s scope")', effect () => {
