@@ -68,6 +68,7 @@ export const BROWSER_CONTROL_DIRECT_TYPES: readonly BrowserControlType[] = BROWS
 const UNLOCK_NOTICE = "Unlock the phone to review this action."
 export const BROWSER_TABS_UNLISTED_NOTICE = "Browser couldn't list its open tabs for this request, or they changed after they were listed. Nothing was closed. Ask again."
 export const BROWSER_NO_TABS_TO_CLOSE_NOTICE = "No tabs are open to close. Nothing was closed."
+// eslint-disable-next-line no-control-regex -- Browser control evidence rejects literal control characters.
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/
 
 function negotiatedOf(capabilities: readonly string[] | undefined): Negotiated {

@@ -132,6 +132,14 @@ effect function digestOf(fs: FileSystem.FileSystem, file: string) {
   return digest.hex()
 }
 
+effect function stagedFile(fs: FileSystem.FileSystem, target: string) {
+  const info = try read(fs.stat(target))
+  if (info.kind !== "read") return info
+  const digest = try read(digestOf(fs, target))
+  if (digest.kind !== "read") return digest
+  return { kind: "read", value: { sha256: digest.value, bytes: Number(info.value.size) } } satisfies Read<{ sha256: string; bytes: number }>
+}
+
 effect function writeAtomically(fs: FileSystem.FileSystem, file: string, value: object) {
   const temporary = `${file}.tmp`
   try fs.writeFileString(temporary, JSON.stringify(value, null, 2) + "\n")
@@ -300,19 +308,19 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
     const directory = directoryOf(model)
     const verified: InstalledFile[] = []
     for (const file of model.source.files) {
-      const target = path.join(directory, file.path)
-      const info = (fs.stat(target) catch () => undefined)
-      if (info === undefined) return
-      const digest = (digestOf(fs, target) catch () => undefined)
-      if (digest === undefined) {
-        try logWarning("A staged model file cannot be read and stays absent", { model: model.name, file: file.path })
+      const staged = try stagedFile(fs, path.join(directory, file.path))
+      if (staged.kind === "absent") return
+      if (staged.kind === "unreadable") {
+        unreadable ??= staged.code
+        try logWarning("A staged model file cannot be read and is reported unreadable", { model: model.name, file: file.path, code: staged.code })
+        try change({ type: "modelUnreadable", modelId: model.id })
         return
       }
-      if (digest !== file.sha256) {
+      if (staged.value.sha256 !== file.sha256) {
         try logWarning("A staged model does not match its published digest and stays absent", { model: model.name, file: file.path })
         return
       }
-      verified.push({ path: file.path, sha256: file.sha256, bytes: Number(info.size) })
+      verified.push({ path: file.path, sha256: file.sha256, bytes: staged.value.bytes })
     }
     files.set(model.id, verified)
     try change({ type: "startDownload", modelId: model.id })

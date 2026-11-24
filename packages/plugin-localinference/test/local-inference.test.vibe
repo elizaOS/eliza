@@ -212,6 +212,15 @@ it.effect('Download, verify, assign, activate and remove models, keeping the own
     assert.deepStrictEqual([unopenedView.models.map((model) => model.install), unopenedView.assignmentsReadable, typeof unopenedView.unreadable], [["unreadable", "unreadable"], false, "string"])
     assert.strictEqual(try refusalOf(unopened.download("model2")), "Rejected")
     assert.isUndefined(try unopened.embeddingModel())
+
+    const stagedState = try fs.makeTempDirectoryScoped({ prefix: "local-inference-staged-" })
+    try fs.makeDirectory(path.join(stagedState, "local-inference", "models", "bge-small-en-v1.5-f16.gguf"), { recursive: true })
+    const staged = try openLocalModels(stagedState, testCatalog)
+    const stagedView = try staged.view()
+    assert.deepStrictEqual([stagedView.models.map((model) => model.install), typeof stagedView.unreadable], [["absent", "unreadable"], "string"])
+    assert.strictEqual(try refusalOf(staged.download("model2")), "Rejected")
+    assert.isUndefined(try staged.embeddingModel())
+    try staged.close()
   }
 })
 
