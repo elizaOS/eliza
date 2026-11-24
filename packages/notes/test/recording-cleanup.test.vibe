@@ -1,0 +1,36 @@
+// spec/notes/trash.md, "Story: Confirm recording erase after the device host becomes available"
+import { assert, it } from "@effect/vitest"
+import { verifyRecordingErase } from "../src/recording-cleanup.vibe"
+
+const receipt = {
+  operationId: "348f46f8-cc42-4d6c-8eb7-820c25bc7959",
+  noteId: "note-1",
+  audioId: "recording-1",
+  deletedAt: "2026-11-21T19:00:00.000Z",
+}
+
+it.effect("Confirm recording erase after the device host becomes available", effect () => {
+  let registered: unknown
+  const verifiers = { registered: () => registered }
+  const before = try verifyRecordingErase(receipt, verifiers)
+  registered = {}
+  const malformed = try verifyRecordingErase(receipt, verifiers)
+  registered = { verifyRecordingCleanup: async () => "false" }
+  const nonBoolean = try verifyRecordingErase(receipt, verifiers)
+  const host = {
+    audioId: receipt.audioId,
+    async verifyRecordingCleanup(exact: typeof receipt, signal: AbortSignal) {
+      return exact.audioId === this.audioId && exact.noteId === receipt.noteId &&
+        exact.deletedAt === receipt.deletedAt && exact.operationId === receipt.operationId && !signal.aborted
+    },
+  }
+  registered = host
+  const confirmed = try verifyRecordingErase(receipt, verifiers)
+  const explicit = { verifyRecordingCleanup: async () => false }
+  const explicitRefused = try verifyRecordingErase(receipt, { ...verifiers, explicit })
+  registered = { verifyRecordingCleanup: () => Promise.reject(new Error("host unavailable")) }
+  const failed = Exit.isFailure(try exit(verifyRecordingErase(receipt, verifiers)))
+  try Effect.try(() => assert.deepStrictEqual({ before, malformed, nonBoolean, confirmed, explicitRefused, failed }, {
+    before: false, malformed: false, nonBoolean: false, confirmed: true, explicitRefused: false, failed: true,
+  }))
+})

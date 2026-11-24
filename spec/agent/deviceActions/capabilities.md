@@ -31,7 +31,7 @@ capabilities share a name. Nothing outside this table is a capability.
 ```quint
 type Capability =
   CalendarLocalEventV1 | CalendarCreateV1 | CalendarNextReadV1 | CalendarAgendaReadV1 | CalendarAvailabilityReadV1 | CalendarNamedReadV1
-  | NamedTargetV1 | NotesLocalRecordV1 | NotesQueryV1 | NotesSearchV1 | NotesListFilterV1 | NotesOrganizeV1
+  | NamedTargetV1 | NotesLocalRecordV1 | NotesQueryV1 | NotesSearchV1 | NotesListFilterV1 | NotesOrganizeV1 | NotesRecordV1
   | RemindersLocalRecordV1 | RemindersLocalRecordV2 | RemindersCreateV1 | PhotosLibraryV1 | PhotosViewV1 | CameraCapturePhotoV1
   | FilesBrowserV1 | MapsSelectedReadV1 | ClockHandoffV1 | ClockHandoffV2 | SmsSendV1 | MmsSendV1 | SmsComposeV1
   | MessagesReadV1 | PhoneDialV1 | PhoneCallV1 | ContactsWriteV1 | VoicemailReadV1 | VoicemailDeleteV1
@@ -40,6 +40,7 @@ pure def capabilityName(c: Capability): str = match c {
   | CalendarAgendaReadV1 => "calendar.agenda-read.v1" | CalendarAvailabilityReadV1 => "calendar.availability-read.v1"
   | CalendarNamedReadV1 => "calendar.named-read.v1" | NamedTargetV1 => "device.named-target.v1" | NotesLocalRecordV1 => "notes.local-record.v1"
   | NotesQueryV1 => "notes.query.v1" | NotesSearchV1 => "notes.search.v1" | NotesListFilterV1 => "notes.list-filter.v1"
+  | NotesRecordV1 => "notes.record.v1"
   | NotesOrganizeV1 => "notes.organize.v1" | RemindersLocalRecordV1 => "reminders.local-record.v1" | RemindersLocalRecordV2 => "reminders.local-record.v2"
   | RemindersCreateV1 => "reminders.create.v1" | PhotosLibraryV1 => "photos.library.v1" | PhotosViewV1 => "photos.view.v1"
   | CameraCapturePhotoV1 => "camera.capture-photo.v1" | FilesBrowserV1 => "files.browser.v1" | MapsSelectedReadV1 => "maps.selected-read.v1"
@@ -49,7 +50,7 @@ pure def capabilityName(c: Capability): str = match c {
 }
 pure val allCapabilities: Set[Capability] = Set(
   CalendarLocalEventV1, CalendarCreateV1, CalendarNextReadV1, CalendarAgendaReadV1, CalendarAvailabilityReadV1, CalendarNamedReadV1,
-  NamedTargetV1, NotesLocalRecordV1, NotesQueryV1, NotesSearchV1, NotesListFilterV1, NotesOrganizeV1, RemindersLocalRecordV1,
+  NamedTargetV1, NotesLocalRecordV1, NotesQueryV1, NotesSearchV1, NotesListFilterV1, NotesOrganizeV1, NotesRecordV1, RemindersLocalRecordV1,
   RemindersLocalRecordV2, RemindersCreateV1, PhotosLibraryV1, PhotosViewV1, CameraCapturePhotoV1, FilesBrowserV1,
   MapsSelectedReadV1, ClockHandoffV1, ClockHandoffV2, SmsSendV1, MmsSendV1, SmsComposeV1, MessagesReadV1, PhoneDialV1,
   PhoneCallV1, ContactsWriteV1, VoicemailReadV1, VoicemailDeleteV1)
@@ -74,7 +75,7 @@ pure def negotiate(liveEnrollment: bool, names: List[str]): Negotiation =
   if (liveEnrollment and headerAdmitted(names)) Negotiated({ capabilities: namedCapabilities(names) }) else Refused
 pure def isRefused(n: Negotiation): bool = match n { | Refused => true | Negotiated(x) => false }
 pure def negotiatedHas(n: Negotiation, c: Capability): bool = match n { | Negotiated(x) => x.capabilities.contains(c) | Refused => false }
-pure val namesValues: Set[List[str]] = Set(List(), List("calendar.local-event.v1", "notes.local-record.v1"), List("clock.handoff.v1", "clock.handoff.v1"),
+pure val namesValues: Set[List[str]] = Set(List(), List("notes.record.v1"), List("calendar.local-event.v1", "notes.local-record.v1"), List("clock.handoff.v1", "clock.handoff.v1"),
   List("reminders.local-record.v1", "reminders.local-record.v2"), List("reminders.local-record.v2", "clock.handoff.v2"), List("gmail.request-policy.v1"), List(""))
 pure def lawNoLiveEnrollmentNegotiatesNothing(names: List[str]): bool = isRefused(negotiate(false, names))
 pure def lawAnUnknownNameRefusesTheHeader(names: List[str]): bool = not(names.every(n => isCapabilityName(n))) implies isRefused(negotiate(true, names))
