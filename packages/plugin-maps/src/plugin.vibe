@@ -7,7 +7,7 @@ import {
 } from "../gen/maps__routing.effect.vibe"
 import { destinationSource } from "../gen/maps__savedPlaces.effect.vibe"
 import { appendInteractionBlock, requireConfirmation, type Action, type ActionResult, type ContextDefinition, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
-import { appendMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
+import { appendMapsCard, serializeMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
 import { MapsFailure, TravelMode, travelModes, type Coordinate, type Place } from "./client/contracts.vibe"
 import type { AgentPlaceRef, DeviceNavigationFailure, MapsDeviceNavigationStatus } from "./client/device-navigation.vibe"
 import type { MapsDeviceNavigation } from "./relay.vibe"
@@ -124,8 +124,13 @@ function metersBetween(a: Coordinate, b: Coordinate): number {
 type Data = Readonly<Record<string, object | string | number | boolean | null | undefined>>
 
 function reply(success: boolean, said: string, data: Data = {}, card?: MapsCard): ActionResult {
-  const shown = card === undefined ? said : appendMapsCard(said, card)
-  return { success, text: shown, userFacingText: shown, verifiedUserFacing: true, data: { ...data, ...(card === undefined ? {} : { card }) } }
+  return {
+    success, text: card === undefined ? said : appendMapsCard(said, card), ...cardShown(card), data: { ...data, ...(card === undefined ? {} : { card }) },
+  }
+}
+
+function cardShown(card: MapsCard | undefined): Pick<ActionResult, "userFacingText" | "verifiedUserFacing"> {
+  return card === undefined ? {} : { userFacingText: serializeMapsCard(card), verifiedUserFacing: true }
 }
 
 function locate(prompt: string, extra: { readonly query?: string; readonly destination?: MapsCardPlace; readonly travelMode?: TravelMode }, intent: "place-near" | "route-origin"): ActionResult {
@@ -174,13 +179,13 @@ function aboutDistance(meters: number): string {
 }
 
 function answered(said: string, note: string, data: Data, card?: MapsCard): ActionResult {
-  return { ...reply(true, `${said} ${note}`.trim(), data, card), userFacingText: card === undefined ? said : appendMapsCard(said, card), verifiedUserFacing: true }
+  return reply(true, `${said} ${note}`.trim(), data, card)
 }
 
 const noPosition = "Your phone didn't report a recent position with this message, so I can't tell where you are."
 
 function placeThere(place: Place, attribution: string): ActionResult {
-  return answered(`${place.name}${place.address === undefined ? "" : ` — ${place.address}`}`, "", { status: "found", place: agentPlace(place) },
+  return answered(`${place.name}${place.address === undefined ? "" : `, ${place.address}`}`, "", { status: "found", place: agentPlace(place) },
     { kind: "place", place: cardPlace(place), attribution })
 }
 
@@ -503,7 +508,7 @@ effect function savePlace(service: MapsService, saves: AgentSavedPlaceStore | un
     return { success: false, text: `${saved.savedPlace.label} was saved previously, but a later change superseded it; the current saved label is ${saved.current?.label ?? "no longer available"}.`, data: { ...data, code: "MAPS_IDEMPOTENCY_SUPERSEDED" } }
   }
   const said = saved.replayed ? `${saved.savedPlace.label} was already saved.` : `Saved ${saved.savedPlace.label} with your assistant. It isn't in the phone's Maps list.`
-  return { success: true, text: said, userFacingText: said, verifiedUserFacing: true, data, effectReceipts: [saved.receipt], userFacingEffectReceiptIds: [saved.receipt.receiptId] }
+  return { success: true, text: said, data, effectReceipts: [saved.receipt] }
 }
 
 effect function listSaved(saves: AgentSavedPlaceStore | undefined, message: Memory): ActionResult!Refusal {
@@ -546,12 +551,12 @@ effect function sharePlace(service: MapsService, runtime: IAgentRuntime, message
     return { success: false, text: prompt, userFacingText: appendInteractionBlock(prompt, choice), verifiedUserFacing: true, data: { state: "confirmation-required", place: target } }
   }
   if (!sharesLocation(decided)) {
-    return { success: false, text: "Not shared.", userFacingText: "Not shared.", verifiedUserFacing: true, data: { state: "cancelled" } }
+    return { success: false, text: `The owner declined, so the location of ${target.name} was not shared.`, data: { state: "cancelled" } }
   }
   const sharedAt = DateTime.formatIso(try DateTime.now)
   const card = shareCard(target, sharedAt)
   const said = `Shared ${target.name}: ${card.geoUri}`
-  return { ...reply(true, said, { state: "shared", place: target, sharedAt }, card), userFacingText: appendMapsCard(said, card), verifiedUserFacing: true }
+  return reply(true, said, { state: "shared", place: target, sharedAt }, card)
 }
 
 const modeNames: Readonly<Record<TravelMode, string>> = { drive: "driving", walk: "walking", bicycle: "cycling", transit: "transit" }
