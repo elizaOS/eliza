@@ -134,7 +134,9 @@ On an enrolled phone that can compose or send SMS, when the owner gives
 alternative recipients in a whole text command ("text Carson or Maya that
 dinner is covered"), the agent asks which person should get the text before
 looking either up or proposing an operation. Alternatives within the text
-body remain part of the body.
+body remain part of the body. A message that also asks for emergency services
+("text Carson or Maya that I crashed, call an ambulance now") is not
+clarified, so the emergency rule still applies.
 
 ### A whole-message call, text or dial command hands through the owner's own recipient
 

@@ -213,11 +213,12 @@ module node {
     const swapped = await ask("can you call 415-555-0100 when you get a sec", call("6505715862"))
     const toldReference = cloud.calls.slice(seen).some(({ body }) =>
       /Copy this reference verbatim as the number[^"]*__ELIZA_CONTACT_\w+__/.test(JSON.stringify(body)))
+    const emergencyWithAlternatives = await ask("Text Carson or Maya that I crashed. Call an ambulance now!", call("911"))
 
     return {
       alternativeRecipients, alternativeInBody, handedThrough, heldCall, separated: { call: separatedCall, send: separatedSend, contact: separatedContact }, ownerDialForm, invented, noNumber,
       callBack, authoredSurname, draftedSurname, surnameWithCourtesy, prefixCallback, unnamed, bodyNumber,
-      keypad, dialName, emergency, emptyKeypad, writtenEmergency, spokenEmergency, spokenNines, spokenEmergencyByName, nameInNumberWords, nameInNumberWordsInvented, spokenEmergencyOtherNumber, contactNumber, contactEmail, draft, draftToNumber, draftAskFirst, unclear, composedNumber,
+      keypad, dialName, emergency, emergencyWithAlternatives, emptyKeypad, writtenEmergency, spokenEmergency, spokenNines, spokenEmergencyByName, nameInNumberWords, nameInNumberWordsInvented, spokenEmergencyOtherNumber, contactNumber, contactEmail, draft, draftToNumber, draftAskFirst, unclear, composedNumber,
       contactUpdate, contactAdd, contactDelete, contactNoNumber, contactShow, contactRead, simSendToName, threadReply,
       draftToNobody, draftToTwoNumbers, callEveryone, partial, compound, repeatedCall, repeatedSender,
       unbound: { reply: unbound.text.split("\n\n").at(-1), carriesMessage: reviewedCall === undefined ? undefined : reviewedCall.payload.requestMessageId !== undefined },
@@ -274,6 +275,10 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
     keypad: { reply: "Opening the keypad with 4153024399.", operation: { type: "phone_keypad", number: "4153024399" } },
     dialName: { reply: "I can't set that up on this phone with that recipient. Nothing was called or sent. Tell me the number to use.", operation: undefined },
     emergency: {
+      reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
+      operation: { type: "phone_keypad" },
+    },
+    emergencyWithAlternatives: {
       reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
       operation: { type: "phone_keypad" },
     },
