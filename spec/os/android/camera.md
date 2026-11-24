@@ -180,7 +180,7 @@ pure val rowValues = Set(exactGalleryRow, { ...exactGalleryRow, rowId: 8 },
 pure def lawOnlyThePublishedExactRowIdentifiesThePhoto(row: GalleryRow): bool =
   galleryRowIdentifiesPhoto(row) implies (row.rowId == row.uriId and row.published and row.singleRow and row.concreteVolume and row.rowId > 0)
 pure def lawTheExactPublishedPhotoHasAnId(rowId: int): bool =
-  rowId > 0 implies galleryRowIdentifiesPhoto({ ...exactGalleryRow, rowId, uriId: rowId })
+  (rowId > 0) implies galleryRowIdentifiesPhoto({ ...exactGalleryRow, rowId: rowId, uriId: rowId })
 pure def lawOnlyARequestedGallerySaveWithAPathKeepsAValidId(galleryRequested: bool, pathPresent: bool, idValid: bool): bool =
   captureLibraryIdAllowed(galleryRequested, pathPresent, idValid) iff (galleryRequested and pathPresent and idValid)
 ```
