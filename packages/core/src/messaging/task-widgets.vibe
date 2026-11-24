@@ -153,6 +153,7 @@ export const admitTaskChoiceResponseOrThrow = thrown(admitTaskChoiceResponse)
 
 module edge {
   import { runDetachedSync } from "../edge.vibe"
+  import type { ElizaError } from "../errors.vibe"
   import { validateTaskChoiceWidget, type TaskChoiceWidget } from "./task-widgets.vibe"
 
   /** @throws {ElizaError} */

@@ -359,7 +359,7 @@ it.live(`The device tool an Alpha phone is sent states each rule once, names no 
       stated: sharedRules.map((rule) => [rule, 1]),
       capabilitiesNamed: [],
       sameBytes: true,
-      shape: { forms: 23, branches: 17, sameTypes: true },
+      shape: { forms: 23, branches: 18, sameTypes: true },
       everyFormSampled: true,
       differing: [],
       compared: { inForms: true, outsideForms: true },
