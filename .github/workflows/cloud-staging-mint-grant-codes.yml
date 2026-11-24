@@ -95,7 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$SOURCE_REF" != "refs/heads/staging" ]]; then
+          if [[ "$SOURCE_REF" != "refs/heads/staging-v3" ]]; then
             echo "::error::staging grant-code minting requires the trusted staging source"
             exit 1
           fi
@@ -134,7 +134,7 @@ jobs:
 
   mint:
     needs: admission
-    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging'
+    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging-v3'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: staging

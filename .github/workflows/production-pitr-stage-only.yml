@@ -56,7 +56,7 @@ jobs:
           REVIEWED_STAGE_SOURCE_HEAD: ${{ inputs.reviewed_stage_source_head }}
         run: |
           set -euo pipefail
-          if [ "$SOURCE_REF" != "refs/heads/main" ] ||
+          if [ "$SOURCE_REF" != "refs/heads/main-v3" ] ||
              [[ ! "$REVIEWED_STAGE_SOURCE_HEAD" =~ ^[0-9a-f]{40}$ ]] ||
              [ "$GITHUB_SHA" != "$REVIEWED_STAGE_SOURCE_HEAD" ]; then
             echo "::error::Stage-only operation requires the exact reviewed canonical main source"

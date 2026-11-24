@@ -21,7 +21,7 @@ function fixture() {
   const run = {
     id: 1,
     head_sha: "e".repeat(40),
-    head_branch: "main",
+    head_branch: "main-v3",
     event: "workflow_dispatch",
     conclusion: "success",
     path: ".github/workflows/production-pitr-safety-backup.yml",

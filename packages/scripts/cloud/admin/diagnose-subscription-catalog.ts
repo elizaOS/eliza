@@ -62,7 +62,7 @@ if (import.meta.main) {
       throw new Error();
     if (
       environment === "production" &&
-      process.env.GITHUB_REF !== "refs/heads/main"
+      process.env.GITHUB_REF !== "refs/heads/main-v3"
     )
       throw new Error();
     const childEnv = {
