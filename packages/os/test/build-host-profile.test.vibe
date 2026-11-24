@@ -291,6 +291,8 @@ it.effect("Keep my schema-1 profile readable through one fixed map: profiles sha
     agentService: { notification: undefined, launchHook: undefined },
     admission: [],
   }))
+  const cloudOnly = try admitHostProfile({ ...SCHEMA_ONE, modules: [{ name: "eliza-cloud-speech", source: upstream("plugins/plugin-local-inference/native/android/cloud-speech-bridge") }] }, SETTING)
+  try Effect.try(() => assert.deepStrictEqual(shape(cloudOnly).osModules.map(([module]) => module), ["cloud-speech", "voice-io", "sign-in", "agent-service", "runtime-files", "secure-store"]))
   const versioned = try outcome({ ...selected, dependencies: [{ configuration: "implementation", coordinate: "androidx.webkit:webkit:1.16.0" }] })
   const unmapped = try refusalDetail({ ...selected, sourceSets: { androidTest: { assets: [upstream("packages/app/scripts/voice/qualify/app/src/androidTest/assets")] } } })
   try Effect.try(() => assert.deepStrictEqual({ versioned, unmapped }, {
