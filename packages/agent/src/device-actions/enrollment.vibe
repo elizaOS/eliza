@@ -156,16 +156,12 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
     })
   }
 
-  const offer: Answer = { status: 200, body: { protocol: 1, agentId, identityId: owner.actorId, deviceActions: { protocol: 1, capabilities: offeredCapabilities } } }
-
   return {
     deviceSender,
     routes: [
       { method: "POST", path: "/api/client-devices/register", handler: (input) => answered(register(input)) },
       { method: "POST", path: "/api/client-devices/revoke", handler: (input) => answered(revoke(input)) },
       { method: "GET", path: "/api/client-devices/context", handler: (input) => answered(served(input)) },
-      { method: "GET", path: "/api/client-devices/capabilities", handler: () => offer },
-      { method: "POST", path: "/api/client-devices/capabilities", handler: () => offer },
       { method: "GET", path: "/api/client-devices/view-profile", handler: (input) => answered(profile(input)) },
       { method: "POST", path: "/api/client-devices/view-profile", handler: (input) => answered(setProfile(input)) },
     ],

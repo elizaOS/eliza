@@ -104,7 +104,7 @@ const commented = {
   "packages/core/src/retrieval.vibe": 21,
 }
 const scheduled = {
-  "packages/agent/src/access/socket.vibe": 3,
+  "packages/agent/src/access/socket.vibe": 2,
   "packages/agent/test/client-runtime.test.vibe": 2,
   "packages/agent/test/client-tasks.test.vibe": 1,
   "packages/agent/test/client-turns.test.vibe": 2,
@@ -160,6 +160,7 @@ const barrelImports = {
   "packages/agent/src/tasks/chat-task.vibe": ["@elizaos/core/protocol"],
   "packages/agent/test/client-stream.test.vibe": ["@elizaos/core/protocol"],
   "packages/agent/test/tasks-chat.test.vibe": ["@elizaos/core/protocol"],
+  "packages/os/src/build/agent-config.vibe": ["@elizaos/agent/routes"],
   "packages/os/src/build/runtime-payload.vibe": ["@elizaos/os/aosp/runtime/node.lock.json"],
   "packages/os/test/agent-config.test.vibe": ["@elizaos/agent/cli", "@elizaos/agent/launch"],
   "packages/os/test/drivers/os__browser__pageCommands.ts": ["@elizaos/os/browser/runtime/surface-task-handler.mjs", "@elizaos/os/browser/runtime/task-bindings.mjs"],
@@ -176,6 +177,7 @@ const barrelImports = {
   "packages/plugin-browser/test/browser.test.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-calendar/src/index.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-calendar/src/plugin/device-proposals.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-calendar/src/plugin/phone-turn.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-calendar/src/series/deletions.vibe": ["@elizaos/os/bridges/deletion-window"],
   "packages/plugin-calendar/test/reviewed-reads.test.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-elizacloud/src/index.vibe": ["@elizaos/cloud/client"],
@@ -196,7 +198,6 @@ const barrelImports = {
   "packages/plugin-native-agent/src/index.vibe": ["@elizaos/os/bridges/agent", "@elizaos/os/bridges/definitions/agent"],
   "packages/plugin-native-appblocker/src/index.vibe": ["@elizaos/os/bridges/bridge"],
   "packages/plugin-native-browser-surface/src/index.vibe": ["@elizaos/os/bridges/definitions/surface", "@elizaos/os/bridges/surface"],
-  "packages/plugin-native-bun-runtime/src/index.vibe": ["@elizaos/os/bridges/agent", "@elizaos/os/bridges/definitions/agent"],
   "packages/plugin-native-calendar/src/index.vibe": ["@elizaos/os/bridges/bridge", "@elizaos/os/bridges/calendar", "@elizaos/os/bridges/definitions/calendar"],
   "packages/plugin-native-camera/src/index.vibe": ["@elizaos/os/bridges/camera", "@elizaos/os/bridges/definitions/camera"],
   "packages/plugin-native-canvas/src/index.vibe": ["@elizaos/os/bridges/bridge"],
@@ -321,7 +322,7 @@ export default withWorkspaceBarrels(defineConfig(
   { files: ["packages/agent/**/*.{vibe,vibex}"], rules: { "no-empty": ["error", { allowEmptyCatch: true }] } },
   { files: ["packages/agent/src/access/routes.vibe", "packages/agent/src/client/index.vibe", "packages/agent/src/host/launch.schema.vibe"], rules: { "no-control-regex": "off" } },
   { files: ["packages/**/*.{vibe,vibex}"], rules: { "no-redeclare": "off" } },
-  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "prefer-const": "off" } },
+  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "prefer-const": "off", "@typescript-eslint/no-unused-vars": ["error", { ...unused, argsIgnorePattern: "^(?:_|id$|pcm$|frame$|s$|a$|b$|d$)" }] } },
   { files: ["packages/agent/src/voice/echo-filter.ts"], rules: { "@typescript-eslint/no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^(?:_|echoOverlapPercent$|isEcho$|turnAccepted$)" }] } },
   {
     files: ["packages/core/src/utils/filesystem.vibe"],
@@ -344,8 +345,8 @@ export default withWorkspaceBarrels(defineConfig(
     rules: { "no-useless-assignment": "off" },
   },
   {
-    files: ["packages/core/src/runtime/room-handler-queue.vibe", "packages/core/src/security/pii-pseudonymizer.vibe", "packages/core/src/security/pii-scrub-seam.vibe", "packages/core/src/utils/unicode.vibe"],
-    rules: { "@typescript-eslint/no-unused-vars": ["error", { ...coreUnused, varsIgnorePattern: "^(?:_|ElizaError$|Foreign$|PiiScrubFabricationError$)" }] },
+    files: ["packages/core/src/runtime/context-registry.vibe", "packages/core/src/runtime/room-handler-queue.vibe", "packages/core/src/runtime/run-terminal-owner.vibe", "packages/core/src/security/pii-pseudonymizer.vibe", "packages/core/src/security/pii-scrub-seam.vibe", "packages/core/src/utils/unicode.vibe"],
+    rules: { "@typescript-eslint/no-unused-vars": ["error", { ...coreUnused, varsIgnorePattern: "^(?:_|ContextRegistryError$|ElizaError$|Foreign$|PiiScrubFabricationError$)" }] },
   },
   {
     files: ["packages/core/src/catalog/loader.vibe"],

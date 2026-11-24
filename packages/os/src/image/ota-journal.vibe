@@ -1,4 +1,4 @@
-// spec/os/update/operator.md, "One device has one operator: every journal change and device write happens under the device's install lock"; spec/os/update/operator.md, "Each run resumes from what the device shows, sends the package only under a marked lock, and refuses a foreign build or the installed build on the other slot"; spec/os/update/operator.md, "Status can read earlier journal formats without adopting an update"
+// spec/os/update/operator.md, "One device has one operator: every journal change and device write happens under the device's install lock"; spec/os/update/operator.md, "Each run resumes from what the device shows, sends the package only under a marked lock, and refuses a foreign build or the installed build on the other slot"; spec/os/update/operator.md, "Status can read earlier journal formats without adopting an update"; spec/os/update/operator.md, "A fallback rolls back only when the installed build boots enforcing on the original slot, and a journal that started a fallback is never updated again"
 import {
   acquireLock, beginWrites, canBeginWrites, decodeState, initial, inv, lockHeld, readsLegacyJournal, releaseLock, removeLeftLock,
   type LegacyJournalUse, type OperatorJournal, type OperatorPhase,
@@ -135,6 +135,7 @@ export effect function openOperatorJournal(file: string, serial: AdbSerial, expe
   let reserved = previous !== undefined
   const createdAt = previous?.createdAt ?? new Date(try Clock.currentTimeMillis).toISOString()
   const events: JournalEvent[] = [...(previous?.events ?? [])]
+  const opened = events.length
   const state = () => current
   const history = () => [...events]
   const store = (next: OperatorJournal, detail: { readonly observed?: unknown; readonly note?: string } = {}) => effect {
@@ -161,6 +162,7 @@ export effect function openOperatorJournal(file: string, serial: AdbSerial, expe
     if (current.phase === "Unstarted") return
     const wrote = current.lock.tag === "Locked" && current.lock.writing
     const next = releaseLock(current)
+    if (events.length === opened && previous?.state.lock.tag === next.lock.tag) return
     try store(next)
     if (wrote && next.lock.tag === "Unlocked") try settleDeviceLease(held)
   }

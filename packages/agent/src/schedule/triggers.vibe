@@ -4,7 +4,7 @@ import {
   enabled, finishRun as finished, machineOver, maxActiveTriggers, revisionMatches, runningScheduledOnce, runStatus, step,
   type Event, type RevisionCheck, type RunRecord, type Trigger, type TriggerType,
 } from "../../gen/agent__schedule__triggers.effect.vibe"
-import type { ConversationOwner } from "../conversation/turns.vibe"
+import type { ConversationOwner } from "../conversation/conversations.vibe"
 import type { ConversationNews } from "../host/module.vibe"
 import {
   countEnabledTriggers, getTrigger, listTriggerRuns, listTriggers, triggerKeeping,

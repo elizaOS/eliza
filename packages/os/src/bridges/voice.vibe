@@ -1,4 +1,4 @@
-// spec/os/voice/cloudSpeech.md, "Story: Talk to the agent through the cloud speech relay"; spec/os/voice/cloudSpeech.md, "A provider speech edge belongs to the capture live when it began, and a retired capture owns none"; spec/os/voice/cloudSpeech.md, "A reply settles once: completed when all its audio has played, or cancelled"; spec/os/voice/cloudSpeech.md, "Every end of a session releases the microphone, settles the reply, revokes the session and reports a failure once"; spec/os/voice/cloudSpeech.md, "An open session and every waiting batch request run under the current key, and a key change ends them"; spec/os/voice/cloudSpeech.md, "The speaker is muted for the whole session without ending voice, and only an open session whose bridge can mute it applies the mute"
+// spec/os/voice/cloudSpeech.md, "Story: Talk to the agent through the cloud speech relay"; spec/os/voice/cloudSpeech.md, "A provider speech edge belongs to the capture live when it began, and a retired capture owns none"; spec/os/voice/cloudSpeech.md, "A reply settles once: completed when all its audio has played, or cancelled"; spec/os/voice/cloudSpeech.md, "Every end of a session releases the microphone, settles the reply, revokes the session and reports a failure once"; spec/os/voice/cloudSpeech.md, "An open session and every waiting batch request run under the current key, and a key change ends them"; spec/os/voice/cloudSpeech.md, "The speaker is muted for the whole session without ending voice, and only an open session whose bridge can mute it applies the mute"; spec/os/voice/cloudSpeech.md, "A confirmed mute whose turn has not ended in 2.5 seconds replaces the session with a fresh muted one, and the old session's late text is dropped"
 import type {
   AssistantCapture,
   AssistantListenHandlers,
@@ -14,6 +14,9 @@ import type {
   SpeechSessionId,
   UtteranceId,
 } from "./definitions/voice.ts"
+import type { MuteSettlement } from "../../gen/os__voice__cloudSpeech.ts"
+import { muteSettleMs, muteSettlement } from "../../gen/os__voice__cloudSpeech.effect.vibe"
+import { throwStale } from "./definitions/voice.ts"
 
 export type * from "./definitions/voice.ts"
 
@@ -61,7 +64,7 @@ import { abortError, after, now, ownedAbort, randomId } from renderer
 export error CloudSpeechUnavailable { code: string; data: object | undefined }
 
 export error CloudSpeechRefused {
-  reason: "owner-changed" | "session-changed" | "not-connected" | "output-mute-unavailable" | "phrase-too-long" | "mute-unconfirmed" | "ended-without-audio"
+  reason: "owner-changed" | "session-changed" | "not-connected" | "output-mute-unavailable" | "phrase-too-long" | "mute-unconfirmed" | "capture-unsettled" | "ended-without-audio"
 }
 
 export error CloudSpeechInterrupted { code: string }
@@ -76,7 +79,6 @@ export error CloudSpeechCleanupUnconfirmed {
 const SAMPLE_RATE = 16000
 const MAX_HEARD_TEXT = 16384
 const MAX_PHRASE = 4096
-const MUTE_CONFIRM_MS = 2500
 
 const Heard = Schema.String.check(Schema.isMaxLength(MAX_HEARD_TEXT))
 const session = { sessionId: Schema.String }
@@ -119,14 +121,83 @@ function settleAudio(utterances: Map<string, PendingUtterance>, type: "audio-sta
   else pending.reject(new CloudSpeechRefused({ reason: "ended-without-audio" }))
 }
 
+const unsettled = {
+  MuteSettled: undefined,
+  ReplaceSession: undefined,
+  MuteUnconfirmed: "mute-unconfirmed",
+  CaptureUnsettled: "capture-unsettled",
+} as const satisfies Record<MuteSettlement, CloudSpeechRefused["reason"] | undefined>
+
+async function settleMute(mute: Promise<unknown>, final: Promise<void>, replyPlaying: () => boolean): Promise<MuteSettlement> {
+  let confirmed = false
+  let turnEnded = false
+  let cancelTimer = () => {}
+  try {
+    await Promise.race([
+      mute.then(async () => {
+        confirmed = true
+        await final
+        turnEnded = true
+      }),
+      new Promise<void>((resolve) => {
+        cancelTimer = after(muteSettleMs, resolve)
+      }),
+    ])
+  } finally {
+    cancelTimer()
+  }
+  return muteSettlement(confirmed, turnEnded, replyPlaying())
+}
+
+function pend(utterances: Map<string, PendingUtterance>, utteranceId: UtteranceId, onStarted: () => void): { done: Promise<void>; reject(error: unknown): void } {
+  let reject: (error: unknown) => void = () => {}
+  const done = new Promise<void>((resolve, failed) => {
+    reject = failed
+    utterances.set(utteranceId, { started: false, onStarted, resolve, reject: failed })
+  })
+  void done.catch(() => {})
+  return { done, reject: (error) => reject(error) }
+}
+
+function retireOnAbort(signal: AbortSignal, utteranceId: UtteranceId, cancel: () => Promise<unknown>, reject: (error: unknown) => void, stopped: () => Error): () => Promise<void> | undefined {
+  let retiring: Promise<void> | undefined
+  const abort = () => {
+    if (retiring) return
+    retiring = Promise.resolve()
+      .then(() => cancel())
+      .then(() => undefined, () => Promise.reject(new CloudSpeechCleanupUnconfirmed({ utteranceId })))
+    void retiring.then(() => reject(signal.reason ?? stopped()), (error: unknown) => reject(error))
+  }
+  signal.addEventListener("abort", abort, { once: true })
+  if (signal.aborted) abort()
+  return () => {
+    signal.removeEventListener("abort", abort)
+    return retiring
+  }
+}
+
+function rejectAll(utterances: Map<string, PendingUtterance>, error: unknown): void {
+  for (const pending of utterances.values()) pending.reject(error)
+  utterances.clear()
+}
+
+function endUnheard(capture: AssistantListenHandlers | undefined): void {
+  if (!capture) return
+  capture.onSpeechEnd(now())
+  capture.onSegment(null)
+}
+
 export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, port: CloudStreamPort = cloudSpeechPlugin()): CloudStreamingSpeech {
-  const sessionId = randomId() as SpeechSessionId
+  let sessionId = randomId() as SpeechSessionId
   const stopped = () => abortError("Cloud speech stopped")
   const utterances = new Map<string, PendingUtterance>()
   let handle: CloudSpeechListenerHandle | undefined
   let opening: Promise<void> | undefined
   let stopping: Promise<void> | undefined
+  let closingSession: Promise<unknown> | undefined
+  let draining: Promise<void> | undefined
   let opened = false
+  let outputMuted = false
   let retired = false
   let echoCancelled = false
   let speechActive = false
@@ -147,13 +218,10 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     }
   }
 
+  const checkCurrent = () => throwStale(stale())
+
   const ownerAborted = () => {
     void stop().catch(() => {})
-  }
-
-  const rejectAll = (error: unknown) => {
-    for (const pending of utterances.values()) pending.reject(error)
-    utterances.clear()
   }
 
   const stop = (): Promise<void> => {
@@ -164,10 +232,10 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     ended()
     ownerSignal?.removeEventListener("abort", ownerAborted)
     ownerSignal = undefined
-    rejectAll(stopped())
+    rejectAll(utterances, stopped())
     stopping = (async () => {
       try {
-        await port.stopCloudSpeech({ sessionId })
+        await (closingSession ?? port.stopCloudSpeech({ sessionId }))
       } finally {
         await handle?.remove()
         handle = undefined
@@ -179,7 +247,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
   const fail = (error: unknown) => {
     const capture = lifecycle
     listening = lifecycle = undefined
-    rejectAll(error)
+    rejectAll(utterances, error)
     void stop().catch(() => {})
     try {
       capture?.onEnd(error)
@@ -190,7 +258,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
 
   const receive = (raw: CloudStreamEvent) => {
     const decoded = Schema.decodeUnknownOption(StreamEvent)(raw)
-    if (Option.isNone(decoded) || retired || decoded.value.sessionId !== sessionId) return
+    if (Option.isNone(decoded) || retired || closingSession || decoded.value.sessionId !== sessionId) return
     const event = decoded.value
     const failure = stale()
     if (failure) return fail(failure.error)
@@ -228,23 +296,24 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     }
   }
 
-  const open = () =>
+  const open = (muted = false) =>
     (opening ??= (async () => {
       try {
-        const before = stale()
-        if (before) throw before.error
-        const registered = await port.addListener("cloudSpeechEvent", receive)
-        if (retired) {
-          await registered.remove()
-          throw stopped()
+        checkCurrent()
+        if (!handle) {
+          const registered = await port.addListener("cloudSpeechEvent", receive)
+          if (retired) {
+            await registered.remove()
+            throw stopped()
+          }
+          handle = registered
         }
-        handle = registered
-        const registeredStale = stale()
-        if (registeredStale) throw registeredStale.error
-        const result = await port.startCloudSpeech({ sessionId, environment: input.environment, credentialId: input.credentialId })
-        const startedStale = stale()
-        if (startedStale) throw startedStale.error
+        checkCurrent()
+        const result = await port.startCloudSpeech({ sessionId, environment: input.environment, credentialId: input.credentialId, ...(muted ? { muted } : {}) })
+        checkCurrent()
         if (result.sessionId !== sessionId || result.sampleRate !== SAMPLE_RATE) throw new CloudSpeechRefused({ reason: "session-changed" })
+        if (outputMuted) await port.setCloudSpeechOutputMuted?.({ sessionId, muted: true })
+        checkCurrent()
         opened = true
         echoCancelled = result.echoCancelled === true
       } catch (error) {
@@ -253,27 +322,50 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
       }
     })())
 
-  const muteAndDrain = async () => {
-    const failure = stale()
-    if (failure) throw failure.error
-    const final = speechActive ? new Promise<void>((resolve) => (ended = resolve)) : Promise.resolve()
-    let cancelTimer = () => {}
+  const replaceSession = async () => {
+    checkCurrent()
+    const previous = sessionId
+    const unfinished = speechActive && speechGeneration === captureGeneration
+    speechActive = false
+    speechGeneration = undefined
+    opened = false
+    opening = undefined
+    const closing = Promise.resolve().then(() => port.stopCloudSpeech({ sessionId: previous }))
+    closingSession = closing
     try {
-      await Promise.race([
-        port.setCloudSpeechMuted({ sessionId, muted: true }).then(() => final),
-        new Promise<void>((_, reject) => {
-          cancelTimer = after(MUTE_CONFIRM_MS, () => reject(new CloudSpeechRefused({ reason: "mute-unconfirmed" })))
-        }),
-      ])
-    } finally {
-      cancelTimer()
-      ended = () => {}
+      if (unfinished) endUnheard(listening && !listening.signal.aborted ? listening : undefined)
+      await closing
+      checkCurrent()
+      sessionId = randomId() as SpeechSessionId
+      closingSession = undefined
+      await open(true)
+    } catch (error) {
+      await stop().catch(() => {})
+      throw error
     }
   }
 
+  const drainMutedCapture = async () => {
+    checkCurrent()
+    const final = speechActive ? new Promise<void>((resolve) => (ended = resolve)) : Promise.resolve()
+    const settlement = await settleMute(port.setCloudSpeechMuted({ sessionId, muted: true }), final, () => utterances.size > 0).finally(() => {
+      ended = () => {}
+    })
+    if (settlement === "ReplaceSession") return replaceSession()
+    const reason = unsettled[settlement]
+    if (reason) throw new CloudSpeechRefused({ reason })
+  }
+
+  const muteAndDrain = () => {
+    if (draining) return draining
+    const settled = Promise.withResolvers<void>()
+    draining = settled.promise.finally(() => { draining = undefined })
+    void drainMutedCapture().then(settled.resolve, settled.reject)
+    return draining
+  }
+
   const listen = async (handlers: AssistantListenHandlers): Promise<AssistantCapture> => {
-    const failure = stale()
-    if (failure) throw failure.error
+    checkCurrent()
     handlers.signal.throwIfAborted()
     if (ownerSignal && ownerSignal !== handlers.signal) throw new CloudSpeechRefused({ reason: "owner-changed" })
     if (!ownerSignal) {
@@ -281,20 +373,17 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
       ownerSignal.addEventListener("abort", ownerAborted, { once: true })
     }
     try {
-      if (speechActive) await muteAndDrain()
-      const drained = stale()
-      if (drained) throw drained.error
+      if (draining || speechActive) await muteAndDrain()
+      checkCurrent()
       handlers.signal.throwIfAborted()
       ++captureGeneration
       listening = lifecycle = handlers
       speechActive = false
       await open()
-      const connected = stale()
-      if (connected) throw connected.error
+      checkCurrent()
       handlers.signal.throwIfAborted()
       await port.setCloudSpeechMuted({ sessionId, muted: false })
-      const unmuted = stale()
-      if (unmuted) throw unmuted.error
+      checkCurrent()
     } catch (error) {
       await stop().catch(() => {})
       throw error
@@ -322,41 +411,24 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
   }
 
   const speak = async (text: string, signal: AbortSignal, onStarted: () => void): Promise<void> => {
-    const failure = stale()
-    if (failure) throw failure.error
+    checkCurrent()
     signal.throwIfAborted()
     if (!opened) throw new CloudSpeechRefused({ reason: "not-connected" })
     const value = text.trim()
     if (!value) return
     if (value.length > MAX_PHRASE) throw new CloudSpeechRefused({ reason: "phrase-too-long" })
     const utteranceId = randomId() as UtteranceId
-    let reject: (error: unknown) => void = () => {}
-    const done = new Promise<void>((resolve, failed) => {
-      reject = failed
-      utterances.set(utteranceId, { started: false, onStarted, resolve, reject: failed })
-    })
-    void done.catch(() => {})
-    let retiring: Promise<void> | undefined
-    const abort = () => {
-      if (retiring) return
-      retiring = Promise.resolve()
-        .then(() => port.cancelCloudSpeech({ sessionId, utteranceId }))
-        .then(() => undefined, () => Promise.reject(new CloudSpeechCleanupUnconfirmed({ utteranceId })))
-      void retiring.then(() => reject(signal.reason ?? stopped()), (error: unknown) => reject(error))
-    }
-    signal.addEventListener("abort", abort, { once: true })
-    if (signal.aborted) abort()
+    const { done, reject } = pend(utterances, utteranceId, onStarted)
+    const release = retireOnAbort(signal, utteranceId, () => port.cancelCloudSpeech({ sessionId, utteranceId }), reject, stopped)
     try {
       signal.throwIfAborted()
-      const before = stale()
-      if (before) throw before.error
+      checkCurrent()
       await port.speakCloudSpeech({ sessionId, utteranceId, text: value })
       await done
       signal.throwIfAborted()
-      const after = stale()
-      if (after) throw after.error
+      checkCurrent()
     } finally {
-      signal.removeEventListener("abort", abort)
+      const retiring = release()
       utterances.delete(utteranceId)
       await retiring
     }
@@ -364,12 +436,11 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
 
   return {
     async setOutputMuted(muted: boolean) {
-      const failure = stale()
-      if (failure) throw failure.error
+      checkCurrent()
       if (!opened || !port.setCloudSpeechOutputMuted) throw new CloudSpeechRefused({ reason: "output-mute-unavailable" })
       await port.setCloudSpeechOutputMuted({ sessionId, muted })
-      const after = stale()
-      if (after) throw after.error
+      checkCurrent()
+      outputMuted = muted
     },
     listen,
     speak,

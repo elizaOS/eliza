@@ -46,10 +46,10 @@ for (const task of process.argv.slice(2)) {
   const variant = found[1].slice(0, 1).toLowerCase() + found[1].slice(1)
   const release = found[2] === "Release"
   if (release && mode === "missing" && variant === "sideload") continue
-  const source = !release ? variant + "-debug" : mode === "mixed" && variant === "sideload" ? "sideload-other" : mode === "model" && variant === "launcher" ? "launcher-model" : variant + "-release"
+  const source = !release ? variant + "-debug" : mode.startsWith("unsigned") ? variant + "-unsigned" : mode === "mixed" && variant === "sideload" ? "sideload-other" : mode === "model" && variant === "launcher" ? "launcher-model" : variant + "-release"
   const directory = path.join("app/build/outputs/apk", variant, release ? "release" : "debug")
   mkdirSync(directory, { recursive: true })
-  copyFileSync(path.join(env.FIXTURE_PREBUILT, source + ".apk"), path.join(directory, "app-" + variant + (release ? "-release" : "-debug") + (release && mode === "unsigned" ? "-unsigned" : "") + ".apk"))
+  copyFileSync(path.join(env.FIXTURE_PREBUILT, source + ".apk"), path.join(directory, "app-" + variant + (release ? "-release" : "-debug") + (release && mode.startsWith("unsigned") ? "-unsigned" : "") + ".apk"))
 }
 `
 
@@ -59,11 +59,13 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 const directory = process.argv[2]
 if (process.env.FIXTURE_VERIFY === "stale") process.exit(0)
-const rows = process.env.FIXTURE_VARIANTS.split(",").map((flavor) => {
-  const name = existsSync(path.join(directory, flavor + "-release.apk")) ? flavor + "-release.apk" : flavor + "-debug.apk"
+const variants = process.env.FIXTURE_VARIANTS.split(",")
+const rows = variants.map((flavor) => {
+  const own = [flavor + "-release.apk", flavor + "-release-unsigned.apk", flavor + "-debug.apk"].find((name) => existsSync(path.join(directory, name)))
+  const name = process.env.FIXTURE_MODE === "crossed" ? variants[0] + "-release.apk" : process.env.FIXTURE_MODE === "debug-rows" ? flavor + "-debug.apk" : own
   const file = path.join(directory, name)
-  const printed = execFileSync(process.env.FIXTURE_APKSIGNER, ["verify", "--print-certs", file], { encoding: "utf8" })
-  const signer = /certificate SHA-256 digest: ([a-f0-9]{64})/.exec(printed)[1]
+  const signed = process.env.FIXTURE_MODE === "unsigned-claimed" ? flavor + "-debug.apk" : name
+  const signer = signed.endsWith("-unsigned.apk") ? null : /certificate SHA-256 digest: ([a-f0-9]{64})/.exec(execFileSync(process.env.FIXTURE_APKSIGNER, ["verify", "--print-certs", path.join(directory, signed)], { encoding: "utf8" }))[1]
   return { flavor, name, sha256: createHash("sha256").update(readFileSync(file)).digest("hex"), signer }
 })
 writeFileSync(path.join(directory, "apk-manifest.json"), JSON.stringify(rows, null, 2))
@@ -148,11 +150,12 @@ effect function consumer(apks: "standard" | "with-rejections") {
   const work = try scratch("android-build")
   const signer = try Effect.try(() => testSigner(tools, work, "release"))
   const prebuilt = path.join(work, "prebuilt")
-  const apk = (name: string, owner: typeof signer, assets: Readonly<Record<string, string>>) =>
+  const apk = (name: string, owner: typeof signer | null, assets: Readonly<Record<string, string>>) =>
     Effect.try(() => buildApk(tools, { directory: prebuilt, manifest: MANIFEST, signer: owner, name, assets }))
   for (const variant of VARIANTS) {
     try apk(`${variant}-debug`, signer, { "variant.txt": `${variant} debug` })
     try apk(`${variant}-release`, signer, { "variant.txt": `${variant} release` })
+    try apk(`${variant}-unsigned`, null, { "variant.txt": `${variant} release` })
   }
   if (apks === "with-rejections") {
     const other = try Effect.try(() => testSigner(tools, work, "other"))
@@ -252,6 +255,9 @@ it.effect.skipIf(skipped !== null)(`Refuse bad requests before Gradle and replac
       ["mixed", "all", "VerificationFailed"],
       ["model", "all", "VerificationFailed"],
       ["stale", "all", "VerificationFailed"],
+      ["crossed", "all", "VerificationFailed"],
+      ["debug-rows", "all", "VerificationFailed"],
+      ["unsigned-claimed", "none", "VerificationFailed"],
       ["dirty", "all", "SourceMoved"],
     ] as const) {
       assert.strictEqual(try outcome(fixture.options(mode, signing)), failure, `${mode} with ${signing} signing variables`)
@@ -260,8 +266,9 @@ it.effect.skipIf(skipped !== null)(`Refuse bad requests before Gradle and replac
       try writeTree(fixture.root, { "extra.txt": EXTRA })
     }
 
-    try buildAndroid(fixture.options("unsigned", "none"))
+    const unsignedBuild = try buildAndroid(fixture.options("unsigned", "none"))
     const unsigned = try published(output)
+    assert.deepStrictEqual(unsignedBuild.manifest.map((row) => row.name), VARIANTS.map((flavor) => `${flavor}-release-unsigned.apk`))
     assert.deepStrictEqual(Object.keys(unsigned), ["apk-manifest.json", "launcher-debug.apk", "launcher-release-unsigned.apk", "sideload-debug.apk", "sideload-release-unsigned.apk"])
   }
 }, 600_000)

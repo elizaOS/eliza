@@ -184,29 +184,25 @@ pure def lawSlotLengthIsBounded(minutes: int): bool =
 pure val minutesValues = Set(4, 5, 480, 481)
 ```
 
-### A tomorrow-morning question reads only tomorrow, from midnight to noon
+### A morning-only question reads only that morning, from midnight to noon
 
-When the owner's words ask about tomorrow morning and no other period,
-the window must start no earlier than tomorrow's midnight and end no
-later than tomorrow's noon in the request's zone; a wider window is
-refused before anything is read, pointing to a slot search for a shorter
-opening. Both bounds themselves are inside the morning. A noon end bound
-("until noon", "through 12:00 PM") keeps the request morning-only. The
-request names another period when it also names another part of the day
-(afternoon, evening, tonight, noon, lunch, all day, the rest of the day,
-the week), an afternoon clock time (1 to 12 pm, 12:01 to 12:59 without
-"am", or 13:00 to 23:59), another day (today, a weekday, a date), or asks
-after, before, except or not tomorrow morning; such a window is read as
-asked.
+The model reads from the owner's request whether it asks about a morning
+and no other period ("am I free tomorrow morning?", "tomorrow morning
+until noon"), and says so with the request; code reads no period words.
+Such a window starts at or after the midnight of the day it starts on,
+and must end no later than that day's noon in the request's zone; a
+window that runs past it is refused before anything is read, pointing to
+a slot search for a shorter opening. Noon itself is inside the morning.
+A request the model does not call morning-only is read as asked.
 
 ```quint
 type MorningAdmission = ReadMorning | RefuseOutsideMorning
-pure def morningAdmission(morningOnly: bool, startsEarly: bool, endsLate: bool): MorningAdmission =
-  if (morningOnly and (startsEarly or endsLate)) RefuseOutsideMorning else ReadMorning
-pure def lawMorningReadStaysInMorning(startsEarly: bool, endsLate: bool): bool =
-  morningAdmission(true, startsEarly, endsLate) == ReadMorning implies not(startsEarly) and not(endsLate)
-pure def lawWiderRequestIsRead(startsEarly: bool, endsLate: bool): bool =
-  morningAdmission(false, startsEarly, endsLate) == ReadMorning
+pure def morningAdmission(morningOnly: bool, endsAfterNoon: bool): MorningAdmission =
+  if (morningOnly and endsAfterNoon) RefuseOutsideMorning else ReadMorning
+pure def lawMorningReadStaysInMorning(endsAfterNoon: bool): bool =
+  morningAdmission(true, endsAfterNoon) == ReadMorning implies not(endsAfterNoon)
+pure def lawWiderRequestIsRead(endsAfterNoon: bool): bool =
+  morningAdmission(false, endsAfterNoon) == ReadMorning
 ```
 
 ### A period is free only when no blocking event overlaps it
@@ -240,7 +236,10 @@ An opening has exactly the asked length, lies inside the window and is
 free. It starts on a quarter hour of UTC time. The first is the earliest
 such start, the second the earliest at or after the first one's end, and
 there are at most two. The answer says that an empty list does not rule
-out an opening off the quarter hour.
+out an opening off the quarter hour. It names each opening as a spoken
+range, its weekday and date in full, from its start to its end with the
+zone's full name, and offers them as alternatives ("Monday, March 4, from
+10:45 AM to 11:05 AM Pacific Standard Time or …").
 
 ```quint
 pure val quarterHour: int = 900000
@@ -445,6 +444,26 @@ pure def lawASentLengthIsUsedOrRefused(lengthWhole: bool, lengthMinutes: int): b
 pure val lengthMinutesValues = Set(-1, 0, 1, 30, 44640, 44641)
 ```
 
+### A change that moves only the start keeps the event's length
+
+A change that gives a new start and no end ends as long after the new
+start as the event lasted before it ("move my 3pm to 4" keeps a one-hour
+meeting one hour long). A change that gives an end keeps that end as
+sent, and a change that gives no new start keeps the end it had.
+
+```quint
+pure def changedEndMs(oldStartMs: int, oldEndMs: int, startGiven: bool, newStartMs: int, endGiven: bool, endMs: int): int =
+  if (endGiven) endMs
+  else if (startGiven) newStartMs + (oldEndMs - oldStartMs)
+  else oldEndMs
+pure def lawAMovedStartKeepsTheLength(oldStartMs: int, oldEndMs: int, newStartMs: int, endMs: int): bool =
+  changedEndMs(oldStartMs, oldEndMs, true, newStartMs, false, endMs) - newStartMs == oldEndMs - oldStartMs
+pure def lawAChangedEndIsKept(oldStartMs: int, oldEndMs: int, startGiven: bool, newStartMs: int, endMs: int): bool =
+  changedEndMs(oldStartMs, oldEndMs, startGiven, newStartMs, true, endMs) == endMs
+pure def lawAnUnmovedEventKeepsItsEnd(oldStartMs: int, oldEndMs: int, newStartMs: int, endMs: int): bool =
+  changedEndMs(oldStartMs, oldEndMs, false, newStartMs, false, endMs) == oldEndMs
+```
+
 ### A chat create or move that overlaps a commitment is refused, naming it
 
 A new timed event, and a change of an event's start or end, asked in chat
@@ -501,7 +520,10 @@ The resident calendar can apply a write at once for the owner who asked.
 A chat create queues for approval by default and saves at once only when
 the owner explicitly chose to save it without review. A resident delete
 runs at once only as the next rule allows. Any provider calendar queues
-the exact fields for the owner's approval. A write for another account,
+the exact fields for the owner's approval. A queued change is filed with
+its change and digest and, when it changes an existing event, the start of
+that event as it was read (`targetStartAt`), so a review can read the event
+again outside the window it has loaded. A write for another account,
 or to a calendar it cannot write, is refused.
 
 ```quint
@@ -522,16 +544,47 @@ pure def lawUnsaidChatCreateIsReviewed(provider: WriteProvider): bool =
   writeRoute(provider, true, true, chatCreateReviewed(false)) == QueueApproval
 ```
 
+### A new event the owner put on the phone's own calendar is proposed on the phone
+
+The phone's own calendar is written only through a review on the phone.
+Whether the owner asked to put a new event on the phone's own calendar
+is the model's reading of the request, in any language, sent with the
+create; code matches no calendar words. When the model reads that and the
+phone negotiated its own calendar for the turn, the Calendar action saves
+nothing and the result tells the model to propose the event on the phone
+instead. On a device that offers no phone calendar, or when the model did
+not read a phone calendar, the create goes on as any chat create.
+
+```quint
+type CreateStore = CreateHere | ProposeOnPhone
+pure def createStore(phoneCalendarAsked: bool, phoneCalendarOffered: bool): CreateStore =
+  if (phoneCalendarAsked and phoneCalendarOffered) ProposeOnPhone else CreateHere
+pure def lawAPhoneCalendarCreateIsNeverSavedHere(phoneCalendarOffered: bool): bool =
+  (createStore(true, phoneCalendarOffered) == CreateHere) iff not(phoneCalendarOffered)
+pure def lawWithoutAPhoneCalendarTheCreateGoesOn(phoneCalendarAsked: bool): bool =
+  createStore(phoneCalendarAsked, false) == CreateHere
+pure def lawAnUnaskedCreateGoesOn(phoneCalendarOffered: bool): bool =
+  createStore(false, phoneCalendarOffered) == CreateHere
+```
+
 ### A resident delete runs at once only for the one event the owner named, and otherwise asks in chat
 
 The resident calendar has no review of its own, so a delete there runs at
-once only when the owner's own words ask to delete and point at one event.
-The owner's own words are the request the host bound to the turn when it
-holds one, else the turn's text. They ask to delete as a [phone
-delete](./reviewedReads.md) asks, and a decline ("don't delete Dentist",
-"no, keep it") keeps the event and deletes nothing. They point at an event
-when its whole title is in them, as a reviewed phone request names an
-event ("Delete Willow Harbor QA", "歯医者を削除して"), a read of every listed
+once only when the model sends its reading that the owner asked to delete
+(yes, below) and the owner's own words point at one event. A delete the
+model sent without that reading, as a request it misread, deletes nothing
+and asks in chat. The owner's own words are the
+request the host bound to the turn when it holds one, else the turn's
+text. Whether the owner asked to delete, said yes or turned a delete down
+is the model's reading of the request, in any language, sent with it as
+the owner's answer: yes for a request that asks to delete or agrees to it
+("delete Dentist", "yes, delete it", "sí, bórralo"), no for one that
+turns it down, in a first request or an answer ("don't delete Dentist",
+"keep Dentist", "no, keep it"); code matches no delete, yes or decline
+words. A decline keeps the event and deletes nothing, even when the
+owner's words point at it. The owner's words point at an event when its
+whole title is in them, as a reviewed phone request names an event
+("Delete Willow Harbor QA", "歯医者を削除して"), a read of every listed
 calendar found no other event their words name, and that read was
 complete; or when it is the event selected in Calendar on a screen that is
 not sensitive. An event id, a query or a calendar the model chose points at
@@ -541,9 +594,8 @@ Any other delete removes nothing and asks in chat: the reply names the
 closest match and says that nothing was deleted, and, when a calendar could
 not be read, that the event meant may be there. The owner's answer in a
 later request of the same conversation, within 30 minutes, settles that
-question for that one event: a yes, or the event's whole title, with no
-question back and no decline, deletes it; a decline keeps it and spends the
-question.
+question for that one event: a yes the model read deletes it; a decline
+keeps it and spends the question; anything else leaves it asked.
 
 A chat delete removes one occurrence at most. A wider scope (this and
 following, or the whole series) is the model's choice, not the owner's: it
@@ -551,40 +603,41 @@ deletes nothing and asks nothing, and the reply tells the owner to choose
 the event and its scope in Calendar. A decline still keeps the event.
 
 ```quint
+type OwnerAnswer = SaidYes | SaidNo | SaidNeither
 type DeleteAnswer = Unanswered | AnsweredYes | AnsweredNo
 type ResidentDeleteStep = DeleteNow | AskInChat | KeepEvent | PickInCalendar
 pure val deleteQuestionLifetime: int = 1800000
 pure def ownerPointedAt(wholeTitleSaid: bool, onlyEventNamed: bool, everyCalendarRead: bool, selectedOnScreen: bool): bool =
   (wholeTitleSaid and onlyEventNamed and everyCalendarRead) or selectedOnScreen
-pure def deleteAnswer(askedAboutThisEvent: bool, laterRequest: bool, sinceAsked: int, yesOrTitle: bool, declines: bool, asksBack: bool): DeleteAnswer =
+pure def deleteAnswer(askedAboutThisEvent: bool, laterRequest: bool, sinceAsked: int, said: OwnerAnswer): DeleteAnswer =
   if (not(askedAboutThisEvent and laterRequest and sinceAsked >= 0 and sinceAsked < deleteQuestionLifetime)) Unanswered
-  else if (declines) AnsweredNo
-  else if (yesOrTitle and not(asksBack)) AnsweredYes
+  else if (said == SaidNo) AnsweredNo
+  else if (said == SaidYes) AnsweredYes
   else Unanswered
-pure def residentDeleteStep(pointedAt: bool, asksToDelete: bool, declines: bool, answer: DeleteAnswer): ResidentDeleteStep =
-  if (declines or answer == AnsweredNo) KeepEvent
-  else if (answer == AnsweredYes or (pointedAt and asksToDelete)) DeleteNow
+pure def residentDeleteStep(pointedAt: bool, said: OwnerAnswer, answer: DeleteAnswer): ResidentDeleteStep =
+  if (said == SaidNo or answer == AnsweredNo) KeepEvent
+  else if (answer == AnsweredYes or (pointedAt and said == SaidYes)) DeleteNow
   else AskInChat
 pure def chatDeleteStep(oneOccurrence: bool, unscoped: ResidentDeleteStep): ResidentDeleteStep =
   if (oneOccurrence or unscoped == KeepEvent) unscoped else PickInCalendar
-pure def lawADeclineNeverDeletes(pointedAt: bool, asksToDelete: bool, answer: DeleteAnswer): bool =
-  residentDeleteStep(pointedAt, asksToDelete, true, answer) == KeepEvent
-pure def lawResidentChatDeleteCannotBroaden(pointedAt: bool, asksToDelete: bool, declines: bool, answer: DeleteAnswer): bool =
-  chatDeleteStep(false, residentDeleteStep(pointedAt, asksToDelete, declines, answer)) != DeleteNow
-pure def lawUnaskedWordsNeverDeleteAtOnce(pointedAt: bool): bool =
-  residentDeleteStep(pointedAt, false, false, Unanswered) == AskInChat
-pure def lawAPartialMatchIsNeverAnImmediateDelete(onlyEventNamed: bool, everyCalendarRead: bool, asksToDelete: bool): bool =
-  residentDeleteStep(ownerPointedAt(false, onlyEventNamed, everyCalendarRead, false), asksToDelete, false, Unanswered) == AskInChat
-pure def lawAnIncompleteSearchNeverDeletesAtOnce(wholeTitleSaid: bool, onlyEventNamed: bool, asksToDelete: bool): bool =
-  residentDeleteStep(ownerPointedAt(wholeTitleSaid, onlyEventNamed, false, false), asksToDelete, false, Unanswered) == AskInChat
-pure def lawASecondNamedEventAsksFirst(everyCalendarRead: bool, asksToDelete: bool): bool =
-  residentDeleteStep(ownerPointedAt(true, false, everyCalendarRead, false), asksToDelete, false, Unanswered) == AskInChat
-pure def lawOnlyTheAskedEventIsConfirmed(laterRequest: bool, sinceAsked: int, yesOrTitle: bool, declines: bool, asksBack: bool): bool =
-  deleteAnswer(false, laterRequest, sinceAsked, yesOrTitle, declines, asksBack) == Unanswered
-pure def lawAStaleQuestionIsNeverConfirmed(askedAboutThisEvent: bool, laterRequest: bool, yesOrTitle: bool, declines: bool, asksBack: bool): bool =
-  deleteAnswer(askedAboutThisEvent, laterRequest, deleteQuestionLifetime, yesOrTitle, declines, asksBack) == Unanswered
-pure def lawTheAskingRequestNeverAnswers(askedAboutThisEvent: bool, sinceAsked: int, yesOrTitle: bool, declines: bool, asksBack: bool): bool =
-  deleteAnswer(askedAboutThisEvent, false, sinceAsked, yesOrTitle, declines, asksBack) == Unanswered
+pure def lawADeclineNeverDeletes(pointedAt: bool, answer: DeleteAnswer): bool =
+  residentDeleteStep(pointedAt, SaidNo, answer) == KeepEvent
+pure def lawAnUnreadDeleteNeverDeletesAtOnce(pointedAt: bool): bool =
+  residentDeleteStep(pointedAt, SaidNeither, Unanswered) == AskInChat
+pure def lawResidentChatDeleteCannotBroaden(pointedAt: bool, said: OwnerAnswer, answer: DeleteAnswer): bool =
+  chatDeleteStep(false, residentDeleteStep(pointedAt, said, answer)) != DeleteNow
+pure def lawAPartialMatchIsNeverAnImmediateDelete(onlyEventNamed: bool, everyCalendarRead: bool, said: OwnerAnswer): bool =
+  residentDeleteStep(ownerPointedAt(false, onlyEventNamed, everyCalendarRead, false), said, Unanswered) != DeleteNow
+pure def lawAnIncompleteSearchNeverDeletesAtOnce(wholeTitleSaid: bool, onlyEventNamed: bool, said: OwnerAnswer): bool =
+  residentDeleteStep(ownerPointedAt(wholeTitleSaid, onlyEventNamed, false, false), said, Unanswered) != DeleteNow
+pure def lawASecondNamedEventAsksFirst(everyCalendarRead: bool, said: OwnerAnswer): bool =
+  residentDeleteStep(ownerPointedAt(true, false, everyCalendarRead, false), said, Unanswered) != DeleteNow
+pure def lawOnlyTheAskedEventIsConfirmed(laterRequest: bool, sinceAsked: int, said: OwnerAnswer): bool =
+  deleteAnswer(false, laterRequest, sinceAsked, said) == Unanswered
+pure def lawAStaleQuestionIsNeverConfirmed(askedAboutThisEvent: bool, laterRequest: bool, said: OwnerAnswer): bool =
+  deleteAnswer(askedAboutThisEvent, laterRequest, deleteQuestionLifetime, said) == Unanswered
+pure def lawTheAskingRequestNeverAnswers(askedAboutThisEvent: bool, sinceAsked: int, said: OwnerAnswer): bool =
+  deleteAnswer(askedAboutThisEvent, false, sinceAsked, said) == Unanswered
 pure val sinceAskedValues = Set(-1, 0, 60000, 1800000)
 ```
 
@@ -592,10 +645,10 @@ pure val sinceAskedValues = Set(-1, 0, 60000, 1800000)
 
 An update, a delete or an answer to an invitation carries whether the
 owner asked to let the event's attendees know, as part of its reviewed
-change and digest. The owner asked when the request asks for it and the
-owner's own words do too ("let Sam know", "notify the guests", "send an
-update") without turning it down ("don't tell anyone"); a flag the model
-set on its own asks for nothing. It is asked only for an event with an
+change and digest. The owner asked when the request says so: the model
+reads it from the owner's request ("let Sam know", "notify the guests",
+"send an update"), and a request turning it down ("don't tell anyone")
+asks for nothing; code matches no notice words. It is asked only for an event with an
 attendee other than the owner; with none, nobody is told and nothing is
 carried. A provider calendar that can send updates sends its update to the
 attendees exactly when the change carries it (for Google, `sendUpdates`
@@ -611,8 +664,6 @@ pure def attendeeNotice(noticeWanted: bool, otherAttendees: bool, canNotify: boo
   if (not(noticeWanted and otherAttendees)) NotifyNobody
   else if (not(canNotify)) CannotNotify
   else NotifyAttendees
-pure def noticeAsked(flagged: bool, ownerWordsAsk: bool, ownerWordsDecline: bool): bool =
-  flagged and ownerWordsAsk and not(ownerWordsDecline)
 pure def clientNoticeRefused(noticeWanted: bool, canNotify: bool): bool = noticeWanted and not(canNotify)
 pure def lawAnUnaskedChangeTellsNobody(otherAttendees: bool, canNotify: bool): bool =
   attendeeNotice(false, otherAttendees, canNotify) == NotifyNobody
@@ -620,8 +671,6 @@ pure def lawACalendarThatCannotSendNeverNotifies(noticeWanted: bool, otherAttend
   attendeeNotice(noticeWanted, otherAttendees, false) != NotifyAttendees
 pure def lawNoAttendeesNoNotice(noticeWanted: bool, canNotify: bool): bool =
   attendeeNotice(noticeWanted, false, canNotify) == NotifyNobody
-pure def lawAModelFlagAloneAsksNothing(ownerWordsDecline: bool): bool =
-  not(noticeAsked(true, false, ownerWordsDecline))
 pure def lawAClientNoticeIsRefusedWhereNobodyCanBeTold(noticeWanted: bool): bool =
   clientNoticeRefused(noticeWanted, false) == noticeWanted
 ```

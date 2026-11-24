@@ -1,4 +1,4 @@
-// spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Google sign-in for backup returns to the protected approval page"
+// spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Google sign-in for backup returns to the protected approval page"; spec/cloud/index.md, "A browser sign-in opens no session for a person with a confirmed second factor"
 import type { Client } from "pg"
 import type { JWTVerifyGetKey } from "jose"
 import { browserGoogleReturn, mayIssueAccountBoundDeviceGrant, type BrowserGooglePurpose } from "../gen/cloud.effect.vibe"
@@ -8,8 +8,9 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, Ht
 import {
   accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
   authQuery as query, accountTransaction, identityTx, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
-  rateLimit, RateLimited, StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
+  rateLimit, RateLimited, StorageUnavailable, SecondFactorRequired, type BrowserSession, type Identity
 } from "./identity-store.vibe"
+import { Refused, refusalResponse } from "./http/refusal.vibe"
 
 import { endKey, inspectKey } from "./native-clients/grants.vibe"
 
@@ -583,13 +584,14 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
 export function identityRequest(request: Request, env: IdentityEnv, db: Client, keys?: JWTVerifyGetKey): Promise<Response> {
   if (ownsPasswordBackupPath(new URL(request.url).pathname)) return passwordBackupRequest(request, env, db, keys)
   return runPromise(Effect.provide(effect {
-    const response = handleIdentity(request, env, db) catch (error) => match (error) {
+    const response = handleIdentity(request, env, db) catch effect (error) => match (error) {
       when InvalidRequest: json(400, { error: "invalid_request" });
       when Unauthorized: json(401, { error: "verification_failed" });
       when RateLimited: json(429, { error: "rate_limited" });
       when ProviderUnavailable: json(503, { error: "provider_unavailable" });
       when StorageUnavailable: json(503, { error: "storage_unavailable" });
-      when IdentityConflict: json(409, { error: "identity_conflict" });
+      when Refused: refusalResponse(error.refusal, try Clock.currentTimeMillis);
+      when SecondFactorRequired: json(403, { error: "second_factor_required" });
     }
     return HttpServerResponse.toWeb(response)
   }, services))

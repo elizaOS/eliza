@@ -1,32 +1,17 @@
-// spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/surfaces.md, "A whole-message photo command is routed to the capture, never to opening Camera"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"
-import { registerDirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
+// spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
 import { ModuleRefused, type AgentModule, type ModuleFactory } from "../../host/module.vibe"
-import { proposeDeviceAction, proposeDeviceActionName } from "./action.vibe"
+import { proposeDeviceAction } from "./action.vibe"
 import { surfacesFamily } from "./families/surfaces.vibe"
 import { telephonyFamily } from "./families/telephony.vibe"
-import type { WholeRequestRoute } from "./family.vibe"
-import { registerDeviceProposalFamily, routedRequest } from "./registry.vibe"
-import { deviceTurnFor } from "./turn.vibe"
+import { registerDeviceProposalFamily } from "./registry.vibe"
 
 export const deviceActionsModuleName = "@elizaos/agent/device-actions"
-
-function registerRoute(runtime: IAgentRuntime, route: WholeRequestRoute): void {
-  const matches = (_text: string, message?: Memory): boolean => {
-    const turn = message === undefined ? undefined : deviceTurnFor(runtime, message)
-    return turn !== undefined && routedRequest(runtime, turn)?.route === route
-  }
-  registerDirectActionRoutingRule(runtime, {
-    id: route.id, actionNames: [proposeDeviceActionName], replacesActionNames: route.replaces,
-    requiredActionTags: route.tags, contexts: route.contexts, matches, wholeRequest: { matches, invalidateFields: [] },
-  })
-}
 
 export const deviceActionsModule: ModuleFactory<never> = effect ({ runtime }) => {
   for (const family of [telephonyFamily, surfacesFamily]) {
     registerDeviceProposalFamily(runtime, family) catch effect (conflict) => {
       throw new ModuleRefused({ module: deviceActionsModuleName, reason: `${conflict.family} also claims ${conflict.type}` })
     }
-    if (family.route !== undefined) registerRoute(runtime, family.route)
   }
   return {
     name: deviceActionsModuleName,

@@ -1,8 +1,8 @@
 // spec/cloud/deployment.md, "Story: Serve the deployment from a Worker"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/deployment.md, "A Worker serves only after the server's own start checks pass and its bindings agree with its profile"; spec/cloud/deployment.md, "A scheduled tick runs each sweep whose period ends within the tick"
 import { HttpEffect } from "effect/http"
 import { Socket } from "effect/socket"
-import { workerStart, type IdentityRead } from "../../gen/cloud__deployment.effect.vibe"
-import { checkCatalog } from "../billing/plans.vibe"
+import { workerStart, type CatalogObservation, type IdentityRead } from "../../gen/cloud__deployment.effect.vibe"
+import { observeCatalog } from "../billing/plans.vibe"
 import { refusalBody, refusalResponse, refused } from "../http/refusal.vibe"
 import { respond } from "../http/transport.vibe"
 import { returnPageRoute } from "../native-clients/return-routes.vibe"
@@ -80,7 +80,7 @@ function platformLayer(env: ProfileBindings, ready: Prepared, store: Store.Shape
     Layer.succeed(Store, store),
     Layer.succeed(ProviderSockets, workerSockets),
     Layer.succeed(PageTemplates, { read: (file: string) => assetTemplate(env, file) }),
-    deploymentLayer(ready.profile, ready.environment).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(textBindings(env))))),
+    deploymentLayer(ready.profile, ready.environment, env).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(textBindings(env))))),
     FetchHttpClient.layer
   )
 }
@@ -107,12 +107,16 @@ effect function start(env: ProfileBindings, ready: Prepared) {
   const identity = try observeIdentity()
   const read: IdentityRead = identity.kind === "identified" ? { tag: "ReadDigest", digest: identity.digest } : { tag: "UnreadableIdentity" }
   const agrees = bindingsAgree(env, ready) && (try registryAgrees(env))
-  const verdict = workerStart(specProfile(ready.profile), ready.environment === "production" ? "Production" : "Staging", read, agrees, { tag: "NoCatalog" })
-  if (verdict.tag === "WorkerBindingsDisagree") throw new WorkerUnready({ problem: "a Worker binding disagrees with the profile or with the database's registrations" })
-  if (verdict.tag === "WorkerRefused" && verdict.problem.tag !== "CatalogMissing") throw new WorkerUnready({ problem: verdict.problem.tag })
+  const verdictWith = (catalog: CatalogObservation) => workerStart(specProfile(ready.profile), ready.environment === "production" ? "Production" : "Staging", read, agrees, catalog)
+  const unobserved = verdictWith({ tag: "NoCatalog" })
+  const catalogPending = unobserved.tag === "WorkerRefused" && unobserved.problem.tag === "CatalogMissing"
+  if (unobserved.tag === "WorkerBindingsDisagree") throw new WorkerUnready({ problem: "a Worker binding disagrees with the profile or with the database's registrations" })
+  if (unobserved.tag === "WorkerRefused" && !catalogPending) throw new WorkerUnready({ problem: unobserved.problem.tag })
   requireSecrets() catch effect (missing) => { throw new WorkerUnready({ problem: `the secret ${missing.name} is not bound` }) }
-  if (verdict.tag === "WorkerRefused") {
-    checkCatalog() catch effect (failure) => { throw new WorkerUnready({ problem: `the payment catalog does not fit (${failure._tag})` }) }
+  if (catalogPending) {
+    const catalog = observeCatalog() catch effect (failure) => { throw new WorkerUnready({ problem: `the payment catalog could not be read (${failure._tag})` }) }
+    const verdict = verdictWith(catalog)
+    if (verdict.tag !== "WorkerServes") throw new WorkerUnready({ problem: verdict.tag === "WorkerRefused" ? verdict.problem.tag : verdict.tag })
   }
   started.add(env)
 }

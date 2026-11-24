@@ -1,9 +1,11 @@
-// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or everywhere"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"
+// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or everywhere"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"; spec/cloud/index.md, "A browser sign-in opens no session for a person with a confirmed second factor"
 import type { Client } from "pg"
 import { foreign, toInt, type Tx } from "./store/connection.vibe"
 import { SecureRandom } from "effect/crypto"
+import { opensBrowserSession } from "../gen/cloud.effect.vibe"
 import { apply, decodeState, initial, accepts, canRefresh, canLogout, type Family } from "../gen/cloud__identity__sessions.effect.vibe"
 import { landAccount } from "./identity/accounts.vibe"
+import { accountFactors } from "./identity/second-factor.vibe"
 import { Refused } from "./http/refusal.vibe"
 import { secretText, tokenDigest } from "./shared/credential-crypto.vibe"
 
@@ -15,7 +17,7 @@ export type BrowserSession = { account: Account; access: string; refresh: string
 
 export error StorageUnavailable
 export error RateLimited
-export error IdentityConflict
+export error SecondFactorRequired
 
 export const accessCookie = "__Host-eliza-session"
 export const refreshCookie = "__Host-eliza-refresh"
@@ -135,7 +137,7 @@ const methods = { google: "GoogleSignIn", email: "EmailSignIn", sms: "PhoneSignI
 
 effect function accountForIdentity(db: Client, proof: Identity, now: number) {
   const landed = landAccount(identityTx(db), { method: methods[proof.provider], subject: proof.subject }, proof.email ?? undefined, now) catch effect (failure) => match (failure) {
-    when Refused: throw new IdentityConflict();
+    when Refused: throw failure;
     default: throw new StorageUnavailable();
   }
   const account = (try authQuery<AccountRow>(db, `
@@ -157,6 +159,8 @@ function browserSession(account: AccountRow, access: string, refresh: string, se
 effect function openSignInFamily(db: Client, identity: Identity) {
   const now = try Clock.currentTimeMillis
   const account = try accountForIdentity(db, identity, now)
+  const factors = accountFactors(identityTx(db), account.id, now) catch effect () => { throw new StorageUnavailable() }
+  if (!opensBrowserSession(factors)) throw new SecondFactorRequired()
   const epoch = Number(account.sessions_revoked_before)
   if (!Number.isSafeInteger(epoch) || epoch < 0) throw new StorageUnavailable()
   const opened = apply({ ...initial, now }, { type: "signIn", assurance: "SingleFactor", personEpoch: epoch }) catch effect () => { throw new StorageUnavailable() }

@@ -25,7 +25,7 @@ export const area: Area = {
         return json(signInMethods((try Deployment).settings))
       }
     },
-    { method: "GET", path: "/api/v1/subscriptions/plans", auth: "Public", capability: "billing", handler: () => effect { return json(plansAnswer()) } }
+    { method: "GET", path: "/api/v1/subscriptions/plans", auth: "Public", area: "SubscriptionRoutes", handler: () => effect { return json(plansAnswer()) } }
   ],
   sweeps: [
     { name: "holds", everyMs: 5 * 60_000, run: sweepHolds() },

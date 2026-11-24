@@ -354,7 +354,8 @@ pure val ackPerIp: R::RateLimit = R::perMinute("deviceKeyAckPerIp", 10)
 `POST /api/v1/app-auth/mobile/renew` is admitted by the presented device key
 itself; a session is refused `401 credential_unknown`. Its body is the
 connect body, and the client is admitted with its sign-in return
-(`registry`). The answer is the connect answer and `renewableUntil`. The
+(`registry`). The answer is the connect answer, `renewableUntil` and
+`success: true`, which the device requires before it exchanges the code. The
 device exchanges and acknowledges that code on the token and
 acknowledgement routes, then ends the old key. The successor grant records
 the predecessor and inherits its sign-in time. The shell stores both and

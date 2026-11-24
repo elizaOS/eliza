@@ -1,15 +1,18 @@
 // spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
 import { assert, describe, it } from "@effect/vitest"
 import { allowedMethods, allowedRequestHeaders, exposedResponseHeaders } from "../gen/cloud__deployment.effect.vibe"
+import { routes as entitlementRoutes } from "../src/billing/entitlements.vibe"
+import { routes as grantRoutes } from "../src/billing/grant-codes.vibe"
+import { routes as invoiceRoutes } from "../src/billing/invoices.vibe"
+import { routes as snapshotRoutes } from "../src/billing/snapshot.vibe"
 import { listening, respond } from "../src/http/server.vibe"
 import { json, type Method, type Route, type RouteArea, type RouteContext } from "../src/http/routes.vibe"
-import type { Capability } from "../src/profile/profile.vibe"
 import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import { Store } from "../src/store/store.vibe"
 import { signedCaller } from "./support/caller.vibe"
 import { testCloud, type TestCloud } from "./support/cloud.vibe"
 import { callCloud, type Answer, type CallInit } from "./support/http.ts"
-import { testProfile } from "./support/profile.ts"
+import { secrets, testProfile } from "./support/profile.ts"
 
 const ownOrigin = "https://www.staging.example.com"
 const mintedRequestId = /^[A-Za-z0-9._:-]{8,128}$/
@@ -18,17 +21,12 @@ effect function check(run: () => void) {
   try Effect.try(run)
 }
 
-interface Gate {
-  readonly area?: RouteArea
-  readonly capability?: Capability
-}
-
 function probes(reached: Array<string>): ReadonlyArray<Route> {
-  const probe = (method: Method, path: `/${string}`, gate: Gate): Route => ({
+  const probe = (method: Method, path: `/${string}`, area: RouteArea): Route => ({
     method,
     path,
     auth: "ServiceAccess",
-    ...gate,
+    area,
     maxBodyBytes: 64,
     handler: (context: RouteContext) => effect {
       reached.push(path)
@@ -36,10 +34,13 @@ function probes(reached: Array<string>): ReadonlyArray<Route> {
     }
   })
   return [
-    probe("POST", "/probe/subscription", { area: "SubscriptionRoutes" }),
-    probe("GET", "/probe/entitlement", { area: "EntitlementRoutes" }),
-    probe("GET", "/probe/billing", { capability: "billing" }),
-    probe("POST", "/probe/inference", { area: "ChatCompletionRoutes" })
+    probe("POST", "/probe/subscription", "SubscriptionRoutes"),
+    probe("GET", "/probe/entitlement", "EntitlementRoutes"),
+    probe("POST", "/probe/inference", "ChatCompletionRoutes"),
+    ...snapshotRoutes,
+    ...entitlementRoutes,
+    ...invoiceRoutes,
+    ...grantRoutes
   ]
 }
 
@@ -49,7 +50,8 @@ effect function probeServer(cloud: TestCloud, routes: ReadonlyArray<Route>) {
   const profile = try parseProfile(withoutBilling)
   const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
     Layer.provideMerge(listening(0, "127.0.0.1")),
-    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
+    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer)),
+    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))
   ))
   const { address } = Context.get(built, HttpServer.HttpServer)
   return "port" in address ? `http://127.0.0.1:${address.port}` : ""
@@ -72,10 +74,14 @@ describe("WP0 Foundation: HTTP shell", () => {
     const anonymousGated = try call("/probe/subscription", { json: {}, headers: { "x-request-id": "bad id" } })
     const signedGated = try call("/probe/subscription", { json: {}, headers: signed("journey-http-0002") })
     const ungatedArea = try call("/probe/entitlement", { headers: signed("journey-http-0003") })
-    const legacyGate = try call("/probe/billing", { headers: signed("journey-http-0004") })
+    const invoices = try call("/api/v1/billing/invoices", { headers: signed("journey-http-0004") })
+    const redeem = try call("/api/v1/subscription/redeem", { json: {}, headers: signed("journey-http-0014") })
     const gatedOversized = try call("/probe/subscription", { json: { text: "x".repeat(1_000) }, headers: signed("journey-http-0005") })
     const oversized = try call("/probe/inference", { json: { text: "x".repeat(1_000) }, headers: signed("journey-http-0006") })
     const fits = try call("/probe/inference", { json: {}, headers: signed("journey-http-0007") })
+    const balance = try call("/api/v1/billing/limits", { headers: signed("journey-http-0012") })
+    const entitlement = try call("/api/v1/subscription/entitlement", { headers: signed("journey-http-0013") })
+    const entitlementKeys = try call("/api/v1/subscription/entitlement-keys")
     const unknownGet = try call("/probe/nothing-here")
     const unknownPost = try call("/probe/nothing-here", { json: {} })
     try check(() => assert.deepStrictEqual(
@@ -83,10 +89,11 @@ describe("WP0 Foundation: HTTP shell", () => {
         anonymousGated: [refusal(anonymousGated), mintedRequestId.test(anonymousGated.headers["x-request-id"] ?? ""), anonymousGated.headers["x-request-id"] !== "bad id"],
         signedGated: [refusal(signedGated), signedGated.headers["x-request-id"]],
         ungatedArea: [refusal(ungatedArea), ungatedArea.headers["x-request-id"]],
-        legacyGate: refusal(legacyGate),
+        closedWithoutBilling: [refusal(invoices), refusal(redeem)],
         gatedOversized: [refusal(gatedOversized), gatedOversized.headers["x-request-id"]],
         oversized: [refusal(oversized), oversized.headers["x-request-id"]],
         fits: refusal(fits),
+        openWithoutBilling: [balance.status, entitlement.status, entitlementKeys.status],
         unknown: [refusal(unknownGet), refusal(unknownPost), mintedRequestId.test(unknownGet.headers["x-request-id"] ?? ""), unknownGet.headers["x-request-id"] !== unknownPost.headers["x-request-id"]],
         reached
       },
@@ -94,10 +101,11 @@ describe("WP0 Foundation: HTTP shell", () => {
         anonymousGated: ["401 authentication_required", true, true],
         signedGated: ["404 capability_unavailable", "journey-http-0002"],
         ungatedArea: ["200 deviceKey", "journey-http-0003"],
-        legacyGate: "404 capability_unavailable",
+        closedWithoutBilling: ["404 capability_unavailable", "404 capability_unavailable"],
         gatedOversized: ["404 capability_unavailable", "journey-http-0005"],
         oversized: ["413 content_too_large", "journey-http-0006"],
         fits: "200 deviceKey",
+        openWithoutBilling: [200, 200, 200],
         unknown: ["404 not_found", "404 not_found", true, true],
         reached: ["/probe/entitlement", "/probe/inference"]
       }
