@@ -234,14 +234,15 @@ pure def lawAMessageThatGivesNoTimeFinishesNothing(keptAt: int, now: int, sameMe
 
 ### A retraction takes back only the reminder this conversation just saved, from a later message within five minutes
 
-A retraction leads the message, after an "oh", "wait" or "actually": a
-negated save ("don't save that one", with a typographic apostrophe too),
-a cancel or undo of that one, "never mind", or "get rid of it". It is
-honored only from a later message than the one that saved the reminder,
-within five minutes of the save, while that reminder is still live, and
-when the message names no other reminder and asks to complete, snooze,
-acknowledge or escalate none. A message that also asks for a new reminder
-saves it after the retraction.
+Whether a message takes back the reminder just saved ("actually, don't
+save that one", "never mind", "get rid of it", in any words or language)
+is the model's to read: it asks for a retraction, and nothing in the
+owner's words asks for one by itself. A retraction is honored only from a
+later message than the one that saved the reminder, within five minutes of
+the save, while that reminder is still live, and when it names no other
+reminder. Otherwise nothing changes, and the model is told that nothing
+was taken back. A message that also asks for a new reminder takes back
+the old one first and then saves the new one.
 
 ```quint
 pure val retractionWindowMs = 300000
