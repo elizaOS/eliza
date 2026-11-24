@@ -6,7 +6,7 @@ import {
   attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, evaluateOwnerExclusiveDisclosure, executePlannedToolCall, getTrajectoryContext, historyWindowNotice, OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS, PII_SWAP_ENABLED_SETTING, readSystemNotice, SECRET_SWAP_ENABLED_SETTING, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
 // spec/agent/conversation/ownerAudience.md, "The agent checks the stored room when an owner turn offers a disclosure-gated tool"; spec/agent/conversation/ownerAudience.md, "The audience lease ends with the turn"
-import { admitsVisibleReferenceRestoration, privateAudienceCheckNeeded, privateReplyCheckNeeded } from "../../gen/agent__conversation__ownerAudience.ts"
+import { admitsVisibleReferenceRestoration, privateAudienceCheckNeeded, privateReplyCheckNeeded } from "../../gen/agent__conversation__ownerAudience.effect.vibe"
 import { revertedEffectReceiptIds, type EffectReceipt } from "@elizaos/core/protocol"
 import { hostNoteLabels, offersContextRestore } from "../../gen/agent__conversation__planning.ts"
 import { carriesCutOffEffect, replyQuoteChars } from "../../gen/agent__conversation__turns.ts"
