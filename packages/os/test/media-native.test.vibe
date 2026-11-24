@@ -39,7 +39,7 @@ it.effect('A photo crop keeps the fixed centered crop or the chosen rectangle an
   try checked("PhotoCropTest")
 }, 180_000)
 
-it.effect('A selected copy is exact, document bytes agree with their type, and a grant stays while a saved item names it (spec/os/android/files/documentGrants.md, "Forgetting gives back the exact grant only when no selection and no note still name the document"; spec/os/android/media/isolatedPdf.md, "A selected-document render accepts only the reply to its own request")', effect () => {
+it.effect('A selected copy is exact, the registry admits a pick and evicts the oldest in one save, document bytes agree with their type, and a grant stays while a saved item names it (spec/os/android/files/documentGrants.md, "The registry never holds more than 32 selections, and a new pick evicts the oldest"; spec/os/android/files/documentGrants.md, "Forgetting gives back the exact grant only when no selection and no note still name the document"; spec/os/android/media/isolatedPdf.md, "A selected-document render accepts only the reply to its own request")', effect () => {
   try checked("SelectedDocumentsTest")
 }, 180_000)
 

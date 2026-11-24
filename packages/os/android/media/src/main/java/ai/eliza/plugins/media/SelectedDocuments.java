@@ -50,7 +50,6 @@ import java.util.regex.Pattern;
  */
 public final class SelectedDocuments {
   private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9-]{0,63}");
-  private static final int MAX_SELECTIONS = 32;
   private static final int MAX_TEXT_BYTES = 64 * 1024;
   private final Map<String, Uri> selected = new LinkedHashMap<>();
   private final Map<String, Integer> retained = new LinkedHashMap<>();
@@ -100,7 +99,7 @@ public final class SelectedDocuments {
     try {
       org.json.JSONArray entries = new org.json.JSONArray(
           owner.getSharedPreferences(preferences, 0).getString("records", "[]"));
-      for (int i = 0; i < Math.min(entries.length(), MAX_SELECTIONS); i++) {
+      for (int i = Math.max(0, entries.length() - SelectionAdmission.MAX); i < entries.length(); i++) {
         org.json.JSONObject entry = entries.getJSONObject(i);
         String id = entry.getString("id");
         Uri uri = Uri.parse(entry.getString("uri"));
@@ -150,18 +149,19 @@ public final class SelectedDocuments {
       for (Map.Entry<String, Integer> previous : retained.entrySet())
         if (uri.equals(selected.get(previous.getKey())))
           flags |= previous.getValue();
-    selected.put(id, uri);
-    if (flags != 0)
-      retained.put(id, flags);
+    String oldest = selected.size() < SelectionAdmission.MAX ? null : selected.keySet().iterator().next();
+    Uri oldestUri = selected.get(oldest);
+    Integer oldestFlags = retained.get(oldest);
     try {
-      persist();
+      SelectionAdmission.admit(selected, retained, id, uri, flags, this::persist);
     } catch (RuntimeException error) {
-      selected.remove(id);
-      retained.remove(id);
       releaseUnused(uri, flags);
       throw error;
     }
-    while (selected.size() > MAX_SELECTIONS) forget(selected.keySet().iterator().next());
+    if (oldest != null) {
+      releaseUnused(oldestUri, oldestFlags == null ? 0 : oldestFlags);
+      clearPreview(oldest);
+    }
     return id;
   }
   public synchronized Uri resolve(String id) {
