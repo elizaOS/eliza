@@ -130,7 +130,9 @@ whose device negotiated no history control and whose mounted browser takes
 agent commands. Otherwise no history move is offered. Core's catalog gives the BROWSER
 command the general context every owner turn is planned in, beside its
 browser context, so it runs from any owner chat, as on the phone before
-VibeStack; its owner role gate and these offer rules are unchanged.
+VibeStack; its owner role gate and these offer rules are unchanged. The
+Browser declares its graphical view, `browser` at `/browser`, and lists the
+`browser-command` capability required by the agent's [views](../agent/views.md).
 
 ```quint
 type HistoryHome = HistoryAsControl | HistoryAsCommand | NoHistoryMove

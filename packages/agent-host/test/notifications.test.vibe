@@ -22,7 +22,6 @@ effect function notifyAll(service: NotificationService, inputs: readonly Notific
   return made
 }
 
-const listed = (body: unknown): string[] => ((body as { notifications: AgentNotification[] }).notifications).map((notice) => notice.id)
 const list = (agent: InProcess, query: string) => ask(agent, { method: "GET", path: `/api/notifications${query}` })
 const markRead = (agent: InProcess, id: string) => ask(agent, { method: "POST", path: `/api/notifications/${id}/read` })
 
@@ -34,7 +33,7 @@ interface NativePage {
   readonly complete: boolean
 }
 
-it.effect('Notify, list with each filter, page natively and mark read twice (spec/agent/notifications.md, "An owner list holds only visible notices that match its filter, newest first"; spec/agent/notifications.md, "A list query is refused unless each parameter is given once and well formed"; spec/agent/notifications.md, "A native page takes no filter and names its epoch to continue"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice")', effect () => {
+it.effect('Notify, page natively, refuse every other list and mark read twice (spec/agent/notifications.md, "A list query asks for the native page, with each parameter given once and well formed"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice")', effect () => {
   const agent = try startInProcess(loaded)
   const service = try inbox(agent)
   const [first, second, quiet] = try notifyAll(service, [
@@ -43,50 +42,36 @@ it.effect('Notify, list with each filter, page natively and mark read twice (spe
     { title: "Water the plants", category: "reminder", priority: "low" },
   ])
 
-  const everything = try list(agent, "")
-  const reminders = try list(agent, "?category=reminder")
-  const newest = try list(agent, "?limit=1&unreadOnly=true")
-  try Effect.try(() => {
-    assert.deepStrictEqual([everything.status, listed(everything.body)], [200, [quiet.id, second.id, first.id]])
-    assert.deepInclude(everything.body as object, { unreadCount: 2, serviceStatus: "ready" })
-    assert.deepStrictEqual(listed(reminders.body), [quiet.id, first.id])
-    assert.deepStrictEqual(listed(newest.body), [quiet.id])
-  })
-
   const refusals = try Effect.forEach(
-    ["?category=remindr", "?limit=101", "?limit=0", "?limit=1e1", "?unreadOnly=yes", "?afterSequence=2", "?nativeTransport=1", "?nativeTransport=true&category=reminder", "?nativeTransport=true&limit=129", "?nativeTransport=true&afterSequence=1"],
+    ["", "?nativeTransport=false", "?nativeTransport=1", "?nativeTransport=true&limit=1e1", "?nativeTransport=true&nativeEpoch=epoch", "?afterSequence=2"],
     (query) => list(agent, query))
-  const undeclared = try list(agent, "?page=2")
-  const repeated = try list(agent, "?category=message&category=reminder")
+  const byCore = try Effect.forEach(["?nativeTransport=true&limit=129", "?nativeTransport=true&limit=0", "?nativeTransport=true&afterSequence=1"], (query) => list(agent, query))
+  const undeclared = try Effect.forEach(["?category=reminder", "?unreadOnly=true", "?page=2"], (query) => list(agent, query))
   try Effect.try(() => {
-    assert.deepStrictEqual(refusals.map(({ status }) => status), refusals.map(() => 400))
-    assert.deepStrictEqual([undeclared.status, repeated.status], [404, 404])
+    assert.deepStrictEqual(refusals, refusals.map(() => ({ status: 400, body: { error: "invalid_notification_query" } })))
+    assert.deepStrictEqual(byCore.map(({ status, body }) => [status, (body as { code?: string }).code]), byCore.map(() => [400, "INVALID_NATIVE_NOTIFICATION_CURSOR"]))
+    assert.deepStrictEqual(undeclared.map(({ status }) => status), [404, 404, 404])
   })
 
   const opening = try list(agent, "?nativeTransport=true&limit=2")
   const page = opening.body as NativePage
-  const rest = try list(agent, `?nativeTransport=true&nativeEpoch=${page.nativeEpoch}&afterSequence=${page.nextSequence}&throughSequence=${page.throughSequence}`)
+  const rest = try list(agent, `?nativeTransport=true&nativeEpoch=${page.nativeEpoch}&afterSequence=${page.nextSequence}&throughSequence=${page.throughSequence}&limit=128`)
   const changed = try list(agent, `?nativeTransport=true&nativeEpoch=${otherEpoch}&afterSequence=${page.nextSequence}`)
   try Effect.try(() => {
     assert.deepStrictEqual([opening.status, page.notifications.map(({ id }) => id), page.complete], [200, [first.id, second.id], false])
     assert.deepStrictEqual([rest.status, (rest.body as NativePage).notifications.map(({ id }) => id), (rest.body as NativePage).complete], [200, [quiet.id], true])
-    assert.deepStrictEqual(changed.status, 409)
+    assert.deepStrictEqual([changed.status, (changed.body as { code?: string }).code], [409, "NATIVE_NOTIFICATION_EPOCH_CHANGED"])
   })
 
   const marked = try markRead(agent, first.id)
   const again = try markRead(agent, first.id)
   const absent = try markRead(agent, absentId)
   const malformed = try markRead(agent, "not-a-uuid")
-  const [expired] = try notifyAll(service, [{ title: "An old reminder", category: "reminder", expiresAt: 1 }])
-  const unread = try list(agent, "?unreadOnly=true")
   try Effect.try(() => {
     assert.deepStrictEqual([marked, again, absent], [
       { status: 200, body: { ok: true } }, { status: 200, body: { ok: false } }, { status: 200, body: { ok: false } },
     ])
     assert.include([400, 404], malformed.status)
-    assert.include(service.listIncludingExpired().map(({ id }) => id), expired.id)
-    assert.deepStrictEqual(listed(unread.body), [quiet.id, second.id])
-    assert.deepInclude(unread.body as object, { unreadCount: 1 })
     assert.deepStrictEqual(service.listIncludingExpired().filter((notice) => notice.readAt != null).map(({ id }) => id), [first.id])
   })
 }, 120_000)
@@ -97,15 +82,14 @@ it.effect('A stopped inbox answers 503 with Retry-After, never an empty list or 
   const [notice] = try notifyAll(service, [{ title: "Call the dentist", category: "reminder" }])
   try host("inbox stop", () => service.stop())
   const asked = try call(agent, { method: "GET", path: "/api/notifications?nativeTransport=true" })
-  const owner = try list(agent, "?unreadOnly=true")
   const marked = try markRead(agent, notice.id)
-  const malformed = try list(agent, "?limit=101")
+  const malformed = try list(agent, "?nativeTransport=true&limit=1e1")
   try Effect.try(() => {
     assert.ok("status" in asked)
     if (!("status" in asked)) return
     assert.strictEqual(asked.status, 503)
     assert.match(asked.headers["retry-after"] ?? "", /^[1-9][0-9]*$/)
-    assert.deepStrictEqual([owner.status, marked.status, malformed.status], [503, 503, 400])
+    assert.deepStrictEqual([marked.status, malformed.status], [503, 400])
   })
 }, 120_000)
 

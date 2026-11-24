@@ -3,6 +3,7 @@
 // spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"
 // spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain"
 // spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text"
+// spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run's events"
 // spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
 // spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"
@@ -13,7 +14,7 @@ module node {
   import { randomUUID } from "node:crypto"
   import { Effect, Result, Schema } from "effect"
   import {
-    attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, CHAT_IMAGE_MIME_TYPE_SET, CHAT_UPLOAD_MIME_TYPE_SET, MAX_CHAT_ATTACHMENT_NAME_LENGTH, MAX_CHAT_IMAGE_BASE64_BYTES, MAX_CHAT_MEDIA_BASE64_BYTES, MAX_CHAT_UPLOAD_ATTACHMENTS, ChannelType, ModelType, bindIncomingMessagePersistence, conversationClientUserMemoryId, findViewActionHandoff, hashStableJson, parseViewInteractionClientId, normalizeChatIdempotencyKey, readDurableConversationChatMarker, readSystemNotice, runWithTrajectoryContext, stringToUuid, validateUuid, type ActionResult, type AgentRuntime, type Content, type DurableConversationChatMarker, type JsonObject, type Media, type Memory, type MemoryMetadata, type MessageProcessingResult, type UUID, type TaskChoiceWidget,
+    attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, CHAT_IMAGE_MIME_TYPE_SET, CHAT_UPLOAD_MIME_TYPE_SET, MAX_CHAT_ATTACHMENT_NAME_LENGTH, MAX_CHAT_IMAGE_BASE64_BYTES, MAX_CHAT_MEDIA_BASE64_BYTES, MAX_CHAT_UPLOAD_ATTACHMENTS, ChannelType, EventType, ModelType, bindIncomingMessagePersistence, conversationClientUserMemoryId, findViewActionHandoff, hashStableJson, parseViewInteractionClientId, normalizeChatIdempotencyKey, readDurableConversationChatMarker, readSystemNotice, runWithTrajectoryContext, stringToUuid, validateUuid, type ActionResult, type AgentRuntime, type Content, type DurableConversationChatMarker, type JsonObject, type Media, type Memory, type MemoryMetadata, type MessageProcessingResult, type UUID, type TaskChoiceWidget,
   } from "@elizaos/core"
   import { fundsCodeOf } from "../../gen/agent__models__binding.ts"
   import { warmUpDeadlineMs, warmUpStarts } from "../../gen/agent__conversation__planning.ts"
@@ -196,7 +197,8 @@ module node {
     const service = runtime.messageService ?? (() => { throw new Error("A conversation requires the message service") })()
     const { roomId } = conversation
     const store = conversationStore(runtime, owner)
-    return runtime.roomHandlerQueue.withLease(roomId, async (lease) => {
+    const raised: { type: EventType.MESSAGE_RECEIVED | EventType.MESSAGE_SENT; message: Memory }[] = []
+    const turn = await runtime.roomHandlerQueue.withLease(roomId, async (lease) => {
       signal.throwIfAborted()
       const input = memory(runtime, owner, roomId, text, options.metadata)
       const { key } = options
@@ -225,6 +227,7 @@ module node {
         ...input, content: { text, source: input.content.source, ...(replyTarget?.id === undefined ? {} : { inReplyTo: replyTarget.id }) },
       })
       const userMessageId = await runtime.createMessageMemory(input)
+      raised.push({ type: EventType.MESSAGE_RECEIVED, message: { ...input, id: userMessageId } })
       await store.touch(roomId, input.createdAt ?? 0)
       let taskEnding: ChatTaskEnding | undefined
       const storeReply = async (content: Content): Promise<Memory[]> => {
@@ -243,9 +246,11 @@ module node {
             ...(kind === undefined && taskEnding?.kind === "Shown" ? { taskPresentationReceipt: taskEnding.receipt } : {}),
           },
         }
-        await runtime.createMessageMemory(response)
+        const replyId = await runtime.createMessageMemory(response)
         await store.touch(roomId, response.createdAt ?? 0)
-        return [response]
+        const stored = { ...response, id: replyId }
+        raised.push({ type: EventType.MESSAGE_SENT, message: stored })
+        return [stored]
       }
       let session: DeviceTurnSession | undefined
       const interrupted = async (result: MessageProcessingResult): Promise<MessageProcessingResult> => {
@@ -286,6 +291,8 @@ module node {
         await session?.end()
       }
     }, { signal })
+    for (const { type, message } of raised) await runtime.emitEvent(type, { runtime, source: "device", message })
+    return turn
   }
 
   // spec/agent/conversation/turns.md, "Only a turn the conversation's turn runner builds for the owner carries owner-only audience evidence, renewed only while that turn runs"

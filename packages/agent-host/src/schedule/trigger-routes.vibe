@@ -1,4 +1,4 @@
-// spec/agent/schedule/triggers.md, "Story: Run a trigger now or on schedule without losing my edits"; spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on"; spec/agent/schedule/triggers.md, "Enabling is refused past 100 active triggers, and for a one-time trigger whose time has passed"; spec/agent/schedule/triggers.md, "Run now starts one run of the saved trigger, even a disabled one, after any run in progress"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/access/routes.md, "A request matches a route by method, delivery, every segment and every query key"
+// spec/agent/schedule/triggers.md, "Story: Run a trigger now or on schedule without losing my edits"; spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on"; spec/agent/schedule/triggers.md, "Enabling is refused past 100 active triggers, for a passed one-time trigger, and for an unsupported event"; spec/agent/schedule/triggers.md, "Run now starts one run of the saved trigger, even a disabled one, after any run in progress"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/access/routes.md, "A request matches a route by method, delivery, every segment and every query key"
 import { parseCronExpression } from "@elizaos/core"
 import { runStatus, type RevisionCheck, type RunRecord, type RunSource, type RunStatus } from "../../gen/agent__schedule__triggers.effect.vibe"
 import type { LocalRoute } from "@elizaos/agent"
@@ -37,7 +37,7 @@ export interface TriggerRun {
   readonly error: string | undefined
 }
 
-export type TriggerRefusal = "Invalid" | "StaleRevision" | "ConversationMissing" | "ActiveLimit" | "RoomUnavailable"
+export type TriggerRefusal = "Invalid" | "StaleRevision" | "ConversationMissing" | "ActiveLimit" | "RoomUnavailable" | "UnsupportedEvent"
 
 export type TriggerWrite =
   | { readonly kind: "saved"; readonly trigger: SavedTrigger }
@@ -74,6 +74,7 @@ const refusal = {
   StaleRevision: { status: 409, error: "stale_revision" },
   ConversationMissing: { status: 409, error: "conversation_missing" },
   ActiveLimit: { status: 429, error: "active_trigger_limit" },
+  UnsupportedEvent: { status: 400, error: "unsupported_event" },
   RoomUnavailable: { status: 503, error: "conversation_unavailable" },
 } as const satisfies Record<TriggerRefusal, { status: number; error: string }>
 const wireStatus = { RunSuccess: "success", RunError: "error", RunSkipped: "skipped" } as const satisfies Record<RunStatus, string>
