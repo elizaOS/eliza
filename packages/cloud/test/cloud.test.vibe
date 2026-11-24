@@ -1468,6 +1468,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     let phase: unknown = undefined
     for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
       try TestClock.withLive(sleep(Duration.millis(50)))
+      try TestClock.adjust(Duration.millis(50))
       phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
     }
     const windows = try sql(cloud, "SELECT number, expires_at, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
@@ -1558,6 +1559,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     let phase: unknown = undefined
     for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
       try TestClock.withLive(sleep(Duration.millis(50)))
+      try TestClock.adjust(Duration.millis(50))
       phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
     }
     const windows = try sql(cloud, "SELECT number, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
