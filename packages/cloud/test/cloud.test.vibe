@@ -4285,11 +4285,16 @@ module node {
           "GET https://gmail.googleapis.com/gmail/v1/users/me/history",
         ].includes(call)),
       }
-      const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: (input, init) => {
+      const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: async (input, init) => {
         const request = new Request(input, init)
         request.headers.delete("authorization")
         request.headers.set("cookie", "__Host-eliza-session=" + owner.access)
-        return worker.fetch(request, env)
+        const completed: Promise<unknown>[] = []
+        try {
+          return await worker.fetch(request, env, { waitUntil: (pending) => { completed.push(pending) } })
+        } finally {
+          await Promise.all(completed)
+        }
       } })
       const readMail = (messageId: string) => client.gmailRead({ messageId, grantId: grant })
       const whole = await readMail("mail-whole")
