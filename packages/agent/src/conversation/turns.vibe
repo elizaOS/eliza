@@ -321,6 +321,18 @@ module node {
     })
   }
 
+  function failureFields(failure: Failure): Pick<TurnReply, "failureKind" | "planAction" | "retryAfterMs" | "cutOffEffect"> {
+    const kind = replyKind(failure)
+    const planAction = planActionOf(kind)
+    const wait = providerWaitMs(kind, Date.now())
+    return {
+      failureKind: failure.kind,
+      ...(planAction === "sign-in" || planAction === "funding" || planAction === "retry" ? { planAction } : {}),
+      ...(wait < 0 ? {} : { retryAfterMs: wait }),
+      ...(failure.cutOffEffect === undefined ? {} : { cutOffEffect: failure.cutOffEffect }),
+    }
+  }
+
   export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void, device?: DeviceTurnPort): LocalRoute[] {
     if (!runtime.messageService) throw new Error("A conversation requires the message service")
     const rooms = () => runtime.getRooms(owner.world)
@@ -330,17 +342,6 @@ module node {
     const live = new Map<UUID, RunningSend>()
     const stopping = new Map<UUID, Promise<ReturnType<typeof okay>>>()
     const boot = randomUUID()
-    const failureFields = (failure: Failure): Pick<TurnReply, "failureKind" | "planAction" | "retryAfterMs" | "cutOffEffect"> => {
-      const kind = replyKind(failure)
-      const planAction = planActionOf(kind)
-      const wait = providerWaitMs(kind, Date.now())
-      return {
-        failureKind: failure.kind,
-        ...(planAction === "sign-in" || planAction === "funding" || planAction === "retry" ? { planAction } : {}),
-        ...(wait < 0 ? {} : { retryAfterMs: wait }),
-        ...(failure.cutOffEffect === undefined ? {} : { cutOffEffect: failure.cutOffEffect }),
-      }
-    }
     const answer = (text: string, messageId: UUID, userMessageId: UUID, failure?: Failure, taskChoices?: readonly TaskChoiceWidget[], actionResults: TurnReply["actionResults"] = [], action?: VoiceAction) =>
       okay({ fullText: text, text, agentName, messageId, userMessageId, actionResults, ...(action === undefined ? {} : { action }),
         ...(failure === undefined ? {} : failureFields(failure)), ...(taskChoices === undefined ? {} : { taskChoices }) } satisfies TurnReply)

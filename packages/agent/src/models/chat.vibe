@@ -235,7 +235,6 @@ module wireFormat {
 
   const dataKeywords: ReadonlySet<string> = new Set(["enum", "const", "default", "examples"])
 
-  /** A tool's parameter schema as a provider is shown it: without `pattern` constraints, which a provider may refuse (Cerebras does on a closed object); the action still validates its arguments when it runs. */
   function advertised(schema: unknown): unknown {
     if (Array.isArray(schema)) return schema.map(advertised)
     if (typeof schema !== "object" || schema === null) return schema

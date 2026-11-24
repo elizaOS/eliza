@@ -90,9 +90,7 @@ const HOST_RUN = /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*
 const LABEL_BEFORE = /[a-z\d](?:-*|\.)$/
 const LABEL_AFTER = /^(?:-*|\.)[a-z\d]/
 const WORDS = /\S+/g
-// eslint-disable-next-line no-control-regex -- Grounding rejects C0 controls and DEL without advancing a global regex cursor.
 const CONTROL = /[\u0000-\u001f\u007f]/
-// eslint-disable-next-line no-control-regex -- Grounded excerpts normalize every C0 control and DEL.
 const CONTROLS = /[\u0000-\u001f\u007f]/g
 
 interface NamePatterns {

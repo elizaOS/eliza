@@ -8,7 +8,6 @@ module browser {
 }
 import { webAddress } from browser
 
-// eslint-disable-next-line no-control-regex -- Maps display text allows tab and line breaks and rejects the listed C0 controls.
 const controlCharacters = /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/
 
 export function boundedText(value: unknown, limit: number): value is string {

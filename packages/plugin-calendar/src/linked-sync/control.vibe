@@ -118,7 +118,6 @@ const sameDestination = (left: LinkedCalendarDestination | null, right: LinkedCa
   left !== null && right !== null && left.connectorAccountId === right.connectorAccountId && left.providerCalendarId === right.providerCalendarId
 const reviewOf = (mapping: LinkedCalendarMapping) => JSON.stringify([mapping.linkId, mapping.localEventId, mapping.destination?.connectorAccountId ?? null,
   mapping.destination?.providerCalendarId ?? null, mapping.providerEventId, mapping.handoffKey, mapping.localOnly, mapping.staged, mapping.state])
-// eslint-disable-next-line no-control-regex -- Link control text excludes C0 controls and DEL.
 const plain = (value: unknown, max = 1024) => typeof value === "string" && value.trim() !== "" && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value)
 
 function lexical(request: LinkedCalendarControlRequest): boolean {

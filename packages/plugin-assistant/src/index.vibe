@@ -69,7 +69,6 @@ export class PersonalAssistantService extends Service {
     return new PersonalAssistantService(runtime)
   }
 
-  /** The zone the owner's calendar reads: the zone the owner stated, else the agent's. */
   ownerCalendarZone(): Promise<string> {
     return onAgent(this.runtime, ownerCalendarZone())
   }

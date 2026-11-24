@@ -1,7 +1,6 @@
 // spec/calendar/linkedReconcile.md, "A push retains its operation and uses the exact provider preconditions"; spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"
 import { sampledWireInstant } from "../availability/availability.schema.vibe"
 
-// eslint-disable-next-line no-control-regex -- Wire identifiers exclude C0 controls and DEL in the schema pattern.
 const plain = /^[^\u0000-\u001f\u007f]+$/
 const Text = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max), Schema.isPattern(plain))
 const InstantWire = Schema.String.check(Schema.isMaxLength(64), Schema.makeFilter((value) => Number.isFinite(Date.parse(value))))

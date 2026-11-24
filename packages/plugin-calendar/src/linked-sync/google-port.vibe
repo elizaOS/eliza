@@ -40,7 +40,6 @@ export type CalendarSyncHttp =
 const syncPath = "/api/v1/eliza/google/calendar/sync-v1/"
 const grantPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const text = (value: unknown, max = 2048): value is string =>
-  // eslint-disable-next-line no-control-regex -- Provider identifiers exclude C0 controls and DEL.
   typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value)
 const refuse = (message: string) => new CalendarSyncRefused({ message })
 const query = (values: Record<string, string>) => new URLSearchParams(values).toString()

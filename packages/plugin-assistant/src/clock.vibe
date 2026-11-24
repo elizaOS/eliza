@@ -122,7 +122,6 @@ export function buildClockHandoffRequest(form: ClockHandoffForm, timeZone: strin
     case "set": {
       const time = /^([01]\d|2[0-3]):([0-5]\d)$/u.exec(form.time)
       const zone = normalizeClockTimeZone(timeZone)
-      // eslint-disable-next-line no-control-regex -- Clock labels exclude C0 controls and DEL before the draft is offered.
       if (time === null || form.label.length > 200 || /[\u0000-\u001f\u007f]/u.test(form.label)) return { refused: "Choose a valid time and a label up to 200 characters." }
       if (zone === undefined) return { refused: "The phone's time zone is not one Clock accepts." }
       const days = ascending(form.days)

@@ -51,7 +51,6 @@ export class CalendarLinkedStore implements LinkedCalendarCheckpointStore {
   static open(input: CalendarSyncBinding, current: () => boolean, storage: CalendarLinkStorage, options: CalendarLinkedStoreOptions = {}): CalendarLinkedStore!(CalendarSyncRefused | CalendarSyncAborted) {
     return effect {
       const namespace = options.idempotencyNamespace ?? "calendar-sync"
-      // eslint-disable-next-line no-control-regex -- Request key namespaces exclude C0 controls, DEL, and the colon separator.
       if (!/^[^\u0000-\u001f\u007f:]{1,64}$/.test(namespace)) throw refused()
       const binding = try mapError(decodeBinding(input), refused)
       const scope = try digestText(JSON.stringify([binding.environment, binding.userId, binding.organizationId, binding.connectionId,
