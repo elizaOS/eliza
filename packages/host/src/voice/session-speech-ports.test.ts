@@ -1036,11 +1036,13 @@ test("absent delivery retains hosted semantics; unknown delivery is rejected at 
     }),
   ).toBeNull();
   expect(parseVoiceUiContext({ notesEditorNavigation: 1 })).toBeNull();
-  expect(parseVoiceUiContext({
-    viewDelivery: "completed-action",
-    uiClientId: "11111111-1111-4111-8111-111111111111",
-    notesEditorNavigation: true,
-  })).toBeNull();
+  expect(
+    parseVoiceUiContext({
+      viewDelivery: "completed-action",
+      uiClientId: "11111111-1111-4111-8111-111111111111",
+      notesEditorNavigation: true,
+    }),
+  ).toBeNull();
   expect(parseVoiceUiContext({ uiBrowserSurface: "native" })).toEqual({
     uiBrowserSurface: "native",
   });
@@ -1306,7 +1308,13 @@ test.each([
   },
 );
 
-test.each(["owned", "foreign", "ephemeral", "committed-effect"] as const)(
+test.each([
+  "owned",
+  "foreign",
+  "ephemeral",
+  "committed-effect",
+  "malformed-note-id",
+] as const)(
   "a grounding failure offers only a durable prepared view for its own renderer: %s",
   async (variant) => {
     const f = await setup(false, false, false, true);
@@ -1341,7 +1349,8 @@ test.each(["owned", "foreign", "ephemeral", "committed-effect"] as const)(
               mode: "show",
               viewId: "notes",
               viewType: "gui",
-              noteId: "saved-note-qa",
+              noteId:
+                variant === "malformed-note-id" ? "../note" : "saved-note-qa",
               navigationPrepared: true,
               completedActionHandoffId: requestId,
               navigationBinding: {
@@ -1381,6 +1390,7 @@ test.each(["owned", "foreign", "ephemeral", "committed-effect"] as const)(
     if (variant === "owned") {
       expect(frames[0]).toMatchObject({
         viewId: "notes",
+        noteId: "saved-note-qa",
         navigationPrepared: true,
         completedActionHandoffId: requestId,
       });

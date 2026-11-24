@@ -223,6 +223,7 @@ export type ElizaVoiceViewHandoff = Pick<
   | "viewId"
   | "viewPath"
   | "subview"
+  | "noteId"
   | "completedActionHandoffId"
   | "navigationPrepared"
   | "navigationBinding"
@@ -1097,7 +1098,8 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
       continue;
     const prepared =
       candidate.values.navigationPrepared !== undefined ||
-      candidate.values.navigationBinding !== undefined;
+      candidate.values.navigationBinding !== undefined ||
+      Object.hasOwn(candidate.values, "noteId");
     const canonical = prepared ? findViewActionHandoff([candidate]) : undefined;
     if (
       prepared &&
@@ -1123,6 +1125,7 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
             navigationPrepared: true,
             completedActionHandoffId: canonical.completedActionHandoffId,
             navigationBinding: canonical.navigationBinding,
+            ...(canonical.noteId ? { noteId: canonical.noteId } : {}),
           }
         : {}),
     };

@@ -156,6 +156,7 @@ export type ServerControlFrame =
       viewId: string;
       viewPath?: string;
       subview?: string;
+      noteId?: string;
       traceId: string;
       completedActionHandoffId?: string;
       navigationPrepared?: true;
