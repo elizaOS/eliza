@@ -44,7 +44,7 @@ afterEach(() => {
 
 function target(workerCommit: string | null, pagesCommits: string[]) {
   return {
-    canonicalRef: "refs/heads/staging-v3",
+    canonicalRef: "refs/heads/staging",
     worker: serveStamp(
       workerCommit === null
         ? null
@@ -65,7 +65,7 @@ describe("checkReleaseAuthority over live HTTP stamps", () => {
       expectedSha: A,
       target: target(A, [A, A]),
       isOnCanonical: (commit, ref) =>
-        commit === A && ref === "refs/heads/staging-v3",
+        commit === A && ref === "refs/heads/staging",
     });
     expect(report.ok).toBe(true);
     expect(report.reasons).toEqual([]);

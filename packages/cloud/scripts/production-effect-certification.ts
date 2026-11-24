@@ -106,7 +106,7 @@ function assertMainRunIdentity(run, repository, sourceSha) {
     run.repository?.full_name !== repository ||
     run.path !== MAIN_VALIDATION_WORKFLOW ||
     run.head_sha !== sourceSha ||
-    run.head_branch !== "main-v3" ||
+    run.head_branch !== "main" ||
     !["push", "workflow_dispatch"].includes(run.event) ||
     !Number.isSafeInteger(run.id) ||
     run.id <= 0 ||
@@ -142,7 +142,7 @@ export function verifyMainValidation({
     artifact.id <= 0 ||
     artifact.workflow_run?.id !== run.id ||
     artifact.workflow_run?.head_sha !== sourceSha ||
-    artifact.workflow_run?.head_branch !== "main-v3" ||
+    artifact.workflow_run?.head_branch !== "main" ||
     !/^sha256:[a-f0-9]{64}$/.test(artifact.digest ?? "")
   )
     throw new Error("Main validation artifact identity mismatch");
@@ -204,7 +204,7 @@ export async function requireMainValidation({
     });
   if (!/^[a-f0-9]{40}$/.test(sourceSha ?? ""))
     throw new Error("Main validation requires an exact source SHA");
-  const endpoint = `/actions/workflows/develop-full.yml/runs?branch=main-v3&head_sha=${sourceSha}&per_page=100`;
+  const endpoint = `/actions/workflows/develop-full.yml/runs?branch=main&head_sha=${sourceSha}&per_page=100`;
   const latest = async () => {
     const response = await api.request("GET", endpoint);
     if (
@@ -345,7 +345,7 @@ export async function requireProductionCertification({
     if (
       run.status !== "completed" ||
       run.conclusion !== "success" ||
-      run.head_branch !== "staging-v3" ||
+      run.head_branch !== "staging" ||
       run.path !== CERTIFICATION_WORKFLOW ||
       run.repository?.full_name !== repository ||
       !["push", "workflow_dispatch"].includes(run.event)
@@ -445,8 +445,8 @@ if (
   const sourceSha = process.argv[validationOnly ? 3 : 2];
   if (
     !/^[a-f0-9]{40}$/.test(sourceSha ?? "") ||
-    process.env.GITHUB_REF_NAME !== "main-v3" ||
-    process.env.GITHUB_REF !== "refs/heads/main-v3"
+    process.env.GITHUB_REF_NAME !== "main" ||
+    process.env.GITHUB_REF !== "refs/heads/main"
   )
     throw new Error("Production certification requires a full main source SHA");
   const repoRoot = process.cwd();

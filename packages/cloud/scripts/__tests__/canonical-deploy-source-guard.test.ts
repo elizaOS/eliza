@@ -29,14 +29,14 @@ describe("canonical deploy source decision", () => {
     expect(
       decideCanonicalDeploySource({
         runSha: RUN,
-        canonicalRef: "refs/heads/staging-v3",
+        canonicalRef: "refs/heads/staging",
         canonicalHead: RUN,
       }),
     ).toMatchObject({ allowed: true, reason: "current_source" });
     expect(
       decideCanonicalDeploySource({
         runSha: RUN,
-        canonicalRef: "refs/heads/staging-v3",
+        canonicalRef: "refs/heads/staging",
         canonicalHead: HEAD,
       }),
     ).toMatchObject({
@@ -50,7 +50,7 @@ describe("canonical deploy source decision", () => {
     expect(
       decideCanonicalDeploySource({
         runSha: RUN,
-        canonicalRef: "refs/heads/staging-v3",
+        canonicalRef: "refs/heads/staging",
         canonicalHead: HEAD,
         runShaIsAncestorOfHead: true,
         successorRunOwnsHead: true,
@@ -63,7 +63,7 @@ describe("canonical deploy source decision", () => {
     expect(
       decideCanonicalDeploySource({
         runSha: RUN,
-        canonicalRef: "refs/heads/staging-v3",
+        canonicalRef: "refs/heads/staging",
         canonicalHead: HEAD,
         runShaIsAncestorOfHead: true,
         successorRunOwnsHead: false,
@@ -76,7 +76,7 @@ describe("canonical deploy source decision", () => {
     expect(
       decideCanonicalDeploySource({
         runSha: RUN,
-        canonicalRef: "refs/heads/staging-v3",
+        canonicalRef: "refs/heads/staging",
         canonicalHead: HEAD,
         runShaIsAncestorOfHead: false,
       }),
@@ -92,7 +92,7 @@ describe("canonical deploy source decision", () => {
     expect(
       decideCanonicalDeploySource({
         runSha: RUN,
-        canonicalRef: "refs/heads/staging-v3",
+        canonicalRef: "refs/heads/staging",
         canonicalHead: HEAD,
         runShaIsAncestorOfHead: true,
         allowMonotonicForwardProgress: true,
@@ -112,7 +112,7 @@ describe("canonical deploy source decision", () => {
       expect(
         decideCanonicalDeploySource({
           runSha: RUN,
-          canonicalRef: "refs/heads/staging-v3",
+          canonicalRef: "refs/heads/staging",
           canonicalHead: HEAD,
           runShaIsAncestorOfHead: true,
           allowMonotonicForwardProgress: true,
@@ -124,7 +124,7 @@ describe("canonical deploy source decision", () => {
     expect(
       decideCanonicalDeploySource({
         runSha: RUN,
-        canonicalRef: "refs/heads/main-v3",
+        canonicalRef: "refs/heads/main",
         canonicalHead: HEAD,
         runShaIsAncestorOfHead: true,
         allowMonotonicForwardProgress: true,
@@ -138,7 +138,7 @@ describe("canonical deploy source decision", () => {
     const eligible = {
       id: 200,
       head_sha: HEAD,
-      head_branch: "staging-v3",
+      head_branch: "staging",
       event: "push",
       status: "queued",
       conclusion: null,
@@ -198,7 +198,7 @@ describe("canonical deploy source decision", () => {
             {
               id: 200,
               head_sha: HEAD,
-              head_branch: "staging-v3",
+              head_branch: "staging",
               event: "push",
               status: "waiting",
               conclusion: null,
@@ -212,7 +212,7 @@ describe("canonical deploy source decision", () => {
       "/actions/workflows/cloud-cf-deploy.yml/runs",
     );
     expect(requestedUrl).toContain(`head_sha=${HEAD}`);
-    expect(requestedUrl).toContain("branch=staging-v3");
+    expect(requestedUrl).toContain("branch=staging");
     expect(requestedUrl).toContain("event=push");
     expect(authorization).toBe("Bearer test-token");
 
@@ -233,7 +233,7 @@ describe("canonical deploy source decision", () => {
     expect(
       decideCanonicalDeploySource({
         runSha: "short",
-        canonicalRef: "refs/heads/staging-v3",
+        canonicalRef: "refs/heads/staging",
         canonicalHead: HEAD,
       }).reason,
     ).toBe("invalid_run_sha");
@@ -247,7 +247,7 @@ describe("canonical deploy source decision", () => {
     expect(
       decideCanonicalDeploySource({
         runSha: RUN,
-        canonicalRef: "refs/heads/main-v3",
+        canonicalRef: "refs/heads/main",
         canonicalHead: null,
       }).reason,
     ).toBe("canonical_head_unresolved");
@@ -257,7 +257,7 @@ describe("canonical deploy source decision", () => {
     expect(
       decideCanonicalDeploySource({
         runSha: RUN,
-        canonicalRef: "refs/heads/main-v3",
+        canonicalRef: "refs/heads/main",
         canonicalHead: null,
         force: true,
       }),
@@ -269,26 +269,26 @@ describe("canonical remote head parsing", () => {
   it("requires one exact ref and a full commit", () => {
     expect(
       parseCanonicalRemoteHead(
-        `${RUN}\trefs/heads/staging-v3\n`,
-        "refs/heads/staging-v3",
+        `${RUN}\trefs/heads/staging\n`,
+        "refs/heads/staging",
       ),
     ).toBe(RUN);
     expect(
       parseCanonicalRemoteHead(
-        `${RUN}\trefs/heads/main-v3\n`,
-        "refs/heads/staging-v3",
+        `${RUN}\trefs/heads/main\n`,
+        "refs/heads/staging",
       ),
     ).toBeNull();
     expect(
       parseCanonicalRemoteHead(
-        `${RUN}\trefs/heads/staging-v3\n${HEAD}\trefs/heads/staging-v3\n`,
-        "refs/heads/staging-v3",
+        `${RUN}\trefs/heads/staging\n${HEAD}\trefs/heads/staging\n`,
+        "refs/heads/staging",
       ),
     ).toBeNull();
     expect(
       parseCanonicalRemoteHead(
-        "not-a-sha\trefs/heads/staging-v3\n",
-        "refs/heads/staging-v3",
+        "not-a-sha\trefs/heads/staging\n",
+        "refs/heads/staging",
       ),
     ).toBeNull();
   });
@@ -300,7 +300,7 @@ describe("canonical deploy source CLI", () => {
     const origin = join(root, "origin");
     const clone = join(root, "clone");
     try {
-      execFileSync("git", ["init", "--initial-branch=staging-v3", origin], {
+      execFileSync("git", ["init", "--initial-branch=staging", origin], {
         stdio: "ignore",
       });
       execFileSync("git", ["config", "user.email", "test@example.com"], {
@@ -322,13 +322,7 @@ describe("canonical deploy source CLI", () => {
 
       const current = spawnSync(
         process.execPath,
-        [
-          SCRIPT,
-          "--run-sha",
-          first,
-          "--canonical-ref",
-          "refs/heads/staging-v3",
-        ],
+        [SCRIPT, "--run-sha", first, "--canonical-ref", "refs/heads/staging"],
         { cwd: clone, encoding: "utf8" },
       );
       expect(current.status).toBe(0);
@@ -342,13 +336,7 @@ describe("canonical deploy source CLI", () => {
       });
       const superseded = spawnSync(
         process.execPath,
-        [
-          SCRIPT,
-          "--run-sha",
-          first,
-          "--canonical-ref",
-          "refs/heads/staging-v3",
-        ],
+        [SCRIPT, "--run-sha", first, "--canonical-ref", "refs/heads/staging"],
         { cwd: clone, encoding: "utf8" },
       );
       expect(superseded.status).toBe(1);
@@ -365,7 +353,7 @@ describe("canonical deploy source CLI", () => {
           "--run-sha",
           first,
           "--canonical-ref",
-          "refs/heads/staging-v3",
+          "refs/heads/staging",
           "--neutral-when-superseded",
         ],
         {
@@ -403,7 +391,7 @@ describe("canonical deploy source CLI", () => {
           "--run-sha",
           first,
           "--canonical-ref",
-          "refs/heads/staging-v3",
+          "refs/heads/staging",
           "--neutral-when-superseded",
         ],
         { cwd: clone, encoding: "utf8" },
@@ -413,7 +401,7 @@ describe("canonical deploy source CLI", () => {
 
       const unresolved = spawnSync(
         process.execPath,
-        [SCRIPT, "--run-sha", first, "--canonical-ref", "refs/heads/main-v3"],
+        [SCRIPT, "--run-sha", first, "--canonical-ref", "refs/heads/main"],
         { cwd: clone, encoding: "utf8" },
       );
       expect(unresolved.status).toBe(1);
@@ -426,7 +414,7 @@ describe("canonical deploy source CLI", () => {
           "--run-sha",
           first,
           "--canonical-ref",
-          "refs/heads/main-v3",
+          "refs/heads/main",
           "--force",
         ],
         { cwd: root, encoding: "utf8" },

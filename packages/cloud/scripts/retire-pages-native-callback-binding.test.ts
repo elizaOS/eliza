@@ -306,10 +306,8 @@ globalThis.fetch = async (url, init) => {
             PAGES_PROJECT: "eliza-app",
             TARGET_ENVIRONMENT: "production",
             GITHUB_REF:
-              mode === "wrong-head"
-                ? "refs/heads/main-v3"
-                : "refs/heads/develop",
-            GITHUB_REF_NAME: mode === "wrong-head" ? "main-v3" : "develop",
+              mode === "wrong-head" ? "refs/heads/main" : "refs/heads/develop",
+            GITHUB_REF_NAME: mode === "wrong-head" ? "main" : "develop",
             GITHUB_SHA: "b".repeat(40),
             GITHUB_TOKEN: "",
             GITHUB_API_URL: "http://127.0.0.1:9",
