@@ -240,7 +240,7 @@ effect function redeemIn(tx: Tx, caller: Signed, key: string, idempotencyKey: st
 }
 
 export const routes: ReadonlyArray<Route> = [{
-  method: "POST", path: "/api/v1/subscription/redeem", auth: "ServiceAccess", capability: "billing",
+  method: "POST", path: "/api/v1/subscription/redeem", auth: "ServiceAccess", area: "GrantRedemptionRoutes",
   handler: effect (context) => {
     const caller = context.caller
     if (caller.kind === "anonymous") throw refused("AuthenticationRequired", "CredentialUnknown")
