@@ -405,10 +405,9 @@ later call to the same action can be for another request. An unlinked
 refusal stays open as a call that did not start, even if the action later
 runs. An open proposal is reported as awaiting the owner in the action's own
 copy, whatever the model's prose claims. An open failure is reported as that
-action's failure: the model writes it, or, as the last resort, the action's
-own words do (below), except a failure with no receipt that a later run of
-its action may have answered, which the model alone reports once it answers
-(below).
+action's failure in the action's own words, except a failure with no
+receipt that a later run of its action may have answered under the rule
+below.
 
 ```quint
 pure def isReceiptOperation(identity: StepIdentity): bool = match identity { | ReceiptOperation(_) => true | _ => false }
@@ -446,7 +445,7 @@ pure def lawARefusalBeforeDispatchStaysReported(steps: List[PlanStep], earlier: 
   earlier.outcome == Rejected implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
 ```
 
-### A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails
+### A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions
 
 After planning, an open failure (above) whose own words the reply does not
 hold is unreported, and so is an attached document left out for the turn's
@@ -466,9 +465,11 @@ the action's own copy stays where composition puts it (below). That reply is
 kept when it answers (it is neither blank nor a pending-work cue, read as
 below), it is not the first reply again, and the clock rules hold of it.
 Otherwise, or when the call fails, the first
-reply is kept, the clock's or the calendar change's own words (below) take
-its place when it stated a time they did not observe, and the own words of
-each unreported fact follow it. A reply with nothing unreported and no
+reply is kept, or the clock's or the calendar change's own words (below)
+take its place when it stated a time they did not observe. On either path,
+each remaining open failure and attachment omission is reported in its
+own words if the chosen reply does not already contain those words.
+A reply with nothing unreported and no
 unobserved time makes no further call, a turn cut off at the model's output
 limit is never asked again, and no turn is asked more than once.
 
@@ -515,9 +516,8 @@ later call of that action ran and that the reply must say the failed step
 did not happen unless that later call did what it was for. When the model
 answers that note with its first reply again, word for word, it stands by
 that reply, and when that reply is delivered, the failure's own words do not
-follow it. A second answer the rules above keep is the model's own and
-stands alone, as for any failure. Otherwise the failure's own words follow
-the reply as for any failure: when the call fails, when the model answers
+follow it. Otherwise the failure's own words follow the reply as for any
+failure: when the rules keep a second answer, when the call fails, when the model answers
 with a blank or a pending-work cue (read as below), when it gives another
 answer that is not kept, when the failure was never put to the model, or
 when the clock's or the change's words take the reply's place. A failure
@@ -736,18 +736,17 @@ any other bracketed text is ordinary output. Tool text the action marked
 verified for the owner is kept verbatim; prose that holds it is the whole
 reply, and prose it already holds adds nothing. Prose carrying a tool-call
 or reasoning marker is never shown. An open confirmation proposal or an
-interaction block (`[CHOICE]`, `[FORM]`) is the action's own copy: it is
-never fenced, and the model's prose follows it. Only safety copy, the
-emergency keypad's words for the owner, is delivered alone.
+interaction block (`[CHOICE]`, `[FORM]`) is the action's own copy. It and
+the emergency keypad's safety copy are delivered without model prose.
 
 ```quint
 type Composition = NoText | ToolOnly | ProseOnly | ToolThenProse | FencedToolThenProse
 type ToolTextShape = { present: bool, card: bool, multiline: bool, fenced: bool, ownCopy: bool, alone: bool }
 pure def compose(tool: ToolTextShape, prose: bool, proseHoldsTool: bool, toolHoldsProse: bool): Composition =
   if (not(tool.present)) (if (prose) ProseOnly else NoText)
-  else if (not(prose) or tool.alone or toolHoldsProse) ToolOnly
+  else if (not(prose) or tool.ownCopy or tool.alone or toolHoldsProse) ToolOnly
   else if (proseHoldsTool) ProseOnly
-  else if (tool.multiline and not(tool.card) and not(tool.fenced) and not(tool.ownCopy)) FencedToolThenProse
+  else if (tool.multiline and not(tool.card) and not(tool.fenced)) FencedToolThenProse
   else ToolThenProse
 pure val toolValues = Set(
   { present: true, card: true, multiline: true, fenced: false, ownCopy: false, alone: false },
@@ -761,9 +760,9 @@ pure def lawACardIsNeverFenced(tool: ToolTextShape, prose: bool, proseHoldsTool:
 pure def lawOwnCopyIsNeverFenced(tool: ToolTextShape, prose: bool, proseHoldsTool: bool, toolHoldsProse: bool): bool =
   tool.ownCopy implies compose(tool, prose, proseHoldsTool, toolHoldsProse) != FencedToolThenProse
 pure def lawGroundedProseIsKept(tool: ToolTextShape, proseHoldsTool: bool): bool =
-  (tool.present and not(tool.alone)) implies compose(tool, true, proseHoldsTool, false) != ToolOnly
-pure def lawSafetyCopyStandsAlone(tool: ToolTextShape, prose: bool, proseHoldsTool: bool, toolHoldsProse: bool): bool =
-  (tool.present and tool.alone) implies compose(tool, prose, proseHoldsTool, toolHoldsProse) == ToolOnly
+  (tool.present and not(tool.ownCopy) and not(tool.alone)) implies compose(tool, true, proseHoldsTool, false) != ToolOnly
+pure def lawProposalAndSafetyCopyStandAlone(tool: ToolTextShape, prose: bool, proseHoldsTool: bool, toolHoldsProse: bool): bool =
+  (tool.present and (tool.ownCopy or tool.alone)) implies compose(tool, prose, proseHoldsTool, toolHoldsProse) == ToolOnly
 pure def lawToolTextIsNeverDropped(tool: ToolTextShape, prose: bool, toolHoldsProse: bool): bool =
   tool.present implies compose(tool, prose, false, toolHoldsProse) != ProseOnly and compose(tool, prose, false, toolHoldsProse) != NoText
 ```

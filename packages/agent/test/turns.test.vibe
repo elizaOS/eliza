@@ -443,7 +443,7 @@ it.live(`Competing terminal decisions run no sibling tool and get one repair rou
   })
 })
 
-it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, the model is asked once more for a failure its reply left out and the failure's own words follow only when that fails, a refusal the model put right with a later call adds no refusal words once the model stands by its reply, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them")`, effect () => {
+it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, the model is asked once more for a failure its reply left out and the failure's own words follow only when that fails, a refusal the model put right with a later call adds no refusal words once the model stands by its reply, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -491,6 +491,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     const { answer, calls } = try callsFor({ text: "Divide 7 by 0." })
     return [answer.text, calls]
   }
+  const missingFailure = try secondAnswer("Division is a mathematical operation.")
   const cuedAgain = try secondAnswer("One sec.")
   const sameAgain = try secondAnswer("Done!")
   const blankAgain = try secondAnswer("", "", "", "")
@@ -544,8 +545,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     solved: [solved.text, solvedCalls],
     actions: solved.actionResults.map(({ action }) => action),
     unrendered: [unrendered.text, unrenderedCalls, unrenderedAsked.toolChoice, unrenderedAsked.said, unrenderedAsked.note],
-    failed: [failed.text, failedCalls, failedAsked.said, failedAsked.note.startsWith(asksAgain) && failedAsked.note.includes("A step of this turn did not happen as asked.")],
-    notFinal: { cuedAgain, sameAgain, blankAgain, fencedReport: quotedNote.includes(wrapExternalContent(divided, { source: "unknown" })) },
+    failed: [failed.text.startsWith("I couldn't add two plus two: the calculator didn't take it.\n\n") && failed.text.includes('CALCULATE could not evaluate "two plus two"'), failedCalls, failedAsked.said, failedAsked.note.startsWith(asksAgain) && failedAsked.note.includes("A step of this turn did not happen as asked.")],
+    notFinal: { missingFailure, cuedAgain, sameAgain, blankAgain, fencedReport: quotedNote.includes(wrapExternalContent(divided, { source: "unknown" })) },
     quoted: [quoted.text, quotedCalls],
     cutAfterFailure: [cutAfterFailure.text, cutAfterFailureCalls],
     separate: [separate.text, separateCalls],
@@ -558,29 +559,29 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   }, {
     offered: ["RESTORE_CONTEXT", "CALCULATE", "VIEWS"],
     sameTools: true,
-    declined: [true, "I can't switch screens from this chat, so home isn't showing."],
+    declined: [true, `I can't switch screens from this chat, so home isn't showing.\n\n${unavailableNotice}`],
     toolResult: true,
     solved: ["That is 1,123,324.", 2],
     actions: ["CALCULATE"],
     unrendered: [
-      "I can't switch screens from this chat, so home isn't showing.", 3, "none", "I can't switch screens from this chat.",
+      `I can't switch screens from this chat, so home isn't showing.\n\n${unavailableNotice}`, 3, "none", "I can't switch screens from this chat.",
       `${asksAgain}A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${JSON.stringify(unavailableNotice)}`,
     ],
-    failed: ["I couldn't add two plus two: the calculator didn't take it.", 3, "Done!", true],
-    notFinal: { cuedAgain: [`Done!\n\n${divided}`, 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
+    failed: [true, 3, "Done!", true],
+    notFinal: { missingFailure: [`Division is a mathematical operation.\n\n${divided}`, 3], cuedAgain: [`Done!\n\n${divided}`, 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
     quoted: [`It returned: ${divided}`, 2],
     cutAfterFailure: [`${cutOffReply}\n\n${divided}`, 2],
-    separate: ["The second result is 36. The first calculation didn't run.", 3],
+    separate: ["The second result is 36. The first calculation didn't run.\n\nA CALCULATE call did not start.", 3],
     corrected: ["The result is 17.\n\nA CALCULATE call did not start.", 4],
     correctedAgain: ["The result is 17.", 4, true],
-    otherLater: ["12 times 3 is 36. I couldn't work out 8 plus 9.", 4, true],
+    otherLater: ["12 times 3 is 36. I couldn't work out 8 plus 9.\n\nA CALCULATE call did not start.", 4, true],
     refusalStatuses: [["not_started", undefined], ["not_started", undefined]],
     duration: "One second is 1,000 milliseconds.",
     labels: { text: undefined, voice: { kind: "CALCULATE", validatedCard: false, verbatimAsked: true } },
   }))
 }, 120_000)
 
-it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it and its own words follow a reply that still leaves it out, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them")`, effect () => {
+it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it and its own words follow a reply that still leaves it out, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -609,7 +610,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     cloud.script(toolCalls("", { name: "UPDATE_EVENT", arguments: { event: "standup" } }, { name: "UPDATE_EVENT", arguments: { event: "dentist" } }), text("Both events moved."), text("Both events moved."))
   })
   const events = try turn("Move my standup and my dentist to Friday.")
-  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("Bob has your text. The text to Alice didn't go through.")) })
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("Bob has your text.")) })
   const told = try turn("Text Bob and Alice that I'm running late.")
 
   try Effect.try(() => assert.deepStrictEqual({ bobFirst, aliceFirst, retried, events, told }, {
@@ -617,7 +618,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     aliceFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 4, laterRunNote: false },
     retried: { text: "Alice has your text.", calls: 3, laterRunNote: false },
     events: { text: "Both events moved.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
-    told: { text: "Bob has your text. The text to Alice didn't go through.", calls: 3, laterRunNote: false },
+    told: { text: "Bob has your text.\n\nThe text to Alice did not send.", calls: 3, laterRunNote: false },
   }))
 }, 120_000)
 
@@ -729,7 +730,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   }))
 }, 120_000)
 
-it.live(`A document reaches the model whole when it fits, a larger document reaches it by name, the model is asked once more to say so when its reply did not, and an image stays an image (${planning}, "Attached documents share a bounded text allowance and images stay images"; ${planning}, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails")`, effect () => {
+it.live(`A document reaches the model whole when it fits, a larger document reaches it by name, the model is asked once more to say so when its reply did not, and an image stays an image (${planning}, "Attached documents share a bounded text allowance and images stay images"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try cloudAgent(cloud)
   const { id } = try conversation(agent)
@@ -747,7 +748,7 @@ it.live(`A document reaches the model whole when it fits, a larger document reac
     `The person attached a file whose contents cannot be read here. Its name and type follow:\n${wrapExternalContent(`${JSON.stringify(name)} (${type})`, { source: "unknown" })}`
 
   try Effect.sync(() => cloud.script(
-    text("Read them."), text("Read those too."), text("Read the agenda."), text("The agenda says to meet at nine. The other file was too long for me to read in one turn."),
+    text("Read them."), text("Read those too."), text("Read the agenda."), text("The agenda says to meet at nine."),
     text("Read the first file."), requestFault("invalid_request"),
   ))
   const first = try send(agent, id, { text: "What do these say?", images: [
@@ -790,7 +791,7 @@ it.live(`A document reaches the model whole when it fits, a larger document reac
     ],
     thirdParts: [omitted("oversized.txt"), file("agenda.txt", "text/plain", "Meet at nine.")],
     fourthParts: [file("first.txt", "text/plain", medium), omitted("second.txt")],
-    reply: "The agenda says to meet at nine. The other file was too long for me to read in one turn.", thirdNote: true,
+    reply: "The agenda says to meet at nine.\n\nSome attached documents exceeded the amount of text I can read in one turn.", thirdNote: true,
     fourth: "Read the first file.\n\nSome attached documents exceeded the amount of text I can read in one turn.",
     wireFits: true,
   }))
@@ -1065,7 +1066,7 @@ it.effect(`A calendar change is reported at the time it got, and the model is as
   try Effect.try(() => assert.include(note, JSON.stringify(own)))
 })
 
-it.live(`A reply that misstates the time a calendar change got is asked for once more, a right second answer is kept and a still-wrong one gives way to the change's own words (${planning}, "A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort"; ${planning}, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails")`, effect () => {
+it.live(`A reply that misstates the time a calendar change got is asked for once more, a right second answer is kept and a still-wrong one gives way to the change's own words (${planning}, "A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "MOVE_EVENT"] },
@@ -1092,7 +1093,7 @@ it.live(`A reply that misstates the time a calendar change got is asked for once
   }))
 }, 120_000)
 
-it.live(`A calendar move refused without a receipt and then made by the model's own corrected call adds no refusal words once the model stands by a reply without them, its words follow when the model gives no answer or another answer that is not kept, and a refusal with no later move or in the same response is still reported (${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails")`, effect () => {
+it.live(`A calendar move refused without a receipt and then made by the model's own corrected call adds no refusal words once the model stands by a reply without them, its words follow when the model gives no answer or another answer that is not kept, and a refusal with no later move or in the same response is still reported (${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "MOVE_EVENT"] },

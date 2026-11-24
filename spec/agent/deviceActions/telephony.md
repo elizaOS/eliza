@@ -289,10 +289,10 @@ pure def lawAMessageWithoutTheValueLeavesItToTheReview(verdict: TargetVerdict): 
 A recipient refusal offers nothing. Its sentence for the owner is true
 whichever recipient was refused: it says that nothing was called or sent, or
 for a contact change that nothing in the address book was saved or changed,
-and what to tell the agent instead. The model retells it to the owner after
-a host note that quotes it, and the sentence itself follows the reply only
-when that second answer fails ([planning](../conversation/planning.md)); the
-emergency refusal is safety copy and always reaches the owner as written. A recipient this phone cannot take in its form, and
+and what to tell the agent instead. The model can revise its reply after
+a host note that quotes the refusal. When the failure remains open under
+the [planning rules](../conversation/planning.md), its own words reach the
+owner. The emergency refusal always reaches the owner as written. A recipient this phone cannot take in its form, and
 a contact it cannot save in its form, is refused in those same terms; a
 contact change's number or email address the owner never wrote is named as
 the one refused. A refused number is called missing from the message only

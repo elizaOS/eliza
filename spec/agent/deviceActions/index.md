@@ -589,13 +589,10 @@ When the family refuses and no request is kept for the exact operation,
 nothing is kept: the model learns why in its own words, and the result
 carries the family's own sentence for the owner and is marked
 `executionStatus: "not_started"`, which [planning](../conversation/planning.md)
-records as `Rejected`. The model retells the refusal to the owner after a
-host note that quotes that sentence, and the sentence itself follows the
-reply only as the last resort, when the model's second answer fails
-([planning](../conversation/planning.md), "A reply that leaves a failure
-unreported is written again by the model once, and the failure's own words
-follow it only when that fails"); a sentence the family marks as safety copy
-always follows the reply as written. An operation that is not an offered form, that this
+records as `Rejected`. The model can revise its reply after a host note that
+quotes that sentence. The family's sentence still reaches the owner when
+that failure remains open under the [planning rules](../conversation/planning.md).
+A sentence the family marks as safety copy always reaches the owner as written. An operation that is not an offered form, that this
 message does not allow, or that the negotiation no longer admits, is
 refused the same way.
 
