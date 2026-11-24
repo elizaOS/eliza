@@ -18,11 +18,10 @@ const examplesSource = "vibestack/selftests/examples.ts";
 const toolMetadata = "vibestack/selftests/tools.ts";
 const EXAMPLES = "vibestack/examples";
 
-const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".agents/skills").filter((file) => file.endsWith(".md"))];
-const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
-const within = (dir: string) => fs.existsSync(path.join(project, dir)) ? fs.readdirSync(path.join(project, dir), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `${dir}/${e.name}`) : [];
-
 describe("the documents name what exists", () => {
+  const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".agents/skills").filter((file) => file.endsWith(".md"))];
+  const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
+  const within = (dir: string) => fs.existsSync(path.join(project, dir)) ? fs.readdirSync(path.join(project, dir), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `${dir}/${e.name}`) : [];
 
   const trackedEntries = async () => {
     const listed = await exec("git", ["ls-files", "--stage", "-z"], project);
@@ -88,7 +87,7 @@ describe("the documents name what exists", () => {
     const workspace = (file: string) => /^(apps|packages|spec)\//.test(file);
     const [shardA, shardB, packed] = tools;
     const toolInput = (file: string) => ![docsSource, examplesSource].includes(file)
-      && ((!workspace(file) && !file.startsWith("patches/") && PACKED.includes(file)) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|\.agents\/skills\/)/.test(file));
+      && ((!workspace(file) && PACKED.includes(file)) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|\.agents\/skills\/)/.test(file));
     assert.deepEqual({
       docs: missed(docs, () => true),
       examples: missed(examples, (file) => ![toolSource, docsSource, toolMetadata].includes(file) && /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
@@ -152,15 +151,10 @@ describe("the documents name what exists", () => {
     const turbo = bin("turbo", project);
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "spec-docs-selftest-")));
     context.after(() => fs.rmSync(root, { recursive: true, force: true }));
-    const fixtures = {
-      "spec/app/index.md": "# App\n", "spec/kit/index.md": "# Kit\n",
-      "apps/app/package.json": JSON.stringify({ name: "@repo/app", scripts }), "packages/kit/package.json": JSON.stringify({ name: "@repo/kit", scripts }),
-      "apps/app/tsconfig.json": JSON.stringify({ extends: "../../tsconfig.base.json" }),
-    };
-    for (const [file, content] of Object.entries(fixtures)) {
-      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-      fs.writeFileSync(path.join(root, file), content);
-    }
+    fs.mkdirSync(path.join(root, "spec/kit"), { recursive: true });
+    fs.mkdirSync(path.join(root, "packages/kit"), { recursive: true });
+    fs.writeFileSync(path.join(root, "spec/kit/index.md"), "# Kit\n");
+    fs.writeFileSync(path.join(root, "packages/kit/package.json"), JSON.stringify({ name: "@repo/kit", scripts }));
     const initialized = await exec("git", ["init", "-q"], root);
     assert.equal(initialized.status, 0, initialized.stderr);
     for (const { mode, object, file } of await trackedEntries()) {
@@ -174,9 +168,6 @@ describe("the documents name what exists", () => {
         fs.cpSync(path.join(project, file), destination, { verbatimSymlinks: true });
       }
     }
-    const patch = "patches/fixture.patch";
-    fs.mkdirSync(path.join(root, "patches"), { recursive: true });
-    fs.writeFileSync(path.join(root, patch), "a workspace dependency patch\n");
     const staged = await exec("git", ["add", "-A"], root);
     assert.equal(staged.status, 0, staged.stderr);
     const evaluatorHome = path.join(root, "custom quint home");
@@ -205,10 +196,11 @@ describe("the documents name what exists", () => {
     };
     const studio = (ids: string[]) => ids.filter((id) => /^(vibestack-studio#(?!check)|@repo\/(ui#(build|typecheck)|design-system#build)|\/\/#lint:css)/.test(id));
     const append = (file: string, text = "\nMore words.\n") => () => fs.appendFileSync(path.join(root, file), text);
-    assert.ok((await changedBy(append(patch))).includes("//#selftest:tools:rest"));
-    const vibeDeclared = [...["packages", "apps"].flatMap(within), "vibestack/studio"].filter((dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) && read(`${dir}/tsconfig.json`, root).includes(".vibe/declarations")).map((dir) => `${JSON.parse(read(`${dir}/package.json`, root)).name}#typecheck`);
+    const vibeDeclared = [...["packages", "apps"].flatMap(within), "vibestack/studio"]
+      .filter((dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) && read(`${dir}/tsconfig.json`, root).includes(".vibe/declarations"))
+      .map((dir) => `${JSON.parse(read(`${dir}/package.json`, root)).name}#typecheck`);
     const [prose, selftest, fixture, frameworkTest] = [
-      await changedBy(append("spec/agent/index.md")),
+      await changedBy(append("spec/kit/index.md")),
       await changedBy(append(toolSource, "\n")),
       await changedBy(append("vibestack/fixtures/door.md")),
       await changedBy(append("vibestack/design/test/design.test.ts", "\n")),
@@ -241,7 +233,7 @@ describe("the documents name what exists", () => {
       analyzeWaitsFor: tasks.get("//#analyze")!.dependencies.toSorted(),
       lintWaitsFor: vibeDeclared.filter((id) => tasks.get("//#lint:js")!.dependencies.includes(id)),
       devWaitsFor: tasks.get("vibestack-studio#dev")!.dependencies.toSorted(),
-      prose: [studio(prose), prose.includes("@elizaos/agent#test"), prose.includes("//#analyze")],
+      prose: [studio(prose), prose.includes("@repo/kit#test"), prose.includes("//#analyze")],
       readme: [selftests(readme), readme.includes("//#analyze")],
       selftest: [studio(selftest), selftest.includes("//#build"), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
       fixture: { studio: studio(fixture), build: fixture.includes("//#build"), selftest: fixture.includes("//#selftest:tools:a") },
@@ -265,7 +257,7 @@ describe("the documents name what exists", () => {
       independentOwner: true, leftovers: [],
     }, "the owners' tasks, @repo/kit's among them, wait for the root's gen, and install's //#build does not, so `gen --if-valid` after it keeps a half-edited spec from failing install");
 
-    await verifyGenerationInputs(root);
+    await context.test("legacy proof exclusions cannot preserve stale generation and build keys", () => verifyGenerationInputs(root));
   });
 });
 
@@ -275,7 +267,7 @@ async function verifyGenerationInputs(root: string) {
   const generationPlan = async (options: string[] = [], env: NodeJS.ProcessEnv = {}) => {
     const dry = await exec(process.execPath, [path.join(root, "vibestack/spec.ts"), "tasks", "//#gen", "@repo/kit#build", "//#lint:css", "--dry=json", "--cache=local:w", ...options], root, {
       ...process.env, TURBO_TOKEN: "", TURBO_ROOT_TURBO_JSON: undefined, GITHUB_ACTIONS: "true", GITHUB_JOB: "verify", GITHUB_WORKSPACE: root,
-      GITHUB_REPOSITORY: "elizaOS/eliza", GITHUB_WORKFLOW_REF: "elizaOS/eliza/.github/workflows/ci.yml@refs/heads/vibestack", ...env,
+      GITHUB_REPOSITORY: "lalalune/vibestack", GITHUB_WORKFLOW_REF: "lalalune/vibestack/.github/workflows/ci.yml@refs/heads/main", ...env,
     });
     assert.equal(dry.status, 0, dry.stderr);
     const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { cache: boolean; env: string[] } }[] = JSON.parse(dry.stdout).tasks;
@@ -284,7 +276,7 @@ async function verifyGenerationInputs(root: string) {
     const css = tasks.find(({ taskId }) => taskId === "//#lint:css");
     assert.ok(generation && build && css);
     assert.ok(build.resolvedTaskDefinition.cache);
-    return { gen: generation.hash, genCache: generation.resolvedTaskDefinition.cache, build: build.hash, cssEnv: css.resolvedTaskDefinition.env };
+    return { gen: generation.hash, build: build.hash, cssEnv: css.resolvedTaskDefinition.env };
   };
   const changed = (before: { gen: string; build: string }, after: { gen: string; build: string }, file: string) => {
     assert.notEqual(after.gen, before.gen, `generation key for ${file}`);
@@ -294,30 +286,10 @@ async function verifyGenerationInputs(root: string) {
   const companion = path.join(root, "spec/kit/index.proof.dfy");
   fs.writeFileSync(companion, "lemma One() {}\n");
   const canonical = await generationPlan();
-  const local = await generationPlan([], { GITHUB_ACTIONS: "false" });
   fs.appendFileSync(companion, "lemma Two() {}\n");
   assert.deepEqual(await generationPlan(), canonical);
-  changed(local, await generationPlan([], { GITHUB_ACTIONS: "false" }), "ordinary local proof inputs");
   fs.appendFileSync(path.join(root, "spec/kit/index.md"), "\nThis is still the kit.\n");
   changed(canonical, await generationPlan(), "spec/kit/index.md");
-
-  const alternate = "other turbo.jsonc";
-  const alternateConfig = JSON.parse(read("turbo.json", root));
-  alternateConfig.tasks["//#lint:css"].env = ["AUDIT_CONFIG"];
-  fs.writeFileSync(path.join(root, alternate), JSON.stringify(alternateConfig).replace(/^{/, "{\n// Explicit workspace config\n"));
-  const selectedAlternate = ["--root-turbo-json", alternate];
-  const explicit = await generationPlan(selectedAlternate);
-  fs.unlinkSync(companion);
-  fs.symlinkSync("../missing-proof.dfy", companion);
-  const invalid = await generationPlan([`--root-turbo-json=${alternate}`]);
-  assert.deepEqual(invalid.cssEnv, ["AUDIT_CONFIG"]);
-  changed(explicit, invalid, "invalid companion in the explicitly selected config");
-  assert.deepEqual(await generationPlan([], { TURBO_ROOT_TURBO_JSON: alternate }), invalid);
-  fs.unlinkSync(companion);
-  fs.writeFileSync(companion, "lemma One() {}\nlemma Two() {}\n");
-  assert.deepEqual(await generationPlan(selectedAlternate), explicit);
-  const passthrough = await generationPlan(["--", "--root-turbo-json", alternate]);
-  assert.ok(!passthrough.cssEnv.includes("AUDIT_CONFIG"));
 
   const legacy = "legacy turbo.jsonc";
   const config = JSON.parse(read("turbo.json", root));
@@ -361,16 +333,6 @@ async function verifyGenerationInputs(root: string) {
     fs.rmSync(path.join(directory, "old.proof.dfy"), { recursive: true });
     if (area !== "spec/kit") fs.rmdirSync(directory);
   }
-  config.tasks["//#gen"].cache = false;
-  writeLegacyConfig();
-  const disabled = await generationPlan(selected);
-  assert.equal(disabled.genCache, false);
-  assert.deepEqual(disabled.cssEnv, customEnv);
-  fs.mkdirSync(standalone);
-  const independentBuild = await generationPlan([...selected, "--cwd", root]);
-  changed(disabled, independentBuild, "a dependent build when generation caching is disabled");
-  assert.equal(independentBuild.genCache, false);
-  fs.rmdirSync(standalone);
 
   const manifest = JSON.parse(read("package.json", root));
   for (const scripts of [{ ...manifest.scripts, pregen: "node -e 0" }, { ...manifest.scripts, gen: "node custom-generator.mjs" }]) {

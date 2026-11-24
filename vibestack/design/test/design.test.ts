@@ -8,7 +8,7 @@ import { expect, onTestFinished, test } from "vitest"
 import { designSystem } from "../eslint.ts"
 import { check, syncDoc, themeCss, tokensCss } from "../generate.ts"
 import { buildTokenProject, checkTokenProject } from "../project.ts"
-import { type Tokens, applyChanges, palette, parseTokens } from "../tokens.ts"
+import { type Tokens, applyChanges, contrast, palette, parseTokens } from "../tokens.ts"
 
 const here = (file: string) => resolve(import.meta.dirname, file)
 const dir = here("../../../packages/design-system")
@@ -64,13 +64,15 @@ test("apply accepts a valid change and rejects an unknown path, an invalid color
   expect(() => parseTokens({ ...tokens, text: { ...tokens.text, primary: "1rem" } })).toThrow("text.primary: also a color")
 })
 
-test("a palette color, radius, size, blur and gradient each become a utility; a palette color without a dark value keeps its light one", () => {
-  const next = parseTokens({ ...tokens, color: { light: { ...tokens.color.light, brand: "oklch(0.5 0.1 200)" }, dark: tokens.color.dark }, rounded: { pill: "999px" }, text: { hero: "3rem" }, blur: { frost: "20px" }, keyframes: { blink: "50%{opacity:0}" }, animate: { blink: "blink 1s step-end infinite" }, gradient: { sky: "linear-gradient(var(--brand), var(--primary))" } })
+test("a palette color, radius, size, blur, drop shadow and gradient each become a utility; a palette color without a dark value keeps its light one", () => {
+  const next = parseTokens({ ...tokens, color: { light: { ...tokens.color.light, brand: "oklch(0.5 0.1 200)" }, dark: tokens.color.dark }, rounded: { pill: "999px" }, text: { hero: "3rem" }, blur: { frost: "20px" }, dropShadow: { lift: "0 8px 18px rgb(0 0 0 / 0.14)" }, keyframes: { blink: "50%{opacity:0}" }, animate: { blink: "blink 1s step-end infinite" }, gradient: { sky: "linear-gradient(var(--brand), var(--primary))" } })
   const [css, theme] = [tokensCss(next), themeCss(next)]
   // Set in :root and .light; .dark and a dark system inherit it.
   expect(css.match(/--brand: [^;]+;/g)).toEqual(["--brand: oklch(0.5 0.1 200);", "--brand: oklch(0.5 0.1 200);"])
-  for (const line of ["--color-brand: var(--brand);", "--radius-pill: 999px;", "--text-hero: 3rem;", "--blur-frost: 20px;", "--animate-blink: blink 1s step-end infinite;", "@keyframes blink { 50%{opacity:0} }", "@utility bg-gradient-sky {"]) expect(theme).toContain(line)
+  for (const line of ["--color-brand: var(--brand);", "--radius-pill: 999px;", "--text-hero: 3rem;", "--blur-frost: 20px;", "--drop-shadow-lift: 0 8px 18px rgb(0 0 0 / 0.14);", "--animate-blink: blink 1s step-end infinite;", "@keyframes blink { 50%{opacity:0} }", "@utility bg-gradient-sky {"]) expect(theme).toContain(line)
   expect(css).toContain("--gradient-sky: linear-gradient(var(--brand), var(--primary));")
+  expect(contrast("oklch(1 0 0)", "oklch(0 0 0)")).toBeCloseTo(21, 5)
+  expect(contrast(tokens.color.light.primary, tokens.color.light["primary-foreground"])).toBeGreaterThanOrEqual(4.5)
 })
 
 test("a font size may carry its line height and letter spacing; weights, line heights, letter spacing, layers and the focus ring are scales", () => {
@@ -222,7 +224,7 @@ test("a build that changes nothing rewrites nothing, and the ESLint config flags
   const [restricted, literal] = ["better-tailwindcss/no-restricted-classes", "design-system/no-literal-colors"]
   expect((await lint("bad.tsx")).map(({ line, ruleId }: { line: number; ruleId: string }) => [line, ruleId])).toEqual([
     [1, literal], [3, restricted], [4, restricted], [5, literal], [6, literal],
-    ...Array.from({ length: 10 }, (_, i) => [8 + i, restricted]), [18, literal], [19, literal],
+    ...Array.from({ length: 10 }, (_, i) => [8 + i, restricted]), [18, literal], [19, literal], [20, restricted], [21, restricted],
   ])
   const pick = (scale: Record<string, unknown>, prefix: string, fallback: string) => {
     const names = Object.keys(scale)
