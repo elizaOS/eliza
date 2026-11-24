@@ -2,10 +2,10 @@ name: Android Node runtime
 
 on:
   pull_request:
-    branches: [vibestack, develop, main]
+    branches: [develop, staging, main]
     paths: [.github/workflows/android-node-build.yml, .github/patches/node-26.13.1-android-host.patch]
   push:
-    branches: [vibestack, develop, main]
+    branches: [develop, staging, main]
     paths: [.github/workflows/android-node-build.yml, .github/patches/node-26.13.1-android-host.patch]
   workflow_dispatch:
 
