@@ -512,8 +512,9 @@ second recipient. A later call can answer a failure only when the model saw
 that failure first, in an earlier planner response. Such a failure stays
 open (above), and only the model can tell whether the later call did what
 the failed one was for. When the reply leaves it out, its host note says a
-later call of that action ran and that the reply must say the failed step
-did not happen unless that later call did what it was for. When the model
+later call of that action ran, that when that later call did what the failed
+step was for the model gives its reply exactly as it was, word for word, and
+that otherwise the reply must say the failed step did not happen. When the model
 answers that note with its first reply again, word for word, it stands by
 that reply, and when that reply is delivered, the failure's own words do not
 follow it. Otherwise the failure's own words follow the reply as for any
