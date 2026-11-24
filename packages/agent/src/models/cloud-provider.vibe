@@ -10,7 +10,7 @@ export interface CloudModels {
 }
 
 export function registerCloudModels(runtime: IAgentRuntime, binding: Binding, cloud: CloudModels): void {
-  const endpoint = { url: cloud.baseUrl + "/api/v1/chat/completions", models: { TextSmall: cloud.small, TextLarge: cloud.large, ImageDescription: cloud.image }, maxTokensField: "max_tokens", reasoningHints: true, uniformToolStrictness: false, cloudRoute: true } as const
+  const endpoint = { url: cloud.baseUrl + "/api/v1/chat/completions", models: { TextSmall: cloud.small, TextLarge: cloud.large, ImageDescription: cloud.image }, maxTokensField: "max_tokens", reasoningHints: true, uniformToolStrictness: "OnCerebrasModels", cloudRoute: true } as const
   registerTwice(runtime, "@elizaos/agent/cloud", {
     [ModelType.TEXT_SMALL]: generateText(binding, endpoint, "TextSmall"),
     [ModelType.TEXT_LARGE]: generateText(binding, endpoint, "TextLarge"),

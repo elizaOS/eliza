@@ -195,23 +195,25 @@ pure val targetValues = Set("Notes", "home", "nowhere")
 
 ### A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer
 
-A request to open a specific saved note uses VIEWS with
-`view: "notes-editor"` only after a unique successful `NOTES_GET` in
-the same turn. The canonical resident collection must still have the same
-unique match for the owner's open request. An uncertain or changed record,
-a private surface, a phone-native Notes source, or a renderer without the
-saved-editor protocol has no prepared saved-editor switch. The prepared
-action has `subview: "saved-note-v1"` and carries no note id or note text.
-A bare open request matching a declared view id, label or alias opens that
-view, including the Notes list. Explicitly naming a note (for example,
-`open my note called Calendar` or `open Calendar in Notes`) selects the
-saved-note lookup when a declared view has the same name.
+The model opens one saved note, in whatever words the owner asked for it,
+by calling VIEWS with `view: "notes-editor"` and `note` set to the note's
+title or text, only after a unique successful `NOTES_GET` in the same turn.
+The canonical resident collection must still match that `note` uniquely to
+the note the lookup found. A call without `note`, an uncertain or changed
+record, a private surface, a phone-native Notes source, or a renderer
+without the saved-editor protocol has no prepared saved-editor switch. The
+prepared action has `subview: "saved-note-v1"` and carries no note id or
+note text. Any other view name opens that view, including the Notes list,
+whatever note the call names. A renderer with the saved-editor protocol
+tells the model how to open a saved note on each of its turns.
 
 ```quint
-pure def savedNoteIntent(explicitNote: bool, declaredViewMatches: bool): bool =
-  explicitNote or not(declaredViewMatches)
-pure def savedNotePreparationAllowed(explicitOpen: bool, rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool, exactCurrentLookup: bool): bool =
-  explicitOpen and rendererBound and rendererSupports and residentSource and not(privateView) and exactCurrentLookup
+pure def savedNotePreparationAllowed(noteNamed: bool, rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool, exactCurrentLookup: bool): bool =
+  noteNamed and rendererBound and rendererSupports and residentSource and not(privateView) and exactCurrentLookup
+pure def lawAnUnnamedNoteOpensNoEditor(rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool, exactCurrentLookup: bool): bool =
+  not(savedNotePreparationAllowed(false, rendererBound, rendererSupports, residentSource, privateView, exactCurrentLookup))
+pure def lawAnUnconfirmedLookupOpensNoEditor(noteNamed: bool, rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool): bool =
+  not(savedNotePreparationAllowed(noteNamed, rendererBound, rendererSupports, residentSource, privateView, false))
 ```
 
 ### A saved Notes editor claim requires support and only its exact editor can confirm the switch

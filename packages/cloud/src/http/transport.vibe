@@ -1,5 +1,6 @@
-// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
+// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/identity/requestAuth.md, "A failed credential or revocation lookup is an outage, never a credential refusal"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
 import { allowedMethods, allowedRequestHeaders, exposedResponseHeaders, gateOf, routeOpen } from "../../gen/cloud__deployment.effect.vibe"
+import { lookupRetryMs } from "../../gen/cloud__identity__requestAuth.effect.vibe"
 import { planRpm } from "../billing/plans.vibe"
 import { readPolicy } from "../billing/policy.vibe"
 import { capabilityEnabled, capabilityOf, corsForOrigin, Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
@@ -70,7 +71,7 @@ effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefin
   }
   const caller = authenticate(authorization, route.auth) catch effect (failure) => match (failure) {
     when Refused: throw failure;
-    default: throw refused("ServiceUnavailable", "NoReason", now + 5000);
+    default: throw refused("ServiceUnavailable", "NoReason", now + lookupRetryMs);
   }
   if (!offered) throw refused("CapabilityUnavailable")
   try admitPlanRate(route, caller, now)

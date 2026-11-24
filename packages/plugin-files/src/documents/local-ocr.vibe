@@ -64,6 +64,7 @@ import {
 } from "../../gen/files__localOcr.effect.vibe"
 import { decodedImage, encoded, fittedSize, imageRefused, rasterOf, readBytes, type ImageRefused } from "./images.vibe"
 import { scanTextLayer, type ScanTextLine } from "./scan-text-layer.vibe"
+import { field } from "./record-field.vibe"
 import { localUrl, openWorker, type WorkerPort } from browser
 
 export interface OcrConfig {
@@ -105,10 +106,6 @@ const actions: Readonly<Partial<Record<OcrStep, string>>> = {
   LoadOcrEngine: "load", LoadOcrLanguage: "loadLanguage", InitializeOcr: "initialize", RecognizeOcr: "recognize",
 }
 const kinds: Readonly<Record<string, OcrReplyKind>> = { progress: "OcrProgressReply", resolve: "OcrResolveReply", reject: "OcrRejectReply" }
-
-function field(value: unknown, key: string): unknown {
-  return typeof value === "object" && value !== null && key in value ? (value as Record<string, unknown>)[key] : undefined
-}
 
 function replyOf(port: WorkerPort, data: unknown): OcrReply {
   const job = field(data, "jobId"), action = field(data, "action"), progress = field(data, "data")

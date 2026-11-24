@@ -77,25 +77,72 @@ pure def lawLoneSurrogateSavedAsReplacement(codeUnit: int): bool = surrogateCode
 pure def lawPairedOrPlainUnitKept(codeUnit: int, paired: bool): bool = (paired or not(surrogateCodeUnit(codeUnit))) implies savedNoteCodeUnit(codeUnit, paired) == codeUnit
 ```
 
-### The agent reads and changes Notes only for the owner, on the owner's own words in the bound request
+### A checklist the owner asks for is a new note holding the owner's items
+
+A new checklist the owner asks Notes for is a creation, never an edit: one
+new note whose label is the title the owner gave, holding the owner's items
+as checklist entries in the order given, each unchecked. The Notes actions
+tell the model so, that the model asks the owner what to call a checklist
+they gave no title, and that adding items to a checklist already saved is an
+edit of that note. A checklist creation is never answered by a saved note,
+not even a checklist of the same title, unless it repeats the client's own
+creation ID. A checklist holds 1 to 100 items, each at most 240 units, the
+bound of a title, since an item is one line of the list. A checklist with a
+blank title, with no item, with a blank item, with more items or a longer
+item than that, or with a body or other authored content beside its label
+and items is refused with nothing written. Text the owner supplied without
+asking for a checklist is saved as written, never turned into one.
+
+```quint
+pure def creationForcesNew(editorDraft: bool, authoredContent: bool, clientCreationId: bool): bool =
+  editorDraft or authoredContent or clientCreationId
+pure def checklistCreationAdmitted(titled: bool, itemCount: int, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  titled and itemCount >= 1 and itemCount <= 100 and blankItemCount == 0 and longestItemUnits <= 240 and not(besideItems)
+pure val itemCountValues = Set(0, 1, 2, 100, 101)
+pure val blankItemCountValues = Set(0, 1, 2)
+pure val longestItemUnitsValues = Set(1, 240, 241)
+pure def lawAChecklistIsNeverAnsweredByASavedNote(editorDraft: bool, clientCreationId: bool, plainMatch: bool): bool =
+  not(creationReturnsExisting({ creationKnown: false, createdNoteKept: false, forceNew: creationForcesNew(editorDraft, true, clientCreationId), plainMatch: plainMatch }))
+pure def lawAChecklistNeedsItsTitle(itemCount: int, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  not(checklistCreationAdmitted(false, itemCount, blankItemCount, longestItemUnits, besideItems))
+pure def lawAChecklistNeedsAnItem(titled: bool, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  not(checklistCreationAdmitted(titled, 0, blankItemCount, longestItemUnits, besideItems))
+pure def lawABlankChecklistItemIsRefused(titled: bool, itemCount: int, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  blankItemCount != 0 implies not(checklistCreationAdmitted(titled, itemCount, blankItemCount, longestItemUnits, besideItems))
+pure def lawAChecklistIsBounded(titled: bool, itemCount: int, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  (itemCount > 100 or longestItemUnits > 240) implies not(checklistCreationAdmitted(titled, itemCount, blankItemCount, longestItemUnits, besideItems))
+pure def lawATitledChecklistWithinBoundsIsAdmitted(itemCount: int, longestItemUnits: int): bool =
+  (itemCount >= 1 and itemCount <= 100 and longestItemUnits <= 240) implies checklistCreationAdmitted(true, itemCount, 0, longestItemUnits, false)
+pure def lawNothingBesideTheChecklistItems(titled: bool, itemCount: int, blankItemCount: int, longestItemUnits: int): bool =
+  not(checklistCreationAdmitted(titled, itemCount, blankItemCount, longestItemUnits, true))
+```
+
+### The agent reads and changes Notes only for the owner, and changes the note the model picked
 
 Only the owner reaches the Notes actions, the saved-notes context and the
 owner routes. The actions are offered on every owner turn, in the general
 context as well as the Notes one, so a request about a note needs no
 earlier Notes turn. When no saved note has the title the owner asked for,
 the saved-notes context tells the agent to ask which note to use before
-citing another one. A name fence, a named read and a re-resolved ID read the words
-the owner typed in the request the host bound to this turn, never the text a
-route wrapped around it; with no bound request, they read the message's own
-text with its envelopes removed. A delete by name happens only when those
-words name the note's title; otherwise the closest note is offered and
-nothing is deleted. A delete by an ID those words do not carry, of a note
-whose title they name, is a delete by that title: notes that share the
-title ask the owner which one, and nothing is deleted. A delete by an ID
-the owner's words carry, or of a note they do not name, deletes that note.
-An edit by an ID is read the same way: an ID those words do not carry, for
-a note whose title they name, is an edit by that title, so two notes that
-share the title ask the owner which one and nothing is changed.
+citing another one. The named-notes context reads the words the owner typed
+in the request the host bound to this turn, never the text a route wrapped
+around it; with no bound request, it reads the message's own text with its
+envelopes removed. The model picks the note to edit or delete from the
+saved-notes index, whatever words the owner used for it, and an exact ID
+edits or deletes that note when no other distinct note has its title, case
+and spacing aside. When another one does, the model's pick is a guess: the
+agent answers with every note of that title for the owner to choose from
+and changes nothing, unless a Notes read or an answer like it, in an
+earlier message of this conversation and in the last ten minutes, returned
+that ID among the notes of its title, so the model could ask and the owner
+has chosen since. A read again of the same notes keeps the message that
+first returned them. That choice serves the one message that changes a
+note by it, and no message after. A change the owner makes in the Notes app by a note's ID is the
+owner's own pick and is never asked about. A delete the agent asks for by content deletes
+only the note whose exact title, case and spacing aside, that content
+gives; a match on other text offers the closest note for the owner to
+confirm and deletes nothing. Content that matches distinct notes asks the
+owner which one, and nothing is changed.
 
 ```quint
 type OwnerWords = BoundRequestWords | MessageWords
@@ -104,16 +151,35 @@ pure def notesAccessAllowed(isOwner: bool): bool = isOwner
 type NotesTurnContext = GeneralContext | NotesContext | AnotherContext
 pure def notesOffered(isOwner: bool, context: NotesTurnContext): bool = notesAccessAllowed(isOwner) and context != AnotherContext
 pure def lawNotesNeedNoEarlierNotesTurn(isOwner: bool): bool = notesOffered(isOwner, GeneralContext) == notesOffered(isOwner, NotesContext)
-pure def deleteByNameAllowed(isOwner: bool, wordsNameTitle: bool): bool = notesAccessAllowed(isOwner) and wordsNameTitle
+pure def deleteByContentAllowed(isOwner: bool, givesExactTitle: bool): bool = notesAccessAllowed(isOwner) and givesExactTitle
 pure def lawBoundRequestWins(requestBound: bool): bool = requestBound implies ownerWordsSource(requestBound) == BoundRequestWords
-pure def lawOnlyTheOwnerReachesNotes(wordsNameTitle: bool): bool = not(deleteByNameAllowed(false, wordsNameTitle))
-pure def lawUnnamedNoteIsNotDeleted(isOwner: bool): bool = not(deleteByNameAllowed(isOwner, false))
-pure def idDeleteByTitle(idInOwnerWords: bool, wordsNameItsTitle: bool): bool = not(idInOwnerWords) and wordsNameItsTitle
-pure def lawATypedIdDeletesThatNote(wordsNameItsTitle: bool): bool = not(idDeleteByTitle(true, wordsNameItsTitle))
-pure def lawAPlannerIdForANamedTitleIsReresolved(idInOwnerWords: bool): bool = idDeleteByTitle(false, true) and not(idDeleteByTitle(idInOwnerWords, false))
-pure def idEditByTitle(idInOwnerWords: bool, wordsNameItsTitle: bool): bool = not(idInOwnerWords) and wordsNameItsTitle
-pure def lawATypedIdEditsThatNote(wordsNameItsTitle: bool): bool = not(idEditByTitle(true, wordsNameItsTitle))
-pure def lawAPlannerIdForANamedTitleIsReresolvedForAnEdit(idInOwnerWords: bool): bool = idEditByTitle(false, true) and not(idEditByTitle(idInOwnerWords, false))
+pure def lawOnlyTheOwnerReachesNotes(givesExactTitle: bool): bool = not(deleteByContentAllowed(false, givesExactTitle))
+pure def lawAnInexactMatchIsNotDeleted(isOwner: bool): bool = not(deleteByContentAllowed(isOwner, false))
+pure def pickedNoteChanged(isOwner: bool, titleShared: bool, ownerChoseEarlier: bool): bool =
+  notesAccessAllowed(isOwner) and (not(titleShared) or ownerChoseEarlier)
+pure def lawAGuessBetweenSharedTitlesAsksFirst(isOwner: bool): bool = not(pickedNoteChanged(isOwner, true, false))
+pure def lawTheOwnersChoiceIsChanged(titleShared: bool): bool = pickedNoteChanged(true, titleShared, true)
+pure def lawAnUnsharedTitleNeedsNoChoice(ownerChoseEarlier: bool): bool = pickedNoteChanged(true, false, ownerChoseEarlier)
+```
+
+### A read by a title no saved note has cites no other note and asks which one
+
+When the owner names the note to read by its title, the agent reads by that
+title: the saved notes whose title it is, case and spacing aside. One such
+note is read. Several are offered for the owner to choose, and none is read.
+When no saved note has the title, no note is read and no other note is
+cited in its place: the agent answers that no note has that title, with
+the titles of the notes whose text mentions it, and waits on the owner to
+say which note to use. A read by text the note contains, rather than by its
+title, searches every note's text.
+
+```quint
+type TitledRead = ReadsTitledNote | AsksAmongTitledNotes | AsksWhichNote
+pure def titledRead(titledNotes: int): TitledRead =
+  if (titledNotes == 1) ReadsTitledNote else if (titledNotes > 1) AsksAmongTitledNotes else AsksWhichNote
+pure val titledNotesValues = Set(0, 1, 2, 3)
+pure def lawOnlyTheOneTitledNoteIsRead(titledNotes: int): bool = (titledRead(titledNotes) == ReadsTitledNote) iff (titledNotes == 1)
+pure def lawAnAbsentTitleAsksWhichNote(titledNotes: int): bool = titledNotes <= 0 implies titledRead(titledNotes) == AsksWhichNote
 ```
 
 ### A move by name takes the identical copies of the note along

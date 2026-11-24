@@ -1,21 +1,13 @@
 // spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/deviceKeys.md, "A renewal answered again leaves its waiting successor as it was and mints no key"
 import { assert, describe, it } from "@effect/vitest"
-import { seedClients } from "../../src/operator/clients.vibe"
-import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
-import { Store } from "../../src/store/store.vibe"
-import fixtureSeed from "../fixtures/seed.json" with { type: "json" }
-import { testCloud, type TestCloud } from "../support/cloud.vibe"
+import { check, testCloud, type TestCloud } from "../support/cloud.vibe"
+import { seeded } from "../support/seeding.vibe"
 import { manualClock } from "../support/clock.ts"
 import { s256, signedIn } from "../support/identity-fixture.ts"
-import { testProfile } from "../support/profile.ts"
 
 const binding = { clientId: "com.example.fixture", environment: "staging", redirectUri: "https://www.staging.example.com/apps/fixture/sign-in" }
 const day = 86_400_000
 const start = 1_000_000
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 function bearer(token: string) {
   return { authorization: `Bearer ${token}` }
@@ -29,14 +21,6 @@ function failure(body: unknown): unknown {
 interface Key {
   readonly credentialId: string
   readonly secret: string
-}
-
-effect function seeded(cloud: TestCloud) {
-  const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
-  const now = try Clock.currentTimeMillis
-  provide Store = cloud.store, deploymentLayer(profile, "staging") {
-    try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
-  }
 }
 
 effect function signedInTablet(cloud: TestCloud, accessToken: string) {

@@ -1,0 +1,65 @@
+// spec/network/index.md, "A stated weekday or day of the month is read on the member's own calendar"; spec/network/index.md, "Availability uses the member's own evidence and calendar window"
+import { absentDay, statedNetworkWeekday, type AvailabilityWindow } from "../gen/network.effect.vibe"
+
+const dayMs = 86_400_000
+const weekdays = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+const weekday = String.raw`(sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)(?:day|nesday|sday|urday|rsday)?`
+const expression = new RegExp(String.raw`^(?:(\d{4}-\d{2}-\d{2})\b|(next\s+week(?:'s)?,?\s+(?:on\s+)?)?(next\s+)?${weekday}\b(,?\s+(?:of\s+)?next\s+week\b)?|(the\s+)?(\d{1,2})(st|nd|rd|th)?\b)`, "u")
+
+type Reading =
+  | { readonly kind: "fixed"; readonly day: number }
+  | { readonly kind: "weekday"; readonly weekday: number; readonly nextWeek: boolean }
+  | { readonly kind: "dayOfMonth"; readonly dayOfMonth: number }
+
+export function isoEpochDay(value: string | undefined): number {
+  if (value === undefined || value === "") return absentDay
+  if (!/^\d{4}-\d{2}-\d{2}(?:T.*)?$/u.test(value)) return -2
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? Math.floor(parsed / dayMs) : -2
+}
+
+function readExpression(words: string): Reading | undefined {
+  const found = expression.exec(words)
+  if (found === null) return undefined
+  const [, iso, weekBefore, next, named, weekAfter, the, dayOfMonth, ordinal] = found
+  if (iso !== undefined) return { kind: "fixed", day: isoEpochDay(iso) }
+  if (named !== undefined) return { kind: "weekday", weekday: weekdays.indexOf(named.slice(0, 3)), nextWeek: weekBefore !== undefined || next !== undefined || weekAfter !== undefined }
+  if (dayOfMonth !== undefined && (the !== undefined || ordinal !== undefined)) return { kind: "dayOfMonth", dayOfMonth: Number(dayOfMonth) }
+  return undefined
+}
+
+function nextDayOfMonth(dayOfMonth: number, today: number): number {
+  if (dayOfMonth < 1 || dayOfMonth > 31) return absentDay
+  const start = new Date(today * dayMs)
+  for (let ahead = 0; ahead < 13; ahead += 1) {
+    const candidate = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + ahead, dayOfMonth))
+    const epochDay = Math.floor(candidate.getTime() / dayMs)
+    if (candidate.getUTCDate() === dayOfMonth && epochDay >= today) return epochDay
+  }
+  return absentDay
+}
+
+function dayOf(reading: Reading, today: number): number {
+  switch (reading.kind) {
+    case "fixed": return reading.day
+    case "weekday": return reading.weekday < 0 ? absentDay : statedNetworkWeekday(today, reading.weekday, reading.nextWeek)
+    case "dayOfMonth": return nextDayOfMonth(reading.dayOfMonth, today)
+  }
+}
+
+export function statedNetworkWindow(text: string, today: number): AvailabilityWindow {
+  const words = text.toLowerCase().replace(/’/gu, "'")
+  let starts: Reading | undefined
+  let ends: Reading | undefined
+  for (const found of words.matchAll(/\b(from|until|through)\s+/gu)) {
+    const reading = readExpression(words.slice((found.index ?? 0) + found[0].length))
+    if (reading === undefined) continue
+    if (found[1] === "from") starts ??= reading
+    else ends ??= reading
+  }
+  if (starts?.kind === "weekday" && !starts.nextWeek && /\bnext\s+week\b/u.test(words)) starts = { ...starts, nextWeek: true }
+  const begins = starts === undefined ? absentDay : dayOf(starts, today)
+  let until = ends === undefined ? absentDay : dayOf(ends, today)
+  if (ends !== undefined && ends.kind !== "fixed" && begins >= 0 && until >= 0 && until <= begins) until = dayOf(ends, begins)
+  return { begins, ends: until }
+}

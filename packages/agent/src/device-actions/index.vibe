@@ -1,3 +1,4 @@
 // spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"
 export * from "./operations.vibe"
 export { deviceTurnFor } from "./proposal/turn.vibe"
+export { negotiatedOwnerTurn, type OwnerTurnFields } from "./test-turn.vibe"

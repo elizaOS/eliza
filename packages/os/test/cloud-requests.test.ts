@@ -4,11 +4,9 @@ import { describe, expect, it } from "vitest";
 import * as client from "../gen/cloud__client.ts";
 import * as spec from "../gen/os__signIn__cloudRequests.ts";
 import { compileAdapter } from "./drivers/jvm-adapter.ts";
+import { expectCasesAgree, javaTool, type Case } from "./support/law-cases.ts";
 
-interface Case { readonly fn: string; readonly args: readonly unknown[]; readonly result: unknown }
 interface Origins { readonly fn: "originOf"; readonly accepted: Readonly<Record<string, boolean>> }
-
-const javaTool = (name: string) => process.env.JAVA_HOME ? `${process.env.JAVA_HOME}/bin/${name}` : name;
 
 function javaLines(): { readonly cases: Case[]; readonly origins: Origins } {
   const main = "ai.eliza.plugins.signin.CloudRequestLawCheck";
@@ -33,11 +31,7 @@ describe("Reach my account's cloud services without holding my key", () => {
     const names = new Set(cases.map((c) => c.fn));
     expect(cases.length).toBeGreaterThan(5000);
     expect([...names].filter((name) => functions[name] === undefined)).toEqual([]);
-    const differing = cases.filter((c) => JSON.stringify(expected(c)) !== JSON.stringify(c.result));
-    expect(differing.slice(0, 5)).toEqual([]);
-    for (const law of [...names].filter((name) => name.startsWith("law"))) {
-      expect(cases.filter((c) => c.fn === law && c.result !== true)).toEqual([]);
-    }
+    expectCasesAgree(cases, expected);
   });
 
   it("refuses a table with a sign-in, streamed or unlisted route whole and admits only listed calls from the wire", () => {

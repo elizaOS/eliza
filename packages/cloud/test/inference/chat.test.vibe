@@ -5,21 +5,13 @@ import { addCredits } from "../../src/billing/funds.vibe"
 import { parseProfile } from "../../src/profile/profile.vibe"
 import { setModelPrice } from "../../src/services/models.vibe"
 import { Store, storeLayer } from "../../src/store/store.vibe"
-import { testCloud, type TestCloud } from "../support/cloud.vibe"
+import { check, sql, testCloud, type TestCloud } from "../support/cloud.vibe"
 import { llmFake, replyText, upstreamModel, type LlmFake } from "../support/llm-fake.ts"
 import { signedCaller } from "../support/caller.vibe"
 import { testProfile } from "../support/profile.ts"
 
 const prompt = "Please say hello to me now, thank you ok"
 const request = { model: "test-chat", messages: [{ role: "user", content: prompt }], max_tokens: 16 }
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
-
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
-}
 
 effect function chatCloud(additionalOffers = false) {
   const secondUpstream = "upstream-wide"

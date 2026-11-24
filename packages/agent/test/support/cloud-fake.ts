@@ -21,6 +21,13 @@ export type CloudReply =
   | { readonly kind: "held"; readonly gate: Promise<void>; readonly reply: CloudReply }
   | { readonly kind: "tools"; readonly content: string; readonly calls: readonly { readonly name: string; readonly arguments: unknown }[] };
 
+export type ScriptedReply = () => CloudReply;
+
+export interface Completion {
+  readonly messages?: readonly { readonly role?: string; readonly content?: unknown }[];
+  readonly tools?: readonly { readonly function?: { readonly name?: string; readonly description?: string; readonly parameters?: { readonly properties?: { readonly operation?: { readonly anyOf?: readonly { readonly properties?: { readonly type?: { readonly enum?: readonly string[] } } }[] } } } } }[];
+}
+
 export interface CloudCall {
   readonly method: string;
   readonly path: string;

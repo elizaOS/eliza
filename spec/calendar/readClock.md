@@ -128,29 +128,45 @@ pure val viewerOffsetValues = Set(-480, 0, 840)
 pure val utcMinuteValues = Set(0, 1439)
 ```
 
-### A create that names its event, its day and its clock range keeps that range
+### A clock time the owner stated is one the owner's words hold
 
-When the owner's whole message asks to add, create or schedule an event
-called, named or titled exactly the create's title, followed only by its day
-(today, tomorrow, the day after tomorrow or a `YYYY-MM-DD` date), a range
-from one clock time to another, and at most "on my built-in calendar" and
-"with no guests", a timed create starts and ends at that day and range in
-its wall zone, whatever times the model sent. A clock the owner spoke in
-words with am or pm ("one ten PM", "twelve forty-five am", "one oh five pm")
-is that clock written in digits. Any other request, a range whose end is not
-after its start, or a wall time the zone skips or repeats keeps the times
-the model sent.
+A create or change through the Calendar action carries the times the
+model read from the owner's request, and says which clock times the owner
+stated: the start, the start and the end, or none. Code reads no day or
+time from the words; it checks each new clock time against them instead.
+A time is held by the owner's words when they write it in digits ("1:10
+pm", "13:10", "4"), spell it with its minutes ("one ten PM", "one oh five
+pm", "six PM"), or say noon, midnight, or half past, a quarter past or a
+quarter to the hour; written with am or pm, it is that half of the day
+only. A time the words hold is kept. A time the words do not hold is kept
+only when the model says the owner stated no clock time ("tomorrow
+afternoon", "push it back an hour"): a time the model chose is no misread,
+and a check of every time would refuse those requests. A time the words
+do not hold that the model calls stated, or sent without saying which,
+changes nothing, and the result tells the model which time it sent, so it
+sends the time the owner said or says that the owner gave none; so a
+misread is never saved only because the model left the choice out. An
+end is checked only when the model says the owner stated the range: an end
+the model worked out from a length ("move my 3pm to 4", an hour later) is
+no clock time the owner said. A start or end a change keeps, and an
+all-day event's day, are not checked. A new phone event's start is always one the owner stated, so it
+is always checked; a change after a shared phone read is a review on the
+phone that shows the new time before anything changes, and is not
+checked against the words.
 
 ```quint
-type CreateRangeSource = StatedCreateRange | ModelCreateRange
-pure def createRangeSource(timed: bool, wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): CreateRangeSource =
-  if (timed and wholeRequestStated and wallResolved and endAfterStart) StatedCreateRange else ModelCreateRange
-pure def lawStatedRangeOverridesModelOnTimedCreate(timed: bool, wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): bool =
-  createRangeSource(timed, wholeRequestStated, wallResolved, endAfterStart) == StatedCreateRange iff (timed and wholeRequestStated and wallResolved and endAfterStart)
-pure def lawAllDayCreateKeepsModelRange(wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): bool =
-  createRangeSource(false, wholeRequestStated, wallResolved, endAfterStart) == ModelCreateRange
-pure def lawUnresolvedOrReversedRangeKeepsModelRange(timed: bool, wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): bool =
-  (not(wallResolved) or not(endAfterStart)) implies createRangeSource(timed, wholeRequestStated, wallResolved, endAfterStart) == ModelCreateRange
+type StatedClockCheck = ClockAsSent | ClockUnsaid | ClockUndeclared
+pure def statedClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): StatedClockCheck =
+  if (heldByOwnerWords) ClockAsSent
+  else if (not(declared)) ClockUndeclared
+  else if (statedByOwner) ClockUnsaid
+  else ClockAsSent
+pure def lawAStatedClockTheWordsDoNotHoldChangesNothing(heldByOwnerWords: bool): bool =
+  (statedClockCheck(true, true, heldByOwnerWords) == ClockUnsaid) iff not(heldByOwnerWords)
+pure def lawAnOpenTimeIsKept(heldByOwnerWords: bool): bool = statedClockCheck(true, false, heldByOwnerWords) == ClockAsSent
+pure def lawAHeldTimeIsKept(declared: bool, statedByOwner: bool): bool = statedClockCheck(declared, statedByOwner, true) == ClockAsSent
+pure def lawAnUndeclaredUnheldTimeChangesNothing(statedByOwner: bool): bool =
+  statedClockCheck(false, statedByOwner, false) == ClockUndeclared
 ```
 
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first

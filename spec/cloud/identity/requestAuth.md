@@ -160,6 +160,35 @@ pure def lawAnInactiveAccountIsRevoked(route: RouteClass, presented: Presented, 
     implies admit(route, presented, standing, now) == deniedFor(CredentialRevoked)
 ```
 
+### A failed credential or revocation lookup is an outage, never a credential refusal
+
+The store operation that matches the token's digest and reads the account's
+status and revocation epochs can fail. Then nothing is known about the
+credential: the request is refused `503 service_unavailable`, retryable, with
+a retry time five seconds on, and never `401 authentication_required`. A
+device that took the outage for a credential verdict would discard a live
+session or device key and sign the person out while the store is down.
+
+```quint
+type LookupRead = LookupAnswered({ presented: Presented, standing: Standing }) | LookupFailed
+pure val lookupRetryMs: Millis = 5000
+pure def lookupOutage(now: Millis): Admission = Denied({ refusal: refuseUntil(ServiceUnavailable, now + lookupRetryMs) })
+pure def admitLookup(route: RouteClass, read: LookupRead, now: Millis): Admission =
+  if (not(isProtected(route))) Anonymous
+  else match read {
+    | LookupAnswered(x) => admit(route, x.presented, x.standing, now)
+    | LookupFailed => lookupOutage(now)
+  }
+pure def isCredentialRefusal(a: Admission): bool = match a { | Denied(x) => x.refusal.code == AuthenticationRequired | _ => false }
+pure def lawAFailedLookupIsAnOutageNeverACredentialRefusal(route: RouteClass, now: Millis): bool = {
+  val a = admitLookup(route, LookupFailed, now)
+  isProtected(route) implies (a == lookupOutage(now) and not(isCredentialRefusal(a))
+    and match a { | Denied(x) => wellFormed(x.refusal) and retryableOf(x.refusal) | _ => false })
+}
+pure def lawAnAnsweredLookupIsAdmittedAsBefore(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool =
+  admitLookup(route, LookupAnswered({ presented: presented, standing: standing }), now) == admit(route, presented, standing, now)
+```
+
 ### Session, fresh and step-up routes admit only a session, and only with the assurance they name
 
 A live device key on such a route is refused `403 access_denied`, so a

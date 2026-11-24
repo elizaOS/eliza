@@ -1,6 +1,7 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
-import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
+import { type GenerateTextParams, type GenerateTextResult, type IAgentRuntime, type ModelRegistrationMetadata, type StreamChunkCallback, type TokenUsage, type ToolCall } from "@elizaos/core"
+import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
   cacheKeySent, capSent, chatReturn, effortFor, failureOf, fundsCodeName, fundsCodeOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked,
@@ -17,7 +18,7 @@ export interface Endpoint {
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
   readonly reasoningHints: boolean
-  readonly uniformToolStrictness: boolean
+  readonly uniformToolStrictness: boolean | "OnCerebrasModels"
   readonly cloudRoute: boolean
 }
 
@@ -283,18 +284,9 @@ module wireFormat {
 }
 import { conversation, description, parsedArguments, responseFormatOf, titleOf, toolChoiceOf, toolsOf } from wireFormat
 
-module edge {
-  import { Cause, Effect, Exit } from "effect"
-
-  /** @throws {never} */
-  export async function run<A>(program: Effect.Effect<A, unknown>, signal: AbortSignal | undefined): Promise<A> {
-    const exit = await Effect.runPromiseExit(program, { signal })
-    if (Exit.isSuccess(exit)) return exit.value
-    if (Cause.hasInterruptsOnly(exit.cause)) throw new DOMException("The model call was aborted", "AbortError")
-    throw Cause.squash(exit.cause)
-  }
+function run<A>(program: A!unknown, signal: AbortSignal | undefined): Promise<A> {
+  return runSquashed(program, { signal, message: "The model call was aborted" })
 }
-import { run } from edge
 
 module calls {
   import { randomUUID } from "node:crypto"
@@ -542,7 +534,7 @@ function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTex
   const effort = endpoint.reasoningHints ? efforts[effortFor(family, hintOf(params))] : undefined
   const named = cacheKeyOf(params)
   const cacheKey = cacheKeySent(family, endpoint.reasoningHints, named !== undefined) ? named : undefined
-  const tools = toolsOf(params.tools, endpoint.uniformToolStrictness)
+  const tools = toolsOf(params.tools, endpoint.uniformToolStrictness === "OnCerebrasModels" ? family !== "OtherReasoning" : endpoint.uniformToolStrictness)
   const toolChoice = toolChoiceOf(params.toolChoice)
   const format = responseFormatOf(params)
   return {
