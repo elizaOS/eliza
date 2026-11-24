@@ -1,6 +1,10 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "Story: Move the reminder I just saved"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminders.md, "A reminder is high priority only when the owner's message says so"; spec/assistant/reminders.md, "A stated time moves a waiting reminder to that time, and a time already passed changes nothing"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "Story: Move the reminder I just saved"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminders.md, "A reminder is high priority only when the owner's message says so"; spec/assistant/reminders.md, "A stated time moves a waiting reminder to that time, and a time already passed changes nothing"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"; spec/assistant/reminders.md, "An alert nobody stated is an alert"; spec/assistant/reminders.md, "A silent reminder comes due without a phone notification"; spec/assistant/reminders.md, "A reminder for a day comes at 09:00 that day, and a repeat at its time on the days it names, or every day when it names none"; spec/assistant/reminders.md, "A reminder repeats on an interval only when the interval divides the hour or the day evenly"; spec/assistant/reminders.md, "Story: Answer the question a reminder I asked for drew"; spec/assistant/reminders.md, "An answer finishes only the reminder this conversation asked about, from a later message within five minutes"; spec/assistant/reminders.md, "Story: Answer or put off a reminder I keep"; spec/assistant/names.md, "A title that is the name wins, and otherwise the titles that hold the name's words are the candidates"; spec/assistant/reminders.md, "A skip passes over one occurrence of a repeating reminder, and a reminder that does not repeat is not skipped"; spec/assistant/reminders.md, "A snooze until tonight comes at 20:00, and one until tomorrow morning at 08:00, on the owner's clock"
 import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type IAgentRuntime, type Provider, type UUID } from "@elizaos/core"
-import { Machine, machine, moveAdmitted, moveToAdmitted, movedDueAt, maxMoveDelayMs, recoveredChoice, renameAdmitted, retractsRecentSave, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
+import {
+  Machine, alertWhenUnstated, answersKeptReminder, dayReminderMinute, firstAlert, intervalRepeats, machine, minutesUntilTomorrowMorning, minutesUntilTonight, moveAdmitted, moveToAdmitted,
+  movedDueAt, maxMoveDelayMs, recoveredChoice, renameAdmitted, repeatsOnDay, retractsRecentSave, skipAdmitted, type DeliveryChoice, type ReminderClock, type ReminderIntent,
+} from "../gen/assistant__reminders.effect.vibe"
+import { namedCount } from "../gen/assistant__names.effect.vibe"
 import {
   Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, removeRecord, requestOf, writeRecord,
   type DeliveryAnswer, type OwnerRequest, type TaskRow, type TaskTrigger, type TaskVerb, type VerbAnswer,
@@ -10,20 +14,24 @@ import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attem
 import { ReminderAnswer, ReminderCheck, ReminderDue, ReminderEscalation, ReminderPlan } from "./requests.schema.vibe"
 import { namedRoutines } from "./routines.vibe"
 import { ownerClockAt } from "./timezone.vibe"
+import { plain } from "./todos.vibe"
 
-import { fireTimeText, hhmm, minuteOf, offsetInstant, wallText, zonedInstant } from "./time.vibe"
+import { fireTimeText, hhmm, localMinutes, minuteOf, offsetInstant, wallText, zonedInstant } from "./time.vibe"
 
 export const reminderKind = "personal-assistant.reminder"
 
 const weekdayNumbers = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 } as const
 const weekdayWords = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" } as const
 type Weekday = keyof typeof weekdayNumbers
-const dayDueTime = "09:00"
+const weekdayOrder: readonly Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+
+type Repeat = { readonly time: string; readonly days: readonly Weekday[] } | { readonly every: number }
 
 type DueTrigger =
   | { readonly kind: "once"; readonly at: number }
-  | { readonly kind: "repeat"; readonly trigger: TaskTrigger; readonly repeat: { readonly time: string; readonly days: readonly Weekday[] } }
+  | { readonly kind: "repeat"; readonly trigger: TaskTrigger; readonly repeat: Repeat }
   | { readonly kind: "unreadable" }
+  | { readonly kind: "uneven" }
 
 function dueTrigger(due: ReminderDue, now: number, zone: string): DueTrigger {
   const once = (at: number | undefined): DueTrigger => at === undefined ? { kind: "unreadable" } : { kind: "once", at }
@@ -31,26 +39,40 @@ function dueTrigger(due: ReminderDue, now: number, zone: string): DueTrigger {
     case "in": return once(now + due.minutes * 60_000)
     case "at": return once(offsetInstant(due.instant))
     case "local": return once(zonedInstant(due.date, due.time, zone))
-    case "day": return once(zonedInstant(due.date, dayDueTime, zone))
+    case "day": return once(zonedInstant(due.date, hhmm(dayReminderMinute), zone))
     case "repeat": {
       const minute = minuteOf(due.time)
       if (minute === undefined) return { kind: "unreadable" }
-      const days = [...new Set(due.days ?? [])]
-      const dow = days.length === 0 ? "*" : days.map((day) => weekdayNumbers[day]).sort((a, b) => a - b).join(",")
-      return { kind: "repeat", trigger: { kind: "cron", expression: `${minute % 60} ${Math.floor(minute / 60)} * * ${dow}`, tz: zone }, repeat: { time: due.time, days } }
+      const named = [...new Set(due.days ?? [])]
+      const on = weekdayOrder.filter((day) => repeatsOnDay(named.length, named.includes(day)))
+      const everyDay = on.length === weekdayOrder.length
+      const dow = everyDay ? "*" : on.map((day) => weekdayNumbers[day]).join(",")
+      return { kind: "repeat", trigger: { kind: "cron", expression: `${minute % 60} ${Math.floor(minute / 60)} * * ${dow}`, tz: zone }, repeat: { time: due.time, days: everyDay ? [] : named } }
+    }
+    case "every": {
+      if (!intervalRepeats(due.minutes)) return { kind: "uneven" }
+      const minute = localMinutes(now, zone) % 1440
+      const hours = due.minutes / 60
+      const expression = due.minutes < 60 ? `${minute % due.minutes}/${due.minutes} * * * *` : `${minute % 60} ${Math.floor(minute / 60) % hours}/${hours} * * *`
+      return { kind: "repeat", trigger: { kind: "cron", expression, tz: zone }, repeat: { every: due.minutes } }
     }
   }
 }
 
-const repeatWords = (repeat: { readonly time: string; readonly days: readonly Weekday[] }) =>
-  `${repeat.days.length === 0 ? "every day" : `every ${repeat.days.map((day) => weekdayWords[day]).join(", ")}`} at ${repeat.time}`
+const repeatWords = (repeat: Repeat) => "every" in repeat ? `every ${durationWords(repeat.every)}`
+  : `${repeat.days.length === 0 ? "every day" : `every ${repeat.days.map((day) => weekdayWords[day]).join(", ")}`} at ${repeat.time}`
 
-const weekdayOrder: readonly Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+const unevenInterval = "I can repeat a reminder every 5, 6, 10, 12, 15, 20 or 30 minutes, or every 1, 2, 3, 4, 6, 8, 12 or 24 hours."
+const stepOf = (field: string | undefined) => field !== undefined && field.includes("/") ? Number(field.split("/")[1]) : undefined
 
 export function reminderWhen(task: TaskRow, zone: string): string {
   if (task.trigger.kind === "once") return wallText(Date.parse(task.trigger.atIso), zone)
   if (task.trigger.kind !== "cron") return "when it is fired"
   const [minute, hour, , , dow] = task.trigger.expression.split(" ")
+  const everyMinutes = stepOf(minute)
+  const everyHours = stepOf(hour)
+  if (everyMinutes !== undefined) return repeatWords({ every: everyMinutes })
+  if (everyHours !== undefined) return repeatWords({ every: everyHours * 60 })
   const days = dow === undefined || dow === "*" ? [] : dow.split(",").flatMap((day) => weekdayOrder[Number(day)] ?? [])
   return repeatWords({ time: hhmm(Number(hour) * 60 + Number(minute)), days })
 }
@@ -124,8 +146,8 @@ export type ReminderOutcome =
   | { readonly kind: "malformed" }
   | { readonly kind: "notRequested"; readonly intent: ReminderIntent }
   | { readonly kind: "unverified"; readonly intent: ReminderIntent }
-  | { readonly kind: "askAlert"; readonly intent: ReminderIntent }
   | { readonly kind: "badTime"; readonly intent: ReminderIntent }
+  | { readonly kind: "unevenInterval"; readonly intent: ReminderIntent }
   | { readonly kind: "past"; readonly intent: ReminderIntent }
   | { readonly kind: "settled"; readonly intent: ReminderIntent; readonly attempts: readonly Attempt[]; readonly target: string; readonly said: string; readonly taskId: string | undefined }
 
@@ -135,36 +157,78 @@ const RecentSave = Schema.Struct({ taskId: Schema.String, title: Schema.String, 
 const decodeRecentSave = Schema.decodeUnknownOption(RecentSave)
 const recentSaveKey = (roomId: string) => `reminder-recent-save:${roomId}`
 
+const Choice = Schema.Literals(["UnknownChoice", "FirstChoice", "SecondChoice"])
+const KeptReminder = Schema.Struct({ messageId: Schema.String, keptAt: Schema.Number, title: Schema.String, body: Schema.String, destination: Choice, alert: Choice, important: Schema.Boolean })
+type KeptReminder = typeof KeptReminder.Type
+const decodeKept = Schema.decodeUnknownOption(KeptReminder)
+const keptKey = (roomId: string) => `reminder-awaiting-time:${roomId}`
+const decodeGivesATime = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ givesATime: Schema.Boolean })))
+
+const answerSystem = [
+  "The assistant asked the owner when to remind them, because the time it had for a reminder they asked for could not be used.",
+  "You read the owner's next message. Say whether it gives a time, a day, a delay or a repeat for that reminder.",
+  "A message that declines, changes the subject, or asks about something else gives none.",
+  'Reply with one JSON object and nothing else: {"givesATime": boolean}.',
+].join("\n")
+
+effect function keptReminderFor(request: ReminderRequest, now: number) {
+  if (request.roomId === undefined) return undefined
+  const kept = try readRecord(keptKey(request.roomId), decodeKept)
+  if (kept === undefined) return undefined
+  const sameMessage = kept.messageId === request.messageId
+  if (!answersKeptReminder(kept.keptAt, now, sameMessage, true)) {
+    if (!sameMessage) {
+      try removeRecord(keptKey(request.roomId))
+    }
+    return undefined
+  }
+  const said = (try Model).complete(answerSystem, `Reminder: ${kept.title}\nOwner's next message: ${request.text}`) catch () => ""
+  const read = decodeGivesATime(said.trim().replace(/^```(?:json)?\s*|\s*```$/gu, ""))
+  return answersKeptReminder(kept.keptAt, now, sameMessage, Option.isSome(read) && read.value.givesATime) ? kept : undefined
+}
+
 export effect function createReminder(request: ReminderRequest) {
   const planned = decodePlan(request.plan)
   if (Option.isNone(planned)) return { kind: "malformed" } satisfies ReminderOutcome
-  const plan = planned.value
   const check = try checkOriginalMessage(request.text)
   const host = try Facts
   const now = try host.now()
+  const kept = check?.requested === true ? undefined : try keptReminderFor(request, now)
+  const plan = kept === undefined ? planned.value : { ...planned.value, title: kept.title, body: kept.body }
+  const asked = kept === undefined
+    ? { requested: check?.requested ?? false, destination: choiceOf(destinationChoice, check?.destination ?? null), alert: choiceOf(alertChoice, check?.alert ?? null), important: check?.important === true }
+    : { requested: true, destination: kept.destination, alert: kept.alert, important: kept.important }
+  const verified = check !== undefined || kept !== undefined
   const zone = try ownerClockAt(now)
   provide machine() {
     const intent = try Machine
     const send = (event: Parameters<Machine.Shape["send"]>[0]) => orDie(intent.send(event))
     const plannedClock: ReminderClock = plan.due.kind === "in" || plan.due.kind === "at" ? "UtcClock" : "OwnerLocalClock"
     try send({
-      type: "proposeReminder", requested: check?.requested ?? false, plannedClock,
+      type: "proposeReminder", requested: asked.requested, plannedClock,
       extractedClock: check?.clock === "owner_local" ? "OwnerLocalClock" : "UtcClock",
-      plannedDestination: choiceOf(destinationChoice, plan.destination), extractedDestination: choiceOf(destinationChoice, check?.destination ?? null),
-      plannedAlert: choiceOf(alertChoice, plan.alert), extractedAlert: choiceOf(alertChoice, check?.alert ?? null),
-      saidHigh: check?.important === true,
+      plannedDestination: choiceOf(destinationChoice, plan.destination), extractedDestination: asked.destination,
+      plannedAlert: choiceOf(alertChoice, plan.alert), extractedAlert: asked.alert,
+      saidHigh: asked.important,
     })
-    const checked = try send(check === undefined ? { type: "checkUnavailable" } : { type: "checkRequest" })
+    const checked = try send(verified ? { type: "checkRequest" } : { type: "checkUnavailable" })
     if (checked.reminderPhase !== "IntentReady") {
-      return { kind: check === undefined ? "unverified" : "notRequested", intent: checked } satisfies ReminderOutcome
+      return { kind: verified ? "notRequested" : "unverified", intent: checked } satisfies ReminderOutcome
     }
-    const alert = recoveredChoice(checked.plannedAlert, checked.extractedAlert)
-    if (alert === "UnknownChoice") return { kind: "askAlert", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
+    const alert = alertWhenUnstated(recoveredChoice(checked.plannedAlert, checked.extractedAlert))
+    const statedDestination = recoveredChoice(checked.plannedDestination, checked.extractedDestination)
     const due = plan.due
     const when = dueTrigger(due, now, zone)
-    if (when.kind === "unreadable") return { kind: "badTime", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
-    if (when.kind === "once" && when.at <= now) return { kind: "past", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
-    const destination = destinationOf(recoveredChoice(checked.plannedDestination, checked.extractedDestination))
+    if (when.kind === "unreadable" || when.kind === "uneven" || (when.kind === "once" && when.at <= now)) {
+      if (request.roomId !== undefined) {
+        try writeRecord(keptKey(request.roomId), {
+          messageId: request.messageId, keptAt: now, title: plan.title, body: plan.body ?? "", destination: statedDestination,
+          alert: recoveredChoice(checked.plannedAlert, checked.extractedAlert), important: checked.saidHigh,
+        } satisfies KeptReminder)
+      }
+      return { kind: when.kind === "unreadable" ? "badTime" : when.kind === "uneven" ? "unevenInterval" : "past", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
+    }
+    const destination = destinationOf(statedDestination)
     const key = `reminder:${request.messageId}:${try Effect.orDie(Effect.try(() => stringToUuid(JSON.stringify([plan.title, plan.due]))))}`
     const facts = { operation: "reminder.create", kind: "reminder", id: key, key }
     const scheduler = try Scheduler
@@ -191,6 +255,7 @@ export effect function createReminder(request: ReminderRequest) {
     const settled = try send(taskId === undefined ? { type: "cancelReminder" } : { type: "saveReminder" })
     if (taskId !== undefined && request.roomId !== undefined) {
       try writeRecord(recentSaveKey(request.roomId), { taskId, title: plan.title, messageId: request.messageId, savedAt: now } satisfies typeof RecentSave.Type)
+      try removeRecord(keptKey(request.roomId))
     }
     const told = when.kind === "repeat" ? `${repeatWords(when.repeat)} (${zone})` : due.kind === "in" ? `in ${durationWords(due.minutes)}, at ${wallText(when.at, zone)}` : `at ${wallText(when.at, zone)} (${zone})`
     return { kind: "settled", intent: settled, attempts, target: "reminder:" + key, said: `I'll remind you: "${plan.title}" ${told}.`, taskId } satisfies ReminderOutcome
@@ -202,8 +267,8 @@ export function reminderReply(outcome: ReminderOutcome): ActionResult {
     case "malformed": return { success: false, text: "The reminder plan was incomplete, so no reminder was saved.", data: { outcome: "REMINDER_PLAN_INVALID" } }
     case "notRequested": return { success: false, text: "I didn't save a reminder because your message didn't ask me to remind you.", data: { outcome: "OWNER_REMINDER_INTENT_MISMATCH" } }
     case "unverified": return { success: false, text: "I couldn't confirm from your message that you asked for a reminder, so no reminder was saved.", data: { outcome: "OWNER_REMINDER_INTENT_UNVERIFIED" } }
-    case "askAlert": return { success: false, text: "Should this reminder alert you, or only keep the due time without an alert?", data: { outcome: "REMINDER_ALERT_PREFERENCE_UNRESOLVED" } }
     case "badTime": return { success: false, text: "I couldn't read that reminder time. When should I remind you?", data: { outcome: "REMINDER_TIME_INVALID" } }
+    case "unevenInterval": return { success: false, text: `${unevenInterval} Which should it be?`, data: { outcome: "REMINDER_INTERVAL_UNSUPPORTED" } }
     case "past": return { success: false, text: "That reminder time has already passed. When should I remind you?", data: { outcome: "REMINDER_TIME_PASSED" } }
     case "settled": return attributed(outcome.attempts, outcome.target, {
       done: outcome.said,
@@ -223,7 +288,10 @@ export effect function deliverReminder(task: TaskRow) {
   const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => "unpresentable" }) catch () => undefined
   if (presentation === undefined) return { kind: "undeliverable", error: "The reminder has no text to present" } satisfies DeliveryAnswer
   const room = task.metadata.roomId
-  const answer = try presentOnce({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
+  const roomId = typeof room === "string" ? room as UUID : undefined
+  const notice = firstAlert(task.metadata.alert === "silent" ? "SecondChoice" : "FirstChoice", roomId !== undefined)
+  const answer: DeliveryAnswer = notice === "Unannounced" ? { kind: "delivered" }
+    : try presentOnce({ taskId: task.taskId, kind: task.kind, roomId, presentation, ...(notice === "ConversationOnly" ? { conversationOnly: true } : {}) })
   if (answer.kind === "delivered") scheduleEscalation(task) catch () => undefined
   return answer
 }
@@ -235,22 +303,33 @@ export effect function liveReminders() {
   return (try scheduler.list()).filter((task) => task.kind === reminderKind && live.has(task.status))
 }
 
-function verbOf(answer: ReminderAnswer): TaskVerb {
+function verbOf(answer: ReminderAnswer, at: number, minuteOfDay: number): TaskVerb {
   switch (answer.op) {
     case "complete": return { tag: "Complete" }
     case "dismiss": return { tag: "Dismiss" }
     case "acknowledge": return { tag: "Acknowledge" }
-    case "snooze": return { tag: "SnoozeFor", minutes: answer.minutes ?? 10 }
+    case "skip": return { tag: "Skip" }
+    case "snooze": {
+      if (answer.until === undefined) return { tag: "SnoozeFor", minutes: answer.minutes ?? 10 }
+      const minutes = answer.until === "tonight" ? minutesUntilTonight(minuteOfDay) : minutesUntilTomorrowMorning(minuteOfDay)
+      return { tag: "SnoozeUntil", until: (Math.floor(at / 60_000) + minutes) * 60_000 }
+    }
   }
 }
 
-const said = { complete: "Marked done", dismiss: "Dismissed", acknowledge: "Acknowledged", snooze: "Snoozed" } as const
+const said = { complete: "Marked done", dismiss: "Dismissed", acknowledge: "Acknowledged", snooze: "Snoozed", skip: "Skipped the next occurrence of" } as const
 const decodeAnswer = Schema.decodeUnknownOption(ReminderAnswer, { onExcessProperty: "error" })
 const decodeEscalation = Schema.decodeUnknownOption(ReminderEscalation, { onExcessProperty: "error" })
 
+export function namedAmong<A>(items: readonly A[], target: string, idOf: (item: A) => string, titleOf: (item: A) => string): readonly A[] {
+  const name = plain(target)
+  const same = items.filter((item) => idOf(item) === target || plain(titleOf(item)) === name)
+  const holding = name === "" ? [] : items.filter((item) => ` ${plain(titleOf(item))} `.includes(` ${name} `))
+  return namedCount(same.length, holding.length) === same.length ? same : holding
+}
+
 export effect function namedReminders(target: string) {
-  const name = target.trim().toLowerCase()
-  return (try liveReminders()).filter((task) => task.taskId === target || task.promptInstructions.trim().toLowerCase() === name)
+  return namedAmong(try liveReminders(), target, (task) => task.taskId, (task) => task.promptInstructions)
 }
 
 function unmatched(op: string, target: string, matches: readonly TaskRow[], key: string, at: number): ActionResult {
@@ -273,9 +352,18 @@ export effect function answerReminder(input: unknown, messageId: string) {
   const key = `reminder:${answer.op}:${messageId}`
   if (matches.length !== 1) return unmatched(answer.op, answer.target, matches, key, at)
   const task = matches[0]
+  if (answer.op === "skip" && !skipAdmitted(matches.length, task.trigger.kind === "cron")) {
+    return {
+      success: false, text: `"${task.promptInstructions}" does not repeat, so there is no occurrence to skip. Dismiss it to remove it.`,
+      data: { outcome: "REMINDER_NOT_REPEATING", taskId: task.taskId },
+    } satisfies ActionResult
+  }
   const facts = { operation: `reminder.${answer.op}`, kind: "reminder", id: task.taskId, key, at }
   const scheduler = try Scheduler
-  const reply: VerbAnswer | SchedulerUnavailable = scheduler.answer(task.taskId, verbOf(answer), key) catch (refused) => refused
+  const zone = try ownerClockAt(at)
+  const verb = verbOf(answer, at, localMinutes(at, zone) % 1440)
+  const until = verb.tag === "SnoozeUntil" ? ` until ${fireTimeText(verb.until, zone, at)}` : ""
+  const reply: VerbAnswer | SchedulerUnavailable = scheduler.answer(task.taskId, verb, key) catch (refused) => refused
   const receipt = reply instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown")
     : reply.kind === "applied" ? appliedReceipt(facts)
     : failedReceipt(facts, reply.kind === "refused" ? reply.reason : "NOT_FOUND", "rejected")
@@ -284,7 +372,7 @@ export effect function answerReminder(input: unknown, messageId: string) {
     if (answer.op === "complete") try noteDone(task, at)
   }
   return attributed([{ actionName: saveAction, success: receipt.outcome === "applied", receipts: [receipt] }], `reminder:${task.taskId}`, {
-    done: `${said[answer.op]} "${task.promptInstructions}".`,
+    done: `${said[answer.op]} "${task.promptInstructions}"${until}.`,
     notDone: `"${task.promptInstructions}" was not changed.`,
     unproven: `I couldn't confirm "${task.promptInstructions}" was changed.`,
   }, { taskId: task.taskId })
@@ -307,7 +395,7 @@ export effect function escalateReminder(input: unknown, messageId: string) {
 
 const retraction = /^\s*(?:(?:oh|ok|okay|wait|actually|no|nah|hmm|sorry|ugh)\b[\s,.!-]*)*(?:(?:don['’]?t|do not)\b(?!\s+forget\b)[^.!?\n]{0,40}\b(?:save|keep|schedule|add|create)\b\s+(?:that(?:\s+one)?|this(?:\s+one)?|it)\b|(?:cancel|undo|scrap|delete|remove|drop)\s+(?:that(?:\s+one)?|it|this(?:\s+one)?|the last one)\b|never\s?mind\b|get rid of (?:that|it)\b)/iu
 const deictic = /^(?:(?:that|this)(?:\s+one)?|it|the last one)$/iu
-const retractionBlockers = new Set<unknown>(["list", "rename", "complete", "snooze", "acknowledge", "escalate", "move", "intensity"])
+const retractionBlockers = new Set<unknown>(["list", "rename", "complete", "snooze", "skip", "acknowledge", "escalate", "move", "intensity"])
 const namedTarget = (target: unknown) => typeof target === "string" && target.trim() !== "" && !deictic.test(target.trim()) ? target : undefined
 
 export effect function retractRecentSave(request: Pick<ReminderRequest, "messageId" | "text" | "roomId">, target: unknown) {
@@ -381,6 +469,7 @@ export effect function moveReminder(move: MoveRequest, request: OwnerRequest) {
     const when = Option.isNone(due) ? { kind: "unreadable" } as const : dueTrigger(due.value, request.askedAt ?? now, zone)
     if (!waiting) return refuse("REMINDER_ALREADY_FIRED", `"${title}" already went off, so nothing changed. Snooze it to hear it again later.`)
     if (when.kind === "unreadable") return refuse("REMINDER_TIME_INVALID", `I couldn't read that time, so nothing changed on "${title}". When should it go off?`)
+    if (when.kind === "uneven") return refuse("REMINDER_INTERVAL_UNSUPPORTED", `${unevenInterval} Nothing changed on "${title}".`)
     if (when.kind === "once" && !moveToAdmitted(waiting, when.at, now)) return refuse("REMINDER_TIME_PASSED", `That time has already passed, so nothing changed on "${title}". When should it go off?`)
     change = when.kind === "once" ? { trigger: { kind: "once", atIso: new Date(when.at).toISOString() }, told: fireTimeText(when.at, zone, now) }
       : { trigger: when.trigger, told: repeatWords(when.repeat) }
@@ -482,15 +571,16 @@ function parameters(options: unknown): Readonly<Record<string, unknown>> {
 
 export const ownerRemindersAction: Action = {
   name: saveAction,
-  description: "Save a reminder the owner asked for in this message, one-off, on a day (a deadline \"by the 20th\" is that day), or repeating every day or on weekdays; list their reminders (op list); rename one (op rename with title); complete, dismiss, snooze or acknowledge one; move one by a delay from now (\"actually make that 30 minutes\" is op move with delayMinutes 30) or to a stated time (\"move it to 5pm\" is op move with due); set how one saved reminder escalates while they do not answer it; set how persistently all reminders and routines, or one, follow up (op intensity); or take back the reminder just saved when the owner says \"actually, don't save that one\" (op dismiss). A reminder is saved only after the owner's own message is checked again.",
+  description: "Save a reminder the owner asked for in this message, one-off, on a day (a deadline \"by the 20th\" is that day), repeating every day or on weekdays, or repeating on an interval (\"every two hours\"); when the assistant asked when to remind them and this message answers, op create again with the due the answer gives; list their reminders (op list); rename one (op rename with title); complete, dismiss, snooze or acknowledge one, or skip one occurrence of a repeating one (op skip); move one by a delay from now (\"actually make that 30 minutes\" is op move with delayMinutes 30) or to a stated time (\"move it to 5pm\" is op move with due); set how one saved reminder escalates while they do not answer it; set how persistently all reminders and routines, or one, follow up (op intensity); or take back the reminder just saved when the owner says \"actually, don't save that one\" (op dismiss). A reminder is saved only after the owner's own message is checked again.",
   similes: ["REMINDER", "REMINDERS", "SET_REMINDER", "REMIND_ME", "REMIND_ME_TO", "CREATE_REMINDER", "RECURRING_REMINDER", "LIST_REMINDERS", "UPDATE_REMINDER", "RENAME_REMINDER", "SNOOZE_REMINDER", "DISMISS_REMINDER", "COMPLETE_REMINDER", "ESCALATE_REMINDER"],
   parameters: [
-    { name: "op", required: true, description: "create, list, rename, complete, dismiss, snooze, acknowledge, move, escalate or intensity.", schema: { type: "string", enum: ["create", "list", "rename", "complete", "dismiss", "snooze", "acknowledge", "move", "escalate", "intensity"] } },
-    { name: "plan", required: false, description: 'For create: {"title", "body"?, "due", "destination": "chat"|"device"|null, "alert": "alert"|"silent"|null}. Leave a choice null unless the owner stated it.', schema: { type: "object" } },
-    { name: "due", required: false, description: 'In a create plan, or for move to a stated time: {"kind":"in","minutes"} | {"kind":"at","instant" with Z or ±HH:MM} | {"kind":"local","date":"YYYY-MM-DD","time":"HH:MM"} | {"kind":"day","date":"YYYY-MM-DD"} | {"kind":"repeat","time":"HH:MM","days"?: ["mon".."sun"]}, on the owner\'s clock.', schema: { type: "object" } },
-    { name: "target", required: false, description: "For any op but create and list: the saved reminder's title or id; for move, \"that\" means the reminder just saved; for intensity, a reminder's or a routine's title.", schema: { type: "string" } },
+    { name: "op", required: true, description: "create, list, rename, complete, dismiss, snooze, skip, acknowledge, move, escalate or intensity.", schema: { type: "string", enum: ["create", "list", "rename", "complete", "dismiss", "snooze", "skip", "acknowledge", "move", "escalate", "intensity"] } },
+    { name: "plan", required: false, description: 'For create: {"title", "body"?, "due", "destination": "chat"|"device"|null, "alert": "alert"|"silent"|null}. Leave a choice null unless the owner stated it; an alert nobody stated is an alert.', schema: { type: "object" } },
+    { name: "due", required: false, description: 'In a create plan, or for move to a stated time: {"kind":"in","minutes"} | {"kind":"at","instant" with Z or ±HH:MM} | {"kind":"local","date":"YYYY-MM-DD","time":"HH:MM"} | {"kind":"day","date":"YYYY-MM-DD"} | {"kind":"repeat","time":"HH:MM","days"?: ["mon".."sun"]} | {"kind":"every","minutes"} for an interval that divides the hour or the day (20, 30, 60, 120, ...), on the owner\'s clock.', schema: { type: "object" } },
+    { name: "target", required: false, description: "For any op but create and list: the saved reminder's title, words from it, or its id; for move, \"that\" means the reminder just saved; for intensity, a reminder's or a routine's title.", schema: { type: "string" } },
     { name: "title", required: false, description: "For rename: the reminder's new title.", schema: { type: "string" } },
     { name: "minutes", required: false, description: "For snooze: minutes, 1 to 1440; 10 when omitted.", schema: { type: "number" } },
+    { name: "until", required: false, description: "For snooze instead of minutes: tonight (the next 20:00) or tomorrow_morning (08:00 tomorrow), on the owner's clock.", schema: { type: "string", enum: ["tonight", "tomorrow_morning"] } },
     { name: "delayMinutes", required: false, description: "For move: whole minutes from now until the reminder goes off.", schema: { type: "integer" } },
     { name: "delaySeconds", required: false, description: "For move: whole seconds from now, when the owner gave seconds; wins over delayMinutes.", schema: { type: "integer" } },
     { name: "intensity", required: false, description: "For intensity: minimal (no follow-ups), normal, persistent (one more nudge an hour after the last) or high_priority_only (follow-ups only for high-priority reminders). Give target only for one reminder or routine.", schema: { type: "string", enum: ["minimal", "normal", "persistent", "high_priority_only"] } },
@@ -518,8 +608,8 @@ export const ownerRemindersAction: Action = {
         return onAgent(runtime, escalateReminder({ op: "escalate", ...asked }, request.messageId))
       }
       default: {
-        const { op, target, minutes } = given
-        return onAgent(runtime, answerReminder({ op, target, ...(minutes === undefined ? {} : { minutes }) }, request.messageId))
+        const { op, target, minutes, until } = given
+        return onAgent(runtime, answerReminder({ op, target, ...(minutes === undefined || minutes === null ? {} : { minutes }), ...(until === undefined || until === null ? {} : { until }) }, request.messageId))
       }
     }
   },
