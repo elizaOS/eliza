@@ -19,8 +19,10 @@
   },
   "include": [
     "src",
+    "test",
     "gen/*.ts",
-    "gen/*.vibe"
+    "gen/*.vibe",
+    "*.config.ts"
   ],
   "vibe": {
     "sidecarDir": ".vibe/declarations"

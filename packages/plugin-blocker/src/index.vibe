@@ -1,5 +1,5 @@
-// spec/blocker/index.md, "Story: Block distractions for a chosen interval"
-import { Machine, stored, type BlockKind, type FocusBlock } from "../gen/blocker.effect.vibe"
+// spec/blocker/index.md, "Story: Block distractions for a chosen interval"; spec/blocker/index.md, "A requested app is named by the id its device installed, whatever its letter case"
+import { Machine, installedAppId, stored, type BlockKind, type FocusBlock } from "../gen/blocker.effect.vibe"
 import { AppBlocker, applyAppBlock, type AppBlockerPlugin } from "@elizaos/capacitor-appblocker"
 import { WebsiteBlocker, applyWebsiteBlock, type WebsiteBlockerPlugin } from "@elizaos/capacitor-websiteblocker"
 
@@ -10,6 +10,7 @@ export service FocusBackend {
   apply(block: FocusBlock): boolean!FocusBackendFailed
   read(block: FocusBlock): boolean!FocusBackendFailed
   clear(block: FocusBlock): boolean!FocusBackendFailed
+  installedApps(): (readonly string[])!FocusBackendFailed
 }
 
 export function createNativeFocusBackend(app: AppBlockerPlugin = AppBlocker, website: WebsiteBlockerPlugin = WebsiteBlocker): FocusBackend.Shape {
@@ -37,7 +38,31 @@ export function createNativeFocusBackend(app: AppBlockerPlugin = AppBlocker, web
       })
       return result.success
     },
+    effect installedApps() {
+      const listed = try tryPromise({
+        try: () => app.getInstalledApps(),
+        catch: () => new FocusBackendFailed({ operation: "read", reason: "installed apps are unavailable" }),
+      })
+      return listed.apps.map((installed) => installed.packageName)
+    },
   }
+}
+
+const foldCase = (id: string) => id.toLowerCase()
+
+function requestedTargets(blockKind: BlockKind, targets: readonly string[]): readonly string[] {
+  return [...new Set(targets.map((target) => blockKind === "WebsiteBlock" ? target.trim().toLowerCase() : target.trim()).filter((target) => target !== ""))]
+}
+
+function asInstalled(requested: readonly string[], installedIds: readonly string[]): readonly string[] {
+  const installed = installedIds.map((appId) => ({ appId, foldedId: foldCase(appId) }))
+  return [...new Set(requested.map((id) => installedAppId(id, foldCase(id), installed)))]
+}
+
+effect function installedTargets(backend: FocusBackend.Shape, blockKind: BlockKind, requested: readonly string[]) {
+  if (blockKind !== "ApplicationBlock" || requested.length === 0) return requested
+  const installedIds: readonly string[] = backend.installedApps() catch () => []
+  return asInstalled(requested, installedIds)
 }
 
 function matchesTargets(seen: readonly string[], expected: readonly string[]): boolean {
@@ -70,13 +95,15 @@ export effect function enableFocus(request: FocusRequest) {
   const key = try blockKey(request.ownerId, request.blockKind)
   const now = try Clock.currentTimeMillis
   const backend = try FocusBackend
+  const requested = requestedTargets(request.blockKind, request.targets)
+  const targets = try installedTargets(backend, request.blockKind, requested)
   provide stored(key) {
     const gate = try Machine
     const block = try gate.receive({
       type: "requestBlock",
       ownerId: request.ownerId,
       blockKind: request.blockKind,
-      targets: [...new Set(request.targets.map((target) => request.blockKind === "WebsiteBlock" ? target.trim().toLowerCase() : target.trim()).filter((target) => target !== ""))],
+      targets: [...targets],
       now,
       deadline: request.deadline,
     }, request.ownerId)

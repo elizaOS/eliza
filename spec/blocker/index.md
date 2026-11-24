@@ -26,6 +26,45 @@ pure def alwaysPendingBlockHasTargets(s: FocusBlock): bool =
   (s.phase == ApplyingBlock or s.phase == Blocking or s.phase == ClearingBlock) implies (s.targets.size() > 0 and s.ownerId != "" and s.expiry > 0)
 ```
 
+### A requested app is named by the id its device installed, whatever its letter case
+
+Android application ids are case-sensitive (Slack installs as `com.Slack`)
+and the device blocks the foreground application id exactly, so the shell
+reads the installed application ids before it requests an application
+block and sends each requested id as the device installed it. An id that
+is an installed id is kept. An id that matches exactly one installed id
+apart from letter case becomes that installed id, so `com.slack` names an
+installed `com.Slack`. An id that matches none, or that matches several
+installed ids apart from letter case, is sent as given, and so is every
+id when the installed applications cannot be read. The shell folds letter
+case; website domains are lowercased and never read against installed
+applications.
+
+```quint
+type InstalledApp = { appId: str, foldedId: str }
+pure def installedAppId(requested: str, folded: str, installed: List[InstalledApp]): str = {
+  val caseless = installed.select(app => app.foldedId == folded)
+  if (installed.some(app => app.appId == requested)) requested
+  else if (caseless.length() == 1) caseless.nthOr(0, { appId: requested, foldedId: folded }).appId
+  else requested
+}
+pure val requestedValues = Set("com.slack", "com.Slack", "COM.EXAMPLE", "org.unknown")
+pure val foldedValues = Set("com.slack", "com.example", "org.unknown")
+pure val installedValues = Set(
+  List(),
+  List({ appId: "com.Slack", foldedId: "com.slack" }),
+  List({ appId: "com.Example", foldedId: "com.example" }, { appId: "com.example", foldedId: "com.example" }),
+  List({ appId: "com.slack", foldedId: "com.slack" }, { appId: "com.Slack", foldedId: "com.slack" }))
+pure def lawAnInstalledIdIsKept(requested: str, folded: str, installed: List[InstalledApp]): bool =
+  installed.some(app => app.appId == requested) implies installedAppId(requested, folded, installed) == requested
+pure def lawAnIdIsInstalledOrAsGiven(requested: str, folded: str, installed: List[InstalledApp]): bool = {
+  val sent = installedAppId(requested, folded, installed)
+  sent == requested or installed.some(app => app.appId == sent and app.foldedId == folded)
+}
+pure def lawOnlyOneCaselessMatchIsTaken(requested: str, folded: str, installed: List[InstalledApp]): bool =
+  installed.select(app => app.foldedId == folded).length() != 1 implies installedAppId(requested, folded, installed) == requested
+```
+
 ### Observations and expiry callbacks only affect the matching generation
 
 A declined or indeterminate device reply leaves a failure visible. Expiry dispatch belongs to the host scheduler. An expired callback for an earlier generation cannot clear a newer block.
