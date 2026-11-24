@@ -1,0 +1,29 @@
+{
+  "origin": "walk 4 of seed 1",
+  "seed": 1,
+  "trace": [
+    [
+      "invocation",
+      {
+        "type": "bind",
+        "session": 1
+      }
+    ],
+    [
+      "invocation",
+      {
+        "type": "arrive",
+        "caller": "SenseListener",
+        "locked": true
+      }
+    ],
+    [
+      "invocation",
+      {
+        "type": "take",
+        "session": 2,
+        "locked": true
+      }
+    ]
+  ]
+}

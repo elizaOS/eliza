@@ -1,0 +1,54 @@
+// spec/os/voice/listener.md, "The status chip and the host can pause or turn off listening but never start it"; spec/os/voice/listener.md, "A stop is confirmed only by a timely OFF reply with the microphone closed"; spec/os/voice/invocation.md, "The renderer starts voice from a voice answer only while unlocked, visible, with no dialog, no connection prompt and no active voice"
+import { assert, it } from "@effect/vitest"
+import { listenerStartsVoice, parseAssistantInvocation, parseInvocationUnlocked, parseListenerStatus, parseListenerStopReceipt, stopSenseListenerForChatOnly, type ListenerStopReceipt, type SensePlugin } from "../../src/bridges/sense.vibe"
+
+const stopped = (state: string) => ({ available: true, state, label: "Listening off", consented: true, saved: true, listening: false, microphoneOpen: false })
+
+const replying = (reply: unknown): Pick<SensePlugin, "turnOff"> => ({ turnOff: () => Promise.resolve(reply) as Promise<ListenerStopReceipt> })
+
+const screen = { hidden: false, dialogOpen: false, connectionOpen: false, voiceActive: false }
+
+const started = (reply: unknown) => listenerStartsVoice({ ...screen, invocation: parseAssistantInvocation(reply), unlocked: parseInvocationUnlocked(reply) })
+
+it.effect('Read the listener and stop it only on a confirmed reply (spec/os/voice/listener.md, "The status chip and the host can pause or turn off listening but never start it"; spec/os/voice/listener.md, "A stop is confirmed only by a timely OFF reply with the microphone closed")', () => effect {
+  const absent = { available: false, reason: "not-installed" }
+  const chatOnly = try promise(() => Promise.all([
+    stopSenseListenerForChatOnly(replying(absent)),
+    stopSenseListenerForChatOnly(replying(stopped("OFF"))),
+    stopSenseListenerForChatOnly(replying({ ...stopped("OFF"), microphoneOpen: true })),
+    stopSenseListenerForChatOnly({ turnOff: () => Promise.reject(new Error("bridge gone")) }),
+    stopSenseListenerForChatOnly(undefined),
+  ]))
+  try Effect.try(() => {
+    assert.deepStrictEqual([
+      parseListenerStatus(absent),
+      parseListenerStatus({ available: true, state: "DREAMING" }),
+      parseListenerStatus({ available: true, state: "PAUSED_SHADE", label: "Paused", consented: true, listening: true, microphoneOpen: false }),
+    ], [
+      { available: false, reason: "not-installed" },
+      { available: false },
+      { available: true, state: "PAUSED_SHADE", label: "Paused", consented: true, listening: false, microphoneOpen: false },
+    ])
+    assert.deepStrictEqual([
+      parseListenerStopReceipt(stopped("PAUSED_USER"), "pause").available,
+      parseListenerStopReceipt(stopped("PAUSED_CALL"), "pause").available,
+      parseListenerStopReceipt(stopped("PAUSED_USER"), "turnOff").available,
+      parseListenerStopReceipt(stopped("OFF"), "turnOff").available,
+      parseListenerStopReceipt({ ...stopped("OFF"), microphoneOpen: true }, "turnOff").available,
+    ], [true, false, false, true, false])
+    assert.deepStrictEqual(chatOnly, [true, true, false, false, false])
+  })
+})
+
+it.effect('Start voice only from a voice answer on an unlocked, visible assistant (spec/os/voice/invocation.md, "The renderer starts voice from a voice answer only while unlocked, visible, with no dialog, no connection prompt and no active voice")', () => effect {
+  try Effect.try(() => {
+    assert.deepStrictEqual([
+      started({ assistant: true, invocation: "listener", locked: false }),
+      started({ assistant: true, invocation: "power", locked: false }),
+      started({ assistant: true, invocation: "assist", locked: false }),
+      started({ assistant: true, invocation: "listener", locked: true }),
+      started({ assistant: false, locked: false }),
+      listenerStartsVoice({ ...screen, dialogOpen: true, invocation: "system", unlocked: true }),
+    ], [true, true, false, false, false, false])
+  })
+})
