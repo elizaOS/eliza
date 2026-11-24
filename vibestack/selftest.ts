@@ -17,6 +17,7 @@ import { Miniflare } from "miniflare";
 import { violated } from "./action.ts";
 import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
+import { heading } from "./parse.ts";
 import { precomputeSimulations, prepareSimulationReceipts } from "./formal.ts";
 import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
@@ -2778,12 +2779,17 @@ function eachCheck() {
       'const patched = await steady(async () => ({ runs: [await runs(), await runs()], simulation: await simulation() }));',
       `process.env.QUINT_HOME = ${JSON.stringify(path.join(root, "quint-home"))};`,
       `const native = ${JSON.stringify(native)};`,
-      'const simulate = (schedule, scope = memory) => steady(async () => {',
+      'const simulate = (schedule, scope = memory, after) => steady(async () => {',
       '  const key = await entry(".", "simulate", ["native"]);',
       '  await remembered(scope, key, (child) => act(child, "quint", ["run"], "simulated", {}), (r) => r.ok, schedule);',
+      '  after?.();',
       `  return { key: key.name, saved: fs.existsSync(key.file), runs: fs.readFileSync(${JSON.stringify(log)}, "utf8").trim().split("\\n").length };`,
       '});',
       'const bootstrap = await simulate(), installed = await simulate(), warm = await simulate();',
+      'const rotate = () => { fs.renameSync(native, native + ".old"); fs.writeFileSync(native, "changed", { mode: 0o755 }); };',
+      'const restore = () => fs.renameSync(native + ".old", native);',
+      'const rotated = await simulate(undefined, memory, rotate).then(() => "", (error) => error.message); restore();',
+      'const restored = await simulate(undefined, memory, () => { rotate(); restore(); }).then(() => "", (error) => error.message);',
       'const held = await entry(".", "simulate", ["native"]);',
       'const bytes = fs.readFileSync(held.file);',
       'const { used } = JSON.parse((await import("node:zlib")).zstdDecompressSync(bytes));',
@@ -2794,7 +2800,7 @@ function eachCheck() {
       'const retained = used.length > 0 && used.every((name) => scope.used.has(name) && !fs.existsSync(".spec-cache/"+name));',
       'fs.writeFileSync(native, "replacement"); const replaced = await simulate(); fs.writeFileSync(native, "replacement");',
       'const identical = await simulate(); process.env.QUINT_HOME = "quint-home";',
-      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, late, retained, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
+      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, rotated, restored, late, retained, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
     ].join("\n");
     const r = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
     assert.equal(r.status, 0, r.stderr);
@@ -2815,6 +2821,7 @@ function eachCheck() {
     assert.equal(installed.saved, true);
     assert.equal(installed.runs, bootstrap.runs + 1, "the installed evaluator runs once for its own identity");
     assert.deepEqual(warm, installed);
+    for (const changed of [said.rotated, said.restored]) assert.match(changed, /tool installation changed/);
     assert.deepEqual(said.late, warm, "a queued simulation reuses an aggregate published before its native work starts");
     assert.equal(said.retained, true, "the hit retains its action dependencies without recreating them");
     assert.equal(replaced.runs, warm.runs + 1);
@@ -3213,7 +3220,7 @@ function eachCheck() {
     const root = oneRule("packaged", "A packaged value", "pure val answer = 42");
     const staging = scratch(Object.fromEntries(PACKED.map((file) => [file, read(file)])));
     // Studio's page is built from the workspace packages it shares with every interface.
-    for (const directory of ["vibestack", "packages", "apps", "spec"].filter((d) => fs.existsSync(path.join(project, d))))
+    for (const directory of ["vibestack", "packages", "spec"].filter((d) => fs.existsSync(path.join(project, d))))
       copySources(path.join(project, directory), path.join(staging, directory));
     copySources(path.join(project, ".agents/skills"), path.join(staging, ".agents/skills"));
     const lock = path.join(staging, "vibestack/studio/.spec-cache/lock");
@@ -4683,12 +4690,17 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
   const eslint = new ESLint({ cwd: project });
   const found = async (file: string, lines: string[]) => (await eslint.lintText(lines.join("\n"), { filePath: path.join(project, file) }))[0]!.messages
     .filter((m) => m.fatal || m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId ?? "inline config"}`);
-  const specFile = "spec/app/index.md";
+  const spec = readSpecs(project).find((s) => s.file.startsWith("spec/")
+    && s.stories.some((story) => !story.title.includes('"'))
+    && s.rules.some((rule) => !heading(rule).includes('"')));
+  const specFile = spec?.file ?? "spec/app/index.md";
+  const storyHeading = spec?.stories.find((story) => !story.title.includes('"'))?.title ?? "Story: Say hello";
+  const ruleHeading = spec ? heading(spec.rules.find((rule) => !heading(rule).includes('"'))!) : "The number of greetings is never negative";
   assert.deepEqual(await found("apps/app/src/probe.vibe", [
-    `// ${specFile}, "Story: Say hello"; ${specFile}, "The number of greetings is never negative"`,
-    `/* ${specFile}, "Story: Say hello" */`,
+    `// ${specFile}, "${storyHeading}"; ${specFile}, "${ruleHeading}"`,
+    `/* ${specFile}, "${storyHeading}" */`,
     "//@ ghost",
-    "/** @model spec/app/index.md */",
+    `/** @model ${specFile} */`,
     "/** @throws {never} */",
     "// a note",
     "/** What it is. */",

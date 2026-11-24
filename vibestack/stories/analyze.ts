@@ -1,8 +1,9 @@
 // Reads React components with the TypeScript checker: what each takes, what its metadata file gives, and
 // the spec model it shows. One Program serves every file, and the next run reuses it.
-import { existsSync, globSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, globSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import ts from "typescript";
+import { formatStamp } from "../run.ts";
 import { owner } from "../util.ts";
 
 /** A value in a metadata file that only running it would give, such as JSX or a function. */
@@ -69,12 +70,23 @@ const moduleOf = (spec: string) => spec.replace(/^(\.\/)?spec\//, "").replace(/\
  * The generated module of `spec`: in the component's own package, or, for a shared package such as a component
  * library, in the spec's owner, else the root's (SPEC.md, "One spec tree").
  */
-export const modelFile = (abs: string, spec: string): string | undefined => {
+export const modelFile = (abs: string, spec: string, observe?: (file: string) => void): string | undefined => {
   const own = packageOf(dirname(abs)).dir, name = `${moduleOf(spec)}.ts`;
-  const root = ancestors(own).find((dir) => existsSync(join(dir, spec)));
-  const dir = root && owner(root, spec.replace(/^\.\//, ""));
+  const parents = ancestors(own);
+  const root = parents.find((dir) => existsSync(join(dir, spec)));
+  if (observe) {
+    const boundary = root ?? parents.findLast((dir) => existsSync(join(dir, "package.json"))) ?? own;
+    for (const parent of parents) {
+      observe(join(parent, spec));
+      if (parent === boundary) break;
+    }
+  }
+  const dir = root && owner(root, spec.replace(/^\.\//, ""), observe);
   const candidates = [join(own, "gen", name), ...(root && dir ? [join(root, dir, "gen", name)] : []), ...(root ? [join(root, "gen", name)] : [])];
-  return candidates.find(existsSync);
+  return candidates.find((file) => {
+    observe?.(file);
+    return existsSync(file);
+  });
 };
 const ancestors = (dir: string): string[] => (dirname(dir) === dir ? [dir] : [dir, ...ancestors(dirname(dir))]);
 export const modelTag = (text: string) => /@model\s+(\S+)/.exec(text)?.[1];
@@ -112,7 +124,8 @@ export function programs(root: string): (files: string[]) => ts.Program {
   const parse = host.getSourceFile;
   const parsed = new Map<string, { stamp: string; file: ts.SourceFile | undefined }>();
   host.getSourceFile = (name, ...rest) => {
-    const stamp = `${ts.sys.getModifiedTime?.(name)?.getTime()}:${ts.sys.getFileSize?.(name)}`;
+    const stat = statSync(name, { bigint: true, throwIfNoEntry: false });
+    const stamp = stat ? formatStamp(stat) : "";
     if (parsed.get(name)?.stamp !== stamp) parsed.set(name, { stamp, file: parse(name, ...rest) });
     return parsed.get(name)!.file;
   };
@@ -287,6 +300,12 @@ export function analyze(built: ts.Program, abs: string): Found[] {
     const symbols = (first ? checker.getPropertiesOfType(checker.getTypeOfSymbolAtLocation(first, decl)) : [])
       // `children` is kept even when the component only passes it on with the rest: it is what most of them show.
       .filter((p) => p.name === "children" || taken.has(p.name) || mentioned.has(p.name) || STATE.test(p.name) || p.declarations?.some(own));
+    symbols.sort((a, b) => {
+      const left = a.valueDeclaration ?? a.declarations?.[0];
+      const right = b.valueDeclaration ?? b.declarations?.[0];
+      return compare(left?.getSourceFile().fileName ?? "", right?.getSourceFile().fileName ?? "")
+        || (left?.pos ?? 0) - (right?.pos ?? 0) || compare(a.name, b.name);
+    });
     const props = symbols.map((p): Prop => {
       const type = checker.getTypeOfSymbolAtLocation(p, decl);
       const at = p.declarations?.find(own);

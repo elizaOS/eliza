@@ -16,9 +16,9 @@ if (argv[0] !== "gen") {
 const root = process.cwd();
 const run = generator({ root });
 /** Brings the output up to date and says what changed, if anything did; false when a component could not be given stories. */
-function once(): boolean {
+function once(observe?: (file: string) => void): boolean {
   const start = performance.now();
-  const { index, written, removed, analyzed, diagnostics } = run();
+  const { index, written, removed, analyzed, diagnostics } = run(observe);
   const stories = index.components.reduce((sum, c) => sum + c.stories.length, 0);
   if (analyzed || written.length || removed.length)
     console.log(`${index.components.length} components, ${stories} stories: ${analyzed} files analyzed, ${written.length} written, ${removed.length} removed in ${Math.round(performance.now() - start)} ms`);
@@ -26,8 +26,8 @@ function once(): boolean {
   return diagnostics.length === 0;
 }
 
-const ok = once();
 if (argv.includes("--watch")) {
+  const local = watch(root, { recursive: true });
   const changed = listener(root, undefined, once);
-  watch(root, { recursive: true }, (_, file) => file && changed(file));
-} else if (argv.includes("--check") && !ok) process.exit(1);
+  local.on("change", (_, file) => file && changed.change(file)).once("close", changed.close);
+} else if (!once() && argv.includes("--check")) process.exit(1);

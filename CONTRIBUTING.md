@@ -160,8 +160,8 @@ line ends with. `pnpm selftest` builds scratch projects from this project's spec
 one thing at a time and asserts which stage catches each. It runs as five cached tasks, each keyed by what its tests
 read: `selftest:docs` the documents against every file they can name, `selftest:examples` each standalone example
 against its own files and the tools. The tool shards build scratch projects from the order
-example and fixtures. The rest shard also rebuilds the packaged CLI from the workspace, so changes under
-`packages/` and `spec/` invalidate its isolated CI run. The first two shards each run the `describe`
+example and fixtures. The rest shard also rebuilds the packaged CLI from the workspace, so app manifest changes and changes under
+`packages/` or `spec/` invalidate its isolated CI run. The first two shards each run the `describe`
 named `in shard a` or `in shard b` in `vibestack/selftest.ts`. The third runs the remaining tool tests there.
 Changes to either docs or standalone example test code keep the tool shards cached. Keep the longest tests spread over the three.
 Changes to the root README rerun the docs and packaged tool checks.
