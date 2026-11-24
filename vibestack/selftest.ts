@@ -2737,9 +2737,7 @@ function eachCheck() {
   });
 
   test("opening an installed checker keeps older program files used by another check", { skip: process.platform === "win32" }, async () => {
-    const root = toolchain(scratch({}), "lsc");
-    stockQuint(root, "");
-    const cache = path.join(root, "cache");
+    const cache = scratch({});
     const programs = path.join(cache, "vibestack/programs/1");
     const previous = path.join(programs, "another-check");
     const entry = path.join(previous, "main.mjs");
@@ -2749,11 +2747,15 @@ function eachCheck() {
     fs.utimesSync(previous, old, old);
     for (let index = 0; index < 8; index++) fs.mkdirSync(path.join(programs, `newer-${index}`));
     const code = [
-      `import { installedProgram } from ${JSON.stringify(path.join(root, "vibestack/cache.ts"))};`,
+      `import { installedProgram } from ${JSON.stringify(path.join(project, "vibestack/cache.ts"))};`,
       'if (!installedProgram(".", "quint")?.isolated) throw new Error("the checker was not isolated");',
       `console.log((await import(${JSON.stringify(pathToFileURL(entry).href)})).default);`,
     ].join("\n");
-    const result = await exec(process.execPath, ["--input-type=module", "--eval", code], root, { ...process.env, XDG_CACHE_HOME: cache });
+    const env: NodeJS.ProcessEnv = { ...process.env, XDG_CACHE_HOME: cache };
+    delete env.NODE_OPTIONS;
+    delete env.NODE_PRESERVE_SYMLINKS;
+    delete env.NODE_PRESERVE_SYMLINKS_MAIN;
+    const result = await exec(process.execPath, ["--input-type=module", "--eval", code], project, env);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(result.stdout.trim(), "19");
   });
