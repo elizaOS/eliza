@@ -1,21 +1,120 @@
+<<<<<<< ours
 // spec/cloud/deployment.md, "Story: Serve the deployment from a Worker"; spec/cloud/deployment.md, "A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve"
 import { workerFetch, type WorkerLifetime } from "./worker-platform.ts"
 import { relayFromTable, serveFromTable, sweepTable, workerReady, type ProfileBindings } from "./worker/canonical.vibe"
 import { ownsWorkerOnly, workerOnlyRequest, type DeploymentExtension, type LegacyBindings, type WorkerPorts } from "./worker/legacy.vibe"
 import { answerOf, opensRelay } from "./worker/routes.vibe"
+=======
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "Story: Sign in to the Cloud"
+import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch, type WorkerLifetime } from "./worker-platform.ts"
+import type { Client } from "pg"
+import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
+import { sweepUsage } from "./worker-metering.vibe"
+import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, managedMailAccount, sessionAccount, sweepDeviceOffers, type IdentityEnv } from "./identity.vibe"
+import { nativeAssetLinks } from "./native-registry.vibe"
+import { ownsPasswordBackupPath } from "./password-backup.vibe"
+export { nativeAssetLinks }
+export { SpeechRelayCoordinator } from "./speech-relay.vibe"
+import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
+import { deviceAttachmentPath, googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
+import { inboxArrivalPath } from "./services/google/inbox-arrival.vibe"
+import { billingRequest, refreshPaidAccess, stripeWebhook, stripeWebhookRoute, sweepSubscriptions, type BillingEnv } from "./billing.vibe"
+import { CLEF_DECISIONS_PATH } from "./clef-decisions.vibe"
+import { clefRequest, type ClefEnv } from "./clef-worker.vibe"
+import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vibe"
+>>>>>>> theirs
 
 export { nativeAssetLinks } from "./native-registry.vibe"
 export type { DeploymentExtension }
 
+<<<<<<< ours
 export type WorkerExecution = WorkerLifetime
 
 export type CloudBindings = LegacyBindings & ProfileBindings
+=======
+async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension: DeploymentExtension<E> | undefined, providerFetch: typeof fetch, lifetime?: WorkerLifetime) {
+  const path = new URL(request.url).pathname
+  if (path === stripeWebhookRoute && request.method === "POST") {
+    const bytes = await limitedBody(request, 256 * 1024)
+    return bytes ? stripeWebhook(request, bytes, env, db) : WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
+  }
+  if (path === "/health" && request.method === "GET") {
+    await db.query("SELECT 1 FROM accounts, sessions, device_grants, subscriptions, holds, usage_records LIMIT 0")
+    return WorkerResponse.json({ status: "ready" })
+  }
+  if (ownsPasswordBackupPath(path)) return identityRequest(request, env, db)
+  if (path.startsWith("/api/auth/") || path === "/api/v1/app-auth/mobile/config" || nativeGooglePath(path)) {
+    if (request.method === "POST") {
+      const bytes = await limitedBody(request, 8192)
+      if (!bytes) return WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
+      request = withRequestBody(request, bytes)
+    }
+    return identityRequest(request, env, db)
+  }
+  if (path === deviceAttachmentPath) {
+    if (request.method !== "POST") return WorkerResponse.json({ error: "method_not_allowed" }, { status: 405 })
+    if (!request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 401 })
+    const owner = await inferenceAccount(request, db, env)
+    if (!owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    const bytes = await limitedBody(request, 8704)
+    if (!bytes) return WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
+    const response = await googleRequest(withRequestBody(request, bytes), env, db, owner, providerFetch)
+    if (response.ok && await inferenceAccount(request, db, env) !== owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    return response
+  }
+  if (path === inboxArrivalPath) {
+    if (request.method !== "GET") return WorkerResponse.json({ error: "method_not_allowed" }, { status: 405 })
+    const owner = await inferenceAccount(request, db, env)
+    const credential = owner ? await cloudCredential(request) : null
+    if (!owner || !credential) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    return googleRequest(request, env, db, owner, providerFetch, {
+      credential,
+      current: async () => await inferenceAccount(request, db, env) === owner,
+    })
+  }
+  const decisions = path === CLEF_DECISIONS_PATH
+  const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
+  if (path === speechRoute + "/ws") return speechWebSocket(request, env, db)
+  const speech = path.startsWith(speechRoute + "/")
+  const billing = path.startsWith("/api/v1/billing/")
+  const reminders = path === "/api/v1/calendar-reminders/device"
+  const google = path.startsWith("/api/v1/eliza/google/")
+  const nativeConnect = path === "/api/v1/eliza/google/connect/native"
+  if (!reminders && !decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
+  const account = reminders || decisions || inference || speech || nativeConnect ? await inferenceAccount(request, db, env) : google ? await managedMailAccount(request, db) : await sessionAccount(request, db)
+  if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+  if ((reminders || nativeConnect) && !request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
+  if (reminders) return reminderSchedule(request, env, db, account)
+  if (decisions) return clefRequest(request, env, db, account)
+  if (inference || path === speechRoute + "/session") await refreshPaidAccess(env, db, account)
+  if (speech) return speechRequest(request, env, db, account)
+  if (inference) return inferenceRequest(request, env, db, account, workerFetch, lifetime)
+  if (google) {
+    const response = await googleRequest(request, env, db, account, providerFetch)
+    if (response.ok && request.method === "GET" && !nativeConnect && await managedMailAccount(request, db) !== account)
+      return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    return response
+  }
+  if (billing) return billingRequest(request, env, db, account)
+  if (extension) return extension(request, env, db, account)
+  return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
+}
+>>>>>>> theirs
 
 export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>, providerFetch: typeof fetch = workerFetch) {
   const ports: WorkerPorts<E> = { extension, providerFetch }
   return {
+<<<<<<< ours
     scheduled(event: { readonly scheduledTime: number }, env: E): Promise<void> {
       return sweepTable(env, event.scheduledTime)
+=======
+    scheduled(_event: unknown, env: E) {
+      return withCloudDatabase(env, async (db) => {
+        await sweepUsage(db)
+        await sweepSubscriptions(env, db)
+        await sweepDeviceOffers(db)
+      })
+>>>>>>> theirs
     },
     async fetch(request: Request, env: E, execution?: WorkerExecution): Promise<Response> {
       const path = new URL(request.url).pathname

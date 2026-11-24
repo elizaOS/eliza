@@ -244,7 +244,7 @@ export const routes: ReadonlyArray<Route> = [{
   handler: effect (context) => {
     const caller = context.caller
     if (caller.kind === "anonymous") throw refused("AuthenticationRequired", "CredentialUnknown")
-    const credentialScope = caller.kind === "session" ? caller.sessionKey : caller.credentialScope
+    const credentialScope = caller.kind === "deviceKey" ? caller.credentialScope : caller.sessionKey
     try admitAll([
       { subject: credentialScope, rule: Codes.redeemPerCredential },
       { subject: Option.getOrElse(context.request.remoteAddress, () => "unknown"), rule: Codes.redeemPerAddress }

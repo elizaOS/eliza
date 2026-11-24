@@ -1,7 +1,11 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A request needs an active account and sufficient funding for its quote"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/shared/metering.md, "A call reaches its provider only after its hold is durably marked dispatched"
 import { hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
 import { refused } from "../http/refusal.vibe"
+<<<<<<< ours
 import { signed } from "../http/request-auth.vibe"
+=======
+import { recheckAccess, signed } from "../http/request-auth.vibe"
+>>>>>>> theirs
 import { json, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { complete, stream, type LlmFailure } from "../providers/llm.vibe"
@@ -53,7 +57,20 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
 
   let dispatched = false
   const work = effect {
+<<<<<<< ours
     try keepStanding(context.request.headers.authorization, caller, "MeteredInference", ticket)
+=======
+    const standing = effect {
+      try recheckAccess(context.request.headers.authorization, caller, "ServiceAccess")
+      const now = try Clock.currentTimeMillis
+      const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, "MeteredInference", now))
+      if (lane !== ticket.lane) throw refused("BillingStateConflict")
+    }
+    standing catch effect (failure) => {
+      try settleAfterClose(ticket.key, { kind: "release" })
+      throw failure
+    }
+>>>>>>> theirs
     try Effect.uninterruptible(effect {
       try markDispatched(ticket.key)
       dispatched = true

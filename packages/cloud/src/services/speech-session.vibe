@@ -69,7 +69,8 @@ const endings = new Map<string, Deferred.Deferred<SessionEnd>>()
 function credentialOf(caller: Signed): Credential {
   switch (caller.kind) {
     case "deviceKey": return { kind: "device_key", ref: caller.grantKey, expiresAt: caller.expiresAt }
-    case "session": return { kind: "session", ref: caller.sessionKey, expiresAt: caller.accessExpiresAt }
+    case "session":
+    case "lease": return { kind: "session", ref: caller.sessionKey, expiresAt: caller.accessExpiresAt }
     default: {
       const _exhaustive: never = caller
       return _exhaustive

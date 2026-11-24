@@ -17,9 +17,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public final class DeviceCustody implements SignInCustody {
-  private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session) {}
+  private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session, DeviceLease lease) {}
 
   private static final Map<String, Authority> AUTHORITIES = new HashMap<>();
   private static final ExecutorService DUTIES = Executors.newSingleThreadExecutor();
@@ -64,6 +65,23 @@ public final class DeviceCustody implements SignInCustody {
     }
   }
 
+  public static String accountBinding(Context context, String apiOrigin, String currentSecret) {
+    return authority(context, apiOrigin).store().accountBinding(currentSecret);
+  }
+
+  public static void maintain(Context context, String apiOrigin) {
+    Authority authority = authority(context, apiOrigin);
+    CredentialPolicy.State state = authority.store().state();
+    if (state.lease() instanceof CredentialPolicy.Lease.Held held
+        && held.refreshExpiresAt() - state.now() <= TimeUnit.DAYS.toMillis(7)
+        && authority.lease().accessToken() == null && authority.store().lease() != null)
+      throw new IllegalStateException("Cloud device lease refresh is pending");
+    authority.client().renewIfDue();
+    authority.client().settleDuties();
+    if (authority.store().renewDue() || authority.store().pendingRenewal() != null)
+      throw new IllegalStateException("Cloud device renewal is pending");
+  }
+
   public static boolean deviceOnly(Context context, String apiOrigin) {
     CredentialPolicy.State state = authority(context, apiOrigin).store().state();
     return state.custody() instanceof CredentialPolicy.Custody.SignedOut
@@ -72,7 +90,7 @@ public final class DeviceCustody implements SignInCustody {
 
   public static CloudRequests.Custody cloud(Context context, String apiOrigin) {
     Authority authority = authority(context, apiOrigin);
-    return new CloudRequests.Custody(authority.store(), authority.session());
+    return new CloudRequests.Custody(authority.store(), authority.session(), authority.lease());
   }
 
   public static void reset(Context context, SignInRegistration registration) {
@@ -95,9 +113,11 @@ public final class DeviceCustody implements SignInCustody {
     }, DeviceCredentialStore.authorityDigest(apiOrigin), System::currentTimeMillis);
     DeviceKeyClient client = new DeviceKeyClient(URI.create(apiOrigin), store, Thread::sleep);
     store.onVerifyAccount(() -> DUTIES.execute(client::verifyAccount));
-    Authority created = new Authority(store, client, new AccountSession(store, client));
+    store.onRenewKey(() -> DUTIES.execute(client::renew));
+    Authority created = new Authority(store, client, new AccountSession(store, client), new DeviceLease(store, client, () -> DUTIES.execute(client::renewIfDue)));
     AUTHORITIES.put(apiOrigin, created);
     DUTIES.execute(client::settleDuties);
+    DUTIES.execute(client::renewIfDue);
     return created;
   }
 

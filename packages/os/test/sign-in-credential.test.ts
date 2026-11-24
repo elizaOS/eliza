@@ -32,6 +32,18 @@ describe("Keep me signed in without a second copy of my key", () => {
     expect(seen.notices).toEqual([announce(1), announce(2), { tag: "SignedOutNotice" }, announce(3), { tag: "VerifyAccount" }, { tag: "SignedOutNotice" },
       announce(4), { tag: "ExpiredNotice" }, announce(5)]);
   });
+
+  it("rotates the lease silently after a lost reply and renews the key through it once half its life is gone", () => {
+    const seen = journey();
+    expect([seen.leasedSignIn, seen.lostRotation, seen.rotatedAfterLostReply, seen.rotationsAsked, seen.leaseReuses]).toEqual(["SIGNED_IN", "null", true, 3, 0]);
+    expect([seen.renewedBeforeHalfLife, seen.owedAfterRenewal, seen.replacedKeyEnded, seen.leaseKeptByRenewal, seen.bindingAfterRestart]).toEqual(["7/cred-13/user-1", true, true, true, true]);
+    expect(seen.leaseNotices).toEqual([announce(6), announce(7), announce(8), announce(9), { tag: "SignedOutNotice" }]);
+  });
+
+  it("asks a renewal's lost acknowledgement again instead of stranding or signing out, and ends a lease refresh a renewal overtook", () => {
+    const seen = journey();
+    expect([seen.lostRenewalAckAskedAgain, seen.rotationAfterRenewalAck]).toEqual(["8/cred-14/user-1", "true/NOT_KEPT/true"]);
+  });
 });
 
 describe("Sign out or reset cleanly", () => {
@@ -39,6 +51,12 @@ describe("Sign out or reset cleanly", () => {
     const seen = journey();
     expect([seen.dutyStoredWithSignOut, seen.offlineRevokeAsks, seen.dutiesKeptOffline]).toEqual([true, 3, 1]);
     expect([seen.triesAtStart, seen.onlineRevokeAsks, seen.revokedAfterStart, seen.dutiesAfterStart, seen.alreadyRevoked]).toEqual([1, 1, "cred-2,cred-4", 0, true]);
+  });
+
+  it("signs out completely when the cloud revokes the lease, owing the key and leaving no key or lease slot", () => {
+    const seen = journey();
+    expect([seen.accessAfterRevokedLease, seen.afterRevokedLease, seen.owedAfterRevokedLease]).toEqual(["null", "none", true]);
+    expect([seen.keyRevokedAfterLease, seen.slotsAfterLeaseSignOut]).toEqual([true, 0]);
   });
 });
 

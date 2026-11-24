@@ -1,4 +1,5 @@
-// spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"
+// spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"
+import { activateLease, offerLease } from "../../src/identity/sessions.vibe"
 import { tokenDigest } from "../../src/shared/sealing.vibe"
 import type { Tx } from "../../src/store/connection.vibe"
 import { organization, type TestCloud } from "./cloud.vibe"
@@ -29,4 +30,18 @@ export effect function signedCaller(cloud: TestCloud, name: string) {
   })
   const caller: SignedCaller = { bearer: token, organizationId, userId, credentialId, headers: { authorization: `Bearer ${token}` } }
   return caller
+}
+
+export effect function leasedCaller(cloud: TestCloud, name: string) {
+  const caller = try signedCaller(cloud, name)
+  const now = try Clock.currentTimeMillis
+  const refresh = try cloud.store.transaction(effect (tx: Tx) => {
+    const offered = try offerLease(tx, { userId: caller.userId, grantKey: `grant-${name}`, now })
+    try activateLease(tx, `grant-${name}`, now)
+    return offered.refresh
+  })
+  const pair = try cloud.call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: { authorization: `Bearer ${refresh}` } })
+  const access = (pair.body as { readonly access: string }).access
+  const leased: SignedCaller & { readonly deviceKey: string } = { ...caller, bearer: access, headers: { authorization: `Bearer ${access}` }, deviceKey: caller.bearer }
+  return leased
 }
