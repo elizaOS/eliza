@@ -9,7 +9,6 @@ module node {
   import type { TaskHostHandle } from "./host.vibe"
   import { taskCodes } from "./routes.vibe"
 
-  export type { TaskPresentation }
   export interface TaskPresentationPorts {
     format(presentation: TaskPresentation): string
     choice?(presentation: TaskPresentation, signal: AbortSignal): Promise<TaskChoiceWidget | null>
@@ -111,5 +110,6 @@ module node {
 
 export {
   beginChatTask, bindTaskPresentation, replayTaskChoices,
-  type ChatTaskEnding, type ChatTaskRefusal, type ChatTaskTurn, type TaskPresentation, type TaskPresentationPorts,
+  type ChatTaskEnding, type ChatTaskRefusal, type ChatTaskTurn, type TaskPresentationPorts,
 } from node
+export type { TaskPresentation } from "@elizaos/agent"

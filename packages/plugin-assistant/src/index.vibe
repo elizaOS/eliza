@@ -33,7 +33,7 @@ export {
 export {
   ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, statedZone, clockCapability,
   clockRepeatCapability, clockDayNames, clockHandoffCapabilities, isClockHandoffOperation, clockHandoffDispatch, describeClockDays,
-  describeClockHandoff, normalizeClockTimeZone, phoneZone, currentClockTimeZone, ClockZoneChanged, checkClockHandoffTimeZone, ClockReceiptRefused,
+  describeClockHandoff, normalizeClockTimeZone, currentClockTimeZone, ClockZoneChanged, checkClockHandoffTimeZone, ClockReceiptRefused,
   clockHandoffReceipt, buildClockHandoffRequest, type OwnerFacts, type Travel, type ClockHandoffOperation, type ClockDay, type ClockHandoffResult,
   type ClockHandoffHostSupport, type ClockHandoffRequest, type ClockHandoffForm, type FormRefusal,
 } from "./clock.vibe"

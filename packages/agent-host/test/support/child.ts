@@ -1,6 +1,6 @@
 // spec/agent/host/launch.md, "Story: Tell the supervisor why the process ended"; spec/agent/host/launch.md, "Story: Keep the credential out of every file and reply"
 import { execFile, spawn } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { createServer, type AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -29,8 +29,6 @@ export async function setup(project: TestProject): Promise<() => Promise<void>> 
     await promisify(execFile)(compiler, args, { cwd: agentDir, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024, killSignal: "SIGKILL" });
     const executable = join(output, "src", "bin.js");
     if (!(await stat(executable)).isFile()) throw new Error("Agent CLI build did not emit a regular executable");
-    const worklet = join("src", "voice", "capture.worklet.mjs");
-    await copyFile(join(agentDir, worklet), join(output, worklet));
     project.provide("agentCli", executable);
     return remove;
   } catch (failure) {
