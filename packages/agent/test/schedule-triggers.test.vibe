@@ -280,7 +280,8 @@ module node {
     const listed = (await ask<Replies["trigger"]>(bench, "GET", path)).body.trigger
     const refused = await ask<Replies["any"]>(bench, "PUT", path, { enabled: true, expectedRevision: 3 })
     const edited = await ask<Replies["trigger"]>(bench, "PUT", path, {
-      ...prompt({ triggerType: "event", eventKind: "MESSAGE_SENT" }), expectedRevision: 3,
+      kind: "prompt", displayName: "Water", instructions: "Remind me to drink water", timezone: "UTC",
+      triggerType: "event", eventKind: "MESSAGE_SENT", expectedRevision: 3,
     })
     const enabled = await ask<Replies["trigger"]>(bench, "PUT", path, { enabled: true, expectedRevision: 4 })
     return {

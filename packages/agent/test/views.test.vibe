@@ -337,10 +337,8 @@ it.live('An ask of a view a plugin loaded before the views module declares is fr
   const asked = try views.ask({ ...request, grant })
   try Effect.try(() => assert.deepStrictEqual([unavailable, undeclared, unnamed, asked.kind], [{ kind: "unavailable" }, { kind: "refused" }, { kind: "refused" }, "asked"]))
   const sent = interaction(try host("view frame", () => feed.next((frame) => interaction(frame) !== undefined)))
-  const frame = try Effect.try(() => {
-    if (sent === undefined) throw new Error("The admitted ask did not publish a view frame")
-    return sent
-  })
+  try Effect.try(() => assert.isDefined(sent, "The admitted ask did not publish a view frame"))
+  const frame = sent!
   const binding = { requestId: frame.requestId, clientId: "c3", viewId: "pages", viewType: "gui", installationId: frame.installationId }
   const claimed = try claim(agent, binding)
   const answered = try ask(agent, { method: "POST", path: "/api/views/interact-result", body: { ...binding, claimId: claimIdOf(claimed.body), success: true, result: { turned: true } } })
