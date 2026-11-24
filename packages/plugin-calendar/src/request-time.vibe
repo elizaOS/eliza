@@ -302,8 +302,19 @@ export interface WindowSides {
   readonly phrase: string
 }
 
+// A hyphen inside a spoken clock ("five-thirty", "one-twenty-five", "five-oh-five") is part of the clock, no join;
+// one between two hour names ("nine-ten") still joins a range.
+const spokenHour = /^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)$/u
+const spokenMinuteLead = /^(?:oh|o|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)$/u
+const spokenMinuteTail = /^(?:twenty|thirty|forty|fifty|oh|o)$/u
+const spokenUnit = /^(?:one|two|three|four|five|six|seven|eight|nine)$/u
+
+function clockHyphen(before: string, after: string): boolean {
+  return (spokenHour.test(before) && spokenMinuteLead.test(after)) || (spokenMinuteTail.test(before) && spokenUnit.test(after))
+}
+
 export function windowRangesInWords(text: string): readonly WindowSides[] {
-  const words = clockTokens(text).filter((word) => !windowHedges.has(word))
+  const words = clockTokens(text).filter((word, at, all) => !windowHedges.has(word) && !(word === "-" && clockHyphen(all[at - 1] ?? "", all[at + 1] ?? "")))
   const quarterTo = (at: number) => words[at] === "to" && words[at - 1] === "quarter"
   const clockWord = (at: number) => windowClockWord.test(words[at] ?? "") || quarterTo(at)
   const ranges: WindowSides[] = []

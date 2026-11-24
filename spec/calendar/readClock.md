@@ -212,7 +212,10 @@ owner's words fit it one way on its day and that way is the window sent.
 Code finds every range in the owner's words: clock words for the start
 and for the end, joined by "and" after "between", or by "to", "until",
 "till", "through" or a dash ("between noon and five", "from 2 to 4 PM",
-"2pm-4pm"); the "to" of "quarter to" joins nothing, a hedge before a
+"2pm-4pm"); the "to" of "quarter to" joins nothing, a dash inside a
+spoken clock ("between noon and five-thirty", "from one-twenty-five to
+three PM", "five-oh-five") is part of the clock and joins nothing, while
+one between two hour names ("nine-ten") joins a range, a hedge before a
 clock ("between noon and around 5", "from noon till about five") leaves
 the range a range, and a range followed by a unit of length ("30 to 45
 minutes", "1 to 2 hours") is a length, no range. It reads each range's

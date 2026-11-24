@@ -429,6 +429,17 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const quarterToTwo = try asked("Am I free tomorrow from quarter to 2 to 4 PM?", { ...twoToFourPm, timeMin: "2030-03-04T13:45:00-08:00" })
   assert.deepStrictEqual([hoursTillAbout.success, at(hoursTillAbout.data, "slots", "0", "startAt"), headCountAround.success, at(headCountAround.data, "isFree"), headCountWindow.success, at(headCountWindow.data, "isFree"),
     dashed.success, at(dashed.data, "isFree"), quarterToTwo.success, at(quarterToTwo.data, "isFree")], [true, "2030-03-04T20:00:00.000Z", true, true, true, true, true, true, true, true])
+  // A hyphen inside a spoken clock is part of the clock, no join: "five-thirty" is one end, "one-thirty" one start.
+  const toFiveThirty = try asked("Am I free tomorrow between noon and five-thirty?", { ...noonToFive, timeMax: "2030-03-04T17:30:00-08:00" })
+  const oneThirtyToThreePm = { ...noonToFive, timeMin: "2030-03-04T13:30:00-08:00", timeMax: "2030-03-04T15:00:00-08:00" }
+  const fromOneThirty = try asked("Am I free tomorrow from one-thirty to three?", oneThirtyToThreePm)
+  const fromOneThirtyPm = try asked("Am I free tomorrow from one-thirty to three PM?", oneThirtyToThreePm)
+  const fromOneTwentyFive = try asked("Am I free tomorrow from one-twenty-five to three PM?", { ...oneThirtyToThreePm, timeMin: "2030-03-04T13:25:00-08:00" })
+  assert.deepStrictEqual([toFiveThirty.success, at(toFiveThirty.data, "isFree"), at(fromOneThirty.data, "code"), at(fromOneThirty.data, "windows"),
+    fromOneThirtyPm.success, at(fromOneThirtyPm.data, "isFree"), fromOneTwentyFive.success, at(fromOneTwentyFive.data, "isFree")], [true, true, "CALENDAR_CLOCK_AMBIGUOUS", [
+    { startAt: "2030-03-04T09:30:00.000Z", endAt: "2030-03-04T11:00:00.000Z" }, { startAt: "2030-03-04T09:30:00.000Z", endAt: "2030-03-04T23:00:00.000Z" },
+    { startAt: "2030-03-04T21:30:00.000Z", endAt: "2030-03-04T23:00:00.000Z" },
+  ], true, true, true, true])
   const overnight = try asked("Am I free tomorrow night from 10 to 1?", { ...noonToFive, timeMin: "2030-03-04T22:00:00-08:00", timeMax: "2030-03-05T01:00:00-08:00" })
   assert.deepStrictEqual([onTheTwelfth.success, at(onTheTwelfth.data, "isFree"), twelveMinutes.success, at(twelveMinutes.data, "slots", "length"), overnight.success, at(overnight.data, "isFree")], [true, true, true, 2, true, true])
   const fromThree = { subaction: "check_availability", timeMin: "2030-03-04T15:00:00-08:00", timeMax: "2030-03-04T17:00:00-08:00", statedClock: "start" }
