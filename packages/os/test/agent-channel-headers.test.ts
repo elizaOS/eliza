@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { beforeAll, describe, expect, it } from "vitest";
 import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts";
+import { androidTools } from "./support/android-tools.ts";
 
 const javaTool = (name: string) => process.env.JAVA_HOME ? `${process.env.JAVA_HOME}/bin/${name}` : name;
 
@@ -12,7 +13,10 @@ async function journey(): Promise<ReadonlyMap<string, unknown>> {
   return new Map(lines.map((line) => [line.step, line.value]));
 }
 
-describe("Only the device headers and client id the runtime client carries cross the channel", () => {
+const tools = androidTools();
+const skipped = tools.kind === "missing" ? tools.reason : null;
+
+describe.skipIf(skipped !== null)(`Only the device headers and client id the runtime client carries cross the channel${skipped === null ? "" : ` (skipped: AgentSocketClient compiles against android.jar; ${skipped})`}`, () => {
   let steps: ReadonlyMap<string, unknown>;
   beforeAll(async () => { steps = await journey(); }, 180_000);
 
