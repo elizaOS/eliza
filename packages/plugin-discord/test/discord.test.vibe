@@ -5,7 +5,7 @@ import { postDiscordPart } from "../src/index.vibe"
 module node {
   import { createServer } from "node:http"
   import { once } from "node:events"
-  import { setTimeout as delay } from "node:timers/promises"
+  import { Effect } from "effect"
   import { Client, type SendableChannels } from "discord.js"
 
   export type LostAnswer = "502" | "timeout"
@@ -31,7 +31,7 @@ module node {
       const id = String(1000 + kept.length)
       kept.push({ id, content: body.content ?? "", nonce: body.nonce })
       if (creates === 1 && lost === "502") return answer(502, { message: "upstream", code: 0 })
-      if (creates === 1) await delay(700)
+      if (creates === 1) await Effect.runPromise(Effect.sleep("700 millis"))
       return answer(200, message(id, body.content ?? ""))
     })
     server.listen(0, "127.0.0.1")
