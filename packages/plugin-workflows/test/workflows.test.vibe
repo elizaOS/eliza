@@ -13,6 +13,7 @@ import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
 import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort } from "../src/service/host.vibe"
+import { EARLIER_RUN_STOPPED_TEXT } from "../src/service/prior.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
 import { workflowHttpError } from "../src/client/workflow-client.vibe"
 import type { ManagedGoogleReads } from "../src/service/google.vibe"
@@ -56,6 +57,50 @@ module node {
     return join(...parts)
   }
 
+  export interface EarlierStore {
+    readonly broken?: boolean
+    readonly workflows: readonly { readonly agentId?: string; readonly id: string; readonly name: string; readonly active: boolean; readonly metadata?: Readonly<Record<string, unknown>>; readonly at: string; readonly versionId: string }[]
+    readonly revisions: readonly { readonly workflowId: string; readonly versionId: string; readonly metadata: Readonly<Record<string, unknown>>; readonly at: string }[]
+    readonly executions: readonly { readonly id: string; readonly workflowId: string; readonly status: string; readonly finished: boolean; readonly at: string; readonly execution: Readonly<Record<string, unknown>> }[]
+    readonly sources: readonly { readonly ownerId: string; readonly id: string; readonly source: Readonly<Record<string, unknown>>; readonly revoked: boolean }[]
+  }
+
+  /** Writes the earlier plugin's `workflow` schema as that version left it: its own tables, under its own agent. */
+  export function writeEarlierStore(sql: WorkflowSql, store: EarlierStore): Promise<void> {
+    return sql.transaction(async (q) => {
+      await q.query("DROP SCHEMA IF EXISTS workflow CASCADE")
+      await q.query("CREATE SCHEMA workflow")
+      if (store.broken === true) {
+        await q.query("CREATE TABLE workflow.embedded_workflows (agent_id text NOT NULL, id text NOT NULL)")
+        return
+      }
+      await q.query(`CREATE TABLE workflow.embedded_workflows (agent_id text NOT NULL DEFAULT '__legacy_unscoped__', id text NOT NULL, name text NOT NULL, active boolean NOT NULL DEFAULT false,
+        workflow jsonb NOT NULL, created_at text NOT NULL, updated_at text NOT NULL, version_id text NOT NULL, PRIMARY KEY (agent_id, id))`)
+      await q.query(`CREATE TABLE workflow.workflow_revisions (agent_id text NOT NULL, id text NOT NULL, workflow_id text NOT NULL, version_id text NOT NULL, name text NOT NULL,
+        active boolean NOT NULL DEFAULT false, workflow jsonb NOT NULL, created_at text NOT NULL, updated_at text NOT NULL, captured_at text NOT NULL, operation text NOT NULL, PRIMARY KEY (agent_id, id))`)
+      await q.query(`CREATE TABLE workflow.embedded_executions (agent_id text NOT NULL, id text NOT NULL, workflow_id text NOT NULL, status text NOT NULL, mode text NOT NULL,
+        finished boolean NOT NULL DEFAULT false, started_at text NOT NULL, stopped_at text, execution jsonb NOT NULL, idempotency_key text, PRIMARY KEY (agent_id, id))`)
+      await q.query(`CREATE TABLE workflow.hosted_sources (agent_id text NOT NULL, owner_id text NOT NULL, id text NOT NULL, source jsonb NOT NULL, revoked boolean NOT NULL DEFAULT false,
+        PRIMARY KEY (agent_id, owner_id, id))`)
+      for (const row of store.workflows) {
+        const workflow = { name: row.name, source: "export default 1", language: "tsx", active: row.active, ...(row.metadata === undefined ? {} : { metadata: row.metadata }) }
+        await q.query("INSERT INTO workflow.embedded_workflows VALUES ($1, $2, $3, $4, $5::jsonb, $6, $6, $7)",
+          [row.agentId ?? "agent", row.id, row.name, row.active, JSON.stringify(workflow), row.at, row.versionId])
+      }
+      for (const [index, row] of store.revisions.entries()) {
+        await q.query("INSERT INTO workflow.workflow_revisions VALUES ('agent', $1, $2, $3, 'earlier', false, $4::jsonb, $5, $5, $5, 'update')",
+          [`revision-${index}`, row.workflowId, row.versionId, JSON.stringify({ name: "earlier", source: "export default 1", language: "tsx", metadata: row.metadata }), row.at])
+      }
+      for (const row of store.executions) {
+        await q.query("INSERT INTO workflow.embedded_executions VALUES ('agent', $1, $2, $3, 'manual', $4, $5, $6, $7::jsonb, NULL)",
+          [row.id, row.workflowId, row.status, row.finished, row.at, row.finished ? row.at : null, JSON.stringify({ id: row.id, workflowId: row.workflowId, ...row.execution })])
+      }
+      for (const row of store.sources) {
+        await q.query("INSERT INTO workflow.hosted_sources VALUES ('agent', $1, $2, $3::jsonb, $4)", [row.ownerId, row.id, JSON.stringify(row.source), row.revoked])
+      }
+    })
+  }
+
   export interface Answer { readonly status: number; readonly body: unknown }
 
   export async function call(routes: readonly LocalRoute[], target: string, body: unknown): Promise<Answer> {
@@ -74,7 +119,7 @@ module node {
     return { status: 404, body: { error: "No route" } }
   }
 }
-import { call, joinPath, listEntries, openDatabase, readText, scratch, writeTree } from node
+import { call, joinPath, listEntries, openDatabase, readText, scratch, writeEarlierStore, writeTree, type EarlierStore } from node
 
 const owner = "owner"
 const device = { installationId: "phone-1", enrollmentId: "enrollment-1" }
@@ -88,8 +133,10 @@ interface Phone {
   notes: readonly { readonly id: string; readonly title: string; readonly text: string }[]
 }
 
-effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests } = {}) {
+effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests; readonly earlier?: EarlierStore } = {}) {
   const db = try acquireRelease(promise(() => openDatabase()), (opened) => promise(() => opened.close()))
+  const earlier = options.earlier
+  if (earlier !== undefined) try promise(() => writeEarlierStore(db.sql as WorkflowSql, earlier))
   const wakeups = new Map<string, { readonly dueAt: number; readonly metadata: Readonly<Record<string, string | number>> }>()
   const notices: WorkflowNotice[] = []
   const phone = options.phone
@@ -683,4 +730,71 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
     const tampered = try Effect.flip(verifyWorkerArtifact(output, identity))
     try check(() => assert.instanceOf(tampered, WorkerArtifactRefused))
   }
+})
+
+it.live('Keep the workflows I saved before this version (spec/workflow/earlierStore.md, "Story: Keep the workflows I saved before this version"; spec/workflow/earlierStore.md, "The earlier workflow store is imported once, in one commit, and never again"; spec/workflow/earlierStore.md, "An earlier workflow comes back with its reviewed steps or digest preset, and on only where this version would turn it on"; spec/workflow/earlierStore.md, "Earlier runs come back as finished history, and an earlier run that had not finished never continues")', effect () => {
+  const rig = try harness({ earlier: { broken: true, workflows: [], revisions: [], executions: [], sources: [] } })
+  const unread = rig.service.status() as { readonly earlierImport?: unknown }
+  const { receipt: own } = try saved(rig, greeting)
+  try check(() => assert.deepStrictEqual([unread.earlierImport, (try rig.service.list(false)).map((row) => row.id)], [undefined, [own.workflowId]]))
+
+  const weekday = { kind: "time", localTime: "07:30", timeZone: "Europe/Paris", days: [1, 2, 3, 4, 5] } as const
+  const first = manual("Weekday note", greeting.steps, { trigger: weekday })
+  const second = manual("Weekday note", [greeting.steps[0], { id: "line", kind: "Write", operation: "compose_draft", source: "text", prefix: "Today: ", suffix: "" }], { trigger: weekday })
+  const typed = (spec: PhoneWorkflowSpec, extra: Record<string, unknown> = {}) => ({ elizaPhoneWorkflowSpec: JSON.stringify(spec), elizaOwnerEntityId: "earlier-owner", ...extra })
+  const revision = "a".repeat(64)
+  const source = { id: "tasks-1", revision, kind: "tasks", label: "Tasks", text: "Ship the release", observedAt: new Date(Date.now() - 60_000).toISOString(), expiresAt: new Date(Date.now() + 86_400_000).toISOString(), revoked: false }
+  const preset = { version: 1, template: "morning", sourceId: "tasks-1", sourceRevision: revision, timeZone: "UTC", localTime: "06:00", enabled: true }
+  const at = (minute: number) => new Date(Date.UTC(2026, 9, 1, 8, minute)).toISOString()
+  const store: EarlierStore = {
+    workflows: [
+      { id: "wf-timed", name: "Weekday note", active: true, metadata: typed(second), at: at(1), versionId: "earlier-2" },
+      { id: "wf-manual", name: "Morning note", active: true, metadata: typed(greeting), at: at(2), versionId: "earlier-3" },
+      { id: "wf-removed", name: "Morning note", active: false, metadata: typed(greeting, { elizaPhoneRemovedAt: at(3) }), at: at(3), versionId: "earlier-4" },
+      { id: "wf-digest", name: "Morning digest", active: true, metadata: typed(greeting, { elizaHostedDigestV1: JSON.stringify(preset) }), at: at(4), versionId: "earlier-5" },
+      { id: "wf-code", name: "Code", active: true, at: at(5), versionId: "earlier-6" },
+      { id: "wf-broken", name: "Broken", active: false, metadata: typed({ ...greeting, steps: [] }), at: at(6), versionId: "earlier-7" },
+      { id: own.workflowId, name: "Taken", active: false, metadata: typed(greeting), at: at(7), versionId: "earlier-8" },
+      { agentId: "__legacy_unscoped__", id: "wf-quarantined", name: "Quarantined", active: true, metadata: typed(greeting), at: at(8), versionId: "earlier-9" },
+    ],
+    revisions: [{ workflowId: "wf-timed", versionId: "earlier-1", metadata: typed(first), at: at(0) }],
+    executions: [
+      { id: "run-done", workflowId: "wf-timed", status: "finished", finished: true, at: at(10), execution: { workflowVersionId: "earlier-1", input: {}, output: "Say: good morning!", events: [{ type: "RunStarted", timestamp: at(10) }] } },
+      { id: "run-open", workflowId: "wf-timed", status: "running", finished: false, at: at(11), execution: { workflowVersionId: "earlier-2", input: {} } },
+      { id: "run-code", workflowId: "wf-code", status: "finished", finished: true, at: at(12), execution: { input: {} } },
+    ],
+    sources: [{ ownerId: "earlier-owner", id: "tasks-1", source, revoked: false }],
+  }
+  try promise(() => writeEarlierStore(rig.host.sql, store))
+  const reopened = try openWorkflows(rig.host)
+  try reopened.start()
+  const imported = (reopened.status() as { readonly earlierImport?: { readonly importedAt: string } }).earlierImport
+  try check(() => assert.deepStrictEqual(imported, {
+    importedAt: imported?.importedAt ?? "", workflows: 4, runs: 2, sources: 1,
+    notCarried: [
+      { id: "wf-code", name: "Code", reason: "It was written as workflow code for the earlier engine, which this version cannot run." },
+      { id: "wf-broken", name: "Broken", reason: "Its reviewed steps are not valid in this version." },
+      { id: own.workflowId, name: "Taken", reason: "A workflow with the same ID already exists in this version." },
+    ],
+  }))
+  const view = (row: { readonly id: string; readonly active: boolean; readonly removed: boolean; readonly versionId: string }) => [row.id, row.active, row.removed, row.versionId]
+  const listed = [...(try reopened.list(false)), ...(try reopened.list(true))].map(view)
+  const runs = (try reopened.executions("wf-timed")).executions.map((run) => [run.id, run.workflowVersionId, run.status, run.finished, run.error?.message ?? run.output])
+  const history = (try reopened.revisions("wf-timed", 50)).map((entry) => [entry.versionId, entry.reason])
+  const loops = (try hostedDigests(reopened).loops()).loops.map((loop) => [loop.id, loop.active, loop.spec.enabled, loop.sourceState])
+  const sources = (try hostedDigests(reopened).sources()).sources.map((kept) => [kept.id, kept.revision, kept.revoked])
+  const own_ = (try reopened.detail(own.workflowId)).name
+  try check(() => assert.deepStrictEqual([listed, runs, history, loops, sources, own_, rig.wakeups.has("workflow:wf-timed"), rig.wakeups.has("workflow:wf-manual"), rig.wakeups.has("digest:wf-digest")], [
+    [[own.workflowId, false, false, "v1"], ["wf-manual", false, false, "v1"], ["wf-timed", true, false, "v3"], ["wf-removed", false, true, "v1"]],
+    [["run-open", "v2", "cancelled", true, EARLIER_RUN_STOPPED_TEXT], ["run-done", "v1", "finished", true, "Say: good morning!"]],
+    [["v2", "imported"], ["v1", "imported"]],
+    [["wf-digest", true, true, "current"]],
+    [["tasks-1", revision, false]],
+    greeting.name, true, false, true,
+  ]))
+
+  try promise(() => writeEarlierStore(rig.host.sql, { ...store, workflows: [...store.workflows, { id: "wf-late", name: "Late", active: false, metadata: typed(greeting), at: at(9), versionId: "earlier-10" }] }))
+  const again = try openWorkflows(rig.host)
+  const ids = (try again.list(false)).map((row) => row.id)
+  try check(() => assert.deepStrictEqual([(again.status() as { readonly earlierImport?: unknown }).earlierImport, ids.includes("wf-late"), ids.length], [imported, false, 3]))
 })

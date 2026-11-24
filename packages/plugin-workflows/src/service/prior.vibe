@@ -1,0 +1,239 @@
+// spec/workflow/earlierStore.md, "The earlier workflow store is imported once, in one commit, and never again"; spec/workflow/earlierStore.md, "An earlier workflow comes back with its reviewed steps or digest preset, and on only where this version would turn it on"; spec/workflow/earlierStore.md, "Earlier runs come back as finished history, and an earlier run that had not finished never continues"
+import * as A from "../../gen/workflow__admission.effect.vibe"
+import * as L from "../../gen/workflow__lifecycle.effect.vibe"
+import * as X from "../../gen/workflow__execution.effect.vibe"
+import { carriedActive, carriedAs, importedRun, importSettled, storeImport, type EarlierForm } from "../../gen/workflow__earlierStore.effect.vibe"
+import { validatePhoneWorkflowSpec, workflowSha, type PhoneWorkflowSpec } from "../contract/phone.vibe"
+import { digestPhoneSpec, HOSTED_DIGEST_METADATA_KEY, validateDigestSpec, type DigestSourceRecord, type DigestSpec } from "../contract/digest.vibe"
+import { WORKFLOW_PHONE_SPEC_METADATA_KEY } from "../client/workflow-client.vibe"
+import type {
+  DefinitionRow, EarlierExecutionRow, EarlierImportReceipt, EarlierRows, EarlierSourceRow, EarlierWorkflowRow, Revision, RunEvent, RunRow, workflowStore,
+} from "./store.vibe"
+
+export const EARLIER_RUN_STOPPED_TEXT = "The update to this version stopped this run before it finished. It will not run later."
+const NOT_CARRIED = {
+  source: "It was written as workflow code for the earlier engine, which this version cannot run.",
+  steps: "Its reviewed steps are not valid in this version.",
+  preset: "Its digest preset is not valid in this version.",
+  digestSource: "Its reviewed digest source was not carried, or changed after it was reviewed.",
+  taken: "A workflow with the same ID already exists in this version.",
+} as const
+
+type Bag = Readonly<Record<string, unknown>>
+type Store = ReturnType<typeof workflowStore>
+
+function record(value: unknown): Bag | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Bag : undefined
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined
+}
+
+function metadataOf(workflow: unknown): Bag {
+  return record(record(workflow)?.metadata) ?? {}
+}
+
+effect function decoded<A>(raw: unknown, validate: (value: unknown) => A!unknown): (A | undefined)!! {
+  if (typeof raw !== "string") return undefined
+  return try Effect.orElseSucceed(Effect.flatMap(Effect.try(() => JSON.parse(raw) as unknown), validate), () => undefined)
+}
+
+effect function typedSpecOf(workflow: unknown): (PhoneWorkflowSpec | undefined)!! {
+  return try decoded(metadataOf(workflow)[WORKFLOW_PHONE_SPEC_METADATA_KEY], validatePhoneWorkflowSpec)
+}
+
+function formOf(workflow: unknown): EarlierForm {
+  const metadata = metadataOf(workflow)
+  return metadata[HOSTED_DIGEST_METADATA_KEY] !== undefined ? "EarlierDigest" : metadata[WORKFLOW_PHONE_SPEC_METADATA_KEY] !== undefined ? "EarlierTyped" : "EarlierSource"
+}
+
+function sourceKey(ownerId: string, id: string): string {
+  return JSON.stringify([ownerId, id])
+}
+
+function sourceOf(row: EarlierSourceRow): DigestSourceRecord | undefined {
+  const source = record(row.source)
+  if (source === undefined || source.id !== row.id) return undefined
+  const kind = source.kind
+  const revision = text(source.revision)
+  const fields = [text(source.label), text(source.text), text(source.observedAt), text(source.expiresAt)]
+  const live = source.live === undefined ? undefined : record(source.live)
+  if ((kind !== "tasks" && kind !== "calendar" && kind !== "email" && kind !== "notes") || revision === undefined || !/^[a-f0-9]{64}$/.test(revision)) return undefined
+  if (fields.some((field) => field === undefined) || (source.live !== undefined && (live === undefined || (live.provider !== "native" && live.provider !== "google")))) return undefined
+  const [label, body, observedAt, expiresAt] = fields as string[]
+  return {
+    id: row.id, revision, kind, label, text: body, observedAt, expiresAt, revoked: row.revoked || source.revoked === true,
+    ...(live === undefined ? {} : { live: live as unknown as NonNullable<DigestSourceRecord["live"]> }),
+  }
+}
+
+effect function admission(event: A.Event, from: A.Workflow, owner: string): A.Workflow!unknown {
+  return try A.apply(from, event, owner)
+}
+
+interface Carried {
+  readonly row: DefinitionRow
+  readonly versions: ReadonlyMap<string, Revision>
+}
+
+effect function carryTyped(earlier: EarlierWorkflowRow, revisions: readonly { readonly versionId: string; readonly workflow: unknown; readonly updatedAt: string }[], owner: string): (Carried | undefined)!unknown {
+  const current = try typedSpecOf(earlier.workflow)
+  if (carriedAs("EarlierTyped", current !== undefined, true, false) !== "CarriedTyped" || current === undefined) return undefined
+  const history: Revision[] = []
+  const versions = new Map<string, Revision>()
+  for (const snapshot of [...revisions, { versionId: earlier.versionId, workflow: earlier.workflow, updatedAt: earlier.updatedAt }]) {
+    const spec = try typedSpecOf(snapshot.workflow)
+    if (spec === undefined) continue
+    const specDigest = try workflowSha(spec)
+    const last = history.at(-1)
+    const revision = last !== undefined && last.specDigest === specDigest ? last : { version: history.length + 1, spec, specDigest, name: spec.name, description: spec.description, createdAt: snapshot.updatedAt, reason: "imported" }
+    if (revision !== last) history.push(revision)
+    versions.set(snapshot.versionId, revision)
+  }
+  const latest = history.at(-1)
+  if (latest === undefined) return undefined
+  let state = try admission({ type: "defineWorkflow", typed: true, timed: history[0].spec.trigger.kind === "time", scheduleMatches: true }, A.initial, owner)
+  for (const revision of history.slice(1)) state = { ...(try admission({ type: "editWorkflow" }, state, owner)), timed: revision.spec.trigger.kind === "time", scheduleMatches: true }
+  const removed = text(metadataOf(earlier.workflow).elizaPhoneRemovedAt) !== undefined
+  if (carriedActive("CarriedTyped", earlier.active, removed, latest.spec.trigger.kind === "time", false)) {
+    state = try admission({ type: "changeActivation", form: "ExactRequest", expected: state.version, enable: true }, state, owner)
+  }
+  return {
+    row: {
+      id: earlier.id, owner, admission: state, lifecycleState: { ...L.initial, owner, version: state.version, active: state.active, removed },
+      revisions: history.slice(-50), name: latest.spec.name, description: latest.spec.description, spec: latest.spec, specDigest: latest.specDigest, origin: "view",
+      createdAt: earlier.createdAt, updatedAt: earlier.updatedAt, armedVersion: 0,
+    },
+    versions,
+  }
+}
+
+effect function carryDigest(earlier: EarlierWorkflowRow, sources: ReadonlyMap<string, DigestSourceRecord>, owner: string): (Carried | { readonly refused: string })!unknown {
+  const metadata = metadataOf(earlier.workflow)
+  const spec: DigestSpec | undefined = try decoded(metadata[HOSTED_DIGEST_METADATA_KEY], validateDigestSpec)
+  const source = spec === undefined ? undefined : sources.get(sourceKey(String(metadata.elizaOwnerEntityId ?? ""), spec.sourceId))
+  const found = source !== undefined && spec !== undefined && source.revision === spec.sourceRevision
+  if (carriedAs("EarlierDigest", spec !== undefined, found, false) !== "CarriedDigest" || spec === undefined || source === undefined) {
+    return { refused: spec === undefined ? NOT_CARRIED.preset : NOT_CARRIED.digestSource }
+  }
+  const removed = text(metadata.elizaPhoneRemovedAt) !== undefined
+  const enabled = carriedActive("CarriedDigest", earlier.active, removed, true, spec.enabled)
+  const phone = digestPhoneSpec(spec, source)
+  const specDigest = try workflowSha(phone)
+  const defined = try admission({ type: "defineWorkflow", typed: false, timed: true, scheduleMatches: true }, A.initial, owner)
+  const state = enabled ? try admission({ type: "changeActivation", form: "ExactRequest", expected: defined.version, enable: true }, defined, owner) : defined
+  const revision: Revision = { version: state.version, spec: phone, specDigest, name: phone.name, description: phone.description, createdAt: earlier.updatedAt, reason: "imported" }
+  return {
+    row: {
+      id: earlier.id, owner, admission: state, lifecycleState: { ...L.initial, owner, version: state.version, active: state.active, removed },
+      revisions: [revision], name: phone.name, description: phone.description, spec: phone, specDigest, origin: "digest", hostedDigest: { ...spec, enabled },
+      createdAt: earlier.createdAt, updatedAt: earlier.updatedAt, armedVersion: 0,
+    },
+    versions: new Map(),
+  }
+}
+
+function eventsOf(value: unknown): RunEvent[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    const event = record(entry)
+    const type = text(event?.type)
+    const timestamp = text(event?.timestamp)
+    const nodeId = text(event?.nodeId)
+    return type === undefined || timestamp === undefined ? [] : [{ type, timestamp, ...(nodeId === undefined ? {} : { nodeId }) }]
+  })
+}
+
+function runOf(earlier: EarlierExecutionRow, carried: Carried, owner: string, importedAt: string, taken: boolean): { readonly row: RunRow; readonly at: number } | undefined {
+  const outcome = importedRun(earlier.finished ? "EarlierRunFinished" : "EarlierRunUnfinished", true, taken)
+  if (outcome === "RunNotImported") return undefined
+  const execution = record(earlier.execution) ?? {}
+  const { hostedDigest, ...input } = record(execution.input) ?? {}
+  const revision = carried.versions.get(String(execution.workflowVersionId ?? ""))
+  const version = revision?.version ?? carried.row.admission.version
+  const stopped = outcome === "StoppedByTheUpdate"
+  const stoppedAt = stopped ? importedAt : earlier.stoppedAt ?? undefined
+  const error = stopped ? EARLIER_RUN_STOPPED_TEXT : text(record(execution.error)?.message)
+  const missedOccurrenceAt = text(execution.missedOccurrenceAt)
+  const cancellationRequestedAt = text(execution.cancellationRequestedAt)
+  const digest = record(hostedDigest)
+  const started = Date.parse(earlier.startedAt)
+  return {
+    at: Number.isFinite(started) ? started : Date.parse(importedAt),
+    row: {
+      id: earlier.id, workflowId: carried.row.id, owner, version, serial: 0, input, spec: revision?.spec ?? carried.row.spec, specDigest: revision?.specDigest ?? carried.row.specDigest,
+      execution: X.initial, status: stopped ? "cancelled" : earlier.status, finished: true, startedAt: earlier.startedAt,
+      ...(stoppedAt === undefined ? {} : { stoppedAt }), ...(execution.output === undefined ? {} : { output: execution.output }), ...(error === undefined ? {} : { error }),
+      anchorAt: text(execution.calendarAnchorAt) ?? earlier.startedAt, ...(missedOccurrenceAt === undefined ? {} : { missedOccurrenceAt }),
+      ...(cancellationRequestedAt === undefined ? {} : { cancellationRequestedAt }), ...(digest === undefined ? {} : { hostedDigest: digest }),
+      values: {}, results: [], next: 0, allowed: false, approvals: [], events: eventsOf(execution.events),
+    },
+  }
+}
+
+effect function planImport(rows: EarlierRows, owner: string, importedAt: string) {
+  const takenSources = new Set(rows.takenSources)
+  const sources = new Map<string, DigestSourceRecord>()
+  const sourceIds = new Set<string>()
+  for (const earlier of rows.sources) {
+    const source = sourceOf(earlier)
+    if (source === undefined || takenSources.has(source.id) || sourceIds.has(source.id)) continue
+    sourceIds.add(source.id)
+    sources.set(sourceKey(earlier.ownerId, earlier.id), source)
+  }
+  const takenWorkflows = new Set(rows.takenWorkflows)
+  const takenRuns = new Set(rows.takenRuns)
+  const carried = new Map<string, Carried>()
+  const notCarried: { id: string; name: string; reason: string }[] = []
+  for (const earlier of rows.workflows) {
+    const form = formOf(earlier.workflow)
+    const refuse = (reason: string) => notCarried.push({ id: earlier.id, name: earlier.name, reason })
+    if (carriedAs(form, true, true, takenWorkflows.has(earlier.id)) === "NotCarried") {
+      refuse(takenWorkflows.has(earlier.id) ? NOT_CARRIED.taken : NOT_CARRIED.source)
+      continue
+    }
+    if (form === "EarlierDigest") {
+      const digest = try carryDigest(earlier, sources, owner)
+      if ("refused" in digest) refuse(digest.refused)
+      else carried.set(earlier.id, digest)
+      continue
+    }
+    const typed = try carryTyped(earlier, rows.revisions.filter((revision) => revision.workflowId === earlier.id), owner)
+    if (typed === undefined) refuse(NOT_CARRIED.steps)
+    else carried.set(earlier.id, typed)
+  }
+  const runs = rows.executions.flatMap((earlier) => {
+    const workflow = carried.get(earlier.workflowId)
+    const run = workflow === undefined ? undefined : runOf(earlier, workflow, owner, importedAt, takenRuns.has(earlier.id))
+    return run === undefined ? [] : [run]
+  })
+  const definitions = [...carried.values()].map((entry) => entry.row)
+  const kept = [...sources.values()]
+  const receipt: EarlierImportReceipt = { importedAt, workflows: definitions.length, runs: runs.length, sources: kept.length, notCarried }
+  return { receipt, definitions, runs, sources: kept }
+}
+
+/**
+ * Imports the earlier workflow store of this agent once. It never fails the
+ * service: a store that cannot be read or committed is logged and imported
+ * again at the next start. Answers the kept receipt, if there is one.
+ */
+export effect function importEarlierWorkflows(store: Store, agentId: string, owner: string, now: number): (EarlierImportReceipt | undefined)!! {
+  return try (effect {
+    const read = try store.readEarlier(agentId, owner)
+    const step = storeImport(read.kind === "kept" ? "ImportReceiptKept" : "NoImportReceipt", read.kind === "absent" ? "EarlierAbsent" : "EarlierReadable")
+    if (step === "KeepImported" && read.kind === "kept") return read.receipt
+    if (step !== "ImportEarlierStore" || read.kind !== "readable") return undefined
+    const plan = try planImport(read.rows, owner, new Date(now).toISOString())
+    const committed = try store.commitImport(agentId, plan.receipt, plan.definitions, plan.runs, plan.sources, owner)
+    if (importSettled(committed) === "ImportReceiptKept") return plan.receipt
+    const again = try store.readEarlier(agentId, owner)
+    return again.kind === "kept" ? again.receipt : undefined
+  } catch effect (error) => try warned(agentId, error))
+}
+
+effect function warned(agentId: string, error: unknown): undefined!! {
+  try logWarning("the earlier workflow store could not be imported; it is imported again at the next start", { agentId, error: String(error) })
+  return undefined
+}

@@ -1,4 +1,4 @@
-// spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/authoring.md, "A draft uses the advertised operation catalog and only earlier step outputs"; spec/workflow/authoring.md, "A save receipt identifies the reviewed bytes and compiler"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result"; spec/workflow/approvals.md, "One caller at a time holds the execution lock, and only the canonical decision is reported"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"; spec/workflow/schedule.md, "An inactive schedule never queues an occurrence"; spec/workflow/runScope.md, "A relative range resolves from the run's own day and needs a device that understands it"
+// spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/authoring.md, "A draft uses the advertised operation catalog and only earlier step outputs"; spec/workflow/authoring.md, "A save receipt identifies the reviewed bytes and compiler"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result"; spec/workflow/approvals.md, "One caller at a time holds the execution lock, and only the canonical decision is reported"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"; spec/workflow/schedule.md, "An inactive schedule never queues an occurrence"; spec/workflow/runScope.md, "A relative range resolves from the run's own day and needs a device that understands it"; spec/workflow/earlierStore.md, "The earlier workflow store is imported once, in one commit, and never again"
 import * as A from "../../gen/workflow__admission.effect.vibe"
 import * as L from "../../gen/workflow__lifecycle.effect.vibe"
 import * as X from "../../gen/workflow__execution.effect.vibe"
@@ -20,6 +20,7 @@ import { TYPED_STEPS_NODE, type ParentMessage, type WorkerMessage, type WorkerRe
 import type { GeneratedEntry, GeneratedWait } from "../worker/engine.vibe"
 import { workflowStore, type WorkflowStoreUnavailable, type ApprovalRow, type DefinitionRow, type ReceiptRow, type RunEvent, type RunRow, type StoredDefinition } from "./store.vibe"
 import type { WorkflowHost, WorkflowWorkerConnection } from "./host.vibe"
+import { importEarlierWorkflows } from "./prior.vibe"
 
 export const PHONE_CATALOG_REVISION = "phone-workflow-catalog-6"
 export const PHONE_COMPILER_REVISION = "typed-workflow-engine-1"
@@ -1366,12 +1367,14 @@ export effect function openWorkflows(host: WorkflowHost) {
   const running = new Map<string, Fiber.Fiber<void, never>>()
   const stopping = try Ref.make(false)
   const drafts = workflowDrafts(host)
-  const { catalog, deviceProtocol, validate, generate, draftSpec, generatedActivation, checkSource, status } = drafts
+  const { catalog, deviceProtocol, validate, generate, draftSpec, generatedActivation, checkSource } = drafts
   const now = Clock.currentTimeMillis
   const ticks = try SubscriptionRef.make(0)
   const rows = workflowRows(store, owner, lock, now, ticks)
   const { db, definitionOf, writeDefinition, admitted, runOf, updateRun, executed, persist, freshRun, runEvents } = rows
   try db(store.migrate())
+  const earlierImport = try importEarlierWorkflows(store, host.agentId, owner, try now)
+  const status = () => ({ ...drafts.status(), ...(earlierImport === undefined ? {} : { earlierImport }) })
 
   const turns = workflowWorkerTurns(host, rows)
   const { phoneReview, armWake, performDevice, resumeGenerated } = turns
