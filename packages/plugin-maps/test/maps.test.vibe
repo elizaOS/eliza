@@ -642,7 +642,8 @@ it.live('Resume a route through two numbered questions using the offered places 
   const replayPlanned = try call(agent, { method: "POST", path, body: second })
 
   const reply = effect (answer: typeof original) => {
-    if (!("json" in answer) || answer.status !== 200) throw new Error(`Missing Maps reply (HTTP ${answer.status})`)
+    if (!("json" in answer)) throw new Error("Missing Maps reply")
+    if (answer.status !== 200) throw new Error(`Maps replied with HTTP ${answer.status}`)
     const { text, messageId } = answer.json as { text: string; messageId: string }
     return { text, messageId }
   }
