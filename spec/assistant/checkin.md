@@ -157,7 +157,8 @@ on its own: one that could not be read is said to be unchecked and the
 rest are still told. A section the owner asked to leave out of their
 briefs stays out until they ask for it back. The model writes the brief
 from the whole fact sheet, with no output limit, and the owner hears what
-it wrote whole.
+it wrote whole; a brief the model's own maximum cut off fails the request
+with that error.
 
 ```quint
 type BriefKind = MorningBrief | EveningBrief | WeeklyBrief

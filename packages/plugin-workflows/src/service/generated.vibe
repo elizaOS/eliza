@@ -54,7 +54,7 @@ export function generatedWorkflows(service: WorkflowService) {
     if (generate === undefined) throw new WorkflowRefused({ status: 409, message: "Workflow generation needs a text model on this agent" })
     const existing = typeof p.workflowId === "string" ? (try service.definitionOf(p.workflowId)).row : undefined
     const answer = try mapError(generate(generatedDraftPrompt(request, existing?.generated === undefined ? undefined : { name: existing.name, source: existing.generated.source })),
-      () => new WorkflowRefused({ status: 502, message: "The agent could not draft workflow code" }))
+      (failed) => new WorkflowRefused({ status: 502, message: "The agent could not draft workflow code", cause: failed.cause }))
     const start = answer.indexOf("{")
     const end = answer.lastIndexOf("}")
     const parsed: unknown = start < 0 || end < start ? undefined : (Effect.try({ try: () => JSON.parse(answer.slice(start, end + 1)) as unknown, catch: () => "unparsed" }) catch () => undefined)

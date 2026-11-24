@@ -337,7 +337,7 @@ export const workflowAction: Action = {
       case "ReadFailed":
         return respond(callback, notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, refused.message, { status: refused.status, retryable: true }))
       case "NothingChanged":
-        return respond(callback, notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, refused.message, { status: refused.status, retryable: true }))
+        return respond(callback, { ...notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, refused.message, { status: refused.status, retryable: true }), ...(refused.cause === undefined ? {} : { error: refused }) })
       case "ReconcileFirst":
         return respond(callback, notApplied("WORKFLOW_OPERATION_FAILED_RECONCILE_BEFORE_RETRY",
           `${refused.message} The change may have gone through. Check the workflow's current state before trying again, and never retry it automatically.`,

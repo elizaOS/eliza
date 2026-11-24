@@ -3,7 +3,7 @@ import type { Action, ActionResult } from "@elizaos/core"
 import { briefKind, briefPeriod, recapsTheDay, type BriefAsked, type BriefKind, type BriefPeriod } from "../gen/assistant__checkin.effect.vibe"
 import { setCheckinTimes } from "./checkin.vibe"
 import { goalStanding, listGoals } from "./goals.vibe"
-import { Calendar, Facts, Model, onAgent, readRecord, requestOf, writeRecord } from "./host.vibe"
+import { Calendar, Facts, Model, ModelOutputIncomplete, answerOrBlank, onAgent, readRecord, requestOf, writeRecord } from "./host.vibe"
 import { liveReminders, reminderDueWithin, reminderWhen, remindersDoneSince } from "./reminders.vibe"
 import { listRoutines, routineTimes } from "./routines.vibe"
 import { civilDate, localMinutes, longDate, wallText, zonedInstant } from "./time.vibe"
@@ -116,7 +116,7 @@ export effect function composeBrief(action: unknown, period: unknown, text: stri
     "A section that could not be read was not checked: say so in one short clause and tell the rest. Do not mention sections that are not given.",
   ].join("\n")
   const data = { kind: kindWords[kind], period: periodWords[covers], zone }
-  const written = ((try Model).complete(system, facts.join("\n\n")) catch () => "").trim()
+  const written = (try answerOrBlank((try Model).complete(system, facts.join("\n\n")))).trim()
   if (written === "") return { success: false, text: "The brief could not be written because no model answered.", data: { ...data, outcome: "BRIEF_MODEL_UNAVAILABLE" } } satisfies ActionResult
   return { success: true, text: written, userFacingText: written, verifiedUserFacing: true, data } satisfies ActionResult
 }
@@ -140,7 +140,14 @@ function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
   return typeof given === "object" && given !== null ? given as Record<string, unknown> : {}
 }
 
-const failedWith = (text: string) => (failed: { readonly _tag: string }) => Effect.succeed({ success: false, text, data: { outcome: failed._tag } } satisfies ActionResult)
+const failedWith = (text: string) => (failed: { readonly _tag: string }) =>
+  failed instanceof ModelOutputIncomplete ? Effect.fail(failed) : Effect.succeed({ success: false, text, data: { outcome: failed._tag } } satisfies ActionResult)
+
+export effect function briefRequested(given: Readonly<Record<string, unknown>>, messageId: string, text: string) {
+  if (given.action === "schedule_checkins") return try Effect.catch(setCheckinTimes({ morning: given.morning, night: given.night }, `checkins:${messageId}`), failedWith("Your check-in times were not changed."))
+  if (given.action === "recalibrate" || given.action === "reset_recalibration") return try Effect.catch(recalibrateBrief(given.action, given.section), failedWith("Your brief settings were not changed."))
+  return try Effect.catch(composeBrief(given.action, given.period, text), failedWith("The brief could not be prepared."))
+}
 
 export const briefAction: Action = {
   name: briefActionName,
@@ -157,10 +164,7 @@ export const briefAction: Action = {
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
-    const given = parametersOf(options)
     const { messageId, text } = requestOf(message)
-    if (given.action === "schedule_checkins") return onAgent(runtime, Effect.catch(setCheckinTimes({ morning: given.morning, night: given.night }, `checkins:${messageId}`), failedWith("Your check-in times were not changed.")))
-    if (given.action === "recalibrate" || given.action === "reset_recalibration") return onAgent(runtime, Effect.catch(recalibrateBrief(given.action, given.section), failedWith("Your brief settings were not changed.")))
-    return onAgent(runtime, Effect.catch(composeBrief(given.action, given.period, text), failedWith("The brief could not be prepared.")))
+    return onAgent(runtime, briefRequested(parametersOf(options), messageId, text))
   },
 }

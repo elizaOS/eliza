@@ -7,7 +7,9 @@ that all of them fire in, including while the owner says they are away.
 It runs inside the owner's agent, on the owner's
 device, and it stores the owner's records in the agent's database. It
 never limits how much a model may write: every model call it makes names
-no output limit, so an answer is never cut short.
+no output limit. An answer the model's own maximum cut off is never used
+as an answer: a request of the owner's that asked for it fails with the
+model's output-limit error, so the turn does not ask for it again.
 
 The scheduled-task runner, the agent's approvals and the device's native
 reminders are owned elsewhere ([agent scheduled tasks](../agent/schedule/scheduledTasks.md),

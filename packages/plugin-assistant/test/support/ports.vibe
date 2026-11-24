@@ -1,14 +1,14 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import type { DeliveryEnd } from "../../gen/assistant__reminderEscalation.effect.vibe"
-import { Approvals, ApprovalsUnavailable, Calendar, DeliveryFailed, Facts, Model, ModelUnavailable, Presenter, Scheduler, SchedulerUnavailable, type ApprovalView, type AssistantTask, type CalendarEventFacts, type Presented, type TaskEdit, type TaskRow, type TaskVerb } from "../../src/host.vibe"
+import { Approvals, ApprovalsUnavailable, Calendar, DeliveryFailed, Facts, Model, ModelOutputIncomplete, ModelUnavailable, Presenter, Scheduler, SchedulerUnavailable, type ApprovalView, type AssistantTask, type CalendarEventFacts, type Presented, type TaskEdit, type TaskRow, type TaskVerb } from "../../src/host.vibe"
 
 export interface Ports {
   readonly tasks: Map<string, TaskRow & { readonly key: string }>
   readonly verbs: Array<{ readonly taskId: string; readonly verb: TaskVerb; readonly key: string }>
   readonly presented: Presented[]
   readonly presentFailures: DeliveryEnd[]
-  readonly answers: Array<string | undefined>
+  readonly answers: Array<string | undefined | ModelOutputIncomplete>
   readonly prompts: string[]
   schedulerFailures: number
   refusals: number
@@ -79,6 +79,7 @@ export function portsLayer(seen: Ports) {
         seen.prompts.push(`${system}\n${prompt}`)
         const answer = seen.answers.shift()
         if (answer === undefined) throw new ModelUnavailable({ reason: "no model configured" })
+        if (answer instanceof ModelOutputIncomplete) throw answer
         return answer
       },
     }),

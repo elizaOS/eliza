@@ -1,8 +1,8 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A rate limit on an own key at Cerebras holds the account at most four seconds, and every other route keeps the provider's retry time"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
-import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
-import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, refusalFrame, text, unavailable, type CloudFake, type CloudReply } from "./support/cloud-fake.ts"
+import { AgentRuntime, ModelType, modelOutputIncompleteEvidence, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
+import { allowanceExhausted, answerJson, cachedText, cutOff, dropped, echoImages, held, insufficientCredits, rateLimited, refusal, refusalFrame, text, toolCalls, unavailable, type CloudFake, type CloudReply } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
@@ -14,13 +14,29 @@ import { launchDocument, launchFrame, type Backend } from "./support/scratch.ts"
 
 module node {
   import { createHash } from "node:crypto"
+  import { vi } from "vitest"
 
   /** @throws {never} */
   export function digest(text: string): string {
     return createHash("sha256").update(text).digest("hex")
   }
+
+  /** @throws {never} */
+  export function timersHeld(): void {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true })
+  }
+
+  /** @throws {never} */
+  export function timersReal(): void {
+    vi.useRealTimers()
+  }
+
+  /** @throws {never} */
+  export function skipAhead(milliseconds: number): void {
+    vi.advanceTimersByTime(milliseconds)
+  }
 }
-import { digest } from node
+import { digest, skipAhead, timersHeld, timersReal } from node
 
 effect function bound(backend: Backend, key: string) {
   const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
@@ -225,6 +241,73 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
     chunks: ["Four."],
     options: [{ include_usage: true }, false],
     logged: { promptTokens: 49, completionTokens: 2, cacheReadInputTokens: 48 },
+  })
+})
+
+it.effect('An answer that stopped at the output limit fails with the model\'s output-limit error in every call form, is sent once and leaves the account usable (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime, binding } = try cloudAgent(cloud)
+  const tools = [{ name: "CALCULATE", description: "Arithmetic.", parameters: { type: "object", properties: {} } }]
+  try Effect.sync(() => cloud.script(cutOff(), cutOff("A long answer that"), cutOff("Streamed, and"), cutOff(), cutOff("Title: A cat")))
+  const stops = [
+    try refusalOf(runtime, { prompt: "Think it through." }),
+    try refusalOf(runtime, { prompt: "Write it all.", maxTokens: 256 }),
+    try refusalOf(runtime, { prompt: "Stream it all.", stream: true, onStreamChunk: () => undefined }),
+    try refusalOf(runtime, { prompt: "Use a tool.", tools }),
+    try host("a cut-off image description", () => runtime.useModel(ModelType.IMAGE_DESCRIPTION, { imageUrl: "https://example.test/cat.png", prompt: "Describe it." })
+      .then(() => undefined, (failure: unknown) => failure as { code?: unknown })),
+  ]
+  const evidence = (failure: { code?: unknown } | undefined) => {
+    const read = modelOutputIncompleteEvidence(failure)
+    return [failure?.code, read?.finishReason, read?.maxTokens, read?.emptyVisibleOutput, read?.model]
+  }
+  assert.deepStrictEqual({ stops: stops.map(evidence), sent: completions(cloud), state: (try binding.read()).accountState }, {
+    stops: [
+      ["MODEL_OUTPUT_INCOMPLETE", "length", null, true, "small"], ["MODEL_OUTPUT_INCOMPLETE", "length", 256, false, "small"],
+      ["MODEL_OUTPUT_INCOMPLETE", "length", null, false, "small"], ["MODEL_OUTPUT_INCOMPLETE", "length", null, true, "small"],
+      ["MODEL_OUTPUT_INCOMPLETE", "length", null, false, "vision"],
+    ],
+    sent: 5, state: "usable",
+  })
+})
+
+it.live('An answer of any length reaches the caller whole, a call that is not streamed waits for its answer however long it takes, and a stream silent for a minute or too large to read ends the call unretried (spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime } = try cloudAgent(cloud)
+  const long = "A long answer. ".repeat(2_700)
+  const streamed = { stream: true, onStreamChunk: () => undefined }
+  const tools = [{ name: "CALCULATE", description: "Arithmetic.", parameters: { type: "object", properties: {} } }]
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  try Effect.sync(() => cloud.script(
+    text(long), text(long.slice(0, 20_000), long.slice(20_000)), text("x".repeat(300_000)), toolCalls("", { name: "CALCULATE", arguments: { expression: "1+".repeat(40_000) } }),
+    held(gate, text("Worth the wait.")), { kind: "hang" },
+  ))
+  const whole = try host("a long whole answer", () => runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Write at length." }))
+  const flowing = try host("a long streamed answer", () => runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Stream at length.", ...streamed }))
+  const unreadable = [
+    try refusalOf(runtime, { prompt: "Stream one long line.", ...streamed }),
+    try refusalOf(runtime, { prompt: "Stream a long tool call.", ...streamed, tools }),
+  ]
+  const sentForReads = completions(cloud)
+  try acquireRelease(Effect.sync(timersHeld), () => Effect.sync(timersReal))
+  const heldArrives = cloud.nextCompletion()
+  const waiting = runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Take your time." })
+  try host("the held call arrives", () => heldArrives)
+  try Effect.sync(() => skipAhead(91_000))
+  release()
+  const waited = try host("an answer held past ninety seconds", () => waiting)
+  const silentArrives = cloud.nextCompletion()
+  const silencing = runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Say something.", ...streamed }).then(() => undefined, (failure: unknown) => failure as { code?: unknown })
+  try host("the silent call arrives", () => silentArrives)
+  try Effect.sync(() => skipAhead(61_000))
+  const silent = try host("a stream silent for a minute", () => silencing)
+  assert.deepStrictEqual({
+    long: [long.length > 32_768, whole === long, flowing === long], unreadable: unreadable.map((failure) => failure?.code), sentForReads,
+    waited, silent: silent?.code, sent: completions(cloud),
+  }, {
+    long: [true, true, true], unreadable: ["MODEL_STREAM_UNREADABLE", "MODEL_STREAM_UNREADABLE"], sentForReads: 4,
+    waited: "Worth the wait.", silent: "MODEL_ATTEMPT_IDLE_TIMEOUT", sent: 6,
   })
 })
 

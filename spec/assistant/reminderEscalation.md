@@ -137,8 +137,10 @@ only, for every reminder and routine or for one they name: a live
 reminder by its title or id, else a routine by its title or id. A name
 that matches none, or several, sets nothing. When the request gives no
 intensity, it is read from the owner's own message, and a message that
-names none sets nothing. Intensity is read when a reminder fires or a
-routine shows, so a change applies from its next firing.
+names none sets nothing; a reading the model's own maximum cut off fails
+the request with that error and sets nothing. Intensity is read when a
+reminder fires or a routine shows, so a change applies from its next
+firing.
 
 ```quint
 type ReminderIntensity = IntensityUnset | IntensityMinimal | IntensityNormal | IntensityPersistent | IntensityHighPriorityOnly

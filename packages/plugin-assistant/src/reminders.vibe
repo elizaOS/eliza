@@ -2,7 +2,7 @@
 import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type IAgentRuntime, type Provider, type UUID } from "@elizaos/core"
 import { Machine, machine, moveAdmitted, moveToAdmitted, movedDueAt, maxMoveDelayMs, recoveredChoice, renameAdmitted, retractsRecentSave, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
 import {
-  Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, removeRecord, requestOf, writeRecord,
+  Facts, Model, Scheduler, SchedulerUnavailable, answerOrBlank, onAgent, presentOnce, readRecord, removeRecord, requestOf, writeRecord,
   type DeliveryAnswer, type OwnerRequest, type TaskRow, type TaskTrigger, type TaskVerb, type VerbAnswer,
 } from "./host.vibe"
 import { changeEscalation, changeIntensity, isIntensityName, noteOwnerAnswer, scheduleEscalation, type IntensityName } from "./escalation.vibe"
@@ -97,7 +97,7 @@ const checkSystem = [
 export effect function checkOriginalMessage(text: string) {
   if (text.trim() === "") return undefined
   const model = try Model
-  const said = model.complete(checkSystem, text) catch () => ""
+  const said = try answerOrBlank(model.complete(checkSystem, text))
   const check = decodeCheck(said.trim().replace(/^```(?:json)?\s*|\s*```$/gu, ""))
   return Option.isSome(check) ? check.value : undefined
 }
@@ -455,7 +455,7 @@ const intensitySystem = [
 
 effect function intensityInWords(text: string) {
   if (text.trim() === "") return undefined
-  const said = ((try Model).complete(intensitySystem, text) catch () => "").trim().toLowerCase().replace(/[^a-z_]/gu, "")
+  const said = (try answerOrBlank((try Model).complete(intensitySystem, text))).trim().toLowerCase().replace(/[^a-z_]/gu, "")
   return isIntensityName(said) ? said : undefined
 }
 

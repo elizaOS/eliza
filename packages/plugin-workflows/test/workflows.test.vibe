@@ -1,7 +1,7 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { computeNextCronRunAtMs, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { ElizaError, computeNextCronRunAtMs, modelOutputIncompleteEvidence, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
@@ -12,7 +12,7 @@ import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TE
 import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
 import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
-import { inProcessWorkerPort } from "../src/service/host.vibe"
+import { WorkflowModelFailed, inProcessWorkerPort } from "../src/service/host.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
 import { workflowHttpError } from "../src/client/workflow-client.vibe"
 import type { ManagedGoogleReads } from "../src/service/google.vibe"
@@ -88,7 +88,7 @@ interface Phone {
   notes: readonly { readonly id: string; readonly title: string; readonly text: string }[]
 }
 
-effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests } = {}) {
+effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | Error | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests } = {}) {
   const db = try acquireRelease(promise(() => openDatabase()), (opened) => promise(() => opened.close()))
   const wakeups = new Map<string, { readonly dueAt: number; readonly metadata: Readonly<Record<string, string | number>> }>()
   const notices: WorkflowNotice[] = []
@@ -108,7 +108,7 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
     sql: db.sql as WorkflowSql, owner, agentId: "agent", origin: "agent:test", worker: try inProcessWorkerPort(), device: port,
     draft: draft === undefined ? undefined : (prompt) => Effect.suspend(() => {
       const text = draft(prompt)
-      return text === undefined ? Effect.never : succeed(text)
+      return text === undefined ? Effect.never : text instanceof Error ? Effect.fail(new WorkflowModelFailed({ message: text.message, cause: text })) : succeed(text)
     }), nativeDigests: options.native, google: options.google,
     notify: (notice) => sync(() => { notices.push(notice) }),
     scheduler: {
@@ -280,7 +280,9 @@ it.live('Remove a workflow only when its runs are settled and restore it safely 
 })
 
 it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
-  const rig = try harness({ draft: () => JSON.stringify({ name: "Drafted", description: "Drafts a summary", source: generatedSource }) })
+  let cutNext = false
+  const stoppedAtLimit = new ElizaError("The model's answer was cut off at its output limit", { code: "MODEL_OUTPUT_INCOMPLETE", context: { finishReason: "length", maxTokens: null } })
+  const rig = try harness({ draft: () => cutNext ? stoppedAtLimit : JSON.stringify({ name: "Drafted", description: "Drafts a summary", source: generatedSource }) })
   const morning = (try saved(rig, greeting)).receipt
   const garden = (try saved(rig, manual("Garden digest", greeting.steps))).receipt
   const twin = (try saved(rig, manual("Twin", greeting.steps))).receipt
@@ -306,6 +308,9 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   const currentId = try say("bring it back", { action: "restore_removed", workflowId: garden.workflowId })
   const taken = try say("create a workflow called Garden digest", { action: "create", name: "Fresh" })
   const created = try say("create a workflow called Fresh one", { action: "create", name: "Something else" })
+  cutNext = true
+  const cutOff = try say("create a workflow called Fresh two", { action: "create", name: "Fresh two" })
+  cutNext = false
   const unknown = try say("show me the Payroll workflow", { action: "get", workflowName: "Payroll" })
   const quoted = [
     try say("rename the workflow 'Evening note' to 'Parents' Day'", { action: "rename", workflowName: "Evening note'", name: "Parents' Day'" }),
@@ -327,6 +332,7 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   try check(() => assert.deepStrictEqual({
     codes: [conflict, renamed, partial, descriptive, mispaired, twins, taken, created, unknown, exactName, removedId, currentId, again, dossier].map(code),
     quoted: quoted.map(code),
+    cutOff: [code(cutOff), modelOutputIncompleteEvidence(cutOff.error)?.finishReason],
     listed: { ...(listed.data as { readonly total: number; readonly truncated: boolean }), workflows: namesOf(listed.data).length },
     found: namesOf(found.data).sort(),
     cards: [widget(created)?.type, widget(ran)?.type, widget(ran)?.workflowId],
@@ -341,6 +347,7 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
       "WORKFLOW_NOT_FOUND", "applied", "WORKFLOW_REMOVED", "WORKFLOW_NOT_REMOVED", "WORKFLOW_REMOVED", "NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED",
     ],
     quoted: ["applied", "applied", "applied", "applied"],
+    cutOff: ["WORKFLOW_NOT_APPLIED", "length"],
     listed: { total: names.length, truncated: true, workflows: 2 },
     found: ["Fresh one", "Mom’s birthday", "Morning brief", "Reading list"],
     cards: ["workflow", "workflow-run", garden.workflowId],
