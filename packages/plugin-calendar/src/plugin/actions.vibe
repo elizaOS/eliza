@@ -665,7 +665,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       if (length === "RefuseLength") {
         return failed(subaction, "A new event's length is a whole number of minutes from 1 to 44640. For anything else send endAt. Nothing was saved.", { code: "CALENDAR_EVENT_LENGTH_INVALID" })
       }
-      const statedRange = sentEvent.isAllDay === true ? undefined : statedCreateRange(sentEvent.title ?? "", text, wall, new Date(now))
+      const statedRange = statedCreateRange(sentEvent.title ?? "", text, wall, new Date(now), sentEvent.isAllDay !== true)
       const begin = statedRange?.begin ?? (sentEvent.startAt === undefined ? undefined : Date.parse(sentEvent.startAt))
       const finish = statedRange?.finish ?? (begin === undefined ? undefined
         : createEndMs(begin, length === "KeepEnd", sentEvent.endAt === undefined ? begin : Date.parse(sentEvent.endAt), length === "UseLength" ? minutes : 0, sentEvent.isAllDay === true))
