@@ -36,7 +36,7 @@ public final class AgentConfig {
   private static final int OWN_KEY_MAX_UNITS = 1024;
   private static final BigDecimal SAFE_INTEGER = BigDecimal.valueOf(9007199254740991L);
   private static final Set<String> HOST_KEYS = Set.of("schema", "service", "notification", "routes", "nativeRoutes", "cloud", "model", "embeddings",
-    "embeddingDimensions", "persistMemory", "callerRole", "views", "timeZone", "privacy", "google", "retention", "environment");
+    "embeddingDimensions", "persistMemory", "callerRole", "views", "timeZone", "hostContextRevision", "privacy", "google", "retention", "environment");
   private static final Set<String> CHARACTER_KEYS = Set.of("name", "system", "bio", "adjectives", "style", "messageExamples");
 
   public static final class Refused extends Exception {
@@ -113,6 +113,8 @@ public final class AgentConfig {
     document.put("model", launch.get("model"));
     if (account != null) document.put("account", ordered("userId", account.userId(), "organizationId", account.organizationId()));
     for (Map.Entry<String, Object> entry : launch.entrySet()) if (!entry.getKey().equals("model")) document.put(entry.getKey(), entry.getValue());
+    String deviceZone = ZoneId.systemDefault().getId();
+    if (!launch.containsKey("timeZone") && namedZone(deviceZone)) document.put("timeZone", deviceZone);
     if (consent != null) document.put("google", ordered("gmailChanges", consent.gmailChanges(), "calendarEdits", consent.calendarEdits()));
     if (workflowWorker != null)
       document.put("workflowWorker", ordered("runtimeDir", workflowWorker.runtimeDir(), "executable", workflowWorker.executable(), "sha256", workflowWorker.sha256()));
@@ -221,15 +223,19 @@ public final class AgentConfig {
     launch.put("callerRole", role);
     if (host.containsKey("views")) launch.put("views", views(host.get("views")));
     if (host.containsKey("timeZone")) {
-      if (!(host.get("timeZone") instanceof String zone) || !(zone.equals("UTC") || (zone.contains("/") && ZoneId.getAvailableZoneIds().contains(zone))))
-        throw new Refused("The agent time zone is a named zone");
+      if (!(host.get("timeZone") instanceof String zone) || !namedZone(zone)) throw new Refused("The agent time zone is a named zone");
       launch.put("timeZone", zone);
     }
+    if (host.containsKey("hostContextRevision")) launch.put("hostContextRevision", positiveInteger(host.get("hostContextRevision"), "hostContextRevision"));
     if (host.containsKey("privacy")) launch.put("privacy", switches(host.get("privacy"), "secretSwap", "piiSwap"));
     if (host.containsKey("google")) launch.put("google", switches(host.get("google"), "gmailChanges", "calendarEdits"));
     if (host.containsKey("retention")) launch.put("retention", retention(host.get("retention")));
     if (host.containsKey("environment")) launch.put("environment", environment(host.get("environment")));
     return launch;
+  }
+
+  private static boolean namedZone(String zone) {
+    return zone.equals("UTC") || (zone.contains("/") && ZoneId.getAvailableZoneIds().contains(zone));
   }
 
   private static Map<String, Object> model(Object value) throws Refused {

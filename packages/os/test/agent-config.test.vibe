@@ -44,7 +44,7 @@ module node {
 
   /** @throws {Error} */
   export function project(asks: readonly Ask[]): Answer[] {
-    const out = execFileSync(java, ["-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
+    const out = execFileSync(java, ["-Duser.timezone=Asia/Tokyo", "-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
     return out.trim().split("\n").map((line) => JSON.parse(line) as Answer)
   }
 
@@ -127,6 +127,7 @@ const ADMITTED: readonly { readonly name: string; readonly files: Files; readonl
       callerRole: "user",
       views: [{ id: "chat", label: "Chat", path: "/chat", aliases: ["home"] }, { id: "notes", label: "Notes", path: "/notes" }],
       timeZone: "Europe/Paris",
+      hostContextRevision: 2,
       privacy: { secretSwap: true, piiSwap: false },
       google: { gmailChanges: false, calendarEdits: true },
       retention: { days: 0.5, maxRowsPerRoom: 1000, intervalMinutes: 60 },
@@ -179,6 +180,7 @@ const REFUSED: readonly { readonly name: string; readonly files: Files }[] = [
   { name: "a model named twice", files: files({ ...HOST, model: { backend: "none" }, cloud: { baseUrl: "https://cloud.example" } }) },
   { name: "a cloud address with a path", files: files({ ...HOST, cloud: { baseUrl: "https://cloud.example/api/v1" } }) },
   { name: "a reserved environment key", files: files({ ...HOST, model: { backend: "none" }, environment: { NODE_OPTIONS: "--inspect" } }) },
+  { name: "a host context revision of 0", files: files({ ...HOST, model: { backend: "none" }, hostContextRevision: 0 }) },
   { name: "local embeddings without dimensions", files: files({ ...HOST, model: { backend: "none" }, embeddings: "local" }) },
   { name: "two views sharing a name", files: files({ ...HOST, model: { backend: "none" }, views: [{ id: "chat", label: "Chat", path: "/chat" }, { id: "notes", label: "Notes", path: "/notes", aliases: ["chat"] }] }) },
   { name: "an agent id in the host file", files: files({ ...HOST, model: { backend: "none" }, agentId: "agent-1" }) },
@@ -235,13 +237,14 @@ it.effect('Start my agent with my character, policy and model: the service and t
     assert.deepStrictEqual([fullAnswer.rendererGroups, fullAnswer.nativeGroups, fullAnswer.needsAccount], [1, 1, true])
     const fullDocument = try decodeLaunchDocument(fullAnswer.document)
     assert.deepStrictEqual(
-      [fullDocument.model, fullDocument.embeddingDimensions, fullDocument.callerRole, fullDocument.views, fullDocument.retention, fullDocument.environment, fullDocument.timeZone],
+      [fullDocument.model, fullDocument.embeddingDimensions, fullDocument.callerRole, fullDocument.views, fullDocument.retention, fullDocument.environment, fullDocument.timeZone, fullDocument.hostContextRevision],
       [{ backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "small", largeModel: "large", imageModel: "image" }, 384, "user",
         [{ id: "chat", label: "Chat", path: "/chat", aliases: ["home"] }, { id: "notes", label: "Notes", path: "/notes" }],
-        { days: 0.5, maxRowsPerRoom: 1000, intervalMinutes: 60 }, { PLUGIN_SETTING: "on" }, "Europe/Paris"],
+        { days: 0.5, maxRowsPerRoom: 1000, intervalMinutes: 60 }, { PLUGIN_SETTING: "on" }, "Europe/Paris", 2],
     )
-    assert.deepStrictEqual((try decodeLaunchDocument((try admittedAnswer(record)).document)).model,
-      { backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "", largeModel: "", imageModel: "" })
+    const recordDocument = try decodeLaunchDocument((try admittedAnswer(record)).document)
+    assert.deepStrictEqual([recordDocument.model, recordDocument.timeZone, recordDocument.hostContextRevision],
+      [{ backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "", largeModel: "", imageModel: "" }, "Asia/Tokyo", undefined])
     // spec/os/agentService/config.md, "A launch carries the Google consent the owner saved, else the host file's"
     const consents: unknown[] = []
     for (const answer of [full, record, replaced, savedOnly]) consents.push((try decodeLaunchDocument((try admittedAnswer(answer)).document)).google)

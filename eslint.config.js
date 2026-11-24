@@ -104,7 +104,7 @@ const commented = {
   "packages/core/src/retrieval.vibe": 21,
 }
 const scheduled = {
-  "packages/agent/src/access/socket.vibe": 3,
+  "packages/agent/src/access/socket.vibe": 2,
   "packages/agent/test/client-runtime.test.vibe": 2,
   "packages/agent/test/client-tasks.test.vibe": 1,
   "packages/agent/test/client-turns.test.vibe": 2,
@@ -160,6 +160,7 @@ const barrelImports = {
   "packages/agent/src/tasks/chat-task.vibe": ["@elizaos/core/protocol"],
   "packages/agent/test/client-stream.test.vibe": ["@elizaos/core/protocol"],
   "packages/agent/test/tasks-chat.test.vibe": ["@elizaos/core/protocol"],
+  "packages/os/src/build/agent-config.vibe": ["@elizaos/agent/routes"],
   "packages/os/src/build/runtime-payload.vibe": ["@elizaos/os/aosp/runtime/node.lock.json"],
   "packages/os/test/agent-config.test.vibe": ["@elizaos/agent/cli", "@elizaos/agent/launch"],
   "packages/os/test/drivers/os__browser__pageCommands.ts": ["@elizaos/os/browser/runtime/surface-task-handler.mjs", "@elizaos/os/browser/runtime/task-bindings.mjs"],
@@ -197,7 +198,6 @@ const barrelImports = {
   "packages/plugin-native-agent/src/index.vibe": ["@elizaos/os/bridges/agent", "@elizaos/os/bridges/definitions/agent"],
   "packages/plugin-native-appblocker/src/index.vibe": ["@elizaos/os/bridges/bridge"],
   "packages/plugin-native-browser-surface/src/index.vibe": ["@elizaos/os/bridges/definitions/surface", "@elizaos/os/bridges/surface"],
-  "packages/plugin-native-bun-runtime/src/index.vibe": ["@elizaos/os/bridges/agent", "@elizaos/os/bridges/definitions/agent"],
   "packages/plugin-native-calendar/src/index.vibe": ["@elizaos/os/bridges/bridge", "@elizaos/os/bridges/calendar", "@elizaos/os/bridges/definitions/calendar"],
   "packages/plugin-native-camera/src/index.vibe": ["@elizaos/os/bridges/camera", "@elizaos/os/bridges/definitions/camera"],
   "packages/plugin-native-canvas/src/index.vibe": ["@elizaos/os/bridges/bridge"],
