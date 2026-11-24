@@ -251,7 +251,7 @@ it.live(`Publish only the originating renderer's live navigation in a settled re
   const post = () => ask(agent, { method: "POST", path, headers, body })
   const choose = (view: string) => toolCalls("", { name: "VIEWS", arguments: { view } })
   const release = Promise.withResolvers<void>()
-  const entered = try sync(() => cloud.nextCompletion())
+  const { entered } = try sync(() => ({ entered: cloud.nextCompletion() }))
   try sync(() => cloud.script(held(release.promise, choose("Jottings")), text("The Notes view is ready.")))
   const sending = fork post()
   try promise(() => entered)
@@ -272,8 +272,8 @@ it.live(`Publish only the originating renderer's live navigation in a settled re
   const streamed = try stream(agent, { method: "POST", path: `${path}/stream`, headers, body: {
     text: "Show Chat.", metadata: { viewDelivery: "completed-action" },
   } })
-  const events = "text" in streamed ? streamed.text.split("\n\n").filter((event) => event.startsWith("data: "))
-    .map((event) => JSON.parse(event.slice(6)) as { type: string; actionResults?: Envelope["actionResults"] }) : []
+  const events = try Effect.try(() => "text" in streamed ? streamed.text.split("\n\n").filter((event) => event.startsWith("data: "))
+    .map((event) => JSON.parse(event.slice(6)) as { type: string; actionResults?: Envelope["actionResults"] }) : [])
   const navigation = events.find(({ type }) => type === "done")?.actionResults?.[0]?.preparedNavigation
   if (navigation === undefined) return try Effect.die(new Error("The owner stream did not carry the prepared binding"))
   const stale = try claim(agent, old.binding)
