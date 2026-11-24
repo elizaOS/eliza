@@ -10,9 +10,9 @@ checked by the imported route gate (`spec/agent/access/routes.md`). An
 admitted call goes to the agent's owner-only socket as one frame of the
 agent's transport (`http_request`, `http_request_stream` or
 `events_subscribe`, one call per connection), with the launch's root token
-attached by the service. The renderer's `request` and `requestStream` may
-name request headers, which cross only as the runtime client carries them
-(`spec/agent/client/runtimeClient.md`); native callers name none.
+attached by the service. Both kinds' `request` and `requestStream` may name
+request headers, which cross only as the runtime client carries them
+(`spec/agent/client/runtimeClient.md`).
 
 The channel holds no lifecycle state of its own: the shell forwards the
 service's launches (`spec/os/agentService/lifecycle.md`) as `open` when a

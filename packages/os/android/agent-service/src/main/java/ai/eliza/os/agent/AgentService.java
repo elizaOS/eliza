@@ -141,11 +141,19 @@ public class AgentService extends Service {
   public static AgentChannel channel() { return CHANNEL; }
 
   public static CompletableFuture<AgentChannel.Response> request(String method, String path, byte[] body) {
-    return CHANNEL.request(CallerKind.NATIVE, method, path, body);
+    return request(method, path, body, Map.of());
+  }
+
+  public static CompletableFuture<AgentChannel.Response> request(String method, String path, byte[] body, Map<String, ?> headers) {
+    return CHANNEL.request(CallerKind.NATIVE, method, path, body, headers);
   }
 
   public static AgentChannel.Call requestStream(String method, String path, byte[] body, AgentChannel.Listener listener) {
-    return CHANNEL.requestStream(CallerKind.NATIVE, method, path, body, listener);
+    return requestStream(method, path, body, Map.of(), listener);
+  }
+
+  public static AgentChannel.Call requestStream(String method, String path, byte[] body, Map<String, ?> headers, AgentChannel.Listener listener) {
+    return CHANNEL.requestStream(CallerKind.NATIVE, method, path, body, headers, listener);
   }
 
   public static AgentChannel.Call subscribe(Topic topic, AgentChannel.Listener listener) { return CHANNEL.subscribe(topic, listener); }

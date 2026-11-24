@@ -5,10 +5,12 @@ The host profile's `agent` entry (`spec/os/build/androidHost.md`) names three
 consumer files, which the build copies to `assets/agent/host.json`,
 `assets/agent/character.json` and `assets/agent/policy.json` and declares the
 consumer's service subclass with `foregroundServiceType="specialUse"` and
-`FOREGROUND_SERVICE_SPECIAL_USE`. At each start the service reads the three
-files, decides here whether they are admitted, and writes the agent's launch
-document (`spec/agent/host/launch.md`, imported as `Launch`), which owns every
-launch field and its meaning; os adds only its service fields.
+`FOREGROUND_SERVICE_SPECIAL_USE`; the build refuses files this spec does not
+admit, so none ships that the service would refuse. At each start the service
+reads the three files, decides here whether they are admitted, and writes the
+agent's launch document (`spec/agent/host/launch.md`, imported as `Launch`),
+which owns every launch field and its meaning; os adds only its service
+fields.
 
 The host file holds os's own fields, `service` (the subclass's class name),
 `notification {channel, title, text}` and `routes` (the renderer's route list,

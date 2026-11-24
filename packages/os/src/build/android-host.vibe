@@ -1,7 +1,7 @@
 // spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"
 import { mergedNodes } from "../../gen/os__build__androidHost.effect.vibe"
-import { maxFileBytes, serviceNamed } from "../../gen/os__agentService__config.effect.vibe"
 import { admitHostProfile, type AndroidHostProfile, type ConfigField, type HostOsModule, type HostSource, type SourceKind } from "./android-host-profile.vibe"
+import { admitAgentBytes } from "./agent-config.vibe"
 import { INVENTORY_ASSET } from "./runtime-payload.vibe"
 
 module node {
@@ -60,11 +60,9 @@ const AGENT_PERMISSIONS = ["android.permission.FOREGROUND_SERVICE", "android.per
 const AGENT_ASSETS = { host: "host.json", character: "character.json", policy: "policy.json" } as const
 const SPECIAL_USE_SUBTYPE = "on-device-agent"
 const META = "ai.eliza.os.agent"
-const QUALIFIED_CLASS = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/
 const GRADLE_PROPERTIES = "org.gradle.jvmargs=-Xmx2048m\nandroid.useAndroidX=true\norg.gradle.parallel=false\norg.gradle.workers.max=2\n"
 
 schema Toolchain { gradle: string; gradleSha256: string; wrapperSha256: string; androidGradlePlugin: string; kotlin: string; java: Schema.Int; versions: Record<string, string> }
-schema AgentHostFile { service: string }
 const Marker = Schema.Struct({
   schema: Schema.Literals([1, 2]),
   output: Schema.optionalKey(Schema.String),
@@ -267,22 +265,12 @@ effect function agentService(roots: Roots, profile: AndroidHostProfile) {
   const files = try FileSystem.FileSystem
   const agent = profile.agent
   if (agent === undefined) return undefined
-  const entries = []
-  for (const key of ["host", "character", "policy"] as const) {
-    const source = try readInput(roots, agent[key], "File")
-    const bytes = try files.readFile(source)
-    if (bytes.length > maxFileBytes) throw new HostInputRefused({ place: source, reason: `The agent ${key} file is larger than ${maxFileBytes} bytes` })
-    entries.push({ source, name: AGENT_ASSETS[key], bytes })
-  }
-  const hostText = new TextDecoder().decode(entries[0]?.bytes)
-  const host = try mapError(
-    Schema.decodeUnknownEffect(Schema.fromJsonString(AgentHostFile))(hostText),
-    () => new HostInputRefused({ place: agent.host.place, reason: "The agent host file names no service class" }),
+  const sources = { host: try readInput(roots, agent.host, "File"), character: try readInput(roots, agent.character, "File"), policy: try readInput(roots, agent.policy, "File") }
+  const admitted = try mapError(
+    admitAgentBytes({ host: try files.readFile(sources.host), character: try files.readFile(sources.character), policy: try files.readFile(sources.policy) }),
+    (refused) => new HostInputRefused({ place: agent.host.place, reason: refused.detail }),
   )
-  if (!serviceNamed(QUALIFIED_CLASS.test(host.service) ? { tag: "QualifiedClass", className: host.service } : { tag: "MalformedClass" })) {
-    throw new HostInputRefused({ place: agent.host.place, reason: `The agent service ${host.service} is not a qualified class name` })
-  }
-  return { service: host.service, files: entries.map(({ source, name }) => ({ source, name })) }
+  return { service: admitted.service, files: (["host", "character", "policy"] as const).map((key) => ({ source: sources[key], name: AGENT_ASSETS[key] })) }
 }
 
 effect function claimOutput(consumer: string, output: string, appId: string, files: ReadonlyMap<string, GeneratedFile>) {

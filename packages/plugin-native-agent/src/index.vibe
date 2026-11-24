@@ -1,5 +1,0 @@
-// spec/nativeAgent/index.md, "Story: Use the agent that belongs to this device session"
-import { agentClient } from "@elizaos/os/bridges/agent"
-export { agentClient, agentPlugin } from "@elizaos/os/bridges/agent"
-export type { ElizaAgentPlugin } from "@elizaos/os/bridges/definitions/agent"
-export const Agent = agentClient()
