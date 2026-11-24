@@ -333,9 +333,10 @@ phone withheld, because it could not read it or because it may hold
 sign-in details, a reload of the tab, as the Browser history control or
 the BROWSER command, goes ahead only when the owner's own message asks to
 reload, refresh or reopen it, as a command or a "can you" request that
-starts a sentence or clause, and says nowhere not to; a mention, a
-question about reloading or a reload the owner says they will do is no
-request, and neither is a bare "yes". Any other reload on
+starts a sentence or clause. An explicit withdrawal of reload refuses the
+operation. A short withdrawal such as "don't" or "never mind" refers to
+the immediately preceding request. A mention, a question about reloading,
+a reload the owner says they will do and a bare "yes" give no authority. Any other reload on
 that turn is refused before anything is sent: the model learns that the
 phone shares no text of that page, only its title and address, that
 reloading does not change that and nothing was reloaded, and that it should
@@ -343,11 +344,23 @@ answer the owner instead, without offering a reload the owner did not ask
 for. Back, forward and stop, a page the phone read and
 a message that carried no page are unchanged. An open of the page's own
 address already needs the owner's words ([request grounding](./requestGrounding.md)):
-a withheld page carries no links to ground one.
+a withheld page carries no links to ground one. Reopening the same
+document, including a change of fragment, requires an exact direct open
+for the full proposed address. A permissively grounded address cannot
+substitute for that authorization.
 
 ```quint
 type CarriedPage = NoPageCarried | PageTextRead | PageTextUnreadable | PageTextSensitive
 type HistoryMove = MoveBack | MoveForward | MoveReload | MoveStop
+type ReloadEvidence = { requested: bool, namedWithdrawal: bool, adjacentWithdrawal: bool }
+pure def reloadAuthorized(evidence: ReloadEvidence): bool =
+  evidence.requested and not(evidence.namedWithdrawal or evidence.adjacentWithdrawal)
+pure def lawReloadWithdrawalRefuses(evidence: ReloadEvidence): bool =
+  (evidence.namedWithdrawal or evidence.adjacentWithdrawal) implies not(reloadAuthorized(evidence))
+pure def withheldReopenRefused(withheld: bool, sameDocument: bool, exactOpen: bool): bool =
+  withheld and sameDocument and not(exactOpen)
+pure def lawWithheldReopenNeedsAnExactOpen(exactOpen: bool): bool =
+  withheldReopenRefused(true, true, exactOpen) == not(exactOpen)
 pure def pageWithheld(page: CarriedPage): bool = page == PageTextUnreadable or page == PageTextSensitive
 pure def historyMoveRefused(move: HistoryMove, page: CarriedPage, ownerAskedReload: bool): bool =
   move == MoveReload and pageWithheld(page) and not(ownerAskedReload)

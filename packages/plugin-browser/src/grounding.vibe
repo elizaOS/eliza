@@ -1,6 +1,6 @@
 // spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A reload of a page my phone withheld runs only when my message asked for it"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice"
 import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
-import { groundedSearch } from "../gen/browser__control.effect.vibe"
+import { groundedSearch, reloadAuthorized } from "../gen/browser__control.effect.vibe"
 import { closingMarkIsProse, directDestination, pageLinkDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
 import { IANA_TLDS } from "./iana-tlds.vibe"
 
@@ -83,8 +83,12 @@ const TAIL_LEAD = /^[\s,:;.!?()"'”’\u2014\u2013-]*(?:(?:no|nope|nah|please|b
 const TAIL_END = /^(?:\s+(?:to|up|on|over|into|it|that|this|them|one|there|yet|now|again|please|ever|today|anymore|either|the\s+(?:link|site|website|page|url|address)))*[\s)"'”’]*(?:[.!?;,]|$)/i
 const BARE_END = /(?:^|[\s.!?,;:(])(?:don['’]?t|do\s+not|never)[\s.!?)]*$/i
 const RELOAD_WORD = String.raw`(?:re-?load|refresh|re-?open)`
-const RELOAD_TAIL = String.raw`(?:\s+(?:it|this|that|the|page|tab|site|website|article|one|again|now|please|for\s+me|once\s+more))*[)"'”’]*(?=\s*[.!?;,]|\s+(?:and|then|so)\b|\s*$)`
+const RELOAD_TAIL = String.raw`(?:\s+(?:it|this|that|the|page|tab|site|website|article|one|again|now|please|for\s+me|once\s+more))*[)"'”’]*(?=\s*[.!?;,:–—]|\s+(?:and|then|so)\b|\s*$)`
 const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|not|stop|no\s+need\s+to)|(?<!\b(?:ca|could|wo|would))n['’]t|\b(?:ca|could|wo|would)n['’]t(?!\s+(?:you|u)\b))\s+(?:(?:just|ever|even|you|u|please|need\s+to|have\s+to|try\s+to|bother\s+to|want\s+to|to)\s+)*${RELOAD_WORD}(?:ing)?\b`, "i")
+const RELOAD_VERBS = /\b(?:re-?load|refresh|re-?open)(?:ing)?\b/gi
+const RELOAD_CLAUSE_BOUNDARY = /[.!?;,:–—]|\b(?:so|then|but)\b/gi
+const RELOAD_COORDINATED_WITHDRAWAL = /^\s*(?:(?:actually|instead|please|pls|just|now|no|wait)\s+)*(?:don['’]?t|do\s+not|never|stop|no\s+need\s+to|i\s+(?:don['’]?t|do\s+not)\s+(?:want|need)\s+you\s+to)\s+(?:.*\b(?:and|or)\s+)?(?:(?:just|ever|even|please|try(?:\s+to)?|need\s+to|have\s+to|bother\s+to)\s+)*$/i
+const RELOAD_ADJACENT_WITHDRAWAL = /^\s*[.?!;,:–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[.!?;]+(?=\s|$)|\s*$)/i
 const DOTS = /[\uff0e\u3002\uff61\u2024]/g
 const HOST_RUN = /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*/gu
 const LABEL_BEFORE = /[a-z\d](?:-*|\.)$/
@@ -208,6 +212,12 @@ export function authoredBrowserDestination(text: string, assistantName: string =
 
 export function directBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
   if (unreadable(text)) return undefined
+  const split = /([\p{L}\p{N}-]+)\.\p{Zs}+([A-Z]{2})(?=\p{Zs})/u.exec(text)
+  if (split !== null) {
+    const domain = split[2].toLowerCase()
+    const tail = text.slice(split.index + split[0].length)
+    if (IANA_TLDS.has(domain) && IN_BROWSER.test(tail)) text = text.slice(0, split.index) + split[1] + "." + domain + tail
+  }
   const strict = authoredBrowserOpen(text, assistantName)
   if (strict !== undefined) return strict
   const question = patterns(assistantName).directRequest.exec(text.trim())
@@ -447,6 +457,11 @@ function pageLinkOf(proposedUrl: string): string {
   return parsed.kind === "url" ? parsed.href.split("#", 1)[0] ?? "" : ""
 }
 
+export function sameBrowserDocument(first: string, second: string): boolean {
+  const document = pageLinkOf(first)
+  return document !== "" && document === pageLinkOf(second)
+}
+
 export function groundBrowserDestination(userText: string, proposedUrl: string, assistantName: string = DEFAULT_ASSISTANT_NAME, pageLinks: readonly string[] = []): string | undefined {
   const readable = !unreadable(userText) && typeof proposedUrl === "string"
   const proposed = readable ? proposedAddress(proposedUrl) : undefined
@@ -458,11 +473,15 @@ export function groundBrowserDestination(userText: string, proposedUrl: string, 
 export function ownerAskedBrowserReload(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): boolean {
   if (unreadable(text)) return false
   const read = plain(text)
-  if (RELOAD_NEGATED.test(read) || BARE_END.test(read.slice(-200))) return false
-  return matchesOf(read, patterns(assistantName).reloadRequest).some((match) => {
-    const end = match.index + match[0].length
-    return !negatedAfter(read.slice(end, end + 200))
+  const requests = matchesOf(read, patterns(assistantName).reloadRequest)
+  const namedWithdrawal = RELOAD_NEGATED.test(read) || matchesOf(read, RELOAD_VERBS).some((verb) => {
+    const before = read.slice(0, verb.index)
+    const boundary = matchesOf(before, RELOAD_CLAUSE_BOUNDARY).at(-1)
+    const clause = boundary === undefined ? before : before.slice(boundary.index + boundary[0].length)
+    return RELOAD_COORDINATED_WITHDRAWAL.test(clause)
   })
+  const adjacentWithdrawal = requests.some((match) => RELOAD_ADJACENT_WITHDRAWAL.test(read.slice(match.index + match[0].length)))
+  return reloadAuthorized({ requested: requests.length > 0, namedWithdrawal, adjacentWithdrawal })
 }
 
 export function containsWebAddress(text: string): boolean {

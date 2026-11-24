@@ -485,15 +485,36 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
     try outcome(summarize, reload),
     try outcome("go back", { type: "browser_history", action: "back" }, withheld("unreadable")),
   ]
+  const laterOtherWithdrawal = "Reload this page. Send the email. Actually, don't."
+  const withdrawn = ["Reload this page — wait, do not.", "Reload this page. Actually, do not close the tab or reload it.", "Reload this page. Never mind."]
+  const withdrawnProposals = []
+  for (const words of withdrawn) withdrawnProposals.push(try outcome(words, reload, withheld("unreadable")))
+  const authorizedDespiteOtherWithdrawal = try outcome(laterOtherWithdrawal, reload, withheld("unreadable"))
+
+  const observedUrl = "https://example.com/statement"
+  const carried = { ...withheld("unreadable"), url: observedUrl }
+  const open = (url: string): DeviceOperation => ({ type: "browser_navigate", url })
+  const reopens = [
+    try outcome("Summarize https://example.com/statement", open(observedUrl), carried),
+    try outcome("Reload this page", open(observedUrl), carried),
+    try outcome("Open https://example.com/statement#details", open(observedUrl), carried),
+    try outcome("Open https://example.com/statement#details", open(observedUrl + "#details"), carried),
+    try outcome("Can you open example. AI in the browser, please?", open("https://example.ai/"), { ...carried, url: "https://example.ai/" }),
+    try outcome("Open https://example.com/different", open("https://example.com/different"), carried),
+  ]
+
   const reloadCommand = browserPlugin.actions?.find((action) => action.name === "BROWSER_RELOAD")
   try Effect.try(() => assert.isTrue(reloadCommand !== undefined))
-  const device = renderer([replied(dispatched), replied(dispatched), replied(dispatched)])
+  const device = renderer([replied(dispatched), replied(dispatched), replied(dispatched), replied(dispatched)])
   const commandTurn = (text: string, browserPage: unknown): Memory =>
     ({ ...turn(browserTab), content: { text, metadata: { viewClientId: "client-1", observation: browserTab, browserPage } } }) as Memory
   const command = (text: string, browserPage: unknown) => promise(() => reloadCommand!.handler(device.runtime, commandTurn(text, browserPage), undefined, {}))
   const unasked = try command(summarize, withheld("unreadable", "tab-a", "r1"))
   const sensitive = try command(summarize, withheld("sensitive-page", "tab-a", "r1"))
+  const forbidden = []
+  for (const words of withdrawn) forbidden.push(try command(words, withheld("unreadable", "tab-a", "r1")))
   const asksAfterRefusal = device.asks.length
+  const askedDespiteOtherWithdrawal = try command(laterOtherWithdrawal, withheld("unreadable", "tab-a", "r1"))
   const askedSensitive = try command("refresh it", withheld("sensitive-page", "tab-a", "r1"))
   const asked = try command("reload this page", withheld("unreadable", "tab-a", "r1"))
   const readable = try command(summarize, { ...frontPage(), tabId: "tab-a", revision: "r1" })
@@ -517,8 +538,18 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
       { operation: { type: "browser_history", action: "back" }, reviewed: false },
     ])
     assert.deepStrictEqual([unasked, sensitive].map((result) => [result.success, failureKind(result), result.text]), [[false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL], [false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL]])
+    assert.deepStrictEqual(withdrawnProposals, withdrawn.map(() => "DEVICE_BROWSER_NOT_REQUESTED"))
+    assert.deepStrictEqual(authorizedDespiteOtherWithdrawal, { operation: reload, reviewed: false })
+    assert.deepStrictEqual(reopens, [
+      "DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED",
+      { operation: open(observedUrl + "#details"), reviewed: false },
+      { operation: open("https://example.ai/"), reviewed: false },
+      { operation: open("https://example.com/different"), reviewed: false },
+    ])
+    assert.deepStrictEqual(forbidden.map((result) => [result.success, failureKind(result)]), withdrawn.map(() => [false, "POLICY_BLOCKED"]))
     assert.strictEqual(asksAfterRefusal, 0)
+    assert.deepStrictEqual([askedDespiteOtherWithdrawal.success, askedDespiteOtherWithdrawal.data?.executionStatus], [true, "dispatched"])
     assert.deepStrictEqual([asked, askedSensitive, readable].map((result) => [result.success, result.data?.executionStatus]), [[true, "dispatched"], [true, "dispatched"], [true, "dispatched"]])
-    assert.strictEqual(device.asks.length, 3)
+    assert.strictEqual(device.asks.length, 4)
   })
 })
