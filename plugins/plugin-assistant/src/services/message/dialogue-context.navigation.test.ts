@@ -182,47 +182,62 @@ describe("historical navigation input", () => {
         { directMessage },
       );
       const wire = input.messages.map((message) => message.content).join("\n");
+      // The rule binds each entry to its request, which the wire names by
+      // the request's time: no event identifier is printed.
       expect(
         wire.split(
-          "never current work, a continuation request, or permission to act",
+          "Each historical navigation entry is a past outcome for its request only; never current work, a continuation request, or permission to act",
         ),
       ).toHaveLength(2);
+      expect(wire).not.toContain("requestSourceEventId");
       expect(wire.indexOf("runtime:historical_navigation_scope")).toBeLessThan(
         wire.indexOf("current_turn_boundary:"),
       );
-      const tableSegment = input.promptSegments.find(
-        (segment) => segment.label === "runtime:historical_navigation_table",
+      // One line per outcome, in request order: the view and how the
+      // navigation ended, without the step and handoff identifiers no tool
+      // accepts. Each line opens with the message_at stamp its own request
+      // carries in the conversation, and no two requests share a stamp.
+      const stamps = originals.map(
+        (_, index) =>
+          new RegExp(
+            `^\\[message_at=([^\\]]+)\\] [^\\n]*Open destination ${index}\\.$`,
+            "m",
+          ).exec(wire)?.[1],
       );
-      const table = JSON.parse(tableSegment?.content.trim() ?? "{}");
-      expect(table.columns).toEqual(["requestSourceEventId", "navigation"]);
-      expect(table.receiptColumns).toEqual(["success", "receipt"]);
-      const decodedRows = table.rows.map(
-        ([source, navigation]: [string, [boolean, [number, unknown[]]][]]) => [
-          source,
-          navigation.map(([success, [shape, values]]) => [
-            success,
-            JSON.stringify(
-              Object.fromEntries(
-                table.receiptShapes[shape].map((key: string, index: number) => [
-                  key,
-                  values[index],
-                ]),
-              ),
-            ),
-          ]),
-        ],
+      // The first request carries no usable time, so no stamp names it.
+      expect(stamps[0]).toBeUndefined();
+      expect(stamps.slice(1, 4)).toEqual([
+        "01-01 00:00Z",
+        "01-01 00:00Z #2",
+        "01-01 00:00Z #3",
+      ]);
+      expect(new Set(stamps).size).toBe(originals.length);
+      const line = (index: number) =>
+        `view_navigation delivered ${index % 2 ? "notes" : "calendar"} "Exact destination ${index} Ω"`;
+      const [unkeyed, keyed, ...others] = input.promptSegments.filter(
+        (segment) => segment.label === "runtime:historical_navigation",
       );
-      expect(decodedRows).toEqual(
-        receipts.map((receipt) => [
-          receipt.requestSourceEventId,
-          receipt.navigation.map(
-            (entry: { success: boolean; receipt: string }) => [
-              entry.success,
-              entry.receipt,
-            ],
-          ),
-        ]),
+      expect(others).toEqual([]);
+      expect(keyed.content.trim().split("\n")).toEqual([
+        "Outcomes of the requests shown above, each line after its request's message_at time:",
+        ...receipts
+          .slice(1)
+          .map((_, index) => `${stamps[index + 1]} ${line(index + 1)}`),
+      ]);
+      // An outcome whose request has no stamp is never printed without a key
+      // among those: it stands ahead of the conversation.
+      expect(unkeyed.content.trim().split("\n")).toEqual([
+        "Each line is a navigation made for an earlier request: result, then the view.",
+        "Outcomes of earlier requests that are not shown:",
+        line(0),
+      ]);
+      expect(wire.indexOf(unkeyed.content.trim())).toBeLessThan(
+        wire.indexOf("# Conversation"),
       );
+      expect(wire.indexOf(keyed.content.trim())).toBeGreaterThan(
+        wire.indexOf("# Conversation"),
+      );
+      expect(wire).not.toContain("handoff-");
     }
     expect(originals).toEqual(before);
   });

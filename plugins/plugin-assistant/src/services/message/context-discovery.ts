@@ -22,6 +22,12 @@ import { parseToolArguments } from "./tool-arguments.ts";
 
 export const READ_CONTEXT_TOOL_NAME = "READ_CONTEXT";
 
+/** The answer to a history read on a turn where no original is deferred. A
+ * host that defers history by position offers the read from its first turn, so
+ * the read can arrive before there is anything behind it. */
+export const UNDEFERRED_HISTORY_READ_RESULT =
+  "context_read_result: Nothing was read. No earlier message of this conversation is deferred: every message it holds is already shown above in full, so a history read or search can add nothing. Decide from what is shown with HANDLE_RESPONSE. When the request needs something that is not there, say what you looked for and that this conversation does not hold it.";
+
 /** Offer the read-only control without changing the legacy response envelope. */
 export function createContextReadTool(
   schema: JSONSchema,

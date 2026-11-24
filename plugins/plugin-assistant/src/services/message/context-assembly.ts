@@ -287,10 +287,26 @@ export async function createV5MessageContextObject(args: {
           ]
         : []),
     ];
+    // "Ping my brother" and "ring the dentist" name a person by a role. The
+    // first stage read them as a contact lookup and chose the contacts
+    // context, and the planner proposed contact_show instead of the call or
+    // text. Both operations take the owner's words as the contact to find, so
+    // a phone is told this of the ones it negotiated.
+    const contactFinding = [
+      ...(phoneCapabilities.includes("phone.call.v1")
+        ? [{ operation: "phone_call", request: "call" }]
+        : []),
+      ...(phoneCapabilities.includes("sms.compose.v1")
+        ? [{ operation: "sms_compose", request: "text" }]
+        : []),
+    ];
+    const contactFindingGuidance = contactFinding.length
+      ? `${contactFinding.map(({ operation }) => operation).join(" and ")} ${contactFinding.length > 1 ? "find the contact themselves" : "finds the contact itself"} from the owner's words, a name or a role or relation such as my brother or the dentist, so a ${contactFinding.map(({ request }) => request).join(" or ")} never needs a contact lookup first. `
+      : "";
     // The address-book paragraph ends with the same relationship-record
     // boundary, so it is stated here only when that paragraph is absent.
     const phoneRouteGuidance = phoneRoutes.length
-      ? `Calls, texts and contact lookups through this phone's own Phone, Messages and Contacts apps go through PROPOSE_DEVICE_ACTION, in the general, phone, messaging or contacts context: ${phoneRoutes.join("; ")}. The owner reviews each call, text and contact change on the phone. A request to call, text, show a named contact or open the dialer is that device operation, not a view change; a plain request to open or show the Phone, Messages or Contacts app, including "show my contacts" with no name, is navigation to that view. The phone capabilities above are current for this turn: an earlier reply in this conversation saying calls, texts or contacts were unavailable is outdated and is never a reason to refuse now. VOICE_CALL (a Twilio call from the agent's number), MESSAGE_SEND, PAGE_DELEGATE and connector messaging are not this phone's apps; use them only when the owner asks for that service by name. ${addressBookGuidance ? "" : "ENTITY and CONTACT are the assistant's own relationship records, never the phone's address book. "}`
+      ? `Calls, texts and contact lookups through this phone's own Phone, Messages and Contacts apps go through PROPOSE_DEVICE_ACTION, in the general, phone, messaging or contacts context: ${phoneRoutes.join("; ")}. ${contactFindingGuidance}The owner reviews each call, text and contact change on the phone. A request to call, text, show a named contact or open the dialer is that device operation, not a view change; a plain request to open or show the Phone, Messages or Contacts app, including "show my contacts" with no name, is navigation to that view. The phone capabilities above are current for this turn: an earlier reply in this conversation saying calls, texts or contacts were unavailable is outdated and is never a reason to refuse now. VOICE_CALL (a Twilio call from the agent's number), MESSAGE_SEND, PAGE_DELEGATE and connector messaging are not this phone's apps; use them only when the owner asks for that service by name. ${addressBookGuidance ? "" : "ENTITY and CONTACT are the assistant's own relationship records, never the phone's address book. "}`
       : "";
     const smsSenderGuidance = deviceOperationSupportedByCapabilities(
       "sms_latest_sender",

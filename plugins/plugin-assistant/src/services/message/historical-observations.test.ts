@@ -5,6 +5,7 @@ import {
   type ContextEvent,
   type ContextObject,
   conversationClientUserMemoryId,
+  type EffectReceipt,
   type IAgentRuntime,
   type Memory,
   normalizeEffectReceipt,
@@ -388,17 +389,71 @@ it("retains observation admission and complete ordered mutation receipts after J
           [],
           { directMessage },
         );
+        if (shape === "stored") {
+          // A stored receipt is one line: the tool, its operation, how it
+          // ended and the records a later request can name, in the order
+          // recorded. Each line opens with the message_at stamp its own
+          // request carries in the conversation; no two requests share one.
+          const wire = rendered.messages
+            .map((message) => message.content)
+            .join("\n");
+          const stamp = (requestSourceEventId: string) => {
+            const index = originals.findIndex(
+              (original) => `history:${original.id}` === requestSourceEventId,
+            );
+            return new RegExp(
+              `^\\[message_at=([^\\]]+)\\] [^\\n]*Original request ${index}\\.$`,
+              "m",
+            ).exec(wire)?.[1];
+          };
+          const expected = canonical.flatMap((record) =>
+            record.outcomes.map(
+              ({
+                actionName,
+                receipt,
+              }: {
+                actionName: string;
+                receipt: EffectReceipt;
+              }) => {
+                const records = [receipt.resource, ...receipt.artifacts]
+                  .map((record) => `${record.kind} ${record.id}`)
+                  .join(", ");
+                const called = `${stamp(record.requestSourceEventId)} ${actionName} calendar.event.create`;
+                if (receipt.outcome === "preview") return `${called} preview`;
+                if (receipt.outcome === "failed")
+                  return `${called} failed${receipt.failure.acceptance === "unknown" ? ` ${records}` : ""}: ${receipt.failure.code}, acceptance ${receipt.failure.acceptance}, ${receipt.failure.retryable ? "retryable" : "not retryable"}`;
+                return `${called} ${receipt.outcome} ${records}${receipt.outcome === "noop" ? `: ${receipt.reason}` : ""}`;
+              },
+            ),
+          );
+          expect(expected).toHaveLength(28);
+          const keys = canonical.map((record) =>
+            stamp(record.requestSourceEventId),
+          );
+          expect(keys.every((key) => key !== undefined)).toBe(true);
+          expect(new Set(keys).size).toBe(keys.length);
+          const lines = rendered.promptSegments
+            .filter((segment) => segment.label === "runtime:historical_effects")
+            .flatMap((segment) => segment.content.trim().split("\n"))
+            .filter((line) => line.includes(" calendar.event.create "));
+          expect(lines).toEqual(expected);
+          expect(wireContext).toEqual(contextBefore);
+          continue;
+        }
         const legends = new Map();
         const decoded = [];
         let sawNestedShape = false;
         for (const segment of rendered.promptSegments) {
-          if (!segment.label?.startsWith("runtime:historical_")) continue;
+          if (
+            segment.label !== "runtime:historical_receipt_encoding" &&
+            !segment.label?.startsWith("runtime:historical_effects")
+          )
+            continue;
           const body = JSON.parse(segment.content.trim());
           if (segment.label === "runtime:historical_receipt_encoding") {
             legends.set(body.id, { ...body, decodedReceipts: [] });
             continue;
           }
-          if (!segment.label.startsWith("runtime:historical_effects")) continue;
           if (!Array.isArray(body) && !body.rows) {
             decoded.push(body);
             continue;
@@ -465,8 +520,7 @@ it("retains observation admission and complete ordered mutation receipts after J
             });
           }
         }
-        if (shape === "stored" || shape === "future-child")
-          expect(sawNestedShape).toBe(true);
+        if (shape === "future-child") expect(sawNestedShape).toBe(true);
         if (shape === "future-top" || shape === "malformed")
           expect(sawNestedShape).toBe(false);
         // JSON equality additionally proves original ordered object keys, arrays,

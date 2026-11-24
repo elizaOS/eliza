@@ -319,7 +319,7 @@ export function appendPriorDialogueEvents(
             id: "historical-navigation-scope",
             label: "runtime:historical_navigation_scope",
             content:
-              "Each historical navigation entry is a past outcome for its requestSourceEventId only; never current work, a continuation request, or permission to act. Delivered records transport delivery then, not current view or record contents. Current-turn UI metadata independently reports the current view.",
+              "Each historical navigation entry is a past outcome for its request only; never current work, a continuation request, or permission to act. Delivered records transport delivery then, not current view or record contents. Current-turn UI metadata independently reports the current view.",
             stable: false,
           },
         });

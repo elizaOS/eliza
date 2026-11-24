@@ -78,6 +78,7 @@ import {
   hasContextReadToolCall,
   projectDiscoverableContext,
   READ_CONTEXT_TOOL_NAME,
+  UNDEFERRED_HISTORY_READ_RESULT,
   withAvailableContextRequests,
 } from "./context-discovery.js";
 import {
@@ -497,6 +498,18 @@ export async function generateStage1Decision(
   };
   let providerReviewSourceSetId: string | undefined;
   let nativeReadContract: NativeContextReadContract | undefined;
+  // A host that defers history by position (the condition the window above
+  // runs under) offers the history read while nothing is deferred yet.
+  // Offered only from the turn the window starts, the tool would change the
+  // tool list mid-conversation, and tool definitions lead a provider's cached
+  // prefix: that turn would read its system prompt and history uncached.
+  let undeferredHistoryRead =
+    discoveryEnabled &&
+    !history &&
+    !postTurnReviewRuns(args.message) &&
+    args.runtime.evaluators?.some(
+      (evaluator) => evaluator.name === HISTORY_RETENTION_EVALUATOR,
+    ) === true;
   // Field names in the HANDLE_RESPONSE tool schema last sent to the model.
   // The schema can omit an active field (contextRequests when no reference is
   // available), and the reply stream gate must not wait for a field the
@@ -600,14 +613,40 @@ export async function generateStage1Decision(
       const ownedHistory = args.runtime.providers?.some((provider) =>
         provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
       );
+      const scope = {
+        agentId: args.runtime.agentId,
+        roomId: args.message.roomId,
+        entityId: args.message.entityId,
+        roles: [senderRole],
+      };
+      // With nothing deferred the selectors bind the originals shown inline,
+      // which gives the tool the bytes it has once the window starts.
+      const inline = undeferredHistoryRead
+        ? completionContextSources(context)
+        : undefined;
+      const shown: HistoryDiscovery | undefined = inline && {
+        sourceSetId: inline.sourceSetId,
+        scope,
+        visibleEventIds: new Set(
+          inline.sources.map((source) => source.event.id),
+        ),
+        loadedSourceIds: new Set(),
+      };
       const historyBinding = ownedHistory
         ? undefined
-        : nativeHistoryReadBinding(context, history, discovery.available, {
-            agentId: args.runtime.agentId,
-            roomId: args.message.roomId,
-            entityId: args.message.entityId,
-            roles: [senderRole],
-          });
+        : shown
+          ? nativeHistoryReadBinding(
+              context,
+              shown,
+              historyReferences(context, shown),
+              scope,
+            )
+          : nativeHistoryReadBinding(
+              context,
+              history,
+              discovery.available,
+              scope,
+            );
       nativeReadContract = {
         providers: new Set(
           [...providers].filter((name) => discovery.available.has(name)),
@@ -621,7 +660,8 @@ export async function generateStage1Decision(
         ? withAvailableContextRequests(fieldSchema, discovery.available)
         : fieldSchema;
     const readTool =
-      discoveryEnabled && discovery.available.size > 0
+      discoveryEnabled &&
+      (discovery.available.size > 0 || nativeReadContract?.history)
         ? createContextReadTool(
             nativeReadContract ? fieldSchema : referenceSchema,
             contextReadProgressEnabled,
@@ -1242,6 +1282,19 @@ export async function generateStage1Decision(
         contextReadEnabled(),
         nativeReadContract,
       );
+      if (nativeRead && undeferredHistoryRead) {
+        const references = nativeRead.contextRequests.filter(
+          (name) => !name.startsWith(HISTORY_REFERENCE_PREFIX),
+        );
+        nativeRead = { ...nativeRead, contextRequests: references };
+        // Every original is inline, so the read has nothing to return. It is
+        // told so through the one control turn an invalid read gets, and the
+        // selectors are not offered again on this turn: the next call decides.
+        if (!references.length) {
+          invalidReadRepair = UNDEFERRED_HISTORY_READ_RESULT;
+          undeferredHistoryRead = false;
+        }
+      }
       parsedDecision =
         nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
       if (terminalReviewAnswerPending && !nativeRead) {

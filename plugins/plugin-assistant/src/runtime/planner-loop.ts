@@ -1817,6 +1817,250 @@ async function runPlannerLoopIterations(
   // re-evaluate-after-each-action cadence (one action, then evaluate).
   const codingDrainQueue = codingMode;
 
+  /**
+   * One planner model call of this turn. A round names only what differs:
+   * every other argument is the same on each, so a round's request extends
+   * the one before it.
+   */
+  const planRound = (round: {
+    iteration: number;
+    tools: ToolDefinition[] | undefined;
+    toolChoice: ToolChoice | undefined;
+    allowReplyContextProjection?: boolean;
+    sourceReply?: NonNullable<
+      PlannerLoopParams["postToolReplySeed"]
+    >["sourceReply"];
+  }) =>
+    callPlanner({
+      runtime: params.runtime,
+      context: trajectory.context,
+      trajectory,
+      config,
+      modelType: params.modelType,
+      provider: params.provider,
+      recorder: params.recorder,
+      trajectoryId: params.trajectoryId,
+      cacheConversationId: params.cacheConversationId,
+      parentStageId: params.parentStageId,
+      providerAttributionState: params.providerAttributionState,
+      onUsage: observePlannerUsage,
+      ...round,
+    });
+  // Require a native call until the requested tool has run. Explicitly
+  // pending chat work also needs a native continuation or scope release:
+  // REPLY/IGNORE/STOP can close the turn without repeating an action.
+  // Bare prose has no native scope field and can trigger redundant
+  // evaluation/synthesis. Coding keeps native calls required because
+  // REPLY supplies its explicit final scope without another mutation.
+  // Other settled turns retain the explicit auto choice.
+  const planningToolChoice = (): ToolChoice | undefined =>
+    requireNonTerminalToolCall
+      ? !codingMode &&
+        hasExecutedNonTerminalTool(trajectory) &&
+        lastPlannerExplicitCompleted !== false
+        ? "auto"
+        : "required"
+      : params.toolChoice;
+  /** Queues one round's admitted calls and records them on the context. */
+  const enqueuePlannedCalls = (
+    calls: readonly PlannerToolCall[],
+    iteration: number,
+  ): void => {
+    trajectory.plannedQueue.push(...calls);
+    // The queue keeps the exact raw calls for the handler path; the context
+    // copies below are diagnostics and carry the redacted projection only.
+    trajectory.context = {
+      ...trajectory.context,
+      plannedQueue: [
+        ...(trajectory.context.plannedQueue ?? []),
+        ...calls.map((toolCall) => ({
+          id: toolCall.id,
+          name: toolCall.name,
+          args: stringifyToolArgsForDiagnostics(
+            toolCall.params,
+            redactDiagnosticText,
+          ),
+          status: "queued" as const,
+          sourceStageId: `planner:${iteration}`,
+        })),
+      ],
+    };
+    for (const toolCall of calls) {
+      trajectory.context = appendContextEvent(trajectory.context, {
+        id: `queue:${toolCall.id ?? toolCall.name}:${iteration}`,
+        type: "planned_tool_call",
+        source: "planner-loop",
+        createdAt: Date.now(),
+        metadata: {
+          iteration,
+          toolCallId: toolCall.id,
+          name: toolCall.name,
+          params: stringifyToolArgsForDiagnostics(
+            toolCall.params,
+            redactDiagnosticText,
+          ),
+          status: "queued",
+        },
+      });
+    }
+  };
+  /** The tools of one planner round. Only REPLY differs between rounds. */
+  const plannerToolsFor = (canReleaseHeldReply: boolean) =>
+    params.tools?.map((tool) => {
+      const schema = tool.parameters;
+      if (tool.name !== "REPLY" || !schema?.properties?.text) return tool;
+      return {
+        ...tool,
+        parameters: {
+          ...schema,
+          properties: {
+            ...schema.properties,
+            text: {
+              ...schema.properties.text,
+              minLength: canReleaseHeldReply ? 0 : 1,
+              description:
+                "Complete grounded user-facing reply. Omit only to release an already verified held reply; without one, provide nonempty text.",
+            },
+            effectReceiptIds: {
+              type: "array" as const,
+              items: { type: "string" as const },
+              description:
+                "Supplied committed receipt IDs for changes claimed in text; [] for no change claims. Never invent IDs.",
+            },
+          },
+          required: [
+            ...(schema.required ?? []).filter(
+              (name) => name !== "text" && name !== "effectReceiptIds",
+            ),
+            ...(!canReleaseHeldReply ? ["text"] : []),
+          ],
+        },
+      };
+    });
+
+  // A turn gets one planner round behind a recorded phone proposal.
+  let plannedBehindDeviceProposal = false;
+  /**
+   * Proposes the rest of a request's phone work once one proposal is recorded.
+   * Nothing resumes the turn after the owner decides, so what is not proposed
+   * before it ends is lost: "text Sam I'll be late, and set an alarm for 7am"
+   * proposed the text alone. A phone proposal runs nothing in this turn: it
+   * records a request the owner approves on the phone, or one of the few the
+   * phone opens itself once the reply arrives. So recording the next one runs
+   * no operation here, dependent or not. Returns the last iteration it used.
+   */
+  const proposeRemainingDeviceWork = async (
+    iteration: number,
+  ): Promise<number> => {
+    let step = iteration;
+    // In queue order, stopping at the first call that is not a phone proposal,
+    // repeats an operation already awaiting review, or does not itself end as
+    // a recorded review: a later call may depend on it. What is left stays
+    // queued and unrun. False when a refused proposal or a turn limit stopped
+    // it, which also rules out planning again.
+    const recordQueuedProposals = async (): Promise<boolean> => {
+      for (;;) {
+        const next = trajectory.plannedQueue[0];
+        if (
+          !next ||
+          !isDeviceProposalCall(next, trajectory.context) ||
+          repeatsRecordedDeviceProposal(next, trajectory)
+        )
+          return true;
+        step++;
+        try {
+          await checkpoint?.(trajectory, "before_tool");
+          getStreamingContext()?.abortSignal?.throwIfAborted();
+          await executeQueuedToolCall({
+            params,
+            trajectory,
+            toolCall: next,
+            iteration: step,
+            config,
+            failures,
+            plannerCompleted: lastPlannerExplicitCompleted,
+          });
+          await checkpoint?.(trajectory, "after_tool");
+          getStreamingContext()?.abortSignal?.throwIfAborted();
+        } catch (error) {
+          // error-policy:J4 A call or failure limit ends the extra proposals,
+          // not the turn: the recorded review stands and its notice is true.
+          if (!(error instanceof TrajectoryLimitExceeded)) throw error;
+          params.runtime.logger?.warn?.(
+            { iteration: step, toolName: next.name, limit: error.kind },
+            "[planner-loop] turn limit reached while recording batched phone proposals; pausing on the recorded review",
+          );
+          return false;
+        }
+        if (!isPersistedDeviceApprovalPause(trajectory.steps.at(-1)?.result))
+          return false;
+      }
+    };
+    if (
+      !(await recordQueuedProposals()) ||
+      plannedBehindDeviceProposal ||
+      trajectory.plannedQueue.length > 0 ||
+      lastPlannerExplicitCompleted !== false
+    )
+      return step;
+    // The planner said a later batch was needed. Once per turn, and only its
+    // phone proposals are recorded: any other call, and its reply, could act
+    // on or claim an effect the owner has not approved.
+    plannedBehindDeviceProposal = true;
+    step++;
+    appendPlannerModelFeedbackEvent(trajectory, {
+      id: `device-proposal-follow-up:${step}`,
+      type: "instruction",
+      source: "planner-loop",
+      createdAt: Date.now(),
+      content: DEVICE_PROPOSAL_FOLLOW_UP_INSTRUCTION,
+    });
+    let output: Awaited<ReturnType<typeof callPlanner>>;
+    try {
+      output = await planRound({
+        iteration: step,
+        tools: plannerToolsFor(false),
+        toolChoice: planningToolChoice(),
+      });
+    } catch (error) {
+      // error-policy:J4 The recorded review does not depend on this round, so
+      // an expected model-provider failure or a spent turn limit ends the
+      // turn on the review notice instead of failing it. Cancellation, a
+      // context overflow and every other error propagate.
+      getStreamingContext()?.abortSignal?.throwIfAborted();
+      if (
+        !(error instanceof TrajectoryLimitExceeded) &&
+        (!isModelProviderError(error) ||
+          isProviderContextOverflowFailure(error))
+      )
+        throw error;
+      params.runtime.logger?.warn?.(
+        {
+          iteration: step,
+          err: error instanceof Error ? error.message : String(error),
+          providerErrorDetail: modelProviderErrorDetail(error),
+        },
+        "[planner-loop] planner round behind a recorded phone proposal failed; pausing on the recorded review",
+      );
+      return step;
+    }
+    if (output.completed !== undefined)
+      lastPlannerExplicitCompleted = output.completed;
+    const proposed = splitUnavailableToolCalls(
+      output.toolCalls
+        .filter((call) => !isTerminalToolCall(call))
+        .map((call, index) => ensureToolCallId(call, step, index)),
+      params.tools,
+      trajectory.context,
+    ).valid;
+    enqueuePlannedCalls(
+      partitionRedundantSucceededCalls(proposed, trajectory).fresh,
+      step,
+    );
+    await recordQueuedProposals();
+    return step;
+  };
+
   const firstIteration =
     Math.max(
       0,
@@ -1920,37 +2164,7 @@ async function runPlannerLoopIterations(
         pendingScopeRejectedFinish.output.protocolFailure !== true &&
         Boolean(pendingScopeRejectedFinish.output.messageToUser?.trim()) &&
         !latestUnresolvedFailedNonTerminalToolStep(trajectory);
-      const plannerTools = params.tools?.map((tool) => {
-        const schema = tool.parameters;
-        if (tool.name !== "REPLY" || !schema?.properties?.text) return tool;
-        return {
-          ...tool,
-          parameters: {
-            ...schema,
-            properties: {
-              ...schema.properties,
-              text: {
-                ...schema.properties.text,
-                minLength: canReleaseHeldReply ? 0 : 1,
-                description:
-                  "Complete grounded user-facing reply. Omit only to release an already verified held reply; without one, provide nonempty text.",
-              },
-              effectReceiptIds: {
-                type: "array" as const,
-                items: { type: "string" as const },
-                description:
-                  "Supplied committed receipt IDs for changes claimed in text; [] for no change claims. Never invent IDs.",
-              },
-            },
-            required: [
-              ...(schema.required ?? []).filter(
-                (name) => name !== "text" && name !== "effectReceiptIds",
-              ),
-              ...(!canReleaseHeldReply ? ["text"] : []),
-            ],
-          },
-        };
-      });
+      const plannerTools = plannerToolsFor(canReleaseHeldReply);
       // Resolve Stage 1's draft/tool-candidate contradiction before exposing
       // an effect to planning. Reuse normal completion evaluation: FINISH
       // can deliver the draft; CONTINUE must still plan the outstanding work.
@@ -1974,13 +2188,8 @@ async function runPlannerLoopIterations(
                 replyText: initialStageOneReply,
               },
             }
-          : await callPlanner({
-              runtime: params.runtime,
-              context: trajectory.context,
-              trajectory,
-              config,
-              modelType: params.modelType,
-              provider: params.provider,
+          : await planRound({
+              iteration,
               // A successful final-scope action may ask for one natural closing
               // sentence. That round is synthesis, not planning: remove the tool
               // catalog entirely so callPlanner cannot default an omitted toolChoice
@@ -1995,29 +2204,9 @@ async function runPlannerLoopIterations(
               sourceReply: synthesizingRequiredModelReply
                 ? postToolReplySeed?.sourceReply
                 : undefined,
-              // Require a native call until the requested tool has run. Explicitly
-              // pending chat work also needs a native continuation or scope release:
-              // REPLY/IGNORE/STOP can close the turn without repeating an action.
-              // Bare prose has no native scope field and can trigger redundant
-              // evaluation/synthesis. Coding keeps native calls required because
-              // REPLY supplies its explicit final scope without another mutation.
-              // Other settled turns retain the explicit auto choice.
               toolChoice: synthesizingRequiredModelReply
                 ? undefined
-                : requireNonTerminalToolCall
-                  ? !codingMode &&
-                    hasExecutedNonTerminalTool(trajectory) &&
-                    lastPlannerExplicitCompleted !== false
-                    ? "auto"
-                    : "required"
-                  : params.toolChoice,
-              recorder: params.recorder,
-              trajectoryId: params.trajectoryId,
-              cacheConversationId: params.cacheConversationId,
-              parentStageId: params.parentStageId,
-              providerAttributionState: params.providerAttributionState,
-              iteration,
-              onUsage: observePlannerUsage,
+                : planningToolChoice(),
             });
       } catch (err) {
         // A context overflow is a terminal integrity boundary even after a
@@ -3395,43 +3584,7 @@ async function runPlannerLoopIterations(
         }
       }
       memorySearchBudgetDeadRounds = 0;
-      trajectory.plannedQueue.push(...memoryBudget.allowed);
-      // The queue keeps the exact raw calls for the handler path; the context
-      // copies below are diagnostics and carry the redacted projection only.
-      trajectory.context = {
-        ...trajectory.context,
-        plannedQueue: [
-          ...(trajectory.context.plannedQueue ?? []),
-          ...memoryBudget.allowed.map((toolCall) => ({
-            id: toolCall.id,
-            name: toolCall.name,
-            args: stringifyToolArgsForDiagnostics(
-              toolCall.params,
-              redactDiagnosticText,
-            ),
-            status: "queued" as const,
-            sourceStageId: `planner:${iteration}`,
-          })),
-        ],
-      };
-      for (const toolCall of memoryBudget.allowed) {
-        trajectory.context = appendContextEvent(trajectory.context, {
-          id: `queue:${toolCall.id ?? toolCall.name}:${iteration}`,
-          type: "planned_tool_call",
-          source: "planner-loop",
-          createdAt: Date.now(),
-          metadata: {
-            iteration,
-            toolCallId: toolCall.id,
-            name: toolCall.name,
-            params: stringifyToolArgsForDiagnostics(
-              toolCall.params,
-              redactDiagnosticText,
-            ),
-            status: "queued",
-          },
-        });
-      }
+      enqueuePlannedCalls(memoryBudget.allowed, iteration);
     }
 
     const toolCall = trajectory.plannedQueue[0];
@@ -3605,11 +3758,22 @@ async function runPlannerLoopIterations(
       trajectory.plannedQueue.length === 0 &&
       lastPlannerExplicitCompleted !== false;
     if (requestedHandoff || isPersistedDeviceApprovalPause(latestResult)) {
-      // Otherwise the owner must supply the next event. Do not spend another
-      // evaluator or planner call, manufacture a new operation key, or dispatch
-      // the queue. Preserve pending scope, remaining calls and settled outcomes.
+      // Otherwise the owner must supply the next event. Do not spend an
+      // evaluator call, manufacture a new operation key, or run a queued call
+      // that is not itself a phone proposal: it may depend on an effect the
+      // owner has not approved. Preserve pending scope, remaining calls and
+      // settled outcomes. The request's other phone proposals are recorded
+      // first, each for its own review.
       // A handoff reply names the request the tool recorded ("Opening <host>."):
       // Stage 1 may have asked a question the routed request already answered.
+      const pausedAt = requestedHandoff
+        ? iteration
+        : await proposeRemainingDeviceWork(iteration);
+      const reviews = new Set(
+        allTrajectorySteps(trajectory)
+          .filter((step) => isPersistedDeviceApprovalPause(step.result))
+          .map((step) => step.result?.data?.proposalId),
+      ).size;
       const startedAt = Date.now();
       const captured = sanitizePlannerMessage(params.stageOneReplyText);
       const message =
@@ -3636,14 +3800,16 @@ async function runPlannerLoopIterations(
             requestFullyCovered: false,
             replyEffectStatus: "non_applied",
             thought:
-              "The durable device proposal is waiting for explicit owner input. Requested work remains incomplete; no dependent operation ran.",
+              reviews > 1
+                ? `${reviews} durable device proposals are each waiting for explicit owner input. Requested work remains incomplete; no dependent operation ran.`
+                : "The durable device proposal is waiting for explicit owner input. Requested work remains incomplete; no dependent operation ran.",
             messageToUser: message,
           };
       trajectory.evaluatorOutputs.push(paused);
       appendEvaluatorContextEvent(
         trajectory,
         paused,
-        iteration,
+        pausedAt,
         redactDiagnosticText,
       );
       await recordGatedEvaluationStage({
@@ -3651,7 +3817,7 @@ async function runPlannerLoopIterations(
         recorder: params.recorder,
         trajectoryId: params.trajectoryId,
         parentStageId: params.parentStageId,
-        iteration,
+        iteration: pausedAt,
         startedAt,
         endedAt: Date.now(),
         output: paused,
@@ -4116,6 +4282,11 @@ function appendPendingToolQueueFeedbackEvent(
   });
 }
 
+// One definition, offered whether or not anything is deferred. It is the last
+// tool of a planner request and a prompt cache reads tool definitions first:
+// a definition that depended on what is deferred would change the bytes ahead
+// of the system prompt and the history whenever that changed. A call with
+// nothing to restore is answered in `callPlanner`.
 const RESTORE_CONTEXT_TOOL = {
   name: "RESTORE_CONTEXT",
   // An unflagged tool disables request-wide strictness on Cerebras, including
@@ -4133,6 +4304,19 @@ const RESTORE_CONTEXT_TOOL = {
     required: ["reason"],
   },
 } satisfies ToolDefinition;
+/** Marks the one answer a turn gives to a restore call with nothing to restore. */
+const NOTHING_DEFERRED_EVENT_ID = "planner-context-nothing-deferred";
+
+/** The tools a planner request carries: the caller's, then the context read.
+ * Coding mode never defers context, so it has nothing to restore. */
+function withRestoreContextTool(
+  tools: ToolDefinition[] | undefined,
+  codingMode: boolean,
+): ToolDefinition[] | undefined {
+  return tools?.length && !codingMode
+    ? [...tools, RESTORE_CONTEXT_TOOL]
+    : tools;
+}
 
 function renderPlannerModelInput(params: {
   context: ContextObject;
@@ -4148,7 +4332,6 @@ function renderPlannerModelInput(params: {
   promptSegments: PromptSegment[];
   cacheKeySegments: PromptSegment[];
   sourceSelectionApplied: boolean;
-  restoreContextTool?: ToolDefinition;
   actionSourceSelectionSchema?: JSONSchema & ActionParameterSchema;
   /** Identity of the originals an offered review covers, captured before
    * dispatch: the context may change while the model is awaited. */
@@ -4400,29 +4583,6 @@ function renderPlannerModelInput(params: {
       stepMessages: completeStepMessages,
     }),
   );
-  const historyRestorable =
-    selected.applied || background.applied || diagnosticProjection.applied;
-  const providersRestorable = deferred.available.length > 0;
-  const restoreContextTool: ToolDefinition | undefined =
-    historyRestorable || providersRestorable
-      ? {
-          ...RESTORE_CONTEXT_TOOL,
-          parameters: {
-            ...RESTORE_CONTEXT_TOOL.parameters,
-            properties: {
-              ...RESTORE_CONTEXT_TOOL.parameters.properties,
-              scope: {
-                type: "string",
-                enum: [
-                  ...(historyRestorable ? ["history"] : []),
-                  ...(providersRestorable ? ["providers"] : []),
-                  "full",
-                ],
-              },
-            },
-          },
-        }
-      : undefined;
   return {
     messages,
     promptSegments,
@@ -4432,7 +4592,6 @@ function renderPlannerModelInput(params: {
       ? actionSources?.sourceSetId
       : undefined,
     actionSourceReviewWithheld,
-    restoreContextTool,
     sourceSelectionApplied:
       selected.applied ||
       background.applied ||
@@ -4550,9 +4709,7 @@ export function buildInitialPlannerModelInputBudget(params: {
   return buildModelInputBudget({
     messages: renderedInput.messages,
     promptSegments: renderedInput.promptSegments,
-    tools: renderedInput.restoreContextTool
-      ? [...(params.tools ?? []), renderedInput.restoreContextTool]
-      : params.tools,
+    tools: withRestoreContextTool(params.tools, params.codingMode === true),
     modelName: config.contextWindowModelName,
     ...(config.contextWindowTokens
       ? { contextWindowTokens: config.contextWindowTokens }
@@ -5362,9 +5519,10 @@ async function dispatchPlannerModelCall(params: {
     // envelope has no `completed` field (#17034); `parsePlannerOutput`
     // strips it before dispatch.
     modelParams.tools = withTurnScopeToolArg(
-      renderedInput.restoreContextTool
-        ? [...(params.tools ?? []), renderedInput.restoreContextTool]
-        : params.tools,
+      withRestoreContextTool(
+        params.tools,
+        params.trajectory.codingMode === true,
+      ),
       renderedInput.messages[0]?.role === "system" &&
         typeof renderedInput.messages[0].content === "string"
         ? renderedInput.messages[0].content
@@ -6049,6 +6207,16 @@ async function callPlanner(
         : readHistory
           ? "history"
           : "providers";
+    const historyDeferred =
+      selectCompletionContext(original).applied ||
+      projectBackgroundHistory(original).applied ||
+      referencePlannerQueryTokens(original).applied;
+    const providersDeferred =
+      projectDeferredProviders(original).available.length > 0 ||
+      ownedSourcesRestorable;
+    const nothingToRestore =
+      !(readHistory && historyDeferred) &&
+      !(readProviders && providersDeferred);
     if (
       params.trajectory.codingMode ||
       (!params.tools?.length && !params.allowReplyContextProjection) ||
@@ -6058,22 +6226,35 @@ async function callPlanner(
           typeof call.params?.reason !== "string" || !call.params.reason.trim(),
       ) ||
       (!readHistory && !readProviders) ||
-      (!(
-        readHistory &&
-        (selectCompletionContext(original).applied ||
-          projectBackgroundHistory(original).applied ||
-          referencePlannerQueryTokens(original).applied)
-      ) &&
-        !(
-          readProviders &&
-          (projectDeferredProviders(original).available.length ||
-            ownedSourcesRestorable)
+      // The tool is offered whether or not anything is deferred, so the first
+      // such call is answered below. Asking again after that answer is not.
+      (nothingToRestore &&
+        params.trajectory.context.events.some(
+          (event) => event.id === NOTHING_DEFERRED_EVENT_ID,
         ))
     ) {
       throw new ElizaError(
         "Original planner context is already complete; repeated restoration is invalid",
         { code: "PLANNER_CONTEXT_RESTORE_INVALID" },
       );
+    }
+    if (nothingToRestore) {
+      const elsewhere =
+        !readHistory && historyDeferred
+          ? "history"
+          : !readProviders && providersDeferred
+            ? "providers"
+            : undefined;
+      // Appended after everything already sent, so the request this answers
+      // stays a reusable prefix of the next one.
+      appendPlannerModelFeedbackEvent(params.trajectory, {
+        id: NOTHING_DEFERRED_EVENT_ID,
+        type: "instruction",
+        source: "planner-loop",
+        createdAt: Date.now(),
+        content: `RESTORE_CONTEXT found nothing deferred${scope === "full" ? "" : ` for scope=${scope}`}: everything it could read is already shown. No tool from that response executed. ${elsewhere ? `Only scope=${elsewhere} is deferred.` : "Do not call RESTORE_CONTEXT again this turn."} Continue the request from what is shown.`,
+      });
+      return await callPlanner(params);
     }
     const restored =
       readProviders &&
@@ -10754,6 +10935,49 @@ function hasNoopMarker(result: PlannerToolResult): boolean {
   if (!data) return false;
   if (data.noop === true) return true;
   return plannerResultValues(result)?.noop === true;
+}
+
+/** The phone tool every device operation can be proposed through. */
+const DEVICE_PROPOSAL_TOOL = "PROPOSE_DEVICE_ACTION";
+
+/** Shown to the planner before its one round behind a recorded proposal. */
+const DEVICE_PROPOSAL_FOLLOW_UP_INSTRUCTION =
+  "Each proposal above is recorded for the owner's review on the phone; none has run. Propose every remaining phone operation of this request now, in this one batch: each gets its own review and no later round follows. Do not repeat a recorded proposal.";
+
+/**
+ * Whether a call goes to the phone tool or one of its single-operation forms.
+ * Calling one records a request in the phone's queue and runs nothing here. A
+ * single-operation form is known by its action: named DEVICE_* and sending to
+ * the owner's device and nowhere else. A tool that also reaches the network
+ * runs when called, and one whose action is not on the context, as when it
+ * was loaded mid-turn, is not assumed to be a proposal.
+ */
+function isDeviceProposalCall(
+  call: PlannerToolCall,
+  context: ContextObject,
+): boolean {
+  if (call.name === DEVICE_PROPOSAL_TOOL) return true;
+  if (!call.name.startsWith("DEVICE_")) return false;
+  const egress = collectExposedTools(context).find(
+    (tool) => tool.name === call.name,
+  )?.action?.egress;
+  return egress?.length === 1 && egress[0] === "owner-device";
+}
+
+/** A second review of one operation is a second send or change if approved. */
+function repeatsRecordedDeviceProposal(
+  call: PlannerToolCall,
+  trajectory: PlannerTrajectory,
+): boolean {
+  const operation = call.params?.operation;
+  if (operation === undefined) return false;
+  const repeated = stableJsonStringify(operation);
+  return allTrajectorySteps(trajectory).some(
+    (step) =>
+      isPersistedDeviceApprovalPause(step.result) &&
+      step.toolCall?.params?.operation !== undefined &&
+      stableJsonStringify(step.toolCall.params.operation) === repeated,
+  );
 }
 
 /** External device settlement is independent of human-input/confirmation licenses. */

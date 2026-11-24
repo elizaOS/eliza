@@ -10,7 +10,7 @@ import {
   registerDirectActionRoutingRule,
   unwrapUserMessageText,
 } from "@elizaos/core";
-import { proposeDeviceAction } from "./action.ts";
+import { opensAddressInNewTab, proposeDeviceAction } from "./action.ts";
 import { isBrowserControlType } from "./browser-contract.ts";
 import { authoredBrowserDestination } from "./browser-request-grounding.ts";
 import {
@@ -465,6 +465,14 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
       type === "calendar_update" || type === "notes_update"
         ? { minRole: "OWNER" as const }
         : proposeDeviceAction.roleGate,
+    // browser_tab_new carries the owner's own words for it: "open a new tab"
+    // matched only DEVICE_BROWSER_OPEN, whose description speaks of a new tab
+    // for an address, so the planner was offered that tool alone and a search
+    // for the empty tab found that tool again. "Open example.com in a new
+    // tab" holds the same words, and a search narrows to the tools with a
+    // simile the request holds, so browser_navigate carries its own new-tab
+    // words to stay the first result for an address. "open a tab" stays:
+    // without it "open a tab" and "open a private tab" list only the open.
     similes:
       type === "camera_capture_photo"
         ? [
@@ -474,26 +482,28 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
             "take a selfie",
           ]
         : type === "browser_navigate"
-          ? ["DEVICE_BROWSER_NAVIGATE"]
+          ? ["DEVICE_BROWSER_NAVIGATE", "open in a new tab"]
           : type === "browser_tab_switch"
             ? ["switch tab", "go to tab", "show tab"]
             : type === "browser_tab_close"
               ? ["close tab"]
-              : type === "reminder_read_selected"
-                ? ["DEVICE_REMINDER_READ_SELECTED"]
-                : type === "notes_query"
-                  ? [
-                      "find note by title",
-                      "look up saved note",
-                      "search notes before reading",
-                      "read a named note",
-                    ]
-                  : type === "notes_read_selected"
+              : type === "browser_tab_new"
+                ? ["new tab", "open a new tab", "open a tab"]
+                : type === "reminder_read_selected"
+                  ? ["DEVICE_REMINDER_READ_SELECTED"]
+                  : type === "notes_query"
                     ? [
-                        "read selected note",
-                        "read note by returned identity and revision",
+                        "find note by title",
+                        "look up saved note",
+                        "search notes before reading",
+                        "read a named note",
                       ]
-                    : [],
+                    : type === "notes_read_selected"
+                      ? [
+                          "read selected note",
+                          "read note by returned identity and revision",
+                        ]
+                      : [],
     // "phone" is the telephony context: its call/text/dial keyword signals
     // ranked this Maps read above the dialer for "open the phone keypad".
     contexts:
@@ -521,6 +531,15 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
       message: Parameters<NonNullable<Action["validate"]>>[1],
     ) => {
       if (!deviceAppRecordOperationAvailable(runtime, { type }, message))
+        return false;
+      // "Open example.com in a new tab" holds the empty tab's own words, so
+      // this tool was listed beside the typed open in the first list and in a
+      // search. The proposal tool offers no empty tab for that request, and
+      // neither does this one.
+      if (
+        type === "browser_tab_new" &&
+        opensAddressInNewTab(message, runtime.character?.name)
+      )
         return false;
       const validate: Action["validate"] =
         type === "notes_update"

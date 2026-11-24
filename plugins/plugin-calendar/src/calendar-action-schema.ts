@@ -124,40 +124,24 @@ const stringSchema: ActionParameterSchema = { type: "string" };
 // Pacific owner; the runtime applies the owner's zone to offset-less values.
 const LOCAL_WALL_TIME_FORMAT =
   "local wall-clock time formatted YYYY-MM-DDTHH:mm:ss with NO trailing Z and NO UTC offset, paired with the intended IANA timeZone (normally the user's configured timezone); never fabricate a UTC instant";
-const CALENDAR_ID_DESCRIPTION =
-  "Optional; omit unless selecting an exact calendarId from a Calendar result. New events use the built-in calendar by default. Never invent a calendar ID or derive one from an event title.";
-const EVENT_ID_DESCRIPTION =
-  "For update_event/delete_event only: the exact externalId from a Calendar result. Omit for create_event. Never invent an event ID or derive it from a title; use query and date to find an existing event when its ID is unknown.";
+// Only the spelling the planner should write carries a description. Every
+// other accepted spelling stays declared, because tool-argument validation
+// runs before the handler folds spellings together, but bare: a description
+// on each would repeat the field's guidance on every request that offers the
+// tool (1.4K characters for the event id's six alternates alone) and present
+// the alternate as a field of its own.
 const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_STRING_KEYS)[number], string>
 > = {
   grantId:
     "Exact grantId from a Calendar result for the user-selected connected account. Omit only when using the default built-in Eliza calendar. If the user requests Google or another connected provider, read the Calendar feed to resolve its accounts first; ask which account when more than one matches, before creating an event. Never substitute the built-in calendar for an explicitly requested provider.",
-  ...Object.fromEntries(
-    ["calendarId", "calendarid", "calendar_id"].map((key) => [
-      key,
-      CALENDAR_ID_DESCRIPTION,
-    ]),
-  ),
-  ...Object.fromEntries(
-    [
-      "eventId",
-      "eventid",
-      "event_id",
-      "externaleventid",
-      "external_event_id",
-      "googleeventid",
-      "google_event_id",
-    ].map((key) => [key, EVENT_ID_DESCRIPTION]),
-  ),
+  calendarId:
+    "Optional; omit unless selecting an exact calendarId from a Calendar result. New events use the built-in calendar by default. Never invent a calendar ID or derive one from an event title.",
   description:
     "New description only when the user changes it. For updates, omit unchanged fields; to remove the description explicitly, use clearFields instead of an empty string.",
   location:
     "New location only when the user changes it. For updates, omit unchanged fields; to remove the location explicitly, use clearFields instead of an empty string.",
-  startAt: `Event start as ${LOCAL_WALL_TIME_FORMAT}.`,
   start: `Event start as ${LOCAL_WALL_TIME_FORMAT}.`,
-  endAt:
-    "Event end in the same local wall-clock format as startAt; omit it to use durationMinutes.",
   end: "Event end in the same local wall-clock format as start; omit it to use durationMinutes.",
   timeMin: `Window start as ${LOCAL_WALL_TIME_FORMAT}, or RFC 3339 with an explicit numeric offset.`,
   timeMax:
@@ -166,13 +150,13 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
     "IANA timezone for the supplied wall-clock times (e.g. America/New_York): use the user's configured timezone unless they name another. Include it for updates so an existing event's different timezone does not reinterpret the requested new time.",
   endDate:
     "Final included YYYY-MM-DD date for feed/search_events whole-day reads, used with date as the first day. Not a mutation timestamp.",
-  date: "Local calendar date YYYY-MM-DD that the TARGET event is on NOW, for update_event/delete_event lookups when the user named that current day. Never the destination day of a move or reschedule: the new time belongs in start/startAt (and end/endAt). A bare weekday name means its next upcoming occurrence from today, never a past date; when the user did not name the target's current day, omit date and let query locate the event. Use start/startAt, not date, for create_event.",
+  date: "Local calendar date YYYY-MM-DD that the TARGET event is on NOW, for update_event/delete_event lookups when the user named that current day. Never the destination day of a move or reschedule: the new time belongs in start (and end). A bare weekday name means its next upcoming occurrence from today, never a past date; when the user did not name the target's current day, omit date and let query locate the event. Use start, not date, for create_event.",
   oldTitle:
     "Existing event title to locate for update_event; keep separate from the replacement title in newTitle.",
   newTitle:
     "Proposed replacement title for update_event, never a lookup selector; the applied rename is extracted from the user's request. Identify the existing event with query, oldTitle, or eventId.",
   eventId:
-    "Existing provider event ID from the externalId field returned by the calendar feed or search, not the feed row's composite id; takes precedence over title or query lookup for update_event/delete_event.",
+    "Existing provider event ID from the externalId field returned by the calendar feed or search, not the feed row's composite id; takes precedence over title or query lookup for update_event/delete_event. Never invent an event ID or derive it from a title; use query and date to find an existing event when its ID is unknown.",
 };
 const CALENDAR_DETAIL_BOOLEAN_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_BOOLEAN_KEYS)[number], string>
@@ -378,16 +362,11 @@ export const CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
         ([key]) => CALENDAR_READ_DETAIL_KEYS.some((name) => name === key),
       ),
     ),
-    ...Object.fromEntries(
-      ["calendarId", "calendarid", "calendar_id"].map((key) => [
-        key,
-        {
-          type: "string",
-          description:
-            "Optional exact calendar ID from a Calendar result. Omit unless restricting to that calendar; never invent an ID or derive it from a title.",
-        },
-      ]),
-    ),
+    calendarId: {
+      type: "string",
+      description:
+        "Optional exact calendar ID from a Calendar result. Omit unless restricting to that calendar; never invent an ID or derive it from a title.",
+    },
     timeZone: {
       type: "string",
       description:

@@ -497,7 +497,7 @@ describe("planner action source review break-even", () => {
     for (const request of requests) {
       expect(request.input).not.toContain("action_source_review");
       expect(request.input).toContain("short exchange 2.");
-      expect(JSON.stringify(request.tools)).not.toContain("RESTORE_CONTEXT");
+      expect(request.input).not.toContain("RESTORE_CONTEXT");
     }
     expect(
       result.trajectory.modelBaseContext?.metadata?.completionContext,
@@ -567,7 +567,7 @@ describe("planner action source review identity", () => {
       sourceSetMatches: false,
     });
     expect(second.input).toContain("long exchange 20:");
-    expect(JSON.stringify(second.tools)).not.toContain("RESTORE_CONTEXT");
+    expect(second.input).not.toContain("RESTORE_CONTEXT");
   });
 
   it("binds the request reference to the originals the request was rendered from", async () => {
@@ -650,12 +650,8 @@ describe("planner action source review where no post-turn review runs", () => {
     );
     expect(windowed.input).toContain("deferred by position");
     expect(windowed.input).not.toContain("long exchange 2:");
-    // The history read is the one definition the window adds.
-    expect(
-      JSON.stringify(
-        windowed.tools.filter((tool) => tool.name !== "RESTORE_CONTEXT"),
-      ),
-    ).toBe(JSON.stringify(before.tools));
+    // The window adds no definition: the history read is offered either way.
+    expect(JSON.stringify(windowed.tools)).toBe(JSON.stringify(before.tools));
   });
 
   it("keeps an explicit earlier selection in force on a phone", async () => {
@@ -685,7 +681,7 @@ describe("planner action source review where no post-turn review runs", () => {
     for (const request of [first, second]) {
       expect(request.input).not.toContain("action_source_review");
       expect(request.input).toContain("long exchange 2:");
-      expect(JSON.stringify(request.tools)).not.toContain("RESTORE_CONTEXT");
+      expect(request.input).not.toContain("RESTORE_CONTEXT");
     }
     expect(JSON.stringify(second.tools)).toBe(JSON.stringify(first.tools));
     expect(stored).toEqual(allPriorDialogue);

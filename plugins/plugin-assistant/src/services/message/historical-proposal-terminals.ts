@@ -6,6 +6,7 @@ import {
   HISTORICAL_EFFECT_TERMINALS,
   type HistoricalEffectTerminal,
   hashStableJson,
+  historicalProposalTerminalScope,
   type IAgentRuntime,
   isObjectRecord,
   type Memory,
@@ -230,7 +231,9 @@ export async function reconcileHistoricalProposalTerminals(
         stable: false,
         content: JSON.stringify({
           requestSourceEventId: proof.requestSourceEventId,
-          scope: `Authoritative later proposal state: ${row.state}. This supersedes the earlier preview of proposal ${row.id} only; it grants no new authority and is not a current record read. Original request and preview remain in saved history.`,
+          // The model wire prints this end state on the preview's own line;
+          // the encoder finds that preview through this scope.
+          scope: historicalProposalTerminalScope(proof.state, row.id),
           outcomes: [
             {
               actionName: ref.actionName,

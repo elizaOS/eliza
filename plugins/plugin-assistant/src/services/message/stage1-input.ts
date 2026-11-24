@@ -6,9 +6,10 @@ import {
   COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   type ContextDefinition,
   type ContextObject,
-  compactHistoricalReceiptSegments,
+  collectCompletionContextSources,
   completionContextSources,
   HANDLE_RESPONSE_TOOL_NAME,
+  historicalOutcomeBlocks,
   type IAgentRuntime,
   type Memory,
   normalizePromptSegments,
@@ -33,6 +34,7 @@ import {
   listAvailableContextsForTurn,
 } from "./context-catalog.js";
 import {
+  HISTORY_REFERENCE_PREFIX,
   type HistoryDiscovery,
   historyReferenceNotice,
   loadedHistorySegments,
@@ -231,10 +233,9 @@ export function renderMessageHandlerModelInput(
         ),
       )
     : priorDialogueSegments;
-  const transcript = transcriptSegments.map(segmentBlock).join("\n");
-  // Past effects remain complete historical evidence, before the instruction
-  // that establishes the current request. They cannot become pending work by
-  // being regrouped into the current turn's tool/result tail.
+  // Past effects are historical evidence under their own runtime labels. They
+  // cannot become pending work by being regrouped into the current turn's
+  // tool/result tail.
   const historicalNavigationSegments = remainingDynamicSegments.filter(
     (segment) =>
       segment.label === "runtime:historical_navigation" ||
@@ -263,13 +264,13 @@ export function renderMessageHandlerModelInput(
     (segment) => !isCurrentTurnMessage(segment),
   );
   // This region is ordered by how often it changes: text that rarely changes,
-  // then receipts, then navigation, which gains an entry on most navigation
-  // turns. A turn that adds no receipt shares the prefix through the
-  // transcript. One that adds a receipt shares only up to the first changed
-  // receipt byte (the tables may re-encode earlier rows) and re-sends the
-  // transcript; receipts still lead because they are the larger region and
-  // change on fewer turns. What the client reported for this message alone
-  // changes every turn and follows the transcript.
+  // then the outcomes of requests the window no longer shows, which change
+  // only when it moves or one of their proposals ends. The outcomes of the
+  // requests shown gain a line on most turns, so they follow the transcript:
+  // what an earlier turn sent, transcript included, stays in the prefix, and
+  // each line is keyed by its request's time, outside the conversation, where
+  // no message's own text can pass for one. What the client reported for this
+  // message alone changes every turn and follows them.
   const clientObservation = otherTurnSegments.filter(
     (segment) => segment.label === CLIENT_OBSERVATION_SEGMENT_LABEL,
   );
@@ -279,9 +280,25 @@ export function renderMessageHandlerModelInput(
       !isHistoryReceiptSegment(segment) &&
       segment.label !== CLIENT_OBSERVATION_SEGMENT_LABEL,
   );
+  const outcomes = historicalOutcomeBlocks(
+    [...receiptSegments, ...historicalNavigationSegments],
+    transcriptSegments,
+    // A request that is not shown is read back by its history source, when
+    // this turn offers history reads at all.
+    background.applied
+      ? new Map(
+          collectCompletionContextSources(context).map(({ id, event }) => [
+            event.id,
+            `${HISTORY_REFERENCE_PREFIX}${id}`,
+          ]),
+        )
+      : undefined,
+  );
+  const transcript = outcomes.transcript.map(segmentBlock).join("\n");
   // The authored catalog and Task text are the same on every turn of a room,
   // so they lead the user message and extend the cached prompt prefix. Past
-  // effects still precede the current-turn boundary that establishes the
+  // effects of requests that are not shown, and any record no line can stand
+  // for, still precede the current-turn boundary that establishes the
   // request. Providers that are not cache-stable (the clock among them)
   // change between turns, so they follow the transcript, directly before the
   // current message: the transcript an earlier turn sent stays in the prefix.
@@ -306,8 +323,7 @@ export function renderMessageHandlerModelInput(
       false,
     ),
     ...fixedTurnSegments,
-    ...compactHistoricalReceiptSegments(receiptSegments),
-    ...compactHistoricalReceiptSegments(historicalNavigationSegments),
+    ...outcomes.before,
     ...currentTurnBoundary,
     {
       id: "conversation",
@@ -319,6 +335,7 @@ export function renderMessageHandlerModelInput(
       ].join("\n\n"),
       stable: false,
     },
+    ...outcomes.after,
     ...backgroundHistoryNotice,
     ...clientObservation,
     ...dynamicProviderSegments,

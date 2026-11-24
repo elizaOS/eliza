@@ -378,14 +378,22 @@ describe("historical receipt request IDs", () => {
     const result = await f.run();
     expect(result.kind).toBe("decision");
     expect(f.useModel).toHaveBeenCalledTimes(3);
-    // The prompt printed exactly the IDs the model read, beside the unlabeled
-    // inline originals and an hN-only history index.
+    // The prompt names no event ID: each outcome follows its request's time,
+    // beside the unlabeled inline originals and an hN-only history index. The
+    // recorded reads, taken from a prompt that printed those IDs, still
+    // resolve.
     expect(f.prompt(0)).toContain("history:h1–history:h33");
+    const messages = JSON.stringify(
+      ((f.useModel.mock.calls[0] as unknown[])[1] as { messages: unknown })
+        .messages,
+    );
+    expect(messages).not.toContain(editCoffee.id);
+    expect(messages).not.toContain(openCalendar.id);
     expect(f.prompt(0)).toContain(
-      `\\"requestSourceEventId\\":\\"history:${editCoffee.id}\\"`,
+      `${calendarSearch.name} calendar.event.search noop: `,
     );
     expect(f.prompt(0)).toContain(
-      `\\"requestSourceEventId\\":\\"history:${openCalendar.id}\\"`,
+      'view_navigation prepared calendar \\"Calendar\\"',
     );
     expect(f.prompt(0)).toContain(EDIT_COFFEE);
     expect(f.prompt(0)).not.toMatch(/\[h\d+[\];]/);
