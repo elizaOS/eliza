@@ -406,7 +406,8 @@ refusal stays open as a call that did not start, even if the action later
 runs. An open proposal is reported as awaiting the owner in the action's own
 copy, whatever the model's prose claims. An open failure is reported as that
 action's failure: the model writes it, or, as the last resort, the action's
-own words do (below).
+own words do (below), except a failure with no receipt that a later run of
+its action may have answered, which only the model reports (below).
 
 ```quint
 pure def isReceiptOperation(identity: StepIdentity): bool = match identity { | ReceiptOperation(_) => true | _ => false }
@@ -462,7 +463,9 @@ message's length, and as external data unless the action marked them as its
 words for the owner. Its answer takes the place of the model's prose, and
 the action's own copy stays where composition puts it (below). That reply is
 kept when it answers (it is neither blank nor a pending-work cue, read as
-below), it is not the first reply again, and the clock rules hold of it.
+below), it is not the first reply again (unless every fact it was asked
+about is a failure a later run may have answered, below), and the clock
+rules hold of it.
 Otherwise, or when the call fails, the first
 reply is kept, the clock's or the calendar change's own words (below) take
 its place when it stated a time they did not observe, and the own words of
@@ -483,7 +486,7 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
   else if (asksAgain(unreported, ungrounded, cutOff) and answered and grounded) RevisedReply
   else FixedWords
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
-pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = draft == Answer and not(sameAsFirst)
+pure def answeredAgain(draft: Draft, sameAsFirst: bool, sameMayStand: bool): bool = draft == Answer and (not(sameAsFirst) or sameMayStand)
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
 pure def lawASecondAnswerThatHoldsIsKept(unreported: bool, ungrounded: bool): bool =
@@ -493,9 +496,36 @@ pure def lawFixedWordsAreTheLastResort(unreported: bool, ungrounded: bool, cutOf
 pure def lawACutOffTurnIsNeverAskedAgain(unreported: bool, ungrounded: bool): bool = not(asksAgain(unreported, ungrounded, true))
 pure def lawSafetyCopyIsNeverRewritten(held: bool): bool = not(putToTheModel(held, true))
 pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putToTheModel(true, safetyCopy))
-pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
-pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
-pure def lawANewAnswerIsASecondAnswer(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst) == not(sameAsFirst)
+pure def lawACueIsNoSecondAnswer(sameAsFirst: bool, sameMayStand: bool): bool =
+  not(answeredAgain(Cue, sameAsFirst, sameMayStand)) and not(answeredAgain(Silent, sameAsFirst, sameMayStand))
+pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true, false))
+pure def lawANewAnswerIsASecondAnswer(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst, false) == not(sameAsFirst)
+```
+
+### A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words never follow the reply
+
+A call that failed or was refused without an effect receipt names nothing
+the host can match, so a later call of the same action that ran (it applied,
+proposed or had no effect) may have put it right: the model corrects its
+own call after a refusal, such as `8 + 9` after a stray argument or 4 PM
+after a misread 8 AM. A later call can answer a failure only when the model
+saw that failure first, in an earlier planner response. Such a failure stays
+open (above), and only the model can tell whether the later call did what
+the failed one was for. When the reply leaves it out, its host note says a
+later call of that action ran and asks the model to say so only if the
+failed step still did not happen. A second answer that repeats the first
+reply then stands when every fact it was asked about is such a failure, and
+the failure's own words never follow the reply, even when the second answer
+fails. A failure with a receipt, a failure in the same planner response as
+the later call, and safety copy are reported as above.
+
+```quint
+pure def answerableLater(receiptless: bool, seenFirst: bool, ranLater: bool): bool = receiptless and seenFirst and ranLater
+pure def followsTheReply(answerable: bool, safetyCopy: bool): bool = safetyCopy or not(answerable)
+pure def lawAFailureALaterRunMayHaveAnsweredNeverFollowsTheReply(safetyCopy: bool): bool = followsTheReply(true, safetyCopy) == safetyCopy
+pure def lawAFailureWithAReceiptStillFollows(seenFirst: bool, ranLater: bool): bool = followsTheReply(answerableLater(false, seenFirst, ranLater), false)
+pure def lawAFailureInTheSameResponseStillFollows(receiptless: bool, ranLater: bool): bool = followsTheReply(answerableLater(receiptless, false, ranLater), false)
+pure def lawTheFirstReplyAgainStandsForAFailureALaterRunMayHaveAnswered(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst, true)
 ```
 
 ### A coaching response stays in the planner transcript
