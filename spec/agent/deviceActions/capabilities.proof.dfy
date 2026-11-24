@@ -10,6 +10,18 @@ lemma lawEveryNamedCapabilityIsNegotiated_ensures(names: seq<string>, c: Capabil
   }
 }
 
+// A declared capability is in the vocabulary, and the filter keeps what passes.
+lemma lawADeclaredCapabilityIsNegotiated_ensures(names: seq<string>, c: Capability)
+  ensures (lawADeclaredCapabilityIsNegotiated(names, c) == true)
+{
+  if capabilityName(c) in names {
+    lawTheVocabularyListsEveryCapability_ensures(c);
+    var p := (x: Capability) => (capabilityName(x) in names);
+    ProofLib.FilterMember(p, allCapabilities, c);
+    assert c in namedCapabilities(names);
+  }
+}
+
 lemma lawTheVocabularyListsEveryCapability_ensures(c: Capability)
   ensures (lawTheVocabularyListsEveryCapability(c) == true)
 {
