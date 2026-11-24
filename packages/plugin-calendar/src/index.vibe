@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"
 import type { IAgentRuntime, Plugin } from "@elizaos/core"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { calendarProposalFamily } from "./plugin/device-proposals.vibe"
 import { calendarAction, calendarActionName, calendarAsk, calendarContext, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
 import type { CalendarHost } from "./plugin/host.vibe"
@@ -8,14 +8,6 @@ import { linkedCalendarRoutes } from "./plugin/linked-routes.vibe"
 import { calendarRoutes, type CalendarRoute } from "./plugin/routes.vibe"
 import { CalendarApprovalExecutorService, CalendarService, calendarApprovalExecutorServiceType, calendarServiceType } from "./plugin/service.vibe"
 
-export type * from "./model.vibe"
-export { sameSourceKey, sourceKeyId, utcInstant } from "./model.vibe"
-export {
-  CalendarLedgerUnavailable, CalendarPreflightRefused, CalendarWriteNotAccepted, CalendarWriteUnconfirmed, calendarMutationLedger, receiptMatches,
-  type CalendarAnswerScope, type CalendarInvitationResponse, type CalendarMutationFailure, type CalendarMutationInspection, type CalendarMutationLedger, type CalendarMutationOperation, type CalendarMutationOutcome,
-  type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest, type CalendarMutationTarget,
-  type CalendarPreflight, type CalendarReconciliation,
-} from "./mutations/ledger.vibe"
 export { fieldsSpanValid, providerMutationPort, recurrenceFits, reviewDigest, type CalendarProviders } from "./mutations/provider-port.vibe"
 export {
   CalendarSourceUnavailable, answeredWith, eventInWindow, eventVersion, holdsFields, ownerRole, residentCalendar, residentSource,
@@ -32,9 +24,9 @@ export { calendarAction, calendarActionName, calendarAsk, calendarEffectReceipt,
 export { CalendarApprovalExecutorService, CalendarService, calendarApprovalExecutorServiceType, calendarServiceType }
 export type { CalendarEventFacts } from "./plugin/service.vibe"
 export { linkedCalendarRoutes, type LinkedRouteContext } from "./plugin/linked-routes.vibe"
-export { RecurrenceRecord, ScopeMismatch, WriteScopeRecord, type CalendarRecurrence, type CalendarWriteScope } from "./series/index.vibe"
 export { ResidentNeedsReview, importPriorResident } from "./plugin/providers.vibe"
 export { calendarProposalFamily }
+export * from "@elizaos/plugin-calendar-client"
 
 export const calendarPluginName = "@elizaos/plugin-calendar"
 

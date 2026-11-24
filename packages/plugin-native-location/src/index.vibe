@@ -1,9 +1,9 @@
 // spec/nativeLocation/index.md, "Story: Use a fresh device location and stop updates when I close the view"
-import { accessOf, type LocationClient, type LocationOptions } from "@elizaos/os/bridges/location"
+import { accessOf, type LocationClient, type LocationOptions } from "@elizaos/os-bridges"
 import { mayUseLocation, type LocationGrant } from "../gen/nativeLocation.effect.vibe"
 
-export { locationClient, locationPlugin } from "@elizaos/os/bridges/location"
-export type * from "@elizaos/os/bridges/definitions/location"
+export { locationClient, locationPlugin } from "@elizaos/os-bridges"
+export type { LocationAccuracy, LocationCoordinates, LocationOptions, WatchLocationOptions, LocationResult, LocationGrant, LocationGrantAccuracy, LocationPermissionStatus, LocationErrorCode, LocationErrorEvent, LocationPlugin, LocationReading, LocationClient } from "@elizaos/os-bridges"
 
 export error NativeLocationRejected
 
@@ -30,6 +30,6 @@ export effect function readCurrentDeviceLocation(client: LocationClient, options
   return { ...reading, precise: reading.precise && grant === "PreciseLocation" }
 }
 
-import { locationPlugin } from "@elizaos/os/bridges/location"
+import { locationPlugin } from "@elizaos/os-bridges"
 
 export const Location = locationPlugin()

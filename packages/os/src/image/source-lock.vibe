@@ -4,9 +4,10 @@ import * as Source from "../../gen/os__image__sourceLock.effect.vibe"
 module node {
   import { execFile } from "node:child_process"
   import { createHash } from "node:crypto"
+  import { existsSync } from "node:fs"
   import { lstat, readlink, readdir, realpath } from "node:fs/promises"
-  import { createRequire } from "node:module"
   import { basename, dirname, isAbsolute, join, relative } from "node:path"
+  import { fileURLToPath } from "node:url"
   import { promisify } from "node:util"
   import { Schema } from "effect"
   import { artifactJson, hashArtifact, observeCommittedEntry, readArtifact, type CommittedEntry } from "./artifact.vibe"
@@ -199,9 +200,20 @@ module node {
   }
   export function sealedSourceOptions(input: VerifySourceOptions): VerifySourceOptions { return decodeVerify(structuredClone(input)) }
   export function sealedPatchReference(input: PatchReference): PatchReference { return decodePatchReference(structuredClone(input)) }
+  function defaultLockPath(moduleUrl: string): string {
+    let dir = dirname(fileURLToPath(moduleUrl))
+    for (let depth = 0; depth < 6; depth += 1) {
+      const candidate = join(dir, "aosp", "aosp.lock.json")
+      if (existsSync(candidate)) return candidate
+      const parent = dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    throw new Error("The packaged AOSP lock file cannot be found")
+  }
   export async function selectProfile(options: LoadProfileOptions, moduleUrl: string): Promise<SourceProfileRef> {
     const parsed = decodeLoad(structuredClone(options))
-    const file = await realpath(parsed.lockFile ?? createRequire(moduleUrl).resolve("@elizaos/os/aosp/aosp.lock.json"))
+    const file = await realpath(parsed.lockFile ?? defaultLockPath(moduleUrl))
     const ref = { name: parsed.name, file, sha256: (await readArtifact(file, 2 * 1024 * 1024)).sha256 }
     await expected(ref)
     return ref

@@ -1,10 +1,8 @@
 // spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "Story: Show one checked copy of a mapped event after a provider read"; spec/calendar/managedFeed.md, "Story: Keep each cached copy under its own source and its provider's edit time"; spec/calendar/aggregateMerge.md, "Story: See one occurrence with its precise source evidence"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
 import { assert, it } from "@effect/vitest"
-import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent"
-import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
+import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent-host"
+import { type CalendarEvent, type CalendarSummary, cloudCalendar, managedEventId, managedFeed, mergeFeedEvents, parseManagedGoogleCalendarFeed, type PurgeRefused, type AggregatePorts, type CalendarLinkRecord, type FeedComponent, type ImportedSourceScope, type ManagedCacheStore } from "@elizaos/plugin-calendar-client"
 import { calendarHost, runCalendarAction, type CalendarApprovalRow } from "../src/index.vibe"
-import { cloudCalendar, managedEventId, managedFeed, mergeFeedEvents, parseManagedGoogleCalendarFeed, type PurgeRefused,
-  type AggregatePorts, type CalendarLinkRecord, type FeedComponent, type ImportedSourceScope, type ManagedCacheStore } from "../src/feed/index.vibe"
 import { memoryCache } from "./support/memory-cache.ts"
 
 const api = "/api/v1/eliza/google"

@@ -1,7 +1,7 @@
 # Voice session
 
 The voice turn logic of the browser-safe voice controller, exported from
-`@elizaos/agent/voice` as `VoiceSession` and, for a full-duplex session,
+the `@elizaos/agent` root as `VoiceSession` and, for a full-duplex session,
 `createLiveVoiceSession`. A session listens, decides when an utterance is
 finished, sends it once as a `VOICE_DM` [turn](../conversation/turns.md),
 plays the reply and, when the person cuts the reply short, reports what of

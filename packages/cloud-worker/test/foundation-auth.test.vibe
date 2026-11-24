@@ -1,0 +1,1085 @@
+// spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
+import { assert, describe, it } from "@effect/vitest"
+import { area as billing } from "../src/http/routes/billing.vibe"
+import { sweeps as downgradeSweeps } from "../src/billing/downgrade-commands.vibe"
+import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription, sweepSubscriptions } from "../src/billing/subscriptions.vibe"
+import { readReviewedPlanQuote, reviewPlanChange, type ReviewPlanChange } from "../src/billing/plan-quotes.vibe"
+import { readStripeSubscription, stripeClient } from "../src/billing/stripe-observation.vibe"
+import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
+import { commandIdOf, type CommandView } from "../src/billing/commands.vibe"
+import { quoteOf, type Command } from "../gen/cloud__billing__subscriptionCommands.effect.vibe"
+import { initial as initialSubscription } from "../gen/cloud__billing__subscriptions.effect.vibe"
+import { claim, initial as initialReceipt, prepare, receiveReply, send, type ProviderReply } from "../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { requestDigest } from "../src/shared/dispatch-once.vibe"
+import { listening } from "../src/http/node-listener.vibe"
+import { respond } from "../src/http/transport.vibe"
+import { json, jsonBody, owner, type Route, type RouteContext, type CloudContext } from "../src/http/routes.vibe"
+import type { RouteClass } from "../src/http/request-auth.vibe"
+import { deploymentLayer, parseProfile } from "@elizaos/cloud"
+import { tokenDigest } from "../src/shared/sealing.vibe"
+import { refused, Refused } from "../src/http/refusal.vibe"
+import { addCredits } from "../src/billing/funds.vibe"
+import { operate } from "../src/operator/admin.vibe"
+import { redeemResultFromResponse, snapshotFromResponse } from "@elizaos/cloud"
+import { admitWindow, openSocket, retire, settleWindow, sessionSpeechRoutes } from "../src/services/speech-session.vibe"
+import { manualClock } from "./support/clock.ts"
+import { migrate, Store, storeLayer } from "../src/store/store.vibe"
+import { startFakeServer, type FakeServer, type FakeHandler, type FakeAnswer } from "./support/fakes.ts"
+import { callCloud, type CallInit } from "./support/http.ts"
+import { createStripeFake, fakeSecretKey, type StripeFake } from "./support/fakes/stripe.ts"
+import { stripePlanDowngrade, stripePlanPreview, stripePlanUpgrade, stripeRenewalPreview } from "./support/fakes/stripe-commands.ts"
+import { changeInvoiceAllowance, openRenewal } from "../src/billing/allowance.vibe"
+import { catalogPrices, secrets, testProfile } from "./support/profile.ts"
+import { check } from "./support/cloud.vibe"
+
+const minuteMs = 60_000
+
+effect function sql(cloud: HttpFixture, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+function deviceKey(seed: string): string {
+  return `eliza_mobile_${seed.repeat(64).slice(0, 64)}`
+}
+
+function sessionToken(seed: string): string {
+  return `eliza_session_${seed.repeat(43).slice(0, 43)}`
+}
+
+function probes(reached: Array<string>): ReadonlyArray<Route> {
+  const probe = (path: `/${string}`, auth: RouteClass): Route => ({
+    method: "GET",
+    path,
+    auth,
+    handler: (context: RouteContext) => effect {
+      reached.push(path)
+      return json({ caller: context.caller.kind })
+    }
+  })
+  return [probe("/probe/service", "ServiceAccess"), probe("/probe/session", "SignedSession"), probe("/probe/fresh", "FreshSession"), probe("/probe/step-up", "StepUp")]
+}
+
+interface HttpFixture {
+  readonly fakes: FakeServer
+  readonly store: Store.Shape
+  readonly call: (path: string, token?: string, init?: CallInit) => ReturnType<typeof callHttp>
+  inside<A, E>(body: A!E!CloudContext): A!E
+}
+
+function callHttp(url: string, path: string, token?: string, init: CallInit = {}) {
+  return promise(() => callCloud(url, path, { ...init, headers: { ...init.headers, ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) } }))
+}
+
+effect function testHttp(routes: ReadonlyArray<Route>, stripe?: FakeHandler) {
+  const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+  if (stripe !== undefined) try sync(() => fakes.mount("/stripe/", stripe))
+  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
+  const storage = try Layer.build(storeLayer({ kind: "pglite", file: undefined }))
+  const store = Context.get(storage, Store)
+  const now = try Clock.currentTimeMillis
+  try Effect.provideContext(migrate({ digest: profile.environments.staging.databaseIdentity, environment: "staging", now }), storage)
+  const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+  const clock = try Clock.Clock
+  const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
+    Layer.provideMerge(listening(0, "127.0.0.1")),
+    Layer.provideMerge(Layer.mergeAll(deployment, Layer.succeed(Store, store), FetchHttpClient.layer, Layer.succeed(Clock.Clock, clock)))
+  ))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  return { fakes, store, call: (path: string, token?: string, init?: CallInit) => callHttp(url, path, token, init), inside: <A, E>(body: A!E!CloudContext) => Effect.provideContext(body, built) } satisfies HttpFixture
+}
+
+effect function account(cloud: HttpFixture, key: string, status: "active" | "deleting", revokedBefore: { sessions: number; devices: number }, now: number) {
+  try sql(cloud, "INSERT INTO organizations (id, name, created_at) VALUES ($1, $1, $2)", [`org-${key}`, now])
+  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, sessions_revoked_before, devices_revoked_before, device_epoch, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, $3, $4, $5, $6, $7, $8, $8)", [
+    key, `org-${key}`, status, `${key}@example.com`, revokedBefore.sessions, revokedBefore.devices, revokedBefore.devices > 0 ? 1 : 0, now
+  ])
+}
+
+effect function grant(cloud: HttpFixture, user: string, token: string, phase: "active" | "ended" | "exchanged", issuedAt: number, keyExpiresAt: number, deviceEpoch = 0) {
+  const state = { flatDeviceGrant: "FlatTokenStarted", phase: phase === "active" ? "Active" : phase === "ended" ? "Ended" : "Exchanged" }
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, device_epoch, issued_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, 'test-client', $4, $5, $6, $7, $8, $9, $10, $10)", [
+    `grant-${token.slice(-8)}`, JSON.stringify(state), user, phase, `cred-${token.slice(-8)}`, tokenDigest(token), issuedAt + minuteMs, keyExpiresAt, deviceEpoch, issuedAt
+  ])
+}
+
+effect function retainedPlanHistory(cloud: HttpFixture, now: number) {
+  try sql(cloud, "DROP VIEW retained_plan_command_history", [])
+  try sql(cloud, "ALTER TABLE quotes ADD COLUMN command_id text UNIQUE, ADD COLUMN state jsonb, ADD COLUMN created_at bigint", [])
+  try sql(cloud, "DELETE FROM schema_migrations WHERE name='0123_retained_plan_command_history.sql'", [])
+  const [identity] = try sql(cloud, "SELECT digest FROM cloud_identity", [])
+  try cloud.inside(migrate({ digest: String(identity?.digest), environment: "staging", now }))
+}
+
+function subscriptionChangeReceipt(organizationId: string, actorId: string, providerId: string, digest: string, now: number, reply: ProviderReply) {
+  const owner = { agentId: organizationId, actorId, connector: "subscription_update" }
+  const claimed = claim(prepare({ ...initialReceipt, session: { ...initialReceipt.session, now } }, owner, digest,
+    { providerId, providerKind: "SubscriptionUpdate" }, 5 * minuteMs, now + 60 * minuteMs), owner)
+  return receiveReply(send(claimed, owner, claimed.session.currentClaim), reply)
+}
+
+interface SessionRow {
+  readonly live: boolean
+  readonly epoch: number
+  readonly authAt: number
+  readonly accessExpiresAt: number
+  readonly refreshExpiresAt: number
+  readonly stepUpAt: number
+  readonly mfaAt: number
+}
+
+effect function session(cloud: HttpFixture, user: string, token: string, row: SessionRow, now: number) {
+  try sql(cloud, "INSERT INTO sessions (key, state, revision, user_id, access_digest, refresh_digest, live, access_expires_at, refresh_expires_at, auth_at, step_up_at, mfa_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)", [
+    `session-${token.slice(-8)}`, JSON.stringify({ epoch: row.epoch }), user, tokenDigest(token), tokenDigest(`refresh-${token}`), row.live, row.accessExpiresAt, row.refreshExpiresAt, row.authAt, row.stepUpAt, row.mfaAt, now
+  ])
+}
+
+function outcome(answer: { readonly status: number; readonly body: unknown }): string {
+  const body = answer.body as { readonly error?: string; readonly reason?: string; readonly caller?: string }
+  return answer.status === 200 ? `200 ${body.caller}` : `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
+}
+
+describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
+  it.live("Mint, redeem and retire a membership code (spec/cloud/billing/grantCodes.md, \"Story: Redeem a membership code once\"; spec/cloud/billing/grantCodes.md, \"Story: Stop a code or a grant\")", () => scoped(effect {
+    const now = try Clock.currentTimeMillis
+    const stripe = try sync(() => createStripeFake({ now: () => now }))
+    const cloud = try testHttp(billing.routes, stripe.handler)
+    const token = sessionToken("m")
+    const otherSession = sessionToken("r")
+    const peerToken = sessionToken("q")
+    const payer = sessionToken("p")
+    const active = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs, refreshExpiresAt: now + 10 * minuteMs, stepUpAt: 0, mfaAt: 0 }
+    try account(cloud, "member", "active", { sessions: 0, devices: 0 }, now)
+    try account(cloud, "member-peer", "active", { sessions: 0, devices: 0 }, now)
+    try account(cloud, "payer", "active", { sessions: 0, devices: 0 }, now)
+    try session(cloud, "member", token, active, now)
+    try session(cloud, "member", otherSession, active, now)
+    try session(cloud, "member-peer", peerToken, active, now)
+    try session(cloud, "payer", payer, active, now)
+    try paidReviewSubscription(cloud, stripe, "org-payer", "plus_monthly", now)
+
+    const minted = try cloud.inside(operate(["grants", "mint", "--family", "member-pilot", "--plan", "plus_monthly", "--count", "1", "--lifetime", "--max-redemptions", "2"]))
+    const code = minted.kind === "done" ? minted.lines[0] ?? "" : ""
+    try check(() => assert.match(code, /^[0-9A-HJKMNP-TV-Z]{16}$/))
+    const stored = (try sql(cloud, "SELECT key FROM grant_codes WHERE family = $1", ["member-pilot"]))[0]?.key
+    try check(() => {
+      assert.isString(stored)
+      assert.notStrictEqual(stored, code)
+    })
+
+    const redeem = (offered: string, idempotencyKey: string, credential = token) => cloud.call("/api/v1/subscription/redeem", credential, {
+      headers: { "idempotency-key": idempotencyKey }, json: { code: offered, idempotencyKey }
+    })
+    const formatted = `\u00a0${code.slice(0, 8).toLowerCase()}-${code.slice(8).toLowerCase()}\u00a0`
+    const issued = try redeem(formatted, "member-request")
+    const original = try redeemResultFromResponse(issued.body, now)
+    if (original.kind !== "redeemed") {
+      try check(() => assert.fail("a lifetime grant should be active immediately"))
+      return
+    }
+    const peerIssued = try redeem(formatted, "peer-request", peerToken)
+    const peer = try redeemResultFromResponse(peerIssued.body, now)
+    if (peer.kind !== "redeemed") {
+      try check(() => assert.fail("the second organization should receive its own grant"))
+      return
+    }
+    const second = try cloud.inside(operate(["grants", "mint", "--family", "member-pilot", "--plan", "plus_monthly", "--count", "1", "--days", "30", "--requires-no-paid-plan"]))
+    const secondCode = second.kind === "done" ? second.lines[0] ?? "" : ""
+    const exhausted = try redeem(code, "payer-first", payer)
+    const reusedKey = try redeem(secondCode, "member-request", otherSession)
+    const heldFamily = try redeem(secondCode, "member-new-key", otherSession)
+    const paidPlan = try redeem(secondCode, "payer-second", payer)
+    const refusedCode = Schema.Struct({ error: Schema.String })
+    const refusals: Array<[number, string]> = []
+    for (const answer of [exhausted, reusedKey, heldFamily, paidPlan]) {
+      const { error } = try Schema.decodeUnknownEffect(refusedCode)(answer.body)
+      refusals.push([answer.status, error])
+    }
+    const missingReason = cloud.inside(operate(["grants", "revoke", "--grant-id", peer.grant.id])) catch (failure) => failure._tag
+    const mixedSelection = cloud.inside(operate(["grants", "revoke", "--grant-id", peer.grant.id, "--code", code, "--reason", "mixed"])) catch (failure) => failure._tag
+    const individualRequest = ["grants", "revoke", "--grant-id", peer.grant.id, "--grant-id", peer.grant.id, "--reason", "Issued to the wrong member"]
+    const individual = try cloud.inside(operate(individualRequest))
+    const individualAgain = try cloud.inside(operate(individualRequest))
+    const peerLimits = try cloud.call("/api/v1/billing/limits", peerToken)
+    const peerAfterIndividual = try snapshotFromResponse(peerLimits.body)
+    const memberLimits = try cloud.call("/api/v1/billing/limits", token)
+    const memberAfterIndividual = try snapshotFromResponse(memberLimits.body)
+    const disabled = try cloud.inside(operate(["grants", "disable", "--code", formatted]))
+    const replayed = try redeem(code, "member-again")
+    const replay = try redeemResultFromResponse(replayed.body, now)
+    const revoked = try cloud.inside(operate(["grants", "revoke", "--code", code, "--reason", "Retire the pilot code"]))
+    const retired = try redeem(code, "member-retired")
+    const after = try redeemResultFromResponse(retired.body, now)
+    const peerRetired = try redeem(code, "peer-retired", peerToken)
+    const afterPeer = try redeemResultFromResponse(peerRetired.body, now)
+    const limits = try cloud.call("/api/v1/billing/limits", token)
+    const snapshot = try snapshotFromResponse(limits.body)
+    const invalid = try redeem("A".repeat(32_768), "member-invalid")
+    const invalidOutcome = try Schema.decodeUnknownEffect(refusedCode)(invalid.body)
+    const unknown = try redeem("0000-0000-0000-0000", "member-unknown")
+    const unknownOutcome = try Schema.decodeUnknownEffect(refusedCode)(unknown.body)
+    const throttled = try redeem(code, "member-throttled")
+    const throttledOutcome = try Schema.decodeUnknownEffect(refusedCode)(throttled.body)
+    const periods = try sql(cloud, "SELECT organization_id, count(*)::int AS count FROM allowance_periods WHERE organization_id IN ('org-member','org-member-peer') AND starts_with(key, 'grant/') AND status = 'closed' GROUP BY organization_id ORDER BY organization_id", [])
+    try check(() => assert.deepStrictEqual(
+      [issued.status, original.replayed, original.grant.planKey, original.grant.effectiveUntil, original.plan,
+        peerIssued.status, peer.replayed, peer.grant.id !== original.grant.id, peer.plan,
+        missingReason, mixedSelection, individual, individualAgain, peerLimits.status, peerAfterIndividual.plan.key,
+        memberLimits.status, memberAfterIndividual.plan.key,
+        disabled, replayed.status, replay, revoked, retired.status, after, limits.status, snapshot.plan, snapshot.grant?.revoked,
+        peerRetired.status, afterPeer, invalid.status, invalidOutcome.error, unknown.status, unknownOutcome.error,
+        throttled.status, throttledOutcome.error, periods.map(({ organization_id, count }) => [organization_id, count]), refusals],
+      [200, false, "plus_monthly", null, { key: "plus_monthly", source: "grant", effectiveUntil: null },
+        200, false, true, original.plan,
+        "OperatorUsageInvalid", "OperatorUsageInvalid", { kind: "done", lines: ["1 grants revoked"] }, { kind: "done", lines: ["0 grants revoked"] },
+        200, "free", 200, "plus_monthly",
+        { kind: "done", lines: ["1 codes disabled; their grants stand"] }, 200, { ...original, replayed: true },
+        { kind: "done", lines: ["1 grants revoked"] }, 200, { kind: "ended", id: original.grant.id, planKey: "plus_monthly" },
+        200, { key: "free", source: "free", effectiveUntil: null }, true,
+        200, { kind: "ended", id: peer.grant.id, planKey: "plus_monthly" }, 400, "grant_code_invalid", 400, "grant_code_invalid", 429, "rate_limited",
+        [["org-member", 3], ["org-member-peer", 3]],
+        [[400, "grant_code_invalid"], [409, "idempotency_conflict"], [409, "subscription_grant_already_redeemed"], [409, "subscription_grant_paid_plan_active"]]]
+    ))
+  }), 60_000)
+})
+
+describe("WP0 Foundation: request authentication", () => {
+  it.live("Admit a request only for a live credential of an active account (spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\"; spec/cloud/nativeClients/deviceKeys.md, \"A key is accepted only while acknowledged, unexpired and of the person's current device epoch\")", () => scoped(effect {
+    const reached: Array<string> = []
+    const cloud = try testHttp(probes(reached))
+    const call = cloud.call
+    const now = try Clock.currentTimeMillis
+    const day = 24 * 60 * minuteMs
+    try account(cloud, "owner", "active", { sessions: 0, devices: now - day }, now)
+    try account(cloud, "leaving", "deleting", { sessions: 0, devices: 0 }, now)
+    try account(cloud, "rotated", "active", { sessions: 1, devices: 0 }, now)
+
+    const liveKey = deviceKey("1")
+    try grant(cloud, "owner", liveKey, "active", now - minuteMs, now + day, 1)
+    const expiredKey = deviceKey("2")
+    try grant(cloud, "owner", expiredKey, "active", now - minuteMs, now - 1, 1)
+    const endedKey = deviceKey("3")
+    try grant(cloud, "owner", endedKey, "ended", now - minuteMs, now + day, 1)
+    const unacknowledgedKey = deviceKey("4")
+    try grant(cloud, "owner", unacknowledgedKey, "exchanged", now - minuteMs, now + day, 1)
+    const beforeRevocationKey = deviceKey("5")
+    try grant(cloud, "owner", beforeRevocationKey, "active", now - 2 * day, now + day)
+    const deletingKey = deviceKey("6")
+    try grant(cloud, "leaving", deletingKey, "active", now - minuteMs, now + day)
+
+    const fresh = { live: true, epoch: 0, authAt: now - minuteMs, accessExpiresAt: now + 10 * minuteMs, refreshExpiresAt: now + day, stepUpAt: 0, mfaAt: now - minuteMs }
+    const freshToken = sessionToken("a")
+    try session(cloud, "owner", freshToken, fresh, now)
+    const staleToken = sessionToken("b")
+    try session(cloud, "owner", staleToken, { ...fresh, authAt: now - 61 * minuteMs, mfaAt: now - 6 * minuteMs }, now)
+    const steppedToken = sessionToken("c")
+    try session(cloud, "owner", steppedToken, { ...fresh, authAt: now - 2 * 60 * minuteMs, stepUpAt: now - 10 * minuteMs }, now)
+    const expiredToken = sessionToken("d")
+    try session(cloud, "owner", expiredToken, { ...fresh, accessExpiresAt: now - 1 }, now)
+    const loggedOutToken = sessionToken("e")
+    try session(cloud, "owner", loggedOutToken, { ...fresh, live: false }, now)
+    const otherEpochToken = sessionToken("f")
+    try session(cloud, "rotated", otherEpochToken, fresh, now)
+    const endedFamilyToken = sessionToken("g")
+    try session(cloud, "owner", endedFamilyToken, { ...fresh, accessExpiresAt: now - 1, refreshExpiresAt: now - 1 }, now)
+    const leavingToken = sessionToken("h")
+    try session(cloud, "leaving", leavingToken, fresh, now)
+
+    const answers = {
+      missing: outcome(try call("/probe/service")),
+      malformed: outcome(try call("/probe/service", "not-a-credential")),
+      unknownKey: outcome(try call("/probe/service", deviceKey("9"))),
+      liveKey: outcome(try call("/probe/service", liveKey)),
+      keyOnSessionRoute: outcome(try call("/probe/session", liveKey)),
+      expiredKey: outcome(try call("/probe/service", expiredKey)),
+      endedKey: outcome(try call("/probe/service", endedKey)),
+      unacknowledgedKey: outcome(try call("/probe/service", unacknowledgedKey)),
+      beforeRevocationKey: outcome(try call("/probe/service", beforeRevocationKey)),
+      deletingKey: outcome(try call("/probe/service", deletingKey)),
+      freshSession: outcome(try call("/probe/fresh", freshToken)),
+      freshStepUp: outcome(try call("/probe/step-up", freshToken)),
+      staleService: outcome(try call("/probe/service", staleToken)),
+      staleFresh: outcome(try call("/probe/fresh", staleToken)),
+      staleStepUp: outcome(try call("/probe/step-up", staleToken)),
+      steppedFresh: outcome(try call("/probe/fresh", steppedToken)),
+      expiredSession: outcome(try call("/probe/session", expiredToken)),
+      loggedOut: outcome(try call("/probe/session", loggedOutToken)),
+      otherEpoch: outcome(try call("/probe/session", otherEpochToken)),
+      endedFamily: outcome(try call("/probe/session", endedFamilyToken)),
+      deletingSession: outcome(try call("/probe/session", leavingToken))
+    }
+    try check(() => assert.deepStrictEqual(answers, {
+      missing: "401 authentication_required credential_unknown",
+      malformed: "401 authentication_required credential_unknown",
+      unknownKey: "401 authentication_required credential_unknown",
+      liveKey: "200 deviceKey",
+      keyOnSessionRoute: "401 authentication_required credential_unknown",
+      expiredKey: "401 authentication_required credential_expired",
+      endedKey: "401 authentication_required credential_revoked",
+      unacknowledgedKey: "401 authentication_required credential_unknown",
+      beforeRevocationKey: "401 authentication_required credential_revoked",
+      deletingKey: "401 authentication_required credential_revoked",
+      freshSession: "200 session",
+      freshStepUp: "200 session",
+      staleService: "200 session",
+      staleFresh: "428 fresh_session_required",
+      staleStepUp: "428 fresh_session_required",
+      steppedFresh: "200 session",
+      expiredSession: "401 authentication_required credential_expired",
+      loggedOut: "401 authentication_required credential_revoked",
+      otherEpoch: "401 authentication_required credential_revoked",
+      endedFamily: "401 authentication_required credential_unknown",
+      deletingSession: "401 authentication_required credential_revoked"
+    }))
+    try check(() => assert.deepStrictEqual(reached, ["/probe/service", "/probe/fresh", "/probe/step-up", "/probe/service", "/probe/fresh"]))
+  }))
+
+  it.live("Limit a device key to 120 requests a minute before it is looked up (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {
+    const reached: Array<string> = []
+    const cloud = try testHttp(probes(reached))
+    const call = cloud.call
+    const now = try Clock.currentTimeMillis
+    const windowEnd = Math.floor(now / minuteMs) * minuteMs + minuteMs
+    if (windowEnd - now < 20_000) try Effect.sleep(Duration.millis(windowEnd - now + 50))
+    const start = try Clock.currentTimeMillis
+    try account(cloud, "owner", "active", { sessions: 0, devices: 0 }, start)
+    const key = deviceKey("7")
+    try grant(cloud, "owner", key, "active", start - minuteMs, start + 60 * minuteMs)
+    const unknown = deviceKey("8")
+    const statuses: Array<number> = []
+    for (let index = 0; index < 120; index += 1) {
+      const answer = try call("/probe/service", key)
+      statuses.push(answer.status)
+    }
+    const over = try call("/probe/service", key)
+    const unknownStatuses: Array<number> = []
+    for (let index = 0; index < 121; index += 1) {
+      const answer = try call("/probe/service", unknown)
+      unknownStatuses.push(answer.status)
+    }
+    const overBody = over.body as { readonly error: string; readonly retryAt?: number }
+    try check(() => assert.deepStrictEqual(
+      [statuses.every((status) => status === 200), over.status, overBody.error, typeof overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length, unknownStatuses.slice(0, 120).every((status) => status === 401), unknownStatuses[120]],
+      [true, 429, "rate_limited", "number", true, 120, true, 429]
+    ))
+  }))
+
+  it.live("Answer a failed credential or revocation lookup as an outage (spec/cloud/identity/requestAuth.md, \"A failed credential or revocation lookup is an outage, never a credential refusal\")", () => scoped(effect {
+    const reached: Array<string> = []
+    const cloud = try testHttp(probes(reached))
+    const call = cloud.call
+    const now = try Clock.currentTimeMillis
+    const day = 24 * 60 * minuteMs
+    try account(cloud, "owner", "active", { sessions: 0, devices: 0 }, now)
+    const token = sessionToken("o")
+    try session(cloud, "owner", token, { live: true, epoch: 0, authAt: now - minuteMs, accessExpiresAt: now + 10 * minuteMs, refreshExpiresAt: now + day, stepUpAt: 0, mfaAt: now - minuteMs }, now)
+    const key = deviceKey("c")
+    try grant(cloud, "owner", key, "active", now - minuteMs, now + day)
+    effect function outage(path: string, credential: string) {
+      const asked = try Clock.currentTimeMillis
+      const answer = try call(path, credential)
+      const body = answer.body as { readonly retryable?: boolean; readonly retryAt?: number }
+      return [outcome(answer), body.retryable, (body.retryAt ?? 0) >= asked + 5000, answer.headers["retry-after"] !== undefined]
+    }
+    const unavailable = ["503 service_unavailable", true, true, true]
+    const before = [outcome(try call("/probe/session", token)), outcome(try call("/probe/service", key))]
+    try sql(cloud, "ALTER TABLE sessions RENAME TO sessions_unavailable", [])
+    const sessionLookup = try outage("/probe/session", token)
+    try sql(cloud, "ALTER TABLE sessions_unavailable RENAME TO sessions", [])
+    try sql(cloud, "ALTER TABLE accounts RENAME TO accounts_unavailable", [])
+    const sessionRevocation = try outage("/probe/session", token)
+    const keyRevocation = try outage("/probe/service", key)
+    try sql(cloud, "ALTER TABLE accounts_unavailable RENAME TO accounts", [])
+    const after = [outcome(try call("/probe/session", token)), outcome(try call("/probe/service", key))]
+    try check(() => assert.deepStrictEqual(
+      { before, sessionLookup, sessionRevocation, keyRevocation, after, reached },
+      { before: ["200 session", "200 deviceKey"], sessionLookup: unavailable, sessionRevocation: unavailable, keyRevocation: unavailable,
+        after: ["200 session", "200 deviceKey"], reached: ["/probe/session", "/probe/service", "/probe/session", "/probe/service"] }
+    ))
+  }))
+})
+
+schema PlanReviewBody { targetPlanKey: "plus_monthly" | "pro_monthly" }
+
+function reviewRoute(path: `/${string}`, kind: Exclude<ReviewPlanChange["kind"], "UndoCommand">): Route {
+  return {
+    method: "POST", path, auth: "FreshSession", capability: "billing",
+    handler: (context) => effect {
+      const body = try jsonBody(context, PlanReviewBody)
+      return json(try reviewPlanChange(context.request.headers.authorization, { kind, targetPlanKey: body.targetPlanKey }))
+    }
+  }
+}
+
+const readQuoteRoute: Route = {
+  method: "GET", path: "/probe/quotes/:quoteId", auth: "FreshSession",
+  handler: (context) => effect {
+    const caller = owner(context.caller)
+    if (caller === undefined) throw refused("AuthenticationRequired")
+    const store = try Store
+    return json(try store.transaction((tx) => readReviewedPlanQuote(tx, caller, context.params.quoteId ?? "")))
+  }
+}
+
+effect function paidCheckout(cloud: HttpFixture, fake: StripeFake, organizationId: string, plan: "plus_monthly" | "pro_monthly") {
+  const price = plan === "plus_monthly" ? catalogPrices[0] : catalogPrices[1]
+  const stripe = try Effect.try(() => stripeClient(fakeSecretKey, `${cloud.fakes.url}/stripe`))
+  const customer = try promise(() => stripe.customers.create({ metadata: { organization_id: organizationId } }))
+  const checkout = try promise(() => stripe.checkout.sessions.create({
+    customer: customer.id, mode: "subscription", line_items: [{ price: price.priceId, quantity: 1 }],
+    success_url: "https://example.com/return", cancel_url: "https://example.com/cancel"
+  }))
+  const paid = try Effect.try(() => fake.completeSession(checkout.id))
+  try check(() => assert.equal(paid.kind, "paid"))
+  const readProvider = promise(() => readStripeSubscription(stripe, {
+    STRIPE_PLAN: plan, STRIPE_PRICE_ID: price.priceId, STRIPE_PRODUCT_ID: price.productId, CLOUD_ENVIRONMENT: "staging"
+  }, customer.id))
+  return { stripe, customerId: customer.id, subscriptionId: paid.subscription.id, checkoutId: checkout.id, readProvider }
+}
+
+effect function paidReviewSubscription(cloud: HttpFixture, fake: StripeFake, organizationId: string, plan: "plus_monthly" | "pro_monthly", now: number) {
+  const { checkoutId, readProvider } = try paidCheckout(cloud, fake, organizationId, plan)
+  const { observation } = try readProvider
+  return try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observation, now, { kind: "Checkout", checkoutId }))
+}
+
+effect function subscriptionClock() {
+  const now = 1_800_000_000_987
+  const clock = try sync(manualClock)
+  try sync(() => clock.set(now))
+  return { now, clock }
+}
+
+effect function testUpgrade(now: number) {
+  const stripe = try sync(() => createStripeFake({ now: () => now }))
+  const provider = try sync(() => stripePlanUpgrade(stripe, () => now))
+  const cloud = try testHttp(billing.routes, provider.handler)
+  return { stripe, provider, cloud }
+}
+
+describe("Node subscriptions", () => {
+  it.live("Review the exact owned plan change without mutating Stripe (spec/cloud/billing/subscriptionCommands.md, \"A review quotes an upgrade, a downgrade or an undo of a live, active subscription with no command running\")", () => scoped(effect {
+    const { now, clock } = try subscriptionClock()
+    const providerAt = Math.floor(now / 1000) * 1000
+    provide Clock.Clock = clock.clock {
+      const fake = try sync(() => createStripeFake({ now: () => now }))
+      let previews = (mode: string, answer: FakeAnswer): FakeAnswer | Promise<FakeAnswer> => answer
+      const preview = try sync(() => stripePlanPreview(fake, (mode, answer) => previews(mode, answer)))
+      const upgrade = "/api/v1/subscriptions/upgrade/review"
+      const downgrade = "/api/v1/subscriptions/downgrade/review"
+      const cloud = try testHttp([reviewRoute(upgrade, "UpgradeCommand"), reviewRoute(downgrade, "DowngradeCommand"), readQuoteRoute],
+        (request) => preview(request) ?? fake.handler(request))
+      const token = sessionToken("q"), foreignToken = sessionToken("f"), staleToken = sessionToken("e")
+      const live = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs * 15, refreshExpiresAt: now + minuteMs * 60, stepUpAt: 0, mfaAt: 0 }
+      try account(cloud, "buyer", "active", { sessions: 0, devices: 0 }, now)
+      try account(cloud, "other", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "buyer", token, live, now)
+      try session(cloud, "other", foreignToken, live, now)
+      try session(cloud, "buyer", staleToken, { ...live, authAt: now - 2 * 60 * minuteMs }, now)
+      const plus = try paidReviewSubscription(cloud, fake, "org-buyer", "plus_monthly", now)
+      const pro = try paidReviewSubscription(cloud, fake, "org-other", "pro_monthly", now)
+      try sql(cloud, "INSERT INTO quotes (id,organization_id,command_kind,target_plan_key,proration_date,due_now_cents,recurring_cents,adjustment_micros,expires_at) VALUES ('legacy','org-buyer','upgrade','pro_monthly',0,0,0,0,$1)", [now])
+      const target = { json: { targetPlanKey: "pro_monthly" } }
+      const staleSession = try cloud.call(upgrade, staleToken, target)
+      const previewed = try cloud.call(upgrade, token, target)
+      const { quoteId: firstId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(previewed.body)
+      const readPath = "/probe/quotes/"
+      const stored = try cloud.call(readPath + firstId, token)
+      const foreign = try cloud.call(readPath + firstId, foreignToken)
+      const legacy = try cloud.call(readPath + "legacy", token)
+      const second = try cloud.call(upgrade, token, target)
+      const { quoteId: secondId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(second.body)
+      const replaced = try cloud.call(readPath + firstId, token)
+      try sync(() => { previews = (_mode, _answer) => ({ status: 503, body: { error: { type: "api_error" } } }) })
+      const unavailable = try cloud.call(upgrade, token, target)
+      try sync(() => {
+        previews = (mode, answer) => mode === "next"
+          ? Effect.runPromise(cloud.store.transaction((tx) => claimLiveCommand(tx, "org-buyer", "CancelCommand", "concurrent-cancel", plus.revision, now))).then(() => answer)
+          : answer
+      })
+      const moved = try cloud.call(upgrade, token, target)
+      const kept = try cloud.call(readPath + secondId, token)
+      try sync(() => { previews = (_mode, answer) => answer })
+      const lowered = try cloud.call(downgrade, foreignToken, { json: { targetPlanKey: "plus_monthly" } })
+      const { quoteId: downId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(lowered.body)
+      const rows = try sql(cloud, "SELECT id,reviewer_user_id,proration_date,reviewed_command->>'expectedRevision' AS revision FROM quotes ORDER BY organization_id,id", [])
+      const projected = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.includes("/v1/invoices/create_preview"))
+        .map((request) => {
+          const form = new URLSearchParams(request.body)
+          return [form.get("preview_mode"), form.get("subscription_details[proration_date]")]
+        }))
+      const mutations = try sync(() => cloud.fakes.seen.filter((request) => ["POST", "DELETE"].includes(request.method) &&
+        (/\/v1\/subscriptions\//.test(request.path) || request.path.includes("/v1/subscription_schedules"))).length)
+      try check(() => {
+        assert.deepStrictEqual([staleSession.status, previewed.status, stored.status, foreign.status, legacy.status, replaced.status,
+          unavailable.status, moved.status, kept.status, lowered.status, mutations], [428, 200, 200, 404, 404, 404, 503, 409, 200, 200, 0])
+        assert.deepStrictEqual(previewed.body, { quoteId: firstId, review: { kind: "upgrade_estimate", targetPlanKey: "pro_monthly",
+          dueNow: { amountDueCents: 7000 }, recurringEstimate: { amountDueCents: 10000 }, effectiveAt: providerAt, expiresAt: providerAt + minuteMs } })
+        assert.deepStrictEqual(lowered.body, { quoteId: downId, review: { kind: "downgrade_estimate", targetPlanKey: "plus_monthly",
+          dueNow: { amountDueCents: 0 }, recurringEstimate: { amountDueCents: 3000 }, effectiveAt: pro.periodEnd, expiresAt: providerAt + minuteMs } })
+        assert.deepStrictEqual(projected, [["recurring", null], ["next", String(providerAt / 1000)], ["recurring", null],
+          ["next", String(providerAt / 1000)], ["recurring", null], ["recurring", null], ["next", String(providerAt / 1000)], ["recurring", null]])
+        assert.deepStrictEqual(rows.map((row) => [row.id, row.reviewer_user_id, Number(row.proration_date), row.revision]).sort(),
+          [[secondId, "buyer", providerAt / 1000, String(plus.revision)], [downId, "other", pro.periodEnd / 1000, String(pro.revision)], ["legacy", null, 0, null]].sort())
+      })
+    }
+  }))
+
+  it.live("Schedule a downgrade once after verifying attachment and schedule binding (spec/cloud/billing/subscriptionCommands.md, \"A downgrade is scheduled once, for the quoted plan, before the command frees the slot\"; spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\")", () => scoped(effect {
+    const { now, clock } = try subscriptionClock()
+    provide Clock.Clock = clock.clock {
+      const stripe = try sync(() => createStripeFake({ now: () => now }))
+      const provider = try sync(() => stripePlanDowngrade(stripe, () => now))
+      const cloud = try testHttp(billing.routes, provider.handler)
+      const token = sessionToken("w"), other = sessionToken("d")
+      const path = "/api/v1/subscriptions/downgrade"
+      const live = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + 15 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }
+      try account(cloud, "direct-schedule", "active", { sessions: 0, devices: 0 }, now)
+      try account(cloud, "recover-schedule", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "direct-schedule", token, live, now)
+      try session(cloud, "recover-schedule", other, live, now)
+      const direct = try paidReviewSubscription(cloud, stripe, "org-direct-schedule", "pro_monthly", now)
+      const pending = try paidReviewSubscription(cloud, stripe, "org-recover-schedule", "pro_monthly", now)
+      const existing = try sync(() => provider.existing(direct.subscriptionId))
+      const target = { json: { targetPlanKey: "plus_monthly" } }
+      const identity = Schema.Struct({ quoteId: Schema.String })
+      const view = Schema.Struct({ commandId: Schema.String, status: Schema.String, kind: Schema.String })
+      const reviewedDirect = try cloud.call(path + "/review", token, target)
+      const { quoteId: directId } = try Schema.decodeUnknownEffect(identity)(reviewedDirect.body)
+      const directConfirm = { json: { quoteId: directId, idempotencyKey: "direct-downgrade-20261121", expectedSubscriptionRevision: direct.revision } }
+      const foreign = try cloud.call(path + "/confirm", other, directConfirm)
+      try sync(() => provider.hideScheduleBinding(direct.subscriptionId))
+      const obscured = try cloud.call(path + "/confirm", token, directConfirm)
+      try sync(() => provider.showScheduleBinding(direct.subscriptionId))
+      const same = try cloud.call(path + "/confirm", token, directConfirm)
+      const directView = try Schema.decodeUnknownEffect(view)(same.body)
+      const repeat = try cloud.call(path + "/confirm", token, directConfirm)
+      const reviewedPending = try cloud.call(path + "/review", other, target)
+      const { quoteId: pendingId } = try Schema.decodeUnknownEffect(identity)(reviewedPending.body)
+      const pendingConfirm = { json: { quoteId: pendingId, idempotencyKey: "recheck-downgrade-20261121", expectedSubscriptionRevision: pending.revision } }
+      try sync(() => {
+        provider.lose("attach")
+        provider.lose("configure")
+        provider.hideScheduleBinding(pending.subscriptionId)
+      })
+      const waiting = try cloud.call(path + "/confirm", other, pendingConfirm)
+      const waitingView = try Schema.decodeUnknownEffect(view)(waiting.body)
+      const statusPath = path + "/" + waitingView.commandId
+      const wrongOwnerStatus = try cloud.call(statusPath, token)
+      const unbound = try cloud.call(statusPath, other)
+      const blocked = try sql(cloud, "SELECT pending_plan_key,state->'liveCommand'->>'tag' AS held FROM subscriptions WHERE key=$1", ["org-recover-schedule"])
+      try sync(() => {
+        provider.showScheduleBinding(pending.subscriptionId)
+        provider.reveal("attach")
+      })
+      const ready = try cloud.call(statusPath, other)
+      const writes = () => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.startsWith("/stripe/v1/subscription_schedules"))
+      const beforeSweep = try sync(() => writes().length)
+      for (const sweep of downgradeSweeps) try cloud.inside(sweep.run)
+      const unanswered = try cloud.call(statusPath, other)
+      const replay = try cloud.call(path + "/confirm", other, pendingConfirm)
+      try sync(() => provider.reveal("configure"))
+      const settled = try cloud.call(statusPath, other)
+      const settledView = try Schema.decodeUnknownEffect(view)(settled.body)
+      const unansweredView = try Schema.decodeUnknownEffect(view)(unanswered.body)
+      for (const sweep of downgradeSweeps) try cloud.inside(sweep.run)
+      const saved = try sql(cloud, "SELECT key,plan_key,pending_plan_key,state->'liveCommand'->>'tag' AS held FROM subscriptions WHERE key IN ($1,$2) ORDER BY key",
+        ["org-direct-schedule", "org-recover-schedule"])
+      const origins = try sql(cloud, "SELECT status,stripe_schedule_attach_origin->>'requestId' AS attached,stripe_schedule_configure_origin->>'requestId' AS configured FROM subscription_commands WHERE key=$1",
+        [waitingView.commandId])
+      const compatibleToken = sessionToken("k")
+      try account(cloud, "compatible-schedule", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "compatible-schedule", compatibleToken, live, now)
+      const compatible = try paidReviewSubscription(cloud, stripe, "org-compatible-schedule", "pro_monthly", now)
+      const reviewedCompatible = try cloud.call(path + "/review", compatibleToken, target)
+      const { quoteId: compatibleId } = try Schema.decodeUnknownEffect(identity)(reviewedCompatible.body)
+      try sync(() => {
+        provider.lose("attach")
+        provider.conceal("attach")
+      })
+      const compatibleResponse = try cloud.call(path + "/confirm", compatibleToken, { json: {
+        quoteId: compatibleId, idempotencyKey: "compatible-downgrade-20261121", expectedSubscriptionRevision: compatible.revision
+      } })
+      const compatibleView = try Schema.decodeUnknownEffect(view)(compatibleResponse.body)
+      const guarantee = try sql(cloud, "SELECT state->'schedule'->>'evidence' AS evidence, stripe_schedule_attach_origin AS origin FROM subscription_commands WHERE key=$1",
+        [compatibleView.commandId])
+      const effects = try sync(() => writes().map((request) => [request.path.slice("/stripe".length), request.headers["idempotency-key"], new URLSearchParams(request.body).get("from_subscription")]))
+      const renewalAt = direct.periodEnd + 1_000
+      try sync(() => {
+        clock.set(renewalAt)
+        provider.renew(direct.subscriptionId, "open")
+      })
+      const renewalToken = sessionToken("h")
+      try session(cloud, "direct-schedule", renewalToken, { ...live, authAt: renewalAt,
+        accessExpiresAt: renewalAt + 15 * minuteMs, refreshExpiresAt: renewalAt + 60 * minuteMs }, renewalAt)
+      const refresh = (at: number) => cloud.inside(cloud.store.transaction(effect (tx) => {
+        const observed = try observeSubscription(tx, "org-direct-schedule")
+        return try reconcileSubscription(tx, "org-direct-schedule", observed, at)
+      }))
+      try refresh(renewalAt)
+      const unpaid = try cloud.call("/api/v1/billing/limits", renewalToken)
+      try sync(() => provider.renew(direct.subscriptionId, "failed"))
+      const grace = try refresh(renewalAt)
+      const graceView = try cloud.call("/api/v1/billing/limits", renewalToken)
+      const repeatedFailure = try refresh(renewalAt + 1_000)
+      const afterGrace = direct.periodEnd + 3 * 24 * 60 * minuteMs + 1_000
+      try sync(() => clock.set(afterGrace))
+      const swept = try cloud.inside(sweepSubscriptions())
+      const lapsed = try cloud.store.transaction((tx) => readSubscription(tx, "org-direct-schedule"))
+      const lateToken = sessionToken("j")
+      try session(cloud, "direct-schedule", lateToken, { ...live, authAt: afterGrace,
+        accessExpiresAt: afterGrace + 15 * minuteMs, refreshExpiresAt: afterGrace + 60 * minuteMs }, afterGrace)
+      const lapsedView = try cloud.call("/api/v1/billing/limits", lateToken)
+      try sync(() => provider.renew(direct.subscriptionId, "plan-change"))
+      const planChange = try refresh(afterGrace)
+      const planChangeView = try cloud.call("/api/v1/billing/limits", lateToken)
+      try sync(() => provider.renew(direct.subscriptionId, "paid"))
+      const latePaid = try refresh(afterGrace)
+      const paidObservation = try cloud.inside(cloud.store.transaction((tx) => observeSubscription(tx, "org-direct-schedule")))
+      try cloud.store.transaction((tx) => reconcileSubscription(tx, "org-direct-schedule", paidObservation, afterGrace))
+      const paid = try cloud.call("/api/v1/billing/limits", lateToken)
+      const unpaidSnapshot = (unpaid.body as { data: BillingSnapshot }).data
+      const paidSnapshot = (paid.body as { data: BillingSnapshot }).data
+      const graceSnapshot = (graceView.body as { data: BillingSnapshot }).data
+      const lapsedSnapshot = (lapsedView.body as { data: BillingSnapshot }).data
+      const planChangeSnapshot = (planChangeView.body as { data: BillingSnapshot }).data
+      const renewedAllowances = try sql(cloud, "SELECT key FROM allowance_periods WHERE organization_id=$1 AND status='open'", ["org-direct-schedule"])
+      try check(() => {
+        assert.deepStrictEqual([foreign.status, obscured.status, same.status, directView.kind, directView.status, repeat.body, wrongOwnerStatus.status,
+          waitingView.status, unbound.body, ready.status, beforeSweep, unanswered.body, replay.body, settled.status],
+          [404, 503, 200, "downgrade", "succeeded", same.body, 404, "unknown", waiting.body, 200, 2, replay.body, unanswered.body, 200])
+        assert.equal(settledView.status, "succeeded")
+        assert.equal(unansweredView.status, "unknown")
+        assert.deepStrictEqual([compatibleResponse.status, compatibleView.status, guarantee], [200, "succeeded", [{ evidence: "CompatibleSchedule", origin: null }]])
+        assert.deepStrictEqual(blocked.map((row) => [row.pending_plan_key, row.held]), [[null, "Live"]])
+        assert.deepStrictEqual(saved.map((row) => [row.plan_key, row.pending_plan_key, row.held]),
+          [["pro_monthly", "plus_monthly", "NoLiveCommand"], ["pro_monthly", "plus_monthly", "NoLiveCommand"]])
+        assert.deepStrictEqual(origins.map((row) => [row.status, row.attached, row.configured]), [["succeeded", "req_schedule2", "req_schedule3"]])
+        assert.deepStrictEqual([grace.status, grace.dunning.tag === "DunningSince" ? grace.dunning.endsAt : null,
+          swept.expired, lapsed.status, latePaid.status],
+          ["Dunning", afterGrace - 1_000, 1, "PastDue", "Active"])
+        assert.deepStrictEqual([repeatedFailure.dunning, repeatedFailure.revision], [grace.dunning, grace.revision])
+        assert.deepStrictEqual([planChange.status, planChange.dunning, planChangeView.status, planChangeSnapshot.funding],
+          ["PastDue", grace.dunning, 200, { inference: "creditsOnly", speech: "creditsOnly", maps: "creditsOnly" }])
+        assert.deepStrictEqual([graceView.status, graceSnapshot.plan, graceSnapshot.funding, lapsedView.status, lapsedSnapshot.plan, lapsedSnapshot.funding],
+          [200, { key: "pro_monthly", source: "subscription", effectiveUntil: afterGrace - 1_000 },
+            { inference: "allowanceThenCredits", speech: "allowanceThenCredits", maps: "allowanceThenCredits" },
+            200, { key: "pro_monthly", source: "subscription", effectiveUntil: null },
+            { inference: "creditsOnly", speech: "creditsOnly", maps: "creditsOnly" }])
+
+        assert.deepStrictEqual([unpaid.status, unpaidSnapshot.plan.key, unpaidSnapshot.subscription?.pendingPlanKey,
+          paid.status, paidSnapshot.plan.key, paidSnapshot.subscription?.pendingPlanKey, paidSnapshot.allowance?.granted, renewedAllowances.map((row) => row.key)],
+          [200, "pro_monthly", "plus_monthly", 200, "plus_monthly", null, 25_000_000, ["renewal/staging/" + paidObservation.payment?.id]])
+        assert.deepStrictEqual(effects, [
+          ["/v1/subscription_schedules/" + existing, "subscription_schedule_" + directView.commandId, null],
+          ["/v1/subscription_schedules", "subscription_schedule_" + waitingView.commandId + ":attach", pending.subscriptionId],
+          ["/v1/subscription_schedules/sub_sched_test2", "subscription_schedule_" + waitingView.commandId, null],
+          ["/v1/subscription_schedules", "subscription_schedule_" + compatibleView.commandId + ":attach", compatible.subscriptionId],
+          ["/v1/subscription_schedules/sub_sched_test3", "subscription_schedule_" + compatibleView.commandId, null]
+        ])
+      })
+    }
+  }))
+
+  it.live("See my commands across the retained and current billing layouts (spec/cloud/billing/subscriptionCommands.md, \"Story: See my commands\")", () => scoped(effect {
+    const { now, clock } = try subscriptionClock()
+    provide Clock.Clock = clock.clock {
+      const cloud = try testHttp(billing.routes)
+      const user = "command-owner", other = "command-peer", organization = `org-${user}`
+      const access = sessionToken("g"), peerAccess = sessionToken("h")
+      const live = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + 15 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }
+      try account(cloud, user, "active", { sessions: 0, devices: 0 }, now)
+      try account(cloud, other, "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, user, access, live, now)
+      try session(cloud, other, peerAccess, live, now)
+      try retainedPlanHistory(cloud, now)
+
+      const historicalQuote = "quo_" + "a".repeat(32), reviewId = "quo_" + "b".repeat(32)
+      const appliedId = "cmd_" + "c".repeat(32), undoId = "cmd_" + "e".repeat(32), currentId = "cmd_" + "7".repeat(32)
+      const subscription = { ...initialSubscription, planKey: "PlusMonthly" as const, periodStart: now - 4 * minuteMs, periodEnd: now + 60 * minuteMs }
+      const quote = quoteOf(subscription, "UpgradeCommand", "ProMonthly", historicalQuote, 100, now - 1000)
+      const oldUpgrade = { phase: "Applied", kind: "UpgradeCommand", commandId: appliedId, subscriptionId: "sub_retained_plan",
+        createdAt: now, expectedRevision: 2, resultRevision: 3, quote,
+        receipt: subscriptionChangeReceipt(organization, user, appliedId, requestDigest({ kind: "UpgradeCommand", quoteId: historicalQuote }), now, { tag: "ShowsEffect" })
+      } satisfies Omit<Command, "schedule">
+      const oldUndo = { phase: "Running", kind: "UndoCommand", commandId: undoId, subscriptionId: "sub_retained_undo",
+        createdAt: now - minuteMs, expectedRevision: 4, resultRevision: 0,
+        quote: quoteOf(subscription, "UndoCommand", "PlusMonthly", reviewId, 0, now - minuteMs - 1000),
+        receipt: subscriptionChangeReceipt(organization, user, undoId,
+          requestDigest({ kind: "UndoCommand", subscriptionId: "sub_retained_undo", expectedRevision: 4, quoteId: reviewId }), now - minuteMs, { tag: "Unclear" })
+      } satisfies Omit<Command, "schedule">
+      const current = subscriptionChangeReceipt(organization, user, `sub_current:${currentId}`, "current-intent", now, { tag: "ShowsEffect" })
+      const storedQuote = `INSERT INTO quotes (id,organization_id,command_kind,target_plan_key,proration_date,due_now_cents,recurring_cents,adjustment_micros,expires_at,command_id,state,created_at)
+        VALUES ($1,$2,'upgrade','pro_monthly',$3,$4,$5,$6,$7,$8,$9,$10)`
+      const quoteProjection = [organization, quote.effectiveAt, quote.dueNowCents, quote.recurringCents, quote.adjustment, quote.expiresAt]
+      try sql(cloud, storedQuote, [historicalQuote, ...quoteProjection, appliedId, JSON.stringify(oldUpgrade), now])
+      try sql(cloud, storedQuote, [reviewId, ...quoteProjection, null, JSON.stringify({ phase: "Quoted" }), now])
+      const storedDirect = `INSERT INTO subscription_commands (key,organization_id,kind,status,state,revision,expected_revision,result_revision,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8,$8)`
+      try sql(cloud, storedDirect, [undoId, organization, "undo", "unknown", JSON.stringify(oldUndo), 4, null, oldUndo.createdAt])
+      try sql(cloud, storedDirect, [currentId, organization, "cancel", "succeeded", JSON.stringify(current), 1, 2, now])
+
+      const root = "/api/v1/subscriptions"
+      const list = root + "/commands?limit=1"
+      const first = try cloud.call(list, access)
+      const second = try cloud.call(list + `&cursor=${now}.${appliedId}`, access)
+      const third = try cloud.call(list + `&cursor=${now}.${currentId}`, access)
+      const applied = try cloud.call(root + "/upgrade/" + appliedId, access)
+      const undo = try cloud.call(root + "/cancel/undo/" + undoId, access)
+      const otherPlan = try cloud.call(root + "/upgrade/" + appliedId, peerAccess)
+      const otherCommands = try cloud.call(list, peerAccess)
+      try sql(cloud, storedDirect, [appliedId, organization, "cancel", "succeeded", JSON.stringify(current), 1, 2, now - 10 * minuteMs])
+      const conflicting = try cloud.call(list, access)
+      const conflictingDetail = try cloud.call(root + "/upgrade/" + appliedId, access)
+      const stillForeign = try cloud.call(root + "/upgrade/" + appliedId, peerAccess)
+      const appliedView = { commandId: appliedId, kind: "upgrade", subscriptionId: "sub_retained_plan", status: "succeeded", expectedRevision: 2, resultRevision: 3, createdAt: now }
+      const currentView = { commandId: currentId, kind: "cancel", subscriptionId: "sub_current", status: "succeeded", expectedRevision: 1, resultRevision: 2, createdAt: now }
+      const undoView = { commandId: undoId, kind: "undo", subscriptionId: "sub_retained_undo", status: "unknown", expectedRevision: 4, resultRevision: null, createdAt: now - minuteMs }
+      try check(() => {
+        assert.deepStrictEqual([first.status, second.status, third.status, applied.status, undo.status], [200, 200, 200, 200, 200])
+        assert.deepStrictEqual([first.body, second.body, third.body, applied.body, undo.body], [
+          { observedAt: now, items: [appliedView], nextCursor: `${now}.${appliedId}` },
+          { observedAt: now, items: [currentView], nextCursor: `${now}.${currentId}` },
+          { observedAt: now, items: [undoView], nextCursor: null }, appliedView, undoView
+        ])
+        assert.deepStrictEqual([otherPlan.status, otherCommands.body, conflicting.status, conflictingDetail.status, stillForeign.status, cloud.fakes.seen],
+          [404, { observedAt: now, items: [], nextCursor: null }, 503, 503, 404, []])
+      })
+    }
+  }))
+
+  it.live("An exact paid upgrade applies once through both allowance row formats (spec/cloud/billing/subscriptionCommands.md, \"A settled command applies only what the provider did, and an upgrade applies only once its invoice is paid\"; spec/cloud/billing/subscriptionCommands.md, \"The provider is asked once, by the claim holder, and a lost reply is recovered by a lookup, never by sending again\")", () => scoped(effect {
+    const { now, clock } = try subscriptionClock()
+    provide Clock.Clock = clock.clock {
+      const { stripe, provider: upgrade, cloud } = try testUpgrade(now)
+      const buyer = sessionToken("u"), recovering = sessionToken("r")
+      const root = "/api/v1/subscriptions/upgrade"
+      const live = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs * 15, refreshExpiresAt: now + minuteMs * 60, stepUpAt: 0, mfaAt: 0 }
+      try account(cloud, "upgrader", "active", { sessions: 0, devices: 0 }, now)
+      try account(cloud, "recovering", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "upgrader", buyer, live, now)
+      try session(cloud, "recovering", recovering, live, now)
+      const historical = try cloud.inside(cloud.store.transaction((tx) => openRenewal(tx, "org-upgrader", {
+        invoiceId: "in_historical", planKey: "PlusMonthly", startsAt: now - 3 * minuteMs, endsAt: now - 2 * minuteMs
+      }, now - 3 * minuteMs)))
+      const original = try paidReviewSubscription(cloud, stripe, "org-upgrader", "plus_monthly", now)
+      const lostSource = try paidReviewSubscription(cloud, stripe, "org-recovering", "plus_monthly", now)
+      try sql(cloud, "UPDATE allowance_periods SET key='renewal/staging/' || substring(key,9) WHERE organization_id='org-recovering' AND starts_with(key,'invoice/')", [])
+      const initial = try sql(cloud, "SELECT organization_id,key,state FROM allowance_periods ORDER BY organization_id,key", [])
+      const quote = try cloud.call(root + "/review", buyer, { json: { targetPlanKey: "pro_monthly", subscriptionId: original.subscriptionId, expectedSubscriptionRevision: original.revision } })
+      const { quoteId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(quote.body)
+      const foreignConfirm = try cloud.call(root + "/confirm", recovering, { json: { quoteId, idempotencyKey: "foreign" } })
+      try retainedPlanHistory(cloud, now)
+      const retainedKey = "already-confirmed"
+      const retainedId = commandIdOf("org-upgrader", "upgrader", retainedKey)
+      const retainedQuote = quoteOf(original, "UpgradeCommand", "ProMonthly", "quo_" + "9".repeat(32), 100, now - minuteMs)
+      const retained = { phase: "Applied", kind: "UpgradeCommand", commandId: retainedId, subscriptionId: original.subscriptionId,
+        createdAt: now - minuteMs, expectedRevision: original.revision, resultRevision: original.revision + 1, quote: retainedQuote,
+        receipt: subscriptionChangeReceipt("org-upgrader", "upgrader", retainedId,
+          requestDigest({ kind: "UpgradeCommand", quoteId: retainedQuote.quoteId }), now - minuteMs, { tag: "ShowsEffect" })
+      } satisfies Omit<Command, "schedule">
+      try sql(cloud, `INSERT INTO quotes (id,organization_id,command_kind,target_plan_key,proration_date,due_now_cents,recurring_cents,adjustment_micros,expires_at,command_id,state,created_at)
+        VALUES ($1,'org-upgrader','upgrade','pro_monthly',$2,$3,$4,$5,$6,$7,$8,$9)`, [retainedQuote.quoteId, retainedQuote.effectiveAt,
+        retainedQuote.dueNowCents, retainedQuote.recurringCents, retainedQuote.adjustment, retainedQuote.expiresAt, retainedId, JSON.stringify(retained), retained.createdAt])
+      const trafficBeforeRetry = try sync(() => cloud.fakes.seen.length)
+      const repeatedPlan = { json: { quoteId, idempotencyKey: retainedKey } }
+      const repeatedCancellation = { json: { subscriptionId: original.subscriptionId, expectedSubscriptionRevision: original.revision, idempotencyKey: retainedKey } }
+      const repeatedUpgrade = try cloud.call(root + "/confirm", buyer, repeatedPlan)
+      try check(() => assert.strictEqual(outcome(repeatedUpgrade), "409 idempotency_conflict"))
+      const repeatedDowngrade = try cloud.call("/api/v1/subscriptions/downgrade/confirm", buyer, repeatedPlan)
+      const repeatedCancel = try cloud.call("/api/v1/subscriptions/cancel", buyer, repeatedCancellation)
+      const repeatedUndo = try cloud.call("/api/v1/subscriptions/cancel/undo", buyer, repeatedCancellation)
+      const appliedBeforeNext = try cloud.call(root + "/" + retainedId, buyer)
+      const preserved = try sql(cloud, "SELECT state FROM quotes WHERE id=$1", [retainedQuote.quoteId])
+      try check(() => {
+        assert.deepStrictEqual([outcome(repeatedDowngrade), outcome(repeatedCancel), outcome(repeatedUndo)], Array(3).fill("409 idempotency_conflict"))
+        assert.deepStrictEqual([appliedBeforeNext.status, (appliedBeforeNext.body as CommandView).status, preserved, cloud.fakes.seen.length],
+          [200, "succeeded", [{ state: retained }], trafficBeforeRetry])
+      })
+      const input = { json: { quoteId, idempotencyKey: "exact-upgrade" } }
+      const confirmed = try cloud.call(root + "/confirm", buyer, input)
+      const { commandId } = try Schema.decodeUnknownEffect(Schema.Struct({ commandId: Schema.String }))(confirmed.body)
+      const replay = try cloud.call(root + "/confirm", buyer, input)
+      const payment = try cloud.call(root + "/" + commandId + "/payment", buyer, { method: "POST" })
+      const foreignStatus = try cloud.call(root + "/" + commandId, recovering)
+      const unpaid = try sql(cloud, "SELECT organization_id,key,state FROM allowance_periods ORDER BY organization_id,key", [])
+      const held = try sql(cloud, "SELECT state->>'planKey' AS plan,state->'liveCommand'->>'commandId' AS command FROM subscriptions WHERE key='org-upgrader'", [])
+      try sync(() => upgrade.settle(original.subscriptionId, "paid"))
+      const untethered = cloud.inside(cloud.store.transaction(effect (tx) => {
+        const observed = try observeSubscription(tx, "org-upgrader")
+        return try reconcileSubscription(tx, "org-upgrader", observed, now)
+      })) catch (failure) => failure._tag
+      const beforeExact = try cloud.store.transaction((tx) => readSubscription(tx, "org-upgrader"))
+      const applied = try cloud.call(root + "/" + commandId, buyer)
+      const appliedAgain = try cloud.call(root + "/confirm", buyer, input)
+      const afterPayment = try cloud.call(root + "/" + commandId + "/payment", buyer, { method: "POST" })
+      const history = try cloud.call("/api/v1/subscriptions/commands", buyer)
+      const older = try cloud.call(root + "/review", recovering, { json: { targetPlanKey: "pro_monthly" } })
+      const { quoteId: recoveryId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(older.body)
+      try sync(() => upgrade.loseNextReply())
+      const ambiguous = try cloud.call(root + "/confirm", recovering, { json: { quoteId: recoveryId, idempotencyKey: "lost-upgrade" } })
+      const originCommand = try Schema.decodeUnknownEffect(Schema.Struct({ commandId: Schema.String }))(ambiguous.body)
+      const noOrigin = try cloud.call(root + "/" + originCommand.commandId, recovering)
+      try sync(() => upgrade.showInvoiceOrigins())
+      const recovered = try cloud.call(root + "/" + originCommand.commandId, recovering)
+      const futureStart = lostSource.periodEnd
+      const futureEnd = futureStart + (lostSource.periodEnd - lostSource.periodStart)
+      const afterRollover = futureStart + 1000
+      try sync(() => {
+        upgrade.settle(lostSource.subscriptionId, "paid")
+        upgrade.advance(lostSource.subscriptionId, futureStart, futureEnd)
+        clock.set(afterRollover)
+      })
+      const customerId = lostSource.customer.tag === "PinnedCustomer" ? lostSource.customer.customerId : ""
+      try cloud.store.transaction((tx) => reconcileSubscription(tx, "org-recovering", {
+        customerId, subscriptionId: lostSource.subscriptionId, plan: "plus_monthly", status: "active",
+        startsAt: futureStart, endsAt: futureEnd, cancelAtPeriodEnd: false, latestInvoice: "PeriodInvoicePaid",
+        payment: { id: "in_later_renewal", startsAt: futureStart, endsAt: futureEnd, condition: "paid" }
+      }, afterRollover))
+      const rolled = try sql(cloud, "SELECT state FROM allowance_periods WHERE key='invoice/in_later_renewal'", [])
+      const renewed = sessionToken("z")
+      try session(cloud, "recovering", renewed, { ...live, authAt: afterRollover,
+        accessExpiresAt: afterRollover + minuteMs * 15, refreshExpiresAt: afterRollover + minuteMs * 60 }, afterRollover)
+      const recoveredPaid = try cloud.call(root + "/" + originCommand.commandId, renewed)
+      const periodAfter = try cloud.store.transaction((tx) => readSubscription(tx, "org-recovering"))
+      const nextPage = try sync(() => cloud.fakes.seen.some((request) => request.path.endsWith("/v1/events") && request.query.get("starting_after") === "evt_skip"))
+      const final = try sql(cloud, "SELECT organization_id,key,state,state->>'adjustment' AS adjustment FROM allowance_periods ORDER BY organization_id,key", [])
+      const receipts = try sql(cloud, "SELECT stripe_invoice_id,stripe_request_id FROM subscription_commands ORDER BY stripe_invoice_id", [])
+      const providerWrites = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && /\/v1\/subscriptions\//.test(request.path)).length)
+      try check(() => {
+        const status = (reply: { readonly body: unknown }) => typeof reply.body === "object" && reply.body !== null && "status" in reply.body ? reply.body.status : undefined
+        assert.deepStrictEqual([untethered, beforeExact.planKey], ["RowCorrupt", "PlusMonthly"])
+        assert.deepStrictEqual([quote.status, foreignConfirm.status, confirmed.status, foreignStatus.status, afterPayment.status], [200, 404, 200, 404, 409])
+        assert.deepStrictEqual([status(confirmed), status(ambiguous), status(noOrigin), status(recovered), status(recoveredPaid)],
+          ["awaiting_payment", "unknown", "unknown", "awaiting_payment", "succeeded"])
+        assert.deepStrictEqual([replay.body, appliedAgain.body, payment.body, unpaid, held], [
+          confirmed.body, applied.body, { url: "https://invoice.stripe.com/i/test-upgrade-1" }, initial, [{ plan: "PlusMonthly", command: commandId }]
+        ])
+        assert.deepStrictEqual([status(applied), history.status, providerWrites, nextPage, periodAfter.periodStart, periodAfter.periodEnd],
+          ["succeeded", 200, 2, true, futureStart, futureEnd])
+        assert.deepStrictEqual(final.find((row) => row.key === historical.key)?.state, initial.find((row) => row.key === historical.key)?.state)
+        assert.deepStrictEqual(final.find((row) => row.key === "invoice/in_later_renewal")?.state, rolled[0]?.state)
+        assert.deepStrictEqual(final.filter((row) => row.key !== historical.key && row.key !== "invoice/in_later_renewal").map((row) => [row.organization_id, Number(row.adjustment)]),
+          [["org-recovering", 65_000_000], ["org-upgrader", 65_000_000]])
+        assert.deepStrictEqual(receipts, [
+          { stripe_invoice_id: "in_upgrade1", stripe_request_id: "req_upgrade1" },
+          { stripe_invoice_id: "in_upgrade2", stripe_request_id: "req_upgrade2" }
+        ])
+      })
+    }
+  }))
+
+  it.live("A voided invoice ends the reviewed upgrade without changing the plan or allowance (spec/cloud/billing/subscriptionCommands.md, \"Story: Get the plan I paid for\")", () => scoped(effect {
+    const { now, clock } = try subscriptionClock()
+    provide Clock.Clock = clock.clock {
+      const { stripe, provider, cloud } = try testUpgrade(now)
+      const token = sessionToken("n")
+      const path = "/api/v1/subscriptions/upgrade"
+      const organizationId = "org-void-upgrade"
+      try account(cloud, "void-upgrade", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "void-upgrade", token, { live: true, epoch: 0, authAt: now,
+        accessExpiresAt: now + 15 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }, now)
+      const original = try paidReviewSubscription(cloud, stripe, organizationId, "plus_monthly", now)
+      const paid = try sql(cloud, "SELECT key,state FROM allowance_periods WHERE organization_id=$1 ORDER BY key", [organizationId])
+      const reviewed = try cloud.call(path + "/review", token, { json: { targetPlanKey: "pro_monthly" } })
+      const quote = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(reviewed.body)
+      const input = { json: { quoteId: quote.quoteId, idempotencyKey: "voided-upgrade-review" } }
+      const confirmed = try cloud.call(path + "/confirm", token, input)
+      const view = Schema.Struct({ commandId: Schema.String, status: Schema.String, resultRevision: Schema.NullOr(Schema.Number) })
+      const command = try Schema.decodeUnknownEffect(view)(confirmed.body)
+      try sync(() => provider.settle(original.subscriptionId, "void"))
+      const rejected = try cloud.call(path + "/" + command.commandId, token)
+      const result = try Schema.decodeUnknownEffect(view)(rejected.body)
+      const replay = try cloud.call(path + "/confirm", token, input)
+      const blockedPayment = try cloud.call(path + "/" + command.commandId + "/payment", token, { method: "POST" })
+      const current = try cloud.store.transaction((tx) => readSubscription(tx, organizationId))
+      const after = try sql(cloud, "SELECT key,state FROM allowance_periods WHERE organization_id=$1 ORDER BY key", [organizationId])
+      const writes = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" &&
+        request.path.endsWith("/v1/subscriptions/" + original.subscriptionId)).length)
+      try check(() => assert.deepStrictEqual(
+        [confirmed.status, command.status, rejected.status, result.status, result.resultRevision, replay.body, blockedPayment.status,
+          current.planKey, current.liveCommand.tag, after, writes],
+        [200, "awaiting_payment", 200, "rejected", null, rejected.body, 409, "PlusMonthly", "NoLiveCommand", paid, 1]
+      ))
+    }
+  }))
+
+  it.live("A paid upgrade over a refunded period applies the plan and moves no allowance (spec/cloud/billing/subscriptionCommands.md, \"Story: Get the plan I paid for\"; spec/cloud/billing/allowance.md, \"Story: Get more allowance when I upgrade mid-period\")", () => scoped(effect {
+    const { now, clock } = try subscriptionClock()
+    provide Clock.Clock = clock.clock {
+      const { stripe, provider, cloud } = try testUpgrade(now)
+      const token = sessionToken("q")
+      const path = "/api/v1/subscriptions/upgrade"
+      const organizationId = "org-refunded-upgrade"
+      try account(cloud, "refunded-upgrade", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "refunded-upgrade", token, { live: true, epoch: 0, authAt: now,
+        accessExpiresAt: now + 15 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }, now)
+      const original = try paidReviewSubscription(cloud, stripe, organizationId, "plus_monthly", now)
+      const reviewed = try cloud.call(path + "/review", token, { json: { targetPlanKey: "pro_monthly" } })
+      const quote = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(reviewed.body)
+      const confirmed = try cloud.call(path + "/confirm", token, { json: { quoteId: quote.quoteId, idempotencyKey: "refunded-upgrade-review" } })
+      const command = try Schema.decodeUnknownEffect(Schema.Struct({ commandId: Schema.String }))(confirmed.body)
+      const periods = try sql(cloud, "SELECT key FROM allowance_periods WHERE organization_id=$1", [organizationId])
+      const invoiceId = String(periods[0]?.key).replace(/^[a-z]+\/(staging\/)?/, "")
+      try cloud.inside(cloud.store.transaction((tx) => cloud.inside(changeInvoiceAllowance(tx, { organizationId, invoiceId }, { type: "clawBack", cause: "RefundClawback" }, now))))
+      const refunded = try sql(cloud, "SELECT key,state FROM allowance_periods WHERE organization_id=$1 ORDER BY key", [organizationId])
+      try sync(() => provider.settle(original.subscriptionId, "paid"))
+      const applied = try cloud.call(path + "/" + command.commandId, token)
+      const current = try cloud.store.transaction((tx) => readSubscription(tx, organizationId))
+      const after = try sql(cloud, "SELECT key,state FROM allowance_periods WHERE organization_id=$1 ORDER BY key", [organizationId])
+      try check(() => assert.deepStrictEqual(
+        [confirmed.status, applied.status, (applied.body as CommandView).status, current.planKey, current.liveCommand.tag, after],
+        [200, 200, "succeeded", "ProMonthly", "NoLiveCommand", refunded]
+      ))
+    }
+  }))
+
+  it.live("Keep allowance and cancellation coherent when a provider event replays over an older Worker row (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\")", () => scoped(effect {
+    const now = try Clock.currentTimeMillis
+    const fake = try sync(() => createStripeFake({ now: () => now }))
+    let movedTerms = false
+    let loseUndoReply = false
+    let exposeUndoOrigin = false
+    const renewalPreview = try sync(() => stripeRenewalPreview(fake, {
+      now: Date.now, moveTerms: () => movedTerms, loseReply: () => loseUndoReply, exposeOrigin: () => exposeUndoOrigin
+    }))
+    const cloud = try testHttp(billing.routes, renewalPreview)
+    const owner = "subscriber"
+    const organizationId = "org-subscriber"
+    const token = sessionToken("s")
+    const oldToken = sessionToken("t")
+    try account(cloud, owner, "active", { sessions: 0, devices: 0 }, now)
+    const currentSession = { live: true, epoch: 0, authAt: now - minuteMs, accessExpiresAt: now + 10 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }
+    try session(cloud, owner, token, currentSession, now)
+    try session(cloud, owner, oldToken, { ...currentSession, authAt: now - 2 * 60 * minuteMs }, now)
+    const { stripe, customerId, subscriptionId, readProvider } = try paidCheckout(cloud, fake, organizationId, "plus_monthly")
+    const { observation } = try readProvider
+    const legacy = { customerId, subscriptionId, planKey: observation.plan, status: observation.status, periodEnd: observation.endsAt }
+    try sql(cloud, "INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,updated_at) VALUES ($1,$2,3,$3,$4,$5,$6,$7,$8)",
+      [organizationId, JSON.stringify(legacy), legacy.status, legacy.planKey, legacy.customerId, subscriptionId, legacy.periodEnd, now])
+    const opened = try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observation, now))
+    const before = try cloud.call("/api/v1/billing/limits", token)
+    const beforeSnapshot = (before.body as { data: BillingSnapshot }).data
+    const cancel = "/api/v1/subscriptions/cancel"
+    const json = { subscriptionId, expectedSubscriptionRevision: opened.revision, idempotencyKey: "cancel-after-legacy" }
+    const staleProof = try cloud.call(cancel, oldToken, { json })
+    const canceled = try cloud.call(cancel, token, { json })
+    const again = try cloud.call(cancel, token, { json })
+    const cancelDispatches = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.endsWith("/subscriptions/" + subscriptionId)).length)
+    const receipt = canceled.body as CommandView
+    const observed = try readProvider
+    const current = try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observed.observation, now + 1000))
+    const after = try cloud.call("/api/v1/billing/limits", token)
+    const afterSnapshot = (after.body as { data: BillingSnapshot }).data
+    const staleRevision = try cloud.call(cancel, token, { json: { ...json, idempotencyKey: "stale-after-cancel" } })
+    const undo = cancel + "/undo"
+    const originalUndo = { json: { subscriptionId, expectedSubscriptionRevision: current.revision, idempotencyKey: "reviewed-undo" } }
+    const withoutReview = try cloud.call(undo, token, originalUndo)
+    const preview = try cloud.call(undo + "/review", token)
+    const quote = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(preview.body)
+    const requestUndo = { json: { ...originalUndo.json, quoteId: quote.quoteId } }
+    try sync(() => { movedTerms = true })
+    const changedPreview = try cloud.call(undo, token, requestUndo)
+    try sync(() => { movedTerms = false })
+    const retainedQuote = try sql(cloud, "SELECT command_kind,reviewer_user_id FROM quotes WHERE id=$1", [quote.quoteId])
+    try sync(() => { loseUndoReply = true })
+    const lostUndo = try cloud.call(undo, token, requestUndo)
+    const unknown = lostUndo.body as CommandView
+    const waiting = try cloud.call(undo + "/" + unknown.commandId, token)
+    const whileUnknown = try cloud.store.transaction((tx) => readSubscription(tx, organizationId))
+    try sync(() => { loseUndoReply = false; exposeUndoOrigin = true })
+    const undone = try cloud.call(undo + "/" + unknown.commandId, token)
+    const receiptUndo = undone.body as CommandView
+    const replayUndo = try cloud.call(undo, token, requestUndo)
+    const conflictingUndo = try cloud.call(undo, token, { json: { ...requestUndo.json, quoteId: "not-the-original-quote" } })
+    const consumed = try sql(cloud, "SELECT id FROM quotes WHERE id=$1", [quote.quoteId])
+    const reviewedCommand = try sql(cloud, "SELECT state->'quote'->>'quoteId' AS quote_id, state->>'phase' AS phase, stripe_plan_binding->>'customerId' AS customer_id FROM subscription_commands WHERE key=$1", [unknown.commandId])
+    const reCanceled = try cloud.call(cancel, token, { json: { subscriptionId, expectedSubscriptionRevision: receiptUndo.resultRevision,
+      idempotencyKey: "cancel-again-after-reviewed-undo" } })
+    const reCancelReceipt = reCanceled.body as CommandView
+    const replacementReview = try cloud.call(undo + "/review", token)
+    const compatible = try cloud.call(undo, token, { json: { subscriptionId, expectedSubscriptionRevision: reCancelReceipt.resultRevision,
+      idempotencyKey: "undo-compatible-body-after-review" } })
+    const compatibleReceipt = compatible.body as CommandView
+    const ended = try promise(() => stripe.subscriptions.cancel(subscriptionId))
+    const terminal = try readProvider
+    try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, terminal.observation, now + 2000))
+    const revoked = try cloud.call("/api/v1/billing/limits", token)
+    const revokedSnapshot = (revoked.body as { data: BillingSnapshot }).data
+    const dispatches = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.endsWith(`/subscriptions/${subscriptionId}`)).length)
+    try check(() => assert.deepStrictEqual({
+      before: [before.status, beforeSnapshot.plan.key, beforeSnapshot.subscription?.control.action, beforeSnapshot.allowance?.granted],
+      staleProof: staleProof.status, mutations: [canceled.status, again.status, receipt.status, again.body, cancelDispatches, dispatches],
+      after: [after.status, afterSnapshot.subscription?.control, afterSnapshot.allowance, current.revision],
+      staleRevision: staleRevision.status,
+      undo: [withoutReview.status, preview.status, changedPreview.status, retainedQuote, lostUndo.status, unknown.status, waiting.body,
+        whileUnknown.liveCommand.tag, undone.status, receiptUndo.status, replayUndo.body, conflictingUndo.status, consumed,
+        reviewedCommand, reCanceled.status, replacementReview.status, compatible.status, compatibleReceipt.status],
+      revoked: [ended.status, revoked.status, revokedSnapshot.plan.key, revokedSnapshot.allowance?.state, revokedSnapshot.allowance?.available]
+    }, {
+      before: [200, "plus_monthly", "cancel", 25_000_000],
+      staleProof: 428, mutations: [200, 200, "succeeded", canceled.body, 1, 4],
+      after: [200, { action: "undo", eligible: true, expectedSubscriptionRevision: receipt.resultRevision }, beforeSnapshot.allowance, receipt.resultRevision],
+      staleRevision: 409,
+      undo: [409, 200, 503, [{ command_kind: "undo", reviewer_user_id: owner }], 200, "unknown", lostUndo.body,
+        "Live", 200, "succeeded", undone.body, 409, [], [{ quote_id: quote.quoteId, phase: "Applied", customer_id: customerId }],
+        200, 200, 200, "succeeded"],
+      revoked: ["canceled", 200, "free", "closed", 0]
+    }))
+  }))
+})
+
+
+describe("Speech session funding (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\")", () => {
+  it.live("Fund each admitted speech window once across concurrent retries, roll back partial funding, and settle before closing", () => scoped(effect {
+    const now = 1_800_000_000_000
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const cloud = try testHttp(sessionSpeechRoutes)
+      const owners = ["speech-rich", "speech-poor"]
+      const tokens = [sessionToken("r"), sessionToken("p")]
+      for (const [index, owner] of owners.entries()) {
+        try account(cloud, owner, "active", { sessions: 0, devices: 0 }, now)
+        try session(cloud, owner, tokens[index] ?? "", { live: true, epoch: 0, authAt: now, accessExpiresAt: now + 30 * minuteMs, refreshExpiresAt: now + 30 * 24 * 60 * minuteMs, stepUpAt: now, mfaAt: now }, now)
+        try cloud.inside(addCredits({ organizationId: `org-${owner}`, amount: index === 0 ? 10_000_000 : 10_000, requestKey: `speech-credit-${owner}` }))
+      }
+      const Consent = Schema.Struct({ consentNonce: Schema.String, expiresAt: Schema.String })
+      const Minted = Schema.Struct({ sessionId: Schema.String, token: Schema.String, expiresAt: Schema.String })
+      const mint = (token: string) => effect {
+        const consentAnswer = try cloud.call("/api/v1/voice/speech/consent", token, { json: {} })
+        const consent = try Schema.decodeUnknownEffect(Consent)(consentAnswer.body)
+        const answer = try cloud.call("/api/v1/voice/speech/session", token, { json: { consentNonce: consent.consentNonce } })
+        const minted = try Schema.decodeUnknownEffect(Minted)(answer.body)
+        const replay = try cloud.call("/api/v1/voice/speech/session", token, { json: { consentNonce: consent.consentNonce } })
+        try check(() => assert.deepStrictEqual([consentAnswer.status, Date.parse(consent.expiresAt), answer.status, Date.parse(minted.expiresAt), replay.status], [200, now + 5 * minuteMs, 200, now + minuteMs, 403]))
+        return minted
+      }
+      const first = try mint(tokens[0] ?? "")
+      const second = try mint(tokens[0] ?? "")
+      const poor = try mint(tokens[1] ?? "")
+      for (const sessionId of [first.sessionId, second.sessionId, poor.sessionId]) try cloud.inside(openSocket(sessionId))
+      const duplicate = try Effect.all([cloud.inside(admitWindow(first.sessionId, 1)), cloud.inside(admitWindow(first.sessionId, 1))], { concurrency: "unbounded" })
+      const held = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = $1 ORDER BY key", ["org-speech-rich"])
+      const firstUsage = try sql(cloud, "SELECT used_ms FROM speech_usage_days WHERE user_id = $1", ["speech-rich"])
+      const firstWindows = try sql(cloud, "SELECT number FROM speech_windows WHERE session_id = $1", [first.sessionId])
+      try check(() => assert.deepStrictEqual({ admission: duplicate.map((answer) => answer.kind), holds: held.map((row) => row.phase), usage: firstUsage.map((row) => Number(row.used_ms)), windows: firstWindows.map((row) => Number(row.number)) }, { admission: ["admitted", "admitted"], holds: ["reserved", "reserved"], usage: [minuteMs], windows: [1] }))
+      try sql(cloud, "UPDATE speech_usage_days SET used_ms = $2 WHERE user_id = $1", ["speech-rich", 119 * minuteMs])
+      const capped = try Effect.all([cloud.inside(admitWindow(first.sessionId, 2)), cloud.inside(admitWindow(second.sessionId, 1))], { concurrency: "unbounded" })
+      const cappedUsage = try sql(cloud, "SELECT used_ms FROM speech_usage_days WHERE user_id = $1", ["speech-rich"])
+      const unfunded = try cloud.inside(admitWindow(poor.sessionId, 1))
+      const poorHolds = try sql(cloud, "SELECT key FROM holds WHERE organization_id = $1", ["org-speech-poor"])
+      const poorWindows = try sql(cloud, "SELECT number FROM speech_windows WHERE session_id = $1", [poor.sessionId])
+      const poorUsage = try sql(cloud, "SELECT used_ms FROM speech_usage_days WHERE user_id = $1", ["speech-poor"])
+      const poorFunds = try sql(cloud, "SELECT state->>'creditHeld' AS held FROM funds WHERE key = $1", ["org-speech-poor"])
+      try check(() => assert.deepStrictEqual({ capped: capped.map((answer) => answer.kind).sort(), usage: cappedUsage.map((row) => Number(row.used_ms)), unfunded, poorHolds, poorWindows, poorUsage, poorFunds }, { capped: ["admitted", "short"], usage: [120 * minuteMs], unfunded: { kind: "short", shortfall: "CreditsShort" }, poorHolds: [], poorWindows: [], poorUsage: [], poorFunds: [{ held: "0" }] }))
+      for (const sessionId of [first.sessionId, second.sessionId]) try cloud.inside(retire(sessionId, "Stopped"))
+      const reopening = cloud.inside(admitWindow(first.sessionId, 1)) catch effect (failure) => match (failure) { when Refused: failure.refusal.code; default: throw failure; }
+      const windows = try Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ session_id: Schema.String, number: Schema.Number })))(try sql(cloud, "SELECT session_id, number FROM speech_windows WHERE user_id = $1 ORDER BY session_id, number", ["speech-rich"]))
+      for (const window of windows) try cloud.inside(settleWindow(window.session_id, window.number, { pcmBytes: 0, ttsChars: 0, sttFinal: true, ttsFinal: true, dispatched: false }))
+      const closed = try sql(cloud, "SELECT phase, (state->>'admittedWindows')::int AS admitted, jsonb_array_length(state->'settledWindows') AS settled FROM speech_sessions WHERE key = $1", [first.sessionId])
+      const released = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = $1", ["org-speech-rich"])
+      try check(() => assert.deepStrictEqual({ reopening, closed: closed.map((row) => [row.phase, Number(row.admitted) === Number(row.settled)]), released: released.every((row) => row.phase === "released") }, { reopening: "SessionClosed", closed: [["closed", true]], released: true }))
+    }
+  }))
+})

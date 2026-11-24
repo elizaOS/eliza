@@ -1,0 +1,74 @@
+// spec/cloud/index.md, "A dispatch uses the current account and its available quota slots"
+import { assert, it } from "@effect/vitest"
+import { check } from "./support/cloud.vibe"
+
+module node {
+  import { CLEF_DECISIONS_PATH, type ClefDecisionRequest } from "@elizaos/cloud"
+  import { openBackupDatabase } from "./support/password-backup.ts"
+  import { clefWorker } from "./support/clef.ts"
+
+  export async function decideUnderEachFunding() {
+    const fixture = await openBackupDatabase()
+    try {
+      let providerCalls = 0
+      async function run(id: string, input: Record<string, unknown>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<Response>
+      async function run(id: string, input: unknown): Promise<unknown>
+      async function run(_id: string, _input: unknown, options?: unknown): Promise<unknown> {
+        if (options) return Response.json({ error: "unexpected inference request" }, { status: 500 })
+        providerCalls += 1
+        return { model: "clef-flash", answers: { target: { type: "choice", choice: "hours", confidence: .9, probabilities: { hours: .9, none: .1 } } } }
+      }
+      const { owner, web, api, env, worker } = await clefWorker(fixture, "e".repeat(64), "quota@example.test", { run })
+      const body: ClefDecisionRequest = { kind: "choice", goal: "Find opening hours", candidates: [{ id: "hours", label: "Opening hours" }] }
+      const headers = { origin: web, cookie: "__Host-eliza-session=" + owner.access, "content-type": "application/json" }
+      const decide = async () => {
+        const answer = await worker.fetch(new Request(api + CLEF_DECISIONS_PATH, { method: "POST", headers, body: JSON.stringify(body) }), env)
+        return [answer.status, answer.headers.get("x-clef-rate-limit-scope")]
+      }
+      const fill = (scope: string, hits: number) => fixture.db.query("UPDATE cloud_auth_limits SET hits = $2 WHERE scope = $1", [scope, hits])
+      const found = await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])
+      const organization = found.rows[0]?.organization_id ?? ""
+      const base = await decide()
+      await fill("clef:organization", 2000)
+      const baseSpent = await decide()
+      await fixture.db.query("INSERT INTO credit_entries (id, organization_id, kind, amount, request_key, created_at) VALUES ('pilot-funds', $1, 'add', 5000000, 'pilot-funds', 1)", [organization])
+      const funded = await decide()
+      await fill("clef:organization", 4000)
+      const fundedSpent = await decide()
+      await fixture.db.query("INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ($1, '{}'::jsonb, 1, 'active', 'plus_monthly', $2, $3)",
+        [organization, Date.now() + 86_400_000, Date.now()])
+      const continued = await decide()
+      await fill("clef:continuation", 60)
+      const continuationSpent = await decide()
+      await fixture.db.query("UPDATE subscriptions SET status = 'canceled' WHERE key = $1", [organization])
+      const lapsed = await decide()
+      const counters = await fixture.db.query<{ scope: string; hits: number }>("SELECT scope, hits FROM cloud_auth_limits WHERE scope LIKE 'clef:%' ORDER BY scope")
+      const balance = await fixture.db.query<{ kind: string }>("SELECT kind FROM credit_entries WHERE organization_id = $1", [organization])
+      return {
+        outcomes: { base, baseSpent, funded, fundedSpent, continued, continuationSpent, lapsed },
+        providerCalls,
+        counters: counters.rows.map((row) => [row.scope, row.hits]),
+        ledger: balance.rows.map((row) => row.kind),
+      }
+    } finally { await fixture.close() }
+  }
+}
+import { decideUnderEachFunding } from node
+
+it.live('A funded or subscribed organization gets more Clef decisions, and only a subscription continues past the day (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
+  const result = try tryPromise(() => decideUnderEachFunding())
+  try check(() => assert.deepStrictEqual(result, {
+    outcomes: {
+      base: [200, "organization-day"],
+      baseSpent: [429, "organization-day"],
+      funded: [200, "organization-day"],
+      fundedSpent: [429, "organization-day"],
+      continued: [200, "subscription-minute"],
+      continuationSpent: [429, "subscription-minute"],
+      lapsed: [429, "organization-day"],
+    },
+    providerCalls: 3,
+    counters: [["clef:account", 3], ["clef:continuation", 60], ["clef:organization", 4000]],
+    ledger: ["add"],
+  }))
+}, 30_000)

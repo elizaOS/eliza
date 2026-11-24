@@ -1,7 +1,7 @@
 # APK admission
 
 An APK reaches an image, a provisioned unit or an installed app only as a
-reviewed build (`src/image/apk.vibe`, exported from `@elizaos/os/image`).
+reviewed build (`src/image/apk.vibe`, exported from `@elizaos/os`).
 The sources are develop's `image-apk-admission.mjs`, `apk-release-record.mjs`
 and `artifact-inspection/apk-distribution.mjs`.
 

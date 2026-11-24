@@ -1,7 +1,7 @@
 // spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "Story: Keep the credential out of every file and reply"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { decodeLaunchDocument, decodeLaunchFrame } from "@elizaos/agent/launch"
+import { decodeLaunchDocument, decodeLaunchFrame } from "@elizaos/agent"
 import { ownKeyMaxUnits } from "../gen/agent__host__launch.ts"
 import { AGENT_ASSETS, AgentConfigRefused, admitAgentBytes, admitAgentData, type AgentFile } from "../src/build/agent-config.vibe"
 import { peerTrusted } from "../gen/os__agentService__channel.effect.vibe"
@@ -276,7 +276,7 @@ it.effect('Start my agent with my character, policy and model: the service and t
     const missingProvider = try admittedAnswer(missingOwnKey)
     const launchRoot = try scratch("missing-own-key")
     try writeTree(launchRoot, { "launch.json": missingProvider.document })
-    const agentCli = import.meta.resolve("@elizaos/agent/cli")
+    const agentCli = import.meta.resolve("@elizaos/agent-host")
     assert.deepStrictEqual(try Effect.try(() => launchOutcome(agentCli, launchRoot, missingProvider.frame ?? "")), { exit: 77, stateCreated: false })
 
     for (const [index, entry] of REFUSED.entries()) {

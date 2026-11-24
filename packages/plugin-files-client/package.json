@@ -1,0 +1,57 @@
+{
+  "name": "@elizaos/plugin-files-client",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-safe Files client, operation contracts, library storage, archives and document scanning.",
+  "license": "MIT",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "import": "./dist/src/index.js",
+        "default": "./dist/src/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:browser": "vitest run --project browser",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/os-bridges": "workspace:*",
+    "effect": "4.1.1",
+    "pdf-lib": "1.17.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/core": "8.5.2",
+    "@effect/vitest": "4.1.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibelang-vite": "0.0.13",
+    "vibestack": "workspace:*",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

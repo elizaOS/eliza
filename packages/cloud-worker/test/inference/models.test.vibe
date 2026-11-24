@@ -1,0 +1,147 @@
+// spec/cloud/services/models.md, "Story: Learn which models my key can call"; spec/cloud/services/models.md, "Story: Price a model call before it runs"
+import { assert, describe, it } from "@effect/vitest"
+import { Refused, refusalBody } from "../../src/http/refusal.vibe"
+import { parseProfile } from "@elizaos/cloud"
+import { billedFromUsage, callCostFor, checkPrices, chooseFor, pricesFromSeed, setModelPrice, type InferenceSettings } from "../../src/services/models.vibe"
+import { migrate } from "../../src/store/store.vibe"
+import { signedCaller } from "../support/caller.vibe"
+import { check, sql, testCloud, type ProfileEdit, type TestCloud } from "../support/cloud.vibe"
+import { testDatabaseIdentity, testProfile } from "../support/profile.ts"
+
+const offers = [
+  { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true },
+  { id: "twin-chat", provider: "llm", upstreamModel: "upstream-twin", vision: false },
+  { id: "twin-chat", provider: "llm", upstreamModel: "upstream-twin-2", vision: false },
+  { id: "spare-chat", provider: "llm", upstreamModel: "upstream-spare", vision: false }
+]
+
+const withOffers: ProfileEdit = (profile) => ({
+  ...profile,
+  environments: { ...profile.environments, staging: { ...profile.environments.staging, inference: { ...profile.environments.staging.inference, models: offers } } }
+})
+
+const inferenceOff: ProfileEdit = (profile) => ({
+  ...profile,
+  environments: { ...profile.environments, staging: { ...profile.environments.staging, capabilities: ["speech", "maps", "managedGoogle", "billing"] } }
+})
+
+effect function settingsOf(cloud: TestCloud, edit: ProfileEdit) {
+  const profile = try parseProfile(try sync(() => edit(testProfile(cloud.fakes.url))))
+  const settings = profile.environments.staging.inference
+  if (settings === undefined) return try Effect.die("the test profile offers no inference")
+  return settings satisfies InferenceSettings
+}
+
+effect function refusalOf<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success: "accepted";
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).map((error) => error instanceof Refused ? refusalBody(error.refusal).error : error._tag).getOrElse(() => "defect");
+  }
+}
+
+function listed(body: unknown): ReadonlyArray<string> {
+  return (body as { readonly data: ReadonlyArray<{ readonly id: string }> }).data.map((model) => model.id)
+}
+
+describe("WP5 Inference: models", () => {
+  it.live("Learn which models my key can call, price a cache read at the model's cached-input price, and upgrade a price table to charge a cache read as before (spec/cloud/services/models.md, \"Story: Learn which models my key can call\"; spec/cloud/services/models.md, \"Story: Price a model call before it runs\"; spec/cloud/services/models.md, \"Each side costs its tokens at its price plus 20 percent, rounded half up to a whole micro-dollar\")", () => scoped(effect {
+    const off = try testCloud({ edit: inferenceOff })
+    const { bearer: offKey } = try signedCaller(off, "off-user")
+    const disabled = try off.call("/api/v1/models", { headers: { authorization: `Bearer ${offKey}` } })
+
+    const cloud = try testCloud({ edit: withOffers })
+    const settings = try settingsOf(cloud, withOffers)
+    const { bearer: key } = try signedCaller(cloud, "owner")
+    const models = (token?: string) => cloud.call("/api/v1/models", token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } })
+    const anonymous = try models()
+    const unknownKey = try models(`eliza_mobile_${"0".repeat(64)}`)
+    const unpriced = try models(key)
+
+    const price = (modelId: string, inputPer1K: number, outputPer1K: number) => cloud.store.transaction((tx) => setModelPrice(tx, settings, { modelId, inputPer1K, outputPer1K }))
+    const refusals = {
+      twin: try refusalOf(price("twin-chat", 100, 200)),
+      zero: try refusalOf(price("spare-chat", 0, 200)),
+      tooHigh: try refusalOf(price("spare-chat", 100, 10_000_001)),
+      unknown: try refusalOf(price("missing-chat", 100, 200)),
+      cachedAboveInput: try refusalOf(cloud.store.transaction((tx) => setModelPrice(tx, settings, { modelId: "spare-chat", inputPer1K: 100, cachedInputPer1K: 101, outputPer1K: 200 }))),
+      malformedSeed: try refusalOf(cloud.store.transaction((tx) => pricesFromSeed(tx, settings, [{ modelId: "spare-chat", inputPer1K: 1.5, outputPer1K: 2 }])))
+    }
+    const afterRefusals = try models(key)
+    try price("test-chat", 100, 200)
+    try price("test-chat", 150, 300)
+    const afterSet = try models(key)
+    const seeded = try cloud.store.transaction((tx) => pricesFromSeed(tx, settings, [{ modelId: "spare-chat", inputPer1K: 50, cachedInputPer1K: 0, outputPer1K: 60 }]))
+    const afterSeed = try models(key)
+    const report = try cloud.store.transaction((tx) => checkPrices(tx, settings))
+    const stored = try sql(cloud, "SELECT model_id, input_per_1k, cached_input_per_1k, output_per_1k FROM model_prices ORDER BY model_id", [])
+    const chosen = try cloud.store.transaction((tx) => chooseFor(tx, settings, "test-chat", true))
+    const spare = try cloud.store.transaction((tx) => chooseFor(tx, settings, "spare-chat", false))
+    const choices = {
+      imageOnTextModel: try refusalOf(cloud.store.transaction((tx) => chooseFor(tx, settings, "spare-chat", true))),
+      twin: try refusalOf(cloud.store.transaction((tx) => chooseFor(tx, settings, "twin-chat", false))),
+      chosen: [chosen.model.id, chosen.model.upstreamModel, chosen.model.inputPer1K, chosen.model.outputPer1K, chosen.provider.id]
+    }
+    const usage = {
+      detailed: try billedFromUsage({ prompt_tokens: 10, completion_tokens: 3, total_tokens: 13, prompt_tokens_details: { cached_tokens: 12 }, completion_tokens_details: { reasoning_tokens: 5 } }),
+      nullDetails: try billedFromUsage({ prompt_tokens: 7, prompt_tokens_details: null, completion_tokens_details: null }),
+      absent: try billedFromUsage(undefined),
+      noTotals: try billedFromUsage({ total_tokens: 9 }),
+      fractional: try billedFromUsage({ prompt_tokens: 1.5, completion_tokens: 1 }),
+      negative: try billedFromUsage({ prompt_tokens: -1, completion_tokens: 1 }),
+      capped: try billedFromUsage({ prompt_tokens: 3_000_000, completion_tokens: 1 })
+    }
+    const cacheRead = { inputTokens: 600, cachedTokens: 400, outputTokens: 500 }
+    const costs = [try callCostFor(chosen.model, { inputTokens: 1_000, cachedTokens: 0, outputTokens: 500 }), try callCostFor(chosen.model, { inputTokens: 3_000_000, cachedTokens: 0, outputTokens: 0 }),
+      try callCostFor(chosen.model, cacheRead), try callCostFor(spare.model, { inputTokens: 1_000, cachedTokens: 0, outputTokens: 500 }), try callCostFor(spare.model, cacheRead)]
+    try sql(cloud, "ALTER TABLE model_prices DROP CONSTRAINT model_prices_cached_input_per_1k_check, DROP COLUMN cached_input_per_1k", [])
+    try sql(cloud, "DELETE FROM schema_migrations WHERE name = '0125_cached_input_price.sql'", [])
+    const upgradedAt = try Clock.currentTimeMillis
+    const upgraded = try cloud.inside(migrate({ digest: testDatabaseIdentity, environment: "staging", now: upgradedAt }))
+    const backfilled = try sql(cloud, "SELECT model_id, input_per_1k, cached_input_per_1k FROM model_prices ORDER BY model_id", [])
+
+    try check(() => assert.deepStrictEqual(
+      {
+        disabled: [disabled.status, (disabled.body as { error: string }).error],
+        anonymous: [anonymous.status, (anonymous.body as { error: string }).error],
+        unknownKey: [unknownKey.status, (unknownKey.body as { error: string }).error],
+        unpriced: [unpriced.status, unpriced.body, unpriced.headers["cache-control"]],
+        refusals,
+        afterRefusals: listed(afterRefusals.body),
+        afterSet: [afterSet.body, afterSet.headers["cache-control"]],
+        seeded: seeded.length,
+        afterSeed: listed(afterSeed.body),
+        report: [report.mismatches, report.listing.map((each) => each.id)],
+        stored: stored.map((row) => [row.model_id, Number(row.input_per_1k), Number(row.cached_input_per_1k), Number(row.output_per_1k)]),
+        choices,
+        usage,
+        costs,
+        upgraded: [upgraded.applied, backfilled.map((row) => [row.model_id, Number(row.input_per_1k), Number(row.cached_input_per_1k)])]
+      },
+      {
+        disabled: [404, "capability_unavailable"],
+        anonymous: [401, "authentication_required"],
+        unknownKey: [401, "authentication_required"],
+        unpriced: [200, { object: "list", data: [] }, "private, no-store"],
+        refusals: { twin: "invalid_request", zero: "invalid_request", tooHigh: "invalid_request", unknown: "invalid_request", cachedAboveInput: "invalid_request", malformedSeed: "invalid_request" },
+        afterRefusals: [],
+        afterSet: [{ object: "list", data: [{ id: "test-chat", object: "model", owned_by: "llm" }] }, "private, no-store"],
+        seeded: 1,
+        afterSeed: ["test-chat", "spare-chat"],
+        report: [2, ["test-chat", "spare-chat"]],
+        stored: [["spare-chat", 50, 0, 60], ["test-chat", 150, 150, 300]],
+        choices: { imageOnTextModel: "model_unavailable", twin: "model_unavailable", chosen: ["test-chat", "upstream-chat", 150, 300, "llm"] },
+        usage: {
+          detailed: { tag: "Reported", counts: { inputTokens: 0, cachedTokens: 12, outputTokens: 5 } },
+          nullDetails: { tag: "Reported", counts: { inputTokens: 7, cachedTokens: 0, outputTokens: 0 } },
+          absent: { tag: "Unreadable" },
+          noTotals: { tag: "Unreadable" },
+          fractional: { tag: "Unreadable" },
+          negative: { tag: "Unreadable" },
+          capped: { tag: "Reported", counts: { inputTokens: 2_000_000, cachedTokens: 0, outputTokens: 1 } }
+        },
+        costs: [360, 360_000, 360, 96, 72],
+        upgraded: [["0125_cached_input_price.sql"], [["spare-chat", 50, 50], ["test-chat", 150, 150]]]
+      }
+    ))
+  }))
+})

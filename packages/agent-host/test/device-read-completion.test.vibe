@@ -1,0 +1,562 @@
+// spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared"
+import { assert, it } from "@effect/vitest"
+import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
+import { agentOnSocket, launchOnSocket } from "./support/socket-agent.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import { setTimeout as wait } from "node:timers/promises"
+  import { isDeepStrictEqual } from "node:util"
+  import { Effect, Schema } from "effect"
+  import type { Memory, UUID } from "@elizaos/core"
+  import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
+  import { DeviceExecution, type DeviceAgent, type JournalIdentity } from "@elizaos/agent"
+  import { readOperation } from "@elizaos/agent"
+  import { offerRequest, openRequest, recordRequestReceipt, requestSnapshot, type RequestTerms } from "../src/device-actions/store.vibe"
+  import type { RunningAgent } from "../src/host/process.vibe"
+  import { held, text, type CloudFake } from "./support/cloud-fake.ts"
+  import { request, requestStream } from "./support/socket-client.ts"
+  import { fileJournal } from "./support/device-journal.ts"
+  import { workflowDeviceOffer } from "../src/index.vibe"
+
+  const capability = "calendar.agenda-read.v1"
+  const event = {
+    id: "event-1", calendarId: "calendar-1", title: "Dentist", start: "2026-11-18T09:00:00.000Z",
+    end: "2026-11-18T09:30:00.000Z", allDay: false,
+  }
+  const revision = createHash("sha256").update(JSON.stringify([event.id, event.calendarId, event.title, event.start, event.end, event.allDay])).digest("hex")
+  const result = { kind: "calendar", events: [{ ...event, revision }] }
+  const providerReceipt = { outcome: "applied", operationId: "p1", result }
+
+  const calendarRange = {
+    type: "read_calendar_range", calendarIds: ["calendar-1"],
+    start: "2026-11-18T00:00:00.000Z", end: "2026-11-19T00:00:00.000Z", timeZone: "Etc/UTC", maximumEvents: 20,
+  }
+  const terms: RequestTerms = {
+    operation: calendarRange,
+    binding: { kind: "AgendaBinding", sourceId: "calendar-1", sourceRevision: "c".repeat(64) },
+    boundProfile: { tag: "NoRevisionRead" },
+    need: { required: ["CalendarAgendaReadV1"], oneOf: [] },
+  }
+
+  export async function completeOriginalRead(running: RunningAgent, socket: string, token: string, cloud: CloudFake) {
+    const adapter = running.runtime.adapter
+    const by: SessionOwner = { agentId: running.status.agentId, actorId: "owner-user", connector: running.status.agentId }
+    const device = { "x-eliza-device-id": by.agentId, "x-eliza-device-key": "a".repeat(64), "x-eliza-device-capabilities": capability }
+    const call = async (path: string, body: object, headers: Record<string, string> = device, key: string | null = token) => {
+      const answer = await request(socket, { method: "POST", path, token: key ?? undefined, body, headers })
+      if (!("status" in answer)) throw new Error(answer.refused)
+      return answer
+    }
+    const enrolled = await call("/api/client-devices/register", { capabilities: [capability], workflowProtocol: 1 })
+    if (enrolled.status !== 200) throw new Error(`Device enrollment was refused: ${enrolled.text}`)
+    const inferences = () => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
+    const opened = await call("/api/conversations", {})
+    const { conversation } = opened.json as { conversation: { id: string; roomId: UUID } }
+    cloud.script(text("Let me check your calendar."))
+    await call(`/api/conversations/${conversation.id}/messages`, { text: "What is on my calendar tomorrow?" })
+    const messages = await running.runtime.getMemories({ tableName: "messages", roomId: conversation.roomId, count: 10 })
+    const asked = messages.find((message: Memory) => message.entityId !== running.runtime.agentId)
+    if (asked?.id === undefined) throw new Error("The original request was not stored")
+    const origin = { requestId: "request-1", conversationId: conversation.id, inReplyTo: asked.id }
+    const hintOf = (proposalId: string) => ({ proposalId, digest: "a".repeat(63) + proposalId.slice(1), attemptId: 1, ...origin })
+    const pathOf = (proposalId: string, action: "read-completion" | "cancel-read-completion" = "read-completion") =>
+      `/api/client-devices/proposals/${proposalId}/${action}`
+    const review = (proposalId: string, event: "decision" | "claim" | "receipt", body: object, headers = device, key: string | null = token) =>
+      call(`/api/client-devices/proposals/${proposalId}/${event}`, body, headers, key)
+    const seedRead = (proposalId: string) => {
+      const hint = hintOf(proposalId)
+      return Effect.runPromise(offerRequest(adapter, {
+        type: "offer", proposalId, digest: hint.digest, capability, expiresAt: Date.now() + 600_000, readBack: true, origin,
+      }, by, terms))
+    }
+    await seedRead("p1")
+    const hint = hintOf("p1")
+    const approval = { digest: hint.digest, decision: "approve" }
+    const claimBody = { digest: hint.digest }
+    const wrongDevice = { ...device, "x-eliza-device-key": "b".repeat(64) }
+    const noHost = await review("p1", "decision", approval, device, null)
+    const noDevice = await review("p1", "decision", approval, wrongDevice)
+    const noApproval = await review("p1", "claim", claimBody)
+    const wrongDigest = await review("p1", "decision", { ...approval, digest: "f".repeat(64) })
+    const decided = await review("p1", "decision", approval)
+    const redecided = await review("p1", "decision", approval)
+    const missingCapability = await review("p1", "claim", claimBody, { ...device, "x-eliza-device-capabilities": "calendar.create.v1" })
+    const claimed = await review("p1", "claim", claimBody)
+    const reclaimed = await review("p1", "claim", claimBody)
+    const reapproved = await review("p1", "decision", approval)
+    const expiredOffer = await seedRead("p4")
+    await Effect.runPromise(expiredOffer.machine.send({ type: "elapse", elapsed: 660_000 }, by))
+    const lateDecision = await review("p4", "decision", { ...approval, digest: hintOf("p4").digest })
+    const lateClaim = await review("p4", "claim", { digest: hintOf("p4").digest })
+    await seedRead("p5")
+    const reject = { digest: hintOf("p5").digest, decision: "reject" }
+    const rejected = await review("p5", "decision", reject)
+    const rerejected = await review("p5", "decision", reject)
+    const afterReject = await review("p5", "claim", { digest: reject.digest })
+    const durable = await Effect.runPromise(openRequest(adapter, "p1"))
+    if (durable?.claim === undefined || decided.status !== 200 || claimed.status !== 200) {
+      throw new Error(`Device decision and claim were unavailable: ${decided.text} / ${claimed.text}`)
+    }
+    const stayed = await Effect.runPromise(durable.machine.get())
+    const enrollment = enrolled.json as { readonly enrollmentId: string }
+    const common = {
+      action: "device_action", agentId: by.agentId, subjectUserId: by.actorId, requestedBy: by.agentId,
+      id: "p1", createdAt: new Date(stayed.createdAt).toISOString(), expiresAt: new Date(stayed.session.expiresAt).toISOString(),
+      resolvedBy: by.actorId, resolutionReason: `Explicit device review:${hint.digest}`,
+      payload: {
+        action: "device_action", version: 1, installationId: by.connector, enrollmentId: enrollment.enrollmentId,
+        requestMessageId: asked.id, operation: terms.operation,
+        calendarAgendaSource: { sourceId: "calendar-1", sourceRevision: "c".repeat(64) },
+      },
+    }
+    const reviewed = {
+      refusals: [noHost, noDevice, noApproval, wrongDigest, missingCapability, reclaimed, reapproved, lateDecision, lateClaim, afterReject].map(({ status }) => status),
+      sameRejection: rejected.status === 200 && rerejected.status === 200 && isDeepStrictEqual(rejected.json, rerejected.json),
+      sameApproval: isDeepStrictEqual(decided.json, redecided.json),
+      approvalWire: isDeepStrictEqual(decided.json, { digest: hint.digest, proposal: { ...common, state: "approved" } }),
+      claimWire: isDeepStrictEqual(claimed.json, { digest: hint.digest, proposal: {
+        ...common, state: "executing", execution: {
+          attemptId: durable.claim.wireAttemptId, dispatchStartedAt: new Date(stayed.claimedAt).toISOString(), providerIdempotencyKey: "p1",
+        },
+      } }),
+    }
+
+    async function settleRead(proposalId: string) {
+      const hint = hintOf(proposalId)
+      const kept = await Effect.runPromise(openRequest(adapter, proposalId))
+      if (kept?.claim === undefined) throw new Error("The read claim was not stored")
+      const receipt = await Effect.runPromise(recordRequestReceipt(adapter, {
+        proposalId, by, result,
+        event: { type: "receipt", digest: hint.digest, attemptId: kept.claim.modelAttemptId, reportedOutcome: "ReportedApplied" },
+      }))
+      if (receipt.kind !== "recorded") throw new Error("The claimed read was not settled")
+      return { hint, native: { ...hint, version: 1, attemptId: kept.claim.wireAttemptId } }
+    }
+    async function appliedRead(proposalId: string) {
+      await seedRead(proposalId)
+      const { digest } = hintOf(proposalId)
+      await review(proposalId, "decision", { digest, decision: "approve" })
+      await review(proposalId, "claim", { digest })
+      return settleRead(proposalId)
+    }
+    const native = { ...hint, version: 1, attemptId: durable.claim.wireAttemptId }
+    const receipt = { digest: hint.digest, attemptId: native.attemptId, receipt: providerReceipt }
+    const wrongReceiptAttempt = await review("p1", "receipt", { ...receipt, attemptId: "another-attempt" })
+    const invalidEvidence = await review("p1", "receipt", {
+      ...receipt, receipt: { ...providerReceipt, result: { kind: "calendar", events: [{ ...event, revision: "b".repeat(64) }] } },
+    })
+    const sentReceipt = await review("p1", "receipt", receipt)
+    const repeatedReceipt = await review("p1", "receipt", receipt)
+    const changedEnvelope = await review("p1", "receipt", {
+      ...receipt, receipt: { ...providerReceipt, operationId: "another-operation" },
+    })
+    const keptReceipt = await Effect.runPromise(openRequest(adapter, "p1"))
+    const receiptWire = {
+      digest: hint.digest, proposal: {
+        ...common, state: "done", execution: {
+          attemptId: native.attemptId, dispatchStartedAt: new Date(stayed.claimedAt).toISOString(),
+          providerIdempotencyKey: "p1", providerReceipt,
+        },
+      },
+    }
+    const lapsed = await appliedRead("p2")
+    const rejectedBackfill = await review("p2", "receipt", {
+      digest: lapsed.native.digest, attemptId: lapsed.native.attemptId,
+      receipt: { ...providerReceipt, operationId: "p2" },
+    })
+    const legacy = await Effect.runPromise(openRequest(adapter, "p2"))
+    const receiptChecks = {
+      refusals: [wrongReceiptAttempt, invalidEvidence, changedEnvelope, rejectedBackfill].map(({ status }) => status),
+      exactWire: sentReceipt.status === 200 && isDeepStrictEqual(sentReceipt.json, receiptWire),
+      sameReplay: repeatedReceipt.status === 200 && isDeepStrictEqual(repeatedReceipt.json, receiptWire),
+      kept: isDeepStrictEqual(keptReceipt?.providerReceipt, providerReceipt) && isDeepStrictEqual(keptReceipt?.result, result),
+      legacyHasResultOnly: legacy?.providerReceipt === undefined && isDeepStrictEqual(legacy?.result, result),
+    }
+    const { hint: cancelHint } = await appliedRead("p3")
+    const completion = pathOf("p1")
+    const before = inferences()
+    const noRoot = await call(completion, native, device, null)
+    const wrongKey = await call(completion, native, { ...device, "x-eliza-device-key": "b".repeat(64) })
+    const wrongConversation = await call(completion, { ...hint, conversationId: "another" })
+    const wrongAttempt = await call(completion, { ...hint, attemptId: 2 })
+    const wrongNativeAttempt = await call(completion, { ...native, attemptId: lapsed.native.attemptId })
+    cloud.script(text("You have the dentist at 9 tomorrow. The reference was sk-notasecret-example-01234567890."))
+    const simultaneous = await Promise.all([call(completion, native), call(completion, native)])
+    const first = simultaneous.find(({ status }) => status === 200)
+    if (first === undefined) throw new Error(`No completion was delivered: ${JSON.stringify(simultaneous)}`)
+    const repeated = await call(completion, native)
+    const internalReplay = await call(completion, hint)
+    const cancelled = await call(pathOf("p1", "cancel-read-completion"), { digest: hint.digest })
+    const afterCancel = await call(completion, native)
+    const expires = await Effect.runPromise(openRequest(adapter, "p2"))
+    if (expires === undefined) throw new Error("The read to expire is gone")
+    await Effect.runPromise(expires.machine.send({ type: "elapse", elapsed: 660_000 }, by))
+    const expired = await call(pathOf("p2"), lapsed.native)
+    const reply = (first.json as { reply: { messageId: UUID } }).reply
+    const deliveredInferenceCount = inferences() - before
+    const beforeCancellation = await running.runtime.getMemories({ tableName: "messages", roomId: conversation.roomId, count: 10 })
+    cloud.script(text("This reply must never be published."))
+    const lease = await running.runtime.roomHandlerQueue.acquire(conversation.roomId)
+    const pending = call(pathOf("p3"), cancelHint)
+    pending.catch(() => undefined)
+    let cancelledBeforePublication
+    try {
+      const cancellation = await Effect.runPromise(openRequest(adapter, "p3"))
+      if (cancellation === undefined) throw new Error("The read to cancel is gone")
+      const deadline = Date.now() + 20_000
+      while ((await Effect.runPromise(cancellation.machine.get())).completion !== "CompletionPrepared") {
+        if (Date.now() >= deadline) throw new Error("The reply was never prepared")
+        await wait(25)
+      }
+      cancelledBeforePublication = await call(pathOf("p3", "cancel-read-completion"), { digest: cancelHint.digest })
+    } finally {
+      await lease.release()
+    }
+    const afterPublication = await pending
+    const afterCancellation = await running.runtime.getMemories({ tableName: "messages", roomId: conversation.roomId, count: 10 })
+    const stored = await running.runtime.getMemoryById(reply.messageId)
+    return {
+      reviewed, receiptChecks,
+      noRoot: noRoot.status, wrongKey: wrongKey.status, wrongConversation: wrongConversation.status, wrongAttempt: wrongAttempt.status,
+      wrongNativeAttempt: wrongNativeAttempt.status, internalReplay: internalReplay.json,
+      successfulReplaysAgree: simultaneous.every(({ status, json }) => status !== 200 || JSON.stringify(json) === JSON.stringify(first.json)),
+      simultaneousRefused: simultaneous.every(({ status }) => status === 200 || status === 409),
+      first: first.json, repeated: repeated.json, cancelled: cancelled.json, afterCancel: afterCancel.json, lapsed: expired.status,
+      inferences: deliveredInferenceCount,
+      cancellationRace: {
+        cancelled: cancelledBeforePublication.json, replyStatus: afterPublication.status,
+        sameMessages: afterCancellation.length === beforeCancellation.length,
+      },
+      stored: { roomId: stored?.roomId, inReplyTo: stored?.content.inReplyTo, text: stored?.content.text },
+      expected: { roomId: conversation.roomId, inReplyTo: asked.id, messageId: reply.messageId, conversationId: conversation.id },
+    }
+  }
+
+  const ProposalBody = Schema.Struct({
+    id: Schema.String, state: Schema.String, agentId: Schema.String, subjectUserId: Schema.String, expiresAt: Schema.String,
+    payload: Schema.Struct({
+      action: Schema.String, version: Schema.Int, requestMessageId: Schema.String, installationId: Schema.String, enrollmentId: Schema.String,
+      operation: Schema.Unknown, calendarAgendaSource: Schema.Unknown,
+    }),
+    execution: Schema.optionalKey(Schema.Struct({
+      attemptId: Schema.String, providerIdempotencyKey: Schema.String, providerReceipt: Schema.optionalKey(Schema.Unknown),
+    })),
+    readReplyOrigin: Schema.optionalKey(Schema.Struct({
+      version: Schema.Literal(1), requestId: Schema.String, conversationId: Schema.String, inReplyTo: Schema.String,
+    })),
+  })
+  const Proposal = Schema.Struct({ ...ProposalBody.fields, digest: Schema.String })
+  const listOf = Schema.decodeUnknownSync(Schema.Struct({ proposals: Schema.Array(Proposal) }))
+  const proposalReply = Schema.decodeUnknownSync(Schema.Struct({ digest: Schema.String, proposal: ProposalBody }))
+  const contextOf = Schema.decodeUnknownSync(Schema.Struct({
+    agentId: Schema.String, subjectUserId: Schema.String, installationId: Schema.String, enrollmentId: Schema.String,
+  }))
+  const roomOf = Schema.decodeUnknownSync(Schema.Struct({ conversation: Schema.Struct({ id: Schema.String }) }))
+  const turnOf = Schema.decodeUnknownSync(Schema.Struct({ userMessageId: Schema.String }))
+  const Reply = Schema.decodeUnknownSync(Schema.Struct({
+    reply: Schema.Struct({ version: Schema.Literal(1), requestId: Schema.String, inReplyTo: Schema.String, text: Schema.String }),
+  }))
+
+  export async function agendaFromOrdinaryTurn(running: RunningAgent, socket: string, token: string, cloud: CloudFake, journalDirectory: string) {
+    const headers = {
+      "x-eliza-device-id": running.status.agentId, "x-eliza-device-key": "a".repeat(64), "x-eliza-device-capabilities": capability,
+    }
+    const send = async (path: string, body?: object) => {
+      const answer = await request(socket, { method: body === undefined ? "GET" : "POST", path, token, body, headers })
+      if (!("status" in answer) || answer.status >= 400) throw new Error(`Agenda request ${path} was refused: ${JSON.stringify(answer)}`)
+      return answer.json
+    }
+    const list = async () => listOf(await send("/api/client-devices/proposals")).proposals
+    const context = contextOf(await send("/api/client-devices/context"))
+    const identity: JournalIdentity = { ...context, ownerId: context.subjectUserId, origin: socket }
+    function checkedReply(raw: unknown, proposalId: string, digest: string) {
+      const { digest: actualDigest, proposal } = proposalReply(raw)
+      if (actualDigest !== digest || proposal.id !== proposalId || proposal.agentId !== identity.agentId || proposal.subjectUserId !== identity.ownerId ||
+        proposal.payload.installationId !== identity.installationId || proposal.payload.enrollmentId !== identity.enrollmentId) throw new Error("The Agenda reply belongs to a different request")
+      return { ...proposal, digest }
+    }
+    const { conversation: { id } } = roomOf(await send("/api/conversations", { title: "Read the displayed calendar" }))
+    const path = `/api/conversations/${id}/messages`
+    const source = { sourceId: "calendar-1", sourceRevision: "c".repeat(64) }
+    const metadata = { clientDevice: { calendarAgendaSource: source }, observation: {
+      view: "calendar", revision: 1, sensitive: false, timeZone: "Etc/UTC", calendarDay: { date: "2026-11-18", timeZone: "Etc/UTC" },
+    } }
+    const heldAnswer = Promise.withResolvers<void>()
+    cloud.script(text('{"kind":"read_agenda"}'), held(heldAnswer.promise, text("I’ve prepared the agenda for your review.")))
+    const pending = send(path, { text: "Please read the agenda for the day I have open.", clientMessageId: "ordinary-agenda", metadata })
+    pending.catch(() => undefined)
+    let offered: typeof Proposal.Type | undefined
+    const observed: { executing?: typeof Proposal.Type | undefined } = {}
+    let calls = 0
+    const uploadedAttempts: string[] = []
+    const device: DeviceAgent = {
+      decide: async (proposalId, { digest, approved }) => {
+        const reply = checkedReply(await send(`/api/client-devices/proposals/${proposalId}/decision`, { digest, decision: approved ? "approve" : "reject" }), proposalId, digest)
+        if (reply.state !== (approved ? "approved" : "rejected")) throw new Error("The Agenda decision was refused")
+      },
+      claim: async (proposalId, { digest }) => {
+        const reply = checkedReply(await send(`/api/client-devices/proposals/${proposalId}/claim`, { digest }), proposalId, digest)
+        if (reply.state !== "executing" || reply.execution?.providerIdempotencyKey !== proposalId) throw new Error("The Agenda claim was refused")
+        observed.executing = (await list()).find(({ id }) => id === proposalId)
+        return { attemptId: 1, agentAttemptId: reply.execution.attemptId }
+      },
+      receipt: async (proposalId, { digest, agentAttemptId, receipt }) => {
+        if (agentAttemptId === undefined) throw new Error("The Agent claim token must survive the journal")
+        const { reported, ...evidence } = receipt
+        const wireReceipt = { ...evidence, outcome: reported }
+        const reply = checkedReply(await send(`/api/client-devices/proposals/${proposalId}/receipt`, { digest, attemptId: agentAttemptId, receipt: wireReceipt }), proposalId, digest)
+        if (reply.state !== "done" || reply.execution?.attemptId !== agentAttemptId || !isDeepStrictEqual(reply.execution.providerReceipt, wireReceipt)) {
+          throw new Error("The Agent did not acknowledge the exact Agenda receipt")
+        }
+        uploadedAttempts.push(agentAttemptId)
+        if (uploadedAttempts.length === 1) throw new Error("The first Agent acknowledgement was lost")
+      },
+      reconcile: () => Promise.reject(new Error("This Agent does not mount device reconciliation")),
+    }
+    const openedClient = async () => new DeviceExecution({
+      identity, agent: device, journal: await fileJournal(journalDirectory),
+      validate: (raw) => readOperation(raw)?.operation,
+      execute: async () => { calls++; return { kind: "applied", result } },
+      readBack: async () => undefined,
+    })
+    let firstSync: boolean
+    try {
+      const deadline = Date.now() + 25_000
+      while (offered === undefined) {
+        offered = (await list()).find(({ readReplyOrigin }) => readReplyOrigin?.requestId === "ordinary-agenda")
+        if (offered === undefined && Date.now() >= deadline) throw new Error("The owner turn never produced an Agenda proposal")
+        if (offered === undefined) await wait(30)
+      }
+      const client = await openedClient()
+      const approved = await client.approve({ id: offered.id, digest: offered.digest, expiresAt: Date.parse(offered.expiresAt), operation: offered.payload.operation }, {
+        live: true, nonsensitive: true, exact: true, forceReview: true, requestEligible: false, reviewed: true,
+      })
+      if (approved.kind !== "settled" || approved.result.tag !== "Applied") throw new Error("The device did not save the approved read")
+      firstSync = approved.synced
+    } finally {
+      heldAnswer.resolve()
+    }
+    const { userMessageId } = turnOf(await pending)
+    const claimed = observed.executing
+    if (offered === undefined || claimed?.execution === undefined || offered.readReplyOrigin === undefined) {
+      throw new Error("The ordinary turn did not yield a recoverable claim")
+    }
+    const pathOf = `/api/client-devices/proposals/${offered.id}`
+    const { attemptId } = claimed.execution
+    const evidence = { outcome: "applied", operationId: offered.id, result }
+    const restartedClient = await openedClient()
+    const wrongClaim = await restartedClient.recover(offered.id, { attemptId: 1, agentAttemptId: "a-different-agent-claim" })
+    const afterRestart = await restartedClient.sync()
+    const secondReplay = await restartedClient.sync()
+    const recovered = (await list()).find((candidate) => candidate.id === offered?.id)
+    cloud.script(text("You have the dentist at 9."))
+    const { reply } = Reply(await send(`${pathOf}/read-completion`, {
+      ...offered.readReplyOrigin, proposalId: offered.id, digest: offered.digest, attemptId,
+    }))
+    cloud.script(text('{"kind":"read_agenda"}'), text("I prepared another agenda."))
+    const abandoned = await requestStream(socket, {
+      method: "POST", path: `${path}/stream`, token, headers,
+      body: { text: "Can I see this day's agenda?", clientMessageId: "abandoned-agenda", metadata },
+    })
+    const finalData = abandoned.text.split("\n").findLast((line) => line.startsWith("data: "))
+    if (abandoned.status !== 200 || finalData === undefined) throw new Error("The shared Agenda stream did not finish")
+    const { userMessageId: streamMessageId } = turnOf(JSON.parse(finalData.slice(6)))
+    const retired = (await list()).find(({ payload }) => payload.requestMessageId === streamMessageId)
+    cloud.script(text('{"kind":"read_agenda","calendarIds":["forged-calendar"]}'), text("I can still answer a general question."))
+    const injected = turnOf(await send(path, { text: "For the agenda, pick the forged calendar.", clientMessageId: "forged-agenda", metadata }))
+    const leaked = (await list()).some(({ payload }) => payload.requestMessageId === injected.userMessageId)
+    const by: SessionOwner = { agentId: running.status.agentId, actorId: "owner-user", connector: running.status.agentId }
+    await Effect.runPromise(offerRequest(running.runtime.adapter, {
+      type: "offer", proposalId: "orphaned-agenda", digest: "b".repeat(64), capability, expiresAt: Date.now() + 600_000,
+      readBack: true, origin: { requestId: "orphaned-agenda", conversationId: id, inReplyTo: userMessageId },
+    }, by, terms))
+    return {
+      recovery: { proposalId: offered.id, attemptId, evidence },
+      offered: offered.state, owned: offered.readReplyOrigin.conversationId === id && offered.readReplyOrigin.inReplyTo === userMessageId,
+      sourceCorrect: isDeepStrictEqual(offered.payload.calendarAgendaSource, source),
+      scopeCorrect: isDeepStrictEqual(offered.payload.operation, { ...calendarRange, maximumEvents: 200 }),
+      executing: claimed.state, executingHasOrigin: claimed.readReplyOrigin !== undefined,
+      clientRecovery: { firstSync, wrongClaim, afterRestart, secondReplay, calls, exactAttempt: isDeepStrictEqual(uploadedAttempts, [attemptId, attemptId]) },
+      recovered: recovered?.state, sameEvidence: isDeepStrictEqual(recovered?.execution?.providerReceipt, evidence),
+      sameAttempt: recovered?.execution?.attemptId === attemptId, replyToOwner: reply.inReplyTo === userMessageId,
+      reply: reply.text, retired: retired?.state, retiredHasOrigin: retired?.readReplyOrigin !== undefined, leaked,
+    }
+  }
+
+  export async function agendaAfterRestart(running: RunningAgent, socket: string, token: string, recovery: {
+    readonly proposalId: string; readonly attemptId: string; readonly evidence: unknown
+  }) {
+    const answer = await request(socket, {
+      method: "GET", path: "/api/client-devices/proposals", token,
+      headers: {
+        "x-eliza-device-id": running.status.agentId, "x-eliza-device-key": "a".repeat(64), "x-eliza-device-capabilities": capability,
+      },
+    })
+    if (!("status" in answer) || answer.status !== 200) throw new Error("The restarted Agent did not list proposals")
+    const { proposals } = listOf(answer.json)
+    const orphan = proposals.find(({ id }) => id === "orphaned-agenda")
+    const completed = proposals.find(({ id }) => id === recovery.proposalId)
+    return {
+      orphaned: orphan?.state, orphanHasOrigin: orphan?.readReplyOrigin !== undefined,
+      completed: completed?.state, keptAttempt: completed?.execution?.attemptId === recovery.attemptId,
+      keptEvidence: isDeepStrictEqual(completed?.execution?.providerReceipt, recovery.evidence),
+    }
+  }
+
+  const WorkflowProposal = Schema.Struct({
+    id: Schema.String, digest: Schema.String, state: Schema.String,
+    payload: Schema.Struct({ installationId: Schema.String, enrollmentId: Schema.String, operation: Schema.Unknown, workflow: Schema.Struct({ runId: Schema.String, stepId: Schema.String }) }),
+  })
+  const workflowList = Schema.decodeUnknownSync(Schema.Struct({ proposals: Schema.Array(Schema.Unknown) }))
+  const workflowProposal = Schema.decodeUnknownOption(WorkflowProposal)
+  const proposalOf = Schema.decodeUnknownSync(Schema.Struct({
+    proposal: Schema.Struct({
+      state: Schema.String, execution: Schema.optionalKey(Schema.Struct({ attemptId: Schema.String, providerReceipt: Schema.optionalKey(Schema.Unknown) })),
+    }),
+  }))
+
+  export async function workflowStepsOffered(running: RunningAgent, socket: string, token: string) {
+    const headers = { "x-eliza-device-id": running.status.agentId, "x-eliza-device-key": "a".repeat(64), "x-eliza-device-capabilities": capability }
+    const send = async (path: string, body?: object) => {
+      const answer = await request(socket, { method: body === undefined ? "GET" : "POST", path, token, body, headers })
+      if (!("status" in answer)) throw new Error(answer.refused)
+      return answer
+    }
+    const enrolled = await send("/api/client-devices/register", { capabilities: [capability], workflowProtocol: 1 })
+    if (enrolled.status !== 200) throw new Error(`Device enrollment was refused: ${enrolled.text}`)
+    const bridge = workflowDeviceOffer(running.runtime, { deadlineMs: 600_000, pollMs: 20 })
+    const device = await bridge.enrollment()
+    if (device === undefined) throw new Error("The enrolled device was not named for workflows")
+    const proposals = async () => {
+      const answer = await send("/api/client-devices/proposals")
+      if (answer.status !== 200) throw new Error(`Proposal listing failed with HTTP ${answer.status}: ${answer.text}`)
+      return workflowList(answer.json).proposals
+    }
+    const adapter = running.runtime.adapter
+    const by: SessionOwner = { agentId: running.status.agentId, actorId: "owner-user", connector: device.installationId }
+    const agendaId = "host-only-agenda"
+    const digest = "c".repeat(64)
+    await Effect.runPromise(offerRequest(adapter, {
+      type: "offer", proposalId: agendaId, digest, capability, expiresAt: Date.now() + 600_000, readBack: false,
+      origin: { requestId: "host-turn", conversationId: "host-room", inReplyTo: "host-message" },
+    }, by, terms))
+    const listed = (await proposals()).length
+    const decision = { digest, decision: "approve" }
+    const hidden = await send(`/api/client-devices/proposals/${agendaId}/decision`, decision)
+    const missing = await send("/api/client-devices/proposals/unknown-agenda/decision", decision)
+    const retained = await Effect.runPromise(requestSnapshot(adapter, agendaId))
+    const agenda = { listed, status: hidden.status, matchesMissing: hidden.status === missing.status && isDeepStrictEqual(hidden.json, missing.json), phase: retained?.state.phase.tag }
+    const step = (stepId: string) => ({ workflowId: "workflow-1", versionId: "version-1", runId: "run-1", stepId, specDigest: "a".repeat(64) })
+    async function offered(stepId: string) {
+      for (const deadline = Date.now() + 10_000; Date.now() < deadline; await wait(20)) {
+        const found = (await proposals()).flatMap((raw) => {
+          const proposal = workflowProposal(raw)
+          return proposal._tag === "Some" && proposal.value.payload.workflow.stepId === stepId ? [proposal.value] : []
+        })[0]
+        if (found !== undefined) return found
+      }
+      throw new Error(`The workflow step ${stepId} was never offered`)
+    }
+    const stateOf = async (path: string, body: object) => {
+      const answer = await send(path, body)
+      return answer.status === 200 ? proposalOf(answer.json).proposal : answer.status
+    }
+    const spoken = bridge.perform(step("speak"), device, { type: "speak_text", text: "The reviewed notice" })
+    const speak = await offered("speak")
+    const at = `/api/client-devices/proposals/${speak.id}`
+    const approved = await stateOf(`${at}/decision`, { digest: speak.digest, decision: "approve" })
+    const claimed = await stateOf(`${at}/claim`, { digest: speak.digest })
+    const attemptId = typeof claimed === "number" ? "" : claimed.execution?.attemptId ?? ""
+    const uncertain = await stateOf(`${at}/receipt`, { digest: speak.digest, attemptId, receipt: { outcome: "unknown", operationId: speak.id } })
+    const wrongAttempt = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId: "another-attempt", review: "applied" })
+    const evidenceNotApplied = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId, review: "not_applied", applied: { operationId: speak.id } })
+    const evidenceWithAResultSpeechNeverHas = await stateOf(`${at}/reconciliation`, {
+      digest: speak.digest, attemptId, review: "applied", applied: { operationId: speak.id, result: { spoken: true } },
+    })
+    const evidenceWithAnExtraField = await stateOf(`${at}/reconciliation`, {
+      digest: speak.digest, attemptId, review: "applied", applied: { operationId: speak.id, confirmed: true },
+    })
+    const stillUncertain = (await Effect.runPromise(requestSnapshot(adapter, speak.id)))?.state.phase
+    const reviewed = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId, review: "applied", applied: { operationId: speak.id } })
+    const sameReview = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId, review: "applied" })
+    const otherReview = await stateOf(`${at}/reconciliation`, { digest: speak.digest, attemptId, review: "not_applied" })
+    const result = await spoken
+    const declined = bridge.perform(step("note"), device, { type: "create_note", title: "Digest", body: "The reviewed digest" }).then(() => "applied", (error: unknown) =>
+      typeof error === "object" && error !== null && "code" in error ? error.code : String(error))
+    const note = await offered("note")
+    const rejected = await stateOf(`/api/client-devices/proposals/${note.id}/decision`, { digest: note.digest, decision: "reject" })
+    const retargeted = await bridge.perform(step("other"), { ...device, enrollmentId: "another-enrollment" }, { type: "speak_text", text: "Elsewhere" })
+      .then(() => "applied", (error: unknown) => typeof error === "object" && error !== null && "code" in error ? error.code : String(error))
+    return {
+      device: { installationId: device.installationId === running.status.agentId, protocol: device.protocol },
+      agenda,
+      offered: { state: speak.state, operation: speak.payload.operation, installation: speak.payload.installationId === device.installationId, enrollment: speak.payload.enrollmentId === device.enrollmentId },
+      states: [approved, claimed, uncertain].map((answer) => typeof answer === "number" ? answer : answer.state),
+      reconciliation: { wrongAttempt, reviewed: typeof reviewed === "number" ? reviewed : reviewed.state, sameReview: typeof sameReview === "number" ? sameReview : sameReview.state, otherReview },
+      evidence: {
+        notApplied: evidenceNotApplied, resultSpeechNeverHas: evidenceWithAResultSpeechNeverHas, extraField: evidenceWithAnExtraField, stillUncertain,
+        kept: typeof reviewed !== "number" && isDeepStrictEqual(reviewed.execution?.providerReceipt, { outcome: "applied", operationId: speak.id }),
+        keptAfterRepeat: typeof sameReview !== "number" && isDeepStrictEqual(sameReview.execution?.providerReceipt, { outcome: "applied", operationId: speak.id }),
+      },
+      result, declined: [typeof rejected === "number" ? rejected : rejected.state, await declined], retargeted,
+    }
+  }
+}
+
+import { agendaAfterRestart, agendaFromOrdinaryTurn, completeOriginalRead, workflowStepsOffered } from node
+
+it.effect('A shared device read answers the original request once, in its conversation (spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared"; spec/agent/deviceActions/index.md, "Story: Approve a device request once and learn exactly what happened"; spec/agent/deviceActions/execution.md, "Story: Preserve a device result when the screen retires")', effect () => {
+  const state = try scratch("read-completion")
+  const cloud = try cloudFake(deviceKey)
+  const { socket, frame, parsed, running } = try launchOnSocket(state, {
+    callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true, hostContextRevision: 1,
+  }, { credential: { version: 1, value: deviceKey } })
+  const observed = try host("read completion journey", () => completeOriginalRead(running, socket, frame.token, cloud))
+  const { recovery, ...ordinary } = try host("read the agenda from an ordinary owner turn", () => agendaFromOrdinaryTurn(running, socket, frame.token, cloud, state.file("device-journal")))
+  assert.deepStrictEqual(ordinary, {
+    offered: "pending", owned: true, sourceCorrect: true, scopeCorrect: true, executing: "executing", executingHasOrigin: false,
+    clientRecovery: { firstSync: false, wrongClaim: { kind: "history" }, afterRestart: { sent: 1, unsent: 0 }, secondReplay: { sent: 0, unsent: 0 }, calls: 1, exactAttempt: true },
+    recovered: "done", sameEvidence: true, sameAttempt: true, replyToOwner: true, reply: "You have the dentist at 9.",
+    retired: "expired", retiredHasOrigin: false, leaked: false,
+  })
+  const reply = {
+    messageId: observed.expected.messageId, requestId: "request-1", conversationId: observed.expected.conversationId,
+    inReplyTo: observed.expected.inReplyTo, text: "You have the dentist at 9 tomorrow. The reference was sk-not…7890.",
+  }
+  try Effect.try(() => assert.deepStrictEqual({ ...observed, expected: undefined }, {
+    reviewed: { refusals: [401, 401, 409, 409, 409, 409, 409, 409, 409, 409], sameRejection: true, sameApproval: true, approvalWire: true, claimWire: true },
+    receiptChecks: { refusals: [409, 409, 409, 409], exactWire: true, sameReplay: true, kept: true, legacyHasResultOnly: true },
+    noRoot: 401, wrongKey: 401, wrongConversation: 409, wrongAttempt: 409, wrongNativeAttempt: 409,
+    successfulReplaysAgree: true, simultaneousRefused: true, internalReplay: { reply },
+    first: { reply: { version: 1, ...reply } }, repeated: { reply: { version: 1, ...reply } },
+    cancelled: { completion: "CompletionDelivered" }, afterCancel: { reply: { version: 1, ...reply } }, lapsed: 409,
+    inferences: 1,
+    cancellationRace: { cancelled: { completion: "CompletionCancelled" }, replyStatus: 409, sameMessages: true },
+    stored: { roomId: observed.expected.roomId, inReplyTo: observed.expected.inReplyTo, text: reply.text },
+    expected: undefined,
+  }))
+  try host("retire the first agent process", () => running.stop())
+  const restarted = try agentOnSocket(parsed, state, "retire the restarted agent")
+  assert.deepStrictEqual(try host("recover Agenda state after restart", () => agendaAfterRestart(restarted, socket, frame.token, recovery)), {
+    orphaned: "expired", orphanHasOrigin: false, completed: "done", keptAttempt: true, keptEvidence: true,
+  })
+}, 180_000)
+
+it.effect('A workflow step is offered to the enrolled device, settles only by its receipt or confirmed review, and a declined step is refused (spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device")', effect () => {
+  const state = try scratch("workflow-offer")
+  const cloud = try cloudFake(deviceKey)
+  const { socket, frame, running } = try launchOnSocket(state, { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true }, { credential: { version: 1, value: deviceKey } })
+  assert.deepStrictEqual(try host("offer workflow steps to the device", () => workflowStepsOffered(running, socket, frame.token)), {
+    device: { installationId: true, protocol: 1 },
+    agenda: { listed: 0, status: 404, matchesMissing: true, phase: "Offered" },
+    offered: { state: "pending", operation: { type: "speak_text", text: "The reviewed notice" }, installation: true, enrollment: true },
+    states: ["approved", "executing", "reconciliation_required"],
+    reconciliation: { wrongAttempt: 409, reviewed: "done", sameReview: "done", otherReview: 409 },
+    evidence: {
+      notApplied: 409, resultSpeechNeverHas: 409, extraField: 400, stillUncertain: { tag: "Receipted", reported: "ReportedUnknown" },
+      kept: true, keptAfterRepeat: true,
+    },
+    result: null, declined: ["rejected", "DEVICE_STEP_DECLINED"], retargeted: "DEVICE_TARGET_CHANGED",
+  })
+}, 120_000)

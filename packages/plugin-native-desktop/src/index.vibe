@@ -13,7 +13,7 @@ import { native } from capacitor
 
 export const Desktop = native
 
-import { nativeCall, nativeReply } from "@elizaos/os/bridges/bridge"
+import { nativeCall, nativeReply } from "@elizaos/os-bridges"
 import { mayUseDesktop, validWindowGeometry, type DesktopHost } from "../gen/nativeDesktop.effect.vibe"
 import type { WindowBounds } from "./native-contract.vibe"
 
