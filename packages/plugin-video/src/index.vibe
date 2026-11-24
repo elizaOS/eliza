@@ -1,7 +1,7 @@
-// spec/video/index.md, "Story: Read metadata and captions from a video"; spec/video/index.md, "Story: Transcribe a video and reuse only completed work"
+// spec/video/index.md, "Story: Read metadata and captions from a video"; spec/video/index.md, "Manual English captions outrank automatic English captions and audio"; spec/video/index.md, "Story: Transcribe a video and reuse only completed work"
 import { ModelType, Service, ServiceType, type IAgentRuntime, type Plugin } from "@elizaos/core"
 import { Schema } from "effect"
-import { Machine, mediaReadAllowed, compactVideoDateValid, machine, requestedDownloadLimit, selectVideoCaption, type VideoInputKind } from "../gen/video.effect.vibe"
+import { Machine, mediaReadAllowed, compactVideoDateValid, machine, requestedDownloadLimit, selectManualCaptionTrack, selectVideoCaption, type ManualCaptionTrack, type PinnedCaption, type VideoInputKind } from "../gen/video.effect.vibe"
 
 module node {
   import { execFile } from "node:child_process"
@@ -71,6 +71,16 @@ function captionUrl(offered: readonly { readonly url: string; readonly ext?: str
   return offered.find((entry) => entry.url !== "" && entry.ext === type)?.url ?? ""
 }
 
+function manualCaptionTrack(language: string, offered: readonly { readonly url: string; readonly ext?: string }[]): ManualCaptionTrack {
+  return { primaryEnglish: language === "en", srtUrl: captionUrl(offered, "srt"), vttUrl: captionUrl(offered, "vtt"), untypedUrl: captionUrl(offered) }
+}
+
+export function pinVideoCaption(metadata: typeof videoMetadata.Type): PinnedCaption {
+  const manual = selectManualCaptionTrack(Object.entries(metadata.subtitles ?? {}).filter(([language]) => /^en(?:-|$)/i.test(language)).map(([language, offered]) => manualCaptionTrack(language, offered)))
+  const automatic = metadata.automatic_captions?.["en"] ?? []
+  return selectVideoCaption(manual.srtUrl, manual.vttUrl, manual.untypedUrl, captionUrl(automatic, "json3"), captionUrl(automatic))
+}
+
 function youtubePage(url: URL): boolean {
   return ["www.youtube.com", "youtube.com", "m.youtube.com", "youtu.be", "www.vimeo.com", "vimeo.com"].includes(url.hostname)
 }
@@ -98,9 +108,7 @@ effect function readVideo(source: string, kind: VideoInputKind) {
 }
 
 effect function extractCaption(metadata: typeof videoMetadata.Type) {
-  const manual = metadata.subtitles?.["en"] ?? Object.entries(metadata.subtitles ?? {}).find(([language]) => /^en-/i.test(language))?.[1] ?? []
-  const automatic = metadata.automatic_captions?.["en"] ?? []
-  const selected = selectVideoCaption(captionUrl(manual, "srt"), captionUrl(manual, "vtt"), captionUrl(manual), captionUrl(automatic, "json3"), captionUrl(automatic))
+  const selected = pinVideoCaption(metadata)
   if (selected.formatKind === "ExtractAudio") return ""
   const bytes = try readVideo(selected.sourceUrl, "SubtitleDownload")
   const text = new TextDecoder().decode(bytes)

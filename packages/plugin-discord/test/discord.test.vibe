@@ -1,0 +1,68 @@
+// spec/discord/index.md, "Each Discord reply part is stored once even when its send is repeated"
+import { assert, describe, it } from "@effect/vitest"
+import { postDiscordPart } from "../src/index.vibe"
+
+module node {
+  import { createServer } from "node:http"
+  import { once } from "node:events"
+  import { Effect } from "effect"
+  import { Client, type SendableChannels } from "discord.js"
+
+  export type LostAnswer = "502" | "timeout"
+  export interface DiscordApi { readonly creates: number; readonly kept: readonly { id: string; content: string; nonce: unknown }[]; channel(): Promise<SendableChannels>; close(): void }
+
+  const author = { id: "999", username: "bot", discriminator: "0", avatar: null, bot: true }
+  const message = (id: string, content: string) => ({ id, channel_id: "111", content, author, timestamp: new Date(0).toISOString(), edited_timestamp: null, tts: false, mention_everyone: false, mentions: [], mention_roles: [], attachments: [], embeds: [], pinned: false, type: 0 })
+
+  export async function discordApi(lost: LostAnswer): Promise<DiscordApi> {
+    const kept: { id: string; content: string; nonce: unknown }[] = []
+    let creates = 0
+    const server = createServer(async (request, response) => {
+      const answer = (status: number, body: unknown) => { response.writeHead(status, { "content-type": "application/json" }); response.end(JSON.stringify(body)) }
+      const path = request.url ?? ""
+      if (request.method === "GET" && path.endsWith("/channels/111")) return answer(200, { id: "111", type: 1, last_message_id: null, recipients: [{ id: "222", username: "member", discriminator: "0", avatar: null }] })
+      if (request.method !== "POST" || !path.endsWith("/channels/111/messages")) return answer(404, { message: "not found", code: 0 })
+      creates += 1
+      let raw = ""
+      for await (const chunk of request) raw += String(chunk)
+      const body: { content?: string; nonce?: unknown; enforce_nonce?: boolean } = JSON.parse(raw)
+      const prior = body.enforce_nonce === true ? kept.find(entry => entry.nonce !== undefined && entry.nonce === body.nonce) : undefined
+      if (prior !== undefined) return answer(200, message(prior.id, prior.content))
+      const id = String(1000 + kept.length)
+      kept.push({ id, content: body.content ?? "", nonce: body.nonce })
+      if (creates === 1 && lost === "502") return answer(502, { message: "upstream", code: 0 })
+      if (creates === 1) await Effect.runPromise(Effect.sleep("700 millis"))
+      return answer(200, message(id, body.content ?? ""))
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const address = server.address()
+    const port = typeof address === "object" && address !== null ? address.port : 0
+    const client = new Client({ intents: [], rest: { api: `http://127.0.0.1:${port}/api`, ...(lost === "timeout" ? { timeout: 300 } : {}) } })
+    client.rest.setToken("local-discord-token")
+    return {
+      get creates() { return creates },
+      kept,
+      async channel() {
+        const channel = await client.channels.fetch("111")
+        if (channel === null || !channel.isSendable()) throw new Error("The local Discord channel is not sendable")
+        return channel
+      },
+      close() { void client.destroy(); server.close() },
+    }
+  }
+}
+import { discordApi, type LostAnswer } from node
+
+describe("Keep Discord replies useful as the conversation moves on (spec/discord/index.md, \"Story: Keep Discord replies useful as the conversation moves on\")", () => {
+  const cases: readonly [LostAnswer, string][] = [["502", "a server error"], ["timeout", "a timeout"]]
+  for (const [lost, label] of cases) {
+    it.live(`A reply Discord kept is stored once when ${label} makes the client send it again (spec/discord/index.md, "Each Discord reply part is stored once even when its send is repeated")`, () => effect {
+      const api = try promise(() => discordApi(lost))
+      const channel = try promise(() => api.channel())
+      const id = try ensuring(postDiscordPart(channel, "Your transfer of 5 USDC was submitted.", []), sync(() => api.close()))
+      const [only] = api.kept
+      try Effect.try(() => assert.deepStrictEqual({ creates: api.creates, kept: api.kept.length, id, nonceLength: typeof only?.nonce === "string" ? only.nonce.length : 0 }, { creates: 2, kept: 1, id: "1000", nonceLength: 24 }))
+    }, 20_000)
+  }
+})

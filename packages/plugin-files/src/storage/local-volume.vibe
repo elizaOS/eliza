@@ -18,23 +18,14 @@ module node {
   }
 }
 import { identityOf, linked, trashId } from node
-import { apply, canPrune, classifyRow, emptyErases, listed, machineOver, initial as fresh, trashItemAnswer, type TrashRecordRead, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
-import { renameOutcome, batchMax, type FilesOp, type FilesRowCheck, type FileOutcome } from "../../gen/os__android__files__storage.effect.vibe"
+import { apply, canPrune, classifyRow, emptyErases, machineOver, initial as fresh, trashItemAnswer, type TrashRecordRead, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
+import { renameOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
 import { baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, unreadableTrashEntry, validName, validPath, within, DOWNLOAD_FOLDER,
   type StorageEntry, type TrashEntry } from "./model.vibe"
-import { checkSelection, FilesVolume, succeeded, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
+import { checkSelection, FilesVolume, succeeded, type RowOutcome, type VolumeRefused } from "./volume.vibe"
+import { ANSWERS, checkErase, decodeRecord, listShown, newestFirst, refused, TRASH, trashEach, type TrashRecord } from "./trash-journal.vibe"
 
-const TRASH = ".Trash-files"
 const WALK_LIMIT = 10_000
-const ANSWERS: Readonly<Record<FileOutcome, RowStatus>> = {
-  Invalid: "invalid", Missing: "missing", Changed: "changed", Unchanged: "unchanged", Admitted: "failed",
-  Copied: "copied", Moved: "moved", Trashed: "trashed", Failed: "failed",
-}
-schema JournalRow { phase: "Visible" | "Journaled" | "InTrash" | "MoveFailed" | "Expiring" | "Gone"; journal: boolean; resident: boolean; deletedAt: number }
-schema TrashRecord { name: string; origin: string; directory: boolean; size: number; mimeType: string; row: JournalRow }
-const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(TrashRecord))
-
-const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
 
 export function localVolume(root: string, name = "Internal storage") {
   return Layer.effect(FilesVolume, effect {
@@ -214,12 +205,7 @@ export function localVolume(root: string, name = "Internal storage") {
         for (const [index, path] of selected.entries()) outcomes.push(try transferRow(copy ? "Copy" : "Move", path, reviewed?.[index], folder))
         return outcomes
       },
-      trash: ({ paths: selected, reviewed }) => namespace(effect {
-        try checkSelection(selected, reviewed)
-        const outcomes: RowOutcome[] = []
-        for (const [index, path] of selected.entries()) outcomes.push(try trashRow(path, reviewed?.[index]))
-        return outcomes
-      }),
+      trash: ({ paths: selected, reviewed }) => namespace(trashEach(selected, reviewed, trashRow)),
       trashList: () => namespace(effect {
         const now = try Clock.currentTimeMillis
         const items: TrashEntry[] = []
@@ -239,9 +225,9 @@ export function localVolume(root: string, name = "Internal storage") {
             try prune(id, kept, now)
             continue
           }
-          if (listed(kept.row, now)) items.push({ id, name: kept.name, origin: kept.origin, directory: kept.directory, mimeType: kept.mimeType, size: kept.size, deletedAt: kept.row.deletedAt })
+          listShown(items, id, kept, now)
         }
-        return items.sort((a, b) => b.deletedAt - a.deletedAt)
+        return newestFirst(items)
       }),
       restore: (ids) => namespace(effect {
         const outcomes: RowOutcome[] = []
@@ -263,8 +249,7 @@ export function localVolume(root: string, name = "Internal storage") {
         return outcomes
       }),
       emptyTrash: (ids, confirmed) => namespace(effect {
-        if (!confirmed) throw refused("confirmation-required", "Confirm before deleting permanently.")
-        if (ids.length < 1 || ids.length > batchMax || new Set(ids).size !== ids.length) throw refused("invalid", "Select the Trash items to erase")
+        try checkErase(ids, confirmed, "Select the Trash items to erase")
         const known = new Set(try trashIds())
         let count = 0
         for (const id of ids) {

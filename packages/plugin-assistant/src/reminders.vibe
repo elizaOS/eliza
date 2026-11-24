@@ -120,7 +120,7 @@ const checkSystem = [
 export effect function checkOriginalMessage(text: string) {
   if (text.trim() === "") return undefined
   const model = try Model
-  const said = model.complete(checkSystem, text) catch () => ""
+  const said = model.complete(checkSystem, text, "low") catch () => ""
   const check = decodeCheck(said.trim().replace(/^```(?:json)?\s*|\s*```$/gu, ""))
   return Option.isSome(check) ? check.value : undefined
 }
@@ -348,6 +348,12 @@ function unmatched(op: string, target: string, matches: readonly TaskRow[], key:
   }
 }
 
+function schedulerReceipt(facts: Parameters<typeof failedReceipt>[0], reply: VerbAnswer | SchedulerUnavailable) {
+  return reply instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown")
+    : reply.kind === "applied" ? appliedReceipt(facts)
+    : failedReceipt(facts, reply.kind === "refused" ? reply.reason : "NOT_FOUND", "rejected")
+}
+
 export effect function answerReminder(input: unknown, messageId: string) {
   const decoded = decodeAnswer(input)
   if (Option.isNone(decoded)) return { success: false, text: "Say which reminder and what to do with it.", data: { outcome: "REMINDER_ANSWER_INVALID" } } satisfies ActionResult
@@ -370,9 +376,7 @@ export effect function answerReminder(input: unknown, messageId: string) {
   const verb = verbOf(answer, at, localMinutes(at, zone) % 1440)
   const until = verb.tag === "SnoozeUntil" ? ` until ${fireTimeText(verb.until, zone, at)}` : ""
   const reply: VerbAnswer | SchedulerUnavailable = scheduler.answer(task.taskId, verb, key) catch (refused) => refused
-  const receipt = reply instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown")
-    : reply.kind === "applied" ? appliedReceipt(facts)
-    : failedReceipt(facts, reply.kind === "refused" ? reply.reason : "NOT_FOUND", "rejected")
+  const receipt = schedulerReceipt(facts, reply)
   if (receipt.outcome === "applied") {
     try noteOwnerAnswer()
     if (answer.op === "complete") try noteDone(task, at)
@@ -422,9 +426,7 @@ export effect function retractRecentSave(request: Pick<ReminderRequest, "message
   }
   const facts = { operation: "reminder.retract", kind: "reminder", id: recent.taskId, key: `reminder:retract:${request.messageId}`, at: now }
   const reply: VerbAnswer | SchedulerUnavailable = (try Scheduler).answer(recent.taskId, { tag: "Dismiss" }, facts.key) catch (refused) => refused
-  const receipt = reply instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown")
-    : reply.kind === "applied" ? appliedReceipt(facts)
-    : failedReceipt(facts, reply.kind === "refused" ? reply.reason : "NOT_FOUND", "rejected")
+  const receipt = schedulerReceipt(facts, reply)
   if (receipt.outcome === "applied") {
     try removeRecord(key)
   }
@@ -492,9 +494,7 @@ export effect function moveReminder(move: MoveRequest, request: OwnerRequest) {
   }
   const facts = { operation: "reminder.move", kind: "reminder", id: task.taskId, key, at: now }
   const reply: VerbAnswer | SchedulerUnavailable = (try Scheduler).edit(task.taskId, { trigger: change.trigger }, key) catch (refused) => refused
-  const receipt = reply instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown")
-    : reply.kind === "applied" ? appliedReceipt(facts)
-    : failedReceipt(facts, reply.kind === "refused" ? reply.reason : "NOT_FOUND", "rejected")
+  const receipt = schedulerReceipt(facts, reply)
   return attributed([{ actionName: saveAction, success: receipt.outcome === "applied", receipts: [receipt] }], `reminder:${task.taskId}`, {
     done: `Moved "${title}" to ${change.told}.`,
     notDone: `"${title}" was not moved.`,
@@ -515,9 +515,7 @@ export effect function renameReminder(target: unknown, title: unknown, messageId
   const task = matches[0]
   const facts = { operation: "reminder.rename", kind: "reminder", id: task.taskId, key, at }
   const reply: VerbAnswer | SchedulerUnavailable = (try Scheduler).edit(task.taskId, { promptInstructions: renamed }, key) catch (refused) => refused
-  const receipt = reply instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown")
-    : reply.kind === "applied" ? appliedReceipt(facts)
-    : failedReceipt(facts, reply.kind === "refused" ? reply.reason : "NOT_FOUND", "rejected")
+  const receipt = schedulerReceipt(facts, reply)
   return attributed([{ actionName: saveAction, success: receipt.outcome === "applied", receipts: [receipt] }], `reminder:${task.taskId}`, {
     done: `Renamed "${task.promptInstructions}" to "${renamed}".`,
     notDone: `"${task.promptInstructions}" was not renamed.`,

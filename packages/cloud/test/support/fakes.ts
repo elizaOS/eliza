@@ -107,6 +107,23 @@ export interface CatalogPrice {
   readonly livemode?: boolean;
 }
 
+/** @throws {never} */
+export function stripePrice(price: CatalogPrice) {
+  return {
+    id: price.priceId,
+    object: "price",
+    active: true,
+    currency: "usd",
+    unit_amount: price.unitAmount,
+    type: "recurring",
+    billing_scheme: "per_unit",
+    transform_quantity: null,
+    livemode: price.livemode ?? false,
+    product: price.productId,
+    recurring: { interval: "month", interval_count: 1, trial_period_days: null, usage_type: "licensed" },
+  } as const;
+}
+
 export function stripeCatalog(prices: ReadonlyArray<CatalogPrice>): FakeHandler {
   return (request) => {
     if (request.headers.authorization !== "Bearer sk_test_fake") return { status: 401, body: { error: { type: "invalid_request_error" } } };
@@ -114,19 +131,7 @@ export function stripeCatalog(prices: ReadonlyArray<CatalogPrice>): FakeHandler 
     if (price !== undefined) {
       return {
         status: 200,
-        body: {
-          id: price.priceId,
-          object: "price",
-          active: true,
-          currency: "usd",
-          unit_amount: price.unitAmount,
-          type: "recurring",
-          billing_scheme: "per_unit",
-          transform_quantity: null,
-          livemode: price.livemode ?? false,
-          product: price.productId,
-          recurring: { interval: "month", interval_count: 1, trial_period_days: null, usage_type: "licensed" },
-        },
+        body: stripePrice(price),
       };
     }
     const product = prices.find((candidate) => request.path === `/v1/products/${candidate.productId}`);

@@ -9,9 +9,8 @@ import { composeReply } from "../src/conversation/reply-text.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
-import { call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { answerOf, call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { Scratch } from "./support/scratch.ts"
-import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 
 interface Reply {
   readonly text: string
@@ -175,8 +174,6 @@ module node {
   }
 }
 import { completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, nearestCafes, overlapping, plainLog, roomMessages, seedHistory, storeNotice } from node
-
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
 effect function cloudAgent(cloud: CloudFake, state?: Scratch) {
   return try startInProcess({

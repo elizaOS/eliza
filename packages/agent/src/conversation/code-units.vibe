@@ -1,0 +1,8 @@
+// spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds"
+export const unitsOf = (text: string): number[] => Array.from({ length: text.length }, (_, at) => text.charCodeAt(at))
+
+export function textOf(units: readonly number[]): string {
+  let text = ""
+  for (let at = 0; at < units.length; at += 8192) text += String.fromCharCode(...units.slice(at, at + 8192))
+  return text
+}

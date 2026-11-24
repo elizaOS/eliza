@@ -6,8 +6,7 @@ import { navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs } from "
 import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
 import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
 import { text, toolCalls } from "./support/cloud-fake.ts"
-import { call, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
-import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
+import { ask, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 const loaded = {
   launch: {
@@ -17,12 +16,6 @@ const loaded = {
       { id: "chat", label: "Chat", path: "/chat" },
     ],
   },
-}
-
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
-
-effect function ask(agent: InProcess, asked: LocalRequest) {
-  return answerOf(try call(agent, asked))
 }
 
 effect function viewHost(agent: InProcess) {

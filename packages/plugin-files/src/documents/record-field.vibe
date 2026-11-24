@@ -1,0 +1,4 @@
+// spec/files/scan/drafts.md, "A stored draft decodes to complete, ordered pages"
+export function field(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null && key in value ? (value as Record<string, unknown>)[key] : undefined
+}

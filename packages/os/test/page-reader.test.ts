@@ -230,6 +230,11 @@ const guided = () => evaluate("globalThis.__elizaPageGuidanceV1?.visible === tru
 const guide = async (state: Snapshot, label: string) =>
   fields(await call(pageGuidance, [{ kind: "show", id: `guide-${++sequence}`, snapshotId: state.id, nodeId: find(state, label).id, origin: shop, expiresAt: Date.now() + 30_000, text: "This is the place." }]));
 const ring = () => evaluate("(() => { const r = globalThis.__elizaPageGuidanceV1.shadow.querySelector('.ring').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })()");
+const guideOn = async (url: string, label: string) => {
+  await open(url);
+  expect(await guide(await snapshot(), label)).toMatchObject({ accepted: true });
+  await expect.poll(guided, { timeout: 5000 }).toBe(true);
+};
 
 describe('The WebView runs the page reader Chromium runs (spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for")', () => {
   it("embeds page-command.mjs and page-guidance.mjs token for token", () => {
@@ -541,9 +546,7 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
       [`${shop}/signin`, "Username", () => tab.locator("#shadow-user")],
       [`${shop}/pay`, "Card number", () => tab.frameLocator("#card-frame").locator("#card")],
     ] as const) {
-      await open(url);
-      expect(await guide(await snapshot(), label)).toMatchObject({ accepted: true });
-      await expect.poll(guided, { timeout: 5000 }).toBe(true);
+      await guideOn(url, label);
       await near(await ring(), locator());
       await call(pageGuidance, [{ kind: "hide" }]);
     }
@@ -561,9 +564,7 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
       [`${shop}/framed-plain`, "Email", `document.getElementById("plain-frame").contentDocument.getElementById("email").placeholder = "changed"`],
       [`${shop}/signin`, "Username", `document.querySelector("northfield-login").shadowRoot.getElementById("shadow-user").placeholder = "changed"`],
     ] as const) {
-      await open(url);
-      expect(await guide(await snapshot(), label)).toMatchObject({ accepted: true });
-      await expect.poll(guided, { timeout: 5000 }).toBe(true);
+      await guideOn(url, label);
       await tab.evaluate(change);
       await expect.poll(guided, { timeout: 5000 }).toBe(false);
       expect(await evaluate("globalThis.__elizaPageGuidanceV1.invalidated"), url).toBe(true);
