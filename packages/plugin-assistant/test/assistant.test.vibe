@@ -704,7 +704,7 @@ it.effect('Check-ins come at the times I chose: the morning one at eight until I
   }
 })
 
-it.effect('Brief me on my morning, evening or week: the kind and days come from my words, an unnamed brief follows my clock, a weekly one covers seven days, every source is told or said unchecked, and only the evening one recaps what I finished today (spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/checkin.md, "A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed")', effect () => {
+it.effect('Brief me on my morning, evening or week: the kind and days are the planner\'s reading of my words, a choice outside the lists counts as none, an unnamed brief follows my clock, a weekly one covers seven days, every source is told or said unchecked, and only the evening one recaps what I finished today (spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/checkin.md, "A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed")', effect () => {
   const seen = ports()
   seen.answers.push(check({}))
   const event = (title: string, startAt: number, more: object = {}) => ({ title, startAt, synced: false, metadataValid: true, providerEditedAt: undefined, providerCreatedAt: undefined, copyUpdatedAt: seen.now, ...more })
@@ -723,32 +723,34 @@ it.effect('Brief me on my morning, evening or week: the kind and days come from 
     try changeRoutine({ op: "create", title: "Stretch", windows: ["afternoon"] }, "b4")
     const told = effect (action: unknown, period: unknown, text: string) => {
       seen.answers.push(`Your brief: ${text}`)
-      const brief: ActionResult = try composeBrief(action, period, text)
+      const brief: ActionResult = try composeBrief(action, period)
       const prompt = seen.prompts.at(-1) ?? ""
       return [brief.data?.kind, brief.data?.period, brief.userFacingText === `Your brief: ${text}` && brief.verifiedUserFacing === true, facts.filter((fact) => prompt.includes(fact))]
     }
     const briefs = [
       try told(undefined, undefined, "brief me"),
       try told("compose_weekly", undefined, "how does my week look"),
-      try told("compose_weekly", undefined, "give me my evening brief, this week has been rough"),
+      try told("compose_evening", undefined, "give me my evening brief, this week has been rough"),
+      try told("compose_monthly", "next_month", "brief me on next month"),
     ]
     try changeTodos({ op: "complete", target: "buy milk" }, heard("b5", "bought the milk"))
     try deliverRoutine(rowsOf(seen, routineKind)[0])
     try changeRoutine({ op: "complete", target: "stretch" }, "b6")
     try answerReminder({ op: "complete", target: "call the dentist" }, "b7")
     seen.now = Date.UTC(2026, 10, 22, 23, 0)
-    briefs.push(try told(undefined, undefined, "brief me"), try told("compose_morning", "tomorrow", "what does my morning look like tomorrow"))
+    briefs.push(try told(undefined, undefined, "brief me"), try told("compose_morning", "tomorrow", "what is on before lunch tomorrow"))
     seen.listingFails = true
     briefs.push(try told(undefined, undefined, "brief me"))
     seen.listingFails = false
     try recalibrateBrief("recalibrate", "goals")
     briefs.push(try told("compose_evening", undefined, "my evening brief please"))
-    const unwritten: ActionResult = try composeBrief(undefined, undefined, "brief me")
+    const unwritten: ActionResult = try composeBrief(undefined, undefined)
     try equal({ briefs, unwritten: [unwritten.success, unwritten.data?.outcome] }, {
       briefs: [
         ["morning", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day"]],
         ["weekly", "this week", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "Flight to Lisbon", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day"]],
         ["evening", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day", "# Done today"]],
+        ["morning", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day"]],
         ["evening", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day", "# Done today", "To-do done: buy milk", "Routine done: Stretch", "Reminder done: Call the dentist"]],
         ["morning", "tomorrow", true, ["Run a 10k: no check-in answered yet", "Stretch, afternoon (15:00) every day"]],
         ["evening", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day", "# Done today", "To-do done: buy milk", "Routine done: Stretch", "Reminder done: Call the dentist", "# Reminders\nThis could not be read"]],

@@ -14,16 +14,6 @@ const briefActionName = "BRIEF"
 const dayMs = 86_400_000
 const asks = { compose_morning: "AskedMorning", compose_evening: "AskedEvening", compose_weekly: "AskedWeekly" } as const satisfies Record<string, BriefAsked>
 const periods = { today: "PeriodToday", tomorrow: "PeriodTomorrow", this_week: "PeriodThisWeek" } as const satisfies Record<string, BriefPeriod>
-const kindNamed: Readonly<Record<Exclude<BriefAsked, "AskedNoKind">, RegExp>> = {
-  AskedMorning: /\bmorning\b/iu,
-  AskedEvening: /\b(?:evening|tonight|end of (?:the|my) day)\b/iu,
-  AskedWeekly: /\b(?:weekly|week ahead|(?:for|of|on|about|over) (?:my|the|this|next) week|(?:my|the) week(?:['’]s)? (?:brief|plan|schedule|review|look|looking|ahead))\b/iu,
-}
-const periodNamed: Readonly<Record<Exclude<BriefPeriod, "PeriodUnstated">, RegExp>> = {
-  PeriodToday: /\btoday\b/iu,
-  PeriodTomorrow: /\btomorrow\b/iu,
-  PeriodThisWeek: /\b(?:this|the) week\b/iu,
-}
 const kindWords: Readonly<Record<BriefKind, string>> = { MorningBrief: "morning", EveningBrief: "evening", WeeklyBrief: "weekly" }
 const periodWords: Readonly<Record<BriefPeriod, string>> = { PeriodToday: "today", PeriodTomorrow: "tomorrow", PeriodThisWeek: "this week", PeriodUnstated: "today" }
 const standingWords: Readonly<Record<string, string>> = { GroupOnTrack: "on track", GroupAtRisk: "at risk", GroupNeedsAttention: "needs attention", GroupUnanswered: "no check-in answered yet" }
@@ -31,19 +21,11 @@ const sectionNames = ["calendar", "todos", "goals", "routines", "reminders"] as 
 type Section = typeof sectionNames[number]
 const isSection = (name: unknown): name is Section => typeof name === "string" && (sectionNames as readonly string[]).includes(name)
 
-function askedIn(action: unknown, text: string): BriefAsked {
-  const planned = typeof action === "string" && Object.hasOwn(asks, action) ? asks[action as keyof typeof asks] : undefined
-  if (planned !== undefined && kindNamed[planned].test(text)) return planned
-  const daily = (["AskedMorning", "AskedEvening"] as const).filter((kind) => kindNamed[kind].test(text))
-  return daily.length === 1 ? daily[0] : "AskedNoKind"
-}
+const askedIn = (action: unknown): BriefAsked =>
+  typeof action === "string" && Object.hasOwn(asks, action) ? asks[action as keyof typeof asks] : "AskedNoKind"
 
-function periodAsked(period: unknown, text: string): BriefPeriod {
-  const planned = typeof period === "string" && Object.hasOwn(periods, period) ? periods[period as keyof typeof periods] : undefined
-  if (planned !== undefined && periodNamed[planned].test(text)) return planned
-  const daily = (["PeriodToday", "PeriodTomorrow"] as const).filter((named) => periodNamed[named].test(text))
-  return daily.length === 1 ? daily[0] : "PeriodUnstated"
-}
+const periodAsked = (period: unknown): BriefPeriod =>
+  typeof period === "string" && Object.hasOwn(periods, period) ? periods[period as keyof typeof periods] : "PeriodUnstated"
 
 const nextDate = (date: string, days: number) => civilDate(Date.parse(`${date}T12:00:00Z`) + days * dayMs, "UTC")
 
@@ -102,11 +84,11 @@ effect function briefFacts(kind: BriefKind, covers: BriefPeriod, now: number, zo
   ]
 }
 
-export effect function composeBrief(action: unknown, period: unknown, text: string) {
+export effect function composeBrief(action: unknown, period: unknown) {
   const now = try (try Facts).now()
   const zone = try ownerClockAt(now)
-  const kind = briefKind(askedIn(action, text), localMinutes(now, zone) % 1440)
-  const covers = briefPeriod(kind, periodAsked(period, text))
+  const kind = briefKind(askedIn(action), localMinutes(now, zone) % 1440)
+  const covers = briefPeriod(kind, periodAsked(period))
   const { from } = daysOf(covers, now, zone)
   const days = covers === "PeriodThisWeek" ? `the week from ${longDate(from)}` : `${periodWords[covers]}, ${longDate(from)}`
   const facts = try briefFacts(kind, covers, now, zone)
@@ -144,7 +126,7 @@ const failedWith = (text: string) => (failed: { readonly _tag: string }) => Effe
 
 export const briefAction: Action = {
   name: briefActionName,
-  description: "Brief the owner on their morning, evening or week from their calendar, to-dos, goals, routines and reminders (compose_morning, compose_evening, compose_weekly only when the owner named that kind; leave action out for an unnamed brief), leave one section out of their briefs (recalibrate with section, for \"stop showing me my goals in my brief\") or bring every section back (reset_recalibration), or set when the daily morning and night check-ins come (schedule_checkins, each HH:MM on the owner's clock or off).",
+  description: "Brief the owner on their morning, evening or week from their calendar, to-dos, goals, routines and reminders (compose_morning, compose_evening, compose_weekly only when the owner named that kind, and compose_weekly only for a brief of the week, never from a passing mention of it; leave action out for an unnamed brief), leave one section out of their briefs (recalibrate with section, for \"stop showing me my goals in my brief\") or bring every section back (reset_recalibration), or set when the daily morning and night check-ins come (schedule_checkins, each HH:MM on the owner's clock or off).",
   similes: ["BRIEF_ME", "MORNING_BRIEF", "EVENING_BRIEF", "WEEKLY_BRIEF", "DAILY_DIGEST", "CHECKIN_TIMES", "RECALIBRATE_BRIEF"],
   parameters: [
     { name: "action", required: false, description: "compose_morning, compose_evening, compose_weekly, recalibrate, reset_recalibration or schedule_checkins.", schema: { type: "string", enum: ["compose_morning", "compose_evening", "compose_weekly", "recalibrate", "reset_recalibration", "schedule_checkins"] } },
@@ -158,9 +140,9 @@ export const briefAction: Action = {
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
     const given = parametersOf(options)
-    const { messageId, text } = requestOf(message)
+    const { messageId } = requestOf(message)
     if (given.action === "schedule_checkins") return onAgent(runtime, Effect.catch(setCheckinTimes({ morning: given.morning, night: given.night }, `checkins:${messageId}`), failedWith("Your check-in times were not changed.")))
     if (given.action === "recalibrate" || given.action === "reset_recalibration") return onAgent(runtime, Effect.catch(recalibrateBrief(given.action, given.section), failedWith("Your brief settings were not changed.")))
-    return onAgent(runtime, Effect.catch(composeBrief(given.action, given.period, text), failedWith("The brief could not be prepared.")))
+    return onAgent(runtime, Effect.catch(composeBrief(given.action, given.period), failedWith("The brief could not be prepared.")))
   },
 }
