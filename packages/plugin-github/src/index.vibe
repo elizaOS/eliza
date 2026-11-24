@@ -18,7 +18,16 @@ const SearchPullRequests = Schema.Struct({ items: Schema.Array(Schema.Struct({ n
 const Notification = Schema.Struct({ id: Schema.String, reason: Schema.String, subject: Schema.Struct({ title: Schema.String, type: Schema.String }), repository: Schema.Struct({ full_name: Schema.String }), updated_at: Schema.String })
 const MutationReceipt = Schema.Struct({ id: Schema.Int, number: Schema.optionalKey(Schema.Int), html_url: Schema.optionalKey(Schema.String), assignees: Schema.optionalKey(Schema.Array(User)), labels: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String }))) })
 
-function readParameters(options: unknown): unknown { return typeof options === "object" && options !== null && "parameters" in options ? options.parameters : options }
+function readParameters(options: unknown): unknown {
+  const raw = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : options
+  if (typeof raw !== "object" || raw === null) return raw
+  const named: Record<string, unknown> = { ...raw }
+  for (const key of ["action", "state", "review_action"]) {
+    const value = named[key]
+    if (typeof value === "string") named[key] = key === "review_action" ? value.trim().toLowerCase().replaceAll("_", "-") : value.trim().toLowerCase()
+  }
+  return named
+}
 
 function repoOf(raw: string | undefined): { owner: string; name: string } | undefined {
   if (raw === undefined || /[\x00-\x1f\\]/u.test(raw)) return undefined
