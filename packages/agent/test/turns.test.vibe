@@ -406,14 +406,15 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   }))
 }, 120_000)
 
-it.live(`A text or JSON file reaches the model as its complete text, an image as itself, and a PDF no service reads, audio or a file that is not UTF-8 by its name and type, never as a file part (${planning}, "A file attached to my message reaches the model as its text, an image as itself, and anything else by its name and type")`, effect () => {
+it.live(`A document reaches the model whole when it fits, a larger document reaches it by name, and an image stays an image (${planning}, "Attached documents share a bounded text allowance and images stay images")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try cloudAgent(cloud)
   const { id } = try conversation(agent)
-  const encoded = (bytes: string | readonly number[]) => Buffer.from(typeof bytes === "string" ? bytes : Uint8Array.from(bytes)).toString("base64")
+  const encoded = (bytes: string | readonly number[]) => Base64.encode(typeof bytes === "string" ? new TextEncoder().encode(bytes) : Uint8Array.from(bytes))
   const attached = (name: string, mimeType: string, bytes: string | readonly number[]) => ({ name, mimeType, data: encoded(bytes) })
+  const completionBody = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body
   const turnParts = () => {
-    const body = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { messages: { content?: unknown }[] }
+    const body = completionBody() as { messages: { content?: unknown }[] }
     const parts = body.messages.at(-1)?.content as readonly { type: string; text?: string; image_url?: { url: string } }[]
     return parts.slice(1).map((part) => part.type === "text" ? part.text : part.type === "image_url" ? part.image_url?.url : part.type)
   }
@@ -422,19 +423,35 @@ it.live(`A text or JSON file reaches the model as its complete text, an image as
   const unread = (name: string, type: string) =>
     `The person attached a file whose contents cannot be read here. Its name and type follow:\n${wrapExternalContent(`${JSON.stringify(name)} (${type})`, { source: "unknown" })}`
 
-  try Effect.sync(() => cloud.script(text("Read them."), text("Read those too.")))
+  try Effect.sync(() => cloud.script(text("Read them."), text("Read those too."), text("Read the agenda."), text("Read the first file.")))
   const first = try send(agent, id, { text: "What do these say?", images: [
     attached("notes.md", "text/markdown", "# Café\nBring 2 cups."), attached("plan.json", "application/json", '{"day":"Friday"}'),
     attached("photo.png", "image/png", "not really a png"), attached("brief.pdf", "application/pdf", "%PDF-1.4 brief"),
   ] })
   const firstParts = turnParts()
-  const longText = `a${"é".repeat(40000)}\nThe last appointment is Tuesday.`
+  const longText = `a${"é".repeat(10000)}\nThe last appointment is Tuesday.`
   const second = try send(agent, id, { text: "And these?", images: [
     attached("long.txt", "text/plain", longText), attached("voice.m4a", "audio/mp4", "audio bytes"), attached("bad.txt", "text/plain", [0xff, 0xfe, 0x41]),
   ] })
   const secondParts = turnParts()
-  try Effect.try(() => assert.deepStrictEqual({ statuses: [first.status, second.status], firstParts, secondParts }, {
-    statuses: [200, 200],
+  const oversized = "x".repeat(300 * 1024)
+  const third = try send(agent, id, { text: "What can you read?", images: [
+    attached("oversized.txt", "text/plain", oversized), attached("agenda.txt", "text/plain", "Meet at nine."),
+  ] })
+  const thirdParts = turnParts()
+  const wireFits = try Effect.try(() => new TextEncoder().encode(JSON.stringify(completionBody() ?? null)).byteLength <= 256 * 1024)
+  const medium = "a".repeat(16 * 1024)
+  const fourth = try send(agent, id, { text: "Can you read both?", images: [
+    attached("first.txt", "text/plain", medium), attached("second.txt", "text/plain", medium),
+  ] })
+  const fourthParts = turnParts()
+  const omitted = (name: string) =>
+    `The person attached a file whose contents exceeded this turn's context allowance. Its name and type follow:\n${wrapExternalContent(`${JSON.stringify(name)} (text/plain)`, { source: "unknown" })}`
+  try Effect.try(() => assert.deepStrictEqual({
+    statuses: [first.status, second.status, third.status, fourth.status], firstParts, secondParts, thirdParts, fourthParts,
+    reply: replyOf(third).text, wireFits,
+  }, {
+    statuses: [200, 200, 200, 200],
     firstParts: [
       file("notes.md", "text/markdown", "# Café\nBring 2 cups."), file("plan.json", "application/json", '{"day":"Friday"}'),
       `data:image/png;base64,${encoded("not really a png")}`, unread("brief.pdf", "application/pdf"),
@@ -443,6 +460,10 @@ it.live(`A text or JSON file reaches the model as its complete text, an image as
       file("long.txt", "text/plain", longText),
       unread("voice.m4a", "audio/mp4"), unread("bad.txt", "text/plain"),
     ],
+    thirdParts: [omitted("oversized.txt"), file("agenda.txt", "text/plain", "Meet at nine.")],
+    fourthParts: [file("first.txt", "text/plain", medium), omitted("second.txt")],
+    reply: "Read the agenda.\n\nSome attached documents exceeded the amount of text I can read in one turn.",
+    wireFits: true,
   }))
 }, 120_000)
 

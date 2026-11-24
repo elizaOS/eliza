@@ -1,12 +1,12 @@
-// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/planning.md, "A file attached to my message reaches the model as its text, an image as itself, and anything else by its name and type"
+// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/planning.md, "Attached documents share a bounded text allowance and images stay images"
 // spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"
 import {
   type Action, type ActionResult, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
   executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, ServiceType, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
-import { revertedEffectReceiptIds, type EffectReceipt } from "@elizaos/core/protocol"
-import { attachedRead, hostNoteLabels, offersContextRestore, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
+import { revertedEffectReceiptIds, utf8ByteLength, type EffectReceipt } from "@elizaos/core/protocol"
+import { attachedDocumentBytes, attachedRead, documentTextFits, hostNoteLabels, offersContextRestore, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
 import { carriesCutOffEffect, replyQuoteChars } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
@@ -129,7 +129,9 @@ function kindOf(type: string): AttachedKind {
 
 function bytesOf(url: string): Uint8Array | undefined {
   const comma = url.indexOf(",")
-  return url.startsWith("data:") && url.slice(0, comma).endsWith(";base64") ? Buffer.from(url.slice(comma + 1), "base64") : undefined
+  if (comma < 0 || !url.startsWith("data:") || !url.slice(0, comma).endsWith(";base64")) return undefined
+  const decoded = Base64.decode(url.slice(comma + 1))
+  return Result.isSuccess(decoded) ? decoded.success : undefined
 }
 
 function utf8(bytes: Uint8Array): string | undefined {
@@ -147,28 +149,58 @@ async function attachedText(runtime: AgentRuntime, kind: AttachedKind, bytes: Ui
   return isPdfReader(reader) ? reader.convertPdfToText(bytes).catch(() => undefined) : undefined
 }
 
-async function attachedPart(runtime: AgentRuntime, media: Media): Promise<ContentPart> {
+type ReadAttachment =
+  | { readonly kind: "image"; readonly part: ContentPart }
+  | { readonly kind: "unreadable"; readonly label: string }
+  | { readonly kind: "document"; readonly label: string; readonly text: string }
+
+function filePart(label: string, explanation: string, text?: string): ContentPart {
+  const content = text === undefined ? label : `${label}\n\n${text}`
+  return { type: "text", text: `${explanation}\n${wrapExternalContent(content, { source: "unknown" })}` }
+}
+
+async function readAttachment(runtime: AgentRuntime, media: Media): Promise<ReadAttachment> {
   const type = (media.mimeType ?? media.contentType ?? "application/octet-stream").toLowerCase()
-  const label = media.filename ?? media.title ?? "attachment"
-  const name = `${JSON.stringify(label)} (${type})`
+  const name = media.filename ?? media.title ?? "attachment"
+  const label = `${JSON.stringify(name)} (${type})`
   const kind = kindOf(type)
   const text = kind === "AttachedText" || kind === "AttachedPdf" ? await attachedText(runtime, kind, bytesOf(media.url)) : undefined
-  const read = attachedRead(kind, text !== undefined)
-  switch (read) {
-    case "AttachedAsImage": return { type: "image", image: media.url, mediaType: type }
-    case "AttachedAsText": return {
-      type: "text",
-      text: `The person attached a file. Its name, type and text follow:\n${wrapExternalContent(`${name}\n\n${text ?? ""}`, { source: "unknown" })}`,
-    }
-    case "AttachedAsName": return {
-      type: "text",
-      text: `The person attached a file whose contents cannot be read here. Its name and type follow:\n${wrapExternalContent(name, { source: "unknown" })}`,
-    }
-    default: {
-      const _exhaustive: never = read
-      return _exhaustive
-    }
+  switch (attachedRead(kind, text !== undefined)) {
+    case "AttachedAsImage":
+      return { kind: "image", part: { type: "image", image: media.url, mediaType: type } }
+    case "AttachedAsText":
+      return { kind: "document", label, text: text ?? "" }
+    case "AttachedAsName":
+      return { kind: "unreadable", label }
   }
+}
+
+function attachmentParts(reads: readonly ReadAttachment[]) {
+  let remaining = attachedDocumentBytes
+  let omitted = false
+  const parts: ContentPart[] = []
+  for (const read of reads) {
+    if (read.kind === "image") {
+      parts.push(read.part)
+      continue
+    }
+    if (read.kind === "unreadable") {
+      parts.push(filePart(read.label, "The person attached a file whose contents cannot be read here. Its name and type follow:"))
+      continue
+    }
+    if (read.text.length <= remaining) {
+      const part = filePart(read.label, "The person attached a file. Its name, type and text follow:", read.text)
+      const bytes = utf8ByteLength(JSON.stringify(part))
+      if (documentTextFits(remaining, bytes)) {
+        parts.push(part)
+        remaining -= bytes
+        continue
+      }
+    }
+    omitted = true
+    parts.push(filePart(read.label, "The person attached a file whose contents exceeded this turn's context allowance. Its name and type follow:"))
+  }
+  return { parts, omitted }
 }
 
 const hostLabel = "Note from the agent host, not the person:"
@@ -266,8 +298,8 @@ async function respond(
         const window = windowHistory(sources, asked, { earlier, readCount: recent.length, positions: sources.map(({ position }) => position) })
         const history: ChatMessage[] = window.shown.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
         const actions = offeredActions(runtime, message, actionGate)
-        const attached = await Promise.all((message.content.attachments ?? []).map((media) => attachedPart(runtime, media)))
-        const messages: ChatMessage[] = [...history, said(attached, asked, [
+        const attachments = attachmentParts(await Promise.all((message.content.attachments ?? []).map((media) => readAttachment(runtime, media))))
+        const messages: ChatMessage[] = [...history, said(attachments.parts, asked, [
           options?.replyTarget === undefined ? undefined : await replyQuote(runtime, options.replyTarget),
           contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext,
           window.windowed ? historyWindowNotice(window, offersContextRestore(actions.length) && window.deferred.length > 0 ? { kind: "restoreContext" } : undefined) : undefined,
@@ -300,8 +332,9 @@ async function respond(
           ...(options?.onActivityStatus === undefined ? {} : { onActivityStatus: options.onActivityStatus }),
         }, actions)
         signal.throwIfAborted()
-        const replyText = groundedEventReply(groundedTimeReply(planned.reply, asked, clock), asked, planned.steps.map(({ result }) => result), runtime.agentId)
-        if (!replyText.trim()) throw new Error("The turn produced no reply")
+        const answer = groundedEventReply(groundedTimeReply(planned.reply, asked, clock), asked, planned.steps.map(({ result }) => result), runtime.agentId)
+        if (!answer.trim()) throw new Error("The turn produced no reply")
+        const replyText = attachments.omitted ? `${answer}\n\nSome attached documents exceeded the amount of text I can read in one turn.` : answer
         if (onStreamChunk !== undefined && replyText !== written) options?.onReplyRestart?.(replyText)
         written = replyText
         const ran = planned.steps.map(({ action, result: step }): ActionResult => ({ ...step, data: { ...step.data, actionName: action } }))

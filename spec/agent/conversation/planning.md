@@ -304,18 +304,20 @@ pure def lawARestoreSuppressesItsSiblingActions(restoreCalls: int): bool =
   restoreCalls > 0 implies not(admitsPlannerWork(restoreCalls))
 ```
 
-### A file attached to my message reaches the model as its text, an image as itself, and anything else by its name and type
+### Attached documents share a bounded text allowance and images stay images
 
-Each attachment of the person's latest message follows its text (develop
-`plugin-assistant` `services/message/attachments.ts`). An image is an image
-part. A plain-text, CSV, Markdown or JSON file is read as UTF-8, and a PDF
-through the PDF service when the host loads one; either reaches the model
-with its name, type and complete text in one external content block. The
-model service can refuse a request that exceeds its size limit. Audio,
-video, a PDF no service reads and a file with invalid UTF-8 are reported as
-unreadable. Their names and types stay in an external content block. No model
-call carries a file part: neither the Cloud nor an own-key provider reads
-one, and a part a provider refuses fails the whole turn.
+The latest message's attachments follow its text in their original order.
+Images remain image parts. The agent reads plain text, CSV, Markdown and JSON
+as UTF-8, and the host's PDF service reads PDF when available. Across the
+turn, complete document text parts share 32 KiB of UTF-8, including the
+serialized name, type and external-content envelope. A document that
+would exceed the remaining allowance reaches the model by name and type.
+The reply tells the owner that some document content exceeded the limit.
+Later documents can still use the remaining allowance. The uploaded files
+stay intact. Audio, video, invalid UTF-8 and a PDF the host cannot read
+reach the model by name and type with an unreadable marker. Names, types
+and extracted text in every document part are external content. Model
+calls carry images and text parts.
 
 ```quint
 type AttachedKind = AttachedImage | AttachedText | AttachedPdf | AttachedMedia
@@ -324,12 +326,18 @@ pure def attachedRead(attachedKind: AttachedKind, textRead: bool): AttachedRead 
   if (attachedKind == AttachedImage) AttachedAsImage
   else if ((attachedKind == AttachedText or attachedKind == AttachedPdf) and textRead) AttachedAsText
   else AttachedAsName
+pure val attachedDocumentBytes: int = 32768
+pure def documentTextFits(remaining: int, partBytes: int): bool =
+  partBytes >= 0 and partBytes <= remaining
 pure def lawOnlyAnImageReachesTheModelAsItself(attachedKind: AttachedKind, textRead: bool): bool =
   (attachedRead(attachedKind, textRead) == AttachedAsImage) iff (attachedKind == AttachedImage)
 pure def lawAudioAndVideoReachTheModelOnlyByName(textRead: bool): bool = attachedRead(AttachedMedia, textRead) == AttachedAsName
-pure def lawAReadableDocumentReachesTheModelAsText(attachedKind: AttachedKind, textRead: bool): bool =
+pure def lawOnlyAReadableDocumentCanOfferText(attachedKind: AttachedKind, textRead: bool): bool =
   (attachedRead(attachedKind, textRead) == AttachedAsText) iff
     ((attachedKind == AttachedText or attachedKind == AttachedPdf) and textRead)
+pure def lawIncludedTextFitsWithinTheSharedAllowance(remaining: int, partBytes: int): bool =
+  (remaining <= attachedDocumentBytes and documentTextFits(remaining, partBytes)) implies
+    (remaining - partBytes >= 0 and remaining - partBytes <= attachedDocumentBytes)
 ```
 
 ### A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse
