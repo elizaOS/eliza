@@ -42,7 +42,7 @@ const COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/;
  */
 export const RELEASE_AUTHORITY_TARGETS = Object.freeze({
   staging: Object.freeze({
-    canonicalRef: "refs/heads/staging",
+    canonicalRef: "refs/heads/staging-v3",
     worker: "https://api-staging.eliza.app",
     pages: Object.freeze([
       "https://staging.eliza.app",
@@ -51,7 +51,7 @@ export const RELEASE_AUTHORITY_TARGETS = Object.freeze({
     ]),
   }),
   production: Object.freeze({
-    canonicalRef: "refs/heads/main",
+    canonicalRef: "refs/heads/main-v3",
     worker: "https://api.eliza.app",
     pages: Object.freeze(["https://eliza.app", "https://cloud.eliza.app"]),
   }),
