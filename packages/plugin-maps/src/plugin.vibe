@@ -53,7 +53,8 @@ function preparePlaces(operation: PlaceOperation, params: Params): PreparedPlace
   for (const { name, id, required, placedOtherwise } of placeArguments[operation]) {
     const named = text(params[name])
     const placed = (named !== undefined && !isMapsSelectionHandle(named)) || placedOtherwise?.(params) === true
-    const target = mapsSelectionTarget(isMapsSelectionHandle(text(params[id])), placed)
+    const placeId = text(params[id])
+    const target = mapsSelectionTarget(isMapsSelectionHandle(placeId), placed)
     if (target === "AskPlannerForPlace") {
       const action = operation === "place" ? "MAPS_PLACE" : choiceActions[operation]
       return { kind: "refused", result: {
@@ -63,7 +64,7 @@ function preparePlaces(operation: PlaceOperation, params: Params): PreparedPlace
       } }
     }
     if (target === "UsePlaceName") delete accepted[id]
-    if (required && params[name] === undefined) missing.push(`Missing required argument '${name}'`)
+    if (required && !placed && placeId === undefined) missing.push(`Missing required argument '${name}'`)
   }
   if (missing.length === 0) return { kind: "ready", params: accepted }
   return { kind: "refused", result: {
