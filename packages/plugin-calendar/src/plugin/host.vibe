@@ -36,7 +36,6 @@ export interface CalendarApprovalRow {
   readonly subjectUserId: string
   readonly requestedBy: string
   readonly action: CalendarApprovalAction
-  /** The change, its digest and, for a change to an existing event, that event's start as it was read, so a review can read the event again. */
   readonly payload: { readonly change: CalendarMutationPayload; readonly digest: string; readonly targetStartAt?: string }
   readonly reason: string
   readonly expiresAt: string

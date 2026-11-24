@@ -340,7 +340,7 @@ it.live(`Competing terminal decisions run no sibling tool and get one repair rou
       [200, "One clear answer.", [], 2])
     assert.include(repairPrompt, "None of its tools ran")
     assert.notInclude(repairPrompt, "First terminal copy.")
-    assert.deepStrictEqual([refused.status, completions(cloud) - beforeRepeat], [503, 2])
+    assert.deepStrictEqual([refused.status, replyOf(refused).failureKind, replyOf(refused).planAction, completions(cloud) - beforeRepeat], [200, "provider_issue", "retry", 2])
   })
 })
 

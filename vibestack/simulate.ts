@@ -415,15 +415,16 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // The usual starting states each get a whole bounded interval after them.
       const sim = await simulate(harness, "inv", model.leadsTo.length ? LASSO_TRACES : REPLAYED, SAMPLES, "step", true, simulationSteps, seed);
       if (broke([sim])) return { said, tested };
+      const tryGuide = (goal: string, invariant: string) => {
+        const path = model.witness?.paths.get(goal);
+        return guided && path && simulate(guided, invariant, 1, 1, witnessAction(goal), false, path.length + 1 + Number(!!model.opaques.length), seed);
+      };
       const [probe, ...searches] = await allDone([
         simulate(harness, "inv", REPLAYED, COMPARED_SAMPLES, "probe", true, STEPS, seed),
         ...model.sometimes.map(async (w) => {
           const invariant = `never_${w}`;
-          const length = model.witness?.lengths.get(w);
-          if (guided && length !== undefined) {
-            const run = await simulate(guided, invariant, 1, 1, witnessAction(w), false, length + 1 + Number(!!model.opaques.length), seed);
-            if (run.broken) return run;
-          }
+          const run = await tryGuide(w, invariant);
+          if (run?.broken) return run;
           return search(harness, invariant, "step", DEPTHS, WITNESS_SAMPLES, seed);
         }),
       ]);
@@ -444,10 +445,26 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // search also stops at a broken rule (see the harness), which is then reported as any other.
       const guarded = model.transitions.filter((t) => t.guard);
       const seen = new Map(guarded.map((t) => [t.guard!, { allows: false, refuses: false }]));
-      for (const { event, evaluated } of traces.flat()) {
-        const fired = event && guarded.find((g) => g.name === event.type);
-        if (fired) seen.get(fired.guard!)!.allows = true;
+      const guardOf = new Map(guarded.map((t) => [t.name, t.guard!]));
+      const observeGuard = ({ event, evaluated }: Step) => {
+        const guard = event && guardOf.get(event.type);
+        if (guard) seen.get(guard)!.allows = true;
         if (evaluated && seen.has(evaluated.name)) seen.get(evaluated.name)![evaluated.result ? "allows" : "refuses"] = true;
+      };
+      traces.flat().forEach(observeGuard);
+      const routes = [...model.witness?.paths ?? []].filter(([goal, path]) => seen.has(goal) && path.some((name) => {
+        const guard = guardOf.get(name);
+        return guard && !seen.get(guard)!.allows;
+      }));
+      const allowances = await allDone(routes.map(([goal]) => tryGuide(goal, `never_allows_${goal}`)!));
+      if (broke(allowances)) return { said, tested };
+      for (const [i, run] of allowances.entries()) {
+        if (!run.broken) continue;
+        const [goal, path] = routes[i];
+        const trace = run.traces.find((steps) => isDeepStrictEqual(steps.flatMap(({ event }) => event ? [event.type] : []), path));
+        if (!trace) throw new Error(`the simulator reported an allowance of ${goal} without its transition path (${run.again})`);
+        trace.forEach(observeGuard);
+        traces.push(trace);
       }
       const neverAllowed: { t: (typeof guarded)[number]; again?: string }[] = [];
       const neverRefused: string[] = [];
@@ -505,7 +522,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
         `${shown}\n      ${sim.again}`);
         return { said, tested };
       }
-      const retained = witnessedIn(probe.traces, witnesses.filter(({ w, run }) => !run.broken && !model.witness?.lengths.has(w)).map(({ w }) => w));
+      const retained = witnessedIn(probe.traces, witnesses.filter(({ w, run }) => !run.broken && !model.witness?.paths.has(w)).map(({ w }) => w));
       const reached = witnesses.map(({ w, run }) => {
         const fallback = retained.get(w);
         if (fallback) {
