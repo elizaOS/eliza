@@ -1430,6 +1430,8 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const caller = try signedCaller(cloud, "talker")
     const reservedPerWindow = reservedFor(60 * 100) + reservedFor(4096 * 30)
     try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * reservedPerWindow + extraCredit, requestKey: "talk-funding" }))
+    // A renewal needs the quote, so using little of the first reservation leaves enough for a third window.
+    const replyParts = extraCredit > 0 ? ["Porch light is on."] : Array.from({ length: 3 }, () => "A".repeat(1_000))
     const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
     const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
     const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string; readonly wsUrl: string }
@@ -1442,7 +1444,9 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const heard = try promise(() => socket.until((received) => received.kind === "text" && (received.frame.event as { readonly type?: string } | undefined)?.type === "end-of-turn"))
     try sync(() => {
       socket.send({ t: "prepare", id: "reply-1" })
-      socket.send({ t: "tts", id: "reply-1", text: "Porch light is on.", flush: true })
+      for (const [index, text] of replyParts.entries()) {
+        socket.send({ t: "tts", id: "reply-1", text, flush: index === replyParts.length - 1 })
+      }
       socket.send({ t: "finish", id: "reply-1" })
     })
     const spoken = try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "complete"))
@@ -1464,7 +1468,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     } else {
       try sync(() => socket.send({ t: "stop" }))
     }
-    const ending = try promise(() => socket.until((received) => received.kind === "close"))
+    const ending = try promise(() => socket.until((received) => received.kind === "close" || received.kind === "text" && received.frame.t === "extended"))
     let phase: unknown = undefined
     for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
       try TestClock.withLive(sleep(Duration.millis(50)))
@@ -1518,12 +1522,12 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         ],
         spoken: [
           { t: "tts_prepared", id: "reply-1" },
-          { audio: 2 + 7 + 3_200, head: [1, 7, ...Array.from(new TextEncoder().encode("reply-1"))] },
+          ...replyParts.map(() => ({ audio: 2 + 7 + 3_200, head: [1, 7, ...Array.from(new TextEncoder().encode("reply-1"))] })),
           { t: "flush_complete", id: "reply-1" },
           { t: "complete", id: "reply-1" }
         ],
         extended: [{ t: "extended", expiresAt: new Date(mintedAt + 120_000).toISOString() }],
-        rollover: ["active", "submitted_counter_provider_unconfirmed", 3_200, 18],
+        rollover: ["active", "submitted_counter_provider_unconfirmed", 3_200, replyParts.join("").length],
         third: extraCredit > 0 ? [{ t: "extended", expiresAt: new Date(mintedAt + 180_000).toISOString() }] : [],
         ending: extraCredit > 0 ? [{ close: 1000 }] : [{ t: "error", code: "unavailable", reason: "insufficient_credits" }, { close: 4402 }],
         forwarded: 3_200,
