@@ -28,8 +28,7 @@ interface Reply {
 
 module node {
   import { randomUUID } from "node:crypto"
-  import { ChannelType, conversationClientUserMemoryId, hashStableJson, systemNoticeText, type Action, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
-  import type { EffectReceipt } from "@elizaos/core/protocol"
+  import { ChannelType, conversationClientUserMemoryId, hashStableJson, systemNoticeText, type Action, type AgentRuntime, type EffectReceipt, type Memory, type UUID } from "@elizaos/core"
   import type { AgentPlugin } from "../src/host/module.vibe"
   import type { CloudFake } from "./support/cloud-fake.ts"
   import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
