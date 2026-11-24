@@ -488,13 +488,15 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   const { sttStopped, ttsStopped } = try Effect.all({
     sttStopped: stt === undefined ? succeed(false) : shell.graceful ? stt.drain() : stt.close(),
     ttsStopped: tts === undefined ? succeed(false) : tts.close(),
-    retired: ports.session.retire(sessionId) catch effect (failure) => {
-      try annotateLogs(logError("a speech session could not be retired"), { sessionId, failure: failure._tag })
+    retired: effect {
+      ports.session.retire(sessionId) catch effect (failure) => {
+        try annotateLogs(logError("a speech session could not be retired"), { sessionId, failure: failure._tag })
+      }
     },
   }, { concurrency: 3 })
   const forwarded = shell.windows.some((window) => window.pcmBytes > 0)
   const sttDrained = shell.graceful && (!forwarded || sttStopped)
-  const utterancesFinished = !shell.ttsUncertain && shell.relay.utterances.every((utterance) => utterance.stage === "UtteranceDone" || !shell.spoken.has(utterance.id))
+  const utterancesFinished = !shell.ttsUncertain && shell.relay.utterances.every((utterance): boolean => utterance.stage === "UtteranceDone" || !shell.spoken.has(utterance.id))
   const ttsConfirmed = synthesisUsageConfirmed(shell.graceful, utterancesFinished, ttsStopped)
   const renewal = shell.renewal
   if (renewal !== undefined) try Deferred.await(renewal)
