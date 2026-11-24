@@ -169,7 +169,8 @@ const calendarRowSchema = Schema.Struct({
   label: Schema.String,
   accessRole: Schema.String,
   read: Schema.Boolean,
-  write: Schema.Boolean
+  write: Schema.Boolean,
+  recurrenceLines: Schema.optionalKey(Schema.Literal(true))
 })
 export type CalendarRow = typeof calendarRowSchema.Type
 
@@ -188,12 +189,14 @@ const calendarEventSchema = Schema.Struct({
   conferenceLink: optionalText,
   etag: optionalText,
   seriesId: optionalText,
+  recurrence: Schema.optionalKey(Schema.Array(Schema.String)),
   organizer: Schema.NullOr(Schema.Struct({ email: optionalText, displayName: optionalText, self: Schema.Boolean })),
   attendees: Schema.Array(Schema.Struct({
     email: optionalText, displayName: optionalText, responseStatus: optionalText,
     self: Schema.Boolean, organizer: Schema.Boolean, optional: Schema.Boolean
   })),
-  metadata: Schema.Struct({ iCalUID: optionalText, createdAt: optionalText, updatedAt: optionalText })
+  metadata: Schema.Struct({ iCalUID: optionalText, createdAt: optionalText, updatedAt: optionalText,
+    originalStartTime: Schema.optionalKey(Schema.String) })
 })
 export type CalendarEvent = typeof calendarEventSchema.Type
 

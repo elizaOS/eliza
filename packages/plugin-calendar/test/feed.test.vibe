@@ -108,7 +108,7 @@ it.effect(`Read only the exact selected calendar and window through the cloud li
     const e1 = managedEventId(grant, "work", "e1")
     const read = try feed.read(work, window)
     assert.deepEqual(read.events.map((event) => [event.id, event.agentId, event.updatedAt, event.metadata.etag]), [[e1, "agent", "2026-11-20T10:00:00.000Z", "\"2\""]])
-    assert.equal(cloud.calls[2]?.path, `${api}/calendar/feed?${new URLSearchParams({ grantId: grant, calendarId: "work", ...window }).toString()}`)
+    assert.equal(cloud.calls[2]?.path, `${api}/calendar/feed?${new URLSearchParams({ grantId: grant, calendarId: "work", expectedAccountId: "subject-1", ...window }).toString()}`)
     assert.equal(rows.get(e1)?.calendarId, "work")
 
     const created = "2026-11-21T10:00:00.000Z"
@@ -166,11 +166,11 @@ function memoryCache(): CalendarCache {
 
 it.effect(`Read and change the managed Google calendar beside the resident one through the cloud link (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account")`, effect () => {
   const held = new Map<string, Record<string, unknown>>([["e1", card("work", "e1", {}, { etag: "\"1\"", organizer: self })]])
-  const health = { feed: true, edits: true }
+  const health = { feed: true, edits: true, recurringCreate: false }
   const writes: Call[] = []
   const cloud = cloudFake((call) => sync(() => {
     if (call.path === `${api}/accounts`) return answered(accounts([grant]))
-    if (call.path.startsWith(`${api}/calendar/calendars?`)) return answered([calendarRow("work")])
+    if (call.path.startsWith(`${api}/calendar/calendars?`)) return answered([calendarRow("work", health.recurringCreate ? { recurrenceLines: true } : {})])
     if (call.path.startsWith(`${api}/calendar/feed?`)) return health.feed ? answered(feedBody("work", [...held.values()])) : cloudRefused(503, { error: "provider_unavailable", retryable: true })
     const id = call.path.slice(`${api}/calendar/events/`.length).split("?")[0] ?? ""
     if (call.method === "GET") {
@@ -181,7 +181,8 @@ it.effect(`Read and change the managed Google calendar beside the resident one t
     if (!health.edits) return editsOff
     const body = call.body as Record<string, unknown>
     if (call.method === "POST") {
-      const made = card("work", `made${writes.length}`, {}, { title: body.title, startAt: body.startAt, endAt: body.endAt, etag: "\"1\"", organizer: self })
+      const made = card("work", `made${writes.length}`, {}, { title: body.title, startAt: body.startAt, endAt: body.endAt, etag: "\"1\"", organizer: self,
+        ...(body.recurrence === undefined ? {} : { recurrence: body.recurrence }) })
       held.set(made.externalId, made)
       return answered({ event: made }, 201)
     }
@@ -229,6 +230,24 @@ it.effect(`Read and change the managed Google calendar beside the resident one t
     health.feed = false
     const kept = try host.search(day)
     assert.deepEqual([kept?.events.map((event) => event.title).sort(), kept?.complete, kept?.sources.map((source) => source.status)], [["Review", "Standup, moved"], false, ["fresh", "stale"]])
+
+    health.edits = true
+    const series = { subaction: "create_event", calendarId: "work", title: "Piano", startAt: "2030-03-04T17:00:00Z", endAt: "2030-03-04T18:00:00Z", timeZone: "UTC",
+      repeat: "weekly", repeatUntil: "2030-03-25T17:00:00Z", skipStarts: ["2030-03-11T17:00:00Z"] }
+    const beforeSeries = writes.length
+    const old = try runCalendarAction(host, { ...ask, id: "message-5" }, series)
+    const refused = try approve()
+    assert.deepEqual([old.success, at(refused, "failure", "code"), writes.length], [true, "CALENDAR_RECURRENCE_UNSUPPORTED", beforeSeries])
+    health.recurringCreate = true
+    const current = try runCalendarAction(host, { ...ask, id: "message-6" }, series)
+    assert.deepEqual([current.success, (try approve()).result, writes.length, at(writes.at(-1)?.body, "recurrence")],
+      [true, "ChangeSucceeded", beforeSeries + 1, ["RRULE:FREQ=WEEKLY;UNTIL=20300325T170000Z", "EXDATE:20300311T170000Z"]])
+    const readBack = cloud.calls.filter((call) => call.method === "GET" && call.path.startsWith(`${api}/calendar/events/made`)).at(-1)
+    assert.equal(readBack === undefined ? undefined : param(readBack, "expectedAccountId"), "subject-1")
+    const parent = managedEventId(grant, "work", `made${writes.length}`)
+    const parentEdit = try runCalendarAction(host, { ...ask, id: "message-7" }, { subaction: "update_event", eventId: parent, title: "Entire series", recurrenceScope: "instance" })
+    const denied = try approve()
+    assert.deepEqual([parentEdit.success, at(denied, "failure", "code"), writes.length], [true, "CALENDAR_MANAGED_SERIES_REVIEW_REQUIRED", beforeSeries + 1])
   })
 })
 
