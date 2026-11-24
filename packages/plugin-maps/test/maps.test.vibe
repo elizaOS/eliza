@@ -644,7 +644,8 @@ it.live('Resume a route through two numbered questions using the offered places 
   try Effect.try(() => {
     const reply = (answer: typeof original): { text: string; messageId: string } => {
       if (!("json" in answer) || answer.status !== 200) throw new Error(`Missing Maps reply: ${JSON.stringify(answer)}`)
-      return answer.json as { text: string; messageId: string }
+      const { text, messageId } = answer.json as { text: string; messageId: string }
+      return { text, messageId }
     }
     assert.include(reply(original).text, "starting place")
     assert.include(reply(destination).text, "Far Pharmacy")
