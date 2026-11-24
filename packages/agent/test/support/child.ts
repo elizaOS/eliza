@@ -1,13 +1,43 @@
 // spec/agent/host/launch.md, "Story: Tell the supervisor why the process ended"; spec/agent/host/launch.md, "Story: Keep the credential out of every file and reply"
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { copyFile, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { createServer, type AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { Effect } from "effect";
+import { inject } from "vitest";
+import type { TestProject } from "vitest/node";
 import { request, type LocalAnswer, type Refusal } from "./socket-client.ts";
 import type { LaunchFrame } from "./scratch.ts";
 
 export const agentDir = resolve(import.meta.dirname, "../..");
-const compileCache = join(agentDir, ".cache", "vibelang");
+
+declare module "vitest" {
+  interface ProvidedContext {
+    agentCli: string;
+  }
+}
+
+export async function setup(project: TestProject): Promise<() => Promise<void>> {
+  const cache = join(agentDir, ".cache");
+  await mkdir(cache, { recursive: true });
+  const output = await mkdtemp(join(cache, "cli-test-"));
+  const remove = () => rm(output, { recursive: true, force: true });
+  try {
+    const { compilerCommand, findCompiler } = await import("vibelang/project");
+    const [compiler, args] = compilerCommand(findCompiler(agentDir), ["-p", "tsconfig.build.json", "--outDir", output]);
+    await promisify(execFile)(compiler, args, { cwd: agentDir, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024, killSignal: "SIGKILL" });
+    const executable = join(output, "src", "bin.js");
+    if (!(await stat(executable)).isFile()) throw new Error("Agent CLI build did not emit a regular executable");
+    const worklet = join("src", "voice", "capture.worklet.mjs");
+    await copyFile(join(agentDir, worklet), join(output, worklet));
+    project.provide("agentCli", executable);
+    return remove;
+  } catch (failure) {
+    await remove();
+    throw failure;
+  }
+}
 
 export type Transport =
   | { readonly kind: "socket"; readonly path: string }
@@ -84,10 +114,10 @@ export function startAgentChild(run: AgentRun): AgentChild {
   const lifetimeMs = run.timeoutMs ?? 120_000;
   const child = spawn(
     process.execPath,
-    ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", join(agentDir, "src/bin.vibe"), "serve", "--launch", run.launchFile, "--state", run.stateDir, ...transportArgs(run.transport)],
+    ["--no-warnings", inject("agentCli"), "serve", "--launch", run.launchFile, "--state", run.stateDir, ...transportArgs(run.transport)],
     {
       cwd: agentDir,
-      env: { HOME: run.stateDir, TMPDIR: run.stateDir, TZ: "UTC", VIBELANG_CACHE_DIR: compileCache, ...run.env },
+      env: { HOME: run.stateDir, TMPDIR: run.stateDir, TZ: "UTC", ...run.env },
       stdio: ["pipe", "pipe", "pipe"],
       timeout: lifetimeMs,
       killSignal: "SIGKILL",

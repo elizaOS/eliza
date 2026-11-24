@@ -1,5 +1,5 @@
-// spec/agent/conversation/conversations.md, "Story: Create and find my conversations", "Messages and model-call log rows arrive only in a published conversation"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
-// spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend", "A room runs one turn at a time, and only an admitted or recovered message changes anything", "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"
+// spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"
 // spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain"
 // spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"
 // spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"
@@ -321,6 +321,24 @@ module node {
     })
   }
 
+  function failureFields(failure: Failure): Pick<TurnReply, "failureKind" | "planAction" | "retryAfterMs" | "cutOffEffect"> {
+    const kind = replyKind(failure)
+    const planAction = planActionOf(kind)
+    const wait = providerWaitMs(kind, Date.now())
+    return {
+      failureKind: failure.kind,
+      ...(planAction === "sign-in" || planAction === "funding" || planAction === "retry" ? { planAction } : {}),
+      ...(wait < 0 ? {} : { retryAfterMs: wait }),
+      ...(failure.cutOffEffect === undefined ? {} : { cutOffEffect: failure.cutOffEffect }),
+    }
+  }
+
+  function replyForRequest(body: SendAnswer["body"], headers: ReadonlyMap<string, string>): SendAnswer["body"] {
+    if ("error" in body || body.cutOffEffect === undefined || publishesCutOffEffect(true, headers.get("x-eliza-device-cut-off-effect") === "applied")) return body
+    const { cutOffEffect: _cutOffEffect, ...reply } = body
+    return reply
+  }
+
   export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void, device?: DeviceTurnPort): LocalRoute[] {
     if (!runtime.messageService) throw new Error("A conversation requires the message service")
     const rooms = () => runtime.getRooms(owner.world)
@@ -330,25 +348,9 @@ module node {
     const live = new Map<UUID, RunningSend>()
     const stopping = new Map<UUID, Promise<ReturnType<typeof okay>>>()
     const boot = randomUUID()
-    const failureFields = (failure: Failure): Pick<TurnReply, "failureKind" | "planAction" | "retryAfterMs" | "cutOffEffect"> => {
-      const kind = replyKind(failure)
-      const planAction = planActionOf(kind)
-      const wait = providerWaitMs(kind, Date.now())
-      return {
-        failureKind: failure.kind,
-        ...(planAction === "sign-in" || planAction === "funding" || planAction === "retry" ? { planAction } : {}),
-        ...(wait < 0 ? {} : { retryAfterMs: wait }),
-        ...(failure.cutOffEffect === undefined ? {} : { cutOffEffect: failure.cutOffEffect }),
-      }
-    }
     const answer = (text: string, messageId: UUID, userMessageId: UUID, failure?: Failure, taskChoices?: readonly TaskChoiceWidget[], actionResults: TurnReply["actionResults"] = [], action?: VoiceAction) =>
       okay({ fullText: text, text, agentName, messageId, userMessageId, actionResults, ...(action === undefined ? {} : { action }),
         ...(failure === undefined ? {} : failureFields(failure)), ...(taskChoices === undefined ? {} : { taskChoices }) } satisfies TurnReply)
-    const replyForRequest = (body: SendAnswer["body"], headers: ReadonlyMap<string, string>): SendAnswer["body"] => {
-      if ("error" in body || body.cutOffEffect === undefined || publishesCutOffEffect(true, headers.get("x-eliza-device-cut-off-effect") === "applied")) return body
-      const { cutOffEffect: _cutOffEffect, ...reply } = body
-      return reply
-    }
 
     async function send(
       room: Room, parsed: Extract<ParsedTurn, { kind: "input" }>, signal: AbortSignal, headers: ReadonlyMap<string, string>, stream?: StreamDelivery,
