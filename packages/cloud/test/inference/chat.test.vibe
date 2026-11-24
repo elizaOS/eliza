@@ -96,6 +96,34 @@ effect function hangUpAfterFirstBytes(url: string, key: string) {
 }
 
 describe("WP5 Inference: chat completions", () => {
+  it.live('Admit a selected image without increasing the ordinary chat budget (spec/cloud/services/inference.md, "A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers")', () => scoped(effect {
+    const { cloud, llm, chat } = try chatCloud(true)
+    const image = (url: string) => ({ type: "image_url", image_url: { url } })
+    const data = (bytes: number) => image("data:image/png;base64," + "A".repeat(bytes))
+    const withImages = (content: ReadonlyArray<ReturnType<typeof image> | { type: string; text: string }>) =>
+      ({ ...request, model: "wide-chat", messages: [{ role: "user", content }] })
+    const text = "a".repeat(256 * 1024)
+    const textOnly = try chat({ ...request, messages: [{ role: "user", content: text }] })
+    const extraText = try chat(withImages([{ type: "text", text }, data(384 * 1024)]))
+    const remote = try chat(withImages([image(`https://example.test/image?${text}`)]))
+    const extraImage = try chat(withImages(Array.from({ length: 5 }, () => data(4))))
+    const largeImage = try chat(withImages([data(5 * 1024 * 1024 + 4)]))
+    const malformed = try chat(withImages([image("data:image/png;base64,!")]))
+    const holdsBefore = try sql(cloud, "SELECT phase FROM holds", [])
+    const callsBefore = llm.bodies.length
+    const selected = withImages([data(5 * 1024 * 1024)])
+    const key = { "idempotency-key": "00000000-0000-0000-0000-000000000041" }
+    const accepted = try chat(selected, key)
+    const replay = try chat(selected, key)
+    const rows = try usageRows(cloud, "org-owner")
+    try check(() => {
+      assert.deepStrictEqual([textOnly, extraText, remote, extraImage, largeImage].map((answer) => status(answer)),
+        Array.from({ length: 5 }, () => [413, "content_too_large", undefined]))
+      assert.strictEqual(malformed.status, 400)
+      assert.deepStrictEqual([holdsBefore.length, callsBefore, accepted.status, replay.status, llm.bodies.length, rows.length], [0, 0, 200, 409, 1, 1])
+    })
+  }))
+
   it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent and answering a provider's refusal of the request as the caller's (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/inference.md, \"A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
     const { cloud, llm, chat } = try chatCloud(true)
     const { model, messages } = request
