@@ -3,11 +3,19 @@ import { ModelType, Service, ServiceType, type IAgentRuntime, type Plugin } from
 import { Machine, machine, normalizedPdfLast, type PdfReadMode, type TextRun } from "../gen/pdf.effect.vibe"
 
 module node {
-  import { getDocumentProxy, renderPageAsImage } from "unpdf"
+  import { getResolvedPDFJS, renderPageAsImage } from "unpdf"
 
-  export const openPdf = getDocumentProxy
+  export const resolvePdfLoader = getResolvedPDFJS
+  type PdfLoader = Awaited<ReturnType<typeof getResolvedPDFJS>>
+  type PdfLoadingTask = ReturnType<PdfLoader["getDocument"]>
 
-  export function renderPdfPage(pdf: Awaited<ReturnType<typeof getDocumentProxy>>, pageNumber: number, scale: number) {
+  export function startPdf(loader: PdfLoader, input: Uint8Array): PdfLoadingTask {
+    const task = loader.getDocument({ data: Uint8Array.from(input), useSystemFonts: true })
+    void task.promise.catch(() => undefined)
+    return task
+  }
+
+  export function renderPdfPage(pdf: Awaited<PdfLoadingTask["promise"]>, pageNumber: number, scale: number) {
     return renderPageAsImage(pdf, pageNumber, { canvasImport: () => import("@napi-rs/canvas"), scale, toDataURL: true })
   }
 
@@ -15,7 +23,7 @@ module node {
     return Uint8Array.from(Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"))
   }
 }
-import { openPdf, pngBytes, renderPdfPage } from node
+import { pngBytes, renderPdfPage, resolvePdfLoader, startPdf } from node
 
 export error PdfExtractionFailed { reason: string; cause?: unknown }
 
@@ -74,11 +82,14 @@ effect function ensureCurrent(options: PdfReadOptions) {
 effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: PdfReadOptions, mode: PdfReadMode) {
   if (!hasHeader(bytes)) throw new PdfExtractionFailed({ reason: "The input is not a PDF." })
   try ensureCurrent(options)
-  const document = try tryPromise({
-    try: () => openPdf(Uint8Array.from(bytes)),
-    catch: (cause) => new PdfExtractionFailed({ reason: "The PDF could not be opened.", cause }),
-  })
-  return try ensuring(effect {
+  const openFailed = (cause: unknown) => new PdfExtractionFailed({ reason: "The PDF could not be opened.", cause })
+  return try scoped(effect {
+    const loader = try tryPromise({ try: resolvePdfLoader, catch: openFailed })
+    const task = try acquireRelease(
+      Effect.try({ try: () => startPdf(loader, bytes), catch: openFailed }),
+      (owned) => Effect.ignore(tryPromise(() => owned.destroy())),
+    )
+    const document = try tryPromise({ try: () => task.promise, catch: openFailed })
     const pageCount = document.numPages
     const complete = mode === "CompleteDocument"
     const first = complete ? 1 : options.startPage ?? 1
@@ -162,7 +173,7 @@ effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: P
       try read.send({ type: "publishPdfRead", authorized: true })
       return { pageCount, pages, text: pages.map((page) => page.text).join("\n\n") } satisfies PdfDocumentExtraction
     }
-  }, tryPromise(() => document.destroy()).pipe(Effect.ignore))
+  })
 }
 
 export class PdfService extends Service {

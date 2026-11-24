@@ -40,6 +40,8 @@ type TextRun = { letters: str, hardBreak: bool }
 ### Complete extraction visits every selected page in order
 
 An extraction is scoped to one immutable request and its bound document.
+The request owns the loading task from creation and releases it on
+completion, failed loading or extraction, and cancellation.
 Render and inspect every declared page in order. The shell rechecks the caller at
 entry and before each OCR or model dispatch, forwards cancellation,
 and decodes the correctly correlated page's observation before recording
