@@ -1,5 +1,6 @@
 // spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"
 import type { CalendarRow } from "./document.vibe"
+import { getZonedDateParts } from "../clock.vibe"
 
 export interface CalendarRecurrence {
   readonly rule: "daily" | "weekdays" | "weekly"
@@ -33,8 +34,27 @@ export function reviewedRecurrenceLines(recurrence: CalendarRecurrence | null): 
   return recurrence === null ? [] : recurrenceLines(rowRecurrence(recurrence))
 }
 
-export function holdsRecurrence(lines: readonly string[] | null | undefined, recurrence: CalendarRecurrence | null): boolean {
+function dateStamp(value: string, zone: string): string | undefined {
+  const parts = getZonedDateParts(new Date(value), zone)
+  if (parts === undefined) return undefined
+  return String(parts.year).padStart(4, "0") + String(parts.month).padStart(2, "0") + String(parts.day).padStart(2, "0")
+}
+
+export function reviewedGoogleRecurrenceLines(recurrence: CalendarRecurrence | null, allDayZone?: string): string[] | undefined {
+  if (recurrence === null || allDayZone === undefined) return reviewedRecurrenceLines(recurrence)
+  const bound = recurrence.until === undefined ? undefined : dateStamp(recurrence.until, allDayZone)
+  if (recurrence.until !== undefined && bound === undefined) return undefined
+  const excluded: string[] = []
+  for (const start of recurrence.excluded ?? []) {
+    const date = dateStamp(start, allDayZone)
+    if (date === undefined) return undefined
+    excluded.push(`EXDATE;VALUE=DATE:${date}`)
+  }
+  return [rules[recurrence.rule] + (bound === undefined ? "" : `;UNTIL=${bound}`), ...[...new Set(excluded)].sort()]
+}
+
+export function holdsRecurrence(lines: readonly string[] | null | undefined, recurrence: CalendarRecurrence | null, allDayZone?: string): boolean {
   const read = [...new Set(lines ?? [])].sort()
-  const reviewed = reviewedRecurrenceLines(recurrence).sort()
-  return read.length === reviewed.length && read.every((line, index) => line === reviewed[index])
+  const reviewed = reviewedGoogleRecurrenceLines(recurrence, allDayZone)?.sort()
+  return reviewed !== undefined && read.length === reviewed.length && read.every((line, index) => line === reviewed[index])
 }

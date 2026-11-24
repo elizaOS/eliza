@@ -19,8 +19,8 @@ export type WindowAdmission =
 export interface WindowUsage {
   readonly pcmBytes: number
   readonly ttsChars: number
-  readonly sttDrained: boolean
-  readonly ttsConfirmed: boolean
+  readonly sttFinal: boolean
+  readonly ttsFinal: boolean
   readonly dispatched: boolean
   readonly superseded?: true
 }
@@ -91,6 +91,7 @@ interface Shell {
   queued: number
   gone: boolean
   renewal: Deferred.Deferred<void> | undefined
+  settling: Deferred.Deferred<void> | undefined
 }
 
 type Arrival =
@@ -335,7 +336,7 @@ effect function renew(ports: RelayPorts, sessionId: string, window: Window): Arr
 effect function recordWindow(ports: RelayPorts, sessionId: string, window: Window, sttDrained: boolean, ttsConfirmed: boolean) {
   if (window.settled) return
   const usage: WindowUsage = {
-    pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttDrained, ttsConfirmed, dispatched: window.dispatched,
+    pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttFinal: sttDrained, ttsFinal: ttsConfirmed, dispatched: window.dispatched,
     ...(window.superseded ? { superseded: true as const } : {})
   }
   const settled = (effect {
@@ -360,7 +361,11 @@ effect function watchWindow(shell: Shell, ports: RelayPorts, sessionId: string, 
     const renewal = try Deferred.make<void>()
     shell.renewal = renewal
     const outcome = try ensuring(effect {
-      try timeoutOption(recordSuperseded(shell, ports, sessionId), Duration.millis(settlementJoinMs))
+      try timeoutOption(effect {
+        const settling = shell.settling
+        if (settling !== undefined) try Deferred.await(settling)
+        try recordSuperseded(shell, ports, sessionId)
+      }, Duration.millis(settlementJoinMs))
       if (shell.relay.phase !== "RelayLive" || shell.gone) return providerFailed
       const arrival = renew(ports, sessionId, window) catch effect (failure) => {
         try annotateLogs(logError("a speech window could not be renewed"), { sessionId, window: window.number + 1, failure: failure._tag })
@@ -373,6 +378,16 @@ effect function watchWindow(shell: Shell, ports: RelayPorts, sessionId: string, 
   }
   try untilAt(window.expiresAt)
   try Queue.offer(arrivals, { kind: "deadline", window: window.number })
+}
+
+effect function settleEnded(shell: Shell, ports: RelayPorts, sessionId: string, window: Window) {
+  const previous = shell.settling
+  const settling = try Deferred.make<void>()
+  shell.settling = settling
+  fork.scoped ensuring(effect {
+    if (previous !== undefined) try Deferred.await(previous)
+    try recordWindow(ports, sessionId, window, false, false)
+  }, Deferred.succeed(settling, undefined))
 }
 
 effect function windowEnds(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, writer: Socket.Writer, number: number) {
@@ -394,7 +409,7 @@ effect function windowEnds(shell: Shell, ports: RelayPorts, sessionId: string, a
   next.dispatched = true
   shell.current = next.number
   previous.superseded = true
-  fork.scoped recordWindow(ports, sessionId, previous, false, false)
+  try settleEnded(shell, ports, sessionId, previous)
   fork.scoped watchWindow(shell, ports, sessionId, arrivals, next)
 }
 
@@ -500,6 +515,8 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   const ttsConfirmed = synthesisUsageConfirmed(shell.graceful, utterancesFinished, ttsStopped)
   const renewal = shell.renewal
   if (renewal !== undefined) try Deferred.await(renewal)
+  const settling = shell.settling
+  if (settling !== undefined) try Deferred.await(settling)
   for (const window of shell.windows) {
     try recordWindow(ports, sessionId, window, sttDrained, ttsConfirmed)
   }
@@ -508,7 +525,7 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
 effect function serve(ports: RelayPorts, sessionId: string, socket: Socket.Socket) {
   const shell: Shell = {
     relay: relayAtUpgrade, windows: [], current: 0, refusal: undefined, stt: undefined, tts: undefined,
-    transcripts: [], spoken: new Set(), ttsUncertain: false, graceful: false, queued: 0, gone: false, renewal: undefined
+    transcripts: [], spoken: new Set(), ttsUncertain: false, graceful: false, queued: 0, gone: false, renewal: undefined, settling: undefined
   }
   const session = effect {
     const reader = try socket.reader

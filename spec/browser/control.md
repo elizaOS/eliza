@@ -351,6 +351,12 @@ document, including a change of fragment, requires an exact direct open
 for the full proposed address. A permissively grounded address cannot
 substitute for that authorization.
 
+The owner may withdraw a reload by naming it in a refusal or with a short
+withdrawal directly after its clause. A short withdrawal after another
+request applies to that request. Opening the same withheld page requires
+a direct request to open the exact normalized address. A fragment change
+still reaches the same page and its exact address must be authorized.
+
 ```quint
 type CarriedPage = NoPageCarried | PageTextRead | PageTextUnreadable | PageTextSensitive
 type HistoryMove = MoveBack | MoveForward | MoveReload | MoveStop
@@ -371,6 +377,8 @@ pure def withheldReopenRefused(withheld: bool, sameDocument: bool, exactOpen: bo
 pure def lawWithheldReopenNeedsAnExactOpen(exactOpen: bool): bool =
   withheldReopenRefused(true, true, exactOpen) == not(exactOpen)
 pure def pageWithheld(page: CarriedPage): bool = page == PageTextUnreadable or page == PageTextSensitive
+pure def pageReopenRefused(page: CarriedPage, samePage: bool, exactOpen: bool): bool =
+  pageWithheld(page) and samePage and not(exactOpen)
 pure def historyMoveRefused(move: HistoryMove, page: CarriedPage, ownerAskedReload: bool): bool =
   move == MoveReload and pageWithheld(page) and not(ownerAskedReload)
 pure def lawAnUnaskedReloadOfAWithheldPageIsRefused(page: CarriedPage): bool =

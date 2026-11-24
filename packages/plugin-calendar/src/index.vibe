@@ -3,7 +3,7 @@ import type { IAgentRuntime, Plugin } from "@elizaos/core"
 import { registerOwnerActionRelevance } from "@elizaos/agent"
 import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import { calendarProposalFamily } from "./plugin/device-proposals.vibe"
-import { calendarAction, calendarActionName, calendarAsk, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
+import { calendarAction, calendarActionName, calendarAsk, calendarContext, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
 import type { CalendarHost } from "./plugin/host.vibe"
 import { linkedCalendarRoutes } from "./plugin/linked-routes.vibe"
 import { calendarRoutes, type CalendarRoute } from "./plugin/routes.vibe"
@@ -61,6 +61,7 @@ export function calendarPlugin(): CalendarPlugin {
     })],
     init: async (_config, runtime) => {
       started = runtime
+      runtime.contexts.tryRegister(calendarContext)
       registerOwnerActionRelevance(calendarAction, calendarRequestRelevance)
       await runPromise(registerDeviceProposalFamily(runtime, calendarProposalFamily))
     },

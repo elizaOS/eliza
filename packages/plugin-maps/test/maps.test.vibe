@@ -2,7 +2,8 @@
 import { assert, it, layer } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
-import { getDirectActionRoutingRules, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
+import { activityLabel } from "@elizaos/agent"
+import { ContextRegistry, getDirectActionRoutingRules, TurnControllerRegistry, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
 import { mapsChat, mapsToolCall } from "./support/cloud.ts"
 import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
 import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
@@ -246,7 +247,7 @@ it.live('Plan directions and keep me in control of guidance: an agent request wa
   }))
 })
 
-it.live('Navigate again when the phone never received my request: a lost delivery is delivered again to the same offer after its lease lapses, the phone runs it once and answers once, and the agent bundle reaches the phone that opened its relay for the turn\'s conversation (spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer")', effect () => {
+it.live('Navigate again when the phone never received my request: a lost delivery is delivered again to the same offer after its lease lapses, the phone runs it once and answers once, the agent bundle reaches the phone that opened its relay for the turn\'s conversation, showing Maps while it works, and a request made once its turn has ended never reaches the phone (spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer"; spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results")', effect () => {
   const relay = try mapsNavigationRelay({ leaseMs: 40, commandMs: 3_000, liveMs: 2_000, idleMs: 30_000, pollMs: 20 })
   const conversationId = "11111111-2222-4333-8444-555555555555"
   const agent = relay.navigation("phone-scope", conversationId, () => true)
@@ -276,9 +277,13 @@ it.live('Navigate again when the phone never received my request: a lost deliver
   const status = try agent.start({ destination: towerRef, travelMode: "walk" })
   try Fiber.interrupt(turn)
   const roomId = "66666666-2222-4333-8444-555555555555"
+  const turns = new TurnControllerRegistry()
   const runtime = {
+    contexts: try Effect.try(() => new ContextRegistry()),
     getService: () => linkFake().link,
     getRoom: (id: string) => Promise.resolve(id === roomId ? { id: roomId, metadata: { deviceConversation: { id: conversationId, createdAt: 1, updatedAt: 1 } } } : null),
+    turnControllers: turns,
+    contexts: { tryRegister: () => true },
   } as unknown as IAgentRuntime
   try promise(() => mapsPlugin.init?.({}, runtime) ?? Promise.resolve())
   const route = mapsPlugin.routes?.[0]
@@ -291,10 +296,15 @@ it.live('Navigate again when the phone never received my request: a lost deliver
   const stopAction = mapsPlugin.actions?.find((found) => found.name === "MAPS_NAVIGATION_STOP")
   const phoneTurn = fork withMapsNavigationRelay(phoneHost, viaBundle, conversationId, sleep("1500 millis"))
   try sleep("50 millis")
-  const stopped = try promise(async () => await stopAction?.handler(runtime, { entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text: "stop navigation", source: "device" } } as unknown as Memory, undefined, {}))
+  const stopTurn = { entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text: "stop navigation", source: "device" } } as unknown as Memory
+  const afterItsTurn = try promise(async () => await stopAction?.handler(runtime, stopTurn, undefined, {}))
+  const stopped = try promise(() => turns.runWith(roomId, async () => await stopAction?.handler(runtime, stopTurn, undefined, {})))
   try Fiber.interrupt(phoneTurn)
-  try Effect.try(() => assert.deepStrictEqual({ available, status: status.state, route: status.route?.durationSeconds, runs, stopped: [stopped?.success, (stopped?.data as { readonly status?: { readonly state: string } } | undefined)?.status?.state] },
-    { available: true, status: "awaiting-confirmation", route: 720, runs: ["start", "stop"], stopped: [true, "stopped"] }))
+  try Effect.try(() => assert.deepStrictEqual({
+    available, status: status.state, route: status.route?.durationSeconds, runs, afterItsTurn: afterItsTurn?.success,
+    stopped: [stopped?.success, (stopped?.data as { readonly status?: { readonly state: string } } | undefined)?.status?.state],
+    label: activityLabel(runtime, stopAction),
+  }, { available: true, status: "awaiting-confirmation", route: 720, runs: ["start", "stop"], afterItsTurn: false, stopped: [true, "stopped"], label: "Using Maps" }))
 })
 
 it.live('A command delivered to an offer that is then replaced is abandoned rather than replayed, and a queued one reaches the new offer (spec/maps/relay.md, "A queued command waits for the phone\'s current offer and survives a new offer it never reached")', effect () => {
@@ -480,7 +490,7 @@ layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Map
       const searches = bodies.filter(({ path }) => path.endsWith("/places/search"))
       assert.deepStrictEqual({
         sawSelection: prompts[0]?.includes(selectedObject.id),
-        priorPlace: planningRequest.messages.some(({ role, content }) => role === "user" && content === "Show me Coit Tower on the map."),
+        priorPlace: planningRequest.messages.some(({ role, content }) => role === "user" && typeof content === "string" && content.endsWith("] Show me Coit Tower on the map.")),
         coached: prompts[1]?.includes("MAPS_SELECTION_HANDLE") && prompts[1]?.includes("destination"),
         lookupsOfHandle: sentDetails.length,
         searches: searches.map(({ body }) => body),
@@ -513,7 +523,7 @@ it.effect('Keep my saved places safe on this phone: saving the same place again 
   }
 })
 
-function linkFake() {
+function linkFake(offered: unknown = offer) {
   const bodies: Array<{ readonly path: string; readonly body: unknown; readonly key: boolean }> = []
   const link: MapsCloudLink = {
     async request(request) {
@@ -523,7 +533,7 @@ function linkFake() {
       const chicagoUnion = place("union-chicago", "Union Station", { latitude: 41.8787, longitude: -87.6403 }, "225 S Canal St, Chicago, IL 60606, USA")
       const washingtonUnion = place("union-dc", "Union Station", { latitude: 38.8971, longitude: -77.0064 }, "50 Massachusetts Ave NE, Washington, DC 20002, USA")
       switch (request.path) {
-        case "/api/v1/maps/capabilities": return { kind: "answered", status: 200, body: offer }
+        case "/api/v1/maps/capabilities": return { kind: "answered", status: 200, body: offered }
         case "/api/v1/maps/places/search": {
           const query = (request.body as { readonly query: string }).query
           if (query === "Golden Gate Park") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("park", "Golden Gate Park", { latitude: 37.7694, longitude: -122.4862 }, "San Francisco, CA, USA"), place("district", "Golden Gate Park", { latitude: 37.77, longitude: -122.47 }, "Golden Gate Park, San Francisco, CA, USA")] } }
@@ -533,6 +543,7 @@ function linkFake() {
           if (query === "Union Station, Washington, DC") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [chicagoUnion, washingtonUnion] } }
           if (query === "Union Square") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("union-nyc", "Union Square", { latitude: 40.7359, longitude: -73.9911 }, "New York, NY 10003, USA"), place("union-sf", "Union Square", { latitude: 37.788, longitude: -122.4075 }, "San Francisco, CA 94108, USA")] } }
           if (query === "Union Station in Washington") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [chicagoUnion] } }
+          if (query === "the Ferry Plaza") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("plaza", "Ferry Plaza", ferry, "San Francisco, CA, USA"), place("plaza-market", "Ferry Plaza Farmers Market", { latitude: 37.7956, longitude: -122.3935 }, "1 Ferry Building, San Francisco, CA, USA"), place("plaza-seafood", "Ferry Plaza Seafood", tower, "1 Telegraph Hill Blvd, San Francisco, CA, USA")] } }
           if (query === "Nowhere Plaza") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [] } }
           if (query === "Broken Plaza") return { kind: "answered", status: 200, body: { providerId: "google", places: [] } }
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("tower", "Coit Tower", tower)] } }
@@ -684,15 +695,18 @@ function messageWith(location: JsonObject | undefined, text = "coffee near me"):
   return { ...turn, content: { ...turn.content, metadata: { observation } } }
 }
 
-it.live('Search near me with where my phone is now: a recent reported position searches around the phone at any accuracy, an old one asks the phone for its location, routes keep their alternatives and attribution, a route from here goes to the phone with its destination, a place named with its locality is never a namesake elsewhere, a landmark and its same-named area are one place while same-named branches still ask, a kind of place near a named place is searched around that place even when only the owner\'s words name it, a place not found or not one is said or asked, coordinates are looked up or searched around, a destination is searched around the start, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone\'s position"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "A route\'s destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes")', effect () => {
-  const { link, bodies } = linkFake()
-  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+it.live('Search near me with where my phone is now: a recent reported position searches around the phone at any accuracy, an old one asks the phone for its location, routes keep their alternatives and attribution, a route from here goes to the phone with its destination, a place named with its locality is never a namesake elsewhere, a landmark and its same-named area are one place while same-named branches still ask, a kind of place near a named place is searched around that place even when only the owner\'s words name it, a place not found or not one is said or asked, coordinates are looked up or searched around, a destination is searched around the start, a first result named as asked is taken with the parts of its site around it, a route planned without traffic is warned on its card, every answer is the action\'s own text and an unreachable Maps says asking again can help, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone\'s position"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "A route\'s destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/routing.md, "Only the owner\'s next turn answers an open question, by its position or the place\'s name, within ten minutes"; spec/maps/routing.md, "A first result named as asked is taken when the others are parts of it or mostly around it"; spec/maps/routing.md, "Every Maps answer is the action\'s own text, and a failure says whether asking again can help"; spec/maps/routing.md, "Places found around a point are listed nearest first with how far each is"; spec/maps/routing.md, "A route planned without any traffic says so on its card")', effect () => {
+  const { link, bodies } = linkFake({ ...offer, capabilities: { ...offer.capabilities, distanceRank: true } })
+  const older = linkFake()
+  const pluginOver = (cloud: MapsCloudLink) => createMapsPlugin({ cloud: () => cloud, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const plugin = pluginOver(link)
   const runtime = {} as IAgentRuntime
-  const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
-    const action = plugin.actions?.find((found) => found.name === name)
+  const actOn = (on: typeof plugin, name: string, message: Memory, parameters: JsonObject) => promise(async () => {
+    const action = on.actions?.find((found) => found.name === name)
     if (action === undefined) throw new Error(`${name} is not registered`)
     return await action.handler(runtime, message, undefined, { parameters })
   })
+  const act = (name: string, message: Memory, parameters: JsonObject) => actOn(plugin, name, message, parameters)
   const now = Date.now()
   const recent = messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25, capturedAt: now - 60_000 })
   const old = messageWith({ latitude: here.latitude, longitude: here.longitude, capturedAt: now - 31 * 60_000 })
@@ -709,6 +723,9 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const anchored = try act("MAPS_PLACE", old, { query: "pharmacy near the Ferry Building", useCurrentLocation: true })
   const aroundStart = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Union Square", travelMode: "walk" })
   const anywhere = try act("MAPS_SELECT", recent, { query: "Union Square" })
+  const site = try act("MAPS_SELECT", recent, { query: "the Ferry Plaza" })
+  const unreachable = createMapsPlugin({ cloud: () => ({ async request() { throw new Error("Cloud is unreachable") } }), navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const down = try promise(async () => await unreachable.actions?.find((found) => found.name === "MAPS_COVERAGE")?.handler(runtime, recent, undefined, { parameters: {} }))
   const provider = try promise(() => phonePositionProvider.get(runtime, recent, {} as never))
   const rough = try act("MAPS_PLACE", messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25_000, capturedAt: now - 60_000 }), { query: "pharmacy", useCurrentLocation: true })
   const tail = try act("MAPS_PLACE", recent, { query: "coffee near me right now" })
@@ -721,6 +738,9 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const namesakeFromHere = try act("MAPS_ROUTE", old, { origin: "my current location", destination: "Union Square" })
   const whichAnchor = try act("MAPS_PLACE", recent, { query: "pharmacy near Union Square" })
   const second = try act("MAPS_PLACE", messageWith(undefined, "the second one"), {})
+  const olderCloud = try actOn(pluginOver(older.link), "MAPS_PLACE", recent, { query: "pharmacy", useCurrentLocation: true })
+  const ranksOf = (sent: typeof bodies, query: string) => [...new Set(sent.filter((made) => made.path === "/api/v1/maps/places/search" && (made.body as { readonly query: string }).query === query)
+    .map((made) => (made.body as { readonly rank?: string }).rank))]
   const routeText = route.text ?? ""
   const nearByCard = recognizedMapsCards(nearBy.text ?? "")[0]?.card
   const fenced = `\`\`\`\n${appendMapsCard("", { kind: "place", place: { name: "X", latitude: 1, longitude: 1, provider: "p", providerPlaceId: "x", categories: [] }, attribution: null })}\n\`\`\``
@@ -732,7 +752,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     searchedNear: (searched?.body as { readonly near?: unknown } | undefined)?.near, keyed: searched?.key,
     asked: [asked.success, (asked.data as { readonly state: string }).state, recognizedMapsCards(asked.text ?? "")[0]?.card.kind],
     nearBy: [nearBy.success, nearByCard?.kind, nearByCard?.kind === "locate" ? nearByCard.query : undefined],
-    route: [route.success, routeText.includes("Alternatives: 1. 20 min"), routeText.includes("Google Maps Platform via Eliza Cloud"), recognizedMapsCards(routeText).map((found) => found.card.kind)],
+    route: [route.success, routeText.includes("Alternatives: 1. 20 min"), routeText.includes("Google Maps Platform via Eliza Cloud"), recognizedMapsCards(routeText).map((found) => found.card.kind === "route" ? found.card.warnings : found.card.kind)],
     plain: withoutMapsCards(routeText).includes("MAPSCARD"),
     fromHere: [fromHere.success, locateCard(fromHere)],
     landmark: [park.success, chain.success, (chain.data as { readonly choice?: string }).choice],
@@ -744,6 +764,9 @@ it.live('Search near me with where my phone is now: a recent reported position s
     anchored: [anchored.success, (anchored.text ?? "").startsWith("Near Ferry Building:"), searchedNear("pharmacy")[1], nearPlace(anchored)],
     aroundStart: [aroundStart.success, (aroundStart.data as { readonly destination?: { readonly providerPlaceId: string } }).destination?.providerPlaceId, searchedNear("Union Square")[0]],
     anywhere: [anywhere.success, (anywhere.data as { readonly choice?: string }).choice],
+    site: [site.success, (site.data as { readonly place?: { readonly providerPlaceId: string } }).place?.providerPlaceId],
+    ownWordsShown: [route.verifiedUserFacing, route.userFacingText === route.text, chain.verifiedUserFacing, chain.userFacingText === chain.text],
+    down: [down?.success, down?.data],
     provider: provider.values,
     fenced: recognizedMapsCards(fenced).length,
     kinds: [nearbyPlaceKind("the nearest pharmacy"), nearbyPlaceKind("round to the nearest dollar"), nearbyPlaceKind("coffee near me"), nearbyPlaceKind("coffee near me, thanks"),
@@ -756,12 +779,13 @@ it.live('Search near me with where my phone is now: a recent reported position s
     fromHereCards: [locateCard(nearestFromHere), locateCard(namesakeFromHere)],
     whichAnchor: [whichAnchor.success, (whichAnchor.data as { readonly choice?: string }).choice],
     second: [second.success, (second.text ?? "").startsWith("Near Union Square:"), searchedNear("pharmacy")[5]],
+    ranks: [ranksOf(bodies, "pharmacy"), ranksOf(bodies, "Ferry Building"), ranksOf(bodies, "Union Square"), olderCloud.success, ranksOf(older.bodies, "pharmacy")],
   }, {
     nearby: [true, ["near", "far"]],
     searchedNear: { latitude: here.latitude, longitude: here.longitude }, keyed: true,
     asked: [false, "awaiting-location", "locate"],
     nearBy: [false, "locate", "pharmacy"],
-    route: [true, true, true, ["route"]],
+    route: [true, true, true, [["No live traffic."]]],
     plain: false,
     fromHere: [false, ["route-origin", undefined, "Coit Tower", undefined]],
     landmark: [true, false, "destination"],
@@ -770,6 +794,9 @@ it.live('Search near me with where my phone is now: a recent reported position s
     anchored: [true, true, ferry, "Ferry Building"],
     aroundStart: [true, "union-sf", ferry],
     anywhere: [false, "place"],
+    site: [true, "plaza"],
+    ownWordsShown: [true, true, true, true],
+    down: [false, { code: "offline", retryable: true }],
     provider: { phonePositionAvailable: true },
     fenced: 0,
     kinds: ["pharmacy", undefined, "coffee", "coffee", "gas", "food", "pharmacy", undefined],
@@ -781,6 +808,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     fromHereCards: [["route-origin", "nearest pharmacy", undefined, "walk"], ["route-origin", "Union Square", undefined, undefined]],
     whichAnchor: [false, "place to search near"],
     second: [true, true, { latitude: 37.788, longitude: -122.4075 }],
+    ranks: [["distance"], [undefined], [undefined], true, [undefined]],
   }))
 })
 
@@ -889,15 +917,15 @@ function memoryStore(): AgentSavedPlaceStore {
 
 let ownerTurnSequence = 0
 
-function ownerTurn(text: string, roomId = "00000000-0000-4000-8000-000000000002"): Memory {
-  const id = `00000000-0000-4000-8000-${String(++ownerTurnSequence).padStart(12, "0")}`
+function ownerTurn(text: string, roomId = "00000000-0000-4000-8000-000000000002", suppliedId?: string): Memory {
+  const id = suppliedId ?? `00000000-0000-4000-8000-${String(++ownerTurnSequence).padStart(12, "0")}`
   return { id, entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text, source: "device" } } as unknown as Memory
 }
 
-it.live('An unrelated owner turn closes the Maps choice, while routing the immediate answer twice keeps it tied to the original request (spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes")', effect () => {
+it.live('An unrelated owner turn closes the Maps choice, while routing the immediate answer twice keeps it tied to the original request (spec/maps/routing.md, "Only the owner\'s next turn answers an open question, by its position or the place\'s name, within ten minutes")', effect () => {
   const { link } = linkFake()
   const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
-  const runtime = {} as IAgentRuntime
+  const runtime = { contexts: { tryRegister: () => true } } as unknown as IAgentRuntime
   const navigation = plugin.actions?.find(({ name }) => name === "MAPS_NAVIGATION_START")
   if (navigation === undefined) throw new Error("Missing Maps navigation action")
   try promise(async () => { await plugin.init?.({}, runtime) })
@@ -927,11 +955,15 @@ it.live('An unrelated owner turn closes the Maps choice, while routing the immed
   ))
 })
 
-it.live('Save a place with my assistant once, and answer the question Maps asked: a repeat saves nothing, a superseded repeat is a new change, a reused key is refused, and "the second one" continues the request that asked (spec/maps/savedPlaces.md, "Story: Save a place with my assistant once"; spec/maps/routing.md, "Story: Send my directions request to Maps, not to a view")', effect () => {
+it.live('Save a place with my assistant once, and answer the question Maps asked: a repeat saves nothing, a superseded repeat is a new change, a reused key is refused, a saved place or named coordinates can be the destination, "the second one" continues the request that asked only on my next turn, a place\'s name answers too, a route keeps its destination for my next turn, and a plain Maps request owns the whole message so a view switch is refused (spec/maps/savedPlaces.md, "Story: Save a place with my assistant once"; spec/maps/savedPlaces.md, "A destination may be a place saved with the assistant, or coordinates the owner names"; spec/maps/routing.md, "Story: Send my directions request to Maps, not to a view"; spec/maps/routing.md, "Only the owner\'s next turn answers an open question, by its position or the place\'s name, within ten minutes"; spec/maps/routing.md, "A route\'s settled end is kept for the owner\'s next turn, which may name only the other")', effect () => {
   const { link } = linkFake()
   const store = memoryStore()
   const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => store, namesView: (_runtime, destination) => destination === "settings" })
-  const runtime = {} as IAgentRuntime
+  const runtime = { contexts: { tryRegister: () => true } } as unknown as IAgentRuntime
+  try promise(async () => await plugin.init?.({}, runtime))
+  const owned = (message: Memory) => Effect.try(() => getDirectActionRoutingRules(runtime)
+    .filter((rule) => rule.wholeRequest?.matches(typeof message.content.text === "string" ? message.content.text : "", message) === true)
+    .map((rule) => [rule.id, ...(rule.replacesActionNames ?? [])]))
   const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
     const action = plugin.actions?.find((found) => found.name === name)
     if (action === undefined) throw new Error(`${name} is not registered`)
@@ -945,9 +977,24 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
   const keyed = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Office", idempotencyKey: "k1" })
   const reused = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Gym", idempotencyKey: "k1" })
   const listed = try act("MAPS_SAVED", turn, {})
+  const office = (listed.data as { readonly savedPlaces: ReadonlyArray<{ readonly id: string }> }).savedPlaces[0]?.id ?? ""
+  const toSaved = try act("MAPS_NAVIGATION_START", turn, { savedPlaceId: office })
+  const toUnsaved = try act("MAPS_NAVIGATION_START", turn, { savedPlaceId: "maps-place:unknown" })
+  const toPoint = try act("MAPS_NAVIGATION_START", turn, { destination: "Trailhead", latitude: 37.8, longitude: -122.4 })
   const asked = try act("MAPS_NAVIGATION_START", ownerTurn("take me to the pharmacy"), { destination: "pharmacy" })
   const answered = try act("MAPS_NAVIGATION_START", ownerTurn("the second one"), {})
   const elsewhere = try act("MAPS_NAVIGATION_START", ownerTurn("the second one", "00000000-0000-4000-8000-000000000003"), {})
+  const room = "00000000-0000-4000-8000-000000000004"
+  const turnId = (index: number) => `00000000-0000-4000-8000-0000000000b${index}`
+  const askedFirst = try act("MAPS_NAVIGATION_START", ownerTurn("take me to the pharmacy", room, turnId(1)), { destination: "pharmacy" })
+  const movedOn = try owned(ownerTurn("call mom", room, turnId(2)))
+  const tooLate = try act("MAPS_NAVIGATION_START", ownerTurn("the second one", room, turnId(3)), {})
+  const askedAgain = try act("MAPS_NAVIGATION_START", ownerTurn("take me to the pharmacy", room, turnId(4)), { destination: "pharmacy" })
+  const byName = try act("MAPS_NAVIGATION_START", ownerTurn("Near Pharmacy", room, turnId(5)), {})
+  const fromHere = try act("MAPS_ROUTE", ownerTurn("walking directions to Coit Tower", room, turnId(6)), { destination: "Coit Tower", travelMode: "walk" })
+  const fromFerry = try act("MAPS_ROUTE", ownerTurn("from the Ferry Building", room, turnId(7)), { origin: "Ferry Building" })
+  const nothingKept = try act("MAPS_ROUTE", ownerTurn("from the Ferry Building", room, turnId(8)), { origin: "Ferry Building" })
+  const ownedRequests = [try owned(ownerTurn("directions to Coit Tower")), try owned(ownerTurn("take me to settings")), try owned(ownerTurn("what is the capital of France?"))]
   const routes = [
     routeOf("directions to Coit Tower", ownerTurn("directions to Coit Tower"), false, () => false),
     routeOf("take me to Coit Tower", { ...ownerTurn("x"), content: { text: "x", source: "device", channelType: "VOICE_DM" } } as unknown as Memory, false, () => false),
@@ -980,14 +1027,37 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
   const receipt = (result: { readonly effectReceipts?: ReadonlyArray<{ readonly outcome: string }> }) => result.effectReceipts?.[0]?.outcome
   try Effect.try(() => assert.deepStrictEqual({
     saves: [[work.success, receipt(work)], [again.success, receipt(again), again.text], [home.success, receipt(home)], [back.success, receipt(back)], [keyed.success, receipt(keyed)], reused.success],
+    reusedCanRetry: (reused.data as { readonly retryable?: boolean }).retryable,
     listed: (listed.data as { readonly savedPlaces: ReadonlyArray<{ readonly label: string }> }).savedPlaces.map((saved) => saved.label),
+    phoneListLeftOut: (listed.text ?? "").endsWith("Places saved only on the phone's Maps screen aren't included."),
+    destinations: [toSaved, toUnsaved, toPoint].map((result) => {
+      const destination = (result.data as { readonly destination?: { readonly provider: string; readonly providerPlaceId: string; readonly name: string } }).destination
+      return [result.success, destination?.provider, destination?.providerPlaceId, destination?.name]
+    }),
+    nextTurnOnly: [askedFirst.success, movedOn, tooLate.success, askedAgain.success],
+    byName: [byName.success, (byName.data as { readonly destination?: { readonly providerPlaceId: string } }).destination?.providerPlaceId],
+    continued: [
+      [fromHere.success, locateCard(fromHere)],
+      [fromFerry.success, (fromFerry.data as { readonly destination?: { readonly providerPlaceId: string } }).destination?.providerPlaceId, (fromFerry.data as { readonly travelMode?: string }).travelMode],
+      nothingKept.success,
+    ],
+    ownedRequests,
+    contexts: [...new Set(plugin.actions?.flatMap((action) => action.contexts ?? []))],
     asked: [asked.success, (asked.data as { readonly choice?: string }).choice],
     answered: [answered.success, (answered.data as { readonly destination?: { readonly providerPlaceId: string } }).destination?.providerPlaceId],
     elsewhere: elsewhere.success,
     routes,
   }, {
     saves: [[true, "applied"], [true, "noop", "Work was already saved."], [true, "applied"], [true, "applied"], [true, "applied"], false],
+    reusedCanRetry: false,
     listed: ["Office"],
+    phoneListLeftOut: true,
+    destinations: [[true, "eliza-cloud", "tower", "Coit Tower"], [false, undefined, undefined, undefined], [true, "coordinates", "coordinates:37.8,-122.4", "Trailhead"]],
+    nextTurnOnly: [false, [], false, false],
+    byName: [true, "near"],
+    continued: [[false, ["route-origin", undefined, "Coit Tower", "walk"]], [true, "tower", "walk"], false],
+    ownedRequests: [[["maps.ToDirections", "VIEWS", "VIEWS_SHOW"]], [], []],
+    contexts: ["maps", "general"],
     asked: [false, "destination"],
     answered: [true, "near"],
     elsewhere: false,

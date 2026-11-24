@@ -2,17 +2,18 @@
 import type { ActionParameterSchema } from "@elizaos/core"
 import { decodeBrowserPage, type BrowserPage } from "@elizaos/agent/client"
 import type { CheckedOperation, DeviceOperation, DeviceProposalFamily, DeviceTurn, Grounding, NegotiatedDevice, ProposalForm, ProposalText } from "@elizaos/agent/device-actions"
-import { refusalReply, tabListAskedFirst, withheldReopenRefused, type BrowserRefusal, type RefusalReply } from "../gen/browser__control.effect.vibe"
+import { refusalReply, tabListAskedFirst, type BrowserRefusal, type RefusalReply } from "../gen/browser__control.effect.vibe"
 import { emptyTabOpensAddress, openAskedFirst, openBound, opensInNewTab } from "../gen/browser__requestGrounding.effect.vibe"
 import {
   BROWSER_HISTORY_ACTIONS, BROWSER_RELOAD_WITHHELD_REFUSAL, browserCloseAnswer, browserControlBound, browserControlCapabilityAvailable, browserHistoryHome, browserHistoryRefused,
-  browserNavigationAvailable, type BrowserControlOperation, type BrowserControlType,
+  browserNavigationAvailable, browserReopenRefused, type BrowserControlOperation, type BrowserControlType,
 } from "./contract.vibe"
 import {
   authoredBrowserOpen, browserDestinationMatches, browserSearchQueryMatches, containsWebAddress, directBrowserDestination, directBrowserOpen, directBrowserSearchQuery,
-  directBrowserTabList, groundBrowserDestination, groundBrowserSearchQuery, ownerAskedBrowserReload, sameBrowserDocument, spokenBrowserOpen,
+  directBrowserTabList, groundBrowserDestination, groundBrowserSearchQuery, ownerAskedBrowserReload, spokenBrowserOpen,
 } from "./grounding.vibe"
 import { NATIVE_HISTORY_SUBACTIONS } from "./native-command.vibe"
+import { browserContext } from "./native-browser.vibe"
 
 type BrowserProposalType = "browser_navigate" | BrowserControlType
 
@@ -118,16 +119,12 @@ effect function carriedPage(turn: DeviceTurn): (BrowserPage | undefined)!! {
 effect function opened(turn: DeviceTurn, url: string, proposedNewTab: boolean): Grounding!! {
   const page = try carriedPage(turn)
   const links = page !== undefined && "text" in page ? (page.links ?? []).map(({ url }) => url) : []
-  const withheld = page !== undefined && "withheld" in page
-  const sameProposal = page !== undefined && sameBrowserDocument(page.url, url)
-  const direct = directBrowserOpen(turn.ownerText, turn.assistantName)
-  const exactOpen = browserDestinationMatches({ type: "browser_navigate", url }, direct?.href)
-  if (withheldReopenRefused(withheld, sameProposal, exactOpen)) return refused("ReloadNotRequested", turn)
-  const destination = withheld && sameProposal && exactOpen ? direct?.href : groundBrowserDestination(turn.ownerText, url, turn.assistantName, links)
+  const owner = directBrowserOpen(turn.ownerText, turn.assistantName) ?? spokenBrowserOpen(turn.ownerText, turn.assistantName)
+  const exactOpen = browserDestinationMatches({ type: "browser_navigate", url }, owner?.href)
+  if (browserReopenRefused(page, url, exactOpen)) return refused("ReloadNotRequested", turn)
+  const destination = exactOpen ? owner?.href : groundBrowserDestination(turn.ownerText, url, turn.assistantName, links)
   if (destination === undefined) return refused("DestinationNotRequested", turn)
-  const sameDestination = page !== undefined && sameBrowserDocument(page.url, destination)
-  if (withheldReopenRefused(withheld, sameDestination, exactOpen)) return refused("ReloadNotRequested", turn)
-  const owner = direct ?? spokenBrowserOpen(turn.ownerText, turn.assistantName)
+  if (browserReopenRefused(page, destination, exactOpen)) return refused("ReloadNotRequested", turn)
   const newTab = opensInNewTab({
     proposedNewTab, ownerAskedNewTab: owner?.newTab === true, ownerAddressIsDestination: owner?.href === destination, newTabNegotiated: opensInItsOwnTab(turn),
   })
@@ -215,6 +212,7 @@ function directText(operation: DeviceOperation): ProposalText | undefined {
 
 export const browserProposalFamily: DeviceProposalFamily = {
   name: "browser",
+  app: browserContext.id,
   types: BROWSER_PROPOSAL_TYPES,
   forms: FORMS,
   route: {

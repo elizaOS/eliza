@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 export type CloudReply =
   | { readonly kind: "text"; readonly chunks: readonly string[]; readonly cachedTokens?: number; readonly keepOpenAfterDone?: boolean }
   | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number }
+  | { readonly kind: "requestFault"; readonly code: string }
   | { readonly kind: "images" }
   | { readonly kind: "drop" }
   | { readonly kind: "hang" }
@@ -65,6 +66,7 @@ export const insufficientCredits = (): CloudReply => refusal(402, "insufficient_
 export const allowanceExhausted = (resetsAt: number): CloudReply => refusal(402, "allowance_exhausted", { resetsAt });
 export const rateLimited = (retryAt: number): CloudReply => refusal(429, "rate_limited", { retryable: true, retryAt });
 export const unavailable = (retryAfterSeconds: number): CloudReply => refusal(503, "service_unavailable", { retryable: true, retryAfterSeconds });
+export const requestFault = (code: string): CloudReply => ({ kind: "requestFault", code });
 export const dropped = (): CloudReply => ({ kind: "drop" });
 export const partial = (...chunks: string[]): CloudReply => ({ kind: "partial", chunks });
 export const echoImages = (): CloudReply => ({ kind: "images" });
@@ -172,6 +174,8 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
         ...(reply.retryAt === undefined ? {} : { retryAt: reply.retryAt }),
         ...(reply.resetsAt === undefined ? {} : { resetsAt: reply.resetsAt }),
       });
+    case "requestFault":
+      return json(response, 400, { error: "invalid_request", errorDescription: "Invalid request.", retryable: false, code: reply.code });
     case "text": {
       const model = modelOf(body);
       const content = reply.chunks.join("");

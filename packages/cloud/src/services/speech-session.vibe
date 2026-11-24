@@ -120,7 +120,7 @@ function holdOf(holds: WindowHolds, direction: SpeechDirection): string {
 
 function settlementFor(direction: SpeechDirection, dispatched: boolean, usage: WindowUsage, rates: Rates): Settlement {
   const transcription = direction === "Transcribe"
-  const disposition = settlementOf(dispatched, transcription ? usage.sttDrained : usage.ttsConfirmed, usage.superseded === true)
+  const disposition = settlementOf(dispatched, transcription ? usage.sttFinal : usage.ttsFinal, usage.superseded === true)
   if (disposition === "ReleaseHold") return { kind: "release" }
   if (disposition === "ChargeQuote") return { kind: "unknown" }
   const actual = transcription ? Math.ceil(usage.pcmBytes * rates.microsPerSecond / pcmBytesPerSecond) : usage.ttsChars * rates.microsPerCharacter
@@ -348,7 +348,7 @@ effect function settleOrphans(id: string): void!SessionFailure!(Store | Deployme
   const store = try Store
   const open = try store.transaction((tx) => tx.query("SELECT number FROM speech_windows WHERE session_id = $1 AND settled_at IS NULL ORDER BY number", [id]))
   for (const row of open) {
-    try settleWindow(id, toInt(row.number), { pcmBytes: 0, ttsChars: 0, sttDrained: false, ttsConfirmed: false, dispatched: true })
+    try settleWindow(id, toInt(row.number), { pcmBytes: 0, ttsChars: 0, sttFinal: false, ttsFinal: false, dispatched: true })
   }
   try retire(id, "DeadlinePassed")
 }

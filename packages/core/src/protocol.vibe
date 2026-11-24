@@ -2442,6 +2442,7 @@ export {
   parseProviderResetAt,
   PROVIDER_RATE_LIMIT_SCOPES,
   type ProviderRateLimit,
+  modelAttemptCapture,
   providerRateLimitRetryAt,
   type ProviderRateLimitScope,
   providerRetryAfterMs,

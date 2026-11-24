@@ -200,36 +200,70 @@ pure val extractionValues = identityValues.map(identity => ExtractedFor({ identi
 ### The agent spawns only when every inventory digest matches on the device
 
 The inventory is read from the signed APK's assets, not from the
-extracted copy. A missing file or another digest or size fails the start
-with `Failed(Payload)`; nothing is spawned.
+extracted copy. The payload is intact only when every listed file is
+present with its digest and size and the extraction holds no file the
+inventory does not list. The agent is never spawned from anything else:
+the start check below replaces a damaged extraction once and otherwise
+fails the start with `Failed(Payload)`.
 
 ```quint
 type Observed = Missing | Present({ observedSha256: str, observedSize: int })
-type DeviceFile = { path: str, sha256: str, size: int, observed: Observed }
-type StartCheck = ExtractPayload | PayloadReady | PayloadFailed
+type DeviceFile = { path: str, sha256: str, size: int, extracted: bool, observed: Observed }
 pure def observedMatches(observed: Observed, expectedSha256: str, expectedSize: int): bool = match observed {
   | Present(o) => o.observedSha256 == expectedSha256 and o.observedSize == expectedSize
   | Missing => false }
 pure def fileIntact(f: DeviceFile): bool = observedMatches(f.observed, f.sha256, f.size)
-pure def startCheck(extraction: Extraction, installed: InstalledPayload, deviceFiles: List[DeviceFile]): StartCheck = match installed {
-  | InventoryUnavailable => PayloadFailed
-  | InventoryReady(p) => if (not(extractionCurrent(extraction, p.identity))) ExtractPayload
-    else if (deviceFiles.length() > 0 and deviceFiles.every(f => fileIntact(f))) PayloadReady
-    else PayloadFailed }
+pure def payloadIntact(deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  not(unlisted) and deviceFiles.length() > 0 and deviceFiles.every(f => fileIntact(f))
 pure val installedValues = identityValues.map(identity => InventoryReady({ identity: identity })).union(Set(InventoryUnavailable))
+pure val oldValues = identityValues
 pure val deviceFilesValues = Set(
   List(),
-  List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, observed: Present({ observedSha256: "b1", observedSize: 4 }) }),
-  List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, observed: Present({ observedSha256: "b2", observedSize: 4 }) }),
-  List({ path: "lib/arm64-v8a/libeliza_node.so", sha256: "a1", size: 9, observed: Missing }, { path: "assets/agent/agent.mjs", sha256: "b1", size: 4, observed: Present({ observedSha256: "b1", observedSize: 4 }) }))
-pure def lawStaleExtractionNeverSpawns(extraction: Extraction, identity: PayloadIdentity, deviceFiles: List[DeviceFile]): bool =
-  not(extractionCurrent(extraction, identity)) implies startCheck(extraction, InventoryReady({ identity: identity }), deviceFiles) == ExtractPayload
-pure def lawChangedInventoryRequiresExtraction(old: PayloadIdentity, identity: PayloadIdentity, deviceFiles: List[DeviceFile]): bool =
+  List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, extracted: true, observed: Present({ observedSha256: "b1", observedSize: 4 }) }),
+  List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, extracted: true, observed: Present({ observedSha256: "b2", observedSize: 4 }) }),
+  List({ path: "lib/arm64-v8a/libeliza_node.so", sha256: "a1", size: 9, extracted: false, observed: Missing }, { path: "assets/agent/agent.mjs", sha256: "b1", size: 4, extracted: true, observed: Present({ observedSha256: "b1", observedSize: 4 }) }))
+pure def lawIntactMeansEveryFileMatches(deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  payloadIntact(deviceFiles, unlisted) implies deviceFiles.every(f => f.observed == Present({ observedSha256: f.sha256, observedSize: f.size }))
+pure def lawAnUnlistedFileIsNeverIntact(deviceFiles: List[DeviceFile]): bool = not(payloadIntact(deviceFiles, true))
+```
+
+### A damaged extracted file is extracted again once before the start fails
+
+One check decides each start. The service removes the extraction of
+another package version before it extracts this one, and never starts
+from it. When a file of this version's extraction is missing, changed or
+unlisted, the service replaces the whole extraction from the signed APK
+once and checks it again. A second mismatch, an extraction the APK could
+not supply this start, or a native library that differs fails the start
+with `Failed(Payload)`: the package installer placed the native
+libraries, and the service cannot replace them.
+
+```quint
+type StartCheck = ExtractPayload | PayloadReady | PayloadFailed
+pure def extractionDamaged(deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  unlisted or deviceFiles.some(f => f.extracted and not(fileIntact(f)))
+pure def startCheck(extraction: Extraction, installed: InstalledPayload, extractedThisStart: bool, deviceFiles: List[DeviceFile], unlisted: bool): StartCheck = match installed {
+  | InventoryUnavailable => PayloadFailed
+  | InventoryReady(p) =>
+    if (not(extractionCurrent(extraction, p.identity)) and extractedThisStart) PayloadFailed
+    else if (not(extractionCurrent(extraction, p.identity))) ExtractPayload
+    else if (payloadIntact(deviceFiles, unlisted)) PayloadReady
+    else if (extractionDamaged(deviceFiles, unlisted) and not(extractedThisStart)) ExtractPayload
+    else PayloadFailed
+}
+pure def lawOnlyACurrentIntactPayloadStarts(extraction: Extraction, identity: PayloadIdentity, extractedThisStart: bool, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  (startCheck(extraction, InventoryReady({ identity: identity }), extractedThisStart, deviceFiles, unlisted) == PayloadReady) iff (extractionCurrent(extraction, identity) and payloadIntact(deviceFiles, unlisted))
+pure def lawStaleExtractionIsReplacedFirst(extraction: Extraction, identity: PayloadIdentity, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  not(extractionCurrent(extraction, identity)) implies startCheck(extraction, InventoryReady({ identity: identity }), false, deviceFiles, unlisted) == ExtractPayload
+pure def lawAnExtractionIsReplacedAtMostOnce(extraction: Extraction, installed: InstalledPayload, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  startCheck(extraction, installed, true, deviceFiles, unlisted) != ExtractPayload
+pure def lawADamagedExtractionIsReplacedOnce(extraction: Extraction, identity: PayloadIdentity, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  (extractionCurrent(extraction, identity) and extractionDamaged(deviceFiles, unlisted)) implies startCheck(extraction, InventoryReady({ identity: identity }), false, deviceFiles, unlisted) == ExtractPayload
+pure def lawADifferingNativeLibraryAloneIsNeverRepaired(extraction: Extraction, identity: PayloadIdentity, extractedThisStart: bool, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  (extractionCurrent(extraction, identity) and not(extractionDamaged(deviceFiles, unlisted))) implies startCheck(extraction, InventoryReady({ identity: identity }), extractedThisStart, deviceFiles, unlisted) != ExtractPayload
+pure def lawChangedInventoryRequiresExtraction(old: PayloadIdentity, identity: PayloadIdentity, deviceFiles: List[DeviceFile], unlisted: bool): bool =
   (old.versionCode == identity.versionCode and old.inventorySha256 != identity.inventorySha256) implies
-    startCheck(ExtractedFor({ identity: old }), InventoryReady({ identity: identity }), deviceFiles) == ExtractPayload
-pure def lawUnavailableInventoryCannotStart(extraction: Extraction, deviceFiles: List[DeviceFile]): bool =
-  startCheck(extraction, InventoryUnavailable, deviceFiles) == PayloadFailed
-pure def lawReadyMeansEveryFileMatches(extraction: Extraction, installed: InstalledPayload, deviceFiles: List[DeviceFile]): bool =
-  startCheck(extraction, installed, deviceFiles) == PayloadReady implies deviceFiles.every(f => f.observed == Present({ observedSha256: f.sha256, observedSize: f.size }))
-pure val oldValues = identityValues
+    startCheck(ExtractedFor({ identity: old }), InventoryReady({ identity: identity }), false, deviceFiles, unlisted) == ExtractPayload
+pure def lawUnavailableInventoryCannotStart(extraction: Extraction, deviceFiles: List[DeviceFile], unlisted: bool): bool =
+  startCheck(extraction, InventoryUnavailable, false, deviceFiles, unlisted) == PayloadFailed
 ```

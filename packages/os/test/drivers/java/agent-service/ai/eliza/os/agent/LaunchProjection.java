@@ -18,16 +18,16 @@ public final class LaunchProjection {
 
   @SuppressWarnings("unchecked")
   private static Map<String, Object> answer(String line) {
-    Map<String, Object> ask = (Map<String, Object>) RouteGate.Json.parse(line);
-    Map<String, Object> answer = new LinkedHashMap<>();
-    AgentConfig config;
     try {
-      config = AgentConfig.parse(bytes(ask.get("host")), bytes(ask.get("character")), bytes(ask.get("policy")));
+      return project((Map<String, Object>) RouteGate.Json.parse(line));
     } catch (AgentConfig.Refused refused) {
-      answer.put("kind", "refused");
-      answer.put("reason", refused.getMessage());
-      return answer;
+      return Map.of("kind", "refused", "cause", "Config", "reason", refused.getMessage());
     }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> project(Map<String, Object> ask) throws AgentConfig.Refused {
+    AgentConfig config = AgentConfig.parse(bytes(ask.get("host")), bytes(ask.get("character")), bytes(ask.get("policy")));
     AgentCredentials.Account account = accountOf((Map<String, Object>) ask.get("account"));
     Map<String, Object> worker = (Map<String, Object>) ask.get("workflowWorker");
     Map<String, Object> frame = (Map<String, Object>) ask.get("frame");
@@ -52,8 +52,14 @@ public final class LaunchProjection {
         document = config.residentLaunchDocument(owner, inference, workflowWorker);
       }
     } catch (IllegalArgumentException refused) {
-      return Map.of("kind", "refused", "reason", refused.getMessage());
+      return Map.of("kind", "refused", "cause", "Config", "reason", refused.getMessage());
     }
+    Map<String, Object> held = frame == null ? null : (Map<String, Object>) frame.get("credential");
+    LaunchFrame first = frame == null ? null : config.initialFrame(
+      (String) frame.get("token"), ((BigDecimal) frame.get("epoch")).longValueExact(),
+      held == null ? null : new LaunchFrame.Credential(((BigDecimal) held.get("version")).longValueExact(), (String) held.get("value")),
+      (String) frame.get("storageKey"));
+    Map<String, Object> answer = new LinkedHashMap<>();
     answer.put("kind", "admitted");
     answer.put("service", config.service);
     answer.put("notification", config.notification.text());
@@ -61,11 +67,7 @@ public final class LaunchProjection {
     answer.put("nativeGroups", BigDecimal.valueOf(config.routes(ChannelPolicy.CallerKind.NATIVE).size()));
     answer.put("needsAccount", config.needsAccount());
     answer.put("document", document);
-    if (frame != null) {
-      Map<String, Object> held = (Map<String, Object>) frame.get("credential");
-      LaunchFrame first = LaunchFrame.first((String) frame.get("token"), ((BigDecimal) frame.get("epoch")).longValueExact(),
-        held == null ? null : new LaunchFrame.Credential(((BigDecimal) held.get("version")).longValueExact(), (String) held.get("value")),
-        (String) frame.get("storageKey"));
+    if (first != null) {
       LaunchFrame next = first.next(LaunchFrame.newToken(), first.credentialVersion() == 0 ? null : new LaunchFrame.Credential(first.credentialVersion() + 1, "rotated-device-key"), null);
       answer.put("frame", new String(first.encode(), StandardCharsets.UTF_8));
       answer.put("shown", first.toString());

@@ -1002,7 +1002,7 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
 }, 60_000)
 
 // spec/core/models.md, "Story: Dispatch a complete admitted request"; spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Story: Select registered model handlers in order"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/journey.md, "Model invocation retains the admitted request through fallback and failure"; spec/core/preparedRequests.md, "Story: Bind every transport retry to the admitted request"; spec/core/preparedRequests.md, "Only the admitted body can supply its input token count"; spec/core/modelAttemptLeases.md, "Story: Issue a turn-scoped model allowance"; spec/core/pseudonymSession.md, "Story: Keep substitutions reversible across repeated model calls"; spec/core/secretSession.md, "Story: Restore known placeholders while keeping credentials out of replies"; spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"; spec/core/streamRevisions.md, "Story: Distinguish a new stream attempt from prior chunks"; spec/core/skeletonStreamState.md, "Story: Stream exact visible text without losing partial parser state"; spec/core/unicode.md, "Story: Preserve Unicode in provider requests and diagnostics"; spec/core/modelDiagnostics.md, "Story: Finish every diagnostic write before storage closes"
-it.live("Dispatch a model request through failover, swaps, streams, cancellation and a turn allowance (spec/core/models.md, \"Story: Dispatch a complete admitted request\")", () => Effect.scoped(effect {
+it.live("Dispatch a model request through failover, swaps, streams, cancellation and a turn allowance (spec/core/models.md, \"Story: Dispatch a complete admitted request\"; spec/core/models.md, \"A failure is eligible only as a refused connection, a busy or failing provider or a spent retry budget, and never for speech\")", () => Effect.scoped(effect {
   const EMAIL = "jane.okafor@acmecapital.com"
   const ADDRESS = "1600 Pennsylvania Avenue NW"
   const KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123"
@@ -1704,6 +1704,23 @@ it.live("Get a whole answer from a busy provider: no setting caps output, an old
       { prompt: "Plan another.", capped: false, temperature: 0.2, options: undefined },
     ],
   }))
+}), 60_000)
+
+it.live('An extractor pass that already tried two providers keeps the original refusal (spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more")', () => scoped(effect {
+  const refusal = Object.freeze(Object.assign(new Error("Temporary refusal"), { status: 429, retryAfterMs: 0 }))
+  const primary = try Effect.try(() => scriptedModels("first-provider", 10, {
+    [ModelType.TEXT_LARGE]: [{ fail: providerError("socket") }, { reply: "unexpected resend" }],
+  }))
+  const secondary = try Effect.try(() => scriptedModels("second-provider", 0, {
+    [ModelType.TEXT_LARGE]: [{ fail: refusal }],
+  }))
+  const runtime = try kernel({})
+  try Effect.sync(() => { primary.register(runtime); secondary.register(runtime) })
+  const failure = try host(() => runExtractorPipeline({
+    runtime, prompt: "Plan the reminder.", parser: (raw) => raw,
+  }).then(() => undefined, (error: unknown) => error))
+  assert.strictEqual(failure, refusal)
+  assert.deepStrictEqual([primary.seen.length, secondary.seen.length], [1, 1])
 }), 60_000)
 
 // spec/core/plugins.md, "Story: Load and roll back a plugin"; spec/core/plugins.md, "Duplicate callers share the registration outcome"; spec/core/plugins.md, "Cleanup removes only owned contributions"; spec/core/plugins.md, "Service start remains owned across rollback and unload"; spec/core/pluginServices.md, "Story: Retry and reload plugins without losing epoch ownership"; spec/core/pluginServices.md, "A retired epoch cannot mutate a replacement epoch"; spec/core/pluginServices.md, "Story: Withdraw plugin declarations without losing asynchronous instances"; spec/core/services.md, "Story: Acquire a declared service"; spec/core/services.md, "Concurrent acquisition joins the original startup"; spec/core/services.md, "An observer failure retains the running service"; spec/core/services.md, "Story: Stop a late or removed service once"; spec/core/services.md, "Late startup enters retirement without publication"; spec/core/serviceInstances.md, "Story: Share starts and stop each returned object once"; spec/core/eagerServices.md, "Story: Retry transient eager startup without restarting shutdown work"; spec/core/eagerServices.md, "Backoff starts only after rejection and uses the declared delay sequence"; spec/core/registries.md, "Story: Register actions providers and evaluators"; spec/core/registries.md, "Plugin contributions cannot displace an incumbent component"; spec/core/registries.md, "Story: Remove only registrations owned by a plugin epoch"; spec/core/messaging.md, "A captured handler survives registry removal and replacement"; spec/core/concurrentConnectors.md, "Story: Retain captured transports during registry replacement"; spec/core/hooks.md, "Story: Dispatch an immutable phase snapshot"; spec/core/hooks.md, "Each phase dispatch captures the current handler identities"; spec/core/hookService.md, "Story: Dispatch eligible event hooks in a stable order"; spec/core/hookService.md, "Eligibility returns every failure in source order and caches successful binary probes"; spec/core/adapterOwnership.md, "Story: Preserve adapter identity through plugin failure and migrations"; spec/core/concurrentHooks.md, "Story: Replace hooks while independent phase calls are in flight"; spec/core/serviceAcquisitionResult.md, "Story: Explain a service acquisition failure with every original cause"; spec/core/serviceBuilder.md, "Story: Build independent service classes from a mutable builder"
@@ -5016,6 +5033,7 @@ console.log(JSON.stringify({
     entry, conditions, exports: [
       ...exports.map(({ name, typeOnly }) => ({ name, typeOnly })),
       ...(entry === "." ? [{ name: "PrivacyMode", typeOnly: true }, { name: "privacyPlugin", typeOnly: false }] : []),
+      ...(entry === "." || entry === "./protocol" ? [{ name: "modelAttemptCapture", typeOnly: false }] : []),
     ],
   })),
   files: surface.files.map(({ path, sha256 }) => ({ path, sha256 })),

@@ -1045,7 +1045,7 @@ describe("Speech session funding (spec/cloud/services/speechRelay.md, \"Story: S
       for (const sessionId of [first.sessionId, second.sessionId]) try cloud.inside(retire(sessionId, "Stopped"))
       const reopening = cloud.inside(admitWindow(first.sessionId, 1)) catch effect (failure) => match (failure) { when Refused: failure.refusal.code; default: throw failure; }
       const windows = try Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ session_id: Schema.String, number: Schema.Number })))(try sql(cloud, "SELECT session_id, number FROM speech_windows WHERE user_id = $1 ORDER BY session_id, number", ["speech-rich"]))
-      for (const window of windows) try cloud.inside(settleWindow(window.session_id, window.number, { pcmBytes: 0, ttsChars: 0, sttDrained: true, ttsConfirmed: true, dispatched: false }))
+      for (const window of windows) try cloud.inside(settleWindow(window.session_id, window.number, { pcmBytes: 0, ttsChars: 0, sttFinal: true, ttsFinal: true, dispatched: false }))
       const closed = try sql(cloud, "SELECT phase, (state->>'admittedWindows')::int AS admitted, jsonb_array_length(state->'settledWindows') AS settled FROM speech_sessions WHERE key = $1", [first.sessionId])
       const released = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = $1", ["org-speech-rich"])
       try check(() => assert.deepStrictEqual({ reopening, closed: closed.map((row) => [row.phase, Number(row.admitted) === Number(row.settled)]), released: released.every((row) => row.phase === "released") }, { reopening: "SessionClosed", closed: [["closed", true]], released: true }))

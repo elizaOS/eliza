@@ -1,7 +1,7 @@
 // spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 // spec/agent/views.md, "Story: Switch to the view the agent named"; spec/agent/views.md, "Story: Answer what the agent asks a view"; spec/agent/views.md, "Story: Stop waiting when my agent stops"
 import { assert, it } from "@effect/vitest"
-import { findViewActionHandoff, type Action, type ActionResult, type Memory, type UUID } from "@elizaos/core"
+import { findViewActionHandoff, Service, type Action, type ActionResult, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
 import { navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs } from "../gen/agent__views.effect.vibe"
 import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
 import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
@@ -91,6 +91,42 @@ it.effect('Prepare, claim and confirm a switch through the routes; only a confir
   })
 }, 120_000)
 
+it.effect('A saved Notes editor requires a supported claim and an exact mounted-editor result (spec/agent/views.md, "A saved Notes editor claim requires support and only its exact editor can confirm the switch")', effect () => {
+  const agent = try startInProcess(loaded)
+  const { views } = try viewHost(agent)
+  const prepared = try views.showSavedNote("saved-note-request", "current-renderer", "note-a")
+  const binding = try Effect.try(() => {
+    assert.isDefined(prepared)
+    return prepared!.binding
+  })
+  const support = { targetProtocol: "saved-note-v1" }
+  const oldRenderer = try claim(agent, binding)
+  const otherRenderer = try claim(agent, { ...binding, ...support, clientId: "different-renderer" })
+  const otherInstallation = try claim(agent, { ...binding, ...support, installationId: "different-installation" })
+  const claimed = try claim(agent, { ...binding, ...support })
+  const repeated = try claim(agent, { ...binding, ...support })
+  const claimId = claimIdOf(claimed.body)
+  const generic = try result(agent, binding, claimId, true)
+  const report = (noteId: string) => ask(agent, {
+    method: "POST", path: "/api/views/interact-result",
+    body: { ...binding, claimId, success: true, result: { switched: true, shown: { kind: "saved-note", noteId } } },
+  })
+  const wrong = try report("note-b")
+  const beforeExact = try views.shownViewOf(binding.clientId)
+  const exact = try report("note-a")
+  const repeatedResult = try report("note-a")
+  const afterExact = try views.shownViewOf(binding.clientId)
+  try Effect.try(() => {
+    assert.deepStrictEqual([oldRenderer.status, otherRenderer.status, otherInstallation.status, repeated.status], [409, 409, 409, 409])
+    assert.strictEqual(claimed.status, 200)
+    assert.deepStrictEqual(claimed.body, { claimId, target: { kind: "saved-note", noteId: "note-a" } })
+    assert.deepStrictEqual([generic.body, wrong.body, repeatedResult.body], Array(3).fill({ ok: true, accepted: false }))
+    assert.isUndefined(beforeExact)
+    assert.deepStrictEqual(exact.body, { ok: true, accepted: true })
+    assert.strictEqual(afterExact, "notes")
+  })
+}, 120_000)
+
 it.live('A completed chat reply gives its renderer the exact prepared switch it can claim (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
@@ -105,8 +141,8 @@ it.live('A completed chat reply gives its renderer the exact prepared switch it 
   const show = { name: "VIEWS", arguments: { action: "show", view: "Jottings" } }
   try Effect.sync(() => cloud.script(toolCalls("", show, show), toolCalls("", show), text("Notes are ready.")))
   const reply = try ask(agent, { method: "POST", path: `/api/conversations/${id}/messages`, headers, body })
-  const completed = (reply.body as { actionResults: readonly { action: string; data: { values?: { navigationBinding?: ViewBinding } } }[] }).actionResults
-  const binding = completed.find(({ action }) => action === "VIEWS")?.data.values?.navigationBinding
+  const completed = (reply.body as { actionResults: readonly { action: string; preparedNavigation?: PreparedViewNavigation }[] }).actionResults
+  const binding = completed.find(({ action }) => action === "VIEWS")?.preparedNavigation?.binding
   const taken = try claim(agent, binding)
   const applied = try result(agent, binding, claimIdOf(taken.body), true)
   const shown = try views.shownViewOf("c2")
@@ -121,6 +157,99 @@ it.live('A completed chat reply gives its renderer the exact prepared switch it 
     assert.strictEqual(taken.status, 200)
     assert.deepStrictEqual(applied.body, { ok: true, accepted: true })
     assert.strictEqual(shown, "notes")
+  })
+}, 120_000)
+
+it.live('A completed turn prepares the saved editor only after its current Notes lookup (spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  let current = true
+  class NotesFixture extends Service {
+    static override serviceType = "notes"
+    override capabilityDescription = "Current note fixture"
+    static override start(runtime: IAgentRuntime): Promise<Service> { return Promise.resolve(new NotesFixture(runtime)) }
+    override stop(): Promise<void> { return Promise.resolve() }
+    matchesSavedEditor(id: string, query: string): Promise<boolean> {
+      return Promise.resolve(current && (
+        (id === "note-ferry" && query === "Ferry checklist") ||
+        (id === "note-calendar" && query === "Calendar")
+      ))
+    }
+  }
+  const lookup: Action = {
+    name: "NOTES_GET", similes: [], description: "Read the current test note.",
+    validate: async () => true,
+    parameters: [{ name: "content", required: true, description: "Note title", schema: { type: "string" } }],
+    handler: async (_runtime, _message, _state, options) => {
+      const params = options?.parameters
+      const calendar = typeof params === "object" && params !== null && "content" in params && params.content === "Calendar"
+      return { success: true, data: { actionName: "NOTES_GET", noteId: calendar ? "note-calendar" : "note-ferry" } }
+    },
+  }
+  const name = "notes-test-fixture"
+  const agent = try startInProcess({
+    launch: { ...loaded.launch, load: [...loaded.launch.load, name], callerRole: "owner",
+      views: [...loaded.launch.views, { id: "agenda", label: "Calendar", path: "/calendar", aliases: ["appointments"] }],
+      backend: { kind: "cloud", origin: cloud.origin }, allowed: ["REPLY", "IGNORE", "NONE", "VIEWS", "NOTES_GET"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map([[name, { name, description: "Saved Notes fixture", actions: [lookup], services: [NotesFixture] }]]),
+  })
+  const opened = try ask(agent, { method: "POST", path: "/api/conversations", body: {} })
+  const { id } = (opened.body as { conversation: { id: string } }).conversation
+  const clientId = "notes-renderer"
+  const headers = { "x-elizaos-client-id": clientId }
+  const metadata = { viewDelivery: "completed-action", viewClientId: clientId,
+    voiceUi: { viewDelivery: "completed-action", uiClientId: clientId, uiNotesEditor: "saved-note-v1" } }
+  const get = { name: "NOTES_GET", arguments: { content: "Ferry checklist" } }
+  const editor = { name: "VIEWS", arguments: { action: "show", view: "notes-editor" } }
+  const send = (request: string, data: object) => ask(agent, { method: "POST", path: "/api/conversations/" + id + "/messages",
+    headers, body: { text: request, metadata: data } })
+  const handoff = (response: { body: unknown }) => {
+    const steps = (response.body as { actionResults: readonly { action: string; preparedNavigation?: PreparedViewNavigation }[] }).actionResults
+    return steps.find(({ action }) => action === "VIEWS")?.preparedNavigation
+  }
+  try Effect.sync(() => cloud.script(toolCalls("", get), toolCalls("", editor), text("The editor is prepared.")))
+  const found = handoff(try send("Open my Ferry checklist in Notes.", metadata))
+  const claimed = try claim(agent, { ...found?.binding, targetProtocol: "saved-note-v1" })
+  const applied = try ask(agent, {
+    method: "POST", path: "/api/views/interact-result",
+    body: { ...found?.binding, claimId: claimIdOf(claimed.body), success: true,
+      result: { switched: true, shown: { kind: "saved-note", noteId: "note-ferry" } } },
+  })
+  try Effect.sync(() => { current = false })
+  try Effect.sync(() => cloud.script(toolCalls("", get), toolCalls("", editor), text("That note is unavailable.")))
+  const stale = handoff(try send("Open my Ferry checklist in Notes.", metadata))
+  const calendarLookup = { name: "NOTES_GET", arguments: { content: "Calendar" } }
+  const calendarCallStart = cloud.calls.length
+  try Effect.sync(() => {
+    current = true
+    cloud.script(toolCalls("", calendarLookup), toolCalls("", editor), text("Calendar is ready."))
+  })
+  const calendar = handoff(try send("Open Calendar.", metadata))
+  const calendarCompletions = cloud.calls.slice(calendarCallStart).filter(({ path }) => path.endsWith("/chat/completions"))
+  try Effect.sync(() => cloud.script(toolCalls("", editor), text("Appointments are ready.")))
+  const alias = handoff(try send("Open the appointments.", metadata))
+  const explicitCallStart = cloud.calls.length
+  try Effect.sync(() => cloud.script(toolCalls("", calendarLookup), toolCalls("", editor), text("The saved note is ready.")))
+  const explicit = handoff(try send("Open my note called Calendar.", metadata))
+  const explicitCompletions = cloud.calls.slice(explicitCallStart).filter(({ path }) => path.endsWith("/chat/completions"))
+  const explicitClaim = try claim(agent, { ...explicit?.binding, targetProtocol: "saved-note-v1" })
+  const savedNoteCoaching = "To open one saved note the owner requested"
+  try Effect.try(() => {
+    assert.strictEqual(found?.targetProtocol, "saved-note-v1")
+    assert.notInclude(JSON.stringify(found), "note-ferry")
+    assert.strictEqual(claimed.status, 200)
+    assert.deepStrictEqual(claimed.body, { claimId: claimIdOf(claimed.body), target: { kind: "saved-note", noteId: "note-ferry" } })
+    assert.deepStrictEqual(applied.body, { ok: true, accepted: true })
+    assert.isUndefined(stale?.binding)
+    assert.strictEqual(calendar?.binding?.viewId, "agenda")
+    assert.isUndefined(calendar?.targetProtocol)
+    assert.strictEqual(alias?.binding?.viewId, "agenda")
+    assert.isUndefined(alias?.targetProtocol)
+    assert.isNotEmpty(calendarCompletions)
+    assert.notInclude(JSON.stringify(calendarCompletions), savedNoteCoaching)
+    assert.include(JSON.stringify(explicitCompletions), savedNoteCoaching)
+    assert.strictEqual(explicit?.targetProtocol, "saved-note-v1")
+    assert.deepStrictEqual(explicitClaim.body, { claimId: claimIdOf(explicitClaim.body), target: { kind: "saved-note", noteId: "note-calendar" } })
   })
 }, 120_000)
 

@@ -1,6 +1,6 @@
-// spec/maps/routing.md, "A plain Maps request of the owner's own chat turn goes to the Maps action for its shape"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"
-import { containsResourceAddress, registerDirectActionRoutingRule, type DirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
-import { choiceBinds, mapsRouteOf, type RequestShape, type RoutedTo } from "../gen/maps__routing.effect.vibe"
+// spec/maps/routing.md, "A plain Maps request of the owner's own chat turn goes to the Maps action for its shape"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "Only the owner's next turn answers an open question, by its position or the place's name, within ten minutes"
+import { containsResourceAddress, registerDirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { choiceBinds, choiceOpenAt, mapsContext, mapsRouteOf, namedOption, ownsWholeRequest, type ChoiceTurn, type RequestShape, type RoutedTo } from "../gen/maps__routing.effect.vibe"
 import type { Place } from "./client/contracts.vibe"
 
 const courtesy = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`
@@ -129,23 +129,57 @@ export function choicePosition(reply: string, count: number): number | undefined
   return word === "last" ? count : /^\d+$/u.test(word) ? Number(word) : ordinals[word]
 }
 
-export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: number): { readonly choice: PlaceChoice; readonly place: Place } | undefined {
+export function placeKey(value: string): string {
+  return value.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/&/g, " and ").replace(/['’`]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/^the\s+/u, "")
+}
+
+function namedPosition(reply: string, options: readonly Place[]): number | undefined {
+  const key = placeKey(reply)
+  if (key === "") return undefined
+  const positions = (names: (option: Place) => boolean) => options.flatMap((option, index) => names(option) ? [index + 1] : [])
+  const labelled = positions((option) => option.id === reply.trim() || placeKey(`${option.name} ${option.formattedAddress ?? ""}`) === key)
+  const named = positions((option) => placeKey(option.name) === key)
+  switch (namedOption(labelled.length, named.length)) {
+    case "ByListedLabel": return labelled[0]
+    case "ByNameAlone": return named[0]
+    case "NoOptionNamed": return undefined
+  }
+}
+
+function questionFor(runtime: IAgentRuntime, message: Memory, now: number): { readonly choice: PlaceChoice; readonly turn: ChoiceTurn } | undefined {
   if (!isOwnerChatTurn(message) || message.id === undefined) return undefined
   const open = ownerChoices(runtime)
   const key = conversationKey(message)
   const pending = open.get(key)
-  if (pending === undefined || pending.askingTurn === message.id) return undefined
-  const { choice } = pending
-  const reply = typeof message.content.text === "string" ? message.content.text : ""
-  const position = choicePosition(reply, choice.options.length) ?? 0
-  const nextOwnerTurn = pending.answeringTurn === undefined || pending.answeringTurn === message.id
-  if (!choiceBinds({ open: true, sameConversation: true, nextOwnerTurn, age: Math.floor(now - choice.askedAt), position, options: choice.options.length })) {
+  if (pending === undefined) return undefined
+  const turn = pending.askingTurn === message.id ? "AskingTurn"
+    : pending.answeringTurn === undefined || pending.answeringTurn === message.id ? "NextOwnerTurn" : "LaterTurn"
+  if (!choiceOpenAt(turn, Math.floor(now - pending.choice.askedAt))) {
     open.delete(key)
     return undefined
   }
-  pending.answeringTurn = message.id
+  if (turn === "NextOwnerTurn") pending.answeringTurn = message.id
+  return { choice: pending.choice, turn }
+}
+
+export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: number): { readonly choice: PlaceChoice; readonly place: Place } | undefined {
+  const open = questionFor(runtime, message, now)
+  if (open === undefined) return undefined
+  const { choice, turn } = open
+  const reply = typeof message.content.text === "string" ? message.content.text : ""
+  const position = choicePosition(reply, choice.options.length) ?? namedPosition(reply, choice.options) ?? 0
+  if (!choiceBinds({ open: true, sameConversation: true, turn, age: Math.floor(now - choice.askedAt), position, options: choice.options.length })) {
+    if (turn === "NextOwnerTurn" && choice.options.length > 0) closeChoice(runtime, message)
+    return undefined
+  }
   const place = choice.options[position - 1]
   return place === undefined ? undefined : { choice, place }
+}
+
+export function keptRequest(runtime: IAgentRuntime, message: Memory, now: number): PlaceChoice | undefined {
+  const open = questionFor(runtime, message, now)
+  return open !== undefined && open.turn === "NextOwnerTurn" && open.choice.options.length === 0 ? open.choice : undefined
 }
 
 export function closeChoice(runtime: IAgentRuntime, message: Memory): void {
@@ -251,17 +285,19 @@ const routedActions: Record<Exclude<RoutedTo, "ToPlanner" | "ToChoice">, readonl
 }
 
 export function registerMapsRouting(runtime: IAgentRuntime, namesView: (destination: string) => boolean): void {
-  const rule = (id: string, actionNames: readonly string[], matches: DirectActionRoutingRule["matches"], wholeRequest?: DirectActionRoutingRule["wholeRequest"]) =>
-    registerDirectActionRoutingRule(runtime, { id, actionNames, replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: ["domain:maps"], contexts: ["maps"], matches, wholeRequest })
-  for (const [routed, actionNames] of Object.entries(routedActions)) {
-    rule(`maps.${routed}`, actionNames, (text, message) => routeOf(text, message, false, namesView) === routed)
+  const rule = (id: string, routed: RoutedTo, actionNames: readonly string[], matches: (text: string, message?: Memory) => boolean) =>
+    registerDirectActionRoutingRule(runtime, {
+      id, actionNames, replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: ["domain:maps"], contexts: [mapsContext], matches,
+      ...(ownsWholeRequest(routed) ? { wholeRequest: { matches, invalidateFields: [] } } : {}),
+    })
+  for (const routed of ["ToDirections", "ToShowPlace", "ToTravel", "ToPlaceSearch"] as const) {
+    rule(`maps.${routed}`, routed, routedActions[routed], (text, message) => routeOf(text, message, false, namesView) === routed)
   }
   for (const [operation, actionName] of Object.entries(choiceActions)) {
-    const matches: DirectActionRoutingRule["matches"] = (text, message) => {
+    rule(`maps.place-choice.${operation}`, "ToChoice", [actionName], (text, message) => {
       if (message === undefined) return false
       const answered = answeredChoice(runtime, message, Date.now())
       return answered?.choice.operation === operation && routeOf(text, message, true, namesView) === "ToChoice"
-    }
-    rule(`maps.place-choice.${operation}`, [actionName], matches, { matches, invalidateFields: [] })
+    })
   }
 }

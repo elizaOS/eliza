@@ -1,11 +1,12 @@
+// spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query"
 // spec/agent/deviceActions/telephony.md, "Alternative SMS recipients are clarified before any lookup"
 // spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/operations.md, "A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"
 import type { ActionParameterSchema, Memory } from "@elizaos/core"
 import { completionOpen, retainedHint } from "../../../../gen/agent__deviceActions.effect.vibe"
 import { negotiatedHas, type Capability } from "../../../../gen/agent__deviceActions__capabilities.effect.vibe"
 import {
-  dialerPlan, draftPlan, senderDraftReady, senderReadForm, settledLead, telephonyAsAsked,
-  type DirectTelephony, type DraftAddress, type SenderScope, type SenderSource, type SettledLead, type SettledTelephony,
+  dialerPlan, draftPlan, roleRule, searchFirstRefused, senderDraftReady, senderReadForm, settledLead, telephonyAsAsked,
+  type DirectTelephony, type DraftAddress, type RoleRule, type SenderScope, type SenderSource, type SettledLead, type SettledTelephony,
 } from "../../../../gen/agent__deviceActions__telephony.effect.vibe"
 import { latestSenderGuidance, latestSenderReplyFor } from "../../latest-sender.vibe"
 import { readReplyId, readReplyKey } from "../../read-completion.vibe"
@@ -78,6 +79,14 @@ const openItemGuidance = [noneSelectedGuidance, untrustedReturnGuidance]
 const readGuidance = "messages_read_selected and voicemail_read_selected return only what the owner has open in front on the unlocked phone, after the owner approves sharing it: the visible tail of one message thread (at most 20 messages, no phone numbers), or one voicemail with its transcript when one is ready. They never list threads or voicemail; never use them to enumerate, search or page through messages or voicemail, and never repeat them to collect more."
 const dialGuidance = "A reviewed dial uses phone_dial. After the owner's approval the phone opens its dial screen with the number; the owner places the call there. handed-off proves only that the dial screen opened, never a placed, connected or completed call."
 const composeGuidance = "drafted proves only that the draft is there. submitted proves submission only; sent is not delivery; only delivered establishes delivery."
+
+const roleQuery = "when the owner names them by a role or relation. Use that word alone as the contact query, such as brother for my brother or dentist for the dentist. The phone resolves the contact and lets the owner choose among multiple matches."
+const roleGuidance: Readonly<Record<RoleRule, { readonly operation: string; readonly request: string } | undefined>> = {
+  CallOrTextByRole: { operation: "phone_call or sms_compose", request: "a call or text" },
+  CallByRole: { operation: "phone_call", request: "a call" },
+  TextByRole: { operation: "sms_compose", request: "a text" },
+  NoRoleRule: undefined,
+}
 
 const forms: readonly ProposalForm[] = [
   {
@@ -408,7 +417,18 @@ function settledText(operation: DeviceOperation, result: unknown): ProposalText 
 
 function familyGuidance(device: NegotiatedDevice): readonly string[] {
   const keypad = has(device, "PhoneKeypadV1")
+  const admitted = forms.filter((form) => form.offered(device))
+  const offersContact = (type: DeviceOperationType) => admitted.some(({ types, schema }) => types.includes(type) &&
+    schema.properties?.target?.properties?.kind?.enum?.includes("contact") === true &&
+    schema.properties.target.properties.query !== undefined)
+  const role = roleRule(offersContact("phone_call"), offersContact("sms_compose"))
+  const searchOffered = admitted.some(({ types }) => types.includes("contact_show"))
+  const guidance = roleGuidance[role]
   return [
+    ...(guidance === undefined ? [] : [
+      `Propose ${guidance.operation} with a contact target ${roleQuery}`,
+      ...(searchFirstRefused(role, searchOffered) ? [`Do not propose contact_show first for ${guidance.request}.`] : []),
+    ]),
     routeGuidance,
     ...(!keypad && has(device, "PhoneDialV1") ? [dialerGuidance] : []),
     ...(!keypad && (has(device, "PhoneDialV1") || has(device, "PhoneCallV1")) ? [emergencyGuidance] : []),
@@ -423,7 +443,7 @@ export const telephonyFamily: DeviceProposalFamily = {
   guidance: familyGuidance,
   clarifyRequest(turn) {
     const canText = has(turn, "SmsSendV1") || has(turn, "SmsComposeV1")
-    return canText && offersAlternativeSmsRecipients(turn.ownerText) ? "Which person should get the text?" : undefined
+    return canText && !emergencyServicesRequest(turn.ownerText) && offersAlternativeSmsRecipients(turn.ownerText) ? "Which person should get the text?" : undefined
   },
   effect ground(proposed, turn) {
     const operation = keypadAsked(proposed.operation, turn) ?? proposed.operation

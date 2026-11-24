@@ -586,6 +586,17 @@ public class AgentService extends Service {
       refusal = refused.getMessage();
     }
     if (!step(new AgentPolicy.LaunchHook(refusal != null, refusal)).accepted() || policy.state().phase() != Phase.CHECKING) return;
+    String launchToken = LaunchFrame.newToken();
+    LaunchFrame readyFrame;
+    try {
+      readyFrame = config.initialFrame(launchToken, epoch, framed, storageKey);
+    } catch (AgentConfig.Refused refused) {
+      step(new AgentPolicy.Refuse(AgentPolicy.Cause.CONFIG, refused.getMessage()));
+      return;
+    } catch (RuntimeException failed) {
+      step(new AgentPolicy.SpawnFailed("The agent could not be started: " + failed.getMessage()));
+      return;
+    }
     Path stateDir;
     try {
       recoveryArchive.requireSettled(directories.stateLocation(active.account().userId(), active.account().organizationId()));
@@ -647,11 +658,10 @@ public class AgentService extends Service {
   private void spawnChecked(long epoch, PayloadCheck.PreparedPayload prepared, String document, Path stateDir,
       LaunchFrame.Credential framed, String storageKey) {
     AgentSupervisor.Child spawned;
-    String launchToken = LaunchFrame.newToken();
     try {
       Path launch = writeLaunch(document);
       Path agentSocket = directories.prepareSocket();
-      byte[] frame = LaunchFrame.first(launchToken, epoch, framed, storageKey).encode();
+      byte[] frame = readyFrame.encode();
       AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
         directories.runtime().resolve("agent.log"));
       synchronized (EPOCH_LOCK) {

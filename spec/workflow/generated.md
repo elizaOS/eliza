@@ -45,6 +45,24 @@ pure def lawUnreviewedCodeNeverTurnsOn(review: GeneratedReview, enable: bool): b
 pure def lawTurningOffNeedsNoReview(review: GeneratedReview): bool = generatedActivationAdmitted(review, false)
 ```
 
+### A draft the check refuses is repaired once before it is refused
+
+A draft the agent writes is checked before it is offered or saved. When
+the check refuses it, the agent asks the model once more, with the
+rejected draft and the compiler's diagnostics given as data, and checks
+that answer. A second refusal is final: the draft is returned with its
+diagnostics and nothing is saved, so a draft is never repaired in a loop.
+A draft that passes is offered as written.
+
+```quint
+type DraftStep = OfferDraft | RepairDraft | RefuseDraft
+pure def draftStep(checkPassed: bool, repairs: int): DraftStep =
+  if (checkPassed) OfferDraft else if (repairs < 1) RepairDraft else RefuseDraft
+pure val repairsValues = Set(0, 1, 2)
+pure def lawAPassingDraftIsOfferedAsWritten(repairs: int): bool = draftStep(true, repairs) == OfferDraft
+pure def lawADraftIsRepairedAtMostOnce(repairs: int): bool = draftStep(false, repairs) == RepairDraft iff repairs < 1
+```
+
 ## Story: Resume generated code after a wait without repeating what it already did
 
 > As the owner, I want a generated workflow that waits for my approval, a

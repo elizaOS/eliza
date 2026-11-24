@@ -1290,3 +1290,4 @@ export {
   type HistorySource,
   type HistoryWindow,
 } from "./runtime/history-window.vibe"
+export { stampedMessage, stampYear } from "./runtime/context-renderer.vibe"

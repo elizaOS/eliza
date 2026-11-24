@@ -83,9 +83,12 @@ const TAIL_LEAD = /^[\s,:;.!?()"'”’\u2014\u2013-]*(?:(?:no|nope|nah|please|b
 const TAIL_END = /^(?:\s+(?:to|up|on|over|into|it|that|this|them|one|there|yet|now|again|please|ever|today|anymore|either|the\s+(?:link|site|website|page|url|address)))*[\s)"'”’]*(?:[.!?;,]|$)/i
 const BARE_END = /(?:^|[\s.!?,;:(])(?:don['’]?t|do\s+not|never)[\s.!?)]*$/i
 const RELOAD_WORD = String.raw`(?:re-?load|refresh|re-?open)`
+const REOPEN_SAME_PAGE = String.raw`(?:load|open)\s+(?:it|this|that|(?:the|this|that)\s+(?:page|site|tab))\s+again`
+const RELOAD_REFERENCE = String.raw`(?:${RELOAD_WORD}(?:ing)?|${REOPEN_SAME_PAGE})`
+const RELOAD_INTENT = String.raw`(?:try\s+${RELOAD_WORD}ing|(?:(?:try|hit|press)\s+(?:the\s+)?)?(?:${RELOAD_WORD}|${REOPEN_SAME_PAGE}))`
 const RELOAD_TAIL = String.raw`(?:\s+(?:it|this|that|the|page|tab|site|website|article|one|again|now|please|for\s+me|once\s+more))*[)"'”’]*(?=\s*[.!?;,:–—]|\s+(?:and|then|so)\b|\s*$)`
-const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|not|stop|no\s+need\s+to)|(?<!\b(?:ca|could|wo|would))n['’]t|\b(?:ca|could|wo|would)n['’]t(?!\s+(?:you|u)\b))\s+(?:(?:just|ever|even|you|u|please|need\s+to|have\s+to|try\s+to|bother\s+to|want\s+to|to)\s+)*${RELOAD_WORD}(?:ing)?\b`, "i")
-const RELOAD_VERBS = /\b(?:re-?load|refresh|re-?open)(?:ing)?\b/gi
+const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|not|stop|no\s+need\s+to)|(?<!\b(?:ca|could|wo|would))n['’]t|\b(?:ca|could|wo|would)n['’]t(?!\s+(?:you|u)\b))\s+(?:(?:just|ever|even|you|u|please|need\s+to|have\s+to|try\s+to|bother\s+to|want\s+to|to)\s+)*${RELOAD_REFERENCE}\b`, "i")
+const RELOAD_VERBS = compiled(String.raw`\b${RELOAD_REFERENCE}\b`, "gi")
 const RELOAD_CLAUSE_BOUNDARY = /[.!?;,:–—]|\b(?:so|then|but)\b/gi
 const RELOAD_COORDINATED_WITHDRAWAL = /^\s*(?:(?:actually|instead|please|pls|just|now|no|wait)\s+)*(?:don['’]?t|do\s+not|never|stop|no\s+need\s+to|i\s+(?:don['’]?t|do\s+not)\s+(?:want|need)\s+you\s+to)\s+(?:.*\b(?:and|or)\s+)?(?:(?:just|ever|even|please|try(?:\s+to)?|need\s+to|have\s+to|bother\s+to)\s+)*$/i
 const RELOAD_ADJACENT_WITHDRAWAL = /^\s*[.?!;,:–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[ \t]*[.!?;,:–—]+(?=\s|$)|\s*$)/i
@@ -130,7 +133,7 @@ function patterns(assistantName: string): NamePatterns {
     sentenceStart: compiled(String.raw`(?:^|[.!?:])\s*(?:(?:hey|hi|ok|okay|${name}|please)[\s,.!]*)*$`, "i"),
     questionStart: compiled(`${questionOpener}$`, "i"),
     questionStartWhy: compiled(String.raw`${questionOpener}why\s+(?:do|does|did)?$`, "i"),
-    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013])\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_WORD}${RELOAD_TAIL}`, "gi"),
+    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013])\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_INTENT}${RELOAD_TAIL}`, "gi"),
   }
   namePatterns.set(key, built)
   return built

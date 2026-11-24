@@ -1,5 +1,5 @@
-// spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"; spec/cloud/services/maps.md, "Story: Keep maps requests within the provider's terms"
-import { answerKeptFor, courseOf, entryOf, keepsAnswer, limitOf, mapsHoldKey, mayDispatch, providerQuote, settlementOf, stillKept, type MapsOperation, type MapsOutcome, type MapsSettlement, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
+// spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"; spec/cloud/services/maps.md, "Story: Keep maps requests within the provider's terms"; spec/cloud/services/maps.md, "A search ranked by distance needs a point to measure from"; spec/cloud/services/maps.md, "A search ranked by distance reads the provider's largest page and answers its nearest places first"
+import { answerKeptFor, closestFirst, courseOf, entryOf, keepsAnswer, limitOf, mapsHoldKey, mayDispatch, providerQuote, searchLimitDefault, searchPageSize, searchRankAccepted, settlementOf, stillKept, type MapsOperation, type MapsOutcome, type MapsSettlement, type SearchRank, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
 import { planRpm } from "../billing/plans.vibe"
 import { laneFor, readPolicy } from "../billing/policy.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
@@ -11,7 +11,7 @@ import { requestDigest } from "../shared/dispatch-once.vibe"
 import { markDispatched, reserveIn, settle, type HoldTicket, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
 import { admitCheck, admitAll, minute, perWindow } from "../shared/rate-limit.vibe"
 import { Store, toInt, toText, type Tx } from "../store/connection.vibe"
-import { IdempotencyKey, PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest, ViewportRequest, tileAddressOf } from "./maps.schema.ts"
+import { IdempotencyKey, PlaceDetailsRequest, PlacesSearchRequest, ReverseRequest, RoutesRequest, TextSearchRequest, ViewportRequest, tileAddressOf, type Coordinate, type MapsPlacesResponse } from "./maps.schema.ts"
 
 type Metered = Exclude<MapsOperation, "Capabilities" | "Viewport">
 
@@ -271,10 +271,31 @@ effect function reverse(context: RouteContext) {
   return respondWith(try metered(context, entered, { op: "Reverse", request: body, preferPlace: body.preferPlace === true, mode: "Drive", run: asJson(entered.provider.reverse(body)) }))
 }
 
+function metersBetween(a: Coordinate, b: Coordinate): number {
+  const radians = Math.PI / 180
+  const h = Math.sin((b.latitude - a.latitude) * radians / 2) ** 2 + Math.cos(a.latitude * radians) * Math.cos(b.latitude * radians) * Math.sin((b.longitude - a.longitude) * radians / 2) ** 2
+  return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+function nearestFirst(found: MapsPlacesResponse, near: Coordinate, limit: number): MapsPlacesResponse {
+  const meters = found.places.map((place) => Math.round(metersBetween(near, place.coordinate)))
+  return { ...found, places: closestFirst(meters, limit).flatMap((index) => found.places.slice(index, index + 1)) }
+}
+
+function rankedSearch(provider: MapsProvider, body: PlacesSearchRequest, rank: SearchRank): MapsReply<MapsPlacesResponse>!!MapsContext {
+  const limit = body.limit ?? searchLimitDefault
+  const near = body.near
+  const asked = { query: body.query, limit: searchPageSize(rank, limit) }
+  if (rank === "RankByRelevance" || near === undefined) return provider.search({ ...asked, rank: "RankByRelevance", ...(near === undefined ? {} : { near }) })
+  return Effect.map(provider.search({ ...asked, rank, near }), (reply): MapsReply<MapsPlacesResponse> => reply.kind === "answered" ? { ...reply, value: nearestFirst(reply.value, near, limit) } : reply)
+}
+
 effect function search(context: RouteContext) {
   const entered = try enter(context, "PlacesSearch")
-  const body = try jsonBody(context, TextSearchRequest)
-  return respondWith(try metered(context, entered, { op: "PlacesSearch", request: body, preferPlace: false, mode: "Drive", run: asJson(entered.provider.search(body)) }))
+  const body = try jsonBody(context, PlacesSearchRequest)
+  const rank: SearchRank = body.rank === "distance" ? "RankByDistance" : "RankByRelevance"
+  if (!searchRankAccepted(entered.kind, rank, body.near !== undefined)) throw refused("InvalidRequest")
+  return respondWith(try metered(context, entered, { op: "PlacesSearch", request: body, preferPlace: false, mode: "Drive", run: asJson(rankedSearch(entered.provider, body, rank)) }))
 }
 
 effect function details(context: RouteContext) {

@@ -22,6 +22,7 @@ import {
   qaEvidenceAdmission,
   readAndroidArtifactEntryBuffers,
   readApkBuildFlags,
+  parseApkSignerDigest,
   readApkSigner,
   readApkSignerDigest,
   readbackInventory,
@@ -33,6 +34,24 @@ import {
 import { cloudSpeechChecks } from "../gen/os__image__apk.effect.vibe"
 import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
 import { scratch } from "./support/scratch.vibe"
+
+it("Read the exact signer from apksigner output (spec/os/image/apk.md, \"A signer observation names exactly one certificate for the requested API\")", () => {
+  const first = "A".repeat(64)
+  const second = "b".repeat(64)
+  const legacy = "Signer #1 certificate SHA-256 digest: " + first
+  const ranged = "Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: " + first
+    + "\nSigner (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: " + second
+  assert.strictEqual(parseApkSignerDigest(legacy), first.toLowerCase())
+  assert.strictEqual(parseApkSignerDigest(ranged, 32), first.toLowerCase())
+  assert.strictEqual(parseApkSignerDigest(ranged, 34), second)
+  assert.isUndefined(parseApkSignerDigest(ranged))
+  assert.isUndefined(parseApkSignerDigest(ranged, 23))
+  assert.isUndefined(parseApkSignerDigest(legacy, 0))
+  assert.isUndefined(parseApkSignerDigest(legacy, 1.5))
+  assert.isUndefined(parseApkSignerDigest(ranged + "\n" + ranged, 34))
+  assert.isUndefined(parseApkSignerDigest(legacy + "\n" + ranged, 34))
+  assert.isUndefined(parseApkSignerDigest("No signers"))
+})
 
 it.effect("Provision a publication policy once and keep its highest verified versions (spec/os/appUpdate/admission.md, \"Publisher role floors only ratchet\"; spec/os/appUpdate/admission.md, \"Story: Publish an app update only with authorized versions\")", () => scoped(effect {
   provide NodeServices.layer {
@@ -93,14 +112,14 @@ module node {
   /** @throws {never} */
   export const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
 
-  /** @throws {Error} when apksigner refuses the two keys */
+  /** @throws {Error} */
   export function signTwice(tools: Extract<AndroidTools, { kind: "present" }>, input: string, output: string, first: TestSigner, second: TestSigner): string {
     const key = (signer: TestSigner) => ["--ks", signer.keystore, "--ks-type", "PKCS12", "--ks-pass", `pass:${signer.password}`, "--ks-key-alias", signer.alias]
     execFileSync(tools.apksigner, ["sign", "--v3-signing-enabled", "false", "--v4-signing-enabled", "false", ...key(first), "--next-signer", ...key(second), "--out", output, input], { stdio: "pipe" })
     return sha256(readFileSync(output))
   }
 
-  /** @throws {Error} when the copy fails */
+  /** @throws {Error} */
   export function copyInto(file: string, directory: string): string {
     mkdirSync(directory, { recursive: true })
     const target = path.join(directory, path.basename(file))

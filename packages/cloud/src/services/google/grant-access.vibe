@@ -264,6 +264,14 @@ effect function pickGrant(tx: Tx, owner: Owner, grantId?: string, side?: string 
   return try chosenGrant(rows, owner.organizationId, grantId, side)
 }
 
+effect function pickOwnedGrant(tx: Tx, owner: Owner, grantId: string, side: string | null) {
+  const rows = try tx.query(
+    "SELECT key, organization_id, status FROM google_connections WHERE key = $1 AND organization_id = $2 AND user_id = $3 FOR UPDATE",
+    [grantId, owner.organizationId, owner.userId]
+  )
+  return try chosenGrant(rows, owner.organizationId, grantId, side)
+}
+
 effect function chosenGrant(rows: ReadonlyArray<Row>, organizationId: string, grantId?: string, side?: string | null) {
   const views = rows.flatMap((row) => {
     const status = statuses.find((known) => known === row.status)
@@ -402,6 +410,9 @@ type Claimed =
   | { readonly kind: "wait" }
 
 type ScopeCheck = (scopes: GoogleScope[]) => boolean
+type GrantTarget =
+  | { readonly kind: "Organization"; readonly grantId: string | undefined; readonly side?: string | null }
+  | { readonly kind: "Owner"; readonly grantId: string; readonly side: string | null }
 
 function admission(state: Connection, holdsScope: ScopeCheck): Refused | undefined {
   const holdsIt = holdsScope(state.scopes)
@@ -409,8 +420,10 @@ function admission(state: Connection, holdsScope: ScopeCheck): Refused | undefin
   return useAllowed(state.status, access, holdsIt) ? undefined : new Refused({ refusal: useRefusal(state.status, access, holdsIt) })
 }
 
-effect function claim(tx: Tx, owner: Owner, grantId: string | undefined, holdsScope: ScopeCheck, expectedAccountId: string | undefined, side: string | null | undefined, time: number) {
-  const connectionId = try pickGrant(tx, owner, grantId, side)
+effect function claim(tx: Tx, owner: Owner, target: GrantTarget, holdsScope: ScopeCheck, expectedAccountId: string | undefined, time: number) {
+  const connectionId = target.kind === "Owner"
+    ? try pickOwnedGrant(tx, owner, target.grantId, target.side)
+    : try pickGrant(tx, owner, target.grantId, target.side)
   if (connectionId === undefined) throw refused("GoogleReauthRequired")
   try restoreLegacyConnection(tx, owner, connectionId)
   const loaded = try loadRow(tx, connectionRows, connectionId)
@@ -479,20 +492,25 @@ effect function refreshed(claimed: { readonly grant: Omit<GoogleGrant, "accessTo
 }
 
 export effect function useGrant(owner: Owner, grantId: string | undefined, capability: GoogleCapability, expectedAccountId?: string) {
-  return try useSelectedGrant(owner, grantId, (scopes) => grantsCapability(scopes, kindOf[capability]), expectedAccountId)
+  return try useSelectedGrant(owner, { kind: "Organization", grantId }, (scopes) => grantsCapability(scopes, kindOf[capability]), expectedAccountId)
 }
 
 // spec/cloud/services/google/mailRead.md, "A read needs a usable connection that holds the Gmail scope of its surface"
 export effect function useMailReadGrant(owner: Owner, grantId: string | undefined, side: string | null, surface: MailSurface) {
-  return try useSelectedGrant(owner, grantId, (scopes) => surfaceHeld(surface, scopes), undefined, side)
+  return try useSelectedGrant(owner, { kind: "Organization", grantId, side }, (scopes) => surfaceHeld(surface, scopes))
 }
 
-effect function useSelectedGrant(owner: Owner, grantId: string | undefined, holdsScope: ScopeCheck, expectedAccountId?: string, side?: string | null) {
+// spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle"
+export effect function useOwnedMailReadGrant(owner: Owner, grantId: string, side: string | null, surface: MailSurface) {
+  return try useSelectedGrant(owner, { kind: "Owner", grantId, side }, (scopes) => surfaceHeld(surface, scopes))
+}
+
+effect function useSelectedGrant(owner: Owner, target: GrantTarget, holdsScope: ScopeCheck, expectedAccountId?: string) {
   try profileGoogle()
   const store = try Store
   const attempt = effect {
     const time = try Clock.currentTimeMillis
-    return try store.transaction((tx) => claim(tx, owner, grantId, holdsScope, expectedAccountId, side, time))
+    return try store.transaction((tx) => claim(tx, owner, target, holdsScope, expectedAccountId, time))
   }
   while (true) {
     const claimed: Claimed = try attempt

@@ -282,10 +282,15 @@ previous window can settle during ongoing speech using its frozen
 submitted counters. Those counters do not attest that either transport
 has closed.
 
+Renewal needs credit for the live window and the next one. The live window
+settles only while retiring.
+
 ```quint
 type Settlement = ReleaseHold | ChargeQuote | ChargeMeasured
 pure def settlementOf(dispatched: bool, confirmed: bool, frozen: bool): Settlement =
   if (not(dispatched)) ReleaseHold else if (confirmed or frozen) ChargeMeasured else ChargeQuote
+pure def lawAnEndedWindowNeverChargesItsQuote(dispatched: bool): bool =
+  settlementOf(dispatched, false, true) != ChargeQuote
 pure def lawUnknownFinalSpeechSettlesAtTheQuote(dispatched: bool): bool =
   dispatched implies settlementOf(dispatched, false, false) == ChargeQuote
 pure def settledIn(s: Session, direction: SpeechDirection): Set[int] = if (direction == Transcribe) s.sttSettled else s.ttsSettled
@@ -306,6 +311,7 @@ pure def alwaysReceiptsComeOnlyFromFinishedWindows(s: Session): bool =
 pure def stepReceiptsAndCauseNeverChange(before: Session, after: Session): bool =
   before.sttSettled.subseteq(after.sttSettled) and before.ttsSettled.subseteq(after.ttsSettled)
   and (isOver(before.phase) implies causeOf(after.phase) == causeOf(before.phase))
+pure def sometimesEarlierWindowSettledWhileActive(s: Session): bool = s.phase == Active and s.sttSettled.size() >= 1
 pure def sometimesRetiringWithAnOpenReceipt(s: Session): bool = isRetiring(s.phase) and s.windows >= 1 and not(allSettled(s))
 pure def sometimesClosedAfterTwoWindows(s: Session): bool = isClosed(s.phase) and s.windows >= 2
 pure def sometimesClosedByTheDevice(s: Session): bool = s.phase == Closed({ cause: DeviceStopped })

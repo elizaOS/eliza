@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import ts from "typescript";
+import type * as TS from "typescript";
 import { InstallationChanged } from "../installed.ts";
 import { isStd, type Spec } from "../parse.ts";
 import { exec } from "../run.ts";
-import { CITATION, citations, danglingCitations, indent, isTestFile, manifest, owner, packageCode, packageManager, packageScripts, testInputs, testReceipt, tokenize, type Remember, type Reported } from "../util.ts";
+import { fileCitations, HAS_CITATION, indent, isTestFile, manifest, missingCitations, owner, packageCode, packageManager, packageScripts, testInputs, testReceipt, tokenize, tsApi, type Citation, type Remember, type Reported } from "../util.ts";
 import type { TestProfile } from "./profile.ts";
 
 /** The configuration every package shares (vibestack/testing/vitest.ts): `spec init` writes it, and `check` where test/ has nothing to run it. */
@@ -20,11 +20,13 @@ export async function tests(checking: string, dir: string, specs: Spec[], rememb
   const said: Reported<"tests">[] = [];
   const root = path.join(checking, dir);
   try {
-    const dangling = danglingCitations(checking, specs, dir);
+    const codeEntries = packageCode(root).map((file) => [file, fs.readFileSync(path.join(root, file), "utf8")] as const);
+    const dirCitations = codeEntries.flatMap(([file, text]) => fileCitations(dir + file, text));
+    const dangling = missingCitations(specs, dirCitations);
     if (dangling.length) said.push([false, "tests", `${dangling.length} citations name no story or rule of the spec`, indent(dangling.join("\n"))]);
-    const oracle = driverImports(root).map((problem) => dir + problem);
+    const oracle = driverImports(root, codeEntries.filter(([file]) => file.startsWith("test/drivers/"))).map((problem) => dir + problem);
     if (oracle.length) said.push([false, "tests", "a driver imports gen/ as types only: it reaches the application, and the spec is the oracle the traces stage compares it with", indent(oracle.join("\n"))]);
-    said.push(...testRules(checking, dir, specs));
+    said.push(...testRules(checking, dir, specs, codeEntries.filter(([file]) => isTestFile(file)), dirCitations));
     // The package's own tests, in whatever runner it chose (AGENTS.md, "Tests"). test/ with nothing to run it gets
     // Vitest, as `spec init` sets it up; the placeholder `npm init` writes is no script.
     const scripts = packageScripts(root);
@@ -90,8 +92,25 @@ function readTests(text: string): { generated: boolean; tests: { line: number; g
   const tokens = tokenize(text);
   if (!tokens) return undefined;
   const word = (i: number) => /^[A-Za-z_$][\w$]*$/.test(tokens[i]?.text ?? "");
-  /** The bracket that closes the one at `i`: the next token as deep. */
-  const close = (i: number) => tokens.findIndex((t, j) => j > i && t.depth === tokens[i].depth);
+  const closing = new Int32Array(tokens.length).fill(-1);
+  const openAt: number[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    while (openAt.length && tokens[openAt.at(-1)!].depth >= tokens[i].depth) closing[openAt.pop()!] = i;
+    openAt.push(i);
+  }
+  const close = (i: number) => closing[i];
+  const lineStarts = [0];
+  for (let p = text.indexOf("\n"); p !== -1; p = text.indexOf("\n", p + 1)) lineStarts.push(p + 1);
+  const lineOf = (pos: number) => {
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (lineStarts[mid] <= pos) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
   // Top-level statements: a word that starts a line outside every bracket, unless the line before ends in an operator.
   const starts = tokens.flatMap((t, i) => t.depth === 0 && (i === 0 || t.fresh && word(i) && !/[=,.:?+\-*/%&|^<>!~]$/.test(tokens[i - 1].text)) ? [i] : []);
   const statements = starts.map((from, n) => ({ from, to: (starts[n + 1] ?? tokens.length) - 1 }));
@@ -104,7 +123,8 @@ function readTests(text: string): { generated: boolean; tests: { line: number; g
     let i = s.from;
     if (tokens[i].text === "import" && tokens[i + 1]?.text !== "(") {
       if (tokens[i + 1].text === "type") continue;
-      const fromAt = tokens.findIndex((t, j) => j > i && j <= s.to && t.text === "from");
+      let fromAt = -1;
+      for (let j = i + 1; j <= s.to; j++) if (tokens[j].text === "from") { fromAt = j; break; }
       const module = tokens[fromAt < 0 ? i + 1 : fromAt + 1].text;
       if (/^["'](?:vitest|@effect\/vitest|node:test)["']$/.test(module)) {
         if (tokens[i + 1]?.text === "*" && tokens[i + 2]?.text === "as") runnerNamespaces.add(tokens[i + 3].text);
@@ -139,10 +159,25 @@ function readTests(text: string): { generated: boolean; tests: { line: number; g
   });
   const ranges = [...statements, ...blocks];
   /** Where the code of a statement or test that comes before the first test inside it ends. */
-  const inner = (r: { from: number; to: number }) => Math.min(r.to + 1, ...blocks.filter((b) => b !== r && b.from >= r.from && b.to <= r.to).map((b) => b.from));
+  const inner = (r: { from: number; to: number }) => {
+    let end = r.to + 1;
+    for (const b of blocks) if (b !== r && b.from >= r.from && b.to <= r.to && b.from < end) end = b.from;
+    return end;
+  };
   const textOf = (from: number, to: number) => text.slice(tokens[from].pos, to < tokens.length ? tokens[to].pos : text.length);
-  const cites = (s: string) => new RegExp(CITATION.source).test(s);
-  const outsideNamed = (from: number, to: number) => tokens.slice(from, to).some((t, k) => t.text === "import" && tokens[from + k + 1]?.text === "(" && reaches(tokens[from + k + 2]?.text ?? "") === "outside");
+  const headerCited = HAS_CITATION.test(text.slice(0, header));
+  const rangeCited = new Map<object, boolean>();
+  const isRangeCited = (r: { from: number; to: number }) => {
+    let hit = rangeCited.get(r);
+    if (hit === undefined) rangeCited.set(r, hit = HAS_CITATION.test(textOf(r.from, inner(r))));
+    return hit;
+  };
+  const outsideNamed = (from: number, to: number) => {
+    for (let i = from; i < to; i++) {
+      if (tokens[i].text === "import" && tokens[i + 1]?.text === "(" && reaches(tokens[i + 2]?.text ?? "") === "outside") return true;
+    }
+    return false;
+  };
   const imported = [...bound.values()];
   return {
     generated: imported.includes("gen") && !imported.includes("outside") && !outsideNamed(0, tokens.length),
@@ -166,9 +201,9 @@ function readTests(text: string): { generated: boolean; tests: { line: number; g
       for (const r of around) visit(r.from, inner(r));
       const kinds = [...named].map((n) => n === "import()" ? "outside" : bound.get(n));
       return {
-        line: text.slice(0, tokens[b.from].start).split("\n").length,
+        line: lineOf(tokens[b.from].start),
         generatedOnly: kinds.includes("gen") && !kinds.includes("outside"),
-        cited: cites(text.slice(0, header)) || cites(textOf(b.from, b.to + 1)) || around.some((r) => cites(textOf(r.from, inner(r)))),
+        cited: headerCited || HAS_CITATION.test(textOf(b.from, b.to + 1)) || around.some(isRangeCited),
       };
     }),
   };
@@ -179,14 +214,12 @@ function readTests(text: string): { generated: boolean; tests: { line: number; g
  * proves, and cites what it serves. Beside them, notes: test files to consolidate, and specs of this package that
  * its src/ may shell but that no test or driver checks.
  */
-function testRules(checking: string, dir: string, specs: Spec[]): Reported<"tests">[] {
+function testRules(checking: string, dir: string, specs: Spec[], testEntries: readonly (readonly [string, string])[], dirCitations: readonly Citation[]): Reported<"tests">[] {
   const root = path.join(checking, dir);
-  const files = packageCode(root).filter(isTestFile);
   const generatedOnly: string[] = [];
   const uncited: string[] = [];
   const said: Reported<"tests">[] = [];
-  for (const file of files) {
-    const text = fs.readFileSync(path.join(root, file), "utf8");
+  for (const [file, text] of testEntries) {
     const read = readTests(text);
     if (read?.generated) generatedOnly.push(`${dir}${file}: imports nothing but gen/ and test libraries`);
     for (const t of read?.tests ?? []) {
@@ -200,14 +233,14 @@ function testRules(checking: string, dir: string, specs: Spec[]): Reported<"test
   if (uncited.length) said.push([false, "tests", `${uncited.length} tests cite no story or rule: cite the one each serves, fold it into the journey that does, or propose deleting it`, indent(uncited.join("\n"))]);
   // One file per package and runner is the norm: a browser test is another runner, a .vibe test another language.
   const groups = new Map<string, string[]>();
-  for (const f of files) {
+  for (const [f] of testEntries) {
     const key = `${/\.browser\.test\./.test(f)} ${/\.vibex?$/.test(f)}`;
     groups.set(key, [...groups.get(key) ?? [], dir + f]);
   }
   for (const group of groups.values()) if (group.length > 1) said.push([true, "tests", `note: ${group.join(", ")} run in one runner, in one language; one test file each is the norm, so consolidate them`]);
   if (fs.existsSync(path.join(root, "src"))) {
     const scripts = packageScripts(root);
-    const checked = new Set(citations(checking, [dir]).filter((c) => c.at.startsWith(`${dir}test/`)).map((c) => c.spec));
+    const checked = new Set(dirCitations.filter((c) => c.at.startsWith(`${dir}test/`)).map((c) => c.spec));
     const owned = new Map<string, boolean>();
     const belongs = (file: string) => {
       const area = file.match(/^spec\/[^/]*\//)?.[0] ?? "";
@@ -222,19 +255,19 @@ function testRules(checking: string, dir: string, specs: Spec[]): Reported<"test
 }
 
 /** Each place a `test/drivers/` module of the package `root` imports or re-exports `gen/` as a value, as `file:line: module`. */
-function driverImports(root: string): string[] {
-  const files = packageCode(root).filter((file) => file.startsWith("test/drivers/"));
-  if (!files.length) return [];
+function driverImports(root: string, entries: readonly (readonly [string, string])[]): string[] {
+  if (!entries.length) return [];
+  const ts = tsApi();
   const config = ts.findConfigFile(root, ts.sys.fileExists);
   const options = { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
     ...config ? ts.getParsedCommandLineOfConfigFile(config, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic() {} })?.options : {} };
   const cache = ts.createModuleResolutionCache(root, (file) => file, options);
-  return files.flatMap((file) => {
-    const source = ts.createSourceFile(path.resolve(root, file), fs.readFileSync(path.join(root, file), "utf8"), ts.ScriptTarget.Latest, true);
+  return entries.flatMap(([file, text]) => {
+    const source = ts.createSourceFile(path.resolve(root, file), text, ts.ScriptTarget.Latest, true);
     const host = ts.createCompilerHost({ noResolve: true, noLib: true });
-    host.getSourceFile = (file) => file === source.fileName ? source : undefined;
+    host.getSourceFile = (name) => name === source.fileName ? source : undefined;
     const checker = ts.createProgram([source.fileName], { noResolve: true, noLib: true }, host).getTypeChecker();
-    const moduleName = (node: ts.Node | undefined, seen = new Set<ts.Symbol>()): string | undefined => {
+    const moduleName = (node: TS.Node | undefined, seen = new Set<TS.Symbol>()): string | undefined => {
       if (!node) return undefined;
       if (ts.isStringLiteralLike(node)) return node.text;
       if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) || ts.isNonNullExpression(node) || ts.isSatisfiesExpression(node)) return moduleName(node.expression, seen);
@@ -243,21 +276,21 @@ function driverImports(root: string): string[] {
         return left === undefined || right === undefined ? undefined : left + right;
       }
       if (ts.isTemplateExpression(node)) {
-        let text = node.head.text;
-        for (const span of node.templateSpans) { const value = moduleName(span.expression, seen); if (value === undefined) return undefined; text += value + span.literal.text; }
-        return text;
+        let out = node.head.text;
+        for (const span of node.templateSpans) { const value = moduleName(span.expression, seen); if (value === undefined) return undefined; out += value + span.literal.text; }
+        return out;
       }
       const symbol = ts.isIdentifier(node) ? checker.getSymbolAtLocation(node) : undefined;
       const declaration = symbol?.valueDeclaration;
       if (!symbol || seen.has(symbol) || !declaration || !ts.isVariableDeclaration(declaration) || !(declaration.parent.flags & ts.NodeFlags.Const)) return undefined;
       return moduleName(declaration.initializer, new Set([...seen, symbol]));
     };
-    const typesOnly = (node: ts.ImportDeclaration | ts.ExportDeclaration) => ts.isImportDeclaration(node)
+    const typesOnly = (node: TS.ImportDeclaration | TS.ExportDeclaration) => ts.isImportDeclaration(node)
       ? !!node.importClause && (node.importClause.isTypeOnly || !node.importClause.name && !!node.importClause.namedBindings
         && ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.length > 0 && node.importClause.namedBindings.elements.every((e) => e.isTypeOnly))
       : node.isTypeOnly || !!node.exportClause && ts.isNamedExports(node.exportClause) && node.exportClause.elements.length > 0 && node.exportClause.elements.every((e) => e.isTypeOnly);
     const found: string[] = [];
-    const visit = (node: ts.Node) => {
+    const visit = (node: TS.Node) => {
       const module = (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && !typesOnly(node) ? node.moduleSpecifier
         : ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword ? node.arguments[0] : undefined;
       const name = moduleName(module);

@@ -74,8 +74,13 @@ pure def sometimesOpenRefused(s: TaskStore): bool = s.writer == OpenRefused and 
 The lock is a named file; replacing it gives the lock a new identity. The
 writer that held the old one may still have its descriptor, but no record is
 written through it, and a new writer may open on the new lock. While a
-writer holds the current lock no other can open. Closing frees the lock and
-keeps the file.
+writer holds the current lock no other can open. On Android the lock is a
+separate private SQLite file. The writer holds a nonblocking write
+transaction for its lifetime while task statements commit independently.
+The task database closes before the writer gives up the guard. The lock
+file remains after close, and process death releases its reservation.
+A legacy lock file that SQLite cannot recognize is refused without
+conversion or changes to task records.
 
 ```quint
 pure def replaceLock(s: TaskStore): TaskStore = { ...s, lockGeneration: s.lockGeneration + 1 }

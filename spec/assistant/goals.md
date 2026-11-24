@@ -98,6 +98,21 @@ pure def lawOnlyAnActiveGoalIsADuplicate(status: GoalStatus, title: str): bool =
 pure def lawADifferentTitleIsNeverADuplicate(status: GoalStatus, title: str, requested: str): bool = title != requested implies not(duplicatesGoal(status, title, requested))
 ```
 
+### A message may ask for several goals, and a goal is renamed only to a nonblank title no other active goal has
+
+Each goal a message asks for is saved under its own title, so two goals
+asked for in one message are both saved, and the same request made again
+saves nothing more. A rename names the goal as [names](./names.md) says
+and gives it a new title: the goal keeps its status, cadence, check-ins
+and answers. A blank title, or one another active goal already has,
+renames nothing.
+
+```quint
+pure def renameGoalAdmitted(renamed: str, takenByAnotherActiveGoal: bool): bool = renamed != "" and not(takenByAnotherActiveGoal)
+pure def lawABlankTitleNeverRenamesAGoal(takenByAnotherActiveGoal: bool): bool = not(renameGoalAdmitted("", takenByAnotherActiveGoal))
+pure def lawATitleAnotherActiveGoalHasNeverRenamesAGoal(renamed: str): bool = not(renameGoalAdmitted(renamed, true))
+```
+
 ## Story: Review how my goals are going
 
 > As an owner, I want to ask how a goal is going, or how all my goals did
@@ -142,4 +157,16 @@ pure def lawAQuietGoalNeedsAttention(answer: ReviewState): bool =
 pure def lawAnAnswerPastItsCadenceIsNotFresh(cadence: Cadence, answeredAt: int, now: int): bool =
   now - answeredAt > staleAfterMs(cadence) implies not(answerFresh(cadence, answeredAt, now))
 pure def lawAnAnswerOlderThanAWeekIsNotRecent(at: int, now: int): bool = now - at > reviewLookbackMs implies not(answeredRecently(at, now))
+```
+
+### A list tells every goal the owner keeps with its status, and changes nothing
+
+A list names every goal that was saved and not deleted, the paused,
+archived and satisfied ones too, each with its status and cadence, so the
+owner can resume or review one that is not active.
+
+```quint
+pure def goalListed(status: GoalStatus): bool = goalExists(status)
+pure def lawADeletedGoalIsNeverListed(status: GoalStatus): bool = (status == GoalDeleted or status == NoGoal) implies not(goalListed(status))
+pure def lawAPausedOrArchivedGoalIsListed(status: GoalStatus): bool = (status == GoalPaused or status == GoalArchived) implies goalListed(status)
 ```

@@ -9,4 +9,5 @@ export schema PreparedViewNavigation {
   }
   readonly viewPath: Schema.NonEmptyString
   readonly label: Schema.NonEmptyString
+  readonly targetProtocol?: "saved-note-v1"
 }

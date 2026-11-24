@@ -134,7 +134,37 @@ On an enrolled phone that can compose or send SMS, when the owner gives
 alternative recipients in a whole text command ("text Carson or Maya that
 dinner is covered"), the agent asks which person should get the text before
 looking either up or proposing an operation. Alternatives within the text
-body remain part of the body.
+body remain part of the body. A message that also asks for emergency services
+("text Carson or Maya that I crashed, call an ambulance now") is not
+clarified, so the emergency rule still applies.
+
+### A call or text to someone the owner names by a role is proposed at once, with that word as the contact query
+
+Where the phone is offered a call or a text that takes a contact target,
+`{kind: contact, query}`, the device tool says once that a person is
+called or texted at once with a contact target, also when the owner names
+them by a role or relation ("ping my brother", "ring the dentist"): the
+query is that word alone, brother for my brother and dentist for the
+dentist, and the phone finds the contact and lets the owner pick when
+several match. It names the call, the text or both, as the phone is
+offered them with a contact target, and where a contact search
+(`contact_show`) is offered too, it says to skip that search first for
+the operations that admit a contact target, since they resolve it themselves. A phone
+offered neither is told none of it. The role word is a name the owner
+wrote, so it is grounded as any contact name is (above).
+
+```quint
+type RoleRule = CallOrTextByRole | CallByRole | TextByRole | NoRoleRule
+pure def roleRule(callsContact: bool, textsContact: bool): RoleRule =
+  if (callsContact and textsContact) CallOrTextByRole else if (callsContact) CallByRole else if (textsContact) TextByRole else NoRoleRule
+pure def searchFirstRefused(rule: RoleRule, searchOffered: bool): bool = searchOffered and rule != NoRoleRule
+pure def lawTheRoleRuleIsSaidOnlyWhereAContactTargetIsOffered(callsContact: bool, textsContact: bool): bool =
+  (roleRule(callsContact, textsContact) == NoRoleRule) iff not(callsContact or textsContact)
+pure def lawTheRoleRuleNamesBothOnlyWhereBothAreOffered(callsContact: bool, textsContact: bool): bool =
+  (roleRule(callsContact, textsContact) == CallOrTextByRole) iff (callsContact and textsContact)
+pure def lawASearchIsRefusedFirstOnlyBesideTheRoleRule(callsContact: bool, textsContact: bool, searchOffered: bool): bool =
+  searchFirstRefused(roleRule(callsContact, textsContact), searchOffered) iff (searchOffered and (callsContact or textsContact))
+```
 
 ### A whole-message call, text or dial command hands through the owner's own recipient
 

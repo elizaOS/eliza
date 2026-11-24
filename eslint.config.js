@@ -30,7 +30,8 @@ const imports = {
 }
 const noReact = { patterns: [...imports.patterns, { regex: "^react(?:-dom)?(?:/|$)", message: `Tool and domain code does not import React: ${monorepo}.` }] }
 // What no tsconfig.json includes, so the type-aware rules cannot see it.
-const untyped = ["*.{js,ts}", "**/.storybook/**", "packages/design-system/**", "vibestack/design/test/**", "vibestack/stories/test/**"]
+const browserPageReader = "packages/plugin-native-browser-surface/resources/read-page.js"
+const untyped = [browserPageReader, "*.{js,ts}", "**/.storybook/**", "packages/design-system/**", "vibestack/design/test/**", "vibestack/stories/test/**"]
 // Every React interface: Studio's page is built on the same theme (vibestack/studio/vite.config.ts).
 const tsx = ["packages/ui/**/*.{ts,tsx}", "packages/cloud/src/pages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}", "vibestack/studio/src/page/**/*.{ts,tsx}"]
 const design = "packages/design-system"
@@ -101,24 +102,11 @@ const countedConsole = {
 const code = { rules: { comments, effects, console: countedConsole } }
 const own = ["apps/**", "packages/**"]
 const commented = {
-  "packages/agent/src/client/coordination.vibe": 1,
   "packages/agent/src/client/device-execution.vibe": 1,
-  "packages/agent/src/client/index.vibe": 1,
-  "packages/agent/src/conversation/events.vibe": 1,
-  "packages/agent/src/conversation/heard.vibe": 1,
-  "packages/agent/src/conversation/turns.vibe": 2,
-  "packages/agent/src/host/process.vibe": 1,
-  "packages/agent/src/schedule/store.vibe": 3,
   "packages/agent/src/voice/capture.worklet.mjs": 1,
-  "packages/agent/test/schedule-triggers.test.vibe": 1,
   "packages/cloud/src/google-read.vibe": 1,
   "packages/cloud/src/services/google/mail-read.vibe": 1,
-  "packages/core/src/network/ssrf.vibe": 3,
   "packages/core/src/retrieval.vibe": 21,
-  "packages/core/src/security/outbound-sanitize.vibe": 3,
-  "packages/core/src/utils/crypto-compat.vibe": 2,
-  "packages/core/src/utils/task-scheduling.vibe": 1,
-  "packages/os/test/image-apk.test.vibe": 2,
 }
 const scheduled = {
   "packages/agent/src/access/socket.vibe": 3,
@@ -152,6 +140,8 @@ const loose = Object.fromEntries(["no-explicit-any", "no-unsafe-argument", "no-u
 export default defineConfig(
   // Generated or disposable, .claude/worktrees holds other checkouts of this repository, and os ships the Android, AOSP, browser and Go trees it copies as files.
   globalIgnores(["**/gen/", "!vibestack/gen/", "**/.vibe/", "**/dist/", "**/.cache/", "**/.spec-cache/", "**/generated/", "**/storybook-static/", "**/test/fixtures/", "packages/os/{android,aosp,browser,native}/", "vibestack/examples/", "vibestack/fixtures/", ".claude/", ".lemmascript/", ".studio/", ".turbo/", "_apalache-out/"]),
+  // The iOS host loads this native browser resource without the TypeScript pipeline.
+  globalIgnores(["packages/plugin-native-browser-surface/resources/read-page.js"]),
   { linterOptions: { reportUnusedDisableDirectives: "error", reportUnusedInlineConfigs: "error" } },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
@@ -190,6 +180,7 @@ export default defineConfig(
     },
   },
   { files: untyped, extends: [tseslint.configs.disableTypeChecked] },
+  { files: [browserPageReader], languageOptions: { globals: { document: "readonly", getComputedStyle: "readonly", location: "readonly", NodeFilter: "readonly" } } },
   // A ratchet at today's longest (Studio's server); a test's describe block holds its cases.
   { ignores: ["**/test/**", "vibestack/selftest.ts"], rules: { "max-lines-per-function": ["error", { max: 250, skipBlankLines: true, skipComments: true }] } },
   {
@@ -227,32 +218,7 @@ export default defineConfig(
   { files: ["packages/agent/**/*.{vibe,vibex}"], rules: { "no-empty": ["error", { allowEmptyCatch: true }] } },
   { files: ["packages/agent/src/access/routes.vibe", "packages/agent/src/client/index.vibe", "packages/agent/src/host/launch.schema.vibe"], rules: { "no-control-regex": "off" } },
   { files: ["packages/**/*.{vibe,vibex}"], rules: { "no-redeclare": "off" } },
-  {
-    files: [
-      "packages/agent/src/device-actions/operation-schemas/browser.vibe",
-      "packages/agent/src/device-actions/operation-schemas/device.schema.vibe",
-      "packages/agent/src/device-actions/operation-schemas/personal.schema.vibe",
-      "packages/agent/src/device-actions/reply-draft.vibe",
-      "packages/plugin-assistant/src/clock.vibe",
-      "packages/plugin-browser/src/contract.vibe",
-      "packages/plugin-browser/src/grounding.vibe",
-      "packages/plugin-calendar/src/linked-sync/control.vibe",
-      "packages/plugin-calendar/src/linked-sync/google-port.vibe",
-      "packages/plugin-calendar/src/linked-sync/linked-store.vibe",
-      "packages/plugin-calendar/src/linked-sync/wire.schema.vibe",
-      "packages/plugin-calendar/src/mutations/records.schema.vibe",
-      "packages/plugin-files/src/documents/scan-links.vibe",
-      "packages/plugin-files/src/documents/scan-text-layer.vibe",
-      "packages/plugin-files/src/storage/model.vibe",
-      "packages/plugin-inbox/src/mailbox/attachments.vibe",
-      "packages/plugin-inbox/src/mailbox/links.vibe",
-      "packages/plugin-maps/src/client/contracts.vibe",
-      "packages/plugin-maps/src/relay.vibe",
-      "packages/plugin-notes/src/client.vibe",
-    ],
-    rules: { "no-control-regex": "off" },
-  },
-  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "@typescript-eslint/no-unused-vars": ["error", { ...unused, args: "none" }], "prefer-const": "off" } },
+  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "prefer-const": "off" } },
   { files: ["packages/agent/src/voice/echo-filter.ts"], rules: { "@typescript-eslint/no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^(?:_|echoOverlapPercent$|isEcho$|turnAccepted$)" }] } },
   {
     files: ["packages/core/src/utils/filesystem.vibe"],

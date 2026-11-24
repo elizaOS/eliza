@@ -62,6 +62,7 @@ function changed(ran: Option.Option<CalendarChangeResult>): CalendarRouteReply {
   const result = ran.value
   if (result.kind === "refused") return refused(refusalStatus[result.reason] ?? 403, `CALENDAR_${result.reason.toUpperCase()}`, "The calendar refused that change.")
   if (result.kind === "queued") return { status: 202, body: { approvalRequestId: result.approvalId } }
+  if (result.kind === "conflict") return refused(409, "CALENDAR_WRITE_CONFLICT", "That time overlaps another event, or its calendar could not be read.")
   const { outcome } = result
   switch (outcome.kind) {
     case "succeeded": return outcome.receipt.event === null

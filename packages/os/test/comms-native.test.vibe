@@ -1,0 +1,43 @@
+// spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"; spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Story: Read my conversations a page at a time"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"
+import { assert, it } from "@effect/vitest"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import path from "node:path"
+  import { compileAdapter, orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
+
+  const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+  const DELETION = "ai.eliza.plugins.actionjournal.deletion.DeferredDeletionTest"
+  const SUITES = "ai.eliza.plugins.messages.SendJournalSuites"
+
+  export async function deletionJournal(): Promise<string> {
+    return execFileSync(java, ["-cp", await orgJsonAdapterClasspath(DELETION), DELETION], { encoding: "utf8", timeout: 120_000 }).trim()
+  }
+
+  export async function sendJournalSuites(): Promise<string[]> {
+    return execFileSync(java, ["-cp", compileAdapter(SUITES), SUITES], { encoding: "utf8", timeout: 120_000 }).trim().split("\n")
+  }
+}
+import { deletionJournal, sendJournalSuites } from node
+
+it.effect('The native journal keeps one winner between Undo and the provider, never replays a lost write, and settles a message, conversation, voicemail or contact through its own module (spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent")', effect () => {
+  const answer = try tryPromise(() => deletionJournal())
+  try Effect.try(() => assert.match(answer, /^\d+ assertions passed$/))
+}, 180_000)
+
+it.effect('The send journal binds an operation to its content, keeps its evidence across a restart and pages rows of one timestamp once, and an OMTP status reduces to its channel states (spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message\'s status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A page of conversations or messages is read only on an unlocked phone with the SMS grant, and holds 1 to 50 rows"; spec/os/android/voicemail.md, "The carrier is ready only when a source is configured, and unsupported when every source is disabled or none exists")', effect () => {
+  const passed = try tryPromise(() => sendJournalSuites())
+  try Effect.try(() => assert.deepStrictEqual(passed, [
+    "passed SmsSendJournalTest.journalBindingEvidenceDurabilityAndMapping",
+    "passed SmsSendJournalTest.ownOutboxRowsSettleFromSentCallbacksOnly",
+    "passed SmsSendJournalTest.retiredFilterNamespaceIsMigrationSensitive",
+    "passed MmsSendJournalTest.mmsBindingValidationAndEvidence",
+    "passed OmtpSmsTest.datesAreStrict",
+    "passed OmtpSmsTest.platformParsedFieldsAreHeldToTheSameRules",
+    "passed OmtpSmsTest.requestsFollowTheVersionAndVariant",
+    "passed OmtpSmsTest.returnCodesAndStatesReduceToChannelStates",
+    "passed OmtpSmsTest.statusCarriesTheImapAccount",
+    "passed OmtpSmsTest.syncCarriesTheEvent",
+    "passed OmtpSmsTest.whatIsNotOmtpIsNullAndWhatIsBrokenIsRefused",
+  ]))
+}, 180_000)

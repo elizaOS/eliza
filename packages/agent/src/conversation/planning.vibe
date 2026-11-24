@@ -6,7 +6,7 @@ import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentContext, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
   activeCommittedEffectReceipts, effectReceiptIdentity, mergeEffectReceipts, modelProviderResendIsSpent, runWithSuppressedModelStream, sameEffectEvidence,
-  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import { tagsMayProduceEffects } from "@elizaos/core/protocol"
@@ -96,6 +96,12 @@ export interface ServedElsewhere {
 }
 
 export const turnElsewhere = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory, params: Record<string, unknown>) => ServedElsewhere | undefined>()
+
+export const progressContexts = new WeakMap<Action, (runtime: IAgentRuntime, params: Record<string, unknown>) => readonly AgentContext[]>()
+
+export function showsApp(action: Action, app: AgentContext): void {
+  progressContexts.set(action, () => [app])
+}
 
 export const turnNotes = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => string | undefined>()
 
@@ -355,19 +361,21 @@ export function conversationCache(runtime: IAgentRuntime, roomId: string, stage:
   return { cerebras: { promptCacheKey: `eliza-workflow-v1:${sha256Hex(`${JSON.stringify([runtime.agentId, roomId])}:${stage}`)}` } }
 }
 
-export async function sentAtMostTwice<T>(send: () => Promise<T>, signal: AbortSignal): Promise<T> {
+export async function sentAtMostTwice<T>(send: (bind: (params: GenerateTextParams) => GenerateTextParams) => Promise<T>, signal: AbortSignal): Promise<T> {
+  const attempts = modelAttemptCapture()
   const scope = ownerResendScope()
   try {
-    return await send()
+    return await send(attempts.bind)
   } catch (error: unknown) {
     if (modelProviderResendIsSpent(error) || scope?.retrySpent === true || (scope !== undefined && error instanceof ModelRefusal && error.status === 429)) throw error
-    const wait = resendWait(callFailureOf(error), false)
+    const wait = resendWait(callFailureOf(error), attempts.spent())
     if (wait < 0 || signal.aborted) throw error
     await sleepWithAbort(wait, signal)
     signal.throwIfAborted()
-    if (scope === undefined) return send()
+    const retry = () => send((params) => params)
+    if (scope === undefined) return retry()
     if (!scope.current() || Date.now() >= scope.deadline) throw error
-    return withOwnerResend({ ...scope, retrySpent: true }, send)
+    return withOwnerResend({ ...scope, retrySpent: true }, retry)
   }
 }
 
@@ -427,11 +435,12 @@ function failureNotice(step: PlannedStep): string {
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 
-function toolLabel(runtime: AgentRuntime, action: Action | undefined, selected: ReadonlySet<string>): string {
+export function activityLabel(runtime: IAgentRuntime, action: Action | undefined, params: Record<string, unknown> = {}, selected: ReadonlySet<string> = new Set()): string {
   const applicable = new Set<string>()
   const labels = new Set<string>()
   const selectedLabels = new Set<string>()
-  for (const context of action === undefined ? [] : resolveActionContexts(action)) {
+  const reached = action === undefined ? [] : progressContexts.get(action)?.(runtime, params) ?? resolveActionContexts(action)
+  for (const context of reached) {
     if (context === "general" || context === "simple") continue
     const definition = runtime.contexts.get(context)
     if (definition?.sensitivity === "system") continue
@@ -543,7 +552,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
       return refusal
     }
-    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name), selected) })
+    await input.onActivityStatus?.({ actionName: call.name, label: activityLabel(runtime, named.get(call.name), params, selected) })
     const captured: string[] = []
     const context = await input.actionContext(named.get(call.name), params)
     signal.throwIfAborted()
@@ -578,23 +587,25 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const onStreamChunk = holdDraft ? undefined : input.onStreamChunk
     let said: unknown
     try {
-      const infer = () => runtime.useModel(ModelType.TEXT_LARGE, {
-        system: input.system, messages: conversation, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
-        ...(offeredTools.length === 0 ? {} : { tools: offeredTools, toolChoice: finalRound ? "none" as const : "auto" as const }),
-        ...(onStreamChunk === undefined ? {} : {
-          stream: true,
-          onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
-            streamed = accumulated ?? streamed + chunk
-            if (restartFirst && !restarted) {
-              restarted = true
-              input.onReplyRestart?.(streamed)
-              return
-            }
-            return onStreamChunk(chunk, messageId, accumulated)
-          },
-        }),
-      })
-      said = await sentAtMostTwice(async () => holdDraft ? runWithSuppressedModelStream(infer) : infer(), signal)
+      said = await sentAtMostTwice(async (bind) => {
+        const infer = () => runtime.useModel(ModelType.TEXT_LARGE, bind({
+          system: input.system, messages: conversation, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
+          ...(offeredTools.length === 0 ? {} : { tools: offeredTools, toolChoice: finalRound ? "none" as const : "auto" as const }),
+          ...(onStreamChunk === undefined ? {} : {
+            stream: true,
+            onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
+              streamed = accumulated ?? streamed + chunk
+              if (restartFirst && !restarted) {
+                restarted = true
+                input.onReplyRestart?.(streamed)
+                return
+              }
+              return onStreamChunk(chunk, messageId, accumulated)
+            },
+          }),
+        }))
+        return holdDraft ? runWithSuppressedModelStream(infer) : infer()
+      }, signal)
     } catch (error: unknown) {
       if (signal.aborted || !stoppedAtOutputLimit(error)) throw error
       prose = cutOffReply

@@ -1,44 +1,58 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"
-import { incomingRequestTime, readTurnContext, requestDateInstant } from "@elizaos/agent"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A change waiting for approval expires a day after it was asked"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request or the owner's words say"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"
+import { incomingRequestTime, readTurnContext, requestDateInstant, showsApp } from "@elizaos/agent"
 // spec/calendar/requestRouting.md, "A dense delete request reaches Calendar and the named title decides the target"
 import { calendarAnswerAdmitted } from "../../gen/calendar__requestRouting.ts"
 import { selectedCalendarDeleteTarget } from "../../gen/calendar__requestRouting.effect.vibe"
-import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type ContextDefinition, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  availabilityRequestTimeAdmitted, chatCreateReviewed, chatDeleteStep, deleteAnswer, deleteQuestionLifetime, deleteQuestionMatches, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
+  availabilityRequestTimeAdmitted, changeTarget, chatCreateReviewed, chatDeleteStep, contextLookahead, createEndMs, createLength, dayRead, deleteAnswer, deleteQuestionLifetime, deleteQuestionMatches, freeTimeRead, guestChange, intervalFree, lookupDaysAhead, lookupDaysBack, lookupNearAhead,
+  lookupNearBack, lookupReadLimit, lookupSpanDays, lookupStep, morningAdmission, noticeAsked, occurrenceChoice, offDay, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
-import { createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, statedYearCreate } from "../clock.vibe"
+import { clockReal, instantRead, wallZone } from "../../gen/calendar__readClock.effect.vibe"
+import { scopeChoice } from "../../gen/calendar__seriesScope.effect.vibe"
+import {
+  addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate,
+} from "../clock.vibe"
 import { sameSourceKey, type CalendarEvent, type CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
 import {
-  addressWrittenInWords, asksToDeleteInWords, declinesInWords, deleteWords, denseDeleteTarget, eventNamedInWords, exactTitleAnswer, guestIs, guestNamedInWords, noticeAskedInWords, noticeDeclinedInWords, saysYes,
+  addressWrittenInWords, asksToDeleteInWords, declinesInWords, deleteWords, denseDeleteTarget, eventDayInWords, eventNamedInWords, exactTitleAnswer, guestIs, guestNamedInWords, noticeAskedInWords, noticeDeclinedInWords, saysYes, scopesInWords,
+  zoneNamedIn,
 } from "../request-time.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { tripEvents } from "./lookup.vibe"
 import { asksOnlyAboutTomorrowMorning, blockingSpans, openings, spanText, tomorrowMorning, windowFitsWeek } from "./free-time.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
-import type { AvailabilityScope, CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearchResult } from "./host.vibe"
+import type { AvailabilityScope, CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearch, CalendarSearchResult } from "./host.vibe"
 import { eventVersion, guestAddresses } from "./providers.vibe"
 import { CalendarService, calendarServiceType } from "./service.vibe"
 
 export const calendarActionName = "CALENDAR"
+
+export const calendarContext: ContextDefinition = {
+  id: "calendar", label: "Calendar", description: "The owner's calendars and events.", descriptionCompressed: "Calendars and events.",
+  sensitivity: "personal", cacheScope: "agent",
+}
 
 const day = 86_400_000
 const maxSpan = 370 * day
 const subactions = ["search_events", "next_event", "trip_window", "check_availability", "propose_times", "create_event", "update_event", "delete_event"] as const
 type Subaction = typeof subactions[number]
 
-const isoWithZone = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/
-const Instant = Schema.String.check(Schema.makeFilter((text) => isoWithZone.test(text) && Number.isFinite(Date.parse(text))))
+const sentTime = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)(?::(\d\d)(?:\.\d{1,3})?)?(Z|[+-]\d\d:\d\d)?$/
+const civilDay = /^(\d{4})-(\d\d)-(\d\d)$/
+const Instant = Schema.String.check(Schema.makeFilter((text) => sentTime.test(text)))
 const Words = (limit: number) => Schema.String.check(Schema.isMaxLength(limit))
 const Parameters = Schema.Struct({
   subaction: Schema.Literals(subactions),
   query: Schema.optionalKey(Words(500)),
   timeMin: Schema.optionalKey(Instant),
   timeMax: Schema.optionalKey(Instant),
+  date: Schema.optionalKey(Words(10)),
+  endDate: Schema.optionalKey(Words(10)),
   eventId: Schema.optionalKey(Words(1024)),
   calendarId: Schema.optionalKey(Words(1024)),
   title: Schema.optionalKey(Words(500)),
@@ -67,6 +81,132 @@ const decodeFields = Schema.decodeUnknownOption(FieldsRecord)
 const decodeRecurrence = Schema.decodeUnknownOption(RecurrenceRecord)
 
 const canonical = (instant: string) => new Date(Date.parse(instant)).toISOString()
+
+function dayOf(sent: string | undefined): LocalDate | undefined {
+  const match = sent === undefined ? null : civilDay.exec(sent)
+  if (match === null) return undefined
+  const date = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
+  const real = addDaysToLocalDate(date, 0)
+  return real.year === date.year && real.month === date.month && real.day === date.day ? date : undefined
+}
+
+type TimeRead = { readonly kind: "at"; readonly at: string } | { readonly kind: "unreal" } | { readonly kind: "unresolved" }
+
+function timeIn(sent: string, zone: string): TimeRead {
+  const parts = sentTime.exec(sent)
+  if (parts === null) return { kind: "unreal" }
+  const date = dayOf(sent.slice(0, 10))
+  const hour = Number(parts[4]), minute = Number(parts[5]), second = Number(parts[6] ?? "0")
+  const offset = parts[7] !== undefined
+  const real = date !== undefined && clockReal(hour, minute, second) && (!offset || Number.isFinite(Date.parse(sent)))
+  const wall = date === undefined ? undefined : hour === 24 ? { ...addDaysToLocalDate(date, 1), hour: 0, minute, second } : { ...date, hour, minute, second }
+  const at = !real || offset || wall === undefined ? undefined : buildUtcDateFromLocalParts(zone, wall, "reject")
+  switch (instantRead(real, offset, at !== undefined)) {
+    case "InstantUnreal": return { kind: "unreal" }
+    case "InstantAsSent": return { kind: "at", at: sent }
+    case "InstantInWallZone": return at === undefined ? { kind: "unresolved" } : { kind: "at", at: at.toISOString() }
+    case "InstantRefused": return { kind: "unresolved" }
+  }
+}
+
+const rangeTimes = ["timeMin", "timeMax"] as const
+const eventTimes = ["startAt", "endAt", "repeatUntil"] as const
+type TimesRead = { readonly kind: "read"; readonly parameters: Parameters } | { readonly kind: "unreal" } | { readonly kind: "unresolved" }
+
+function timesIn(sent: Parameters, keys: typeof rangeTimes | typeof eventTimes, zone: string): TimesRead {
+  const read: { -readonly [Key in keyof Parameters]: Parameters[Key] } = { ...sent }
+  for (const key of keys) {
+    const instant = read[key]
+    if (instant === undefined) continue
+    const at = timeIn(instant, zone)
+    if (at.kind !== "at") return at
+    read[key] = at.at
+  }
+  if (keys !== eventTimes || read.skipStarts === undefined) return { kind: "read", parameters: read }
+  const starts: string[] = []
+  for (const start of read.skipStarts) {
+    const at = timeIn(start, zone)
+    if (at.kind !== "at") return at
+    starts.push(at.at)
+  }
+  return { kind: "read", parameters: { ...read, skipStarts: starts } }
+}
+
+function eventWallZone(sent: Parameters, creating: boolean, wholeDay: boolean, text: string, zones: { readonly request: string; readonly context: string }): string | undefined {
+  const loose = [sent.startAt, sent.endAt, sent.repeatUntil, ...(sent.skipStarts ?? [])].flatMap((time) => time === undefined || sentTime.exec(time)?.[7] !== undefined ? [] : [time])
+  const instant = (time: string, zone: string) => {
+    const read = timeIn(time, zone)
+    return read.kind === "at" ? read.at : read.kind
+  }
+  const sentZone = knownTimeZone(sent.timeZone) ? sent.timeZone : undefined
+  const named = zoneNamedIn(text)
+  const moved = sentZone !== undefined && loose.some((time) => instant(time, sentZone) !== instant(time, zones.context))
+  const ownerNamedIt = sentZone !== undefined && named.kind === "zone" && loose.every((time) => instant(time, named.zone) === instant(time, sentZone))
+  switch (wallZone(wholeDay, creating, sentZone !== undefined, moved, ownerNamedIt)) {
+    case "WallAsCivilDate": return "UTC"
+    case "WallInRequestZone": return zones.request
+    case "WallInContextZone": return zones.context
+    case "WallInNamedZone": return sentZone
+    case "WallZoneUnsaid": return undefined
+  }
+}
+
+type DayWindow = { readonly kind: "none" } | { readonly kind: "refused" } | { readonly kind: "days"; readonly timeMin: number; readonly timeMax: number }
+
+function wholeDays(parameters: Parameters, zone: string): DayWindow {
+  const first = dayOf(parameters.date)
+  const last = parameters.endDate === undefined ? first : dayOf(parameters.endDate)
+  const timeMin = first === undefined ? undefined : startOfCivilDay(first, zone)
+  const timeMax = last === undefined ? undefined : startOfCivilDay(addDaysToLocalDate(last, 1), zone)
+  const days = timeMin === undefined || timeMax === undefined || timeMin < 0 ? undefined : { kind: "days" as const, timeMin, timeMax }
+  const count = days === undefined ? 0 : Math.round((days.timeMax - days.timeMin) / day)
+  switch (dayRead(parameters.date !== undefined, parameters.endDate !== undefined, days !== undefined, parameters.timeMin !== undefined || parameters.timeMax !== undefined, count)) {
+    case "ReadAskedWindow": return { kind: "none" }
+    case "RefuseDayRead": return { kind: "refused" }
+    case "ReadWholeDays": return days ?? { kind: "refused" }
+  }
+}
+
+function bySeries(events: readonly CalendarEvent[]): CalendarEvent[][] {
+  const series = new Map<string, CalendarEvent[]>()
+  for (const event of events) {
+    const key = `${event.provider}\n${event.calendarId}\n${event.recurringEventId ?? event.id}`
+    const held = series.get(key)
+    if (held === undefined) series.set(key, [event])
+    else held.push(event)
+  }
+  return [...series.values()]
+}
+
+function nextOf(occurrences: readonly CalendarEvent[], now: number): CalendarEvent | undefined {
+  return occurrences.find((event) => Date.parse(event.endAt) > now) ?? occurrences.at(-1)
+}
+
+function candidatesOf(groups: readonly (readonly CalendarEvent[])[], now: number): CalendarEvent[] {
+  const [only] = groups
+  if (groups.length !== 1 || only === undefined) {
+    return groups.flatMap((occurrences) => {
+      const next = nextOf(occurrences, now)
+      return next === undefined ? [] : [next]
+    })
+  }
+  const ahead = only.filter((event) => Date.parse(event.endAt) > now)
+  return (ahead.length > 0 ? ahead : only).slice(0, 5)
+}
+
+function startsOn(event: CalendarEvent, date: LocalDate, zone: string): boolean {
+  const parts = getZonedDateParts(new Date(Date.parse(event.startAt)), event.isAllDay ? "UTC" : zone)
+  return parts !== undefined && parts.year === date.year && parts.month === date.month && parts.day === date.day
+}
+
+function readFresh(sources: CalendarSearchResult["sources"], event: CalendarEvent): boolean {
+  return sources.some((source) => source.status === "fresh" && source.key.provider === event.provider && source.key.calendarId === event.calendarId
+    && (event.grantId === undefined || event.grantId === "" || source.key.grantId === event.grantId))
+}
+
+function repeats(event: CalendarEvent): boolean {
+  return (event.recurringEventId ?? null) !== null || (event.recurrence?.length ?? 0) > 0
+}
 
 function wallTime(event: CalendarEvent, zone: string): string {
   try {
@@ -107,8 +247,15 @@ export function calendarEffectReceipt(request: CalendarMutationRequest, receipt:
 }
 
 const ledgerDown = "The calendar's change records couldn't be read, so I can't confirm that change."
+const rangeUnreadable = "That time range isn't one I can read: it must run forward and span at most 370 days."
 const failed = (subaction: Subaction, text: string, extra: Record<string, unknown> = {}): ActionResult =>
   ({ success: false, text, data: { subaction, ...extra } })
+
+function timesRefused(subaction: Subaction, kind: "unreal" | "unresolved"): ActionResult {
+  return kind === "unreal"
+    ? failed(subaction, "One of those times is not a real date and clock time. Write each as YYYY-MM-DDTHH:MM, with its offset or without one. Nothing was read or changed.", { code: "CALENDAR_TIME_INVALID" })
+    : failed(subaction, "One of those times is skipped or shown twice by that day's clock change, so it names no single moment. Nothing was read or changed.", { code: "CALENDAR_WALL_TIME_UNRESOLVED" })
+}
 
 function window(parameters: Parameters, now: number, length: number): { readonly timeMin: number; readonly timeMax: number } | undefined {
   const timeMin = parameters.timeMin === undefined ? now : Date.parse(parameters.timeMin)
@@ -136,6 +283,7 @@ function changeText(outcome: CalendarMutationOutcome, done: string): string {
 }
 
 const nobodyNotified = " The built-in calendar can't email attendees, so nobody was notified."
+const overlapsUnchecked = " Another calendar could not be read, so overlaps there were not checked."
 
 function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: string): ActionResult {
   if (result.kind === "refused") {
@@ -154,17 +302,27 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
     }[result.reason]
     return failed(subaction, text, { refusal: result.reason })
   }
+  if (result.kind === "conflict") {
+    const made = subaction === "create_event" ? "created" : "changed"
+    if (result.reason === "unread") {
+      return failed(subaction, `Nothing was ${made}: the calendar it goes on could not be read, so I can't tell whether that time is free.`, { code: "CALENDAR_WRITE_SLOT_UNREAD" })
+    }
+    const held = result.conflicts.slice(0, 5)
+    return failed(subaction, `Nothing was ${made}: that time overlaps ${held.map((event) => line(event, zone)).join("; ")}. Tell me another time, or move that first.`,
+      { code: "CALENDAR_WRITE_CONFLICT", requiresInput: true, missing: ["available time"], conflicts: held.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt, endAt: event.endAt })) })
+  }
+  const unchecked = result.overlapsUnchecked ? overlapsUnchecked : ""
   if (result.kind === "queued") {
     const silent = result.notice === "CannotNotify" ? " That calendar can't email attendees, so nobody will be notified." : ""
-    return { success: true, text: `I've asked for your approval before changing that calendar.${silent}`, data: { subaction, approvalRequestId: result.approvalId, change: result.request.payload } }
+    return { success: true, text: `I've asked for your approval before changing that calendar.${silent}${unchecked}`, data: { subaction, approvalRequestId: result.approvalId, change: result.request.payload } }
   }
   const { outcome, request } = result
   if (outcome.kind !== "succeeded") return failed(subaction, changeText(outcome, ""), { outcome: outcome.kind, requestId: request.id })
   const receipt = outcome.receipt
   const effectReceipts = [calendarEffectReceipt(request, receipt, outcome.replayed)]
-  const note = result.notice === "CannotNotify" ? nobodyNotified : ""
+  const note = `${result.notice === "CannotNotify" ? nobodyNotified : ""}${unchecked}`
   if (receipt.operation === "schedule_event" && receipt.event !== null) {
-    return { success: true, text: `Created ${line(receipt.event, zone)}.`, effectReceipts, data: { subaction, event: receipt.event, requestId: request.id } }
+    return { success: true, text: `Created ${line(receipt.event, zone)}.${unchecked}`, effectReceipts, data: { subaction, event: receipt.event, requestId: request.id } }
   }
   if (request.payload.action === "respond_invitation" && receipt.event !== null) {
     return { success: true, text: `${answered[request.payload.response]} ${line(receipt.event, zone)}.${note}`, effectReceipts,
@@ -177,7 +335,6 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
   return { success: true, text: `Deleted ${title}.${note}`, effectReceipts, data: { subaction, targetEvent: receipt.target, deleted: true, requestId: request.id } }
 }
 
-/** Who asked for a Calendar action, the stable id of the request that asked, what they said, and the zones of their client and of the owner. */
 export interface CalendarAsk {
   readonly by: string
   readonly id: string
@@ -207,7 +364,6 @@ function ownerWords(message: Memory): string {
   }
 }
 
-/** The ask of one message: its conversation, text, selected event, and client/owner zones. */
 export function calendarAsk(message: Memory, ownerZone?: string): CalendarAsk {
   const context = readTurnContext(message)
   const clientZone = context.observation?.timeZone ?? context.voiceUi?.uiTimeZone
@@ -232,20 +388,102 @@ function zonesOf(ask: CalendarAsk) {
   return { owner: knownTimeZone(ask.ownerZone) ? ask.ownerZone : deviceTimeZone(), ...(ask.clientZone === undefined ? {} : { client: ask.clientZone }) }
 }
 
-effect function target(host: CalendarHost, parameters: Parameters, now: number) {
+interface NamedRead {
+  readonly events: readonly CalendarEvent[]
+  readonly sources: CalendarSearchResult["sources"]
+  readonly everythingRead: boolean
+}
+
+type Named = Pick<CalendarSearch, "query" | "calendarId">
+
+effect function readBySteps(host: CalendarHost, named: Named, now: number): (NamedRead | undefined)!! {
+  let span = lookupSpanDays
+  let reads = 0
+  let firstReadWhole = false
+  let everythingRead = true
+  for (const leg of [{ from: -lookupNearBack, to: lookupNearAhead, first: true }, { from: lookupNearAhead, to: lookupDaysAhead, first: false }, { from: -lookupNearBack, to: -lookupDaysBack, first: false }]) {
+    let at = leg.from
+    while (at !== leg.to) {
+      if (reads >= lookupReadLimit) return { events: [], sources: [], everythingRead: false }
+      const next = leg.first ? leg.to : leg.to > at ? Math.min(leg.to, at + span) : Math.max(leg.to, at - span)
+      const timeMin = Math.max(0, now + Math.min(at, next) * day)
+      const timeMax = now + Math.max(at, next) * day
+      if (timeMax <= timeMin) {
+        at = next
+        continue
+      }
+      const searched = try host.search({ timeMin, timeMax, ...named })
+      if (searched === undefined) return undefined
+      reads += 1
+      if (leg.first) firstReadWhole = searched.complete
+      const verdict = lookupStep(searched.events.length, searched.complete, firstReadWhole && !leg.first, Math.abs(next - at))
+      if (verdict === "LookupDecides") return { events: searched.events, sources: searched.sources, everythingRead: searched.complete }
+      if (verdict === "LookupShrinks") {
+        span = Math.floor(Math.abs(next - at) / 2)
+        continue
+      }
+      if (verdict === "LookupUnread") everythingRead = false
+      at = next
+    }
+  }
+  return { events: [], sources: [], everythingRead }
+}
+
+interface TargetAsk {
+  readonly parameters: Parameters
+  readonly text: string
+  readonly moving: boolean
+  readonly scope: CalendarWriteScope | undefined
+  readonly zone: string
+  readonly now: number
+}
+
+type Lookup =
+  | { readonly kind: "found"; readonly found: CalendarFound }
+  | { readonly kind: "ambiguous"; readonly matches: readonly CalendarEvent[]; readonly offDay: boolean }
+  | { readonly kind: "unread" | "missing" | "badRange" }
+
+effect function target(host: CalendarHost, asked: TargetAsk): Lookup!! {
+  const { parameters, now, zone } = asked
   if (parameters.eventId !== undefined) {
     const found = try host.find(parameters.eventId, parameters.calendarId)
-    return found === undefined ? { kind: "missing" as const } : { kind: "found" as const, found }
+    return found === undefined ? { kind: "missing" } : { kind: "found", found }
   }
-  if (parameters.query === undefined || parameters.query.trim() === "") return { kind: "missing" as const }
-  const span = window(parameters, now - day, 60 * day)
-  if (span === undefined) return { kind: "missing" as const }
-  const searched = try host.search({ ...span, query: parameters.query, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
-  const matches = searched?.events ?? []
-  if (matches.length !== 1) return { kind: "ambiguous" as const, matches }
-  const only = matches[0]
-  const found = only === undefined ? undefined : try host.find(only.id, only.calendarId)
-  return found === undefined ? { kind: "missing" as const } : { kind: "found" as const, found }
+  const query = parameters.query ?? ""
+  if (query.trim() === "") return { kind: "missing" }
+  const named: Named = { query, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) }
+  const ranged = parameters.timeMin !== undefined || parameters.timeMax !== undefined
+  const span = ranged ? window(parameters, Math.max(0, now - lookupNearBack * day), lookupNearAhead * day) : undefined
+  if (ranged && span === undefined) return { kind: "badRange" }
+  const whole = span === undefined ? undefined : try host.search({ ...span, ...named })
+  const read: NamedRead | undefined = span === undefined ? try readBySteps(host, named, now)
+    : whole === undefined ? undefined : { events: whole.events, sources: whole.sources, everythingRead: whole.complete }
+  if (read === undefined) return { kind: "missing" }
+  const said = read.events.length === 0 ? undefined
+    : eventDayInWords(asked.text, { moving: asked.moving, titles: read.events.map((event) => event.title), query, zone, now: new Date(now) })
+  const dayStart = said === undefined ? undefined : startOfCivilDay(said.date, zone)
+  const dayEnd = said === undefined ? undefined : startOfCivilDay(addDaysToLocalDate(said.date, 1), zone)
+  const saidDayRead = dayStart === undefined || dayEnd === undefined || dayStart < 0 ? undefined : try host.search({ timeMin: dayStart, timeMax: dayEnd, ...named })
+  const series = new Set(bySeries(read.events).map((occurrences) => occurrences[0]?.recurringEventId ?? occurrences[0]?.id))
+  const titles = new Set(read.events.map((event) => event.title.trim().toLowerCase()))
+  const onDay = said === undefined || saidDayRead === undefined ? []
+    : saidDayRead.events.filter((event) => startsOn(event, said.date, zone) && (series.has(event.recurringEventId ?? event.id) || titles.has(event.title.trim().toLowerCase())))
+  const groups = bySeries(onDay.length > 0 ? onDay : read.events)
+  if (said !== undefined && onDay.length === 0 && offDay(asked.moving, groups.length, said.followsName, said.marksTheEvent) === "DayHoldsNone") {
+    return { kind: "ambiguous", matches: candidatesOf(groups, now), offDay: true }
+  }
+  const occurrences = groups[0] ?? []
+  const first = occurrences[0]
+  const sources = onDay.length > 0 && saidDayRead !== undefined ? saidDayRead.sources : read.sources
+  const verdict = changeTarget(groups.length, read.everythingRead, first !== undefined && readFresh(sources, first))
+  if (verdict === "TargetUnread") return { kind: "unread" }
+  if (verdict === "TargetMissing") return { kind: "missing" }
+  if (verdict === "TargetAmbiguous") return { kind: "ambiguous", matches: candidatesOf(groups, now), offDay: false }
+  const choice = occurrenceChoice(occurrences.length, asked.scope !== undefined, asked.scope === "series")
+  if (choice === "AskWhichDay") return { kind: "ambiguous", matches: candidatesOf(groups, now), offDay: false }
+  const chosen = choice === "TheOnlyOccurrence" ? first : nextOf(occurrences, now)
+  const found = chosen === undefined ? undefined : try host.find(chosen.id, chosen.calendarId)
+  return found === undefined ? { kind: "missing" } : { kind: "found", found }
 }
 
 type Guests = { readonly kind: "guests"; readonly attendees?: readonly string[] } | { readonly kind: "refused"; readonly text: string }
@@ -335,7 +573,7 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
       const prompt = `Nothing was deleted. Your request didn't name one exact event; the closest match is “${event.title}”, ${wallTime(event, zone)}.${unread} Should I delete it${notice}?`
       try host.askToDelete(conversation, { eventId: event.id, source: found.source, version: eventVersion(event),
         scope: "instance", notifyAttendees, askedIn: ask.id, askedAt: now, prompt })
-      return { ...failed(subaction, prompt, { requiresInput: true, missing: ["delete confirmation"], eventId: event.id, targetEvent: event }),
+      return { ...failed(subaction, prompt, { requiresInput: true, missing: ["delete confirmation"], eventId: event.id, recurrenceScope: "instance", targetEvent: event }),
         verifiedUserFacing: true, userFacingText: prompt }
     }
     case "PickInCalendar":
@@ -423,19 +661,27 @@ effect function freeTime(host: CalendarHost, ask: CalendarAsk, parameters: Param
   }
 }
 
-effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Parameters, allowStoredAnswer: boolean): ActionResult!! {
-  const subaction = parameters.subaction
+effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters, allowStoredAnswer: boolean): ActionResult!! {
+  const subaction = sent.subaction
   const now = try Clock.currentTimeMillis
   const zones = zonesOf(ask)
-  const zone = requestTimeZone({ ...zones, ...(parameters.timeZone === undefined ? {} : { explicit: parameters.timeZone }) })
+  const zone = requestTimeZone({ ...zones, ...(sent.timeZone === undefined ? {} : { explicit: sent.timeZone }) })
   const createZone = createTimeZone(zones)
+  const ranged = timesIn(sent, rangeTimes, zone)
+  if (ranged.kind !== "read") return timesRefused(subaction, ranged.kind)
+  const parameters = ranged.parameters
+  const text = askTextOf(ask)
   const askedBy = ask.by
   const askId = `${ask.id}:${subaction}`
   switch (subaction) {
     case "search_events":
     case "next_event": {
-      const span = window(parameters, now, subaction === "next_event" ? 30 * day : 7 * day)
-      if (span === undefined) return failed(subaction, "That time range isn't one I can read: it must run forward and span at most 370 days.")
+      const days: DayWindow = subaction === "search_events" ? wholeDays(parameters, zone) : { kind: "none" }
+      if (days.kind === "refused") {
+        return failed(subaction, "A whole-day read takes date, and endDate for more days, as real YYYY-MM-DD dates at most 370 days apart, without timeMin or timeMax. Nothing was read.", { code: "CALENDAR_READ_DATE_INVALID" })
+      }
+      const span = days.kind === "days" ? { timeMin: days.timeMin, timeMax: days.timeMax } : window(parameters, now, subaction === "next_event" ? 30 * day : 7 * day)
+      if (span === undefined) return failed(subaction, rangeUnreadable)
       const found = try host.search({ ...span, ...(parameters.query === undefined ? {} : { query: parameters.query }), ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
       if (found === undefined) return failed(subaction, "No calendar account is active right now.")
       const events = subaction === "next_event" ? found.events.filter((event) => Date.parse(event.endAt) > now).slice(0, 1) : found.events
@@ -445,7 +691,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
       const place = parameters.query?.trim() ?? ""
       if (place === "") return failed(subaction, "A trip question needs the place in query, for example Denver. Nothing was read.")
       const span = window(parameters, now, 60 * day)
-      if (span === undefined) return failed(subaction, "That time range isn't one I can read: it must run forward and span at most 370 days.")
+      if (span === undefined) return failed(subaction, rangeUnreadable)
       const found = try host.search({ ...span, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
       if (found === undefined) return failed(subaction, "No calendar account is active right now.")
       const trip = tripEvents(found.events, place)
@@ -456,47 +702,89 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
     case "propose_times":
       return try freeTime(host, ask, parameters, now, zone)
     case "create_event": {
-      const guests = newGuests(parameters, askTextOf(ask))
+      const guests = newGuests(parameters, text)
       if (guests.kind === "refused") return failed(subaction, guests.text, { code: "CALENDAR_GUEST_NOT_GROUNDED" })
+      const wall = eventWallZone(parameters, true, parameters.isAllDay === true, text, { request: zone, context: createZone })
+      if (wall === undefined) {
+        return failed(subaction, `Nothing was saved: the time came with the zone ${parameters.timeZone ?? ""}, which the owner's words don't name. Send startAt and endAt with their offset, or leave timeZone out to use the owner's zone.`,
+          { code: "CALENDAR_WALL_TIME_ZONE_UNSAID" })
+      }
+      const timed = timesIn(parameters, eventTimes, wall)
+      if (timed.kind !== "read") return timesRefused(subaction, timed.kind)
+      const sentEvent = timed.parameters
+      const minutes = sentEvent.durationMinutes ?? 0
+      const length = createLength(sentEvent.endAt !== undefined, sentEvent.durationMinutes !== undefined, Number.isInteger(minutes), minutes)
+      if (length === "RefuseLength") {
+        return failed(subaction, "A new event's length is a whole number of minutes from 1 to 44640. For anything else send endAt. Nothing was saved.", { code: "CALENDAR_EVENT_LENGTH_INVALID" })
+      }
+      const begin = sentEvent.startAt === undefined ? undefined : Date.parse(sentEvent.startAt)
+      const finish = begin === undefined ? undefined
+        : createEndMs(begin, length === "KeepEnd", sentEvent.endAt === undefined ? begin : Date.parse(sentEvent.endAt), length === "UseLength" ? minutes : 0, sentEvent.isAllDay === true)
       const fields = decodeFields({
-        title: parameters.title ?? "", description: parameters.description ?? "", location: parameters.location ?? "",
-        startAt: parameters.startAt === undefined ? "" : canonical(parameters.startAt), endAt: parameters.endAt === undefined ? "" : canonical(parameters.endAt),
-        isAllDay: parameters.isAllDay ?? false, timeZone: createZone, ...(guests.attendees === undefined ? {} : { attendees: guests.attendees }),
+        title: sentEvent.title ?? "", description: sentEvent.description ?? "", location: sentEvent.location ?? "",
+        startAt: begin === undefined ? "" : new Date(begin).toISOString(), endAt: finish === undefined ? "" : new Date(finish).toISOString(),
+        isAllDay: sentEvent.isAllDay ?? false, timeZone: createZone, ...(guests.attendees === undefined ? {} : { attendees: guests.attendees }),
       })
       if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return failed(subaction, "A new event needs a title and a start before its end.")
-      const timed = statedYearCreate(fields.value, askTextOf(ask), new Date(now))
-      if (timed === undefined) return failed(subaction, "That start time doesn't exist in the requested year and time zone.")
-      const { fields: asked, move } = timed
-      const recurrence = parameters.repeat === undefined ? Option.some(null) : decodeRecurrence({ rule: parameters.repeat,
-        ...(parameters.repeatUntil === undefined ? {} : { until: move(canonical(parameters.repeatUntil)) }),
-        ...(parameters.skipStarts === undefined ? {} : { excluded: parameters.skipStarts.map((start) => move(canonical(start))) }) })
+      const stated = statedYearCreate(fields.value, text, new Date(now))
+      if (stated === undefined) return failed(subaction, "That start time doesn't exist in the requested year and time zone.")
+      const { fields: asked, move } = stated
+      const recurrence = sentEvent.repeat === undefined ? Option.some(null) : decodeRecurrence({ rule: sentEvent.repeat,
+        ...(sentEvent.repeatUntil === undefined ? {} : { until: move(canonical(sentEvent.repeatUntil)) }),
+        ...(sentEvent.skipStarts === undefined ? {} : { excluded: sentEvent.skipStarts.map((start) => move(canonical(start))) }) })
       if (Option.isNone(recurrence)) return failed(subaction, "A repeating event needs one rule (daily, weekdays or weekly) and distinct skipped starts.")
-      if (parameters.confirmedPastStart !== true && createNeedsConfirmation(asked.startAt, new Date(now), asked.isAllDay ? "UTC" : asked.timeZone)) {
+      if (sentEvent.confirmedPastStart !== true && createNeedsConfirmation(asked.startAt, new Date(now), asked.isAllDay ? "UTC" : asked.timeZone)) {
         return failed(subaction, "That start time has already passed. Should I still create it?", { needsConfirmation: "past_start", fields: asked })
       }
-      const source = try host.writeTarget(parameters.calendarId)
+      const source = try host.writeTarget(sentEvent.calendarId)
       if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
-      const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: chatCreateReviewed(parameters.reviewBeforeCreate === false && parameters.reviewBeforeSaving !== true), askedBy, askId }) catch () => undefined
+      const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: chatCreateReviewed(sentEvent.reviewBeforeCreate === false && sentEvent.reviewBeforeSaving !== true), slotZone: createZone, askedBy, askId }) catch () => undefined
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, createZone)
     }
     case "update_event":
     case "delete_event": {
-      const lookup = try target(host, parameters, now)
+      const worded = scopesInWords(text)
+      const lookup = try target(host, { parameters, text, moving: subaction === "update_event", scope: parameters.recurrenceScope ?? (worded.length === 1 ? worded[0] : undefined), zone, now })
+      if (lookup.kind === "badRange") return failed(subaction, rangeUnreadable)
       if (lookup.kind === "ambiguous") {
-        return failed(subaction, lookup.matches.length === 0 ? "I couldn't find that event." : `Which one? ${lookup.matches.slice(0, 5).map((event) => line(event, zone)).join("; ")}`,
-          { candidates: lookup.matches.slice(0, 5).map((event) => ({ id: event.id, title: event.title, startAt: event.startAt })) })
+        const shown = lookup.matches.slice(0, 5)
+        return failed(subaction, `${lookup.offDay ? "None of them starts on that day. " : ""}Which one? ${shown.map((event) => line(event, zone)).join("; ")}`,
+          { requiresInput: true, missing: ["eventId"], candidates: shown.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt })) })
       }
-      if (lookup.kind === "missing") return failed(subaction, "I couldn't find that event in this account's calendars.")
-      const notifyAttendees = noticeAsked(parameters.notifyAttendees === true, noticeAskedInWords(askTextOf(ask)), noticeDeclinedInWords(askTextOf(ask)))
-      const scope = parameters.recurrenceScope ?? "instance"
-      if (subaction === "delete_event" && lookup.found.source.provider === "eliza") return try residentDelete(host, ask, lookup.found, scope, notifyAttendees, now, zone, allowStoredAnswer)
-      const guests: Guests = subaction === "update_event" ? changedGuests(lookup.found.event, parameters, askTextOf(ask)) : { kind: "guests" }
+      if (lookup.kind === "unread") {
+        return failed(subaction, "Some calendars could not be read, so I can't tell whether that event is there. Nothing was changed.", { code: "CALENDAR_TARGET_UNREAD" })
+      }
+      if (lookup.kind === "missing") return failed(subaction, "I couldn't find that event in this account's calendars.", { code: "CALENDAR_TARGET_NOT_FOUND" })
+      const found = lookup.found
+      const notifyAttendees = noticeAsked(parameters.notifyAttendees === true, noticeAskedInWords(text), noticeDeclinedInWords(text))
+      const deletingResident = subaction === "delete_event" && found.source.provider === "eliza"
+      const pending = deletingResident ? try host.deleteQuestion(askConversationOf(ask)) : undefined
+      const held = allowStoredAnswer && pending !== undefined && pending.askedIn !== ask.id
+        && now >= pending.askedAt && now - pending.askedAt < deleteQuestionLifetime
+        && deleteQuestionMatches(pending.eventId === found.event.id, sameSourceKey(pending.source, found.source), pending.version === eventVersion(found.event))
+        ? pending.scope : undefined
+      const choice = scopeChoice(repeats(found.event), parameters.recurrenceScope !== undefined, worded.length, held !== undefined, deletingResident)
+      if (choice === "AskWhichOccurrences") {
+        const options = deletingResident
+          ? "Say ‘just this one’ to delete that occurrence, or choose a wider scope in Calendar."
+          : `Should I ${subaction === "update_event" ? "change" : "delete"} just that occurrence, that and every following occurrence, or the whole series?`
+        return failed(subaction, `“${found.event.title}” repeats, and the one I found is ${wallTime(found.event, zone)}. ${options}`,
+          { requiresInput: true, missing: ["recurrenceScope"], eventId: found.event.id, startAt: found.event.startAt })
+      }
+      const scope = choice === "ScopeFromWords" ? worded[0] ?? "instance" : choice === "ScopeHeld" ? held ?? "instance" : parameters.recurrenceScope ?? "instance"
+      if (deletingResident) return try residentDelete(host, ask, found, scope, notifyAttendees, now, zone, allowStoredAnswer)
+      if (subaction === "delete_event") {
+        const result = host.change({ kind: "delete", target: found, scope, notifyAttendees, askedBy, askId }) catch () => undefined
+        return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
+      }
+      const guests = changedGuests(found.event, parameters, text)
       if (guests.kind === "refused") return failed(subaction, guests.text, { code: "CALENDAR_GUEST_NOT_GROUNDED" })
-      const asked = subaction === "update_event"
-        ? { kind: "update" as const, target: lookup.found, scope, fields: updatedFields(lookup.found, parameters, zone, guests.attendees), notifyAttendees, askedBy, askId }
-        : { kind: "delete" as const, target: lookup.found, scope, notifyAttendees, askedBy, askId }
-      if (asked.kind === "update" && (Option.isNone(decodeFields(asked.fields)) || !fieldsSpanValid(asked.fields))) return failed(subaction, "The changed event needs a title and a start before its end.")
-      const result = host.change(asked) catch () => undefined
+      const wall = eventWallZone(parameters, false, parameters.isAllDay ?? found.event.isAllDay, text, { request: zone, context: createZone })
+      const timed = timesIn(parameters, eventTimes, wall ?? zone)
+      if (timed.kind !== "read") return timesRefused(subaction, timed.kind)
+      const fields = updatedFields(found, timed.parameters, zone, guests.attendees)
+      if (Option.isNone(decodeFields(fields)) || !fieldsSpanValid(fields)) return failed(subaction, "The changed event needs a title and a start before its end.")
+      const result = host.change({ kind: "update", target: found, scope, fields, notifyAttendees, slotZone: zone, askedBy, askId }) catch () => undefined
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
   }
@@ -583,7 +871,6 @@ async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
   return typeof zone === "string" ? zone : undefined
 }
 
-/** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
 export const calendarAction: Action = {
   name: calendarActionName,
   description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. Chat creates are reviewed unless the owner plainly asked to save now; a chat delete removes at most one occurrence on the agent's own calendar and runs at once only when the owner's words ask to delete and hold the whole title of one event, or it is the event selected on screen. When the owner answers a Calendar confirmation and the host offers answer_delete, use that subaction alone.",
@@ -592,18 +879,20 @@ export const calendarAction: Action = {
   parameters: [
     { name: "subaction", required: true, description: "Use answer_delete alone for a bound Calendar confirmation.", schema: { type: "string", enum: [...subactions, deleteAnswerOperation] } },
     { name: "query", required: false, description: "Words of the event to look for: its title, notes, place or a guest. For trip_window, the place.", schema: { type: "string" } },
-    { name: "timeMin", required: false, description: "Start of the range to read, ISO 8601 with an offset. Required for check_availability and propose_times.", schema: { type: "string" } },
-    { name: "timeMax", required: false, description: "End of the range to read, ISO 8601 with an offset. Required for check_availability and propose_times; a morning-only request ends no later than noon in the request's zone.", schema: { type: "string" } },
+    { name: "timeMin", required: false, description: "Start of the range to read: ISO 8601 with an offset, or wall time without one (2030-03-04T09:00), read in the request's zone. Required for check_availability and propose_times.", schema: { type: "string" } },
+    { name: "timeMax", required: false, description: "End of the range to read, written like timeMin. Required for check_availability and propose_times; a morning-only request ends no later than noon in the request's zone.", schema: { type: "string" } },
+    { name: "date", required: false, description: "For search_events over whole days: the first local day, YYYY-MM-DD. Code finds the midnights in the request's zone. Leave out timeMin and timeMax.", schema: { type: "string" } },
+    { name: "endDate", required: false, description: "For search_events over several whole days: the last day included, YYYY-MM-DD. Needs date.", schema: { type: "string" } },
     { name: "eventId", required: false, description: "The id of the event to change, from an earlier result.", schema: { type: "string" } },
     { name: "calendarId", required: false, description: "The calendar to read or write.", schema: { type: "string" } },
     { name: "title", required: false, description: "The event title, exactly as it should be saved.", schema: { type: "string" } },
     { name: "description", required: false, description: "The event notes, exactly as they should be saved.", schema: { type: "string" } },
     { name: "location", required: false, description: "The event location, exactly as it should be saved.", schema: { type: "string" } },
-    { name: "startAt", required: false, description: "The event start, ISO 8601 with an offset.", schema: { type: "string" } },
-    { name: "endAt", required: false, description: "The event end, ISO 8601 with an offset.", schema: { type: "string" } },
+    { name: "startAt", required: false, description: "The event start: ISO 8601 with an offset, or wall time without one (2030-03-04T09:00). Wall time is read in the owner's zone for a new event, in the request's zone for a change, and as the date itself for an all-day event (2030-03-04T00:00).", schema: { type: "string" } },
+    { name: "endAt", required: false, description: "The event end, written like startAt. Left out, a new event lasts durationMinutes, else one hour, or one day when all-day.", schema: { type: "string" } },
     { name: "isAllDay", required: false, description: "Whether the event lasts whole days.", schema: { type: "boolean" } },
-    { name: "timeZone", required: false, description: "The IANA zone the owner named for this request.", schema: { type: "string" } },
-    { name: "durationMinutes", required: false, description: "For propose_times: the exact number of minutes each opening needs. Do not guess a missing length.", schema: { type: "integer", minimum: 5, maximum: 480 } },
+    { name: "timeZone", required: false, description: "The IANA zone the owner named for this request. Send it with a new event's wall time only when the owner's words name that zone; otherwise leave it out.", schema: { type: "string" } },
+    { name: "durationMinutes", required: false, description: "For propose_times: the exact number of minutes each opening needs, from 5 to 480. For create_event without endAt: the event's length in whole minutes. Do not guess a missing length.", schema: { type: "integer", minimum: 1, maximum: 44640 } },
     { name: "confirmedPastStart", required: false, description: "The owner confirmed creating an event whose start has passed.", schema: { type: "boolean" } },
     { name: "reviewBeforeCreate", required: false, description: "For a new event: false only when the owner plainly asked to save it now; true, or left out, puts it up for the owner's review first.", schema: { type: "boolean" } },
     { name: "reviewBeforeSaving", required: false, description: "For a new event: true when the owner asked to preview, review or confirm it before it is saved, or to prepare it without saving yet; it then waits for the owner's approval instead of a chat summary. Keep it when the owner adds missing details to that event. An explicit request to review takes priority.", schema: { type: "boolean" } },
@@ -614,7 +903,7 @@ export const calendarAction: Action = {
     { name: "addGuests", required: false, description: "For update_event: the email address of each guest to add, exactly as the owner wrote it.", schema: { type: "array", items: { type: "string" } } },
     { name: "removeGuests", required: false, description: "For update_event: each guest to remove, by the address or name the owner used.", schema: { type: "array", items: { type: "string" } } },
     { name: "notifyAttendees", required: false, description: "For update_event and delete_event: true only when the owner's words ask to let the event's attendees know.", schema: { type: "boolean" } },
-    { name: "recurrenceScope", required: false, description: "For a repeating event: instance (this event), this_and_following, or series (all). Defaults to instance.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
+    { name: "recurrenceScope", required: false, description: "For a repeating event: instance (this event), this_and_following, or series (all). Send it only when the owner's words say which; left out, the reply asks the owner. After the owner answers, send it with the eventId the reply returned.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
   ],
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
@@ -627,6 +916,8 @@ export const calendarAction: Action = {
   },
 }
 
+showsApp(calendarAction, calendarContext.id)
+
 export const calendarProvider: Provider = {
   name: "CALENDAR_CONTEXT",
   description: "The owner's events over the next 24 hours from the active account's calendars",
@@ -638,7 +929,7 @@ export const calendarProvider: Provider = {
     const host = serviceOf(runtime)
     if (host === undefined) return {}
     const now = Date.now()
-    const found = await runPromise(host.search({ timeMin: now, timeMax: now + day }))
+    const found = await runPromise(host.search({ timeMin: now, timeMax: now + contextLookahead }))
     if (found === undefined) return {}
     const zone = createTimeZone(zonesOf(calendarAsk(message, await ownerZone(runtime))))
     const lines = found.events.map((event) => `- ${line(event, zone)}`)

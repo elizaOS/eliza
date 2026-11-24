@@ -23,10 +23,13 @@ installationId}`; the shell refuses any other `viewType`. Wire shapes:
   "prepared", viewId, completedActionHandoffId, navigationBinding}`; a
   refused prepare is 409.
 - Claim: body the binding; reply `{claimId}` (a fresh UUID); a refused
-  claim is 409.
+  claim is 409. A renderer that supports saved Notes editors adds
+  `targetProtocol: "saved-note-v1"`. Only an exact saved-editor claim returns
+  a `target: {kind: "saved-note", noteId}`.
 - Result: body the binding, `claimId`, `success`, and for a navigation
   `result: {switched}`. Reply always `{ok: true, accepted}`; a refused
-  result is `accepted: false`.
+  result is `accepted: false`. A successful saved-editor switch additionally
+  sends `result.shown: {kind: "saved-note", noteId}`.
 - The client id comes from the `x-elizaos-client-id` header or the body;
   a missing binding field is 400.
 - An ask goes out as `{type: "view:interact", installationId, viewId,
@@ -188,6 +191,42 @@ pure def canShowView(h: ViewHost, requestId: str, clientId: str, target: str): b
 pure def showView(h: ViewHost, requestId: str, clientId: str, target: str): ViewHost =
   prepareNavigation(h, requestId, clientId, targets(h, target).nthOr(0, noView).viewId)
 pure val targetValues = Set("Notes", "home", "nowhere")
+```
+
+### A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer
+
+A request to open a specific saved note uses VIEWS with
+`view: "notes-editor"` only after a unique successful `NOTES_GET` in
+the same turn. The canonical resident collection must still have the same
+unique match for the owner's open request. An uncertain or changed record,
+a private surface, a phone-native Notes source, or a renderer without the
+saved-editor protocol has no prepared saved-editor switch. The prepared
+action has `subview: "saved-note-v1"` and carries no note id or note text.
+A bare open request matching a declared view id, label or alias opens that
+view, including the Notes list. Explicitly naming a note (for example,
+`open my note called Calendar` or `open Calendar in Notes`) selects the
+saved-note lookup when a declared view has the same name.
+
+```quint
+pure def savedNoteIntent(explicitNote: bool, declaredViewMatches: bool): bool =
+  explicitNote or not(declaredViewMatches)
+pure def savedNotePreparationAllowed(explicitOpen: bool, rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool, exactCurrentLookup: bool): bool =
+  explicitOpen and rendererBound and rendererSupports and residentSource and not(privateView) and exactCurrentLookup
+```
+
+### A saved Notes editor claim requires support and only its exact editor can confirm the switch
+
+A prepared saved-editor request adds its exact saved note id to the living
+Notes navigation wait. Only the renderer bound to the request can claim it,
+with saved-editor support, and the claim is how that renderer learns the id.
+A refusal leaves the view unconfirmed. The host never treats a generic switch
+or a different editor as a successful switch for that request.
+
+```quint
+pure def savedNoteClaimAllowed(expected: str, supportsSavedNote: bool): bool =
+  expected == "" or supportsSavedNote
+pure def savedNoteResultAllowed(expected: str, refused: bool, shown: str): bool =
+  expected == "" or refused or (shown != "" and shown == expected)
 ```
 
 ### A claim names its request's exact binding and succeeds once

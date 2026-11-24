@@ -430,6 +430,13 @@ for a renewal it already started, so a window admitted while the relay was
 ending is among the windows it settles; that window carried no speech and
 is released at zero.
 
+While the session is active, only a window that a later admitted window
+replaces may settle: the relay settles it once its own end passes and the
+next window serves, at the audio and text it carried, so each renewal needs
+credit for the live window and the next one rather than for every window so
+far. The live window settles only after the session retires, and it carries
+the charge for a provider that did not confirm its close.
+
 ```quint
 type SettlementEvidence = RetirementSettlement | RolloverSettlement({ deadlineReached: bool, successorStarted: bool })
 pure def rolloverReady(window: int, admittedWindows: int, evidence: SettlementEvidence): bool =
@@ -463,6 +470,7 @@ pure def alwaysClosedSessionsHaveEveryReceipt(s: Session): bool = s.phase == Clo
 pure def stepRetirementNeverReopens(before: Session, after: Session): bool =
   (before.phase == Retiring or before.phase == Closed) implies (after.phase == Retiring or after.phase == Closed)
 pure def stepReceiptsNeverDisappear(before: Session, after: Session): bool = before.settledWindows.subseteq(after.settledWindows)
+pure def sometimesEarlierWindowSettledWhileActive(s: Session): bool = s.phase == Active and s.settledWindows.size() >= 1
 pure def sometimesSessionRetiring(s: Session): bool = s.phase == Retiring
 pure def sometimesSessionClosed(s: Session): bool = s.phase == Closed
 ```

@@ -34,6 +34,7 @@ public final class AgentConfig {
   private static final Pattern VIEW_PATH = Pattern.compile("/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+");
   private static final Pattern VIEW_ALIAS = Pattern.compile("[a-z](?:[a-z0-9 _-]{0,30}[a-z0-9])?");
   private static final int MAX_VIEWS = 32, MAX_VIEW_BYTES = 16384;
+  private static final int OWN_KEY_MAX_UNITS = 1024;
   private static final BigDecimal SAFE_INTEGER = BigDecimal.valueOf(9007199254740991L);
   private static final Set<String> HOST_KEYS = Set.of("schema", "service", "notification", "routes", "nativeRoutes", "cloud", "model", "embeddings",
     "embeddingDimensions", "persistMemory", "callerRole", "residentWithoutInference", "views", "timeZone", "privacy", "google", "retention", "environment");
@@ -116,6 +117,12 @@ public final class AgentConfig {
   public boolean residentWithoutInference() { return residentWithoutInference; }
 
   String cloudOrigin() { return needsAccount() ? (String) ((Map<?, ?>) launch.get("model")).get("cloudBaseUrl") : null; }
+
+  LaunchFrame initialFrame(String token, long epoch, LaunchFrame.Credential credential, String storageKey) throws Refused {
+    if (ownKey && credential != null && credential.value().length() > OWN_KEY_MAX_UNITS)
+      throw new Refused("The provider key exceeds the agent's own-key slot");
+    return LaunchFrame.first(token, epoch, credential, storageKey);
+  }
 
   public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker) {
     if (residentWithoutInference) throw new IllegalArgumentException("The resident's stored owner must be resolved before launch");

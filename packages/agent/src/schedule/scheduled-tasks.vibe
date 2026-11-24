@@ -343,7 +343,7 @@ function isTickDriver(runtime: IAgentRuntime, task: Task): boolean {
 }
 
 effect function driverRows(runtime: IAgentRuntime) {
-  const rows = try tryPromise(() => runtime.getTasks({ tags: ["queue", "repeat"] }))
+  const rows = try tryPromise(() => runtime.getTasks({ agentIds: [runtime.agentId], tags: ["queue", "repeat"] }))
   return rows.flatMap((task) => task.id !== undefined && isTickDriver(runtime, task) ? [task.id] : [])
 }
 
@@ -395,14 +395,14 @@ export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: Sc
   const stop = try Effect.cached(Effect.uninterruptible(effect {
     try sync(prepareStop)
     try Fiber.await(boot)
-    try lock.withPermits(1)(effect {
+    try Effect.mapError(lock.withPermits(1)(effect {
       if (!tickDriverMayClean(registration())) return
       const rows = try driverRows(runtime)
       if (rows.length > 0 && tickDriverMayClean(registration())) try tryPromise(() => runtime.deleteTasks(rows))
-    }) catch (failure) => {
+    }), (failure) => {
       runtime.reportError("ScheduledTasks.cleanup", failure, { task: scheduledTasksTick })
-      throw new TickDriverCleanupFailed({ cause: failure })
-    }
+      return new TickDriverCleanupFailed({ cause: failure })
+    })
   }))
   return {
     prepareStop,
