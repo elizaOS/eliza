@@ -1,5 +1,5 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"
-import { outputLimit, quoteCounts, type TokenAsk } from "../../gen/cloud__services__inference.effect.vibe"
+import { chatWireAdmitted, outputLimit, quoteCounts, type TokenAsk } from "../../gen/cloud__services__inference.effect.vibe"
 import { callCost, countsInBound, type Model, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { RouteContext } from "../http/routes.vibe"
@@ -27,10 +27,18 @@ effect function parseChat(raw: unknown): ChatRequest!Refused {
 
 export effect function chatBody(context: RouteContext): ChatRequest!Refused {
   if (!(context.request.headers["content-type"] ?? "").startsWith("application/json")) throw refused("InvalidRequest")
-  const raw = context.request.json catch effect (failure) => {
+  const bytes = context.request.arrayBuffer catch effect (failure) => {
     throw refused(failure.reason._tag === "RequestParseError" && failure.reason.reason === "BodyTooLarge" ? "ContentTooLarge" : "InvalidRequest")
   }
-  return try parseChat(raw)
+  const raw: unknown = Effect.try(() => JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))) catch effect () => { throw refused("InvalidRequest") }
+  const body = try parseChat(raw)
+  const inlineBase64 = body.messages.flatMap((message) => partsOf(message).flatMap((part) => {
+    if (part.type !== "image_url") return []
+    const prefix = /^data:image\/(?:jpeg|png|gif|webp);base64,/.exec(part.image_url.url)?.[0]
+    return prefix === undefined ? [] : [part.image_url.url.length - prefix.length]
+  }))
+  if (!chatWireAdmitted({ wire: bytes.byteLength, inlineBase64 })) throw refused("ContentTooLarge")
+  return body
 }
 
 function partsOf(message: ChatMessage): ReadonlyArray<ContentPart> {

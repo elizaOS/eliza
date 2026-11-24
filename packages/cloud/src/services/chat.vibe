@@ -1,5 +1,5 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A request needs an active account and sufficient funding for its quote"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/shared/metering.md, "A call reaches its provider only after its hold is durably marked dispatched"
-import { endOfFailure, hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
+import { chatMaxWireBytes, endOfFailure, hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
 import { refused } from "../http/refusal.vibe"
 import { signed } from "../http/request-auth.vibe"
 import { json, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
@@ -86,5 +86,5 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
 
 export const chatRoute: Route = {
   method: "POST", path: "/api/v1/chat/completions", auth: "ServiceAccess", capability: "inference",
-  rateClass: "CompletionsRequests", ingressPerMinute: chatIngressPerMinute, maxBodyBytes: 256 * 1024, handler: chat,
+  rateClass: "CompletionsRequests", ingressPerMinute: chatIngressPerMinute, maxBodyBytes: chatMaxWireBytes, handler: chat,
 }

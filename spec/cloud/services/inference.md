@@ -44,6 +44,14 @@ allowance as `E::meteredAllowance` gives it and the free credit balance. A
 request refused at the ingress limit or at authentication is answered before
 its plan window is counted or its body read.
 
+An authenticated completion can carry up to four inline JPEG, PNG, GIF or
+WebP data URLs under the image budget, each with at most 5 MiB of base64.
+The rest of the JSON request still fits within 256 KiB. Only base64 from a
+decoded image part of one of these types counts toward the image budget.
+Text, other image URLs, data URL prefixes and JSON encoding count toward
+the ordinary budget. A request outside either budget returns
+`413 content_too_large` before quoting or reserving funds.
+
 ```quint
 import types.* from "../shared/types"
 import metering as M from "../shared/metering"
@@ -61,6 +69,24 @@ type Funding = { allowanceAvailable: Micros, creditAvailable: Micros }
 type Stage = AtIngress | AtAuth | AtPlanLimit | AtBody | AtModel | AtQuote | AtHold
 type AdmittedCall = { model: Mo::Model, counts: Mo::TokenCounts, quote: Micros, lane: M::FundingLane, hold: M::Hold }
 type CompletionAdmission = RefusedAt({ stage: Stage, refusal: Refusal }) | Admit({ call: AdmittedCall })
+pure val chatOrdinaryBytes = 262144
+pure val chatInlineImageBytes = 5242880
+pure val chatInlineImageCount = 4
+pure val chatMaxWireBytes = chatOrdinaryBytes + chatInlineImageCount * chatInlineImageBytes
+type ChatWireSize = { wire: int, inlineBase64: List[int] }
+pure def inlineBase64Bytes(s: ChatWireSize): int = s.inlineBase64.foldl(0, (total, bytes) => total + bytes)
+pure def chatWireAdmitted(s: ChatWireSize): bool =
+  s.inlineBase64.length() <= chatInlineImageCount and
+  s.inlineBase64.foldl(true, (ok, bytes) => ok and bytes > 0 and bytes <= chatInlineImageBytes) and
+  s.wire >= inlineBase64Bytes(s) and s.wire <= chatMaxWireBytes and s.wire - inlineBase64Bytes(s) <= chatOrdinaryBytes
+pure val sValues = Set({ wire: chatOrdinaryBytes, inlineBase64: List() },
+  { wire: chatOrdinaryBytes + 1, inlineBase64: List() }, { wire: 400000, inlineBase64: List(399000) },
+  { wire: chatInlineImageBytes + 100, inlineBase64: List(chatInlineImageBytes + 1) },
+  { wire: chatMaxWireBytes, inlineBase64: List(chatInlineImageBytes, chatInlineImageBytes, chatInlineImageBytes, chatInlineImageBytes) })
+pure def lawOrdinaryCompletionRetainsItsBudget(wire: int): bool =
+  chatWireAdmitted({ wire: wire, inlineBase64: List() }) iff (wire >= 0 and wire <= chatOrdinaryBytes)
+pure def lawInlineImageBytesNeverIncreaseTheOrdinaryBudget(s: ChatWireSize): bool =
+  chatWireAdmitted(s) implies s.wire - inlineBase64Bytes(s) <= chatOrdinaryBytes
 pure val acceptedFields: Set[str] = Set("model", "messages", "stream", "stream_options", "temperature", "max_tokens", "max_completion_tokens", "reasoning_effort", "response_format", "tools", "tool_choice",
   "top_p", "stop", "seed", "frequency_penalty", "presence_penalty", "prompt_cache_key")
 pure val ingressLimit: R::RateLimit = R::perMinute("chatIngress", 600)
