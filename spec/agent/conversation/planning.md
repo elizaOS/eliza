@@ -464,7 +464,9 @@ The system prompt's cue rule asks the model to write, with its first tool
 calls, only a brief cue that it heard the request: `Let me check.` or
 `Let me check your calendar.` (or the owner's notes, inbox, messages,
 reminders, tasks, files, photos or contacts) for a question or a lookup, a
-request asked as a question (`Can you text Sam?`) included; `Let me open
+request asked as a question (`Can you text Sam?`) included, naming a source
+only for one simple lookup, so a message asking for several lookups or about
+several named people or items gets the plain `Let me check.`; `Let me open
 Maps.` when opening an app is part of other planned work, naming the app
 asked for by its bare name (Calendar, Notes, Inbox, Maps, Files, Photos,
 Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock)

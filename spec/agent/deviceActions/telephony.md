@@ -171,7 +171,9 @@ pure def lawASearchIsRefusedFirstOnlyBesideTheRoleRule(callsContact: bool, texts
 
 When the whole message is a call command ("call 415-555-0100", "ring mum back
 please"), a text command ("text Sam saying I'm late", "send a text to Sam that
-…") or, on a phone that cannot open its keypad for chat, a request to open
+…", "send a text to Sam and say …", also after a leading thanks and with the
+words to send told to the person: "thank you, can you text Sam and tell him to
+…", "and tell her that …") or, on a phone that cannot open its keypad for chat, a request to open
 the dialer with a number ("open the dialer and type 415 302 4399"), and the
 model proposed an operation of that kind, the recipient the owner wrote is
 offered whatever the model proposed: their number in its dial form, or their
