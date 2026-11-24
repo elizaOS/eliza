@@ -182,37 +182,50 @@ pure def lawOwnKeyLaunchIsFramedWithTheProviderKeyOrNone(d: AgentData, cred: C::
 pure val providerVersionValues = Set(0, 1, 2)
 ```
 
-### The agent admits every launch the service writes, given a launch frame with a key
+### A ready launch is admitted unless its backend needs a fitting credential and the frame lacks one
 
-A ready launch, sent with an admitted frame that carries a credential, passes
-the agent's own launch verdict, so the agent never exits 78 or 77 on a start
-the service judged ready. Discovered by simulation: agent admission refused
-an own-key launch when the service sent a provider key longer than the
-1,024 units the own-key slot takes.
+The service refuses an oversized own-key provider key as invalid launch
+configuration and keeps the active device key. It does this before
+writing or spawning the launch. Discovered by simulation: the Agent
+refuses an own-key launch when its frame carries more than 1,024 units
+in the provider key slot.
 
-A supplied own-key credential must fit the agent's own-key slot before the
-service writes or spawns the launch. The service refuses an oversized
-provider key as invalid launch configuration and keeps the active device key.
+For a launch that proceeds with an admitted frame, the Agent returns
+its credential error when the backend needs a credential and the
+frame lacks one that fits. Otherwise the Agent admits the launch.
+An admitted frame never makes the Agent refuse a ready launch as
+a configuration error.
 
 ```quint
 type FinalFrame = FrameReady({ launch: AgentLaunch, frame: Launch::LaunchFrame }) | FrameWithheld({ cause: Launch::BootFailure })
+pure def oversizedOwnKey(b: Launch::Backend, c: Launch::FrameCredential): bool =
+  Launch::isOwnKey(b) and Launch::hasCredential(c) and not(Launch::credentialFits(b, c))
 pure def finalFrame(v: StartVerdict, f: Launch::LaunchFrame): FinalFrame = match v {
   | LaunchReady(r) =>
-      if (Launch::isOwnKey(r.launch.document.backend) and Launch::hasCredential(f.credential)
-          and not(Launch::credentialFits(r.launch.document.backend, f.credential)))
+      if (oversizedOwnKey(r.launch.document.backend, f.credential))
         FrameWithheld({ cause: Launch::Config })
       else FrameReady({ launch: r.launch, frame: f })
   | LaunchWithheld(w) => FrameWithheld({ cause: w.cause })
 }
-pure def readyDocumentAdmitted(v: StartVerdict, f: Launch::LaunchFrame): bool = {
-  val checked = finalFrame(v, f)
-  match checked {
-    | FrameReady(ready) => Launch::launchVerdict(ready.launch.document, ready.frame) == Launch::LaunchAdmitted
-    | FrameWithheld(_) => true
-  }
+pure def readyLaunchMatchesCredential(doc: Launch::LaunchDocument, f: Launch::LaunchFrame): bool = {
+  val b = doc.backend
+  val expected = if (Launch::needsCredential(b) and not(Launch::credentialFits(b, f.credential)))
+    Launch::LaunchRefused({ cause: Launch::Credential }) else Launch::LaunchAdmitted
+  Launch::launchVerdict(doc, f) == expected
 }
-pure def lawAgentAdmitsEveryReadyLaunch(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool =
-  (Launch::frameAdmitted(f) and Launch::hasCredential(f.credential)) implies readyDocumentAdmitted(startVerdict(d, cred, worker), f)
+pure def lawReadyLaunchFollowsFrameCredential(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool = {
+  val v = startVerdict(d, cred, worker)
+  val checked = finalFrame(v, f)
+  Launch::frameAdmitted(f) implies (match v {
+    | LaunchReady(r) => match checked {
+        | FrameWithheld(w) => oversizedOwnKey(r.launch.document.backend, f.credential) and w.cause == Launch::Config
+        | FrameReady(ready) =>
+            not(oversizedOwnKey(r.launch.document.backend, f.credential)) and
+            readyLaunchMatchesCredential(ready.launch.document, ready.frame)
+      }
+    | LaunchWithheld(_) => true
+  })
+}
 pure val workerValues = Set(RP::NoLaunchWorker, RP::NamedWorker({ runtimeDir: "files/worker", executable: "worker", sha256: "w1" }))
 pure val credValues = {
   val active = { ...C::initial, lastVersion: 1, custody: C::Active({ version: 1, credentialId: "c1", account: { userId: "user1", organizationId: "org1" }, keyExpiresAt: 1000 }) }
