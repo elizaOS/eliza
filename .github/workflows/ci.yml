@@ -9,6 +9,7 @@ name: ci
 # same locally and in CI. The self-test also installs and checks each
 # standalone example.
 on:
+  workflow_dispatch:
   pull_request:
     branches: [vibestack, develop, main]
   push:
