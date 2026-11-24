@@ -86,8 +86,10 @@ on so the model can ask it. A call that is no step of the turn, refused
 before dispatch or answered only with coaching for the model, a refusal, a
 failure, an applied change or any other outcome in that reply lets
 planning go on as before, so the model can correct it or finish the
-request. A request the model spreads over two replies therefore stops at
-the first reply that only proposed with its own copy.
+request. Two identical calls in the reply are one operation (below), so
+the second, which does not run, is no call of its own here. A request the
+model spreads over two replies therefore stops at the first reply that only
+proposed with its own copy.
 
 ```quint
 pure def awaitsOnlyTheOwner(callsWithoutStep: int, uncopiedCalls: int, replyOutcomes: List[StepOutcome]): bool =

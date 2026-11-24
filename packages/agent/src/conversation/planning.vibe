@@ -251,6 +251,11 @@ function paramsOf(call: ToolCall): Record<string, unknown> {
   }
 }
 
+function callIdentity(call: ToolCall): string {
+  const name = isDiscoveryActionName(call.name) ? DISCOVER_ACTIONS_NAME : call.name
+  return `${name}\u0000${canonical(paramsOf(call))}`
+}
+
 function restoreScope(call: ToolCall): "history" | "providers" | "full" | undefined {
   const params = paramsOf(call)
   const scope = Object.hasOwn(params, "scope") ? params.scope : "full"
@@ -450,8 +455,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const execute = async (call: ToolCall): Promise<ActionResult> => {
     signal.throwIfAborted()
     const params = paramsOf(call)
-    const name = isDiscoveryActionName(call.name) ? DISCOVER_ACTIONS_NAME : call.name
-    const identity = `${name}\u0000${canonical(params)}`
+    const identity = callIdentity(call)
     const dispatch = toolDispatch(seen.has(identity), settlements.get(identity) ?? "ToolOpen")
     if (dispatch !== "FreshCall") {
       const text = dispatch === "RetryRefused" ? "This exact operation cannot be retried. Use a different valid operation or correct its arguments."
@@ -584,7 +588,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       break plan
     }
     const ran = steps.slice(before)
-    const awaiting = awaitsOnlyTheOwner(work.length - ran.length, ran.filter(({ shown }) => shown.length === 0).length, ran.flatMap(({ outcomes }) => outcomes.map(({ outcome }) => outcome)))
+    const awaiting = awaitsOnlyTheOwner(new Set(work.map(callIdentity)).size - ran.length, ran.filter(({ shown }) => shown.length === 0).length, ran.flatMap(({ outcomes }) => outcomes.map(({ outcome }) => outcome)))
     if (plansOn(cutOff, taken, work.length, awaiting)) continue plan
     if (work.length > 0) break plan
     switch (nextMove(draft, 0, maxPlanSteps - taken)) {
