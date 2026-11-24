@@ -210,6 +210,32 @@ pure val weight_consentGiven = 8
 pure def sometimesMutedCaptureFinishesItsTurn(s: CloudSpeech): bool = s.capture == Muted and ownedTurn(s)
 ```
 
+### A confirmed mute whose turn has not ended in 2.5 seconds replaces the session with a fresh muted one, and the old session's late text is dropped
+
+Muting waits up to 2.5 s for the bridge to confirm the mute and for a turn
+that began before it to end. A mute the bridge does not confirm in that
+time is refused as `mute-unconfirmed`, and no other session is opened. A
+confirmed mute whose turn has not ended cannot attribute that turn's text
+safely: the device stops the session, waits until the stop is confirmed,
+and starts a fresh session under the same key, muted from the start and
+with the speaker mute it had. The unfinished turn ends with nothing heard
+for the capture it began in, anything the old session reports afterwards
+is dropped, and the next capture unmutes the fresh session. A reply still
+playing cannot move to another session, so a mute that would replace the
+session then is refused as `capture-unsettled`. Stopping voice while the
+old session closes joins that stop and opens nothing.
+
+```quint
+type MuteSettlement = MuteSettled | ReplaceSession | MuteUnconfirmed | CaptureUnsettled
+pure val muteSettleMs: Millis = 2500
+pure def muteSettlement(confirmed: bool, turnEnded: bool, replyPlaying: bool): MuteSettlement =
+  if (not(confirmed)) MuteUnconfirmed else if (turnEnded) MuteSettled else if (replyPlaying) CaptureUnsettled else ReplaceSession
+pure def lawOnlyAConfirmedMuteThatLostItsTurnWithNoReplyPlayingReplacesTheSession(confirmed: bool, turnEnded: bool, replyPlaying: bool): bool =
+  (muteSettlement(confirmed, turnEnded, replyPlaying) == ReplaceSession) iff (confirmed and not(turnEnded) and not(replyPlaying))
+pure def lawAnUnconfirmedMuteNeverSettles(turnEnded: bool, replyPlaying: bool): bool =
+  muteSettlement(false, turnEnded, replyPlaying) == MuteUnconfirmed
+```
+
 ### A reply plays at a pace from 50 to 200 percent, one at a time, and never ahead of the audio received
 
 `speak` sends the reply's text and its audio plays through `O`. Audio for
