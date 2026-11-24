@@ -128,6 +128,14 @@ pure def nameVerdict(written: bool): TargetVerdict = if (written) TargetGrounded
 pure def lawOnlyAWrittenNameIsGrounded(written: bool): bool = targetGrounded(nameVerdict(written)) iff written
 ```
 
+### Alternative SMS recipients are clarified before any lookup
+
+On an enrolled phone that can compose or send SMS, when the owner gives
+alternative recipients in a whole text command ("text Carson or Maya that
+dinner is covered"), the agent asks which person should get the text before
+looking either up or proposing an operation. Alternatives within the text
+body remain part of the body.
+
 ### A whole-message call, text or dial command hands through the owner's own recipient
 
 When the whole message is a call command ("call 415-555-0100", "ring mum back

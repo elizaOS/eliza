@@ -536,9 +536,14 @@ question for that one event: a yes, or the event's whole title, with no
 question back and no decline, deletes it; a decline keeps it and spends the
 question.
 
+A chat delete removes one occurrence at most. A wider scope (this and
+following, or the whole series) is the model's choice, not the owner's: it
+deletes nothing and asks nothing, and the reply tells the owner to choose
+the event and its scope in Calendar. A decline still keeps the event.
+
 ```quint
 type DeleteAnswer = Unanswered | AnsweredYes | AnsweredNo
-type ResidentDeleteStep = DeleteNow | AskInChat | KeepEvent
+type ResidentDeleteStep = DeleteNow | AskInChat | KeepEvent | PickInCalendar
 pure val deleteQuestionLifetime: int = 1800000
 pure def ownerPointedAt(wholeTitleSaid: bool, onlyEventNamed: bool, everyCalendarRead: bool, selectedOnScreen: bool): bool =
   (wholeTitleSaid and onlyEventNamed and everyCalendarRead) or selectedOnScreen
@@ -551,8 +556,12 @@ pure def residentDeleteStep(pointedAt: bool, asksToDelete: bool, declines: bool,
   if (declines or answer == AnsweredNo) KeepEvent
   else if (answer == AnsweredYes or (pointedAt and asksToDelete)) DeleteNow
   else AskInChat
+pure def chatDeleteStep(oneOccurrence: bool, unscoped: ResidentDeleteStep): ResidentDeleteStep =
+  if (oneOccurrence or unscoped == KeepEvent) unscoped else PickInCalendar
 pure def lawADeclineNeverDeletes(pointedAt: bool, asksToDelete: bool, answer: DeleteAnswer): bool =
   residentDeleteStep(pointedAt, asksToDelete, true, answer) == KeepEvent
+pure def lawResidentChatDeleteCannotBroaden(pointedAt: bool, asksToDelete: bool, declines: bool, answer: DeleteAnswer): bool =
+  chatDeleteStep(false, residentDeleteStep(pointedAt, asksToDelete, declines, answer)) != DeleteNow
 pure def lawUnaskedWordsNeverDeleteAtOnce(pointedAt: bool): bool =
   residentDeleteStep(pointedAt, false, false, Unanswered) == AskInChat
 pure def lawAPartialMatchIsNeverAnImmediateDelete(onlyEventNamed: bool, everyCalendarRead: bool, asksToDelete: bool): bool =
