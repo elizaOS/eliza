@@ -292,7 +292,7 @@ it.live('The boundary refuses a malformed body, client id or voice view context,
 
 const planning = 'spec/agent/conversation/planning.md'
 
-it.live(`An explicit calculator command reaches its tool before the only model call (${planning}, "An explicit calculator command uses its literal expression first")`, effect () => {
+it.live(`An explicit calculator command is planned by the model, and nothing runs before the model has seen it (${planning}, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -303,10 +303,11 @@ it.live(`An explicit calculator command reaches its tool before the only model c
   })
   const { id } = try conversation(agent)
   const before = completions(cloud)
-  try Effect.sync(() => cloud.script(text("It is 408.")))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "(17 * 24)" } }), text("It is 408.")))
   const answered = replyOf(try send(agent, id, { text: "Use the calculator for (17 * 24)." }))
+  const firstAsked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(before)?.body as { messages?: { role: string }[] } | undefined
   try Effect.try(() => {
-    assert.deepStrictEqual([answered.text, answered.actionResults.map(({ action }) => action), completions(cloud) - before], ["It is 408.", ["CALCULATE"], 1])
+    assert.deepStrictEqual([answered.text, answered.actionResults.map(({ action }) => action), completions(cloud) - before, firstAsked?.messages?.at(-1)?.role], ["It is 408.", ["CALCULATE"], 2, "user"])
     assert.include(lastTurnPrompt(cloud), "408")
   })
 }, 120_000)

@@ -1,12 +1,12 @@
-// spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "Story: Get my on-demand dossier in chat from the phone source I chose"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose"; spec/workflow/hostedDigest.md, "A chat dossier is one run for each owner message and answers with its finished briefing"
+// spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A workflow change runs as the planner proposed it, which is the model's reading of the owner's request"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "Story: Get my on-demand dossier in chat from the phone source I chose"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose"; spec/workflow/hostedDigest.md, "A chat dossier is one run for each owner message and answers with its finished briefing"
 import { showsApp } from "@elizaos/agent"
 import type { Action, ActionResult, ContextDefinition, EffectReceipt, HandlerCallback, IAgentRuntime, Memory, Provider } from "@elizaos/core"
-import { createdName, failureReport, retryAllowed, workflowListing, type ProposedWorkflowChange, type ReferenceOp } from "../gen/workflow__lifecycle.effect.vibe"
+import { createdName, failureReport, retryAllowed, workflowListing, type ReferenceOp } from "../gen/workflow__lifecycle.effect.vibe"
 import { dossierReply, dossierSource, dossierStarts } from "../gen/workflow__hostedDigest.effect.vibe"
 import { typedStepsText } from "./client/workflow-client.vibe"
 import { workflowSha, workflowUuid } from "./contract/phone.vibe"
 import {
-  commandBinding, normalizeWorkflowName, ownerWords, ownerZone, resolveWorkflowReference, searchWorkflows,
+  normalizeWorkflowName, ownerWords, ownerZone, resolveWorkflowReference, searchWorkflows,
   type ReferenceOptions, type WorkflowReferenceRefused, type WorkflowView,
 } from "./request.vibe"
 import { WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
@@ -28,7 +28,7 @@ const NO_NOTIFICATION = " It can’t send you a notification: when it is on, eac
 const NOTIFY_REQUEST = /\b(?:remind\w*|notif\w*|alert\w*|(?:ping|tell|text|message|messag|email|e-mail|nudge|warn|buzz|call|sms|dm)(?:s|es|ed|ing)?\s+me|(?:let|lets|letting)\s+me\s+know|(?:send|sends|sending|sent)\s+me|push\s+(?:notification|alert|message)s?|wake\s+me)\b/i
 
 type Bag = Record<string, unknown>
-type Reading = Pick<ReferenceOptions, "ownerWords" | "timeZone">
+type Reading = Pick<ReferenceOptions, "timeZone">
 
 error WorkflowWriteFailed { refused: WorkflowRefused; beforeWrite: boolean }
 
@@ -78,16 +78,6 @@ async function respond(callback: HandlerCallback | undefined, result: ActionResu
   return settled
 }
 
-function proposedChange(op: WorkflowOp): ProposedWorkflowChange {
-  if (READ_OPS.includes(op)) return "ProposedRead"
-  switch (op) {
-    case "create": return "ProposedCreate"
-    case "rename": return "ProposedRename"
-    case "remove": return "ProposedRemove"
-    default: return "ProposedOtherChange"
-  }
-}
-
 function referenceOp(op: WorkflowOp): ReferenceOp {
   if (READ_OPS.includes(op)) return "ReadReference"
   return op === "restore_removed" ? "RestoreReference" : op === "remove" ? "RemoveReference" : "ChangeReference"
@@ -97,7 +87,7 @@ function resolve(service: WorkflowService, params: Bag, op: WorkflowOp, reading:
   const workflowId = text(params.workflowId)
   const workflowName = text(params.workflowName) ?? (op === "rename" || op === "create" ? undefined : text(params.name))
   return resolveWorkflowReference(service, { ...(workflowId === undefined ? {} : { workflowId }), ...(workflowName === undefined ? {} : { workflowName }) },
-    { op: referenceOp(op), strict: op === "remove" || op === "rename", ownerWords: reading.ownerWords, timeZone: reading.timeZone })
+    { op: referenceOp(op), strict: op === "remove" || op === "rename", timeZone: reading.timeZone })
 }
 
 const DOSSIER_UNREAD = "The selected phone sources could not be read. No dossier was completed."
@@ -326,16 +316,8 @@ export const workflowAction: Action = {
     const op = WORKFLOW_OPS.find((candidate) => candidate === params.action)
     if (instance === undefined) return respond(callback, notApplied("WORKFLOW_UNAVAILABLE", "Workflows are unavailable on this agent."))
     if (op === undefined) return respond(callback, notApplied("WORKFLOW_ACTION_INVALID", `Provide action=${WORKFLOW_OPS.join("|")}.`))
-    const words = await runPromise(ownerWords(message))
-    const { binding, names } = commandBinding(words, proposedChange(op))
-    if (binding === "RefuseConflict") {
-      return respond(callback, notApplied("WORKFLOW_REQUEST_CONFLICT", "The proposed workflow operation differs from the owner’s request. Nothing was changed.", "I left your workflows unchanged."))
-    }
-    const bound = binding === "RunAsCommand"
-    const workflowId = text(params.workflowId)
-    const asked: Bag = bound ? { ...names, instruction: words, ...(workflowId === undefined ? {} : { workflowId }) } : params
-    const request = bound ? words : typeof message.content.text === "string" ? message.content.text : ""
-    const outcome = await runPromise(Effect.result(perform(instance, op, asked, request, { ownerWords: bound, timeZone: ownerZone(runtime, message) }, text(message.id))))
+    const request = typeof message.content.text === "string" ? message.content.text : ""
+    const outcome = await runPromise(Effect.result(perform(instance, op, params, request, { timeZone: ownerZone(runtime, message) }, text(message.id))))
     if (!Result.isFailure(outcome)) return respond(callback, outcome.success)
     const failure = outcome.failure
     if (failure._tag === "WorkflowReferenceRefused") {

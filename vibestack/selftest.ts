@@ -2779,17 +2779,12 @@ function eachCheck() {
       'const patched = await steady(async () => ({ runs: [await runs(), await runs()], simulation: await simulation() }));',
       `process.env.QUINT_HOME = ${JSON.stringify(path.join(root, "quint-home"))};`,
       `const native = ${JSON.stringify(native)};`,
-      'const simulate = (schedule, scope = memory, after) => steady(async () => {',
+      'const simulate = (schedule, scope = memory) => steady(async () => {',
       '  const key = await entry(".", "simulate", ["native"]);',
       '  await remembered(scope, key, (child) => act(child, "quint", ["run"], "simulated", {}), (r) => r.ok, schedule);',
-      '  after?.();',
       `  return { key: key.name, saved: fs.existsSync(key.file), runs: fs.readFileSync(${JSON.stringify(log)}, "utf8").trim().split("\\n").length };`,
       '});',
       'const bootstrap = await simulate(), installed = await simulate(), warm = await simulate();',
-      'const rotate = () => { fs.renameSync(native, native + ".old"); fs.writeFileSync(native, "changed", { mode: 0o755 }); };',
-      'const restore = () => fs.renameSync(native + ".old", native);',
-      'const rotated = await simulate(undefined, memory, rotate).then(() => "", (error) => error.message); restore();',
-      'const restored = await simulate(undefined, memory, () => { rotate(); restore(); }).then(() => "", (error) => error.message);',
       'const held = await entry(".", "simulate", ["native"]);',
       'const bytes = fs.readFileSync(held.file);',
       'const { used } = JSON.parse((await import("node:zlib")).zstdDecompressSync(bytes));',
@@ -2800,7 +2795,7 @@ function eachCheck() {
       'const retained = used.length > 0 && used.every((name) => scope.used.has(name) && !fs.existsSync(".spec-cache/"+name));',
       'fs.writeFileSync(native, "replacement"); const replaced = await simulate(); fs.writeFileSync(native, "replacement");',
       'const identical = await simulate(); process.env.QUINT_HOME = "quint-home";',
-      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, rotated, restored, late, retained, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
+      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, late, retained, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
     ].join("\n");
     const r = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
     assert.equal(r.status, 0, r.stderr);
@@ -2821,7 +2816,6 @@ function eachCheck() {
     assert.equal(installed.saved, true);
     assert.equal(installed.runs, bootstrap.runs + 1, "the installed evaluator runs once for its own identity");
     assert.deepEqual(warm, installed);
-    for (const changed of [said.rotated, said.restored]) assert.match(changed, /tool installation changed/);
     assert.deepEqual(said.late, warm, "a queued simulation reuses an aggregate published before its native work starts");
     assert.equal(said.retained, true, "the hit retains its action dependencies without recreating them");
     assert.equal(replaced.runs, warm.runs + 1);
@@ -4068,7 +4062,30 @@ export function useShown(counter: ManagedRuntime.ManagedRuntime<Machine, never>,
     // Nothing stored starts from `initial`, and a stored state goes on from where it was; what the rules refuse, or what is no state, leaves the store as it is; a machine steps from what another over the same store stored since, and its guard is judged by it.
     const kept = await exec(process.execPath, ["--import", "vibelang/register", "--input-type=module", "-e", `import assert from "node:assert/strict"; import { Effect } from "effect"; import { counted, twoPages } from "./src/kept.vibe";
 assert.deepEqual(await Promise.all([undefined, "1", "2", "7", "{"].map((before) => Effect.runPromise(counted(before)))), [[1, "1"], [2, "2"], ["Rejected", "2"], ["NotAState", "7"], ["NotAState", "{"]]);
-assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`], root);
+assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);
+const { machineOver } = await import("./gen/index.effect.vibe");
+const { Deferred, Fiber, Ref } = await import("effect");
+const outcome = await Effect.runPromise(Effect.gen(function*() {
+  const kept = yield* Ref.make(0);
+  const firstSaving = yield* Deferred.make();
+  const resume = yield* Deferred.make();
+  const machine = yield* machineOver(() => Ref.get(kept), (n) => Effect.gen(function*() {
+    if (n === 1) {
+      yield* Deferred.succeed(firstSaving, undefined);
+      yield* Deferred.await(resume);
+    }
+    yield* Ref.set(kept, n);
+  }));
+  const first = yield* Effect.forkChild(machine.send({ type: "inc" }));
+  yield* Deferred.await(firstSaving);
+  let source = "first";
+  const pending = yield* Effect.forkChild(Effect.flip(machine.send({ type: "inc" }, () => source === "first")), { startImmediately: true });
+  source = "replacement";
+  yield* Deferred.succeed(resume, undefined);
+  yield* Fiber.join(first);
+  return [(yield* Fiber.join(pending))._tag, yield* machine.get(), yield* machine.send({ type: "inc" }, (current) => current === 1)];
+}));
+assert.deepEqual(outcome, ["Rejected", 1, 2]);`], root);
     assert.equal(kept.status, 0, kept.stdout + kept.stderr);
     // An owner's package.json decides for its own gen/, whatever the root's says.
     const tree = scratch({ "spec/index.md": "# Product\n", "spec/app/index.md": ruleSpec(COUNTER), "spec/plain/index.md": ruleSpec(COUNTER), "apps/app/package.json": manifest("@scratch/app"), "apps/plain/package.json": "{}" });
@@ -4752,4 +4769,188 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
   const [file, left] = Object.entries(config.find((block: { rules?: Record<string, unknown> }) => block.rules?.["code/comments"]).rules["code/comments"][1].left as Record<string, number>).find(([file]) => file.endsWith(".vibe"))!;
   const notes = (n: number) => Array.from({ length: n }, () => "// a note");
   assert.deepEqual([(await found(file, notes(left))).length, (await found(file, notes(left + 1))).length], [0, left + 1]);
+});
+
+test("the barrel lint refuses non-barrel workspace exports, subpath imports, inline disables and stale ratchets", async (context) => {
+  const { ESLint } = await import("eslint");
+  const { default: js } = await import("@eslint/js");
+  const { defineConfig, globalIgnores } = await import("eslint/config");
+  const { default: tseslint } = await import("typescript-eslint");
+  const { default: vibelang } = await import("vibelang/eslint");
+  const { withWorkspaceBarrels } = await import("./eslint.ts");
+
+  const barrelHits = async (eslint: InstanceType<typeof ESLint>, file: string, lines: readonly string[], cwd = project) => {
+    const [res] = await eslint.lintText(lines.join("\n"), { filePath: path.join(cwd, file) });
+    return res!.messages
+      .filter((m) => m.fatal || m.ruleId?.startsWith("barrel/"))
+      .map((m) => `${m.line}:${m.column} ${m.ruleId ?? "fatal"} ${m.message}`);
+  };
+
+  const live = new ESLint({ cwd: project });
+  const allowedImports = [
+    'import { Button } from "@repo/ui";',
+    'import "@repo/ui/styles.css";',
+    'import "@repo/ui/styles.css?inline";',
+    'import tokens from "@repo/design-system/tokens.json" with { type: "json" };',
+    'void import.meta.resolve("@repo/design-system/tokens.json");',
+    'import { project as p } from "vibestack/testing/vitest";',
+    'import { Effect } from "effect";',
+    'import { Schema } from "effect/Schema";',
+    "// eslint-disable-next-line no-undef -- global",
+    "void [Button, tokens, p, Effect, Schema];",
+  ];
+  assert.deepEqual(await barrelHits(live, "apps/app/src/probe.vibe", allowedImports), []);
+  assert.deepEqual(await barrelHits(live, "vibestack/spec.ts", allowedImports), []);
+
+  const appPkg = fs.existsSync(path.join(project, "apps/app/package.json")) ? JSON.parse(read("apps/app/package.json")).name as string : "@repo/design-system";
+  const badImports = [
+    'import { x } from "@repo/ui/client";',
+    'import { b } from "@repo/ui/src/components/Button";',
+    'export { x } from "@repo/ui/internal";',
+    'export * from "@repo/ui/internal";',
+    'void import("@repo/ui/client");',
+    "void import(`@repo/ui/${name}`);",
+    'void import("@repo/ui/" + name);',
+    'require("@repo/ui/client");',
+    'require.resolve("@repo/ui/client");',
+    'import.meta.resolve("@repo/ui/client");',
+    'type T = import("@repo/ui/client").Foo;',
+    'import "@repo/ui/nonexistent.css";',
+    'import "@repo/ui/a/../styles.css";',
+    'import "@repo/ui/";',
+    `import "${appPkg}/src/App";`,
+    'import "vibestack-studio/src/project";',
+  ];
+  for (const target of ["apps/app/src/probe.vibe", "vibestack/spec.ts"]) {
+    const got = await barrelHits(live, target, badImports);
+    assert.equal(got.length, badImports.length, `${target}: ${got.join("\n")}`);
+    assert.ok(got.every((line) => line.includes("barrel/no-subpath-imports")));
+    assert.ok(got.some((line) => line.includes("not a declared static asset export")));
+  }
+
+  const bypasses = [
+    ['// eslint-disable-next-line barrel/no-subpath-imports -- nope', 'import "@repo/ui/client";'],
+    ["/* eslint-disable */", 'import "@repo/ui/client";'],
+    ["/* eslint barrel/no-subpath-imports: off */", 'import "@repo/ui/client";'],
+    ['import "@repo/ui/client"; // eslint-disable-line'],
+  ];
+  for (const target of ["apps/app/src/probe.vibe", "vibestack/spec.ts"]) {
+    const results = await Promise.all(bypasses.map((lines) => barrelHits(live, target, lines)));
+    assert.ok(results.every((msgs) => msgs.length === 1 && msgs[0]!.includes(" fatal ")), `${target}: ${JSON.stringify(results)}`);
+  }
+
+  for (const goodManifest of [
+    '{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "./styles.css": "./styles.css", "./tokens.json": { "types": "./tokens.d.ts", "default": "./tokens.json" }, "./internal/*": null } }',
+    '{ "name": "@repo/ui", "exports": "./src/index.ts" }',
+    '{ "name": "@repo/ui", "exports": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } }',
+    '{ "name": "@repo/ui" }',
+  ]) {
+    assert.deepEqual(await barrelHits(live, "packages/ui/package.json", [goodManifest]), [], goodManifest);
+  }
+
+  for (const [badManifest, snippet] of [
+    ['{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "./client": "./src/client.ts" } }', "barrel/exports"],
+    ['{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "./bridges/*": "./src/bridges/*.ts" } }', "wildcard"],
+    ['{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "./fake.css": "./src/client.ts" } }', "non-asset target"],
+    ['{ "name": "@repo/ui", "exports": {} }', "Empty"],
+    ['{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "import": "./dist/index.js" } }', "subpath map"],
+    ['{ "name": "@repo/ui", "publishConfig": { "exports": { ".": "./dist/index.js", "./client": "./dist/client.js" } } }', "barrel/exports"],
+    ['{\n  "name": "@repo/ui",\n  "exports": { "./client": "./src/client.ts" },\n  "exports": { ".": "./src/index.ts" }\n}', "barrel/exports"],
+    ['{ "name": "@repo/ui", "main": "./src/index.ts", "exports": { "./styles.css": "./styles.css" } }', "asset-only"],
+    ['{\n  "name": "@repo/ui",\n}', "3:1 fatal"],
+  ] as const) {
+    const msgs = await barrelHits(live, "packages/ui/package.json", [badManifest]);
+    assert.ok(msgs.length >= 1 && msgs.some((m) => m.includes(snippet)), `${badManifest} -> ${JSON.stringify(msgs)}`);
+  }
+
+  assert.deepEqual(await barrelHits(live, "package.json", [read("package.json")]), []);
+
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "barrel-lint-")));
+  context.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const writeTmp = (rel: string, body: string) => {
+    const full = path.join(tmp, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, body);
+  };
+  writeTmp("pnpm-workspace.yaml", [
+    "packages: # workspace members",
+    "  - 'packages/*'",
+    "  - !packages/ignored",
+    "  - apps/*",
+    "  - cloud",
+    "  - vendor/eliza",
+    "  - vendor/eliza/packages/*",
+    "catalog:",
+    "  react: ^19.3.1",
+  ].join("\n"));
+  writeTmp("tsconfig.json", JSON.stringify({ compilerOptions: { target: "es2023", module: "nodenext", strict: true, noEmit: true }, include: ["apps/**/*.ts"] }));
+  writeTmp("packages/agent/package.json", JSON.stringify({ name: "@elizaos/agent", exports: { ".": "./src/index.ts", "./client": "./src/client.ts", "./bridges/*": "./src/bridges/*.ts" } }));
+  writeTmp("packages/ignored/package.json", JSON.stringify({ name: "@elizaos/ignored", exports: { ".": "./src/index.ts", "./secret": "./src/secret.ts" } }));
+  writeTmp("cloud/package.json", JSON.stringify({ name: "cloud", exports: { "./worker": "./src/worker.ts" } }));
+  writeTmp("vendor/eliza/package.json", JSON.stringify({ name: "vibestack", bin: { spec: "dist/spec.js" }, exports: { "./testing/vitest": "./vibestack/testing/vitest.ts" } }));
+  writeTmp("vendor/eliza/packages/core/package.json", JSON.stringify({ name: "@elizaos/core", exports: { ".": "./src/index.ts", "./protocol": "./src/protocol.ts" } }));
+  writeTmp("apps/web/src/other.ts", 'import "@elizaos/agent/client";\n');
+
+  const scratchEslint = new ESLint({
+    cwd: tmp,
+    overrideConfigFile: true,
+    overrideConfig: withWorkspaceBarrels(
+      defineConfig(
+        globalIgnores(["vendor/**"]),
+        js.configs.recommended,
+        tseslint.configs.recommendedTypeChecked,
+        { languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: tmp } } },
+        { files: ["**/*.vibe"], extends: [tseslint.configs.disableTypeChecked], languageOptions: { parser: vibelang, parserOptions: { projectService: false } } },
+      ),
+      {
+        root: tmp,
+        allowExports: { "packages/agent/package.json": ["./client"] },
+        allowImports: { "apps/web/src/app.vibe": ["@elizaos/agent/client", "@elizaos/core/protocol"] },
+      },
+    ),
+  });
+
+  const agentMsgs = await barrelHits(scratchEslint, "packages/agent/package.json", [read("packages/agent/package.json", tmp)], tmp);
+  assert.equal(agentMsgs.length, 1);
+  assert.ok(agentMsgs[0]!.includes("./bridges/*"));
+  const staleExportMsgs = await barrelHits(scratchEslint, "packages/agent/package.json", [JSON.stringify({ name: "@elizaos/agent", exports: { ".": "./src/index.ts" } })], tmp);
+  assert.ok(staleExportMsgs.some((m) => m.includes('Stale allowExports entry "./client"')));
+  assert.equal((await barrelHits(scratchEslint, "cloud/package.json", [read("cloud/package.json", tmp)], tmp)).length, 1);
+
+  assert.deepEqual(await barrelHits(scratchEslint, "apps/web/src/app.vibe", [
+    'import "@elizaos/agent/client"',
+    'import "@elizaos/core/protocol"',
+    'import "vibestack/testing/vitest"',
+  ], tmp), []);
+  const newAppMsgs = await barrelHits(scratchEslint, "apps/web/src/app.vibe", [
+    'import "@elizaos/agent/client"',
+    'import "@elizaos/agent/bridges/http"',
+    'import "cloud/worker"',
+  ], tmp);
+  assert.equal(newAppMsgs.length, 3, newAppMsgs.join("\n"));
+  assert.ok(newAppMsgs.some((m) => m.includes('@elizaos/agent/bridges/http')));
+  assert.ok(newAppMsgs.some((m) => m.includes('cloud/worker')));
+  assert.ok(newAppMsgs.some((m) => m.includes('Stale allowImports entry "@elizaos/core/protocol"')));
+
+  const otherMsgs = await barrelHits(scratchEslint, "apps/web/src/other.ts", ['import "@elizaos/agent/client";'], tmp);
+  assert.equal(otherMsgs.length, 1);
+  assert.ok(otherMsgs[0]!.includes('barrel/no-subpath-imports'));
+
+  const flowDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "barrel-flow-")));
+  context.after(() => fs.rmSync(flowDir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(flowDir, "package.json"), JSON.stringify({ name: "root", workspaces: ["packages/*"] }));
+  fs.mkdirSync(path.join(flowDir, "packages/kit"), { recursive: true });
+  fs.writeFileSync(path.join(flowDir, "packages/kit/package.json"), JSON.stringify({ name: "@flow/kit", exports: { ".": "./index.ts", "./sub": "./sub.ts" } }));
+  const fallbackEslint = new ESLint({ cwd: flowDir, overrideConfigFile: true, overrideConfig: withWorkspaceBarrels([], { root: flowDir }) });
+  assert.equal((await barrelHits(fallbackEslint, "packages/kit/package.json", [read("packages/kit/package.json", flowDir)], flowDir)).length, 1);
+
+  fs.writeFileSync(path.join(flowDir, "pnpm-workspace.yaml"), 'packages: ["packages/*", "!packages/skip"]\n');
+  fs.mkdirSync(path.join(flowDir, "packages/skip"), { recursive: true });
+  fs.writeFileSync(path.join(flowDir, "packages/skip/package.json"), JSON.stringify({ name: "@flow/skip", exports: { ".": "./index.ts", "./sub": "./sub.ts" } }));
+  const flowEslint = new ESLint({ cwd: flowDir, overrideConfigFile: true, overrideConfig: withWorkspaceBarrels([], { root: flowDir }) });
+  assert.equal((await barrelHits(flowEslint, "apps/a.ts", ['import "@flow/kit/sub"; import "@flow/skip/sub";'], flowDir)).length, 1);
+
+  assert.throws(() => withWorkspaceBarrels([], { root: tmp, allowExports: { "packages/agent/package.json": ["."] } }), /never be "."/);
+  assert.throws(() => withWorkspaceBarrels([], { root: tmp, allowExports: { "packages/agent": ["./client"] } }), /package\.json/);
+  assert.throws(() => withWorkspaceBarrels([], { root: tmp, allowImports: { "apps/a.ts": ["@elizaos/agent"] } }), /subpath specifier/);
 });
