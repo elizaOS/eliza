@@ -443,8 +443,9 @@ it.live(`See which app a call on my phone runs in, by the app its operations bel
   })
   const capabilities = ["sms.send.v1", "sms.compose.v2"]
   const headers = { "x-eliza-device-id": agent.agent.runtime.agentId, "x-eliza-device-key": deviceKeyHex, "x-eliza-device-capabilities": capabilities.join(",") }
-  try call(agent, { method: "POST", path: "/api/client-devices/register", headers, body: { capabilities, workflowProtocol: 1 } })
-  const id = try conversation(agent)
+  const registered = try call(agent, { method: "POST", path: "/api/client-devices/register", headers, body: { capabilities, workflowProtocol: 1 } })
+  try Effect.try(() => assert.equal("status" in registered ? registered.status : undefined, 200))
+  const { id } = try conversation(agent)
   const propose = (operation: object) => ({ name: "PROPOSE_DEVICE_ACTION", arguments: { operation } })
   try Effect.sync(() => cloud.script(
     toolCalls("", propose({ type: "calendar_named", query: "standup" })),
@@ -452,6 +453,7 @@ it.live(`See which app a call on my phone runs in, by the app its operations bel
     text("Okay."),
   ))
   const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, headers, body: { text: "Check my standup" } })
+  try Effect.try(() => assert.equal(answer.status, 200, answer.error ?? answer.text))
   const whole = try read(answer.chunks, 0)
   try Effect.try(() => assert.deepStrictEqual(
     { kind: whole.outcome.kind, tools: whole.seen.filter((entry) => entry.startsWith("tool:")) },
