@@ -2,7 +2,7 @@
 import { readOperation, receiptOutcome, type DeviceOperation } from "@elizaos/agent/device-actions"
 import { resolveZone } from "./timezone.vibe"
 
-export { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, statedZone, type OwnerFacts, type Travel } from "./timezone.vibe"
+export { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, type OwnerFacts, type Travel } from "./timezone.vibe"
 
 export type ClockHandoffOperation = Extract<DeviceOperation, { readonly type: "clock_handoff" }>
 export type ClockDay = 1 | 2 | 3 | 4 | 5 | 6 | 7

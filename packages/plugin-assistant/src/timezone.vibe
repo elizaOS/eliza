@@ -31,18 +31,12 @@ export function resolveZone(named: string): string | undefined {
   return /^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,3}$/u.test(plain) ? ianaZone(plain) : undefined
 }
 
-const statement = /\bmy\s+time\s*zone\s+is\s+(?:now\s+)?([A-Za-z0-9_/+:.-]{1,60}(?:\s+time)?)/iu
-
-export function statedZone(text: string): string | undefined {
-  const named = statement.exec(text)?.[1]
-  return named === undefined ? undefined : resolveZone(named)
-}
-
 opaque.knownZone = (named: string) => named !== "" && resolveZone(named) === named
 
-export function statedName(text: string): string | undefined {
-  const named = statement.exec(text)?.[1]
-  return named === undefined ? undefined : resolveZone(named) ?? named.trim()
+/** The name the owner gave, as the resolver maps it, or as written when it knows no such zone; undefined when they named none. */
+export function statedName(named: string): string | undefined {
+  const plain = named.trim()
+  return plain === "" ? undefined : resolveZone(plain) ?? plain.slice(0, 64)
 }
 
 const Travel = Schema.Struct({ startAt: Schema.Number, endAt: Schema.Number, zone: Schema.String })
@@ -64,8 +58,8 @@ export effect function ownerFacts() {
   }
 }
 
-export effect function stateOwnerZone(text: string) {
-  const namedZone = statedName(text)
+export effect function stateOwnerZone(named: string) {
+  const namedZone = statedName(named)
   provide stored(zoneKey) {
     const timezone = try Machine
     const before = (try timezone.get()).storedZone

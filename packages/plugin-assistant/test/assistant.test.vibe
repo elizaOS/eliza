@@ -20,6 +20,7 @@ import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKin
 import { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
 import { changeTodos, currentTodos } from "../src/todos.vibe"
 import { stateTravel } from "../src/travel.vibe"
+import { personalAssistantPlugin } from "../src/index.vibe"
 import { ports, portsLayer, rowsOf } from "./support/ports.vibe"
 
 const check = (answer: object) => JSON.stringify({ requested: true, clock: "utc", destination: null, alert: "alert", important: false, ...answer })
@@ -550,10 +551,10 @@ it.effect('The owner\'s stated zone runs their clock, a trip overrides it only d
   provide portsLayer(seen) {
     try changeGoal({ op: "create", title: "Read more", cadence: "weekly" }, "z1")
     const atStart = zones()
-    const stated = try stateOwnerZone("my timezone is pacific time")
+    const stated = try stateOwnerZone("pacific time")
     try followOwnerClock("z2")
     const afterStating = zones()
-    const ignored = try stateOwnerZone("my time zone is whatever the laptop says")
+    const ignored = try stateOwnerZone("whatever the laptop says")
     try recordTravel(seen.now - 1, seen.now + 86_400_000, "Europe/Berlin")
     try followOwnerClock("z3")
     const onTrip = zones()
@@ -572,12 +573,12 @@ it.effect('A trip told in conversation lasts until the day I named, a return nam
   const thirtyDays = seen.now + 30 * 86_400_000
   provide portsLayer(seen) {
     const said: Array<readonly [number | undefined, boolean | undefined, string]> = []
-    for (const text of ["I'm traveling until November 21st.", "I’m on vacation through 2026-12-03", "I'm traveling until November 14th.", "I'm traveling until November 10.", "I'm away until November 31st", "I'm out of the office"]) {
-      const kept = try stateTravel(text)
+    for (const until of ["11-21", "2026-12-03", "11-14", "11-10", "11-31", undefined]) {
+      const kept = try stateTravel({ signal: "SaysAway", until })
       said.push([kept?.trip.endAt, kept?.travelling, try ownerClockAt(seen.now)])
     }
-    const back = try stateTravel("I'm back home now")
-    const unrelated = try stateTravel("my brother is traveling until Friday")
+    const back = try stateTravel({ signal: "SaysBack", until: undefined })
+    const unrelated = try stateTravel({ signal: "SaysNothing", until: "2026-11-20" })
     try equal({ said, back: [back?.signal, back?.travelling], unrelated, kept: (try ownerFacts()).travel }, {
       said: [
         [Date.UTC(2026, 10, 21, 5, 0), true, "America/New_York"], [Date.UTC(2026, 11, 3, 5, 0), true, "America/New_York"],
@@ -585,6 +586,64 @@ it.effect('A trip told in conversation lasts until the day I named, a return nam
         [thirtyDays, true, "America/New_York"], [thirtyDays, true, "America/New_York"],
       ],
       back: ["SaysBack", false], unrelated: undefined, kept: { startAt: 0, endAt: 0, zone: "" },
+    })
+  }
+})
+
+interface OwnerTurnRuntime {
+  readonly runtime: IAgentRuntime
+  readonly prompts: string[]
+  readonly answers: unknown[]
+}
+
+function ownerTurnRuntime(): OwnerTurnRuntime {
+  const cache = new Map<string, unknown>()
+  const prompts: string[] = []
+  const answers: unknown[] = []
+  const runtime = {
+    agentId: "agent-1",
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => { cache.set(key, value); return true },
+    deleteCache: async (key: string) => cache.delete(key),
+    getSetting: (name: string) => name === "TIMEZONE" ? "America/New_York" : undefined,
+    getService: () => null,
+    useModel: async (_model: unknown, params: { readonly prompt: string }) => { prompts.push(params.prompt); return JSON.stringify(answers.shift() ?? {}) },
+  } as unknown as IAgentRuntime
+  return { runtime, prompts, answers }
+}
+
+const isoDay = (at: number) => new Date(at).toLocaleDateString("en-CA", { timeZone: "America/New_York" })
+
+it.effect('The model reads a trip, a return and the owner\'s own zone from the message, and its fields are validated before anything is kept (spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/timezone.md, "A stated zone replaces the stored zone only when the resolver knows it")', effect () => {
+  const owner = ownerTurnRuntime()
+  const seen = ports()
+  const evaluators = personalAssistantPlugin.evaluators
+  const state = { values: {}, data: {}, text: "" }
+  const said = (id: string, text: string, travel: unknown, zone: unknown) => effect {
+    owner.answers.push({ PERSONAL_ASSISTANT_OWNER_TRAVEL: travel, PERSONAL_ASSISTANT_OWNER_TIMEZONE: zone })
+    const run = try runEvaluators({ runtime: owner.runtime, message: heard(id, text), state, options: {}, evaluators, postTurn: false })
+    const facts = try tryPromise(() => onAgent(owner.runtime, ownerFacts()))
+    return { invalid: run.errors.filter(({ error }) => error.includes("missing or invalid")).map(({ evaluatorName }) => evaluatorName), facts }
+  }
+  const today = isoDay(Date.now())
+  const inThreeDays = isoDay(Date.now() + 3 * 86_400_000)
+  provide portsLayer(seen) {
+    const away = try said("t1", "I'm traveling until Friday", { signal: "away", until: inThreeDays }, { zone: "" })
+    const asked = owner.prompts.at(-1) ?? ""
+    const someoneElse = try said("t2", "my brother is traveling until Friday", { signal: "none", until: "" }, { zone: "" })
+    const unread = try said("t3", "I'm out for a while", { signal: "maybe", until: "" }, { zone: 5 })
+    const zone = try said("t4", "my timezone is pacific time", { signal: "none", until: "" }, { zone: "America/Los_Angeles" })
+    const unknownZone = try said("t5", "my time zone is whatever the laptop says", { signal: "none", until: "" }, { zone: "whatever the laptop says" })
+    const back = try said("t6", "I'm back home now", { signal: "back", until: "" }, { zone: "" })
+    const tripDay = (facts: typeof away.facts) => facts.travel === undefined || facts.travel.endAt === 0 ? undefined : isoDay(facts.travel.endAt)
+    try equal({
+      prompt: [asked.includes(JSON.stringify("I'm traveling until Friday")), asked.includes(`(${today})`), asked.includes("someone else's trip")],
+      away: tripDay(away.facts), someoneElse: tripDay(someoneElse.facts), unread: [unread.invalid, tripDay(unread.facts), unread.facts.zone],
+      zone: zone.facts.zone, unknownZone: unknownZone.facts.zone, back: [tripDay(back.facts), back.facts.travel?.endAt],
+    }, {
+      prompt: [true, true, true],
+      away: inThreeDays, someoneElse: inThreeDays, unread: [["PERSONAL_ASSISTANT_OWNER_TIMEZONE", "PERSONAL_ASSISTANT_OWNER_TRAVEL"].sort(), inThreeDays, ""],
+      zone: "America/Los_Angeles", unknownZone: "America/Los_Angeles", back: [undefined, 0],
     })
   }
 })
@@ -697,7 +756,7 @@ it.effect('Check-ins come at the times I chose: the morning one at eight until I
       refused: [false, "Your check-in times were not changed.", { morning: "06:45", night: "22:00" }],
       rows: [["morning", cron("30 7 * * *"), "Dismissed"], ["night", cron("45 21 * * *"), "Dismissed"], ["night", cron("0 22 * * *"), "Scheduled"], ["morning", cron("45 6 * * *"), "Scheduled"]],
     })
-    try stateOwnerZone("my timezone is pacific")
+    try stateOwnerZone("pacific")
     try followOwnerClock("s10")
     try equal(rowsOf(seen, checkinKind).filter((row) => row.status === "Scheduled").map((row) => row.trigger), [cron("0 22 * * *", "America/Los_Angeles"), cron("45 6 * * *", "America/Los_Angeles")])
   }

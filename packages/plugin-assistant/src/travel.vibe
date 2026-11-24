@@ -2,7 +2,7 @@
 import type { RegisteredEvaluator } from "@elizaos/core"
 import { noReturn, noTrip, travelAfter, travellingAt, tripEndAt, type StatedReturn, type TravelSignal } from "../gen/assistant__travel.effect.vibe"
 import { Facts, onAgent } from "./host.vibe"
-import { civilDate, zonedInstant } from "./time.vibe"
+import { civilDate, longDate, zonedInstant } from "./time.vibe"
 import { keepTrip, ownerClockAt, ownerFacts } from "./timezone.vibe"
 
 module node {
@@ -14,15 +14,15 @@ module node {
 }
 import { isCalendarDay } from node
 
-const backPattern = /\b(?:i['’]?m\s+back|i\s+am\s+back|back\s+home|(?:i['’]?m|i\s+am)\s+home\s+now|got\s+(?:back|home)|(?:i['’]?m|i\s+am)\s+(?:back\s+)?in\s+(?:town|the\s+office))\b/iu
-const awayPattern = /\b(?:i['’]?m|i\s+am)\s+(?:traveling|travelling|away|on\s+(?:a\s+)?(?:trip|vacation|holiday)|out\s+of\s+(?:town|(?:the\s+)?office))\b/iu
-const untilPattern = /\b(?:until|till|til|through|thru|back\s+(?:on|by))\s+([A-Za-z0-9 ,/.'’-]{3,40})/iu
-
 const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/u
-const inFigures = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/u
-const monthFirst = /^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?$/iu
-const dayFirst = /^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?:,?\s+(\d{4}))?$/iu
-const monthWords = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+const monthDay = /^(\d{2})-(\d{2})$/u
+const signals: Readonly<Record<string, TravelSignal>> = { away: "SaysAway", back: "SaysBack", none: "SaysNothing" }
+
+/** What the model read from the owner's message: whether they said they are away or back, and the return day they named. */
+export interface TravelReading {
+  readonly signal: TravelSignal
+  readonly until: string | undefined
+}
 
 interface CalendarDay {
   readonly year: number
@@ -36,24 +36,11 @@ interface ReadDate {
   readonly year: number | undefined
 }
 
-function travelSignal(text: string): TravelSignal {
-  if (backPattern.test(text)) return "SaysBack"
-  return awayPattern.test(text) ? "SaysAway" : "SaysNothing"
-}
-
-const monthOf = (word: string) => monthWords.indexOf(word.slice(0, 3).toLowerCase()) + 1
-const yearOf = (digits: string | undefined) => digits === undefined ? undefined : Number(digits)
-
-function readDate(phrase: string): ReadDate | undefined {
-  const plain = phrase.trim().replace(/[.,]+$/u, "")
-  const iso = isoDate.exec(plain)
+function readDate(written: string): ReadDate | undefined {
+  const iso = isoDate.exec(written)
   if (iso !== null) return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) }
-  const figures = inFigures.exec(plain)
-  if (figures !== null) return { month: Number(figures[1]), day: Number(figures[2]), year: yearOf(figures[3]) }
-  const named = monthFirst.exec(plain)
-  if (named !== null) return { month: monthOf(named[1]), day: Number(named[2]), year: yearOf(named[3]) }
-  const reversed = dayFirst.exec(plain)
-  return reversed === null ? undefined : { month: monthOf(reversed[2]), day: Number(reversed[1]), year: yearOf(reversed[3]) }
+  const short = monthDay.exec(written)
+  return short === null ? undefined : { month: Number(short[1]), day: Number(short[2]), year: undefined }
 }
 
 const dayKey = (day: CalendarDay) => day.year * 10_000 + day.month * 100 + day.day
@@ -64,9 +51,9 @@ function todayKey(now: number, zone: string): number {
   return Number(civilDate(now, zone).replace(/-/gu, ""))
 }
 
-function statedReturn(phrase: string | undefined, now: number, zone: string): StatedReturn {
-  if (phrase === undefined) return noReturn
-  const read = readDate(phrase)
+function statedReturn(written: string | undefined, now: number, zone: string): StatedReturn {
+  if (written === undefined) return noReturn
+  const read = readDate(written)
   if (read === undefined) return { ...noReturn, named: true }
   const stated = { year: read.year ?? Number(civilDate(now, zone).slice(0, 4)), month: read.month, day: read.day }
   const following = { ...stated, year: stated.year + 1 }
@@ -78,33 +65,71 @@ function statedReturn(phrase: string | undefined, now: number, zone: string): St
   }
 }
 
-export effect function stateTravel(text: string) {
-  const signal = travelSignal(text)
+export effect function stateTravel({ signal, until }: TravelReading) {
   if (signal === "SaysNothing") return undefined
   const now = try (try Facts).now()
   const zone = try ownerClockAt(now)
   const before = (try ownerFacts()).travel ?? { ...noTrip, zone: "" }
-  const endAt = tripEndAt(statedReturn(untilPattern.exec(text)?.[1], now, zone), todayKey(now, zone), now)
+  const endAt = tripEndAt(statedReturn(until, now, zone), todayKey(now, zone), now)
   const trip = { ...travelAfter(signal, before, now, endAt), zone: "" }
   try keepTrip(trip)
   const travelling = travellingAt(trip, now)
   return { signal, trip, travelling, until: travelling ? new Date(trip.endAt).toISOString() : undefined }
 }
 
+/** The model's output for the travel evaluator, or null when it is not one: an unknown signal, or a return that is not text. */
+function travelReading(output: unknown): TravelReading | null {
+  if (typeof output !== "object" || output === null) return null
+  const signal = Reflect.get(output, "signal")
+  const until = Reflect.get(output, "until")
+  if (typeof signal !== "string" || !Object.hasOwn(signals, signal) || (until !== undefined && typeof until !== "string")) return null
+  const written = until?.trim() ?? ""
+  return { signal: signals[signal] ?? "SaysNothing", until: written === "" ? undefined : written.slice(0, 40) }
+}
+
+const travelSignals: ReadonlySet<unknown> = new Set(Object.values(signals))
+
+function isReading(output: unknown): output is TravelReading {
+  if (typeof output !== "object" || output === null) return false
+  const until = Reflect.get(output, "until")
+  return travelSignals.has(Reflect.get(output, "signal")) && (until === undefined || typeof until === "string")
+}
+
+function todayOf(prepared: unknown): string | undefined {
+  const today = typeof prepared === "object" && prepared !== null ? Reflect.get(prepared, "today") : undefined
+  return typeof today === "string" ? today : undefined
+}
+
+function travelPrompt(text: string, today: string | undefined): string {
+  return [
+    "Read the owner's latest message and say whether it tells you that they themselves are away now or are back.",
+    "signal: \"away\" when the owner says they are travelling, on a trip or vacation, or out of town or the office now; \"back\" when they say they are back, home or in the office again; \"none\" for anything else, including someone else's trip, a trip they only plan or ask about, and a message that does not say where they are.",
+    `until: when the signal is "away" and the owner names the day they are away until or will be back, that day as YYYY-MM-DD; write MM-DD instead when they named a month and day without a year. A weekday or a relative day is counted from today${today === undefined ? "" : `, ${longDate(today)} (${today})`}. Write the day they said even if the calendar has no such day. Otherwise an empty string.`,
+    `The owner's message: ${JSON.stringify(text)}`,
+  ].join("\n")
+}
+
 export const ownerTravelEvaluator: RegisteredEvaluator = {
   name: "PERSONAL_ASSISTANT_OWNER_TRAVEL",
   description: "Keeps the trip the owner states, such as \"I'm traveling until November 21st\", and ends it when they say they are back.",
-  schema: { type: "object", properties: { signal: { type: "string" } }, required: ["signal"] },
+  schema: {
+    type: "object", additionalProperties: false, required: ["signal", "until"],
+    properties: { signal: { type: "string", enum: ["away", "back", "none"] }, until: { type: "string" } },
+  },
   inputScope: "current_message",
-  shouldRun: async ({ runtime, message }) => message.entityId !== runtime.agentId && typeof message.content.text === "string" && travelSignal(message.content.text) !== "SaysNothing",
-  resolveOutputWhen: () => true,
-  resolveOutput: ({ message }) => ({ signal: travelSignal(message.content.text ?? "") }),
-  prompt: () => "",
+  shouldRun: async ({ runtime, message }) => message.entityId !== runtime.agentId && typeof message.content.text === "string" && message.content.text.trim() !== "",
+  prepare: async ({ runtime }) => ({ today: await onAgent(runtime, effect {
+    const now = try (try Facts).now()
+    return civilDate(now, try ownerClockAt(now))
+  }) }),
+  prompt: ({ message, prepared }) => travelPrompt(message.content.text ?? "", todayOf(prepared)),
+  parse: (output) => travelReading(output),
   processors: [{
     name: "keep-owner-trip",
-    process: async ({ runtime, message }) => {
-      const kept = await onAgent(runtime, stateTravel(message.content.text ?? ""))
-      if (kept === undefined) return { success: true, text: "No trip was stated." }
+    process: async ({ runtime, output }) => {
+      if (!isReading(output) || output.signal === "SaysNothing") return undefined
+      const kept = await onAgent(runtime, stateTravel(output))
+      if (kept === undefined) return undefined
       return { success: true, text: kept.until === undefined ? "Owner is not travelling." : `Owner is travelling until ${kept.until}.`, data: { travelling: kept.travelling, until: kept.until ?? null } }
     },
   }],

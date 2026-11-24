@@ -4,21 +4,24 @@ The owner tells the assistant in conversation that they are away: "I'm
 traveling until November 21st", "I'm on vacation through 2026-12-03", "I'm
 out of the office". The assistant keeps a trip from the instant of that
 message to the return the owner named, or for thirty days when it reads no
-return. "I'm back", "back home" or "I'm in the office" ends the trip, and a
-return is checked before a trip, so "I'm back home" is never read as one.
+return. "I'm back", "back home" or "I'm in the office" ends the trip.
 While a tick falls within the trip the owner is travelling
 ([time zone](./timezone.md)); a trip told in conversation names no
 destination zone, so the owner's clock stays on the zone they stated.
 
-The shell reads the return from the words after "until", "till",
-"through" or "back on": an ISO date, a month and day with or without an
-ordinal ("November 21st") and an optional year, a day before its month, or
-a month and day in figures. A return is a calendar day on the owner's
-clock, and the trip ends at that day's local midnight. Each day is passed
-to the rules below as a number that orders days, with today's day, and
-the midnight instant of the stated day this year and of the same day next
-year. A date the calendar does not have, such as November 31st, is not a
-real day.
+After each owner message a model reads whether the owner says they
+themselves are away now, are back, or neither: someone else's trip, a trip
+only planned and a question are neither, and the words are never matched
+against a pattern. With "away" it writes the return the owner named as a
+day, `YYYY-MM-DD`, or `MM-DD` when they named a month and day without a
+year, counting a weekday or relative day from today on the owner's clock;
+an output with any other signal is refused. A return is a calendar day on
+the owner's clock, and the trip ends at that day's local midnight. Each
+day is passed to the rules below as a number that orders days, with
+today's day, and the midnight instant of the stated day this year and of
+the same day next year. A date the calendar does not have, such as
+November 31st, is not a real day, and a return written in neither form is
+a return the shell cannot read.
 
 ## Story: Keep my trip to the day I said I am back
 
