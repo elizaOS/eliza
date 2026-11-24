@@ -1799,6 +1799,9 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
 
     try sync(() => maps.script(invalidArgument))
     const refusedHandle = try post("places/details", "details-handle", { id: handle })
+    const replayedHandle = try post("places/details", "details-handle", { id: handle })
+    const handleProviderCalls = try sync(() => maps.count("details"))
+    const handleUsage = try sql(cloud, "SELECT r.status, r.result IS NULL AS unkept, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key WHERE u.organization_id = $1", [caller.organizationId])
     const keyed: Array<readonly [number, string | undefined]> = []
     for (const reason of ["API_KEY_INVALID", "API_KEY_EXPIRED", "SERVICE_DISABLED"]) {
       try sync(() => maps.script(keyRefused(reason)))
@@ -1822,23 +1825,24 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
       const [route] = (answer.body as { readonly routes: ReadonlyArray<{ readonly distanceMeters: number; readonly durationSeconds: number; readonly geometry: ReadonlyArray<unknown> }> }).routes
       return [answer.status, route?.distanceMeters, route?.durationSeconds, route?.geometry]
     }
-    const usage = try sql(cloud, "SELECT r.status, r.result IS NULL AS unkept, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key LIMIT 1", [])
 
     try check(() => assert.deepStrictEqual(
       {
-        refusedHandle: [refusedHandle.status, errorOf(refusedHandle)],
+        refusedHandle: [refusedHandle, replayedHandle].map((answer) => [answer.status, errorOf(answer)]),
+        handleProviderCalls,
         keyed, unexplained,
         othersBlameTheProvider: [searched, reversed, routed].map((answer) => [answer.status, errorOf(answer)]),
         samePlace: [routeOf(onePoint), routeOf(noPoint)],
-        handleUsage: usage.map((row) => [row.status, row.unkept, row.outcome]),
+        handleUsage: handleUsage.map((row) => [row.status, row.unkept, row.outcome]),
       },
       {
-        refusedHandle: [400, "invalid_request"],
+        refusedHandle: [[400, "invalid_request"], [400, "invalid_request"]],
+        handleProviderCalls: 1,
         keyed: [[502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"]],
         unexplained: [[502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"]],
         othersBlameTheProvider: [[502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"]],
         samePlace: [[200, 0, 0, [start, start]], [200, 0, 0, [start, start]]],
-        handleUsage: [["lost", true, "unknown"]],
+        handleUsage: [["refused", false, "unknown"]],
       }
     ))
   }), 60_000)
