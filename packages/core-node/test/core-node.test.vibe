@@ -18,6 +18,7 @@ import {
   decryptAes256Gcm,
   encryptAes256Gcm,
   ensureDir,
+  type FetchMediaOptions,
   fetchRemoteMedia,
   fetchWithSsrfGuard,
   firstHeaderValue,
@@ -41,6 +42,8 @@ import {
   writeJsonAtomic,
   writeJsonAtomicSync,
 } from "../src/index.vibe"
+import { catalogWorkspace, coreDir, coreNodeDir, runNode, spawnNode } from "./support/child.ts"
+import { type Handler, loopback, loopbackTls, pinnedLookup } from "./support/servers.ts"
 
 module node {
   import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
@@ -120,6 +123,47 @@ module node {
   }
 }
 import { closeLoopback, fakeRequest, makeTempDir, randomBytesOf, removeDir, startLoopback, swapPath, writeBin } from node
+
+effect function host<A>(f: () => Promise<A>) {
+  return try Effect.tryPromise({ try: f, catch: (error) => error })
+}
+
+effect function scratch(prefix: string) {
+  return try acquireRelease(sync(() => makeTempDir(`${prefix}-`)), (dir) => sync(() => removeDir(dir)))
+}
+
+const generateInChild = [
+  "const { Effect } = await import(\"effect\")",
+  "const { rm } = await import(\"node:fs/promises\")",
+  "const { resolve } = await import(\"node:path\")",
+  "const { writeJsonAtomicPromise } = await import(\"./src/utils/atomic-json.vibe\")",
+  "const { collectFirstPartyEntries, collectShortIdPluginMap, generateFirstPartyRegistry } = await import(\"./src/catalog/generate.vibe\")",
+  "const authoredFeatures = JSON.parse(process.argv[1])",
+  "const root = resolve(\"../..\")",
+  "const catalog = resolve(\"../core/src/catalog\")",
+  "const settle = (run) => Effect.runPromise(Effect.match(run, { onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: (value) => value }))",
+  "const generated = async () => {",
+  "  const entries = await settle(collectFirstPartyEntries())",
+  "  return { ids: Array.isArray(entries) ? entries.map((entry) => entry.id) : entries, registry: await settle(generateFirstPartyRegistry()) }",
+  "}",
+  "const base = await generated()",
+  "for (const { id, entry } of authoredFeatures) await writeJsonAtomicPromise(`${catalog}/curated/plugins/${id}.json`, entry)",
+  "const entries = await Effect.runPromise(collectFirstPartyEntries())",
+  "const features = { features: entries.filter((entry) => entry.id === \"documents\" || entry.id === \"personal-assistant\").map((entry) => [entry.id, entry.kind, entry.subtype, entry.npmName, entry.shortIds, \"launch\" in entry, \"curatedApp\" in entry]), shortIds: await Effect.runPromise(collectShortIdPluginMap(entries)) }",
+  "for (const { id } of authoredFeatures) await rm(`${catalog}/curated/plugins/${id}.json`, { recursive: true, force: true })",
+  "await writeJsonAtomicPromise(`${catalog}/curated/plugins/bravo.json`, { id: \"bravo\", name: \"Bravo again\", kind: \"plugin\", subtype: \"other\", render: { group: \"ai\" } })",
+  "const duplicate = await generated()",
+  "await rm(`${catalog}/curated/plugins/bravo.json`, { recursive: true, force: true })",
+  "await writeJsonAtomicPromise(`${catalog}/curated/plugins/broken.json`, { id: \"Broken Id\", name: \"Broken\", kind: \"plugin\", subtype: \"other\", render: {} })",
+  "const broken = await generated()",
+  "await rm(`${catalog}/curated/plugins/broken.json`, { recursive: true, force: true })",
+  "await writeJsonAtomicPromise(`${catalog}/curated/plugins/retired-app.json`, { id: \"retired-app\", name: \"Retired app\", kind: \"app\", subtype: \"tool\", launch: { type: \"internal-tab\" }, render: { group: \"apps\" } })",
+  "const retiredApp = await generated()",
+  "await rm(`${catalog}/curated/plugins/retired-app.json`, { recursive: true, force: true })",
+  "await writeJsonAtomicPromise(`${root}/plugins/gamma/registry-entry.json`, { id: \"gamma\", name: \"Gamma\", npmName: \"@fx/plugin-gamma\", kind: \"plugin\", subtype: \"feature\", render: { group: \"ai\" }, channels: [\"discord\"] })",
+  "const conflict = await generated()",
+  "console.log(JSON.stringify({ base, features, duplicate, broken, retiredApp, conflict }))",
+].join("\n")
 
 it.live('Node runtime adapters isolate concurrent async contexts (spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated")', () => effect {
   installNodeRuntimeAdapters()
@@ -256,3 +300,590 @@ it.live('HookService and first-party catalog registry run on Node (spec/core/plu
     }, sync(() => removeDir(dir)))
   }
 })
+
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"; spec/core/media.md, "Transport host spelling preserves DNS and IP certificate semantics"; spec/core/media.md, "Story: Infer media type with the established precedence"; spec/core/media.md, "Specific sniffed types win and generic containers defer to a known extension"
+it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: Fetch an attachment through its correct trust boundary\"; spec/core/media.md, \"Story: Infer media type with the established precedence\")", () => Effect.scoped(effect {
+  const bytes = (hex: string) => Uint8Array.from(hex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16))
+  const png = bytes("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
+  const zip = Uint8Array.from([...bytes("504b0304140000000800"), ...new Array<number>(40).fill(1)])
+  const dispositions = [
+    "attachment; filename*=UTF-8''na%C3%AFve%20file.txt",
+    "attachment; filename*=iso-8859-1'en'caf%E9.txt",
+    "attachment; filename=\"a;b \\\"c\\\".txt\"; size=5",
+    "attachment; filename=\"../../etc/passwd.png\"",
+  ]
+  const handler: Handler = (request, response) => {
+    const path = new URL(request.url ?? "", "http://loopback").pathname
+    if (path === "/photo") {
+      response.writeHead(200, { "content-type": "text/plain; charset=utf-8" })
+      response.end(png)
+    } else if (path === "/report.docx") {
+      response.writeHead(200, { "content-type": "application/octet-stream" })
+      response.end(zip)
+    } else if (path.startsWith("/to/")) {
+      response.writeHead(302, { location: `http://${path.slice(4)}:${request.socket.localPort}/photo` })
+      response.end()
+    } else if (path === "/big") {
+      response.writeHead(200)
+      response.write(new Uint8Array(3000))
+      response.write(new Uint8Array(3000))
+    } else if (path === "/oversized") {
+      response.writeHead(200, { "content-length": String(60 * 1024 * 1024) })
+      response.write(new Uint8Array(1000))
+    } else if (path === "/sized") {
+      response.writeHead(200, { "content-length": "6000" })
+      response.end(new Uint8Array(6000))
+    } else if (path === "/csv") {
+      response.writeHead(200, { "content-type": "Text/CSV; charset=utf-8" })
+      response.end("a,b\n")
+    } else if (path === "/encoded") {
+      response.writeHead(200, { "content-type": "image/png", "content-encoding": "gzip" })
+      response.end(png)
+    } else if (path === "/stall" || path === "/hold") {
+      response.writeHead(200)
+      response.write("abc")
+    } else if (path.startsWith("/status/")) {
+      response.writeHead(Number(path.slice(8)))
+      response.end("s")
+    } else if (path === "/long-error") {
+      response.writeHead(500)
+      response.end("x".repeat(5000))
+    } else if (path === "/endless-error") {
+      response.writeHead(502)
+      const pump = () => {
+        let open = true
+        while (open) open = !response.destroyed && response.write("y".repeat(1000))
+      }
+      response.on("drain", pump)
+      pump()
+    } else if (path.startsWith("/name/")) {
+      response.writeHead(200, { "content-disposition": dispositions[Number(path.slice(6))] })
+      response.end("hello")
+    } else {
+      response.writeHead(404)
+      response.end()
+    }
+  }
+  const server = try acquireRelease(host(() => loopback(handler)), (opened) => orDie(host(() => opened.close())))
+  const describe = (error: unknown) => {
+    if (error instanceof MediaFetchError) {
+      const cause = error.cause instanceof Error ? error.cause.name : undefined
+      return { MediaFetchError: error.code, message: error.message, cause }
+    }
+    if (error instanceof SsrfBlockedError) return { SsrfBlockedError: error.message }
+    if (error instanceof Error) return { [error.name]: (error as { code?: unknown }).code, message: error.message }
+    return { thrown: String(error) }
+  }
+  const outcome = <A>(f: () => Promise<A>) => Effect.match(host(f), {
+    onFailure: (error) => ({ rejected: describe(error) }),
+    onSuccess: (value) => ({ resolved: value }),
+  })
+  const imageLookup = () => pinnedLookup({ "image.test": "127.0.0.1" })
+  const allowImage = { allowedHostnames: ["image.test"] }
+  const at = (path: string) => `http://image.test:${server.port}${path}`
+  type Extra = Pick<FetchMediaOptions, "maxBytes" | "timeoutMs" | "signal" | "requiredContentTypePrefix" | "rejectContentEncoding">
+  const fetchMedia = (path: string, extra: Extra = {}) => async () => {
+    const fetched = await fetchRemoteMedia({ url: at(path), lookupFn: imageLookup(), ssrfPolicy: allowImage, ...extra })
+    return { bytes: [...fetched.buffer], contentType: fetched.contentType, fileName: fetched.fileName }
+  }
+  const media = (path: string, extra: Extra = {}) => outcome(fetchMedia(path, extra))
+  const timed = <A>(f: () => Promise<A>) => effect {
+    const started = Date.now()
+    const value = try outcome(f)
+    return { value, withinDeadline: Date.now() - started < 5_000 }
+  }
+  const failure = (url: string, detail: string, code = "fetch_failed", cause?: string) => ({
+    rejected: { MediaFetchError: code, message: `Failed to fetch media from ${url}: ${detail}`, cause },
+  })
+
+  // spec/core/media.md, "Specific sniffed types win and generic containers defer to a known extension"
+  const inferred = [try media("/photo"), try media("/report.docx"), try media("/csv"), try media("/report.docx?name=x.png")]
+
+  // spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+  const flipUrl = at("/to/cdn.test")
+  const privateUrl = at("/to/internal.test")
+  const pinnedOnce = try orDie(Effect.try(() => pinnedLookup({ "image.test": "127.0.0.1" }, { flipAfter: 1 })))
+  const pinnedHops = try orDie(Effect.try(() => pinnedLookup({ "image.test": "127.0.0.1", "cdn.test": "127.0.0.1" }, { flipAfter: 2 })))
+  const screened = [
+    try Effect.map(outcome(() => fetchRemoteMedia({ url: at("/photo"), lookupFn: pinnedOnce, ssrfPolicy: allowImage })), (r) => ["resolved" in r ? r.resolved.contentType : r, [...pinnedOnce.queries]]),
+    try Effect.map(outcome(() => fetchRemoteMedia({ url: flipUrl, lookupFn: pinnedHops, ssrfPolicy: { allowedHostnames: ["image.test", "cdn.test"] } })), (r) => ["resolved" in r ? r.resolved.contentType : r, [...pinnedHops.queries]]),
+    try outcome(() => fetchRemoteMedia({ url: privateUrl, lookupFn: pinnedLookup({ "image.test": "127.0.0.1", "internal.test": "127.0.0.1" }), ssrfPolicy: allowImage })),
+    try outcome(() => fetchWithSsrfGuard({ url: `http://127.0.0.1:${server.port}/photo` })),
+    server.requests.map((request) => request.path),
+  ]
+
+  const hold = try orDie(Effect.try(() => new AbortController()))
+  const bounded = [
+    try media("/photo", { requiredContentTypePrefix: "audio/" }),
+    try media("/encoded", { rejectContentEncoding: true }),
+    try media("/big", { maxBytes: 4000 }),
+    try media("/sized", { maxBytes: 4000 }),
+    try media("/oversized"),
+    try timed(fetchMedia("/stall", { timeoutMs: 300 })),
+    try Effect.andThen(
+      Effect.forkScoped(Effect.delay(Effect.sync(() => hold.abort()), "200 millis")),
+      timed(fetchMedia("/hold", { signal: hold.signal })),
+    ),
+    try timed(() => fetchRemoteMedia({ url: at("/photo"), lookupFn: pinnedLookup({}, { never: true }), ssrfPolicy: allowImage, timeoutMs: 300 })),
+  ]
+  const statuses = try forEach([599, 600, 999], (status) => outcome(async () => {
+    const guarded = await fetchWithSsrfGuard({ url: at(`/status/${status}`), lookupFn: imageLookup(), policy: allowImage })
+    await guarded.response.body?.cancel()
+    await guarded.release()
+    return guarded.response.status
+  }))
+
+  const errorBodies = [try media("/long-error"), try timed(fetchMedia("/endless-error"))]
+
+  const names = try forEach(dispositions, (_disposition, position) => Effect.map(media(`/name/${position}`), (named) => "resolved" in named ? named.resolved.fileName : named))
+
+  const hash = "a".repeat(64)
+  const canonical = try host(async () => trustedLocalMediaUrl(`/api/media/${hash}.png`))
+  const handles = [
+    canonical === null ? null : { hostname: canonical.hostname, pathname: canonical.pathname },
+    try outcome(async () => trustedLocalMediaUrl("/api/media/nothex.png")),
+    try outcome(async () => trustedLocalMediaUrl(`${canonical?.origin}/api/media/${hash}.png?x=1`)),
+    try outcome(async () => trustedLocalMediaUrl("/elsewhere.png")),
+    try outcome(async () => trustedLocalMediaUrl("https://example.com/a.png")),
+  ]
+
+  const index = (path: string) => server.requests.findIndex((request) => request.path === path)
+  const closed = try forEach(["/big", "/stall", "/hold", "/endless-error"], (path) => Effect.race(
+    Effect.as(host(() => server.socketClosed(index(path))), true),
+    Effect.as(Effect.sleep("2 seconds"), false),
+  ))
+
+  try Effect.try(() => assert.deepStrictEqual({ inferred, screened, bounded, statuses, errorBodies, names, handles, closed }, {
+    inferred: [
+      { resolved: { bytes: [...png], contentType: "image/png", fileName: "photo.png" } },
+      { resolved: { bytes: [...zip], contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileName: "report.docx" } },
+      { resolved: { bytes: [...new TextEncoder().encode("a,b\n")], contentType: "text/csv", fileName: "csv.csv" } },
+      { resolved: { bytes: [...zip], contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileName: "report.docx" } },
+    ],
+    screened: [
+      ["image/png", ["image.test"]],
+      ["image/png", ["image.test", "cdn.test"]],
+      failure(privateUrl, "SsrfBlockedError: Blocked: resolves to private/internal IP address", "fetch_failed", "SsrfBlockedError"),
+      { rejected: { SsrfBlockedError: "Blocked: private/internal IP address" } },
+      ["/photo", "/report.docx", "/csv", "/report.docx?name=x.png", "/photo", "/to/cdn.test", "/photo", "/to/internal.test"],
+    ],
+    bounded: [
+      failure(at("/photo"), "expected Content-Type starting with audio/", "invalid_response"),
+      failure(at("/encoded"), "encoded response bodies are not accepted", "invalid_response"),
+      { rejected: { MediaFetchError: "max_bytes", message: "Failed to fetch media from response: payload exceeds maxBytes 4000", cause: undefined } },
+      failure(at("/sized"), "content length 6000 exceeds maxBytes 4000", "max_bytes"),
+      failure(at("/oversized"), "content length 62914560 exceeds maxBytes 52428800", "max_bytes"),
+      { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
+      { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
+      { value: failure(at("/photo"), "TimeoutError: The operation was aborted due to timeout", "fetch_failed", "TimeoutError"), withinDeadline: true },
+    ],
+    statuses: [
+      { resolved: 599 },
+      { rejected: { Error: undefined, message: "invalid upstream HTTP status 600" } },
+      { rejected: { Error: undefined, message: "invalid upstream HTTP status 999" } },
+    ],
+    errorBodies: [
+      failure(at("/long-error"), `HTTP 500 Internal Server Error; body: ${"x".repeat(199)}…`, "http_error"),
+      { value: failure(at("/endless-error"), `HTTP 502 Bad Gateway; body: ${"y".repeat(199)}…`, "http_error"), withinDeadline: true },
+    ],
+    names: ["naïve file.txt", "café.txt", "a;b \"c\".txt", "passwd.png"],
+    handles: [
+      { hostname: "localhost", pathname: `/api/media/${hash}.png` },
+      { rejected: { MediaFetchError: "fetch_failed", message: "local media URL is not a canonical media-store handle", cause: undefined } },
+      { rejected: { MediaFetchError: "fetch_failed", message: "own-origin media URL is not a canonical media-store handle", cause: undefined } },
+      { resolved: null },
+      { resolved: null },
+    ],
+    closed: [true, true, true, true],
+  }))
+
+  // spec/core/media.md, "Transport host spelling preserves DNS and IP certificate semantics"
+  const secure = try acquireRelease(host(() => loopbackTls((_request, response) => {
+    response.writeHead(200, { "content-type": "image/png" })
+    response.end(png)
+  })), (opened) => orDie(host(() => opened.close())))
+  const transported = try forEach(["localhost", "127.0.0.1", "[::1]"], (name) => Effect.map(
+    outcome(() => fetchRemoteMedia({ url: `https://${name}:${secure.port}/tls.png`, ssrfPolicy: { allowPrivateNetwork: true } })),
+    (fetched) => "resolved" in fetched ? fetched.resolved.contentType : fetched,
+  ))
+  const misnamed = try outcome(() => fetchRemoteMedia({ url: `https://media.test:${secure.port}/tls.png`, lookupFn: pinnedLookup({ "media.test": "127.0.0.1" }), ssrfPolicy: { allowedHostnames: ["media.test"] } }))
+  const seen = secure.requests.map((request) => ({ host: request.host, serverName: request.serverName }))
+  try Effect.try(() => assert.deepStrictEqual({ transported, misnamed, seen }, {
+    transported: ["image/png", "image/png", "image/png"],
+    misnamed: failure(`https://media.test:${secure.port}/tls.png`, "Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames: Host: media.test. is not in the cert's altnames: DNS:localhost, IP Address:127.0.0.1, IP Address:0:0:0:0:0:0:0:1", "fetch_failed", "Error"),
+    seen: [
+      { host: `localhost:${secure.port}`, serverName: "localhost" },
+      { host: `127.0.0.1:${secure.port}`, serverName: null },
+      { host: `[::1]:${secure.port}`, serverName: null },
+    ],
+  }))
+}), 60_000)
+
+// spec/core/atomicPublication.md, "Story: Publish complete durable JSON with an honest receipt"; spec/core/atomicPublication.md, "The final path changes only after a complete temporary file is renamed"; spec/core/atomicWriters.md, "Story: Publish whole snapshots despite interleaved processes"; spec/core/atomicWriters.md, "The latest successful rename owns the whole final snapshot"; spec/core/temporaryNames.md, "Story: Give concurrent publications distinct temporary paths"; spec/core/logging/files.md, "Story: Open optional log files lazily and close their descriptors"; spec/core/logging/files.md, "A single initialization attempt opens output, prompt and chat sinks in order"; spec/core/security.md, "A secret never appears in a log line"
+it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.md, \"Story: Publish complete durable JSON with an honest receipt\"; spec/core/atomicWriters.md, \"Story: Publish whole snapshots despite interleaved processes\"; spec/core/temporaryNames.md, \"Story: Give concurrent publications distinct temporary paths\"; spec/core/logging/files.md, \"Story: Open optional log files lazily and close their descriptors\"; spec/core/logging/files.md, \"A single initialization attempt opens output, prompt and chat sinks in order\")", () => effect {
+  const time = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g
+  const core = `${coreDir}/src/index.vibe`
+  const adapters = `${coreNodeDir}/src/node-runtime.vibe`
+  const loggerEntry = `${coreDir}/src/logger.vibe`
+  const writerScript = `${coreNodeDir}/test/support/atomic-json-writer.ts`
+  const listing = `
+    import fs from "node:fs"
+    const [dir] = process.argv.slice(1)
+    const entries = {}
+    for (const name of fs.readdirSync(dir).sort()) {
+      const stat = fs.statSync(dir + "/" + name)
+      const key = name.replace(/\\.tmp-\\d+-\\d+-\\d+$/, ".tmp-*")
+      entries[key] = stat.isDirectory() ? "directory" : { mode: (stat.mode & 0o777).toString(8), text: fs.readFileSync(dir + "/" + name, "utf8") }
+    }
+    console.log(JSON.stringify(entries))
+  `
+  const inspect = (dir: string) => effect {
+    const out = try host(() => runNode({ script: listing, args: [dir] }))
+    return try Effect.try(() => JSON.parse(out.stdout) as Record<string, "directory" | { mode: string; text: string }>)
+  }
+  const names = (dir: string) => effect {
+    const out = try host(() => runNode({ script: `import fs from "node:fs"; console.log(JSON.stringify(fs.readdirSync(process.argv[1]).map((name) => name.replace(/\\.tmp-\\d+-\\d+-\\d+$/, ".tmp-*")).sort()))`, args: [dir] }))
+    return try Effect.try(() => JSON.parse(out.stdout) as string[])
+  }
+  const removeTree = (target: string) => sync(() => removeDir(target))
+  const loggingChild = (entry: string, dir: string, env: Record<string, string | undefined>) => effect {
+    const script = `
+      import fs from "node:fs"
+      const [dir] = process.argv.slice(1)
+      await import(${JSON.stringify(adapters)})
+      const { logger, logPrompt, logChatIn, logChatOut, recentLogs } = await import(${JSON.stringify(entry)})
+      void process.stderr
+      const afterImport = fs.readdirSync(dir).sort()
+      const before = fs.readdirSync("/dev/fd").length
+      logger.info({ apiKey: "sk-j12-0123456789abcdefghij" }, "j12 output")
+      const opened = fs.readdirSync("/dev/fd").length - before
+      const afterFirst = fs.readdirSync(dir).sort()
+      const slug = logPrompt("TEXT_SMALL", "j12 prompt body", { agentName: "Nova" })
+      const chatIn = logChatIn({ agentName: "Nova", agentId: "agent-j12", roomId: "room-j12-0001", messageId: "message-j12", text: "hello there", source: "test" })
+      const chatOut = logChatOut({ agentName: "Nova", agentId: "agent-j12", roomId: "room-j12-0001", action: "REPLY", text: "hi back" })
+      const kept = recentLogs().includes("j12 output")
+      console.log(JSON.stringify({ afterImport, afterFirst, opened, slug, chatIn, chatOut, kept }))
+    `
+    const out = try host(() => runNode({ script, args: [dir], vibe: true, env: { LOG_JSON_FORMAT: undefined, LOG_TIMESTAMPS: undefined, NO_COLOR: "1", FORCE_COLOR: "0", ...env } }))
+    const lines = out.stdout.trim().split("\n")
+    return { status: out.status, report: try Effect.try(() => JSON.parse(lines[lines.length - 1] ?? "") as unknown) }
+  }
+
+  const dir = try scratch("eliza-core-j12")
+  const state = `${dir}/state.json`
+  const big = "x".repeat(8 * 1024 * 1024)
+  const overlapScript = `
+    import fs from "node:fs"
+    import fsp from "node:fs/promises"
+    const [state, dir] = process.argv.slice(1)
+    const { writeJsonAtomicPromise: writeJsonAtomic, writeJsonAtomicSyncOrThrow: writeJsonAtomicSync } =
+      await import(${JSON.stringify(`${coreNodeDir}/src/utils/atomic-json.vibe`)})
+    const big = "x".repeat(8 * 1024 * 1024)
+    const beforeRename = Promise.withResolvers()
+    const releaseRename = Promise.withResolvers()
+    const rename = fsp.rename
+    fsp.rename = async (from, to) => {
+      if (to === state) {
+        beforeRename.resolve()
+        await releaseRename.promise
+      }
+      await rename(from, to)
+    }
+    const queued = Promise.all(Array.from({ length: 10 }, (_, index) => writeJsonAtomic(state, { index, big })))
+    await Promise.race([beforeRename.promise, queued])
+    const overlapped = []
+    const synced = Array.from({ length: 10 }, (_, index) => {
+      overlapped.push(fs.readdirSync(dir).some((name) => name.includes(".tmp-")))
+      return writeJsonAtomicSync(state, { sync: index })
+    })
+    fsp.rename = rename
+    releaseRename.resolve()
+    console.log(JSON.stringify({ receipts: [await queued, synced].map((list) => list.map((receipt) => receipt === undefined ? "undefined" : receipt)), overlapped }))
+  `
+  const overlapRun = try host(() => runNode({ script: overlapScript, args: [state, dir], vibe: true }))
+  const overlap = try Effect.try(() => JSON.parse(overlapRun.stdout.trim().split("\n").at(-1) ?? "") as { receipts: unknown[][]; overlapped: boolean[] })
+  const finalState = try host(() => readJsonFile<{ index: number; big: string }>(state))
+  try Effect.try(() => assert.deepStrictEqual(overlap.overlapped, Array.from({ length: 10 }, () => true)))
+  const concurrent = [overlapRun.status, overlap.receipts, finalState === null ? null : finalState.index, try inspect(dir)]
+
+  const shared = `${dir}/shared.json`
+  try host(() => writeJsonAtomic(shared, { writer: "initial", revision: -1, payload: "" }))
+  const seen: string[] = []
+  const observed = new Set<string>()
+  const observe = effect {
+    const read = host(() => readJsonFile<{ writer: string; revision: number; payload: string }>(shared)) catch (error) => ({ torn: String(error) })
+    if (read === null) seen.push("missing")
+    else if ("torn" in read) seen.push(read.torn)
+    else if (read.revision === -1) seen.push("initial")
+    else if (read.payload === read.writer.repeat(16_384)) {
+      seen.push(read.writer)
+      observed.add(`${read.writer}:${read.revision}`)
+    } else seen.push(`partial ${read.writer} ${read.revision}`)
+    return read
+  }
+  try observe
+  const writerNames = ["a", "b"]
+  const writers = try host(async () => [spawnNode({ file: writerScript, args: [shared, "a", "sync", "pause"], vibe: true }), spawnNode({ file: writerScript, args: [shared, "b", "async", "pause"], vibe: true })])
+  const finished = try Ref.make(false)
+  const waiting = try fork(ensuring(host(() => Promise.all(writers.map((writer) => writer.exited))), Ref.set(finished, true)))
+  const release = (writer: string) => host(() => writeJsonAtomic(`${shared}.go-${writer}`, {}))
+  const coordinating = try fork(effect {
+    try host(() => Promise.all(writers.map((writer) => writer.output("paused"))))
+    const paused = try observe
+    const later = paused !== null && "writer" in paused ? paused.writer : "a"
+    const earlier = writerNames.find((writer) => writer !== later) ?? "b"
+    try release(earlier)
+    try host(() => writers[writerNames.indexOf(earlier)].exited)
+    try observe
+    try release(later)
+  })
+  while (!(try Ref.get(finished))) {
+    try observe
+    try sleep("5 millis")
+  }
+  try Fiber.join(coordinating)
+  const exits = (try Fiber.join(waiting)).map((result) => [result.status, result.signal])
+  const last = try host(() => readJsonFile<{ writer: string; revision: number; payload: string }>(shared))
+  const interleaved = [exits, [...new Set(seen)].sort(), [...observed].some((key) => !key.endsWith(":29")), last === null ? null : [last.revision, last.payload === last.writer.repeat(16_384)]]
+
+  const blocked = `${dir}/blocked`
+  try host(() => writeJsonAtomic(`${blocked}/target.json/keep.json`, { kept: true }))
+  const refused = host(() => writeJsonAtomic(`${blocked}/target.json`, { replaced: true })) catch (error) => (error as { code?: string }).code
+  const afterRefusal = [try host(() => readJsonFile(`${blocked}/target.json/keep.json`)), try inspect(blocked)]
+  try removeTree(`${blocked}/target.json`)
+  try host(() => writeJsonAtomic(`${blocked}/target.json`, { replaced: true }))
+  const afterRetry = [try host(() => readJsonFile(`${blocked}/target.json`)), try inspect(blocked)]
+
+  const crash = `${dir}/crash`
+  const crashed = `${crash}/crash.json`
+  try host(() => writeJsonAtomic(crashed, { writer: "initial", revision: -1, payload: "" }))
+  const kill = (boundary: string) => effect {
+    const child = try host(async () => spawnNode({ file: writerScript, args: [crashed, boundary, "async", boundary], vibe: true }))
+    try host(() => child.output(boundary))
+    try host(async () => child.kill("SIGKILL"))
+    const result = try host(() => child.exited)
+    const snapshot = try host(() => readJsonFile<{ writer: string; revision: number; payload: string }>(crashed))
+    return [result.signal, snapshot === null ? null : [snapshot.writer, snapshot.revision, snapshot.payload.length], try names(crash)]
+  }
+  const kills = [try kill("before-rename"), try kill("after-rename")]
+  try host(() => writeJsonAtomic(crashed, { writer: "later", revision: 0, payload: "" }))
+  const afterKills = try host(() => readJsonFile(crashed))
+
+  try Effect.try(() => assert.deepStrictEqual({ concurrent, interleaved, refused, afterRefusal, afterRetry, kills, afterKills }, {
+    concurrent: [
+      0,
+      [Array.from({ length: 10 }, () => "undefined"), Array.from({ length: 10 }, () => "undefined")],
+      9,
+      { "state.json": { mode: "600", text: JSON.stringify({ index: 9, big }, null, 2) } },
+    ],
+    interleaved: [[[0, null], [0, null]], ["a", "b", "initial"], true, [29, true]],
+    refused: "EISDIR",
+    afterRefusal: [{ kept: true }, { "target.json": "directory" }],
+    afterRetry: [{ replaced: true }, { "target.json": { mode: "600", text: JSON.stringify({ replaced: true }, null, 2) } }],
+    kills: [
+      ["SIGKILL", ["initial", -1, 0], ["crash.json", "crash.json.tmp-*"]],
+      ["SIGKILL", ["after-rename", 0, "after-rename".length * 16_384], ["crash.json", "crash.json.tmp-*"]],
+    ],
+    afterKills: { writer: "later", revision: 0, payload: "" },
+  }))
+
+  const logs = try scratch("eliza-core-j12-logs")
+  try host(() => runNode({ script: `import fs from "node:fs"; fs.writeFileSync(process.argv[1], "seed\\n", { mode: 0o644 }); fs.chmodSync(process.argv[1], 0o644)`, args: [`${logs}/output.log`] }))
+  const promptBlocked = try scratch("eliza-core-j12-prompt")
+  try host(() => writeJsonAtomic(`${promptBlocked}/prompts.log/keep.json`, {}))
+  const chatBlocked = try scratch("eliza-core-j12-chat")
+  try host(() => writeJsonAtomic(`${chatBlocked}/chat.log/keep.json`, {}))
+  const unwritable = try scratch("eliza-core-j12-unwritable")
+  try host(() => writeJsonAtomic(`${unwritable}/plain`, {}))
+  const silentDir = try scratch("eliza-core-j12-silent")
+  const children = try forEach([
+    [core, logs, { LOG_FILE: `${logs}/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, promptBlocked, { LOG_FILE: `${promptBlocked}/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, chatBlocked, { LOG_FILE: `${chatBlocked}/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, unwritable, { LOG_FILE: `${unwritable}/plain/logs/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, silentDir, { LOG_FILE: `${silentDir}/output.log`, LOG_LEVEL: "silent" }],
+  ] as const, ([entry, childDir, env]) => loggingChild(entry, childDir, env), { concurrency: "unbounded" })
+  const [opened, promptChild, chatChild, failed, silent] = children
+  const files = Object.fromEntries(Object.entries(try inspect(logs)).map(([name, entry]) => [name, entry === "directory" ? entry : { mode: entry.mode, text: entry.text.replace(time, "<time>") }]))
+  const order = [
+    promptChild.status,
+    (promptChild.report as { opened?: number }).opened,
+    Object.keys(try inspect(promptBlocked)),
+    chatChild.status,
+    (chatChild.report as { opened?: number }).opened,
+    Object.keys(try inspect(chatBlocked)),
+  ]
+  const quiet = [failed, Object.keys(try inspect(unwritable)), silent, Object.keys(try inspect(silentDir))]
+
+  const chatIn = "[CHAT:IN]  #agent:Nova room=room-j12 msg=message- source=test \"hello there\""
+  const chatOut = "[CHAT:OUT] #agent:Nova room=room-j12 action=REPLY len=7 \"hi back\""
+  const promptHeader = `${"=".repeat(80)}\n #0001/Nova/TEXT_SMALL  PROMPT: TEXT_SMALL (15 chars)\n <time>\n ${JSON.stringify({ agentName: "Nova", promptSlug: "#0001/Nova/TEXT_SMALL" }, null, 2)}\n${"=".repeat(80)}\n`
+  try Effect.try(() => assert.deepStrictEqual({ opened, files, order, quiet }, {
+    opened: { status: 0, report: { afterImport: ["output.log"], afterFirst: ["chat.log", "output.log", "prompts.log"], opened: 3, slug: "#0001/Nova/TEXT_SMALL", chatIn, chatOut, kept: true } },
+    files: {
+      "chat.log": { mode: "600", text: `<time> ${chatIn}\n<time> ${chatOut}\n` },
+      "output.log": { mode: "600", text: "seed\n<time> [INFO    ] j12 output (apiKey=[REDACTED])\n" },
+      "prompts.log": { mode: "600", text: `${promptHeader}j12 prompt body\n${"=".repeat(80)}\n\n` },
+    },
+    order: [0, 0, ["output.log", "prompts.log"], 0, 0, ["chat.log", "output.log", "prompts.log"]],
+    quiet: [
+      { status: 0, report: { afterImport: ["plain"], afterFirst: ["plain"], opened: 0, slug: "", chatIn, chatOut, kept: true } },
+      ["plain"],
+      { status: 0, report: { afterImport: [], afterFirst: [], opened: 0, slug: "", chatIn, chatOut, kept: false } },
+      [],
+    ],
+  }))
+
+  const closeFaultDir = try scratch("eliza-core-j12-close-reuse")
+  const closeFault = try host(() => runNode({
+    script: `
+    import fs from "node:fs"
+    import { syncBuiltinESMExports } from "node:module"
+    const [dir, entry, adapters] = process.argv.slice(1)
+    fs.mkdirSync(dir + "/chat.log")
+    const open = fs.openSync, close = fs.closeSync, write = fs.writeSync, stat = fs.fstatSync
+    const acquired = new Map(), owned = new Set(), attempts = []
+    let injected = false, victim = -1, victimOwned = false, reused = false
+    fs.openSync = (file, ...args) => {
+      const fd = open(file, ...args)
+      if (file === dir + "/output.log" || file === dir + "/prompts.log") {
+        acquired.set(file.slice(dir.length + 1), fd)
+        owned.add(fd)
+      }
+      return fd
+    }
+    fs.closeSync = (fd) => {
+      const label = owned.has(fd) ? [...acquired].find(([, handle]) => handle === fd)?.[0] : victimOwned && fd === victim ? "reused.log" : undefined
+      if (label !== undefined) attempts.push(label)
+      owned.delete(fd)
+      if (!injected && fd === acquired.get("prompts.log")) {
+        injected = true
+        close(fd)
+        victim = open(dir + "/reused.log", "a", 0o600)
+        victimOwned = true
+        reused = victim === fd
+        throw new Error("controlled close acknowledgement failure after native release")
+      }
+      if (victimOwned && fd === victim) victimOwned = false
+      return close(fd)
+    }
+    syncBuiltinESMExports()
+    const isOpen = (fd) => {
+      try { stat(fd); return true } catch { return false }
+    }
+    try {
+      await import(adapters)
+      const { logger, logPrompt, recentLogs } = await import(entry)
+      void process.stderr
+      const exits = process.listenerCount("exit")
+      logger.info("j12 close failure")
+      logger.info("j12 after close failure")
+      const slug = logPrompt("TEXT_SMALL", "j12 after uncertain close", { agentName: "Nova" })
+      let victimWritable = false
+      if (victim >= 0) {
+        try { write(victim, "kept\\n"); victimWritable = true } catch {}
+      }
+      const report = {
+        acquired: [...acquired.keys()], attempts: [...attempts], injected, reused,
+        originalHandlesRemaining: owned.size, outputRetired: !isOpen(acquired.get("output.log")),
+        victimWritable, slug, kept: recentLogs().includes("j12 after close failure"),
+        exitHandlersAdded: process.listenerCount("exit") - exits,
+        output: fs.readFileSync(dir + "/output.log", "utf8"),
+        prompt: fs.readFileSync(dir + "/prompts.log", "utf8"),
+        victim: fs.readFileSync(dir + "/reused.log", "utf8"),
+      }
+      console.log(JSON.stringify(report))
+    } finally {
+      fs.openSync = open
+      fs.closeSync = close
+      syncBuiltinESMExports()
+      for (const fd of owned) {
+        owned.delete(fd)
+        try { close(fd) } catch {}
+      }
+      if (victimOwned) {
+        victimOwned = false
+        try { close(victim) } catch {}
+      }
+    }
+    `,
+    args: [closeFaultDir, loggerEntry, adapters],
+    vibe: true,
+    env: { LOG_FILE: `${closeFaultDir}/output.log`, LOG_LEVEL: "info", LOG_JSON_FORMAT: undefined, LOG_TIMESTAMPS: undefined, NO_COLOR: "1", FORCE_COLOR: "0" },
+  }))
+  const closeFaultReport = try Effect.try(() => JSON.parse(closeFault.stdout.trim().split("\n").at(-1) ?? "") as unknown)
+  try Effect.try(() => assert.deepStrictEqual({ status: closeFault.status, report: closeFaultReport }, {
+    status: 0,
+    report: {
+      acquired: ["output.log", "prompts.log"], attempts: ["prompts.log", "output.log"], injected: true, reused: true,
+      originalHandlesRemaining: 0, outputRetired: true, victimWritable: true, slug: "", kept: true,
+      exitHandlersAdded: 0, output: "", prompt: "", victim: "kept\n",
+    },
+  }))
+}, 300_000)
+
+// spec/core/catalog.md, "Story: Discover and register first-party capabilities"
+it.live("Generate the first-party catalog from plugin-owned and curated manifests (spec/core/catalog.md, \"Story: Discover and register first-party capabilities\")", () => scoped(effect {
+  const work = try scratch("eliza-core-catalog")
+  const { root: dir, sourceDir, catalog } = try host(() => catalogWorkspace(work))
+  const authoredFeatures = try host(async () => Promise.all(["documents", "personal-assistant"].map(async (id) => ({ id, entry: await readJsonFile(`${catalog}/curated/plugins/${id}.json`) }))))
+  try sync(() => removeDir(`${catalog}/curated`))
+  const write = (path: string, value: unknown) => host(() => writeJsonAtomic(`${dir}/${path}`, value))
+  const feature = (id: string, extra: object) => ({ id, name: id, kind: "plugin", subtype: "feature", render: { group: "feature" }, ...extra })
+  try write("plugins/beta/registry-entry.json", [
+    { id: "bravo", name: "Bravo", npmName: "@fx/plugin-bravo", kind: "plugin", subtype: "ai-provider", render: { group: "ai" }, channels: ["discord"], shortIds: ["bee", "b"], config: { BRAVO_MODEL: { type: "string", required: false }, BRAVO_API_KEY: { type: "secret", required: true, autoEnableProvider: true } } },
+    { id: "alpha-two", name: "Alpha Two", npmName: "@fx/plugin-alpha", kind: "connector", subtype: "messaging", render: { group: "connector" }, channels: ["Slack"] },
+  ])
+  try write("plugins/alphaone/registry-entry.json", { id: "alphaone", name: "Alpha One", npmName: "@fx/plugin-alpha", kind: "connector", subtype: "social", render: { group: "connector" }, channels: ["Slack"], config: { ALPHA_TOKEN: { type: "secret", required: true, autoEnableProvider: false } } })
+  try write("plugins/empty/notes.json", { id: "ignored" })
+  try write("plugins/stray.json", { id: "ignored" })
+  try write("packages/delta/registry-entry.json", feature("delta", { npmName: "@fx/plugin-delta", launch: { type: "server-launch" }, curatedApp: { slug: "delta", order: 2, aliases: ["d"] } }))
+  try write("packages/core/src/catalog/curated/plugins/echo.json", feature("echo", {}))
+  try write("packages/core/src/catalog/curated/plugins/nested/foxtrot.json", feature("foxtrot", { npmName: "@fx/plugin-foxtrot" }))
+  try write("packages/core/src/catalog/curated/connectors/charlie.json", { id: "charlie", name: "Charlie", kind: "connector", subtype: "email", render: { group: "connector" }, channels: ["telegram"] })
+  try write("packages/core/src/catalog/curated/notes.txt", { id: "ignored" })
+
+  const catalogProject = `${sourceDir}/tsconfig.catalog-test.json`
+  try host(() => writeJsonAtomic(catalogProject, {
+    extends: "./tsconfig.build.json", include: [], files: ["src/catalog/generate.vibe", "src/utils/atomic-json.vibe"],
+  }))
+  const catalogRun = try host(() => runNode({
+    script: generateInChild, args: [JSON.stringify(authoredFeatures)], cwd: sourceDir,
+    env: { VIBELANG_PROJECT: catalogProject }, vibe: true, timeoutMs: 120_000,
+  }))
+  const report = try Effect.try({ try: () => JSON.parse(catalogRun.status === 0 ? catalogRun.stdout : "") as unknown, catch: () => catalogRun })
+  const snapshots = try Schema.decodeUnknownEffect(Schema.Struct({ base: Schema.Unknown, features: Schema.Unknown, duplicate: Schema.Unknown, broken: Schema.Unknown, retiredApp: Schema.Unknown, conflict: Schema.Unknown }))(report)
+  const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
+  const bundled = (head: object, config: object, group: string, tail: object) => ({ ...head, source: "bundled", tags: [], config, render: { visible: true, pinTo: [], style: "card", group, actions: [] }, resources: {}, dependsOn: [], ...tail })
+  const featureTail = { channels: [], shortIds: [], kind: "plugin", subtype: "feature" }
+  assert.deepStrictEqual(snapshots.base, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot"], registry: {
+    full: json({ entries: [
+      bundled({ id: "alpha-two", name: "Alpha Two", npmName: "@fx/plugin-alpha" }, {}, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "messaging" }),
+      bundled({ id: "alphaone", name: "Alpha One", npmName: "@fx/plugin-alpha" }, { ALPHA_TOKEN: { type: "secret", required: true, autoEnableProvider: false } }, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "social" }),
+      bundled({ id: "bravo", name: "Bravo", npmName: "@fx/plugin-bravo" }, { BRAVO_MODEL: { type: "string", required: false }, BRAVO_API_KEY: { type: "secret", required: true, autoEnableProvider: true } }, "ai", { channels: ["discord"], shortIds: ["bee", "b"], kind: "plugin", subtype: "ai-provider" }),
+      bundled({ id: "charlie", name: "Charlie" }, {}, "connector", { channels: ["telegram"], shortIds: [], kind: "connector", subtype: "email" }),
+      bundled({ id: "delta", name: "delta", npmName: "@fx/plugin-delta" }, {}, "feature", featureTail),
+      bundled({ id: "echo", name: "echo" }, {}, "feature", featureTail),
+      bundled({ id: "foxtrot", name: "foxtrot", npmName: "@fx/plugin-foxtrot" }, {}, "feature", featureTail),
+    ] }),
+    channels: json({ Slack: "@fx/plugin-alpha", discord: "@fx/plugin-bravo" }),
+    providers: json({ BRAVO_API_KEY: "@fx/plugin-bravo" }),
+    shortIds: json({ b: "@fx/plugin-bravo", bee: "@fx/plugin-bravo" }),
+  } })
+
+  assert.deepStrictEqual(snapshots.features, { features: [
+    ["documents", "plugin", "feature", "@elizaos/plugin-knowledge", [], false, false],
+    ["personal-assistant", "plugin", "feature", "@elizaos/plugin-personal-assistant", ["selfcontrol"], false, false],
+  ], shortIds: { b: "@fx/plugin-bravo", bee: "@fx/plugin-bravo", selfcontrol: "@elizaos/plugin-personal-assistant" } })
+
+  const failing = (failure: { _tag: string; message: string }) => ({ ids: failure, registry: failure })
+  assert.deepStrictEqual(snapshots.duplicate, failing({ _tag: "DuplicateRegistryId", message: `[registry/generate] duplicate id "bravo" in ${catalog}/curated/plugins/bravo.json and ${dir}/plugins/beta/registry-entry.json` }))
+  assert.deepStrictEqual(snapshots.broken, failing({ _tag: "InvalidRegistryEntryFile", message: `[registry/generate] ${catalog}/curated/plugins/broken.json failed validation: ${JSON.stringify([
+    { origin: "string", code: "invalid_format", format: "regex", pattern: "/^[a-z0-9][a-z0-9-]*$/", path: ["id"], message: "id must be kebab-case ascii" },
+    { expected: "string", code: "invalid_type", path: ["render", "group"], message: "Invalid input: expected string, received undefined" },
+  ], null, 2)}` }))
+  const refusedApp = snapshots.retiredApp
+  assert.nestedPropertyVal(refusedApp, "ids._tag", "InvalidRegistryEntryFile")
+  assert.nestedPropertyVal(refusedApp, "registry._tag", "InvalidRegistryEntryFile")
+  assert.deepStrictEqual(snapshots.conflict, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot", "gamma"], registry: { _tag: "RegistryClaimConflict", message: "[registry/generate] channel \"discord\" claimed by both @fx/plugin-bravo and @fx/plugin-gamma" } })
+}), 300_000)

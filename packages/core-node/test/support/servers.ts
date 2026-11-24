@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import tls, { type TLSSocket } from "node:tls";
 import { promisify } from "node:util";
-import { type LookupAddress, type LookupFn } from "../../src/network/ssrf.vibe";
+import type { LookupAddress, LookupFn } from "@elizaos/core";
 
 export type Handler = (request: IncomingMessage, response: ServerResponse) => void;
 
