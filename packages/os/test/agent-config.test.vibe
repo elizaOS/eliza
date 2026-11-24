@@ -249,8 +249,10 @@ it.effect('Start my agent with my character, policy and model: the service and t
     assert.deepStrictEqual(consents,
       [{ gmailChanges: false, calendarEdits: true }, undefined, { gmailChanges: true, calendarEdits: true }, { gmailChanges: false, calendarEdits: true }])
     const [hostOnly] = try Effect.try(() => project([{ ...ADMITTED[2]!.files, account: ACCOUNT }]))
-    const replacedDocument: unknown = try Effect.try(() => JSON.parse((try admittedAnswer(replaced)).document))
-    const hostDocument: Record<string, unknown> = try Effect.try(() => JSON.parse((try admittedAnswer(hostOnly)).document))
+    const replacedText = (try admittedAnswer(replaced)).document
+    const hostText = (try admittedAnswer(hostOnly)).document
+    const replacedDocument: unknown = try Effect.try(() => JSON.parse(replacedText))
+    const hostDocument: Record<string, unknown> = try Effect.try(() => JSON.parse(hostText))
     assert.deepStrictEqual(replacedDocument, { ...hostDocument, google: { gmailChanges: true, calendarEdits: true } })
     assert.isFalse((try admittedAnswer(ownKey)).needsAccount)
     const keylessDocument = try decodeLaunchDocument((try admittedAnswer(keyless)).document)
