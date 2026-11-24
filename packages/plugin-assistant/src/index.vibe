@@ -16,7 +16,7 @@ import { ownerCalendarZone, ownerClockAt, stateOwnerZone, statedZone } from "./t
 import { currentTodosProvider, todosAction } from "./todos.vibe"
 import { ownerTravelEvaluator } from "./travel.vibe"
 
-export { heardReply, replyKind, proven, turnResults, type Attempt, type Proven, type ReplyKind, type TurnResult, type WorkPhase } from "./replies.vibe"
+export { proven, turnResults, type Attempt, type Proven, type TurnResult } from "./replies.vibe"
 export { runtimeLayer, onAgent, type AssistantPorts } from "./host.vibe"
 export { runEvaluators, orderedEntries, type EvaluatorRun } from "./evaluators/runner.vibe"
 export { restoreEarlier, evidenceRows, type Restoration } from "./evaluators/pages.vibe"
