@@ -991,6 +991,7 @@ test("explicit completed-action UI context survives actual VoiceSession/SSE/loca
     uiViewPath: "/chat",
     viewDelivery: "completed-action",
     agentActionMode: "direct-request-v1",
+    notesEditorNavigation: 1,
   });
   expect(uiContext).not.toBeNull();
   if (!uiContext) throw Error("Expected valid UI context");
@@ -1002,6 +1003,7 @@ test("explicit completed-action UI context survives actual VoiceSession/SSE/loca
   await until(() => f.control.some((frame) => frame.t === "reply_complete"));
   const body = f.requests[0].body as { metadata: Record<string, unknown> };
   expect(body.metadata.viewDelivery).toBe("completed-action");
+  expect(body.metadata.notesEditorNavigation).toBe(1);
   expect(body.metadata.agentActionMode).toBe("direct-request-v1");
   expect(f.control.find((frame) => frame.t === "reply_complete")).toMatchObject(
     { userMessageId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
@@ -1009,6 +1011,7 @@ test("explicit completed-action UI context survives actual VoiceSession/SSE/loca
   expect(body.metadata.uiBrowserSurface).toBe("native");
   const parsedMessage = await parseActualChatPayload(body);
   expect(parsedMessage.metadata.viewDelivery).toBe("completed-action");
+  expect(parsedMessage.metadata.notesEditorNavigation).toBe(1);
   expect(parsedMessage.metadata.agentActionMode).toBe("direct-request-v1");
   expect(parsedMessage.metadata.uiView).toBe("chat");
   expect(body.metadata.clientTransport).toBe("realtime_voice");
@@ -1032,6 +1035,12 @@ test("absent delivery retains hosted semantics; unknown delivery is rejected at 
       uiClientId: "11111111-1111-4111-8111-111111111111",
     }),
   ).toBeNull();
+  expect(parseVoiceUiContext({ notesEditorNavigation: 1 })).toBeNull();
+  expect(parseVoiceUiContext({
+    viewDelivery: "completed-action",
+    uiClientId: "11111111-1111-4111-8111-111111111111",
+    notesEditorNavigation: true,
+  })).toBeNull();
   expect(parseVoiceUiContext({ uiBrowserSurface: "native" })).toEqual({
     uiBrowserSurface: "native",
   });

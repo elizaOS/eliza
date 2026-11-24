@@ -9,6 +9,8 @@ export interface VoiceUiContext {
   uiBrowserSurface?: "native";
   /** Existing renderer claim/ack delivery protocol; not navigation authority. */
   viewDelivery?: "completed-action";
+  /** The completed-action renderer can open the editor for a saved note. */
+  notesEditorNavigation?: 1;
   /** Same renderer routing ID used by its authenticated HTTP/WS client. */
   uiClientId?: string;
   /** Current bound user preference; never grants system or provider permissions. */
@@ -28,6 +30,15 @@ export function parseVoiceUiContext(value: unknown): VoiceUiContext | null {
     const clientId = parseViewInteractionClientId(source.uiClientId);
     if (!clientId) return null;
     result.uiClientId = clientId;
+  }
+  if (source.notesEditorNavigation !== undefined) {
+    if (
+      source.notesEditorNavigation !== 1 ||
+      result.viewDelivery !== "completed-action" ||
+      !result.uiClientId
+    )
+      return null;
+    result.notesEditorNavigation = 1;
   }
   if (source.agentActionMode !== undefined) {
     if (
