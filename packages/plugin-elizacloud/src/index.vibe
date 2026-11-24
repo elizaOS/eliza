@@ -9,7 +9,7 @@ export error CloudAccountUnavailable { reason: string }
 
 const profileSchema = Schema.Struct({
   success: Schema.Literal(true),
-  data: Schema.Struct({ id: Schema.String, name: Schema.NullOr(Schema.String) }),
+  data: Schema.Struct({ id: Schema.String }),
 })
 const modelSchema = Schema.Struct({
   object: Schema.Literal("list"),
