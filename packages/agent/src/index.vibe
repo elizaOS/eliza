@@ -1,4 +1,4 @@
-// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/access/routes.md, "Story: Admit only the routes a product lists"
+// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/access/routes.md, "Story: Admit only the routes a product lists"; spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
 export {
   createRuntimeJsonClient, RuntimeRequestError,
   type RuntimeClientOptions, type RuntimeJsonBridge, type RuntimeJsonResponse, type RuntimeRequestHeaders, type RuntimeStatus, type RuntimeStream, type RuntimeStreamFrame,
@@ -15,6 +15,7 @@ export {
   type ClientMessageId, type HistoryMessage, type StopResult, type StoppedConversationTurn, type TurnMessage, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult, type TurnTransport,
 } from "./client/index.vibe"
 export type { TaskPresentation } from "./client/turn-controller.vibe"
+export type { CloudLinkReply, CloudLinkRequest, CloudLinkService, GoogleAdmission, GoogleChange } from "./host/cloud-link.vibe"
 export * from "./conversation/turn-context.schema.vibe"
 export { textOf, unitsOf } from "./conversation/code-units.vibe"
 export {

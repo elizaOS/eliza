@@ -33,13 +33,13 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/os-bridges": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@effect/vitest": "4.1.1",
-    "@elizaos/agent-host": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vibelang": "0.0.13",

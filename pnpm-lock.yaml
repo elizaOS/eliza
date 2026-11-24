@@ -986,6 +986,9 @@ importers:
 
   packages/plugin-calendar-client:
     dependencies:
+      '@elizaos/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@elizaos/os-bridges':
         specifier: workspace:*
         version: link:../os-bridges
@@ -999,9 +1002,6 @@ importers:
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
-      '@elizaos/agent-host':
-        specifier: workspace:*
-        version: link:../agent-host
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
