@@ -6,7 +6,7 @@ import { refusalReply, tabListAskedFirst, type BrowserRefusal, type RefusalReply
 import { emptyTabOpensAddress, openAskedFirst, openBound, opensInNewTab } from "../gen/browser__requestGrounding.effect.vibe"
 import {
   BROWSER_HISTORY_ACTIONS, BROWSER_RELOAD_WITHHELD_REFUSAL, browserCloseAnswer, browserControlBound, browserControlCapabilityAvailable, browserHistoryHome, browserHistoryRefused,
-  browserNavigationAvailable, type BrowserControlOperation, type BrowserControlType,
+  browserNavigationAvailable, browserReopenRefused, type BrowserControlOperation, type BrowserControlType,
 } from "./contract.vibe"
 import {
   authoredBrowserOpen, browserDestinationMatches, browserSearchQueryMatches, containsWebAddress, directBrowserDestination, directBrowserOpen, directBrowserSearchQuery,
@@ -105,15 +105,13 @@ effect function carriedPage(turn: DeviceTurn): (BrowserPage | undefined)!! {
   return decodeBrowserPage(carried, turn.observation) catch () => undefined
 }
 
-effect function pageLinks(turn: DeviceTurn): (readonly string[])!! {
-  const page = try carriedPage(turn)
-  return page !== undefined && "text" in page ? (page.links ?? []).map(({ url }) => url) : []
-}
-
 effect function opened(turn: DeviceTurn, url: string, proposedNewTab: boolean): Grounding!! {
-  const links = try pageLinks(turn)
+  const page = try carriedPage(turn)
+  const links = page !== undefined && "text" in page ? (page.links ?? []).map(({ url }) => url) : []
   const destination = groundBrowserDestination(turn.ownerText, url, turn.assistantName, links)
   if (destination === undefined) return refused("DestinationNotRequested", turn)
+  const exactOpen = browserDestinationMatches({ type: "browser_navigate", url: destination }, directBrowserDestination(turn.ownerText, turn.assistantName) ?? spokenBrowserOpen(turn.ownerText, turn.assistantName)?.href)
+  if (browserReopenRefused(page, destination, exactOpen)) return refused("ReloadNotRequested", turn)
   const owner = directBrowserOpen(turn.ownerText, turn.assistantName)
   const newTab = opensInNewTab({
     proposedNewTab, ownerAskedNewTab: owner?.newTab === true, ownerAddressIsDestination: owner?.href === destination, newTabNegotiated: opensInItsOwnTab(turn),

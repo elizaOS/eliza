@@ -1,7 +1,7 @@
 // spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/control.md, "A reload of a page my phone withheld runs only when my message asked for it"
 import { readTurnContext } from "@elizaos/agent"
 import { deviceTurnFor } from "@elizaos/agent/device-actions"
-import { readViewInteractionClientId, type Action, type ActionResult, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { extractUserText, readViewInteractionClientId, unwrapUserMessageText, type Action, type ActionResult, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { historyReport, type HistoryReceipt, type HistoryReport } from "../gen/browser__control.effect.vibe"
 import { BROWSER_RELOAD_WITHHELD_REFUSAL, browserHistoryHome, browserHistoryRefused } from "./contract.vibe"
 import { DEFAULT_ASSISTANT_NAME, ownerAskedBrowserReload } from "./grounding.vibe"
@@ -169,7 +169,8 @@ export function historyActionResult(outcome: HistoryOutcome): ActionResult {
 async function runHistory(runtime: IAgentRuntime, message: Memory, options: HandlerOptions | Record<string, unknown> | undefined): Promise<ActionResult> {
   const subaction = field(parametersOf(options) ?? {}, "action")
   if (!isNativeHistorySubaction(subaction)) return { success: false, text: "A supported native browser action is required." }
-  const asked = ownerAskedBrowserReload(message.content.text ?? "", runtime.character?.name ?? DEFAULT_ASSISTANT_NAME)
+  const words = deviceTurnFor(runtime, message)?.ownerText ?? extractUserText(unwrapUserMessageText(message))
+  const asked = ownerAskedBrowserReload(words, runtime.character?.name ?? DEFAULT_ASSISTANT_NAME)
   if (browserHistoryRefused(subaction, readTurnContext(message).browserPage, asked)) return failed("POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL)
   const clientId = readViewInteractionClientId(message)
   const views = browserViewAsker(runtime)

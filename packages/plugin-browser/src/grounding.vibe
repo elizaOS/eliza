@@ -83,8 +83,13 @@ const TAIL_LEAD = /^[\s,:;.!?()"'”’\u2014\u2013-]*(?:(?:no|nope|nah|please|b
 const TAIL_END = /^(?:\s+(?:to|up|on|over|into|it|that|this|them|one|there|yet|now|again|please|ever|today|anymore|either|the\s+(?:link|site|website|page|url|address)))*[\s)"'”’]*(?:[.!?;,]|$)/i
 const BARE_END = /(?:^|[\s.!?,;:(])(?:don['’]?t|do\s+not|never)[\s.!?)]*$/i
 const RELOAD_WORD = String.raw`(?:re-?load|refresh|re-?open)`
-const RELOAD_TAIL = String.raw`(?:\s+(?:it|this|that|the|page|tab|site|website|article|one|again|now|please|for\s+me|once\s+more))*[)"'”’]*(?=\s*[.!?;,]|\s+(?:and|then|so)\b|\s*$)`
-const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|not|stop|no\s+need\s+to)|(?<!\b(?:ca|could|wo|would))n['’]t|\b(?:ca|could|wo|would)n['’]t(?!\s+(?:you|u)\b))\s+(?:(?:just|ever|even|you|u|please|need\s+to|have\s+to|try\s+to|bother\s+to|want\s+to|to)\s+)*${RELOAD_WORD}(?:ing)?\b`, "i")
+const REOPEN_SAME_PAGE = String.raw`(?:load|open)\s+(?:it|this|that|(?:the|this|that)\s+(?:page|site|tab))\s+again`
+const RELOAD_REFERENCE = String.raw`(?:${RELOAD_WORD}(?:ing)?|${REOPEN_SAME_PAGE})`
+const RELOAD_INTENT = String.raw`(?:try\s+${RELOAD_WORD}ing|(?:(?:try|hit|press)\s+(?:the\s+)?)?(?:${RELOAD_WORD}|${REOPEN_SAME_PAGE}))`
+const RELOAD_TAIL = String.raw`(?:\s+(?:it|this|that|the|page|tab|site|website|article|one|again|now|please|for\s+me|once\s+more))*[)"'”’]*(?=\s*[.!?;,:–—]|\s+(?:and|then|so)\b|\s*$)`
+const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|not|stop|no\s+need\s+to)|(?<!\b(?:ca|could|wo|would))n['’]t|\b(?:ca|could|wo|would)n['’]t(?!\s+(?:you|u)\b))\s+(?:(?:just|ever|even|you|u|please|need\s+to|have\s+to|try\s+to|bother\s+to|want\s+to|to)\s+)*${RELOAD_REFERENCE}\b`, "i")
+const SHORT_RELOAD_RETRACTION = /^[^.?!;,:–—]*[.?!;,:–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[ \t]*[.!?;,:–—]+(?=\s|$)|\s*$)/i
+const COORDINATED_RELOAD_RETRACTION = compiled(String.raw`(?:^|[.!?;,:–—])\s*(?:(?:actually|instead|please|pls|just|now|no|wait)\s+)*(?:don['’]?t|do\s+not|never|stop|no\s+need\s+to)\s+[^.!?;,:–—]*\b(?:and|or)\s+(?:(?:just|ever|even|please|try(?:\s+to)?)\s+)*${RELOAD_REFERENCE}\b`, "i")
 const DOTS = /[\uff0e\u3002\uff61\u2024]/g
 const HOST_RUN = /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*/gu
 const LABEL_BEFORE = /[a-z\d](?:-*|\.)$/
@@ -126,7 +131,7 @@ function patterns(assistantName: string): NamePatterns {
     sentenceStart: compiled(String.raw`(?:^|[.!?:])\s*(?:(?:hey|hi|ok|okay|${name}|please)[\s,.!]*)*$`, "i"),
     questionStart: compiled(`${questionOpener}$`, "i"),
     questionStartWhy: compiled(String.raw`${questionOpener}why\s+(?:do|does|did)?$`, "i"),
-    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013])\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_WORD}${RELOAD_TAIL}`, "gi"),
+    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013])\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_INTENT}${RELOAD_TAIL}`, "gi"),
   }
   namePatterns.set(key, built)
   return built
@@ -486,11 +491,9 @@ export function groundBrowserDestination(userText: string, proposedUrl: string, 
 export function ownerAskedBrowserReload(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): boolean {
   if (unreadable(text)) return false
   const read = plain(text)
-  if (RELOAD_NEGATED.test(read) || BARE_END.test(read.slice(-200))) return false
-  return matchesOf(read, patterns(assistantName).reloadRequest).some((match) => {
-    const end = match.index + match[0].length
-    return !negatedAfter(read.slice(end, end + 200))
-  })
+  if (RELOAD_NEGATED.test(read) || COORDINATED_RELOAD_RETRACTION.test(read)) return false
+  const requested = matchesOf(read, patterns(assistantName).reloadRequest)
+  return requested.length > 0 && requested.every(match => !SHORT_RELOAD_RETRACTION.test(read.slice(match.index + match[0].length)))
 }
 
 export function containsWebAddress(text: string): boolean {
