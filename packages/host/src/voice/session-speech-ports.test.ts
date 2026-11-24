@@ -1306,6 +1306,96 @@ test.each([
   },
 );
 
+test.each(["owned", "foreign", "ephemeral", "committed-effect"] as const)(
+  "a grounding failure offers only a durable prepared view for its own renderer: %s",
+  async (variant) => {
+    const f = await setup(false, false, false, true);
+    const clientId = "22222222-2222-4222-8222-222222222222";
+    const requestId = "11111111-1111-4111-8111-111111111111";
+    f.session.setUiContext({
+      viewDelivery: "completed-action",
+      uiClientId: clientId,
+    });
+    f.respond(
+      `data: ${JSON.stringify({
+        type: "done",
+        fullText: "Unverified narration",
+        failureKind: "handler_error",
+        terminalFailure: {
+          kind: "handler_error",
+          code: "REPLY_GROUNDING_FAILED",
+          message: "The reply could not be verified.",
+          transient: false,
+        },
+        userMessageId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        messageId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        assistantEphemeral: variant === "ephemeral",
+        actionResults: [
+          {
+            actionName: "VIEWS_SHOW",
+            success: true,
+            ...(variant === "committed-effect"
+              ? { effectReceipts: [{ outcome: "applied" }] }
+              : {}),
+            values: {
+              mode: "show",
+              viewId: "notes",
+              viewType: "gui",
+              noteId: "saved-note-qa",
+              navigationPrepared: true,
+              completedActionHandoffId: requestId,
+              navigationBinding: {
+                requestId,
+                clientId:
+                  variant === "foreign"
+                    ? "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+                    : clientId,
+                installationId: "33333333-3333-4333-8333-333333333333",
+                viewId: "notes",
+                viewType: "gui",
+              },
+            },
+          },
+        ],
+      })}
+
+`,
+      25,
+    );
+    f.session.start();
+    f.emit({ type: "connected", raw: {} });
+    f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+    f.emit({ type: "end-of-turn", transcript: "open notes", raw: {} });
+    await until(() => f.control.some((frame) => frame.t === "usage"));
+    const frames = f.control.filter(
+      (frame) =>
+        frame.t === "navigate_view" ||
+        frame.t === "turn_terminal" ||
+        frame.t === "reply_complete",
+    );
+    expect(frames.map((frame) => frame.t)).toEqual(
+      variant === "owned"
+        ? ["navigate_view", "turn_terminal"]
+        : ["turn_terminal"],
+    );
+    if (variant === "owned") {
+      expect(frames[0]).toMatchObject({
+        viewId: "notes",
+        navigationPrepared: true,
+        completedActionHandoffId: requestId,
+      });
+    }
+    expect(frames.at(-1)).toMatchObject({
+      t: "turn_terminal",
+      outcome: "failed",
+    });
+    expect(f.phrases).not.toContain("Unverified narration");
+    expect(f.requests).toHaveLength(1);
+    expect(f.session.currentState).toBe("listening");
+    f.session.bye();
+  },
+);
+
 test("canonical silent done settles without error, reply completion, or final speech", async () => {
   const f = await setup(false, false, false, true);
   f.respond(
