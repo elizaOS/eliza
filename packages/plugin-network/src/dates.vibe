@@ -47,7 +47,6 @@ function dayOf(reading: Reading, today: number): number {
   }
 }
 
-/** The window the member's own words state, as epoch days on their calendar; `today` is the member's local day. */
 export function statedNetworkWindow(text: string, today: number): AvailabilityWindow {
   const words = text.toLowerCase().replace(/’/gu, "'")
   let starts: Reading | undefined
