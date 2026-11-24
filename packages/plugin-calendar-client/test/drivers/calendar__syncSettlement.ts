@@ -2,7 +2,7 @@
 import { Deferred, Effect, Fiber } from "effect";
 import type { Driver, Options } from "../../gen/calendar__syncSettlement.conformance.ts";
 import type { Event, ForegroundSync, SyncSettlement } from "../../gen/calendar__syncSettlement.ts";
-import { calendarWatchChannel, foregroundSyncMachine, type CalendarWatchAttemptOutcome, type CalendarWatchChannel } from "@elizaos/plugin-calendar-client";
+import { calendarWatchChannel, foregroundSyncMachine, type CalendarWatchAttemptOutcome, type CalendarWatchChannel } from "../../src/linked-sync/index.vibe";
 import { memoryCalendarLinkStorage } from "../support/calendar-link-storage.ts";
 
 interface Observed {

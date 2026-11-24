@@ -2,7 +2,7 @@
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/calendar__linkedSync.conformance.ts";
 import type { ControlLedger, ControlOp, ControlProof, Event } from "../../gen/calendar__linkedSync.ts";
-import { linkedCalendarControl, type LinkedCalendarControlRequest, type LinkedCalendarDestination } from "@elizaos/plugin-calendar-client";
+import { linkedCalendarControl, type LinkedCalendarControlRequest, type LinkedCalendarDestination } from "../../src/linked-sync/index.vibe";
 import { memoryCalendarLinkStorage } from "../support/calendar-link-storage.ts";
 
 interface Observed {
