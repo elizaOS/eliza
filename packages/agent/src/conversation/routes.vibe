@@ -11,7 +11,7 @@ module node {
 
   export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void, device?: DeviceTurnPort): LocalRoute[] {
     const store = conversationStore(runtime, owner)
-    return [...conversationRecordRoutes(store), ...historyRoutes(runtime, store), ...forkRoutes(runtime, store, owner.user), ...redactRoutes(runtime, store, owner.user), ...turnRoutes(runtime, owner, agentName, publish, device)]
+    return [...conversationRecordRoutes(store), ...historyRoutes(runtime, store), ...forkRoutes(runtime, store, owner.user), ...redactRoutes(runtime, store, owner.user), ...turnRoutes(runtime, store, owner, agentName, publish, device)]
   }
 }
 export { conversationRoutes } from node

@@ -15,8 +15,10 @@ conversation is 404; `before`, `limit` and `offset` are core
 ### Creating a conversation gives it a fresh id and room, and a default title when blank
 
 `POST /api/conversations {title?}` answers `{conversation: {id, roomId,
-title, createdAt, updatedAt}}`. The trimmed title has at most 200 UTF-16
-units (else 400); a blank one becomes `New Chat`. Ids are never reused.
+title, createdAt, updatedAt}}`, its times ISO-8601 strings in UTC, as every
+conversation route answers a conversation. The trimmed title has at most
+200 UTF-16 units (else 400); a blank one becomes `New Chat`. Ids are never
+reused.
 
 ```quint
 import numbers.* from "../../core/numbers"
@@ -88,6 +90,9 @@ pure def sometimesPendingForkUnlisted(s: Conversations): bool = s.conversations.
 
 History is ordered by `at`, then message id. A read without a cursor
 answers the newest 200, and `hasMore` exactly when older messages exist.
+A row is `{id, role, text, timestamp}`, `timestamp` in milliseconds; an
+owner message sent under a `clientMessageId` also carries that key, so a
+client finds its own turn (`client/turns.md`).
 A message shows its whole stored text: a text too long to keep inline is
 read back whole from its stored segments, and a segment that is missing,
 belongs to another room or message, or does not match the text's digest

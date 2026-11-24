@@ -1,8 +1,9 @@
 // spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"
 module node {
-  import { MISSED_SCHEDULED_OCCURRENCE_TEXT, type AgentRuntime, type MessageProcessingResult, type Room } from "@elizaos/core"
+  import { MISSED_SCHEDULED_OCCURRENCE_TEXT, type AgentRuntime, type MessageProcessingResult } from "@elizaos/core"
   import type { RunOutcome } from "../../gen/agent__schedule__triggers.ts"
-  import { createConversation, deviceConversation, processTurn, type ConversationOwner } from "../conversation/turns.vibe"
+  import { conversationStore, type ConversationOwner } from "../conversation/conversations.vibe"
+  import { processTurn } from "../conversation/turns.vibe"
 
   export type ResolvedRoom =
     | { readonly kind: "Resolved"; readonly conversationId: string }
@@ -61,31 +62,23 @@ module node {
   }
 
   export function triggerDelivery(runtime: AgentRuntime, owner: ConversationOwner): TriggerDelivery {
-    const find = async (id: string): Promise<Room | undefined> =>
-      (await runtime.getRooms(owner.world)).find((room) => deviceConversation(room)?.id === id)
+    const store = conversationStore(runtime, owner)
     const ready = (conversationId: string): ResolvedRoom =>
       runtime.messageService ? { kind: "Resolved", conversationId } : { kind: "Unavailable" }
 
-    async function latest(): Promise<string | undefined> {
-      const known = (await runtime.getRooms(owner.world)).flatMap((room) => deviceConversation(room) ?? [])
-      known.sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id))
-      return known[0]?.id
-    }
-
     return {
       async resolveRoom(requested) {
-        if (requested !== undefined) return await find(requested) === undefined ? { kind: "Missing" } : ready(requested)
-        const recent = await latest()
-        if (recent !== undefined) return ready(recent)
+        if (requested !== undefined) return await store.find(requested) === undefined ? { kind: "Missing" } : ready(requested)
+        const [recent] = await store.list()
+        if (recent !== undefined) return ready(recent.id)
         if (!runtime.messageService) return { kind: "Unavailable" }
-        const created = await createConversation(runtime, owner, "")
-        return created === undefined ? { kind: "Unavailable" } : ready(created.id)
+        return ready((await store.create("")).id)
       },
       async deliver(conversationId, prompt, triggerId, signal) {
-        const room = await find(conversationId)
-        if (room === undefined) return { kind: "RoomGone" }
+        const conversation = await store.find(conversationId)
+        if (conversation === undefined) return { kind: "RoomGone" }
         try {
-          return turnOf(await processTurn(runtime, owner, room, prompt, signal, { metadata: { type: "custom", triggerId } }))
+          return turnOf(await processTurn(runtime, owner, conversation, prompt, signal, { metadata: { type: "custom", triggerId } }))
         } catch (cause) {
           runtime.reportError("triggers.delivery", cause, { triggerId, conversationId })
           return signal.aborted
