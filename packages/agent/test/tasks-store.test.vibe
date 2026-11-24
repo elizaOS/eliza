@@ -7,12 +7,12 @@ import { copyIn, sealedFor } from "./support/task-record.vibe"
 module node {
   import { randomBytes } from "node:crypto"
   import { spawnSync } from "node:child_process"
-  import { chmodSync, existsSync, readdirSync, renameSync, writeFileSync } from "node:fs"
+  import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
   import { join } from "node:path"
   import { DatabaseSync } from "node:sqlite"
   import { Redacted, Result } from "effect"
   import { createInteractiveTask, ElizaError, transitionInteractiveTask, type InteractiveTask, type TaskEvent, type TaskTransition } from "@elizaos/core"
-  import { decodeTaskRecord, decodeTaskRecordResult, openNodeTaskDatabase, storageKeySource, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
+  import { decodeTaskRecord, decodeTaskRecordResult, lockIntact, openNodeTaskDatabase, releaseLock, storageKeySource, takeSqliteTaskLock, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
 
   export const account = "owner-account"
   const owner = { agentId: "agent-1", actorId: "owner-1", connector: { source: "device", accountId: "device" } }
@@ -114,6 +114,41 @@ module node {
     replaceLock(directory, process.pid)
   }
 
+  export function observeSqliteGuard(directory: string) {
+    const path = join(directory, "tasks.sqlite.lock")
+    const legacy = JSON.stringify({ pid: process.pid, owner: "other-version" })
+    writeFileSync(path, legacy, { mode: 0o600 })
+    const legacyRefused = takeSqliteTaskLock(path) === undefined && readFileSync(path, "utf8") === legacy
+    renameSync(path, join(directory, "legacy.lock"))
+    const first = takeSqliteTaskLock(path)
+    if (first === undefined) throw new Error("The first task guard was refused")
+    let replacement: ReturnType<typeof takeSqliteTaskLock>
+    try {
+      const duplicate = takeSqliteTaskLock(path)
+      if (duplicate !== undefined) releaseLock(duplicate)
+      const child = spawnSync(process.execPath, ["-e", `
+        const { DatabaseSync } = require("node:sqlite")
+        const guard = new DatabaseSync(process.argv[1], { timeout: 0 })
+        try {
+          guard.exec("BEGIN IMMEDIATE")
+        } catch (error) {
+          process.exitCode = (error.errcode & 255) === 5 ? 17 : 1
+        } finally {
+          guard.close()
+        }
+      `, path])
+      const next = join(directory, "next.lock")
+      writeFileSync(next, "", { mode: 0o600, flag: "wx" })
+      renameSync(next, path)
+      const oldFenced = !lockIntact(first)
+      replacement = takeSqliteTaskLock(path)
+      return [legacyRefused, duplicate === undefined, child.status, oldFenced, replacement !== undefined, existsSync(path)]
+    } finally {
+      if (replacement !== undefined) releaseLock(replacement)
+      releaseLock(first)
+    }
+  }
+
   export function stealingDatabase(directory: string) {
     let armed: "run" | "all" | undefined
     const steal = (during: "run" | "all") => {
@@ -140,7 +175,7 @@ module node {
 }
 
 import {
-  account, cancelled, closePermissions, decodes, exists, keyFor, laterBuild, leftUnderThisPid, newKey, openPermissions, replaceLock,
+  account, cancelled, closePermissions, decodes, exists, keyFor, laterBuild, leftUnderThisPid, newKey, observeSqliteGuard, openPermissions, replaceLock,
   stealingDatabase, storedIds, task, unknownOutcome,
 } from node
 
@@ -158,6 +193,12 @@ effect function storeIn(directory: string, key: string | undefined, decode?: Tas
     ...(decode === undefined ? {} : { decode }), ...(database === undefined ? {} : { database }),
   })
 }
+
+it.effect('The Android SQLite guard excludes peers, refuses legacy contents and fences a replaced inode (spec/agent/tasks/store.md, "Replacing the writer lock fences the old writer")', effect () => {
+  const state = try scratch("android-task-guard")
+  const observed = try support("exercise SQLite guard", () => observeSqliteGuard(state.path))
+  assert.deepEqual(observed, [true, true, 17, true, true, true])
+})
 
 it.effect('Task storage opens only under verified custody and serves only authentic records (spec/agent/tasks/store.md, "Story: Refuse task storage when custody cannot be verified")', effect () => {
   const state = try scratch("task-store")

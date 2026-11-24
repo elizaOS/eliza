@@ -97,6 +97,7 @@ module node {
     readonly owner: string
     readonly dev: number
     readonly ino: number
+    readonly guard?: DatabaseSync
   }
 
   const heldOwners = new Set<string>()
@@ -110,7 +111,32 @@ module node {
     return !processAlive(pid, typeof start === "string" ? start : undefined)
   }
 
+  export function takeSqliteTaskLock(path: string): LockIdentity | undefined {
+    try {
+      closeSync(openSync(path, "wx", 0o600))
+    } catch (error) {
+      if (!isError(error, "EEXIST")) throw error
+    }
+    const before = lstatSync(path)
+    if (!before.isFile() || !isPrivateFile(path)) return undefined
+    const guard = new DatabaseSync(path, { timeout: 0 })
+    let admitted = false
+    try {
+      const journal = guard.prepare("PRAGMA journal_mode").get()
+      if (journal?.journal_mode !== "delete") return undefined
+      guard.exec("BEGIN IMMEDIATE")
+      const lock = { path, owner: "", dev: before.dev, ino: before.ino, guard }
+      admitted = lockIntact(lock)
+      return admitted ? lock : undefined
+    } catch {
+      return undefined
+    } finally {
+      if (!admitted) guard.close()
+    }
+  }
+
   export function takeLock(path: string): LockIdentity | undefined {
+    if (process.platform === "android") return takeSqliteTaskLock(path)
     const staged = `${path}.${randomUUID()}`
     const owner = randomUUID()
     const fd = openSync(staged, "wx", 0o600)
@@ -143,9 +169,14 @@ module node {
   export function lockIntact(lock: LockIdentity): boolean {
     const status = lstatSync(lock.path, { throwIfNoEntry: false })
     return status !== undefined && status.isFile() && status.dev === lock.dev && status.ino === lock.ino
+      && (lock.guard === undefined || (isPrivateFile(lock.path) && lock.guard.isTransaction))
   }
 
   export function releaseLock(lock: LockIdentity): void {
+    if (lock.guard !== undefined) {
+      lock.guard.close()
+      return
+    }
     heldOwners.delete(lock.owner)
     if (lockIntact(lock)) unlinkSync(lock.path)
   }
@@ -277,7 +308,7 @@ module node {
   }
 }
 export {
-  decodeTaskRecord, decodeTaskRecordResult, openNodeTaskDatabase, storageKeySource,
+  decodeTaskRecord, decodeTaskRecordResult, lockIntact, openNodeTaskDatabase, releaseLock, storageKeySource, takeSqliteTaskLock,
   type KeyReading, type TaskRecord, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
 } from node
 import {
@@ -361,10 +392,19 @@ export effect function createTaskStore(options: TaskStoreOptions) {
     return host(() => lockIntact(lock), "The task store lock could not be read") catch () => false
   }
 
+  effect function releaseWriter(lock: LockIdentity) {
+    host(() => releaseLock(lock), "The task store lock could not be released") catch () => undefined
+  }
+
   effect function drop() {
     const held = writer
     writer = undefined
-    if (held !== undefined) try orDie(host(() => retire(held.keys, held.db), "The task keys could not be retired"))
+    if (held !== undefined) {
+      try ensuring(
+        orDie(host(() => retire(held.keys, held.db), "The task keys could not be retired")),
+        releaseWriter(held.lock),
+      )
+    }
   }
 
   effect function fence() {
@@ -430,7 +470,7 @@ export effect function createTaskStore(options: TaskStoreOptions) {
 
   effect function refuse(account: string, evidence: OpenEvidence, keys: TaskKeys | undefined, lock: LockIdentity | undefined, reason: string) {
     if (keys !== undefined) try orDie(host(() => keys.wipe(), "The task keys could not be wiped"))
-    if (lock !== undefined) host(() => releaseLock(lock), "The task store lock could not be released") catch () => undefined
+    if (lock !== undefined) try releaseWriter(lock)
     try orDie(machine.send({ type: "openStore", account, evidence }, account))
     throw new StorageUnavailable({ reason })
   }
@@ -502,7 +542,10 @@ export effect function createTaskStore(options: TaskStoreOptions) {
       const exclusiveLock = try intact(lock)
       try orDie(machine.send({ type: "openStore", account, evidence: { ...evidence, exclusiveLock } }, account))
       if (!holdsLock(try machine.get())) {
-        try orDie(host(() => retire(keys, opened.db), "The task keys could not be retired"))
+        try ensuring(
+          orDie(host(() => retire(keys, opened.db), "The task keys could not be retired")),
+          releaseWriter(lock),
+        )
         throw new StorageUnavailable({ reason: "The task store lock was replaced while it opened" })
       }
       writer = { db: opened.db, lock, sealer, keys }
@@ -580,10 +623,8 @@ export effect function createTaskStore(options: TaskStoreOptions) {
     },
 
     effect close() {
-      const held = writer
       const state = try machine.get()
       if (state.writer.tag === "Opened") try send({ type: "closeStore" })
-      if (held !== undefined) host(() => releaseLock(held.lock), "The task store lock could not be released") catch () => undefined
       try drop()
     },
 
