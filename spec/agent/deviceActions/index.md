@@ -590,8 +590,8 @@ family's own sentence verbatim, and the result is marked
 records as `Rejected`. An operation that is not an offered form, that this
 message does not allow, or that the negotiation no longer admits, is
 refused the same way. A family may instead hand the proposal back to the
-model, when only the owner can settle it (which one recipient, which part of
-a sender): it offers nothing just the same, but the owner hears no family
+model, when the model can correct it or ask the owner itself (a recipient it
+invented, which part of a sender): it offers nothing just the same, but the owner hears no family
 sentence; the model alone learns why, as coaching it may correct, and answers
 the owner in its own words.
 

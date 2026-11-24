@@ -1,12 +1,12 @@
 // spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query"
 // spec/agent/deviceActions/telephony.md, "The model asks which of alternative SMS recipients is meant, in its own words, before any lookup"
-// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "A request to open the dialer is the model's keypad, filled only with a number the owner wrote"; spec/agent/deviceActions/telephony.md, "The model's own recipient is grounded as it proposed it, and a proposal names one recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "A draft is the model's to ask for, to the recipient it proposed or to the sender the agent just read"; spec/agent/deviceActions/telephony.md, "A text to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/operations.md, "A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"
+// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "A request to open the dialer is the model's keypad, filled only with a number the owner wrote"; spec/agent/deviceActions/telephony.md, "The model's own recipient is grounded as it proposed it, and an invented one is handed back once"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "A draft is the model's to ask for, to the recipient it proposed or to the sender the agent just read"; spec/agent/deviceActions/telephony.md, "A text to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/operations.md, "A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"
 import type { ActionParameterSchema, Memory } from "@elizaos/core"
 import { completionOpen, retainedHint } from "../../../../gen/agent__deviceActions.effect.vibe"
 import { negotiatedHas, type Capability } from "../../../../gen/agent__deviceActions__capabilities.effect.vibe"
 import {
-  dialerGuidance, recipientPlan, roleRule, searchFirstRefused, senderDraftReady, senderReadForm, settledLead, telephonyAsAsked, textTarget,
-  type DirectTelephony, type RecipientKind, type RecipientPlan, type RoleRule, type SenderScope, type SenderSource, type SettledLead, type SettledTelephony,
+  dialerGuidance, roleRule, searchFirstRefused, senderDraftReady, senderReadForm, settledLead, targetHandling, telephonyAsAsked, textTarget,
+  type DirectTelephony, type RecipientKind, type RoleRule, type SenderScope, type SenderSource, type SettledLead, type SettledTelephony,
 } from "../../../../gen/agent__deviceActions__telephony.effect.vibe"
 import { latestSenderGuidance, latestSenderReplyFor } from "../../latest-sender.vibe"
 import { readReplyId, readReplyKey } from "../../read-completion.vibe"
@@ -43,10 +43,10 @@ const recipientKind: ActionParameterSchema = {
   type: "string", enum: ["named", "number", "previous-sender"],
   description: "previous-sender: the sender you just read.",
 }
-const reviewRequested: ActionParameterSchema = { type: "boolean" }
+const reviewRequested: ActionParameterSchema = { type: "boolean", description: "false unless the owner asked to review first." }
 const disclosure: ActionParameterSchema = {
   type: "string", enum: ["address", "last-four", "unclear"],
-  description: "unclear: any other part.",
+  description: "address: who sent it; last-four: last four digits; unclear: other parts.",
 }
 const contactNumbers: ActionParameterSchema = { type: "array", items: phoneNumber }
 const contactEmails: ActionParameterSchema = { type: "array", items: { type: "string" } }
@@ -131,11 +131,11 @@ const forms: readonly ProposalForm[] = [
   {
     types: ["sms_compose"], offered: offeredWithAll(["SmsComposeV1", "SmsComposeV2"]),
     schema: form("sms_compose", { target: anyTarget, body }, {
-      draft: { type: "boolean", description: "true only puts the body into that conversation's text field. Nothing is sent." },
+      draft: { type: "boolean", description: "true when the owner asks only to draft or write it: it waits in the text field, unsent." },
       recipientKind, reviewRequested,
     }),
     guidance: [
-      "sms_compose is a reviewed SMS to one recipient; it works from any view and the phone chooses the SIM, so prefer it over sms_send. Add draft: true when the owner asks only to draft or write a message.",
+      "sms_compose is a reviewed SMS to one recipient; it works from any view and the phone chooses the SIM, so prefer it over sms_send.",
       composeGuidance, targetGuidance, referenceGuidance,
     ],
   },
@@ -185,15 +185,15 @@ const forms: readonly ProposalForm[] = [
     types: ["voicemail_delete_selected"], schema: form("voicemail_delete_selected"), offered: offeredWith("VoicemailDeleteV1"),
     guidance: ["voicemail_delete_selected deletes only the voicemail the owner has open, after the owner confirms on the unlocked phone.", noneSelectedGuidance],
   },
-  { types: ["sms_latest_sender"], schema: form("sms_latest_sender", {}, { disclosure, reviewRequested }), offered: offeredWith("SmsLatestSenderV1", "SmsLatestSenderV2") },
+  { types: ["sms_latest_sender"], schema: form("sms_latest_sender", {}, { disclosure }), offered: offeredWithAll(["SmsLatestSenderV1"], "SmsLatestSenderV2") },
+  { types: ["sms_latest_sender"], schema: form("sms_latest_sender", {}, { disclosure, reviewRequested }), offered: offeredWith("SmsLatestSenderV2") },
 ]
 
 const rejected = "DEVICE_REQUEST_REJECTED"
 const noSender = "No current SMS sender. Ask who last texted you or give one recipient."
 const senderGone = "No current SMS sender for this reply. Ask who texted you or choose a recipient."
 const coachedCode = "DEVICE_REQUEST_NEEDS_OWNER"
-const oneRecipient = "This proposal names more than one recipient, and a proposal has one. No device proposal was created; nothing was called or sent. Ask the owner which one person they mean, in your own words."
-const kindDisagrees = "recipientKind disagrees with the target: named needs a contact target, and number needs a number target. No device proposal was created. Correct the proposal."
+const askedInvalid = "recipientKind, disclosure or reviewRequested is not one of its values. No device proposal was created. Correct the proposal."
 const askSenderScope = "The owner asked for a part of the SMS sender's number this phone cannot read: only the last four digits are available. No device proposal was created. Ask the owner, in your own words, whether the last four digits will do."
 const emergencyKeypadReply = "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call."
 
@@ -213,10 +213,6 @@ const Asked = Schema.Struct({
 type Asked = typeof Asked.Type
 const readAsked = Schema.decodeUnknownOption(Asked)
 const askedKeys: ReadonlySet<string> = new Set(Object.keys(Asked.fields))
-
-function askedOf(filled: unknown): Asked {
-  return Option.getOrElse(readAsked(filled), () => ({}))
-}
 
 function asAsked(operation: DeviceOperation, step: DirectTelephony, ownersOwn: boolean, asked: Asked): Grounding {
   return { kind: "Grounded", operation, grounding: telephonyAsAsked(step, ownersOwn, asked.reviewRequested !== false) ? "GroundedAsAsked" : "GroundedForReview" }
@@ -238,17 +234,6 @@ function senderRead(turn: DeviceTurn, asked: Asked): Grounding {
     case "AskSenderScope": return coached(askSenderScope)
     case "ReadWholeSender": return asAsked({ type: "sms_latest_sender", includeAddress: true }, "SenderAddressRead", true, asked)
     case "ReadSenderEnding": return asAsked({ type: "sms_latest_sender" }, "SenderAddressRead", false, asked)
-  }
-}
-
-function recipientOf(operation: DeviceOperation, asked: Asked): RecipientPlan {
-  switch (operation.type) {
-    case "sms_send": return recipientPlan("KindUnstated", "NumberTarget", operation.recipients.length)
-    case "sms_compose":
-      return "target" in operation
-        ? recipientPlan(asked.recipientKind === undefined ? "KindUnstated" : kindOf[asked.recipientKind], operation.target.kind === "number" ? "NumberTarget" : "ContactTarget", 1)
-        : "GroundModelTarget"
-    default: return "GroundModelTarget"
   }
 }
 
@@ -336,12 +321,18 @@ function stepGrounding(operation: DeviceOperation, text: string, asked: Asked): 
   }
 }
 
+const handedBack = new WeakSet<DeviceTurn>()
+
 function targetGrounding(operation: DeviceOperation, turn: DeviceTurn, asked: Asked): Grounding {
   if (!targetTypes.has(operation.type)) return grounded(operation)
   const target = groundTelephonyTarget(operation, turn.ownerText, swappedPhoneReferences(turn.swapped, turn.ownerText), has(turn, "PhoneKeypadV1"))
-  if (target.kind === "refused") return telephonyTargetRefusalReply(target, turn.ownerText, operation)
+  if (target.kind === "refused") {
+    const handling = targetHandling(target.verdict, handedBack.has(turn))
+    if (handling === "HandBackTarget") handedBack.add(turn)
+    return telephonyTargetRefusalReply(target, turn.ownerText, operation, handling === "HandBackTarget")
+  }
   return turn.admit(target.operation) === undefined
-    ? telephonyTargetRefusalReply({ kind: "refused", verdict: "RecipientForm", references: [] }, turn.ownerText, operation)
+    ? telephonyTargetRefusalReply({ kind: "refused", verdict: "RecipientForm", references: [] }, turn.ownerText, operation, false)
     : stepGrounding(target.operation, turn.ownerText, asked)
 }
 
@@ -434,16 +425,12 @@ export const telephonyFamily: DeviceProposalFamily = {
   guidance: familyGuidance,
   effect ground(proposed, turn, filled) {
     const { operation } = proposed
-    const asked = askedOf(filled)
+    const read = typeof filled === "object" && filled !== null ? readAsked(filled) : Option.some<Asked>({})
+    if (Option.isNone(read)) return coached(askedInvalid)
+    const asked = read.value
     if (operation.type === "sms_latest_sender") return senderRead(turn, asked)
-    const plan = recipientOf(operation, asked)
-    switch (plan) {
-      case "AskForOneRecipient": return coached(oneRecipient)
-      case "CorrectRecipientKind": return coached(kindDisagrees)
-      case "TextPreviousSender":
-      case "GroundModelTarget":
-        return textTarget(plan) === "DeliveredSenderAddress" && operation.type === "sms_compose" ? try senderText(operation, turn, asked) : targetGrounding(operation, turn, asked)
-    }
+    const kind: RecipientKind = asked.recipientKind === undefined ? "KindUnstated" : kindOf[asked.recipientKind]
+    return textTarget(kind) === "DeliveredSenderAddress" && operation.type === "sms_compose" ? try senderText(operation, turn, asked) : targetGrounding(operation, turn, asked)
   },
   prepare: prepared,
   proposedText: (operation, { direct, ownerText }) => operation.type === "phone_keypad" && direct ? keypadText(operation, ownerText) : undefined,

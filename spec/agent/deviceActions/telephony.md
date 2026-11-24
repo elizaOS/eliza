@@ -46,8 +46,9 @@ family only so that no other family claims it: no form offers it, so chat
 never proposes an MMS. Each form is offered only when the phone negotiated
 what it needs, and of two forms of one operation (a Messages text named by
 `query` or by `target`, a contact change that replaces values or adds and
-removes them, a dial to a number only or also to a contact) a phone is
-offered exactly the one its capabilities take. Whether a keypad, a Messages
+removes them, a dial to a number only or also to a contact, a latest-sender
+read that can only keep its card or one that can name the whole sender) a
+phone is offered exactly the one its capabilities take. Whether a keypad, a Messages
 draft or a latest-sender read runs without its review card is decided below
 ("A keypad, a Messages draft or a who-texted-me read runs without its card
 only as the owner asked"); device operations' `directEligible` and
@@ -183,7 +184,7 @@ pure def lawASearchIsRefusedFirstOnlyBesideTheRoleRule(callsContact: bool, texts
   searchFirstRefused(roleRule(callsContact, textsContact), searchOffered) iff (searchOffered and (callsContact or textsContact))
 ```
 
-### The model's own recipient is grounded as it proposed it, and a proposal names one recipient
+### The model's own recipient is grounded as it proposed it, and an invented one is handed back once
 
 The model reads whom the owner asked to call or text, also after a thanks or
 a courtesy and with the words to send told to the person ("Thank you. Can you
@@ -191,32 +192,40 @@ text Carson and tell him to bring the ice", "ring mum back please"), and
 proposes that recipient as its target. On a text it may say how the owner
 named them, in `recipientKind`: `named` for a contact name, `number` for a
 number, or `previous-sender` for the sender the agent just read (below).
-Nothing re-reads the owner's words for a recipient or puts another in the
-model's place: the target is offered only when it is grounded as above, so a
-name or number the model invented is refused, and the model is told why. A
-`recipientKind` that disagrees with the target, `named` for a number or
-`number` for a contact name, is handed back to the model to correct. A
-proposal that names more than one recipient is handed back to the model too,
-which asks the owner which one person they mean in its own words. Either
-offers nothing, and the owner hears no fixed question.
+`named` and `number` only describe the target and never change it or refuse
+it. Nothing re-reads the owner's words for a recipient or puts another in the
+model's place: the target is offered only when it is grounded as above. A SIM
+send to several numbers the owner wrote ("text 415-555-0100 and 415-555-0111
+that I'm late") is one reviewed send to each of them, once; every one is
+grounded, so one the owner never wrote refuses the whole send.
+
+A number, contact reference, name or email address the model invented is
+handed back to the model the first time in a turn, as coaching that nothing
+was called, sent or saved and why, so it can propose the owner's own instead
+("Cole" for "Carson") or answer the owner in its own words. A second one in
+the same turn is refused, and the owner hears why (below). A number the owner
+wrote that cannot be read as one, a recipient this phone cannot take in its
+form, and the emergency verdicts are the owner's to settle, so they are never
+handed back.
 
 ```quint
 type RecipientKind = NamedRecipient | NumberRecipient | PreviousSender | KindUnstated
-type TargetKind = ContactTarget | NumberTarget
-type RecipientPlan = GroundModelTarget | TextPreviousSender | CorrectRecipientKind | AskForOneRecipient
-pure def recipientPlan(kind: RecipientKind, target: TargetKind, recipients: int): RecipientPlan =
-  if (recipients > 1) AskForOneRecipient
-  else if (kind == PreviousSender) TextPreviousSender
-  else if ((kind == NamedRecipient and target != ContactTarget) or (kind == NumberRecipient and target != NumberTarget)) CorrectRecipientKind
-  else GroundModelTarget
-pure def lawAProposalNamesOneRecipient(kind: RecipientKind, target: TargetKind, recipients: int): bool =
-  recipients > 1 implies recipientPlan(kind, target, recipients) == AskForOneRecipient
-pure def lawAnUnstatedKindGroundsTheModelsTarget(target: TargetKind): bool =
-  recipientPlan(KindUnstated, target, 1) == GroundModelTarget
-pure def lawAKindThatAgreesGroundsTheModelsTarget(recipients: int): bool =
-  recipients <= 1 implies (recipientPlan(NamedRecipient, ContactTarget, recipients) == GroundModelTarget and recipientPlan(NumberRecipient, NumberTarget, recipients) == GroundModelTarget)
-pure def lawAKindThatDisagreesIsCorrected(recipients: int): bool =
-  recipients <= 1 implies (recipientPlan(NamedRecipient, NumberTarget, recipients) == CorrectRecipientKind and recipientPlan(NumberRecipient, ContactTarget, recipients) == CorrectRecipientKind)
+type TargetHandling = OfferTarget | HandBackTarget | RefuseTarget
+pure def modelInvented(verdict: TargetVerdict): bool =
+  verdict == NumberNotWritten or verdict == NumberCopyReference or verdict == ContactNotWritten or verdict == EmailNotWritten
+pure def targetHandling(verdict: TargetVerdict, handedBackThisTurn: bool): TargetHandling =
+  if (targetGrounded(verdict)) OfferTarget
+  else if (modelInvented(verdict) and not(handedBackThisTurn)) HandBackTarget
+  else RefuseTarget
+pure def lawAGroundedTargetIsOffered(verdict: TargetVerdict, handedBackThisTurn: bool): bool =
+  (targetHandling(verdict, handedBackThisTurn) == OfferTarget) iff targetGrounded(verdict)
+pure def lawAnInventedRecipientIsHandedBackOnlyOnceATurn(verdict: TargetVerdict): bool =
+  modelInvented(verdict) implies (targetHandling(verdict, false) == HandBackTarget and targetHandling(verdict, true) == RefuseTarget)
+pure def lawOnlyAnInventedRecipientIsHandedBack(verdict: TargetVerdict, handedBackThisTurn: bool): bool =
+  targetHandling(verdict, handedBackThisTurn) == HandBackTarget implies modelInvented(verdict)
+pure def lawWhatTheOwnerMustSettleIsNeverHandedBack(handedBackThisTurn: bool): bool =
+  targetHandling(EmergencyDial, handedBackThisTurn) == RefuseTarget and targetHandling(NumberUnreadable, handedBackThisTurn) == RefuseTarget
+    and targetHandling(RecipientForm, handedBackThisTurn) == RefuseTarget
 ```
 
 ### A request to open the dialer is the model's keypad, filled only with a number the owner wrote
@@ -297,7 +306,8 @@ pure def lawAMessageWithoutTheValueLeavesItToTheReview(verdict: TargetVerdict): 
 
 ### A refused recipient is explained truthfully, and the owner hears that nothing ran
 
-A recipient refusal offers nothing. The owner hears a sentence that is true
+A recipient refusal offers nothing. Once it is refused rather than handed
+back to the model (above), the owner hears a sentence that is true
 whichever recipient was refused: that nothing was called or sent, or for a
 contact change that nothing in the address book was saved or changed, and what
 to tell the agent instead. A recipient this phone cannot take in its form, and
@@ -357,11 +367,9 @@ its own words.
 
 ```quint
 type TextTarget = ModelTarget | DeliveredSenderAddress
-pure def textTarget(plan: RecipientPlan): TextTarget = if (plan == TextPreviousSender) DeliveredSenderAddress else ModelTarget
-pure def lawATextToThePreviousSenderNeverKeepsTheModelsTarget(target: TargetKind): bool =
-  textTarget(recipientPlan(PreviousSender, target, 1)) == DeliveredSenderAddress
-pure def lawEveryOtherTextKeepsTheModelsTarget(kind: RecipientKind, target: TargetKind, recipients: int): bool =
-  kind != PreviousSender implies textTarget(recipientPlan(kind, target, recipients)) == ModelTarget
+pure def textTarget(kind: RecipientKind): TextTarget = if (kind == PreviousSender) DeliveredSenderAddress else ModelTarget
+pure def lawOnlyATextToThePreviousSenderLeavesTheModelsTarget(kind: RecipientKind): bool =
+  (textTarget(kind) == DeliveredSenderAddress) iff kind == PreviousSender
 ```
 
 ### A text to them goes only to the whole sender address the agent just delivered
@@ -396,8 +404,8 @@ pure def lawAnOlderReadNeverAddressesADraft(wholeAddress: bool, addressNegotiate
 ### A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it
 
 A proposed `sms_latest_sender` is offered in the form the model read from
-the owner's words, its `disclosure`: `address` for a question about who sent
-the newest incoming SMS, `last-four` for an ask for the last four digits, and
+the owner's words, its `disclosure`, which the tool defines for the model:
+`address` for a question about who sent the newest incoming SMS, `last-four` for an ask for the last four digits, and
 `unclear` for a narrower or unclear ask (the first digits, three digits,
 "without the number", a masked or partial number). `address`, on a phone
 that negotiated `sms.latest-sender.v2`, reads the whole address. `last-four`,
@@ -430,9 +438,10 @@ draft to a number the owner wrote, not only spoke, outside the words to
 send, or to the sender of the read just delivered, carrying that sender's
 thread; a read of the whole sender address because the owner asked who sent
 it. Review is the default: a draft or a read keeps its card unless the model
-set `reviewRequested: false`, so one the owner asked to review first ("ask me
-first", "show me the approval", "wait for my approval"), and one whose
-`reviewRequested` the model left out, waits on its card. The keypad never
+set `reviewRequested: false`, which the tool tells it to set unless the owner
+asked to see or approve it first. So one the owner asked to review first
+("ask me first", "show me the approval", "wait for my approval"), and one
+whose `reviewRequested` the model left out, waits on its card. The keypad never
 dials, so it is not held, and the emergency keypad is never held or refused.
 Every other keypad, draft or sender read is grounded for review, so the phone
 shows its card. A pending keypad the owner asked for is
