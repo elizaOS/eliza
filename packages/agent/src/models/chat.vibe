@@ -17,7 +17,6 @@ export interface Endpoint {
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
   readonly reasoningHints: boolean
-  /** Whether the tools go out strict only when every one is: always, never, or only for a model Cloud serves on Cerebras, which forwards each tool's `strict` unchanged. */
   readonly uniformToolStrictness: boolean | "OnCerebrasModels"
   readonly cloudRoute: boolean
 }
