@@ -86,7 +86,13 @@ request with the same reservation may only observe it. An unsigned or
 interrupted reservation does not authorize a new signing attempt. Chain
 receipt settlement requires the exact original operation on the expected
 chain and canonical finality. On EVM, the receipt block must be canonical
-and at or below the chain's finalized block.
+and at or below the chain's finalized block. An EVM broadcast is submitted
+only when the RPC answers with the signed transaction's own hash, written
+as the JSON-RPC schema writes a 32-byte hash: `0x` and 64 lowercase hex
+digits. Any other answer, including none, null, a malformed or different
+hash, or the same hash in other letter case, and any error or lost answer,
+leaves the operation unresolved under the signed transaction's hash; it is
+never reported failed and never signed or sent again.
 
 ```quint
 pure def canMarkWalletUncertain(s: WalletRun, operationRef: str): bool =
