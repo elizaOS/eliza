@@ -84,6 +84,47 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
   }, libraryVolume()).pipe(Effect.provide(tab))
 })
 
+it.effect('A browser trash record that cannot be read is a failure, never an empty trash (spec/files/reviewedOperations.md, "A trash record that cannot be read fails the trash listing and a restore, and never reads as no record")', effect () => {
+  const tab = indexedLibrary(`files-trash-record-${Date.now()}`)
+  try Effect.provide(effect {
+    const volume = try FilesVolume
+    const store = try LibraryStore
+    const empty = try volume.trashList()
+    assert.equal(try volume.createFolder("", "Download"), "Download")
+    try importLibraryFile("Download", { name: "lease.pdf", mimeType: "application/pdf", bytes: bytes("%PDF-1.7") })
+    try importLibraryFile("Download", { name: "memo.txt", mimeType: "text/plain", bytes: bytes("memo") })
+    const [lease] = try volume.trash({ paths: ["Download/lease.pdf"] })
+    const torn = bytes("{not json")
+    try store.commit((rows) => {
+      const record = rows.find((row) => row.name === `${lease.to}.json`)
+      return { put: record === undefined ? [] : [{ ...record, bytes: torn, size: torn.byteLength }], remove: [] }
+    })
+    const listed = try Effect.flip(volume.trashList())
+    const restored = try Effect.flip(volume.restore([lease.to ?? ""]))
+    const [memo] = try volume.trash({ paths: ["Download/memo.txt"] })
+    const kept = (try store.rows()).find((row) => row.name === `${lease.to}.json`)
+    assert.deepEqual({
+      empty,
+      lease: lease.status,
+      listed: [listed.status, listed.message],
+      restored: [restored.status, restored.message],
+      memo: memo.status,
+      kept: kept?.bytes === undefined ? undefined : new TextDecoder().decode(kept.bytes),
+      stillThere: (try store.rows()).some((row) => row.name === lease.to),
+      unknown: try status(volume.trashList()),
+    }, {
+      empty: [],
+      lease: "trashed",
+      listed: ["failed", "The trash could not be read."],
+      restored: ["failed", "The trash could not be read."],
+      memo: "trashed",
+      kept: "{not json",
+      stillThere: true,
+      unknown: "failed",
+    })
+  }, libraryVolume()).pipe(Effect.provide(tab))
+})
+
 it.effect('Let a workflow save and read my browser files without repeating or half-reading anything (spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything")', effect () => {
   const tab = indexedLibrary(`files-workflow-${Date.now()}`)
   try Effect.provide(effect {

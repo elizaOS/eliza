@@ -1,4 +1,4 @@
-// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/library.md, "A change commits only at the revision it expected, never takes a name in use, and never puts a folder inside itself"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"
+// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/library.md, "A change commits only at the revision it expected, never takes a name in use, and never puts a folder inside itself"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/files/reviewedOperations.md, "A trash record that cannot be read fails the trash listing and a restore, and never reads as no record"
 module browser {
   export async function identityToken(id: string, revision: string): Promise<string> {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([id, revision])))
@@ -31,7 +31,7 @@ module browser {
   }
 }
 import { base64, fileBlob, identityToken, shareFile, storageEstimate } from browser
-import { apply, canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
+import { apply, canPrune, classifyRow, listed, machineOver, initial as fresh, trashReadAnswer, trashUnreadableMessage, type TrashRecordRead, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { chatLimit, mailLimit, selectionReadable, textLimit } from "../../gen/files__library.effect.vibe"
 import { batchMax, type FileOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
 import { fileArchive } from "../documents/archive.vibe"
@@ -195,7 +195,15 @@ export function libraryVolume(archiveName = "Files.zip") {
       const trashId = folderIdAt(all, TRASH)
       const found = trashId === undefined ? undefined : childrenOf(all, trashId).find((row) => row.name === `${id}.json`)
       const kept = found?.bytes === undefined ? undefined : (decodeRecord(new TextDecoder().decode(found.bytes)) catch () => undefined)
-      return { found, kept }
+      const read: TrashRecordRead = found === undefined ? "RecordAbsent" : kept === undefined ? "RecordUnreadable" : "RecordRead"
+      return { found, kept, read }
+    }
+
+    effect function readRecords(ids: readonly string[]) {
+      const records: Array<Effect.Success<ReturnType<typeof recordRow>>> = []
+      for (const id of ids) records.push(try recordRow(id))
+      if (trashReadAnswer(records.map((record) => record.read)) === "TrashUnreadable") throw refused("failed", trashUnreadableMessage)
+      return records
     }
 
     effect function journalOf(id: string, trashId: string, base: Omit<typeof TrashRecord.Type, "row">) {
@@ -320,10 +328,10 @@ export function libraryVolume(archiveName = "Files.zip") {
         const trashId = folderIdAt(all, TRASH)
         if (trashId === undefined) return items
         const children = new Map(childrenOf(all, trashId).map((row) => [row.name, row]))
-        for (const [name] of children) {
-          if (!name.endsWith(".json")) continue
-          const id = name.slice(0, -".json".length)
-          const { kept } = try recordRow(id)
+        const ids = [...children.keys()].filter((name) => name.endsWith(".json")).map((name) => name.slice(0, -".json".length))
+        const records = try readRecords(ids)
+        for (const [index, id] of ids.entries()) {
+          const kept = records[index]?.kept
           if (kept === undefined) continue
           const data = children.get(id)
           if (data === undefined) {
@@ -344,9 +352,10 @@ export function libraryVolume(archiveName = "Files.zip") {
       }),
       restore: (ids) => namespace(effect {
         const outcomes: RowOutcome[] = []
-        for (const id of ids) {
+        const records = try readRecords(ids)
+        for (const [index, id] of ids.entries()) {
           const data = (trashDataOf(try rows())).find((row) => row.name === id)
-          const { kept } = try recordRow(id)
+          const kept = records[index]?.kept
           if (data === undefined || kept === undefined) {
             outcomes.push({ path: id, status: "missing" })
             continue

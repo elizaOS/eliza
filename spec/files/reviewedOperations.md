@@ -75,6 +75,28 @@ pure def sometimesFailedMoveRetainsJournal(s: TrashRow): bool = s.phase == MoveF
 pure def sometimesMetadataCleanupRemainsPending(s: TrashRow): bool = s.phase == Expiring and s.journal and not(s.resident)
 ```
 
+### A trash record that cannot be read fails the trash listing and a restore, and never reads as no record
+
+Each trashed item keeps its own record of its name, origin and deletion
+time. A record that is there but cannot be read, such as one torn by an
+interrupted write, is not an absent record: listing the trash fails with
+"The trash could not be read." rather than answering a trash without that
+item, and a restore that names it fails the same way before anything is
+moved, rather than answering that the item is missing. Neither overwrites
+the record. An item with no record at all is still missing, and a trash
+that never held anything is still an empty, readable trash.
+
+```quint
+type TrashRecordRead = RecordAbsent | RecordRead | RecordUnreadable
+type TrashReadAnswer = TrashReadable | TrashUnreadable
+pure val trashUnreadableMessage = "The trash could not be read."
+pure def trashReadAnswer(recordReads: List[TrashRecordRead]): TrashReadAnswer =
+  if (recordReads.some(read => read == RecordUnreadable)) TrashUnreadable else TrashReadable
+pure val recordReadsValues = Set(List(), List(RecordRead), List(RecordAbsent), List(RecordRead, RecordUnreadable), List(RecordUnreadable, RecordAbsent))
+pure def lawAnUnreadableRecordIsNeverReadAsNoRecord(recordReads: List[TrashRecordRead]): bool =
+  recordReads.some(read => read == RecordUnreadable) iff trashReadAnswer(recordReads) == TrashUnreadable
+```
+
 ## Story: Keep every batch outcome, including the ones I cannot be sure of
 
 > As the owner, I want a batch of file operations to stop when I leave,

@@ -134,6 +134,40 @@ it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperatio
   }
 })
 
+it.effect('A trash record that cannot be read is a failure, never an empty trash (spec/files/reviewedOperations.md, "A trash record that cannot be read fails the trash listing and a restore, and never reads as no record")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const { root, fs, at } = try storage({ "Download/lease.pdf": "lease", "Download/memo.txt": "memo" })
+      provide localVolume(root) {
+        const volume = try FilesVolume
+        const empty = try volume.trashList()
+        const [lease] = try volume.trash({ paths: ["Download/lease.pdf"] })
+        const info = at(`.Trash-files/info/${lease.to}.json`)
+        try fs.writeFileString(info, "{not json")
+        const listed = try Effect.flip(volume.trashList())
+        const restored = try Effect.flip(volume.restore([lease.to ?? ""]))
+        const [memo] = try volume.trash({ paths: ["Download/memo.txt"] })
+        const kept = try fs.readFileString(info)
+        const stillListed = try Effect.flip(volume.trashList())
+        try fs.remove(info)
+        const unknown = try volume.restore(["not-a-trash-id"])
+        const remaining = try volume.trashList()
+        try check(() => {
+          assert.deepEqual(empty, [])
+          assert.equal(lease.status, "trashed")
+          assert.deepEqual([listed.status, listed.message], ["failed", "The trash could not be read."])
+          assert.deepEqual([restored.status, restored.message], ["failed", "The trash could not be read."])
+          assert.equal(memo.status, "trashed")
+          assert.equal(kept, "{not json")
+          assert.equal(stillListed.status, "failed")
+          assert.deepEqual(unknown, [{ path: "not-a-trash-id", status: "missing" }])
+          assert.deepEqual(remaining.map(({ name, origin }) => ({ name, origin })), [{ name: "memo.txt", origin: "Download/memo.txt" }])
+        })
+      }
+    })
+  }
+})
+
 it.effect('Claim an empty or complete folder only when the listing knows (spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty")', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
