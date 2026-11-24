@@ -11,12 +11,8 @@ import {
  * validation. Keep the boundary explicit and fail closed until the runtime
  * exposes a transport that can pin a validated address while retaining TLS SNI.
  */
-export function supportsPinnedDnsTransport(): boolean {
-  return process.env.STEWARD_RUNTIME !== "workers";
-}
-
 export function assertPinnedDnsTransportSupported(resource: string): void {
-  if (!supportsPinnedDnsTransport()) {
+  if (process.env.STEWARD_RUNTIME === "workers") {
     throw new Error(
       `${resource} requires connect-time DNS validation unavailable in Workers`,
     );
