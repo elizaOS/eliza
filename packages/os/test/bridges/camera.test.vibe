@@ -17,7 +17,17 @@ import {
 
 module android {
   import { CapacitorException } from "@capacitor/core"
+  import { execFileSync } from "node:child_process"
+  import path from "node:path"
   import type { CameraGrant, CameraPlugin, CameraPreviewResult, VideoCaptureOptions, VideoResult } from "../../src/bridges/definitions/camera.ts"
+  import { compileAdapter } from "../drivers/jvm-adapter.ts"
+
+  const ASPECT_RATIOS = "ai.eliza.plugins.camera.CaptureAspectRatiosTest"
+  const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+
+  export function aspectRatioChecks(): string {
+    return execFileSync(java, ["-cp", compileAdapter(ASPECT_RATIOS), ASPECT_RATIOS], { encoding: "utf8", timeout: 120_000 }).trim()
+  }
 
   export interface Device {
     camera: CameraGrant
@@ -135,8 +145,20 @@ module android {
       removeAllListeners: async () => {},
     }
   }
+
+  export interface Gate {
+    readonly passed: Promise<void>
+    open(): void
+  }
+
+  /** @throws {never} */
+  export function gate(): Gate {
+    let open = () => {}
+    const passed = new Promise<void>((resolve) => { open = resolve })
+    return { passed, open: () => open() }
+  }
 }
-import { androidCamera, answerHeld, device, previewHeld, type Device } from android
+import { androidCamera, answerHeld, aspectRatioChecks, device, gate, previewHeld, type Device } from android
 
 interface Host {
   readonly adopted: string[]
@@ -413,3 +435,83 @@ it.live("Capture with the camera only from the live view (spec/os/android/camera
     },
   ))
 })
+
+it.live("While a recording runs, only one zoom or torch change runs at a time (spec/os/android/camera.md, \"While a recording runs, only one zoom or torch change runs at a time\"; spec/os/android/camera.md, \"A capture, a viewfinder control and a recording share one slot\")", () => effect {
+  const phone = device()
+  const host: Host = { adopted: [], refuseAdoption: false, finishing: 0, failed: 0 }
+  const plugin = androidCamera(phone)
+  const recordingStart = gate()
+  const client = cameraClient({ ...plugin, startRecording: async (options) => {
+    await recordingStart.passed
+    return plugin.startRecording(options)
+  } })
+  const session = sessionOn(phone, client, host)
+  try promise(() => session.start())
+
+  const starting = try Effect.try(() => session.startRecording())
+  const whileStarting = try promise(() => session.control(() => client.setZoom({ zoom: 2 }), "zoom"))
+  try Effect.try(() => recordingStart.open())
+  const recording = try promise(() => starting)
+
+  const unnamed = try promise(() => session.control(() => client.setSettings({ settings: { flash: "on" } })))
+  const zoomHeld = gate()
+  const zoom = try Effect.try(() => session.control(async () => {
+    await zoomHeld.passed
+    await client.setZoom({ zoom: 3 })
+  }, "zoom"))
+  const torchBesideZoom = try promise(() => session.control(async () => {}, "torch"))
+  const besideZoom = {
+    controlBusy: session.controlBusy,
+    recording: session.recording,
+    capture: try promise(() => session.exclusive(async () => "photo")),
+    secondStart: try promise(() => session.startRecording()),
+  }
+  try Effect.try(() => zoomHeld.open())
+  const zoomed = try promise(() => zoom)
+  const torch = try promise(() => session.control(async () => {}, "torch"))
+  const torchRefused = try promise(() => session.control(async () => {
+    throw new Error("no torch")
+  }, "torch"))
+  const afterChanges = { controlBusy: session.controlBusy, recording: session.recording }
+
+  const finishing = try Effect.try(() => session.finishRecording())
+  const whileFinishing = try promise(() => session.control(async () => {}, "torch"))
+  const finished = try promise(() => finishing)
+  const readyAgain = try promise(() => session.control(() => client.setSettings({ settings: { flash: "off" } })))
+
+  try promise(() => session.startRecording())
+  const staleHeld = gate()
+  const staleZoom = try Effect.try(() => session.control(async () => {
+    await staleHeld.passed
+  }, "zoom"))
+  try promise(() => session.control(async () => {}, "torch"))
+  try promise(() => session.stop())
+  try Effect.try(() => staleHeld.open())
+  const settledAfterStop = try promise(() => staleZoom)
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { whileStarting, recording, unnamed, torchBesideZoom, besideZoom, zoomed, torch, torchRefused, afterChanges, whileFinishing, finished, readyAgain, settledAfterStop, zoom: phone.zoom, adopted: host.adopted.length },
+    {
+      whileStarting: "skipped",
+      recording: "recording",
+      unnamed: "skipped",
+      torchBesideZoom: "skipped",
+      besideZoom: { controlBusy: true, recording: true, capture: { status: "busy" }, secondStart: "skipped" },
+      zoomed: "done",
+      torch: "done",
+      torchRefused: "failed",
+      afterChanges: { controlBusy: false, recording: true },
+      whileFinishing: "skipped",
+      finished: "saved",
+      readyAgain: "done",
+      settledAfterStop: "stale",
+      zoom: 3,
+      adopted: 2,
+    },
+  ))
+})
+
+it.effect("A preview binds its photo stream only at an aspect ratio the device lists (spec/os/android/camera.md, \"A preview binds its photo stream only at an aspect ratio the device lists\")", () => effect {
+  const answer = try Effect.try(() => aspectRatioChecks())
+  try Effect.try(() => assert.strictEqual(answer, "CaptureAspectRatiosTest checks: 12"))
+}, 180_000)
