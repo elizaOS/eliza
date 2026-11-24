@@ -27,6 +27,24 @@ was heard. The fingerprint is the shell's positive digest of the body.
 > or a restart and get the reply to my first send, never a second reply,
 > so that a bad network never makes my agent act twice.
 
+### A quoted reply uses only the selected message from this conversation
+
+When the owner's request includes a message identity in
+`metadata.replyToMessageId`, the turn records that reply target only if it
+is an earlier message from the owner or the agent in the same conversation.
+A system notice cannot be a reply target. An absent, invalid or unavailable
+identity leaves an ordinary message. The accepted quotation is presented
+as data, preserving its text and whitespace up to 4,096 characters. It
+adds no authority to the new request. A retry keeps the original reply.
+
+```quint
+pure val replyQuoteChars = 4096
+pure def admitsReplyTarget(sameRoom: bool, participant: bool, ordinary: bool): bool =
+  sameRoom and participant and ordinary
+pure def lawAQuoteStaysWithThisConversation(sameRoom: bool, participant: bool, ordinary: bool): bool =
+  admitsReplyTarget(sameRoom, participant, ordinary) implies sameRoom and participant and ordinary
+```
+
 ### A message is refused, joined, replayed or admitted by its key, its room and the backend
 
 A launch without a text backend answers 503 `INFERENCE_UNAVAILABLE` and
@@ -151,9 +169,9 @@ A reply is `answered`, an account failure named by the
 [binding](../models/binding.md) (`credential_invalid`,
 `insufficient_credits`, `limit_reached`, `provider_issue`), `timeout` after
 180 s, or `aborted` (a Stop, a dropped stream, shutdown, or a restart). A
-failed turn stores what it wrote with its kind. A turn that stores no
-agent message answers 503 `ASSISTANT_RESPONSE_UNAVAILABLE`, and its key
-keeps no reply.
+failed turn stores what it wrote with its kind, and a failure no cause
+names is a `provider_issue` (below). A turn that stores no agent message
+answers 503 `ASSISTANT_RESPONSE_UNAVAILABLE`, and its key keeps no reply.
 
 ```quint
 pure val turnDeadlineMs = 180000
@@ -220,6 +238,50 @@ pure def lawOnlyAnAccountFailureNamesAFix(ended: ReplyKind): bool = planActionOf
 pure def lawARateLimitNamesNoFix(ended: ReplyKind): bool = failureKind(ended) == "limit_reached" implies planActionOf(ended) == ""
 pure def lawOnlyARateLimitCarriesAWait(ended: ReplyKind, now: int): bool = providerWaitMs(ended, now) >= 0 implies failureKind(ended) == "limit_reached"
 pure def lawAWaitEndsAtTheRetryTime(ended: ReplyKind, now: int): bool = providerWaitMs(ended, now) > 0 implies now + providerWaitMs(ended, now) == retryAtIn(ended)
+```
+
+### A turn that failed before any reply, for no cause the binding named, is stored as a provider issue
+
+A turn that fails without being stopped stores what it wrote with the
+kind of its cause: the model refusal that ended it, else the account
+failure the binding recorded since the turn began. A failure neither
+names (a call that threw outside the binding, storage that could not be
+read, a turn whose steps produced no reply) is one a later send may get
+past, so it is stored as `provider_issue`: the owner sees a failed reply
+that offers Retry, not 503 and nothing in the conversation. Once the
+turn's reply is stored, a later unnamed failure stores no second message.
+
+```quint
+pure def storedFailureName(named: str, replied: bool): str =
+  if (named != "") named else if (replied) "" else B::failureName(B::ProviderIssue)
+pure val namedValues = Set("", "credential_invalid", "insufficient_credits", "limit_reached", "provider_issue")
+pure def lawANamedFailureKeepsItsKind(named: str, replied: bool): bool = named != "" implies storedFailureName(named, replied) == named
+pure def lawAnUnnamedFailureBeforeAnyReplyIsAProviderIssueThatOffersRetry(named: str): bool =
+  named == "" implies (storedFailureName(named, false) == failureKind(AccountFailed({ failure: B::ProviderIssue })) and planActionOf(AccountFailed({ failure: B::ProviderIssue })) == "retry")
+pure def lawAStoredReplyIsNeverFollowedByAnUnnamedFailure(named: str): bool = named == "" implies storedFailureName(named, true) == ""
+```
+
+### An interrupted reply keeps proof of an applied effect
+
+An abort, timeout, named account failure or provider issue stores
+`cutOffEffect: "applied"` on its reply if an action in this turn supplied an applied receipt with a
+durable or provider-accepted commit made during the turn. A receipt marked
+as replayed, a receipt undone by a recorded rollback and a Calendar
+approval request provide no proof of an applied change. The marker is
+absent when the turn was cut before the receipt arrived or is recovered
+after a restart with no stored reply.
+
+A message POST with the request header `x-eliza-device-cut-off-effect: applied`
+gets the stored marker on its buffered or streamed reply. The header does
+not change the key, content, or outcome of a turn. An initial answer, a
+joined request and a same-key replay each honor their own header. No
+receipt identifier or action payload is disclosed by the marker.
+
+```quint
+pure def carriesCutOffEffect(interrupted: bool, confirmedApplied: bool): bool =
+  interrupted and confirmedApplied
+pure def publishesCutOffEffect(stored: bool, negotiated: bool): bool =
+  stored and negotiated
 ```
 
 ### After a restart a repeat replays the stored reply, and a turn the restart cut is never run again

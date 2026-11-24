@@ -9,7 +9,7 @@ import { runWithTrajectoryPurpose } from "../trajectory-context.vibe"
 import { type GenerateTextParams, ModelType } from "../types/model.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { modelProviderErrorStatus } from "../utils/model-errors.vibe"
-import { isPermanentQuotaError, providerRateLimitRetryAt, readProviderRateLimit } from "../utils/model-retry.vibe"
+import { isPermanentQuotaError, modelAttemptCapture, providerRateLimitRetryAt, readProviderRateLimit } from "../utils/model-retry.vibe"
 import { sleepWithAbort } from "../utils/retry.vibe"
 
 type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType]
@@ -66,10 +66,12 @@ effect function generate(
   purpose: string,
   params: () => GenerateTextParams,
 ) {
-  const send = () => foreign(() => runWithTrajectoryPurpose(purpose, () => runtime.useModel(modelType, params())))
-  const sent = send() catch effect (failure) => {
+  const attempts = modelAttemptCapture()
+  const send = (bind: (options: GenerateTextParams) => GenerateTextParams) =>
+    foreign(() => runWithTrajectoryPurpose(purpose, () => runtime.useModel(modelType, bind(params()))))
+  const sent = send(attempts.bind) catch effect (failure) => {
     const now = try Clock.currentTimeMillis
-    const wait = extractorResendWait(extractorRefusalOf(thrownValue(failure), now))
+    const wait = extractorResendWait(extractorRefusalOf(thrownValue(failure), now), attempts.spent())
     if (wait < 0) throw failure
     try foreignSync(() =>
       runtime.logger.warn(
@@ -78,7 +80,7 @@ effect function generate(
       )
     )
     try sleepWithAbort(wait, getStreamingContext()?.abortSignal)
-    return try send()
+    return try send((options) => options)
   }
   return try asString(sent)
 }

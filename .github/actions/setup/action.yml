@@ -31,16 +31,33 @@ runs:
   steps:
     - id: setup-pnpm
       uses: pnpm/action-setup@v6
+    - id: restore-dafny
+      if: inputs.verification == 'true' && !startsWith(inputs.job, 'simulate-')
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/dafny-4.11.0-x64-ubuntu-22.04.zip
+        key: dafny-release-${{ runner.os }}-${{ runner.arch }}-a46a9ff7cdd720f7955854c78e95df13f4cfe6b80691b05f8654fe19e8267179
     - name: Install Dafny
       if: inputs.verification == 'true' && !startsWith(inputs.job, 'simulate-')
       shell: bash
       run: |
         version=4.11.0
-        curl --fail --location --retry 3 -o "$RUNNER_TEMP/dafny.zip" "https://github.com/dafny-lang/dafny/releases/download/v$version/dafny-$version-x64-ubuntu-22.04.zip"
-        echo "a46a9ff7cdd720f7955854c78e95df13f4cfe6b80691b05f8654fe19e8267179  $RUNNER_TEMP/dafny.zip" | sha256sum --check --strict
-        unzip -q "$RUNNER_TEMP/dafny.zip" -d "$RUNNER_TEMP"
+        archive="$RUNNER_TEMP/dafny-$version-x64-ubuntu-22.04.zip"
+        checksum="a46a9ff7cdd720f7955854c78e95df13f4cfe6b80691b05f8654fe19e8267179"
+        if ! { [ -f "$archive" ] && printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --strict --status; }; then
+          curl --fail --location --retry 3 -o "$archive" "https://github.com/dafny-lang/dafny/releases/download/v$version/dafny-$version-x64-ubuntu-22.04.zip"
+          printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --strict
+        fi
+        unzip -q "$archive" -d "$RUNNER_TEMP"
         "$RUNNER_TEMP/dafny/dafny" --version
         echo "$RUNNER_TEMP/dafny" >> "$GITHUB_PATH"
+    - if: inputs.verification == 'true' && inputs.job == 'verify' && steps.restore-dafny.outputs.cache-hit != 'true'
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ runner.temp }}/dafny-4.11.0-x64-ubuntu-22.04.zip
+        key: dafny-release-${{ runner.os }}-${{ runner.arch }}-a46a9ff7cdd720f7955854c78e95df13f4cfe6b80691b05f8654fe19e8267179
     - uses: actions/setup-node@v7
       with:
         node-version-file: .nvmrc
@@ -249,7 +266,7 @@ runs:
         reports=(.turbo/runs/*.json)
         (( ${#reports[@]} )) || exit 0
         seed=$(jq -sr '
-          map(select(.version == "1" and .execution.command == "turbo run //#gen" and .execution.exitCode == 0))
+          map(select(.version == "1" and (.execution.command == "turbo run //#gen" or .execution.command == "turbo run //#build") and .execution.exitCode == 0))
           | select(length == 1) | .[0].tasks
           | map(select(.taskId | test("#gen($|:)")))
           | select(any(.[]; .taskId == "//#gen") and any(.[]; .cache.status == "MISS"))

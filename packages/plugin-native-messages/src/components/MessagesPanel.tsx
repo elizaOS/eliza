@@ -33,7 +33,7 @@ export function MessagesPanel({ page, pending, problem, composeAllowed, onNext, 
         {page.rows.map((thread) => <li key={thread.id} className="border-b border-border pb-2">
           {"incomplete" in thread
             ? <span>Conversation details unavailable</span>
-            : <Button variant="ghost" onClick={() => onOpen(thread.id)}>{thread.address}</Button>}
+            : <Button variant="ghost" onClick={() => onOpen(thread.id)}>{thread.addresses.join(", ")}</Button>}
         </li>)}
       </ul>}
       {page?.next && <Button variant="outline" disabled={pending} onClick={() => {

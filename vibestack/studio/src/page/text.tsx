@@ -17,6 +17,13 @@ const ICONS = {
   copy: "M5.5 5.5h7v7h-7zM3.5 10.5v-7h7",
   up: "M8 12.5v-9M4.5 7L8 3.5 11.5 7",
   undo: "M5.5 4L3 6.5 5.5 9M3 6.5h6.5a3 3 0 010 6H7",
+  graph: "M4 4.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM12 4.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM8 10.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM5.5 6h5M5 7.3L7 10.7M11 7.3L9 10.7",
+  layout: "M2.5 3.5h11v9h-11zM2.5 6.5h11M6.5 6.5v6",
+  split: "M2.5 3.5h11v9h-11zM8 3.5v9",
+  sun: "M8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM8 2v1.2M8 12.8V14M2 8h1.2M12.8 8H14M3.8 3.8l.9.9M11.3 11.3l.9.9M12.2 3.8l-.9.9M4.7 11.3l-.9.9",
+  moon: "M12.5 9.8A5 5 0 016.2 3.5a5 5 0 106.3 6.3z",
+  search: "M7 3a4 4 0 100 8 4 4 0 000-8zM10 10l3 3",
+  external: "M9.5 3h3.5v3.5M13 3L7 9M11 8.5V13H3V5h4.5",
 } as const;
 export type IconName = keyof typeof ICONS;
 
@@ -64,6 +71,11 @@ function inline(s: string, file: string): ReactNode[] {
   return [...out, s.slice(end)];
 }
 
+/** Inline Markdown rendered as a span, for descriptions and labels outside full Markdown blocks. */
+export function InlineMarkdown({ text, file = "", className }: { text: string; file?: string; className?: string }) {
+  return <span className={className}>{inline(text, file)}</span>;
+}
+
 /** Markdown, as far as specs use it: paragraphs, quotes, lists, code and tables kept as written. */
 export function Markdown({ text, file, className }: { text: string; file: string; className?: string }) {
   return (
@@ -96,5 +108,5 @@ export function Quint({ code }: { code: string }) {
 }
 
 export const Code = ({ children, className }: { children: ReactNode; className?: string }) => (
-  <pre className={cn("m-0 overflow-x-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs leading-relaxed", className)}>{children}</pre>
+  <pre className={cn("m-0 overflow-x-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap", className)}>{children}</pre>
 );

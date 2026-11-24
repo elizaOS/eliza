@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does fails as Agent"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does is restarted after the health delay"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
 import java.io.IOException;
@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Locale;
 
 public final class AgentPolicy {
-  public static final long READY_TIMEOUT_MS = 60_000L;
+  public static final long READY_TIMEOUT_MS = 480_000L;
 
   public enum Phase { STOPPED, CHECKING, SPAWNED, RUNNING, STOPPING, FAILED }
   public enum Cause { PAYLOAD, STORAGE, CONFIG, CREDENTIAL, AGENT, RUNTIME }
@@ -137,7 +137,7 @@ public final class AgentPolicy {
     if (event instanceof Spawned) return spawned();
     if (event instanceof SpawnFailed failed) return phase == Phase.CHECKING && staleEpoch == 0 && fail(Cause.AGENT, failed.reason());
     if (event instanceof ObserveReady ready) return observeReady(ready.epoch());
-    if (event instanceof ReadyTimeout) return readyTimeout();
+    if (event instanceof ReadyTimeout) return phase == Phase.SPAWNED && kill(AfterExit.RESTART, null, null);
     if (event instanceof ObserveExit exit) return observeExit(exit.code());
     if (event instanceof FailUnclassified unclassified) return failUnclassified(unclassified.reason());
     if (event instanceof RestartUnhealthy) return phase == Phase.RUNNING && kill(AfterExit.RESTART, null, null);
@@ -268,13 +268,6 @@ public final class AgentPolicy {
     return true;
   }
 
-  private boolean readyTimeout() {
-    if (phase != Phase.SPAWNED) return false;
-    staleEpoch = epoch;
-    effects.add(new Kill(epoch));
-    return fail(Cause.AGENT, "not ready within 60 s");
-  }
-
   private void push() {
     if (credentialHeld && credentialVersion > delivered) {
       delivered = credentialVersion;
@@ -288,7 +281,7 @@ public final class AgentPolicy {
       case SPAWNED -> switch (exitClass(code)) {
         case CONFIG -> fail(Cause.CONFIG, exited);
         case STORAGE -> fail(Cause.STORAGE, exited);
-        default -> fail(Cause.AGENT, exited);
+        default -> crash();
       };
       case RUNNING -> crash();
       case STOPPING -> switch (afterExit) {

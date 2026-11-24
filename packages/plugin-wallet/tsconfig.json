@@ -9,7 +9,8 @@
       "dom.iterable"
     ],
     "types": [
-      "node"
+      "node",
+      "vite/client"
     ],
     "rootDir": ".",
     "rootDirs": [

@@ -46,13 +46,14 @@ type StopReport = StopReportsHeard | StopReportsNone
 type VoiceProfile = { shortGapMs: int, longGapMs: int, bargeInHoldMs: int, stopReport: StopReport }
 type VoiceSession = { life: SessionLife, mode: InputMode, duplex: Duplex, capture: CaptureState, utterance: Utterance,
   epoch: int, hasText: bool, turn: TurnStage, cause: SubmitCause, sent: int, bargeIn: bool, reply: int,
-  segments: int, played: int, lastEnd: TurnEnd, receipts: List[HeardReceipt], drafts: int, profile: VoiceProfile }
+  segments: int, played: int, lastEnd: TurnEnd, receipts: List[HeardReceipt], drafts: int, profile: VoiceProfile,
+  rejoined: int, supersedes: int }
 pure val initial: VoiceSession = { life: Idle, mode: ConversationMode, duplex: HalfDuplex, capture: CaptureClosed,
   utterance: NoUtterance, epoch: 0, hasText: false, turn: NoTurn, cause: NoSubmit, sent: 0, bargeIn: false, reply: 0,
-  segments: 0, played: 0, lastEnd: NoEnd, receipts: List(), drafts: 0, profile: defaultVoiceProfile }
+  segments: 0, played: 0, lastEnd: NoEnd, receipts: List(), drafts: 0, profile: defaultVoiceProfile, rejoined: 0, supersedes: 0 }
 pure def isRunning(life: SessionLife): bool = life == Starting or life == Live
 pure def halted(life: SessionLife, s: VoiceSession): VoiceSession =
-  { ...cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s), life: life, utterance: NoUtterance, hasText: false, epoch: s.epoch + 1 }
+  { ...cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s), life: life, utterance: NoUtterance, hasText: false, epoch: s.epoch + 1, rejoined: 0 }
 pure def canStart(s: VoiceSession, profile: VoiceProfile): bool = not(isRunning(s.life)) and s.capture == CaptureClosed and profileAdmitted(profile)
 pure def start(s: VoiceSession, mode: InputMode, duplex: Duplex, profile: VoiceProfile): VoiceSession =
   { ...s, life: Starting, mode: mode, duplex: duplex, capture: CaptureOpening, cause: NoSubmit, profile: profile }
@@ -204,14 +205,15 @@ pure def sometimesSubmittedByTheLongGap(s: VoiceSession): bool = s.cause == Long
 ### A turn is sent once, and a half-duplex turn only after the capture confirmed its close
 
 The turn goes out as a `VOICE_DM` message with the screen's
-`metadata.voiceUi`, so it holds the whole recording; it is never resent,
-not even when a barge-in or Stop aborts it. A close that fails ends the
-session and sends nothing.
+`metadata.voiceUi`, so it holds the whole recording; the request is never
+resent, not even when a barge-in or Stop aborts it. What a barge-in takes
+back before its reply started goes out again only inside the next turn
+(below). A close that fails ends the session and sends nothing.
 
 ```quint
 pure val voiceChannelType = "VOICE_DM"
 pure def canSendTurn(s: VoiceSession): bool = s.turn == ReadyToSend
-pure def sendTurn(s: VoiceSession): VoiceSession = { ...s, turn: AwaitingReply, sent: s.sent + 1 }
+pure def sendTurn(s: VoiceSession): VoiceSession = { ...s, turn: AwaitingReply, sent: s.sent + 1, supersedes: s.rejoined, rejoined: 0 }
 pure def stepATurnIsSentOnce(before: VoiceSession, via: str, after: VoiceSession): bool =
   after.sent >= before.sent and
   (after.sent != before.sent implies (via == "sendTurn" and before.turn == ReadyToSend and after.sent == before.sent + 1))
@@ -250,7 +252,7 @@ pure def canFinalTranscript(s: VoiceSession): bool = s.utterance == AwaitingFina
 pure def finalTranscript(s: VoiceSession, heard: HeardTurn): VoiceSession = {
   val accepted = turnAccepted({ ...heard, agentSpeaking: s.turn == Playing })
   if (s.mode == DictationMode) { ...s, utterance: NoUtterance, drafts: s.drafts + (if (accepted) 1 else 0) }
-  else if (s.bargeIn and accepted) { ...cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s), utterance: GapWaiting, hasText: true }
+  else if (s.bargeIn and accepted) bargedIn(GapWaiting, s)
   else if (s.bargeIn) { ...s, bargeIn: false, utterance: NoUtterance }
   else if (accepted or s.hasText) { ...s, utterance: GapWaiting, hasText: true }
   else { ...s, utterance: NoUtterance }
@@ -265,6 +267,74 @@ pure def lawEchoOfAPlayingReplyIsDropped(heard: HeardTurn): bool =
   (heard.agentSpeaking and heard.words >= 2 and heard.overlapPercent >= 70) implies not(turnAccepted(heard))
 pure def lawAOneWordAnswerIsKept(heard: HeardTurn): bool = (heard.words == 1 and not(heard.onlyFiller)) implies turnAccepted(heard)
 pure def sometimesAnUtteranceWaitsForItsGap(s: VoiceSession): bool = s.utterance == GapWaiting and s.hasText
+```
+
+### Without a scorer, how an utterance ends says how likely it is finished
+
+`scoreEndOfTurnHeuristic` reads only the end of the transcript, first
+match first: nothing said is 50 %; a trailing ellipsis 20 %; a final `!`
+or `?` 95 %; a closing question tag ("right?", "okay?", "yeah") 85 %. A
+final full stop is often the recogniser's, so it is set aside and the last
+word decides: an amount left open (a digit and a comma, a currency sign,
+or a number followed by "point") is 20 %; a full stop after a word that
+can end a sentence is 95 %; a dangling conjunction ("and", "because") is
+15 %; a dangling filler, article, preposition or auxiliary ("um", "the",
+"to", "could") is 20 %; otherwise fewer than three words are 70 % and
+anything longer 50 %. Only a finished sentence or a question tag scores
+85 % or more, and only an unfinished ending scores 20 % or less.
+
+```quint
+type UtteranceEnding = NothingSaid | TrailsOff | AsksOrExclaims | QuestionTag | OpenAmount | FullStop
+  | DanglingConjunction | DanglingWord | ShortPhrase | PlainPhrase
+pure def endOfTurnPercent(ending: UtteranceEnding): int = match ending {
+  | NothingSaid => 50 | TrailsOff => 20 | AsksOrExclaims => 95 | QuestionTag => 85 | OpenAmount => 20 | FullStop => 95
+  | DanglingConjunction => 15 | DanglingWord => 20 | ShortPhrase => 70 | PlainPhrase => 50 }
+pure def lawOnlyAFinishedSentenceOrAQuestionTagScoresComplete(ending: UtteranceEnding): bool =
+  (endOfTurnPercent(ending) >= 85) iff (ending == AsksOrExclaims or ending == QuestionTag or ending == FullStop)
+pure def lawOnlyAnUnfinishedEndingScoresTwentyOrLess(ending: UtteranceEnding): bool =
+  (endOfTurnPercent(ending) <= 20) iff (ending == TrailsOff or ending == OpenAmount or ending == DanglingConjunction or ending == DanglingWord)
+```
+
+### The turn signal lets the agent speak only for an accepted, addressed turn that is not its own voice, and keeps the floor with the person while the utterance is likely unfinished
+
+`buildVoiceTurnSignal` answers `{endOfTurnProbability, nextSpeaker,
+agentShouldSpeak, source}` for a transcript. Without a wake word the agent
+should speak only for a turn the gate above accepts, and not for a
+bystander: a speaker attributed with at least 70 % confidence who is
+neither the owner nor an enrolled speaker. A wake word is an explicit
+address: it overrides the gate and the bystander for anything but a sound
+annotation. A voice measured as the agent's own (at least the given
+threshold, 70 % by default) while the echo window is open is never
+answered. The next speaker is the agent only when it should speak and the
+heuristic above is at least 40 %. The source names what decided:
+`client-ambient+self-voice`, then `+wakeword`, then `+diarization` when a
+speaker was attributed, else `client-ambient`.
+
+```quint
+type SignalSource = AmbientSource | DiarizedSource | WakeWordSource | SelfVoiceSource
+type TurnSignalInput = { heard: HeardTurn, soundOnly: bool, wakeWord: bool, attributed: bool, bystander: bool, ownVoice: bool, finishedPercent: int }
+type TurnSignal = { agentShouldSpeak: bool, agentNext: bool, source: SignalSource }
+pure val turnSignalFloorPercent = 40
+pure def turnSignal(given: TurnSignalInput): TurnSignal = {
+  val selfVoice = given.ownVoice and echoWindowOpen(given.heard)
+  val addressed = if (given.wakeWord) not(given.soundOnly) else (turnAccepted(given.heard) and not(given.bystander))
+  val speaks = addressed and not(selfVoice)
+  { agentShouldSpeak: speaks, agentNext: speaks and given.finishedPercent >= turnSignalFloorPercent,
+    source: if (selfVoice) SelfVoiceSource else if (given.wakeWord) WakeWordSource else if (given.attributed) DiarizedSource else AmbientSource }
+}
+pure val ambient: TurnSignalInput = { heard: spoken, soundOnly: false, wakeWord: false, attributed: false, bystander: false, ownVoice: false, finishedPercent: 95 }
+pure val givenValues = Set(ambient, { ...ambient, finishedPercent: 20 }, { ...ambient, heard: { ...spoken, onlyFiller: true } },
+  { ...ambient, attributed: true, bystander: true }, { ...ambient, attributed: true, bystander: true, wakeWord: true },
+  { ...ambient, wakeWord: true, soundOnly: true, heard: { ...spoken, words: 0 } }, { ...ambient, ownVoice: true },
+  { ...ambient, ownVoice: true, heard: { ...spoken, agentSpeaking: true } }, { ...ambient, ownVoice: true, wakeWord: true, heard: { ...spoken, agentSpeaking: true } })
+pure def lawWithoutAWakeWordOnlyAnAcceptedTurnFromNoBystanderIsAnswered(given: TurnSignalInput): bool =
+  (not(given.wakeWord) and turnSignal(given).agentShouldSpeak) implies (turnAccepted(given.heard) and not(given.bystander))
+pure def lawTheAgentsOwnVoiceIsNeverAnswered(given: TurnSignalInput): bool =
+  (given.ownVoice and echoWindowOpen(given.heard)) implies (not(turnSignal(given).agentShouldSpeak) and turnSignal(given).source == SelfVoiceSource)
+pure def lawAWakeWordIsAnsweredUnlessItIsOnlyASoundOrTheAgentsOwnVoice(given: TurnSignalInput): bool =
+  (given.wakeWord and not(given.soundOnly) and not(given.ownVoice)) implies turnSignal(given).agentShouldSpeak
+pure def lawTheFloorStaysWithThePersonWhileTheUtteranceIsLikelyUnfinished(given: TurnSignalInput): bool =
+  turnSignal(given).agentNext iff (turnSignal(given).agentShouldSpeak and given.finishedPercent >= 40)
 ```
 
 ### Dictation never submits by itself
@@ -284,19 +354,58 @@ In full duplex, speech while a reply is pending or playing is a candidate:
 the reply keeps playing. An accepted final transcript or a hold of the
 profile's length (700 ms by default)
 confirms it: the reply stops, a pending turn is aborted through the turn
-abort route, and the speech becomes the next utterance. A rejected
+abort route, and the speech becomes the next utterance, which carries the
+text of a turn aborted before its reply started (below). A rejected
 transcript drops the candidate. Partial transcripts confirm nothing.
 
 ```quint
 pure val bargeInHoldMs = 700
 pure def canBargeInHeld(s: VoiceSession, heldMs: int): bool =
   s.bargeIn and (s.utterance == Hearing or s.utterance == AwaitingFinal) and heldMs >= s.profile.bargeInHoldMs
-pure def bargeInHeld(s: VoiceSession, heldMs: int): VoiceSession = cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s)
+pure def bargeInHeld(s: VoiceSession, heldMs: int): VoiceSession = bargedIn(s.utterance, s)
 pure val heldMsValues = Set(0, 399, 400, 699, 700)
 pure def alwaysACandidateInterruptsASentTurn(s: VoiceSession): bool =
   s.bargeIn implies (s.duplex == FullDuplex and (s.turn == AwaitingReply or s.turn == Playing))
 pure def sometimesABargeInCutsTheReply(s: VoiceSession): bool = s.lastEnd == ReplyCut and s.utterance != NoUtterance
 pure def sometimesABargeInAbortsAPendingTurn(s: VoiceSession): bool = s.lastEnd == TurnAborted and isRunning(s.life)
+```
+
+### A turn taken back before its reply started is carried into the utterance in progress, and the next turn names the one it replaces
+
+With the microphone open a turn goes out at the first pause. When a
+barge-in is confirmed while that turn still awaits its reply, the person
+was not finished: the aborted turn's text is carried into the utterance in
+progress, so the next turn sends the carried text joined with what was
+said since, and names the aborted turn's `clientMessageId` in
+`supersedes`, so the host replaces the aborted message with the joined
+one. The carried text is sent even when the resumed speech turns out to be
+filler. Nothing of the aborted request is spoken. A reply that has started
+playing is cut and reported instead, and its speech becomes a turn of its
+own; a Stop or a failed capture carries nothing.
+
+```quint
+pure def bargedIn(utterance: Utterance, s: VoiceSession): VoiceSession = {
+  val pending = s.turn == AwaitingReply
+  val cut = cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s)
+  { ...cut, utterance: utterance, hasText: pending or utterance == GapWaiting, rejoined: if (pending) s.sent else cut.rejoined }
+}
+pure def alwaysACarriedTurnIsTheLastSentAndWaitsToGoOutAgain(s: VoiceSession): bool =
+  s.sent >= 0 and s.rejoined >= 0 and s.supersedes >= 0 and
+  ((s.turn == AwaitingReply or s.turn == Playing) implies s.sent >= 1) and
+  (s.supersedes > 0 implies s.supersedes < s.sent) and
+  (s.rejoined > 0 implies (s.rejoined == s.sent and s.duplex == FullDuplex and isRunning(s.life) and (s.hasText or s.turn == ReadyToSend)))
+pure def stepATurnTakenBackBeforeItsReplyIsCarried(before: VoiceSession, via: str, after: VoiceSession): bool =
+  (before.turn == AwaitingReply and after.turn == NoTurn and (via == "finalTranscript" or via == "bargeInHeld"))
+    implies (after.hasText and after.rejoined == before.sent and after.rejoined >= 1)
+pure def stepOnlyTheNextTurnNamesTheOneItReplaces(before: VoiceSession, via: str, after: VoiceSession): bool =
+  (via == "sendTurn" implies (after.supersedes == before.rejoined and after.rejoined == 0)) and
+  (via != "sendTurn" implies after.supersedes == before.supersedes) and
+  ((via == "stop" or via == "captureFailed") implies after.rejoined == 0)
+pure def sometimesATakenBackTurnGoesOutAgain(s: VoiceSession): bool = s.supersedes >= 1 and s.turn == AwaitingReply
+pure val eval_witness_sometimesATakenBackTurnGoesOutAgain = (
+  ("start", ConversationMode, FullDuplex, defaultVoiceProfile), "captureOpened", "speechStarted", "speechEnded", ("finalTranscript", spoken),
+  ("longGapElapsed", 1), "sendTurn", "speechStarted", ("bargeInHeld", 700), "speechEnded", ("finalTranscript", spoken),
+  ("longGapElapsed", 2), "sendTurn")
 ```
 
 ## Story: Report what of an interrupted reply I heard

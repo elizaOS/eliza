@@ -1,12 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { writeWhole } from "../run.ts"
 import { check, syncDoc, themeCss, tokensCss } from "./generate.ts"
 import { parseTokens } from "./tokens.ts"
 
 const read = (file: string) => readFileSync(file, "utf8")
 
 export function writeTextIfChanged(file: string, text: string): void {
-  if (!existsSync(file) || read(file) !== text) writeFileSync(file, text)
+  if (!existsSync(file) || read(file) !== text) writeWhole(file, text)
 }
 
 export function loadTokens(directory: string) {

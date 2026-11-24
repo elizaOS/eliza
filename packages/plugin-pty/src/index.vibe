@@ -4,17 +4,17 @@ import { Machine, machineOver, initial, terminalAcceptsInput } from "../gen/pty.
 export error TerminalUnavailable { terminalId: string }
 export error TerminalRequestRefused { terminalId: string }
 
-export interface TerminalLaunch {
-  readonly ownerId: string
-  readonly terminalId: string
-  readonly executable: string
-  readonly arguments: readonly string[]
-  readonly directory: string
-  readonly environment: Readonly<Record<string, string>>
-}
-
 module node {
   import { spawn, type IDisposable, type IPty } from "@lydell/node-pty"
+
+  export interface TerminalLaunch {
+    readonly ownerId: string
+    readonly terminalId: string
+    readonly executable: string
+    readonly arguments: readonly string[]
+    readonly directory: string
+    readonly environment: Readonly<Record<string, string>>
+  }
 
   interface PtyConnection {
     readonly process: IPty
@@ -41,7 +41,8 @@ module node {
     return { process, dispose, exit, snapshot: () => ({ sequence, output }) }
   }
 }
-import { startPty } from node
+import { startPty, type TerminalLaunch } from node
+export { type TerminalLaunch } from node
 
 export effect function openTerminalSession(launch: TerminalLaunch) {
   const active = try Ref.make(initial)
@@ -59,7 +60,8 @@ export effect function openTerminalSession(launch: TerminalLaunch) {
     effect read(ownerId: string) {
       const state = try gate.get()
       try assertTerminalOwner(ownerId, launch)
-      return { phase: state.terminalPhase, epoch, ...process.snapshot() }
+      const snapshot = try Effect.try({ try: process.snapshot, catch: () => new TerminalUnavailable({ terminalId: launch.terminalId }) })
+      return { phase: state.terminalPhase, epoch, ...snapshot }
     },
     effect write(ownerId: string, input: string) {
       try assertTerminalOwner(ownerId, launch)

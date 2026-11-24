@@ -1,5 +1,5 @@
 // spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechSession.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "Consent and an allowance are required before speech is sent"
-import { apply, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState } from "../../gen/cloud__services__speechRelay.effect.vibe"
+import { apply, canSettleWindow, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { realtimeSpeechAdmits, realtimeSpeechResetsAt, utcDayStart } from "../../gen/cloud__billing__plans.effect.vibe"
 import { relayChannels, relaySampleRate } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import type { HoldKey, SpeechDirection } from "../../gen/cloud__shared__types.ts"
@@ -117,9 +117,9 @@ function holdOf(holds: WindowHolds, direction: SpeechDirection): string {
 function settlementFor(direction: SpeechDirection, dispatched: boolean, usage: WindowUsage, rates: Rates): Settlement {
   if (!dispatched) return { kind: "release" }
   if (direction === "Transcribe") {
-    return usage.sttDrained ? { kind: "known", actual: Math.ceil(usage.pcmBytes * rates.microsPerSecond / pcmBytesPerSecond) } : { kind: "unknown" }
+    return usage.sttFinal ? { kind: "known", actual: Math.ceil(usage.pcmBytes * rates.microsPerSecond / pcmBytesPerSecond) } : { kind: "unknown" }
   }
-  return usage.ttsConfirmed ? { kind: "known", actual: usage.ttsChars * rates.microsPerCharacter } : { kind: "unknown" }
+  return usage.ttsFinal ? { kind: "known", actual: usage.ttsChars * rates.microsPerCharacter } : { kind: "unknown" }
 }
 
 export function sessionColumns(now: number) {
@@ -277,6 +277,8 @@ export effect function settleWindow(id: string, window: number, usage: WindowUsa
   const holds = try store.transaction((tx) => windowHolds(tx, id, window))
   if (holds === undefined) throw refused("NotFound")
   if (!holds.settled) {
+    const current = try store.transaction((tx) => readSession(tx, id, false))
+    if (!canSettleWindow(current.state, window)) throw refused("SessionClosed")
     for (const direction of directions) {
       const key = holdOf(holds, direction)
       const hold = (try store.transaction((tx) => loadRow(tx, holdRows, key, false))).state
@@ -311,7 +313,7 @@ effect function settleOrphans(id: string): void!SessionFailure!(Store | Deployme
   const store = try Store
   const open = try store.transaction((tx) => tx.query("SELECT number FROM speech_windows WHERE session_id = $1 AND settled_at IS NULL ORDER BY number", [id]))
   for (const row of open) {
-    try settleWindow(id, toInt(row.number), { pcmBytes: 0, ttsChars: 0, sttDrained: false, ttsConfirmed: false, dispatched: true })
+    try settleWindow(id, toInt(row.number), { pcmBytes: 0, ttsChars: 0, sttFinal: false, ttsFinal: false, dispatched: true })
   }
   try retire(id, "DeadlinePassed")
 }

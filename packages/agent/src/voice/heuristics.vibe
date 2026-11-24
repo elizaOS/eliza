@@ -1,7 +1,7 @@
-// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
+// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"; spec/agent/voice/session.md, "Without a scorer, how an utterance ends says how likely it is finished"; spec/agent/voice/session.md, "The turn signal lets the agent speak only for an accepted, addressed turn that is not its own voice, and keeps the floor with the person while the utterance is likely unfinished"
 import {
-  echoWindowOpen, endOfTurnSendable, reportOutcomeOf, turnAccepted,
-  type EndOfTurnReply, type HeardBody as HeardReplyBody, type HeardTurn, type ReportOutcome,
+  endOfTurnPercent, endOfTurnSendable, reportOutcomeOf, turnAccepted, turnSignal,
+  type EndOfTurnReply, type HeardBody as HeardReplyBody, type HeardTurn, type ReportOutcome, type SignalSource, type UtteranceEnding,
 } from "../../gen/agent__voice__session.effect.vibe"
 import type { ReplyWindow } from "./echo-filter.ts"
 import type { HeardBody } from "./ports.vibe"
@@ -98,7 +98,6 @@ export interface BuildVoiceTurnSignalContext extends ShouldRespondContext {
   readonly selfVoiceThreshold?: number
 }
 
-const SERVER_EOT_SUPPRESS_THRESHOLD = 0.4
 const BYSTANDER_SUPPRESS_CONFIDENCE = 0.7
 const AGENT_SELF_VOICE_THRESHOLD = 0.7
 
@@ -107,22 +106,26 @@ function confidentBystander(speaker: VoiceTurnSpeakerAttribution, known: readonl
   return !enrolled && speaker.entityId !== null && speaker.confidence >= BYSTANDER_SUPPRESS_CONFIDENCE
 }
 
+const signalSources = {
+  AmbientSource: "client-ambient", DiarizedSource: "client-ambient+diarization", WakeWordSource: "client-ambient+wakeword", SelfVoiceSource: "client-ambient+self-voice",
+} as const satisfies Record<SignalSource, string>
+
 export function buildVoiceTurnSignal(transcript: string, context: BuildVoiceTurnSignalContext = {}): VoiceTurnSignal {
-  const endOfTurnProbability = scoreEndOfTurnHeuristic(transcript)
-  const heard = heardTurnFor(transcript, context.recentAgentReply ?? "", replyWindowOf(context))
-  const wakeWord = context.wakeWordActive === true
+  const finishedPercent = endOfTurnPercent(utteranceEnding(transcript))
   const speaker = context.speaker
-  const bystander = speaker !== undefined && !wakeWord && confidentBystander(speaker, context.knownSpeakerEntityIds ?? [])
-  const selfVoice = context.selfVoiceSimilarity !== undefined && echoWindowOpen(heard) &&
-    context.selfVoiceSimilarity >= (context.selfVoiceThreshold ?? AGENT_SELF_VOICE_THRESHOLD)
-  const addressed = wakeWord ? !isNonSpeechVoiceTranscript(transcript) :turnAccepted(heard) && !bystander
-  const agentShouldSpeak = addressed && !selfVoice
-  const nextSpeaker = !agentShouldSpeak || endOfTurnProbability < SERVER_EOT_SUPPRESS_THRESHOLD ? "user" : "agent"
-  const source = selfVoice ? "client-ambient+self-voice"
-    : wakeWord ? "client-ambient+wakeword"
-    : speaker !== undefined ? "client-ambient+diarization"
-    : "client-ambient"
-  return { endOfTurnProbability, nextSpeaker, agentShouldSpeak, source }
+  const decided = turnSignal({
+    heard: heardTurnFor(transcript, context.recentAgentReply ?? "", replyWindowOf(context)),
+    soundOnly: isNonSpeechVoiceTranscript(transcript),
+    wakeWord: context.wakeWordActive === true,
+    attributed: speaker !== undefined,
+    bystander: speaker !== undefined && confidentBystander(speaker, context.knownSpeakerEntityIds ?? []),
+    ownVoice: context.selfVoiceSimilarity !== undefined && context.selfVoiceSimilarity >= (context.selfVoiceThreshold ?? AGENT_SELF_VOICE_THRESHOLD),
+    finishedPercent,
+  })
+  return {
+    endOfTurnProbability: finishedPercent / 100, nextSpeaker: decided.agentNext ? "agent" : "user",
+    agentShouldSpeak: decided.agentShouldSpeak, source: signalSources[decided.source],
+  }
 }
 
 const trailingConjunctions: ReadonlySet<string> = new Set(["and", "but", "or", "nor", "yet", "so", "because", "although", "though",
@@ -144,25 +147,29 @@ function unfinishedDecimal(words: readonly string[], fullStop: boolean): boolean
   return !(fullStop && (beforeLast === "one" || beforeLast === "1") && !numberBeforePoint.test(words.at(-3) ?? ""))
 }
 
-export function scoreEndOfTurnHeuristic(transcript: string): number {
+function utteranceEnding(transcript: string): UtteranceEnding {
   const text = transcript.trim()
-  if (text.length === 0) return 0.5
-  if (/(\.{2,}|…)$/.test(text)) return 0.2
-  if (/[!?]$/.test(text)) return 0.95
+  if (text.length === 0) return "NothingSaid"
+  if (/(\.{2,}|…)$/.test(text)) return "TrailsOff"
+  if (/[!?]$/.test(text)) return "AsksOrExclaims"
   const lower = text.toLowerCase()
-  if (questionTags.some((tag) => lower.endsWith(tag))) return 0.85
+  if (questionTags.some((tag) => lower.endsWith(tag))) return "QuestionTag"
   const fullStop = text.endsWith(".")
   const body = fullStop ? text.slice(0, -1).trimEnd() : text
-  if (/(\d,|\$)$/.test(body)) return 0.2
+  if (/(\d,|\$)$/.test(body)) return "OpenAmount"
   const words = body.replace(/[^a-z0-9'\s-]/gi, "").split(/\s+/).filter((word) => word.length > 0)
     .map((word) => (word === "A" ? word : word.toLowerCase()))
-  if (words.length === 0) return fullStop ? 0.95 : 0.5
-  if (unfinishedDecimal(words, fullStop)) return 0.2
+  if (words.length === 0) return fullStop ? "FullStop" : "NothingSaid"
+  if (unfinishedDecimal(words, fullStop)) return "OpenAmount"
   const last = (words.at(-1) ?? "").replace(/[',;:-]+$/, "")
-  if (fullStop && !neverSentenceFinal.has(last)) return 0.95
-  if (trailingConjunctions.has(last)) return 0.15
-  if (trailingFillers.has(last) || trailingIncomplete.has(last) || trailingContinuations.has(last)) return 0.2
-  return words.length < 3 ? 0.7 : 0.5
+  if (fullStop && !neverSentenceFinal.has(last)) return "FullStop"
+  if (trailingConjunctions.has(last)) return "DanglingConjunction"
+  if (trailingFillers.has(last) || trailingIncomplete.has(last) || trailingContinuations.has(last)) return "DanglingWord"
+  return words.length < 3 ? "ShortPhrase" : "PlainPhrase"
+}
+
+export function scoreEndOfTurnHeuristic(transcript: string): number {
+  return endOfTurnPercent(utteranceEnding(transcript)) / 100
 }
 
 export const END_OF_TURN_PATH = "/api/asr/local-inference/end-of-turn"

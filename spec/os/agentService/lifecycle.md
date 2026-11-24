@@ -4,9 +4,9 @@ The Android foreground service that runs the one agent Node child. Each
 start is a launch with a new epoch: the service checks the payload, reaps a
 child an earlier launch left behind, runs the consumer's launch hook,
 spawns the agent with the launch frame of `spec/agent/host/launch.md`, and
-serves once the agent answers ready for that epoch. It restarts a crashed or
-unhealthy agent after the delay of [health](./health.md), however often it
-crashes, follows the
+serves once the agent answers ready for that epoch. It restarts a crashed,
+unhealthy or never-ready agent after the delay of [health](./health.md),
+however often that happens, follows the
 device key of [credential](../signIn/credential.md), keeps a failed store's
 records until the owner moves them aside, and holds the agent for an app
 update. Spawning, the socket, the pid and epoch journal, the notification
@@ -125,15 +125,19 @@ pure def sometimesPayloadRefused(s: AgentService): bool = s.phase == Failed({ ca
 pure def sometimesStaleChildLeft(s: AgentService): bool = s.phase == Starting({ step: Checking }) and s.child != NoChild
 ```
 
-### The agent runs only once it answers ready for this launch, and a launch that never does fails as Agent
+### The agent runs only once it answers ready for this launch, and a launch that never does is restarted after the health delay
 
-Readiness is `H::classify` of the health answer for this epoch. After
-60 s the shell kills the child, which stays journaled until it is reaped.
-An exit before readiness is `Config` or `Storage` when `L::exitClass` says
-so and `Agent` otherwise, and is never retried.
+Readiness is `H::classify` of the health answer for this epoch. A cold
+start can take minutes, as the first start after an update does, so the
+shell waits 480 s before it kills the child; the child's exit then begins
+the next launch after `H::restartDelay`, as a crash does. An exit before
+readiness fails the service as `Config` or `Storage` when `L::exitClass`
+says so; any other exit before readiness is restarted after the same
+delay. Only an explicit start or a stable run resets that delay, and a
+stop asked while the child is being killed still stops the service.
 
 ```quint
-pure val readinessTimeoutMs = 60000
+pure val readinessTimeoutMs = 480000
 pure def readyReply(epoch: int): H::ProbeReply = H::Answered({ status: 200, body: H::Parsed({ ready: true, runtime: "ok", agentState: "running", epoch: epoch }) })
 pure val replyValues = Set(readyReply(1), readyReply(2), readyReply(3), readyReply(4), readyReply(5), readyReply(6), H::Answered({ status: 503, body: H::Unparsed }))
 pure def canObserveReady(s: AgentService, reply: H::ProbeReply): bool = s.phase == Starting({ step: Spawned }) and H::classify(reply, s.epoch) == H::Ok
@@ -143,19 +147,25 @@ pure def observeReady(s: AgentService, reply: H::ProbeReply): ServiceStep = {
     { ...s, phase: Running, readyEpoch: s.epoch, delivered: v, watch: H::freshWatch })
 }
 pure def canReadinessTimedOut(s: AgentService): bool = s.phase == Starting({ step: Spawned })
-pure def readinessTimedOut(s: AgentService): ServiceStep = {
-  val failed = enter(Failed({ cause: Agent }), s)
-  emit(List(KillChild), { ...failed, child: Stale({ staleEpoch: s.epoch }) })
-}
+pure def readinessTimedOut(s: AgentService): ServiceStep = emit(List(KillChild), enter(Stopping({ onExit: ToRestart }), s))
 pure val codeValues = Set(0, 1, 70, 74, 77, 78, 137)
 pure def startupCause(code: int): FailureCause =
   if (L::exitClass(code) == L::BootFailed({ cause: L::Config })) Config
   else if (L::exitClass(code) == L::BootFailed({ cause: L::Storage })) Storage else Agent
 pure def alwaysRunningWasReadyThisLaunch(s: AgentService): bool =
   (s.phase == Running implies s.readyEpoch == s.epoch) and (isStarting(s.phase) implies s.readyEpoch < s.epoch)
-    and (s.phase == Stopping({ onExit: ToRestart }) implies s.readyEpoch == s.epoch)
 pure def sometimesStorageFailedAtStart(s: AgentService): bool = s.phase == Failed({ cause: Storage }) and s.readyEpoch < s.epoch
-pure def sometimesTimedOut(s: AgentService): bool = s.phase == Failed({ cause: Agent }) and s.child != NoChild
+pure def sometimesKilledAsNeverReady(s: AgentService): bool = s.phase == Stopping({ onExit: ToRestart }) and s.readyEpoch < s.epoch
+pure val eval_witness_sometimesKilledAsNeverReady = (
+  ("credentialArrived", 1, { userId: "u1", organizationId: "o1" }), "start", ("spawn", true), "readinessTimedOut"
+)
+pure def sometimesRestartedBeforeEverReady(s: AgentService): bool =
+  s.phase == Starting({ step: Checking }) and s.attempt >= 2 and s.readyEpoch == 0
+pure val eval_witness_sometimesRestartedBeforeEverReady = (
+  ("credentialArrived", 1, { userId: "u1", organizationId: "o1" }), "start",
+  ("spawn", true), "readinessTimedOut", ("observeExit", 137),
+  ("spawn", true), ("observeExit", 70)
+)
 pure val weight_spawn = 100
 pure val weight_observeReady = 100
 pure val fair_observeReady = "weak"
@@ -183,7 +193,8 @@ pure def observeExit(s: AgentService, code: int): ServiceStep = {
   val gone = { ...s, child: NoChild }
   val p = s.phase
   match p {
-    | Starting(_) => emit(List(), enter(Failed({ cause: startupCause(code) }), gone))
+    | Starting(_) => (if (startupCause(code) == Agent) restartAfterCrash(s.attempt, gone)
+      else emit(List(), enter(Failed({ cause: startupCause(code) }), gone)))
     | Running => restartAfterCrash(s.attempt, gone)
     | Stopping(x) => afterExit(x.onExit, gone)
     | _ => emit(List(), s)
@@ -298,7 +309,7 @@ pure val observedValues = Set(
   H::ConnectChecked({ refused: true, child: H::Journaled({ childEpoch: 1, alive: false }) }),
   H::ConnectChecked({ refused: false, child: H::NoJournal }))
 pure val weight_observeHealth = 4
-pure def sometimesKilledAsUnhealthy(s: AgentService): bool = s.phase == Stopping({ onExit: ToRestart })
+pure def sometimesKilledAsUnhealthy(s: AgentService): bool = s.phase == Stopping({ onExit: ToRestart }) and s.readyEpoch == s.epoch
 ```
 
 ### Five minutes of running reset the restart delay

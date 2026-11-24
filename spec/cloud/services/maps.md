@@ -46,7 +46,10 @@ under the names it already reads: `providerId`, `connectionId`, `revision`,
 `attribution`, `sources`, `disclosure`, `regions`, `capabilities` and, where
 tiles are served, `tiles`. `providerId`, `regions` and `revision` come from
 the profile's `provider`, `coverage` and `datasetRevision`, and
-`capabilities` from `offerOf` and `supportsMode`.
+`capabilities` from `offerOf` and `supportsMode`. Every deployment that
+serves search can order the returned candidates by distance, so
+`capabilities.distanceRank` is true wherever maps is available. A device
+sends `rank: "distance"` only when the deployment advertises it.
 
 ```quint
 import types.* from "../shared/types"
@@ -55,10 +58,10 @@ import rateLimit as R from "../shared/rateLimit"
 type MapsProvider = GoogleMaps | OsmMaps | NoMaps
 type MapsOperation = Geocode | Reverse | PlacesSearch | PlaceDetails | Routes | Tile | Viewport | Capabilities
 type TravelMode = Drive | Walk | Bicycle | Transit
-type MapsOffer = { available: bool, map: bool, placeLookup: bool, liveTraffic: bool, scheduledTransit: bool }
+type MapsOffer = { available: bool, map: bool, placeLookup: bool, distanceRank: bool, liveTraffic: bool, scheduledTransit: bool }
 pure def offerOf(provider: MapsProvider): MapsOffer =
-  if (provider == GoogleMaps) { available: true, map: true, placeLookup: true, liveTraffic: true, scheduledTransit: true }
-  else { available: provider == OsmMaps, map: false, placeLookup: false, liveTraffic: false, scheduledTransit: false }
+  if (provider == GoogleMaps) { available: true, map: true, placeLookup: true, distanceRank: true, liveTraffic: true, scheduledTransit: true }
+  else { available: provider == OsmMaps, map: false, placeLookup: false, distanceRank: provider == OsmMaps, liveTraffic: false, scheduledTransit: false }
 pure def serves(provider: MapsProvider, op: MapsOperation): bool =
   if (op == Capabilities) true
   else if (op == Tile or op == Viewport) offerOf(provider).map
@@ -172,7 +175,17 @@ price, 0 when nothing was billed. A request with an unclear call is a lost
 reply and is charged its quote. It answers `502 provider_invalid_response`
 when the provider answered with a 4xx status the table does not name, such
 as a 400, and `503 provider_unavailable` after a redirect, a timeout or a
-network failure. A refusal decided before dispatch releases the hold. An
+network failure. Only a place-details call carries a value from the caller
+that the provider can refuse, its place id: when Google answers it `400`
+with an error whose status is `INVALID_ARGUMENT` and that states no reason
+(no detail of type `ErrorInfo` or with a `reason`), as for `Not a valid
+Place ID`, the request answers `400 invalid_request` instead, still a lost
+reply charged its quote, since its bill is just as unclear. A `400` that
+names a reason (`API_KEY_INVALID`, `API_KEY_EXPIRED`, `SERVICE_DISABLED`),
+one whose body cannot be read, any other details status, and a `400` to a
+search, nearby, geocoding or routes call, which Cloud builds only from
+inputs it has validated, stay the provider's fault: `502
+provider_invalid_response`. A refusal decided before dispatch releases the hold. An
 observed price above the quote is an adapter fault: it is charged at the
 quote and logged as an error.
 
@@ -195,6 +208,18 @@ pure def billingOf(status: int): CallBilling =
   else if (status == 401 or status == 403 or status == 429 or status >= 500) CallNotBilled
   else CallUnclear
 pure def unclearAnswerIsInvalid(status: int): bool = status >= 400 and status <= 499 and billingOf(status) == CallUnclear
+pure def placeIdRefused(op: MapsOperation, status: int, refusesTheArgument: bool): bool =
+  op == PlaceDetails and status == 400 and refusesTheArgument
+pure def lostReplyRefusal(op: MapsOperation, status: int, refusesTheArgument: bool): RefusalCode =
+  if (placeIdRefused(op, status, refusesTheArgument)) InvalidRequest
+  else if (unclearAnswerIsInvalid(status)) ProviderInvalidResponse
+  else ProviderUnavailable
+pure def lawOnlyAPlaceIdTheProviderRefusesIsTheCallersFault(op: MapsOperation, status: int, refusesTheArgument: bool): bool =
+  lostReplyRefusal(op, status, refusesTheArgument) == InvalidRequest implies (op == PlaceDetails and status == 400 and refusesTheArgument)
+pure def lawARefusedPlaceIdIsStillALostReply(op: MapsOperation, status: int, refusesTheArgument: bool): bool =
+  placeIdRefused(op, status, refusesTheArgument) implies (billingOf(status) == CallUnclear and unclearAnswerIsInvalid(status))
+pure def lawAnotherOperationsUnnamed4xxIsTheProvidersFault(op: MapsOperation, status: int, refusesTheArgument: bool): bool =
+  (op != PlaceDetails and unclearAnswerIsInvalid(status)) implies lostReplyRefusal(op, status, refusesTheArgument) == ProviderInvalidResponse
 pure val unbilledGeocodeStatuses = Set("OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT", "REQUEST_DENIED", "UNKNOWN_ERROR")
 pure def geocodeBillingOf(status: int, geocodeStatus: str): CallBilling =
   if (billingOf(status) == CallNotBilled or ((status == 200 or status == 400 or status == 404) and unbilledGeocodeStatuses.contains(geocodeStatus))) CallNotBilled
@@ -236,6 +261,31 @@ pure def lawAnUndispatchedRequestIsChargedNothing(lane: M::FundingLane, quote: M
   val ended = applySettlement(held, settlementOf(false, reply, quote, observed), creditFree)
   M::fundable(lane, quote, allowanceAvailable, creditAvailable) implies (ended.phase == M::Released and ended.charged == 0)
 }
+```
+
+### A route whose endpoints coincide is a zero-length route, never a malformed answer
+
+The provider answers in proto3 JSON, which leaves out a zero
+`distanceMeters`, so a route from a place to itself comes back with no
+distance and a line of one point or none. Such a route is answered with
+distance 0 and a line of two points: its one point twice, or the request's
+start and end. A route that has a distance still needs the provider's own
+line of at least two points, and one without it, or without a duration, is
+`502 provider_invalid_response`.
+
+```quint
+type RouteLine = ProvidersLine | ItsPointTwice | StartToEnd | NoUsableLine
+pure def routeLine(points: int, distanceMeters: int): RouteLine =
+  if (points >= 2) ProvidersLine
+  else if (distanceMeters > 0) NoUsableLine
+  else if (points == 1) ItsPointTwice
+  else StartToEnd
+pure val pointsValues = Set(0, 1, 2, 3)
+pure val distanceMetersValues = Set(0, 1, 300)
+pure def lawAZeroLengthRouteAlwaysHasALine(points: int, distanceMeters: int): bool =
+  (distanceMeters == 0 and points >= 0) implies routeLine(points, distanceMeters) != NoUsableLine
+pure def lawARouteWithADistanceKeepsOnlyTheProvidersLine(points: int, distanceMeters: int): bool =
+  distanceMeters > 0 implies ((routeLine(points, distanceMeters) == ProvidersLine) iff points >= 2)
 ```
 
 ### A repeated key reaches no provider and moves no money: it repeats the outcome kept for it, or is refused
@@ -348,4 +398,65 @@ pure def tileSessionFresh(expiresAt: Millis, now: Millis): bool = expiresAt - ti
 pure val expiresAtValues = Set(0, 3600000, 3600001, 7200000)
 pure def lawAFreshTileSessionOutlivesItsMargin(expiresAt: Millis, now: Millis): bool =
   tileSessionFresh(expiresAt, now) implies expiresAt > now + tileSessionRenewMargin
+```
+
+## Story: Find the closest places, not the closest of the most relevant
+
+> As an account owner asking for the nearest kind of place, I want the
+> closest places the provider found around my point, not the closest of
+> the few it ranked most relevant, so that "the nearest pharmacy" is the
+> nearest one.
+
+### A search ranked by distance needs a point to measure from
+
+`POST /maps/places/search` takes `rank: "distance"` beside `query`, `near`
+and `limit`, and nothing else for `rank`. A search that asks for it with
+no `near`, or on a provider whose offer has no `distanceRank`, is refused
+`400 invalid_request` before any hold is taken or provider called. A
+search without `rank` is ranked by the provider's relevance, as before.
+
+```quint
+type SearchRank = RankByRelevance | RankByDistance
+pure def searchRankAccepted(provider: MapsProvider, rank: SearchRank, hasNear: bool): bool =
+  rank == RankByRelevance or (hasNear and offerOf(provider).distanceRank)
+pure def lawADistanceRankNeedsAPoint(provider: MapsProvider, rank: SearchRank): bool =
+  searchRankAccepted(provider, rank, false) iff rank == RankByRelevance
+pure def lawEveryProviderThatSearchesRanksByDistance(provider: MapsProvider): bool =
+  serves(provider, PlacesSearch) implies searchRankAccepted(provider, RankByDistance, true)
+```
+
+### A search ranked by distance reads the provider's largest page and answers its nearest places first
+
+A search ranked by distance asks for one page of up to 20 places at the
+same quote as any search. Cloud asks Google Text Search for distance
+ranking with the existing location bias. Google applies that preference
+to supported queries. For OpenStreetMap, Cloud orders the page Nominatim
+returns. Cloud measures each returned place from `near` along the Earth's
+surface in whole metres and keeps the `limit` nearest (10 by default).
+Places the same number of metres away retain the provider's order. A
+relevance search asks for `limit` places and returns them in provider
+order without requesting distance ranking.
+
+```quint
+pure val searchPageMax: int = 20
+pure val searchLimitDefault: int = 10
+pure def searchPageSize(rank: SearchRank, limit: int): int = if (rank == RankByDistance) searchPageMax else limit
+pure def placeIndexes(meters: List[int]): List[int] = meters.foldl(List(), (indexes, place) => indexes.append(indexes.length()))
+pure def nearerThan(meters: List[int], first: int, second: int): bool =
+  meters.nthOr(first, 0) < meters.nthOr(second, 0) or (meters.nthOr(first, 0) == meters.nthOr(second, 0) and first < second)
+pure def closestFirst(meters: List[int], limit: int): List[int] = {
+  val indexes = placeIndexes(meters)
+  indexes.foldl(List(), (kept, rank) => if (kept.length() < limit) kept.concat(indexes.select(i => indexes.select(j => nearerThan(meters, j, i)).length() == rank)) else kept)
+}
+pure def lawADistanceSearchReadsTheLargestPage(limit: int): bool = searchPageSize(RankByDistance, limit) == searchPageMax
+pure def lawTheAnswerHoldsTheLimitOrTheWholePage(meters: List[int], limit: int): bool =
+  closestFirst(meters, limit).length() == (if (limit < 0) 0 else if (limit < meters.length()) limit else meters.length())
+pure def lawTheAnswerIsNearestFirst(meters: List[int], limit: int): bool = {
+  val kept = closestFirst(meters, limit)
+  placeIndexes(kept).every(at => at == 0 or nearerThan(meters, kept.nthOr(at - 1, 0), kept.nthOr(at, 0)))
+}
+pure def lawNoPlaceLeftOutIsNearer(meters: List[int], limit: int): bool = {
+  val kept = closestFirst(meters, limit)
+  placeIndexes(meters).every(left => kept.includes(left) or kept.every(taken => nearerThan(meters, taken, left)))
+}
 ```

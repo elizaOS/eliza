@@ -74,7 +74,7 @@ export function audioFrameFits(frame: number[]): boolean {
 }
 
 //@ pure
-export function lawEncodedAudioFits(id: number[], pcm: number[]): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars -- Law parameters are used by the checked LemmaScript postcondition.
+export function lawEncodedAudioFits(id: number[], pcm: number[]): boolean {
   //@ ensures audioFrameFits(encodeAudio(id, pcm)) === validDownlinkAudio(id.length, pcm.length)
   return true
 }
@@ -465,13 +465,13 @@ export function readAudio(frame: number[]): RelayWire {
 }
 
 //@ pure
-export function lawAudioRoundTrips(id: number[], pcm: number[]): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars -- Law parameters are used by the checked LemmaScript postcondition.
+export function lawAudioRoundTrips(id: number[], pcm: number[]): boolean {
   //@ ensures (idBytesValid(id) && validPcm(pcm.length, maxDownlinkPcmBytes)) ==> (readAudio(encodeAudio(id, pcm)).kind === "Audio" && readAudio(encodeAudio(id, pcm)).id === id && readAudio(encodeAudio(id, pcm)).pcm === pcm)
   return true
 }
 
 //@ pure
-export function lawReadAudioIsCanonical(frame: number[]): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars -- Law parameters are used by the checked LemmaScript postcondition.
+export function lawReadAudioIsCanonical(frame: number[]): boolean {
   //@ ensures readAudio(frame).kind === "Audio" ==> encodeAudio(readAudio(frame).id, readAudio(frame).pcm) === frame
   return true
 }

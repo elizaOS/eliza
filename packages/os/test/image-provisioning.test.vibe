@@ -3,18 +3,16 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import type { ProvisioningRequest } from "../gen/os__image__provisioning.effect.vibe"
 import { aaptManifestTree } from "../src/image/apk.vibe"
+import { requireClockProduct, verifySecureCameraSource, writeSecureCameraOverlay } from "../src/image/index.vibe"
 import {
   IMAGE_FEATURE_VERSION,
   imageFeatureName,
   listenerStagingOf,
   provisioningComponents,
-  requireClockProduct,
-  verifySecureCameraSource,
   writeImageCapability,
   writeImageProvisioningOverlay,
   writeListenerActivation,
   writeProvisioningOverlay,
-  writeSecureCameraOverlay,
 } from "../src/image/provisioning.vibe"
 import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
 import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
@@ -83,6 +81,55 @@ ${components.join("\n")}
     ]
   }
 
+  export interface PathComponents { readonly home: string; readonly assistant: string | null; readonly autofill: string }
+  export interface PathProvisioning {
+    readonly provisioningComponents: (dump: string, packageName: string, product?: { readonly assistant: boolean }) => PathComponents
+    readonly renderProvisioningOverlay: (packageName: string, components: PathComponents) => Readonly<Record<string, string>>
+    readonly writeProvisioningOverlay: (output: string, packageName: string, components: PathComponents) => unknown
+  }
+  export interface DumpShape {
+    readonly homes?: number
+    readonly assistants?: number
+    readonly homeExported?: boolean | null
+    readonly assistantExported?: boolean | null
+    readonly autofillExported?: boolean | null
+    readonly assistantEnabled?: boolean
+    readonly autofillPermission?: string
+  }
+
+  const dumpFlag = (set: boolean) => `(type 0x12)0x${set ? "ffffffff" : "0"}`
+  const dumpElement = (indent: number, tag: string, attrs: Readonly<Record<string, string | null | undefined>> = {}) => [
+    `${" ".repeat(indent)}E: ${tag} (line=1)`,
+    ...Object.entries(attrs).flatMap(([key, value]) => (typeof value === "string" ? [`${" ".repeat(indent + 2)}A: android:${key}(0x01010003)=${value.startsWith("(") ? value : `"${value}" (Raw: "${value}")`}`] : [])),
+  ]
+  const dumpFilter = (action: string, categories: readonly string[] = []) => [
+    ...dumpElement(8, "intent-filter"),
+    ...dumpElement(10, "action", { name: action }),
+    ...categories.flatMap((name) => dumpElement(10, "category", { name })),
+  ]
+  const exportedFlag = (exported: boolean | null | undefined) => (exported === null ? null : dumpFlag(exported ?? true))
+
+  /** @throws {never} */
+  export function manifestDump(shape: DumpShape = {}): string {
+    return [
+      "N: android=http://schemas.android.com/apk/res/android",
+      "  E: manifest (line=2)",
+      "    E: application (line=3)",
+      ...Array.from({ length: shape.homes ?? 1 }, (_, index) => [
+        ...dumpElement(6, "activity", { name: `${PACKAGE}.${index === 0 ? "Home" : "Other"}Activity`, exported: exportedFlag(shape.homeExported) }),
+        ...dumpFilter("android.intent.action.MAIN", ["android.intent.category.LAUNCHER"]),
+        ...dumpFilter("android.intent.action.MAIN", ["android.intent.category.HOME", "android.intent.category.DEFAULT"]),
+      ]).flat(),
+      ...Array.from({ length: shape.assistants ?? 1 }, (_, index) => [
+        ...dumpElement(6, "activity", { name: `${PACKAGE}.${index === 0 ? "Assist" : "OtherAssist"}Activity`, exported: exportedFlag(shape.assistantExported), enabled: shape.assistantEnabled === undefined ? null : dumpFlag(shape.assistantEnabled) }),
+        ...dumpFilter("android.intent.action.ASSIST", ["android.intent.category.DEFAULT"]),
+      ]).flat(),
+      ...dumpElement(6, "service", { name: `${PACKAGE}.FillService`, permission: shape.autofillPermission ?? "android.permission.BIND_AUTOFILL_SERVICE", exported: exportedFlag(shape.autofillExported) }),
+      ...dumpFilter("android.service.autofill.AutofillService"),
+      ...dumpElement(6, "service", { name: `${PACKAGE}.AgentService` }),
+    ].join("\n")
+  }
+
   /** @throws {never} */
   export function hostValues(defaultValue: string, policy: string): string {
     return `<?xml version="1.0" encoding="utf-8"?>
@@ -97,7 +144,7 @@ ${components.join("\n")}
 `
   }
 }
-import { LOCKED_ACTIVITY, PACKAGE, assist, autofill, home, hostValues, launcher, powerChild, sha256, telephony } from node
+import { LOCKED_ACTIVITY, PACKAGE, assist, autofill, home, hostValues, launcher, manifestDump, powerChild, sha256, telephony, type DumpShape, type PathProvisioning } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -300,6 +347,74 @@ it.effect.skipIf(skipped !== null)(`Write listener activation for the disabled p
     assert.strictEqual(try activate("unnamed-child", unnamed, power, ["power"], LONG_PRESS), "PowerChildNotProtected")
   }
 }, 240_000)
+
+function uncommented(text: string | undefined): string {
+  return (text ?? "").split("\n").filter((line) => !line.startsWith("<!--")).join("\n")
+}
+
+effect function pathNamed(helper: PathProvisioning, shape: DumpShape = {}, product?: { readonly assistant: boolean }) {
+  return (Effect.try({ try: () => helper.provisioningComponents(manifestDump(shape), PACKAGE, product), catch: (cause) => (cause instanceof Error ? cause.message : String(cause)) }) catch (message) => message)
+}
+
+it.effect(`The provisioning helper a consumer imports by path names only components the APK declares once and exports, and writes the defaults the rule-bound overlay does (spec/os/image/provisioning.md, "Story: Make my launcher Home on first boot"; spec/os/image/provisioning.md, "First-boot defaults name only components the APK declares once and exports, the assistant only when the product takes it, and only once the product's requirements hold")`, effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const helper: PathProvisioning = try Effect.promise(() => import(path.join(import.meta.dirname, "../aosp/launcher-provisioning.mjs")))
+    const all = { home: `${PACKAGE}.HomeActivity`, assistant: `${PACKAGE}.AssistActivity`, autofill: `${PACKAGE}.FillService` }
+    const withoutAssistant = { ...all, assistant: null }
+    const noRole = { assistant: false }
+    assert.deepStrictEqual(try pathNamed(helper), all)
+    assert.deepStrictEqual(try pathNamed(helper, { assistantEnabled: true }), all)
+    assert.deepStrictEqual(try pathNamed(helper, { assistantExported: false, assistantEnabled: false }, noRole), withoutAssistant)
+    assert.deepStrictEqual(try pathNamed(helper, { assistants: 0 }, noRole), withoutAssistant)
+    const refusals: readonly (readonly [DumpShape, { readonly assistant: boolean } | undefined, RegExp])[] = [
+      [{ homes: 0 }, undefined, /exactly one MAIN\/HOME\/DEFAULT activity; found 0/],
+      [{ homes: 2 }, undefined, /exactly one MAIN\/HOME\/DEFAULT activity; found 2/],
+      [{ homeExported: false }, undefined, /HOME\/DEFAULT activity must be explicitly exported/],
+      [{ homeExported: null }, undefined, /HOME\/DEFAULT activity must be explicitly exported/],
+      [{ assistants: 0 }, undefined, /exactly one ACTION_ASSIST activity; found 0/],
+      [{ assistants: 2 }, undefined, /exactly one ACTION_ASSIST activity; found 2/],
+      [{ assistantExported: false }, undefined, /ACTION_ASSIST activity must be explicitly exported/],
+      [{ assistantExported: null }, undefined, /ACTION_ASSIST activity must be explicitly exported/],
+      [{ assistantExported: false, assistantEnabled: false }, undefined, /ACTION_ASSIST activity must be explicitly exported/],
+      [{ assistantExported: false }, noRole, /must not ship an enabled ACTION_ASSIST activity/],
+      [{ assistantEnabled: true }, noRole, /must not ship an enabled ACTION_ASSIST activity/],
+      [{ assistants: 2 }, noRole, /must not ship an enabled ACTION_ASSIST activity/],
+      [{ autofillPermission: "none" }, undefined, /AutofillService requires BIND_AUTOFILL_SERVICE/],
+      [{ autofillExported: false }, undefined, /AutofillService must be explicitly exported/],
+      [{ autofillExported: null }, undefined, /AutofillService must be explicitly exported/],
+    ]
+    for (const [shape, product, pattern] of refusals) {
+      const answer = try pathNamed(helper, shape, product)
+      assert.match(typeof answer === "string" ? answer : "named", pattern, JSON.stringify(shape))
+    }
+
+    for (const components of [all, withoutAssistant]) {
+      const byPath = try scratch("path-provisioning")
+      const ruled = try scratch("ruled-provisioning")
+      try writeTree(byPath, { "product.mk": "PRODUCT_PACKAGES += ExampleHome\n" })
+      try writeTree(ruled, { "product.mk": "PRODUCT_PACKAGES += ExampleHome\n" })
+      try Effect.try(() => helper.writeProvisioningOverlay(byPath, PACKAGE, components))
+      try writeProvisioningOverlay(ruled, PACKAGE, {
+        tag: "ProvisioningAdmitted", home: components.home, overrides: [],
+        assistant: components.assistant === null ? { tag: "NoDefault" } : { tag: "DefaultOf", name: components.assistant },
+        autofill: { tag: "DefaultOf", name: components.autofill },
+      })
+      const written = try readTree(byPath)
+      const expected = try readTree(ruled)
+      for (const file of ["provisioning/preferred-apps/launcher-home.xml", "provisioning/overlay/frameworks/base/core/res/res/values/config.xml"]) {
+        for (const comment of (written[file] ?? "").matchAll(/<!--([\s\S]*?)-->/g)) assert.notInclude(comment[1] ?? "", "--", `${file}: AAPT2 refuses a double hyphen inside an XML comment`)
+        assert.strictEqual(uncommented(written[file]), expected[file], file)
+      }
+      if (components.assistant === null) assert.notMatch(written["provisioning/README.md"] ?? "", /Assistant role|null/, "a product without the assistant role names none")
+      assert.include(written["product.mk"] ?? "", "PRODUCT_PACKAGE_OVERLAYS += $(launcher_provisioning_dir)/overlay\nPRODUCT_COPY_FILES += $(launcher_provisioning_dir)/preferred-apps/launcher-home.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/preferred-apps/launcher-home.xml\n")
+      assert.notMatch(written["product.mk"] ?? "", /LOCAL_OVERRIDES_PACKAGES|Launcher3/)
+      const again = (Effect.try({ try: () => helper.writeProvisioningOverlay(byPath, PACKAGE, components), catch: (cause) => (cause instanceof Error ? cause.message : String(cause)) }) |> map(%, () => "written")) catch (message) => message
+      assert.match(again, /EEXIST/)
+      assert.deepStrictEqual(try readTree(byPath), written)
+    }
+  }
+})
 
 it.effect.skipIf(skipped !== null)(`Refuse a launcher that would show over the lock screen, require DeskClock exactly once, and stage the secure camera only from verified Camera2 source${suffix} (spec/os/image/provisioning.md, "Story: Leave the lock screen, alarms and secure capture to the system"; spec/os/image/provisioning.md, "Where the system owns the lock screen, an admitted launcher declares no activity shown when locked, turning the screen on, or handling secure capture"; spec/os/image/provisioning.md, "The product requires DeskClock exactly once"; spec/os/image/provisioning.md, "The secure camera overlay is staged only from verified Camera2 source and points the power gesture at Camera2")`, effect () => {
   provide NodeServices.layer {

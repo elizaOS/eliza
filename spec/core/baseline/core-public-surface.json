@@ -49053,6 +49053,16 @@
           "declarations": []
         },
         {
+          "name": "stampedMessage",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
+          "name": "stampYear",
+          "typeOnly": false,
+          "declarations": []
+        },
+        {
           "name": "HistoryReview",
           "typeOnly": true,
           "declarations": []

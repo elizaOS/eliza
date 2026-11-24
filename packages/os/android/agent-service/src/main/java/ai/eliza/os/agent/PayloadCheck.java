@@ -1,4 +1,4 @@
-// spec/os/build/runtimePayload.md, "Extracted assets are extracted again when the package version changes"; spec/os/build/runtimePayload.md, "The agent spawns only when every inventory digest matches on the device"; spec/os/build/runtimePayload.md, "The workflow worker is staged only under the digest the bundle manifest pins"
+// spec/os/build/runtimePayload.md, "Extracted assets are extracted again when the package version changes"; spec/os/build/runtimePayload.md, "The agent spawns only when every inventory digest matches on the device"; spec/os/build/runtimePayload.md, "A damaged extracted file is extracted again once before the start fails"; spec/os/build/runtimePayload.md, "The workflow worker is staged only under the digest the bundle manifest pins"
 package ai.eliza.os.agent;
 
 import java.io.ByteArrayOutputStream;
@@ -80,11 +80,15 @@ public final class PayloadCheck {
 
     Path releases = runtimeDir.resolve("releases");
     Path release = releases.resolve(versionCode + "-" + AgentDirectories.hex(sha256().digest(inventory)));
-    if (!Files.isDirectory(release, LinkOption.NOFOLLOW_LINKS)) {
+    boolean extracted = Files.isDirectory(release, LinkOption.NOFOLLOW_LINKS);
+    if (!extracted) extract(assets, device, releases, release, sync, errors);
+    if (!errors.isEmpty()) return new Failed(errors);
+    if (verify(device, nativeLibraryDir, release, errors) && extracted) {
+      errors.clear();
       extract(assets, device, releases, release, sync, errors);
       if (!errors.isEmpty()) return new Failed(errors);
+      verify(device, nativeLibraryDir, release, errors);
     }
-    verify(device, nativeLibraryDir, release, errors);
     if (!errors.isEmpty()) return new Failed(errors);
     Optional<WorkflowWorker> worker = worker(release, device, errors);
     if (!errors.isEmpty()) return new Failed(errors);
@@ -194,34 +198,39 @@ public final class PayloadCheck {
     }
   }
 
-  private static void verify(List<Row> device, Path nativeLibraryDir, Path release, List<String> errors) throws IOException {
+  private static boolean verify(List<Row> device, Path nativeLibraryDir, Path release, List<String> errors) throws IOException {
     Path libraries, extracted;
     try { libraries = nativeLibraryDir.toRealPath(); }
-    catch (IOException missing) { errors.add("The native library directory " + nativeLibraryDir + " is missing"); return; }
+    catch (IOException missing) { errors.add("The native library directory " + nativeLibraryDir + " is missing"); return false; }
     try { extracted = release.toRealPath(); }
-    catch (IOException missing) { errors.add("The extracted payload " + release + " is missing"); return; }
+    catch (IOException missing) { errors.add("The extracted payload " + release + " is missing"); return true; }
     Set<Path> listed = new HashSet<>();
+    boolean extractionDamaged = false;
     for (Row row : device) {
       Path root = row.tree() == Tree.NATIVE ? libraries : extracted;
       Path file = root.resolve(row.location());
       if (row.tree() != Tree.NATIVE) listed.add(file);
-      if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !file.toRealPath().startsWith(root)) {
-        errors.add("Missing " + row.path() + " at " + file);
-        continue;
-      }
-      long size = Files.size(file);
-      if (size != row.size()) {
-        errors.add("Size of " + row.path() + " differs: expected " + row.size() + ", found " + size);
-        continue;
-      }
-      String digest = digest(file);
-      if (!digest.equals(row.sha256())) errors.add("Digest of " + row.path() + " differs: expected " + row.sha256() + ", found " + digest);
+      String error = mismatch(row, root, file);
+      if (error == null) continue;
+      errors.add(error);
+      extractionDamaged |= row.tree() != Tree.NATIVE;
     }
     try (Stream<Path> tree = Files.walk(extracted)) {
       for (Path path : tree.collect(Collectors.toList()))
-        if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) && !listed.contains(path))
+        if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) && !listed.contains(path)) {
           errors.add("Unlisted file " + extracted.relativize(path) + " in the extracted payload");
+          extractionDamaged = true;
+        }
     }
+    return extractionDamaged;
+  }
+
+  private static String mismatch(Row row, Path root, Path file) throws IOException {
+    if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !file.toRealPath().startsWith(root)) return "Missing " + row.path() + " at " + file;
+    long size = Files.size(file);
+    if (size != row.size()) return "Size of " + row.path() + " differs: expected " + row.size() + ", found " + size;
+    String digest = digest(file);
+    return digest.equals(row.sha256()) ? null : "Digest of " + row.path() + " differs: expected " + row.sha256() + ", found " + digest;
   }
 
   private static Optional<WorkflowWorker> worker(Path release, List<Row> device, List<String> errors) throws IOException {

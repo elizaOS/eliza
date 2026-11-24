@@ -1,16 +1,20 @@
-// spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"
+// spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A route whose endpoints coincide is a zero-length route, never a malformed answer"; spec/cloud/services/maps.md, "A search ranked by distance reads the provider's largest page and answers its nearest places first"
+import { Effect } from "effect";
 import type { FakeAnswer, FakeHandler, FakeRequest } from "./fakes.ts";
 
 export type GoogleOperation = "searchText" | "searchNearby" | "details" | "geocode" | "computeRoutes" | "createSession" | "tile" | "viewport";
 
 export type GoogleScript =
   | { readonly kind: "answer" }
+  | { readonly kind: "places"; readonly places: ReadonlyArray<unknown> }
   | { readonly kind: "hold"; readonly wait: () => Promise<void> }
   | { readonly kind: "empty" }
   | { readonly kind: "notJson" }
   | { readonly kind: "outage" }
   | { readonly kind: "oversized" }
-  | { readonly kind: "geocodeReply"; readonly status: number; readonly geocode: string };
+  | { readonly kind: "geocodeReply"; readonly status: number; readonly geocode: string }
+  | { readonly kind: "reply"; readonly status: number; readonly body: unknown }
+  | { readonly kind: "zeroLengthRoute"; readonly points: 0 | 1 };
 
 export interface GoogleMapsFake {
   readonly handler: FakeHandler;
@@ -142,6 +146,10 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
   switch (script.kind) {
     case "answer":
       return answerOf(operation, request);
+    case "places": {
+      const { pageSize } = JSON.parse(request.body) as { readonly pageSize?: number };
+      return { status: 200, body: { places: script.places.slice(0, pageSize ?? 20) } };
+    }
     case "hold":
       await script.wait();
       return answerOf(operation, request);
@@ -155,6 +163,10 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
       return { status: 200, body: "x".repeat(2 * 1024 * 1024 + 1) };
     case "geocodeReply":
       return operation === "geocode" ? { status: script.status, body: { status: script.geocode, results: [] } } : answerOf(operation, request);
+    case "reply":
+      return { status: script.status, body: script.body };
+    case "zeroLengthRoute":
+      return { status: 200, body: { routes: [{ duration: "0s", polyline: { encodedPolyline: encodePolyline(routePoints.slice(0, script.points)) }, legs: [{}] }] } };
   }
 }
 
@@ -174,7 +186,7 @@ export function googleMapsFake(): GoogleMapsFake {
       calls.push({ operation, request });
       if (operation === "createSession") sessionAsked();
       if (keyOf(request) !== googleKey) return { status: 403, body: { error: { code: 403, status: "PERMISSION_DENIED" } } };
-      const session: GoogleScript = sessionDelayMs > 0 ? { kind: "hold", wait: () => new Promise<void>((resolve) => setTimeout(resolve, sessionDelayMs)) } : { kind: "answer" };
+      const session: GoogleScript = sessionDelayMs > 0 ? { kind: "hold", wait: () => Effect.runPromise(Effect.sleep(sessionDelayMs)) } : { kind: "answer" };
       return scripted(operation === "createSession" ? session : queue.shift() ?? { kind: "answer" }, operation, request);
     },
     calls,

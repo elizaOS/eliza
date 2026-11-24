@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check"; spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
+// spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check"; spec/agent/deviceActions/operations.md, "A Photos operation names no more items than its review takes"; spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
 import { assert, it } from "@effect/vitest"
 import { negotiation } from "../src/device-actions/capabilities.vibe"
 import { deviceOperations } from "../src/device-actions/operation-schemas/device.schema.vibe"
@@ -130,6 +130,26 @@ it("Propose only operations the device can check: a proposal with a stray key or
     { type: "mms_send", recipients: ["+15550100"], body: "", attachments: [], subscriptionId: 1 },
   ]
   for (const input of refused) assert.isUndefined(readOperation(input), JSON.stringify(input))
+})
+
+it('A Photos operation names no more items than its review takes (spec/agent/deviceActions/operations.md, "A Photos operation names no more items than its review takes")', () => {
+  const ids = (count: number) => Array.from({ length: count }, (_, index) => `lib:i:${index + 1}:0`)
+  const items = (count: number) => ids(count).map((id) => ({ id, revision: "rev-abc-1" }))
+  const bounded: ReadonlyArray<readonly [unknown, unknown]> = [
+    [{ type: "photo_library_search", limit: 50 }, { type: "photo_library_search", limit: 51 }],
+    [{ type: "photo_library_select", ids: ids(20) }, { type: "photo_library_select", ids: ids(21) }],
+    [{ type: "photo_library_review", action: "share", items: items(20) }, { type: "photo_library_review", action: "share", items: items(21) }],
+    [{ type: "photos_share", ids: ids(100) }, { type: "photos_share", ids: ids(101) }],
+    [{ type: "photos_album_create", name: "Trip", ids: ids(200) }, { type: "photos_album_create", name: "Trip", ids: ids(201) }],
+    [{ type: "photos_album_create", name: ` ${"a".repeat(80)} `, ids: ids(1) }, { type: "photos_album_create", name: "a".repeat(81), ids: ids(1) }],
+    [{ type: "photos_filter", text: "b".repeat(80) }, { type: "photos_filter", text: "b".repeat(81) }],
+  ]
+  for (const [within, beyond] of bounded) {
+    assert.isDefined(readOperation(within), JSON.stringify(within).slice(0, 120))
+    assert.isUndefined(readOperation(beyond), JSON.stringify(beyond).slice(0, 120))
+  }
+  assert.isUndefined(readOperation({ type: "photos_album_create", name: "   ", ids: ids(1) }))
+  assert.isUndefined(readOperation({ type: "photos_filter", text: "trip\u0007" }))
 })
 
 it("Propose only operations the device can check: each operation needs its own capability and a workflow read needs its binding", () => {
