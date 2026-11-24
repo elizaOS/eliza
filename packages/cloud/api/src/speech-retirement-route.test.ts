@@ -4,6 +4,7 @@ import {
   SPEECH_MINT_INTENT_HEADER,
   SPEECH_RECOVERY_HEADER,
   SPEECH_RELAY_EXTEND_HEADER,
+  SPEECH_RELAY_WINDOWS_HEADER,
 } from "@elizaos/host/voice/speech-relay-wire";
 import { HTTPException } from "hono/http-exception";
 
@@ -111,8 +112,27 @@ test("new mint persists and acknowledges requested proof version", async () => {
     env() as never,
   );
   expect(res.headers.get(SPEECH_RELAY_EXTEND_HEADER)).toBe("1");
+  expect(res.headers.get(SPEECH_RELAY_WINDOWS_HEADER)).toBe("10");
   expect((await responseObject(res)).retirementProofVersion).toBe(1);
   expect(data.calls[0].body.proofVersion).toBe(1);
+});
+test("a renewable mint names the relay's window bound, and a single-window mint offers neither", async () => {
+  const mint = (bound: string) =>
+    app.request(
+      "/session",
+      { method: "POST", body: JSON.stringify({ consentNonce: nonce }) },
+      { ...env(), VOICE_SPEECH_RELAY_MAX_WINDOWS: bound } as never,
+    );
+  const renewable = await mint("4");
+  expect(renewable.status).toBe(200);
+  expect(renewable.headers.get(SPEECH_RELAY_EXTEND_HEADER)).toBe("1");
+  expect(renewable.headers.get(SPEECH_RELAY_WINDOWS_HEADER)).toBe("4");
+  for (const bound of ["1", "not-a-number"]) {
+    const single = await mint(bound);
+    expect(single.status).toBe(200);
+    expect(single.headers.get(SPEECH_RELAY_EXTEND_HEADER)).toBeNull();
+    expect(single.headers.get(SPEECH_RELAY_WINDOWS_HEADER)).toBeNull();
+  }
 });
 test("recovery consent returns the exact prepared ID that a later mint uses", async () => {
   const headers = {

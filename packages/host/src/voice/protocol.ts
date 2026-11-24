@@ -113,7 +113,7 @@ export type ServerControlFrame =
       turnTerminal?: true;
       leaseExpiresAt?: number;
     }
-  | { t: "lease_extended"; sessionId: string; expiresAt: number }
+  | { t: "lease_extended"; sessionId: string; expiresAt: number; final?: true }
   | { t: "stt_partial"; text: string; traceId: string }
   | { t: "stt_eager_eot"; traceId: string }
   | { t: "stt_final"; text: string; traceId: string }

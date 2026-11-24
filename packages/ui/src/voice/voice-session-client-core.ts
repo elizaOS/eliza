@@ -302,6 +302,8 @@ export function createVoiceSessionClient(
   const turnTerminalOffers = new WeakMap<VoiceWebSocketLike, string>();
   const renewalOffers = new WeakMap<VoiceWebSocketLike, string>();
   const renewedLeases = new WeakMap<VoiceWebSocketLike, number>();
+  // Sockets whose host named the current paid window as the relay's last.
+  const finalLeases = new WeakSet<VoiceWebSocketLike>();
   let turnTerminalBinding: {
     socket: VoiceWebSocketLike;
     generation: number;
@@ -669,6 +671,7 @@ export function createVoiceSessionClient(
       )
         return;
       renewedLeases.set(socket, event.expiresAt);
+      if (event.final) finalLeases.add(socket);
       scheduleRotation({ expiresAt: event.expiresAt }, generation);
       return;
     }
@@ -1110,8 +1113,14 @@ export function createVoiceSessionClient(
     rotationDeadlineMs = expiresAtMs;
     // An acknowledged renewable host owns the paid deadline and closes on
     // refusal or expiry. A second client renewal loop would race that owner.
-    if (ws && renewedLeases.has(ws)) return;
-    const delayMs = Math.max(0, expiresAtMs - epochNow() - rotationLeadMs);
+    // Once the host names the current window as the relay's last, nothing
+    // renews it: rotate at the first idle moment of that window, so the
+    // relay's end never cuts a turn whose reply is still on its way.
+    const finalLease = ws !== null && finalLeases.has(ws);
+    if (ws && renewedLeases.has(ws) && !finalLease) return;
+    const delayMs = finalLease
+      ? 0
+      : Math.max(0, expiresAtMs - epochNow() - rotationLeadMs);
     rotationTimer = setTimeout(() => {
       rotationTimer = null;
       attemptRotation(generation);

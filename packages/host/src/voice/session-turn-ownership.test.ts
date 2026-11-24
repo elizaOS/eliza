@@ -326,3 +326,24 @@ test("a sound annotation settles metering without dispatch and the next spoken t
   expect(f.signals).toHaveLength(1);
   expect(f.frames("error")).toHaveLength(0);
 });
+test("a renewed lease names only the relay's last window as final", () => {
+  const leaseExpiresAt = Date.now() + 60_000;
+  const s = setup({ renewableLease: true, leaseExpiresAt });
+  s.session.renewLease(leaseExpiresAt + 50_000);
+  s.session.renewLease(leaseExpiresAt + 100_000, true);
+  expect(s.frames("lease_extended")).toEqual([
+    {
+      t: "lease_extended",
+      sessionId: expect.any(String),
+      expiresAt: leaseExpiresAt + 50_000,
+    },
+    {
+      t: "lease_extended",
+      sessionId: expect.any(String),
+      expiresAt: leaseExpiresAt + 100_000,
+      final: true,
+    },
+  ]);
+  expect(() => s.session.renewLease(leaseExpiresAt + 90_000, true)).toThrow();
+  expect(s.frames("lease_extended")).toHaveLength(2);
+});
