@@ -1,4 +1,4 @@
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A reload of a page my phone withheld runs only when my message asked for it"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A reload of a page my phone withheld runs only when my message asked for it"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without my review"
 import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
 import { groundedSearch } from "../gen/browser__control.effect.vibe"
 import { closingMarkIsProse, directDestination, pageLinkDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
@@ -131,7 +131,7 @@ function patterns(assistantName: string): NamePatterns {
     sentenceStart: compiled(String.raw`(?:^|[.!?:])\s*(?:(?:hey|hi|ok|okay|${name}|please)[\s,.!]*)*$`, "i"),
     questionStart: compiled(`${questionOpener}$`, "i"),
     questionStartWhy: compiled(String.raw`${questionOpener}why\s+(?:do|does|did)?$`, "i"),
-    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013])\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_INTENT}${RELOAD_TAIL}`, "gi"),
+    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013]|\b(?:so|then|but)\b)\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_INTENT}${RELOAD_TAIL}`, "gi"),
   }
   namePatterns.set(key, built)
   return built

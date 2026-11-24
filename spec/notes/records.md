@@ -239,28 +239,24 @@ pure def lawUnreadableSourceRefused(noteSaved: bool, sameAgent: bool, sameHash: 
   not(sourceStillExact(false, noteSaved, sameAgent, sameHash))
 ```
 
-### A turn's Notes classification narrows what Notes may write and never grants a write
+### A Notes write runs when the model calls a write action, and a read action never writes
 
-For the owner's turn the planner classifies what the current message asks
-of Notes: a read, a requested change with its operations, or nothing
-resolved. A write runs only when the turn bound to it classified a change;
-a read-only or unresolved turn refuses every write with nothing started,
-and reads are always allowed. Moving, editing in place and restoring are
-edits of one existing note. A turn that names exactly one saved note's
-title and asks only to read it is answered by reading that note's exact ID.
+What the owner's message asks of Notes is the model's to read: it calls a
+read action (list, get) or a write action (create, patch, update, move,
+delete, restore), and that call is the request. Nothing classifies the
+message before the model, so no fixed reading of the words refuses a write
+the owner asked for. The guards stay on what a write may touch: the owner
+alone reaches Notes, a delete or edit by name follows the owner's own
+words (above), a replacement needs the revision it was read at, and a
+delete moves the note to Trash. Each action is tagged by what it does, so
+the planner and the turn see a read action as a read and a write action
+as a write.
 
 ```quint
-type NotesClassification = ReadOnlyTurn | MutationTurn | UnresolvedTurn
-pure def notesWriteAllowed(classification: NotesClassification, isRead: bool): bool =
-  isRead or classification == MutationTurn
-pure def namedReadRoutes(classification: NotesClassification, onlyGet: bool, namedNotes: int): bool =
-  classification == ReadOnlyTurn and onlyGet and namedNotes == 1
-pure val namedNotesValues = Set(0, 1, 2)
-pure def lawReadOnlyTurnRefusesWrites(classification: NotesClassification): bool =
-  classification != MutationTurn implies not(notesWriteAllowed(classification, false))
-pure def lawReadsAreNeverRefused(classification: NotesClassification): bool = notesWriteAllowed(classification, true)
-pure def lawAmbiguousNameIsNotRouted(classification: NotesClassification, onlyGet: bool): bool =
-  not(namedReadRoutes(classification, onlyGet, 2))
+type NotesCall = ReadCall | WriteCall
+type NotesCapability = ReadCapability | WriteCapability
+pure def notesCapability(call: NotesCall): NotesCapability = if (call == WriteCall) WriteCapability else ReadCapability
+pure def lawOnlyAWriteActionIsTaggedForWriting(call: NotesCall): bool = (notesCapability(call) == WriteCapability) iff (call == WriteCall)
 ```
 
 ## Story: Keep the notes I saved before this version
