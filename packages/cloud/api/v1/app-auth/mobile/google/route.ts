@@ -33,10 +33,7 @@
 
 import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
 import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/private-owner-credential";
-import {
-  STEWARD_AUTH_UPSTREAM_TIMEOUT_MS,
-  verifyStewardTokenCached,
-} from "@elizaos/cloud-shared/lib/auth/steward-client";
+import { verifyStewardTokenCached } from "@elizaos/cloud-shared/lib/auth/steward-client";
 import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import { connectionEnforcementService } from "@elizaos/cloud-shared/lib/services/eliza-app";
 import {
@@ -54,10 +51,6 @@ import {
 } from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
 import { exchangeGoogleServerAuthCode } from "@elizaos/cloud-shared/lib/services/oauth/providers";
 import {
-  signStewardClientIp,
-  signStewardMutatingRequest,
-} from "@elizaos/cloud-shared/lib/steward/sign";
-import {
   describeSyncError,
   syncUserFromSteward,
 } from "@elizaos/cloud-shared/lib/steward-sync";
@@ -68,7 +61,7 @@ import type {
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { resolveStewardBaseUrl } from "../../../../src/steward/base-url";
+import { signedStewardPost } from "../../../../src/steward/signed-post";
 import {
   MOBILE_APP_AUTH_TOKEN_RATE_LIMIT,
   mobileAppAuthRateLimitMiddleware,
@@ -132,49 +125,6 @@ export function idTokenSubject(idToken: string): string | null {
     // error-policy:J4 an unreadable payload binds no Google account.
     return null;
   }
-}
-
-async function signedStewardPost(
-  c: AppContext,
-  path: string,
-  body: Record<string, unknown>,
-  extraHeaders: Record<string, string> = {},
-): Promise<Response | null> {
-  const base = resolveStewardBaseUrl(c.env);
-  if (!base) return null;
-  const url = new URL(`${base}${path}`);
-  const headers = new Headers({
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    ...extraHeaders,
-  });
-  const tenant = c.env.STEWARD_TENANT_ID?.trim();
-  if (tenant) headers.set("X-Steward-Tenant", tenant);
-  const text = JSON.stringify(body);
-  const secret = c.env.STEWARD_REQUEST_SIGNING_SECRET;
-  if (secret)
-    await signStewardMutatingRequest(
-      secret,
-      "POST",
-      `${url.pathname}${url.search}`,
-      headers,
-      new TextEncoder().encode(text),
-    );
-  // Steward rate-limits native sign-in per client IP: bind the edge address,
-  // or every phone would share the Worker's egress bucket.
-  await signStewardClientIp(
-    secret ?? null,
-    "POST",
-    `${url.pathname}${url.search}`,
-    headers,
-    c.req.header("cf-connecting-ip")?.trim(),
-  );
-  return fetch(url.toString(), {
-    method: "POST",
-    headers,
-    body: text,
-    signal: AbortSignal.timeout(STEWARD_AUTH_UPSTREAM_TIMEOUT_MS),
-  });
 }
 
 export interface MobileGoogleSignInDependencies {
