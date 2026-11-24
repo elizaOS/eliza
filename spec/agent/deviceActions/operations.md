@@ -501,7 +501,10 @@ send, dismissed the Messages text or draft, or had no conversation open for
 the reply);
 otherwise the request stays uncertain, because the device may have acted. A
 failed dial, call, contact write or Clock handoff is reconciled, never
-trusted as a refusal. The
+trusted as a refusal. The device says that it never dispatched with a
+failed receipt that carries the code `DEVICE_NOT_DISPATCHED` and no result,
+the code its [execution client](./execution.md) sends for a call it never
+made; that receipt settles the request of any operation as nothing ran. The
 [device request](./index.md) records these as `ReportedApplied`,
 `ReportedNothingRan` and `ReportedUnknown`.
 
@@ -527,6 +530,8 @@ pure def lawAFailedDialOrHandoffIsReconciled(t: OperationType, r: DeviceReceipt,
     implies receiptOutcome(t, r, claimKey) == ReceiptAdmitted({ settles: StaysUncertain })
 pure def lawAnUnknownReceiptStaysUncertain(t: OperationType, r: DeviceReceipt, claimKey: str): bool =
   (r.reported == ReportsUnknown and receiptAdmitted(t, r, claimKey)) implies receiptOutcome(t, r, claimKey) == ReceiptAdmitted({ settles: StaysUncertain })
+pure def lawANeverDispatchedReceiptSettlesNothingRanForEveryOperation(t: OperationType, claimKey: str): bool =
+  receiptOutcome(t, { reported: ReportsFailed, operationId: "", code: NotDispatched, result: NoResult }, claimKey) == ReceiptAdmitted({ settles: SettlesNothingRan })
 ```
 
 ### A read, a view change or an opened review is recorded as no effect, even when it applied
