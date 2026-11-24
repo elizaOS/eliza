@@ -487,6 +487,9 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
       "Reload this page — wait, do not.",
       "Reload this page — actually don't reload it.",
       "Reload this page; never mind; tell me the time.",
+      "Reload it. Actually don’t, thanks.",
+      "Reload it, never mind, open a new tab.",
+      "Reload it: do not — tell me the time.",
       "Reload this page. Never mind. Summarize what you have.",
     ]
     assert.deepStrictEqual([...asks, ...mentions].map((text) => ownerAskedBrowserReload(text)), [...asks.map(() => true), ...mentions.map(() => false)])

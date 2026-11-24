@@ -88,7 +88,7 @@ const RELOAD_REFERENCE = String.raw`(?:${RELOAD_WORD}(?:ing)?|${REOPEN_SAME_PAGE
 const RELOAD_INTENT = String.raw`(?:try\s+${RELOAD_WORD}ing|(?:(?:try|hit|press)\s+(?:the\s+)?)?(?:${RELOAD_WORD}|${REOPEN_SAME_PAGE}))`
 const RELOAD_TAIL = String.raw`(?:\s+(?:it|this|that|the|page|tab|site|website|article|one|again|now|please|for\s+me|once\s+more))*[)"'”’]*(?=\s*[.!?;,:–—]|\s+(?:and|then|so)\b|\s*$)`
 const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|not|stop|no\s+need\s+to)|(?<!\b(?:ca|could|wo|would))n['’]t|\b(?:ca|could|wo|would)n['’]t(?!\s+(?:you|u)\b))\s+(?:(?:just|ever|even|you|u|please|need\s+to|have\s+to|try\s+to|bother\s+to|want\s+to|to)\s+)*${RELOAD_REFERENCE}\b`, "i")
-const SHORT_RELOAD_RETRACTION = /^[^.?!;,:–—]*[.?!;,:–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[.!?;]+(?=\s|$)|\s*$)/i
+const SHORT_RELOAD_RETRACTION = /^[^.?!;,:–—]*[.?!;,:–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[ \t]*[.!?;,:–—]+(?=\s|$)|\s*$)/i
 const COORDINATED_RELOAD_RETRACTION = compiled(String.raw`(?:^|[.!?;,:–—])\s*(?:(?:actually|instead|please|pls|just|now|no|wait)\s+)*(?:don['’]?t|do\s+not|never|stop|no\s+need\s+to)\s+[^.!?;,:–—]*\b(?:and|or)\s+(?:(?:just|ever|even|please|try(?:\s+to)?)\s+)*${RELOAD_REFERENCE}\b`, "i")
 const DOTS = /[\uff0e\u3002\uff61\u2024]/g
 const HOST_RUN = /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*/gu
