@@ -1,4 +1,4 @@
-// spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone's clock"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"
+// spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/readClock.md, "A stated window is read only when the owner's words fit it one way on its day"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone's clock"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"
 import { nameSaid } from "../gen/calendar__reviewedReads.effect.vibe"
 import { addDaysToLocalDate, getZonedDateParts, knownTimeZone, type LocalDate } from "./clock.vibe"
 
@@ -275,6 +275,37 @@ export function clockHeldByWords(clock: StatedClockTime, text: string): boolean 
     }
     return false
   })
+}
+
+const windowClockWord = /^(?:\d{1,2}(?:[:.]\d{2})?|am|pm|oclock|noon|midday|midnight|half|past|quarter|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)$/u
+const windowJoins = new Set(["and", "to", "until", "till", "through", "-"])
+
+export interface WindowSides {
+  readonly start: string
+  readonly end: string
+}
+
+/** The clock words on each side of the first stated range in the owner's words ("between noon and five", "from 2 to 4 PM", "2pm-4pm"). */
+export function windowSidesInWords(text: string): WindowSides | undefined {
+  const words = text.normalize("NFKC").toLowerCase()
+    .replace(/(\d)(?=[a-z])/gu, "$1 ")
+    .replace(/\b([ap])\.?\s?m\b\.?/gu, " $1m ")
+    .replace(/\bo['’]\s?clock\b/gu, "oclock")
+    .replace(/[-–—]/gu, " - ")
+    .replace(/\.(?!\d)|[^\p{L}\p{N}:.-]+/gu, " ")
+    .trim().split(/\s+/u)
+  const clockWord = (at: number) => windowClockWord.test(words[at] ?? "")
+  for (let join = 1; join < words.length - 1; join += 1) {
+    const joined = words[join] ?? ""
+    if (!windowJoins.has(joined)) continue
+    let from = join
+    while (from > 0 && join - from < 5 && clockWord(from - 1)) from -= 1
+    let to = join + 1
+    while (to < words.length && to - join <= 5 && clockWord(to)) to += 1
+    if (from === join || to === join + 1 || (joined === "and" && words[from - 1] !== "between")) continue
+    return { start: words.slice(from, join).join(" "), end: words.slice(join + 1, to).join(" ") }
+  }
+  return undefined
 }
 
 const leadingDecline = /^[\s"“'‘]*(?:no(?!\s+(?:need|longer)\b)|nope|nah|wait|hold\s+on|never\s*mind|nevermind|keep\s+it|leave\s+it|forget\s+(?:it|that))\b|^\s*cancel\s+that\s*[.!]*\s*$/iu

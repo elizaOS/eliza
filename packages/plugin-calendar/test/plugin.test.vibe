@@ -399,6 +399,34 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const restOfToday = try asked("Is today free?", { subaction: "check_availability", timeMin: "2030-03-03T12:00:00-08:00", timeMax: "2030-03-04T00:00:00-08:00" })
   assert.deepStrictEqual([today.success, at(today.data, "code"), at(minuteAgo.data, "code"), restOfToday.success, at(restOfToday.data, "isFree")],
     [false, "CALENDAR_AVAILABILITY_PAST_WINDOW", "CALENDAR_AVAILABILITY_PAST_WINDOW", true, true])
+  const twoToFourPm = { ...noonToFive, timeMin: "2030-03-04T14:00:00-08:00", timeMax: "2030-03-04T16:00:00-08:00" }
+  const pmEnd = try asked("Am I free tomorrow from 2 to 4 PM?", twoToFourPm)
+  const amStart = try asked("Am I free tomorrow from 2 to 4 PM?", { ...twoToFourPm, timeMin: "2030-03-04T02:00:00-08:00" })
+  const amFirst = try asked("Am I free tomorrow from 9 AM to 11?", { ...noonToFive, timeMin: "2030-03-04T09:00:00-08:00", timeMax: "2030-03-04T11:00:00-08:00" })
+  assert.deepStrictEqual([pmEnd.success, at(pmEnd.data, "isFree"), amStart.success, at(amStart.data, "code"), at(amStart.data, "windows"), amFirst.success, at(amFirst.data, "isFree")],
+    [true, true, false, "CALENDAR_CLOCK_UNSAID", [{ startAt: "2030-03-04T22:00:00.000Z", endAt: "2030-03-05T00:00:00.000Z" }], true, false])
+  const onTheTwelfth = try asked("Am I free between noon and five on the 12th?", { ...noonToFive, timeMin: "2030-03-12T12:00:00-07:00", timeMax: "2030-03-12T17:00:00-07:00" })
+  const twelveMinutes = try asked("Find me 12 minutes tomorrow between noon and five", { ...noonToFive, subaction: "propose_times", durationMinutes: 12 })
+  const overnight = try asked("Am I free tomorrow night from 10 to 1?", { ...noonToFive, timeMin: "2030-03-04T22:00:00-08:00", timeMax: "2030-03-05T01:00:00-08:00" })
+  assert.deepStrictEqual([onTheTwelfth.success, at(onTheTwelfth.data, "isFree"), twelveMinutes.success, at(twelveMinutes.data, "slots", "length"), overnight.success, at(overnight.data, "isFree")], [true, true, true, 2, true, true])
+  const fromThree = { subaction: "check_availability", timeMin: "2030-03-04T15:00:00-08:00", timeMax: "2030-03-04T17:00:00-08:00", statedClock: "start" }
+  const startOnly = try asked("Am I free tomorrow from 3pm?", fromThree)
+  const startMisread = try asked("Am I free tomorrow from 3pm?", { ...fromThree, timeMin: "2030-03-04T03:00:00-08:00" })
+  assert.deepStrictEqual([startOnly.success, at(startOnly.data, "isFree"), startMisread.success, at(startMisread.data, "code"), at(startMisread.data, "sent")], [true, true, false, "CALENDAR_CLOCK_UNSAID", "2030-03-04T11:00:00.000Z"])
+  try TestClock.setTime(Date.parse("2030-03-03T21:00:00Z"))
+  const underWay = "Am I free between noon and five today?"
+  const fromNoon = try asked(underWay, { ...noonToFive, timeMin: "2030-03-03T12:00:00-08:00", timeMax: "2030-03-03T17:00:00-08:00" })
+  const fromNow = try asked(underWay, { ...noonToFive, timeMin: "2030-03-03T13:00:00-08:00", timeMax: "2030-03-03T17:00:00-08:00" })
+  const nowToSix = try asked(underWay, { ...noonToFive, timeMin: "2030-03-03T13:00:00-08:00", timeMax: "2030-03-03T18:00:00-08:00" })
+  const yesterday = try asked("Was I free yesterday afternoon?", { subaction: "check_availability", timeMin: "2030-03-02T12:00:00-08:00", timeMax: "2030-03-02T17:00:00-08:00", afternoonOnly: true })
+  const pastNext = (result: { readonly data?: unknown }) => {
+    const next = at(result.data, "next")
+    return typeof next === "string" ? next : ""
+  }
+  assert.deepStrictEqual([at(fromNoon.data, "code"), pastNext(fromNoon).includes("keep its end and statedClock"), pastNext(fromNoon).includes("between noon and five today"), fromNow.success, at(fromNow.data, "isFree"), at(nowToSix.data, "code"),
+    at(yesterday.data, "code"), pastNext(yesterday).includes("search_events"), pastNext(yesterday).includes("start it at now")],
+    ["CALENDAR_AVAILABILITY_PAST_WINDOW", true, true, true, true, "CALENDAR_CLOCK_UNSAID", "CALENDAR_AVAILABILITY_PAST_WINDOW", true, false])
+  try TestClock.setTime(Date.parse("2030-03-03T20:00:00Z"))
   const unsized = try asked("Find me time this week", { subaction: "propose_times", timeMin: "2030-03-04T09:00:00-08:00", timeMax: "2030-03-04T12:00:00-08:00" })
   const tooLong = try asked("Am I free this month?", { subaction: "check_availability", timeMin: "2030-03-04T00:00:00-08:00", timeMax: "2030-03-12T00:00:00-07:00" })
   assert.deepStrictEqual([at(unsized.data, "code"), at(tooLong.data, "code")], ["CALENDAR_AVAILABILITY_INVALID_WINDOW", "CALENDAR_AVAILABILITY_INVALID_WINDOW"])
@@ -584,6 +612,8 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   assert.deepStrictEqual([dictated.text?.replace(/\s/gu, " ").startsWith("Created Taco Night lab check, Mar 2, 2030, 1:10 – 1:30 PM."), written.text?.replace(/\s/gu, " ").startsWith("Created Lab sync, Mar 2, 2030, 3:00 – 3:45 PM.")], [true, true])
   const open = try said("slot-4n", "Block an hour for the lab tomorrow afternoon", { subaction: "create_event", title: "Lab block", startAt: "2030-03-02T14:00", endAt: "2030-03-02T15:00", statedClock: "none" })
   assert.strictEqual(open.text?.replace(/\s/gu, " ").startsWith("Created Lab block, Mar 2, 2030, 2:00 PM."), true)
+  const lengthOnly = try said("slot-4w", "Add an event called Gear check tomorrow from 4pm to 4:30pm", { subaction: "create_event", title: "Gear check", startAt: "2030-03-02T16:00", durationMinutes: 30, statedClock: "range" })
+  assert.deepStrictEqual([lengthOnly.text?.replace(/\s/gu, " ").startsWith("Created Gear check, Mar 2, 2030, 4:00 PM."), span(lengthOnly)], [true, ["2030-03-03T00:00:00.000Z", "2030-03-03T00:30:00.000Z"]])
   const shifted = try said("slot-4o", "Add an event called Lab review tomorrow from 3pm to 3:45pm", { subaction: "create_event", title: "Lab review", startAt: "2030-03-02T15:00", endAt: "2030-03-02T16:45", statedClock: "range" })
   assert.deepStrictEqual([span(dictated), span(written), span(extended), span(open), at(shifted.data, "code")],
     [["2030-03-02T21:10:00.000Z", "2030-03-02T21:30:00.000Z"], ["2030-03-02T23:00:00.000Z", "2030-03-02T23:45:00.000Z"], ["2030-03-03T02:00:00.000Z", "2030-03-03T03:00:00.000Z"],

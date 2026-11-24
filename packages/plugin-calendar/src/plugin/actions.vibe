@@ -3,10 +3,10 @@ import { readTurnContext, showsApp } from "@elizaos/agent"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type ContextDefinition, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
   afternoonAdmission, changedEndMs, changeTarget, chatCreateReviewed, createReplyTime, chatDeleteStep, contextLookahead, createEndMs, createLength, dayRead, deleteAnswer, freeTimeRead, guestChange, intervalFree, lookupDaysAhead, lookupDaysBack, lookupNearAhead,
-  lookupNearBack, lookupReadLimit, lookupSpanDays, lookupStep, morningAdmission, occurrenceChoice, offDay, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, createStore, windowStartAdmission, type GuestChange, type OwnerAnswer,
+  lookupNearBack, lookupReadLimit, lookupSpanDays, lookupStep, morningAdmission, occurrenceChoice, offDay, ownerPointedAt, pastWindowNext, residentDeleteStep, slotMinutesAllowed, createStore, windowStartAdmission, type GuestChange, type OwnerAnswer,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
-import { clockReal, instantRead, statedClockCheck, wallZone, windowClockCheck, windowPairing } from "../../gen/calendar__readClock.effect.vibe"
+import { clockReal, instantRead, statedClockCheck, wallZone, windowClockCheck, windowFits, windowPairing, windowStartChecked } from "../../gen/calendar__readClock.effect.vibe"
 import { scopeChoice } from "../../gen/calendar__seriesScope.effect.vibe"
 import {
   addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate,
@@ -15,7 +15,7 @@ import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
-import { addressWrittenInWords, clockHeldByWords, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, zoneNamedIn } from "../request-time.vibe"
+import { addressWrittenInWords, clockHeldByWords, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, windowSidesInWords, zoneNamedIn } from "../request-time.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { tripEvents } from "./lookup.vibe"
 import { phoneCalendarOffered } from "./phone-turn.vibe"
@@ -613,15 +613,23 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
   }
 }
 
-function windowPairings(begin: number, finish: number, zone: string, text: string): readonly { readonly begin: number; readonly finish: number }[] | undefined {
+type WindowFit = { readonly begin: number; readonly finish: number }
+
+function windowPairings(begin: number, finish: number, zone: string, text: string): readonly WindowFit[] | undefined {
   const start = getZonedDateParts(new Date(begin), zone)
   const end = getZonedDateParts(new Date(finish), zone)
   if (start === undefined || end === undefined || start.year !== end.year || start.month !== end.month || start.day !== end.day) return undefined
-  const readings = (wall: { readonly hour: number; readonly minute: number }) => [wall.hour % 12, (wall.hour % 12) + 12]
-    .filter((hour) => clockHeldByWords({ hour, minute: wall.minute }, text))
+  const sides = windowSidesInWords(text)
+  if (sides === undefined) return []
+  const readings = (wall: { readonly hour: number; readonly minute: number }, side: string) => [wall.hour % 12, (wall.hour % 12) + 12]
+    .filter((hour) => clockHeldByWords({ hour, minute: wall.minute }, side))
     .map((hour) => buildUtcDateFromLocalParts(zone, { year: start.year, month: start.month, day: start.day, hour, minute: wall.minute, second: 0 })?.getTime())
     .filter((at): at is number => at !== undefined)
-  return readings(start).flatMap((from) => readings(end).filter((to) => to > from).map((to) => ({ begin: from, finish: to })))
+  const starts = readings(start, sides.start)
+  const ends = readings(end, sides.end)
+  const pairs = starts.flatMap((from) => ends.filter((to) => to > from).map((to) => ({ begin: from, finish: to })))
+  const kept = windowFits(starts.length, ends.length, pairs.length)
+  return kept === pairs.length ? pairs : starts.length > 1 ? pairs.slice(-kept) : pairs.slice(0, kept)
 }
 
 effect function freeTime(host: CalendarHost, parameters: Parameters, zone: string, text: string, now: number): ActionResult!! {
@@ -636,8 +644,11 @@ effect function freeTime(host: CalendarHost, parameters: Parameters, zone: strin
     return failed(subaction, "I need the exact window (timeMin and timeMax, at most seven days apart) and, for openings, the asked length in minutes from 5 to 480.", { code: "CALENDAR_AVAILABILITY_INVALID_WINDOW" })
   }
   if (windowStartAdmission(begin, now) === "RefusePastStart") {
-    return failed(subaction, "Nothing was read: that window starts before now.",
-      { code: "CALENDAR_AVAILABILITY_PAST_WINDOW", now: new Date(now).toISOString(), next: "Call again at once with the window starting at the current time (now) or later: for the rest of a period already under way (\"is today free?\", \"am I free this afternoon?\"), start it at now and keep its end." })
+    return pastWindowNext(finish <= now) === "SearchThePast"
+      ? failed(subaction, "Nothing was read: that window ended before now, and free time is only found ahead.",
+        { code: "CALENDAR_AVAILABILITY_PAST_WINDOW", now: new Date(now).toISOString(), next: "For a question about a period already past (\"was I free yesterday afternoon?\"), call search_events over that period at once and answer from the events it lists." })
+      : failed(subaction, "Nothing was read: that window starts before now.",
+        { code: "CALENDAR_AVAILABILITY_PAST_WINDOW", now: new Date(now).toISOString(), next: "Call again at once with the window starting at the current time (now): for the rest of a period already under way (\"is today free?\", \"am I free this afternoon?\", \"between noon and five today\" at 1 PM), start it at now and keep its end and statedClock; a start at now is not checked against the owner's words. For what was on earlier in that period, use search_events." })
   }
   const noon = hourOfDay(begin, zone, 12)
   if (morningAdmission(parameters.morningOnly === true, noon === undefined || finish > noon) === "RefuseOutsideMorning") {
@@ -649,15 +660,26 @@ effect function freeTime(host: CalendarHost, parameters: Parameters, zone: strin
     return failed(subaction, "The owner asked only about an afternoon. Keep the window on that afternoon, from noon to 5 PM in the request's zone; for a shorter opening inside the afternoon, use propose_times.",
       { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
   }
-  const unsaid = unsaidClock({ ...parameters, startAt: new Date(begin).toISOString(), endAt: new Date(finish).toISOString() }, zone, text, {}, windowClockCheck)
+  const thisMinute = now - now % 60000
+  const keptStart = windowStartChecked(begin >= thisMinute && begin < thisMinute + 60000) ? {} : { start: new Date(begin).toISOString() }
+  const unsaid = unsaidClock({ ...parameters, startAt: new Date(begin).toISOString(), endAt: new Date(finish).toISOString() }, zone, text, keptStart, windowClockCheck)
   if (unsaid !== undefined) return clockRefused(subaction, unsaid, "read", unsaidWindowNext)
   const pairing = windowPairings(begin, finish, zone, text)
-  if (windowPairing(parameters.statedClock === "range", pairing !== undefined, pairing?.length ?? 0) === "PairingOpen") {
-    const clocks = new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" })
-    const fits = pairing ?? []
-    return failed(subaction, `Nothing was read: the request's clock times fit more than one window that day: ${new Intl.ListFormat("en-US", { type: "disjunction" }).format(fits.map((fit) => clocks.formatRange(new Date(fit.begin), new Date(fit.finish))))}.`, {
-      code: "CALENDAR_CLOCK_AMBIGUOUS", windows: fits.map((fit) => ({ startAt: new Date(fit.begin).toISOString(), endAt: new Date(fit.finish).toISOString() })),
+  const fits = pairing ?? []
+  const clocks = new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" })
+  const fitsWindow = (fit: WindowFit) => clocks.formatRange(new Date(fit.begin), new Date(fit.finish))
+  const windows = fits.map((fit) => ({ startAt: new Date(fit.begin).toISOString(), endAt: new Date(fit.finish).toISOString() }))
+  const paired = windowPairing(parameters.statedClock === "range", pairing !== undefined, fits.length, fits.some((fit) => fit.begin === begin && fit.finish === finish))
+  if (paired === "PairingOpen") {
+    return failed(subaction, `Nothing was read: the request's clock times fit more than one window that day: ${new Intl.ListFormat("en-US", { type: "disjunction" }).format(fits.map(fitsWindow))}.`, {
+      code: "CALENDAR_CLOCK_AMBIGUOUS", windows,
       next: "Ask the owner which of these windows they mean, in your own words. When the owner's words or the conversation already settle it, call again at once with that window and statedClock none.",
+    })
+  }
+  if (paired === "PairingOther") {
+    return failed(subaction, `Nothing was read: the request's clock times give the window ${fits.map(fitsWindow).join(", ")} that day, not the one sent.`, {
+      code: "CALENDAR_CLOCK_UNSAID", sent: new Date(begin).toISOString(), windows,
+      next: "Call again at once with the window the request gives and statedClock range.",
     })
   }
   const found = try host.search({ timeMin: Math.max(0, begin - day), timeMax: finish + day, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
@@ -771,7 +793,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const source = try host.writeTarget(sentEvent.calendarId)
       if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
       const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: chatCreateReviewed(sentEvent.reviewBeforeCreate === false && sentEvent.reviewBeforeSaving !== true), slotZone: createZone, askedBy, askId }) catch () => undefined
-      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, createZone, createReplyTime(sentEvent.statedClock === "range", sentEvent.isAllDay === true))
+      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, createZone, createReplyTime(sentEvent.statedClock === "range", sentEvent.endAt !== undefined, sentEvent.isAllDay === true))
     }
     case "update_event":
     case "delete_event": {

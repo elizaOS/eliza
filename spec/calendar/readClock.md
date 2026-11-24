@@ -180,13 +180,20 @@ new event's is: one the words hold is read, and one they do not hold reads
 nothing, and the result names the time sent so the model sends the window
 the owner said. A window the model did not call stated, or called none, is
 read as asked: a window the model chose ("tomorrow afternoon", "is
-Wednesday free?") holds no clock time the owner said. Only the Calendar
-action's free-time questions send a window; their story is "Ask when I am
-free and get openings from my real calendar" in actions.md.
+Wednesday free?") holds no clock time the owner said. A window's start
+within the current minute is not checked: a window already under way
+starts at the current time, which the result of a window that starts
+before now asks for ("between noon and five today" at 1 PM starts at 1
+PM), and that start is no clock time the owner said; its end is still
+checked. Only the Calendar action's free-time questions send a window;
+their story is "Ask when I am free and get openings from my real
+calendar" in actions.md.
 
 ```quint
 pure def windowClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): StatedClockCheck =
   if (declared) statedClockCheck(true, statedByOwner, heldByOwnerWords) else ClockAsSent
+pure def windowStartChecked(startsThisMinute: bool): bool = not(startsThisMinute)
+pure def lawAWindowStartAtNowIsNotChecked(startsThisMinute: bool): bool = windowStartChecked(startsThisMinute) iff not(startsThisMinute)
 pure def lawAStatedWindowClockTheWordsDoNotHoldReadsNothing(heldByOwnerWords: bool): bool =
   (windowClockCheck(true, true, heldByOwnerWords) == ClockUnsaid) iff not(heldByOwnerWords)
 pure def lawAnUndeclaredWindowIsReadAsAsked(statedByOwner: bool, heldByOwnerWords: bool): bool =
@@ -198,29 +205,53 @@ pure def lawAWindowCheckNeverAsksForADeclaration(declared: bool, statedByOwner: 
 ### A stated window is read only when the owner's words fit it one way on its day
 
 A free-time window the model calls a stated range is read only when the
-owner's words fit it one way on its day. Code takes each reading of the
-window's start and of its end, in either half of the day, that the
-owner's words hold, and pairs them where the end comes after the start on
-that day; the window as sent is one such pairing. "Between noon and
-five" and "from one ten PM to two PM" fit one way and are read. Bare
-hours that fit more than one way ("from 2 to 4": 2 to 4 AM, 2 AM to 4
-PM, or 2 to 4 PM) read nothing, and the result lists each pairing, so the
-model asks the owner which one they mean or, when the conversation
-already settles it, sends that window as one it read (statedClock none).
-A window that runs past midnight, and one the model did not call a
-stated range, is not paired.
+owner's words fit it one way on its day and that way is the window sent.
+Code finds the range in the owner's words: clock words for the start and
+for the end, joined by "and" after "between", or by "to", "until",
+"till", "through" or a dash ("between noon and five", "from 2 to 4 PM",
+"2pm-4pm"). It reads the start only from the clock words before the join
+and the end only from those after it, so a date or a length elsewhere in
+the request ("on the 12th", "find me 12 minutes") adds no reading. It
+takes each reading of the window's start and of its end, in either half
+of the day, that its side holds, and pairs them where the end comes after
+the start on that day. When one side holds a single reading, the other
+side takes the reading nearest it, so the window fits at most one way:
+"from 2 to 4 PM" is 2 to 4 PM, and "from 9 AM to 11" is 9 to 11 AM.
+"Between noon and five" and "from one ten PM to two PM" fit one way and
+are read. Bare hours on both sides that fit more than one way ("from 2 to
+4": 2 to 4 AM, 2 AM to 4 PM, or 2 to 4 PM) read nothing, and the result
+lists each pairing, so the model asks the owner which one they mean or,
+when the conversation already settles it, sends that window as one it
+read (statedClock none). A window the words fit one other way ("from 2 to
+4 PM" sent as 2 AM to 4 PM) reads nothing, and the result names the
+window that fits, so the model sends it. A window that runs past
+midnight, one whose request holds no such range, and one the model did
+not call a stated range, are not paired.
 
 ```quint
-type WindowPairing = PairingSettled | PairingOpen
-pure def windowPairing(statedRange: bool, sameDay: bool, pairings: int): WindowPairing =
-  if (statedRange and sameDay and pairings > 1) PairingOpen else PairingSettled
-pure def lawAWindowTheWordsFitMoreThanOneWayReadsNothing(pairings: int): bool =
-  (windowPairing(true, true, pairings) == PairingOpen) iff pairings > 1
-pure def lawAnUnstatedWindowIsNotPaired(sameDay: bool, pairings: int): bool =
-  windowPairing(false, sameDay, pairings) == PairingSettled
-pure def lawAWindowPastMidnightIsNotPaired(statedRange: bool, pairings: int): bool =
-  windowPairing(statedRange, false, pairings) == PairingSettled
+type WindowPairing = PairingSettled | PairingOpen | PairingOther
+pure def windowPairing(statedRange: bool, sameDay: bool, pairings: int, sentFits: bool): WindowPairing =
+  if (not(statedRange and sameDay) or pairings == 0) PairingSettled
+  else if (pairings > 1) PairingOpen
+  else if (sentFits) PairingSettled
+  else PairingOther
+pure def windowFits(startReadings: int, endReadings: int, pairings: int): int =
+  if ((startReadings == 1 or endReadings == 1) and pairings > 1) 1 else pairings
+pure def lawAWindowTheWordsFitMoreThanOneWayReadsNothing(pairings: int, sentFits: bool): bool =
+  (windowPairing(true, true, pairings, sentFits) == PairingOpen) iff pairings > 1
+pure def lawAWindowTheWordsFitAnotherWayReadsNothing(sentFits: bool): bool =
+  (windowPairing(true, true, 1, sentFits) == PairingOther) iff not(sentFits)
+pure def lawAnUnstatedWindowIsNotPaired(sameDay: bool, pairings: int, sentFits: bool): bool =
+  windowPairing(false, sameDay, pairings, sentFits) == PairingSettled
+pure def lawAWindowPastMidnightIsNotPaired(statedRange: bool, pairings: int, sentFits: bool): bool =
+  windowPairing(statedRange, false, pairings, sentFits) == PairingSettled
+pure def lawAWindowWithoutARangeIsNotPaired(statedRange: bool, sameDay: bool, sentFits: bool): bool =
+  windowPairing(statedRange, sameDay, 0, sentFits) == PairingSettled
+pure def lawASideWithOneReadingFitsOneWay(readings: int, pairings: int): bool =
+  windowFits(1, readings, pairings) <= 1 and windowFits(readings, 1, pairings) <= 1
+pure def lawBareSidesKeepEveryFit(pairings: int): bool = windowFits(2, 2, pairings) == pairings
 pure val pairingsValues = Set(0, 1, 2, 3)
+pure val readingsValues = Set(0, 1, 2)
 ```
 
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first
