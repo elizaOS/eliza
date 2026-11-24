@@ -134,7 +134,7 @@ function shownProse(text: string): string | undefined {
   return output.kind === "text" ? output.text.trim() || undefined : undefined
 }
 
-export function composeReply(toolText: string | undefined, prose: string | undefined, ownCopy: boolean): string {
+export function composeReply(toolText: string | undefined, prose: string | undefined, ownCopy: boolean, alone: boolean): string {
   const verified = toolText?.trim() ?? ""
   const said = prose === undefined ? undefined : shownProse(prose)
   const shape = {
@@ -143,6 +143,7 @@ export function composeReply(toolText: string | undefined, prose: string | undef
     multiline: verified.includes("\n"),
     fenced: verified.includes("```"),
     ownCopy: ownCopy || parseInteractionBlocks(verified).blocks.length > 0,
+    alone,
   }
   const composition: Composition = compose(shape, said !== undefined, said?.includes(verified) ?? false, said !== undefined && verified.includes(said))
   switch (composition) {
