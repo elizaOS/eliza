@@ -1,3 +1,1 @@
-// The route schemas a provider's answer is decoded with, named here so that their values are generated and
-// round-tripped by the package's schema tests (vibestack/testing/generate.ts).
 export { Route, RouteStep, TransitDetails } from "./contracts.vibe"
