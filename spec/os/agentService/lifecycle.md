@@ -260,6 +260,32 @@ pure def alwaysStatusTellsTheTruth(s: AgentService): bool = ((statusOf(s).failur
   and (statusOf(s).bridgeState == "running" implies (s.readyEpoch == s.epoch and childOwned(s.child)))
 ```
 
+## Story: See a failed agent even when I silence its status
+
+> As a device owner, I want a failed agent to tell me on an alerts channel of
+> its own, so that I can silence the routine starting, running and stopping
+> notice without missing a failure.
+
+### A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel
+
+The service keeps one notice for the agent and moves it between two
+channels as the phase changes, with the host file's status or failure words
+(`./config.md`). A planned stop, and the stop before a credential failure,
+stay on the status channel; only the failure itself alerts. A stopped agent
+shows no notice.
+
+```quint
+type NoticeChannel = NoNotice | StatusChannel | AlertsChannel
+pure def noticeChannel(s: AgentService): NoticeChannel = {
+  val p = s.phase
+  match p { | Stopped => NoNotice | Failed(_) => AlertsChannel | _ => StatusChannel }
+}
+pure def alwaysOnlyAFailureAlerts(s: AgentService): bool =
+  ((noticeChannel(s) == AlertsChannel) iff isFailed(s.phase)) and ((noticeChannel(s) != NoNotice) iff statusOf(s).notice)
+pure def sometimesAFailedAgentAlerts(s: AgentService): bool = noticeChannel(s) == AlertsChannel
+pure def sometimesAStopIsOnTheStatusChannel(s: AgentService): bool = isStopping(s.phase) and noticeChannel(s) == StatusChannel
+```
+
 ## Story: Restart a crashed or unhealthy agent until it stays up
 
 > As a device owner, I want an agent that crashes or stops answering

@@ -65,6 +65,16 @@ pure def sometimesSlackMentionClaims(s: SlackSession): bool = s.claims.length() 
 pure val eval_witness_sometimesSlackMentionClaims = (("bindSlack", SlackSocket, slackSampleInstallation), ("claimSlack", SlackSocket, sampleSlackInbound, sampleSlackPolicy))
 ```
 
+### The agent reads the &, < and > a Slack member typed
+
+Slack sends a typed `&`, `<` and `>` in message text as `&amp;`, `&lt;` and `&gt;`. The text of an admitted message or mention reaches the agent with each of those three entities turned back into the character the member typed, and nothing else changed. The text is read once from left to right, so a decoded character never starts another entity: a member who typed `&lt;` (sent as `&amp;lt;`) is read as `&lt;`. Bot mentions are found in the text as Slack sent it.
+
+```quint
+pure def slackEntityText(name: str): str = if (name == "amp") "&" else if (name == "lt") "<" else if (name == "gt") ">" else ""
+pure val nameValues = Set("amp", "lt", "gt", "quot", "amp;lt", "")
+pure def lawSlackDecodesOnlyItsThreeEntities(name: str): bool = (slackEntityText(name) != "") iff (name == "amp" or name == "lt" or name == "gt")
+```
+
 ## Story: Know how much of a Slack send reached the provider
 
 > As an owner, I want a send with text or attachments to show the actual outcome when a part is refused or uncertain.
@@ -81,4 +91,15 @@ pure def slackPartAccepted(part: SlackPartReceipt): bool = match part { | SlackP
 pure def slackSendOutcome(parts: SlackParts): SlackSendOutcome = if (parts.requestedParts > 0 and parts.observedParts.length() == parts.requestedParts and parts.observedParts.every(part => slackPartAccepted(part))) SlackSendComplete else if (parts.observedParts.some(part => slackPartAccepted(part))) SlackSendPartial else if (parts.observedParts.includes(SlackPartUnknown)) SlackSendIndeterminate else SlackSendRefused
 pure val partsValues = Set({ requestedParts: 1, observedParts: List(SlackPartAccepted({ receiptId: "provider-ts" })) }, { requestedParts: 2, observedParts: List(SlackPartUnknown, SlackPartRefused) }, { requestedParts: 0, observedParts: List() })
 pure def lawSlackCompleteRequiresEvidence(parts: SlackParts): bool = slackSendOutcome(parts) == SlackSendComplete implies (parts.requestedParts > 0 and parts.observedParts.length() == parts.requestedParts and parts.observedParts.every(part => slackPartAccepted(part)))
+```
+
+### A Slack post is sent again only after a rate limit, never after a lost answer
+
+A message post or file upload, the pairing reply included, has no idempotency key: when Slack kept it but the answer was a server error or never arrived, sending it again would post it twice. Such a write is repeated only after Slack refused it with a rate limit, which stores nothing; a server error or a failed request ends it, and its part counts as unconfirmed. Reads, such as the installation check and a conversation lookup, keep the client's ordinary retries.
+
+```quint
+type SlackCall = SlackRead | SlackWrite
+type SlackCallFailure = SlackRateLimited | SlackServerAnswer | SlackRequestLost
+pure def slackRetries(call: SlackCall, failure: SlackCallFailure): bool = call == SlackRead or failure == SlackRateLimited
+pure def lawSlackWriteRepeatsOnlyAfterRateLimit(failure: SlackCallFailure): bool = slackRetries(SlackWrite, failure) iff failure == SlackRateLimited
 ```

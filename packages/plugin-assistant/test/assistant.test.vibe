@@ -14,7 +14,7 @@ import { activityLabel, admitRoute } from "@elizaos/agent"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
 import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, ownerRemindersAction, reminderKind, reminderReply, remindersContext, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
-import { onAgent } from "../src/host.vibe"
+import { Model, onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKind, routineNudgeKind, routineRoutes, updateRoutine } from "../src/routines.vibe"
 import { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
@@ -103,11 +103,12 @@ it.effect('An answer to "when should I remind you?" finishes the reminder that d
   }
 })
 
-it.effect('The owner\'s message is checked again with no output limit on the model (spec/assistant/reminders.md, "The original message is checked before a reminder is written")', effect () => {
-  const asked: object[] = []
-  const runtime = { agentId: "agent-1", useModel: async (_model: unknown, params: object) => { asked.push(params); return check({}) } } as unknown as IAgentRuntime
+it.effect('The owner\'s message is checked again with no output limit on the model and with low reasoning (spec/assistant/reminders.md, "The original message is checked before a reminder is written")', effect () => {
+  const asked: Array<{ readonly providerOptions?: unknown }> = []
+  const runtime = { agentId: "agent-1", useModel: async (_model: unknown, params: { readonly providerOptions?: unknown }) => { asked.push(params); return check({}) } } as unknown as IAgentRuntime
   const checked = try tryPromise(() => onAgent(runtime, checkOriginalMessage("remind me in 20 minutes to call the dentist")))
-  try equal([checked?.requested, asked.map((params) => Object.keys(params).sort())], [true, [["prompt", "system"]]])
+  try tryPromise(() => onAgent(runtime, effect { return try (try Model).complete("Write the owner's day.", "No events.") }))
+  try equal([checked?.requested, asked.map((params) => Object.keys(params).sort()), asked.map((params) => params.providerOptions)], [true, [["prompt", "providerOptions", "system"], ["prompt", "system"]], [{ eliza: { thinking: "low" } }, undefined]])
 })
 
 it.effect('A save that failed and then succeeded is reported saved, and one that never proved itself is not (spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record")', effect () => {
@@ -149,9 +150,9 @@ it.effect('A fired reminder reaches the owner once as the exact presentation iss
   }
 })
 
-it.effect('A later message saying "actually, don\'t save that one" takes back only the reminder just saved, within five minutes (spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes")', effect () => {
+it.effect('A later message saying "actually, don\'t save that one" or "no, don’t keep it" takes back only the reminder just saved, within five minutes, and "don’t forget to set it for 9" takes back nothing (spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes")', effect () => {
   const seen = ports()
-  seen.answers.push(check({}), check({}))
+  seen.answers.push(check({}), check({}), check({}))
   const roomId = "room-2" as UUID
   const said = (messageId: string, text: string) => ({ messageId, text, roomId })
   provide portsLayer(seen) {
@@ -160,6 +161,7 @@ it.effect('A later message saying "actually, don\'t save that one" takes back on
       try retractRecentSave(said("r1", "actually don't save that one"), undefined),
       try retractRecentSave(said("r2", "Actually don’t save that one"), "water the plants"),
       try retractRecentSave(said("r3", "don't forget to set it for 9"), undefined),
+      try retractRecentSave(said("r3b", "don’t forget to set it for 9"), undefined),
     ]
     const retracted = try retractRecentSave(said("r4", "Actually don’t save that one"), "that one")
     const [first] = rowsOf(seen, reminderKind)
@@ -167,8 +169,13 @@ it.effect('A later message saying "actually, don\'t save that one" takes back on
     seen.now += 6 * 60_000
     const stale = try retractRecentSave(said("r6", "never mind"), undefined)
     try equal({ ignored, retracted: [retracted?.success, retracted?.text], first: first?.status, stale, live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
-      ignored: [undefined, undefined, undefined], retracted: [true, 'Okay — I removed "Call the dentist". Nothing is saved for it now.'],
+      ignored: [undefined, undefined, undefined, undefined], retracted: [true, 'Okay — I removed "Call the dentist". Nothing is saved for it now.'],
       first: "Dismissed", stale: undefined, live: ["Dismissed", "Scheduled"],
+    })
+    try createReminder({ ...asked("r7"), plan: { ...plan, title: "Stretch" }, roomId })
+    const typographic = try retractRecentSave(said("r8", "no, don’t keep it"), undefined)
+    try equal({ typographic: [typographic?.success, typographic?.text], live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
+      typographic: [true, 'Okay — I removed "Stretch". Nothing is saved for it now.'], live: ["Dismissed", "Scheduled", "Dismissed"],
     })
   }
 })
@@ -496,6 +503,44 @@ it.effect('To-dos change once per request, by their text whatever its case or pu
     try equal([replies.map(outcomeOf).map(({ outcome }) => outcome ?? "added"), outcomeOf(kept).outcome, (try currentTodos()).todos.length], [
       ["duplicate", "duplicate", "duplicate", "duplicate", "added", "duplicate", "added"], "cancelled", 3,
     ])
+  }
+})
+
+it.effect('A request recorded as a no-op still refuses a different change under its key, and a re-start or re-cancel retried after the to-do moved on stays a no-op (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches")', effect () => {
+  const seen = ports()
+  const receiptOf = (result: ActionResult) => [result.success, result.effectReceipts?.[0]?.outcome, result.data?.outcome ?? null]
+  const failureCode = (result: ActionResult) => {
+    const receipt = result.effectReceipts?.[0]
+    return receipt?.outcome === "failed" ? receipt.failure.code : undefined
+  }
+  provide portsLayer(seen) {
+    try changeTodos({ op: "create", content: "Buy oat milk" }, heard("k0", "add buy oat milk"))
+    const sameName = try changeTodos({ op: "rename", target: "Buy oat milk", content: "Buy oat milk" }, heard("k1", "call it buy oat milk"))
+    const otherName = try changeTodos({ op: "rename", target: "Buy oat milk", content: "Buy almond milk" }, heard("k1", "call it buy oat milk"))
+    try equal({ sameName: receiptOf(sameName), otherName: [otherName.success, otherName.effectReceipts?.[0]?.outcome, failureCode(otherName), otherName.text], kept: (try currentTodos()).todos.map(({ content }) => content) }, {
+      sameName: [true, "noop", "unchanged"],
+      otherName: [false, "failed", "TODO_IDEMPOTENCY_CONFLICT", "That request was already used for a different change, so nothing was changed."],
+      kept: ["Buy oat milk"],
+    })
+    try changeTodos({ op: "create", content: "Ship the feature" }, heard("s0", "add ship the feature"))
+    const started = try changeTodos({ op: "start", target: "Ship the feature" }, heard("s1", "start it"))
+    const restarted = try changeTodos({ op: "start", target: "Ship the feature" }, heard("s2", "start it again"))
+    try changeTodos({ op: "reopen", target: "Ship the feature" }, heard("s3", "back to pending"))
+    const restartRetried = try changeTodos({ op: "start", target: "Ship the feature" }, heard("s2", "start it again"))
+    try changeTodos({ op: "create", content: "Old task" }, heard("x0", "add old task"))
+    const cancelled = try changeTodos({ op: "cancel", target: "Old task" }, heard("x1", "drop it"))
+    const recancelled = try changeTodos({ op: "cancel", target: "Old task" }, heard("x2", "drop it again"))
+    try changeTodos({ op: "reopen", target: "Old task" }, heard("x3", "bring it back"))
+    const recancelRetried = try changeTodos({ op: "cancel", target: "Old task" }, heard("x2", "drop it again"))
+    const listed = (try currentTodos()).todos
+    const statusOf = (content: string) => listed.find((todo) => todo.content === content)?.todoStatus
+    try equal({
+      start: [started, restarted, restartRetried].map(receiptOf), startStatus: statusOf("Ship the feature"),
+      cancel: [cancelled, recancelled, recancelRetried].map(receiptOf), cancelStatus: statusOf("Old task"),
+    }, {
+      start: [[true, "applied", null], [true, "noop", "unchanged"], [true, "noop", "replayed"]], startStatus: "TodoPending",
+      cancel: [[true, "applied", null], [true, "noop", "unchanged"], [true, "noop", "replayed"]], cancelStatus: "TodoPending",
+    })
   }
 })
 
