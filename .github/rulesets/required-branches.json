@@ -5,7 +5,7 @@
   "bypass_actors": [],
   "conditions": {
     "ref_name": {
-      "include": ["refs/heads/develop"],
+      "include": ["refs/heads/develop-v3"],
       "exclude": []
     }
   },

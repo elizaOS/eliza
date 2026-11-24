@@ -20,7 +20,7 @@ on:
           - canonical
           - demo
       source_sha:
-        description: Exact staging or main SHA supplied by the effect reconciler
+        description: Exact staging-v3 or main-v3 SHA supplied by the effect reconciler
         required: false
         default: ""
         type: string
@@ -69,7 +69,7 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF_NAME" == staging || "$GITHUB_REF_NAME" == main ]] || { echo "::error::Image publication requires a canonical branch"; exit 1; }
+          [[ "$GITHUB_REF_NAME" == staging-v3 || "$GITHUB_REF_NAME" == main-v3 ]] || { echo "::error::Image publication requires a canonical branch"; exit 1; }
           [ "$GITHUB_SHA" = "$SOURCE_SHA" ] || { echo "::error::Workflow source differs from image source"; exit 1; }
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid reconciled source SHA"; exit 1; }
           [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
@@ -295,9 +295,9 @@ jobs:
           # still hardcode it (containers-env fallback, sandbox-provider
           # fallback, two test fixtures) until they migrate to :stable.
           tags: |
-            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/staging' }}
-            type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/staging-v3' }}
+            type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main-v3' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main-v3' }}
             type=sha,prefix=sha-,format=short
 
       # Build the image into the local Docker daemon first (load, do NOT push).
@@ -417,7 +417,7 @@ jobs:
               echo "::error::The publication tag does not identify the boot-verified local image." >&2
               exit 1
             fi
-            if [ "$GITHUB_REF_NAME" = main ]; then
+            if [ "$GITHUB_REF_NAME" = main-v3 ]; then
               bun packages/cloud/scripts/production-effect-certification.ts "$GITHUB_SHA"
             fi
             docker push "$tag"

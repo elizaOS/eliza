@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "ledgerVersion": "2026-09-06.three-branch-v1",
-  "sourceBranch": "main",
+  "sourceBranch": "main-v3",
   "effects": [
     {
       "id": "agent-image-production",
