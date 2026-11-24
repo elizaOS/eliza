@@ -243,6 +243,9 @@ One sent with a key of 1 to 128 of `A-Z`, `a-z`, `0-9`, `_` and `-` is held
 under that key joined with a digest of what it speaks, each part as
 resolved from the profile: its text, context, voice, model, format, pace,
 normalization and timing. Any other key is refused `400 invalid_request`.
+Omitting a voice and explicitly naming the active profile's default
+voice resolve to the same voice. If the profile chooses another default,
+an omitted voice resolves to that newly selected voice.
 The same key with other words, another voice or other options is a new paid
 request. A synthesis whose hold already exists, a retry after a lost
 answer, is spoken again and moves no money: the first request's settlement
@@ -253,6 +256,9 @@ nothing paid for it.
 
 ```quint
 pure def speechHoldKey(organization: str, requestId: str): HoldKey = { service: MeteredSpeech, caller: organization, requestId: requestId, part: WholeRequest }
+pure def lawOmittingAndNamingTheActiveDefaultResolveTheSameVoice(profile: SpeechProfile, voiceId: str): bool =
+  (voiceId == profile.defaultVoice) implies
+    chosen(ProfileDefault, profile.defaultVoice) == chosen(Named({ id: voiceId }), profile.defaultVoice)
 pure def speechLimit(plan: P::PlanKey): R::RateLimit = R::perMinute(P::planRateLimitName(P::StandardRequests), P::requestsPerMinute(plan, P::StandardRequests))
 pure def lawSpeechSharesTheStandardLimitAndNoHold(plan: P::PlanKey, organization: str, other: str, requestId: str): bool =
   R::validLimit(speechLimit(plan)) and speechLimit(plan).name == P::planRateLimitName(P::StandardRequests)
