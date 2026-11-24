@@ -272,6 +272,41 @@ it("rewrites only what a change touches, and removes what a deleted component le
   edit("tsconfig.json", (text) => text.replace('"strict": true', '"strict": false'));
   expect(run()).toMatchObject({ written: [".cache/manifest.json"], analyzed: 7 });
 
+  const workspace = join(root, "module-resolution");
+  const ui = join(workspace, "ui");
+  const options = (paths: string[]) => JSON.stringify({ compilerOptions: {
+    jsx: "react-jsx", noLib: true, types: [], module: "esnext", moduleResolution: "bundler", paths: { "@fields": paths },
+  } });
+  const props = (field: string) => `export interface Props { ${field}: string }`;
+  writeFiles(workspace, {
+    "ui/package.json": '{"name":"@fixture/kit"}',
+    "ui/tsconfig.json": '{"extends":"../options.json"}',
+    "options.json": options(["./preferred", "./fields"]),
+    "ui/src/View.tsx": 'import type { Props } from "@fields"; export function View(props: Props) { return <button>{String(props)}</button>; }',
+  });
+  const generate = generator({ root: ui });
+  const expectField = (names: string[], analyzed = 1) => {
+    const update = generate();
+    expect(component("View", update).props.map((prop) => prop.name)).toEqual(names);
+    expect(update.analyzed).toBe(analyzed);
+  };
+  expectField([]);
+  writeFiles(workspace, { "fields/package.json": '{"types":"one.d.ts"}', "fields/one.d.ts": props("first") });
+  expectField(["first"]);
+  writeFiles(workspace, { "preferred.ts": "" });
+  expectField([]);
+  rmSync(join(workspace, "preferred.ts"));
+  expectField(["first"]);
+  writeFiles(workspace, { "fields/two.d.ts": props("second"), "fields/package.json": '{"types":"two.d.ts"}' });
+  expectField(["second"]);
+  writeFiles(workspace, { "preferred.ts": props("first"), "options.json": options(["./preferred"]) });
+  expectField(["first"]);
+  writeFiles(workspace, { "options.json": options(["./fields"]) });
+  expectField(["second"]);
+  writeFiles(workspace, { "fields/noise.ts": props("unused") });
+  expectField(["second"], 0);
+
+
   writeFileSync(join(root, "src/Table.meta.ts"), 'export const meta = { args: { rows: [{ id: 1 }], sort: { by: "id" } } };\n');
   const given = run();
   expect(given).toMatchObject({ written: ["kit-table.stories.tsx", "catalog.json", "stories.test.tsx", "stories.browser.test.tsx", ".cache/manifest.json"], analyzed: 1, diagnostics: [] });

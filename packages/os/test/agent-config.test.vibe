@@ -46,17 +46,6 @@ module node {
     const out = execFileSync(java, ["-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
     return out.trim().split("\n").map((line) => JSON.parse(line) as Answer)
   }
-  /** @throws {Error} */
-  export function launchOutcome(cli: string, root: string, frame: string): { readonly exit: number | null; readonly stateCreated: boolean } {
-    const invoke = `import { runAgentCli } from ${JSON.stringify(cli)}; runAgentCli({ bundled: [] });`
-    const state = path.join(root, "state")
-    const child = spawnSync(process.execPath, [
-      "--input-type=module", "--eval", invoke, "--", "eliza-agent", "serve", "--launch", path.join(root, "launch.json"),
-      "--state", state, "--socket", path.join(root, "agent.sock"),
-    ], { input: frame, timeout: 120_000 })
-    if (child.error !== undefined) throw child.error
-    return { exit: child.status, stateCreated: existsSync(state) }
-  }
 
   export interface LifecycleStep {
     readonly outcome: "accepted" | "refused"
@@ -82,6 +71,18 @@ module node {
     const main = "ai.eliza.os.agent.PeerCheck"
     const out = execFileSync(java, ["-cp", compileAdapter(main), main], { encoding: "utf8", timeout: 120_000 })
     return out.trim().split("\n").map((line) => JSON.parse(line) as PeerAnswer)
+  }
+
+  /** @throws {Error} */
+  export function launchOutcome(cli: string, root: string, frame: string): { readonly exit: number | null; readonly stateCreated: boolean } {
+    const invoke = `import { runAgentCli } from ${JSON.stringify(cli)}; runAgentCli({ bundled: [] });`
+    const state = path.join(root, "state")
+    const child = spawnSync(process.execPath, [
+      "--input-type=module", "--eval", invoke, "--", "eliza-agent", "serve", "--launch", path.join(root, "launch.json"),
+      "--state", state, "--socket", path.join(root, "agent.sock"),
+    ], { input: frame, timeout: 120_000 })
+    if (child.error !== undefined) throw child.error
+    return { exit: child.status, stateCreated: existsSync(state) }
   }
 }
 import { launchOutcome, lifecycle, peerAnswers, project, type Answer, type Ask } from node

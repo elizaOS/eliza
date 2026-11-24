@@ -1,8 +1,10 @@
-// spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"
+// spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"; spec/agent/schedule/triggers.md, "A delivered run tells the open screen its conversation changed and sends each reply it stored, and a run without its room tells nothing"
 module node {
-  import { MESSAGE_SOURCE_TRIGGER_PROMPT, MISSED_SCHEDULED_OCCURRENCE_TEXT, type AgentRuntime, type MessageProcessingResult, type Room } from "@elizaos/core"
-  import type { RunOutcome } from "../../gen/agent__schedule__triggers.ts"
+  import { MESSAGE_SOURCE_TRIGGER_PROMPT, MISSED_SCHEDULED_OCCURRENCE_TEXT, type AgentRuntime, type Memory, type MessageProcessingResult, type Room } from "@elizaos/core"
+  import { announcedReplies, type RunOutcome } from "../../gen/agent__schedule__triggers.ts"
+  import { messageView } from "../conversation/history.vibe"
   import { createConversation, deviceConversation, processTurn, type ConversationOwner } from "../conversation/turns.vibe"
+  import type { ConversationNews } from "../host/module.vibe"
 
   export type ResolvedRoom =
     | { readonly kind: "Resolved"; readonly conversationId: string }
@@ -65,7 +67,7 @@ module node {
     }
   }
 
-  export function triggerDelivery(runtime: AgentRuntime, owner: ConversationOwner): TriggerDelivery {
+  export function triggerDelivery(runtime: AgentRuntime, owner: ConversationOwner, news: ConversationNews): TriggerDelivery {
     const find = async (id: string): Promise<Room | undefined> =>
       (await runtime.getRooms(owner.world)).find((room) => deviceConversation(room)?.id === id)
     const ready = (conversationId: string): ResolvedRoom =>
@@ -75,6 +77,13 @@ module node {
       const known = (await runtime.getRooms(owner.world)).flatMap((room) => deviceConversation(room) ?? [])
       known.sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id))
       return known[0]?.id
+    }
+
+    async function announce(conversationId: string, room: Room, replies: readonly Memory[]): Promise<void> {
+      news.updated({ type: "conversation-updated", conversationId, roomId: room.id })
+      for (const reply of replies.slice(0, announcedReplies(true, replies.length))) {
+        news.proactive({ type: "proactive-message", conversationId, roomId: room.id, message: await messageView(runtime, reply) })
+      }
     }
 
     return {
@@ -91,7 +100,9 @@ module node {
         if (room === undefined) return { kind: "RoomGone" }
         try {
           const told = `Scheduled trigger "${prompt.displayName}" fired. Do this now: ${prompt.instructions.trim()}`
-          return turnOf(await processTurn(runtime, owner, room, told, signal, { metadata: { type: "custom", triggerId }, input: { source: MESSAGE_SOURCE_TRIGGER_PROMPT } }))
+          const result = await processTurn(runtime, owner, room, told, signal, { metadata: { type: "custom", triggerId }, input: { source: MESSAGE_SOURCE_TRIGGER_PROMPT } })
+          await announce(conversationId, room, result.responseMessages).catch((cause: unknown) => runtime.reportError("triggers.announce", cause, { triggerId, conversationId }))
+          return turnOf(result)
         } catch (cause) {
           runtime.reportError("triggers.delivery", cause, { triggerId, conversationId })
           return signal.aborted

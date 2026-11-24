@@ -394,3 +394,105 @@ pure def lawNoAnswerAfterAuthorityEnds(watch: InboxWatch, nowAt: int, grantCurre
   (not(grantCurrent) or not(callerCurrent) or not(requestLive) or nowAt >= watch.expiresAt) implies
     not(inboxWatchCanAnswer(watch, nowAt, grantCurrent, callerCurrent, requestLive))
 ```
+
+## Story: Hear about new mail while my phone is idle
+
+> As an owner, I want my phone to check the Gmail account I chose in the
+> background and tell me when new inbox mail arrives, from the mailbox's own
+> change history, so that a notice never claims mail the phone did not see
+> and the cloud keeps no watch for me.
+
+### A background history read names one grant and a count within its bound, and continues only from the start it began at
+
+`GET …/gmail/history` (develop `api/v1/eliza/google/gmail/history`, read by
+the phone's background mail check) takes `grantId`, which it requires,
+`startHistoryId` (1 to 20 digits, no leading zero), `pageToken` (1 to 4,096
+characters, only beside the start it continues), `maxResults` (1 to 100,
+50 when omitted) and `side`, only `owner`. Any other parameter, or one given
+twice, is `400 invalid_request`. The cloud checks that the named grant
+belongs to the current user and organization before contacting Google.
+A grant belonging to another owner returns `404 not_found`. Reading history
+needs a Gmail triage scope.
+
+```quint
+type HistoryAsk = { grantNamed: bool, started: bool, startDigits: bool, continued: bool, tokenWithinBound: bool, eachKnownOnce: bool }
+pure val historyCountMax: int = 100
+pure val historyCountDefault: int = 50
+pure def historyCount(requested: RequestedCount): CountAnswer = match requested {
+  | CountOmitted => CountAccepted({ accepted: historyCountDefault })
+  | CountGiven(r) => if (r.count >= 1 and r.count <= historyCountMax) CountAccepted({ accepted: r.count }) else CountRefused
+}
+pure def historyAskAccepted(historyAsk: HistoryAsk, requested: RequestedCount): bool =
+  historyAsk.grantNamed and historyAsk.eachKnownOnce and (not(historyAsk.started) or historyAsk.startDigits)
+    and (not(historyAsk.continued) or (historyAsk.started and historyAsk.tokenWithinBound)) and historyCount(requested) != CountRefused
+pure val historyAskValues: Set[HistoryAsk] = {
+  val first: HistoryAsk = { grantNamed: true, started: false, startDigits: false, continued: false, tokenWithinBound: false, eachKnownOnce: true }
+  val paged: HistoryAsk = { ...first, started: true, startDigits: true }
+  Set(first, paged, { ...paged, continued: true, tokenWithinBound: true }, { ...first, continued: true, tokenWithinBound: true },
+    { ...paged, startDigits: false }, { ...paged, continued: true }, { ...paged, grantNamed: false }, { ...paged, eachKnownOnce: false })
+}
+pure def lawAContinuationIsReadOnlyFromItsStart(historyAsk: HistoryAsk, requested: RequestedCount): bool =
+  (historyAskAccepted(historyAsk, requested) and historyAsk.continued) implies (historyAsk.started and historyAsk.startDigits and historyAsk.tokenWithinBound)
+pure def lawAnAcceptedHistoryCountIsWithinItsBound(requested: RequestedCount): bool = { val answer = historyCount(requested)
+  match answer {
+  | CountAccepted(a) => a.accepted >= 1 and a.accepted <= historyCountMax
+  | CountRefused => requested != CountOmitted
+} }
+```
+
+### A history answer is a baseline without a start, a reset for a start Google no longer holds, or one ordered page, and nothing once the grant has ended
+
+Without a start the answer is `baseline-required` with the mailbox's current
+`historyId`. A start Google answers 404 for is `reset-required` with no
+revision. Neither has events, a checkpoint or a continuation, and each says
+`backfillRequired: true`: it never claims that mail it skipped was seen.
+Otherwise the answer is a `page` of the changes Google listed after the
+start (a message added or deleted, labels added or removed), each `{id:
+"<historyId>:<type>:<messageId>", historyId, type, messageId, threadId,
+labelIds}`, in revision order and none past the mailbox's `historyId`. Each
+added message also carries `messageAvailable` and the labels Google holds
+for it when the page is read; one Google no longer has is unavailable with
+no labels, which never refuses the page. `checkpoint` is the mailbox's
+revision only on a page without a continuation, and a continuation never
+repeats the token asked with. Rows out of order or past the revision, more
+rows than asked for, a change Google did not classify, an added message
+read back as another, a repeated token, over 2,000 events or over 100 added
+messages are `502 provider_invalid_response`, and the cloud reads no
+message for a page it will refuse. After Google answers, the cloud checks the
+caller's credential again. It also checks that the grant still belongs to
+the same user, organization and Google account and still has Gmail triage
+access. A dead credential gets `401 authentication_required`. An ended or
+changed grant gets `409 google_reauth_required`. In either case, the cloud
+withholds the Google reply. The cloud keeps no checkpoint. The phone commits
+one after it has stored the page.
+
+```quint
+type HistoryRead = { started: bool, expired: bool, consistent: bool, continues: bool, freshContinuation: bool, events: int, additions: int, grantCurrent: bool }
+type HistoryAnswer = HistoryBaseline | HistoryReset | HistoryPage({ checkpointed: bool }) | HistoryRefused({ refusal: Refusal })
+pure val historyEventMax: int = 2000
+pure val historyAdditionMax: int = 100
+pure def historyAnswer(historyRead: HistoryRead): HistoryAnswer =
+  if (not(historyRead.grantCurrent)) HistoryRefused({ refusal: refuse(GoogleReauthRequired) })
+  else if (not(historyRead.started)) HistoryBaseline
+  else if (historyRead.expired) HistoryReset
+  else if (not(historyRead.consistent) or (historyRead.continues and not(historyRead.freshContinuation))
+    or historyRead.events > historyEventMax or historyRead.additions > historyAdditionMax) HistoryRefused({ refusal: refuse(ProviderInvalidResponse) })
+  else HistoryPage({ checkpointed: not(historyRead.continues) })
+pure val historyReadValues: Set[HistoryRead] = {
+  val page: HistoryRead = { started: true, expired: false, consistent: true, continues: false, freshContinuation: false, events: 3, additions: 1, grantCurrent: true }
+  Set(page, { ...page, started: false, events: 0, additions: 0 }, { ...page, expired: true, events: 0, additions: 0 }, { ...page, continues: true, freshContinuation: true },
+    { ...page, continues: true }, { ...page, consistent: false }, { ...page, events: 2000, additions: 100 }, { ...page, events: 2001 }, { ...page, additions: 101, events: 101 },
+    { ...page, grantCurrent: false }, { ...page, started: false, grantCurrent: false })
+}
+pure def lawAHistoryPageIsCheckpointedOnlyAtItsEnd(historyRead: HistoryRead): bool = { val answer = historyAnswer(historyRead)
+  match answer {
+  | HistoryPage(p) => historyRead.grantCurrent and historyRead.started and not(historyRead.expired) and historyRead.consistent
+      and historyRead.events <= historyEventMax and historyRead.additions <= historyAdditionMax
+      and (p.checkpointed iff not(historyRead.continues)) and (historyRead.continues implies historyRead.freshContinuation)
+  | HistoryRefused(r) => wellFormed(r.refusal)
+  | HistoryBaseline => not(historyRead.started)
+  | HistoryReset => historyRead.started and historyRead.expired
+} }
+pure def lawNothingIsAnsweredOnceTheGrantHasEnded(historyRead: HistoryRead): bool =
+  not(historyRead.grantCurrent) implies historyAnswer(historyRead) == HistoryRefused({ refusal: refuse(GoogleReauthRequired) })
+```

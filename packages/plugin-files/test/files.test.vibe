@@ -235,6 +235,7 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
         const runtime = try Effect.try(() => chatRuntime())
         try tryPromise(async () => plugin.init?.({}, runtime))
         const rival = try Effect.flip(registerDeviceProposalFamily(runtime, { ...filesProposalFamily, name: "notes" }))
+        assert.deepStrictEqual([filesProposalFamily.app, filesProposalFamily.app === undefined ? undefined : runtime.contexts.get(filesProposalFamily.app)?.label], ["files", "Files"])
         const chat = (capabilities: readonly string[], operation: unknown, screen?: Screen) => tryPromise(() => proposeFiles(runtime, capabilities, operation, screen))
         const asked = try chat(both, { type: "files_trash", shown: [2, 1] })
         const unnegotiatedAsk = try chat([FILES_CAPABILITY], { type: "files_share", shown: [1] })

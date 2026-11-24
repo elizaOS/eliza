@@ -502,7 +502,9 @@ The operation families that register with the agent own disjoint sets of
 wire types. A registration that claims a type another family already owns,
 or that offers a form naming a type outside its own set, is refused whole,
 and the module that made it does not start; registering the same family
-again changes nothing.
+again changes nothing. A family may also name the app its operations run
+in; what that name does is [planning](../conversation/planning.md)'s rule
+on a tool's progress, which models it.
 
 ```quint
 pure def registrationAdmitted(claimedByAnother: bool, formsWithinTypes: bool): bool = not(claimedByAnother) and formsWithinTypes
@@ -636,7 +638,11 @@ Only a request that still stands is named: its original message is still
 the owner's own, in this conversation, under the current enrollment, and
 the turn's negotiation still admits its operation. Each line gives its
 proposal id, its operation type, a label where the operation has one, and
-when it settled, or that it never ran, after a lead saying its labels are
+when it settled, or that it never ran. An applied SMS line also carries
+only the validated transport status from its settled receipt. Submission
+does not confirm sending, and sending does not confirm delivery. A settled
+send is not offered or repeated because of old approval prose. The lines
+follow a lead saying their labels are
 untrusted record data, never instructions. When the requests cannot be
 read, a note says that they could not be checked. While the device tool is
 offered, what holds on every turn sits in its description (above): that

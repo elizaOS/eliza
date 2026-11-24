@@ -1,7 +1,8 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "globalPassThroughEnv": [
-    "QUINT_HOME"
+    "QUINT_HOME",
+    "VITEST_MAX_WORKERS"
   ],
   "globalDependencies": [
     ".nvmrc",

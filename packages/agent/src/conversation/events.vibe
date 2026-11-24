@@ -38,6 +38,7 @@ module node {
     readonly report: (code: string, cause: string, quiet: boolean, store: (kind: ReturnType<typeof noticeName>) => Promise<void>) => Promise<void>
     readonly stop: () => Promise<void>
     readonly conversationUpdated: (payload: unknown) => void
+    readonly proactiveMessage: (payload: unknown) => void
     readonly inboxChanged: ObserveInbox
   }
 
@@ -223,6 +224,7 @@ module node {
     return {
       hub, viewFeeds, publishFromModule, PublishEventService: TranscriptPublisher, attach, report, stop, inboxChanged,
       conversationUpdated: (payload: unknown) => publish("AgentSource", { tag: "ConversationUpdated" }, "conversation", payload),
+      proactiveMessage: (payload: unknown) => publish("AgentSource", { tag: "ProactiveMessage" }, "conversation", payload),
     }
   }
 }

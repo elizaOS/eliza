@@ -251,3 +251,23 @@ pure def historyShows(fromAgent: bool, origin: TurnInput): bool = fromAgent or o
 pure def lawAFiredPromptIsNeverShownAsTheOwners(fromAgent: bool): bool = historyShows(fromAgent, FiredByTrigger) iff fromAgent
 pure def lawWhatTheOwnerSaidIsShown(fromAgent: bool): bool = historyShows(fromAgent, SaidByOwner)
 ```
+
+### A delivered run tells the open screen its conversation changed and sends each reply it stored, and a run without its room tells nothing
+
+A run's prompt and reply arrive with no request from the screen, so the
+run publishes them on the `conversation` feed
+([events](../conversation/events.md)): `conversation-updated`
+`{conversationId, roomId}` once its turn has ended, then one
+`proactive-message` `{conversationId, roomId, message}` for each reply the
+turn stored, `message` being that reply's history row
+([conversations](../conversation/conversations.md)), its failure kind
+included. A turn that stored no reply sends no `proactive-message`, and a
+run whose room was gone publishes nothing. Publishing never changes the
+run's outcome.
+
+```quint
+pure def announcedReplies(roomExists: bool, storedReplies: int): int = if (roomExists and storedReplies > 0) storedReplies else 0
+pure val storedRepliesValues = Set(0, 1, 2)
+pure def lawARunWithoutItsRoomSendsNoReply(storedReplies: int): bool = announcedReplies(false, storedReplies) == 0
+pure def lawEachStoredReplyIsSentOnce(storedReplies: int): bool = storedReplies >= 0 implies announcedReplies(true, storedReplies) == storedReplies
+```

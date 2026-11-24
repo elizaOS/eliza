@@ -284,8 +284,6 @@ export const MMS_MAX_RECIPIENTS = 10;
 export const MMS_MAX_ATTACHMENTS = 5;
 export const MMS_MAX_BODY = 1600;
 export const MMS_MAX_TOTAL_BYTES = 1024 * 1024;
-export const SMS_MAX_THREADS = 50;
-export const SMS_MAX_MESSAGES = 50;
 export const SMS_JOURNAL_MAX = 200;
 export const SMS_MAX_PARTS = 50;
 

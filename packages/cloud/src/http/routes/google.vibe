@@ -6,6 +6,7 @@ import { signed } from "../request-auth.vibe"
 import { disconnectGrant, readGrantAccounts, readGrantStatus } from "../../services/google/grant-access.vibe"
 import { GoogleSubject, linkAuthorizedGoogle, ServerAuthCode, type GoogleLinkFault } from "../../services/google/managed-grants.vibe"
 import { browserConnectRoutes, browserConnectSweep } from "../../services/google/managed-browser.vibe"
+import { mailHistoryRoutes } from "../../services/google/mail-history.vibe"
 import { mailReadRoutes } from "../../services/google/mail-read.vibe"
 import { calendarRoutes, calendarSweeps } from "../../services/google/calendar.vibe"
 import { mailOperationRoutes, mailOperationSweeps } from "../../services/google/mail-operations.vibe"
@@ -72,6 +73,7 @@ export const area: Area = {
     { method: "POST", path: `${googlePath}/connect/native`, auth: "ServiceAccess", maxBodyBytes: 16 * 1024, handler: connectNative },
     ...browserConnectRoutes,
     ...mailReadRoutes,
+    ...mailHistoryRoutes,
     ...calendarRoutes,
     ...mailOperationRoutes
   ],

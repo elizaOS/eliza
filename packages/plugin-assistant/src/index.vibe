@@ -11,7 +11,7 @@ import { runEvaluators, type EvaluatorRun } from "./evaluators/runner.vibe"
 import { deliverFollowupTick, followupTickCron, followupTickKind } from "./followups.vibe"
 import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvider } from "./goals.vibe"
 import { Facts, Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
-import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind } from "./reminders.vibe"
+import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind, remindersContext } from "./reminders.vibe"
 import { deliverRoutine, deliverRoutineNudge, ownerRoutinesAction, ownerRoutinesProvider, routineKind, routineNudgeKind, routineRoutes } from "./routines.vibe"
 import { ownerCalendarZone, ownerClockAt, stateOwnerZone, statedZone } from "./timezone.vibe"
 import { currentTodosProvider, todosAction } from "./todos.vibe"
@@ -133,6 +133,7 @@ export const personalAssistantPlugin = {
   description: "Personal assistance: reminders, time zones, check-ins, goals, to-dos and routines, kept in the owner's agent.",
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     running = runtime
+    runtime.contexts.tryRegister(remindersContext)
     await runPromise(registerDeviceProposalFamily(runtime, reminderProposalFamily))
   },
   actions: [ownerRemindersAction, ownerGoalsAction, todosAction, ownerRoutinesAction, briefAction],

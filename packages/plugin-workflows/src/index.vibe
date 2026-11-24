@@ -1,7 +1,7 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "Story: Run my workflows only in the pinned worker"
 import type { IAgentRuntime } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
-import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowStatusProvider } from "./agent.vibe"
+import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext, workflowStatusProvider } from "./agent.vibe"
 import { registerWorkflowRequestRouting } from "./request.vibe"
 import { workflowRoutes } from "./routes.vibe"
 import { runtimeWorkflowHost, WORKFLOW_SCHEDULE_TASK } from "./runtime.vibe"
@@ -36,6 +36,7 @@ export const workflowPlugin: AgentPlugin = {
   providers: [workflowStatusProvider, activeWorkflowsProvider],
   routes: workflowRoutes(() => current),
   init: async (_config, runtime) => {
+    runtime.contexts.tryRegister(workflowsContext)
     const instance = await runPromise(open(runtime))
     registerWorkflowRequestRouting(runtime)
     workflowInstances.set(runtime, instance)

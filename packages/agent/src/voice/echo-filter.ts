@@ -6,14 +6,20 @@ export interface ReplyWindow { agentSpeaking: boolean; startKnown: boolean; star
 
 export function overlapCount(words: string[], reply: string[]): number {
   //@ ensures 0 <= \result && \result <= words.length
+  //@ ensures exists(matched, (\result == 0 <==> matched in [new Set<number>()]) && \result == matched.size && forall(j, (j in matched) <==> (0 <= j && j < words.length && words[j] in reply)))
   let count = 0;
   let i = 0;
+  //@ ghost let matched: Set<number> = new Set<number>()
   while (i < words.length) {
     //@ invariant 0 <= i && i <= words.length
     //@ invariant 0 <= count && count <= i
+    //@ invariant count == matched.size
+    //@ invariant forall(j, (j in matched) <==> (0 <= j && j < i && words[j] in reply))
     if (reply.includes(words[i])) count = count + 1;
+    //@ ghost matched = words[i] in reply ? matched.add(i) : matched
     i = i + 1;
   }
+  //@ assert count == 0 <==> matched in [new Set<number>()]
   return count;
 }
 
