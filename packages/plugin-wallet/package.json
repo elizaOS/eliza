@@ -4,30 +4,23 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "build": "vibelang -p tsconfig.build.json && vite build",
+    "build": "vibelang -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "ethers": "^6.16.0",
+    "@elizaos/core-node": "workspace:*",
     "@solana/web3.js": "1.98.4",
     "bs58": "^6.0.0",
-    "@repo/design-system": "workspace:*",
-    "@repo/ui": "workspace:*",
-    "react": "catalog:"
+    "effect": "4.1.1",
+    "ethers": "^6.16.0",
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vibelang": "0.0.13",
-    "@tailwindcss/vite": "catalog:",
-    "@types/react": "catalog:",
-    "react-dom": "catalog:",
-    "vite": "catalog:",
-    "vibelang-vite": "0.0.13",
     "@effect/vitest": "4.1.1",
     "vibestack": "workspace:*",
     "vitest": "catalog:"
@@ -38,14 +31,7 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    },
-    "./review": {
-      "eliza-source": "./src/review.tsx",
-      "types": "./dist/src/review.d.ts",
-      "import": "./dist/review/wallet-review.js",
-      "default": "./dist/review/wallet-review.js"
-    },
-    "./review.css": "./dist/review/wallet-review.css"
+    }
   },
   "name": "@elizaos/plugin-wallet"
 }

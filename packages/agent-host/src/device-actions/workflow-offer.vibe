@@ -1,0 +1,119 @@
+// spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/index.md, "A settled request never changes again"
+import { hashStableJson, stringToUuid, type IAgentRuntime, type IDatabaseAdapter } from "@elizaos/core"
+import { beforeDeadline, canExpire, enrolledOwner, Rejected, settledApplied, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
+import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
+import { negotiation, capabilityNamesOf, validate } from "@elizaos/agent"
+import { enrollmentId } from "./enrollment.vibe"
+import { devicePayload, type WorkflowScope } from "./proposal-review.vibe"
+import { type DeviceStoreUnavailable, ProposalIdTaken, enrollment, offerRequest, openRequest, requestSnapshot, retireRequest, workflowAuthority } from "./store.vibe"
+
+export type WorkflowStep = WorkflowScope
+
+export interface WorkflowStepTarget {
+  readonly installationId: string
+  readonly enrollmentId: string
+}
+
+export interface WorkflowStepDevice extends WorkflowStepTarget {
+  readonly protocol: number
+}
+
+export interface WorkflowOfferTiming {
+  readonly deadlineMs: number
+  readonly pollMs: number
+}
+
+export interface WorkflowDeviceOffer {
+  enrollment(): Promise<WorkflowStepDevice | undefined>
+  perform(binding: WorkflowStep, target: WorkflowStepTarget, operation: unknown, signal?: AbortSignal): Promise<unknown>
+}
+
+export error WorkflowStepRefused { code: string; message: string }
+
+const defaultTiming: WorkflowOfferTiming = { deadlineMs: 600_000, pollMs: 1_000 }
+
+const refused = (code: string) => new WorkflowStepRefused({ code, message: `The phone did not perform the workflow step: ${code}` })
+
+interface EnrolledDevice {
+  readonly by: SessionOwner
+  readonly declared: readonly string[]
+  readonly target: WorkflowStepDevice
+}
+
+effect function enrolledDevice(adapter: IDatabaseAdapter): (EnrolledDevice | undefined)!DeviceStoreUnavailable {
+  const state = try enrollment(adapter)
+  if (state.enrollment.tag !== "Enrolled") return undefined
+  const by = enrolledOwner(state.enrollment)
+  return {
+    by, declared: state.bridge.devices.find((device) => device.id === by.connector)?.capabilities ?? [],
+    target: { installationId: by.connector, enrollmentId: enrollmentId(state), protocol: state.enrollment.workflowProtocol },
+  }
+}
+
+type Settlement = { readonly kind: "applied"; readonly result: unknown } | { readonly kind: "refused"; readonly code: string } | undefined
+
+function settlementOf(state: DeviceRequest, receiptCode: string | undefined, result: unknown): Settlement {
+  const { phase } = state
+  if (settledApplied(phase)) return { kind: "applied", result }
+  if (phase.tag === "Receipted" && phase.reported === "ReportedNothingRan") return { kind: "refused", code: receiptCode ?? "DEVICE_STEP_NOT_APPLIED" }
+  if (phase.tag === "Reviewed") return { kind: "refused", code: phase.reviewed === "ReviewedNotApplied" ? "DEVICE_STEP_NOT_APPLIED" : "DEVICE_STEP_UNRESOLVED" }
+  if (phase.tag === "Declined") return { kind: "refused", code: "DEVICE_STEP_DECLINED" }
+  if (phase.tag === "Expired" || phase.tag === "Retired") return { kind: "refused", code: "DEVICE_STEP_EXPIRED" }
+  return undefined
+}
+
+effect function settled(adapter: IDatabaseAdapter, proposalId: string, pollMs: number): unknown!(WorkflowStepRefused | DeviceStoreUnavailable) {
+  while (true) {
+    const record = try requestSnapshot(adapter, proposalId)
+    if (record === undefined) throw refused("DEVICE_STEP_EXPIRED")
+    const { state, providerReceipt, result } = record
+    const settlement = settlementOf(state, providerReceipt?.code, result)
+    if (settlement?.kind === "applied") return settlement.result
+    if (settlement?.kind === "refused") throw refused(settlement.code)
+    if (!beforeDeadline(state)) {
+      const lapsed = canExpire(state)
+      if (lapsed) try retireRequest(adapter, { proposalId, digest: state.digest, by: state.session.owner })
+      throw refused(lapsed ? "DEVICE_STEP_EXPIRED" : "DEVICE_STEP_UNKNOWN")
+    }
+    try sleep(Duration.millis(pollMs))
+  }
+}
+
+effect function offered(adapter: IDatabaseAdapter, timing: WorkflowOfferTiming, step: WorkflowStep, target: WorkflowStepTarget, operation: unknown): unknown!(WorkflowStepRefused | DeviceStoreUnavailable) {
+  const device = try enrolledDevice(adapter)
+  if (device === undefined) throw refused("DEVICE_NOT_ENROLLED")
+  if (device.target.installationId !== target.installationId || device.target.enrollmentId !== target.enrollmentId) throw refused("DEVICE_TARGET_CHANGED")
+  const binding = try Effect.orDie(Effect.try(() => workflowAuthority({
+    kind: "WorkflowBinding", workflowId: step.workflowId, versionId: step.versionId, runId: step.runId, stepId: step.stepId, specDigest: step.specDigest,
+  })))
+  const checked = validate(operation, negotiation(true, device.declared.join(",")), "WorkflowBinding")
+  const needs = checked === undefined ? undefined : capabilityNamesOf(checked)
+  const capability = needs?.required[0] ?? needs?.oneOf.find((name) => device.declared.includes(name))
+  if (binding === undefined || checked === undefined || capability === undefined) throw refused("DEVICE_STEP_UNSUPPORTED")
+  const { kind: _kind, ...workflow } = binding
+  const payload = try Effect.orDie(Effect.try(() => devicePayload({ operation: checked.operation, workflow }, device.by, device.target.enrollmentId, "")))
+  const proposalId = try Effect.orDie(Effect.try(() => stringToUuid(`workflow-device:${hashStableJson(payload)}`)))
+  const expiresAt = (try Clock.currentTimeMillis) + timing.deadlineMs
+  const digest = try Effect.orDie(Effect.try(() => hashStableJson({ id: proposalId, subjectUserId: device.by.actorId, payload, expiresAt: new Date(expiresAt).toISOString() })))
+  const offer = offerRequest(adapter, {
+    type: "offer", proposalId, digest, capability, expiresAt, readBack: false,
+    origin: { requestId: step.runId, conversationId: "", inReplyTo: "" },
+  }, device.by, { operation: checked.operation, binding, boundProfile: { tag: "NoRevisionRead" }, need: checked.need })
+  const kept = offer catch effect (failure) => {
+    if (failure instanceof ProposalIdTaken) return try openRequest(adapter, proposalId)
+    if (failure instanceof Rejected) throw refused("DEVICE_STEP_REFUSED")
+    throw failure
+  }
+  if (kept === undefined) throw refused("DEVICE_STEP_EXPIRED")
+  const held = try kept.machine.get()
+  const retire = Effect.orElseSucceed(retireRequest(adapter, { proposalId, digest: held.digest, by: device.by }), () => undefined)
+  return try ensuring(settled(adapter, proposalId, timing.pollMs), retire)
+}
+
+export function workflowDeviceOffer(runtime: Pick<IAgentRuntime, "adapter">, timing: WorkflowOfferTiming = defaultTiming): WorkflowDeviceOffer {
+  return {
+    enrollment: () => runPromise(map(enrolledDevice(runtime.adapter), (device) => device?.target)),
+    perform: (binding, target, operation, signal) =>
+      runPromise(offered(runtime.adapter, timing, binding, target, operation), signal === undefined ? undefined : { signal }),
+  }
+}

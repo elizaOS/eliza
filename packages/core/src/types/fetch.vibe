@@ -1,0 +1,2 @@
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"
+export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>

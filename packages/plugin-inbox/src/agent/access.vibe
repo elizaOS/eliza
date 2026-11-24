@@ -1,6 +1,6 @@
 // spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/grants.md, "Read is asked for first, changes are one consent, and a reconnect keeps what the account holds"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type IAgentRuntime, type Provider, type ProviderResult } from "@elizaos/core"
-import type { GmailGrantTier } from "../mailbox/grants.vibe"
+import type { GmailGrantTier } from "@elizaos/plugin-inbox-client"
 import { agentGmailClient, observeManagedReadGrant } from "./cloud.vibe"
 
 export const inboxAccessProviderName = "INBOX_ACCESS"

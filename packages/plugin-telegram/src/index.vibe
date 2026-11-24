@@ -1,6 +1,7 @@
 // spec/telegram/index.md, "Only the current poller can mark its claim healthy, terminated or released"; spec/telegram/index.md, "The effective Telegram allowlist can deny all chats, and DMs default to pairing when no list is set"; spec/telegram/index.md, "An admitted command keeps its sender and a reply stays in its account, chat and topic"
 import { Input, Telegraf, type Context } from "telegraf"
-import { ChannelType, Service, checkPairingAllowed, chunkText, createUniqueUuid, fetchRemoteMedia, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
+import { ChannelType, Service, checkPairingAllowed, chunkText, createUniqueUuid, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
+import { fetchRemoteMedia } from "@elizaos/core-node"
 import { initial, machineOver, telegramChatAdmission, telegramMessageDisposition, telegramReplyAddress, type TelegramChatList, type TelegramCommand, type TelegramDmPolicy, type TelegramInbound, type TelegramMode } from "../gen/telegram.effect.vibe"
 
 module node {

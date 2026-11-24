@@ -2,7 +2,7 @@
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/inbox__drafts.conformance.ts";
 import type { MailState } from "../../gen/inbox__drafts.ts";
-import { journalModel, type JournalModel } from "../../src/mailbox/operation-journal.vibe";
+import { journalModel, type JournalModel } from "@elizaos/plugin-inbox-client";
 
 const journals = new Map<string, JournalModel>();
 

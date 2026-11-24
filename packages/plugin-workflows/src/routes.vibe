@@ -1,5 +1,5 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/agent/access/routes.md, "Story: Admit only the routes a product lists"
-import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
+import type { LocalRoute, RouteInput } from "@elizaos/agent-host"
 import type { WorkflowRefused, WorkflowService } from "./service/workflows.vibe"
 import type { hostedDigests } from "./service/digests.vibe"
 import type { generatedWorkflows } from "./service/generated.vibe"

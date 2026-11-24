@@ -1,0 +1,3 @@
+// spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route"; spec/localInference/speechOutput.md, "Story: Speak a reply without cutting off what is playing"
+export * from "./speech-route.vibe"
+export * from "./speech-output.vibe"

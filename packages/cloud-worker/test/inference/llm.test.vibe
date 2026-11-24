@@ -1,0 +1,226 @@
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"
+import { assert, describe, it } from "@effect/vitest"
+import { createCloudClient, type ChatChunk, type ChatRequest, abort, chunkFrame, feed, finish, Deployment } from "@elizaos/cloud"
+import { addCredits } from "../../src/billing/funds.vibe"
+import { issueSession } from "../../src/identity/sessions.vibe"
+import { setModelPrice } from "../../src/services/models.vibe"
+import { Store } from "../../src/store/connection.vibe"
+import { complete, stream, type LlmFailure } from "../../src/providers/llm.vibe"
+import { contentFrames, doneFrame, llmFake, replyText, streamText, upstreamModel, usage, wholeAnswer } from "../support/llm-fake.ts"
+import { secrets } from "../support/profile.ts"
+import { check, testCloud, type TestCloud } from "../support/cloud.vibe"
+import { signedCaller } from "../support/caller.vibe"
+import { llmAdapter, segmented } from "../support/llm-adapter.vibe"
+import { callDeclaring, openCloud, type Answer } from "../support/http.ts"
+
+effect function outcome<A, R>(program: A!LlmFailure!R): unknown!!R {
+  return match (try exit(program)) {
+    when Exit.Success(let value): value;
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).map((error) => error._tag === "ProviderRefused" ? [error._tag, error.status, error.retryAfter] : [error._tag]).getOrElse(() => Cause.hasInterruptsOnly(cause) ? "interrupted" : "defect");
+  }
+}
+
+const request = { model: upstreamModel, messages: [{ role: "user", content: "Say hello" }], max_tokens: 16 }
+
+function bytesOf(text: string): number[] {
+  return [...new TextEncoder().encode(text)]
+}
+
+describe("WP5 Inference: provider adapter", () => {
+  it.live("Send one call per request to the provider and pass its answer through (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\")", () => scoped(effect {
+    const { llm, provider, layer } = try llmAdapter()
+    provide layer {
+      try sync(() => llm.script({ kind: "whole" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse" }))
+      const whole = try complete(provider, request)
+      const refused = try outcome(complete(provider, request))
+      const invalid = try outcome(complete(provider, request))
+      const refusedStream = try outcome(stream(provider, request))
+      try check(() => assert.deepStrictEqual(
+        {
+          whole: [whole.json, whole.usage],
+          refused,
+          invalid,
+          refusedStream,
+          sent: llm.bodies,
+          authorization: llm.headers.map((headers) => [headers.authorization, headers["idempotency-key"]])
+        },
+        {
+          whole: [wholeAnswer, usage],
+          refused: ["ProviderRefused", 429, 7_000],
+          invalid: ["ProviderInvalidResponse"],
+          refusedStream: ["ProviderRefused", 429, undefined],
+          sent: [request, request, request, { ...request, stream: true, stream_options: { include_usage: true } }],
+          authorization: Array.from({ length: 4 }, () => [`Bearer ${secrets.LLM_API_KEY}`, undefined])
+        }
+      ))
+    }
+  }))
+
+  it.live("Pass the provider's stream through and cancel it when the caller goes away (spec/cloud/index.md, \"A streamed answer sends complete OpenAI frames and settles the same hold\")", () => scoped(effect {
+    const { llm, provider, layer } = try llmAdapter()
+    provide layer {
+      try sync(() => llm.script({ kind: "stream" }, { kind: "hang", after: 2 }))
+      const chunks = Array.from(try Stream.runCollect(try stream(provider, { ...request, stream_options: { include_usage: false } })), (chunk) => [...chunk])
+      const whole = new TextDecoder().decode(Uint8Array.from(chunks.flat()))
+      const events = segmented(chunks, finish)
+      const cut = bytesOf("data: {\"a\":1}\n\ndata: {\"b\"")
+      const hanging = try stream(provider, request)
+      const firstBytes = try Deferred.make<void>()
+      const decoder = new TextDecoder()
+      const seen = try Ref.make("")
+      const reading = try forkChild(Stream.runForEach(hanging, effect (bytes) => {
+        const sofar = try Ref.updateAndGet(seen, (before) => before + decoder.decode(bytes, { stream: true }))
+        if (sofar.includes(replyText.slice(0, 2))) try Deferred.succeed(firstBytes, undefined)
+      }))
+      try Deferred.await(firstBytes)
+      try Fiber.interrupt(reading)
+      const ended = try outcome(Fiber.join(reading))
+      try promise(() => llm.untilAborted(1))
+      try check(() => assert.deepStrictEqual(
+        {
+          whole, ended, aborted: llm.aborted, forced: llm.bodies.map((body) => body.stream_options),
+          bytewise: events,
+          framed: events.map((event) => event === "[DONE]" ? doneFrame : chunkFrame(event)).join(""),
+          splitLines: segmented([bytesOf("data: {\"a\":\r\ndata: 1}\r"), bytesOf("\n\r\n: keep-alive\n\ndata:[DONE]\n\n")], finish),
+          invalidUtf8: segmented([[...bytesOf("data: "), 0xc3], [0x28, 0xed, 0xa0, 0x80, 0xf0, 0x9f], [0x98, 0x80, 0xe2, 10, 10]], finish),
+          atEnd: segmented([cut], finish),
+          atAbort: segmented([cut], () => feed(abort(), [10, 10]))
+        },
+        {
+          whole: streamText, ended: "interrupted", aborted: 1, forced: [{ include_usage: true }, { include_usage: true }],
+          bytewise: segmented(bytesOf(streamText).map((byte) => [byte]), finish), framed: streamText,
+          splitLines: ["{\"a\":\n1}", "[DONE]"], invalidUtf8: ["�(���\u{1F600}�"],
+          atEnd: ["{\"a\":1}", "{\"b\""], atAbort: ["{\"a\":1}"]
+        }
+      ))
+    }
+  }))
+})
+
+
+const chatPath = "/api/v1/chat/completions"
+const chatRequest: ChatRequest = { ...request, model: "test-chat", messages: [{ role: "user", content: "Say hello" }] }
+const chatKey = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`
+const code = (answer: Answer) => [answer.status, (answer.body as { readonly error?: string }).error]
+
+effect function fundedPrices(cloud: TestCloud, organizationId: string) {
+  try cloud.inside(effect {
+    const settings = (try Deployment).settings.inference
+    if (settings === undefined) throw new Error("The test profile offers no inference model")
+    const store = try Store
+    try store.transaction((tx) => setModelPrice(tx, settings, { modelId: "test-chat", inputPer1K: 1000, outputPer1K: 2000 }))
+    try addCredits({ organizationId, amount: 1_000_000, requestKey: "fund-chat" })
+  })
+}
+
+effect function usageRows(cloud: TestCloud) {
+  return try cloud.store.transaction((tx) => tx.query(
+    "SELECT split_part(h.key, '/', 4) AS request, h.phase, u.outcome, u.quote::int AS quote, u.charged::int AS charged FROM holds h LEFT JOIN usage_records u ON h.key = u.hold_key WHERE h.service = 'inference' ORDER BY h.key", []
+  ))
+}
+
+async function openChat(base: string, headers: Readonly<Record<string, string>>, id: string) {
+  const response = await openCloud(base, chatPath, {
+    headers: { ...headers, "idempotency-key": id },
+    json: { ...chatRequest, stream: true },
+  })
+  const reader = response.body?.getReader()
+  if (reader === undefined) throw new Error("The test chat returned no stream")
+  return { status: response.status, type: response.headers.get("content-type"), reader }
+}
+
+const cloudFrames = contentFrames.map((frame) => frame.replaceAll(upstreamModel, chatRequest.model))
+const cloudStream = streamText.replaceAll(upstreamModel, chatRequest.model)
+
+const streamError = 'data: {"error":"provider_invalid_response","errorDescription":"Provider invalid response.","retryable":false}\n\n'
+
+it.live("Fund chat once and stream live complete frames, even when delivery ends early (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\"; spec/cloud/index.md, \"A streamed answer sends complete OpenAI frames and settles the same hold\")", () => scoped(effect {
+  const llm = try sync(() => llmFake())
+  const cloud = try testCloud({ mount: (fakes) => fakes.mount("/llm/", llm.handler) })
+  const caller = try signedCaller(cloud, "inference-funded")
+  const empty = try signedCaller(cloud, "inference-empty")
+  const now = try Clock.currentTimeMillis
+  const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now }))
+  try fundedPrices(cloud, caller.organizationId)
+  const call = (n: number, body: object = chatRequest, headers = caller.headers) =>
+    cloud.call(chatPath, { headers: { ...headers, "idempotency-key": chatKey(n) }, json: body })
+  const unauthenticated = try call(1, chatRequest, {})
+  const invalid = try call(2, { ...chatRequest, unsupported: true })
+  const greaterThanLimit = try promise(() => callDeclaring(cloud.url, chatPath, 256 * 1024 + 1, caller.headers))
+  const unsupported = try call(3, { ...chatRequest, model: "unpriced" })
+  const insufficient = try call(4, chatRequest, empty.headers)
+  const noHolds = try usageRows(cloud)
+  try sync(() => llm.script({ kind: "whole" }, { kind: "stream", duplicateUsage: true }, { kind: "streamWithoutUsage" },
+    { kind: "truncated" }, { kind: "malformedFrame" }, { kind: "oversizedFrame" }, { kind: "refuse", retryAfterSeconds: 7 },
+    { kind: "stream" }, { kind: "truncated", reportUsage: true }, { kind: "hang", after: 2 },
+    { kind: "stream" }, { kind: "hang", after: 1 }))
+  const worked = try Effect.all([call(5), call(5)], { concurrency: "unbounded" })
+  const first = worked.find((answer) => answer.status === 200)
+  if (first === undefined) throw new Error("Neither request admitted the funded chat")
+  const duplicate = try call(5, { ...chatRequest, messages: [{ role: "user", content: "Do not spend twice" }] }, { authorization: `Bearer ${session.accessToken}` })
+  const textStream = (n: number, includeUsage = false) => call(n, { ...chatRequest, stream: true, ...(includeUsage ? { stream_options: { include_usage: true } } : {}) })
+  const streamed = try textStream(6, true)
+  const noUsage = try textStream(7, true)
+  const truncated = try textStream(8)
+  const malformedFrame = try textStream(9)
+  const oversizedFrame = try textStream(10)
+  const refused = try textStream(11)
+  const usageNotAsked = try textStream(12)
+  const reportedBeforeFailure = try textStream(13, true)
+  const live = try promise(() => openChat(cloud.url, caller.headers, chatKey(14)))
+  const partial = try promise(async () => {
+    const chunk = await live.reader.read()
+    return new TextDecoder().decode(chunk.value)
+  })
+  const beforeCancel = (try usageRows(cloud)).find((row) => row.request === chatKey(14))
+  try promise(() => live.reader.cancel())
+  try timeout(promise(() => llm.untilAborted(1)), "10 seconds")
+  const client = createCloudClient({ baseUrl: cloud.url, credential: () => session.accessToken })
+  const decoded = try promise(async () => {
+    const unused = await client.chatCompletionStream(chatRequest, { idempotencyKey: chatKey(99) })
+    await unused.return()
+    const complete = await client.chatCompletionStream({ ...chatRequest, stream_options: { include_usage: true } }, { idempotencyKey: chatKey(15) })
+    const chunks: ChatChunk[] = []
+    for await (const chunk of complete) chunks.push(chunk)
+    const controller = new AbortController()
+    const kept = await client.chatCompletionStream(chatRequest, { idempotencyKey: chatKey(16), signal: controller.signal })
+    const first = await kept.next()
+    const interruption = new Error("client left")
+    const pending = kept.next().then(() => false, (failure) => failure === interruption)
+    controller.abort(interruption)
+    return [chunks.map((chunk) => chunk.choices[0]?.delta.content ?? "").join(""), chunks.filter((chunk) => chunk.usage != null).length,
+      first.value?.choices[0]?.delta.role, await pending]
+  })
+  try timeout(promise(() => llm.untilAborted(2)), "10 seconds")
+  let settled = try usageRows(cloud)
+  for (let attempt = 0; settled.find((row) => row.request === chatKey(16))?.phase !== "settled" && attempt < 80; attempt += 1) {
+    try sleep("25 millis")
+    settled = try usageRows(cloud)
+  }
+
+  try check(() => {
+    assert.deepStrictEqual([code(unauthenticated), code(invalid), code(greaterThanLimit), code(unsupported), code(insufficient), noHolds],
+      [[401, "authentication_required"], [400, "invalid_request"], [413, "content_too_large"], [400, "model_unavailable"], [402, "insufficient_credits"], []])
+    assert.deepStrictEqual({ answer: first.body, results: worked.map((result) => result.status).sort(), duplicate: code(duplicate) },
+      { answer: { ...wholeAnswer, model: chatRequest.model }, results: [200, 409], duplicate: [409, "already_dispatched"] })
+    const errorEnd = streamError + doneFrame
+    assert.deepStrictEqual([streamed.headers["content-type"], streamed.body, noUsage.body, truncated.body, malformedFrame.body, oversizedFrame.body, code(refused), usageNotAsked.body, reportedBeforeFailure.body],
+      ["text/event-stream", cloudStream, cloudFrames.join("") + doneFrame, cloudFrames.join("") + errorEnd, cloudFrames[0] + errorEnd, errorEnd,
+        [429, "rate_limited"], cloudFrames.join("") + doneFrame, cloudFrames.join("") + errorEnd])
+    assert.isAbove(Number(refused.headers["retry-after"]), 0)
+    assert.deepStrictEqual([live.status, live.type, partial.startsWith(cloudFrames[0] ?? ""), beforeCancel?.phase, llm.aborted, decoded],
+      [200, "text/event-stream", true, "dispatched", 2, [replyText, 1, "assistant", true]])
+    assert.deepStrictEqual(settled.map((row) => [row.request, row.phase, row.outcome, row.quote, row.charged]), [
+      [chatKey(5), "settled", "known", 42, 31], [chatKey(6), "settled", "known", 42, 31],
+      [chatKey(7), "settled", "unknown", 42, 42], [chatKey(8), "settled", "unknown", 42, 42],
+      [chatKey(9), "settled", "unknown", 42, 42], [chatKey(10), "settled", "unknown", 42, 42],
+      [chatKey(11), "settled", "known", 42, 0], [chatKey(12), "settled", "known", 42, 31],
+      [chatKey(13), "settled", "known", 42, 31], [chatKey(14), "settled", "known", 42, 6],
+      [chatKey(15), "settled", "known", 42, 31], [chatKey(16), "settled", "known", 42, 4],
+    ])
+    assert.deepStrictEqual(llm.bodies, [
+      request,
+      ...Array.from({ length: 11 }, () => ({ ...request, stream: true, stream_options: { include_usage: true } })),
+    ])
+  })
+}), 90_000)

@@ -2,7 +2,7 @@
 import { Effect } from "effect";
 import type { Driver } from "../../gen/workflow__worker.conformance.ts";
 import type { Event } from "../../gen/workflow__worker.ts";
-import { workerProvenance } from "../../src/worker/artifact.vibe";
+import { workerProvenance } from "@elizaos/plugin-workflow-worker";
 import { outcome } from "../support/service.ts";
 
 type Provenance = Effect.Success<ReturnType<typeof workerProvenance>>;
