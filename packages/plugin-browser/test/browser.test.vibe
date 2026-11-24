@@ -508,7 +508,10 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
     try outcome("go back", { type: "browser_history", action: "back" }, withheld("unreadable")),
   ]
   const laterOtherWithdrawal = "Reload this page. Send the email. Actually, don't."
-  const withdrawn = ["Reload this page — wait, do not.", "Reload this page. Actually, do not close the tab or reload it.", "Reload this page. Never mind."]
+  const withdrawn = [
+    "Reload this page — wait, do not.", "Reload this page. Actually, do not close the tab or reload it.", "Reload this page. Never mind.",
+    "Reload it. Actually don’t, thanks.", "Reload it, never mind, open a new tab.", "Reload it: do not — tell me the time.",
+  ]
   const withdrawnProposals: unknown[] = []
   for (const words of withdrawn) withdrawnProposals.push(try outcome(words, reload, withheld("unreadable")))
   const authorizedDespiteOtherWithdrawal = try outcome(laterOtherWithdrawal, reload, withheld("unreadable"))

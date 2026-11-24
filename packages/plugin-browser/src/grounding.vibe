@@ -88,7 +88,7 @@ const RELOAD_NEGATED = compiled(String.raw`(?:\b(?:don['’]?t|do\s+not|never|no
 const RELOAD_VERBS = /\b(?:re-?load|refresh|re-?open)(?:ing)?\b/gi
 const RELOAD_CLAUSE_BOUNDARY = /[.!?;,:–—]|\b(?:so|then|but)\b/gi
 const RELOAD_COORDINATED_WITHDRAWAL = /^\s*(?:(?:actually|instead|please|pls|just|now|no|wait)\s+)*(?:don['’]?t|do\s+not|never|stop|no\s+need\s+to|i\s+(?:don['’]?t|do\s+not)\s+(?:want|need)\s+you\s+to)\s+(?:.*\b(?:and|or)\s+)?(?:(?:just|ever|even|please|try(?:\s+to)?|need\s+to|have\s+to|bother\s+to)\s+)*$/i
-const RELOAD_ADJACENT_WITHDRAWAL = /^\s*[.?!;,:–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[.!?;]+(?=\s|$)|\s*$)/i
+const RELOAD_ADJACENT_WITHDRAWAL = /^\s*[.?!;,:–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[ \t]*[.!?;,:–—]+(?=\s|$)|\s*$)/i
 const DOTS = /[\uff0e\u3002\uff61\u2024]/g
 const HOST_RUN = /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*/gu
 const LABEL_BEFORE = /[a-z\d](?:-*|\.)$/
