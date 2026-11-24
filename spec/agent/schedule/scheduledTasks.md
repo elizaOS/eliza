@@ -66,8 +66,9 @@ pure val rValues = Set({ hasId: true, sameAgent: true, sameName: true, queue: tr
   { hasId: true, sameAgent: true, sameName: true, queue: true, repeat: false })
 pure def lawAnotherAgentsTickRowIsNeverEligible(r: TickDriverRow): bool =
   not(r.sameAgent) implies not(tickDriverRowEligible(r))
-pure def lawAReplacementFencesTheRetiredDriver(): bool =
-  not(tickDriverMayRun(ReplacementTickWorker)) and not(tickDriverMayClean(ReplacementTickWorker))
+pure def lawAReplacementFencesTheRetiredDriver(registration: TickRegistration): bool =
+  (registration == ReplacementTickWorker) implies
+    (not(tickDriverMayRun(registration)) and not(tickDriverMayClean(registration)))
 ```
 
 ### Every change commits against the revision it read
