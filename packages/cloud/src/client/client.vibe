@@ -1,19 +1,14 @@
 // spec/cloud/client.md, "Story: Use the cloud from the device as configured"; spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"; spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
 import { callOf, originAccepted } from "../../gen/cloud__client.effect.vibe"
-import { answerOf, bodyOf, bytesOf, queryOf, unreadable, type CallOptions, type CloudAnswer } from "./answer.vibe"
+import { answerOf, bodyOf, queryOf, unreadable, type CallOptions, type CloudAnswer } from "./answer.vibe"
 import type { ChatRequest } from "../services/chat-request.schema.ts"
-import type { SynthesisBody } from "../services/speech-batch.schema.ts"
 import { isDone, pushByte, segmenter } from "../services/sse.ts"
 import { parseEntitlementKeys, type EntitlementKey } from "./entitlement.vibe"
 import { CloudError, networkError, readCloudError } from "./errors.vibe"
 import { googleCalls } from "./google.vibe"
 import { mapsCalls } from "./maps.vibe"
 import { admitsHeader, httpVerb, idempotencyKey, listedRoute, lookupPath, renderPath, routesByName, type DeviceRoute } from "./routes.vibe"
-import {
-  checkoutFromResponse, commandFromResponse, commandsFromResponse, paymentFromResponse, redeemResultFromResponse, reviewFromResponse, snapshotFromResponse,
-  type BillingSnapshot, type CheckoutStart, type CheckoutStartRequest, type CommandKind, type CommandsPage, type LifecycleRequest, type PaymentContinuation,
-  type PlanChangeConfirmRequest, type PlanChangeKind, type PlanChangeReview, type PlanChangeReviewRequest, type RedeemResult, type SubscriptionCommand
-} from "./views.vibe"
+import { commandsFromResponse, snapshotFromResponse, type BillingSnapshot, type CommandsPage } from "./views.vibe"
 
 export interface CloudClientOptions {
   readonly baseUrl: string
@@ -35,7 +30,6 @@ export interface CloudTransport {
   call(route: DeviceRoute, request?: CloudRequest): Promise<TransportAnswer>
 }
 
-const millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const cents = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const optionalText = Schema.NullOr(Schema.String)
 const paidPlanKey = Schema.Literals(["plus_monthly", "pro_monthly"])
@@ -72,53 +66,6 @@ export type PlanOffer = typeof Plans.Type["plans"][number]
 
 schema EntitlementToken { entitlement: string }
 
-const undoReviewSchema = Schema.Struct({
-  kind: Schema.Literal("renewal_estimate"),
-  quoteId: Schema.String,
-  subscriptionId: Schema.String,
-  expectedSubscriptionRevision: Schema.Int,
-  planKey: paidPlanKey,
-  renewalAt: millis,
-  amountDueCents: cents,
-  currency: Schema.Literal("usd"),
-  observedAt: millis,
-  expiresAt: millis
-})
-export type UndoReview = typeof undoReviewSchema.Type
-
-schema Portal { url: string }
-
-const invoiceFields = {
-  id: Schema.String,
-  number: optionalText,
-  date: millis,
-  status: Schema.Literals(["open", "paid", "uncollectible", "void"]),
-  amountDueCents: cents,
-  amountPaidCents: cents,
-  currency: Schema.String,
-  hostedInvoiceUrl: optionalText
-}
-
-const invoicePageSchema = Schema.Struct({ invoices: Schema.Array(Schema.Struct(invoiceFields)), nextCursor: optionalText })
-export type InvoicePage = typeof invoicePageSchema.Type
-
-const invoiceDetailSchema = Schema.Struct({
-  ...invoiceFields,
-  lines: Schema.Array(Schema.Struct({
-    id: Schema.String,
-    description: optionalText,
-    amountCents: Schema.Int,
-    currency: Schema.String,
-    quantity: Schema.NullOr(Schema.Int),
-    periodStart: millis,
-    periodEnd: millis
-  })),
-  periodStart: millis,
-  periodEnd: millis,
-  pdfUrl: optionalText
-})
-export type InvoiceDetail = typeof invoiceDetailSchema.Type
-
 const Models = Schema.Struct({
   object: Schema.Literal("list"),
   data: Schema.Array(Schema.Struct({ id: Schema.String, object: Schema.Literal("model"), owned_by: Schema.String }))
@@ -129,20 +76,6 @@ export type CloudModel = ModelList["data"][number]
 schema Usage { prompt_tokens: number; completion_tokens: number; total_tokens: number }
 
 const ToolCalls = Schema.optionalKey(Schema.Array(Schema.Unknown))
-
-const chatCompletionSchema = Schema.Struct({
-  id: Schema.String,
-  object: Schema.Literal("chat.completion"),
-  created: Schema.Int,
-  model: Schema.String,
-  choices: Schema.Array(Schema.Struct({
-    index: Schema.Int,
-    message: Schema.Struct({ role: Schema.Literal("assistant"), content: optionalText, tool_calls: ToolCalls }),
-    finish_reason: optionalText
-  })),
-  usage: Schema.optionalKey(Usage)
-})
-export type ChatCompletion = typeof chatCompletionSchema.Type
 
 const chatChunkSchema = Schema.Struct({
   id: Schema.String,
@@ -158,54 +91,12 @@ const chatChunkSchema = Schema.Struct({
 })
 export type ChatChunk = typeof chatChunkSchema.Type
 
-const timedSpanSchema = Schema.Struct({ text: Schema.String, startMs: Schema.Number, endMs: Schema.Number })
-export type TimedSpan = typeof timedSpanSchema.Type
-
-const Transcript = Schema.Struct({
-  transcript: Schema.String,
-  duration_ms: Schema.Number,
-  segments: Schema.optionalKey(Schema.Array(timedSpanSchema)),
-  words: Schema.optionalKey(Schema.Array(timedSpanSchema))
-})
-
-export interface Transcription {
-  readonly transcript: string
-  readonly durationMs: number
-  readonly segments?: ReadonlyArray<TimedSpan>
-  readonly words?: ReadonlyArray<TimedSpan>
-}
-
-export interface SpeechUpload {
-  readonly audio: Uint8Array<ArrayBuffer>
-  readonly mimeType: string
-  readonly languageCode?: string
-}
-
-export interface SpeechAudio {
-  readonly contentType: string
-  readonly bytes: Uint8Array
-}
-
 const speechConsentSchema = Schema.Struct({ consentNonce: Schema.String, expiresAt: Schema.String })
 export type SpeechConsent = typeof speechConsentSchema.Type
-
-const speechSessionSchema = Schema.Struct({ version: Schema.Literal(1), sessionId: Schema.String, token: Schema.String, expiresAt: Schema.String, wsUrl: Schema.String })
-export type SpeechSession = typeof speechSessionSchema.Type
-
-schema SpeechRevoked { revoked: true }
 
 export interface PageRequest {
   readonly limit?: number
   readonly cursor?: string
-}
-
-export interface RedeemRequest {
-  readonly code: string
-  readonly idempotencyKey: string
-}
-
-export interface UndoRequest extends LifecycleRequest {
-  readonly quoteId: string
 }
 
 export interface ChatOptions extends CallOptions {
@@ -269,7 +160,10 @@ effect function dispatch(origin: string, credential: CloudClientOptions["credent
     )
   const client = try HttpClient.HttpClient
   const { bearer } = callOf(selected, credential() ?? "")
-  return try client.execute(bearer === "" ? outgoing : HttpClientRequest.setHeader(outgoing, "authorization", `Bearer ${bearer}`))
+  return try Effect.mapError(
+    client.execute(bearer === "" ? outgoing : HttpClientRequest.setHeader(outgoing, "authorization", `Bearer ${bearer}`)),
+    (error) => networkError(error.reason._tag === "TransportError" ? error.reason.cause : error)
+  )
 }
 
 function transportOf(options: CloudClientOptions): CloudTransport {
@@ -303,32 +197,9 @@ function transportOf(options: CloudClientOptions): CloudTransport {
   }
 }
 
-module web {
-  /** @throws {never} */
-  export function audioForm(audio: Uint8Array<ArrayBuffer>, mimeType: string, languageCode: string | undefined): FormData {
-    const form = new FormData()
-    form.append("audio", new Blob([audio], { type: mimeType }), "audio")
-    if (languageCode !== undefined) form.append("languageCode", languageCode)
-    return form
-  }
-}
-import { audioForm } from web
-
 function keyed(key: string): Readonly<Record<string, string>> {
   return { [idempotencyKey]: key }
 }
-
-const statusRoutes = {
-  cancel: routesByName.cancelStatus,
-  undo: routesByName.cancelUndoStatus,
-  upgrade: routesByName.upgradeStatus,
-  downgrade: routesByName.downgradeStatus
-} as const satisfies Record<CommandKind, DeviceRoute>
-
-const changeRoutes = {
-  upgrade: { review: routesByName.upgradeReview, confirm: routesByName.upgradeConfirm },
-  downgrade: { review: routesByName.downgradeReview, confirm: routesByName.downgradeConfirm }
-} as const satisfies Record<PlanChangeKind, { readonly review: DeviceRoute; readonly confirm: DeviceRoute }>
 
 async function chunkOf(data: Array<number>): Promise<ChatChunk> {
   let parsed: unknown
@@ -411,64 +282,11 @@ export function createCloudClient(options: CloudClientOptions) {
       if (keys === undefined) throw unreadable("entitlement keys")
       return keys
     },
-    async redeem(request: RedeemRequest, options: CallOptions = {}): Promise<RedeemResult> {
-      const json = { code: request.code, idempotencyKey: request.idempotencyKey }
-      const answer = await call(routesByName.redeem, { json, headers: keyed(request.idempotencyKey), signal: options.signal })
-      return Effect.runPromise(redeemResultFromResponse(await bodyOf(answer), Date.now()))
-    },
-    async startCheckout(request: CheckoutStartRequest, options: CallOptions = {}): Promise<CheckoutStart> {
-      const json = { planKey: request.planKey, idempotencyKey: request.idempotencyKey, presentation: request.presentation }
-      return Effect.runPromise(checkoutFromResponse(await bodyOf(await call(routesByName.checkout, { json, headers: keyed(request.idempotencyKey), signal: options.signal }))))
-    },
-    async confirmCheckout(sessionId: string, options: CallOptions = {}): Promise<CheckoutStart> {
-      return Effect.runPromise(checkoutFromResponse(await bodyOf(await call(routesByName.checkoutConfirm, { json: { sessionId }, signal: options.signal }))))
-    },
-    async cancelSubscription(request: LifecycleRequest, options: CallOptions = {}): Promise<SubscriptionCommand> {
-      const json = { subscriptionId: request.subscriptionId, expectedSubscriptionRevision: request.expectedRevision, idempotencyKey: request.idempotencyKey }
-      return Effect.runPromise(commandFromResponse(await bodyOf(await call(routesByName.cancel, { json, signal: options.signal }))))
-    },
-    async undoCancel(request: UndoRequest, options: CallOptions = {}): Promise<SubscriptionCommand> {
-      const json = { subscriptionId: request.subscriptionId, expectedSubscriptionRevision: request.expectedRevision, idempotencyKey: request.idempotencyKey, quoteId: request.quoteId }
-      return Effect.runPromise(commandFromResponse(await bodyOf(await call(routesByName.cancelUndo, { json, signal: options.signal }))))
-    },
-    async undoReview(options: CallOptions = {}): Promise<UndoReview> {
-      return answerOf(await call(routesByName.cancelUndoReview, { signal: options.signal }), undoReviewSchema)
-    },
-    async reviewPlanChange(kind: PlanChangeKind, request: PlanChangeReviewRequest, options: CallOptions = {}): Promise<PlanChangeReview> {
-      const json = { subscriptionId: request.subscriptionId, expectedSubscriptionRevision: request.expectedRevision, targetPlanKey: request.targetPlanKey }
-      return Effect.runPromise(reviewFromResponse(await bodyOf(await call(changeRoutes[kind].review, { json, signal: options.signal }))))
-    },
-    async confirmPlanChange(kind: PlanChangeKind, request: PlanChangeConfirmRequest, options: CallOptions = {}): Promise<SubscriptionCommand> {
-      const json = { quoteId: request.quoteId, idempotencyKey: request.idempotencyKey }
-      return Effect.runPromise(commandFromResponse(await bodyOf(await call(changeRoutes[kind].confirm, { json, signal: options.signal }))))
-    },
-    async planChangeStatus(kind: CommandKind, commandId: string, options: CallOptions = {}): Promise<SubscriptionCommand> {
-      return Effect.runPromise(commandFromResponse(await bodyOf(await call(statusRoutes[kind], { params: { commandId }, signal: options.signal }))))
-    },
-    async continuePayment(commandId: string, options: CallOptions = {}): Promise<PaymentContinuation> {
-      return Effect.runPromise(paymentFromResponse(await bodyOf(await call(routesByName.upgradePayment, { params: { commandId }, signal: options.signal }))))
-    },
     async subscriptionCommands(page: PageRequest = {}, options: CallOptions = {}): Promise<CommandsPage> {
       return Effect.runPromise(commandsFromResponse(await bodyOf(await call(routesByName.commands, { query: queryOf({ ...page }), signal: options.signal }))))
     },
-    async billingPortal(options: CallOptions = {}): Promise<string> {
-      return (await answerOf(await call(routesByName.portal, { signal: options.signal }), Portal)).url
-    },
-    async invoices(page: PageRequest = {}, options: CallOptions = {}): Promise<InvoicePage> {
-      return answerOf(await call(routesByName.invoices, { query: queryOf({ ...page }), signal: options.signal }), invoicePageSchema)
-    },
-    async invoice(invoiceId: string, options: CallOptions = {}): Promise<InvoiceDetail> {
-      return answerOf(await call(routesByName.invoice, { params: { invoiceId }, signal: options.signal }), invoiceDetailSchema)
-    },
     async models(options: CallOptions = {}): Promise<ModelList> {
       return answerOf(await call(routesByName.models, { signal: options.signal }), Models)
-    },
-    async chatCompletion(request: ChatRequest, options: ChatOptions = {}): Promise<ChatCompletion> {
-      return answerOf(await call(routesByName.chatCompletions, {
-        json: { ...request, stream: false },
-        headers: options.idempotencyKey === undefined ? undefined : keyed(options.idempotencyKey),
-        signal: options.signal
-      }), chatCompletionSchema)
     },
     async chatCompletionStream(request: ChatRequest, options: ChatOptions = {}): Promise<AsyncGenerator<ChatChunk, void, undefined>> {
       return chunksOf(() => call(routesByName.chatCompletions, {
@@ -477,28 +295,8 @@ export function createCloudClient(options: CloudClientOptions) {
         signal: options.signal
       }), options.signal)
     },
-    async tts(request: SynthesisBody, options: CallOptions = {}): Promise<SpeechAudio> {
-      const answer = await call(routesByName.textToSpeech, { json: request, signal: options.signal })
-      return { contentType: answer.headers.get("content-type") ?? "application/octet-stream", bytes: await bytesOf(answer) }
-    },
-    async stt(upload: SpeechUpload, options: CallOptions = {}): Promise<Transcription> {
-      const body = audioForm(upload.audio, upload.mimeType, upload.languageCode)
-      const heard = await answerOf(await call(routesByName.speechToText, { form: body, signal: options.signal }), Transcript)
-      return {
-        transcript: heard.transcript,
-        durationMs: heard.duration_ms,
-        ...(heard.segments === undefined ? {} : { segments: heard.segments }),
-        ...(heard.words === undefined ? {} : { words: heard.words })
-      }
-    },
     async speechConsent(options: CallOptions = {}): Promise<SpeechConsent> {
       return answerOf(await call(routesByName.speechConsent, { signal: options.signal }), speechConsentSchema)
-    },
-    async speechSession(consentNonce: string, options: CallOptions = {}): Promise<SpeechSession> {
-      return answerOf(await call(routesByName.speechSession, { json: { consentNonce }, signal: options.signal }), speechSessionSchema)
-    },
-    async revokeSpeech(sessionId: string, options: CallOptions = {}): Promise<void> {
-      await answerOf(await call(routesByName.speechSessionRevoke, { params: { sessionId }, signal: options.signal }), SpeechRevoked)
     }
   }
 }

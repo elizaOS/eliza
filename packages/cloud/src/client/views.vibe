@@ -1,12 +1,13 @@
-// spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"; spec/cloud/billing/grantCodes.md, "Story: Redeem a membership code once"
+// spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"; spec/cloud/client.md, "A balance shows only from a snapshot under five minutes old, and a grant has ended once revoked or past its end"; spec/cloud/billing/grantCodes.md, "Story: Redeem a membership code once"
 import type { AccountStatus } from "../../gen/cloud__identity__accounts.ts"
 import type { PlanKey } from "../../gen/cloud__billing__plans.ts"
 import type { SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.ts"
 import type { FundingLane } from "../../gen/cloud__shared__metering.ts"
-import type { PlanAdmission, PlanSource, PlanView, SnapshotView } from "../../gen/cloud__client.ts"
-import { accountUsable as usableView, planAdmission, planFromSnapshot as planOfView } from "../../gen/cloud__client.effect.vibe"
-import { millisPerMinute, millisPerSecond, type Micros, type Millis } from "../../gen/cloud__shared__types.effect.vibe"
-import { clockSkewSeconds } from "./entitlement.vibe"
+import type { GrantTerm, PlanAdmission, PlanSource, PlanView, SnapshotView } from "../../gen/cloud__client.ts"
+import {
+  accountUsable as usableView, creditOf, grantEndedAt, grantEndedInSnapshot, planAdmission, planFromSnapshot as planOfView
+} from "../../gen/cloud__client.effect.vibe"
+import type { Micros, Millis } from "../../gen/cloud__shared__types.effect.vibe"
 import { CloudError, type CloudFailure } from "./errors.vibe"
 
 export type { PlanAdmission, PlanView }
@@ -89,10 +90,6 @@ export type SnapshotGrant = typeof snapshotGrantSchema.Type
 export type SnapshotAllowance = typeof snapshotAllowanceSchema.Type
 export type BillingSnapshot = typeof billingSnapshotSchema.Type
 
-export type PlanChangeKind = "upgrade" | "downgrade"
-export type LifecycleAction = "cancel" | "undo"
-export type CommandKind = PlanChangeKind | LifecycleAction
-
 const subscriptionCommandSchema = Schema.Struct({
   commandId: id,
   kind: Schema.Literals(["cancel", "undo", "upgrade", "downgrade"]),
@@ -143,31 +140,7 @@ export type CommandStatus = SubscriptionCommand["status"]
 export type CommandsPage = typeof commandsPageSchema.Type
 export type PlanChangeReview = typeof planChangeReviewSchema.Type
 export type PaymentContinuation = typeof paymentContinuationSchema.Type
-export type CheckoutPresentation = "mobile" | "embedded" | "shared"
 export type CheckoutStart = typeof checkoutStartSchema.Type
-
-export interface CheckoutStartRequest {
-  readonly planKey: PaidWirePlanKey
-  readonly idempotencyKey: string
-  readonly presentation: CheckoutPresentation
-}
-
-export interface PlanChangeReviewRequest {
-  readonly subscriptionId: string
-  readonly expectedRevision: number
-  readonly targetPlanKey: PaidWirePlanKey
-}
-
-export interface PlanChangeConfirmRequest {
-  readonly quoteId: string
-  readonly idempotencyKey: string
-}
-
-export interface LifecycleRequest {
-  readonly subscriptionId: string
-  readonly expectedRevision: number
-  readonly idempotencyKey: string
-}
 
 type Answer = "snapshot" | "redeem" | "command" | "commands" | "review" | "payment" | "checkout"
 
@@ -253,8 +226,6 @@ export function planFromSnapshot(snapshot: BillingSnapshot): PlanView {
 export const planChecking: PlanView = { tag: "PlanChecking" }
 export const planUnavailable: PlanView = { tag: "PlanUnavailable" }
 
-const creditMaxAge: Millis = 5 * millisPerMinute
-
 export type CreditView =
   | { readonly kind: "funded"; readonly usdMicros: Micros; readonly observedAt: Millis }
   | { readonly kind: "zero"; readonly observedAt: Millis }
@@ -262,9 +233,12 @@ export type CreditView =
 
 export function creditFromSnapshot(snapshot: BillingSnapshot, now: Millis): CreditView {
   const observedAt = snapshot.observedAt
-  if (observedAt > now + clockSkewSeconds * millisPerSecond || now - observedAt > creditMaxAge) return { kind: "unavailable", observedAt }
-  const usdMicros = snapshot.balance.usdMicros
-  return usdMicros > 0 ? { kind: "funded", usdMicros, observedAt } : { kind: "zero", observedAt }
+  const credit = creditOf(snapshot.balance.usdMicros, observedAt, now)
+  switch (credit.tag) {
+    case "CreditFunded": return { kind: "funded", usdMicros: credit.usdMicros, observedAt }
+    case "CreditZero": return { kind: "zero", observedAt }
+    case "CreditUnavailable": return { kind: "unavailable", observedAt }
+  }
 }
 
 export interface ActiveGrant {
@@ -284,14 +258,14 @@ function activeGrant(grant: SnapshotGrant): ActiveGrant {
   return { id: grant.id, planKey: grant.planKey, family: grant.family, effectiveFrom: grant.effectiveFrom, effectiveUntil: grant.effectiveUntil }
 }
 
-function grantEnded(grant: SnapshotGrant, at: Millis): boolean {
-  return grant.revoked || (grant.effectiveUntil !== null && grant.effectiveUntil <= at)
+function termOf(grant: SnapshotGrant): GrantTerm {
+  return { revoked: grant.revoked, bounded: grant.effectiveUntil !== null, until: grant.effectiveUntil ?? 0 }
 }
 
 export function grantFromSnapshot(snapshot: BillingSnapshot, now: Millis): GrantView {
   const grant = snapshot.grant
   if (grant === null) return { kind: "none" }
-  if (grantEnded(grant, Math.max(snapshot.observedAt, now))) return { kind: "ended", id: grant.id, planKey: grant.planKey }
+  if (grantEndedInSnapshot(termOf(grant), snapshot.observedAt, now)) return { kind: "ended", id: grant.id, planKey: grant.planKey }
   return { kind: "active", grant: activeGrant(grant), paidPlanTakesPrecedence: snapshot.plan.source === "subscription" }
 }
 
@@ -342,7 +316,7 @@ export type RedeemResult =
 export effect function redeemResultFromResponse(body: unknown, now: Millis): RedeemResult!CloudError {
   const answer = try decode(redeemAnswerSchema, "redeem", body)
   const grant = answer.grant
-  if (grantEnded(grant, now)) return { kind: "ended", id: grant.id, planKey: grant.planKey }
+  if (grantEndedAt(termOf(grant), now)) return { kind: "ended", id: grant.id, planKey: grant.planKey }
   const plan = answer.entitlement.plan
   return { kind: "redeemed", replayed: answer.replayed, grant: activeGrant(grant), plan, paidPlanTakesPrecedence: plan.source === "subscription" }
 }

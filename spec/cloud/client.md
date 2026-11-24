@@ -182,6 +182,7 @@ pure val billingRoutes: List[DeviceRoute] = List(
   route(Get, apiWith(List("billing", "invoices"), List(Param({ name: "invoiceId" }))), KeyOrSession))
 pure val serviceRoutes: List[DeviceRoute] = List(
   route(Get, api(List("models")), KeyOrSession),
+  route(Post, api(List("decisions")), KeyOrSession),
   keyed(Post, api(List("chat", "completions")), Set(idempotencyKey)),
   route(Post, api(List("voice", "tts")), KeyOrSession),
   route(Post, api(List("voice", "stt")), KeyOrSession),
@@ -279,7 +280,7 @@ retryAt?, resetsAt?, reason?}`) and passes its code, reason and times
 (epoch milliseconds, `0` when absent; a `Retry-After` header gives `retryAt`
 when the body has none). A body that is not a refusal body is read as the
 default code of its status. A failure before any answer is
-`CloudNetwork`. The variants are those of the agent's model binding, plus
+`CloudNetwork`, carrying what the fetch rejected with. The variants are those of the agent's model binding, plus
 the credential reason and `CloudRefused` for a refusal that needs the
 request or the person to change. Every `401` is `CloudCredentialInvalid`
 with its credential reason; reading an error never stores or clears a
@@ -388,4 +389,36 @@ pure def lawOnlyAnActiveAccountIsUsable(s: SnapshotView): bool = accountUsable(s
 pure def lawNoPlanAndNoCreditsNeedsAPlan(s: SnapshotView): bool =
   (s.source == FromFree and s.balance <= 0) implies planAdmission(planFromSnapshot(s)) == NeedsPlan
 pure def lawUnknownAdmitsNothing(v: PlanView): bool = (v == PlanChecking or v == PlanUnavailable) implies planAdmission(v) == AdmissionUnknown
+```
+
+### A balance shows only from a snapshot under five minutes old, and a grant has ended once revoked or past its end
+
+The device shows the snapshot's balance only when the snapshot was observed
+at most five minutes before now and at most one minute after it; otherwise
+the balance is unavailable. A shown balance above zero is funded, else zero.
+A grant in a snapshot has ended when it is revoked or its end is at or
+before the later of the snapshot's time and now. A redeem answer whose grant has ended at the time it is read
+is an ended grant, not a redemption.
+
+```quint
+type CreditView = CreditFunded({ usdMicros: Micros }) | CreditZero | CreditUnavailable
+type GrantTerm = { revoked: bool, bounded: bool, until: Millis }
+pure val creditMaxAge: Millis = 5 * millisPerMinute
+pure val snapshotSkew: Millis = millisPerMinute
+pure def creditOf(balance: Micros, observedAt: Millis, now: Millis): CreditView =
+  if (observedAt > now + snapshotSkew or now - observedAt > creditMaxAge) CreditUnavailable
+  else if (balance > 0) CreditFunded({ usdMicros: balance })
+  else CreditZero
+pure def grantEndedAt(g: GrantTerm, at: Millis): bool = g.revoked or (g.bounded and g.until <= at)
+pure def grantEndedInSnapshot(g: GrantTerm, observedAt: Millis, now: Millis): bool = grantEndedAt(g, if (observedAt > now) observedAt else now)
+pure val balanceValues = Set(-1, 0, 7)
+pure val observedAtValues = Set(0, 299999, 300001, 360001)
+pure val nowValues = Set(0, 300000, 300002, 600002)
+pure val gValues = Set({ revoked: true, bounded: false, until: 0 }, { revoked: false, bounded: false, until: 0 }, { revoked: false, bounded: true, until: 300000 })
+pure def lawAStaleBalanceIsUnavailable(balance: Micros, observedAt: Millis, now: Millis): bool =
+  now - observedAt > creditMaxAge implies creditOf(balance, observedAt, now) == CreditUnavailable
+pure def lawARecentBalanceIsShown(balance: Micros, observedAt: Millis, now: Millis): bool =
+  (observedAt <= now and now - observedAt <= creditMaxAge) implies creditOf(balance, observedAt, now) != CreditUnavailable
+pure def lawAGrantEndedNowHasEndedInTheSnapshot(g: GrantTerm, observedAt: Millis, now: Millis): bool =
+  grantEndedAt(g, now) implies grantEndedInSnapshot(g, observedAt, now)
 ```
