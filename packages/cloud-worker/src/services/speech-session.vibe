@@ -442,7 +442,7 @@ effect function mint(context: RouteContext) {
   const { consentNonce } = try jsonBody(context, MintRequest)
   const store = try Store
   const sessionId = newId()
-  const token = secretText("eliza_speech_", 32, "base64url")
+  const token = secretText("", 32, "base64url")
   const minted = try timedPhase(bootstrap, "speech_consent_consume", store.transaction(effect (tx: Tx) => {
     try tx.query("SELECT nonce FROM speech_consents WHERE nonce = $1 FOR UPDATE", [consentNonce])
     const now = try Clock.currentTimeMillis
