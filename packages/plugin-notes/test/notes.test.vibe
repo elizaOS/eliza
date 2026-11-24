@@ -96,7 +96,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string) {
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner\'s own words in the bound request"; spec/notes/records.md, "A note\'s title and body are saved as well-formed text")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A note\'s title and body are saved as well-formed text")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -132,25 +132,24 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
     [["NOTES_AMBIGUOUS_NOTE", true, 2, undefined, undefined], ["NOTES_EDIT_CONFLICT", undefined, 0, "internal", true], ["NOTES_NOT_FOUND", undefined, 0, undefined, undefined]])
 
   const plugin = notesPlugin(notes)
-  const sharedTitle = try action(plugin, "NOTES_DELETE")(message("delete my groceries note"), { noteId: "note-1" })
-  assert.deepEqual([sharedTitle.success, sharedTitle.data?.code], [false, "NOTES_AMBIGUOUS_NOTE"])
-  assert.isTrue((try notes.snapshot()).notes.some((note) => note.id === "note-1"))
+  const deleting = action(plugin, "NOTES_DELETE")
+  const picked = try deleting(message("delete my groceries note"), { noteId: draft.value.note.id })
+  assert.deepEqual([picked.success, picked.data?.noteId, (try notes.snapshot()).notes.some((note) => note.id === "note-1")], [true, draft.value.note.id, true])
   const wrapped = message("Contextual documents: Groceries FAQ")
   try Effect.try(() => bindIncomingMessagePersistence(wrapped, message("delete my trip note")))
-  const words = try ownerRequestText(wrapped)
-  assert.equal(words, "delete my trip note")
-  const fenced = try Effect.flip(notes.delete({ selector: "query", value: "oat milk" }, words))
-  assert.deepEqual([fenced.code, fenced._tag === "NotesRefused" ? fenced.candidateIds : undefined], ["NOTES_DELETE_NAME_MISMATCH", ["note-1"]])
+  assert.equal(try ownerRequestText(wrapped), "delete my trip note")
+  const closest = try deleting(message("get rid of the grocery note"), { content: "oat milk" })
+  assert.deepEqual([closest.success, closest.data?.code, closest.data?.candidateIds, closest.text?.includes('"Groceries"')], [false, "NOTES_DELETE_NAME_MISMATCH", ["note-1"], true])
   const trip = try notes.create({ content: "Trip\npack the tent" })
-  const deleted = try notes.delete({ selector: "query", value: "trip" }, words)
-  assert.equal(deleted.value.id, trip.value.note.id)
-  assert.deepEqual((try notes.snapshot()).trash?.map((entry) => entry.note.id), [trip.value.note.id])
+  const byTitle = try deleting(message("get rid of my camping note"), { content: "trip" })
+  assert.deepEqual([byTitle.success, byTitle.data?.noteId], [true, trip.value.note.id])
+  assert.deepEqual((try notes.snapshot()).trash?.map((entry) => entry.note.id), [draft.value.note.id, trip.value.note.id])
   const errands = (try notes.create({ content: "Errands\nbank" })).value.note.id
   try notes.create({ content: "Errands\npost office" })
-  assert.equal(try code(notes.delete({ id: errands }, "delete my errands note")), "NOTES_AMBIGUOUS_NOTE")
-  assert.equal((try notes.delete({ id: errands }, `delete the errands note ${errands}`)).value.id, errands)
+  assert.equal(try code(notes.delete({ selector: "query", value: "errands" }, true)), "NOTES_AMBIGUOUS_NOTE")
+  assert.equal((try notes.delete({ id: errands }, true)).value.id, errands)
   const milk = [try notes.create({ content: "Milk\nbuy two", forceNew: true }), try notes.create({ content: "Milk\nbuy two", forceNew: true })].map((made) => made.value.note.id)
-  assert.isTrue(milk.includes((try notes.delete({ selector: "query", value: "milk" }, "delete the milk note")).value.id))
+  assert.isTrue(milk.includes((try notes.delete({ selector: "query", value: "milk" }, true)).value.id))
   const afterMilk = try notes.snapshot()
   assert.deepEqual([afterMilk.notes.filter((note) => milk.includes(note.id)).length, afterMilk.trash?.filter((entry) => milk.includes(entry.note.id)).length], [0, 2])
   const chores = [try notes.create({ content: "Chores\nsweep", forceNew: true }), try notes.create({ content: "Chores\nsweep", forceNew: true })].map((made) => made.value.note.id)
@@ -159,8 +158,8 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.deepEqual(mopped.snapshot.notes.filter((note) => note.title === "Chores").map((note) => [note.id, note.body]), [[mopped.value.id, "\nmop"]])
   const lists = [try notes.create({ content: "Lists\none" }), try notes.create({ content: "Lists\ntwo" })].map((made) => made.value.note.id)
   const renumber = { textEdit: { field: "body", oldText: "one", newText: "1" } }
-  assert.equal(try code(notes.update({ id: lists[0] ?? "" }, renumber, undefined, "change one to 1 in my lists note")), "NOTES_AMBIGUOUS_NOTE")
-  assert.equal((try notes.update({ id: lists[0] ?? "" }, renumber, undefined, `change one to 1 in the lists note ${lists[0] ?? ""}`)).value.body, "\n1")
+  assert.equal(try code(notes.update({ selector: "query", value: "lists" }, renumber)), "NOTES_AMBIGUOUS_NOTE")
+  assert.equal((try notes.update({ id: lists[0] ?? "" }, renumber)).value.body, "\n1")
 
   const folders = readNoteFolders({ notesFolders: [{ id: "folder-home", name: "Home  stuff" }, { id: "folder-work", name: "Work" }] })
   const home = findNoteFolder(folders ?? [], "home stuff")
@@ -194,7 +193,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(try code(notes.assertSourceReference({ ...reference, agentId: "another-agent" })), "CALENDAR_NOTE_SOURCE_CONFLICT")
   try notes.update({ id: "note-1" }, { textEdit: { field: "title", oldText: "Groceries", newText: "Shopping" } })
   assert.equal(try code(notes.assertSourceReference(reference)), "CALENDAR_NOTE_SOURCE_CONFLICT")
-  assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:updated", "note:created", "note:created", "note:updated", "note:moved", "note:created", "note:created", "note:moved", "note:updated"])
+  assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:deleted", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:updated", "note:created", "note:created", "note:updated", "note:moved", "note:created", "note:created", "note:moved", "note:updated"])
   const asked = try action(plugin, "NOTES_CREATE")(message("add a note: call the plumber Tuesday"), { content: "Call the plumber Tuesday" })
   assert.deepEqual([asked.success, asked.data?.op, (try notes.snapshot()).notes.some((note) => note.title === "Call the plumber Tuesday")], [true, "create", true])
 
@@ -581,8 +580,9 @@ const patch = (textEdit: unknown, changes: unknown[] = []) => JSON.stringify({ r
 const question = "What should the note say instead?"
 const deletedRequestId = stringToUuid("Delete this note")
 
-it.effect('Ask about, delete or change a phone note only as the owner said it (spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn\'s own screen selects the phone\'s Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner\'s direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly")', effect () => {
-  const model = phoneModel([patch(null), patch(null), patch({ action: "append", field: "item", text: "eggs" }), JSON.stringify({ requiresInput: true, clarification: question, changes: [], textEdit: null })])
+it.effect('Ask about, delete or change a phone note only as the owner said it (spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn\'s own screen selects the phone\'s Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only when the model read the request as a deletion"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly")', effect () => {
+  const eggs = patch({ action: "append", field: "item", text: "eggs" })
+  const model = phoneModel([eggs, eggs, eggs, JSON.stringify({ requiresInput: true, clarification: question, changes: [], textEdit: null })])
   const family = notesDeviceFamily(model.runtime)
   assert.strictEqual(family.app, "notes")
   const home = { view: "home", revision: 1, sensitive: false }
@@ -604,18 +604,18 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     unobserved: ["notes_filter", "notes_folder_create", "notes_restore", "notes_record"],
   })
 
-  const grounding = (words: string, observation: DeviceTurn["observation"], operation: unknown, metadata?: Record<string, unknown>, earlier?: readonly EarlierRequest[], completesReads?: boolean) => {
+  const grounding = (words: string, observation: DeviceTurn["observation"], call: unknown, metadata?: Record<string, unknown>, earlier?: readonly EarlierRequest[], completesReads?: boolean) => {
     const turn = phoneTurn(model.runtime, words, observation, metadata, earlier, completesReads)
-    const checked = turn.admit(operation)
+    const checked = turn.admit(family.prepare?.(call) ?? call)
     assert.isDefined(checked)
-    return map(family.ground(checked!, turn), (found) => found.kind === "Grounded" ? found.operation : found.code)
+    return map(family.ground(checked!, turn, call), (found) => found.kind === "Grounded" ? found.operation : found.code)
   }
   const folders = { notesFolders: [{ id: "f1", name: "Errands" }] }
   const deletedHere: EarlierRequest = { proposalId: "deleted", requestMessageId: deletedRequestId, operation: { type: "notes_delete", target: phoneNote }, result: undefined, settledAt: start }
   const noFields = { title: "", body: "" }
   assert.deepEqual([
-    try grounding("Delete my note called Groceries", home, { type: "notes_query", query: { kind: "title", text: "groceries" } }),
-    try grounding("Find my shopping note", home, { type: "notes_query", query: { kind: "title", text: "Bank passwords" } }),
+    try grounding("Delete my note called Groceries", home, { type: "notes_query", query: { kind: "title", text: "groceries" }, intent: "delete" }),
+    try grounding("Find my shopping note", home, { type: "notes_query", query: { kind: "title", text: "Bank passwords" }, intent: "read" }),
     try grounding("Add eggs to my Shopping note", home, { type: "notes_named", action: "update", name: "Shopping", fields: noFields }),
     try grounding("Delete this note", opened, { type: "notes_delete", target: { ...phoneNote, noteId: "note-8" } }),
     try grounding("Add eggs to this note", opened, { type: "notes_update", target: phoneNote, fields: noFields }),
@@ -653,42 +653,58 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
   assert.deepEqual(waiting.map(handedOff), [true, true, false])
 
   const negotiated = negotiation(true, phoneCapabilities)
-  const afterRead = (words: string, operation: DeviceOperation, result: unknown) => {
-    const continued = family.continueAfterRead
-    assert.isDefined(continued)
+  const continued = (words: string, operation: DeviceOperation, result: unknown) => {
+    const after = family.continueAfterRead
+    assert.isDefined(after)
     const turn = phoneTurn(model.runtime, words, opened)
-    return map(continued!({ proposalId: "read", requestMessageId: turn.message.id, operation, result, settledAt: start },
+    return map(after!({ proposalId: "read", requestMessageId: turn.message.id, operation, result, settledAt: start },
       { ownerText: words, message: turn.message, negotiation: negotiated, startedAt: start, timeZone: "Etc/UTC" }),
       (next) => next === undefined ? undefined : {
         operation: next.operation === undefined ? undefined : validate(next.operation, negotiated, "NoBinding")?.operation,
         answers: next.text === question ? "the reading's question" : next.text !== undefined,
       })
   }
-  const byTitle = (text: string): DeviceOperation => ({ type: "notes_query", query: { kind: "title", text } })
-  const latest: DeviceOperation = { type: "notes_query", query: { kind: "latest", by: "updated" } }
-  const shared: DeviceOperation = { type: "notes_read_selected", target: phoneNote }
+  const afterRead = effect (words: string, call: unknown, result: unknown, observation: DeviceTurn["observation"] = home) => {
+    const read = try grounding(words, observation, call)
+    return typeof read === "string" ? read : try continued(words, read, result)
+  }
+  const byTitle = (text: string, intent?: string) => ({ type: "notes_query", query: { kind: "title", text }, ...(intent === undefined ? {} : { intent }) })
+  const latest = { type: "notes_query", query: { kind: "latest", by: "updated" }, intent: "delete" }
   const deletion = { operation: { type: "notes_delete", target: phoneNote }, answers: true }
   const nothingDeleted = { operation: undefined, answers: true }
+  const eggsAdded = { operation: { type: "notes_update", target: phoneNote, fields: { title: "Shopping", body: "- milk\n- eggs" } }, answers: true }
   assert.deepEqual([
-    try afterRead("Delete my note called Groceries", byTitle("Groceries"), titleFound("Groceries", "milk")),
-    try afterRead("Delete my note called How to bake bread", byTitle("How to bake bread"), titleFound("How to bake bread", "flour")),
+    try afterRead("Delete my note called Groceries", byTitle("Groceries", "delete"), titleFound("Groceries", "milk")),
+    try afterRead("Delete my note called How to bake bread", byTitle("How to bake bread", "delete"), titleFound("How to bake bread", "flour")),
+    try afterRead("get rid of my groceries note", byTitle("groceries", "delete"), titleFound("groceries", "milk")),
     try afterRead("Delete the note I changed last", latest, { version: 1, kind: "notes_query", query: { kind: "latest", by: "updated" }, basis: "owner-choice-uncertain", target: phoneNote, record: sharedNote("Groceries", "milk") }),
-    try afterRead("Delete my note called Groceries", byTitle("Groceries"), { version: 1, kind: "notes_query", query: { kind: "title", text: "Groceries" }, basis: "no-match" }),
-    try afterRead("Delete my note called Groceries; why did I keep it?", byTitle("Groceries"), titleFound("Groceries", "milk")),
-    try afterRead("Delete the note Groceries, but never mind", byTitle("Groceries"), titleFound("Groceries", "milk")),
-    try afterRead("Add eggs to this note", shared, sharedNote("Shopping", "- milk")),
-    try afterRead("Change this note", shared, sharedNote("Shopping", "- milk")),
-    try afterRead("What does this note say?", shared, sharedNote("Shopping", "- milk")),
+    try afterRead("Delete my note called Groceries", byTitle("Groceries", "delete"), { version: 1, kind: "notes_query", query: { kind: "title", text: "Groceries" }, basis: "no-match" }),
+    try afterRead("Delete my note called Groceries; why did I keep it?", byTitle("Groceries", "read"), titleFound("Groceries", "milk")),
+    try afterRead("Delete the note Groceries, but never mind", byTitle("Groceries", "read"), titleFound("Groceries", "milk")),
+    try afterRead("pull up my shopping list", byTitle("shopping list", "read"), titleFound("Shopping list", "- milk")),
+    try afterRead("open the note titled shopping list", byTitle("shopping list"), titleFound("Shopping list", "- milk")),
+    try afterRead("get rid of the grocery note", byTitle("Groceries", "delete"), titleFound("Groceries", "milk")),
+    try afterRead("Find my Shopping note and add eggs", byTitle("Shopping", "edit"), titleFound("Shopping", "- milk")),
+    try afterRead("Add eggs to my Shopping note", { type: "notes_named", action: "update", name: "Shopping", fields: { title: "", body: "" } }, titleFound("Shopping", "- milk")),
+    try afterRead("Add eggs to this note", { type: "notes_update", target: phoneNote, fields: { title: "", body: "" } }, sharedNote("Shopping", "- milk"), opened),
+    try afterRead("Change this note", { type: "notes_update", target: phoneNote, fields: { title: "", body: "" } }, sharedNote("Shopping", "- milk"), opened),
+    try afterRead("What does this note say?", { type: "notes_read_selected", target: phoneNote }, sharedNote("Shopping", "- milk"), opened),
   ], [
     deletion,
     deletion,
+    deletion,
     nothingDeleted,
     nothingDeleted,
     undefined,
     undefined,
-    { operation: { type: "notes_update", target: phoneNote, fields: { title: "Shopping", body: "- milk\n- eggs" } }, answers: true },
+    undefined,
+    undefined,
+    "NOTES_LOOKUP_NOT_REQUESTED",
+    eggsAdded,
+    eggsAdded,
+    eggsAdded,
     { operation: undefined, answers: "the reading's question" },
     undefined,
   ])
-  assert.deepEqual(model.asked, ["Delete my note called Groceries; why did I keep it?", "Delete the note Groceries, but never mind", "Add eggs to this note", "Change this note"])
+  assert.deepEqual(model.asked, ["Find my Shopping note and add eggs", "Add eggs to my Shopping note", "Add eggs to this note", "Change this note"])
 })

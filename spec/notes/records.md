@@ -77,25 +77,23 @@ pure def lawLoneSurrogateSavedAsReplacement(codeUnit: int): bool = surrogateCode
 pure def lawPairedOrPlainUnitKept(codeUnit: int, paired: bool): bool = (paired or not(surrogateCodeUnit(codeUnit))) implies savedNoteCodeUnit(codeUnit, paired) == codeUnit
 ```
 
-### The agent reads and changes Notes only for the owner, on the owner's own words in the bound request
+### The agent reads and changes Notes only for the owner, and changes the note the model picked
 
 Only the owner reaches the Notes actions, the saved-notes context and the
 owner routes. The actions are offered on every owner turn, in the general
 context as well as the Notes one, so a request about a note needs no
 earlier Notes turn. When no saved note has the title the owner asked for,
 the saved-notes context tells the agent to ask which note to use before
-citing another one. A name fence, a named read and a re-resolved ID read the words
-the owner typed in the request the host bound to this turn, never the text a
-route wrapped around it; with no bound request, they read the message's own
-text with its envelopes removed. A delete by name happens only when those
-words name the note's title; otherwise the closest note is offered and
-nothing is deleted. A delete by an ID those words do not carry, of a note
-whose title they name, is a delete by that title: notes that share the
-title ask the owner which one, and nothing is deleted. A delete by an ID
-the owner's words carry, or of a note they do not name, deletes that note.
-An edit by an ID is read the same way: an ID those words do not carry, for
-a note whose title they name, is an edit by that title, so two notes that
-share the title ask the owner which one and nothing is changed.
+citing another one. The named-notes context reads the words the owner typed
+in the request the host bound to this turn, never the text a route wrapped
+around it; with no bound request, it reads the message's own text with its
+envelopes removed. The model picks the note to edit or delete from the
+saved-notes index, whatever words the owner used for it, and an exact ID
+edits or deletes that note. A delete the agent asks for by content deletes
+only the note whose exact title, case and spacing aside, that content
+gives; a match on other text offers the closest note for the owner to
+confirm and deletes nothing. Content that matches distinct notes asks the
+owner which one, and nothing is changed.
 
 ```quint
 type OwnerWords = BoundRequestWords | MessageWords
@@ -104,16 +102,10 @@ pure def notesAccessAllowed(isOwner: bool): bool = isOwner
 type NotesTurnContext = GeneralContext | NotesContext | AnotherContext
 pure def notesOffered(isOwner: bool, context: NotesTurnContext): bool = notesAccessAllowed(isOwner) and context != AnotherContext
 pure def lawNotesNeedNoEarlierNotesTurn(isOwner: bool): bool = notesOffered(isOwner, GeneralContext) == notesOffered(isOwner, NotesContext)
-pure def deleteByNameAllowed(isOwner: bool, wordsNameTitle: bool): bool = notesAccessAllowed(isOwner) and wordsNameTitle
+pure def deleteByContentAllowed(isOwner: bool, givesExactTitle: bool): bool = notesAccessAllowed(isOwner) and givesExactTitle
 pure def lawBoundRequestWins(requestBound: bool): bool = requestBound implies ownerWordsSource(requestBound) == BoundRequestWords
-pure def lawOnlyTheOwnerReachesNotes(wordsNameTitle: bool): bool = not(deleteByNameAllowed(false, wordsNameTitle))
-pure def lawUnnamedNoteIsNotDeleted(isOwner: bool): bool = not(deleteByNameAllowed(isOwner, false))
-pure def idDeleteByTitle(idInOwnerWords: bool, wordsNameItsTitle: bool): bool = not(idInOwnerWords) and wordsNameItsTitle
-pure def lawATypedIdDeletesThatNote(wordsNameItsTitle: bool): bool = not(idDeleteByTitle(true, wordsNameItsTitle))
-pure def lawAPlannerIdForANamedTitleIsReresolved(idInOwnerWords: bool): bool = idDeleteByTitle(false, true) and not(idDeleteByTitle(idInOwnerWords, false))
-pure def idEditByTitle(idInOwnerWords: bool, wordsNameItsTitle: bool): bool = not(idInOwnerWords) and wordsNameItsTitle
-pure def lawATypedIdEditsThatNote(wordsNameItsTitle: bool): bool = not(idEditByTitle(true, wordsNameItsTitle))
-pure def lawAPlannerIdForANamedTitleIsReresolvedForAnEdit(idInOwnerWords: bool): bool = idEditByTitle(false, true) and not(idEditByTitle(idInOwnerWords, false))
+pure def lawOnlyTheOwnerReachesNotes(givesExactTitle: bool): bool = not(deleteByContentAllowed(false, givesExactTitle))
+pure def lawAnInexactMatchIsNotDeleted(isOwner: bool): bool = not(deleteByContentAllowed(isOwner, false))
 ```
 
 ### A move by name takes the identical copies of the note along

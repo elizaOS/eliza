@@ -224,7 +224,7 @@ module node {
     if (proposed === undefined || family === undefined) return coached(notOffered)
     const withheld = withheldFor(runtime, turn, prepared).refusal
     if (withheld !== undefined) return withheld === notOffered ? coached(withheld) : refused(withheld)
-    const grounded = await Effect.runPromise(family.ground(proposed, turn))
+    const grounded = await Effect.runPromise(family.ground(proposed, turn, input))
     const admitted = grounded.kind === "Grounded" && family.types.includes(grounded.operation.type) ? turn.admit(grounded.operation) : undefined
     const reply = proposalReply(true, "FormAvailable", grounded.kind === "Grounded" ? "FamilyGrounded" : "FamilyRefused", admitted !== undefined)
     const sought = admitted?.operation ?? proposed.operation

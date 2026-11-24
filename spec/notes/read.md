@@ -224,11 +224,13 @@ deleting, moving or editing an exact note targets exactly the phone note
 open in Notes: another target is refused. The model asks for a named edit
 as a named update with the name and empty fields, offered wherever a named
 delete is, and for an edit of the open note as its update with empty
-fields; a title lookup is never how an edit is asked for. A named edit is
-proposed as the title lookup of that name, never with the model's
-replacement fields, and only when the phone negotiated the lookup; an edit
-of the open note is proposed as its selected read, marked as read for that
-edit, never with replacement fields. Either edit is proposed only when the
+fields. A title or latest lookup carries the model's intent for it, read,
+edit or delete, which the agent keeps with the lookup and never sends to the
+phone; an edit or delete intent the agent cannot keep proposes nothing. A named edit is proposed as the title lookup of that name with the
+edit intent, never with the model's replacement fields, and only when the
+phone negotiated the lookup; an edit of the open note is proposed as its
+selected read with the edit intent, never with replacement fields, and any
+other selected read is a read. Either edit is proposed only when the
 launch completes reads, so the shared note comes back to this conversation;
 otherwise nothing is proposed, nothing is read, and the owner hears that
 the edit cannot be prepared. The prompt to share or choose a note tells the
@@ -269,46 +271,42 @@ pure def lawOnlyADeletedNoteIsRestored(inOwnerWords: bool, matchesOpenNote: bool
 
 ### A phone note is edited only from the note the owner shared, in a review of its own
 
-An edit of a phone note is proposed as its read: the open note's selected
-read marked for the edit, or a title lookup. Once the owner shares that
+An edit of a phone note is proposed as its read with the edit intent: the
+open note's selected read, or a title lookup. Once the owner shares that
 note, the owner's original request is read against the shared text, and a
 change it asks for is offered for its own review, bound to the original
 message and to the shared note's target, with the answer "The note is
 ready for update review. Confirm the requested changes; nothing has changed
-yet." A selected read not marked for an edit only answers the read and is
-never read for an edit. A request that needs more input answers with the
+yet." A read without the edit intent only answers the read and is never
+read for an edit. A request that needs more input answers with the
 question the reading asked, or "The requested note edit needs
-clarification. Nothing was changed."; one that changes nothing after an
-edit of the open note answers "No requested note change was resolved.
-Nothing was changed.", and after a title lookup it only answers the read.
-Either way nothing is offered. A lookup that matched no note, matched by
-recency or left the choice uncertain offers no edit, and a lookup whose
-original message was a direct deletion command offers its deletion instead
-and never an edit. The change keeps every field the request does not name,
-appends a list item in the note's own list form, appends to an empty body
-from its first new line, and a change that leaves both fields as they were
-is no change.
+clarification. Nothing was changed."; one that changes nothing answers "No
+requested note change was resolved. Nothing was changed." Either way
+nothing is offered. A lookup that matched no note, matched by recency or
+left the choice uncertain offers no edit. The change keeps every field the
+request does not name, appends a list item in the note's own list form,
+appends to an empty body from its first new line, and a change that leaves
+both fields as they were is no change.
 
 ```quint
-type SharedRead = OpenNoteForEdit | OpenNoteRead | TitleMatchedNote | OtherLookupResult
+type SharedRead = OpenNote | TitleMatchedNote | OtherLookupResult
 type EditReading = ChangeRequested | NothingToChange | NeedsMoreInput
 type EditReply = OffersEditReview | AsksForTheEdit | SaysNothingChanged | AnswersTheRead
-pure def editRead(shared: SharedRead, deletionCommand: bool): bool =
-  not(deletionCommand) and (shared == OpenNoteForEdit or shared == TitleMatchedNote)
-pure def editReply(shared: SharedRead, deletionCommand: bool, reading: EditReading): EditReply =
-  if (not(editRead(shared, deletionCommand))) AnswersTheRead
+pure def editRead(shared: SharedRead, editIntent: bool): bool =
+  editIntent and shared != OtherLookupResult
+pure def editReply(shared: SharedRead, editIntent: bool, reading: EditReading): EditReply =
+  if (not(editRead(shared, editIntent))) AnswersTheRead
   else if (reading == ChangeRequested) OffersEditReview
   else if (reading == NeedsMoreInput) AsksForTheEdit
-  else if (shared == TitleMatchedNote) AnswersTheRead
   else SaysNothingChanged
-pure def editOffered(shared: SharedRead, deletionCommand: bool, reading: EditReading): bool =
-  editReply(shared, deletionCommand, reading) == OffersEditReview
-pure def lawADeletionCommandIsNeverAnEdit(shared: SharedRead, reading: EditReading): bool =
-  not(editOffered(shared, true, reading))
-pure def lawNoEditWithoutAChange(shared: SharedRead, deletionCommand: bool): bool =
-  not(editOffered(shared, deletionCommand, NothingToChange)) and not(editOffered(shared, deletionCommand, NeedsMoreInput))
-pure def lawAnUnresolvedLookupIsNotEdited(deletionCommand: bool, reading: EditReading): bool =
-  not(editOffered(OtherLookupResult, deletionCommand, reading))
-pure def lawAPlainReadIsNeverReadForAnEdit(deletionCommand: bool, reading: EditReading): bool =
-  not(editRead(OpenNoteRead, deletionCommand)) and editReply(OpenNoteRead, deletionCommand, reading) == AnswersTheRead
+pure def editOffered(shared: SharedRead, editIntent: bool, reading: EditReading): bool =
+  editReply(shared, editIntent, reading) == OffersEditReview
+pure def lawOnlyAnEditIntentIsEdited(shared: SharedRead, reading: EditReading): bool =
+  not(editRead(shared, false)) and editReply(shared, false, reading) == AnswersTheRead
+pure def lawNoEditWithoutAChange(shared: SharedRead, editIntent: bool): bool =
+  not(editOffered(shared, editIntent, NothingToChange)) and not(editOffered(shared, editIntent, NeedsMoreInput))
+pure def lawAnUnresolvedLookupIsNotEdited(editIntent: bool, reading: EditReading): bool =
+  not(editOffered(OtherLookupResult, editIntent, reading))
+pure def lawAnAskedEditOfASharedNoteIsAnswered(shared: SharedRead, reading: EditReading): bool =
+  shared != OtherLookupResult implies editReply(shared, true, reading) != AnswersTheRead
 ```

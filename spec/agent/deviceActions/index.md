@@ -392,7 +392,8 @@ aborted: work that still holds it afterwards has no device turn, and the
 offer checks it again just before the request is kept. The model may write
 the operation as an object or as a JSON string of one. The family of its
 wire type may first prepare it, as telephony restores the digits of a
-number the owner wrote with separators, and the operation must then match
+number the owner wrote with separators and Notes sets aside the intent the
+model gave a lookup, which stays with the agent, and the operation must then match
 one of the offered forms exactly, not only by its type, and be available
 on this message. One that matches no offered form is refused before the
 family grounds it as coaching for the planner
@@ -412,7 +413,8 @@ from the screen. Its family grounds
 it in the owner's words: the host-persisted text of the message, without
 its document wrapper, and none at all when that text carries an external
 envelope, so words inside a page, an email or a connector's payload never
-count as the owner's. The family may offer another operation of its own
+count as the owner's, and in the model's call as the model wrote it, so a
+field its preparation set aside still informs it. The family may offer another operation of its own
 types in its place: a recipient restored from what the owner said, a send
 turned into a draft, an update turned into the read before it. The
 grounded operation is then validated again against the turn's negotiation
