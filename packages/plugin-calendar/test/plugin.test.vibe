@@ -418,8 +418,10 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const twelveMinutes = try asked("Find me 12 minutes tomorrow between noon and five", { ...noonToFive, subaction: "propose_times", durationMinutes: 12 })
   const twelveFromNoon = try asked("Find me 12 minutes tomorrow between 2 and 4", { ...noonToFive, subaction: "propose_times", durationMinutes: 12, timeMax: "2030-03-04T16:00:00-08:00" })
   const hoursAndRange = try asked("Find me 1 to 2 hours tomorrow between noon and five", { ...noonToFive, subaction: "propose_times", durationMinutes: 60 })
+  const minutesAndApproximateRange = try asked("Find me 30 to 45 minutes tomorrow between noon and around 5", { ...noonToFive, subaction: "propose_times", durationMinutes: 30 })
   assert.deepStrictEqual([twelveFromNoon.success, at(twelveFromNoon.data, "code"), at(twelveFromNoon.data, "sent"), at(twelveFromNoon.data, "windows"), twelveFromNoon.text, hoursAndRange.success, at(hoursAndRange.data, "slots", "0", "startAt")],
     [false, "CALENDAR_CLOCK_UNSAID", "2030-03-04T20:00:00.000Z", [], "Nothing was read: the window sent is not the range the request states (\"between 2 and 4\").", true, "2030-03-04T20:00:00.000Z"])
+  assert.deepStrictEqual([minutesAndApproximateRange.success, at(minutesAndApproximateRange.data, "slots", "0", "startAt")], [true, "2030-03-04T20:00:00.000Z"])
   const overnight = try asked("Am I free tomorrow night from 10 to 1?", { ...noonToFive, timeMin: "2030-03-04T22:00:00-08:00", timeMax: "2030-03-05T01:00:00-08:00" })
   assert.deepStrictEqual([onTheTwelfth.success, at(onTheTwelfth.data, "isFree"), twelveMinutes.success, at(twelveMinutes.data, "slots", "length"), overnight.success, at(overnight.data, "isFree")], [true, true, true, 2, true, true])
   const fromThree = { subaction: "check_availability", timeMin: "2030-03-04T15:00:00-08:00", timeMax: "2030-03-04T17:00:00-08:00", statedClock: "start" }
@@ -631,6 +633,8 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const extended = try ranged("slot-4m", labDinner, "Lab dinner", "2030-03-02T18:00", "2030-03-02T19:00")
   const morningTaco = try ranged("slot-4v", taco, "Taco Night lab check", "2030-03-02T01:10", "2030-03-02T01:30")
   assert.deepStrictEqual([morningTaco.success, at(morningTaco.data, "code"), at(morningTaco.data, "sent"), morningTaco.effectReceipts?.length ?? 0], [false, "CALENDAR_CLOCK_UNSAID", "2030-03-02T09:10:00.000Z", 0])
+  const attachedAm = try said("slot-4x", "Schedule the dentist tomorrow at 9am I think", { subaction: "create_event", title: "Dentist", startAt: "2030-03-02T21:00", statedClock: "start" })
+  assert.deepStrictEqual([attachedAm.success, at(attachedAm.data, "code"), attachedAm.effectReceipts?.length ?? 0], [false, "CALENDAR_CLOCK_UNSAID", 0])
   assert.deepStrictEqual([dictated.text?.replace(/\s/gu, " ").startsWith("Created Taco Night lab check, Mar 2, 2030, 1:10 – 1:30 PM."), written.text?.replace(/\s/gu, " ").startsWith("Created Lab sync, Mar 2, 2030, 3:00 – 3:45 PM.")], [true, true])
   const open = try said("slot-4n", "Block an hour for the lab tomorrow afternoon", { subaction: "create_event", title: "Lab block", startAt: "2030-03-02T14:00", endAt: "2030-03-02T15:00", statedClock: "none" })
   assert.strictEqual(open.text?.replace(/\s/gu, " ").startsWith("Created Lab block, Mar 2, 2030, 2:00 PM."), true)
