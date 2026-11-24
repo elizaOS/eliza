@@ -113,7 +113,7 @@ describe("WP5 Inference: chat completions", () => {
     const callsBeforeAdmission = llm.bodies.length
     const whole = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
     const again = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
-    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 },
+    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 59 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 },
       { kind: "reject", status: 400, body: { code: "parser_error", param: "prompt", type: "generation_error", message: "Failed to parse tool call" } },
       { kind: "reject", status: 400, body: { error: { code: "insufficient_quota", param: "tools", message: "You exceeded your current quota" } } },
       { kind: "reject", status: 422, body: { code: "parser_error", param: "tool_calls" } }))
@@ -174,7 +174,7 @@ describe("WP5 Inference: chat completions", () => {
           [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
         idempotencyForwarded: false,
         planningForwarded: planning,
-        refusedByProvider: [429, "rate_limited", "4"],
+        refusedByProvider: [429, "rate_limited", "59"],
         unreadable: [502, "provider_invalid_response", undefined],
         rejectedByProvider: [[400, "invalid_request", undefined], ["context_length_exceeded", "messages", undefined]],
         providerAuthFailed: [[503, "provider_unavailable", "5"], [undefined, undefined, undefined]],

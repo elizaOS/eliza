@@ -11,7 +11,7 @@ import tls from "node:tls";
 import { promisify } from "node:util";
 
 export type CloudReply =
-  | { readonly kind: "text"; readonly chunks: readonly string[]; readonly cachedTokens?: number }
+  | { readonly kind: "text"; readonly chunks: readonly string[]; readonly cachedTokens?: number; readonly keepOpenAfterDone?: boolean }
   | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number }
   | { readonly kind: "requestFault"; readonly code: string }
   | { readonly kind: "images" }
@@ -51,6 +51,7 @@ export interface CloudFake {
 
 export const text = (...chunks: string[]): CloudReply => ({ kind: "text", chunks });
 export const cachedText = (cachedTokens: number, ...chunks: string[]): CloudReply => ({ kind: "text", chunks, cachedTokens });
+export const textWithoutEof = (...chunks: string[]): CloudReply => ({ kind: "text", chunks, keepOpenAfterDone: true });
 
 export const refusal = (status: number, error: string, more: { retryable?: boolean; reason?: string; retryAt?: number | string; resetsAt?: number; retryAfterSeconds?: number } = {}): CloudReply =>
   ({
@@ -122,10 +123,11 @@ function usageAsked(body: unknown): boolean {
   return options?.include_usage === true;
 }
 
-function endStream(response: ServerResponse, body: unknown, model: string, finishReason: string, usage: object): void {
+function endStream(response: ServerResponse, body: unknown, model: string, finishReason: string, usage: object, keepOpenAfterDone = false): void {
   response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: finishReason }] })}\n\n`);
   if (usageAsked(body)) response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [], usage })}\n\n`);
-  response.end("data: [DONE]\n\n");
+  if (keepOpenAfterDone) response.write("data: [DONE]\n\n");
+  else response.end("data: [DONE]\n\n");
 }
 
 function modelOf(body: unknown): string {
@@ -181,7 +183,7 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       const completion = Math.max(1, Math.ceil(content.length / 4));
       const usage = {
         prompt_tokens: 1 + cached, completion_tokens: completion, total_tokens: 1 + cached + completion,
-        ...(cached > 0 ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
+        ...(reply.cachedTokens === undefined ? {} : { prompt_tokens_details: { cached_tokens: cached } }),
       };
       if (!streams(body)) {
         return json(response, 200, {
@@ -193,7 +195,7 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       for (const chunk of reply.chunks) {
         response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: chunk }, finish_reason: null }] })}\n\n`);
       }
-      return endStream(response, body, model, "stop", usage);
+      return endStream(response, body, model, "stop", usage, reply.keepOpenAfterDone);
     }
     case "tools": {
       const model = modelOf(body);

@@ -275,16 +275,12 @@ timeout, the network, a failure mid-stream) is `ProviderFailed`. A mid-stream
 failure retains any usage report received before it. A provider
 `400` or `422` (a parameter or a strict `json_schema` it cannot serve)
 answers `400 invalid_request`, a `413` answers `413 content_too_large`, a
-`429` answers `429 rate_limited`, so the agent's turn waits and sends the
-call once more instead of retrying it as an outage, and any other failure
+`429` answers `429 rate_limited`, and any other failure answers
 `503 provider_unavailable`. Only the last two are retryable, and both carry
-a retry time. An outage carries the provider's `Retry-After` when it sent
-one, else five seconds from now. A rate limit carries the provider's
-`Retry-After` only up to four seconds, and four seconds when it sent none
-or more: the agent waits at most five seconds before its one re-send and
-holds the account until the retry time, so a longer time would refuse that
-re-send on the phone before it reached the provider, and the second left
-under the wait absorbs a phone clock that trails the Cloud's. Closure
+a retry time. A stated `Retry-After` is kept for either refusal so neither the
+agent nor other callers send before the provider is ready. Without a wait
+from the provider, an outage waits five seconds and a rate limit waits four.
+The agent's turn has a separate five-second retry budget. Closure
 preserves the original hold key. A closed hold refuses a second settlement
 or release.
 
@@ -309,8 +305,7 @@ pure def lawOnlyAnUndeliveredRejectionIsFree(status: int, delivered: bool, quote
 pure val providerPause: Millis = 5 * millisPerSecond
 pure val rateLimitPause: Millis = 4 * millisPerSecond
 pure def failureWait(status: int, hint: Millis): Millis =
-  if (status == 429) (if (hint < 0 or hint > rateLimitPause) rateLimitPause else hint)
-  else if (hint < 0) providerPause else hint
+  if (hint >= 0) hint else if (status == 429) rateLimitPause else providerPause
 pure def failureRefusal(end: CompletionEnd, retryAt: Millis): Refusal = match end {
   | ProviderRejected(r) => if (r.status == 400 or r.status == 422) refuse(InvalidRequest) else if (r.status == 413) refuse(ContentTooLarge)
       else if (r.status == 429) refuseUntil(RateLimited, retryAt) else refuseUntil(ProviderUnavailable, retryAt)
@@ -323,8 +318,9 @@ pure def lawFailureRefusalsAreWellFormed(status: int, delivered: bool, retryAt: 
 pure def lawOnlyAnUndeliveredProviderRateLimitIsARateLimit(status: int, delivered: bool, retryAt: Millis): bool =
   (failureRefusal(endOfFailure(status, delivered), retryAt).code == RateLimited) iff (status == 429 and not(delivered))
 pure val hintValues = Set(-1, 0, 1000, 4000, 4001, 59000)
-pure def lawARateLimitWaitsUnderTheAgentsResendWait(status: int, hint: Millis): bool =
-  status == 429 implies (failureWait(status, hint) >= 0 and failureWait(status, hint) <= rateLimitPause and rateLimitPause < providerPause)
+pure def lawProviderRetryTimeIsKept(status: int, hint: Millis): bool =
+  if (hint >= 0) failureWait(status, hint) == hint
+  else failureWait(status, hint) == (if (status == 429) rateLimitPause else providerPause)
 ```
 
 ### A provider's refusal of the request passes on its listed code and parameter and nothing else
