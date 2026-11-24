@@ -514,7 +514,7 @@ module node {
 }
 
 export { createRuntimeJsonClient, RuntimeRequestError, type RuntimeClientOptions, type RuntimeJsonBridge, type RuntimeJsonResponse, type RuntimeRequestHeaders, type RuntimeStatus, type RuntimeStream, type RuntimeStreamFrame } from node
-export { DeviceExecution, NOT_DISPATCHED, type ApproveResult, type DeviceAgent, type DeviceClaim, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReceipt, type DeviceReview, type ExecutorCall, type JournalEntry, type JournalIdentity, type RecoverResult, type ReviewResult, type ScreenCheck } from "./device-execution.vibe"
+export { DeviceExecution, NOT_DISPATCHED, type ApproveResult, type DeviceAgent, type DeviceClaim, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReceipt, type DeviceReview, type DeviceReviewEvidence, type ExecutorCall, type JournalEntry, type JournalIdentity, type RecoverResult, type ReviewResult, type ScreenCheck } from "./device-execution.vibe"
 export { readReplyStream, REPLY_STREAM_PROTOCOL, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
 export { TaskLifecycle, TaskView, TASK_PAUSE_TIMEOUT_MS, type TaskLifecycleCommand, type TaskLifecycleMessages, type TaskLifecycleRequest, type TaskLifecycleState } from "./task-lifecycle.vibe"
 export { createSurfaceClient, SurfaceProtocol, SurfaceTransport, type SurfaceClient, type SurfaceClientOptions, type SurfaceCommandContext, type SurfaceFailure, type SurfaceRequest } from "./surface-client.vibe"

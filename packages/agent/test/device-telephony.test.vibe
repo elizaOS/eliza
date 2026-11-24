@@ -69,6 +69,52 @@ module node {
     }
   }
 
+  export async function roleGuidanceFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+    const client = deviceClient(socket, token, runtime.agentId, capabilities.join(","))
+    await client.call("POST", "/api/client-devices/register", { capabilities, workflowProtocol: 1 })
+    const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
+    const path = `/api/conversations/${conversation.id}/messages`
+    const requests = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
+    type WireTool = { readonly function?: { readonly name?: string; readonly description?: string } }
+    const toolAt = (index: number) =>
+      (requests()[index]?.body as { tools?: readonly WireTool[] } | undefined)?.tools?.find(({ function: tool }) => tool?.name === proposeTool)
+    const turns = [
+      { text: "First check.", caps: ["phone.call.v1", "sms.compose.v1", "sms.compose.v2", "contacts.show.v1"] },
+      { text: "Second check.", caps: ["phone.call.v1", "sms.compose.v1", "sms.compose.v2", "contacts.show.v1"] },
+      { text: "Third check.", caps: ["phone.call.v1", "sms.compose.v1", "contacts.show.v1"] },
+      { text: "Fourth check.", caps: ["sms.compose.v1", "sms.compose.v2"] },
+      { text: "Fifth check.", caps: ["phone.dial.v1", "phone.keypad.v1", "sms.compose.v1", "contacts.show.v1"] },
+      { text: "Sixth check.", caps: ["sms.compose.v1", "sms.compose.v2", "contacts.show.v1"] },
+    ]
+    const offered = []
+    for (const row of turns) {
+      const index = requests().length
+      cloud.script(reply("Okay."))
+      await client.call("POST", path, { text: row.text }, row.caps.join(","))
+      offered.push(toolAt(index))
+    }
+    const operation = callContact("dentist")
+    const before = requests().length
+    cloud.script(toolCalls("", propose(operation)), reply("Okay."))
+    await client.call("POST", path, { text: "ring the dentist", metadata: direct })
+    const submitted = await proposals(client)
+    const pending = submitted.find(sameOperation(operation))
+    return {
+      stable: JSON.stringify(offered[0]) === JSON.stringify(offered[1]),
+      guidance: offered.map((tool) => {
+        const description = tool?.function?.description ?? ""
+        return {
+          scopes: ["phone_call or sms_compose", "phone_call", "sms_compose"].filter((scope) => description.includes(`Propose ${scope} with a contact target`)),
+          mentions: description.split("names them by a role or relation").length - 1,
+          skipLookup: /Do not propose contact_show first for a (call or text|call|text)\./u.exec(description)?.[1] ?? null,
+        }
+      }),
+      calls: requests().length - before,
+      proposal: pending?.state,
+      proposedOperations: submitted.map(({ payload }) => payload.operation),
+    }
+  }
+
   export async function telephonyFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, capabilities.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities, workflowProtocol: 1 })
@@ -123,6 +169,12 @@ module node {
     if (emergencyKeypad !== undefined) await applied(client, emergencyKeypad, "keypad-1", { kind: "phone-keypad", status: "opened" })
     const emptyKeypad = await ask("open the dialer", { type: "phone_keypad" })
     const writtenEmergency = await ask("call 911", call("911"))
+    const spokenEmergency = await ask("call nine one one", call("911"))
+    const spokenNines = await ask("call nine nine nine", call("999"))
+    const spokenEmergencyByName = await ask("my dad fell, call nine one one", callContact("nine one one"))
+    const nameInNumberWords = await ask("call Seven Eleven", callContact("Seven Eleven"))
+    const nameInNumberWordsInvented = await ask("call Seven Eleven", call("6505715862"))
+    const spokenEmergencyOtherNumber = await ask("call nine one one", call("112"))
     const contactNumber = await ask("save Ana as a contact with 415-555-0199", {
       type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["6505715862"], emailAddresses: [] },
     })
@@ -207,11 +259,12 @@ module node {
     const swapped = await ask("can you call 415-555-0100 when you get a sec", call("6505715862"))
     const toldReference = cloud.calls.slice(seen).some(({ body }) =>
       /Copy this reference verbatim as the number[^"]*__ELIZA_CONTACT_\w+__/.test(JSON.stringify(body)))
+    const emergencyWithAlternatives = await ask("Text Carson or Maya that I crashed. Call an ambulance now!", call("911"))
 
     return {
       alternativeRecipients, alternativeInBody, handedThrough, heldCall, separated: { call: separatedCall, send: separatedSend, contact: separatedContact }, ownerDialForm, invented, noNumber,
       callBack, authoredSurname, draftedSurname, surnameWithCourtesy, prefixCallback, unnamed, bodyNumber,
-      keypad, dialName, emergency, emptyKeypad, writtenEmergency, contactNumber, contactEmail, draft, draftToNumber, draftAskFirst, unclear, composedNumber,
+      keypad, dialName, emergency, emergencyWithAlternatives, emptyKeypad, writtenEmergency, spokenEmergency, spokenNines, spokenEmergencyByName, nameInNumberWords, nameInNumberWordsInvented, spokenEmergencyOtherNumber, contactNumber, contactEmail, draft, draftToNumber, draftAskFirst, unclear, composedNumber,
       contactUpdate, contactAdd, contactDelete, contactNoNumber, contactShow, contactRead, simSendToName, threadReply,
       draftToNobody, draftToTwoNumbers, callEveryone, partial, compound, repeatedCall, repeatedSender,
       unbound: { reply: unbound.text.split("\n\n").at(-1), carriesMessage: reviewedCall === undefined ? undefined : reviewedCall.payload.requestMessageId !== undefined },
@@ -220,13 +273,40 @@ module node {
   }
 }
 
-import { proposeTool, telephonyFromChat } from node
+import { proposeTool, roleGuidanceFromChat, telephonyFromChat } from node
 
 const review = "Review this request on your phone before it can run."
 const numberNotWritten = "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use."
 const noNumberWritten = "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts."
 const numberNotSaved = "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
 const askRecipient = "Which person should receive this draft? Give one recipient."
+
+it.live('An admitted contact target tells the planner to propose a role directly (spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1, persistMemory: true,
+      load: [deviceActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
+  const observed = try host("role guidance at the chat provider", () => roleGuidanceFromChat(agent.agent.runtime, socket, agent.frame.token, cloud))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    stable: true,
+    guidance: [
+      { scopes: ["phone_call or sms_compose"], mentions: 1, skipLookup: "call or text" },
+      { scopes: ["phone_call or sms_compose"], mentions: 1, skipLookup: "call or text" },
+      { scopes: ["phone_call"], mentions: 1, skipLookup: "call" },
+      { scopes: ["sms_compose"], mentions: 1, skipLookup: null },
+      { scopes: [], mentions: 0, skipLookup: null },
+      { scopes: ["sms_compose"], mentions: 1, skipLookup: "text" },
+    ],
+    calls: 2,
+    proposal: "pending",
+    proposedOperations: [{ type: "phone_call", target: { kind: "contact", query: "dentist" } }],
+  }))
+}, 120_000)
 
 it.live(`A call, dial, keypad, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, the sender is read only as asked, only what the owner asked for runs without its card, and a settled request is answered by the model from its result (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request")`, effect () => {
   const cloud = try cloudFake(deviceKey)
@@ -271,8 +351,24 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
       reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
       operation: { type: "phone_keypad" },
     },
+    emergencyWithAlternatives: {
+      reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
+      operation: { type: "phone_keypad" },
+    },
     emptyKeypad: { reply: "Opening the keypad.", operation: { type: "phone_keypad" } },
     writtenEmergency: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
+    spokenEmergency: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
+    spokenNines: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "999" } } },
+    spokenEmergencyByName: {
+      reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
+      operation: { type: "phone_keypad" },
+    },
+    nameInNumberWords: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Seven Eleven" } } },
+    nameInNumberWordsInvented: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Seven Eleven" } } },
+    spokenEmergencyOtherNumber: {
+      reply: "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.",
+      operation: { type: "phone_keypad" },
+    },
     contactNumber: { reply: numberNotSaved, operation: undefined },
     contactEmail: {
       reply: "I didn't save that, because that email address isn't one you wrote in your message. Nothing was saved. Tell me the email address to use.",

@@ -83,6 +83,47 @@ pure def sometimesPinnedProviderFailureIsTerminal(s: Dispatch): bool = s.phase =
 pure def sometimesVisibleOutputPreventsRetry(s: Dispatch): bool = s.phase == DispatchFailed and s.emitted and s.attempts.length() > 0
 ```
 
+### A failure is eligible only as a refused connection, a busy or failing provider or a spent retry budget, and never for speech
+
+The shell reads one class from a failed call, in this order. Refused
+funding, a processing-policy denial and a cancelled call are never
+eligible, and neither is any failure of a text-to-speech request. A
+provider whose retry budget is spent is eligible, and leaves the chain as
+above. A connection the network refused is eligible: the socket codes
+`ECONNREFUSED`, `ECONNRESET`, `ENETUNREACH`, `EHOSTUNREACH`, `EAI_AGAIN`
+and `ETIMEDOUT`, and the runtime's `ConnectionRefused`, `ConnectionClosed`
+and `FailedToOpenSocket`. A local inference refusal is eligible only when
+its backend or its capability is unavailable. A rate limit is eligible, as
+is HTTP 500, 502, 503, 504 or 529, and an error whose name or message says
+timeout, timed out, temporarily unavailable, service unavailable,
+overloaded, bad gateway, gateway timeout, internal server error,
+econnreset, socket hang up, network error, fetch failed or 529. Every
+other failure ends dispatch with the registration that made it.
+
+```quint
+type FailureClass = FundingRefused | PolicyRefused | CallCancelled | RetryBudgetSpent | SocketRefused | LocalBackendAbsent | LocalRefusal | RateLimited | ServerFailing | TransientWording | UnclassedFailure
+pure def failureOutcome(failureClass: FailureClass): Outcome = match failureClass {
+  | FundingRefused => FundingDenied
+  | PolicyRefused => ProcessingDenied
+  | CallCancelled => CallerAbort
+  | RetryBudgetSpent => ExhaustedBudget
+  | SocketRefused => RefusedConnection
+  | LocalBackendAbsent => RetryEnvelope
+  | RateLimited => RetryEnvelope
+  | ServerFailing => RetryEnvelope
+  | TransientWording => RetryEnvelope
+  | LocalRefusal => BadRequest
+  | UnclassedFailure => BadRequest
+}
+pure def failsOver(failureClass: FailureClass, speech: bool): bool = not(speech) and retryable(failureOutcome(failureClass))
+pure def lawSpeechNeverFailsOver(failureClass: FailureClass): bool = not(failsOver(failureClass, true))
+pure def lawFundingPolicyAndCancellationNeverFailOver(speech: bool): bool =
+  not(failsOver(FundingRefused, speech)) and not(failsOver(PolicyRefused, speech)) and not(failsOver(CallCancelled, speech))
+pure def lawAnUnreachableBusyOrSpentProviderFailsOver(speech: bool): bool =
+  not(speech) implies (failsOver(SocketRefused, speech) and failsOver(LocalBackendAbsent, speech) and failsOver(RateLimited, speech) and failsOver(ServerFailing, speech) and failsOver(TransientWording, speech) and failsOver(RetryBudgetSpent, speech))
+pure def lawEveryOtherFailureEndsDispatch(speech: bool): bool = not(failsOver(LocalRefusal, speech)) and not(failsOver(UnclassedFailure, speech))
+```
+
 ### Cancellation follows turn identity and blocks fallback
 
 Root cancellation crosses same-turn scopes. A distinct turn inherits only its own supplied signal.

@@ -1,6 +1,7 @@
 // The Effect face of a generated module, in VibeLang: gen/<name>.effect.vibe beside gen/<name>.ts. It is read off the
 // generated TypeScript itself, so it cannot say anything that module does not.
-import ts from "typescript";
+import type * as TS from "typescript";
+import { tsApi } from "../util.ts";
 import { HELPERS } from "./typescript.ts";
 import { fail } from "./types.ts";
 
@@ -20,22 +21,23 @@ const OWN = [...FAILURES, "Machine", "machine", "machineOver", "stored", "apply"
  * (`stored`) or wherever the shell loads and keeps it (`machineOver`).
  */
 export function effectAdapter(name: string, source: string, text: string, namespace: string): string {
+  const ts = tsApi();
   const file = ts.createSourceFile(`${name}.ts`, text, ts.ScriptTarget.Latest, true);
-  const exported = (s: ts.Statement) => ts.canHaveModifiers(s) && !!ts.getModifiers(s)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
-  const types = file.statements.filter((s): s is ts.TypeAliasDeclaration | ts.InterfaceDeclaration => (ts.isTypeAliasDeclaration(s) || ts.isInterfaceDeclaration(s)) && exported(s)).map((s) => s.name.text);
+  const exported = (s: TS.Statement) => ts.canHaveModifiers(s) && !!ts.getModifiers(s)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+  const types = file.statements.filter((s): s is TS.TypeAliasDeclaration | TS.InterfaceDeclaration => (ts.isTypeAliasDeclaration(s) || ts.isInterfaceDeclaration(s)) && exported(s)).map((s) => s.name.text);
   // A type of another module is spelled <module>_<name> in signatures, as the generated module imports it.
   const foreign = file.statements.filter(ts.isImportDeclaration).flatMap((s) => {
     const names = s.importClause?.namedBindings && ts.isNamedImports(s.importClause.namedBindings) ? s.importClause.namedBindings.elements.filter((e) => e.isTypeOnly) : [];
     return names.length ? [`  import type { ${names.map((e) => `${e.propertyName!.text} as ${e.name.text}`).join(", ")} } from ${s.moduleSpecifier.getText(file)}`] : [];
   });
-  const doc = (s: ts.Node) => {
+  const doc = (s: TS.Node) => {
     const said = ts.getJSDocCommentsAndTags(s).filter(ts.isJSDoc).map((d) => ts.getTextOfJSDocComment(d.comment) ?? "").join(" ").replace(/\s+/g, " ").trim();
     return `  /** ${said ? `${said} ` : ""}@throws {never} */`;
   };
-  const consts = file.statements.filter((s): s is ts.VariableStatement => ts.isVariableStatement(s) && exported(s)).flatMap((s) =>
+  const consts = file.statements.filter((s): s is TS.VariableStatement => ts.isVariableStatement(s) && exported(s)).flatMap((s) =>
     s.declarationList.declarations.map((d) => ({ name: d.name.getText(file), line: `${doc(s)}\n  export const ${d.name.getText(file)}: ${d.type!.getText(file)} = M.${d.name.getText(file)}` })));
-  const funs = file.statements.filter((s): s is ts.FunctionDeclaration => ts.isFunctionDeclaration(s) && exported(s) && !INTERNAL.test(s.name!.text));
-  const wrapper = (f: ts.FunctionDeclaration) => {
+  const funs = file.statements.filter((s): s is TS.FunctionDeclaration => ts.isFunctionDeclaration(s) && exported(s) && !INTERNAL.test(s.name!.text));
+  const wrapper = (f: TS.FunctionDeclaration) => {
     const params = f.parameters.map((p) => p.getText(file)).join(", ");
     return `${doc(f)}\n  export function ${f.name!.text}(${params}): ${f.type!.getText(file)} { return M.${f.name!.text}(${f.parameters.map((p) => p.name.getText(file)).join(", ")}) }`;
   };
@@ -67,7 +69,7 @@ export function effectAdapter(name: string, source: string, text: string, namesp
   const clash = OWN.find((n) => names.includes(n) || types.includes(n));
   if (clash) fail(`${source}: \`${clash}\` is a name of the generated Effect adapter (gen/${name}.effect.vibe); name the definition otherwise`);
   // A type the module exports is named through it; any other is read off `step`, so that no name of the spec is bound here.
-  const typed = (node: ts.TypeNode, otherwise: string) => (types.includes(node.getText(file)) ? `T.${node.getText(file)}` : otherwise);
+  const typed = (node: TS.TypeNode, otherwise: string) => (types.includes(node.getText(file)) ? `T.${node.getText(file)}` : otherwise);
   const state = typed(step.parameters[0].type!, "Parameters<typeof step>[0]");
   const stepped = typed(step.type!, "ReturnType<typeof step>");
   const sender = step.parameters[2] && typed(step.parameters[2].type!, "Parameters<typeof step>[2]");

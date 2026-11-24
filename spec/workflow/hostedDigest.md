@@ -85,6 +85,31 @@ pure def lawNoMessageStartsNoDossier(source: DossierSource): bool = not(dossierS
 pure def lawOnlyAFinishedBriefingIsTheReply(finished: bool, briefed: bool): bool = dossierReply(finished, briefed) == DossierBriefing iff (finished and briefed)
 ```
 
+## Story: Read my evening brief over the evening's window
+
+> As the owner, I want my evening brief to recap today's appointments and
+> what I completed today, read from the phone for the evening, not for the
+> next morning.
+
+### A phone source is read for the window of the digest that reads it
+
+A native phone source is read each time its digest runs, and the read
+names the window the digest covers: an evening brief reads the evening
+window, in which the phone includes the reminders completed today, and a
+morning digest reads the morning window. An on-demand dossier reads the
+morning window whatever template its definition carries. The window is the
+digest's own, never a default the phone picks.
+
+```quint
+type DigestTemplate = MorningTemplate | EveningTemplate
+type NativeWindow = MorningWindow | EveningWindow
+pure def nativeWindow(template: DigestTemplate, manualOnly: bool): NativeWindow =
+  if (template == EveningTemplate and not(manualOnly)) EveningWindow else MorningWindow
+pure def lawADossierReadsTheMorningWindow(template: DigestTemplate): bool = nativeWindow(template, true) == MorningWindow
+pure def lawAScheduledDigestReadsItsOwnWindow(template: DigestTemplate): bool =
+  nativeWindow(template, false) == EveningWindow iff template == EveningTemplate
+```
+
 ## Story: Keep a terminal digest result when the provisional cancellation returns again
 
 > As the owner, I want a digest that finished to stay finished when an earlier

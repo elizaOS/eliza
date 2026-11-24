@@ -1,8 +1,9 @@
-// spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn's Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "The proof of erase comes from the service's own verifier, else the host's verifier found when the cleanup is acknowledged, and only a literal true is proof"; spec/notes/organize.md, "A folder is named by a bounded name that is unique in the device's list"; spec/notes/read.md, "Story: Ask about or change a phone note in my own words"
-import type { AgentModule, AgentPlugin, ModuleFactory } from "@elizaos/agent"
+// spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn's Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note's times in the owner's zone when the turn knows it"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "The proof of erase comes from the service's own verifier, else the host's verifier found when the cleanup is acknowledged, and only a literal true is proof"; spec/notes/organize.md, "A folder is named by a bounded name that is unique in the device's list"; spec/notes/read.md, "Story: Ask about or change a phone note in my own words"
+import { readTurnContext, type AgentModule, type AgentPlugin, type ModuleFactory } from "@elizaos/agent"
 import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
-import type { Action, ActionResult, ContextDefinition, Memory, NotesRequestOperation, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
+import type { Action, ActionResult, ContextDefinition, EffectReceipt, Memory, NotesRequestOperation, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
+import { displayZoneSource, emptyCollectionObserved, localTimesShown, receiptOperation, receiptOutcome, refusalKind, type NotesRefusal, type NotesWrite } from "../gen/notes__records.effect.vibe"
 import type { NoteTarget, NotesQuery } from "./collection.vibe"
 import { notesDeviceFamily } from "./device-proposals.vibe"
 import { json } from "./format.vibe"
@@ -22,8 +23,16 @@ module edge {
   export function newRequestId(): string {
     return randomUUID()
   }
+  /** @throws {never} */
+  export function localTime(instant: string, timeZone: string): string | undefined {
+    try {
+      return new Intl.DateTimeFormat("en-US", { timeZone, dateStyle: "medium", timeStyle: "long" }).format(new Date(instant))
+    } catch {
+      return undefined
+    }
+  }
 }
-import { newRequestId } from edge
+import { localTime, newRequestId } from edge
 
 export const notesModuleName = "@elizaos/plugin-notes"
 
@@ -57,21 +66,74 @@ function noteRow(note: StickyNote): string {
   return json([note.id, reconstructNoteContent(note).toWellFormed(), ...(authored === undefined ? [] : [authored])])
 }
 
-function failureOf(error: NotesFailure): ActionResult {
+const refusals: Readonly<Partial<Record<string, NotesRefusal>>> = {
+  NOTES_AMBIGUOUS_NOTE: "AmbiguousNote", NOTES_DELETE_NAME_MISMATCH: "NameMismatch", NOTES_EDIT_CONFLICT: "EditConflict", NOTES_EDIT_REVISION_REQUIRED: "RevisionRequired",
+  NOTES_EDIT_TEXT_NOT_FOUND: "TextNotFound", NOTES_EDIT_TEXT_AMBIGUOUS: "TextAmbiguous", NOTES_RICH_EDIT_REQUIRED: "RichEditRequired",
+}
+
+export effect function notesRefusalResult(notes: NotesCollection, error: NotesFailure): ActionResult!! {
   const message = error._tag === "NotesRefused" ? error.message : error.reason
+  const candidateIds = error._tag === "NotesRefused" ? error.candidateIds : undefined
+  const kind = refusalKind(refusals[error.code] ?? "OtherRefusal")
+  const waits = kind === "RefusalWaitsOnOwner"
+  const pool: readonly StickyNote[] = waits && candidateIds !== undefined ? (map(notes.snapshot(), (snapshot) => snapshot.notes) catch () => []) : []
   return {
     success: false,
     text: message,
     error: message,
-    data: { code: error.code, ...(error._tag === "NotesRefused" && error.candidateIds !== undefined ? { candidateIds: [...error.candidateIds] } : {}) },
+    ...(kind === "RefusalCoachesPlanner" ? { transcriptVisibility: "internal" as const } : {}),
+    data: {
+      code: error.code,
+      ...(candidateIds === undefined ? {} : { candidateIds: [...candidateIds] }),
+      ...(waits ? { awaitingUserInput: true, requiresInput: true, candidates: pool.filter((note) => candidateIds?.includes(note.id) === true).map(projectNoteForModel) } : {}),
+      ...(kind === "RefusalCoachesPlanner" ? { coachingFailure: true } : {}),
+    },
   }
 }
 
-const noteResult = (verb: string, note: StickyNote, revision: number, extra: { readonly replayed?: boolean } = {}): ActionResult => ({
-  success: true,
-  text: `${verb} note ${json(note.title)} (${note.id}). notesRevision: ${revision}.`,
-  data: { note: projectNoteForModel(note), noteId: note.id, notesRevision: revision, ...extra },
-})
+const zoneProbe = "2000-01-01T00:00:00.000Z"
+
+function ownerZone(message: Memory): string | undefined {
+  const { observation, voiceUi } = readTurnContext(message)
+  const observed = observation?.timeZone
+  const shown = voiceUi?.uiTimeZone
+  const known = (zone: string | undefined) => zone !== undefined && zone.trim() !== "" && localTime(zoneProbe, zone) !== undefined
+  const source = displayZoneSource(known(observed), known(shown))
+  if (!localTimesShown(source)) return undefined
+  return source === "ObservedZone" ? observed : shown
+}
+
+function localTimes(note: StickyNote, timeZone: string | undefined) {
+  if (timeZone === undefined) return undefined
+  const createdAt = localTime(note.createdAt, timeZone)
+  const updatedAt = localTime(note.updatedAt, timeZone)
+  return createdAt === undefined || updatedAt === undefined ? undefined : { noteId: note.id, timeZone, createdAt, updatedAt }
+}
+
+function noteRead(note: StickyNote, revision: number, timeZone: string | undefined): ActionResult {
+  const times = localTimes(note, timeZone)
+  return {
+    success: true,
+    text: `Read note ${json(note.title)} (${note.id}). notesRevision: ${revision}.${times === undefined ? "" : ` Created ${times.createdAt}, updated ${times.updatedAt}.`}`,
+    data: { op: "get", readOnlyOperation: true, note: projectNoteForModel(note), noteId: note.id, notesRevision: revision, ...(times === undefined ? {} : { noteTimestampDisplay: times }) },
+  }
+}
+
+export effect function noteChangeResult(write: NotesWrite, verb: string, note: StickyNote, revision: number, replayed = false): ActionResult!! {
+  const now = try Clock.currentTimeMillis
+  const observedAt = new Date(now).toISOString()
+  const operation = receiptOperation(write)
+  const base = { receiptId: `${operation}:${note.id}:${revision}`, operation, resource: { kind: "notes.note", id: note.id, version: String(revision) }, artifacts: [], observedAt }
+  const receipt: EffectReceipt = receiptOutcome(write, replayed) === "ReplayedReceipt"
+    ? { ...base, idempotency: { key: note.id, replayed: true }, outcome: "noop", reason: "An identical note already exists." }
+    : { ...base, idempotency: { key: null, replayed: false }, outcome: "applied", commit: { kind: "durable", id: `notes:revision:${revision}`, committedAt: observedAt } }
+  return {
+    success: true,
+    text: `${verb} note ${json(note.title)} (${note.id}). notesRevision: ${revision}.`,
+    effectReceipts: [receipt],
+    data: { op: operation.slice(operation.lastIndexOf(".") + 1), note: projectNoteForModel(note), noteId: note.id, notesRevision: revision, ...(write === "WriteCreate" ? { replayed } : {}) },
+  }
+}
 
 interface NotesActionSpec {
   readonly name: string
@@ -82,13 +144,13 @@ interface NotesActionSpec {
   readonly run: (params: Params, message: Memory) => ActionResult!NotesFailure
 }
 
-function notesAction(spec: NotesActionSpec): Action {
+function notesAction(notes: NotesCollection, spec: NotesActionSpec): Action {
   return {
     name: spec.name,
     ...(spec.similes === undefined ? {} : { similes: spec.similes }),
     description: spec.description,
     parameters: spec.parameters,
-    contexts: ["notes"],
+    contexts: ["notes", "general"],
     roleGate: { minRole: "OWNER" },
     tags: ["resource:notes", spec.operation === undefined ? "capability:read" : "capability:write"],
     validate: async () => true,
@@ -97,7 +159,7 @@ function notesAction(spec: NotesActionSpec): Action {
       const denied = operation === undefined ? undefined : try restrictNotesWrite(runtime, message, state, operation)
       if (denied !== undefined) return denied
       return try spec.run(paramsOf(options), message)
-    }, (error) => Effect.succeed(failureOf(error)))),
+    }, (error) => notesRefusalResult(notes, error))),
   }
 }
 
@@ -112,17 +174,17 @@ const missingTarget = (target: "missing" | "both"): ActionResult => ({
 
 function readAction(notes: NotesCollection): Action[] {
   return [
-    notesAction({
+    notesAction(notes, {
       name: "NOTES_LIST",
       similes: ["NOTES_SEARCH", "LIST_NOTES"],
-      description: "Read current saved notes with their IDs, exact text and timestamps. content filters by title or topic, noteId by exact ID, dateRange bounds createdAt or updatedAt (start inclusive, end exclusive, instants with offsets), and latestBy keeps only the newest by that timestamp with all ties. Changes nothing.",
+      description: "Read current saved notes with their IDs, exact text and timestamps. Saved notes live only in this store: memory, documents and files do not search it. content filters by title or topic, noteId by exact ID, dateRange bounds createdAt or updatedAt (start inclusive, end exclusive, instants with offsets), and latestBy keeps only the newest by that timestamp with all ties. Pass a requested date window in this read instead of listing every note and filtering in the reply; dates are not text-search terms. latestBy has no default: take createdAt or updatedAt from the owner's wording and say which. The saved-notes context carries no timestamps, so it cannot answer a date question. Timestamps are UTC instants; when a row also gives the owner's local times, name dates from those. Changes nothing, opens no view, and is never the answer to a requested edit or deletion.",
       parameters: [
         contentParameter("Optional title or topic text filter."),
         idParameter("Optional exact note ID."),
         { name: "latestBy", description: "createdAt or updatedAt, only when the owner asked for the latest note by that time.", required: false, schema: { type: "string", enum: ["createdAt", "updatedAt"] } },
         { name: "dateRange", description: "{ field: createdAt|updatedAt, start?, end? } with offset-bearing instants.", required: false, schema: { type: "object" } },
       ],
-      run: effect (params) => {
+      run: effect (params, message) => {
         const range = params.dateRange
         const latestBy = params.latestBy
         const content = text(params, "content")
@@ -140,19 +202,33 @@ function readAction(notes: NotesCollection): Action[] {
           } : {}),
         }
         const { notes: found, revision } = try notes.list(query)
+        const filtered = content !== undefined || noteId !== undefined || query.dateRange !== undefined
+        const zone = ownerZone(message)
+        const times = found.flatMap((note) => localTimes(note, zone) ?? [])
+        const local = (note: StickyNote) => {
+          const row = times.find((candidate) => candidate.noteId === note.id)
+          return row === undefined ? "" : ` (owner's zone: created ${row.createdAt}, updated ${row.updatedAt})`
+        }
+        const now = try Clock.currentTimeMillis
+        const empty: ActionResult["emptyTrackedState"] = emptyCollectionObserved(filtered, found.length)
+          ? { resource: "notes", scope: "entire_current_inventory", count: 0, revision, observedAt: new Date(now).toISOString() } : undefined
         return {
           success: true,
-          text: [`notesRevision: ${revision}. Matching notes: ${found.length}.`, ...found.map((note) => `- ${noteRow(note)} created ${note.createdAt} updated ${note.updatedAt}`)].join("\n"),
-          data: { notes: found.map(projectNoteForModel), notesRevision: revision, ...(query.dateRange === undefined ? {} : { dateRange: { ...query.dateRange } }) },
+          text: [`notesRevision: ${revision}. Matching notes: ${found.length}.`, ...found.map((note) => `- ${noteRow(note)} created ${note.createdAt} updated ${note.updatedAt}${local(note)}`)].join("\n"),
+          data: {
+            op: "list", readOnlyOperation: true, notes: found.map(projectNoteForModel), notesRevision: revision,
+            ...(query.dateRange === undefined ? {} : { dateRange: { ...query.dateRange } }), ...(times.length === 0 ? {} : { noteTimestampDisplay: times }),
+          },
+          ...(empty === undefined ? {} : { emptyTrackedState: empty }),
         } satisfies ActionResult
       },
     }),
-    notesAction({
+    notesAction(notes, {
       name: "NOTES_GET",
       similes: ["NOTES_GET_NOTE"],
       description: "Read one current note by exact noteId, or by its title or text. Several distinct matches return candidates for the owner's choice.",
       parameters: [idParameter("Exact note ID."), contentParameter("The note's title or unique text.")],
-      run: effect (params) => {
+      run: effect (params, message) => {
         const target = targetOf(params, "noteId", "content")
         if (typeof target === "string") return missingTarget(target)
         const { notes: found, revision } = try notes.list("id" in target ? { noteId: target.id } : { content: target.value })
@@ -161,7 +237,7 @@ function readAction(notes: NotesCollection): Action[] {
         if (found.length > 1) {
           return { success: false, text: `Several notes match: ${found.map((candidate) => noteRow(candidate)).join(", ")}. Ask which one.`, data: { code: "NOTES_AMBIGUOUS_NOTE", candidateIds: found.map((candidate) => candidate.id) } }
         }
-        return noteResult("Read", first, revision)
+        return noteRead(first, revision, ownerZone(message))
       },
     }),
   ]
@@ -169,10 +245,10 @@ function readAction(notes: NotesCollection): Action[] {
 
 function writeActions(notes: NotesCollection): Action[] {
   return [
-    notesAction({
+    notesAction(notes, {
       name: "NOTES_CREATE",
       operation: "create",
-      description: "Create the note the owner asked to save, copying the supplied text exactly. A separately supplied title goes in content and the body in body. Creating a note does not open Notes.",
+      description: "Create the note the owner asked to save, copying the supplied text exactly: its punctuation, whitespace and line breaks. Supplied text is literal content, not a suggestion to expand, so never add a checklist, task, summary, heading or inferred action item the owner did not ask for; actionable prose stays prose. Quotation marks that only delimit a supplied title or body are not part of it; quotes inside the content stay. If an unquoted trailing phrase could be note content or an instruction about the app, ask which before writing. Compose or reformat only when asked. A separately supplied title goes in content and the body in body. Creating a note does not open Notes.",
       parameters: [
         { name: "content", description: "The exact content to save; the first line is its label.", required: true, schema: { type: "string", maxLength: 20_241 } },
         { name: "body", description: "Optional exact body when the owner supplied a separate title in content.", required: false, schema: { type: "string" } },
@@ -187,14 +263,14 @@ function writeActions(notes: NotesCollection): Action[] {
           ...(params.color === undefined ? {} : { color: params.color }),
           ...(params.creationId === undefined ? {} : { creationId: params.creationId }),
         })
-        return noteResult(created.value.replayed ? "Already saved" : "Created", created.value.note, created.snapshot.revision, { replayed: created.value.replayed })
+        return try noteChangeResult("WriteCreate", created.value.replayed ? "Already saved" : "Created", created.value.note, created.snapshot.revision, created.value.replayed)
       },
     }),
-    notesAction({
+    notesAction(notes, {
       name: "NOTES_UPDATE",
       operation: "patch",
       similes: ["NOTES_PATCH", "NOTES_APPEND", "NOTES_EDIT"],
-      description: "Change one note named by noteId or content, never both, with one edit form: textEdit {field,oldText,newText} replaces one unique current match and needs no revision; textEdit {action:append,field:body,text} appends that exact suffix; textEdit {action:append,field:item,text} adds one list item in the note's own form; authoredEdit edits a checklist, transcript, summary, action or clip entry; replacementContent, title, body or color replace fields. Every form but the literal replacement needs expectedRevision from the complete read it was prepared from.",
+      description: "Change one note named by noteId or content, never both, with one edit form: textEdit {field,oldText,newText} replaces one unique current match and needs no revision; textEdit {action:append,field:body,text} appends that exact suffix; textEdit {action:append,field:item,text} adds one list item in the note's own form; authoredEdit edits a checklist, transcript, summary, action or clip entry; replacementContent, title, body or color replace fields. Every form but the literal replacement needs expectedRevision from the complete read it was prepared from, never a guessed one, and any Notes change since needs a fresh read. Name the note by the owner's own identifying text when they named it: an ID in the saved-notes context is not evidence that the owner chose that record, and a repaired call never replaces an ambiguous title with a guessed ID. An append keeps every existing character; a replaced body leaves the title as it is. Prefer the literal replacement for a word or phrase substitution. Never answer a requested edit with a read.",
       parameters: [
         idParameter("Exact note ID."),
         contentParameter("The existing note's title or unique text, to find it."),
@@ -206,18 +282,18 @@ function writeActions(notes: NotesCollection): Action[] {
         { name: "color", description: "A replacement color.", required: false, schema: { type: "string", enum: ["yellow", "green", "rose", "slate"] } },
         revisionParameter,
       ],
-      run: effect (params) => {
+      run: effect (params, message) => {
         const target = targetOf(params, "noteId", "content")
         if (typeof target === "string") return missingTarget(target)
         const patch = Object.fromEntries(Object.entries({
           textEdit: params.textEdit, authoredEdit: params.authoredEdit, content: params.replacementContent,
           title: params.title, body: params.body, color: params.color,
         }).filter(([, value]) => value !== undefined))
-        const updated = try notes.update(target, patch, params.expectedRevision)
-        return noteResult("Updated", updated.value, updated.snapshot.revision)
+        const updated = try notes.update(target, patch, params.expectedRevision, try ownerRequestText(message))
+        return try noteChangeResult("WriteEdit", "Updated", updated.value, updated.snapshot.revision)
       },
     }),
-    notesAction({
+    notesAction(notes, {
       name: "NOTES_DELETE",
       operation: "delete",
       description: "Move one note to Recently deleted. noteId deletes that exact note; an ID the owner did not type, for a note whose title the owner named, deletes by that title and asks which one when several notes share it. A lookup by content deletes only when the owner's own words name the note's title; otherwise the closest note comes back as a candidate and nothing is deleted.",
@@ -226,10 +302,10 @@ function writeActions(notes: NotesCollection): Action[] {
         const target = targetOf(params, "noteId", "content")
         if (typeof target === "string") return missingTarget(target)
         const deleted = try notes.delete(target, try ownerRequestText(message))
-        return noteResult("Moved to Recently deleted", deleted.value, deleted.snapshot.revision)
+        return try noteChangeResult("WriteDelete", "Moved to Recently deleted", deleted.value, deleted.snapshot.revision)
       },
     }),
-    notesAction({
+    notesAction(notes, {
       name: "NOTES_RESTORE",
       operation: "update",
       description: "Bring one note back from Recently deleted with its content unchanged, by noteId or by its title or text among deleted notes only.",
@@ -245,10 +321,10 @@ function writeActions(notes: NotesCollection): Action[] {
         if (entry === undefined) return { success: false, text: "No deleted note matches.", data: { code: "NOTES_NOT_FOUND" } }
         if (found.length > 1) return { success: false, text: `Several deleted notes match: ${found.map((row) => json([row.note.id, row.note.title, row.deletedAt])).join(", ")}.`, data: { code: "NOTES_AMBIGUOUS_NOTE", candidateIds: found.map((row) => row.note.id) } }
         const restored = try notes.restore({ id: entry.note.id, expectedRevision: current.revision, deletedAt: entry.deletedAt })
-        return noteResult("Restored", restored.value, restored.snapshot.revision)
+        return try noteChangeResult("WriteRestore", "Restored", restored.value, restored.snapshot.revision)
       },
     }),
-    notesAction({
+    notesAction(notes, {
       name: "NOTES_MOVE",
       operation: "update",
       description: "Put one note in a folder by the exact folder name the device sent, or take it out with folder null. Folders are created on the device, not in chat. The note's text is unchanged.",
@@ -268,7 +344,7 @@ function writeActions(notes: NotesCollection): Action[] {
           return { success: false, text: `No folder is named ${json(name)}. Folders: ${folders.map((row) => json(row.name)).join(", ") || "none"}. Nothing changed.`, data: { code: "NOTES_FOLDER_UNKNOWN" } }
         }
         const moved = try notes.move(target, folder?.id ?? null)
-        return noteResult(folder === undefined ? "Took out of its folder" : `Moved to ${folder.name}:`, moved.value, moved.snapshot.revision)
+        return try noteChangeResult("WriteMove", folder === undefined ? "Took out of its folder" : `Moved to ${folder.name}:`, moved.value, moved.snapshot.revision)
       },
     }),
   ]

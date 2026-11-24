@@ -4,9 +4,13 @@
  */
 package ai.eliza.plugins.browsersurface
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
@@ -18,6 +22,13 @@ import androidx.webkit.Profile
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import java.security.KeyStore
+import java.util.UUID
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.spec.GCMParameterSpec
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -32,6 +43,75 @@ import org.junit.runner.RunWith
 class BrowserSurfaceIsolationInstrumentedTest {
     private val urlA = "https://eliza-surface-a.example/"
     private val urlShared = "https://eliza-surface-shared.example/"
+
+    // spec/os/browser/tabHost/storage.md, "Story: Keep my bookmarks whole"
+    @Test
+    fun sealedBookmarkTitlesSurviveReopenAndRemainCompatibleWithAnEarlierWriter() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "browser-bookmark-storage-${UUID.randomUUID()}"
+        val preferences = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
+            init(KeyGenParameterSpec.Builder(name, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .build())
+            generateKey()
+        }
+        fun sealer() = object : BrowserSealedText {
+            private val key = keyStore.getKey(name, null)
+
+            override fun seal(plain: String): String {
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key) }
+                return Base64.encodeToString(cipher.iv + cipher.doFinal(plain.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+            }
+
+            override fun open(sealed: String): String {
+                val bytes = Base64.decode(sealed, Base64.NO_WRAP)
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+                    init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, bytes.copyOf(12)))
+                }
+                return cipher.doFinal(bytes, 12, bytes.size - 12).toString(Charsets.UTF_8)
+            }
+        }
+        try {
+            val legacy = JSONArray().put(urlA).toString()
+            assertTrue(preferences.edit().putString(BrowserBookmarkStore.KEY, sealer().seal(legacy)).commit())
+            val store = BrowserBookmarkStore(preferences, sealer())
+            assertNull(store.entries().single().title)
+            store.change(urlA, true, "  Title\u0007for this page  ")
+            val reopened = BrowserBookmarkStore(preferences, sealer())
+            assertEquals(listOf(urlA to "Title for this page"), reopened.entries().map { it.url to it.title })
+            assertEquals(legacy, sealer().open(preferences.getString(BrowserBookmarkStore.KEY, null)!!))
+            assertFalse(preferences.all.values.any { it.toString().contains("Title for this page") })
+            reopened.change(urlA, true)
+            assertEquals("Title for this page", store.entries().single().title)
+            reopened.change(urlA, true, "   ")
+            assertNull(store.entries().single().title)
+
+            reopened.change(urlA, true, "old title")
+            assertTrue(preferences.edit().putString(BrowserBookmarkStore.KEY, sealer().seal(legacy)).commit())
+            assertEquals(listOf(urlA to null), reopened.entries().map { it.url to it.title })
+
+            val titled = JSONArray().put(JSONObject().put("url", urlA).put("title", "saved on Develop")).toString()
+            val sealedTitled = sealer().seal(titled)
+            assertTrue(preferences.edit().putString(BrowserBookmarkStore.KEY, sealedTitled).commit())
+            assertEquals(listOf(urlA to "saved on Develop"), reopened.entries().map { it.url to it.title })
+            assertEquals(sealedTitled, preferences.getString(BrowserBookmarkStore.KEY, null))
+            reopened.change(urlA, true)
+            assertEquals(legacy, sealer().open(preferences.getString(BrowserBookmarkStore.KEY, null)!!))
+            assertEquals(listOf(urlA to "saved on Develop"), reopened.entries().map { it.url to it.title })
+
+            reopened.change(urlA, true, "new title")
+            assertTrue(preferences.edit().putString(BrowserBookmarkStore.KEY, "damaged").commit())
+            val damaged = preferences.all
+            assertThrows(Exception::class.java) { reopened.change(urlShared, true, "unexpected") }
+            assertEquals(damaged, preferences.all)
+        } finally {
+            context.deleteSharedPreferences(name)
+            keyStore.deleteEntry(name)
+        }
+    }
 
     @Test
     fun cookiesWrittenInAnIsolatedProfileAreInvisibleToSiblingsAndTheDefault() {

@@ -1,12 +1,15 @@
 // spec/os/build/androidBuild.md, "Story: Replace published APKs only with this run's verified set"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
+import { admit, assemble, initial, requestFinding, type BuildRequest, type GradleRun } from "../gen/os__build__androidBuild.effect.vibe"
 import { AndroidBuildFailed, AndroidBuildRefused, buildAndroid, type BuildAndroid } from "../src/build/android-build.vibe"
 import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
-import { git, scratch, scratchRepo, writeTree } from "./support/scratch.vibe"
+import { git, readTree, scratch, scratchRepo, writeTree } from "./support/scratch.vibe"
 
 module node {
   import { createHash } from "node:crypto"
+  import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+  import { dirname, join } from "node:path"
 
   export const VARIANTS = ["launcher", "sideload"] as const
   export const SIGNING = ["FIXTURE_STORE", "FIXTURE_STORE_PASSWORD", "FIXTURE_KEY_ALIAS", "FIXTURE_KEY_PASSWORD"] as const
@@ -65,8 +68,68 @@ const rows = process.env.FIXTURE_VARIANTS.split(",").map((flavor) => {
 })
 writeFileSync(path.join(directory, "apk-manifest.json"), JSON.stringify(rows, null, 2))
 `
+
+  export interface PathBuild {
+    readonly buildAndroidConsumer: (options: Readonly<Record<string, unknown>>) => { readonly files: readonly string[]; readonly archive: string | null }
+  }
+  export interface PathCall {
+    readonly command: string
+    readonly args: readonly string[]
+    readonly cwd: string
+    readonly record: string | null
+  }
+  export interface StandIn {
+    readonly fail?: string
+    readonly omit?: string
+    readonly signed?: boolean
+    readonly manifest?: boolean
+    readonly output?: string
+    readonly record?: string
+    readonly withdraw?: string
+  }
+
+  /** @throws {never} */
+  export function gradleStandIn(root: string, calls: PathCall[], behaviour: StandIn) {
+    const output = join(root, behaviour.output ?? "artifacts")
+    return (command: string, args: readonly string[], options: { readonly cwd: string }): void => {
+      const record = behaviour.record !== undefined && existsSync(join(output, behaviour.record)) ? readFileSync(join(output, behaviour.record), "utf8") : null
+      calls.push({ command, args, cwd: options.cwd, record })
+      if (command === behaviour.fail) throw new Error(`${command} failed`)
+      if (command === "./gradlew") {
+        for (const task of args) {
+          const found = /^:app:assemble([A-Z][A-Za-z0-9]*?)(Debug|Release|DebugAndroidTest)$/.exec(task)
+          if (found === null) continue
+          const variant = `${(found[1] ?? "").slice(0, 1).toLowerCase()}${(found[1] ?? "").slice(1)}`
+          const built = found[2] === "DebugAndroidTest" ? [`apk/androidTest/${variant}/debug/app-${variant}-debug-androidTest.apk`]
+            : found[2] === "Debug" ? [`apk/${variant}/debug/app-${variant}-debug.apk`]
+            : [`apk/${variant}/release/app-${variant}-release${behaviour.signed === true ? "" : "-unsigned"}.apk`, `mapping/${variant}Release/mapping.txt`]
+          for (const file of built) {
+            if (behaviour.omit !== undefined && file.endsWith(`/${behaviour.omit}`)) continue
+            mkdirSync(dirname(join(options.cwd, "app/build/outputs", file)), { recursive: true })
+            writeFileSync(join(options.cwd, "app/build/outputs", file), `${file} of command ${calls.length}`)
+          }
+        }
+      }
+      if (command !== "verify") return
+      if (behaviour.manifest !== false) writeFileSync(join(output, "apk-manifest.json"), JSON.stringify({ verifiedBy: calls.length }))
+      if (behaviour.withdraw !== undefined) rmSync(join(output, behaviour.withdraw))
+    }
+  }
+
+  /** @throws {never} */
+  export function prepareSteps(seen: unknown[]) {
+    return {
+      recording: (context: unknown): void => {
+        seen.push(context)
+      },
+      failing: (): void => {
+        throw new Error("prepare failed")
+      },
+      later: (): Promise<void> => Promise.resolve(),
+    }
+  }
 }
-import { EXTRA, GRADLE, MANIFEST, SIGNING, VARIANTS, VERIFY, baseEnvironment, nodePath, sha256 } from node
+import { EXTRA, GRADLE, MANIFEST, SIGNING, VARIANTS, VERIFY, baseEnvironment, gradleStandIn, nodePath, prepareSteps, sha256, type PathBuild, type PathCall, type StandIn } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -235,3 +298,196 @@ it.effect.skipIf(skipped !== null)(`Publish a debug-only set without stale relea
     assert.deepStrictEqual(try published(archived), first)
   }
 }, 600_000)
+
+
+const BY_PATH: BuildRequest = { variants: [...VARIANTS], wellFormed: true, release: true, signing: "NoneNamed", signingVariablesSet: 0, wantsArchive: true, pin: "by-path", sourceAtPin: true, payload: { tag: "NoAgentPayload" } }
+const EVERY_SIGNING_VARIABLE = { signing: "AllNamed", signingVariablesSet: SIGNING.length } as const
+const ONE_VARIANT = { variants: ["launcher"], wantsArchive: false }
+
+function ruled(facts: Partial<BuildRequest>, gradle: Partial<GradleRun> = {}): string {
+  const request = { ...BY_PATH, ...facts }
+  const finding = requestFinding(request)
+  if (finding.tag === "RequestRefused") return finding.refusal
+  const phase = assemble(admit(initial, request), { succeeded: true, apksPresent: true, releaseSigned: false, copied: true, ...gradle }).phase
+  return phase.tag === "Failed" ? phase.failure : phase.tag
+}
+
+effect function pathBuilt(build: PathBuild, options: Readonly<Record<string, unknown>>) {
+  return (Effect.try({ try: () => build.buildAndroidConsumer(options), catch: (cause) => (cause instanceof Error ? cause.message : String(cause)) }) catch (message) => message)
+}
+
+effect function pathConsumer(prefix: string, shape: Readonly<Record<string, unknown>>) {
+  const path = try Path.Path
+  const loaded: PathBuild = try Effect.promise(() => import(path.join(import.meta.dirname, "../android/build-consumer.mjs")))
+  const root = try scratch(prefix)
+  const calls: PathCall[] = []
+  const request = (behaviour: StandIn, extra: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> => ({
+    root, environment: {}, variants: ["launcher"], verify: { command: "verify", args: [] }, run: gradleStandIn(root, calls, behaviour), ...shape, ...extra,
+  })
+  const build = (behaviour: StandIn = {}, extra: Readonly<Record<string, unknown>> = {}) => pathBuilt(loaded, request(behaviour, extra))
+  const attempt = effect (behaviour: StandIn = {}, extra: Readonly<Record<string, unknown>> = {}) => {
+    const answer = try pathBuilt(loaded, request(behaviour, extra))
+    return typeof answer === "string" ? answer : "built"
+  }
+  return { root, output: path.join(root, "artifacts"), calls, build, attempt }
+}
+
+it.effect(`The build a consumer runs by path refuses a malformed request before any command, replaces no APK when Gradle fails or leaves one out, writes its build record only beside this run's APKs and before the verifier, never calls an unsigned release signed, and keeps the previous archive unless every file verified; where it stops short of buildAndroid (no pin or payload admission, a partly set signing environment builds unsigned) the step names the generated verdict (spec/os/build/androidBuild.md, "Story: Replace published APKs only with this run's verified set"; spec/os/build/androidBuild.md, "A request is admitted only when well formed, built from the pinned source and an identified payload"; spec/os/build/androidBuild.md, "Every selected APK must come out of Gradle, and a release signed as configured, before anything is written"; spec/os/build/androidBuild.md, "An archive copies the published set with the consumer's verified files, or the previous archive stays")`, effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const archived = try pathConsumer("path-build", { variants: [...VARIANTS], prepare: [{ command: "admit", args: ["source"] }], archive: { name: "production", metadata: { mode: "service" } } })
+    const archive = path.join(archived.output, "production")
+    const steps = prepareSteps([])
+    const refusals: readonly (readonly [Readonly<Record<string, unknown>>, RegExp, Partial<BuildRequest>, string])[] = [
+      [{ variants: [] }, /Invalid Android distributions/, { variants: [] }, "NoVariants"],
+      [{ variants: ["launcher", "launcher"] }, /Invalid Android distributions/, { variants: ["launcher", "launcher"] }, "DuplicateVariant"],
+      [{ release: false }, /debug-only Android build cannot be archived/, { release: false }, "DebugOnlyArchive"],
+      [{ variants: ["Launcher"] }, /Invalid Android distributions/, { wellFormed: false }, "MalformedRequest"],
+    ]
+    for (const [extra, pattern, facts, refusal] of refusals) {
+      assert.match(try archived.attempt({}, extra), pattern)
+      assert.strictEqual(ruled(facts), refusal)
+    }
+    const unparsed: readonly (readonly [Readonly<Record<string, unknown>>, RegExp])[] = [
+      [{ variants: ["../outside"] }, /Invalid Android distributions/],
+      [{ archive: { name: "Bad Name", metadata: {} } }, /Invalid Android archive name/],
+      [{ archive: { name: "production", metadata: 1n } }, /BigInt/],
+      [{ archive: { name: "production", metadata: {}, files: [] } }, /Android archive files must be a function/],
+      [{ project: "../android" }, /must be relative paths/],
+      [{ output: "/tmp/artifacts" }, /must be relative paths/],
+      [{ androidTestOutput: "../escape" }, /Android test output must be a relative path/],
+      [{ gradleArguments: ["--init-script=evil.gradle"] }, /Invalid Gradle argument/],
+      [{ gradleArguments: ["-Dorg.gradle.dependency.verification=off"] }, /Invalid Gradle argument/],
+      [{ gradleArguments: ["-PNAME=$(touch x)"] }, /Invalid Gradle argument/],
+      [{ signing: { environment: [] } }, /Release signing must name environment variables/],
+      [{ signing: { environment: ["lower"] } }, /Release signing must name environment variables/],
+      [{ record: { name: "apk-manifest.json", metadata: {} } }, /Invalid Android build record name/],
+      [{ record: { name: "../build-record.json", metadata: {} } }, /Invalid Android build record name/],
+      [{ record: { name: "build-record.txt", metadata: {} } }, /Invalid Android build record name/],
+      [{ record: { name: "build-record.json" } }, /build record metadata is required/],
+      [{ record: { name: "build-record.json", metadata: 1n } }, /BigInt/],
+      [{ verify: { command: "", args: [] } }, /Invalid Android admission command/],
+      [{ verify: null }, /Invalid Android admission command/],
+      [{ prepare: [{ gradleTasks: [] }] }, /Invalid Android admission command/],
+      [{ prepare: [{ gradleTasks: ["--init-script=evil.gradle"] }] }, /Invalid Android admission command/],
+      [{ prepare: [{ gradleTasks: [":ok", 1] }] }, /Invalid Android admission command/],
+      [{ prepare: [{ command: "sync", args: [], gradleTasks: [":updater:assembleDebug"] }] }, /Invalid Android admission command/],
+      [{ lint: "false" }, /must be booleans/],
+      [{ androidTest: 0 }, /must be booleans/],
+      [{ release: 1 }, /must be booleans/],
+      [{ mappings: "yes" }, /must be booleans/],
+      [{ sequential: 1 }, /must be booleans/],
+      [{ prepare: [steps.failing, { command: "sync", args: [] }] }, /prepare failed/],
+      [{ prepare: [steps.later] }, /must be synchronous/],
+    ]
+    for (const [extra, pattern] of unparsed) assert.match(try archived.attempt({}, extra), pattern, Object.keys(extra).join())
+    assert.deepStrictEqual(archived.calls, [], "a refused request runs no command")
+    assert.isFalse(try files.exists(archived.output))
+
+    try writeTree(archived.root, { "artifacts/stale-other.apk": "unselected" })
+    const built = try archived.build()
+    assert.deepStrictEqual(archived.calls.map((call) => [call.command, call.cwd]), [["admit", archived.root], ["./gradlew", path.join(archived.root, "android")], ["verify", archived.root]])
+    assert.deepStrictEqual(archived.calls[1]?.args, ["--no-daemon", ":app:assembleLauncherDebug", ":app:assembleSideloadDebug", ":app:assembleLauncherRelease", ":app:assembleSideloadRelease", ":app:assembleLauncherDebugAndroidTest", ":app:assembleSideloadDebugAndroidTest", ":app:lint"])
+    assert.deepStrictEqual(built, { files: VARIANTS.flatMap((variant) => [`${variant}-debug.apk`, `${variant}-release-unsigned.apk`].map((name) => path.join(archived.output, name))), archive })
+    assert.strictEqual(ruled({}), "Staged")
+    const first = try published(archive)
+    assert.deepStrictEqual(Object.keys(first), ["apk-manifest.json", "build-checks.json", "launcher-debug.apk", "launcher-release-unsigned.apk", "service-mode.json", "sideload-debug.apk", "sideload-release-unsigned.apk"], "only this build's APKs are archived")
+    const set = try published(archived.output)
+    assert.strictEqual(first["launcher-release-unsigned.apk"], set["launcher-release-unsigned.apk"])
+    const recorded = try readTree(archive)
+    assert.deepStrictEqual([recorded["service-mode.json"], recorded["build-checks.json"]], [JSON.stringify({ mode: "service" }, null, 2), JSON.stringify({ lint: true, androidTest: true }, null, 2)])
+
+    assert.match(try archived.attempt({ omit: "app-sideload-release-unsigned.apk" }), /ENOENT/)
+    assert.strictEqual(ruled({}, { apksPresent: false }), "OutputsIncomplete")
+    assert.deepStrictEqual(try published(archived.output), Object.fromEntries(Object.entries(set).filter(([name]) => name !== "apk-manifest.json")), "a missing APK replaces nothing and withdraws the earlier manifest")
+    const failures: readonly (readonly [StandIn, RegExp])[] = [[{ fail: "admit" }, /admit failed/], [{ fail: "./gradlew" }, /gradlew failed/], [{ fail: "verify" }, /verify failed/], [{ manifest: false }, /ENOENT/]]
+    for (const [behaviour, pattern] of failures) {
+      assert.match(try archived.attempt(behaviour), pattern)
+      assert.deepStrictEqual(try published(archive), first, `${JSON.stringify(behaviour)} leaves the previous archive`)
+    }
+    assert.strictEqual(ruled({}, { succeeded: false }), "GradleFailed")
+
+    const signing = { signing: { environment: [...SIGNING] }, environment: Object.fromEntries(SIGNING.map((name) => [name, "set"])) }
+    assert.match(try archived.attempt({}, signing), /are set but Gradle produced an unsigned launcher release/)
+    assert.strictEqual(ruled(EVERY_SIGNING_VARIABLE), "ReleaseUnsigned")
+    try writeTree(archived.root, { "extra.txt": EXTRA })
+    const notes = (digest: string, name = "notes/extra.txt") => ({ name: "production", metadata: { mode: "service" }, files: () => [{ source: "extra.txt", name, sha256: digest }] })
+    assert.match(try archived.attempt({ signed: true }, { ...signing, archive: notes("0".repeat(64)) }), /changed after verification/)
+    assert.match(try archived.attempt({ signed: true }, { ...signing, archive: notes(sha256(EXTRA), "launcher-debug.apk") }), /Invalid Android archive file/)
+    assert.match(try archived.attempt({ signed: true, withdraw: "launcher-debug.apk" }, signing), /ENOENT/)
+    assert.deepStrictEqual(try published(archive), first, "the previous archive stays")
+    assert.deepStrictEqual((try files.readDirectory(archived.output)).filter((name) => name.startsWith(".android-archive-")), [], "a failed archive leaves no private copy")
+
+    assert.strictEqual(try archived.attempt({ signed: true }, { ...signing, archive: notes(sha256(EXTRA)) }), "built")
+    assert.strictEqual(ruled(EVERY_SIGNING_VARIABLE, { releaseSigned: true }), "Staged")
+    const second = try published(archive)
+    assert.deepStrictEqual(Object.keys(second), ["apk-manifest.json", "build-checks.json", "launcher-debug.apk", "launcher-release.apk", "notes/extra.txt", "service-mode.json", "sideload-debug.apk", "sideload-release.apk"])
+    assert.strictEqual(second["notes/extra.txt"], sha256(EXTRA))
+    assert.isFalse(try files.exists(path.join(archived.output, "launcher-release-unsigned.apk")), "a variant keeps one release name")
+    assert.strictEqual(try archived.attempt({ signed: true }, { ...signing, variants: ["launcher"] }), "built")
+    assert.deepStrictEqual(Object.keys(try published(archive)), ["apk-manifest.json", "build-checks.json", "launcher-debug.apk", "launcher-release.apk", "service-mode.json"], "an archive reused for fewer variants holds only theirs")
+
+    const record = { name: "build-config.json", metadata: { testMocks: false, release: true } }
+    const product = try pathConsumer("path-product", { androidTestOutput: "instrumentation", signing: signing.signing, mappings: true, record, archive: null })
+    const watching: StandIn = { record: record.name }
+    const releaseOutput = "android/app/build/outputs/apk/launcher/release/app-launcher-release.apk"
+    try writeTree(product.root, {
+      "artifacts/apk-manifest.json": "an earlier verification", "artifacts/build-config.json": "the previous record", "artifacts/launcher-debug.apk": "the previous debug APK",
+      "artifacts/launcher-release.apk": "the previous signed release", "artifacts/instrumentation/stale.apk": "an earlier test APK",
+    })
+    assert.match(try product.attempt({ ...watching, fail: "./gradlew" }), /gradlew failed/)
+    assert.deepStrictEqual(try readTree(product.output), { "build-config.json": "the previous record", "launcher-debug.apk": "the previous debug APK", "launcher-release.apk": "the previous signed release" }, "a failed Gradle keeps the previous APKs and record, and no manifest still vouches for them")
+
+    try writeTree(product.root, { [releaseOutput]: "an earlier signed build" })
+    const unsigned = { files: ["launcher-debug.apk", "launcher-release-unsigned.apk"].map((name) => path.join(product.output, name)), archive: null }
+    assert.deepStrictEqual(try product.build(watching), unsigned)
+    assert.deepStrictEqual(product.calls.slice(1), [
+      { command: "./gradlew", args: ["--no-daemon", ":app:assembleLauncherDebug", ":app:assembleLauncherRelease", ":app:assembleLauncherDebugAndroidTest", ":app:lint"], cwd: path.join(product.root, "android"), record: "the previous record" },
+      { command: "verify", args: [], cwd: product.root, record: `${JSON.stringify(record.metadata, null, 2)}\n` },
+    ], "the previous record stays until this build's APKs replace the earlier ones, and the new one is in place before the verifier runs")
+    assert.deepStrictEqual(Object.keys(try published(product.output)), ["apk-manifest.json", "build-config.json", "instrumentation/launcher-androidTest.apk", "launcher-debug.apk", "launcher-release-unsigned.apk", "mapping/launcher-release-mapping.txt"], "no earlier release, test APK or signed build output is taken for this build's")
+    assert.isFalse(try files.exists(path.join(product.root, releaseOutput)))
+    assert.strictEqual(ruled(ONE_VARIANT), "Staged")
+
+    try files.remove(path.join(product.output, "launcher-debug.apk"))
+    try writeTree(product.root, { "artifacts/launcher-debug.apk/blocked": "in the way" })
+    assert.notStrictEqual(try product.attempt(watching), "built")
+    assert.isFalse(try files.exists(path.join(product.output, record.name)), "a copy interrupted after Gradle leaves no record")
+    try files.remove(path.join(product.output, "launcher-debug.apk"), { recursive: true })
+
+    assert.deepStrictEqual(try product.build({ ...watching, signed: true }, signing), { files: ["launcher-debug.apk", "launcher-release.apk"].map((name) => path.join(product.output, name)), archive: null })
+    assert.isFalse(try files.exists(path.join(product.output, "launcher-release-unsigned.apk")), "a variant keeps one release name")
+    const beforeUnsigned = product.calls.length
+    assert.match(try product.attempt(watching, signing), /FIXTURE_STORE, FIXTURE_STORE_PASSWORD, FIXTURE_KEY_ALIAS, FIXTURE_KEY_PASSWORD are set but Gradle produced an unsigned launcher release/)
+    assert.deepStrictEqual(product.calls.slice(beforeUnsigned).map((call) => call.command), ["./gradlew"], "an unsigned release under requested signing never reaches the verifier")
+    assert.deepStrictEqual(try product.build(watching, { environment: { ...signing.environment, FIXTURE_KEY_PASSWORD: " " } }), unsigned, "a blank value is not a signing request")
+    assert.strictEqual(ruled({ ...ONE_VARIANT, signing: "AllNamed", signingVariablesSet: SIGNING.length - 1 }), "SigningPartial", "buildAndroid refuses the partly set signing environment the path build reads as no signing request")
+
+    const debugOnly = { release: false, mappings: false, record: { name: record.name, metadata: { testMocks: false, release: false } } }
+    assert.deepStrictEqual(try product.build(watching, debugOnly), { files: [path.join(product.output, "launcher-debug.apk")], archive: null })
+    assert.deepStrictEqual(product.calls.at(-2)?.args, ["--no-daemon", ":app:assembleLauncherDebug", ":app:assembleLauncherDebugAndroidTest", ":app:lint"])
+    assert.strictEqual(ruled({ ...ONE_VARIANT, release: false }), "Staged")
+    const fast = path.join(product.output, "fast")
+    assert.deepStrictEqual(try product.build({ ...watching, output: "artifacts/fast" }, { ...debugOnly, output: "artifacts/fast", lint: false, androidTest: false, daemon: true, androidTestOutput: null, signing: null }), { files: [path.join(fast, "launcher-debug.apk")], archive: null })
+    assert.deepStrictEqual(product.calls.at(-2)?.args, ["--daemon", ":app:assembleLauncherDebug"])
+    assert.deepStrictEqual(Object.keys(try published(fast)), ["apk-manifest.json", "build-config.json", "launcher-debug.apk"])
+
+    const seen: unknown[] = []
+    const beforeSteps = product.calls.length
+    assert.strictEqual(try product.attempt(watching, { lint: false, androidTest: false, androidTestOutput: null, prepare: [{ command: "sync", args: [] }, prepareSteps(seen).recording, { gradleTasks: [":updater:assembleDebug", ":updater:assembleRelease"] }] }), "built")
+    assert.deepStrictEqual(seen, [{ root: product.root, environment: {} }])
+    assert.deepStrictEqual(product.calls.slice(beforeSteps).map((call) => [call.command, ...call.args]), [["sync"], ["./gradlew", "--no-daemon", ":app:assembleLauncherDebug", ":app:assembleLauncherRelease", ":updater:assembleDebug", ":updater:assembleRelease"], ["verify"]])
+
+    try writeTree(product.root, { "android/app/build/intermediates/merged_native_libs/arm64-v8a/libagent.so": "packaged", "android/app/build/intermediates/javac/Home.class": "compiled" })
+    const beforeSequential = product.calls.length
+    assert.strictEqual(try product.attempt(watching, { sequential: true, androidTestOutput: "" }), "built")
+    assert.deepStrictEqual(product.calls.slice(beforeSequential).map((call) => call.args.slice(1)), [[":app:assembleLauncherDebug", ":app:assembleLauncherDebugAndroidTest"], [":app:assembleLauncherRelease"], [":app:lint"], []])
+    assert.deepStrictEqual(Object.keys(try readTree(path.join(product.root, "android/app/build/intermediates"))), ["javac/Home.class"], "only packaging intermediates are discarded between variants")
+    assert.isTrue(try files.exists(path.join(product.output, "launcher-androidTest.apk")))
+    const linked = try pathConsumer("path-linked", { sequential: true, archive: null })
+    try writeTree(linked.root, { "android/app/build/intermediates": { kind: "symlink", target: linked.root } })
+    assert.match(try linked.attempt(), /Unsafe packaging intermediate path/)
+    assert.deepStrictEqual(linked.calls, [])
+  }
+})

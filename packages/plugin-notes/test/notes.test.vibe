@@ -3,8 +3,8 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { negotiation, validate, type DeviceOperation, type DeviceTurn, type EarlierRequest } from "@elizaos/agent/device-actions"
 import type { LocalRoute } from "@elizaos/agent/routes"
-import { bindIncomingMessagePersistence, stringToUuid, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
-import { notesPlugin, notesRoutes } from "../src/agent.vibe"
+import { bindIncomingMessagePersistence, satisfiesContextGate, stringToUuid, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { noteChangeResult, notesPlugin, notesRefusalResult, notesRoutes } from "../src/agent.vibe"
 import { notesDeviceFamily } from "../src/device-proposals.vibe"
 import { namedNoteReadEvaluator, notesRequestEffectField } from "../src/request-effect.vibe"
 import { createNotesClient, noteScheduleText, recordNoteOriginFor } from "../src/client.vibe"
@@ -97,7 +97,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string) {
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner\'s own words in the bound request")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner\'s own words in the bound request")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -117,6 +117,20 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(appended.value.body, "\n- oat milk\n- eggs")
   assert.equal(try code(notes.update({ selector: "query", value: "groceries" }, { color: "green" }, appended.snapshot.revision)), "NOTES_AMBIGUOUS_NOTE")
   assert.equal(try code(notes.update({ id: "note-1" }, { content: "Groceries" }, literal.snapshot.revision)), "NOTES_EDIT_CONFLICT")
+  const receipted = [try noteChangeResult("WriteCreate", "Created", first.value.note, first.snapshot.revision), try noteChangeResult("WriteCreate", "Already saved", replayed.value.note, replayed.snapshot.revision, true),
+    try noteChangeResult("WriteMove", "Moved to Work:", appended.value, appended.snapshot.revision)]
+  assert.deepEqual(receipted.map((result) => [result.data?.op, result.data?.noteId, ...(result.effectReceipts ?? []).map((receipt) => [receipt.operation, receipt.outcome, receipt.resource, receipt.idempotency.replayed])]), [
+    ["create", "note-1", ["notes.note.create", "applied", { kind: "notes.note", id: "note-1", version: "1" }, false]],
+    ["create", "note-1", ["notes.note.create", "noop", { kind: "notes.note", id: "note-1", version: "1" }, true]],
+    ["update", "note-1", ["notes.note.update", "applied", { kind: "notes.note", id: "note-1", version: String(appended.snapshot.revision) }, false]],
+  ])
+  const choice = try notesRefusalResult(notes, try Effect.flip(notes.update({ selector: "query", value: "groceries" }, { color: "green" }, appended.snapshot.revision)))
+  const stale = try notesRefusalResult(notes, try Effect.flip(notes.update({ id: "note-1" }, { content: "Groceries" }, literal.snapshot.revision)))
+  const missing = try notesRefusalResult(notes, try Effect.flip(notes.update({ id: "note-404" }, { color: "green" }, appended.snapshot.revision)))
+  const size = (value: unknown) => Array.isArray(value) ? value.length : 0
+  assert.deepEqual(
+    [choice, stale, missing].map((result) => [result.data?.code, result.data?.awaitingUserInput, size(result.data?.candidates), result.transcriptVisibility, result.data?.coachingFailure]),
+    [["NOTES_AMBIGUOUS_NOTE", true, 2, undefined, undefined], ["NOTES_EDIT_CONFLICT", undefined, 0, "internal", true], ["NOTES_NOT_FOUND", undefined, 0, undefined, undefined]])
 
   const plugin = notesPlugin(notes)
   const unbound = try action(plugin, "NOTES_DELETE")(message("delete my groceries note"), { noteId: "note-1" })
@@ -136,6 +150,18 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   try notes.create({ content: "Errands\npost office" })
   assert.equal(try code(notes.delete({ id: errands }, "delete my errands note")), "NOTES_AMBIGUOUS_NOTE")
   assert.equal((try notes.delete({ id: errands }, `delete the errands note ${errands}`)).value.id, errands)
+  const milk = [try notes.create({ content: "Milk\nbuy two", forceNew: true }), try notes.create({ content: "Milk\nbuy two", forceNew: true })].map((made) => made.value.note.id)
+  assert.isTrue(milk.includes((try notes.delete({ selector: "query", value: "milk" }, "delete the milk note")).value.id))
+  const afterMilk = try notes.snapshot()
+  assert.deepEqual([afterMilk.notes.filter((note) => milk.includes(note.id)).length, afterMilk.trash?.filter((entry) => milk.includes(entry.note.id)).length], [0, 2])
+  const chores = [try notes.create({ content: "Chores\nsweep", forceNew: true }), try notes.create({ content: "Chores\nsweep", forceNew: true })].map((made) => made.value.note.id)
+  const mopped = try notes.update({ selector: "title", value: "chores" }, { textEdit: { field: "body", oldText: "sweep", newText: "mop" } })
+  assert.isTrue(chores.includes(mopped.value.id))
+  assert.deepEqual(mopped.snapshot.notes.filter((note) => note.title === "Chores").map((note) => [note.id, note.body]), [[mopped.value.id, "\nmop"]])
+  const lists = [try notes.create({ content: "Lists\none" }), try notes.create({ content: "Lists\ntwo" })].map((made) => made.value.note.id)
+  const renumber = { textEdit: { field: "body", oldText: "one", newText: "1" } }
+  assert.equal(try code(notes.update({ id: lists[0] ?? "" }, renumber, undefined, "change one to 1 in my lists note")), "NOTES_AMBIGUOUS_NOTE")
+  assert.equal((try notes.update({ id: lists[0] ?? "" }, renumber, undefined, `change one to 1 in the lists note ${lists[0] ?? ""}`)).value.body, "\n1")
 
   const folders = readNoteFolders({ notesFolders: [{ id: "folder-home", name: "Home  stuff" }, { id: "folder-work", name: "Work" }] })
   const home = findNoteFolder(folders ?? [], "home stuff")
@@ -148,7 +174,15 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.isUndefined(readNoteFolders({ notesFolders: [{ id: "a", name: "Work" }, { id: "b", name: "work" }] }))
 
   const listed = try action(plugin, "NOTES_LIST")(message("latest note"), { latestBy: "createdAt" })
-  assert.equal(listed.success, true)
+  const none = try action(notesPlugin(notesOver(fixture())), "NOTES_LIST")(message("list my notes"), {})
+  assert.isTrue((plugin.actions ?? []).every((candidate) => satisfiesContextGate(["general"], { contexts: candidate.contexts }, ["OWNER"])))
+  const farEast = { voiceUi: { uiTimeZone: "Pacific/Kiritimati" } }
+  const zoned = [try action(plugin, "NOTES_GET")(message("when did I write note-1", farEast), { noteId: "note-1" }), try action(plugin, "NOTES_GET")(message("when did I write note-1"), { noteId: "note-1" }),
+    try action(plugin, "NOTES_GET")(message("when did I write note-1", { voiceUi: { uiTimeZone: "Nowhere/Land" } }), { noteId: "note-1" })]
+  const shownTimes = zoned.map((read) => read.data?.noteTimestampDisplay as { readonly timeZone: string; readonly createdAt: string } | undefined)
+  assert.deepEqual(shownTimes.map((times) => [times?.timeZone, times?.createdAt.startsWith("Nov 21, 2026")]), [["Pacific/Kiritimati", true], [undefined, undefined], [undefined, undefined]])
+  assert.deepEqual([listed.success, listed.data?.op, listed.effectReceipts, listed.emptyTrackedState, { ...none.emptyTrackedState, observedAt: "" }],
+    [true, "list", undefined, undefined, { resource: "notes", scope: "entire_current_inventory", count: 0, revision: 0, observedAt: "" }])
   const routing = (plugin.providers ?? []).find((provider) => provider.name === "NAMED_NOTE_ROUTING")
   const availability = try promise(() => routing!.get(undefined as never, message("what is in my trip note"), undefined as never))
   assert.equal(availability.data?.namedNoteMatchAvailable, true)
@@ -172,7 +206,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(try code(notes.assertSourceReference(reference)), "CALENDAR_NOTE_SOURCE_CONFLICT")
   assert.deepEqual(try namedRead("read my groceries note"), { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: draft.value.note.id } } })
   assert.deepEqual(try namedRead("read my shopping note"), { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: "note-1" } } })
-  assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:moved", "note:created", "note:created", "note:moved", "note:updated"])
+  assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:updated", "note:created", "note:created", "note:updated", "note:moved", "note:created", "note:created", "note:moved", "note:updated"])
 
   const camp = try notes.create({ content: "Camp", format: { kind: "list", data: { items: [{ t: "tent", done: false }] } } })
   const oversized = { field: "checklist", index: 0, expectedText: "tent", text: "x".repeat(262_145) } as const

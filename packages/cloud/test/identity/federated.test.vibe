@@ -5,6 +5,7 @@ import type { Tx } from "../../src/store/connection.vibe"
 import { testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
 import { fragment, googleIdentityFake, visit } from "../support/google-identity-fake.ts"
 import { s256 } from "../support/identity-fixture.ts"
+import { manualClock } from "../support/clock.ts"
 import { secrets } from "../support/profile.ts"
 
 const web = "https://www.staging.example.com"
@@ -120,23 +121,37 @@ describe("WP1 Identity: Google sign-in", () => {
     ))
   }))
 
-  it.live("A native challenge needs S256 and a registered return, and answers a nonce for five minutes (spec/cloud/identity/federatedSignIn.md, \"Story: Sign in with the device's Google account\")", () => scoped(effect {
-    const { cloud } = try googleCloud()
-    const fields = { clientId: app.clientId, environment: "staging", redirectUri: signInReturn, codeChallenge: s256(verifier), codeChallengeMethod: "S256" }
-    const startedAt = try Clock.currentTimeMillis
-    const opened = try cloud.call("/api/v1/auth/google/native/challenge", { json: fields })
-    const plain = try cloud.call("/api/v1/auth/google/native/challenge", { json: { ...fields, codeChallengeMethod: "plain" } })
-    const wrongReturn = try cloud.call("/api/v1/auth/google/native/challenge", { json: { ...fields, redirectUri: app.billingReturn } })
-    const body = opened.body as { challengeId: string; nonce: string; serverClientId: string; expiresAt: number }
-    try check(() => assert.deepStrictEqual(
-      {
-        opened: [opened.status, /^[0-9a-f]{64}$/.test(body.nonce), body.serverClientId, body.expiresAt >= startedAt + 5 * 60_000 && body.expiresAt <= Date.now() + 5 * 60_000],
-        refused: [refusal(plain), refusal(wrongReturn)]
-      },
-      {
-        opened: [200, true, "google-server-client", true],
-        refused: ["400 invalid_request", "400 redirect_mismatch"]
-      }
-    ))
-  }))
+  it.live("A native challenge needs S256 and a registered return, answers a nonce for five minutes, and refuses an address over its limit (spec/cloud/identity/federatedSignIn.md, \"Story: Sign in with the device's Google account\"; spec/cloud/identity/federatedSignIn.md, \"A client address may call the Google sign-in routes 30 times a minute, and over that is refused before anything is stored\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(Math.floor(Date.now() / 60_000) * 60_000))
+    provide Clock.Clock = clock.clock {
+      const { cloud } = try googleCloud()
+      const fields = { clientId: app.clientId, environment: "staging", redirectUri: signInReturn, codeChallenge: s256(verifier), codeChallengeMethod: "S256" }
+      const startedAt = try Clock.currentTimeMillis
+      const opened = try cloud.call("/api/v1/auth/google/native/challenge", { json: fields })
+      const plain = try cloud.call("/api/v1/auth/google/native/challenge", { json: { ...fields, codeChallengeMethod: "plain" } })
+      const wrongReturn = try cloud.call("/api/v1/auth/google/native/challenge", { json: { ...fields, redirectUri: app.billingReturn } })
+      const body = opened.body as { challengeId: string; nonce: string; serverClientId: string; expiresAt: number }
+      const withinLimit: Array<number> = []
+      for (let call = 4; call <= 30; call++) withinLimit.push((try cloud.call("/api/v1/auth/google/native/challenge", { json: fields })).status)
+      const attempts = effect { return (try cloud.inside(cloud.store.transaction((tx: Tx) => tx.query("SELECT count(*)::int AS n FROM oauth_attempts", [])))).at(0)?.n }
+      const storedBefore = try attempts
+      const overLimit = try cloud.call("/api/v1/auth/google/native/challenge", { json: fields })
+      const storedAfter = try attempts
+      try check(() => assert.deepStrictEqual(
+        {
+          opened: [opened.status, /^[0-9a-f]{64}$/.test(body.nonce), body.serverClientId, body.expiresAt >= startedAt + 5 * 60_000 && body.expiresAt <= Date.now() + 5 * 60_000],
+          refused: [refusal(plain), refusal(wrongReturn)],
+          withinLimit: withinLimit.every((status) => status === 200),
+          overLimit: [refusal(overLimit), storedAfter === storedBefore]
+        },
+        {
+          opened: [200, true, "google-server-client", true],
+          refused: ["400 invalid_request", "400 redirect_mismatch"],
+          withinLimit: true,
+          overLimit: ["429 rate_limited", true]
+        }
+      ))
+    }
+  }), 120_000)
 })

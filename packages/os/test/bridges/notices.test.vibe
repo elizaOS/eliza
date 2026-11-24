@@ -24,11 +24,12 @@ module android {
     taps: Array<Partial<PendingNoticeTap>>
     fenceFails: number
     calls: string[]
+    presentation: unknown
   }
 
   /** @throws {never} */
   export function phone(): Phone {
-    return { owner: null, approvals: new Map(), tap: {}, taps: [], fenceFails: 0, calls: [] }
+    return { owner: null, approvals: new Map(), tap: {}, taps: [], fenceFails: 0, calls: [], presentation: { protocol: 2 } }
   }
 
   /** @throws {never} */
@@ -40,6 +41,7 @@ module android {
   export function plugin(device: Phone): NotificationsNativePlugin {
     const unused = async (): Promise<unknown> => { throw new Error("not used by this journey") }
     return {
+      workflowPresentationCapabilities: async () => device.presentation,
       pendingWorkflowTap: async () => device.taps.shift() ?? device.tap,
       consumeWorkflowTap: unused,
       postWorkflow: unused,
@@ -174,4 +176,13 @@ it.effect('A tap opens only its exact route, in the account it belongs to, and o
   try Effect.try(() => assert.deepStrictEqual([ready, otherAccount.kind, replaced.kind, unposted.kind, none.kind, signedOutTap.kind], [
     { kind: "ready", token: "t1", target: "run r1", question: false }, "other-account", "unavailable", "unavailable", "none", "other-account",
   ]))
+})
+
+it.effect('Tell my app which workflow notices this phone can present (spec/os/android/noticeRoutes.md, "Story: Tell my app which workflow notices this phone can present"; spec/os/android/noticeRoutes.md, "The host answers presentation protocol 2, and a renderer presents only through a host that answers it")', () => effect {
+  const device = phone()
+  const client = noticesClient({ plugin: plugin(device) })
+  const current = try promise(() => client.presentsWorkflow())
+  device.presentation = { protocol: 1 }
+  const older = try promise(() => client.presentsWorkflow())
+  try Effect.try(() => assert.deepStrictEqual([current, older], [true, false]))
 })

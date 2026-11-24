@@ -2,6 +2,7 @@
 import { withoutResult } from "./device.schema.vibe"
 import type { FamilySchemas } from "./family.vibe"
 
+// eslint-disable-next-line no-control-regex -- Browser operations reject literal control characters at the wire boundary.
 const noControl = (value: string) => !/[\u0000-\u001f\u007f]/.test(value)
 const words = (maximum: number) => Schema.String.check(Schema.makeFilter(noControl)).pipe(Schema.decodeTo(
   Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(maximum)),

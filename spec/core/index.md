@@ -13,13 +13,18 @@ retains, and the [compatibility decisions](./baseline/compatibility-decisions.js
 on retained failure behavior.
 
 The baseline describes `packages/core` of develop at
-`elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`, the commit this
-version started from. Its source records (file hashes, behavior contracts,
-import graph, fixtures and legacy models) stay at that commit and are never
-moved to a later develop commit. A later develop change this version keeps
-is ported as a rule of the spec that owns its behavior, and the public
-surface and consumer imports change only with the exports that port adds or
-removes.
+`elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`, the develop
+commit it was captured from; this version is a rewrite, not a descendant of
+that commit. Its source records (file hashes, behavior contracts, import
+graph, fixtures and legacy models) stay at that commit, with one exception:
+the hashes of the `./catalog/*` assets the packed release ships describe the
+catalog this version generates, so they change whenever that catalog is
+regenerated (today only `packages/core/src/catalog/generated.json` differs
+from develop). A later develop change becomes part of this version only when
+a rule of the spec that owns its behavior ports it, and the public surface
+and consumer imports change only with the exports that port adds or removes.
+The baseline does not record which later develop changes were ported or
+declined.
 
 | Cluster | Specifications |
 | --- | --- |

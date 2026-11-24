@@ -4,6 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { decodeLaunchDocument, decodeLaunchFrame } from "@elizaos/agent/launch"
 import { ownKeyMaxUnits } from "../gen/agent__host__launch.ts"
 import { AGENT_ASSETS, AgentConfigRefused, admitAgentBytes, admitAgentData, type AgentFile } from "../src/build/agent-config.vibe"
+import { peerTrusted } from "../gen/os__agentService__channel.effect.vibe"
 import { scratch, writeTree } from "./support/scratch.vibe"
 
 module node {
@@ -56,8 +57,34 @@ module node {
     if (child.error !== undefined) throw child.error
     return { exit: child.status, stateCreated: existsSync(state) }
   }
+
+  export interface LifecycleStep {
+    readonly outcome: "accepted" | "refused"
+    readonly state: { readonly phase: Readonly<Record<string, string>>; readonly epoch: number; readonly attempt: number }
+    readonly out: readonly Readonly<Record<string, string | number>>[]
+  }
+
+  /** @throws {Error} */
+  export function lifecycle(events: readonly object[]): LifecycleStep[] {
+    const main = "ai.eliza.os.agent.LifecycleAdapter"
+    const out = execFileSync(java, ["-cp", compileAdapter(main), main], { input: events.map((event) => JSON.stringify({ event })).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
+    return out.trim().split("\n").map((line) => JSON.parse(line) as LifecycleStep)
+  }
+
+  export interface PeerAnswer {
+    readonly peer: number | null
+    readonly appUid: number
+    readonly trusted: boolean
+  }
+
+  /** @throws {Error} */
+  export function peerAnswers(): PeerAnswer[] {
+    const main = "ai.eliza.os.agent.PeerCheck"
+    const out = execFileSync(java, ["-cp", compileAdapter(main), main], { encoding: "utf8", timeout: 120_000 })
+    return out.trim().split("\n").map((line) => JSON.parse(line) as PeerAnswer)
+  }
 }
-import { launchOutcome, project, type Answer, type Ask } from node
+import { launchOutcome, lifecycle, peerAnswers, project, type Answer, type Ask } from node
 
 type Files = Readonly<Record<AgentFile, string>>
 
@@ -263,3 +290,25 @@ it.effect('The build reads the three agent data files from their asset names and
     assert.strictEqual(missing, "The agent policy file is missing")
   }
 })
+
+it.effect('A launch that never answers ready, or exits before it does, is restarted after a growing pause, and a configuration exit still fails it (spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does is restarted after the health delay")', effect () => {
+  const spawn = [{ type: "reapStale" }, { type: "launchHook", refused: false }, { type: "spawn" }]
+  const steps = try Effect.try(() => lifecycle([
+    { type: "credentialArrived", version: 1 }, { type: "start" }, ...spawn,
+    { type: "timeout" }, { type: "observeExit", code: 137 }, ...spawn,
+    { type: "observeExit", code: 70 }, ...spawn,
+    { type: "observeExit", code: 78 },
+  ]))
+  assert.deepStrictEqual([5, 6, 10, 14].map((at) => [steps[at]?.outcome, steps[at]?.state.phase, steps[at]?.state.epoch, steps[at]?.state.attempt, steps[at]?.out]), [
+    ["accepted", { tag: "Stopping" }, 1, 0, [{ tag: "Kill", epoch: 1 }]],
+    ["accepted", { tag: "Starting", stage: "Checking" }, 2, 1, [{ tag: "Check", epoch: 2, account: "account-a", delayMs: 1000 }]],
+    ["accepted", { tag: "Starting", stage: "Checking" }, 3, 2, [{ tag: "Check", epoch: 3, account: "account-a", delayMs: 2000 }]],
+    ["accepted", { tag: "Failed", cause: "Config" }, 3, 2, []],
+  ])
+}, 120_000)
+
+it.effect('The service writes to the agent socket only when the kernel names this app as its peer, as the rule decides for every peer (spec/os/agentService/channel.md, "The token is written only to a socket whose peer is this app")', effect () => {
+  const answers = try Effect.try(() => peerAnswers())
+  assert.deepStrictEqual(answers.map((answer) => [answer.peer, answer.appUid, answer.trusted]), [[1, 1, true], [1, 2, false], [2, 1, false], [2, 2, true], [null, 1, false], [null, 2, false]])
+  assert.deepStrictEqual(answers.map((answer) => peerTrusted(answer.peer === null ? { tag: "PeerUnread" } : { tag: "PeerOfUser", uid: answer.peer }, answer.appUid)), answers.map((answer) => answer.trusted))
+}, 120_000)

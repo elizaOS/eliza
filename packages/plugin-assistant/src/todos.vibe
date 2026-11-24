@@ -1,5 +1,5 @@
 // spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item's completion time is set exactly while it is completed"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"
-import type { Action, ActionResult, Provider } from "@elizaos/core"
+import { isAffirmativeConfirmationReply, type Action, type ActionResult, type Memory, type Provider } from "@elizaos/core"
 import { Machine, Rejected, matching, stored, type Event, type Todo, type TodoStatus, type Todos } from "../gen/assistant__todos.effect.vibe"
 import { Facts, onAgent, readRecord, requestOf, writeRecord } from "./host.vibe"
 import { appliedReceipt, attributed, failedReceipt, previewReceipt, unchangedReceipt } from "./replies.vibe"
@@ -13,11 +13,6 @@ const todoActionName = "TODO"
 const statusOf = { start: "TodoInProgress", complete: "TodoCompleted", cancel: "TodoCancelled", reopen: "TodoPending" } as const satisfies Record<string, TodoStatus>
 const statusWords: Readonly<Record<string, string>> = { start: "in progress", complete: "completed", cancel: "cancelled", reopen: "open again" }
 const marks: Readonly<Record<TodoStatus, string>> = { TodoPending: "[ ]", TodoInProgress: "[→]", TodoCompleted: "[x]", TodoCancelled: "[-]" }
-const affirmative = /^\s*(?:yes|yeah|yep|yup|sure|ok(?:ay)?|confirm(?:ed)?|do it|go ahead|please do)\b/iu
-
-export function affirms(text: string): boolean {
-  return affirmative.test(text)
-}
 
 export effect function currentTodos() {
   provide stored(listKey) {
@@ -46,7 +41,8 @@ function namedTexts(list: Todos, words: string): readonly string[] {
 const decodeRequest = Schema.decodeUnknownOption(TodoRequest, { onExcessProperty: "error" })
 const decodeQuestion = Schema.decodeUnknownOption(Schema.Struct({ content: Schema.String, at: Schema.Number }))
 
-export effect function changeTodos(input: unknown, messageId: string, text: string) {
+export effect function changeTodos(input: unknown, message: Memory) {
+  const { messageId } = requestOf(message)
   const decoded = decodeRequest(input)
   if (Option.isNone(decoded)) return { success: false, text: "Say what to add or which to-do to change.", data: { outcome: "TODO_REQUEST_INVALID" } } satisfies ActionResult
   const request = decoded.value
@@ -70,7 +66,7 @@ export effect function changeTodos(input: unknown, messageId: string, text: stri
     const facts = { operation: `todo.${request.op}`, kind: request.op === "clear" ? "todo-list" : "todo", id: request.op === "clear" ? listKey : content, key, at }
     const target = `${facts.kind}:${facts.id}`
     const asked = try readRecord(questionKey, decodeQuestion)
-    const affirmed = affirms(text) && (request.op === "clear" || (asked !== undefined && plain(asked.content) === plain(content) && at - asked.at <= questionLifetime))
+    const affirmed = isAffirmativeConfirmationReply(message) && (request.op === "clear" || (asked !== undefined && plain(asked.content) === plain(content) && at - asked.at <= questionLifetime))
     const twin = request.op === "create" && !affirmed ? before.todos.find((todo) => isOpen(todo) && plain(todo.content) === plain(content))?.content : undefined
     const event: Event = request.op === "create" ? { type: "createTodo", key, content: twin ?? content, affirmed }
       : request.op === "delete" ? { type: "deleteTodo", key, content }
@@ -145,8 +141,7 @@ export const todosAction: Action = {
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
-    const { messageId, text } = requestOf(message)
-    return onAgent(runtime, Effect.catch(changeTodos(parametersOf(options), messageId, text), (failed) => Effect.succeed({ success: false, text: "The to-do list could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
+    return onAgent(runtime, Effect.catch(changeTodos(parametersOf(options), message), (failed) => Effect.succeed({ success: false, text: "The to-do list could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
   },
 }
 

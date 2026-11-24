@@ -558,6 +558,14 @@ pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: 
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
 ```
 
+### An explicit calculator command uses its literal expression first
+
+When the whole message explicitly asks for the calculator and gives one
+literal arithmetic expression ("use the calculator for 17 * 24"), the
+offered calculator evaluates exactly that expression before the model
+writes the reply. Multi-part commands and arithmetic stated in words keep
+the ordinary planner path.
+
 ### A directly routed call acknowledges once if it is still running after 400 milliseconds
 
 A call the whole message asked for outright begins without waiting for
@@ -717,6 +725,31 @@ pure def lawTheLaunchZoneIsLocalOnlyForTheOwner(launchZone: str, hostZone: str, 
   launchZone != "" implies clockSource("", launchZone, hostZone, owner) == { clockZone: launchZone, origin: LaunchZone, ownersLocal: owner }
 pure def lawTheHostClockIsNeverTheOwnersLocalTime(hostZone: str, owner: bool): bool =
   clockSource("", "", hostZone, owner) == { clockZone: hostZone, origin: HostZone, ownersLocal: false }
+```
+
+### What the person said earlier reaches the model with the minute it was said, on the turn's clock
+
+Each message of the person in the history the model reads starts with
+`[message_at=MM-DD HH:MM] `, the date and minute the message was stored,
+in the zone of the turn's clock (above), so the model can answer "what
+did I ask this morning" and order what was said against the clock line.
+The stamp is [core's](../../core/context.md): the year leads only when it
+is not the year of the turn's clock, and an offset follows only in the
+hour a zone's clocks repeat. The agent's own earlier messages carry no
+stamp. They are sent as the assistant's own words, and a stamp there
+would be read as something it said and written into its next reply; each
+reply follows the stamped request it answered. The latest message carries
+none either: the clock line states its time. A message stored without a
+time is sent as it is. A stamp depends only on the message's stored time
+and the clock's zone and year, so the history stays the same bytes from
+turn to turn while those hold.
+
+```quint
+pure def stampedForTheModel(fromPerson: bool, storedAt: int): bool = fromPerson and storedAt > 0
+pure val storedAtValues = Set(-1, 0, 1763932800000)
+pure def lawTheAgentsOwnWordsAreNeverStamped(storedAt: int): bool = not(stampedForTheModel(false, storedAt))
+pure def lawAMessageStoredWithoutATimeIsSentAsItIs(fromPerson: bool, storedAt: int): bool = storedAt <= 0 implies not(stampedForTheModel(fromPerson, storedAt))
+pure def lawWhatThePersonSaidAtAKnownTimeIsStamped(storedAt: int): bool = storedAt > 0 implies stampedForTheModel(true, storedAt)
 ```
 
 ### A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading

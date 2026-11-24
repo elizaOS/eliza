@@ -1,10 +1,10 @@
 // The generator on a copy of test/fixtures that nothing else reads or writes, in the system's temporary
 // directory. The copy needs no install: fixtures/modules, its `node_modules`, declares what the fixtures import.
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { afterAll, expect, it } from "vitest";
-import { type Component, generator, watched } from "../emit.ts";
+import { type Component, generator, listener, watched } from "../emit.ts";
 
 const root = mkdtempSync(join(realpathSync(tmpdir()), "stories-fixtures-"));
 cpSync(join(import.meta.dirname, "fixtures"), root, { recursive: true });
@@ -14,6 +14,13 @@ afterAll(() => rmSync(root, { recursive: true }));
 const out = join(root, "generated", "stories");
 const run = generator({ root });
 const first = run();
+const writeFiles = (dir: string, files: Record<string, string>) => {
+  for (const [file, text] of Object.entries(files)) {
+    const path = join(dir, file);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, text);
+  }
+};
 const component = (name: string, from = first): Component => from.index.components.find((c) => c.name === name)!;
 const stories = (name: string, from = first) => component(name, from).stories.map((s) => `${s.kind} ${s.id}`);
 const read = (name: string) => readFileSync(join(out, name), "utf8");
@@ -118,7 +125,7 @@ it("plays a disabled or loading story to check that a click, Enter or Space call
   expect(read("kit-kinds.stories.tsx")).not.toContain("refuses");
 });
 
-it("links a component to its spec model and renders it from the generated initial state", () => {
+it("links a component to its spec model and renders it from the generated initial state", async () => {
   expect(component("Receipt")).toMatchObject({ model: { spec: "spec/index.md", module: "index", state: "Order", events: ["addItem", "pay"] }, design: ["design.md#receipt"] });
   expect(component("Receipt").stories[1]).toEqual({ id: "kit-receipt--model", name: "Model", kind: "model", args: { order: { status: "Draft", units: 0 } } });
   expect(read("kit-receipt.stories.tsx")).toContain('import { initial } from "../../gen/index.ts";');
@@ -127,31 +134,83 @@ it("links a component to its spec model and renders it from the generated initia
   const workspace = join(root, "mapped-owner");
   const ui = join(workspace, "packages/ui");
   const model = readFileSync(join(root, "gen/index.ts"), "utf8");
-  const mapped = 'import type { Order } from "../../../gen/workflow.ts";\n' + model
-    .replace(/^export (?:type Status|interface Order) .*\n/gm, "")
-    .replace("units: 0", "units: 9");
+  const declarations = /^export (?:type Status|interface Order) .*$/gm;
+  const from = (name: string, units: number) => `import type { Order } from "${name}";\n` + model
+    .replace(declarations, "").replace("units: 0", `units: ${units}`);
   const receipt = readFileSync(join(root, "src/Receipt.tsx"), "utf8");
-  const files = {
+  writeFiles(workspace, {
     "package.json": "{}",
+    "domain.ts": model.match(declarations)!.join("\n"),
     "packages/ui/package.json": readFileSync(join(root, "package.json"), "utf8"),
-    "packages/ui/tsconfig.json": readFileSync(join(root, "tsconfig.json"), "utf8"),
-    "packages/ui/src/Receipt.tsx": receipt.replace("../gen/index.ts", "../../../gen/workflow.ts").replace("spec/index.md", "spec/workflow/index.md"),
+    "packages/ui/tsconfig.json": JSON.stringify({ compilerOptions: { jsx: "react-jsx", noLib: true, types: [] } }),
+    "packages/ui/src/Receipt.tsx": receipt.replace("../gen/index.ts", "../../../domain.ts").replace("spec/index.md", "spec/workflow/index.md"),
     "spec/workflow/index.md": "# Workflows",
-    "gen/workflow.ts": model,
+    "gen/workflow.ts": from("../domain.ts", 0),
     "packages/plugin-workflows/package.json": '{"name":"@fixture/plugin-workflows"}',
-    "packages/plugin-workflows/gen/workflow.ts": mapped,
-  };
-  for (const [file, text] of Object.entries(files)) {
-    const path = join(workspace, file);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, text);
-  }
+    "packages/plugin-workflows/gen/workflow.ts": from("../../../domain.ts", 7),
+  });
   const generate = generator({ root: ui });
-  expect(component("Receipt", generate()).stories[1].args).toEqual({ order: { status: "Draft", units: 0 } });
-  expect(generate().written).toEqual([]);
+  const compare = (units: number, modelPath: string) => {
+    const warm = generate();
+    const control = join(ui, "generated", "clean");
+    rmSync(control, { recursive: true, force: true });
+    expect(generator({ root: ui, out: control })().index).toEqual(warm.index);
+    expect(component("Receipt", warm).stories[1].args).toEqual({ order: { status: "Draft", units } });
+    const story = "kit-receipt.stories.tsx";
+    const content = readFileSync(join(ui, "generated/stories", story), "utf8");
+    expect(content).toBe(readFileSync(join(control, story), "utf8"));
+    expect(content).toContain(`import { initial } from "${modelPath}";`);
+    return warm;
+  };
+  compare(0, "../../../../gen/workflow.ts");
+  expect(generate().analyzed).toBe(0);
+  const owner = "packages/workflow";
+  writeFiles(workspace, { [`${owner}/package.json`]: '{}', [`${owner}/gen/workflow.ts`]: from("../../../domain.ts", 9) });
+  compare(9, "../../../workflow/gen/workflow.ts");
+  writeFiles(ui, { "gen/workflow.ts": from("../../../domain.ts", 9) });
+  compare(9, "../../gen/workflow.ts");
+  writeFiles(workspace, { "gen/workflow.ts": from("../domain.ts", 3) });
+  expect(compare(9, "../../gen/workflow.ts").analyzed).toBe(0);
+  rmSync(join(ui, "gen/workflow.ts"));
+  compare(9, "../../../workflow/gen/workflow.ts");
+  mkdirSync(join(workspace, owner, "spec"));
+  compare(3, "../../../../gen/workflow.ts");
+  rmSync(join(workspace, owner, "spec"), { recursive: true });
+  compare(9, "../../../workflow/gen/workflow.ts");
+  rmSync(join(workspace, owner, "package.json"));
+  compare(3, "../../../../gen/workflow.ts");
   writeFileSync(join(workspace, "package.json"), JSON.stringify({ specOwners: { workflow: "packages/plugin-workflows" } }));
-  expect(component("Receipt", generate()).stories[1].args).toEqual({ order: { status: "Draft", units: 9 } });
-  expect(readFileSync(join(ui, "generated/stories/kit-receipt.stories.tsx"), "utf8")).toContain('import { initial } from "../../../plugin-workflows/gen/workflow.ts";');
+  compare(7, "../../../plugin-workflows/gen/workflow.ts");
+  rmSync(join(workspace, "packages/plugin-workflows/gen/workflow.ts"));
+  rmSync(join(workspace, "gen/workflow.ts"));
+  expect(component("Receipt", generate()).model).toBeUndefined();
+  writeFiles(ui, { "gen/workflow.ts": "" });
+  const empty = generate();
+  expect(empty.analyzed).toBe(1);
+  expect(empty.diagnostics.length).toBeGreaterThan(0);
+  expect(generator({ root: ui, out: join(ui, "generated/empty") })().diagnostics).toEqual(empty.diagnostics);
+  writeFiles(ui, { "gen/workflow.ts": from("../../../domain.ts", 4) });
+  compare(4, "../../gen/workflow.ts");
+  rmSync(join(ui, "gen/workflow.ts"));
+  writeFiles(workspace, { "gen/workflow.ts": from("../domain.ts", 5) });
+  let last = generate();
+  const watchedStories = listener(ui, undefined, (observe) => { last = generate(observe); });
+  const shows = (units: number) => expect.poll(() => component("Receipt", last).stories[1]?.args, { timeout: 10000 }).toEqual({ order: { status: "Draft", units } });
+  try {
+    await shows(5);
+    writeFiles(workspace, { "gen/replacement.ts": from("../domain.ts", 6) });
+    renameSync(join(workspace, "gen/replacement.ts"), join(workspace, "gen/workflow.ts"));
+    await shows(6);
+    writeFiles(workspace, { "packages/plugin-workflows/gen/workflow.ts": from("../../../domain.ts", 7) });
+    await shows(7);
+    rmSync(join(workspace, "packages/plugin-workflows/gen"), { recursive: true });
+    await shows(6);
+    writeFiles(workspace, { "packages/plugin-workflows/gen/workflow.ts": from("../../../domain.ts", 8) });
+    await shows(8);
+  } finally {
+    watchedStories.close();
+  }
+
 });
 
 it("leaves a story to the hand-written file that has one of its name", () => {
@@ -176,6 +235,29 @@ it("writes the same bytes again, and nothing when nothing changed", () => {
   rmSync(out, { recursive: true });
   expect(generator({ root })().written).toHaveLength(10);
   expect(everything()).toEqual(before);
+  const mapped = join(root, "mapped-properties");
+  const componentFile = "src/ZMapped.tsx";
+  const source = [
+    "interface Flags { middle?: boolean; last?: boolean; first?: boolean }",
+    'type Selected = { [Key in "first" | "middle" | "last"]?: Flags[Key] };',
+    "/** First set of flags. */",
+    "export function ZMapped({ first, middle, last }: Selected) { return <button/> }",
+  ].join("\n");
+  writeFiles(mapped, {
+    "package.json": '{"name":"@fixture/kit"}',
+    "tsconfig.json": readFileSync(join(root, "tsconfig.json"), "utf8"),
+    "src/AReverse.tsx": 'export function AReverse({ pick }: { pick?: "last" | "middle" | "first" }) { return <button/> }',
+    [componentFile]: source,
+  });
+  const file = join(mapped, componentFile), time = new Date("2020-10-10T10:10:10Z");
+  utimesSync(file, time, time);
+  const generate = generator({ root: mapped }), original = generate();
+  writeFileSync(file, source.replace("First set", "Other set"));
+  utimesSync(file, time, time);
+  const edited = generate(), clean = generator({ root: mapped, out: join(mapped, "control") })();
+  expect(edited.index).toEqual(clean.index);
+  expect(component("ZMapped", edited)).toMatchObject({ description: "Other set of flags.", props: component("ZMapped", original).props });
+  expect(generate()).toMatchObject({ written: [], analyzed: 0 });
 });
 
 it("rewrites only what a change touches, and removes what a deleted component left", () => {

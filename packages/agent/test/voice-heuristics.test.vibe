@@ -50,7 +50,7 @@ it.effect("Send only what I meant: filler, sound annotations and echo are never 
   })
 })
 
-it.effect("Send only what I meant: the turn signal keeps the gate and the self-voice check uses the echo window", () => effect {
+it.effect('Send only what I meant: the turn signal keeps the gate and the self-voice check uses the echo window (spec/agent/voice/session.md, "The turn signal lets the agent speak only for an accepted, addressed turn that is not its own voice, and keeps the floor with the person while the utterance is likely unfinished")', () => effect {
   const signals = [
     buildVoiceTurnSignal("What time is it?"),
     buildVoiceTurnSignal("I want to go to the"),
@@ -60,6 +60,8 @@ it.effect("Send only what I meant: the turn signal keeps the gate and the self-v
     buildVoiceTurnSignal("Turn the lights on.", { speaker: { entityId: "friend", confidence: 0.9 }, knownSpeakerEntityIds: ["friend"] }),
     buildVoiceTurnSignal("Turn the lights on.", { selfVoiceSimilarity: 0.3, selfVoiceThreshold: 0.28, agentSpeaking: true }),
     buildVoiceTurnSignal("Turn the lights on.", { selfVoiceSimilarity: 0.9, replyAgeMs: 9000 }),
+    buildVoiceTurnSignal("*music*", { wakeWordActive: true }),
+    buildVoiceTurnSignal("um", { wakeWordActive: true }),
   ]
   try Effect.try(() => assert.deepStrictEqual(signals.map((s) => [s.agentShouldSpeak, s.nextSpeaker, s.source]), [
     [true, "agent", "client-ambient"],
@@ -70,10 +72,12 @@ it.effect("Send only what I meant: the turn signal keeps the gate and the self-v
     [true, "agent", "client-ambient+diarization"],
     [false, "user", "client-ambient+self-voice"],
     [true, "agent", "client-ambient"],
+    [false, "user", "client-ambient+wakeword"],
+    [true, "user", "client-ambient+wakeword"],
   ]))
 })
 
-it.effect("Send my words once I finish speaking: the end-of-turn heuristic scores trail-offs low", () => effect {
+it.effect('Send my words once I finish speaking: the end-of-turn heuristic scores trail-offs low (spec/agent/voice/session.md, "Without a scorer, how an utterance ends says how likely it is finished")', () => effect {
   const scored = ["", "and so...", "Is it done?", "it's fine, right", "pay $", "forty five point", "at one point.",
     "twenty one point.", "I think so.", "I want to pay the.", "I went and", "I was going to", "um", "we could", "go home",
     "the cat sat down"].map(scoreEndOfTurnHeuristic)

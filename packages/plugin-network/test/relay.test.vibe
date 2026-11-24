@@ -8,16 +8,16 @@ module node {
   import { spawn } from "node:child_process"
   import { once } from "node:events"
   import { createServer } from "node:net"
-  import { fileURLToPath } from "node:url"
+  import { join } from "node:path"
 
-  export async function startMockoon(signal: AbortSignal): Promise<{ baseUrl: string; stop(): Promise<void> }> {
+  export async function startMockoon(directory: string, signal: AbortSignal): Promise<{ baseUrl: string; stop(): Promise<void> }> {
     const server = createServer()
     server.listen(0, "127.0.0.1")
     await once(server, "listening", { signal })
     const address = server.address()
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
     if (address === null || typeof address === "string") throw new Error("Could not reserve a loopback fixture port")
-    const fixture = fileURLToPath(new URL("./fixtures/network.mockoon.json", import.meta.url))
+    const fixture = join(directory, "fixtures/network.mockoon.json")
     const child = spawn("mockoon-cli", ["start", "--data", fixture, "--port", String(address.port), "--hostname", "127.0.0.1", "--disable-admin-api"], { signal, stdio: ["ignore", "pipe", "pipe"] })
     const close = new Promise<void>(resolve => child.once("close", () => resolve()))
     let log = ""
@@ -40,7 +40,7 @@ import { startMockoon } from node
 
 it.effect("A valid Network relay receives a receipt and an altered retry is refused (spec/network/index.md, \"A successful Network action requires its own matching receipt\")", () => scoped(effect {
   try TestClock.setTime(1700000000000)
-  const fixture = try acquireRelease(tryPromise(signal => startMockoon(signal)), fixture => promise(() => fixture.stop()))
+  const fixture = try acquireRelease(tryPromise(signal => startMockoon(import.meta.dirname, signal)), fixture => promise(() => fixture.stop()))
   const transport = { baseUrl: fixture.baseUrl, secret: Redacted.make("network-local-fixture-secret-32-bytes") }
   const payload = { memberId: "local-member", app: "ntwrk", channel: "blooio", messageId: "local-msg-1", itemId: "match-1", text: "Tell Sam I am running late." }
   provide FetchHttpClient.layer {

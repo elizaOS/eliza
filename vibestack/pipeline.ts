@@ -9,7 +9,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import ts from "typescript";
+import type * as TS from "typescript";
 import type { Model } from "./gen.ts";
 import { conformance, type Machine } from "./conform.ts";
 import { explore } from "./explore.ts";
@@ -17,11 +17,11 @@ import { abandonedProof, ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, typ
 import { bin, exec, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, collectGarbage, evaluatorForCheck, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, collectGarbage, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { tests, VITEST_CONFIG } from "./testing/check.ts";
-import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, writeWhole, type Reported, type SrcFile } from "./util.ts";
+import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, writeWhole, tsApi, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 import { setupProjectAgents } from "./skill-links.ts";
 
@@ -82,11 +82,15 @@ function lockProject(root: string): () => void {
   const holderOf = (lock: string) => { try { return parseInt(fs.readFileSync(lock, "utf8"), 10); } catch { return NaN; /* removed in the meantime */ } };
   const refuse = (holder: number): never => { throw new Error(`another check or accept is running in this project (process ${holder}); wait for it to finish. If no such process is running, delete ${path.relative(root, file)}`); };
   for (let attempt = 0; ; attempt++) {
+    const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
     try {
-      fs.writeFileSync(file, `${process.pid}\n`, { flag: "wx" });
+      fs.writeFileSync(tmp, `${process.pid}\n`);
+      fs.linkSync(tmp, file);
       return () => fs.rmSync(file, { force: true });
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    } finally {
+      fs.rmSync(tmp, { force: true });
     }
     const holder = holderOf(file);
     if (alive(holder) || attempt) refuse(holder);
@@ -207,7 +211,7 @@ async function precomputedSimulations(root: string, specs: Spec[], targets: read
         const simulations = await allDone([...requested].map((name) => started.get(name)).filter((result) => result !== undefined));
         certifyInstallation();
         const results = simulations.flatMap(({ said }) => said);
-        if (!receipts || (started.size && evaluatorForCheck(root) !== evaluatorIdentity(root))) return { results };
+        if (!receipts) return { results };
         const complete = receipts.typechecks.size === selected.size && receipts.simulations.size === started.size && results.every((row) => row.ok);
         return { results, captured: { complete, receipts: new Map([...receipts.typechecks, ...receipts.simulations]) } };
       } finally {
@@ -460,13 +464,13 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   let specs: Spec[];
   let srcFiles: SrcFile[];
   const proofInputs = () => proofFiles(root).map((file) => [file, fs.readFileSync(path.join(root, file), "utf8")]);
-  let proofsRead: string[][];
+  let proofsRead: string[][] = [];
   let lock: ReviewLock;
   /** The scripts of the root and of each owner, by its prefix (util.ts, `codeDirs`). */
   let scripts: Map<string, Record<string, string>>;
   try {
     srcFiles = readSrc(root);
-    proofsRead = proofInputs();
+    if (accept) proofsRead = proofInputs();
     specs = readSpecs(root);
     lock = readReviewLock(root);
     scripts = new Map(codeDirs(root).map((dir) => [dir, packageScripts(path.join(root, dir))]));
@@ -482,6 +486,7 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   /** Each spec's simulation starts once its model is generated; they run at once and are reported in the specs' order. */
   const simulations: { spec: Spec; model: Model; domain: any; simulated: Promise<Simulation> }[] = [];
   const proofWork = new AbortController();
+  let loadedReady = false;
   let simulatedAll: EndPhase | undefined;
   let lastSimulation: number | undefined;
   const simulationSettled = observe && (() => { lastSimulation = performance.now(); });
@@ -491,8 +496,12 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     try {
       if (!model) throw error;
       models.push(model);
-      fs.mkdirSync(loaded, { recursive: true });
-      for (const f of ["package.json", `${spec.name}.ts`]) fs.copyFileSync(path.join(root, "gen", f), path.join(loaded, f));
+      if (!loadedReady) {
+        fs.mkdirSync(loaded, { recursive: true });
+        fs.copyFileSync(path.join(root, "gen", "package.json"), path.join(loaded, "package.json"));
+        loadedReady = true;
+      }
+      fs.copyFileSync(path.join(root, "gen", `${spec.name}.ts`), path.join(loaded, `${spec.name}.ts`));
       domain = await import(pathToFileURL(path.join(loaded, `${spec.name}.ts`)).href);
     } catch (e) {
       if (e instanceof InstallationChanged) {
@@ -511,6 +520,9 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     const simulated = simulation(memory, spec, specs, model, domain, seed).then((simulation) => {
       if (simulation.said.some((result) => !result.ok && result.stage === "sometimes")) proofWork.abort();
       return simulation;
+    }, (error) => {
+      proofWork.abort();
+      throw error;
     });
     // Report a rejected simulation in the same order as other results.
     if (simulationSettled) void simulated.then(simulationSettled, simulationSettled);
@@ -1083,9 +1095,9 @@ function legacySpecInputs(root: string, scopes: readonly string[]): LegacySpecIn
   return signature;
 }
 
-function configProperty(node: ts.Expression | undefined, name: string): ts.Expression | undefined {
+function configProperty(ts: typeof TS, node: TS.Expression | undefined, name: string): TS.Expression | undefined {
   if (!node || !ts.isObjectLiteralExpression(node)) return;
-  const matches = node.properties.filter((property): property is ts.PropertyAssignment =>
+  const matches = node.properties.filter((property): property is TS.PropertyAssignment =>
     ts.isPropertyAssignment(property) && ts.isStringLiteral(property.name) && property.name.text === name);
   if (matches.length === 1) return matches[0].initializer;
 }
@@ -1101,10 +1113,11 @@ async function legacyGenerationConfig(root: string, args: string[], env: NodeJS.
   const [file] = files;
   let text: string;
   try { text = fs.readFileSync(file, "utf8"); } catch { return; }
+  const ts = tsApi();
   const source = ts.parseJsonText(file, text);
-  const tasks = configProperty(source.statements[0]?.expression, "tasks");
-  const gen = configProperty(tasks, "//#gen");
-  const inputs = configProperty(gen, "inputs");
+  const tasks = configProperty(ts, source.statements[0]?.expression, "tasks");
+  const gen = configProperty(ts, tasks, "//#gen");
+  const inputs = configProperty(ts, gen, "inputs");
   if (!inputs || !ts.isArrayLiteralExpression(inputs)) return;
   const scopes = inputs.elements.flatMap((element) => ts.isStringLiteral(element) ? legacyProofInput.exec(element.text)?.slice(1) ?? [] : []);
   if (!scopes.length || !await sameTurboWorkspace(root, options)) return;
@@ -1128,8 +1141,7 @@ async function legacyGenerationConfig(root: string, args: string[], env: NodeJS.
 async function runTasks(root: string, args: string[]): Promise<number | null> {
   const fingerprint = path.join(root, ".cache", "toolchain.json");
   const text = JSON.stringify(await steady(toolchainFingerprint)) + "\n";
-  fs.mkdirSync(path.dirname(fingerprint), { recursive: true });
-  if (!fs.existsSync(fingerprint) || fs.readFileSync(fingerprint, "utf8") !== text) fs.writeFileSync(fingerprint, text);
+  if (!fs.existsSync(fingerprint) || fs.readFileSync(fingerprint, "utf8") !== text) writeWhole(fingerprint, text);
   let env: NodeJS.ProcessEnv = { ...process.env, TURBO_TELEMETRY_DISABLED: "1", VIBESTACK_QUINT_EVALUATOR: evaluatorIdentity(root) ?? randomUUID() };
   const credentials = path.join(os.homedir(), ".config", "vibestack", "turbo-cache.json");
   if (env.TURBO_TOKEN === undefined && fs.existsSync(credentials)) {
