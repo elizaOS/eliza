@@ -240,6 +240,26 @@ pure def lawOnlyARateLimitCarriesAWait(ended: ReplyKind, now: int): bool = provi
 pure def lawAWaitEndsAtTheRetryTime(ended: ReplyKind, now: int): bool = providerWaitMs(ended, now) > 0 implies now + providerWaitMs(ended, now) == retryAtIn(ended)
 ```
 
+### A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none
+
+A turn ended `insufficient_credits` by a model refusal that carries Cloud's
+own code (the [binding](../models/binding.md)'s `cloudCode`,
+`insufficient_credits` or `allowance_exhausted`) stores it with the reply,
+and the reply, its replay and its `done` frame carry it as `cloudCode`, so a
+client can tell an account out of plan allowance and credits from any other
+spent-credits failure. Every other reply carries none: an answer, another
+kind, and spent credits the binding recorded without that code.
+
+```quint
+pure def cloudCodeOn(k: ReplyKind, refused: B::FundsCode): str =
+  if (failureKind(k) == "insufficient_credits") B::fundsCodeName(refused) else ""
+pure val refusedValues = Set(B::NoFundsCode, B::CreditsSpent, B::AllowanceSpent)
+pure def lawOnlySpentCreditsCarriesACloudCode(ended: ReplyKind, refused: B::FundsCode): bool =
+  cloudCodeOn(ended, refused) != "" implies (failureKind(ended) == "insufficient_credits" and planActionOf(ended) == "funding")
+pure def lawSpentCreditsCarriesTheCodeTheRefusalNamed(refused: B::FundsCode): bool =
+  cloudCodeOn(AccountFailed({ failure: B::InsufficientCredits }), refused) == B::fundsCodeName(refused)
+```
+
 ### A turn that failed before any reply, for no cause the binding named, is stored as a provider issue
 
 A turn that fails without being stopped stores what it wrote with the

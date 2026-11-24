@@ -23,6 +23,7 @@ module node {
     readonly account?: { readonly userId: string; readonly organizationId: string }
     readonly workflowWorker?: { readonly runtimeDir: string; readonly executable: string; readonly sha256: string }
     readonly frame?: { readonly token: string; readonly epoch: number; readonly credential?: { readonly version: number; readonly value: string }; readonly storageKey?: string }
+    readonly google?: { readonly gmailChanges: boolean; readonly calendarEdits: boolean }
   }
 
   export type Answer =
@@ -139,6 +140,16 @@ const ADMITTED: readonly { readonly name: string; readonly files: Files; readonl
     ask: { account: ACCOUNT, frame: { token: "launch-token", epoch: 1, credential: { version: 1, value: "device-key" } } },
   },
   {
+    name: "host consent replaced by the owner's saved consent",
+    files: files({ ...HOST, model: { backend: "none" }, google: { gmailChanges: false, calendarEdits: false } }),
+    ask: { account: ACCOUNT, google: { gmailChanges: true, calendarEdits: true } },
+  },
+  {
+    name: "the owner's saved consent with none in the host file",
+    files: files({ ...HOST, model: { backend: "none" } }),
+    ask: { account: ACCOUNT, google: { gmailChanges: false, calendarEdits: true } },
+  },
+  {
     name: "own key without a signed-in account",
     files: files(OWN_KEY_HOST),
     ask: { frame: { token: "launch-token", epoch: 1 } },
@@ -193,7 +204,7 @@ effect function admittedAnswer(answer: Answer | undefined) {
   return answer
 }
 
-it.effect('Start my agent with my character, policy and model: the service and the build admit the same files, and the agent admits only ready launches with the required credential (spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Each data file is at most 256 KiB, and the host and policy files are schema 1"; spec/os/agentService/config.md, "The host file names a qualified service class and notification words of 1 to 200 characters"; spec/os/agentService/config.md, "The renderer\'s route list is admitted whole by the route gate\'s own rule"; spec/os/agentService/config.md, "The character, policy and launch settings are admitted exactly as the agent admits them"; spec/os/agentService/config.md, "The launch carries the active key\'s account and the staged worker, and never an agent id"; spec/os/agentService/config.md, "A ready launch is admitted unless its backend needs a fitting credential and the frame lacks one"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {
+it.effect('Start my agent with my character, policy and model: the service and the build admit the same files, and the agent admits only ready launches with the required credential (spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Each data file is at most 256 KiB, and the host and policy files are schema 1"; spec/os/agentService/config.md, "The host file names a qualified service class and notification words of 1 to 200 characters"; spec/os/agentService/config.md, "The renderer\'s route list is admitted whole by the route gate\'s own rule"; spec/os/agentService/config.md, "The character, policy and launch settings are admitted exactly as the agent admits them"; spec/os/agentService/config.md, "The launch carries the active key\'s account and the staged worker, and never an agent id"; spec/os/agentService/config.md, "A launch carries the Google consent the owner saved, else the host file\'s"; spec/os/agentService/config.md, "A ready launch is admitted unless its backend needs a fitting credential and the frame lacks one"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {
   provide NodeServices.layer {
     const provider = { ...files(OWN_KEY_HOST), account: ACCOUNT }
     const invalidProvider = { ...files({ ...OWN_KEY_HOST, schema: 2 }), account: ACCOUNT }
@@ -219,7 +230,7 @@ it.effect('Start my agent with my character, policy and model: the service and t
       assert.deepStrictEqual(document.account, entry.ask.account, entry.name)
       assert.deepStrictEqual(document.workflowWorker, entry.ask.workflowWorker, entry.name)
     }
-    const [full, record, ownKey, keyless, missingOwnKey] = ADMITTED.map((_, index) => answers[index])
+    const [full, record, replaced, savedOnly, ownKey, keyless, missingOwnKey] = ADMITTED.map((_, index) => answers[index])
     const fullAnswer = try admittedAnswer(full)
     assert.deepStrictEqual([fullAnswer.rendererGroups, fullAnswer.nativeGroups, fullAnswer.needsAccount], [1, 1, true])
     const fullDocument = try decodeLaunchDocument(fullAnswer.document)
@@ -231,6 +242,17 @@ it.effect('Start my agent with my character, policy and model: the service and t
     )
     assert.deepStrictEqual((try decodeLaunchDocument((try admittedAnswer(record)).document)).model,
       { backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "", largeModel: "", imageModel: "" })
+    // spec/os/agentService/config.md, "A launch carries the Google consent the owner saved, else the host file's"
+    const consents: unknown[] = []
+    for (const answer of [full, record, replaced, savedOnly]) consents.push((try decodeLaunchDocument((try admittedAnswer(answer)).document)).google)
+    assert.deepStrictEqual(consents,
+      [{ gmailChanges: false, calendarEdits: true }, undefined, { gmailChanges: true, calendarEdits: true }, { gmailChanges: false, calendarEdits: true }])
+    const [hostOnly] = try Effect.try(() => project([{ ...ADMITTED[2]!.files, account: ACCOUNT }]))
+    const replacedText = (try admittedAnswer(replaced)).document
+    const hostText = (try admittedAnswer(hostOnly)).document
+    const replacedDocument: unknown = try Effect.try(() => JSON.parse(replacedText))
+    const hostDocument: Record<string, unknown> = try Effect.try(() => JSON.parse(hostText))
+    assert.deepStrictEqual(replacedDocument, { ...hostDocument, google: { gmailChanges: true, calendarEdits: true } })
     assert.isFalse((try admittedAnswer(ownKey)).needsAccount)
     const keylessDocument = try decodeLaunchDocument((try admittedAnswer(keyless)).document)
     assert.deepStrictEqual(keylessDocument.policy, { actions: { allowed: ["REPLY", "SEARCH"] }, plugins: { load: ["inbox"], product: "assistant" } })

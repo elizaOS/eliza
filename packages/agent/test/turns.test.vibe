@@ -19,6 +19,7 @@ interface Reply {
   readonly userMessageId: string
   readonly actionResults: readonly { readonly action: string; readonly data: { readonly executionStatus?: string } }[]
   readonly failureKind?: string
+  readonly cloudCode?: string
   readonly planAction?: string
   readonly retryAfterMs?: number
   readonly action?: { readonly kind: string; readonly validatedCard: boolean; readonly verbatimAsked: boolean }
@@ -170,7 +171,7 @@ it.live('A reply quotes only the selected message in its own conversation and re
   })
 })
 
-it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix and live wait, a turn that failed for no named cause is a provider issue I can retry, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind only on the agent\'s reply"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation")', effect () => {
+it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind only on the agent\'s reply"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const state = try scratch("turns")
   const first = try cloudAgent(cloud, state)
@@ -200,6 +201,7 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
 
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const unfunded = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
+  const unfundedAgain = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
   const storedFailure = try host("stored failure", () => first.agent.runtime.getMemoryById(replyOf(unfunded).messageId as UUID))
   const limitedUntil = Date.now() + 60_000
   try Effect.sync(() => cloud.script(rateLimited(limitedUntil)))
@@ -245,14 +247,17 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
       status: unnamed.status, text: replyOf(unnamed).text, failureKind: replyOf(unnamed).failureKind, planAction: replyOf(unnamed).planAction,
       replayed: replyOf(unnamedAgain).messageId === replyOf(unnamed).messageId, stored: storedUnnamed?.content.failureKind,
     }, { status: 200, text: "", failureKind: "provider_issue", planAction: "retry", replayed: true, stored: "provider_issue" })
-    assert.deepStrictEqual({ status: unfunded.status, failureKind: replyOf(unfunded).failureKind, planAction: replyOf(unfunded).planAction, stored: storedFailure?.content.failureKind },
-      { status: 200, failureKind: "insufficient_credits", planAction: "funding", stored: "insufficient_credits" })
+    assert.deepStrictEqual({
+      status: unfunded.status, failureKind: replyOf(unfunded).failureKind, cloudCode: replyOf(unfunded).cloudCode, planAction: replyOf(unfunded).planAction,
+      replayed: [replyOf(unfundedAgain).messageId === replyOf(unfunded).messageId, replyOf(unfundedAgain).cloudCode],
+      stored: [storedFailure?.content.failureKind, storedFailure?.content.cloudCode],
+    }, { status: 200, failureKind: "insufficient_credits", cloudCode: "insufficient_credits", planAction: "funding", replayed: [true, "insufficient_credits"], stored: ["insufficient_credits", "insufficient_credits"] })
     const wait = replyOf(limited).retryAfterMs ?? -1
     assert.deepStrictEqual({
-      status: limited.status, failureKind: replyOf(limited).failureKind, planAction: replyOf(limited).planAction, waits: wait > 0 && wait <= 60_000,
+      status: limited.status, failureKind: replyOf(limited).failureKind, cloudCode: replyOf(limited).cloudCode, planAction: replyOf(limited).planAction, waits: wait > 0 && wait <= 60_000,
       replayed: [replyOf(limitedAgain).messageId === replyOf(limited).messageId, replyOf(limitedAgain).failureKind, replyOf(limitedAgain).retryAfterMs],
       stored: [storedLimit?.content.failureKind, storedLimit?.content.retryAt],
-    }, { status: 200, failureKind: "limit_reached", planAction: undefined, waits: true, replayed: [true, "limit_reached", undefined], stored: ["limit_reached", undefined] })
+    }, { status: 200, failureKind: "limit_reached", cloudCode: undefined, planAction: undefined, waits: true, replayed: [true, "limit_reached", undefined], stored: ["limit_reached", undefined] })
     assert.deepStrictEqual({ status: afterRestart.status, same: replyOf(afterRestart).messageId === replyOf(keyed).messageId, text: replyOf(afterRestart).text, calls: completions(cloud) - before },
       { status: 200, same: true, text: "Keyed answer.", calls: 0 })
     assert.deepStrictEqual({ status: cut.status, text: replyOf(cut).text, failureKind: replyOf(cut).failureKind, again: replyOf(cutAgain).messageId === replyOf(cut).messageId, calls: completions(cloud) - before },
@@ -293,7 +298,7 @@ it.live('The boundary refuses a malformed body, client id or voice view context,
 
 const planning = 'spec/agent/conversation/planning.md'
 
-it.live(`An explicit calculator command reaches its tool before the only model call (${planning}, "An explicit calculator command uses its literal expression first")`, effect () => {
+it.live(`An explicit calculator command is planned by the model, and nothing runs before the model has seen it (${planning}, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -304,10 +309,11 @@ it.live(`An explicit calculator command reaches its tool before the only model c
   })
   const { id } = try conversation(agent)
   const before = completions(cloud)
-  try Effect.sync(() => cloud.script(text("It is 408.")))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "(17 * 24)" } }), text("It is 408.")))
   const answered = replyOf(try send(agent, id, { text: "Use the calculator for (17 * 24)." }))
+  const firstAsked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(before)?.body as { messages?: { role: string }[] } | undefined
   try Effect.try(() => {
-    assert.deepStrictEqual([answered.text, answered.actionResults.map(({ action }) => action), completions(cloud) - before], ["It is 408.", ["CALCULATE"], 1])
+    assert.deepStrictEqual([answered.text, answered.actionResults.map(({ action }) => action), completions(cloud) - before, firstAsked?.messages?.at(-1)?.role], ["It is 408.", ["CALCULATE"], 2, "user"])
     assert.include(lastTurnPrompt(cloud), "408")
   })
 }, 120_000)
@@ -340,7 +346,7 @@ it.live(`Competing terminal decisions run no sibling tool and get one repair rou
       [200, "One clear answer.", [], 2])
     assert.include(repairPrompt, "None of its tools ran")
     assert.notInclude(repairPrompt, "First terminal copy.")
-    assert.deepStrictEqual([refused.status, completions(cloud) - beforeRepeat], [503, 2])
+    assert.deepStrictEqual([refused.status, replyOf(refused).failureKind, replyOf(refused).planAction, completions(cloud) - beforeRepeat], [200, "provider_issue", "retry", 2])
   })
 })
 

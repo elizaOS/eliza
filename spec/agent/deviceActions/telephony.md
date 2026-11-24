@@ -128,15 +128,16 @@ pure def nameVerdict(written: bool): TargetVerdict = if (written) TargetGrounded
 pure def lawOnlyAWrittenNameIsGrounded(written: bool): bool = targetGrounded(nameVerdict(written)) iff written
 ```
 
-### Alternative SMS recipients are clarified before any lookup
+### The model asks which of alternative SMS recipients is meant, in its own words, before any lookup
 
-On an enrolled phone that can compose or send SMS, when the owner gives
-alternative recipients in a whole text command ("text Carson or Maya that
-dinner is covered"), the agent asks which person should get the text before
-looking either up or proposing an operation. Alternatives within the text
-body remain part of the body. A message that also asks for emergency services
-("text Carson or Maya that I crashed, call an ambulance now") is not
-clarified, so the emergency rule still applies.
+On an enrolled phone that can compose or send SMS, the device tool's
+target guidance says that a proposal has one recipient and that, when the
+owner gives alternatives ("text Carson or Maya that dinner is covered"),
+the model asks which one in its own words before looking either up or
+proposing an operation. Whether the words give alternatives is the model's
+to judge: no fixed question answers the turn before the model sees it.
+Alternatives within the text body remain part of the body, and a message
+that also asks for emergency services keeps the emergency rule.
 
 ### A call or text to someone the owner names by a role is proposed at once, with that word as the contact query
 
@@ -170,7 +171,9 @@ pure def lawASearchIsRefusedFirstOnlyBesideTheRoleRule(callsContact: bool, texts
 
 When the whole message is a call command ("call 415-555-0100", "ring mum back
 please"), a text command ("text Sam saying I'm late", "send a text to Sam that
-…") or, on a phone that cannot open its keypad for chat, a request to open
+…", "send a text to Sam and say …", also after a leading thanks and with the
+words to send told to the person: "thank you, can you text Sam and tell him to
+…", "and tell her that …") or, on a phone that cannot open its keypad for chat, a request to open
 the dialer with a number ("open the dialer and type 415 302 4399"), and the
 model proposed an operation of that kind, the recipient the owner wrote is
 offered whatever the model proposed: their number in its dial form, or their

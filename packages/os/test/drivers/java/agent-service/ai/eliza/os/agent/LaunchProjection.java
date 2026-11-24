@@ -1,4 +1,4 @@
-// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
+// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "A launch carries the Google consent the owner saved, else the host file's"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
 package ai.eliza.os.agent;
 
 import java.io.BufferedReader;
@@ -31,9 +31,11 @@ public final class LaunchProjection {
     Map<String, Object> account = (Map<String, Object>) ask.get("account");
     Map<String, Object> worker = (Map<String, Object>) ask.get("workflowWorker");
     Map<String, Object> frame = (Map<String, Object>) ask.get("frame");
+    Map<String, Object> google = (Map<String, Object>) ask.get("google");
     String document = config.launchDocument(
       account == null ? null : new AgentCredentials.Account((String) account.get("userId"), (String) account.get("organizationId")),
-      worker == null ? null : new AgentConfig.WorkflowWorker((String) worker.get("runtimeDir"), (String) worker.get("executable"), (String) worker.get("sha256")));
+      worker == null ? null : new AgentConfig.WorkflowWorker((String) worker.get("runtimeDir"), (String) worker.get("executable"), (String) worker.get("sha256")),
+      google == null ? null : new AgentConfig.GoogleConsent((Boolean) google.get("gmailChanges"), (Boolean) google.get("calendarEdits")));
     Map<String, Object> held = frame == null ? null : (Map<String, Object>) frame.get("credential");
     LaunchFrame first = frame == null ? null : config.initialFrame(
       (String) frame.get("token"), ((BigDecimal) frame.get("epoch")).longValueExact(),
