@@ -444,7 +444,7 @@ ${fragment}`,
     const buildPages = jobBlock(cloudCfRelease, "build-pages");
     expect(release).toContain("github.event_name != 'pull_request'");
     expect(release).toContain(
-      `target_environment: \${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}`,
+      `target_environment: \${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main-v3') && 'production' || 'staging' }}`,
     );
     expect(buildPages).toContain(
       `VITE_API_URL: \${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}`,

@@ -277,7 +277,7 @@ describe("isAncestor — shallow checkout hydration", () => {
     for (let i = 0; i < commitCount; i += 1) {
       const message = `commit ${i}`;
       records.push(
-        "commit refs/heads/main",
+        "commit refs/heads/main-v3",
         `mark :${i + 1}`,
         `committer Deploy Guard Test <test@example.com> ${i + 1} +0000`,
         `data ${Buffer.byteLength(message)}`,
@@ -291,7 +291,7 @@ describe("isAncestor — shallow checkout hydration", () => {
       input: `${records.join("\n")}\n`,
       stdio: ["pipe", "ignore", "pipe"],
     });
-    execFileSync("git", ["symbolic-ref", "HEAD", "refs/heads/main"], {
+    execFileSync("git", ["symbolic-ref", "HEAD", "refs/heads/main-v3"], {
       cwd: origin,
     });
     const commits = execFileSync("git", ["rev-list", "--reverse", "HEAD"], {
@@ -460,21 +460,21 @@ describe("isAncestor — shallow checkout hydration", () => {
       })
         .toString()
         .trim();
-      execFileSync("git", ["checkout", "main"], {
+      execFileSync("git", ["checkout", "main-v3"], {
         cwd: origin,
         stdio: "ignore",
       });
       shallowClone(origin, clone);
       process.chdir(clone);
 
-      expect(isServedCommitOnCanonicalRef(uploaded, "refs/heads/main")).toBe(
+      expect(isServedCommitOnCanonicalRef(uploaded, "refs/heads/main-v3")).toBe(
         false,
       );
-      expect(isServedCommitOnCanonicalRef(commits[1], "refs/heads/main")).toBe(
-        true,
-      );
       expect(
-        isServedCommitOnCanonicalRef(uploaded, "refs/heads/main", () => {
+        isServedCommitOnCanonicalRef(commits[1], "refs/heads/main-v3"),
+      ).toBe(true);
+      expect(
+        isServedCommitOnCanonicalRef(uploaded, "refs/heads/main-v3", () => {
           throw new Error("remote unavailable");
         }),
       ).toBeNull();
@@ -484,7 +484,7 @@ describe("isAncestor — shallow checkout hydration", () => {
         servedCommit: uploaded,
         isAncestor,
         isServedCommitOnCanonical: (commit) =>
-          isServedCommitOnCanonicalRef(commit, "refs/heads/main"),
+          isServedCommitOnCanonicalRef(commit, "refs/heads/main-v3"),
       });
       expect(unattested.decision).toBe("deploy");
       expect(unattested.reason).toBe("served_commit_unattested");
@@ -494,7 +494,7 @@ describe("isAncestor — shallow checkout hydration", () => {
         servedCommit: canonicalHead,
         isAncestor,
         isServedCommitOnCanonical: (commit) =>
-          isServedCommitOnCanonicalRef(commit, "refs/heads/main"),
+          isServedCommitOnCanonicalRef(commit, "refs/heads/main-v3"),
       });
       expect(stale.decision).toBe("skip");
       expect(stale.reason).toBe("stale_run");

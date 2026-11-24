@@ -185,7 +185,7 @@ cat "$RUNNER_TEMP/candidates-$branch"
       event = "push",
       fail?: string,
     ) => {
-      for (const name of ["develop", "staging", "main"]) {
+      for (const name of ["develop-v3", "staging-v3", "main-v3"]) {
         writeFileSync(
           path.join(runner, `candidates-${name}`),
           `${(candidates[name] ?? []).join("\n")}\n`,
@@ -219,44 +219,45 @@ cat "$RUNNER_TEMP/candidates-$branch"
       };
     };
     const zero = "0".repeat(40);
-    const promoted = select("main", {
-      staging: ["malformed", diverged, trusted],
+    const promoted = select("main-v3", {
+      "staging-v3": ["malformed", diverged, trusted],
     });
     assert.equal(promoted.base, trusted);
-    assert.deepEqual(promoted.requests, ["main", "staging"]);
+    assert.deepEqual(promoted.requests, ["main-v3", "staging-v3"]);
     assert.deepEqual(
       new Set(git("rev-list", `${promoted.base}..${head}`).split("\n")),
       new Set([unvalidated, head]),
       "all unvalidated commits remain in the scan range",
     );
     assert.equal(
-      select("main", { main: [trusted], staging: [unvalidated] }).base,
+      select("main-v3", { "main-v3": [trusted], "staging-v3": [unvalidated] })
+        .base,
       trusted,
       "retain the destination's existing validated baseline",
     );
     assert.equal(
-      select("main", { staging: [unvalidated] }).base,
+      select("main-v3", { "staging-v3": [unvalidated] }).base,
       zero,
       "upstream validation cannot qualify changed source",
     );
-    assert.deepEqual(select("staging", { develop: [trusted] }), {
+    assert.deepEqual(select("staging-v3", { "develop-v3": [trusted] }), {
       base: zero,
-      requests: ["staging"],
+      requests: ["staging-v3"],
     });
     assert.equal(
-      select("main", { staging: [diverged] }).base,
+      select("main-v3", { "staging-v3": [diverged] }).base,
       zero,
       "a successful non-ancestor cannot reduce coverage",
     );
     assert.deepEqual(
-      select("main", { staging: [trusted] }, "push", "main"),
-      { base: zero, requests: ["main"] },
+      select("main-v3", { "staging-v3": [trusted] }, "push", "main-v3"),
+      { base: zero, requests: ["main-v3"] },
       "API failure keeps full validation",
     );
     assert.deepEqual(
       select(
-        "main",
-        { main: [trusted], staging: [trusted] },
+        "main-v3",
+        { "main-v3": [trusted], "staging-v3": [trusted] },
         "workflow_dispatch",
       ),
       { base: zero, requests: [] },
