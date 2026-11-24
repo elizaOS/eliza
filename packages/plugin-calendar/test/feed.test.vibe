@@ -2,9 +2,10 @@
 import { assert, it } from "@effect/vitest"
 import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent"
 import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
-import { calendarHost, runCalendarAction, type CalendarApprovalRow, type CalendarCache } from "../src/index.vibe"
+import { calendarHost, runCalendarAction, type CalendarApprovalRow } from "../src/index.vibe"
 import { cloudCalendar, managedEventId, managedFeed, mergeFeedEvents, parseManagedGoogleCalendarFeed, type PurgeRefused,
   type AggregatePorts, type CalendarLinkRecord, type FeedComponent, type ImportedSourceScope, type ManagedCacheStore } from "../src/feed/index.vibe"
+import { memoryCache } from "./support/memory-cache.ts"
 
 const api = "/api/v1/eliza/google"
 const grant = "0f6c2a5e-8b1d-4c3a-9e7f-2a4b6c8d0e1f"
@@ -153,15 +154,6 @@ it.effect(`Read only the exact selected calendar and window through the cloud li
 
 function at(value: unknown, ...path: string[]): unknown {
   return path.reduce<unknown>((inner, key) => typeof inner === "object" && inner !== null && key in inner ? (inner as Record<string, unknown>)[key] : undefined, value)
-}
-
-function memoryCache(): CalendarCache {
-  const rows = new Map<string, unknown>()
-  return {
-    async getCache<T>(key: string) { return rows.get(key) as T | undefined },
-    async setCache<T>(key: string, value: T) { rows.set(key, value); return true },
-    async deleteCache(key: string) { return rows.delete(key) },
-  }
 }
 
 it.effect(`Read and change the managed Google calendar beside the resident one through the cloud link (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account")`, effect () => {

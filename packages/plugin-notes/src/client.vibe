@@ -4,28 +4,14 @@ import { NoteRow, Revision, TrashRow } from "./records.schema.vibe"
 import type { NoteJson, NotesSnapshot, NotesTrashErase, NotesTrashRecordingCleanup, StickyNote } from "./types.vibe"
 
 module browser {
-  import { Cause, Effect, Exit } from "effect"
-  /** @throws {never} */
-  export function encode(value: unknown): string {
-    try {
-      return JSON.stringify(value) ?? "null"
-    } catch {
-      return "null"
-    }
-  }
-  /** @throws {never} */
-  export async function run<A, E>(program: Effect.Effect<A, E>): Promise<A> {
-    const exit = await Effect.runPromiseExit(program)
-    if (Exit.isSuccess(exit)) return exit.value
-    throw Cause.squash(exit.cause)
-  }
   /** @throws {never} */
   export async function sha256(text: string): Promise<string> {
     const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
     return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("")
   }
 }
-import { encode, run, sha256 } from browser
+import { sha256 } from browser
+import { encode, run } from "./json.vibe"
 
 export error NotesClientRefused { message: string }
 

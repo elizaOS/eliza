@@ -1,10 +1,11 @@
 // spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"
 import { assert, describe, it } from "@effect/vitest"
-import { insufficientCredits, partial, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+import { insufficientCredits, partial, text, toolCalls } from "./support/cloud-fake.ts"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
+import { conversation, streamingConversation } from "./support/streaming.vibe"
 import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-reader.vibe"
 import { cueRule } from "../src/conversation/reply-text.vibe"
 import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
@@ -147,19 +148,6 @@ module node {
 }
 import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads } from node
 
-schema Created { conversation: { id: string; roomId: string } }
-const created = Schema.decodeUnknownOption(Created)
-
-effect function cloudAgent(cloud: CloudFake, http: boolean) {
-  return try startInProcess({ http, launch: { backend: { kind: "cloud", origin: cloud.origin } }, frame: { credential: { version: 1, value: deviceKey } } })
-}
-
-effect function conversation(agent: InProcess) {
-  const answer = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
-  const decoded = "json" in answer ? created(answer.json) : Option.none()
-  if (decoded._tag !== "Some") return try Effect.die(new Error(`The conversation was not created: ${JSON.stringify(answer)}`))
-  return decoded.value.conversation
-}
 
 effect function streamed(agent: InProcess, id: string, body: object, abortAfterChunks?: number) {
   const cut = abortAfterChunks === undefined ? undefined : try Effect.sync(() => ({ afterChunks: abortAfterChunks, ready: Promise.resolve() }))
@@ -227,10 +215,7 @@ for (const rolledBack of [false, true]) {
 for (const transport of ["socket", "http"] as const) {
   describe(`Read a streamed reply from the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
     it.live('The reader rebuilds provisional previews from split frames and ends with the done text exactly (spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds"; spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark")', effect () => {
-      const cloud = try cloudFake(deviceKey)
-      const agent = try cloudAgent(cloud, transport === "http")
-      const { id } = try conversation(agent)
-      try Effect.sync(() => cloud.script(text(long.slice(0, 1500), long.slice(1500, 3000), long.slice(3000))))
+      const { agent, id } = try streamingConversation(transport, () => text(long.slice(0, 1500), long.slice(1500, 3000), long.slice(3000)))
       const chunks = try streamed(agent, id, { text: "Write at length." })
       const whole = try read(chunks, 0)
       const split = try read(chunks, 7)
@@ -245,10 +230,7 @@ for (const transport of ["socket", "http"] as const) {
     }, 120_000)
 
     it.live('A stream cut before its terminal frame is Dropped, and a broken transport too (spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId")', effect () => {
-      const cloud = try cloudFake(deviceKey)
-      const agent = try cloudAgent(cloud, transport === "http")
-      const { id } = try conversation(agent)
-      try Effect.sync(() => cloud.script(partial("Let me think")))
+      const { agent, id } = try streamingConversation(transport, () => partial("Let me think"))
       const chunks = try streamed(agent, id, { text: "Think forever." }, 2)
       const cut = try read(chunks, 5)
       const broken = try read(chunks, 5, true)
@@ -258,10 +240,7 @@ for (const transport of ["socket", "http"] as const) {
     }, 120_000)
 
     it.live('An account refusal is Done with its failure kind and Cloud\'s own code, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none")', effect () => {
-      const cloud = try cloudFake(deviceKey)
-      const agent = try cloudAgent(cloud, transport === "http")
-      const { id } = try conversation(agent)
-      try Effect.sync(() => cloud.script(insufficientCredits()))
+      const { agent, id } = try streamingConversation(transport, () => insufficientCredits())
       const chunks = try streamed(agent, id, { text: "Answer me." })
       const refused = try read(chunks, 11)
       const afterEnd = try read([...chunks, ...frames(`{"type":"token","text":"more"}`)], 11)

@@ -1,10 +1,9 @@
 // spec/os/agentService/lifecycle.md, "A stop before the spawn spawns nothing, and a stop of a live child waits for its exit"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/lifecycle.md, "A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 import { createHash } from "node:crypto";
-import readline from "node:readline";
 import type { Driver } from "../../gen/_conformance.ts";
 import type { Options } from "../../gen/os__agentService__lifecycle.conformance.ts";
 import type { AgentService, Event, NoticeChannel, ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
-import { jvmDriver } from "./jvm-adapter.ts";
+import { answerDriverLines, jvmDriver } from "./jvm-adapter.ts";
 
 const KEY = "device";
 
@@ -112,18 +111,4 @@ export const options: Options<LifecycleView> = {
   }),
 };
 
-if (import.meta.main) {
-  const answer = async (line: string) => {
-    const request: unknown = JSON.parse(line);
-    if (typeof request !== "object" || request === null || Array.isArray(request)) throw new Error(`not a driver request: ${line}`);
-    const event = (request as { event?: LifecycleEvent }).event;
-    if (event === undefined) await driver.reset();
-    else await driver.dispatch(KEY, event);
-    return { state: await driver.observe(KEY), out: event === undefined ? [] : await adapter.observeOutput?.(KEY) };
-  };
-  for await (const line of readline.createInterface({ input: process.stdin })) {
-    if (line.trim() === "") continue;
-    process.stdout.write(`${JSON.stringify(await answer(line))}\n`);
-  }
-  await driver[Symbol.asyncDispose]();
-}
+if (import.meta.main) await answerDriverLines(driver, KEY, (key) => adapter.observeOutput?.(key));

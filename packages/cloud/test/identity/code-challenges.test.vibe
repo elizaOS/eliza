@@ -1,14 +1,10 @@
 // spec/cloud/identity/codeChallenges.md, "Story: Sign in with a code sent to my email or phone"; spec/cloud/identity/codeChallenges.md, "Story: Stop guessing at my code"
 import { assert, describe, it } from "@effect/vitest"
 import { s256, secretText } from "../../src/shared/credential-crypto.vibe"
-import { testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
+import { check, testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
 import { latestCode } from "../support/inbox.ts"
 
 const clientId = "app.test"
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 function refusal(answer: Answer): string {
   const body = answer.body as { readonly error?: string; readonly reason?: string }

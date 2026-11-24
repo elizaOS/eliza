@@ -1,5 +1,5 @@
 // spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/access/transport.md, "Story: Stream a response and end it once"; spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
-import type { LocalAnswer, LocalRequest, StreamCut, StreamedAnswer, Subscription } from "./socket-client.ts";
+import { frameWaiters, type LocalAnswer, type LocalRequest, type StreamCut, type StreamedAnswer, type Subscription } from "./socket-client.ts";
 
 function parseJson(text: string): unknown {
   try {
@@ -63,23 +63,8 @@ export async function httpRequestStream(port: number, call: LocalRequest, leave?
 
 export function httpSubscribe(port: number, options: { streams: readonly string[]; clientId?: string; token?: string }): Subscription {
   const received: unknown[] = [];
-  const waiters: Array<{ predicate: (frame: unknown) => boolean; resolve: (frame: unknown) => void; reject: (error: Error) => void }> = [];
-  let delivered = 0;
-  let ended: Error | undefined;
+  const waiting = frameWaiters(received);
   const cut = new AbortController();
-  const settle = () => {
-    for (const waiter of [...waiters]) {
-      const found = received.slice(delivered).find(waiter.predicate);
-      if (found !== undefined) {
-        delivered = received.indexOf(found) + 1;
-        waiters.splice(waiters.indexOf(waiter), 1);
-        waiter.resolve(found);
-      } else if (ended !== undefined) {
-        waiters.splice(waiters.indexOf(waiter), 1);
-        waiter.reject(ended);
-      }
-    }
-  };
   const query = new URLSearchParams({ streams: options.streams.join(","), ...(options.clientId === undefined ? {} : { clientId: options.clientId }) });
   const listen = async () => {
     const response = await fetch(`${origin(port)}/api/events?${query}`, {
@@ -102,29 +87,15 @@ export function httpSubscribe(port: number, options: { streams: readonly string[
           const frame = parseJson(data);
           if (frame === undefined) throw new TypeError(`event stream sent data that is not JSON: ${data}`);
           received.push(frame);
-          settle();
+          waiting.settle();
         }
         boundary = pending.indexOf("\n\n");
       }
     }
   };
   listen().then(
-    () => {
-      ended = new Error("event subscription closed");
-      settle();
-    },
-    (error: unknown) => {
-      ended = error instanceof Error ? error : new Error(String(error));
-      settle();
-    },
+    () => waiting.end(new Error("event subscription closed")),
+    (error: unknown) => waiting.end(error instanceof Error ? error : new Error(String(error))),
   );
-  return {
-    frames: received,
-    next: (predicate = () => true) =>
-      new Promise((resolve, reject) => {
-        waiters.push({ predicate, resolve, reject });
-        settle();
-      }),
-    close: () => cut.abort(),
-  };
+  return { frames: received, next: waiting.next, close: () => cut.abort() };
 }

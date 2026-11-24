@@ -1,9 +1,7 @@
 // spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared"
 import { assert, it } from "@effect/vitest"
-import { parseLaunch } from "../src/host/launch.vibe"
-import { startAgent } from "../src/host/process.vibe"
 import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
-import { launchDocument, launchFrame } from "./support/scratch.ts"
+import { agentOnSocket, launchOnSocket } from "./support/socket-agent.vibe"
 
 module node {
   import { createHash } from "node:crypto"
@@ -511,16 +509,9 @@ import { agendaAfterRestart, agendaFromOrdinaryTurn, completeOriginalRead, workf
 it.effect('A shared device read answers the original request once, in its conversation (spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared"; spec/agent/deviceActions/index.md, "Story: Approve a device request once and learn exactly what happened"; spec/agent/deviceActions/execution.md, "Story: Preserve a device result when the screen retires")', effect () => {
   const state = try scratch("read-completion")
   const cloud = try cloudFake(deviceKey)
-  const socket = state.file("agent.sock")
-  const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
-  const config = try Effect.try(() => launchDocument({
+  const { socket, frame, parsed, running } = try launchOnSocket(state, {
     callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true, hostContextRevision: 1,
-  }))
-  const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
-  const running = try acquireRelease(
-    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),
-    (agent) => orDie(host("retire agent", () => agent.stop())),
-  )
+  }, { credential: { version: 1, value: deviceKey } })
   const observed = try host("read completion journey", () => completeOriginalRead(running, socket, frame.token, cloud))
   const { recovery, ...ordinary } = try host("read the agenda from an ordinary owner turn", () => agendaFromOrdinaryTurn(running, socket, frame.token, cloud, state.file("device-journal")))
   assert.deepStrictEqual(ordinary, {
@@ -546,10 +537,7 @@ it.effect('A shared device read answers the original request once, in its conver
     expected: undefined,
   }))
   try host("retire the first agent process", () => running.stop())
-  const restarted = try acquireRelease(
-    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),
-    (agent) => orDie(host("retire the restarted agent", () => agent.stop())),
-  )
+  const restarted = try agentOnSocket(parsed, state, "retire the restarted agent")
   assert.deepStrictEqual(try host("recover Agenda state after restart", () => agendaAfterRestart(restarted, socket, frame.token, recovery)), {
     orphaned: "expired", orphanHasOrigin: false, completed: "done", keptAttempt: true, keptEvidence: true,
   })
@@ -558,14 +546,7 @@ it.effect('A shared device read answers the original request once, in its conver
 it.effect('A workflow step is offered to the enrolled device, settles only by its receipt or confirmed review, and a declined step is refused (spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device")', effect () => {
   const state = try scratch("workflow-offer")
   const cloud = try cloudFake(deviceKey)
-  const socket = state.file("agent.sock")
-  const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
-  const config = try Effect.try(() => launchDocument({ callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true }))
-  const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
-  const running = try acquireRelease(
-    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),
-    (agent) => orDie(host("retire agent", () => agent.stop())),
-  )
+  const { socket, frame, running } = try launchOnSocket(state, { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true }, { credential: { version: 1, value: deviceKey } })
   assert.deepStrictEqual(try host("offer workflow steps to the device", () => workflowStepsOffered(running, socket, frame.token)), {
     device: { installationId: true, protocol: 1 },
     agenda: { listed: 0, status: 404, matchesMissing: true, phase: "Offered" },

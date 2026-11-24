@@ -1,6 +1,6 @@
 // spec/cloud/billing/checkout.md, "Story: Subscribe once, whichever screen or payer finishes it"; spec/cloud/billing/providerEvents.md, "Story: Apply each payment event once, whatever the delivery order"
 import { createHmac } from "node:crypto";
-import type { CatalogPrice, FakeAnswer, FakeHandler, FakeRequest } from "../fakes.ts";
+import { stripePrice, type CatalogPrice, type FakeAnswer, type FakeHandler, type FakeRequest } from "../fakes.ts";
 import { catalogPrices } from "../profile.ts";
 
 export const fakeSecretKey = "sk_test_fake";
@@ -424,19 +424,7 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
   const prices: ReadonlyArray<CatalogPrice> = options.prices ?? catalogPrices;
   for (const price of prices) {
     objects.set(price.productId, { id: price.productId, object: "product", active: true, livemode: price.livemode ?? false });
-    objects.set(price.priceId, {
-      id: price.priceId,
-      object: "price",
-      active: true,
-      currency: "usd",
-      unit_amount: price.unitAmount,
-      type: "recurring",
-      billing_scheme: "per_unit",
-      transform_quantity: null,
-      livemode: price.livemode ?? false,
-      product: price.productId,
-      recurring: { interval: "month", interval_count: 1, trial_period_days: null, usage_type: "licensed" },
-    });
+    objects.set(price.priceId, { ...stripePrice(price) });
   }
 
   const isKind = <K extends Kind>(kind: K) => (object: StripeObject | undefined): object is ObjectOf<K> => object?.object === kind;

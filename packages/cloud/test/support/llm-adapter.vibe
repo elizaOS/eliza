@@ -1,0 +1,35 @@
+// spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+import { FetchHttpClient } from "effect/http"
+import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
+import type { LlmProvider } from "../../src/providers/llm.vibe"
+import { feed, isDone, segmenter, utf8Text, type Fed, type Segmenter } from "../../src/services/sse.ts"
+import { startFakeServer } from "./fakes.ts"
+import { llmFake } from "./llm-fake.ts"
+import { secrets, testProfile } from "./profile.ts"
+
+export effect function llmAdapter() {
+  const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+  const llm = try sync(() => {
+    const fake = llmFake()
+    fakes.mount("/llm/", fake.handler)
+    return fake
+  })
+  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
+  const provider: LlmProvider = { id: "llm", baseUrl: `${fakes.url}/llm`, apiKeyEnv: "LLM_API_KEY" }
+  const layer = Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(
+    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))
+  )
+  return { llm, provider, layer }
+}
+
+export function segmented(chunks: ReadonlyArray<ReadonlyArray<number>>, end: (state: Segmenter) => Fed): ReadonlyArray<string> {
+  let state = segmenter()
+  const events: number[][] = []
+  for (const chunk of chunks) {
+    const next = feed(state, [...chunk])
+    state = next.segmenter
+    events.push(...next.events)
+  }
+  events.push(...end(state).events)
+  return events.map((event) => isDone(event) ? "[DONE]" : String.fromCodePoint(...utf8Text(event)))
+}
