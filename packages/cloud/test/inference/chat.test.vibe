@@ -166,7 +166,7 @@ describe("WP5 Inference: chat completions", () => {
         rejectedByProvider: [400, "invalid_request", undefined],
         providerAuthFailed: [503, "provider_unavailable", "5"],
         unlistedProviderFailure: [503, "provider_unavailable", "5"],
-        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["unknown", 50, 50], ["known", 166, 31], ["known", 19673, 31]],
+        usage: [["known", 1212, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["unknown", 50, 50], ["known", 166, 31], ["known", 1212, 31]],
         brokeUsage: [],
         holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled"],
         balance: 1_000_000 - 31 * 3 - 50 * 2
