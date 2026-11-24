@@ -1073,6 +1073,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       recorder.startRecording();
       if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IOException("Capture unavailable");
       if (!lease.opened()) throw new IOException("Microphone slot was reclaimed");
+      mark(own, "capture-open");
     }
 
     /** Streams PCM only while the machine says capture {@code generation} listens; levels always. */
@@ -1081,6 +1082,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       reader = new Thread(() -> {
         byte[] frame = new byte[MIC_FRAME];
         long levelAt = 0;
+        boolean sent = false;
         try {
           while (!stopping && !own.closed.get()) {
             int count = source.read(frame, 0, frame.length, AudioRecord.READ_BLOCKING);
@@ -1097,7 +1099,12 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
               levelAt = now;
               emit(own, "level", new JSObject().put("peak", listening ? CloudSpeechWire.peak(frame, count) : 0));
             }
-            if (listening && !own.sendPcm(frame, count)) throw new IOException("Speech upload stalled");
+            if (!listening) continue;
+            if (!own.sendPcm(frame, count)) throw new IOException("Speech upload stalled");
+            if (!sent) {
+              sent = true;
+              mark(own, "first-frame-sent");
+            }
           }
         } catch (Exception failure) {
           if (!stopping && !own.closed.get()) main.post(() -> deviceEnded(own, DeviceCause.MICROPHONE_LOST, "capture"));
