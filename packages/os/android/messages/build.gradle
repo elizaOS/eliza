@@ -14,8 +14,6 @@ android {
     defaultConfig {
         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
         targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
-        // Instrumented (androidTest) runner — exercises MessagesReader's real
-        // content://sms query on an emulator (issue #9967).
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -45,7 +43,6 @@ dependencies {
     // SmsProviderReader against fake SMS/MMS providers under Android shadows.
     testImplementation "org.robolectric:robolectric:4.16.1"
 
-    // Instrumented test deps (issue #9967 — on-device SMS read).
     androidTestImplementation "androidx.test:core:1.5.0"
     androidTestImplementation "androidx.test:runner:1.5.2"
     androidTestImplementation "androidx.test:rules:1.5.0"

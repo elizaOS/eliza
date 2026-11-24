@@ -1,3 +1,0 @@
-// spec/nativeReminders/index.md, "Story: Complete or snooze the exact reminder occurrence I chose"
-export { reminderStanding, remindersClient, remindersPlugin } from "@elizaos/os/bridges/reminders"
-export type * from "@elizaos/os/bridges/definitions/reminders"

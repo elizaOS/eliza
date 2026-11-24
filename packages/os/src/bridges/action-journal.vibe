@@ -142,8 +142,8 @@ effect function dismiss(plugin: ActionJournalPlugin, key: DeferredDeletionKey): 
     : { kind: "NotDismissed", message: DELETION_NOTICE_TEXT.dismissFailed }
 }
 
-export effect function queuedDeletions(plugin: ActionJournalPlugin): readonly DeferredDeletionEntry[]!! {
-  return (effect { return (try parseDeletionsPending(try nativeCall(PLUGIN, "pending", () => plugin.pending()))).deletions }) catch () => []
+export effect function queuedDeletions(plugin: ActionJournalPlugin) {
+  return (try parseDeletionsPending(try nativeCall(PLUGIN, "pending", () => plugin.pending()))).deletions
 }
 
 export function createDeferredDeletions(plugin: ActionJournalPlugin = actionJournalPlugin()): DeferredDeletionsClient {

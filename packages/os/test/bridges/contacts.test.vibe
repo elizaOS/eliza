@@ -1,6 +1,7 @@
 // spec/os/android/contacts.md, "Story: Read my contacts only while I am looking at them"; spec/os/android/contacts.md, "Story: Change only the contact I reviewed"; spec/os/android/contacts.md, "Story: Name the numbers I am already looking at"; spec/os/android/paging.md, "Story: Page my records without repeats or gaps"
 import { assert, it } from "@effect/vitest"
 import { createDeferredDeletions } from "../../src/bridges/action-journal.vibe"
+import { MalformedReply } from "../../src/bridges/bridge.vibe"
 import {
   ContactCallRejected,
   ContactCursorRefused,
@@ -46,6 +47,7 @@ module android {
     saves: number
     handoffs: string[]
     staged: Staged[]
+    journalReply: unknown
     asked: string[][]
     namesReply: unknown
     onNames: (() => Promise<void>) | undefined
@@ -84,6 +86,7 @@ module android {
       saves: 0,
       handoffs: [],
       staged: [],
+      journalReply: undefined,
       asked: [],
       namesReply: undefined,
       onNames: undefined,
@@ -106,7 +109,7 @@ module android {
       get: unused,
       list: unused,
       dismiss: unused,
-      pending: async () => ({ pending: phone.staged.map((row) => ({ ...row, window: "open" })) }),
+      pending: async () => phone.journalReply ?? { pending: phone.staged.map((row) => ({ ...row, window: "open" })) },
       undo: async ({ kind, id }) => {
         const row = phone.staged.find((one) => one.kind === kind && one.id === id)
         if (row !== undefined && row.phase === "queued") row.phase = "undone"
@@ -239,6 +242,7 @@ effect function refusal(call: () => Promise<unknown>) {
   if (cause instanceof ContactCallRejected) return `rejected ${cause.method}`
   if (cause instanceof ContactNamesRefused) return `names refused ${cause.answer.tag}${cause.answer.tag === "NamesNotAdmitted" ? ` ${cause.answer.refusal}` : ""}`
   if (cause instanceof ContactNamesDropped) return `names dropped ${cause.surface}`
+  if (cause instanceof MalformedReply) return `malformed ${cause.plugin}.${cause.method}`
   return cause
 }
 
@@ -363,6 +367,9 @@ it.live("Save or remove only the contact I reviewed, check a lost answer with an
   const removed = try promise(() => book.remove(checked))
   const afterRemove = (try promise(() => book.state())).gate
   const listedWhileQueued = (try promise(() => book.list({ query: "" }))).contacts.map((row) => row.id)
+  phone.journalReply = { pending: "unreadable" }
+  const journalUnreadable = try refusal(() => book.list({ query: "" }))
+  phone.journalReply = undefined
   const kept = try promise(() => createDeferredDeletions(journal).undo({ kind: "ContactRecord", id: "staged-1" }))
   const listedAfterUndo = (try promise(() => book.list({ query: "" }))).contacts.map((row) => row.id)
   const changed = try promise(() => book.remove({ ...checked, version: versionOf("1", 1) as ContactVersion }))
@@ -374,7 +381,7 @@ it.live("Save or remove only the contact I reviewed, check a lost answer with an
     {
       readOnly, advertised, unopened, empty, badNumber, created, updated, stale, afterStale: { gate: afterStale.gate, lastWrite: afterStale.lastWrite }, badVersion, handoffs,
       lost, afterLost: { gate: afterLost.gate, lastWrite: afterLost.lastWrite }, blocked, afterAutomatic, afterClose, stillBlocked,
-      checked: checked.notes ?? null, afterExplicit, removed, afterRemove, listedWhileQueued, kept, listedAfterUndo, changed, gone, unwritable, saves: phone.saves, handoffLog: phone.handoffs,
+      checked: checked.notes ?? null, afterExplicit, removed, afterRemove, listedWhileQueued, journalUnreadable, kept, listedAfterUndo, changed, gone, unwritable, saves: phone.saves, handoffLog: phone.handoffs,
       left: phone.people.map((one) => one.displayName),
     },
     {
@@ -400,6 +407,7 @@ it.live("Save or remove only the contact I reviewed, check a lost answer with an
       removed: { status: "queued", deletion: { kind: "ContactRecord", id: "staged-1", expiresAt: 1700000010000 } },
       afterRemove: "WriteIdle",
       listedWhileQueued: ["2", "3", "4", "5", "6"],
+      journalUnreadable: "malformed ElizaActionJournal.pending",
       kept: { kind: "Kept" },
       listedAfterUndo: ["1", "2", "3", "4", "5", "6"],
       changed: { status: "stale" },

@@ -3,7 +3,7 @@
   "version": "4.0.0-alpha.0",
   "private": true,
   "type": "module",
-  "description": "Phone app for Eliza \u2014 Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+  "description": "Phone app for Eliza \u2014 Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge).",
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
