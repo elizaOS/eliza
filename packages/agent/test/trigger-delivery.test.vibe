@@ -34,8 +34,12 @@ module node {
     return room.id
   }
 
+  type Heard = { readonly type?: string; readonly conversationId?: string; readonly message?: { readonly role?: string; readonly text?: string; readonly failureKind?: string } }
+
   export async function deliverToChosen(running: RunningAgent, cloud: CloudFake) {
-    const delivery = triggerDelivery(running.runtime, ownerOf(running))
+    const heard: Heard[] = []
+    const hear = (payload: unknown): void => { heard.push(payload as Heard) }
+    const delivery = triggerDelivery(running.runtime, ownerOf(running), { updated: hear, proactive: hear })
     const signal = new AbortController().signal
     const created = await delivery.resolveRoom(undefined)
     if (created.kind !== "Resolved") throw new Error("No default conversation was resolved")
@@ -54,6 +58,10 @@ module node {
     await running.runtime.deleteRoom(roomId)
     const before = cloud.calls.length
     const gone = await delivery.deliver(created.conversationId, { displayName: "Water", instructions: "Remind me to sleep" }, "trigger-1", signal)
+    const told = heard.map(({ type, conversationId, message }) => ({
+      type, own: conversationId === created.conversationId,
+      ...(message === undefined ? {} : { role: message.role, text: message.text, failed: message.failureKind !== undefined }),
+    }))
     const fallback = await delivery.resolveRoom(undefined)
     const fallbackRoom = fallback.kind === "Resolved" ? await roomOf(running, fallback.conversationId) : undefined
     return {
@@ -61,7 +69,7 @@ module node {
       chosen: chosen.kind, missing: missing.kind,
       completed, completedError: runError(completed), stored,
       failed: failed.kind === "Turn" ? failed.turn : failed.kind, failedError: runError(failed),
-      gone, goneError: runError(gone), missedError: runError({ kind: "Missed" }),
+      gone, goneError: runError(gone), missedError: runError({ kind: "Missed" }), told,
       inferencesAfterGone: cloud.calls.length - before,
       fallbackIsNew: fallback.kind === "Resolved" && fallback.conversationId !== created.conversationId,
       fallbackEmpty: fallbackRoom === undefined ? false : (await messages(running, fallbackRoom)).length === 0,
@@ -70,7 +78,7 @@ module node {
 
   export async function runOnEvents(running: RunningAgent, cloud: CloudFake) {
     const runtime = running.runtime
-    const delivery = triggerDelivery(runtime, ownerOf(running))
+    const delivery = triggerDelivery(runtime, ownerOf(running), { updated: () => undefined, proactive: () => undefined })
     const resolved = await delivery.resolveRoom(undefined)
     if (resolved.kind !== "Resolved") throw new Error("No conversation was resolved")
     const kept = new Map<string, Trigger>()
@@ -136,7 +144,7 @@ effect function owned() {
   return { running, cloud }
 }
 
-it.effect('A trigger prompt reaches only its own conversation and fails when it is gone or the turn fails (spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed")', effect () => {
+it.effect('A trigger prompt reaches only its own conversation, tells the feed each reply it stored, and fails when the conversation is gone or the turn fails (spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/agent/schedule/triggers.md, "A delivered run tells the open screen its conversation changed and sends each reply it stored, and a run without its room tells nothing")', effect () => {
   const { running, cloud } = try owned()
   const observed = try host("deliver journey", () => deliverToChosen(running, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
@@ -148,6 +156,12 @@ it.effect('A trigger prompt reaches only its own conversation and fails when it 
     ],
     failed: "Failed", failedError: "Prompt automation failed: The reply could not be generated",
     gone: { kind: "RoomGone" }, goneError: "Prompt automation delivery conversation is unavailable",
+    told: [
+      { type: "conversation-updated", own: true },
+      { type: "proactive-message", own: true, role: "assistant", text: "Water is good for you.", failed: false },
+      { type: "conversation-updated", own: true },
+      { type: "proactive-message", own: true, role: "assistant", text: "", failed: true },
+    ],
     missedError: "The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed.",
     inferencesAfterGone: 0, fallbackIsNew: true, fallbackEmpty: true,
   }))
