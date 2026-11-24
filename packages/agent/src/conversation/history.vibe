@@ -1,9 +1,10 @@
-// spec/agent/conversation/conversations.md, "Story: Read history a page at a time"; spec/agent/conversation/conversations.md, "The first page is the newest 200 messages"; spec/agent/conversation/conversations.md, "An older page holds only messages before its cursor, and hasMore says whether any are left"; spec/agent/conversation/conversations.md, "A jump to a message answers it with up to 100 messages on each side, and an unknown one is 404"; spec/agent/conversation/conversations.md, "A search page is a slice of the complete set of visible matches"
+// spec/agent/conversation/conversations.md, "Story: Read history a page at a time"; spec/agent/conversation/conversations.md, "The first page is the newest 200 messages"; spec/agent/conversation/conversations.md, "An older page holds only messages before its cursor, and hasMore says whether any are left"; spec/agent/conversation/conversations.md, "A jump to a message answers it with up to 100 messages on each side, and an unknown one is 404"; spec/agent/conversation/conversations.md, "A search page is a slice of the complete set of visible matches"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"
 module node {
   import { createHash } from "node:crypto"
-  import { MESSAGE_CONTENT_SEGMENT_TABLE, messageContentSegmentId, messageTextSourceDescriptor, parseCanonicalInteger, readMessageContentProjection, type AgentRuntime, type IDatabaseAdapter, type Memory, type MessageContentSegmentMetadata, type UUID } from "@elizaos/core"
+  import { MESSAGE_CONTENT_SEGMENT_TABLE, MESSAGE_SOURCE_TRIGGER_PROMPT, messageContentSegmentId, messageTextSourceDescriptor, parseCanonicalInteger, readMessageContentProjection, type AgentRuntime, type IDatabaseAdapter, type Memory, type MessageContentSegmentMetadata, type UUID } from "@elizaos/core"
   import { around, aroundRadius, cursorOf, olderPage, olderThan, pageOf, pageSize, precedes, privateNotice, recentPage, recentWindow, searchAdmitted, searchSize, shownText, type Body, type Page, type Row } from "../../gen/agent__conversation__conversations.ts"
   import type { IntegerResult } from "../../gen/core__numbers.ts"
+  import { historyShows } from "../../gen/agent__schedule__triggers.ts"
   import type { LocalRoute } from "../access/routes.vibe"
   import type { ConversationRecord, ConversationStore } from "./conversations.vibe"
 
@@ -76,8 +77,9 @@ module node {
   }
 
   export function historyRoutes(runtime: AgentRuntime, store: ConversationStore): LocalRoute[] {
-    const messagesOf = (record: ConversationRecord, textContains?: string) =>
-      runtime.adapter.getMemories({ roomId: record.roomId, tableName: "messages", ...(textContains === undefined ? {} : { textContains }) })
+    const messagesOf = async (record: ConversationRecord, textContains?: string) =>
+      (await runtime.adapter.getMemories({ roomId: record.roomId, tableName: "messages", ...(textContains === undefined ? {} : { textContains }) }))
+        .filter((memory) => historyShows(memory.entityId === runtime.agentId, memory.content.source === MESSAGE_SOURCE_TRIGGER_PROMPT ? "FiredByTrigger" : "SaidByOwner"))
     const shown = (order: Ordered, rows: readonly Row[]) => {
       const byRow = new Map(order.placed.map(({ row, memory }) => [row.id, memory]))
       return Promise.all(rows.flatMap((row) => {

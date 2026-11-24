@@ -9,7 +9,7 @@ import {
   countEnabledTriggers, getTrigger, listTriggerRuns, listTriggers, triggerKeeping,
   type StoredTrigger, type TriggerDetails, type TriggerRun as StoredRun,
 } from "./store.vibe"
-import { finishFacts, runError, triggerDelivery, type Delivery, type ResolvedRoom, type TriggerDelivery } from "./trigger-delivery.vibe"
+import { finishFacts, runError, triggerDelivery, type Delivery, type FiredPrompt, type ResolvedRoom, type TriggerDelivery } from "./trigger-delivery.vibe"
 import { startTriggerEvents, type TriggerEventName, type TriggerEventTarget, type TriggerEvents } from "./trigger-events.vibe"
 import type {
   SavedTrigger, TriggerDraft, TriggerPort, TriggerRefusal, TriggerRemoval, TriggerRun, TriggerRunNow, TriggerService, TriggerTiming, TriggerWrite,
@@ -187,7 +187,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     })
   }
 
-  effect function perform(id: string, room: string, prompt: string, startedAt: number, controller: AbortController): TriggerRun!! {
+  effect function perform(id: string, room: string, prompt: FiredPrompt, startedAt: number, controller: AbortController): TriggerRun!! {
     if (controller.signal.aborted) return try finish(id, interrupted, startedAt, controller)
     const outcome = try exit(promise(() => delivery.deliver(room, prompt, id, controller.signal)))
     const delivered: Delivery = Exit.isSuccess(outcome) ? outcome.value
@@ -215,7 +215,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       const activity = after.activity
       if (activity.tag === "Idle") return { kind: "missed" } satisfies Begun
       const controller = new AbortController()
-      const fiber = fork.detached perform(id, activity.room, row.details.instructions, startedAt, controller)
+      const fiber = fork.detached perform(id, activity.room, row.details, startedAt, controller)
       const run: Run = { controller, fiber }
       running.set(id, run)
       return { kind: "started", run } satisfies Begun
