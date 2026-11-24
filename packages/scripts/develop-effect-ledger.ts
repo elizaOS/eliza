@@ -27,6 +27,13 @@ const DEFAULT_REPO_ROOT = path.resolve(
   "../..",
 );
 const DEFAULT_REGISTRY = ".github/staging-effects.json";
+const STAGING_BRANCH = "staging-v3";
+const MAIN_BRANCH = "main-v3";
+const CANONICAL_BRANCHES = [STAGING_BRANCH, MAIN_BRANCH];
+const REGISTRY_BY_BRANCH = {
+  [STAGING_BRANCH]: ".github/staging-effects.json",
+  [MAIN_BRANCH]: ".github/main-effects.json",
+};
 const API_VERSION = "2026-03-10";
 const LEDGER_SCHEMA_VERSION = 1;
 const PAGE_SIZE = 100;
@@ -97,8 +104,8 @@ function readJson(filePath) {
 }
 
 function assertPromotionBranches(sourceBranch, targetBranch) {
-  if (sourceBranch !== "staging" || targetBranch !== "main") {
-    throw new Error("promotion must follow staging -> main");
+  if (sourceBranch !== STAGING_BRANCH || targetBranch !== MAIN_BRANCH) {
+    throw new Error("promotion must follow staging-v3 -> main-v3");
   }
 }
 
@@ -119,7 +126,7 @@ export function validateRegistry(registry) {
     );
   }
   const branch = registry.sourceBranch ?? registry.promotion?.sourceBranch;
-  if (!["staging", "main"].includes(branch))
+  if (!CANONICAL_BRANCHES.includes(branch))
     throw new Error("invalid registry source branch");
   for (const effect of registry.effects) {
     assertObject(effect, "effect");
@@ -154,10 +161,10 @@ export function validateRegistry(registry) {
       }
     }
   }
-  if (branch === "main") {
+  if (branch === MAIN_BRANCH) {
     if (registry.promotion !== null)
       throw new Error(
-        "promotion must follow staging -> main; main is terminal",
+        "promotion must follow staging-v3 -> main-v3; main-v3 is terminal",
       );
     return registry;
   }
@@ -260,8 +267,8 @@ export function buildEffectPlans({ expected, observed, registry, repoRoot }) {
 }
 
 export function validateSourceRun(run, sourceSha, sourceRunId, sourceBranch) {
-  if (!["staging", "main"].includes(sourceBranch)) {
-    throw new Error("source branch must be staging or main");
+  if (!CANONICAL_BRANCHES.includes(sourceBranch)) {
+    throw new Error("source branch must be staging-v3 or main-v3");
   }
   assertObject(run, "source workflow run");
   assertFullSha(sourceSha, "source SHA");
@@ -790,11 +797,9 @@ export async function reconcileBranchEffects({
 }) {
   let productionCertification;
   const incoming = await verifyMergedPromotion(api, sourceBranch, sourceSha);
-  if (sourceBranch === "main") {
+  if (sourceBranch === MAIN_BRANCH) {
     const previousRegistry = validateRegistry(
-      readJson(
-        path.join(repoRoot, `.github/${incoming.sourceBranch}-effects.json`),
-      ),
+      readJson(path.join(repoRoot, REGISTRY_BY_BRANCH[incoming.sourceBranch])),
     );
     await verifyIncomingEffectProofs(api, incoming, previousRegistry);
     productionCertification = await requireProductionCertification({
@@ -833,11 +838,11 @@ async function reconcileCommand(args) {
   const sourceRunId = requireString(args, "source-run-id");
   const sourceBranch = requireString(args, "source-branch");
   if (
-    !["staging", "main"].includes(sourceBranch) ||
+    !CANONICAL_BRANCHES.includes(sourceBranch) ||
     environment("GITHUB_REF_NAME") !== sourceBranch
   ) {
     throw new Error(
-      "source branch must match the staging or main workflow ref",
+      "source branch must match the staging-v3 or main-v3 workflow ref",
     );
   }
   assertFullSha(sourceSha, "source SHA");
@@ -850,7 +855,7 @@ async function reconcileCommand(args) {
     throw new Error("manifest source SHA mismatch");
   }
   const registry = validateRegistry(
-    readJson(path.join(repoRoot, `.github/${sourceBranch}-effects.json`)),
+    readJson(path.join(repoRoot, REGISTRY_BY_BRANCH[sourceBranch])),
   );
   if (
     (registry.sourceBranch ?? registry.promotion?.sourceBranch) !== sourceBranch
@@ -899,11 +904,11 @@ async function awaitSourceCommand(args) {
   const sourceRunId = requireString(args, "source-run-id");
   const sourceBranch = requireString(args, "source-branch");
   if (
-    !["staging", "main"].includes(sourceBranch) ||
+    !CANONICAL_BRANCHES.includes(sourceBranch) ||
     environment("GITHUB_REF_NAME") !== sourceBranch
   ) {
     throw new Error(
-      "source branch must match the staging or main workflow ref",
+      "source branch must match the staging-v3 or main-v3 workflow ref",
     );
   }
   const api = new GitHubApi({

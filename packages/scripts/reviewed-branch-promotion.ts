@@ -29,7 +29,9 @@ async function mergedPullRequestCommit(api, pr) {
 }
 
 export async function verifyMergedPromotion(api, targetBranch, targetSha) {
-  const sourceBranch = { staging: "develop", main: "staging" }[targetBranch];
+  const sourceBranch = { "staging-v3": "develop-v3", "main-v3": "staging-v3" }[
+    targetBranch
+  ];
   if (!sourceBranch || !SHA.test(targetSha))
     throw new Error("invalid promotion destination");
   const pulls = await api.request(
@@ -67,8 +69,8 @@ export async function verifyMergedPromotion(api, targetBranch, targetSha) {
 
 export async function requestReviewedPromotion(api, promotion) {
   const { sourceBranch, targetBranch, sourceSha, sourceRunUrl } = promotion;
-  if (sourceBranch !== "staging" || targetBranch !== "main") {
-    throw new Error("promotion must follow staging -> main");
+  if (sourceBranch !== "staging-v3" || targetBranch !== "main-v3") {
+    throw new Error("promotion must follow staging-v3 -> main-v3");
   }
   if (!SHA.test(sourceSha)) throw new Error("invalid promotion source SHA");
   const source = await api.request("GET", `/git/ref/heads/${sourceBranch}`);

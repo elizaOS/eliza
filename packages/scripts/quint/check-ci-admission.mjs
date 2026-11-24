@@ -57,7 +57,7 @@ const gate = required.steps.find(
 );
 assert(gate && typeof gate.run === "string");
 const promotion =
-  "(github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')";
+  "(github.event_name == 'pull_request' && github.base_ref == 'main-v3') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main-v3')";
 assert.equal(gate.env.PROMOTION, `\${{ ${promotion} }}`);
 const bindings = [
   ...gate.env.RESULTS.matchAll(
@@ -294,7 +294,7 @@ for (const event of [
         }),
       );
     const prExpected =
-      branch === "main" && ["pull_request", "merge_group"].includes(event);
+      branch === "main-v3" && ["pull_request", "merge_group"].includes(event);
     assert.equal(evaluate(shardJob.if), prExpected);
     assert.equal(evaluate(shardGate.if), prExpected);
     assert.equal(evaluate(gate.env.PROMOTION), prExpected);

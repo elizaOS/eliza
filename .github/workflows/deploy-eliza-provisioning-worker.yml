@@ -49,7 +49,7 @@ on:
 # Per-run admission so two dispatches of the same SHA both reach
 # determine-env (#18092). The deploy job is the SSH critical section.
 concurrency:
-  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}-${{ format('run-{0}', github.run_id) }}
+  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main-v3' && 'production' || 'staging') }}-${{ format('run-{0}', github.run_id) }}
   cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
@@ -74,28 +74,28 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$MODE" = diagnose ]; then
-            [ "$TRUSTED_REF" = refs/heads/staging ] && [ "$TARGET_ENVIRONMENT" = staging ] || {
-              echo "::error::Worker diagnostics require staging from refs/heads/staging"
+            [ "$TRUSTED_REF" = refs/heads/staging-v3 ] && [ "$TARGET_ENVIRONMENT" = staging ] || {
+              echo "::error::Worker diagnostics require staging from refs/heads/staging-v3"
               exit 1
             }
           fi
           # Production is a protected release target. A manual dispatch from
-          # any non-main ref must never be able to select production secrets or
-          # deploy the current main snapshot while running unreviewed code.
+          # any non-main-v3 ref must never be able to select production secrets or
+          # deploy the current main-v3 snapshot while running unreviewed code.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
             && [ "${{ github.event.inputs.environment }}" = "production" ] \
-            && [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            echo "::error::Production deployments must be dispatched from refs/heads/main"
+            && [ "${{ github.ref }}" != "refs/heads/main-v3" ]; then
+            echo "::error::Production deployments must be dispatched from refs/heads/main-v3"
             exit 1
           fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             env="${{ github.event.inputs.environment }}"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          elif [ "${{ github.ref }}" = "refs/heads/main-v3" ]; then
             env="production"
           else
             env="staging"
           fi
-          branch=$([ "$env" = "production" ] && echo "main" || echo "staging")
+          branch=$([ "$env" = "production" ] && echo "main-v3" || echo "staging-v3")
           echo "environment=$env" >> "$GITHUB_OUTPUT"
           echo "branch=$branch"   >> "$GITHUB_OUTPUT"
           echo "Resolved: environment=$env branch=$branch"
@@ -405,12 +405,12 @@ jobs:
           }
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
-            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "main"
+            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "main-v3"
             require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale.eliza.app"
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud.eliza.app"
             resolved_headscale_api_url="http://127.0.0.1:8081"
           else
-            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "staging"
+            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "staging-v3"
             require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale-staging.eliza.app"
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud-staging.eliza.app"
             resolved_headscale_api_url="http://127.0.0.1:8080"
@@ -549,7 +549,7 @@ jobs:
             echo "::error::Protected DATABASE_URL is required before provisioning-worker deploy"
             exit 1
           }
-          if [ "$DEPLOY_BRANCH" = main ]; then
+          if [ "$DEPLOY_BRANCH" = main-v3 ]; then
             bun packages/cloud/scripts/production-effect-certification.ts "$DEPLOY_SHA"
           fi
           bun run db:cloud:migrate
@@ -589,7 +589,7 @@ jobs:
           command_timeout: 5m
           script: |
             set -euo pipefail
-            if [ "$DEPLOY_BRANCH" = main ]; then
+            if [ "$DEPLOY_BRANCH" = main-v3 ]; then
               [[ "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" ] || {
                 echo "::error::Production certification expired before host mutation"
                 exit 1
@@ -735,7 +735,7 @@ jobs:
               echo "Timed out waiting for the previous provisioning deploy"
               exit 1
             }
-            if [ "$DEPLOY_BRANCH" = main ]; then
+            if [ "$DEPLOY_BRANCH" = main-v3 ]; then
               [[ "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" ] || {
                 echo "::error::Production certification expired before host mutation"
                 exit 1

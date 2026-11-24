@@ -42,8 +42,8 @@ function registry() {
     ],
     promotion: {
       id: "main-promotion",
-      sourceBranch: "staging",
-      targetBranch: "main",
+      sourceBranch: "staging-v3",
+      targetBranch: "main-v3",
     },
   };
 }
@@ -132,9 +132,11 @@ describe("develop effect registry and exact plans", () => {
   test("rejects promotion paths other than staging to main", () => {
     for (const [sourceBranch, targetBranch, message] of [
       ["develop", "staging", "invalid registry source branch"],
-      ["develop", "main", "invalid registry source branch"],
-      ["main", "staging", "main is terminal"],
-      ["staging", "develop", "staging -> main"],
+      ["develop-v3", "staging-v3", "invalid registry source branch"],
+      ["staging", "main", "invalid registry source branch"],
+      ["main-v3", "staging-v3", "main-v3 is terminal"],
+      ["staging-v3", "develop-v3", "staging-v3 -> main-v3"],
+      ["staging-v3", "main", "staging-v3 -> main-v3"],
     ]) {
       const config = registry();
       config.promotion = { ...config.promotion, sourceBranch, targetBranch };
@@ -143,7 +145,7 @@ describe("develop effect registry and exact plans", () => {
   });
 
   test("production dispatch binds the resulting main SHA and does not request another promotion", async () => {
-    const config = { ...registry(), sourceBranch: "main", promotion: null };
+    const config = { ...registry(), sourceBranch: "main-v3", promotion: null };
     const repoRoot = fixtureRoot();
     const current = buildEffectPlans({
       ...manifests(),
@@ -174,7 +176,7 @@ describe("develop effect registry and exact plans", () => {
       SOURCE_SHA,
     );
     expect(body).toMatchObject({
-      ref: "main",
+      ref: "main-v3",
       inputs: { source_sha: SOURCE_SHA },
     });
     expect(current.promotion).toBeNull();
@@ -202,27 +204,35 @@ describe("develop effect registry and exact plans", () => {
       SOURCE_SHA,
     );
     expect(dispatched).toMatchObject({
-      ref: "staging",
+      ref: "staging-v3",
       inputs: { source_sha: SOURCE_SHA },
     });
     const run = {
       id: 42,
       event: "push",
-      head_branch: "staging",
+      head_branch: "staging-v3",
       head_sha: SOURCE_SHA,
       path: ".github/workflows/develop-full.yml",
       status: "completed",
       conclusion: "success",
     };
-    expect(validateSourceRun(run, SOURCE_SHA, "42", "staging")).toBe(run);
+    expect(validateSourceRun(run, SOURCE_SHA, "42", "staging-v3")).toBe(run);
     expect(() =>
       validateSourceRun(
-        { ...run, head_branch: "develop" },
+        { ...run, head_branch: "develop-v3" },
         SOURCE_SHA,
         "42",
-        "staging",
+        "staging-v3",
       ),
-    ).toThrow("branch is not staging");
+    ).toThrow("branch is not staging-v3");
+    expect(() =>
+      validateSourceRun(
+        { ...run, head_branch: "staging" },
+        SOURCE_SHA,
+        "42",
+        "staging-v3",
+      ),
+    ).toThrow("branch is not staging-v3");
   });
 
   test("binds surface digests, effect workflow bytes, inputs, and registry", () => {
@@ -289,7 +299,7 @@ describe("source and durable ledger contracts", () => {
   const greenRun = {
     id: 42,
     event: "push",
-    head_branch: "staging",
+    head_branch: "staging-v3",
     head_sha: SOURCE_SHA,
     path: ".github/workflows/develop-full.yml",
     status: "completed",
@@ -297,20 +307,22 @@ describe("source and durable ledger contracts", () => {
   };
 
   test("accepts only the exact green Develop Full push", () => {
-    expect(validateSourceRun(greenRun, SOURCE_SHA, "42", "staging")).toBe(
+    expect(validateSourceRun(greenRun, SOURCE_SHA, "42", "staging-v3")).toBe(
       greenRun,
     );
-    expect(() =>
-      validateSourceRun(
-        { ...greenRun, head_branch: "develop" },
-        SOURCE_SHA,
-        "42",
-        "develop",
-      ),
-    ).toThrow("source branch must be staging or main");
+    for (const refusedBranch of ["develop", "develop-v3", "staging", "main"]) {
+      expect(() =>
+        validateSourceRun(
+          { ...greenRun, head_branch: refusedBranch },
+          SOURCE_SHA,
+          "42",
+          refusedBranch,
+        ),
+      ).toThrow("source branch must be staging-v3 or main-v3");
+    }
     for (const mutation of [
       { event: "pull_request" },
-      { head_branch: "main" },
+      { head_branch: "main-v3" },
       { head_sha: PRIOR_SHA },
       { path: ".github/workflows/ci.yml" },
       { conclusion: "failure" },
@@ -320,7 +332,7 @@ describe("source and durable ledger contracts", () => {
           { ...greenRun, ...mutation },
           SOURCE_SHA,
           "42",
-          "staging",
+          "staging-v3",
         ),
       ).toThrow();
     }
@@ -509,7 +521,7 @@ describe("source and durable ledger contracts", () => {
       },
     };
     expect(await dispatchEffect(api, plan, SOURCE_SHA)).toBe(123);
-    expect(body).toMatchObject({ ref: "staging", return_run_details: true });
+    expect(body).toMatchObject({ ref: "staging-v3", return_run_details: true });
   });
 });
 
