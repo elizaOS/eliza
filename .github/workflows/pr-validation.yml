@@ -12,7 +12,7 @@ name: PR Validation
 
 on:
   pull_request:
-    branches: [develop, staging, main]
+    branches: [develop-v3, staging-v3, main-v3]
     types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
@@ -866,7 +866,7 @@ jobs:
 
   quint-models:
     name: Quint shard (${{ matrix.shard }}/4)
-    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main-v3') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main-v3')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -1031,7 +1031,7 @@ jobs:
 
   quint:
     name: Quint state and implementation checks
-    if: ${{ always() && !cancelled() && ((github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')) }}
+    if: ${{ always() && !cancelled() && ((github.event_name == 'pull_request' && github.base_ref == 'main-v3') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main-v3')) }}
     needs: [quint-models]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1608,7 +1608,7 @@ jobs:
     steps:
       - name: Require every admission lane
         env:
-          PROMOTION: ${{ (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main') }}
+          PROMOTION: ${{ (github.event_name == 'pull_request' && github.base_ref == 'main-v3') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main-v3') }}
           RESULTS: >-
             secret-scan=${{ needs.secret-scan.result }}
             source-checks=${{ needs.source-checks.result }}
