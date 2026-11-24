@@ -149,6 +149,7 @@ module node {
     })))
   }
 
+  /** @throws {never} */
   export async function alphaTool(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, alphaPhone.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities: alphaPhone, workflowProtocol: 1 })

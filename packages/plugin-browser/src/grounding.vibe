@@ -1,5 +1,4 @@
 // spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A reload of a page my phone withheld runs only when my message asked for it"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice"
-import { regexMatches } from "@elizaos/agent/device-actions"
 import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
 import { groundedSearch } from "../gen/browser__control.effect.vibe"
 import { closingMarkIsProse, directDestination, pageLinkDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
@@ -20,6 +19,17 @@ function compiled(source: string, flags: string): RegExp {
   } catch {
     return /(?!)/
   }
+}
+
+function matchesOf(text: string, pattern: RegExp): RegExpExecArray[] {
+  const found: RegExpExecArray[] = []
+  pattern.lastIndex = 0
+  for (let match = pattern.exec(text); match !== null; match = pattern.exec(text)) {
+    found.push(match)
+    if (match[0] === "") pattern.lastIndex += 1
+  }
+  pattern.lastIndex = 0
+  return found
 }
 
 function stripTrailingPunctuation(text: string, punctuation: string): string {
@@ -121,7 +131,7 @@ function patterns(assistantName: string): NamePatterns {
     sentenceStart: compiled(String.raw`(?:^|[.!?:])\s*(?:(?:hey|hi|ok|okay|${name}|please)[\s,.!]*)*$`, "i"),
     questionStart: compiled(`${questionOpener}$`, "i"),
     questionStartWhy: compiled(String.raw`${questionOpener}why\s+(?:do|does|did)?$`, "i"),
-    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013])\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_INTENT}${RELOAD_TAIL}`, "gi"),
+    reloadRequest: compiled(String.raw`(?:^|[.!?;:,\u2014\u2013]|\b(?:so|then|but)\b)\s*(?:(?:hey|hi|ok|okay|${name}|please|just|then|and|but|so|now|instead|go\s+ahead\s+and)[\s,.!]*)*(?:(?:(?:can|could|would|will)|(?:ca|could|wo|would)n['’]?t)\s+(?:you|u)\s+(?:please,?\s+)?(?:just\s+)?)?${RELOAD_INTENT}${RELOAD_TAIL}`, "gi"),
   }
   namePatterns.set(key, built)
   return built
@@ -228,7 +238,7 @@ interface SplitTldAddress extends Word {
 const SPLIT_TLD = /(?<!\S)((?:https?:\/\/)?[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*)\.\p{Zs}+([A-Z]{2})(?=\p{Zs})/gu
 
 function splitTldAddresses(text: string): SplitTldAddress[] {
-  return regexMatches(text, SPLIT_TLD).flatMap(({ index, 0: value, 1: host, 2: suffix }) => {
+  return matchesOf(text, SPLIT_TLD).flatMap(({ index, 0: value, 1: host, 2: suffix }) => {
     if (host === undefined || suffix === undefined || !IN_BROWSER.test(text.slice(index + value.length))) return []
     const token = `${host}.${suffix.toLowerCase()}`
     const address = webAddress(token)
@@ -289,11 +299,11 @@ interface TypedAddress {
 }
 
 function wordsOf(text: string): Word[] {
-  return regexMatches(text, WORDS).map((match) => ({ value: match[0], index: match.index }))
+  return matchesOf(text, WORDS).map((match) => ({ value: match[0], index: match.index }))
 }
 
 function addressWords(text: string): Word[] {
-  return regexMatches(text, ADDRESS_WORD).map((match) => {
+  return matchesOf(text, ADDRESS_WORD).map((match) => {
     const value = match[1] ?? match[2] ?? ""
     return { value, index: match.index + match[0].length - value.length }
   })
@@ -353,7 +363,7 @@ function negatesOpen(text: string, at: number, assistantName: string): boolean {
   const names = patterns(assistantName)
   const before = plain(text.slice(Math.max(0, at - 500), at))
   const targets = [before.length]
-  const verbs = regexMatches(before, OPEN_VERBS)
+  const verbs = matchesOf(before, OPEN_VERBS)
   let first = verbs.length - 1
   let listed = false
   while (first > 0) {
@@ -369,7 +379,7 @@ function negatesOpen(text: string, at: number, assistantName: string): boolean {
   if (first === 0 && verbs.length > 1 && at > 500 && earliest !== undefined && earliest.index < 160) return true
   const governing = verbs[first]
   if (first >= 0 && governing !== undefined) targets.push(governing.index)
-  for (const negation of regexMatches(before, NEGATIONS)) {
+  for (const negation of matchesOf(before, NEGATIONS)) {
     const end = negation.index + negation[0].length
     if (politeQuestion(before, negation.index, end, names)) continue
     for (const target of targets) {
@@ -482,7 +492,7 @@ export function ownerAskedBrowserReload(text: string, assistantName: string = DE
   if (unreadable(text)) return false
   const read = plain(text)
   if (RELOAD_NEGATED.test(read) || COORDINATED_RELOAD_RETRACTION.test(read)) return false
-  const requested = regexMatches(read, patterns(assistantName).reloadRequest)
+  const requested = matchesOf(read, patterns(assistantName).reloadRequest)
   return requested.length > 0 && requested.every(match => !SHORT_RELOAD_RETRACTION.test(read.slice(match.index + match[0].length)))
 }
 

@@ -16,7 +16,7 @@ export effect function conversation(agent: InProcess) {
   return decoded.value.conversation
 }
 
-export effect function cloudAgent(cloud: CloudFake, http: boolean) {
+effect function cloudAgent(cloud: CloudFake, http: boolean) {
   return try startInProcess({ http, launch: { backend: { kind: "cloud", origin: cloud.origin } }, frame: { credential: { version: 1, value: deviceKey } } })
 }
 

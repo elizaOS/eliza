@@ -58,12 +58,6 @@
       "import": "./dist/src/bundle/build.js",
       "default": "./dist/src/bundle/build.js"
     },
-    "./testing": {
-      "eliza-source": "./src/device-actions/test-turn.vibe",
-      "types": "./dist/src/device-actions/test-turn.d.ts",
-      "import": "./dist/src/device-actions/test-turn.js",
-      "default": "./dist/src/device-actions/test-turn.js"
-    },
     "./tasks": {
       "eliza-source": "./src/tasks/module.vibe",
       "types": "./dist/src/tasks/module.d.ts",

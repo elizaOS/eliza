@@ -3,3 +3,4 @@
 // `@elizaos/agent/operations` stays the client entry; it must not reach the turn, whose node module loads the agent runtime.
 export * from "./operations.vibe"
 export { deviceTurnFor } from "./proposal/turn.vibe"
+export { negotiatedOwnerTurn, type OwnerTurnFields } from "./test-turn.vibe"

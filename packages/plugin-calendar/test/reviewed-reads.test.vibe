@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import type { IAgentRuntime, UUID } from "@elizaos/core"
 import { readOperation, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
-import { negotiatedOwnerTurn } from "@elizaos/agent/testing"
+import { negotiatedOwnerTurn } from "@elizaos/agent/device-actions"
 import { calendarProposalFamily } from "../src/plugin/device-proposals.vibe"
 import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
   requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
