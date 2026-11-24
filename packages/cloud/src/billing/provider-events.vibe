@@ -426,7 +426,7 @@ effect function drainDue() {
 }
 
 export const routes: ReadonlyArray<Route> = [
-  { method: "POST", path: webhookPath, auth: "ProviderSignature", capability: "billing", maxBodyBytes: maxWebhookBytes, handler: receive }
+  { method: "POST", path: webhookPath, auth: "ProviderSignature", area: "ProviderWebhookRoutes", maxBodyBytes: maxWebhookBytes, handler: receive }
 ]
 
 export const sweeps: ReadonlyArray<Sweep> = [{ name: "provider events", everyMs: drainEvery, run: drainDue() }]

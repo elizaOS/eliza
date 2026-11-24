@@ -649,16 +649,16 @@ function pageLimit(query: URLSearchParams): number | undefined {
 }
 
 export const routes: ReadonlyArray<Route> = [
-  { method: "POST", path: "/api/v1/subscriptions/cancel", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: (context) => startCommand(cancelCommand, context) },
-  { method: "POST", path: "/api/v1/subscriptions/cancel/undo", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: (context) => startCommand(undoCommand, context) },
-  { method: "GET", path: "/api/v1/subscriptions/cancel/undo/review", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: undoReview },
-  { method: "GET", path: "/api/v1/subscriptions/cancel/undo/:commandId", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: (context) => commandStatus(undoCommand, context) },
-  { method: "GET", path: "/api/v1/subscriptions/cancel/:commandId", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: (context) => commandStatus(cancelCommand, context) },
+  { method: "POST", path: "/api/v1/subscriptions/cancel", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests", handler: (context) => startCommand(cancelCommand, context) },
+  { method: "POST", path: "/api/v1/subscriptions/cancel/undo", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests", handler: (context) => startCommand(undoCommand, context) },
+  { method: "GET", path: "/api/v1/subscriptions/cancel/undo/review", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests", handler: undoReview },
+  { method: "GET", path: "/api/v1/subscriptions/cancel/undo/:commandId", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests", handler: (context) => commandStatus(undoCommand, context) },
+  { method: "GET", path: "/api/v1/subscriptions/cancel/:commandId", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests", handler: (context) => commandStatus(cancelCommand, context) },
   {
     method: "GET",
     path: "/api/v1/subscriptions/commands",
     auth: "ServiceAccess",
-    capability: "billing",
+    area: "SubscriptionRoutes",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = try signedOwner(context)

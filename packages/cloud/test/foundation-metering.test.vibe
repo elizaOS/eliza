@@ -97,6 +97,10 @@ describe("WP0 Foundation: metering and funds", () => {
       const clock = try sync(() => manualClock())
       try sync(() => clock.set(failedAt))
       const broken = try Effect.provideService(failureOf(reserve({ organizationId: "org-broken", userId: "user-3" }, holdKey("user-3", "request-3"), 1)), Clock.Clock, clock.clock)
+      const negativeQuote = try Effect.provideService(failureOf(reserve(owner, holdKey("user-1", "negative-quote"), -1)), Clock.Clock, clock.clock)
+      const digested = try reserve(owner, holdKey("user-1", "digested"), 1_000, "digest-a")
+      const sameBody = try reserve(owner, holdKey("user-1", "digested"), 1_000, "digest-a")
+      const otherBody = try failureOf(reserve(owner, holdKey("user-1", "digested"), 1_000, "digest-b"))
       try addCredits({ organizationId: "org-lapsed", amount: 10_000_000, requestKey: "lapsed-credits" })
       const lapsedOwner = { organizationId: "org-lapsed", userId: "lapsed-owner" }
       const pastDue = try reserve(lapsedOwner, holdKey(lapsedOwner.userId, "past-due-request"), 1_000_000)
@@ -113,19 +117,23 @@ describe("WP0 Foundation: metering and funds", () => {
           pastDue: [pastDue.hold.fromAllowance, pastDue.hold.fromCredits],
           unpaid: [unpaid.hold.fromAllowance, unpaid.hold.fromCredits],
           lapsedBalance,
-          broken
+          broken,
+          negativeQuote,
+          replay: [digested.replayed, sameBody.replayed, sameBody.key === digested.key, otherBody]
         }
       try check(() => assert.deepStrictEqual(observed, {
           reserved: { hold: [30_000_000, 25_000_000, 5_000_000], period: [[0, 25_000_000]], funds: [[5_000_000, 5_000_000]] },
           settled: [26_000_000, 0],
           period: [[0, 0, 25_000_000, "open"]],
-          funds: [[9_000_000, 0, 9_000_000]],
+          funds: [[9_000_000, 1_500, 8_998_500]],
           usage: [[26_000_000, 25_000_000, 1_000_000, 0, "known"]],
           granted: [1_500_000, 0],
           pastDue: [0, 1_500_000],
           unpaid: [0, 1_500_000],
           lapsedBalance: [[25_000_000, 0]],
-          broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true, retryAt: failedAt + 5000 }
+          broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true, retryAt: failedAt + 5000 },
+          negativeQuote: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true, retryAt: failedAt + 5000 },
+          replay: [false, true, true, { error: "idempotency_conflict", errorDescription: "Idempotency conflict.", retryable: false }]
         }))
     }
   }))

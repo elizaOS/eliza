@@ -1,5 +1,5 @@
-// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/billing/allowance.md, "Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute"
-import { type Rejected, apply, decodeState, initial, fundable, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/shared/metering.md, "A known key answers its hold unchanged, and a fresh key is admitted only when the lane can fund its quote"; spec/cloud/billing/allowance.md, "Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute"
+import { type Rejected, admission, apply, decodeState, initial, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
 import { NotAState as NotAPeriod, type Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type ClawbackCause, type Event as PeriodEvent, type Period, type PeriodPhase } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
 import { creditAvailable, readFunds, stepFunds, type FundsFailure } from "../billing/funds.vibe"
@@ -114,12 +114,22 @@ export effect function stepPeriod(tx: Tx, key: string, event: PeriodEvent, now: 
   return try stepRow(tx, periodRows, key, event, (period) => ({ status: allowanceStatus(period.phase), updated_at: now }))
 }
 
-effect function priorHold(tx: Tx, owner: HoldOwner, key: HoldKey, rendered: string, now: number): (HoldTicket | undefined)!MeteringFailure {
+interface PriorHold {
+  readonly key: string
+  readonly hold: Hold
+  readonly digest: string | undefined
+}
+
+effect function storedHold(tx: Tx, owner: HoldOwner, key: string): PriorHold!MeteringFailure {
+  const loaded = try loadRow(tx, holdRows, key)
+  if (!loaded.found || renderHoldKey(owner, loaded.state.key) !== key) throw new RowCorrupt({ table: holdRows.table, key, cause: "key" })
+  const row = (try tx.query("SELECT request_digest FROM holds WHERE key = $1", [key]))[0]
+  return { key, hold: loaded.state, digest: toText(row?.request_digest) }
+}
+
+effect function priorHold(tx: Tx, owner: HoldOwner, key: HoldKey, rendered: string, now: number): (PriorHold | undefined)!MeteringFailure {
   const canonical = try loadRow(tx, holdRows, rendered)
-  if (canonical.found && renderHoldKey(owner, canonical.state.key) !== rendered) {
-    throw new RowCorrupt({ table: holdRows.table, key: rendered, cause: "key" })
-  }
-  if (key.service === "MeteredMaps") return canonical.found ? { key: rendered, hold: canonical.state, replayed: true } : undefined
+  if (key.service === "MeteredMaps") return canonical.found ? try storedHold(tx, owner, rendered) : undefined
 
   const previous = renderHoldKey(owner, { ...key, caller: owner.userId })
   const retained = try tx.query(
@@ -133,40 +143,34 @@ effect function priorHold(tx: Tx, owner: HoldOwner, key: HoldKey, rendered: stri
     try annotateLogs(logError("multiple metered holds match one organization request"), { organizationId: owner.organizationId, service: key.service })
     throw refused("ServiceUnavailable", "NoReason", now + 5000)
   }
-  if (canonical.found) return { key: rendered, hold: canonical.state, replayed: true }
-  const legacyKey = toText(retained[0]?.key)
-  if (legacyKey === undefined) return undefined
-  const legacy = try loadRow(tx, holdRows, legacyKey)
-  if (!legacy.found || renderHoldKey(owner, legacy.state.key) !== legacyKey) {
-    throw new RowCorrupt({ table: holdRows.table, key: legacyKey, cause: "key" })
-  }
-  return { key: legacyKey, hold: legacy.state, replayed: true }
+  const found = canonical.found ? rendered : toText(retained[0]?.key)
+  return found === undefined ? undefined : try storedHold(tx, owner, found)
 }
 
-export effect function reserveIn(tx: Tx, owner: HoldOwner, requested: HoldKey, quote: number, now: number): HoldTicket!MeteringFailure {
+export effect function reserveIn(tx: Tx, owner: HoldOwner, requested: HoldKey, quote: number, now: number, digest?: string): HoldTicket!MeteringFailure {
   const key = requested.service === "MeteredMaps" ? requested : { ...requested, caller: owner.organizationId }
   const rendered = renderHoldKey(owner, key)
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner.organizationId])
-  const existing = try priorHold(tx, owner, key, rendered, now)
-  if (existing !== undefined) return existing
+  const prior = try priorHold(tx, owner, key, rendered, now)
   const lane = try laneFor(tx, owner.organizationId, key.service, now)
   const funds = try readFunds(tx, owner.organizationId)
   const open = lane === "AllowanceThenCredits" ? try openPeriod(tx, owner.organizationId, now) : undefined
   const allowanceAvailable = open?.period.available ?? 0
-  if (!fundable(lane, quote, allowanceAvailable, creditAvailable(funds))) {
-    throw lane === "Refused" ? refused("ServiceUnavailable", "NoReason", now + 5000) : refused("InsufficientCredits")
-  }
+  const sameRequest = digest === undefined || prior?.digest === undefined || prior.digest === digest
+  const admitted = admission(prior?.hold ?? initial, sameRequest, lane, quote, allowanceAvailable, creditAvailable(funds))
+  if (admitted.tag === "RefuseHold") throw refused(admitted.code, "NoReason", admitted.code === "ServiceUnavailable" ? now + 5000 : 0)
+  if (admitted.tag === "ReplayHold" && prior !== undefined) return { key: prior.key, hold: prior.hold, replayed: true }
   const row: HoldRow = { organizationId: owner.organizationId, userId: owner.userId, service: serviceName(key.service), period: open?.key, createdAt: now }
-  const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable, creditAvailable: creditAvailable(funds), now }, columns(row, now))
+  const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable, creditAvailable: creditAvailable(funds), now }, (reserved) => ({ ...columns(row, now)(reserved), request_digest: digest ?? null }))
   if (hold.fromAllowance > 0 && open !== undefined) try stepPeriod(tx, open.key, { type: "reserveHold", amount: hold.fromAllowance, now }, now)
   if (hold.fromCredits > 0) try stepFunds(tx, owner.organizationId, { type: "holdCredits", fromCredits: hold.fromCredits }, now, rendered)
   return { key: rendered, hold, replayed: false, lane }
 }
 
-export effect function reserve(owner: HoldOwner, key: HoldKey, quote: number): HoldTicket!MeteringFailure!Store {
+export effect function reserve(owner: HoldOwner, key: HoldKey, quote: number, digest?: string): HoldTicket!MeteringFailure!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  return try store.transaction((tx) => reserveIn(tx, owner, key, quote, now))
+  return try store.transaction((tx) => reserveIn(tx, owner, key, quote, now, digest))
 }
 
 effect function holdRow(tx: Tx, key: string): HoldRow!(StoreFailure | HoldUnknown) {

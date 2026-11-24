@@ -304,7 +304,7 @@ export const routes: ReadonlyArray<Route> = [
     method: "GET",
     path: "/api/v1/billing/invoices",
     auth: "ServiceAccess",
-    capability: "billing",
+    area: "InvoiceRoutes",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = owner(context.caller)
@@ -319,7 +319,7 @@ export const routes: ReadonlyArray<Route> = [
     method: "GET",
     path: "/api/v1/billing/invoices/:invoiceId",
     auth: "ServiceAccess",
-    capability: "billing",
+    area: "InvoiceRoutes",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = owner(context.caller)
@@ -331,7 +331,7 @@ export const routes: ReadonlyArray<Route> = [
     method: "POST",
     path: "/api/v1/subscriptions/portal",
     auth: "FreshSession",
-    capability: "billing",
+    area: "SubscriptionRoutes",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = owner(context.caller)

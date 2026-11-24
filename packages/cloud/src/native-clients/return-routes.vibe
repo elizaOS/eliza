@@ -96,5 +96,5 @@ export effect function connectedBrowserPage() {
 export const returnPageRoute: Route = { method: "GET", path: "/*", auth: "Public", handler: servePage }
 
 export const routes: ReadonlyArray<Route> = [
-  { method: "GET", path: payerPath as `/${string}`, auth: "Public", capability: "billing", handler: servePage }
+  { method: "GET", path: payerPath as `/${string}`, auth: "Public", area: "SubscriptionRoutes", handler: servePage }
 ]

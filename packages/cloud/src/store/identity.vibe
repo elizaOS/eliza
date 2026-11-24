@@ -4,17 +4,6 @@ import { Store, toText, type StoreFailure, type Tx } from "./connection.vibe"
 export error DatabaseIdentityMismatch { expected: string; found: string }
 export error DatabaseUnreadable { problem: string }
 
-export effect function identityDigest(tx: Tx): (string | undefined)!StoreFailure {
-  const table = try tx.query("SELECT to_regclass('cloud_identity') IS NOT NULL AS present")
-  if (table[0]?.present !== true) return undefined
-  return toText((try tx.query("SELECT digest FROM cloud_identity"))[0]?.digest)
-}
-
-export effect function assertDatabaseIdentity(tx: Tx, expected: string): void!(StoreFailure | DatabaseIdentityMismatch) {
-  const found = try identityDigest(tx)
-  if (found !== expected) throw new DatabaseIdentityMismatch({ expected, found: found ?? "none" })
-}
-
 export type DatabaseIdentity =
   | { readonly kind: "fresh" }
   | { readonly kind: "identified"; readonly digest: string; readonly environment: string }

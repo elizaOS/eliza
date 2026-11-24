@@ -570,9 +570,9 @@ effect function sweepStaleOperations(): number!!Store {
 const operations = "/api/v1/eliza/google/gmail/inbox-v1/operations"
 
 export const mailOperationRoutes: ReadonlyArray<Route> = [
-  { method: "POST", path: operations, auth: "ServiceAccess", capability: "managedGoogle", maxBodyBytes: maxProposalBytes, handler: prepareRoute },
-  { method: "POST", path: `${operations}/:requestId/dispatch`, auth: "ServiceAccess", capability: "managedGoogle", maxBodyBytes: maxProposalBytes, handler: dispatchRoute },
-  { method: "GET", path: `${operations}/:requestId`, auth: "ServiceAccess", capability: "managedGoogle", handler: lookupRoute }
+  { method: "POST", path: operations, auth: "ServiceAccess", area: "GoogleRoutes", maxBodyBytes: maxProposalBytes, handler: prepareRoute },
+  { method: "POST", path: `${operations}/:requestId/dispatch`, auth: "ServiceAccess", area: "GoogleRoutes", maxBodyBytes: maxProposalBytes, handler: dispatchRoute },
+  { method: "GET", path: `${operations}/:requestId`, auth: "ServiceAccess", area: "GoogleRoutes", handler: lookupRoute }
 ]
 
 export const mailOperationSweeps: ReadonlyArray<Sweep> = [
