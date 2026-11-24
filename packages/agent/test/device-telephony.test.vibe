@@ -192,6 +192,12 @@ module node {
     const alternativeInBody = await ask("Text Carson saying choose green or blue that matches.", text(named("Carson"), "choose green or blue that matches."))
     const toldRecipient = await ask("Thank you. Can you text Carson and tell him to bring the ice and that we've got dinner covered?", text(named("Cole"), "Please bring the ice. We have dinner covered."))
     const saidRecipient = await ask("Can you send a text to Carson and say dinner is covered?", text(named("Cole"), "dinner is covered"))
+    const toldAlternatives = await ask("Can you text Maya or Liam and tell them to bring ice?", text(named("Cole"), "Please bring ice."))
+    const thanksAlternatives = await ask("Thank you. Can you send a text to Maya or Liam and say dinner is covered?", text(named("Cole"), "dinner is covered"))
+    const toldOtherService = await ask("Thanks. Can you text Carson on WhatsApp and tell him to bring ice?", text(named("Cole"), "Please bring ice."))
+    const saidOtherService = await ask("Can you send a text to Carson on WhatsApp and say dinner is covered?", text(named("Cole"), "dinner is covered"))
+    const severalWithOwner = await ask("Text 415-555-0100 saying I'm late", { type: "sms_send", recipients: ["4155550100", "6505715862"], body: "I'm late", subscriptionId: 1 })
+    const severalInvented = await ask("Send a text to 415-555-0100 that dinner is covered", { type: "sms_send", recipients: ["6505715862", "6505715863"], body: "dinner is covered", subscriptionId: 1 })
     const handedThrough = await ask("call 415-555-0100", call("6505715862"))
     const heldReply = await ask("did you set that call up?", call("4155550100"))
     const heldCall = { reply: heldReply.reply, requests: (await proposals(client)).filter(sameOperation(call("4155550100"))).map(({ state }) => state) }
@@ -310,7 +316,7 @@ module node {
     const emergencyWithAlternatives = await ask("Text Carson or Maya that I crashed. Call an ambulance now!", call("911"))
 
     return {
-      alternativeRecipients, alternativeInBody, conversational: { told: toldRecipient, said: saidRecipient }, handedThrough, heldCall, separated: { call: separatedCall, send: separatedSend, contact: separatedContact }, ownerDialForm, invented, noNumber,
+      alternativeRecipients, alternativeInBody, conversational: { told: toldRecipient, said: saidRecipient, toldAlternatives, thanksAlternatives, toldOtherService, saidOtherService }, severalRecipients: { withOwner: severalWithOwner, invented: severalInvented }, handedThrough, heldCall, separated: { call: separatedCall, send: separatedSend, contact: separatedContact }, ownerDialForm, invented, noNumber,
       callBack, authoredSurname, draftedSurname, surnameWithCourtesy, prefixCallback, unnamed, bodyNumber,
       keypad, dialName, emergency, emergencyWithAlternatives, emptyKeypad, writtenEmergency, spokenEmergency, spokenNines, spokenEmergencyByName, nameInNumberWords, nameInNumberWordsInvented, spokenEmergencyOtherNumber, contactNumber, contactEmail, draft, draftToNumber, draftAskFirst, unclear, composedNumber,
       contactUpdate, contactAdd, contactDelete, contactNoNumber, contactShow, contactRead, simSendToName, threadReply,
@@ -328,6 +334,7 @@ const numberNotWritten = "I didn't set that up, because that number isn't one yo
 const noNumberWritten = "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts."
 const numberNotSaved = "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
 const askRecipient = "Which person should receive this draft? Give one recipient."
+const nameNotWritten = "I didn't set that up, because that name isn't one you wrote in your message. Nothing was called or sent. Tell me who, by their name as saved in Contacts or their number."
 
 it.live('An admitted contact target tells the planner to propose a role directly (spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query")', effect () => {
   const cloud = try cloudFake(deviceKey)
@@ -385,6 +392,14 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
     conversational: {
       told: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "Please bring the ice. We have dinner covered." } },
       said: { reply: review, operation: { type: "sms_compose", target: { kind: "contact", query: "Carson" }, body: "dinner is covered" } },
+      toldAlternatives: { reply: nameNotWritten, operation: undefined },
+      thanksAlternatives: { reply: nameNotWritten, operation: undefined },
+      toldOtherService: { reply: nameNotWritten, operation: undefined },
+      saidOtherService: { reply: nameNotWritten, operation: undefined },
+    },
+    severalRecipients: {
+      withOwner: { reply: review, operation: { type: "sms_send", recipients: ["4155550100"], body: "I'm late", subscriptionId: 1 } },
+      invented: { reply: review, operation: { type: "sms_send", recipients: ["4155550100"], body: "dinner is covered", subscriptionId: 1 } },
     },
     handedThrough: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "4155550100" } } },
     heldCall: { reply: noNumberWritten, requests: ["pending"] },

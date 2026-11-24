@@ -186,7 +186,10 @@ number asks the owner to type it again. A SIM send takes numbers only, and a
 Messages text named by its `query` takes contact names only, so the other
 kind of recipient is refused for its form; a Messages text named by its
 `target`, a call and a dial take either, and a dial to a name needs a phone
-that looks contacts up. A command that names no one ("call me", "call
+that looks contacts up. A command names one recipient, so a SIM send the
+model proposed to several numbers is offered to the owner's one number
+alone, still on its card: a number the owner did not write is never offered
+beside it. A command that names no one ("call me", "call
 everyone", "call it a day"), two people, another service ("on WhatsApp"), a
 time, or the police or an ambulance is not a command, and the model's
 recipient is grounded as above.
