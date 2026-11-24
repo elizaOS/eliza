@@ -68,7 +68,7 @@ commands, examples and generated files. The MIT license is in [LICENSE](LICENSE)
 
 ## Contributing
 
-`vibestack` is the primary branch and the base for every pull request.
+`main` is the primary branch and the base for every pull request.
 Verify through the application's normal entry points that the top-level
 stories, rules, and Quint models are fully implemented and integrated.
 Every change must follow them exactly. Run the full `pnpm verify` suite
