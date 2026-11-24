@@ -445,8 +445,6 @@ export {
   getActiveRoutingContextsForTurn,
   getContextRoutingFromMessage,
   getContextRoutingFromState,
-  inferContextRoutingFromMessage,
-  inferContextRoutingFromText,
   mergeContextRouting,
   parseContextList,
   parseContextRoutingMetadata,

@@ -19911,30 +19911,6 @@
           ]
         },
         {
-          "name": "inferContextRoutingFromMessage",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/utils/context-routing.ts",
-              "line": 506,
-              "kind": "FunctionDeclaration",
-              "signature": "(message: Pick<Memory, \"content\">): ContextRoutingDecision"
-            }
-          ]
-        },
-        {
-          "name": "inferContextRoutingFromText",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/utils/context-routing.ts",
-              "line": 462,
-              "kind": "FunctionDeclaration",
-              "signature": "(text: string | null | undefined): ContextRoutingDecision"
-            }
-          ]
-        },
-        {
           "name": "INFERENCE_FLOW_STAGES",
           "typeOnly": false,
           "declarations": [
@@ -222946,6 +222922,43 @@
               "line": 11,
               "kind": "TypeAliasDeclaration",
               "signature": "export type ValidationKeywordLocale = (typeof VALIDATION_KEYWORD_LOCALES)[number];"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "v4ContextSignalsRetirement": {
+    "specification": "spec/core/protocols.md",
+    "decision": "v4-model-reads-requests",
+    "reason": "Retired v4 word-list context router: which contexts a request needs is the model's, and current source has no caller of inferContextRoutingFromText or inferContextRoutingFromMessage.",
+    "historicalExports": [
+      {
+        "entry": ".",
+        "export": {
+          "name": "inferContextRoutingFromMessage",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/utils/context-routing.ts",
+              "line": 506,
+              "kind": "FunctionDeclaration",
+              "signature": "(message: Pick<Memory, \"content\">): ContextRoutingDecision"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "inferContextRoutingFromText",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/utils/context-routing.ts",
+              "line": 462,
+              "kind": "FunctionDeclaration",
+              "signature": "(text: string | null | undefined): ContextRoutingDecision"
             }
           ]
         }

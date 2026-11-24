@@ -70988,7 +70988,10 @@
         }
       ],
       "text": "import { AVAILABLE_CONTEXTS_STATE_KEY, CONTEXT_ROUTING_STATE_KEY, type ContextRoutingDecision, collectActionResultSizeWarnings, getActiveRoutingContexts, inferContextRoutingFromMessage, trimActionResultForPromptState, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "inferContextRoutingFromMessage"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/source-reply-references.test.ts",
@@ -124676,7 +124679,6 @@
         "identityDeliveryClaimsAuthoritative",
         "incomingMessagePersistenceSnapshot",
         "incomingPipelineHookContext",
-        "inferContextRoutingFromMessage",
         "inferenceRamClassFromEnv",
         "inferenceTimingRegistry",
         "inflectionTermKeys",
@@ -125481,6 +125483,21 @@
             "getValidationKeywordTerms"
           ],
           "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        }
+      ]
+    },
+    "contextSignalsRetirement": {
+      "specification": "spec/core/protocols.md",
+      "decision": "v4-model-reads-requests",
+      "imports": [
+        {
+          "file": "plugins/plugin-assistant/src/services/message/response-state.ts",
+          "line": 4,
+          "module": "@elizaos/core",
+          "names": [
+            "inferContextRoutingFromMessage"
+          ],
+          "reason": "Retired v4 word-list context router: which contexts a request needs is the model's, and current source has no caller of inferContextRoutingFromText or inferContextRoutingFromMessage. Original import facts remain in this row; every other name remains required."
         }
       ]
     }
