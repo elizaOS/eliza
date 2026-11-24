@@ -86,6 +86,6 @@ export effect function quote(body: ChatRequest, model: Model): Quote!Refused {
   const chars = body.messages.reduce((sum, message) => sum + textChars(message), 0)
   const capped = body.max_completion_tokens !== undefined || body.max_tokens !== undefined
   const counts = quoteCounts(chars, heldOutput(capped, limit.tokens))
-  if (!countsInBound(counts) || !countsInBound({ inputTokens: 0, outputTokens: limit.tokens })) throw refused("InvalidRequest")
+  if (!countsInBound(counts) || !countsInBound({ inputTokens: 0, cachedTokens: 0, outputTokens: limit.tokens })) throw refused("InvalidRequest")
   return { counts, outputCap: limit.tokens, micros: callCost(model, counts) }
 }
