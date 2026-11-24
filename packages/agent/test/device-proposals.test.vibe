@@ -7,7 +7,7 @@ import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vib
 module node {
   import { Effect, Result } from "effect"
   import type { AgentRuntime } from "@elizaos/core"
-  import { registerDeviceProposalFamily, type DeviceProposalFamily, type Grounding, type ProposalForm } from "../src/device-actions/operations.vibe"
+  import { registerDeviceProposalFamily, type DeviceProposalFamily, type Grounding, type ProposalForm } from "../src/device-actions/index.vibe"
   import type { MessageAvailability } from "../src/device-actions/proposal/family.vibe"
   import { text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
   import { deviceClient, type DeviceClient } from "./support/device.ts"

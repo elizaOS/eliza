@@ -33,9 +33,10 @@ A refused event answers 409 and changes nothing; a store failure answers 503.
 The installation id is the agent's own store id (`storage/database.md`),
 never a second identity. A first registration records the owner, the key
 hash and the workflow protocol, and connects the device to the bridge with
-the capabilities it declares. Registering again with the same key changes
-only the workflow protocol; another key, another owner or a revoked
-enrollment is refused. The workflow protocol's upper bound is the workflow
+the capabilities it declares; a registration that names none declares the
+whole vocabulary. Registering again with the same key changes only the
+workflow protocol; another key, another owner or a revoked enrollment is
+refused. The workflow protocol's upper bound is the workflow
 spec's, checked by the shell.
 
 ```quint

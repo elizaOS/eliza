@@ -1,0 +1,8 @@
+// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
+export * from "./operations.vibe"
+export { deviceTurnFor } from "./proposal/turn.vibe"
+export {
+  directRequests, FamilyConflict, registerDeviceProposalFamily, unoffered,
+  type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type FamilyName, type Grounding, type NegotiatedDevice, type PendingRequest, type ProposalForm,
+  type ProposalGrounding, type ProposalText, type ReadContinuation, type SwappedValue,
+} from "./proposal/registry.vibe"
