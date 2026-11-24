@@ -10,7 +10,7 @@ export async function admitProductionTestGrant(client: IdentityQueryClient) {
   const authority = env.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256;
   if (
     env.ELIZA_OPERATOR_ENVIRONMENT !== "production" ||
-    env.GITHUB_REF !== "refs/heads/main" ||
+    env.GITHUB_REF !== "refs/heads/main-v3" ||
     !/^[a-f0-9]{64}$/.test(cluster ?? "") ||
     !/^[a-f0-9]{64}$/.test(authority ?? "")
   ) {
