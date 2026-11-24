@@ -26,7 +26,7 @@ import {
 import { fetchServedCommit } from "./deploy-freshness-guard.ts";
 
 const COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/;
-const CANONICAL_REFS = new Set(["refs/heads/staging-v3", "refs/heads/main-v3"]);
+const CANONICAL_REFS = new Set(["refs/heads/staging", "refs/heads/main"]);
 const ACTIVE_WORKFLOW_RUN_STATUSES = new Set([
   "queued",
   "in_progress",
@@ -134,7 +134,7 @@ export function decideCanonicalDeploySource({
     const normalizedServed = normalizeSha(servedCommit);
     if (
       allowMonotonicForwardProgress &&
-      normalizedRef === "refs/heads/staging-v3" &&
+      normalizedRef === "refs/heads/staging" &&
       runShaIsAncestorOfHead === true &&
       normalizedServed &&
       servedCommitIsAncestorOfRun === true
@@ -203,7 +203,7 @@ export function hasEligibleSuccessorReleaseRun(
     const exactIdentity =
       String(run.id) !== currentRunId &&
       normalizeSha(run.head_sha) === canonicalHead &&
-      run.head_branch === "staging-v3" &&
+      run.head_branch === "staging" &&
       run.event === "push";
     if (!exactIdentity) return false;
     return (
@@ -234,7 +234,7 @@ export async function proveSuccessorReleaseRun(
     `repos/${repository}/actions/workflows/cloud-cf-deploy.yml/runs`,
     apiUrl.endsWith("/") ? apiUrl : `${apiUrl}/`,
   );
-  url.searchParams.set("branch", "staging-v3");
+  url.searchParams.set("branch", "staging");
   url.searchParams.set("event", "push");
   url.searchParams.set("head_sha", canonicalHead);
   url.searchParams.set("exclude_pull_requests", "true");
@@ -413,7 +413,7 @@ async function main() {
     const successorRunOwnsHead =
       args.neutralWhenSuperseded &&
       runShaIsAncestorOfHead &&
-      args.canonicalRef === "refs/heads/staging-v3" &&
+      args.canonicalRef === "refs/heads/staging" &&
       (await proveSuccessorReleaseRun(canonicalHead));
     let servedCommit = null;
     let servedCommitIsAncestorOfRun = null;

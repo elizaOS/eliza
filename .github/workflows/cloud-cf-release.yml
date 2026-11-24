@@ -464,7 +464,7 @@ jobs:
       - name: Verify canonical deploy source
         id: source_guard
         env:
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main-v3' || 'refs/heads/staging-v3' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           GITHUB_TOKEN: ${{ github.token }}
           NEUTRAL_WHEN_SUPERSEDED: ${{ inputs.target_environment == 'staging' && github.event_name == 'push' }}
@@ -759,10 +759,10 @@ jobs:
 
           git fetch --no-tags \
             "https://github.com/${GITHUB_REPOSITORY}.git" \
-            staging-v3:refs/remotes/origin/staging-v3
+            staging:refs/remotes/origin/staging
           git cat-file -e "${POLICY_SHA}^{commit}"
           git cat-file -e "${BASE_SHA}^{commit}"
-          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging-v3 || {
+          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging || {
             echo "::error::Certified recovery policy is no longer contained in staging."
             exit 1
           }
@@ -865,7 +865,7 @@ jobs:
           ) > "$evidence_dir/dry-run.stdout" 2> "$evidence_dir/dry-run.stderr"
           bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
-            --canonical-ref refs/heads/main-v3 \
+            --canonical-ref refs/heads/main \
             > "$evidence_dir/freshness.stdout" \
             2> "$evidence_dir/freshness.stderr"
           echo "Bounded Hyperdrive recovery re-admitted inside the mutation job."
@@ -885,7 +885,7 @@ jobs:
           DATABASE_IDENTITY_ENVIRONMENT: ${{ inputs.target_environment }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main-v3' || 'refs/heads/staging-v3' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -1212,7 +1212,7 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
           SERVED_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
-          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main-v3' || 'refs/heads/staging-v3' }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
         run: |
           # A newer served Worker suppresses this deploy only when its commit is
@@ -1337,7 +1337,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main-v3' || 'refs/heads/staging-v3' }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -1597,7 +1597,7 @@ jobs:
           CLOUD_RATE_STATE_BACKEND: ${{ vars.CLOUD_RATE_STATE_BACKEND || 'redis' }}
           CLOUD_A2A_STATE_BACKEND: ${{ vars.CLOUD_A2A_STATE_BACKEND || 'redis' }}
           WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.secrets_file }}
-          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main-v3' || 'refs/heads/staging-v3' }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -2635,7 +2635,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           EVENT_NAME: ${{ github.event_name }}
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main-v3' || 'refs/heads/staging-v3' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -2675,7 +2675,7 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
           SERVED_URL: ${{ (inputs.target_environment == 'production') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
-          CANONICAL_REF: ${{ (inputs.target_environment == 'production') && 'refs/heads/main-v3' || 'refs/heads/staging-v3' }}
+          CANONICAL_REF: ${{ (inputs.target_environment == 'production') && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
         run: |
           # A newer served Pages build suppresses this deploy only when its
@@ -2703,7 +2703,7 @@ jobs:
           PAGES_ALIAS: https://staging.eliza-app.pages.dev
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
           EVENT_NAME: ${{ github.event_name }}
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main-v3' || 'refs/heads/staging-v3' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}

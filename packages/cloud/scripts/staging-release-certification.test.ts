@@ -159,7 +159,7 @@ function fixture() {
       status: "completed",
       conclusion: "success",
       event: "push",
-      head_branch: "staging-v3",
+      head_branch: "staging",
       head_sha: sourceSha,
       path: CERTIFICATION_WORKFLOW,
       repository: { full_name: "elizaOS/eliza" },
@@ -212,7 +212,7 @@ describe("staging release certification payload", () => {
       workflow: CERTIFICATION_WORKFLOW,
       environment: "staging",
       event: "push",
-      ref: "refs/heads/staging-v3",
+      ref: "refs/heads/staging",
       source_sha: sourceSha,
       tree_sha: treeSha,
       artifact: {
@@ -403,7 +403,7 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(block).toContain("needs: release");
     expect(block).toContain("github.event_name == 'push'");
     expect(block).toContain("github.event_name == 'workflow_dispatch'");
-    expect(block).toContain("github.ref == 'refs/heads/staging-v3'");
+    expect(block).toContain("github.ref == 'refs/heads/staging'");
     expect(block).toContain("needs.release.result == 'success'");
     // A freshness-guard skip ends green without deploying; only a run that
     // released both surfaces may certify its tree (#27229/#28746).
@@ -443,7 +443,7 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(validate).toContain(
       '(.event == "push" or .event == "workflow_dispatch")',
     );
-    expect(validate).toContain('head_branch == "staging-v3"');
+    expect(validate).toContain('head_branch == "staging"');
     expect(validate).toContain(
       'path == ".github/workflows/cloud-cf-deploy.yml"',
     );
@@ -567,7 +567,7 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(migrate).not.toContain("railway variable list");
     expect(migrate).toContain("wrangler deploy --env production --dry-run");
     expect(migrate).toContain("Served production base drifted before mutation");
-    expect(migrate).toContain("--canonical-ref refs/heads/main-v3");
+    expect(migrate).toContain("--canonical-ref refs/heads/main");
     expect(migrate.indexOf("bun run build:core")).toBeLessThan(
       migrate.indexOf("preflight-database-identity.ts"),
     );
@@ -603,9 +603,9 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(authorize).toContain("secrets.CLOUDFLARE_ACCOUNT_ID");
     expect(authorize).toContain(`hyperdrive/configs/\${candidate_id}`);
     expect(authorize).toContain('--hyperdrive-json "$response"');
-    expect(authorize).toContain("staging-v3:refs/remotes/origin/staging-v3");
+    expect(authorize).toContain("staging:refs/remotes/origin/staging");
     expect(authorize).toContain(
-      'git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging-v3',
+      'git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging',
     );
     expect(authorize).toContain(
       "audit-production-railway-database-authority.ts",
@@ -613,7 +613,7 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(
       authorize.match(/install -d -m 0700 "\$evidence_dir"/g),
     ).toHaveLength(2);
-    expect(authorize).toContain("--canonical-ref refs/heads/main-v3");
+    expect(authorize).toContain("--canonical-ref refs/heads/main");
     expect(authorize).toContain("bun run build:core");
     expect(authorize).toContain("wrangler deploy --env production --dry-run");
     expect(authorize.match(/--canonical-ref refs\/heads\/main/g)).toHaveLength(
@@ -687,7 +687,7 @@ describe("exact-source main Full admission", () => {
         id: 701,
         run_attempt: 2,
         run_started_at: "2026-08-17T11:00:00Z",
-        head_branch: "main-v3",
+        head_branch: "main",
         status: "completed",
         conclusion: "success",
         event: "push",
@@ -703,7 +703,7 @@ describe("exact-source main Full admission", () => {
         workflow_run: {
           id: 701,
           head_sha: fixtureSourceSha,
-          head_branch: "main-v3",
+          head_branch: "main",
         },
       },
       archive: {
@@ -1036,7 +1036,7 @@ describe("exact-source main Full admission", () => {
         workflow_run: {
           id: 901,
           head_sha: stageSource,
-          head_branch: "staging-v3",
+          head_branch: "staging",
         },
       };
       const stageRun = {
@@ -1045,7 +1045,7 @@ describe("exact-source main Full admission", () => {
         status: "completed",
         conclusion: "success",
         event: "push",
-        head_branch: "staging-v3",
+        head_branch: "staging",
         head_sha: stageSource,
         path: CERTIFICATION_WORKFLOW,
         repository: { full_name: "elizaOS/eliza" },
