@@ -9,10 +9,7 @@ import {
   calendarProposalAdmitted, changeReadAdmitted, namedGrounded, newEventStated, ownerWordsKept, preparedEdit, recordSource, targetGrounded,
   type CalendarView, type EditPrepared, type EditRead, type ProposalReach,
 } from "../../gen/calendar__reviewedReads.effect.vibe"
-import { CALENDAR_AVAILABILITY_CAPABILITY } from "../availability/projection.vibe"
-import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, namedCalendarReadTarget } from "../client/named-read.vibe"
-import { getZonedDateParts, knownTimeZone } from "../clock.vibe"
-import { clockHeldByWords, eventNamedInWords, wordsInWords } from "../request-time.vibe"
+import { CALENDAR_AVAILABILITY_CAPABILITY, CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, namedCalendarReadTarget, getZonedDateParts, knownTimeZone, clockHeldByWords, eventNamedInWords, wordsInWords } from "@elizaos/plugin-calendar-client"
 import { calendarContext } from "./actions.vibe"
 
 type Op<T extends DeviceOperation["type"]> = Extract<DeviceOperation, { readonly type: T }>

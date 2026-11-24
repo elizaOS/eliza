@@ -4,14 +4,7 @@ import { decodeBrowserPage, type BrowserPage, type CheckedOperation, type Device
 import type { DeviceProposalFamily, DeviceTurn, Grounding, NegotiatedDevice, ProposalForm, ProposalText } from "@elizaos/agent-host"
 import { refusalReply, type BrowserRefusal, type RefusalReply } from "../gen/browser__control.effect.vibe"
 import { openBound, opensInNewTab } from "../gen/browser__requestGrounding.effect.vibe"
-import {
-  BROWSER_HISTORY_ACTIONS, BROWSER_RELOAD_WITHHELD_REFUSAL, browserCloseAnswer, browserControlBound, browserControlCapabilityAvailable, browserHistoryHome, browserWithheldReload,
-  browserNavigationAvailable, browserReopenRefused, type BrowserControlOperation, type BrowserControlType,
-} from "./contract.vibe"
-import {
-  browserDestinationMatches, browserSearchQueryMatches, containsWebAddress, directBrowserDestination, directBrowserSearchQuery,
-  groundBrowserDestination, groundBrowserSearchQuery, reviewableBrowserDestination, spokenBrowserOpen, typedBrowserWords,
-} from "./grounding.vibe"
+import { BROWSER_HISTORY_ACTIONS, BROWSER_RELOAD_WITHHELD_REFUSAL, browserCloseAnswer, browserControlBound, browserControlCapabilityAvailable, browserHistoryHome, browserWithheldReload, browserNavigationAvailable, browserReopenRefused, type BrowserControlOperation, type BrowserControlType, browserDestinationMatches, browserSearchQueryMatches, containsWebAddress, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination, groundBrowserSearchQuery, reviewableBrowserDestination, spokenBrowserOpen, typedBrowserWords } from "@elizaos/plugin-browser-client"
 import { browserContext } from "./native-browser.vibe"
 
 type BrowserProposalType = "browser_navigate" | BrowserControlType

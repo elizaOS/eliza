@@ -7,9 +7,7 @@ import { browserProposalFamily } from "./proposal.vibe"
 export { BROWSER_VIEW, NativeBrowser, browserAction, browserViewAsker, historyActionResult, viewNativeBrowser } from "./native-browser.vibe"
 export type { BrowserFailureCode, BrowserViewAsked, BrowserViewAsker, BrowserViewGrant, BrowserViewWait, HistoryOutcome, HistoryRequest } from "./native-browser.vibe"
 export { BROWSER_PROPOSAL_TYPES, browserProposalFamily } from "./proposal.vibe"
-export * from "./contract.vibe"
-export * from "./grounding.vibe"
-export * from "./native-command.vibe"
+export * from "@elizaos/plugin-browser-client"
 
 const browserActions = promoteSubactionsToActions(browserAction)
 for (const action of browserActions) {

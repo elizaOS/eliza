@@ -1,15 +1,9 @@
 // spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/residentStore.md, "The earlier events are imported once, exactly, and never over the series rows"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
 import { sha256Hex } from "@elizaos/core"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import type { CalendarEvent, CalendarEventFields, CalendarProvider, CalendarSourceKey, CalendarSummary } from "../model.vibe"
-import { CalendarWriteNotAccepted, CalendarWriteUnconfirmed, type CalendarAnswerScope, type CalendarInvitationResponse } from "../mutations/ledger.vibe"
+import { type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceKey, type CalendarSummary, CalendarWriteNotAccepted, CalendarWriteUnconfirmed, type CalendarAnswerScope, type CalendarInvitationResponse, expandDocumentCalendar, findRow, InvalidSeriesTime, removeScoped, saveScopedEdit, ScopeMismatch, SeriesChanged, type CalendarRow, type CalendarRowFields, type CalendarWriteScope, CalendarRowRecord, EventRecord, recurrenceLines, rowRecurrence, type CalendarRecurrence } from "@elizaos/plugin-calendar-client"
 import type { OwnerRole } from "../../gen/calendar__actions.effect.vibe"
-import { expandDocumentCalendar } from "../availability/recurrence.vibe"
-import { findRow, InvalidSeriesTime, removeScoped, saveScopedEdit, ScopeMismatch, SeriesChanged, type CalendarRow, type CalendarRowFields, type CalendarWriteScope } from "../series/document.vibe"
-import { CalendarRowRecord } from "../series/rows.schema.vibe"
-import { EventRecord } from "../mutations/records.schema.vibe"
 import { residentImport, residentImportedRevision } from "../../gen/calendar__residentStore.effect.vibe"
-import { recurrenceLines, rowRecurrence, type CalendarRecurrence } from "../series/recurrence-rule.vibe"
 
 export interface CalendarAccount {
   readonly agentId: string

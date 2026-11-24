@@ -85,6 +85,9 @@
   },
   "specCompanions": {
     "agent": ["packages/agent-host"],
+    "assistant": ["packages/plugin-assistant-client"],
+    "browser": ["packages/plugin-browser-client"],
+    "calendar": ["packages/plugin-calendar-client"],
     "cloud": ["packages/cloud-worker"],
     "core": ["packages/core-node"],
     "files": ["packages/plugin-files-client"],

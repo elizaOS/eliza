@@ -37,10 +37,7 @@ export {
   clockHandoffReceipt, buildClockHandoffRequest, type OwnerFacts, type Travel, type ClockHandoffOperation, type ClockDay, type ClockHandoffResult,
   type ClockHandoffHostSupport, type ClockHandoffRequest, type ClockHandoffForm, type FormRefusal,
 } from "./clock.vibe"
-export {
-  foregroundReviewTypes, isForegroundReviewType, readForegroundReviewOperation, isForegroundReviewOperation, foregroundReviewOperationAvailable,
-  ReviewResultRefused, foregroundReviewResult, type ForegroundReviewOperation,
-} from "./review.vibe"
+export * from "@elizaos/plugin-assistant-client"
 export {
   goalCheckinKind, listGoals, goalStanding, followGoalClock, changeGoal, deliverGoalCheckin, ownerGoalsAction, ownerGoalsProvider, type GoalRecord,
 } from "./goals.vibe"

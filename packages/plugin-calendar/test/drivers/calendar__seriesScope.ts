@@ -5,7 +5,7 @@ import type { DeadlineView, DeleteTx, Event, RowMatch } from "../../gen/calendar
 import {
   occurrenceId, settleDeletions, stageDeletion, undoDeletion,
   type CalendarDocument, type CalendarRow, type DeletionClock, type DeletionOwner, type OwnerFacts,
-} from "../../src/series/index.vibe";
+} from "@elizaos/plugin-calendar-client";
 
 const begin = Date.parse("2026-03-02T17:00:00.000Z");
 const series: CalendarRow = { id: "series", calendarId: "local", title: "Standup", body: "", location: "", begin, end: begin + 1_800_000,

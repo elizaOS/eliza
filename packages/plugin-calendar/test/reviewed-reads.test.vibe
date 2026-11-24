@@ -4,10 +4,7 @@ import type { IAgentRuntime, UUID } from "@elizaos/core"
 import { negotiation, readOperation, validate } from "@elizaos/agent"
 import type { DeviceTurn } from "@elizaos/agent-host"
 import { calendarProposalFamily } from "../src/plugin/device-proposals.vibe"
-import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
-  requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
-import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedReadWindow,
-  reviewedReadsMachine, type NamedCalendarReadContext, type NamedCalendarReadProvider } from "../src/client/index.vibe"
+import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts, requestTimeZone, startOfCivilDay, CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedReadWindow, reviewedReadsMachine, type NamedCalendarReadContext, type NamedCalendarReadProvider } from "@elizaos/plugin-calendar-client"
 
 const selected = { kind: "calendar-event", accountId: "device-home", sourceRevision: "a".repeat(64), id: "evt-1", revision: "b".repeat(64) }
 const context: NamedCalendarReadContext = { view: "calendar", owner: "alice", selectedObject: selected }

@@ -287,7 +287,9 @@ if (import.meta.main) {
       "packages/agent",
       "packages/agent-host",
       "packages/plugin-assistant",
+      "packages/plugin-assistant-client",
       "packages/plugin-browser",
+      "packages/plugin-browser-client",
       "packages/cloud",
       "packages/cloud-worker",
       "packages/core",
@@ -299,6 +301,7 @@ if (import.meta.main) {
     ],
     [
       "packages/plugin-calendar",
+      "packages/plugin-calendar-client",
       "packages/plugin-files",
       "packages/plugin-files-client",
       "packages/plugin-inbox",

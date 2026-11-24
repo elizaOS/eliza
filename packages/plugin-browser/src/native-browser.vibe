@@ -3,8 +3,7 @@ import { readTurnContext } from "@elizaos/agent"
 import { deviceTurnFor } from "@elizaos/agent-host"
 import { readViewInteractionClientId, type Action, type ActionResult, type ContextDefinition, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { historyReport, type HistoryReceipt, type HistoryReport } from "../gen/browser__control.effect.vibe"
-import { BROWSER_RELOAD_WITHHELD_REFUSAL, browserCommandReloadRuns, browserHistoryHome } from "./contract.vibe"
-import { NATIVE_HISTORY_SUBACTIONS, field, isNativeHistorySubaction, observedNativeHistorySelection, record, type NativeHistorySelection, type NativeHistorySubaction } from "./native-command.vibe"
+import { BROWSER_RELOAD_WITHHELD_REFUSAL, browserCommandReloadRuns, browserHistoryHome, NATIVE_HISTORY_SUBACTIONS, field, isNativeHistorySubaction, observedNativeHistorySelection, record, type NativeHistorySelection, type NativeHistorySubaction } from "@elizaos/plugin-browser-client"
 
 export const BROWSER_VIEW = { viewId: "browser", capability: "browser-command" } as const
 

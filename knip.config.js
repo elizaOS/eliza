@@ -205,7 +205,7 @@ export default {
     "packages/plugin-assistant": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
-    "packages/plugin-calendar": {
+    "packages/plugin-calendar-client": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-inbox": {

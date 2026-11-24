@@ -16,6 +16,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/agent-host": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-assistant-client": "workspace:*",
     "@elizaos/plugin-calendar": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"

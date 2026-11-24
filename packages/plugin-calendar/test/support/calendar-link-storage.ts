@@ -1,4 +1,4 @@
-import type { CalendarLinkStorage } from "../../src/linked-sync/index.vibe";
+import type { CalendarLinkStorage } from "@elizaos/plugin-calendar-client";
 
 export function memoryCalendarLinkStorage(refuseWrites: () => boolean = () => false): CalendarLinkStorage & { reset(): void } {
   const slots = new Map<string, unknown>();
