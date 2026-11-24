@@ -1,7 +1,7 @@
 // spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about"
 import { assert, it } from "@effect/vitest"
 import type { IAgentRuntime, UUID } from "@elizaos/core"
-import { negotiatedOwnerTurn, readOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { negotiation, readOperation, validate, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { calendarProposalFamily } from "../src/plugin/device-proposals.vibe"
 import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
   requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
@@ -115,12 +115,14 @@ function phoneModel(replies: readonly string[] = []) {
 }
 
 function phoneTurn(runtime: IAgentRuntime, ownerText: string, observation: DeviceTurn["observation"], completesReads = true): DeviceTurn {
-  return negotiatedOwnerTurn(phoneCapabilities, {
-    runtime, by: {} as DeviceTurn["by"],
-    message: { id: "00000000-0000-4000-8000-000000000001" as UUID, content: { text: ownerText } } as DeviceTurn["message"],
-    ownerText, observation, completedActionNavigation: false, completesReads, conversationId: "c1", requestId: "r1",
-    startedAt: turnStarted, timeZone: observation?.timeZone,
-  })
+  const negotiated = negotiation(true, phoneCapabilities.join(","))
+  return {
+    runtime, by: {} as DeviceTurn["by"], negotiation: negotiated,
+    capabilities: phoneCapabilities, message: { id: "00000000-0000-4000-8000-000000000001" as UUID, content: { text: ownerText } } as DeviceTurn["message"],
+    ownerText, observation, completedActionNavigation: false, completesReads, conversationId: "c1", requestId: "r1", assistantName: "Eliza", swapped: [],
+    startedAt: turnStarted, timeZone: observation?.timeZone, signal: new AbortController().signal,
+    admit: (operation) => validate(operation, negotiated, "NoBinding"), earlier: () => succeed([]),
+  }
 }
 
 const unzonedCalendar = { view: "calendar", revision: 1, sensitive: false, selectedObject: selected }
