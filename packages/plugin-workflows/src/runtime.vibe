@@ -23,6 +23,7 @@ module node {
   import type { ChildProcessWithoutNullStreams } from "node:child_process"
   import { createInterface } from "node:readline"
   import type { IDatabaseAdapter } from "@elizaos/core"
+  import type { CloudLinkRequest as LinkRequest } from "@elizaos/agent"
   import type { WorkflowQuery, WorkflowSql } from "./service/store.vibe"
 
   export interface WorkerHostService {
@@ -86,14 +87,6 @@ module node {
     return { transaction: (work) => adapter.transaction(async (tx) => await work(connection(await tx.getConnection()))) }
   }
 
-  export interface LinkRequest {
-    readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
-    readonly path: string
-    readonly body?: unknown
-    readonly idempotencyKey?: string
-    readonly ifMatch?: string
-    readonly signal?: AbortSignal
-  }
   export type LinkReply = { readonly kind: "answered" | "refused"; readonly status: number; readonly body: unknown } | { readonly kind: "changes-off" }
 
   const methods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])

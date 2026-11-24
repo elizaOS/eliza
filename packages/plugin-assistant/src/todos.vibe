@@ -1,7 +1,7 @@
 // spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item's completion time is set exactly while it is completed"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"; spec/assistant/todos.md, "A miss offers the items that share most of its words, and changes nothing"
 import { isAffirmativeConfirmationReply, type Action, type ActionResult, type Memory, type Provider } from "@elizaos/core"
 import { Machine, Rejected, matching, nearMiss, stored, type Event, type Todo, type TodoStatus, type Todos } from "../gen/assistant__todos.effect.vibe"
-import { Facts, onAgent, readRecord, requestOf, writeRecord } from "./host.vibe"
+import { Facts, onAgent, parametersOf, readRecord, requestOf, writeRecord } from "./host.vibe"
 import { appliedReceipt, attributed, failedReceipt, previewReceipt, unchangedReceipt } from "./replies.vibe"
 import { TodoRequest } from "./requests.schema.vibe"
 
@@ -135,11 +135,6 @@ export effect function changeTodos(input: unknown, message: Memory) {
       : `"${content}" is now ${statusWords[request.op]}.`
     return attributed([{ actionName: todoActionName, success: true, receipts: [appliedReceipt(facts)] }], target, { done, notDone: "", unproven: "" }, { todos: after.todos })
   }
-}
-
-function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
-  const given = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
-  return typeof given === "object" && given !== null ? Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null)) : {}
 }
 
 export const todosAction: Action = {

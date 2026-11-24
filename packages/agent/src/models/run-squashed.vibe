@@ -1,0 +1,18 @@
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"
+module edge {
+  import { Cause, Effect, Exit } from "effect"
+
+  export interface AbortAs {
+    readonly signal: AbortSignal | undefined
+    readonly message: string
+  }
+
+  /** @throws {never} */
+  export async function runSquashed<A, E>(program: Effect.Effect<A, E>, abort?: AbortAs): Promise<A> {
+    const exit = await Effect.runPromiseExit(program, { signal: abort?.signal })
+    if (Exit.isSuccess(exit)) return exit.value
+    if (abort !== undefined && Cause.hasInterruptsOnly(exit.cause)) throw new DOMException(abort.message, "AbortError")
+    throw Cause.squash(exit.cause)
+  }
+}
+export { runSquashed } from edge

@@ -336,6 +336,11 @@ export function requestOf(message: Memory) {
 
 export type OwnerRequest = ReturnType<typeof requestOf>
 
+export function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
+  const given = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+  return typeof given === "object" && given !== null ? Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null)) : {}
+}
+
 export function onAgent<A, E>(runtime: IAgentRuntime, program: A!E!AssistantPorts): Promise<A> {
   return runPromise(Effect.provide(program, runtimeLayer(runtime)))
 }

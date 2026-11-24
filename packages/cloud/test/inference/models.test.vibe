@@ -5,7 +5,7 @@ import { parseProfile } from "../../src/profile/profile.vibe"
 import { billedFromUsage, callCostFor, checkPrices, chooseFor, pricesFromSeed, setModelPrice, type InferenceSettings } from "../../src/services/models.vibe"
 import { migrate } from "../../src/store/store.vibe"
 import { signedCaller } from "../support/caller.vibe"
-import { testCloud, type ProfileEdit, type TestCloud } from "../support/cloud.vibe"
+import { check, sql, testCloud, type ProfileEdit, type TestCloud } from "../support/cloud.vibe"
 import { testDatabaseIdentity, testProfile } from "../support/profile.ts"
 
 const offers = [
@@ -24,14 +24,6 @@ const inferenceOff: ProfileEdit = (profile) => ({
   ...profile,
   environments: { ...profile.environments, staging: { ...profile.environments.staging, capabilities: ["speech", "maps", "managedGoogle", "billing"] } }
 })
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
-
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
-}
 
 effect function settingsOf(cloud: TestCloud, edit: ProfileEdit) {
   const profile = try parseProfile(try sync(() => edit(testProfile(cloud.fakes.url))))

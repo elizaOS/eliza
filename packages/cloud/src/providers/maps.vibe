@@ -5,7 +5,7 @@ import type { Micros } from "../../gen/cloud__shared__types.ts"
 import type { MapsSettings as MapsSettingsSchema } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
 import { MapsPlace, MapsRoute, tileUrlTemplate, type Coordinate, type MapsCapabilities, type MapsPlaceResponse, type MapsPlacesResponse, type MapsRouteStep, type MapsRoutesResponse, type MapsTransitDetails, type MapsViewportResponse, type Maneuver, type PlaceDetailsRequest, type ReverseRequest, type RoutesRequest, type TextSearchRequest, type TileAddress, type TravelMode, type ViewportRequest } from "../services/maps.schema.ts"
-import { osmAttribution, osmMapsProvider } from "./maps-osm.vibe"
+import { osmAttribution, osmMapsProvider, routeId } from "./maps-osm.vibe"
 
 export type MapsSettings = typeof MapsSettingsSchema.Type
 type GoogleSettings = Extract<MapsSettings, { readonly provider: "google" }>
@@ -269,16 +269,6 @@ function simplified(geometry: ReadonlyArray<Coordinate>, steps: ReadonlyArray<Ma
     return kept.length > 10_000 && kept.length > anchors.length ? pass(tolerance * 2) : kept
   }
   return geometry.length <= 2 ? [...geometry] : pass(5)
-}
-
-function routeId(parts: string): string {
-  let low = 0x811c9dc5
-  let high = 0x01000193
-  for (let index = 0; index < parts.length; index += 1) {
-    low = Math.imul(low ^ parts.charCodeAt(index), 0x01000193) >>> 0
-    high = Math.imul(high ^ parts.charCodeAt(parts.length - 1 - index), 0x01000193) >>> 0
-  }
-  return `route_${low.toString(16).padStart(8, "0")}${high.toString(16).padStart(8, "0")}`
 }
 
 function transitOf(reply: TransitReply | undefined): MapsTransitDetails | undefined {

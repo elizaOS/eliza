@@ -38,6 +38,7 @@ import {
   type LinkRef, type SourceDescriptor, type SourceKind, type SourceMime,
 } from "../../gen/files__sourceReferences.effect.vibe"
 import { decodeBase64, parsedUrl, sha256Hex, utf8 } from browser
+export { decodeBase64 }
 
 export const SOURCE_DOCUMENT_TYPES = ["text/plain", "application/pdf", "image/png", "image/jpeg", "image/webp"] as const
 export const SOURCE_DOCUMENT_MAX_BYTES = 5 * 1024 * 1024

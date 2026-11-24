@@ -1,45 +1,16 @@
 // spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"; spec/cloud/services/inference.md, "Reading the provider's stream yields the same events however its bytes were split"
 import { assert, describe, it } from "@effect/vitest"
-import { FetchHttpClient } from "effect/http"
-import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
-import { stream, type LlmProvider } from "../../src/providers/llm.vibe"
+import { stream } from "../../src/providers/llm.vibe"
 import { billedFromUsage } from "../../src/services/models.vibe"
-import { abort, chunkFrame, doneFrame, feed, finish, isDone, segmenter, utf8Text } from "../../src/services/sse.ts"
-import { startFakeServer } from "../support/fakes.ts"
-import { llmFake, replyText, streamText, upstreamModel } from "../support/llm-fake.ts"
-import { secrets, testProfile } from "../support/profile.ts"
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
-
-effect function adapter() {
-  const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
-  const llm = try sync(() => {
-    const fake = llmFake()
-    fakes.mount("/llm/", fake.handler)
-    return fake
-  })
-  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
-  const provider: LlmProvider = { id: "llm", baseUrl: `${fakes.url}/llm`, apiKeyEnv: "LLM_API_KEY" }
-  const layer = Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(
-    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))
-  )
-  return { llm, provider, layer }
-}
+import { abort, chunkFrame, doneFrame, feed, finish } from "../../src/services/sse.ts"
+import { replyText, streamText, upstreamModel } from "../support/llm-fake.ts"
+import { check } from "../support/cloud.vibe"
+import { llmAdapter, segmented } from "../support/llm-adapter.vibe"
 
 const request = { model: upstreamModel, messages: [{ role: "user", content: "Say hello" }], max_tokens: 16 }
 
-function segmented(chunks: ReadonlyArray<ReadonlyArray<number>>, end: "finish" | "abort" = "finish"): ReadonlyArray<string> {
-  let state = segmenter()
-  const events: number[][] = []
-  for (const chunk of chunks) {
-    const next = feed(state, [...chunk])
-    state = next.segmenter
-    events.push(...next.events)
-  }
-  events.push(...(end === "finish" ? finish(state) : feed(abort(), [10, 10])).events)
-  return events.map((event) => isDone(event) ? "[DONE]" : String.fromCodePoint(...utf8Text(event)))
+function segmentedTo(chunks: ReadonlyArray<ReadonlyArray<number>>, end: "finish" | "abort" = "finish"): ReadonlyArray<string> {
+  return segmented(chunks, end === "finish" ? finish : () => feed(abort(), [10, 10]))
 }
 
 function bytesOf(text: string): ReadonlyArray<number> {
@@ -50,11 +21,11 @@ const cut = bytesOf("data: {\"a\":1}\n\ndata: {\"b\"")
 
 describe("WP5 Inference: SSE segmentation", () => {
   it.live("Read the provider's stream as whole events whatever its byte chunking (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
-    const { llm, provider, layer } = try adapter()
+    const { llm, provider, layer } = try llmAdapter()
     provide layer {
       try sync(() => llm.script({ kind: "stream" }))
       const chunks = Array.from(try Stream.runCollect(try stream(provider, request)), (bytes) => [...bytes])
-      const read = segmented(chunks)
+      const read = segmentedTo(chunks)
       const json = try Effect.try(() => read.filter((event) => event !== "[DONE]").map((event) => JSON.parse(event) as { choices: Array<{ delta?: { content?: string } }>; usage?: unknown }))
       const billed = try billedFromUsage(json.find((chunk) => chunk.usage !== undefined)?.usage)
       try check(() => assert.deepStrictEqual(
@@ -64,14 +35,14 @@ describe("WP5 Inference: SSE segmentation", () => {
           reframed: read.map((event) => event === "[DONE]" ? doneFrame : chunkFrame(event)).join(""),
           text: json.map((chunk) => chunk.choices[0]?.delta?.content ?? "").join(""),
           billed,
-          crlf: segmented([bytesOf("data: {\"a\":\r\ndata: 1}\r"), bytesOf("\n\r\n: keep-alive\n\ndata:[DONE]\n\n")]),
-          malformed: segmented([[...bytesOf("data: "), 0xc3], [0x28, 0xed, 0xa0, 0x80, 0xf0, 0x9f], [0x98, 0x80, 0xe2, 10, 10]]),
-          finished: segmented([cut]),
-          aborted: segmented([cut], "abort")
+          crlf: segmentedTo([bytesOf("data: {\"a\":\r\ndata: 1}\r"), bytesOf("\n\r\n: keep-alive\n\ndata:[DONE]\n\n")]),
+          malformed: segmentedTo([[...bytesOf("data: "), 0xc3], [0x28, 0xed, 0xa0, 0x80, 0xf0, 0x9f], [0x98, 0x80, 0xe2, 10, 10]]),
+          finished: segmentedTo([cut]),
+          aborted: segmentedTo([cut], "abort")
         },
         {
           chunked: true,
-          sameAsByByte: segmented(bytesOf(streamText).map((b) => [b])),
+          sameAsByByte: segmentedTo(bytesOf(streamText).map((b) => [b])),
           reframed: streamText,
           text: replyText,
           billed: { tag: "Reported", counts: { inputTokens: 8, cachedTokens: 4, outputTokens: 7 } },

@@ -1,16 +1,6 @@
 // spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything"; spec/files/library.md, "A workflow attachment and its receipt commit together, and a replay returns the receipt without saving again"; spec/files/library.md, "A workflow reads its Files source whole and unchanged, or not at all"; spec/files/library.md, "An imported folder arrives whole under a name not yet used, or not at all"
 module browser {
   /** @throws {never} */
-  export function fromBase64(text: string): Uint8Array<ArrayBuffer> | undefined {
-    try {
-      const raw = atob(text)
-      return btoa(raw) === text ? Uint8Array.from(raw, (character) => character.charCodeAt(0)) : undefined
-    } catch {
-      return undefined
-    }
-  }
-
-  /** @throws {never} */
   export function receiptOf(bytes: Uint8Array | undefined): { fingerprint: string; result: { id: string; name: string; sha256: string } } | undefined {
     if (bytes === undefined) return undefined
     try {
@@ -25,9 +15,9 @@ module browser {
     }
   }
 }
-import { fromBase64, receiptOf } from browser
+import { receiptOf } from browser
 import { attachmentAnswer, folderImported, recentFilesLimit, sourceAdmitted, sourceFilesLimit, sourceTextLimit } from "../../gen/files__library.effect.vibe"
-import { reviewMailAttachment, type MailAttachment } from "../documents/source-links.vibe"
+import { decodeBase64, reviewMailAttachment, type MailAttachment } from "../documents/source-links.vibe"
 import { freeName, validName } from "./model.vibe"
 import { allocateLibraryId, allocateLibraryRevision, childrenOf, LibraryStore, LIBRARY_ROOT, newId, newRevision, type LibraryRow } from "./library.vibe"
 import { VolumeRefused } from "./volume.vibe"
@@ -77,7 +67,7 @@ export effect function saveWorkflowAttachment(input: MailAttachment & { readonly
   if (!/^[a-zA-Z0-9_-]{1,120}$/.test(input.operationId)) throw refused("invalid", "Invalid workflow operation.")
   const name = validName(input.name)
   const reviewed = try mapError(reviewMailAttachment(input), (failure) => refused("invalid", failure.message))
-  const bytes = fromBase64(input.dataBase64)
+  const bytes = decodeBase64(input.dataBase64)
   if (name === undefined || bytes === undefined) throw refused("invalid", "Choose a valid file name.")
   const fingerprint = JSON.stringify([name, input.mimeType, reviewed.sha256])
   const library = try LibraryStore

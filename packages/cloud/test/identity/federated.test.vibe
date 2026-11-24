@@ -2,7 +2,7 @@
 import { assert, describe, it } from "@effect/vitest"
 import { decodeRegistration, registerClient } from "../../src/native-clients/registry.vibe"
 import type { Tx } from "../../src/store/connection.vibe"
-import { testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
+import { check, testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
 import { fragment, googleIdentityFake, visit } from "../support/google-identity-fake.ts"
 import { s256 } from "../support/identity-fixture.ts"
 import { manualClock } from "../support/clock.ts"
@@ -16,10 +16,6 @@ const app = {
   signInReturn, billingReturn: `${web}/apps/one/billing`, credentialTtlMs: 30 * 86_400_000, nativeGoogle: true, enabled: true
 }
 const verifier = "v".repeat(43)
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 function refusal(answer: Answer): string {
   const body = answer.body as { readonly error?: string; readonly reason?: string }

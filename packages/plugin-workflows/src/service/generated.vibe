@@ -5,22 +5,7 @@ import { draftStep } from "../../gen/workflow__generated.effect.vibe"
 import { phoneTimeTriggerCron, validatePhoneWorkflowTrigger, workflowSha, workflowUuid, type PhoneWorkflowSpec, type PhoneWorkflowTrigger } from "../contract/phone.vibe"
 import { GENERATED_ENGINE_DECLARATION } from "../worker/compiler.vibe"
 import type { DefinitionRow, GeneratedDefinition } from "./store.vibe"
-import { versionId, WorkflowRefused, type WorkflowService } from "./workflows.vibe"
-
-type Bag = Record<string, unknown>
-const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-
-function versionOf(id: unknown): number | undefined {
-  if (typeof id !== "string") return undefined
-  const found = /^v([1-9][0-9]{0,14})$/.exec(id)
-  return found === null ? undefined : Number(found[1])
-}
-
-effect function body(value: unknown, allowed: readonly string[]): Bag!WorkflowRefused {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new WorkflowRefused({ status: 400, message: "Expected a JSON object" })
-  if (Object.keys(value).some((key) => !allowed.includes(key))) throw new WorkflowRefused({ status: 400, message: "Unsupported workflow field" })
-  return value as Bag
-}
+import { body, uuidV4, versionId, versionOf, WorkflowRefused, type Bag, type WorkflowService } from "./workflows.vibe"
 
 effect function text(value: unknown, maximum: number, empty = false): string!WorkflowRefused {
   if (typeof value !== "string" || value.length > maximum || value.includes("\0") || (!empty && value.trim() === "")) throw new WorkflowRefused({ status: 400, message: "Complete the workflow text fields within their stated limits" })

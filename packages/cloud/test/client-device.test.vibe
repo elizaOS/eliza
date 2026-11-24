@@ -6,17 +6,11 @@ import { landAccount } from "../src/identity/accounts.vibe"
 import { setModelPrice } from "../src/services/models.vibe"
 import { Deployment } from "../src/profile/profile.vibe"
 import { legacyGrant } from "../gen/cloud__nativeClients__deviceKeys.effect.vibe"
-import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { check, clientFailure, sql, testCloud, type TestCloud } from "./support/cloud.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { revokeAll } from "../src/native-clients/device-keys.vibe"
-import { accountUsable, CloudError, createCloudClient, creditFromSnapshot, type CloudClient } from "../src/client/index.vibe"
+import { accountUsable, createCloudClient, creditFromSnapshot, type CloudClient } from "../src/client/index.vibe"
 
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
-}
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 effect function entitledDevice(cloud: TestCloud, name: string, now: number, expiresAt: number) {
   const bearer = `eliza_mobile_${tokenDigest(name)}`
   const credentialId = `cred-${name}`
@@ -30,9 +24,6 @@ effect function entitledDevice(cloud: TestCloud, name: string, now: number, expi
 }
 function clientOf(baseUrl: string, credential: () => string): CloudClient {
   return createCloudClient({ baseUrl, credential })
-}
-effect function failureOf(run: () => Promise<unknown>) {
-  return try promise(() => run().then(() => "succeeded", (error: unknown) => error instanceof CloudError ? error.failure : `threw ${String(error)}`))
 }
 const unknownKey = `eliza_mobile_${"0".repeat(64)}`
 
@@ -52,11 +43,11 @@ describe("Cloud device client", () => {
     })
     let held = unknownKey
     const client = clientOf(cloud.url, () => held)
-    const unknown = try failureOf(() => client.account())
+    const unknown = try clientFailure(() => client.account())
     held = expiring.bearer
-    const expired = try failureOf(() => client.account())
+    const expired = try clientFailure(() => client.account())
     held = ended.bearer
-    const revoked = try failureOf(() => client.account())
+    const revoked = try clientFailure(() => client.account())
     held = live.bearer
     const account = try promise(() => client.account())
     const models = try promise(() => client.models())
@@ -65,15 +56,15 @@ describe("Cloud device client", () => {
     const keys = try promise(() => client.entitlementKeys())
     const token = try promise(() => client.entitlement())
     const commands = try promise(() => client.subscriptionCommands({ limit: 5 }))
-    const badReferral = try failureOf(() => client.applyReferral("NOPE"))
+    const badReferral = try clientFailure(() => client.applyReferral("NOPE"))
     const unfunded = try promise(() => client.snapshot())
     provide Store = cloud.store {
       try addCredits({ organizationId: live.organizationId, amount: 5_000_000, requestKey: "u6-funding" })
     }
     const funded = try promise(() => client.snapshot())
-    const consent = try failureOf(() => client.speechConsent())
+    const consent = try clientFailure(() => client.speechConsent())
     const revokedSelf = try promise(() => client.revokeSelf())
-    const afterRevoke = try failureOf(() => client.account())
+    const afterRevoke = try clientFailure(() => client.account())
     try check(() => assert.deepStrictEqual(
       { unknown, expired, revoked, account: account.id, models: models.data.map((m) => m.id), referral: typeof referral.code, plans: plans.map((p) => p.key), keys: keys.length > 0, token: token.split(".").length, commands: commands.items.length, badReferral, usable: [accountUsable(unfunded), creditFromSnapshot(unfunded, unfunded.observedAt).kind, accountUsable(funded)], consent, revokedSelf, afterRevoke },
       { unknown: { tag: "CloudCredentialInvalid", reason: "CredentialUnknown" }, expired: { tag: "CloudCredentialInvalid", reason: "CredentialExpired" }, revoked: { tag: "CloudCredentialInvalid", reason: "CredentialRevoked" }, account: live.userId, models: ["test-chat"], referral: "string", plans: ["plus_monthly", "pro_monthly"], keys: true, token: 3, commands: 0, badReferral: { tag: "CloudRefused", code: "NotFound", reason: "NoReason" }, usable: [false, "zero", true], consent: "succeeded", revokedSelf: undefined, afterRevoke: { tag: "CloudCredentialInvalid", reason: "CredentialRevoked" } }

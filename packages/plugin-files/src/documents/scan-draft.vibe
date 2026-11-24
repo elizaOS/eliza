@@ -62,6 +62,7 @@ module browser {
 import { admitsDraftWrite, initial, machineOver, scanReadOutcome, type DraftMutation, type DraftTx, type DraftWriteFacts } from "../../gen/files__scan__drafts.effect.vibe"
 import { blobOf, pageSetAdmitted, readBytes, type ImageRefused } from "./images.vibe"
 import { admittedTextLayer, copyScanTextLayers, type TextLayerRefused, type ScanTextLine } from "./scan-text-layer.vibe"
+import { field } from "./record-field.vibe"
 import { freshRevision, mutateRow, readRow, type TxOutcome } from browser
 
 export { copyScanTextLayers }
@@ -92,10 +93,6 @@ const refused = (reason: DraftRefusal) => new DraftRefused({ reason, message: dr
 
 type StoredPage = { readonly bytes: ArrayBuffer; readonly type: string }
 type Decoded = { readonly draft?: ScanDraft; readonly decodable: boolean; readonly present: boolean; readonly revision?: string }
-
-function field(value: unknown, key: string): unknown {
-  return typeof value === "object" && value !== null && key in value ? (value as Record<string, unknown>)[key] : undefined
-}
 
 function decodeRow(raw: unknown): Decoded {
   if (raw === undefined) return { present: false, decodable: false }

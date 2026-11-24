@@ -1,0 +1,37 @@
+// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"
+import { listed } from "../../gen/files__reviewedOperations.effect.vibe"
+import { batchMax, type FileOutcome } from "../../gen/os__android__files__storage.effect.vibe"
+import type { TrashEntry } from "./model.vibe"
+import { checkSelection, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
+
+export const TRASH = ".Trash-files"
+
+export const ANSWERS: Readonly<Record<FileOutcome, RowStatus>> = {
+  Invalid: "invalid", Missing: "missing", Changed: "changed", Unchanged: "unchanged", Admitted: "failed",
+  Copied: "copied", Moved: "moved", Trashed: "trashed", Failed: "failed",
+}
+schema JournalRow { phase: "Visible" | "Journaled" | "InTrash" | "MoveFailed" | "Expiring" | "Gone"; journal: boolean; resident: boolean; deletedAt: number }
+export schema TrashRecord { name: string; origin: string; directory: boolean; size: number; mimeType: string; row: JournalRow }
+export const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(TrashRecord))
+
+export const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
+
+export effect function trashEach<E, R>(selected: readonly string[], reviewed: readonly string[] | undefined, row: (path: string, token: string | undefined) => RowOutcome!E!R): RowOutcome[]!(E | VolumeRefused)!R {
+  try checkSelection(selected, reviewed)
+  const outcomes: RowOutcome[] = []
+  for (const [index, path] of selected.entries()) outcomes.push(try row(path, reviewed?.[index]))
+  return outcomes
+}
+
+export function listShown(items: TrashEntry[], id: string, kept: typeof TrashRecord.Type, at: number): void {
+  if (listed(kept.row, at)) items.push({ id, name: kept.name, origin: kept.origin, directory: kept.directory, mimeType: kept.mimeType, size: kept.size, deletedAt: kept.row.deletedAt })
+}
+
+export function newestFirst(items: TrashEntry[]): TrashEntry[] {
+  return items.sort((a, b) => b.deletedAt - a.deletedAt)
+}
+
+export effect function checkErase(ids: readonly string[], confirmed: boolean, invalid: string): void!VolumeRefused {
+  if (!confirmed) throw refused("confirmation-required", "Confirm before deleting permanently.")
+  if (ids.length < 1 || ids.length > batchMax || new Set(ids).size !== ids.length) throw refused("invalid", invalid)
+}

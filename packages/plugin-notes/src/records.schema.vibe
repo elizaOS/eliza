@@ -1,4 +1,5 @@
 // spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+import { sampledSchema } from "@elizaos/agent/device-actions"
 import { SchemaGetter } from "effect"
 import { authoredNoteText, parseNoteFormat } from "./format.vibe"
 import { STICKY_COLORS, type NoteFormat } from "./types.vibe"
@@ -39,13 +40,6 @@ export const Format = Schema.declare((value: unknown): value is NoteFormat => pa
   toCodecArbitrary: () => Schema.link<NoteFormat>()(FormatSeed, { decode: SchemaGetter.transform(sampledFormat), encode: SchemaGetter.forbiddenEncoding }),
 })
 
-function sampled<Wire extends Schema.Constraint, Seed extends Schema.Constraint>(wire: Wire, seed: Seed, build: (value: Seed["Type"]) => Wire["Type"]) {
-  const domain = Schema.declare(Schema.is(Schema.toType(wire)), {
-    toCodecArbitrary: () => Schema.link<Wire["Type"]>()(seed, { decode: SchemaGetter.transform(build), encode: SchemaGetter.forbiddenEncoding }),
-  })
-  return Schema.decodeTo(domain)(wire)
-}
-
 const NoteWire = Schema.Struct({
   id: NoteId,
   title: Schema.String.check(Schema.isMaxLength(noteLimits.title)),
@@ -64,7 +58,7 @@ const NoteSeed = Schema.Struct({
   words: FormatText.check(Schema.isPattern(/\S/)),
 })
 
-export const NoteRow = sampled(NoteWire, NoteSeed, ({ contentIn, words, ...note }): typeof NoteWire.Type => {
+export const NoteRow = sampledSchema(NoteWire, NoteSeed, ({ contentIn, words, ...note }): typeof NoteWire.Type => {
   if (contentIn === "title") return { ...note, title: words }
   if (contentIn === "body") return { ...note, body: words }
   return { ...note, title: "", body: "", format: { kind: "list", data: { items: [{ t: words, done: false }] } } }
@@ -119,7 +113,7 @@ const DocumentSeed = Schema.Struct({
   recordingCleanup: Schema.Array(CleanupReceipt).check(Schema.isMaxLength(4)),
 })
 
-export const StoredDocument = sampled(DocumentWire, DocumentSeed, ({ notes, trash, creations, ...document }) => {
+export const StoredDocument = sampledSchema(DocumentWire, DocumentSeed, ({ notes, trash, creations, ...document }) => {
   const saved = notes.map((note, index) => ({ ...note, id: `note-${index}` }))
   const deleted = trash.map((row, index) => ({ ...row, note: { ...row.note, id: `trash-${index}` } }))
   const ids = [...saved.map((note) => note.id), ...deleted.map((row) => row.note.id)]

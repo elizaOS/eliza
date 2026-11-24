@@ -406,3 +406,29 @@ if (import.meta.main && process.argv.includes("--compile")) {
   for (const failure of failed) process.stderr.write(`${failure}\n`);
   process.exitCode = failed.length ? 1 : 0;
 }
+
+interface LineDriver<E> {
+  reset(): unknown;
+  dispatch(key: string, event: E): unknown;
+  observe(key: string): unknown;
+  [Symbol.asyncDispose](): PromiseLike<void>;
+}
+
+export async function answerDriverLines<E>(driver: LineDriver<E>, key: string, output: (key: string) => unknown, withOutcome = false): Promise<void> {
+  const answer = async (line: string) => {
+    const request: unknown = JSON.parse(line);
+    if (typeof request !== "object" || request === null || Array.isArray(request)) throw new Error(`not a driver request: ${line}`);
+    const event = (request as { event?: E }).event;
+    let outcome: unknown;
+    if (event === undefined) await driver.reset();
+    else outcome = await driver.dispatch(key, event);
+    const state = await driver.observe(key);
+    const out = event === undefined ? [] : await output(key);
+    return withOutcome && event !== undefined ? { outcome, state, out } : { state, out };
+  };
+  for await (const line of readline.createInterface({ input: process.stdin })) {
+    if (line.trim() === "") continue;
+    process.stdout.write(`${JSON.stringify(await answer(line))}\n`);
+  }
+  await driver[Symbol.asyncDispose]();
+}

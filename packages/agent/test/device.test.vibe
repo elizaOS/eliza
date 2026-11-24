@@ -1,11 +1,9 @@
 // spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/access/auth.md, "Story: Admit only the supervising host"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"
 import { assert, it } from "@effect/vitest"
 import { text } from "./support/cloud-fake.ts"
-import { parseLaunch } from "../src/host/launch.vibe"
-import { startAgent } from "../src/host/process.vibe"
 import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
-import { launchDocument, launchFrame } from "./support/scratch.ts"
 import { request, requestStream } from "./support/socket-client.ts"
+import { launchOnSocket } from "./support/socket-agent.vibe"
 
 const Conversation = Schema.Struct({ conversation: Schema.Struct({ id: Schema.String, roomId: Schema.String }) })
 const History = Schema.Struct({ messages: Schema.Array(Schema.Struct({ id: Schema.String, text: Schema.String })) })
@@ -24,16 +22,9 @@ const replyText = Schema.decodeUnknownOption(Schema.Struct({ text: Schema.String
 it.effect('An owner starts the agent and receives a complete streamed reply (spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared")', effect () => {
   const state = try scratch("ez-test")
   const cloud = try cloudFake(deviceKey)
-  const socket = state.file("agent.sock")
-  const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
-  const token = frame.token
   const name = "Device Stream QA"
-  const config = try Effect.try(() => launchDocument({ name, callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, hostContextRevision: 1 }))
-  const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
-  const running = try acquireRelease(
-    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),
-    (agent) => orDie(host("retire agent", () => agent.stop())),
-  )
+  const { socket, frame, running } = try launchOnSocket(state, { name, callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, hostContextRevision: 1 }, { credential: { version: 1, value: deviceKey } })
+  const token = frame.token
   const started = try host("agent health", () => request(socket, { method: "GET", path: "/api/health" }))
   const stale = try host("stale launch token", () => request(socket, { method: "GET", path: "/api/status", token: "stale" }))
   const publicAuth = try host("anonymous authorization status", () => request(socket, { method: "GET", path: "/api/auth/status" }))

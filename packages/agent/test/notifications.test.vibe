@@ -1,18 +1,11 @@
 // spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client"
 import { assert, it } from "@effect/vitest"
 import { AgentEventService, NotificationService, type AgentNotification, type NotificationInput } from "@elizaos/core"
-import { call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
-import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
+import { ask, call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 const loaded = { launch: { load: ["@elizaos/agent/notifications"] } }
 const absentId = "0b7c3a52-7e1f-4c55-9a4e-2f0d8b6c1e93"
 const otherEpoch = "9d1e6f0a-3b2c-4d5e-8f70-1a2b3c4d5e6f"
-
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
-
-effect function ask(agent: InProcess, asked: LocalRequest) {
-  return answerOf(try call(agent, asked))
-}
 
 effect function inbox(agent: InProcess) {
   try host("inbox start", () => agent.agent.runtime.getServiceLoadPromise(NotificationService.serviceType))

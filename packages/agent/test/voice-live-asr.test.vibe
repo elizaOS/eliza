@@ -4,8 +4,7 @@ import { Base64 } from "effect/encoding"
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
 import type { AgentPlugin } from "../src/host/module.vibe"
 import { liveAsrPath, liveAsrStatusPath } from "../src/voice/live-asr.vibe"
-import { call, startInProcess, type InProcess } from "./support/kernel.vibe"
-import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
+import { answerOf, call, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 const rule = 'spec/agent/voice/clientAudio.md, "A live session recognises each segment once, from its speech start through the speech end or close that ends it, and at most four sessions are open"'
 
@@ -22,8 +21,6 @@ function recognizerPlugin(beforeRecognise: () => Promise<void>): AgentPlugin {
     },
   }
 }
-
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
 effect function post(agent: InProcess, body: object) {
   return answerOf(try call(agent, { method: "POST", path: liveAsrPath, body }))

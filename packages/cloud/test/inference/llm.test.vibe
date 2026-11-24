@@ -1,25 +1,20 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"
 import { assert, describe, it } from "@effect/vitest"
-import { FetchHttpClient } from "effect/http"
 import { createCloudClient, type ChatChunk } from "../../src/client/index.vibe"
 import { addCredits } from "../../src/billing/funds.vibe"
 import { issueSession } from "../../src/identity/sessions.vibe"
 import type { ChatRequest } from "../../src/services/chat-request.schema.ts"
 import { setModelPrice } from "../../src/services/models.vibe"
-import { abort, chunkFrame, feed, finish, isDone, segmenter, utf8Text, type Fed, type Segmenter } from "../../src/services/sse.ts"
+import { abort, chunkFrame, feed, finish } from "../../src/services/sse.ts"
 import { Store } from "../../src/store/connection.vibe"
-import { Deployment, deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
-import { complete, stream, type LlmFailure, type LlmProvider } from "../../src/providers/llm.vibe"
-import { startFakeServer } from "../support/fakes.ts"
+import { Deployment } from "../../src/profile/profile.vibe"
+import { complete, stream, type LlmFailure } from "../../src/providers/llm.vibe"
 import { contentFrames, doneFrame, llmFake, replyText, streamText, upstreamModel, usage, wholeAnswer } from "../support/llm-fake.ts"
-import { secrets, testProfile } from "../support/profile.ts"
-import { testCloud, type TestCloud } from "../support/cloud.vibe"
+import { secrets } from "../support/profile.ts"
+import { check, testCloud, type TestCloud } from "../support/cloud.vibe"
 import { signedCaller } from "../support/caller.vibe"
+import { llmAdapter, segmented } from "../support/llm-adapter.vibe"
 import { callDeclaring, openCloud, type Answer } from "../support/http.ts"
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 effect function outcome<A, R>(program: A!LlmFailure!R): unknown!!R {
   return match (try exit(program)) {
@@ -28,34 +23,7 @@ effect function outcome<A, R>(program: A!LlmFailure!R): unknown!!R {
   }
 }
 
-effect function adapter() {
-  const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
-  const llm = try sync(() => {
-    const fake = llmFake()
-    fakes.mount("/llm/", fake.handler)
-    return fake
-  })
-  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
-  const provider: LlmProvider = { id: "llm", baseUrl: `${fakes.url}/llm`, apiKeyEnv: "LLM_API_KEY" }
-  const layer = Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(
-    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))
-  )
-  return { llm, provider, layer }
-}
-
 const request = { model: upstreamModel, messages: [{ role: "user", content: "Say hello" }], max_tokens: 16 }
-
-function segmented(chunks: ReadonlyArray<ReadonlyArray<number>>, end: (state: Segmenter) => Fed): ReadonlyArray<string> {
-  let state = segmenter()
-  const events: number[][] = []
-  for (const chunk of chunks) {
-    const next = feed(state, [...chunk])
-    state = next.segmenter
-    events.push(...next.events)
-  }
-  events.push(...end(state).events)
-  return events.map((event) => isDone(event) ? "[DONE]" : String.fromCodePoint(...utf8Text(event)))
-}
 
 function bytesOf(text: string): number[] {
   return [...new TextEncoder().encode(text)]
@@ -63,7 +31,7 @@ function bytesOf(text: string): number[] {
 
 describe("WP5 Inference: provider adapter", () => {
   it.live("Send one call per request to the provider and pass its answer through (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\")", () => scoped(effect {
-    const { llm, provider, layer } = try adapter()
+    const { llm, provider, layer } = try llmAdapter()
     provide layer {
       try sync(() => llm.script({ kind: "whole" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse" }))
       const whole = try complete(provider, request)
@@ -92,7 +60,7 @@ describe("WP5 Inference: provider adapter", () => {
   }))
 
   it.live("Pass the provider's stream through and cancel it when the caller goes away (spec/cloud/index.md, \"A streamed answer sends complete OpenAI frames and settles the same hold\")", () => scoped(effect {
-    const { llm, provider, layer } = try adapter()
+    const { llm, provider, layer } = try llmAdapter()
     provide layer {
       try sync(() => llm.script({ kind: "stream" }, { kind: "hang", after: 2 }))
       const chunks = Array.from(try Stream.runCollect(try stream(provider, { ...request, stream_options: { include_usage: false } })), (chunk) => [...chunk])
