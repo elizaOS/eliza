@@ -83,6 +83,18 @@
     "webSearch": "packages/plugin-web-search",
     "x": "packages/plugin-x"
   },
+  "specCompanions": {
+    "agent": ["packages/agent-host"],
+    "cloud": ["packages/cloud-worker"],
+    "core": ["packages/core-node"],
+    "files": ["packages/plugin-files-client"],
+    "inbox": ["packages/plugin-inbox-client"],
+    "localInference": ["packages/plugin-localinference-client"],
+    "maps": ["packages/plugin-maps-client"],
+    "notes": ["packages/plugin-notes-client"],
+    "os": ["packages/os-bridges"],
+    "workflow": ["packages/plugin-workflow-client", "packages/plugin-workflow-worker"]
+  },
   "scripts": {
     "dev": "turbo run dev //#studio",
     "studio": "node vibestack/spec.ts studio",

@@ -21,7 +21,7 @@ import { heading } from "./parse.ts";
 import { precomputeSimulations, prepareSimulationReceipts } from "./formal.ts";
 import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
-import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
+import { codeDirs, filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
 import { profile } from "./testing/profile.ts";
 import { installChromium } from "./chromium.ts";
 import { hostedCachedFixture, isolatedInstalls } from "./selftests/install.ts";
@@ -3480,7 +3480,7 @@ function eachCheck() {
     assert.ok(fs.readdirSync(shared).some(isActionEntry), "the packed check keeps its formal actions in the caller's shared cache");
   });
 
-  test("owner generation mirrors the same artifact as the whole tree and checks its dependency closure", async () => {
+  test("owner generation mirrors the same artifact as the whole tree, into its companions too, and checks its dependency closure", async () => {
     const root = toolchain(scratch({
       "package.json": JSON.stringify({ ...JSON.parse(PACKAGE["package.json"]), specOwners: { target: "packages/plugin-target" } }),
       "packages/plugin-target/package.json": JSON.stringify({ name: "@repo/target" }),
@@ -3537,8 +3537,9 @@ function eachCheck() {
     assert.deepEqual(outputs(), expected);
 
     const mapped = toolchain(scratch({
-      "package.json": JSON.stringify({ ...JSON.parse(PACKAGE["package.json"]), specOwners: { target: "packages/plugin-target" } }),
+      "package.json": JSON.stringify({ ...JSON.parse(PACKAGE["package.json"]), specOwners: { target: "packages/plugin-target" }, specCompanions: { target: ["packages/target-client"] } }),
       "packages/plugin-target/package.json": JSON.stringify({ name: "@repo/target" }),
+      "packages/target-client/package.json": JSON.stringify({ name: "@repo/target-client" }),
       "packages/target/package.json": JSON.stringify({ name: "@repo/conventional" }),
       "spec/index.md": "# Project",
       "spec/target/index.md": ruleSpec("pure val targetValue = 1"),
@@ -3547,6 +3548,9 @@ function eachCheck() {
     assert.equal(mappedGen.status, 0, mappedGen.stdout + mappedGen.stderr);
     assert.ok(fs.existsSync(path.join(mapped, "packages/plugin-target/gen/target.ts")));
     assert.ok(!fs.existsSync(path.join(mapped, "packages/target/gen")));
+    // SPEC.md, "One spec tree": a companion gets its owner's gen/, and every stage reads its code.
+    assert.equal(fs.readFileSync(path.join(mapped, "packages/target-client/gen/target.ts"), "utf8"), fs.readFileSync(path.join(mapped, "packages/plugin-target/gen/target.ts"), "utf8"));
+    assert.deepEqual(codeDirs(mapped), ["", "packages/plugin-target/", "packages/target-client/"]);
   });
 
   test("the command line checks, generates and watches a project directory from its parent", async () => {
