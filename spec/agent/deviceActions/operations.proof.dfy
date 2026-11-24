@@ -169,3 +169,45 @@ lemma lawTheLegacyPairStillRecords_ensures(neg: agent__deviceActions__capabiliti
     BothCapabilitiesMeet(neg, organize, local);
   }
 }
+
+lemma AnyButClockHasAnAlternative()
+  ensures agent__deviceActions__capabilities_namesSome(anyButClock.oneOf)
+{
+  var capability := agent__deviceActions__capabilities_Capability.CalendarLocalEventV1;
+  var firstClock := agent__deviceActions__capabilities_Capability.ClockHandoffV1;
+  var secondClock := agent__deviceActions__capabilities_Capability.ClockHandoffV2;
+  var available := agent__deviceActions__capabilities_allCapabilities;
+  var keep := (c: agent__deviceActions__capabilities_Capability) => !(c in [firstClock, secondClock]);
+  assert available[..1] == [capability];
+  assert capability in available;
+  ProofLib.FilterMember(keep, available, capability);
+  assert anyButClock.oneOf == ProofLib.Filter(keep, available);
+  assert capability in anyButClock.oneOf;
+}
+
+lemma lawEveryOperationNamesANeed_ensures(t: OperationType, versionTwo: bool)
+  ensures (lawEveryOperationNamesANeed(t, versionTwo) == true)
+{
+  var f := family(t);
+  var need := operationNeed(t, versionTwo);
+  if need == anyButClock {
+    AnyButClockHasAnAlternative();
+  } else {
+    match f {
+      case ReminderFamily => assert |need.required| > 0 || |need.oneOf| > 0;
+      case ClockFamily => assert |need.required| > 0 || |need.oneOf| > 0;
+      case TelephonyFamily => assert |need.required| > 0 || |need.oneOf| > 0;
+      case CalendarFamily => assert |need.required| > 0;
+      case ReviewFamily => assert |need.required| > 0;
+      case NotesOrganizeFamily => assert |need.required| > 0;
+      case PhotosViewFamily => assert |need.required| > 0;
+      case BrowserFamily => assert |need.required| > 0;
+      case _ => assert |need.required| > 0;
+    }
+    if |need.required| > 0 {
+      assert need.required[0] in need.required;
+    } else {
+      assert need.oneOf[0] in need.oneOf;
+    }
+  }
+}
