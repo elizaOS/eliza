@@ -17,6 +17,7 @@ import { Miniflare } from "miniflare";
 import { violated } from "./action.ts";
 import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
+import { heading } from "./parse.ts";
 import { precomputeSimulations, prepareSimulationReceipts } from "./formal.ts";
 import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
@@ -285,16 +286,16 @@ pure def selected(which: bool): Set[Field] = {
 
   test("a record literal beside == and a mapped list literal state their types in the prover's code", async () => {
     const root = oneRule("steps", "Step records", `type Step = { state: int, out: List[int] }
-type Other = { state: int, out: List[int] }
+type Other = { state: int, out: List[int], spare: bool }
 pure def recordOf(n: int): Step = { state: n, out: List(n) }
-pure def other(n: int): Other = { state: n + 1, out: List() }
+pure def other(n: int): Other = { state: n + 1, out: List(), spare: true }
 pure def lawStepIsItsRecord(n: int): bool = recordOf(n) == { state: n, out: List(n) }
 pure def shifted(n: int): List[int] = List(1, 2).listMap(x => x + n)`);
     const model = await gen(root, parseSpec(root, "spec/steps.md"));
     const checked = await tool("vibelang", ["--noEmit", "--strict", "--target", "es2023", "gen/steps.ts"], root);
     assert.ok(checked.ok, checked.out);
     const proof = model.render("");
-    // LemmaScript reads past `as` beside == and would take Other, the first record type with these field names.
+    // LemmaScript reads past `as` beside == and takes the first record type with these field names, which may be another module's.
     assert.match(proof, /recordOf\(n\) === typed\d+_steps\(\{ state: n, out: \[n\] \}\)/);
     assert.doesNotMatch(proof, /=== \(\{ state: n, out: \[n\] \} as Step\)/);
     assert.match(proof, /typed\d+_steps\(\[1, 2\]\)\.map\(/);
@@ -1232,7 +1233,8 @@ pure val amountValues = Set(0, 1)`;
   test("a test pass is remembered for what the tests read and a typecheck's for what the compiler read; runner receipts allow reuse but a forged Turbo environment does not; unchecked specs are noted", async () => {
     const ran = path.join(scratch({}), "ran");
     const root = fixtures(["door"], (f) => Object.assign(f, {
-      "package.json": JSON.stringify({ scripts: { test: `echo x >> ${JSON.stringify(ran)}` } }),
+      "package.json": JSON.stringify({ scripts: { test: `node -e "require('node:fs').readFileSync('fixtures/reviewed.proof.dfy')" && echo x >> ${JSON.stringify(ran)}` } }),
+      "fixtures/reviewed.proof.dfy": "lemma Reviewed() ensures true {}\n",
       "src/door.ts": 'import { one } from "../.shared/one.ts";\nexport const door: number = one;\n',
       ".shared/one.ts": "export const one = 1;\n",
     }));
@@ -1269,6 +1271,9 @@ pure val amountValues = Set(0, 1)`;
     fs.writeFileSync(path.join(root, "src/door.ts"), "export const door = 3;\n");
     await run(root);
     assert.equal(runs(), 4, "a receipt for older source cannot suppress the tests");
+    fs.rmSync(path.join(root, "fixtures/reviewed.proof.dfy"));
+    const missingFixture = await run(root);
+    assert.equal(missingFixture.said("tests", /^fail\n/)?.ok, false, missingFixture.text);
     const linked = scratch({ "package.json": '{"name":"linked","type":"module","main":"./dist/run.js"}', "dist/run.js": "export default true;" });
     const consumer = fixtures(["door"]);
     fs.mkdirSync(path.join(consumer, "node_modules"));
@@ -1281,7 +1286,7 @@ pure val amountValues = Set(0, 1)`;
     const workspace = scratch({ "tsconfig.json": "{}", "package.json": JSON.stringify({ devDependencies: { kit: "workspace:*" } }),
       ...Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts", "test/fixtures/p/package.json",
         "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts", "kit/README.md", "kit/fixtures/a.md", "kit/test/a.test.ts", "kit/gen/a.ts", "notes.md", "README.md", "AGENTS.md", "style.css", "gen/a.qnt", "gen/traces/a.b.0/0.itf.json",
-        "generated/stories/.cache/manifest.json", "spec/a.md"].map((f) => [f, "{}"])) });
+        "generated/stories/.cache/manifest.json", "spec/a.md", "spec/lock.json", "spec/a.proof.dfy", "src/a.proof.dfy"].map((f) => [f, "{}"])) });
     fs.mkdirSync(path.join(workspace, "node_modules"));
     fs.symlinkSync("../kit", path.join(workspace, "node_modules/kit"), "dir");
     const inputs = () => (["tests", "types"] as const).map((read) => testInputs(workspace, "normal", read));
@@ -1292,13 +1297,14 @@ pure val amountValues = Set(0, 1)`;
     };
     assert.deepEqual(Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts",
       "test/fixtures/p/a.ts", "apps/other/a.ts", "kit/a.ts", "kit/package.json", "kit/spec/a.md", "kit/nested/a.ts", "kit/README.md", "kit/fixtures/a.md", "kit/test/a.test.ts", "kit/gen/a.ts",
-      ".DS_Store", "notes.md", "README.md", "AGENTS.md", "style.css", "gen/a.qnt", "gen/traces/a.b.0/0.itf.json", "generated/stories/.cache/manifest.json", "spec/a.md"].map((f) => [f, changed(f)])), {
+      ".DS_Store", "notes.md", "README.md", "AGENTS.md", "style.css", "gen/a.qnt", "gen/traces/a.b.0/0.itf.json", "generated/stories/.cache/manifest.json", "spec/a.md", "spec/lock.json", "spec/a.proof.dfy", "src/a.proof.dfy"].map((f) => [f, changed(f)])), {
       "src/a.ts": [true, true], "test/a.test.ts": [true, true], "test/drivers/a.ts": [true, true], "test/traces/a.jsonl": [true, false],
       "test/counterexamples/a.json": [true, false], "test/bombadil.ts": [true, true], "test/fixtures/p/a.ts": [true, true], "apps/other/a.ts": [false, false],
       "kit/a.ts": [true, true], "kit/package.json": [true, true], "kit/spec/a.md": [false, false], "kit/nested/a.ts": [false, false],
       "kit/README.md": [false, false], "kit/fixtures/a.md": [true, false], "kit/test/a.test.ts": [false, false], "kit/gen/a.ts": [false, false], ".DS_Store": [false, false],
       "notes.md": [true, false], "README.md": [false, false], "AGENTS.md": [false, false], "style.css": [true, false], "gen/a.qnt": [false, false],
-      "gen/traces/a.b.0/0.itf.json": [false, false], "generated/stories/.cache/manifest.json": [false, false], "spec/a.md": [false, false],
+      "gen/traces/a.b.0/0.itf.json": [false, false], "generated/stories/.cache/manifest.json": [false, false], "spec/a.md": [false, false], "spec/lock.json": [true, false],
+      "spec/a.proof.dfy": [true, false], "src/a.proof.dfy": [true, false],
     }, "the tests read the package, its test fixtures, what its workspace dependencies ship to it and the fixtures they keep; the typecheck reads only scripts and JSON, and no traces or counterexamples; neither reads a spec's prose or its Quint copy, the prose kept for people and agents, the simulations' traces or the stories' bookkeeping");
     fs.writeFileSync(path.join(workspace, "kit/a.ts"), 'export * from "./gen/a.ts";\n');
     assert.deepEqual(changed("kit/gen/a.ts"), [true, true], "a dependency's gen/ is read once its code imports it");
@@ -2899,6 +2905,31 @@ function eachCheck() {
     assert.equal(changed.said("always", /alwaysSame|"Story \/ Same"/)?.ok, false, changed.text);
   });
 
+  test("a verifier process that outlives a change to LemmaScript classifies obligations with the installed emitter", { skip: process.platform === "win32" }, async () => {
+    const root = toolchain(scratch({ "package.json": '{"type":"module"}' }), "lsc");
+    const launcher = path.join(root, "node_modules/.bin/lsc");
+    fs.unlinkSync(launcher);
+    fs.writeFileSync(launcher, `#!/bin/sh\nexec "${path.join(nodeModules, ".bin/lsc")}" "$@"\n`, { mode: 0o755 });
+    const helper = path.join(root, "node_modules/.bin/dafny-emit.js");
+    fs.writeFileSync(helper, 'export { DAFNY_HELPER_NAMES } from "./names.mjs";');
+    const names = path.join(path.dirname(helper), "names.mjs");
+    fs.writeFileSync(names, "export const DAFNY_HELPER_NAMES = new Set();");
+    const probe = await exec(process.execPath, ["--input-type=module", "--eval", `
+      import fs from "node:fs";
+      import { prove } from "./vibestack/prove.ts";
+      import { steady } from "./vibestack/cache.ts";
+      const text = ${JSON.stringify(ONE)};
+      const unit = { unit: "one.ts", text, src: true, proofFile: "src/one.proof.dfy", imports: { text: "", lemmas: [] }, rests: [], externs: [], assumed: [], meaning: text };
+      const run = () => steady(() => prove({ root: process.cwd(), fresh: false, used: new Set() }, unit, { axioms: [] }));
+      const first = await run();
+      fs.writeFileSync(${JSON.stringify(names)}, 'export const DAFNY_HELPER_NAMES = new Set(["one_ensures"]);');
+      const next = await run();
+      process.stdout.write(JSON.stringify([first, next].map(({ total, unproved, errors }) => [total, unproved, errors])));
+    `], root);
+    assert.equal(probe.status, 0, probe.stderr);
+    assert.deepEqual(JSON.parse(probe.stdout), [[1, [], []], [0, [], []]]);
+  });
+
   test("proof and task cache identity follows verifier and compiler bytes rather than installation directories, read again only once they change", { skip: process.platform === "win32" }, async () => {
     const credentials = { apiUrl: "https://trusted-cache.example", writeToken: "test-only-publisher" };
     const trusted = { TURBO_API: credentials.apiUrl, TURBO_TOKEN: credentials.writeToken };
@@ -2988,27 +3019,34 @@ function eachCheck() {
     const checked = await exec(process.execPath, ["--input-type=module", "--eval", [
       'const fs = await import("node:fs");',
       `const { act } = await import(${JSON.stringify(path.join(project, "vibestack/action.ts"))});`,
-      `const { entry, steady, solver } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))});`,
+      `const { entry, steady, solver, store } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))});`,
       'const memory = { root: ".", fresh: false, used: new Set() };',
       'const proof = async () => (await entry(".", "prove", ["same obligation"])).name;',
-      'const kept = async () => { await steady(() => act(memory, "dafny", ["audit", "a.dfy"], "audited", { "a.dfy": { text: "", key: "a" } })); return fs.existsSync(".spec-cache") ? fs.readdirSync(".spec-cache").filter((f) => f.startsWith("action-")).length : 0; };',
-      'const within = await steady(async () => { const before = await proof(); fs.writeFileSync("audit/Support.dll", "installed again during the check"); return [before, await proof()]; });',
+      'const outcome = (work) => steady(work).then(() => "certified", (error) => error.message);',
+      'const audit = () => act(memory, "dafny", ["audit", "a.dfy"], "audited", { "a.dfy": { text: "", key: "a" } });',
+      'const kept = async () => { const result = await outcome(audit); return [result, fs.existsSync(".spec-cache") ? fs.readdirSync(".spec-cache").filter((f) => f.startsWith("action-")).length : 0]; };',
+      'let within; const changedDuring = await outcome(async () => { const before = await proof(); fs.writeFileSync("audit/Support.dll", "installed again during the check"); within = [before, await proof()]; });',
       'const after = await proof();',
       'process.env.REWRITE = "1";',
       'const rewritten = await kept();',
       'delete process.env.REWRITE;',
       'const keptAfter = await kept();',
+      'const restored = await outcome(async () => { await audit(); const file = "audit/z3"; const original = fs.readFileSync(file); fs.appendFileSync(file, " "); fs.writeFileSync(file, original); });',
+      'const warm = await outcome(async () => { await audit(); fs.appendFileSync("audit/Support.dll", " changed after a warm hit"); });',
+      'const published = await steady(async () => { await proof(); const entries = await Promise.all(Array.from({length: 64}, (_, i) => entry(".", "action", ["batch", String(i)]))); for (const e of entries) store(memory, e, "verified", "dafny"); return entries.filter(e => fs.existsSync(e.file)).length; });',
       'const choose = () => steady(async () => [(await solver()).version, await proof()]);',
       'const bundled = "libexec/z3/bin/z3-4.12.1"; fs.mkdirSync("libexec/z3/bin", { recursive: true });',
       'const install = (v) => { fs.writeFileSync(bundled + ".next", ["#!/bin/sh", "echo Z3 version " + v, ""].join(String.fromCharCode(10)), { mode: 0o755 }); fs.renameSync(bundled + ".next", bundled); };',
       'const fallback = await choose(); install("4.12.0"); const preferred = await choose(); install("4.12.2"); const replaced = await choose(); fs.unlinkSync(bundled);',
-      'console.log(JSON.stringify({ within, after, kept: [rewritten, keptAfter], selected: [fallback, preferred, replaced, await choose()] }));',
+      'console.log(JSON.stringify({ within, after, changedDuring, restored, warm, published, kept: [rewritten, keptAfter], selected: [fallback, preferred, replaced, await choose()] }));',
     ].join("\n")], root, { ...process.env, XDG_CACHE_HOME: path.join(root, "cache"), PATH: `${audit}${path.delimiter}${process.env.PATH ?? ""}` });
     assert.equal(checked.status, 0, checked.stderr);
     const steadily = JSON.parse(checked.stdout);
     assert.equal(steadily.within[1], steadily.within[0], "a check reads Dafny's installation once");
     assert.notEqual(steadily.after, steadily.within[0], "and the next reads it again");
-    assert.deepEqual(steadily.kept, [0, 1], "a run of Dafny during which it was installed again is not remembered, though its check read the installation before");
+    assert.equal(steadily.published, 64, "certified native actions are published in bounded batches");
+    for (const changed of [steadily.changedDuring, steadily.restored, steadily.warm]) assert.match(changed, /tool installation changed/);
+    assert.deepEqual(steadily.kept, [["a tool installation changed during this check; run the check again", 0], ["certified", 1]], "a run of Dafny during which it was installed again is not remembered, though its check read the installation before");
     const selected: [string, string][] = steadily.selected;
     assert.deepEqual(selected.map(([version]) => version), ["4.12.1", "4.12.0", "4.12.2", "4.12.1"], "a preferred bundled solver is discovered, updated, and removed between checks");
     assert.equal(new Set(selected.map(([, proof]) => proof)).size, 3, "each installed solver has its own proof identity");
@@ -3196,7 +3234,7 @@ function eachCheck() {
     const root = oneRule("packaged", "A packaged value", "pure val answer = 42");
     const staging = scratch(Object.fromEntries(PACKED.map((file) => [file, read(file)])));
     // Studio's page is built from the workspace packages it shares with every interface.
-    for (const directory of ["vibestack", "packages", "apps", "spec"].filter((d) => fs.existsSync(path.join(project, d))))
+    for (const directory of ["vibestack", "packages", "spec"].filter((d) => fs.existsSync(path.join(project, d))))
       copySources(path.join(project, directory), path.join(staging, directory));
     copySources(path.join(project, ".agents/skills"), path.join(staging, ".agents/skills"));
     const lock = path.join(staging, "vibestack/studio/.spec-cache/lock");
@@ -3389,6 +3427,18 @@ function eachCheck() {
     assert.equal(invalid.status, 1, invalid.stdout + invalid.stderr);
     assert.match(invalid.stderr, /spec\/target\/invalid\.md/);
     assert.deepEqual(outputs(), expected);
+
+    const mapped = toolchain(scratch({
+      "package.json": JSON.stringify({ ...JSON.parse(PACKAGE["package.json"]), specOwners: { target: "packages/plugin-target" } }),
+      "packages/plugin-target/package.json": JSON.stringify({ name: "@repo/target" }),
+      "packages/target/package.json": JSON.stringify({ name: "@repo/conventional" }),
+      "spec/index.md": "# Project",
+      "spec/target/index.md": ruleSpec("pure val targetValue = 1"),
+    }), "quint", "lsc");
+    const mappedGen = await runCli(path.join(mapped, "vibestack/spec.ts"), mapped, "gen", "--owner", "target");
+    assert.equal(mappedGen.status, 0, mappedGen.stdout + mappedGen.stderr);
+    assert.ok(fs.existsSync(path.join(mapped, "packages/plugin-target/gen/target.ts")));
+    assert.ok(!fs.existsSync(path.join(mapped, "packages/target/gen")));
   });
 
   test("the command line checks, generates and watches a project directory from its parent", async () => {
@@ -4032,7 +4082,30 @@ export function useShown(counter: ManagedRuntime.ManagedRuntime<Machine, never>,
     // Nothing stored starts from `initial`, and a stored state goes on from where it was; what the rules refuse, or what is no state, leaves the store as it is; a machine steps from what another over the same store stored since, and its guard is judged by it.
     const kept = await exec(process.execPath, ["--import", "vibelang/register", "--input-type=module", "-e", `import assert from "node:assert/strict"; import { Effect } from "effect"; import { counted, twoPages } from "./src/kept.vibe";
 assert.deepEqual(await Promise.all([undefined, "1", "2", "7", "{"].map((before) => Effect.runPromise(counted(before)))), [[1, "1"], [2, "2"], ["Rejected", "2"], ["NotAState", "7"], ["NotAState", "{"]]);
-assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`], root);
+assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);
+const { machineOver } = await import("./gen/index.effect.vibe");
+const { Deferred, Fiber, Ref } = await import("effect");
+const outcome = await Effect.runPromise(Effect.gen(function*() {
+  const kept = yield* Ref.make(0);
+  const firstSaving = yield* Deferred.make();
+  const resume = yield* Deferred.make();
+  const machine = yield* machineOver(() => Ref.get(kept), (n) => Effect.gen(function*() {
+    if (n === 1) {
+      yield* Deferred.succeed(firstSaving, undefined);
+      yield* Deferred.await(resume);
+    }
+    yield* Ref.set(kept, n);
+  }));
+  const first = yield* Effect.forkChild(machine.send({ type: "inc" }));
+  yield* Deferred.await(firstSaving);
+  let source = "first";
+  const pending = yield* Effect.forkChild(Effect.flip(machine.send({ type: "inc" }, () => source === "first")), { startImmediately: true });
+  source = "replacement";
+  yield* Deferred.succeed(resume, undefined);
+  yield* Fiber.join(first);
+  return [(yield* Fiber.join(pending))._tag, yield* machine.get(), yield* machine.send({ type: "inc" }, (current) => current === 1)];
+}));
+assert.deepEqual(outcome, ["Rejected", 1, 2]);`], root);
     assert.equal(kept.status, 0, kept.stdout + kept.stderr);
     // An owner's package.json decides for its own gen/, whatever the root's says.
     const tree = scratch({ "spec/index.md": "# Product\n", "spec/app/index.md": ruleSpec(COUNTER), "spec/plain/index.md": ruleSpec(COUNTER), "apps/app/package.json": manifest("@scratch/app"), "apps/plain/package.json": "{}" });
@@ -4654,12 +4727,17 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
   const eslint = new ESLint({ cwd: project });
   const found = async (file: string, lines: string[]) => (await eslint.lintText(lines.join("\n"), { filePath: path.join(project, file) }))[0]!.messages
     .filter((m) => m.fatal || m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId ?? "inline config"}`);
-  const specFile = "spec/app/index.md";
+  const spec = readSpecs(project).find((s) => s.file.startsWith("spec/")
+    && s.stories.some((story) => !story.title.includes('"'))
+    && s.rules.some((rule) => !heading(rule).includes('"')));
+  const specFile = spec?.file ?? "spec/app/index.md";
+  const storyHeading = spec?.stories.find((story) => !story.title.includes('"'))?.title ?? "Story: Say hello";
+  const ruleHeading = spec ? heading(spec.rules.find((rule) => !heading(rule).includes('"'))!) : "The number of greetings is never negative";
   assert.deepEqual(await found("apps/app/src/probe.vibe", [
-    `// ${specFile}, "Story: Say hello"; ${specFile}, "The number of greetings is never negative"`,
-    `/* ${specFile}, "Story: Say hello" */`,
+    `// ${specFile}, "${storyHeading}"; ${specFile}, "${ruleHeading}"`,
+    `/* ${specFile}, "${storyHeading}" */`,
     "//@ ghost",
-    "/** @model spec/app/index.md */",
+    `/** @model ${specFile} */`,
     "/** @throws {never} */",
     "// a note",
     "/** What it is. */",
@@ -4711,4 +4789,188 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
   const [file, left] = Object.entries(config.find((block: { rules?: Record<string, unknown> }) => block.rules?.["code/comments"]).rules["code/comments"][1].left as Record<string, number>).find(([file]) => file.endsWith(".vibe"))!;
   const notes = (n: number) => Array.from({ length: n }, () => "// a note");
   assert.deepEqual([(await found(file, notes(left))).length, (await found(file, notes(left + 1))).length], [0, left + 1]);
+});
+
+test("the barrel lint refuses non-barrel workspace exports, subpath imports, inline disables and stale ratchets", async (context) => {
+  const { ESLint } = await import("eslint");
+  const { default: js } = await import("@eslint/js");
+  const { defineConfig, globalIgnores } = await import("eslint/config");
+  const { default: tseslint } = await import("typescript-eslint");
+  const { default: vibelang } = await import("vibelang/eslint");
+  const { withWorkspaceBarrels } = await import("./eslint.ts");
+
+  const barrelHits = async (eslint: InstanceType<typeof ESLint>, file: string, lines: readonly string[], cwd = project) => {
+    const [res] = await eslint.lintText(lines.join("\n"), { filePath: path.join(cwd, file) });
+    return res!.messages
+      .filter((m) => m.fatal || m.ruleId?.startsWith("barrel/"))
+      .map((m) => `${m.line}:${m.column} ${m.ruleId ?? "fatal"} ${m.message}`);
+  };
+
+  const live = new ESLint({ cwd: project });
+  const allowedImports = [
+    'import { Button } from "@repo/ui";',
+    'import "@repo/ui/styles.css";',
+    'import "@repo/ui/styles.css?inline";',
+    'import tokens from "@repo/design-system/tokens.json" with { type: "json" };',
+    'void import.meta.resolve("@repo/design-system/tokens.json");',
+    'import { project as p } from "vibestack/testing/vitest";',
+    'import { Effect } from "effect";',
+    'import { Schema } from "effect/Schema";',
+    "// eslint-disable-next-line no-undef -- global",
+    "void [Button, tokens, p, Effect, Schema];",
+  ];
+  assert.deepEqual(await barrelHits(live, "apps/app/src/probe.vibe", allowedImports), []);
+  assert.deepEqual(await barrelHits(live, "vibestack/spec.ts", allowedImports), []);
+
+  const appPkg = fs.existsSync(path.join(project, "apps/app/package.json")) ? JSON.parse(read("apps/app/package.json")).name as string : "@repo/design-system";
+  const badImports = [
+    'import { x } from "@repo/ui/client";',
+    'import { b } from "@repo/ui/src/components/Button";',
+    'export { x } from "@repo/ui/internal";',
+    'export * from "@repo/ui/internal";',
+    'void import("@repo/ui/client");',
+    "void import(`@repo/ui/${name}`);",
+    'void import("@repo/ui/" + name);',
+    'require("@repo/ui/client");',
+    'require.resolve("@repo/ui/client");',
+    'import.meta.resolve("@repo/ui/client");',
+    'type T = import("@repo/ui/client").Foo;',
+    'import "@repo/ui/nonexistent.css";',
+    'import "@repo/ui/a/../styles.css";',
+    'import "@repo/ui/";',
+    `import "${appPkg}/src/App";`,
+    'import "vibestack-studio/src/project";',
+  ];
+  for (const target of ["apps/app/src/probe.vibe", "vibestack/spec.ts"]) {
+    const got = await barrelHits(live, target, badImports);
+    assert.equal(got.length, badImports.length, `${target}: ${got.join("\n")}`);
+    assert.ok(got.every((line) => line.includes("barrel/no-subpath-imports")));
+    assert.ok(got.some((line) => line.includes("not a declared static asset export")));
+  }
+
+  const bypasses = [
+    ['// eslint-disable-next-line barrel/no-subpath-imports -- nope', 'import "@repo/ui/client";'],
+    ["/* eslint-disable */", 'import "@repo/ui/client";'],
+    ["/* eslint barrel/no-subpath-imports: off */", 'import "@repo/ui/client";'],
+    ['import "@repo/ui/client"; // eslint-disable-line'],
+  ];
+  for (const target of ["apps/app/src/probe.vibe", "vibestack/spec.ts"]) {
+    const results = await Promise.all(bypasses.map((lines) => barrelHits(live, target, lines)));
+    assert.ok(results.every((msgs) => msgs.length === 1 && msgs[0]!.includes(" fatal ")), `${target}: ${JSON.stringify(results)}`);
+  }
+
+  for (const goodManifest of [
+    '{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "./styles.css": "./styles.css", "./tokens.json": { "types": "./tokens.d.ts", "default": "./tokens.json" }, "./internal/*": null } }',
+    '{ "name": "@repo/ui", "exports": "./src/index.ts" }',
+    '{ "name": "@repo/ui", "exports": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } }',
+    '{ "name": "@repo/ui" }',
+  ]) {
+    assert.deepEqual(await barrelHits(live, "packages/ui/package.json", [goodManifest]), [], goodManifest);
+  }
+
+  for (const [badManifest, snippet] of [
+    ['{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "./client": "./src/client.ts" } }', "barrel/exports"],
+    ['{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "./bridges/*": "./src/bridges/*.ts" } }', "wildcard"],
+    ['{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "./fake.css": "./src/client.ts" } }', "non-asset target"],
+    ['{ "name": "@repo/ui", "exports": {} }', "Empty"],
+    ['{ "name": "@repo/ui", "exports": { ".": "./src/index.ts", "import": "./dist/index.js" } }', "subpath map"],
+    ['{ "name": "@repo/ui", "publishConfig": { "exports": { ".": "./dist/index.js", "./client": "./dist/client.js" } } }', "barrel/exports"],
+    ['{\n  "name": "@repo/ui",\n  "exports": { "./client": "./src/client.ts" },\n  "exports": { ".": "./src/index.ts" }\n}', "barrel/exports"],
+    ['{ "name": "@repo/ui", "main": "./src/index.ts", "exports": { "./styles.css": "./styles.css" } }', "asset-only"],
+    ['{\n  "name": "@repo/ui",\n}', "3:1 fatal"],
+  ] as const) {
+    const msgs = await barrelHits(live, "packages/ui/package.json", [badManifest]);
+    assert.ok(msgs.length >= 1 && msgs.some((m) => m.includes(snippet)), `${badManifest} -> ${JSON.stringify(msgs)}`);
+  }
+
+  assert.deepEqual(await barrelHits(live, "package.json", [read("package.json")]), []);
+
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "barrel-lint-")));
+  context.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const writeTmp = (rel: string, body: string) => {
+    const full = path.join(tmp, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, body);
+  };
+  writeTmp("pnpm-workspace.yaml", [
+    "packages: # workspace members",
+    "  - 'packages/*'",
+    "  - !packages/ignored",
+    "  - apps/*",
+    "  - cloud",
+    "  - vendor/eliza",
+    "  - vendor/eliza/packages/*",
+    "catalog:",
+    "  react: ^19.3.1",
+  ].join("\n"));
+  writeTmp("tsconfig.json", JSON.stringify({ compilerOptions: { target: "es2023", module: "nodenext", strict: true, noEmit: true }, include: ["apps/**/*.ts"] }));
+  writeTmp("packages/agent/package.json", JSON.stringify({ name: "@elizaos/agent", exports: { ".": "./src/index.ts", "./client": "./src/client.ts", "./bridges/*": "./src/bridges/*.ts" } }));
+  writeTmp("packages/ignored/package.json", JSON.stringify({ name: "@elizaos/ignored", exports: { ".": "./src/index.ts", "./secret": "./src/secret.ts" } }));
+  writeTmp("cloud/package.json", JSON.stringify({ name: "cloud", exports: { "./worker": "./src/worker.ts" } }));
+  writeTmp("vendor/eliza/package.json", JSON.stringify({ name: "vibestack", bin: { spec: "dist/spec.js" }, exports: { "./testing/vitest": "./vibestack/testing/vitest.ts" } }));
+  writeTmp("vendor/eliza/packages/core/package.json", JSON.stringify({ name: "@elizaos/core", exports: { ".": "./src/index.ts", "./protocol": "./src/protocol.ts" } }));
+  writeTmp("apps/web/src/other.ts", 'import "@elizaos/agent/client";\n');
+
+  const scratchEslint = new ESLint({
+    cwd: tmp,
+    overrideConfigFile: true,
+    overrideConfig: withWorkspaceBarrels(
+      defineConfig(
+        globalIgnores(["vendor/**"]),
+        js.configs.recommended,
+        tseslint.configs.recommendedTypeChecked,
+        { languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: tmp } } },
+        { files: ["**/*.vibe"], extends: [tseslint.configs.disableTypeChecked], languageOptions: { parser: vibelang, parserOptions: { projectService: false } } },
+      ),
+      {
+        root: tmp,
+        allowExports: { "packages/agent/package.json": ["./client"] },
+        allowImports: { "apps/web/src/app.vibe": ["@elizaos/agent/client", "@elizaos/core/protocol"] },
+      },
+    ),
+  });
+
+  const agentMsgs = await barrelHits(scratchEslint, "packages/agent/package.json", [read("packages/agent/package.json", tmp)], tmp);
+  assert.equal(agentMsgs.length, 1);
+  assert.ok(agentMsgs[0]!.includes("./bridges/*"));
+  const staleExportMsgs = await barrelHits(scratchEslint, "packages/agent/package.json", [JSON.stringify({ name: "@elizaos/agent", exports: { ".": "./src/index.ts" } })], tmp);
+  assert.ok(staleExportMsgs.some((m) => m.includes('Stale allowExports entry "./client"')));
+  assert.equal((await barrelHits(scratchEslint, "cloud/package.json", [read("cloud/package.json", tmp)], tmp)).length, 1);
+
+  assert.deepEqual(await barrelHits(scratchEslint, "apps/web/src/app.vibe", [
+    'import "@elizaos/agent/client"',
+    'import "@elizaos/core/protocol"',
+    'import "vibestack/testing/vitest"',
+  ], tmp), []);
+  const newAppMsgs = await barrelHits(scratchEslint, "apps/web/src/app.vibe", [
+    'import "@elizaos/agent/client"',
+    'import "@elizaos/agent/bridges/http"',
+    'import "cloud/worker"',
+  ], tmp);
+  assert.equal(newAppMsgs.length, 3, newAppMsgs.join("\n"));
+  assert.ok(newAppMsgs.some((m) => m.includes('@elizaos/agent/bridges/http')));
+  assert.ok(newAppMsgs.some((m) => m.includes('cloud/worker')));
+  assert.ok(newAppMsgs.some((m) => m.includes('Stale allowImports entry "@elizaos/core/protocol"')));
+
+  const otherMsgs = await barrelHits(scratchEslint, "apps/web/src/other.ts", ['import "@elizaos/agent/client";'], tmp);
+  assert.equal(otherMsgs.length, 1);
+  assert.ok(otherMsgs[0]!.includes('barrel/no-subpath-imports'));
+
+  const flowDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "barrel-flow-")));
+  context.after(() => fs.rmSync(flowDir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(flowDir, "package.json"), JSON.stringify({ name: "root", workspaces: ["packages/*"] }));
+  fs.mkdirSync(path.join(flowDir, "packages/kit"), { recursive: true });
+  fs.writeFileSync(path.join(flowDir, "packages/kit/package.json"), JSON.stringify({ name: "@flow/kit", exports: { ".": "./index.ts", "./sub": "./sub.ts" } }));
+  const fallbackEslint = new ESLint({ cwd: flowDir, overrideConfigFile: true, overrideConfig: withWorkspaceBarrels([], { root: flowDir }) });
+  assert.equal((await barrelHits(fallbackEslint, "packages/kit/package.json", [read("packages/kit/package.json", flowDir)], flowDir)).length, 1);
+
+  fs.writeFileSync(path.join(flowDir, "pnpm-workspace.yaml"), 'packages: ["packages/*", "!packages/skip"]\n');
+  fs.mkdirSync(path.join(flowDir, "packages/skip"), { recursive: true });
+  fs.writeFileSync(path.join(flowDir, "packages/skip/package.json"), JSON.stringify({ name: "@flow/skip", exports: { ".": "./index.ts", "./sub": "./sub.ts" } }));
+  const flowEslint = new ESLint({ cwd: flowDir, overrideConfigFile: true, overrideConfig: withWorkspaceBarrels([], { root: flowDir }) });
+  assert.equal((await barrelHits(flowEslint, "apps/a.ts", ['import "@flow/kit/sub"; import "@flow/skip/sub";'], flowDir)).length, 1);
+
+  assert.throws(() => withWorkspaceBarrels([], { root: tmp, allowExports: { "packages/agent/package.json": ["."] } }), /never be "."/);
+  assert.throws(() => withWorkspaceBarrels([], { root: tmp, allowExports: { "packages/agent": ["./client"] } }), /package\.json/);
+  assert.throws(() => withWorkspaceBarrels([], { root: tmp, allowImports: { "apps/a.ts": ["@elizaos/agent"] } }), /subpath specifier/);
 });
