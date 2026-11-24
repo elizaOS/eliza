@@ -57,15 +57,15 @@ reminders, check-ins and their occurrence records are kept separately.
 ```quint
 type TickDriverRow = { hasId: bool, sameAgent: bool, sameName: bool, queue: bool, repeat: bool }
 type TickRegistration = OwnTickWorker | NoTickWorker | ReplacementTickWorker
-pure def tickDriverRowEligible(r: TickDriverRow): bool =
-  r.hasId and r.sameAgent and r.sameName and r.queue and r.repeat
+pure def tickDriverRowEligible(tickRow: TickDriverRow): bool =
+  tickRow.hasId and tickRow.sameAgent and tickRow.sameName and tickRow.queue and tickRow.repeat
 pure def tickDriverMayRun(registration: TickRegistration): bool = registration == OwnTickWorker
 pure def tickDriverMayClean(registration: TickRegistration): bool = registration == NoTickWorker
-pure val rValues = Set({ hasId: true, sameAgent: true, sameName: true, queue: true, repeat: true },
+pure val tickRowValues = Set({ hasId: true, sameAgent: true, sameName: true, queue: true, repeat: true },
   { hasId: true, sameAgent: false, sameName: true, queue: true, repeat: true },
   { hasId: true, sameAgent: true, sameName: true, queue: true, repeat: false })
-pure def lawAnotherAgentsTickRowIsNeverEligible(r: TickDriverRow): bool =
-  not(r.sameAgent) implies not(tickDriverRowEligible(r))
+pure def lawAnotherAgentsTickRowIsNeverEligible(tickRow: TickDriverRow): bool =
+  not(tickRow.sameAgent) implies not(tickDriverRowEligible(tickRow))
 pure def lawAReplacementFencesTheRetiredDriver(registration: TickRegistration): bool =
   (registration == ReplacementTickWorker) implies
     (not(tickDriverMayRun(registration)) and not(tickDriverMayClean(registration)))
