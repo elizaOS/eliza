@@ -371,10 +371,10 @@ pure def lawAnAlertLeadsByAtMostAWeek(minutes: int): bool =
 
 A Clock set names an hour from 0 to 23 and a minute from 0 to 59, a label
 of at most 200 UTF-16 units with no control character (it may be empty),
-a zone of at most 100 units that Intl knows and is written as an area and
-a location, and, when it carries repeat days, each day at most once, from
-Sunday 1 to Saturday 7. A Clock snooze asks for 1 to 60 minutes. Show and
-dismiss carry nothing else.
+a named zone of at most 100 units that Intl knows, such as `UTC` or
+`America/New_York`, and, when it carries repeat days, each day at most
+once, from Sunday 1 to Saturday 7. A Clock snooze asks for 1 to 60 minutes.
+Show and dismiss carry nothing else.
 
 ```quint
 pure val lastClockHour = 23
@@ -397,7 +397,8 @@ pure def lawASnoozeLastsAtMostAnHour(minutes: int): bool =
 A selected Maps read names a place or route by its `maps_` UUID and a
 decimal revision. Its receipt's provider ID is at most 80 UTF-16 units,
 the provider revision at most 128, the attribution at most 2,000 and a
-place's label at most 300, each nonblank and free of control characters.
+place's label at most 300, each nonblank and free of ASCII C0 control
+characters.
 A coordinate lies within 90 degrees of latitude and 180 of longitude; a
 route's distance in meters and duration in seconds are each from 0 to
 100,000,000. The whole receipt is at most 7,600 bytes of JSON.
