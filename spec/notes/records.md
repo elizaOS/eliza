@@ -82,7 +82,9 @@ pure def lawPairedOrPlainUnitKept(codeUnit: int, paired: bool): bool = (paired o
 Only the owner reaches the Notes actions, the saved-notes context and the
 owner routes. The actions are offered on every owner turn, in the general
 context as well as the Notes one, so a request about a note needs no
-earlier Notes turn. A name fence, a named read and a re-resolved ID read the words
+earlier Notes turn. When no saved note has the title the owner asked for,
+the saved-notes context tells the agent to ask which note to use before
+citing another one. A name fence, a named read and a re-resolved ID read the words
 the owner typed in the request the host bound to this turn, never the text a
 route wrapped around it; with no bound request, they read the message's own
 text with its envelopes removed. A delete by name happens only when those
@@ -243,7 +245,8 @@ pure def lawUnreadableSourceRefused(noteSaved: bool, sameAgent: bool, sameHash: 
 
 For the owner's turn the planner classifies what the current message asks
 of Notes: a read, a requested change with its operations, or nothing
-resolved. A write runs only when the turn bound to it classified a change;
+resolved. A new checklist the owner explicitly asks Notes for is a
+creation. A write runs only when the turn bound to it classified a change;
 a read-only or unresolved turn refuses every write with nothing started,
 and reads are always allowed. Moving, editing in place and restoring are
 edits of one existing note. A turn that names exactly one saved note's

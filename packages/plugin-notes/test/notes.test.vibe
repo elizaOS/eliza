@@ -186,6 +186,10 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   const routing = (plugin.providers ?? []).find((provider) => provider.name === "NAMED_NOTE_ROUTING")
   const availability = try promise(() => routing!.get(undefined as never, message("what is in my trip note"), undefined as never))
   assert.equal(availability.data?.namedNoteMatchAvailable, true)
+  const saved = (plugin.providers ?? []).find((provider) => provider.name === "SAVED_NOTES")
+  const savedText = (try promise(() => saved!.get(undefined as never, message("what is in my trip note"), undefined as never))).text ?? ""
+  assert.include(savedText, "If no row has the note title the owner asked for, ask which note to use before citing another note.")
+  assert.include(notesRequestEffectField.description, "use create for a new note, including a new checklist the owner explicitly asks Notes for")
   assert.deepEqual([
     notesRequestEffectField.parse?.({ classification: "read_only", operations: ["update"] }, undefined as never),
     notesRequestEffectField.parse?.({ classification: "mutation_requested", operations: ["patch", "get"] }, undefined as never),
