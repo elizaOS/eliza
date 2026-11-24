@@ -240,7 +240,10 @@ An opening has exactly the asked length, lies inside the window and is
 free. It starts on a quarter hour of UTC time. The first is the earliest
 such start, the second the earliest at or after the first one's end, and
 there are at most two. The answer says that an empty list does not rule
-out an opening off the quarter hour.
+out an opening off the quarter hour. It names each opening as a spoken
+range, its weekday and date in full, from its start to its end with the
+zone's full name, and offers them as alternatives ("Monday, March 4, from
+10:45 AM to 11:05 AM Pacific Standard Time or …").
 
 ```quint
 pure val quarterHour: int = 900000

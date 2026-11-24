@@ -333,6 +333,7 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
     { startAt: "2030-03-04T18:45:00.000Z", endAt: "2030-03-04T19:05:00.000Z", durationMinutes: 20, timeZone: zone },
     { startAt: "2030-03-04T19:15:00.000Z", endAt: "2030-03-04T19:35:00.000Z", durationMinutes: 20, timeZone: zone },
   ]])
+  assert.strictEqual(twenty.text, "I found these 20-minute openings: Monday, March 4, from 10:45 AM to 11:05 AM Pacific Standard Time or Monday, March 4, from 11:15 AM to 11:35 AM Pacific Standard Time.")
   const evening = try asked("Do I have 20 minutes tomorrow morning?", { ...morning, timeMax: "2030-03-04T20:00:00-08:00" })
   assert.deepStrictEqual([evening.success, at(evening.data, "code")], [false, "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD"])
   const early = try asked("Am I free tomorrow morning until noon?", { ...morning, subaction: "check_availability", timeMin: "2030-03-03T23:00:00-08:00" })
@@ -494,7 +495,7 @@ it.effect(`Create a repeating event through the reviewed create (spec/calendar/a
   assert.deepStrictEqual([refusal.result, refusal.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_RECURRENCE_UNSUPPORTED", 0])
 })
 
-it.effect(`Change my calendar only as I asked and know it happened, at a free time and for the one event I meant (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request or the owner's words say")`, effect () => {
+it.effect(`Change my calendar only as I asked and know it happened, at a free time and for the one event I meant (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/readClock.md, "A create that names its event, its day and its clock range keeps that range"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request or the owner's words say")`, effect () => {
   try TestClock.setTime(Date.parse("2030-03-01T12:00:00Z"))
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
@@ -517,6 +518,12 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const holiday = try runCalendarAction(host, { ...ask, id: "slot-4e", ownerZone: "Europe/Berlin" }, { subaction: "create_event", title: "Holiday", isAllDay: true, startAt: "2030-03-11T00:00", reviewBeforeCreate: false })
   const tokyo = try said("slot-4f", "Schedule a sync at 9am Tokyo time", { subaction: "create_event", title: "Tokyo sync", startAt: "2030-03-06T09:00", timeZone: "Asia/Tokyo" })
   const unsaidZone = try run("slot-4g", { subaction: "create_event", title: "Osaka sync", startAt: "2030-03-07T09:00", timeZone: "Asia/Tokyo" })
+  const dictated = try said("slot-4h", "Add an event called Taco Night lab check tomorrow from one ten PM to one thirty PM on my built in Eliza calendar with no guests.",
+    { subaction: "create_event", title: "Taco Night lab check", startAt: "2030-03-02T22:10", endAt: "2030-03-02T22:30" })
+  const written = try said("slot-4i", "Schedule an event named Lab sync tomorrow from 3pm to 3:45pm", { subaction: "create_event", title: "Lab sync", startAt: "2030-03-02T16:00", endAt: "2030-03-02T16:45" })
+  const extended = try said("slot-4j", "Add an event called Lab dinner tomorrow from six PM to seven PM at the lab", { subaction: "create_event", title: "Lab dinner", startAt: "2030-03-02T19:00", endAt: "2030-03-02T20:00" })
+  assert.deepStrictEqual([span(dictated), span(written), span(extended)],
+    [["2030-03-02T21:10:00.000Z", "2030-03-02T21:30:00.000Z"], ["2030-03-02T23:00:00.000Z", "2030-03-02T23:45:00.000Z"], ["2030-03-03T03:00:00.000Z", "2030-03-03T04:00:00.000Z"]])
   assert.deepStrictEqual([at(again.effectReceipts?.[0], "idempotency", "replayed"), span(offsite), span(late), at(twice.data, "code"), at(unreal.data, "code"), span(holiday), span(tokyo), at(unsaidZone.data, "code")],
     [true, ["2030-03-08T16:00:00.000Z", "2030-03-09T01:00:00.000Z"], ["2030-03-07T08:00:00.000Z", "2030-03-07T09:00:00.000Z"], "CALENDAR_WALL_TIME_UNRESOLVED", "CALENDAR_TIME_INVALID",
       ["2030-03-11T00:00:00.000Z", "2030-03-12T00:00:00.000Z"], ["2030-03-06T00:00:00.000Z", "2030-03-06T01:00:00.000Z"], "CALENDAR_WALL_TIME_ZONE_UNSAID"])
