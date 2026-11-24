@@ -417,6 +417,13 @@ existing windows finish settlement. Closing waits for every admitted
 window's receipt. The metering owner decides each direction's known,
 unknown or released settlement and keeps that receipt idempotent.
 
+An expired window can settle submitted usage while speech continues only
+after its immediate successor starts. The relay switches the counter bucket
+before new input reaches providers. Each hold, the window receipt and its
+settlement basis commit together. A submitted-counter receipt retains that
+basis even when retried during retirement. It gives no evidence that either
+provider transport has closed.
+
 A renewal keeps the socket: the relay that admitted the next window goes on
 serving it. When the relay ends it retires the session first and then waits
 for a renewal it already started, so a window admitted while the relay was
@@ -424,9 +431,28 @@ ending is among the windows it settles; that window carried no speech and
 is released at zero.
 
 ```quint
-pure def canSettleWindow(s: Session, window: int): bool =
-  (s.phase == Active or s.phase == Retiring) and window >= 1 and window <= s.admittedWindows and not(s.settledWindows.contains(window))
-pure def settleWindow(s: Session, window: int): Session = { ...s, settledWindows: s.settledWindows.union(Set(window)) }
+type SettlementEvidence = RetirementSettlement | RolloverSettlement({ deadlineReached: bool, successorStarted: bool })
+pure def rolloverReady(window: int, admittedWindows: int, evidence: SettlementEvidence): bool =
+  match evidence {
+    | RetirementSettlement => false
+    | RolloverSettlement(r) => window < admittedWindows and r.deadlineReached and r.successorStarted
+  }
+pure def canSettleWindow(s: Session, window: int, evidence: SettlementEvidence): bool =
+  window >= 1 and window <= s.admittedWindows and not(s.settledWindows.contains(window))
+  and ((evidence == RetirementSettlement and s.phase == Retiring)
+    or ((s.phase == Active or s.phase == Retiring) and rolloverReady(window, s.admittedWindows, evidence)))
+pure def settleWindow(s: Session, window: int, evidence: SettlementEvidence): Session =
+  { ...s, settledWindows: s.settledWindows.union(Set(window)) }
+pure val evidenceValues = Set(RetirementSettlement,
+  RolloverSettlement({ deadlineReached: true, successorStarted: true }),
+  RolloverSettlement({ deadlineReached: false, successorStarted: true }),
+  RolloverSettlement({ deadlineReached: true, successorStarted: false }))
+pure def lawActiveSpeechSettlesOnlyAnExpiredReplacedWindow(s: Session, window: int, evidence: SettlementEvidence): bool =
+  (s.phase == Active and canSettleWindow(s, window, evidence)) implies rolloverReady(window, s.admittedWindows, evidence)
+pure def lawRolloverDoesNotSettleTheLatestWindow(s: Session, evidence: SettlementEvidence): bool =
+  not(rolloverReady(s.admittedWindows, s.admittedWindows, evidence))
+pure def sometimesSettledWhileSpeechContinues(s: Session): bool =
+  s.phase == Active and s.settledWindows.size() > 0
 pure def canRetire(s: Session): bool = s.phase == Minted or s.phase == Starting or s.phase == Active
 pure def retire(s: Session): Session = { ...s, phase: Retiring }
 pure def allWindowsSettled(s: Session): bool =

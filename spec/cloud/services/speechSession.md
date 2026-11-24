@@ -269,29 +269,35 @@ pure def sometimesRevokedByOwner(s: Session): bool = s.phase == Retiring({ cause
 pure def sometimesEndedAtTheOldDeadlineAfterARefusal(s: Session): bool = isRetiring(s.phase) and s.windows >= 1 and fundingEnded(causeOf(s.phase))
 ```
 
-### Each window settles each direction once while retiring, and a session closes only with every receipt
+### Each window settles each direction once, and a session closes only with every receipt
 
 Each hold is settled by metering: never dispatched, `M::release` (0);
 transcription dispatched without a graceful drain, `M::settleUnknown` (the
 quote); otherwise `M::settleKnown` with PCM bytes / 32000 seconds or the
 TTS `CharCount` submitted. Recording a receipt here follows that settle in
-the same transaction.
+the same transaction. When a successor has started after the previous
+window's deadline, that previous window can settle during ongoing speech
+using its frozen submitted counters. Those counters do not attest that
+either transport has closed.
 
 ```quint
 type Settlement = ReleaseHold | ChargeQuote | ChargeMeasured
 pure def settlementOf(direction: SpeechDirection, dispatched: bool, drained: bool): Settlement =
   if (not(dispatched)) ReleaseHold else if (direction == Transcribe and not(drained)) ChargeQuote else ChargeMeasured
 pure def settledIn(s: Session, direction: SpeechDirection): Set[int] = if (direction == Transcribe) s.sttSettled else s.ttsSettled
-pure def canRecordReceipt(s: Session, window: int, direction: SpeechDirection): bool =
-  isRetiring(s.phase) and window >= 1 and window <= s.windows and not(settledIn(s, direction).contains(window))
-pure def recordReceipt(s: Session, window: int, direction: SpeechDirection): Session =
+pure def canRecordReceipt(s: Session, window: int, direction: SpeechDirection, evidence: Rl::SettlementEvidence): bool =
+  window >= 1 and window <= s.windows and not(settledIn(s, direction).contains(window))
+  and ((isRetiring(s.phase) and evidence == Rl::RetirementSettlement)
+    or ((s.phase == Active or isRetiring(s.phase)) and Rl::rolloverReady(window, s.windows, evidence)))
+pure def recordReceipt(s: Session, window: int, direction: SpeechDirection, evidence: Rl::SettlementEvidence): Session =
   if (direction == Transcribe) { ...s, sttSettled: s.sttSettled.union(Set(window)) } else { ...s, ttsSettled: s.ttsSettled.union(Set(window)) }
 pure def allSettled(s: Session): bool = s.sttSettled.size() == s.windows and s.ttsSettled.size() == s.windows
 pure def canClose(s: Session): bool = isRetiring(s.phase) and allSettled(s)
 pure def close(s: Session): Session = { ...s, phase: Closed({ cause: causeOf(s.phase) }) }
-pure def alwaysReceiptsComeOnlyFromRetiredWindows(s: Session): bool =
+pure def alwaysReceiptsComeOnlyFromFinishedWindows(s: Session): bool =
   s.sttSettled.forall(w => w >= 1 and w <= s.windows) and s.ttsSettled.forall(w => w >= 1 and w <= s.windows)
-  and (not(isOver(s.phase)) implies (s.sttSettled.size() == 0 and s.ttsSettled.size() == 0))
+  and ((s.phase != Active and not(isOver(s.phase))) implies (s.sttSettled.size() == 0 and s.ttsSettled.size() == 0))
+  and (s.phase == Active implies (not(s.sttSettled.contains(s.windows)) and not(s.ttsSettled.contains(s.windows))))
   and (isClosed(s.phase) implies allSettled(s))
 pure def stepReceiptsAndCauseNeverChange(before: Session, after: Session): bool =
   before.sttSettled.subseteq(after.sttSettled) and before.ttsSettled.subseteq(after.ttsSettled)

@@ -1394,14 +1394,17 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
   }), 60_000)
 })
 describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
-  it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew a window and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\")", () => scoped(effect {
+  for (const [title, extraCredit] of [
+    ["A live speech session uses released credit for a third window on the same socket", 1_000],
+    ["A live speech session closes at the existing deadline when rollover leaves too little credit", 0],
+  ] as const) it.effect(`${title} (spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts")`, () => scoped(effect {
     try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
     const speech = try sync(() => speechFake())
     const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
     try TestClock.adjust(Duration.seconds(5))
     const caller = try signedCaller(cloud, "talker")
     const reservedPerWindow = reservedFor(60 * 100) + reservedFor(4096 * 30)
-    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * reservedPerWindow + 1_000, requestKey: "talk-funding" }))
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * reservedPerWindow + extraCredit, requestKey: "talk-funding" }))
     const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
     const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
     const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string; readonly wsUrl: string }
@@ -1421,10 +1424,21 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     try TestClock.adjust(Duration.seconds(50))
     const extended = try promise(() => socket.next())
     try TestClock.adjust(Duration.seconds(10))
-    try TestClock.withLive(sleep(Duration.millis(200)))
+    let rollover: Readonly<Record<string, unknown>> | undefined
+    for (let attempt = 0; attempt < 100 && rollover === undefined; attempt += 1) {
+      try TestClock.withLive(sleep(Duration.millis(50)))
+      rollover = (try sql(cloud, `SELECT s.phase, w.settlement_basis, w.submitted_pcm_bytes, w.submitted_tts_chars
+        FROM speech_windows w JOIN speech_sessions s ON s.key = w.session_id
+        WHERE w.session_id = $1 AND w.number = 1 AND w.settled_at IS NOT NULL`, [session.sessionId]))[0]
+    }
     try TestClock.adjust(Duration.seconds(50))
-    try TestClock.withLive(sleep(Duration.millis(200)))
-    try TestClock.adjust(Duration.seconds(10))
+    const third = extraCredit > 0 ? try promise(() => socket.next()) : undefined
+    if (third === undefined) {
+      try TestClock.withLive(sleep(Duration.millis(200)))
+      try TestClock.adjust(Duration.seconds(10))
+    } else {
+      try sync(() => socket.send({ t: "stop" }))
+    }
     const ending = try promise(() => socket.until((received) => received.kind === "close"))
     let phase: unknown = undefined
     for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
@@ -1454,11 +1468,14 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         heard: shown(heard),
         spoken: shown(spoken),
         extended: shown([extended]),
+        rollover: [rollover?.phase, rollover?.settlement_basis, Number(rollover?.submitted_pcm_bytes), Number(rollover?.submitted_tts_chars)],
+        third: third === undefined ? [] : shown([third]),
         ending: shown(ending),
         forwarded: speech.sttPcmBytes,
         phase,
         windows: windows.map((row) => [Number(row.number), Number(row.expires_at) - mintedAt, row.settled]),
-        usage: usage.map((row) => [Number(row.number), row.direction, Number(row.quote), row.outcome]),
+        firstAndLastUsage: usage.filter((row) => Number(row.number) !== 2).map((row) => [Number(row.number), row.direction, Number(row.quote), row.outcome]),
+        usageCount: usage.length,
         spent: [spent.status, (spent.body as { readonly error?: string }).error]
       },
       {
@@ -1481,11 +1498,17 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
           { t: "complete", id: "reply-1" }
         ],
         extended: [{ t: "extended", expiresAt: new Date(mintedAt + 120_000).toISOString() }],
-        ending: [{ t: "error", code: "unavailable", reason: "insufficient_credits" }, { close: 4402 }],
+        rollover: ["active", "submitted_counter_provider_unconfirmed", 3_200, 18],
+        third: extraCredit > 0 ? [{ t: "extended", expiresAt: new Date(mintedAt + 180_000).toISOString() }] : [],
+        ending: extraCredit > 0 ? [{ close: 1000 }] : [{ t: "error", code: "unavailable", reason: "insufficient_credits" }, { close: 4402 }],
         forwarded: 3_200,
         phase: "closed",
-        windows: [[1, 60_000, true], [2, 120_000, true]],
-        usage: [[1, "transcribe", 6_000, "unknown"], [1, "synthesize", 122_880, "unknown"], [2, "transcribe", 6_000, "unknown"], [2, "synthesize", 122_880, "unknown"]],
+        windows: extraCredit > 0 ? [[1, 60_000, true], [2, 120_000, true], [3, 180_000, true]] : [[1, 60_000, true], [2, 120_000, true]],
+        firstAndLastUsage: [
+          [1, "transcribe", 6_000, "known"], [1, "synthesize", 122_880, "known"],
+          ...(extraCredit > 0 ? [[3, "transcribe", 6_000, "released"], [3, "synthesize", 122_880, "released"]] : []),
+        ],
+        usageCount: extraCredit > 0 ? 6 : 4,
         spent: [402, "allowance_exhausted"]
       }
     ))

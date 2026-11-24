@@ -22,6 +22,7 @@ export interface WindowUsage {
   readonly sttDrained: boolean
   readonly ttsConfirmed: boolean
   readonly dispatched: boolean
+  readonly superseded?: true
 }
 
 export type SessionEnd = "SessionOver" | "CredentialRefused"
@@ -63,10 +64,14 @@ const windowBudget = {
   renewLeadMs: 10_000
 } as const
 
+const settlementJoinMs = 2_000
+
 interface Window {
   readonly number: number
   readonly expiresAt: number
   dispatched: boolean
+  superseded: boolean
+  settled: boolean
   pcmBytes: number
   ttsChars: number
   outputBytes: number
@@ -140,7 +145,7 @@ function windowOf(shell: Shell, number: number): Window | undefined {
 }
 
 function openWindow(number: number, expiresAt: number): Window {
-  return { number, expiresAt, dispatched: false, pcmBytes: 0, ttsChars: 0, outputBytes: 0 }
+  return { number, expiresAt, dispatched: false, superseded: false, settled: false, pcmBytes: 0, ttsChars: 0, outputBytes: 0 }
 }
 
 function iso(at: number): string {
@@ -230,14 +235,14 @@ effect function deviceEffects(shell: Shell, before: Relay, frame: DeviceFrame): 
   switch (frame.kind) {
     case "audio":
       if (!acceptsAudio(before) || shell.relay.phase !== "RelayLive" || shell.stt === undefined || window === undefined) return
-      window.pcmBytes += frame.pcm.length
       try shell.stt.send(frame.pcm)
+      window.pcmBytes += frame.pcm.length
       return
     case "tts":
       if (!stageIs(shell.relay, frame.id, "UtteranceOpen") || tts === undefined || window === undefined) return
-      window.ttsChars += frame.text.length
       shell.spoken.add(frame.id)
       try tts.speak(frame.id, frame.text, frame.flush)
+      window.ttsChars += frame.text.length
       return
     case "finish":
       if (stageIs(before, frame.id, "UtteranceOpen") && stageIs(shell.relay, frame.id, "UtteranceFinishing") && tts !== undefined) try tts.finish(frame.id)
@@ -327,12 +332,36 @@ effect function renew(ports: RelayPorts, sessionId: string, window: Window): Arr
   }
 }
 
+effect function recordWindow(ports: RelayPorts, sessionId: string, window: Window, sttDrained: boolean, ttsConfirmed: boolean) {
+  if (window.settled) return
+  const usage: WindowUsage = {
+    pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttDrained, ttsConfirmed, dispatched: window.dispatched,
+    ...(window.superseded ? { superseded: true as const } : {})
+  }
+  const settled = try (effect {
+    try ports.session.settleWindow(sessionId, window.number, usage)
+    return true
+  }) catch effect (failure) => {
+    try annotateLogs(logError("a speech window could not be settled"), { sessionId, window: window.number, failure: failure._tag })
+    return false
+  }
+  if (settled) window.settled = true
+}
+
+effect function recordSuperseded(shell: Shell, ports: RelayPorts, sessionId: string) {
+  for (const window of shell.windows) {
+    if (window.superseded) try recordWindow(ports, sessionId, window, false, false)
+  }
+}
+
 effect function watchWindow(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, window: Window) {
   try untilAt(window.expiresAt - windowBudget.renewLeadMs)
   if (shell.relay.extend && shell.relay.phase === "RelayLive") {
     const renewal = try Deferred.make<void>()
     shell.renewal = renewal
     const outcome = try ensuring(effect {
+      try timeoutOption(recordSuperseded(shell, ports, sessionId), Duration.millis(settlementJoinMs))
+      if (shell.relay.phase !== "RelayLive" || shell.gone) return providerFailed
       const arrival = renew(ports, sessionId, window) catch effect (failure) => {
         try annotateLogs(logError("a speech window could not be renewed"), { sessionId, window: window.number + 1, failure: failure._tag })
         return providerFailed
@@ -348,8 +377,9 @@ effect function watchWindow(shell: Shell, ports: RelayPorts, sessionId: string, 
 
 effect function windowEnds(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, writer: Socket.Writer, number: number) {
   if (number !== shell.current) return
+  const previous = windowOf(shell, number)
   const next = windowOf(shell, number + 1)
-  if (next === undefined) {
+  if (previous === undefined || next === undefined) {
     try advance(shell, writer, shell.refusal === undefined ? { tag: "SessionOver" } : { tag: "FundingRefused", funding: shell.refusal })
     return
   }
@@ -363,6 +393,8 @@ effect function windowEnds(shell: Shell, ports: RelayPorts, sessionId: string, a
   }
   next.dispatched = true
   shell.current = next.number
+  previous.superseded = true
+  fork.scoped recordWindow(ports, sessionId, previous, false, false)
   fork.scoped watchWindow(shell, ports, sessionId, arrivals, next)
 }
 
@@ -462,10 +494,7 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   const renewal = shell.renewal
   if (renewal !== undefined) try Deferred.await(renewal)
   for (const window of shell.windows) {
-    const usage: WindowUsage = { pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttDrained, ttsConfirmed, dispatched: window.dispatched }
-    ports.session.settleWindow(sessionId, window.number, usage) catch effect (failure) => {
-      try annotateLogs(logError("a speech window could not be settled"), { sessionId, window: window.number, failure: failure._tag })
-    }
+    try recordWindow(ports, sessionId, window, sttDrained, ttsConfirmed)
   }
 }
 

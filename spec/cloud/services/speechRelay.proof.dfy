@@ -1,21 +1,21 @@
-lemma settleWindow_ensures(s: Session, window: int)
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> alwaysSessionDeadlinesAreBounded(settleWindow(s, window)))
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> alwaysUnopenedSessionsHaveNoWindows(settleWindow(s, window)))
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> alwaysSettledWindowsWereAdmitted(settleWindow(s, window)))
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> alwaysActiveSessionsHaveAWindow(settleWindow(s, window)))
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> alwaysClosedSessionsHaveEveryReceipt(settleWindow(s, window)))
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> stepSessionIdentityNeverChangesAfterMint(s, settleWindow(s, window)))
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> stepOpeningIsClaimedOnce(s, "settleWindow", settleWindow(s, window)))
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> stepWindowsAreAdmittedConsecutively(s, "settleWindow", settleWindow(s, window)))
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> stepRetirementNeverReopens(s, settleWindow(s, window)))
-  ensures (inv(s) ==> canSettleWindow(s, window) ==> stepReceiptsNeverDisappear(s, settleWindow(s, window)))
+lemma settleWindow_ensures(s: Session, window: int, evidence: SettlementEvidence)
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> alwaysSessionDeadlinesAreBounded(settleWindow(s, window, evidence)))
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> alwaysUnopenedSessionsHaveNoWindows(settleWindow(s, window, evidence)))
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> alwaysSettledWindowsWereAdmitted(settleWindow(s, window, evidence)))
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> alwaysActiveSessionsHaveAWindow(settleWindow(s, window, evidence)))
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> alwaysClosedSessionsHaveEveryReceipt(settleWindow(s, window, evidence)))
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> stepSessionIdentityNeverChangesAfterMint(s, settleWindow(s, window, evidence)))
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> stepOpeningIsClaimedOnce(s, "settleWindow", settleWindow(s, window, evidence)))
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> stepWindowsAreAdmittedConsecutively(s, "settleWindow", settleWindow(s, window, evidence)))
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> stepRetirementNeverReopens(s, settleWindow(s, window, evidence)))
+  ensures (inv(s) ==> canSettleWindow(s, window, evidence) ==> stepReceiptsNeverDisappear(s, settleWindow(s, window, evidence)))
 {
-  SettledAddsOnlyTheWindow(s, window);
+  SettledAddsOnlyTheWindow(s, window, evidence);
 }
 
-lemma SettledAddsOnlyTheWindow(s: Session, window: int)
-  ensures settleWindow(s, window).settledWindows == s.settledWindows + ProofLib.Filter((set_x: int) => !((set_x in s.settledWindows)), [window])
-  ensures forall x {:trigger x in settleWindow(s, window).settledWindows} :: x in settleWindow(s, window).settledWindows ==> x in s.settledWindows || x == window
+lemma SettledAddsOnlyTheWindow(s: Session, window: int, evidence: SettlementEvidence)
+  ensures settleWindow(s, window, evidence).settledWindows == s.settledWindows + ProofLib.Filter((set_x: int) => !((set_x in s.settledWindows)), [window])
+  ensures forall x {:trigger x in settleWindow(s, window, evidence).settledWindows} :: x in settleWindow(s, window, evidence).settledWindows ==> x in s.settledWindows || x == window
 {
   ProofLib.FilterSubset((set_x: int) => !((set_x in s.settledWindows)), [window]);
 }

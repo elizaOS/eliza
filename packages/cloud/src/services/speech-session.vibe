@@ -1,5 +1,5 @@
 // spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechSession.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "Consent and an allowance are required before speech is sent"
-import { apply, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState } from "../../gen/cloud__services__speechRelay.effect.vibe"
+import { apply, canSettleWindow, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState, type SettlementEvidence } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { realtimeSpeechAdmits, realtimeSpeechResetsAt, utcDayStart } from "../../gen/cloud__billing__plans.effect.vibe"
 import { relayChannels, relaySampleRate } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import type { HoldKey, SpeechDirection } from "../../gen/cloud__shared__types.ts"
@@ -8,7 +8,7 @@ import { signed, type Signed } from "../http/request-auth.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import type { RelaySession, SessionEnd, WindowAdmission, WindowUsage } from "./speech-relay.vibe"
 import { Deployment } from "../profile/profile.vibe"
-import { holdRows, markDispatched, reserveIn, settle, type HoldOwner, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
+import { holdRows, markDispatchedIn, reserveIn, settleIn, type HoldOwner, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
 import { newId, sameText, secretText, tokenDigest } from "../shared/sealing.vibe"
 import { loadRow, machineRows, stepRow, type RowConflict, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
@@ -49,6 +49,9 @@ interface WindowReservation extends WindowHolds {
 
 interface RecordedWindow extends WindowHolds {
   readonly settled: boolean
+  readonly started: boolean
+  readonly submittedPcmBytes: number | undefined
+  readonly submittedTtsChars: number | undefined
   readonly expiresAt: number
 }
 
@@ -117,9 +120,9 @@ function holdOf(holds: WindowHolds, direction: SpeechDirection): string {
 function settlementFor(direction: SpeechDirection, dispatched: boolean, usage: WindowUsage, rates: Rates): Settlement {
   if (!dispatched) return { kind: "release" }
   if (direction === "Transcribe") {
-    return usage.sttDrained ? { kind: "known", actual: Math.ceil(usage.pcmBytes * rates.microsPerSecond / pcmBytesPerSecond) } : { kind: "unknown" }
+    return usage.superseded === true || usage.sttDrained ? { kind: "known", actual: Math.ceil(usage.pcmBytes * rates.microsPerSecond / pcmBytesPerSecond) } : { kind: "unknown" }
   }
-  return usage.ttsConfirmed ? { kind: "known", actual: usage.ttsChars * rates.microsPerCharacter } : { kind: "unknown" }
+  return usage.superseded === true || usage.ttsConfirmed ? { kind: "known", actual: usage.ttsChars * rates.microsPerCharacter } : { kind: "unknown" }
 }
 
 export function sessionColumns(now: number) {
@@ -179,11 +182,14 @@ effect function closeIfSettled(tx: Tx, id: string, now: number): Session!(StoreF
 }
 
 effect function windowHolds(tx: Tx, id: string, window: number): (RecordedWindow | undefined)!StoreFailure {
-  const row = (try tx.query("SELECT transcribe_hold, synthesize_hold, settled_at, expires_at FROM speech_windows WHERE session_id = $1 AND number = $2", [id, window]))[0]
+  const row = (try tx.query("SELECT transcribe_hold, synthesize_hold, started_at, settled_at, submitted_pcm_bytes, submitted_tts_chars, expires_at FROM speech_windows WHERE session_id = $1 AND number = $2", [id, window]))[0]
   if (row === undefined) return undefined
   return {
     transcribe: toText(row.transcribe_hold) ?? "",
     synthesize: toText(row.synthesize_hold) ?? "",
+    started: row.started_at !== null && row.started_at !== undefined,
+    submittedPcmBytes: row.submitted_pcm_bytes == null ? undefined : toInt(row.submitted_pcm_bytes),
+    submittedTtsChars: row.submitted_tts_chars == null ? undefined : toInt(row.submitted_tts_chars),
     settled: row.settled_at !== null && row.settled_at !== undefined,
     expiresAt: toInt(row.expires_at)
   }
@@ -226,8 +232,7 @@ export effect function admitWindow(id: string, window: number): WindowAdmission!
   const store = try Store
   const rates = try speechRates()
   return store.transaction(effect (tx: Tx) => {
-    const organization = try tx.query("SELECT o.id FROM organizations o JOIN speech_sessions s ON s.organization_id = o.id WHERE s.key = $1 FOR UPDATE OF o", [id])
-    if (organization.length !== 1) throw refused("NotFound")
+    try lockSpeechOrganization(tx, id)
     const current = try readSession(tx, id, true)
     const now = try Clock.currentTimeMillis
     const day = utcDayStart(now)
@@ -259,34 +264,64 @@ export effect function admitWindow(id: string, window: number): WindowAdmission!
   }
 }
 
-effect function dispatchWindow(id: string, window: number, only?: SpeechDirection): void!SessionFailure!Store {
+effect function lockSpeechOrganization(tx: Tx, id: string): void!(StoreFailure | Refused) {
+  const organization = try tx.query("SELECT o.id FROM organizations o JOIN speech_sessions s ON s.organization_id = o.id WHERE s.key = $1 FOR UPDATE OF o", [id])
+  if (organization.length !== 1) throw refused("NotFound")
+}
+
+effect function dispatchWindow(id: string, window: number): void!SessionFailure!Store {
   const store = try Store
-  const holds = try store.transaction((tx) => windowHolds(tx, id, window))
-  if (holds === undefined || holds.settled) throw refused("SessionClosed")
-  for (const direction of only === undefined ? directions : [only]) {
-    const key = holdOf(holds, direction)
-    const hold = (try store.transaction((tx) => loadRow(tx, holdRows, key, false))).state
-    if (hold.phase === "Reserved") try markDispatched(key)
-  }
+  try store.transaction(effect (tx: Tx) => {
+    try lockSpeechOrganization(tx, id)
+    const { state } = try readSession(tx, id, true)
+    const holds = try windowHolds(tx, id, window)
+    const now = try Clock.currentTimeMillis
+    if (state.phase !== "Active" || window !== state.admittedWindows || holds === undefined || holds.settled || holds.expiresAt <= now) throw refused("SessionClosed")
+    if (holds.started) return
+    if (window > 1) {
+      const previous = try windowHolds(tx, id, window - 1)
+      if (previous === undefined || !previous.started || previous.expiresAt > now) throw refused("SessionClosed")
+    }
+    for (const direction of directions) {
+      const key = holdOf(holds, direction)
+      const hold = (try loadRow(tx, holdRows, key)).state
+      if (hold.phase === "Reserved") try markDispatchedIn(tx, key, now)
+      else if (hold.phase !== "Dispatched") throw refused("SessionClosed")
+    }
+    try tx.query("UPDATE speech_windows SET started_at = $3 WHERE session_id = $1 AND number = $2", [id, window, now])
+  })
 }
 
 export effect function settleWindow(id: string, window: number, usage: WindowUsage): Session!SessionFailure!(Store | Deployment) {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const rates = try speechRates()
-  const holds = try store.transaction((tx) => windowHolds(tx, id, window))
-  if (holds === undefined) throw refused("NotFound")
-  if (!holds.settled) {
+  return try store.transaction(effect (tx: Tx) => {
+    try lockSpeechOrganization(tx, id)
+    const { state } = try readSession(tx, id, true)
+    const holds = try windowHolds(tx, id, window)
+    if (holds === undefined) throw refused("NotFound")
+    if (holds.settled) {
+      if (usage.superseded === true && (holds.submittedPcmBytes !== usage.pcmBytes || holds.submittedTtsChars !== usage.ttsChars)) throw refused("BillingStateConflict")
+      return try closeIfSettled(tx, id, now)
+    }
+    const successor = usage.superseded === true ? try windowHolds(tx, id, window + 1) : undefined
+    const evidence: SettlementEvidence = usage.superseded === true
+      ? { tag: "RolloverSettlement", deadlineReached: holds.expiresAt <= now, successorStarted: successor?.started === true }
+      : { tag: "RetirementSettlement" }
+    if (!canSettleWindow(state, window, evidence)) throw refused("SessionClosed")
     for (const direction of directions) {
       const key = holdOf(holds, direction)
-      const hold = (try store.transaction((tx) => loadRow(tx, holdRows, key, false))).state
-      try settle(key, settlementFor(direction, hold.phase === "Dispatched", usage, rates))
+      const hold = (try loadRow(tx, holdRows, key)).state
+      if (usage.superseded === true && hold.phase !== "Reserved" && hold.phase !== "Dispatched") throw refused("BillingStateConflict")
+      try settleIn(tx, key, settlementFor(direction, hold.phase === "Dispatched", usage, rates), now)
     }
-  }
-  return try store.transaction(effect (tx: Tx) => {
-    try readSession(tx, id, true)
-    const marked = try tx.query("UPDATE speech_windows SET settled_at = $3 WHERE session_id = $1 AND number = $2 AND settled_at IS NULL RETURNING number", [id, window, now])
-    if (marked.length === 1) try stepSession(tx, id, { type: "settleWindow", window }, now)
+    const basis = usage.superseded === true ? "submitted_counter_provider_unconfirmed" : "retirement"
+    try tx.query(
+      "UPDATE speech_windows SET settled_at = $3, settlement_basis = $4, submitted_pcm_bytes = $5, submitted_tts_chars = $6 WHERE session_id = $1 AND number = $2",
+      [id, window, now, basis, usage.superseded === true ? usage.pcmBytes : null, usage.superseded === true ? usage.ttsChars : null]
+    )
+    try stepSession(tx, id, { type: "settleWindow", window, evidence }, now)
     return try closeIfSettled(tx, id, now)
   })
 }
