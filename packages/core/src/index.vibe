@@ -1198,6 +1198,8 @@ export {
 export {
   type AsyncContextStorage,
   type AsyncContextStorageFactory,
+  asyncContextStorageFactoryFor,
+  AsyncContextUnavailableError,
   registerAsyncContextStorageFactory,
 } from "./utils/async-context-storage.vibe"
 export {
