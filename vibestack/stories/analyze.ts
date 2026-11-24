@@ -1,8 +1,10 @@
 // Reads React components with the TypeScript checker: what each takes, what its metadata file gives, and
 // the spec model it shows. One Program serves every file, and the next run reuses it.
-import { existsSync, globSync, readFileSync, readdirSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { existsSync, globSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
 import ts from "typescript";
+import { formatStamp } from "../run.ts";
 import { owner } from "../util.ts";
 
 /** A value in a metadata file that only running it would give, such as JSX or a function. */
@@ -63,10 +65,11 @@ export interface Found {
 }
 
 /** The package a directory belongs to: the nearest `package.json` above it. */
-export function packageOf(dir: string): { name: string; dir: string } {
+export function packageOf(dir: string, observe?: (file: string) => void): { name: string; dir: string } {
   const file = join(dir, "package.json");
+  observe?.(file);
   if (existsSync(file)) return { name: JSON.parse(readFileSync(file, "utf8")).name ?? basename(dir), dir };
-  return dirname(dir) === dir ? { name: basename(dir), dir } : packageOf(dirname(dir));
+  return dirname(dir) === dir ? { name: basename(dir), dir } : packageOf(dirname(dir), observe);
 }
 
 /** `spec/billing/index.md` is `billing`, `spec/billing/payments.md` is `billing__payments` (SPEC.md, "Writing a spec"). */
@@ -75,20 +78,33 @@ const moduleOf = (spec: string) => spec.replace(/^(\.\/)?spec\//, "").replace(/\
  * The generated module of `spec`: in the component's own package, or, for a shared package such as a component
  * library, in the spec's owner, else the root's (SPEC.md, "One spec tree").
  */
-export const modelFile = (abs: string, spec: string): string | undefined => {
+export const modelFile = (abs: string, spec: string, observe?: (file: string) => void): string | undefined => {
   const own = packageOf(dirname(abs)).dir, name = `${moduleOf(spec)}.ts`;
-  const root = ancestors(own).find((dir) => existsSync(join(dir, spec)));
-  const dir = root && owner(root, spec.replace(/^\.\//, ""));
+  const parents = ancestors(own);
+  const root = parents.find((dir) => existsSync(join(dir, spec)));
+  if (observe) {
+    const boundary = root ?? parents.findLast((dir) => existsSync(join(dir, "package.json"))) ?? own;
+    for (const parent of parents) {
+      observe(join(parent, spec));
+      if (parent === boundary) break;
+    }
+  }
+  const dir = root && owner(root, spec.replace(/^\.\//, ""), observe);
   const candidates = [join(own, "gen", name), ...(root && dir ? [join(root, dir, "gen", name)] : []), ...(root ? [join(root, "gen", name)] : [])];
-  return candidates.find(existsSync);
+  return candidates.find((file) => {
+    observe?.(file);
+    return existsSync(file);
+  });
 };
 const ancestors = (dir: string): string[] => (dirname(dir) === dir ? [dir] : [dir, ...ancestors(dirname(dir))]);
 export const modelTag = (text: string) => /@model\s+(\S+)/.exec(text)?.[1];
 
+const skippedSource = /(^|\/)(node_modules|\.[^/]+)\/|\.(test|spec|stories|meta)\.tsx?$|\.d\.ts$/;
+export const isComponentSource = (file: string) => file.endsWith(".tsx") && !skippedSource.test(file);
+
 /** The component files the globs name, sorted: never tests, stories, metadata or anything installed. */
 export function sources(root: string, globs: string[]): string[] {
-  const skip = /(^|\/)(node_modules|\.[^/]+)\/|\.(test|spec|stories|meta)\.tsx?$|\.d\.ts$/;
-  return globSync(globs, { cwd: root }).map((file) => file.replaceAll("\\", "/")).filter((file) => file.endsWith(".tsx") && !skip.test(file)).sort().map((file) => join(root, file));
+  return globSync(globs, { cwd: root }).map((file) => file.replaceAll("\\", "/")).filter(isComponentSource).sort().map((file) => join(root, file));
 }
 
 /** Plain order of text, the same on every machine. */
@@ -108,25 +124,127 @@ export function beside(abs: string, names: string[]): string[] {
  * Builds Programs over a project's components, their metadata and their models. Each reuses what the last
  * one parsed, so a rebuild reads only the files that changed.
  */
-export function programs(root: string): (files: string[]) => ts.Program {
+export type Lookup = [kind: "file" | "directory", file: string] | [kind: "manifest" | "realpath", file: string, value: string];
+interface Imports { files: string[]; lookups: Lookup[] }
+
+export function programs(root: string, configs: Map<string, string | undefined>, configLookups: Lookup[]) {
+  const rel = (file: string) => relative(root, file).replaceAll("\\", "/");
   const fail = (problem: ts.Diagnostic) => {
     throw new Error(ts.flattenDiagnosticMessageText(problem.messageText, "\n"));
   };
-  const given = ts.getParsedCommandLineOfConfigFile(join(root, "tsconfig.json"), {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: fail })!.options;
+  const given = ts.getParsedCommandLineOfConfigFile(join(root, "tsconfig.json"), {}, {
+    ...ts.sys, onUnRecoverableConfigFileDiagnostic: fail,
+    readDirectory: () => [],
+    directoryExists(dir) {
+      const exists = ts.sys.directoryExists(dir);
+      if (!exists) configLookups.push(["directory", rel(dir)]);
+      return exists;
+    },
+    realpath(file) {
+      const resolved = ts.sys.realpath!(file);
+      if (resolved !== file) configLookups.push(["realpath", rel(file), rel(resolved)]);
+      return resolved;
+    },
+    fileExists(file) {
+      const exists = ts.sys.fileExists(file);
+      if (!exists) configs.set(file, undefined);
+      return exists;
+    },
+    readFile(file) {
+      const content = ts.sys.readFile(file);
+      configs.set(file, content);
+      if (content !== undefined) {
+        const resolved = ts.sys.realpath!(file);
+        if (resolved !== file) {
+          configs.set(resolved, content);
+          configLookups.push(["realpath", rel(file), rel(resolved)]);
+        }
+      }
+      return content;
+    },
+  })!.options;
   const options: ts.CompilerOptions = { ...given, jsx: given.jsx ?? ts.JsxEmit.ReactJSX, noEmit: true, skipLibCheck: true };
   const host = ts.createCompilerHost(options, true);
   const parse = host.getSourceFile;
   const parsed = new Map<string, { stamp: string; file: ts.SourceFile | undefined }>();
   host.getSourceFile = (name, ...rest) => {
-    const stamp = `${ts.sys.getModifiedTime?.(name)?.getTime()}:${ts.sys.getFileSize?.(name)}`;
+    const stat = statSync(name, { bigint: true, throwIfNoEntry: false });
+    const stamp = stat ? formatStamp(stat) : "";
     if (parsed.get(name)?.stamp !== stamp) parsed.set(name, { stamp, file: parse(name, ...rest) });
     return parsed.get(name)!.file;
   };
+  const imports = new Map<string, Imports>();
+  const installed = (file: string) => /(^|[\\/])node_modules([\\/]|$)/.test(file);
+  const links = new Map<string, string | undefined>();
+  let moduleCache: ts.ModuleResolutionCache;
+  host.resolveModuleNameLiterals = (literals, from, redirected, options, source) => {
+    const dependencies = new Set<string>();
+    const probes = new Map<string, Lookup>();
+    const record = (op: Lookup) => probes.set(op[0] + "\0" + op[1], op);
+    const owned = (file: string): string | undefined => {
+      if (!installed(file)) return file;
+      const pkg = /^(.*[\\/]node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)(?=[\\/]|$)/.exec(file)?.[1];
+      if (!pkg) return;
+      if (!links.has(pkg)) {
+        const resolved = ts.sys.realpath!(pkg);
+        links.set(pkg, installed(resolved) ? undefined : resolved);
+      }
+      const target = links.get(pkg);
+      if (!target) return;
+      record(["realpath", rel(pkg), rel(target)]);
+      return target + file.slice(pkg.length);
+    };
+    const observing: ts.ModuleResolutionHost = {
+      ...host,
+      fileExists(file) {
+        const exists = host.fileExists(file);
+        const input = !exists && owned(file);
+        if (input) record(["file", rel(input)]);
+        return exists;
+      },
+      directoryExists(dir) {
+        const exists = ts.sys.directoryExists(dir);
+        const input = !exists && owned(dir);
+        if (input) record(["directory", rel(input)]);
+        else if (!exists && /[\\/]node_modules(?:[\\/]@[^\\/]+)?(?:[\\/][^\\/]+)?$/.test(dir)) record(["directory", rel(dir)]);
+        return exists;
+      },
+      readFile(file) {
+        const text = host.readFile(file);
+        const input = text !== undefined && owned(file);
+        if (input && text !== undefined) record(["manifest", rel(input), createHash("sha1").update(text).digest("hex")]);
+        return text;
+      },
+      realpath(file) {
+        const resolved = ts.sys.realpath!(file);
+        if (resolved !== file && !installed(resolved)) record(["realpath", rel(file), rel(resolved)]);
+        return resolved;
+      },
+    };
+    const internal = !owned(from);
+    const modules = literals.map((literal) => {
+      const mode = ts.getModeForUsageLocation(source, literal, options);
+      const result = ts.resolveModuleName(literal.text, from, options, internal ? host : observing, internal ? moduleCache : undefined, redirected, mode);
+      const file = result.resolvedModule?.resolvedFileName;
+      const input = !internal && file && owned(file);
+      if (file && input) {
+        dependencies.add(file);
+        dependencies.add(input);
+      }
+      return result;
+    });
+    if (!internal) imports.set(from, { files: [...dependencies], lookups: [...probes.values()] });
+    return modules;
+  };
   let last: ts.Program | undefined;
-  return (files) => {
+  return (files: string[], reset: boolean) => {
+    links.clear();
+    moduleCache = ts.createModuleResolutionCache(host.getCurrentDirectory(), host.getCanonicalFileName, options);
+    if (reset) imports.clear();
     const metas = [...new Set(files.map(dirname))].flatMap((dir) => readdirSync(dir).filter((name) => /\.meta\.tsx?$/.test(name)).map((name) => join(dir, name)));
     const models = files.flatMap((file) => beside(file, []).filter((input) => input.endsWith(".ts") && existsSync(input)));
-    return (last = ts.createProgram({ rootNames: [...new Set([...files, ...metas, ...models])], options, host, oldProgram: last }));
+    last = ts.createProgram({ rootNames: [...new Set([...files, ...metas, ...models])], options, host, oldProgram: reset ? undefined : last });
+    return { program: last, imports };
   };
 }
 
@@ -353,6 +471,12 @@ export function analyze(built: ts.Program, abs: string): Found[] {
     const symbols = (first ? checker.getPropertiesOfType(checker.getTypeOfSymbolAtLocation(first, decl)) : [])
       // `children` is kept even when the component only passes it on with the rest: it is what most of them show.
       .filter((p) => p.name === "children" || taken.has(p.name) || mentioned.has(p.name) || STATE.test(p.name) || p.declarations?.some(own));
+    symbols.sort((a, b) => {
+      const left = a.valueDeclaration ?? a.declarations?.[0];
+      const right = b.valueDeclaration ?? b.declarations?.[0];
+      return compare(left?.getSourceFile().fileName ?? "", right?.getSourceFile().fileName ?? "")
+        || (left?.pos ?? 0) - (right?.pos ?? 0) || compare(a.name, b.name);
+    });
     const props = symbols.map((p): Prop => {
       const type = checker.getTypeOfSymbolAtLocation(p, decl);
       const at = p.declarations?.find(own);
