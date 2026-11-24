@@ -558,6 +558,14 @@ pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: 
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
 ```
 
+### An explicit calculator command uses its literal expression first
+
+When the whole message explicitly asks for the calculator and gives one
+literal arithmetic expression ("use the calculator for 17 * 24"), the
+offered calculator evaluates exactly that expression before the model
+writes the reply. Multi-part commands and arithmetic stated in words keep
+the ordinary planner path.
+
 ### A directly routed call acknowledges once if it is still running after 400 milliseconds
 
 A call the whole message asked for outright begins without waiting for
