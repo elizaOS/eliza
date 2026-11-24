@@ -423,7 +423,7 @@ export const telephonyFamily: DeviceProposalFamily = {
   guidance: familyGuidance,
   clarifyRequest(turn) {
     const canText = has(turn, "SmsSendV1") || has(turn, "SmsComposeV1")
-    return canText && offersAlternativeSmsRecipients(turn.ownerText) ? "Which person should get the text?" : undefined
+    return canText && !emergencyServicesRequest(turn.ownerText) && offersAlternativeSmsRecipients(turn.ownerText) ? "Which person should get the text?" : undefined
   },
   effect ground(proposed, turn) {
     const operation = keypadAsked(proposed.operation, turn) ?? proposed.operation
