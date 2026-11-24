@@ -7,7 +7,8 @@
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
-    "typecheck": "vibelang --noEmit -p ."
+    "typecheck": "vibelang --noEmit -p .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -17,7 +18,10 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vibelang": "0.0.13"
+    "vibelang": "0.0.13",
+    "@effect/vitest": "4.1.1",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
   },
   "exports": {
     ".": {

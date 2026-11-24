@@ -1,0 +1,66 @@
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"
+import { assert, it } from "@effect/vitest"
+import { ChildAgentSessions, ChildSessionFailure, sendChildDirective, type ChildSession } from "../src/index.vibe"
+import type { PeerDirective } from "../gen/agentOrchestrator.effect.vibe"
+
+const child = (label: string, running: boolean): ChildSession => ({ childId: label.toLowerCase(), sessionId: `${label.toLowerCase()}-session`, label, running })
+const rooms: Readonly<Record<string, readonly ChildSession[]>> = {
+  crowded: [child("Ada", true), child("Bob", true)],
+  korean: [child("민수", false), child("Bob", true)],
+  solo: [child("Bob", true)],
+}
+
+function childSessions(heard: string[]) {
+  return Layer.succeed(ChildAgentSessions, {
+    effect list(roomId: string) { return [...(rooms[roomId] ?? [])] },
+    effect send(sessionId: string, text: string) { heard.push(`send ${sessionId}: ${text}`) },
+    effect cancel(sessionId: string) { heard.push(`cancel ${sessionId}`) },
+    effect evidence(taskKey: string) { throw new ChildSessionFailure({ childId: taskKey, reason: "no evidence in this journey" }) },
+  })
+}
+
+it.effect('Stop or direct only the subagents a message names or @-mentions, and every subagent for a mention none of them answers to (spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/index.md, "A named target receives the directive without affecting other subagents"; spec/agentOrchestrator/index.md, "An @-mention of a subagent addresses only the subagents it mentions")', effect () => {
+  const asked: ReadonlyArray<readonly [string, PeerDirective, string]> = [
+    ["crowded", "StopTurn", "@Ada stop"],
+    ["crowded", "StopTurn", "@Ada stop, Bob can keep working"],
+    ["crowded", "StopTurn", "@ada, stop"],
+    ["crowded", "StopTurn", "@Ada @Bob stop"],
+    ["crowded", "StopTurn", "<@1234567890> stop"],
+    ["crowded", "StopTurn", "@eliza stop"],
+    ["crowded", "StopTurn", "@Adam stop"],
+    ["crowded", "StopTurn", "Adam, stop"],
+    ["crowded", "StopTurn", "stop"],
+    ["crowded", "DirectMessage", "Ada, rename the button"],
+    ["crowded", "AmbientMessage", "@Ada nice work"],
+    ["korean", "DirectMessage", "@민수 README도 고쳐줘"],
+    ["korean", "DirectMessage", "민수야 README도 고쳐줘"],
+    ["korean", "StopTurn", "@민수 stop"],
+    ["solo", "StopTurn", "stop"],
+    ["solo", "DirectMessage", "Ada, rename the button"],
+  ]
+  const outcomes: Array<{ readonly touched: string[]; readonly heard: string[] }> = []
+  for (const [roomId, directive, text] of asked) {
+    const heard: string[] = []
+    provide childSessions(heard) {
+      outcomes.push({ touched: try sendChildDirective(roomId, { directive, text }), heard })
+    }
+  }
+  try Effect.try(() => assert.deepStrictEqual(outcomes, [
+    { touched: ["ada"], heard: ["cancel ada-session"] },
+    { touched: ["ada"], heard: ["cancel ada-session"] },
+    { touched: ["ada"], heard: ["cancel ada-session"] },
+    { touched: ["ada", "bob"], heard: ["cancel ada-session", "cancel bob-session"] },
+    { touched: ["ada", "bob"], heard: ["cancel ada-session", "cancel bob-session"] },
+    { touched: ["ada", "bob"], heard: ["cancel ada-session", "cancel bob-session"] },
+    { touched: ["ada", "bob"], heard: ["cancel ada-session", "cancel bob-session"] },
+    { touched: [], heard: [] },
+    { touched: [], heard: [] },
+    { touched: ["ada"], heard: ["send ada-session: Ada, rename the button"] },
+    { touched: [], heard: [] },
+    { touched: ["민수"], heard: ["send 민수-session: @민수 README도 고쳐줘"] },
+    { touched: ["민수"], heard: ["send 민수-session: 민수야 README도 고쳐줘"] },
+    { touched: [], heard: [] },
+    { touched: ["bob"], heard: ["cancel bob-session"] },
+    { touched: ["bob"], heard: ["send bob-session: Ada, rename the button"] },
+  ]))
+})

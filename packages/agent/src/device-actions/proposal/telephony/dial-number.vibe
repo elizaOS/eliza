@@ -24,7 +24,7 @@ function withoutTrunk(written: string): string {
     .replace(/^\+(39|378|225)( ?)\(0\) ?(?=\d)/, (_whole: string, code: string, space: string) => `+${code}${space}0`)
 }
 
-function phoneDialNumber(value: string): string | undefined {
+export function phoneDialNumber(value: string): string | undefined {
   const written = withoutTrunk(value.trim())
   const number = written.replace(/[ ().-]/g, "")
   const oneNumber = number === written || writtenNanpNumber.test(written) || (
