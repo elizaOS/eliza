@@ -9,7 +9,7 @@ import {
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { clockReal, instantRead, statedClockCheck, wallZone, windowClockCheck, startReading, windowFits, windowPairing, windowStartChecked } from "../../gen/calendar__readClock.effect.vibe"
 import { scopeChoice } from "../../gen/calendar__seriesScope.effect.vibe"
-import { addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate, type CalendarEvent, type CalendarEventFields, type CalendarMutationOutcome, type CalendarMutationReceipt, type CalendarMutationRequest, FieldsRecord, addressWrittenInWords, clockHeldByWords, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, windowRangesInWords, windowRangesInWords, zoneNamedIn, RecurrenceRecord, WriteScopeRecord, type CalendarWriteScope } from "@elizaos/plugin-calendar-client"
+import { addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate, type CalendarEvent, type CalendarEventFields, type CalendarMutationOutcome, type CalendarMutationReceipt, type CalendarMutationRequest, FieldsRecord, addressWrittenInWords, clockHeldByWords, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, windowRangesInWords, zoneNamedIn, RecurrenceRecord, WriteScopeRecord, type CalendarWriteScope } from "@elizaos/plugin-calendar-client"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { tripEvents } from "./lookup.vibe"
 import { phoneCalendarOffered } from "./phone-turn.vibe"

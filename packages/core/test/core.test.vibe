@@ -33,8 +33,13 @@ module cryptoBoundary {
   export function nodeCryptoModule(): unknown {
     return nodeCrypto
   }
+
+  /** @throws {never} */
+  export function nodeGlobal(): unknown {
+    return globalThis
+  }
 }
-import { nodeCryptoModule } from cryptoBoundary
+import { nodeCryptoModule, nodeGlobal } from cryptoBoundary
 registerProxyInspector(isProxy)
 
 // spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"; spec/core/asyncContext.md, "A scope on a host with no asynchronous storage is refused before its callback runs"
@@ -42,7 +47,7 @@ it.live('A host with no asynchronous context storage refuses a scope rather than
   let entered = false
   const refusing = asyncContextStorageFactoryFor({})<string>()
   const refused = try Effect.flip(Effect.try({ try: () => refusing.run("turn-one", () => { entered = true }), catch: (error) => error }))
-  const node = asyncContextStorageFactoryFor(globalThis)<string>()
+  const node = asyncContextStorageFactoryFor(nodeGlobal())<string>()
   const observed = try Effect.promise(() => Promise.all([
     node.run("turn-one", async () => { await Effect.runPromise(Effect.sleep("10 millis")); return node.getStore() }),
     node.run("turn-two", async () => { await Effect.runPromise(Effect.sleep("2 millis")); return node.getStore() }),
@@ -63,6 +68,7 @@ it.live('Envelopes and a pseudonym map that node:crypto wrote still open, ids an
   const cache = {
     getCache: async <T,>(key: string) => stored.get(key) as T | undefined,
     setCache: async <T,>(key: string, value: T) => { stored.set(key, value); return true },
+    deleteCache: async (key: string) => stored.delete(key),
   }
   const native = nodeSecretCipher(nodeCryptoModule())
   assert.isDefined(native)
@@ -85,6 +91,7 @@ it.live('Envelopes and a pseudonym map that node:crypto wrote still open, ids an
   const truncatedStore = try Effect.orDie(Effect.try(() => new EncryptedCachePseudonymMapStore({
     getCache: async <T,>(key: string) => truncatedStored.get(key) as T | undefined,
     setCache: async <T,>(key: string, value: T) => { truncatedStored.set(key, value); return true },
+    deleteCache: async (key: string) => truncatedStored.delete(key),
   }, { encryptionSalt: salt })))
   const truncatedMap = try Effect.flip(Effect.tryPromise({ try: () => truncatedStore.load(), catch: (error) => error }))
   const refusedLengths = {

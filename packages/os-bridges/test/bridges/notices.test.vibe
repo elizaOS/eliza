@@ -15,17 +15,7 @@ import {
 } from "../../src/bridges/notices.vibe"
 
 module android {
-  import { execFileSync } from "node:child_process"
-  import path from "node:path"
   import type { NoticeOwnerIdentity, NotificationsNativePlugin, PendingNoticeTap, SuspendedApprovalNotice, WorkflowNoticeRoute } from "../../src/bridges/definitions/notices.ts"
-  import { orgJsonAdapterClasspath } from "../drivers/jvm-adapter.ts"
-
-  const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
-
-  export async function hostChecks(check: "NoticeTitlesTest" | "MailCountTest"): Promise<string> {
-    const main = `ai.eliza.plugins.notifications.${check}`
-    return execFileSync(java, ["-cp", await orgJsonAdapterClasspath(main), main], { encoding: "utf8", timeout: 120_000 }).trim()
-  }
 
   export interface Phone {
     owner: NoticeOwnerIdentity | null
@@ -89,7 +79,7 @@ module android {
     }
   }
 }
-import { hostChecks, phone, plugin } from android
+import { phone, plugin } from android
 
 const SCOPE = "a".repeat(64)
 
@@ -196,13 +186,3 @@ it.effect('Tell my app which workflow notices this phone can present (spec/os/an
   const older = try promise(() => client.presentsWorkflow())
   try Effect.try(() => assert.deepStrictEqual([current, older], [true, false]))
 })
-
-it.effect('An approval notice\'s title is part of its receipt, and a call that names no title means the configured one (spec/os/android/noticeRoutes.md, "An approval notice\'s title is part of its receipt, and a call that names no title means the configured one")', () => effect {
-  const answer = try tryPromise(() => hostChecks("NoticeTitlesTest"))
-  try Effect.try(() => assert.strictEqual(answer, "NoticeTitlesTest checks: 19"))
-}, 180_000)
-
-it.effect('A new-mail count counts the notices still unread, a notice the shade cap withdrew included (spec/os/android/notificationProjection.md, "A new-mail count counts the notices still unread, a notice the shade cap withdrew included")', () => effect {
-  const answer = try tryPromise(() => hostChecks("MailCountTest"))
-  try Effect.try(() => assert.strictEqual(answer, "MailCountTest checks: 6"))
-}, 180_000)

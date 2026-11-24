@@ -43,11 +43,16 @@ module platform {
     if (typeof Storage !== "function") return refusingStorage
     return <T,>() => new Storage() as AsyncContextStorage<T>
   }
+
+  /** @throws {never} */
+  export function hostAsyncContextStorageFactory(): AsyncContextStorageFactory {
+    return asyncContextStorageFactoryFor(globalThis)
+  }
 }
-import { AsyncContextUnavailableError, asyncContextStorageFactoryFor, refusingStorage } from platform
+import { AsyncContextUnavailableError, asyncContextStorageFactoryFor, hostAsyncContextStorageFactory, refusingStorage } from platform
 export { AsyncContextUnavailableError, asyncContextStorageFactoryFor }
 
-let activeFactory: AsyncContextStorageFactory = asyncContextStorageFactoryFor(globalThis)
+let activeFactory: AsyncContextStorageFactory = hostAsyncContextStorageFactory()
 let generation = 0
 
 function storageClass(factory: AsyncContextStorageFactory): object | null {

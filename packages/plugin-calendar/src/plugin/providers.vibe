@@ -208,11 +208,11 @@ export effect function residentCalendar(): CalendarProviderPort!!KeyValueStore.K
   }
 
   effect function scoped<A>(run: A!(SeriesChanged | ScopeMismatch | InvalidSeriesTime)) {
-    return try mapError(run, (error) => match (error) {
-      when SeriesChanged: refused("CALENDAR_PRECONDITION_FAILED", "The event or its series changed since it was reviewed.");
-      when ScopeMismatch: refused("CALENDAR_SCOPE_MISMATCH", "That scope does not fit the event: a one-off event changes only as this event.");
-      when InvalidSeriesTime: refused("CALENDAR_SERIES_TIME_INVALID", "The series could not be moved to that time in its zone.");
-    })
+    return try mapError(run, (error) => error instanceof SeriesChanged
+      ? refused("CALENDAR_PRECONDITION_FAILED", "The event or its series changed since it was reviewed.")
+      : error instanceof ScopeMismatch
+        ? refused("CALENDAR_SCOPE_MISMATCH", "That scope does not fit the event: a one-off event changes only as this event.")
+        : refused("CALENDAR_SERIES_TIME_INVALID", "The series could not be moved to that time in its zone."))
   }
 
   effect function reviewedRow(document: ResidentDocument, eventId: string, expectedVersion: string) {

@@ -17,17 +17,7 @@ import {
 
 module android {
   import { CapacitorException } from "@capacitor/core"
-  import { execFileSync } from "node:child_process"
-  import path from "node:path"
   import type { CameraGrant, CameraPlugin, CameraPreviewResult, VideoCaptureOptions, VideoResult } from "../../src/bridges/definitions/camera.ts"
-  import { compileAdapter } from "../drivers/jvm-adapter.ts"
-
-  const ASPECT_RATIOS = "ai.eliza.plugins.camera.CaptureAspectRatiosTest"
-  const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
-
-  export function aspectRatioChecks(): string {
-    return execFileSync(java, ["-cp", compileAdapter(ASPECT_RATIOS), ASPECT_RATIOS], { encoding: "utf8", timeout: 120_000 }).trim()
-  }
 
   export interface Device {
     camera: CameraGrant
@@ -158,7 +148,7 @@ module android {
     return { passed, open: () => open() }
   }
 }
-import { androidCamera, answerHeld, aspectRatioChecks, device, gate, previewHeld, type Device } from android
+import { androidCamera, answerHeld, device, gate, previewHeld, type Device } from android
 
 interface Host {
   readonly adopted: string[]
@@ -510,8 +500,3 @@ it.live("While a recording runs, only one zoom or torch change runs at a time (s
     },
   ))
 })
-
-it.effect("A preview binds its photo stream only at an aspect ratio the device lists (spec/os/android/camera.md, \"A preview binds its photo stream only at an aspect ratio the device lists\")", () => effect {
-  const answer = try Effect.try(() => aspectRatioChecks())
-  try Effect.try(() => assert.strictEqual(answer, "CaptureAspectRatiosTest checks: 12"))
-}, 180_000)

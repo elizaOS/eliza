@@ -1,6 +1,6 @@
 // spec/calendar/availability.md, "Story: Share only the occupied time in my reviewed calendars"; spec/calendar/availability.md, "Story: Read the reviewed local source with its actual calendar rules"
 import { assert, it } from "@effect/vitest"
-import { calendarAvailability, deviceAvailabilitySources, documentAvailability, expandDocumentCalendar, readDeviceAvailability, sameAvailabilityResult, validateCalendarAvailabilityResult, type DeviceCalendarPort, type DeviceCalendarRow, type DeviceInstanceRow, occurrenceId, type CalendarRow, executeCalendarAvailability, type AvailabilityProvider, type AvailabilityReview } from "@elizaos/plugin-calendar-client"
+import { calendarAvailability, deviceAvailabilitySources, documentAvailability, expandDocumentCalendar, readDeviceAvailability, sameAvailabilityResult, validateCalendarAvailabilityResult, type AvailabilityDeviceCalendarPort as DeviceCalendarPort, type DeviceCalendarRow, type DeviceInstanceRow, occurrenceId, type CalendarRow, executeCalendarAvailability, type AvailabilityProvider, type AvailabilityReview } from "@elizaos/plugin-calendar-client"
 
 const zone = "America/Los_Angeles"
 const operation = { type: "calendar_availability", start: "2026-03-08T00:00:00.000Z", end: "2026-03-10T00:00:00.000Z", timeZone: zone } as const
