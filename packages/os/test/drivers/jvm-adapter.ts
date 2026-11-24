@@ -2,7 +2,7 @@
 import { type ChildProcessWithoutNullStreams, execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { accessSync, constants, copyFileSync, existsSync, globSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, copyFileSync, existsSync, globSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -200,7 +200,7 @@ function compiledClasses(directory: string): string | undefined {
     if (stat.isFile()) {
       const bytes = readFileSync(file);
       digest.update(JSON.stringify(bytes.length)).update(bytes);
-    } else if (stat.isSymbolicLink()) digest.update(JSON.stringify(readlinkSync(file)));
+    } else if (stat.isSymbolicLink()) throw new Error(`javac output contains a symbolic link: ${relative}`);
     else if (!stat.isDirectory()) return undefined;
   }
   return path.join(CACHE, `compiled-${digest.digest("hex")}`);
