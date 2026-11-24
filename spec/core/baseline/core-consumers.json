@@ -60917,7 +60917,18 @@
         }
       ],
       "text": "import { bindRequestOperationProjection, bindRequestOperationResult, copyBoundOperationDenial, copyRequestOperationResult, getBoundOperationDenialAttempt, getBoundOperationDenialOperation, isMatchingNotesMutationCompletion, isVerifiedOutsideRequestDenial, readNotesMutationCompletion, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "bindRequestOperationProjection",
+        "bindRequestOperationResult",
+        "copyRequestOperationResult",
+        "getBoundOperationDenialAttempt",
+        "getBoundOperationDenialOperation",
+        "isMatchingNotesMutationCompletion",
+        "isVerifiedOutsideRequestDenial",
+        "readNotesMutationCompletion",
+        "copyBoundOperationDenial"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/runtime/planner-loop.ts",
@@ -62140,7 +62151,12 @@
         }
       ],
       "text": "import { bindRequestOperationProjection, copyRequestOperationResult, getRequestOperationIssuer, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "bindRequestOperationProjection",
+        "copyRequestOperationResult",
+        "getRequestOperationIssuer"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/runtime/sub-planner.ts",
@@ -69127,7 +69143,13 @@
         }
       ],
       "text": "import { beginRequestOperationAttempt, bindTaskExtractionContext, checkBoundNotesOperation, commitNotesRequestRestriction, createModelAttemptAllowance, getStreamingContext, type IAgentRuntime, type Memory, runWithStreamingContext, runWithSuppressedModelStream, type State, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "beginRequestOperationAttempt",
+        "bindTaskExtractionContext",
+        "checkBoundNotesOperation",
+        "commitNotesRequestRestriction"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/notes-request-issuer.ts",
@@ -69186,7 +69208,12 @@
         }
       ],
       "text": "import { beginRequestOperationIssuer, getDirectActionRoutingRules, getStreamingContext, type IAgentRuntime, type Memory, type MessageHandlerResult, type NotesRequestInterpretation, promotedSubactionDescription, type RequestOperationClassification, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "beginRequestOperationIssuer",
+        "NotesRequestInterpretation",
+        "RequestOperationClassification"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/owner-reminder-read-route.test.ts",
@@ -69566,7 +69593,10 @@
         }
       ],
       "text": "import { appendContextEvent, attachAvailableContexts, ChannelTopicsService, ChannelType, CONTEXT_ROUTING_STATE_KEY, canActionRun, captureToolStageIO, createUnavailableGroundedActionReply, DISCOVER_ACTIONS_NAME, ElizaError, extractReplyTextFromTranscript, finalizeTrajectoryRecording, getContextRoutingFromState, getDirectActionRoutingRules, getLocalizedExamplesProvider, getRequestOperationIssuer, getStreamingContext, getTrajectoryContext, getUserMessageText, isDiscoveryActionName, isProviderContextOverflowFailure, isRateLimitError, isObjectRecord as isRecord, isTrajectoryRecordingEnabled, looksLikeRawFieldTranscript, ModelType, promotedSubactionParent, type RecordedStage, readEnv, readProviderRateLimit, runResponseHandlerEvaluators, sanitizeUserVisibleModelOutput, type TrajectoryRecorder, TurnAbortedError, timeInferenceSpan, withSemanticStageFanOut, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getRequestOperationIssuer"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/pipeline.ts",
@@ -69648,7 +69678,15 @@
         }
       ],
       "text": "import { bindRequestOperationProjection, bindRequestOperationResult, copyBoundOperationDenial, copyRequestOperationResult, getBoundOperationDenialAttempt, getRequestOperationIssuer, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "bindRequestOperationProjection",
+        "bindRequestOperationResult",
+        "copyRequestOperationResult",
+        "getBoundOperationDenialAttempt",
+        "getRequestOperationIssuer",
+        "copyBoundOperationDenial"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/planned-tool.ts",
@@ -69876,7 +69914,10 @@
         }
       ],
       "text": "import { actionGateFailure, bindTaskExtractionContext, buildPlannerToolsFromTieredActions, CORE_PLANNER_TERMINALS, completionContextSources, composedPromotedSubactionDescription, composeToolDiagnosticRedactor, ElizaError, type ExecutePlannedToolCallContext, type ExecutePlannedToolCallOptions, emitStreamingHook, executePlannedToolCall, getStreamingContext, mergeEffectReceipts, normalizeActionJsonSchema, pinnedDiscriminatorDescription, pinnedDiscriminatorForPromotedChild, projectActionResultForClipboard, projectToolDiagnosticArgs, promotedSubactionParent, readActionFailureProvenance, resolveUserFacingEffectReceipts, selectCompletionContext, shouldSuppressActionResultClipboard, toWellFormedUnicode, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "bindTaskExtractionContext"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/planner-continuation.test.ts",
@@ -71219,7 +71260,10 @@
         }
       ],
       "text": "import { commitNotesRequestRestriction } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "commitNotesRequestRestriction"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-decision.ts",
@@ -71832,7 +71876,10 @@
         }
       ],
       "text": "import { normalizeNotesRequestInterpretation } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "normalizeNotesRequestInterpretation"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-output.ts",
@@ -74256,7 +74303,12 @@
         }
       ],
       "text": "import { type ActionResult, actionGateFailure, activeCommittedEffectReceipts, beginRequestOperationIssuer, bindTaskExtractionContext, ChannelType, type ContextObject, commitNotesRequestRestriction, conversationClientUserMemoryId, executePlannedToolCall, type IAgentRuntime, type Memory, ModelType, projectDeferredProviders, ResponseHandlerFieldRegistry, resolveActionGateFailure, resolveOwnerEntityIdOrDefault, type State, type UUID, validateToolArgs, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "beginRequestOperationIssuer",
+        "bindTaskExtractionContext",
+        "commitNotesRequestRestriction"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/test/device-actions.e2e.test.ts",
@@ -76281,7 +76333,10 @@
         }
       ],
       "text": "import { ElizaError, type JSONSchema, type Memory, readTaskExtractionUserSources, type State, unwrapUserMessageText, } from \"@elizaos/core\";",
-      "v4Package": "calendar"
+      "v4Package": "calendar",
+      "v4RetiredNames": [
+        "readTaskExtractionUserSources"
+      ]
     },
     {
       "file": "plugins/plugin-calendar/src/actions/create-event-source-note.test.ts",
@@ -78529,7 +78584,10 @@
         }
       ],
       "text": "import { bindTaskExtractionContext, type ContextObject, type IAgentRuntime, type Memory, type State, } from \"@elizaos/core\";",
-      "v4Package": "calendar"
+      "v4Package": "calendar",
+      "v4RetiredNames": [
+        "bindTaskExtractionContext"
+      ]
     },
     {
       "file": "plugins/plugin-calendar/test/calendar-feed-all-day-window.pglite.test.ts",
@@ -78851,7 +78909,10 @@
         }
       ],
       "text": "import { bindTaskExtractionContext, type ContextObject, type IAgentRuntime, type Memory, type State, } from \"@elizaos/core\";",
-      "v4Package": "calendar"
+      "v4Package": "calendar",
+      "v4RetiredNames": [
+        "bindTaskExtractionContext"
+      ]
     },
     {
       "file": "plugins/plugin-calendar/test/google-calendar-watch.pglite.test.ts",
@@ -91064,7 +91125,14 @@
         }
       ],
       "text": "import { type Action, type ActionResult, beginRequestOperationAttempt, beginRequestOperationIssuer, bindTaskExtractionContext, type ContextObject, commitNotesRequestRestriction, executePlannedToolCall, type GenerateTextParams, type HandlerCallback, type IAgentRuntime, type Memory, type NotesRequestOperation, type PlannerRuntime, ResponseHandlerFieldRegistry, runWithActionRoutingContext, type State, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "beginRequestOperationAttempt",
+        "beginRequestOperationIssuer",
+        "bindTaskExtractionContext",
+        "commitNotesRequestRestriction",
+        "NotesRequestOperation"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/__tests__/read-grounding.test.ts",
@@ -91103,7 +91171,10 @@
         }
       ],
       "text": "import { AgentRuntime, createCharacter, type IAgentRuntime, type NotesRequestOperation, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NotesRequestOperation"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/__tests__/request-effect.test.ts",
@@ -91232,7 +91303,19 @@
         }
       ],
       "text": "import { type Action, beginRequestOperationAttempt, beginRequestOperationIssuer, bindRequestOperationProjection, bindTaskExtractionContext, type ContextObject, ContextRegistry, commitNotesRequestRestriction, copyRequestOperationResult, executePlannedToolCall, getRequestOperationIssuer, type IAgentRuntime, isMatchingNotesMutationCompletion, isObjectRecord, type Memory, normalizeEffectReceipt, type RequestOperationIssuer, ResponseHandlerFieldRegistry, readNotesMutationCompletion, runWithActionRoutingContext, type State, stringToUuid, type TypedReadReplyBinding, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "beginRequestOperationAttempt",
+        "beginRequestOperationIssuer",
+        "bindRequestOperationProjection",
+        "bindTaskExtractionContext",
+        "commitNotesRequestRestriction",
+        "copyRequestOperationResult",
+        "getRequestOperationIssuer",
+        "isMatchingNotesMutationCompletion",
+        "RequestOperationIssuer",
+        "readNotesMutationCompletion"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/__tests__/revision-conflict.test.ts",
@@ -91300,7 +91383,10 @@
         }
       ],
       "text": "import { AgentRuntime, createCharacter, type IAgentRuntime, type NotesRequestOperation, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NotesRequestOperation"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/__tests__/trash-retention.test.ts",
@@ -91398,7 +91484,10 @@
         }
       ],
       "text": "import { type ActionResult, actionToJsonSchema, buildPlannerToolsFromActions, executePlannedToolCall, type IAgentRuntime, type JsonSchema, type Memory, type NotesRequestOperation, promoteSubactionsToActions, type State, satisfiesRoleGate, type UUID, validateSchema, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NotesRequestOperation"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/action.ts",
@@ -91417,7 +91506,10 @@
         }
       ],
       "text": "import { NOTES_REQUEST_OPERATIONS } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NOTES_REQUEST_OPERATIONS"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/action.ts",
@@ -91989,7 +92081,15 @@
         }
       ],
       "text": "import { type ActionResult, BoundRequestOperationError, bindRequestOperationResult, checkBoundNotesOperation, copyBoundOperationDenial, getActionRoutingContext, type IAgentRuntime, type Memory, type NotesRequestOperation, READ_ONLY_VIEW_CAPABILITY_IDS, readTaskExtractionNotesRestriction, type State, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "BoundRequestOperationError",
+        "bindRequestOperationResult",
+        "checkBoundNotesOperation",
+        "NotesRequestOperation",
+        "readTaskExtractionNotesRestriction",
+        "copyBoundOperationDenial"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/request-effect.ts",
@@ -92028,7 +92128,13 @@
         }
       ],
       "text": "import { NOTES_REQUEST_OPERATIONS, type NotesRequestInterpretation, normalizeNotesRequestInterpretation, type RequestOperationClassification, type ResponseHandlerFieldEvaluator, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NOTES_REQUEST_OPERATIONS",
+        "NotesRequestInterpretation",
+        "normalizeNotesRequestInterpretation",
+        "RequestOperationClassification"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/routes.ts",
@@ -95675,7 +95781,10 @@
         }
       ],
       "text": "import { buildCanonicalSystemPrompt, ElizaError, getTrajectoryContext, ModelType, normalizeKeywordMatchText, parseJsonModelRecord, readTaskExtractionContext, recentConversationTexts, runExtractorPipeline, runWithTrajectoryPurpose, } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "readTaskExtractionContext"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/actions/lib/extract-task-plan.ts",
@@ -96344,7 +96453,10 @@
         }
       ],
       "text": "import { applyGroundedActionReply, ElizaError, extractUserText, logger, NoModelProviderConfiguredError, normalizeEffectReceipt, readTaskExtractionRequestIntents, resolveActionArgs, type SubactionsMap, validateUuid, } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "readTaskExtractionRequestIntents"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/actions/life.ts",
@@ -100621,7 +100733,11 @@
         }
       ],
       "text": "import { attestDeliveryAudienceFromCanonicalRoom, bindTaskExtractionContext, ChannelType, CONTEXT_ROUTING_STATE_KEY, type ContextObject, completionContextSources, conversationClientUserMemoryId, getContextRoutingFromState, hardenIncomingUserMessage, type Memory, normalizeEffectReceipt, readTaskExtractionRequestIntents, runWithTrajectoryContext, type State, selectCompletionContext, TaskService, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "bindTaskExtractionContext",
+        "readTaskExtractionRequestIntents"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/lifeops/domains/reminders-service.ts",
