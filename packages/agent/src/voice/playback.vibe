@@ -3,7 +3,6 @@ import {
   attachmentReady, cancelsUpstream, mediaWaitMs, replyAfter, replyIdle, segmentAfter, segmentStart,
   type ReplyRun, type SegmentSignal,
 } from "../../gen/agent__voice__clientAudio.effect.vibe"
-import type { SpeakerPort } from "./ports.vibe"
 
 interface MediaEvents<Name extends string> {
   addEventListener(type: Name, listener: () => void): void
@@ -522,14 +521,5 @@ export class SegmentedSpeechPlayback {
       halt?.()
     }
     core.options.changed(idle)
-  }
-}
-
-export function speakerPortOf(playback: SegmentedSpeechPlayback): SpeakerPort {
-  return {
-    speak: (segments, events) => {
-      playback.speakSegments(segments, () => events.segmentPlayed()).then(undefined, (cause: unknown) => events.broke(cause))
-    },
-    stop: () => playback.stop(),
   }
 }

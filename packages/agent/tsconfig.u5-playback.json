@@ -1,1 +1,0 @@
-{ "extends": "./tsconfig.json", "include": ["src/voice/playback.vibe", "src/voice/ports.vibe", "test/voice-playback.test.vibe", "gen/*.ts", "gen/agent__voice__clientAudio.effect.vibe", "gen/agent__voice__session.effect.vibe"] }
