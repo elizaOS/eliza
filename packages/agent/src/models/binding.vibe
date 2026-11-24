@@ -79,7 +79,6 @@ function shapeOf(key: Redacted.Redacted<string>): KeyShape {
 
 const noKey: HeldCredential = { version: 0, value: Redacted.make("") }
 
-/** Whether an endpoint's host is `cerebras.ai` or under it. */
 export function onCerebras(baseUrl: string): boolean {
   return /(?:^|\.)cerebras\.ai$/i.test(URL.parse(baseUrl)?.hostname ?? "")
 }

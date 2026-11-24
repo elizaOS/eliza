@@ -21,7 +21,7 @@ const MutationReceipt = Schema.Struct({ id: Schema.Int, number: Schema.optionalK
 function readParameters(options: unknown): unknown { return typeof options === "object" && options !== null && "parameters" in options ? options.parameters : options }
 
 function repoOf(raw: string | undefined): { owner: string; name: string } | undefined {
-  if (raw === undefined || /[\x00-\x1f\\]/u.test(raw)) return undefined
+  if (raw === undefined || [...raw].some((ch) => ch.charCodeAt(0) <= 0x1f || ch === "\\")) return undefined
   const value = raw.trim().replace(/^(?:https?:\/\/)?github\.com\//iu, "").replace(/\/$/u, "").replace(/\.git$/iu, "")
   const [owner, name, extra] = value.split("/")
   return owner && name && extra === undefined && /^[A-Za-z\d](?:[A-Za-z\d-]{0,38})$/.test(owner) && /^[A-Za-z\d._-]{1,100}$/.test(name) && name !== "." && name !== ".." ? { owner, name } : undefined

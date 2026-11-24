@@ -1,7 +1,7 @@
-// spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/control.md, "A reload of a page my phone withheld runs only when my message asked for it"
+// spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/control.md, "A reload of a page my phone withheld runs only after my review on the phone, or as the BROWSER command only when the model says I asked for it"
 import type { BrowserPage } from "@elizaos/agent/client"
 import {
-  closeAllApprovable, closeAllReview, closeAnswer, closeFormOffered, controlBound, controlOffered, historyHome, historyMoveRefused, navigationOffered, pageReopenRefused, reviewAdmitted, runsUnreviewed,
+  closeAllApprovable, closeAllReview, closeAnswer, closeFormOffered, commandReloadRuns, controlBound, controlOffered, historyHome, withheldReload, navigationOffered, pageReopenRefused, reviewAdmitted, runsUnreviewed,
   type BrowserControl, type CarriedPage, type CloseAnswer, type HistoryHome, type HistoryMove, type Negotiated, type TabCloseForm,
 } from "../gen/browser__control.effect.vibe"
 import { BROWSER_SEARCH_QUERY_MAX } from "./grounding.vibe"
@@ -158,8 +158,12 @@ function carriedPage(page: BrowserPage | undefined): CarriedPage {
   return page.withheld === "sensitive-page" ? "PageTextSensitive" : "PageTextUnreadable"
 }
 
-export function browserHistoryRefused(action: BrowserHistoryAction, page: BrowserPage | undefined, ownerAskedReload: boolean): boolean {
-  return historyMoveRefused(HISTORY_MOVES[action], carriedPage(page), ownerAskedReload)
+export function browserWithheldReload(action: BrowserHistoryAction, page: BrowserPage | undefined): boolean {
+  return withheldReload(HISTORY_MOVES[action], carriedPage(page))
+}
+
+export function browserCommandReloadRuns(action: BrowserHistoryAction, page: BrowserPage | undefined, surface: { readonly ownerAskedReload: boolean; readonly tabObserved: boolean }): boolean {
+  return commandReloadRuns({ move: HISTORY_MOVES[action], page: carriedPage(page), ...surface })
 }
 
 export function browserReopenRefused(page: BrowserPage | undefined, destination: string, exactOpen: boolean): boolean {
