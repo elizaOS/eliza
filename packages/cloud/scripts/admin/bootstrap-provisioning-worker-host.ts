@@ -81,7 +81,7 @@ if (!["staging", "production"].includes(environment)) {
 }
 
 const branch = String(
-  values.branch ?? (environment === "production" ? "main" : "develop"),
+  values.branch ?? (environment === "production" ? "main-v3" : "staging-v3"),
 );
 const envFile = resolve(String(values["env-file"]));
 const hcloudToken = readFirstEnv("HCLOUD_TOKEN");
@@ -171,7 +171,7 @@ Examples:
 
 Options:
   --environment staging|production   GitHub environment and deploy branch default.
-  --branch <name>                    Override branch (default: develop/staging, main/production).
+  --branch <name>                    Override branch (default: staging-v3/staging, main-v3/production).
   --env-file <path>                  Runtime env copied to /opt/eliza/cloud/.env.local.
   --server-type <type>               Hetzner type (default: cpx21).
   --location <code>                  Hetzner location (default: CONTAINERS_HCLOUD_LOCATION or fsn1).

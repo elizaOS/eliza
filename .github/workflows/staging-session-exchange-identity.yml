@@ -16,7 +16,7 @@ concurrency:
 jobs:
   identity:
     name: Resolve staging API key identity
-    if: github.repository == 'elizaOS/eliza' && github.ref == 'refs/heads/staging'
+    if: github.repository == 'elizaOS/eliza' && github.ref == 'refs/heads/staging-v3'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: staging
@@ -62,7 +62,7 @@ jobs:
   operator:
     name: Check product operator read access
     needs: identity
-    if: github.repository == 'elizaOS/eliza' && github.ref == 'refs/heads/staging'
+    if: github.repository == 'elizaOS/eliza' && github.ref == 'refs/heads/staging-v3'
     runs-on: ubuntu-24.04
     environment: staging
     permissions: {}

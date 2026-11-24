@@ -4,7 +4,7 @@ export interface BackupRunAttestation {
   runId: number;
   repository: "elizaOS/eliza";
   event: "workflow_dispatch";
-  branch: "main";
+  branch: "main-v3";
   workflowPath: ".github/workflows/production-pitr-safety-backup.yml";
   conclusion: "success";
   backupStepConclusion: "success";
@@ -44,7 +44,7 @@ export function approveBackupForStage(input: {
     a.runId <= 0 ||
     a.repository !== "elizaOS/eliza" ||
     a.event !== "workflow_dispatch" ||
-    a.branch !== "main" ||
+    a.branch !== "main-v3" ||
     a.workflowPath !== ".github/workflows/production-pitr-safety-backup.yml" ||
     a.conclusion !== "success" ||
     a.backupStepConclusion !== "success" ||

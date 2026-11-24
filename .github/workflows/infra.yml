@@ -83,11 +83,11 @@ jobs:
             esac
           fi
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
-            expected_ref="refs/heads/main"
+            expected_ref="refs/heads/main-v3"
           elif [ "$TARGET_ENVIRONMENT" = "development" ]; then
-            expected_ref="refs/heads/develop"
+            expected_ref="refs/heads/develop-v3"
           else
-            expected_ref="refs/heads/staging"
+            expected_ref="refs/heads/staging-v3"
           fi
           if [ "$SOURCE_REF" != "$expected_ref" ]; then
             echo "::error::$TARGET_ENVIRONMENT infrastructure must run from $expected_ref"
@@ -256,7 +256,7 @@ jobs:
             planScope: process.env.TERRAFORM_PLAN_SCOPE,
             runId: process.env.EXPECTED_RUN_ID,
             runAttempt: process.env.EXPECTED_RUN_ATTEMPT,
-            sourceRef: `refs/heads/${process.env.EXPECTED_ENVIRONMENT === "production" ? "main" : process.env.EXPECTED_ENVIRONMENT === "development" ? "develop" : "staging"}`,
+            sourceRef: `refs/heads/${process.env.EXPECTED_ENVIRONMENT === "production" ? "main-v3" : process.env.EXPECTED_ENVIRONMENT === "development" ? "develop-v3" : "staging-v3"}`,
             sourceSha: process.env.EXPECTED_SOURCE_SHA,
           };
           const failures = Object.entries(expected)
