@@ -12,31 +12,22 @@ export const FFI_EXPORTS_VERSION_SCRIPT =
  * prints on a bad argument.
  *
  * @param {string[]} argv
- * @returns {{abi: string, variant: string, out: string, espeakDir: string, ffiExportsOnly: boolean}}
+ * @returns {{abi: string, out: string, espeakDir: string, ffiExportsOnly: boolean}}
  */
 export function parseStageElizaVoiceArgs(argv) {
   const out = {
     abi: "arm64-v8a",
-    variant: "cpu",
     out: "",
     espeakDir: "",
     ffiExportsOnly: false,
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--abi") out.abi = argv[++i];
-    else if (argv[i] === "--variant") out.variant = argv[++i];
     else if (argv[i] === "--out") out.out = path.resolve(argv[++i]);
     else if (argv[i] === "--espeak-dir")
       out.espeakDir = path.resolve(argv[++i]);
     else if (argv[i] === "--ffi-exports-only") out.ffiExportsOnly = true;
     else throw new Error(`unknown argument ${argv[i]}`);
-  }
-  if (out.variant !== "cpu" && out.variant !== "vulkan") {
-    throw new Error(`unsupported --variant ${out.variant} (cpu | vulkan)`);
-  }
-  // The Vulkan variant's sibling libraries call into each other's exports.
-  if (out.ffiExportsOnly && out.variant !== "cpu") {
-    throw new Error("--ffi-exports-only needs --variant cpu");
   }
   return out;
 }
@@ -47,22 +38,17 @@ export function parseStageElizaVoiceArgs(argv) {
  * sections, --gc-sections and the version script, so the linker can drop what
  * the FFI never reaches. The default build only sets 16 KiB page alignment.
  *
- * @param {{abi: string, variant: string, ffiExportsOnly: boolean, cacheRoot: string}} opts
+ * @param {{abi: string, ffiExportsOnly: boolean, cacheRoot: string}} opts
  * @returns {{buildDir: string, versionScript: string | null, configureFlags: string[]}}
  */
 export function elizaVoiceBuildFlags({
   abi,
-  variant,
   ffiExportsOnly,
   cacheRoot,
 }) {
   const buildDir = path.join(
     cacheRoot,
-    variant === "vulkan"
-      ? `${abi}-vulkan`
-      : ffiExportsOnly
-        ? `${abi}-ffi-exports`
-        : abi,
+    ffiExportsOnly ? `${abi}-ffi-exports` : abi,
   );
   const linker = ["-Wl,-z,max-page-size=16384"];
   const configureFlags = [];

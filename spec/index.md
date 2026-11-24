@@ -59,7 +59,6 @@ The optional integrations and native bridge contracts are specified below.
 | `@elizaos/capacitor-action-journal` | [Native action journal](./nativeActionJournal/) |
 | `@elizaos/native-activity-tracker` | [Native activity tracker](./nativeActivityTracker/) |
 | `@elizaos/capacitor-appblocker` | [Native app blocking](./nativeAppblocker/) |
-| `@elizaos/capacitor-browser-surface` | [Native browser surface](./nativeBrowserSurface/) |
 | `@elizaos/capacitor-bun-runtime` | [Native embedded runtime bridge](./nativeBunRuntime/) |
 | `@elizaos/capacitor-calendar` | [Native calendar](./nativeCalendar/) |
 | `@elizaos/capacitor-camera` | [Native camera](./nativeCamera/) |
@@ -69,7 +68,6 @@ The optional integrations and native bridge contracts are specified below.
 | `@elizaos/capacitor-eliza-tasks` | [Native background tasks](./nativeElizaTasks/) |
 | `@elizaos/plugin-native-filesystem` | [Native filesystem](./nativeFilesystem/) |
 | `@elizaos/capacitor-gateway` | [Native gateway](./nativeGateway/) |
-| `@elizaos/plugin-native-inference` | [Native inference](./nativeInference/) |
 | `@elizaos/capacitor-location` | [Native location](./nativeLocation/) |
 | `@elizaos/capacitor-owned-media` | [Native media](./nativeMedia/) |
 | `@elizaos/plugin-native-messages` | [Native messages](./nativeMessages/) |
