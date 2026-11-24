@@ -71,21 +71,6 @@ add_library(elizainference SHARED IMPORTED)
 set_target_properties(elizainference PROPERTIES
     IMPORTED_LOCATION "${ELIZAVOICE_PREBUILT_SO}")
 
-# The DYNAMIC-Vulkan variant of libelizainference.so links its ggml/llama/mtmd
-# backends as separate .so files (so libggml-vulkan.so can dlopen the device's
-# libvulkan.so in the bionic app process). Import each one staged alongside so
-# the link resolves libelizainference's DT_NEEDED. The CPU static-fused
-# variant has none of these, so each import is guarded on the file existing.
-set(ELIZAVOICE_DEP_TARGETS "")
-foreach(dep ggml ggml-base ggml-cpu ggml-vulkan llama llama-common mtmd)
-    if(EXISTS "${ELIZAVOICE_LIB_DIR}/lib${dep}.so")
-        add_library(eliza_dep_${dep} SHARED IMPORTED)
-        set_target_properties(eliza_dep_${dep} PROPERTIES
-            IMPORTED_LOCATION "${ELIZAVOICE_LIB_DIR}/lib${dep}.so")
-        list(APPEND ELIZAVOICE_DEP_TARGETS eliza_dep_${dep})
-    endif()
-endforeach()
-
 find_library(LOG_LIB log)
 find_library(DL_LIB dl)
 
@@ -100,14 +85,10 @@ target_compile_definitions(${ELIZA_VOICE_JNI_LIBRARY} PRIVATE
     "ELIZA_VOICE_JNI_FULL=${ELIZA_VOICE_JNI_FULL}")
 target_compile_options(${ELIZA_VOICE_JNI_LIBRARY} PRIVATE
     -O2 -DNDEBUG -fvisibility=hidden -fvisibility-inlines-hidden)
-# --allow-shlib-undefined: libggml-vulkan.so NEEDs the device's libvulkan.so,
-# which is not a link input (it resolves from /system/lib64 at runtime). The
-# bridge never calls vulkan symbols directly.
 # max-page-size=16384: 16 KiB page alignment for Android 15+ devices.
 target_link_libraries(${ELIZA_VOICE_JNI_LIBRARY} PRIVATE
-    elizainference ${ELIZAVOICE_DEP_TARGETS} ${LOG_LIB} ${DL_LIB})
+    elizainference ${LOG_LIB} ${DL_LIB})
 target_link_options(${ELIZA_VOICE_JNI_LIBRARY} PRIVATE
-    "-Wl,--allow-shlib-undefined"
     "-Wl,--version-script=${ELIZAVOICE_VERSION_SCRIPT}"
     "-Wl,-z,max-page-size=16384")
 

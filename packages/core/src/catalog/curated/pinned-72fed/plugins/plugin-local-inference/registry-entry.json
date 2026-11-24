@@ -103,14 +103,6 @@
 			"help": "Set to restrict which CUDA-enabled GPUs the runtime sees (e.g. `0,1`).",
 			"advanced": true
 		},
-		"ELIZA_LOCAL_LLAMA": {
-			"type": "string",
-			"required": false,
-			"sensitive": false,
-			"label": "AOSP FFI Loader",
-			"help": "Set to `1` on Android (elizaOS build) to enable the in-process bun:ffi loader (libllama.so + libeliza-llama-shim.so) via the @elizaos/plugin-native-inference companion plugin.",
-			"advanced": true
-		},
 		"ELIZA_MODEL": {
 			"type": "select",
 			"required": false,

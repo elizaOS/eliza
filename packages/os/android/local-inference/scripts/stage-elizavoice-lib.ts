@@ -4,19 +4,17 @@
  * with NDK 28.2 and stages it into the app's jniLibs (or --out). Speech is
  * Paradee-8M TTS with native misaki G2P (eSpeak NG 1.52.0 as the
  * out-of-lexicon fallback), Parakeet-TDT ASR (Phonon-2, batch and streaming)
- * and VAD; no Kokoro voice ships. The
- * CPU variant statically links ggml/llama/mtmd; the Vulkan variant stages
- * their shared backends and requires host shader tooling supplied by the
- * documented ELIZA_* overrides. Every library is 16 KiB page aligned.
+ * and VAD; no Kokoro voice ships. ggml/llama/mtmd are linked statically into
+ * the one library, which is 16 KiB page aligned.
  *
  *   node scripts/stage-elizavoice-lib.ts --abi arm64-v8a|x86_64 \
- *     [--variant cpu|vulkan] [--out <dir>] [--espeak-dir <dir>] [--ffi-exports-only]
+ *     [--out <dir>] [--espeak-dir <dir>] [--ffi-exports-only]
  *
  * --espeak-dir holds the eSpeak NG build (reused when it matches the pin in
  * the fork's tools/misaki-g2p/pins.json): <abi>/include, <abi>/lib and the
  * compiled English data in data/espeak-ng-data.
  *
- * --ffi-exports-only (CPU variant) exports only the eliza_inference_* FFI and
+ * --ffi-exports-only exports only the eliza_inference_* FFI and
  * lets the linker drop the code nothing reaches from it: per-function and
  * per-data sections, --gc-sections and a version script. It is for hosts whose
  * only caller is the JNI bridge (elizavoice-jni.cpp), which binds
@@ -48,13 +46,9 @@ import {
   FFI_EXPORTS_VERSION_SCRIPT,
   parseStageElizaVoiceArgs,
 } from "./build-helpers/elizavoice-build-flags.ts";
-import {
-  assertAndroidVoiceLibrary,
-  assertVulkanMaliMitigation,
-} from "./build-helpers/verify-fused-symbols.ts";
+import { assertAndroidVoiceLibrary } from "./build-helpers/verify-fused-symbols.ts";
 
 import { engineBuildCache, engineDir, moduleDir } from "./engine.ts";
-const DEFAULT_LLAMA_CPP_CACHE_DIR = path.join(os.homedir(), ".cache", "eliza-android-agent");
 
 function log(msg) {
   process.stdout.write(`[stage-elizavoice-lib] ${msg}\n`);
@@ -63,57 +57,6 @@ function log(msg) {
 function die(msg) {
   process.stderr.write(`[stage-elizavoice-lib] ERROR: ${msg}\n`);
   process.exit(1);
-}
-
-// The vulkan variant cross-compiles ggml's GLSL compute shaders to SPIR-V with
-// a HOST-built vulkan-shaders-gen, which needs glslc + the Vulkan/SPIRV headers
-// on the build machine. These are not vendored in the fork; discover the proven
-// locations (env overrides win) and fail loudly with what to provide.
-function resolveVulkanHostTooling(ndk, abi) {
-  const firstExisting = (cands) => cands.find((p) => p && existsSync(p));
-
-  const glslc =
-    process.env.ELIZA_GLSLC ||
-    firstExisting([
-      path.join(ndk, "shader-tools", "linux-x86_64", "glslc"),
-      path.join(ndk, "shader-tools", "darwin-x86_64", "glslc"),
-    ]);
-  if (!glslc) {
-    die(
-      "glslc not found (set ELIZA_GLSLC) — install the NDK shader-tools " +
-        `(expected under ${path.join(ndk, "shader-tools")})`,
-    );
-  }
-
-  const spirvHeadersDir =
-    process.env.ELIZA_SPIRV_HEADERS_DIR ||
-    firstExisting(["/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers"]);
-  if (!spirvHeadersDir) {
-    die(
-      "SPIRV-Headers cmake dir not found (set ELIZA_SPIRV_HEADERS_DIR) — clone " +
-        "KhronosGroup/SPIRV-Headers and `cmake --install` it (need the " +
-        "lib/cmake/SPIRV-Headers config dir).",
-    );
-  }
-
-  const vulkanIncludeDir =
-    process.env.ELIZA_VULKAN_INCLUDE_DIR ||
-    firstExisting([path.join(DEFAULT_LLAMA_CPP_CACHE_DIR, "vulkan-headers")]);
-  if (!vulkanIncludeDir) {
-    die(
-      "Vulkan headers dir not found (set ELIZA_VULKAN_INCLUDE_DIR) — provide a " +
-        "KhronosGroup/Vulkan-Headers include dir (with vulkan/, vk_video/, spirv/).",
-    );
-  }
-
-  const vulkanLib = firstExisting([
-    path.join(
-      ndk,
-      `toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${abi === "x86_64" ? "x86_64" : "aarch64"}-linux-android/31/libvulkan.so`,
-    ),
-  ]);
-
-  return { glslc, spirvHeadersDir, vulkanIncludeDir, vulkanLib };
 }
 
 const ABI_TO_PLATFORM = {
@@ -347,7 +290,6 @@ async function ensureEspeakNg({ dir, abi, ndk, forkSrc }) {
 
 const {
   abi,
-  variant,
   out: outDir,
   espeakDir: espeakArg,
   ffiExportsOnly,
@@ -360,7 +302,7 @@ const {
 })();
 const platform = ABI_TO_PLATFORM[abi];
 if (!platform) die(`unsupported abi ${abi} (arm64-v8a | x86_64)`);
-log(`variant: ${variant}${ffiExportsOnly ? " (FFI exports only)" : ""}`);
+if (ffiExportsOnly) log("FFI exports only");
 
 const sdk = resolveSdk();
 const ndk = resolveNdk(sdk);
@@ -378,7 +320,6 @@ if (!existsSync(path.join(forkSrc, "tools/omnivoice/CMakeLists.txt"))) {
 
 const { buildDir, versionScript, configureFlags } = elizaVoiceBuildFlags({
   abi,
-  variant,
   ffiExportsOnly,
   cacheRoot,
 });
@@ -471,40 +412,12 @@ const baseConfigure = [
   "-DMTMD_VIDEO=OFF",
 ];
 
-if (variant === "cpu") {
-  // CPU-static-fused: ggml/llama/mtmd folded into the single shared
-  // libelizainference.so (no external NEEDED beyond bionic libc/libm/libdl).
-  run("cmake", [
-    ...baseConfigure,
-    "-DBUILD_SHARED_LIBS=OFF",
-    "-DLLAMA_BUILD_MTMD=ON",
-    "-DLLAMA_BUILD_TOOLS=OFF",
-  ]);
-} else {
-  // Dynamic-Vulkan: BUILD_SHARED_LIBS=ON keeps the GPU backend in its own
-  // libggml-vulkan.so so it can dlopen the device's libvulkan at runtime — the
-  // path only the bionic app process can take (never the musl agent). The CPU
-  // static-fuse can't carry ggml-vulkan (zig-musl static link gap on the shader
-  // glue), so this variant ships the sibling .so set instead. Shaders are
-  // cross-compiled to SPIR-V by a host vulkan-shaders-gen (needs glslc + the
-  // Vulkan/SPIRV headers — see resolveVulkanHostTooling).
-  const vk = resolveVulkanHostTooling(ndk, abi);
-  log(`vulkan glslc: ${vk.glslc}`);
-  log(`vulkan SPIRV-Headers: ${vk.spirvHeadersDir}`);
-  log(`vulkan headers: ${vk.vulkanIncludeDir}`);
-  run("cmake", [
-    ...baseConfigure,
-    "-DBUILD_SHARED_LIBS=ON",
-    "-DGGML_VULKAN=ON",
-    `-DVulkan_GLSLC_EXECUTABLE=${vk.glslc}`,
-    `-DVulkan_INCLUDE_DIR=${vk.vulkanIncludeDir}`,
-    ...(vk.vulkanLib ? [`-DVulkan_LIBRARY=${vk.vulkanLib}`] : []),
-    `-DSPIRV-Headers_DIR=${vk.spirvHeadersDir}`,
-    // The NDK toolchain restricts find_package to the sysroot; BOTH lets cmake
-    // see the host-installed SPIRV-Headers config.
-    "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH",
-  ]);
-}
+run("cmake", [
+  ...baseConfigure,
+  "-DBUILD_SHARED_LIBS=OFF",
+  "-DLLAMA_BUILD_MTMD=ON",
+  "-DLLAMA_BUILD_TOOLS=OFF",
+]);
 
 const jobs = os.availableParallelism();
 run("cmake", [
@@ -559,59 +472,8 @@ if (!outDir) die("--out <jniLibs/abi directory> is required");
 const jniDir = outDir;
 mkdirSync(jniDir, { recursive: true });
 
-// The dynamic-Vulkan variant emits libelizainference.so plus its shared
-// backends; the CPU variant folds them all in, so it stages only the one .so.
-// Keep the lists mutually exclusive: when staging CPU, sweep any stale Vulkan
-// siblings so the loader never sees a half-swapped set, and vice-versa.
-const VULKAN_SIBLINGS = [
-  "libelizainference.so",
-  "libggml.so",
-  "libggml-base.so",
-  "libggml-cpu.so",
-  "libggml-vulkan.so",
-  "libllama.so",
-  "libllama-common.so",
-  "libmtmd.so",
-];
-const SIBLINGS_TO_CLEAN = VULKAN_SIBLINGS.filter(
-  (n) => n !== "libelizainference.so",
-);
-
-const toStage =
-  variant === "vulkan" ? VULKAN_SIBLINGS : ["libelizainference.so"];
-if (variant === "cpu") {
-  for (const sib of SIBLINGS_TO_CLEAN) {
-    const stale = path.join(jniDir, sib);
-    if (existsSync(stale)) {
-      rmSync(stale);
-      log(
-        `removed stale Vulkan sibling ${sib} (CPU variant is self-contained)`,
-      );
-    }
-  }
-}
-
-// Gate the BUILT artifacts before anything touches the shipping jniLibs dir:
-// running the Mali check only after staging (as before) left the rejected
-// libggml-vulkan.so already copied over a previously-good set on a red run,
-// where a later gradle build that skips this script would package it.
-if (variant === "vulkan") {
-  assertVulkanMaliMitigation({
-    lib: path.join(binDir, "libelizainference.so"),
-    target: `android-${abi}-vulkan`,
-  });
-}
-
-const staged = [];
-for (const name of toStage) {
-  const src = path.join(binDir, name);
-  if (!existsSync(src)) {
-    die(`${variant} build did not produce ${name} (expected in ${binDir})`);
-  }
-  const dst = path.join(jniDir, name);
-  run(strip, ["--strip-unneeded", src, "-o", dst]);
-  staged.push(dst);
-}
+const engineSo = path.join(jniDir, "libelizainference.so");
+run(strip, ["--strip-unneeded", builtSo, "-o", engineSo]);
 
 // Every shared native component uses the same C++ runtime. Multiple static
 // libc++ copies can disagree on locale/type state during backend initialization.
@@ -623,16 +485,16 @@ const cxxRuntime = path.join(
   abi === "x86_64" ? "x86_64-linux-android" : "aarch64-linux-android",
   "libc++_shared.so",
 );
-const stagedCxxRuntime = path.join(jniDir, "libc++_shared.so");
-run(strip, ["--strip-unneeded", cxxRuntime, "-o", stagedCxxRuntime]);
-staged.push(stagedCxxRuntime);
+run(strip, [
+  "--strip-unneeded",
+  cxxRuntime,
+  "-o",
+  path.join(jniDir, "libc++_shared.so"),
+]);
 
-// Verify the engine .so is bionic arm64, exports the FFI symbols, and has no
-// musl deps. For the Vulkan variant its backends are NEEDED siblings (resolved
-// in-process), not musl — but libvulkan resolves from the device at runtime.
+// Verify the engine .so is bionic, exports the FFI symbols, and has no musl deps.
 const readelf = ndkTool(ndk, "llvm-readelf");
 const nm = ndkTool(ndk, "llvm-nm");
-const engineSo = path.join(jniDir, "libelizainference.so");
 const symCountFile = path.join(buildDir, "eliza-inference-symbol-count.txt");
 const dynamicFile = path.join(buildDir, "eliza-inference-dynamic.txt");
 function captureToolOutput(command, args, outputFile) {
@@ -661,25 +523,7 @@ if (symCount === 0) die("staged .so exports no eliza_inference_* symbols");
 if (muslNeeded.length > 0)
   die(`staged .so has musl NEEDED deps: ${muslNeeded.join(", ")}`);
 
-if (variant === "vulkan") {
-  const vulkanSo = path.join(jniDir, "libggml-vulkan.so");
-  if (!existsSync(vulkanSo)) die("vulkan variant missing libggml-vulkan.so");
-  // Fail-closed Mali flash-attn gate (#9508) on what actually ships: a
-  // libggml-vulkan.so staged into jniLibs without the VK_VENDOR_ID_ARM
-  // disable_subgroups mitigation SIGABRTs mid-decode on Mali. The CI build
-  // path (compile-libllama.ts) already gates via verify-fused-symbols; this
-  // closes the bypass where stage-elizavoice-lib populated the APK from a
-  // stale submodule working tree (observed 2026-06-24: mitigated gitlink,
-  // zero-marker staged lib).
-  assertVulkanMaliMitigation({
-    lib: engineSo,
-    target: `android-${abi}-vulkan`,
-  });
-  log(`staged ${staged.length} libs (dynamic-Vulkan):`);
-  for (const s of staged) log(`  ${path.basename(s)}`);
-} else {
-  log(`staged ${engineSo}`);
-}
+log(`staged ${engineSo}`);
 log(`  eliza_inference_* exported symbols: ${symCount}`);
 log(`  NEEDED (bionic): ${needed.join(", ")}`);
 log("done");

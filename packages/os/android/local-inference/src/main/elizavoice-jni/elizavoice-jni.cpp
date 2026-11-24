@@ -1256,10 +1256,7 @@ jstring nativeVadSelfTest(JNIEnv* env, jclass,
 //
 // Wrap the fused streaming-LLM ABI (eliza_inference_llm_stream_*), pooled
 // embeddings (eliza_inference_embed), end-of-turn scoring
-// (eliza_inference_llm_eot_score, ABI v11), and the tokenizer. When this JNI
-// host is built against the DYNAMIC-Vulkan libelizainference (libggml-vulkan.so
-// staged alongside it), llm_stream_open offloads the model to the GPU in the
-// bionic app process automatically — the path the musl bun agent cannot take.
+// (eliza_inference_llm_eot_score, ABI v11), and the tokenizer.
 
 jint nativeLlmStreamSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_llm_stream_supported());
@@ -1439,10 +1436,8 @@ jfloat nativeEotScore(JNIEnv* env, jclass,
     return prob;
 }
 
-// Open a streaming-LLM session. nGpuLayers: -1 = all-GPU (default), 0 = CPU
-// (the lib ignores 0 when libggml-vulkan is linked; the CPU/GPU choice is the
-// staged LIB VARIANT, see the per-device selection). drafterPath ("" = none)
-// enables MTP speculative decoding.
+// Open a streaming-LLM session. nGpuLayers is passed to the library, which is
+// CPU only. drafterPath ("" = none) enables MTP speculative decoding.
 jlong nativeLlmStreamOpen(
     JNIEnv* env, jclass, jlong ctxHandle, jint maxTokens, jfloat temperature,
     jfloat topP, jint topK, jint nGpuLayers, jstring jDrafterPath) {
@@ -1577,9 +1572,7 @@ jint nativeLlmStreamResetKeep(JNIEnv*, jclass,
 //
 // THE KEYSTONE PROOF: runs a whole greedy text generation in ONE native call,
 // in the bionic app process, against whatever libelizainference.so is staged
-// into jniLibs. When that lib is the dynamic-Vulkan variant, ggml-vulkan logs
-// "Found 1 Vulkan devices: Mali-G715" + "offloaded N/N layers to GPU" to
-// logcat (the in-process GPU evidence). Returns JSON {ok,text,tokens,ms,tokS}.
+// into jniLibs. Returns JSON {ok,text,tokens,ms,tokS}.
 jstring nativeLlmSelfTest(JNIEnv* env, jclass,
                                                        jstring jBundleDir,
                                                        jstring jPrompt,
@@ -1612,7 +1605,7 @@ jstring nativeLlmSelfTest(JNIEnv* env, jclass,
     cfg.top_k = 1;
     cfg.top_p = 1.0f;
     cfg.repeat_penalty = 1.0f;
-    cfg.n_gpu_layers = -1;   // all-GPU when the vulkan lib is staged
+    cfg.n_gpu_layers = -1;
     // Arm safe runtime optimizations (stock f16/q8_0 KV for shipped Gemma 4
     // tiers; no MTP here because nativeLlmSelfTest has no drafter argument).
     arm_bionic_text_cfg(cfg, bundleDir.c_str());

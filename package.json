@@ -45,7 +45,6 @@
     "nativeElizaTasks": "packages/plugin-native-eliza-tasks",
     "nativeFilesystem": "packages/plugin-native-filesystem",
     "nativeGateway": "packages/plugin-native-gateway",
-    "nativeInference": "packages/plugin-native-inference",
     "nativeLocation": "packages/plugin-native-location",
     "nativeMedia": "packages/plugin-native-media",
     "nativeMessages": "packages/plugin-native-messages",
