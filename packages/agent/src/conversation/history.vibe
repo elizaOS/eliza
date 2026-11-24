@@ -71,14 +71,15 @@ module node {
 
   export async function messageView(runtime: AgentRuntime, memory: Memory) {
     const fromAgent = memory.entityId === runtime.agentId
-    const failed = memory.content.failureKind
+    const { failureKind: failed, abortCause: cause, stopReason } = memory.content
     const marks = rowMarks(fromAgent ? "Agent" : "User",
-      readDurableConversationChatMarker(memory.content.chatIdempotency)?.clientMessageId ?? "", typeof failed === "string" ? failed : "")
+      readDurableConversationChatMarker(memory.content.chatIdempotency)?.clientMessageId ?? "", typeof failed === "string" ? failed : "", typeof cause === "string" ? cause : "")
     return {
       id: String(memory.id), role: fromAgent ? "assistant" as const : "user" as const,
       text: shownText(bodyOf(await storedText(runtime.adapter, memory))), timestamp: memory.createdAt ?? 0,
       ...(marks.sendKey === "" ? {} : { clientMessageId: marks.sendKey }),
       ...(marks.failed === "" ? {} : { failureKind: marks.failed }),
+      ...(marks.cause === "" ? {} : { abortCause: marks.cause, ...(typeof stopReason === "string" ? { stopReason } : {}) }),
     }
   }
 

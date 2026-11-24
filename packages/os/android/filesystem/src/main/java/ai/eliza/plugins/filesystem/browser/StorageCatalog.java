@@ -1,3 +1,4 @@
+// spec/os/android/files/storage.md, "A category count totals the sizes its files record, and a file without one adds nothing"
 package ai.eliza.plugins.filesystem.browser;
 
 import android.content.ContentResolver;

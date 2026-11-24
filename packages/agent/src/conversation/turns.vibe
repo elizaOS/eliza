@@ -1,10 +1,10 @@
 // spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none"
 // spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"
 // spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain"
-// spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"
+// spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text"
 // spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
-// spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"
+// spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"
 // spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"
 // spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"
 // spec/agent/conversation/turns.md, "A quoted reply uses only the selected message from this conversation"
@@ -22,7 +22,7 @@ module node {
   import { defaultTitle } from "../../gen/agent__conversation__conversations.ts"
   import { fundsCodeOf } from "../../gen/agent__models__binding.ts"
   import { creationTitle } from "./conversations.vibe"
-  import { admitsReplyTarget, cloudCodeOn, decide, planActionOf, providerWaitMs, publishesCutOffEffect, receiptRetentionMs, stopConfirmMs, stopWindowOpen, turnDeadlineMs, type Admission, type KeyView, type ReplyKind } from "../../gen/agent__conversation__turns.ts"
+  import { abortCauseOf, admitsReplyTarget, cloudCodeOn, decide, planActionOf, providerWaitMs, publishesCutOffEffect, receiptRetentionMs, stopConfirmMs, stopWindowOpen, turnDeadlineMs, type Admission, type KeyView, type ReplyKind, type TurnEnder } from "../../gen/agent__conversation__turns.ts"
   import type { LocalRoute } from "../access/routes.vibe"
   import type { VoiceAction } from "../../gen/agent__conversation__planning.ts"
   import { voiceActionLabel } from "./reply-text.vibe"
@@ -86,6 +86,8 @@ module node {
   const turnBody = Schema.decodeUnknownOption(TurnBody, { onExcessProperty: "error" })
   const stopBody = Schema.decodeUnknownOption(Schema.Struct({ reason: Schema.optionalKey(Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(128))) }), { onExcessProperty: "error" })
   const stamp = Schema.decodeUnknownOption(Stamp)
+  const stopRequested = Schema.decodeUnknownOption(Schema.Struct({ _tag: Schema.Literal("StopRequested"), reason: Schema.String }))
+  const stopReasonCode = Schema.decodeUnknownOption(Schema.String.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/)))
   const failure = (status: number, error: string) => ({ status, body: { error } })
   const okay = <T extends object>(body: T) => ({ status: 200, body })
 
@@ -125,6 +127,13 @@ module node {
   const liveFailure = (stored: Failure, content: Content | null | undefined): Failure =>
     typeof content?.retryAt === "number" ? { ...stored, retryAt: content.retryAt } : stored
 
+  function abortFields(ended: ReplyKind, signal: AbortSignal): { readonly abortCause: string; readonly stopReason?: string } {
+    const stop = stopRequested(signal.reason)
+    const ender: TurnEnder = stop._tag === "Some" ? "StopEnded" : signal.aborted ? "ClientEnded" : "RuntimeEnded"
+    const reason = stop._tag === "Some" ? stopReasonCode(stop.value.reason) : undefined
+    return { abortCause: abortCauseOf(ended, ender), ...(reason?._tag === "Some" ? { stopReason: reason.value } : {}) }
+  }
+
   export function conversation(room: Room) {
     const metadata = stamp(room.metadata?.deviceConversation)
     if (metadata._tag !== "Some") return undefined
@@ -138,7 +147,7 @@ module node {
 
   export interface TurnDisplay {
     readonly restart: (fullText: string) => void
-    readonly acknowledge: (text: string) => void
+    readonly acknowledge: (text: string) => boolean | void
     readonly tool: (name: string, label: string) => void
     readonly ready: (fullText: string, ran: TurnReply["actionResults"]) => void
   }
@@ -284,8 +293,10 @@ module node {
       let session: DeviceTurnSession | undefined
       const interrupted = async (result: MessageProcessingResult): Promise<MessageProcessingResult> => {
         if (result.responseMessages.length > 0) return result
+        const timedOut = options.deadline?.aborted === true
         const content = {
-          text: result.responseContent?.text ?? "", failureKind: options.deadline?.aborted ? "timeout" : "aborted",
+          text: result.responseContent?.text ?? "", failureKind: timedOut ? "timeout" : "aborted",
+          ...(timedOut ? {} : abortFields({ tag: "Aborted" }, signal)),
           ...storedCutOff(result.responseContent),
         }
         return { ...result, responseContent: content, responseMessages: await storeReply(content) }
@@ -420,7 +431,7 @@ module node {
             const recovered = memory(runtime, owner, room, "")
             await runtime.createMessageMemory({
               ...recovered, id: key.replyId, entityId: runtime.agentId,
-              content: { ...recovered.content, inReplyTo: key.inputId, failureKind: "aborted", turnBoot: boot },
+              content: { ...recovered.content, inReplyTo: key.inputId, failureKind: "aborted", abortCause: abortCauseOf({ tag: "Unfinished" }, "RuntimeEnded"), turnBoot: boot },
             })
             return answer("", key.replyId, key.inputId, { kind: "aborted" })
           }
@@ -504,7 +515,7 @@ module node {
       const released = running === undefined
         ? waitForIdle(roomId)
         : running.result.then(() => undefined, () => undefined)
-      running?.interrupt.abort(reason)
+      running?.interrupt.abort({ _tag: "StopRequested", reason })
       runtime.turnControllers.abortTurn(roomId, reason)
       const completion = Effect.runPromise(Effect.timeoutOption(Effect.promise(() => released), stopConfirmMs))
         .then((ended) => result(ended._tag === "Some" && stopWindowOpen({ tag: "Stopping", requestedAt }, Date.now()) ? "stopped" : "uncertain"))
