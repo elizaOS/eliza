@@ -40005,18 +40005,6 @@
           ]
         },
         {
-          "name": "selectUserAuthorizedRecurrence",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/i18n/recurrence-markers.ts",
-              "line": 236,
-              "kind": "FunctionDeclaration",
-              "signature": "<T>(authoritativeTexts: ReadonlyArray<string | null | undefined>, sources: ReadonlyArray<T | null | undefined>): T | undefined"
-            }
-          ]
-        },
-        {
           "name": "SELF_STATUS_SCHEMA_VERSION",
           "typeOnly": false,
           "declarations": [
@@ -44535,18 +44523,6 @@
               "line": 83,
               "kind": "FunctionDeclaration",
               "signature": "(text: string, term: string): boolean"
-            }
-          ]
-        },
-        {
-          "name": "textStatesExplicitRecurrence",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/i18n/recurrence-markers.ts",
-              "line": 221,
-              "kind": "FunctionDeclaration",
-              "signature": "(...texts: ReadonlyArray<string | null | undefined>): boolean"
             }
           ]
         },
@@ -73183,18 +73159,6 @@
           ]
         },
         {
-          "name": "selectUserAuthorizedRecurrence",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/i18n/recurrence-markers.ts",
-              "line": 236,
-              "kind": "FunctionDeclaration",
-              "signature": "<T>(authoritativeTexts: ReadonlyArray<string | null | undefined>, sources: ReadonlyArray<T | null | undefined>): T | undefined"
-            }
-          ]
-        },
-        {
           "name": "SELF_STATUS_SCHEMA_VERSION",
           "typeOnly": false,
           "declarations": [
@@ -76858,18 +76822,6 @@
               "line": 119,
               "kind": "TypeAliasDeclaration",
               "signature": "export type TextGenerationModelType = | typeof ModelType.TEXT_NANO | typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_MEDIUM | typeof ModelType.TEXT_LARGE | typeof ModelType.TEXT_MEGA | typeof ModelType.RESPONSE_HANDLER | typeof ModelType.ACTION_PLANNER | typeof ModelType.TEXT_REASONING_SMALL | typeof ModelType.TEXT_REASONING_LARGE | typeof ModelType.TEXT_COMPLETION;"
-            }
-          ]
-        },
-        {
-          "name": "textStatesExplicitRecurrence",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/i18n/recurrence-markers.ts",
-              "line": 221,
-              "kind": "FunctionDeclaration",
-              "signature": "(...texts: ReadonlyArray<string | null | undefined>): boolean"
             }
           ]
         },
