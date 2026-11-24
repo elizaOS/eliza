@@ -30,12 +30,9 @@ import { createStripeFake, fakeSecretKey, type StripeFake } from "./support/fake
 import { stripePlanDowngrade, stripePlanPreview, stripePlanUpgrade, stripeRenewalPreview } from "./support/fakes/stripe-commands.ts"
 import { changeInvoiceAllowance, openRenewal } from "../src/billing/allowance.vibe"
 import { catalogPrices, secrets, testProfile } from "./support/profile.ts"
+import { check } from "./support/cloud.vibe"
 
 const minuteMs = 60_000
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 effect function sql(cloud: HttpFixture, text: string, params: ReadonlyArray<unknown>) {
   return try cloud.store.transaction((tx) => tx.query(text, params))

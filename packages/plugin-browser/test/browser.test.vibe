@@ -232,9 +232,8 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
 })
 
 module node {
-  import { Effect } from "effect"
   import type { IAgentRuntime } from "@elizaos/core"
-  import { negotiation, readOperation, validate, type DeviceTurn } from "@elizaos/agent/device-actions"
+  import { negotiatedOwnerTurn, readOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
   import { browserProposalFamily } from "../src/proposal.vibe"
 
   export const everyBrowserCapability = ["browser.search.v1", "browser.tabs.v1", "browser.tabs.close-all.v1", "browser.tabs.show.v1", "browser.find.v1", "browser.history.v1", "browser.open-new-tab.v1"]
@@ -250,20 +249,17 @@ module node {
 
   /** @throws {never} */
   export function ownerTurn(ownerText: string, capabilities: readonly string[], browserPage?: unknown, observation: unknown = pageObservation): DeviceTurn {
-    const negotiated = negotiation(true, capabilities.join(","))
-    return {
-      runtime: {} as IAgentRuntime, by: {} as DeviceTurn["by"], negotiation: negotiated, capabilities,
+    return negotiatedOwnerTurn(capabilities, {
+      runtime: {} as IAgentRuntime, by: {} as DeviceTurn["by"],
       message: {
         id: "00000000-0000-4000-8000-000000000010", entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002",
         content: { text: ownerText, ...(browserPage === undefined ? {} : { metadata: { observation, browserPage } }) },
       } as DeviceTurn["message"],
       ownerText, observation: (browserPage === undefined ? undefined : observation) as DeviceTurn["observation"],
-      completedActionNavigation: false, completesReads: false, conversationId: "conversation", requestId: "request", assistantName: "Eliza", swapped: [], startedAt: 0, timeZone: undefined,
-      signal: new AbortController().signal,
-      admit: (operation) => validate(operation, negotiated, "NoBinding"),
-      earlier: () => Effect.succeed([]),
-    }
+      completedActionNavigation: false, completesReads: false, conversationId: "conversation", requestId: "request", startedAt: 0, timeZone: undefined,
+    })
   }
+
 
   export function checked(operation: unknown) {
     const read = readOperation(operation)

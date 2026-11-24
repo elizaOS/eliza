@@ -3,6 +3,7 @@ import type { IDatabaseAdapter } from "@elizaos/core"
 import { apply, enrollmentKeyMatches, initial, machineOver, noOwner, replacesEnrollment, step, type DeviceRequest, type Rejected } from "../../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
 import type { DeviceView, RevisionRead, ViewProfile } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
+import { currentFiber, readFirst } from "../storage/transaction.vibe"
 
 export error DeviceStoreUnavailable { step: string; cause: unknown }
 export error EnrollmentKeyChanged {}
@@ -20,6 +21,7 @@ module node {
   import type { ReadBinding } from "../../gen/agent__deviceActions__operations.ts"
   import { CalendarSource } from "./operation-schemas/personal.schema.vibe"
   import { DeviceReceipt, readOperation } from "./operations.schema.vibe"
+  import { sqlConnection, withinTransaction, type Sql } from "../storage/transaction.vibe"
 
   export type EnrollmentEvent = Extract<Event, { type: "registerDevice" | "revokeEnrollment" }>
   export type OfferEvent = Extract<Event, { type: "offer" }>
@@ -78,10 +80,6 @@ module node {
   export type ProfileChange = { readonly kind: "set" | "stale"; readonly profile: ViewProfile }
   export type Settled = "open" | "settled"
 
-  interface Sql {
-    query<R>(text: string, params?: unknown[]): Promise<{ rows: R[]; affectedRows?: number }>
-  }
-
   type Row = {
     proposal_id: string; revision: number; state: unknown; operation: unknown; binding: string
     binding_authority: unknown; wire_attempt_id: unknown; bound_profile: unknown; need: unknown; result: unknown; provider_receipt: unknown; created_at: number | string
@@ -110,14 +108,7 @@ module node {
   const decodeViews = Schema.decodeUnknownSync(Views)
   const columns = "proposal_id, revision, state, operation, binding, binding_authority, wire_attempt_id, bound_profile, need, result, provider_receipt, created_at, reviewed"
 
-  function connection(value: object): Sql {
-    if (!("query" in value) || typeof value.query !== "function") throw new TypeError("The device request store needs a SQL connection")
-    return value as Sql
-  }
-
-  function within<A>(adapter: IDatabaseAdapter, work: (sql: Sql) => Promise<A>): Promise<A> {
-    return adapter.transaction(async (tx) => await work(connection(await tx.getConnection())))
-  }
+  const within = <A>(adapter: IDatabaseAdapter, work: (sql: Sql) => Promise<A>): Promise<A> => withinTransaction(adapter, "device request store", work)
 
   function parsed(what: string, raw: unknown): DeviceRequest {
     const state = parseState(raw)
@@ -324,11 +315,16 @@ module node {
     }
   }
 
-  export function writeDecision(adapter: IDatabaseAdapter, { proposalId, digest, by, approved }: RequestDecision): Promise<DecisionCommit> {
+  function withLocked<A>(adapter: IDatabaseAdapter, proposalId: string, work: (sql: Sql, row: NonNullable<Awaited<ReturnType<typeof lockedRequest>>>, current: DeviceRequest) => Promise<A>): Promise<A | { readonly kind: "missing" }> {
     return within(adapter, async (sql) => {
       const row = await lockedRequest(sql, proposalId)
-      if (row === undefined) return { kind: "missing" }
-      const current = atWallTime(parsed(`request ${proposalId}`, row.state))
+      if (row === undefined) return { kind: "missing" as const }
+      return await work(sql, row, atWallTime(parsed(`request ${proposalId}`, row.state)))
+    })
+  }
+
+  export function writeDecision(adapter: IDatabaseAdapter, { proposalId, digest, by, approved }: RequestDecision): Promise<DecisionCommit> {
+    return withLocked(adapter, proposalId, async (sql, row, current): Promise<DecisionCommit> => {
       if (!canDecide(current, by, digest, approved)) return { kind: "refused" }
       const decided = step(current, { type: "decide", digest, approved }, by)
       if (decided.phase.tag !== current.phase.tag && await keepRequest(sql, proposalId, row.revision, decided) !== "written") {
@@ -359,10 +355,7 @@ module node {
   }
 
   export function writeClaim(adapter: IDatabaseAdapter, { proposalId, digest, by }: RequestClaim): Promise<ClaimCommit> {
-    return within(adapter, async (sql) => {
-      const row = await lockedRequest(sql, proposalId)
-      if (row === undefined) return { kind: "missing" }
-      const current = atWallTime(parsed(`request ${proposalId}`, row.state))
+    return withLocked(adapter, proposalId, async (sql, row, current): Promise<ClaimCommit> => {
       if (!canClaim(current, by, digest)) return { kind: "refused" }
       const claimed = step(current, { type: "claim", digest }, by)
       const wireAttemptId = keptAttemptId(randomUUID())
@@ -413,7 +406,7 @@ module node {
   }
 
   export async function commitReadCompletion(tx: IDatabaseAdapter, { hint, by }: ReadCompletionPublication): Promise<boolean> {
-    const sql = connection(await tx.getConnection())
+    const sql = sqlConnection(await tx.getConnection(), "device request store")
     const row = await lockedRequest(sql, hint.proposalId)
     if (row === undefined) return false
     const current = atWallTime(parsed(`request ${hint.proposalId}`, row.state))
@@ -511,17 +504,6 @@ effect function stored<A>(step: string, call: () => Promise<A>) {
   return try tryPromise({ try: () => call(), catch: (cause) => new DeviceStoreUnavailable({ step, cause }) })
 }
 
-effect function currentFiber() {
-  return try withFiberSucceed((fiber) => fiber.id)
-}
-
-effect function readBy<A>(reads: Map<number, A>) {
-  const fiber = try currentFiber()
-  const read = reads.get(fiber)
-  reads.delete(fiber)
-  return read === undefined ? try die(new Error("A device row was kept without being read first")) : read
-}
-
 effect function caughtUp(state: DeviceRequest) {
   const now = try Clock.currentTimeMillis
   return now > state.session.now ? step(state, { type: "elapse", elapsed: now - state.session.now }, noOwner) : state
@@ -573,7 +555,7 @@ export effect function openRequest(adapter: IDatabaseAdapter, proposalId: string
     return try caughtUp(current.state)
   }
   const keep = effect function (next: DeviceRequest): void!! {
-    const read = try readBy(reads)
+    const read = try readFirst(reads, "device")
     const written = try orDie(stored("keep a device request", () => writeRequest(adapter, proposalId, read, next)))
     if (written === "stale") try die(new StaleDeviceRow({ table: "device_requests", id: proposalId, revision: read }))
   }

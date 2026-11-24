@@ -70,6 +70,14 @@ function cloudFake() {
   return { client, calls, gates }
 }
 
+function actionRunner(plugin: ReturnType<typeof createMapsPlugin>, runtime = {} as IAgentRuntime) {
+  return (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
+    const action = plugin.actions?.find((found) => found.name === name)
+    if (action === undefined) throw new Error(`${name} is not registered`)
+    return await action.handler(runtime, message, undefined, { parameters })
+  })
+}
+
 it.live('Keep Cloud Maps on the account that requested it: coverage installs the provider for the bound account, a request outliving the account is fenced, a Cloud pause holds the next request, and signed out reads nothing (spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/requests.md, "Story: Back off when Maps asks me to wait")', effect () => {
   const cloud = cloudFake()
   const installs: ProviderConfig["status"][] = []
@@ -588,11 +596,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const pluginOver = (cloud: MapsCloudLink) => createMapsPlugin({ cloud: () => cloud, navigation: () => sync(() => undefined), savedPlaces: () => undefined })
   const plugin = pluginOver(link)
   const runtime = {} as IAgentRuntime
-  const actOn = (on: typeof plugin, name: string, message: Memory, parameters: JsonObject) => promise(async () => {
-    const action = on.actions?.find((found) => found.name === name)
-    if (action === undefined) throw new Error(`${name} is not registered`)
-    return await action.handler(runtime, message, undefined, { parameters })
-  })
+  const actOn = (on: typeof plugin, name: string, message: Memory, parameters: JsonObject) => actionRunner(on, runtime)(name, message, parameters)
   const act = (name: string, message: Memory, parameters: JsonObject) => actOn(plugin, name, message, parameters)
   const now = Date.now()
   const recent = messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25, capturedAt: now - 60_000 })
@@ -816,11 +820,7 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
     const action = plugin.actions?.find((found) => found.name === name)
     return action === undefined ? undefined : turnNotes.get(action)?.(runtime, message)
   })
-  const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
-    const action = plugin.actions?.find((found) => found.name === name)
-    if (action === undefined) throw new Error(`${name} is not registered`)
-    return await action.handler(runtime, message, undefined, { parameters })
-  })
+  const act = actionRunner(plugin, runtime)
   const turn = ownerTurn("save Coit Tower as Work")
   const work = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Work" })
   const again = try act("MAPS_SAVE", turn, { query: "Coit Tower", label: "Work" })

@@ -24,11 +24,11 @@ const SELECTION_ID = /^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,511}$/
 const SELECTION_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,255}$/
 const SELECTION_KEYS: readonly string[] = ["id", "revision", "navigation"]
 
-function record(value: unknown): object | undefined {
+export function record(value: unknown): object | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined
 }
 
-function field(value: object, key: string): unknown {
+export function field(value: object, key: string): unknown {
   return Object.getOwnPropertyDescriptor(value, key)?.value
 }
 

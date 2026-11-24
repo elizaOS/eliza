@@ -19,8 +19,9 @@ module node {
     type ActionResult, type AgentRuntime, type Content, type DurableConversationChatMarker, type JsonObject, type Media, type Memory, type MemoryMetadata, type MessageProcessingResult, type Room, type UUID,
   } from "@elizaos/core"
   import type { TaskChoiceWidget } from "@elizaos/core/protocol"
-  import { canCreate, defaultTitle, initial } from "../../gen/agent__conversation__conversations.ts"
+  import { defaultTitle } from "../../gen/agent__conversation__conversations.ts"
   import { fundsCodeOf } from "../../gen/agent__models__binding.ts"
+  import { creationTitle } from "./conversations.vibe"
   import { admitsReplyTarget, cloudCodeOn, decide, planActionOf, providerWaitMs, publishesCutOffEffect, receiptRetentionMs, stopConfirmMs, stopWindowOpen, turnDeadlineMs, type Admission, type KeyView, type ReplyKind } from "../../gen/agent__conversation__turns.ts"
   import type { LocalRoute } from "../access/routes.vibe"
   import type { VoiceAction } from "../../gen/agent__conversation__planning.ts"
@@ -77,13 +78,11 @@ module node {
     clientMessageId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(128))),
   })
   type TurnBody = typeof TurnBody.Type
-  const Create = Schema.Struct({ title: Schema.optionalKey(Schema.String) })
   const Stamp = Schema.Struct({
     id: Schema.String,
     createdAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
     updatedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   })
-  const createBody = Schema.decodeUnknownOption(Create, { onExcessProperty: "error" })
   const turnBody = Schema.decodeUnknownOption(TurnBody, { onExcessProperty: "error" })
   const stopBody = Schema.decodeUnknownOption(Schema.Struct({ reason: Schema.optionalKey(Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(128))) }), { onExcessProperty: "error" })
   const stamp = Schema.decodeUnknownOption(Stamp)
@@ -521,11 +520,9 @@ module node {
       {
         method: "POST", path: "/api/conversations",
         handler: async ({body}) => {
-          const payload = createBody(body ?? {})
-          if (payload._tag !== "Some") return failure(400, "invalid_conversation")
-          const title = payload.value.title?.trim() ?? ""
-          if (!canCreate(initial, title, title.length)) return failure(400, "invalid_title")
-          const created = await createConversation(runtime, owner, title)
+          const asked = creationTitle(body)
+          if (!("title" in asked)) return asked
+          const created = await createConversation(runtime, owner, asked.title)
           return created === undefined ? failure(500, "room_unavailable") : { status: 201, body: { conversation: created } }
         },
       },

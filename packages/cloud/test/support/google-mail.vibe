@@ -1,0 +1,46 @@
+// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the cloud"
+import { scopeFor, storeGrant, type Owner } from "../../src/services/google/grant-access.vibe"
+import { googleFakeState, mountGoogleToken, seedGrant } from "./fakes/google.ts"
+import { gmailReads, readableMailbox } from "./fakes/google-gmail.ts"
+import { gmailChanges, gmailChangeSwitches } from "./fakes/google-gmail-changes.ts"
+import { testCloud, type TestCloud } from "./cloud.vibe"
+
+export interface MailCaller {
+  readonly token: string
+  readonly owner: Owner
+}
+
+export function errorOf(answer: { readonly status: number; readonly body: unknown }): ReadonlyArray<unknown> {
+  return [answer.status, (answer.body as { readonly error?: string }).error]
+}
+
+export effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
+  try cloud.store.transaction((tx) => storeGrant(tx, {
+    connectionId, owner, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, grantedScopes: scopes,
+    tokens: { refreshToken, accessToken: `stale-${connectionId}`, expiresAt }, now: expiresAt - 1
+  }))
+}
+
+export effect function mailOperationSetup<E, R>(name: string, caller: (cloud: TestCloud, now: number) => MailCaller!E!R) {
+  const google = try Effect.try(() => googleFakeState())
+  const now = try Clock.currentTimeMillis
+  const mailbox = try Effect.try(() => readableMailbox([{
+    id: "msg-plan", threadId: "thr-plan", labelIds: ["INBOX", "UNREAD"], internalDate: now - 60_000,
+    headers: { From: "Ada <ada@example.org>", To: `ops-${name}@example.com`, Subject: "Quarterly plan", "Message-ID": "<plan@example.org>" }, snippet: "plan", bodyText: "Please review the plan.",
+    attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
+  }]))
+  const switches = try Effect.try(() => gmailChangeSwitches())
+  const cloud = try testCloud({ mount: (fakes) => {
+    fakes.mount("/google/", mountGoogleToken(google))
+    fakes.mount("/google/api/", gmailReads(mailbox))
+    fakes.mount("/google/api/", gmailChanges(mailbox, switches))
+  } })
+  const { token, owner } = try caller(cloud, now)
+  const grantId = `ops-${name}`
+  const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.manage"), ...scopeFor("google.gmail.send")]
+  const refreshToken = try Effect.try(() => seedGrant(google, { subject: `subject-${grantId}`, email: `${grantId}@example.com`, scopes }))
+  try cloud.inside(linkedGrant(cloud, owner, grantId, refreshToken, scopes, now - 1000))
+  const headers = { authorization: `Bearer ${token}` }
+  const operation = (path: string, json?: unknown) => cloud.call(`/api/v1/eliza/google/gmail/inbox-v1/operations${path}`, json === undefined ? { headers } : { method: "POST", headers, json })
+  return { mailbox, switches, operation, grantId }
+}

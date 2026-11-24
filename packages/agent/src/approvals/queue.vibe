@@ -1,5 +1,6 @@
 // spec/agent/approvals.md, "Story: Resolve what I reviewed, only on the screen"; spec/agent/approvals.md, "Only the resolve route moves a request out of an open phase"; spec/agent/approvals.md, "A passed expiry changes no phase and no revision until a decision meets it"; spec/agent/approvals.md, "The list shows at most 500 requests of the asked phase, newest first, and changes nothing"
 import { Service, type IAgentRuntime } from "@elizaos/core"
+import { runSquashed } from "../models/run-squashed.vibe"
 import {
   canLapse, decodeState, initial, machineOver, rowAt, verdict,
   type ApprovalKind, type Decision, type PageQuery, type Phase, type Queue, type Refusal, type Reply, type ResolveKind,
@@ -101,15 +102,6 @@ interface Stored {
 }
 
 module edge {
-  import { Cause, Effect, Exit } from "effect"
-
-  /** @throws {never} */
-  export async function run<A, E>(program: Effect.Effect<A, E>): Promise<A> {
-    const exit = await Effect.runPromiseExit(program)
-    if (Exit.isSuccess(exit)) return exit.value
-    throw Cause.squash(exit.cause)
-  }
-
   /** @throws {never} */
   export function revisionOf(row: { id: string; subjectUserId: string; state: string; action: string; payload: unknown; reason: string; expiresAt: string; updatedAt: string }): string {
     return JSON.stringify([row.id, row.subjectUserId, row.state, row.action, row.payload, row.reason, row.expiresAt, row.updatedAt])
@@ -130,7 +122,7 @@ module edge {
     }
   }
 }
-import { instant, plainJson, revisionOf, run } from edge
+import { instant, plainJson, revisionOf } from edge
 
 const cacheKey = "owner-approvals"
 const declined = { text: "Calendar change declined. Nothing was changed." }
@@ -307,15 +299,15 @@ export class OwnerApprovalsService extends Service implements OwnerApprovals {
   }
 
   request(row: NewApproval): Promise<ApprovalRecord> {
-    return run(this.queue.request(row))
+    return runSquashed(this.queue.request(row))
   }
 
   list(query: PageQuery): Promise<ApprovalRecord[]> {
-    return run(this.queue.list(query))
+    return runSquashed(this.queue.list(query))
   }
 
   resolve(id: string, decision: ApprovalDecision, revision: string): Promise<ApprovalResolution> {
-    return run(this.queue.resolve(id, decision, revision))
+    return runSquashed(this.queue.resolve(id, decision, revision))
   }
 
   override stop(): Promise<void> {

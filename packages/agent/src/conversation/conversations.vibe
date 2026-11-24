@@ -129,16 +129,20 @@ module node {
 
   const failure = (status: number, error: string) => ({ status, body: { error } })
 
+  export function creationTitle(body: unknown): { readonly title: string } | { readonly status: number; readonly body: { readonly error: string } } {
+    const payload = createBody(body ?? {})
+    if (payload._tag !== "Some") return failure(400, "invalid_conversation")
+    const title = payload.value.title?.trim() ?? ""
+    return canCreate(initial, title, title.length) ? { title } : failure(400, "invalid_title")
+  }
+
   export function conversationRecordRoutes(store: ConversationStore): LocalRoute[] {
     return [
       {
         method: "POST", path: "/api/conversations",
         handler: async ({ body }) => {
-          const payload = createBody(body ?? {})
-          if (payload._tag !== "Some") return failure(400, "invalid_conversation")
-          const title = payload.value.title?.trim() ?? ""
-          if (!canCreate(initial, title, title.length)) return failure(400, "invalid_title")
-          return { status: 201, body: { conversation: conversationView(await store.create(title)) } }
+          const asked = creationTitle(body)
+          return "title" in asked ? { status: 201, body: { conversation: conversationView(await store.create(asked.title)) } } : asked
         },
       },
       {
@@ -148,4 +152,4 @@ module node {
     ]
   }
 }
-export { conversationRecordRoutes, conversationStore, conversationView, recordOf, type ConversationOwner, type ConversationRecord, type ConversationStore } from node
+export { conversationRecordRoutes, conversationStore, creationTitle, conversationView, recordOf, type ConversationOwner, type ConversationRecord, type ConversationStore } from node
