@@ -39,7 +39,7 @@ type Capability =
   | MessagesReadV1 | PhoneDialV1 | PhoneCallV1 | ContactsWriteV1 | VoicemailReadV1 | VoicemailDeleteV1
   | SmsLatestSenderV1 | SmsLatestSenderV2 | NotesRecordV1 | PhotosViewSelectedV1 | CameraLibraryIdV1 | CameraCaptureLensV1
   | SmsComposeV2 | ContactsWriteV2 | ContactsShowV1 | ContactsReadV1 | ContactsLookupV1 | PhoneKeypadV1
-  | BrowserSearchV1 | BrowserTabsV1 | BrowserTabsCloseAllV1 | BrowserFindV1 | BrowserHistoryV1 | BrowserOpenNewTabV1 | FilesShownTargetV1 | TelephonyViewsV1
+  | BrowserSearchV1 | BrowserTabsV1 | BrowserTabsCloseAllV1 | BrowserTabsShowV1 | BrowserFindV1 | BrowserHistoryV1 | BrowserOpenNewTabV1 | FilesShownTargetV1 | TelephonyViewsV1
 pure def capabilityName(c: Capability): str = match c {
   | CalendarLocalEventV1 => "calendar.local-event.v1" | CalendarCreateV1 => "calendar.create.v1" | CalendarNextReadV1 => "calendar.next-read.v1"
   | CalendarAgendaReadV1 => "calendar.agenda-read.v1" | CalendarAvailabilityReadV1 => "calendar.availability-read.v1"
@@ -56,6 +56,7 @@ pure def capabilityName(c: Capability): str = match c {
   | SmsComposeV2 => "sms.compose.v2" | ContactsWriteV2 => "contacts.write.v2" | ContactsShowV1 => "contacts.show.v1"
   | ContactsReadV1 => "contacts.read.v1" | ContactsLookupV1 => "contacts.lookup.v1" | PhoneKeypadV1 => "phone.keypad.v1"
   | BrowserSearchV1 => "browser.search.v1" | BrowserTabsV1 => "browser.tabs.v1" | BrowserTabsCloseAllV1 => "browser.tabs.close-all.v1"
+  | BrowserTabsShowV1 => "browser.tabs.show.v1"
   | BrowserFindV1 => "browser.find.v1" | BrowserHistoryV1 => "browser.history.v1" | BrowserOpenNewTabV1 => "browser.open-new-tab.v1"
   | FilesShownTargetV1 => "files.shown-target.v1" | TelephonyViewsV1 => "views.telephony.v1"
 }
@@ -66,7 +67,7 @@ pure val allCapabilities: Set[Capability] = Set(
   MapsSelectedReadV1, ClockHandoffV1, ClockHandoffV2, SmsSendV1, MmsSendV1, SmsComposeV1, MessagesReadV1, PhoneDialV1,
   PhoneCallV1, ContactsWriteV1, VoicemailReadV1, VoicemailDeleteV1, SmsLatestSenderV1, SmsLatestSenderV2, NotesRecordV1,
   PhotosViewSelectedV1, CameraLibraryIdV1, CameraCaptureLensV1, SmsComposeV2, ContactsWriteV2, ContactsShowV1, ContactsReadV1, ContactsLookupV1,
-  PhoneKeypadV1, BrowserSearchV1, BrowserTabsV1, BrowserTabsCloseAllV1, BrowserFindV1, BrowserHistoryV1,
+  PhoneKeypadV1, BrowserSearchV1, BrowserTabsV1, BrowserTabsCloseAllV1, BrowserTabsShowV1, BrowserFindV1, BrowserHistoryV1,
   BrowserOpenNewTabV1, FilesShownTargetV1, TelephonyViewsV1)
 pure def isCapabilityName(name: str): bool = allCapabilities.exists(c => capabilityName(c) == name)
 pure def lawTheVocabularyListsEveryCapability(c: Capability): bool = allCapabilities.contains(c)

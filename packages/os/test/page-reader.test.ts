@@ -60,6 +60,7 @@ const pages: Record<string, string> = {
     customElements.define("sealed-box", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "closed" }).innerHTML = '<label>Closed field <input id="closed-field"></label><button type="button" id="closed-button">Closed button</button><p>Sealed words</p>'; } });
   </script>`),
   [`${shop}/statement-regions`]: page(`<nav>Navigation date</nav><main><p>Unrelated date</p><article><h1>Current statement</h1><p>Amount due: <strong>$64.28</strong> by <time>October 12, 2026</time></p><dl><dt>Reference</dt><dd>Current account</dd></dl><section><h2>Previous period</h2><p>Prior amount $11</p></section><span hidden>Hidden date</span><span style="opacity:0">Invisible date</span><form><button type="button">Form date</button></form></article><iframe src="/statement-frame" title="Statement frame"></iframe><iframe src="${partner}/statement-frame" title="Third-party statement frame"></iframe></main>`),
+  [`${shop}/statement-headings`]: page(`<main><header><h1>Account overview</h1></header><h1 hidden>Hidden heading</h1><div id="paid-title">Paid statement <span role="link" tabindex="0">View activity</span></div><section aria-labelledby="paid-title"><header><h2>Previous bill</h2></header><section><h3>Details</h3><p>Amount due: $12</p><p>Due date: June 3</p></section></section><section><a style="display:block" href="/archives">Previous statements</a><p>Amount due: $20</p><p>Due date: June 30</p></section><section><h2>Current invoice</h2><h2>Archived invoice</h2><p>Amount due: $30</p><p>Due date: July 3</p></section><section><header><div><h2>Current invoice <a href="/past">Past invoice link</a> <span role="button" tabindex="0">Show archive</span></h2><p>Due August 12</p><button>Pay</button></div></header><p>Amount due: $40</p></section><header><p>Global header date</p></header></main>`),
   [`${shop}/statement-frame`]: page("<section>Same-origin frame amount</section>"),
   [`${partner}/statement-frame`]: page("<section>Cross-origin frame amount</section>"),
   [`${shop}/pay`]: page(`<h1>Make a payment</h1><p>Amount due $84.20</p><iframe id="card-frame" src="/card-frame" title="Secure payment form" style="width:520px;height:330px;border:4px solid #333;padding:6px"></iframe><iframe id="other-frame" src="${partner}/card-frame" title="Partner payment form" style="width:520px;height:330px"></iframe>`),
@@ -242,7 +243,15 @@ describe('The WebView runs the page reader Chromium runs (spec/os/browser/pageCo
     const request = { subaction: "snapshot", statementRegions: true };
     const Regions = Schema.Struct({
       complete: Schema.Boolean,
-      regions: Schema.Array(Schema.Struct({ key: Schema.NonEmptyString, fragments: Schema.Array(Schema.String) })),
+      primaryHeading: Schema.optionalKey(Schema.String),
+      regions: Schema.Array(Schema.Struct({
+        key: Schema.NonEmptyString, fragments: Schema.Array(Schema.String), heading: Schema.optionalKey(Schema.String),
+        authorLabel: Schema.optionalKey(Schema.String), ancestorLabels: Schema.optionalKey(Schema.Array(Schema.String)),
+        ambiguous: Schema.optionalKey(Schema.Literal(true)),
+        tableRow: Schema.optionalKey(Schema.Struct({
+          parentKey: Schema.NonEmptyString, columns: Schema.Array(Schema.NonEmptyString),
+        })),
+      })),
     });
     expect((await send({ subaction: "snapshot" })).statementRegions).toBeUndefined();
     expect(await send(request, "prior-document")).toMatchObject({ error: { kind: "STALE_REF" } });
@@ -272,6 +281,74 @@ describe('The WebView runs the page reader Chromium runs (spec/os/browser/pageCo
 
     await open(`${shop}/absolute-wall`);
     expect((await (await surface())(request)).statementRegions).toEqual({ complete: false, regions: [] });
+
+    await open(`${shop}/statement-headings`);
+    const headings = await surface();
+    const structured = Schema.decodeUnknownSync(Regions)((await headings(request)).statementRegions);
+    expect(structured.primaryHeading).toBe("Account overview");
+    expect(structured.regions.map(({ heading, authorLabel, ancestorLabels, ambiguous }) =>
+      ({ heading, authorLabel, ancestorLabels, ambiguous }))).toEqual([
+      { heading: "Previous bill", authorLabel: "Paid statement", ancestorLabels: undefined, ambiguous: undefined },
+      { heading: "Details", authorLabel: undefined, ancestorLabels: ["Previous bill", "Paid statement"], ambiguous: undefined },
+      { heading: undefined, authorLabel: undefined, ancestorLabels: undefined, ambiguous: undefined },
+      { heading: undefined, authorLabel: undefined, ancestorLabels: undefined, ambiguous: true },
+      { heading: "Current invoice", authorLabel: undefined, ancestorLabels: undefined, ambiguous: undefined },
+    ]);
+    expect(structured.regions.at(-1)?.fragments).toEqual(["Current invoice", "Due August 12", "Amount due: $40"]);
+    await tab.evaluate(() => {
+      const duplicated = document.querySelector("#paid-title")?.cloneNode(true);
+      if (duplicated) document.querySelector("main")?.append(duplicated);
+    });
+    expect(Schema.decodeUnknownSync(Regions)((await headings(request)).statementRegions).regions[0]).toMatchObject({ ambiguous: true });
+    await tab.evaluate(() => {
+      const conflicting = document.createElement("h1");
+      conflicting.textContent = "Another account heading";
+      document.querySelector("main")?.append(conflicting);
+    });
+    expect((await headings(request)).statementRegions).toEqual({ complete: false, regions: [] });
+    await tab.evaluate(() => {
+      const table = '<table><thead><tr><th>Description</th><th>Qty</th><th>Amount</th></tr></thead><tbody>' +
+        '<tr><td>Service</td><td>1</td><td>$40</td></tr><tr><td></td><td>Amount due</td><td>$40</td></tr></tbody></table>';
+      document.querySelector("main")?.insertAdjacentHTML("beforeend", `
+        <article><h2>Current invoice</h2><p>Due August 12</p><div id="line-items">${table}</div></article>
+        <article><h2>Records</h2><table><thead><tr><th>Record</th><th>Status</th><th>Amount</th></tr></thead><tbody>
+          <tr><td>Other account</td><td>Due</td><td>$90</td></tr><tr><th scope="row">Record identity</th><td>Open</td><td>$90</td></tr>
+        </tbody></table></article>
+        <article><h2>Unrelated account</h2><section>${table}</section></article>
+        <article><h2>Nested billing</h2><table><tbody><tr><td>${table}</td></tr></tbody></table></article>
+        `);
+      document.querySelector("main > h1:last-of-type")?.remove();
+    });
+    const rows = async () => Schema.decodeUnknownSync(Regions)((await headings(request)).statementRegions).regions;
+    const withRows = await rows();
+    const owningSection = withRows.find(({ heading, fragments }) => heading === "Current invoice" && fragments.includes("Due August 12") && fragments.includes("Description"));
+    const witnessedRows = withRows.filter(({ tableRow }) => tableRow !== undefined);
+    expect(owningSection).toBeDefined();
+    expect(witnessedRows.map(({ fragments, tableRow }) => ({ fragments, tableRow }))).toEqual([
+      { fragments: ["Service", "1", "$40"], tableRow: { parentKey: owningSection?.key, columns: ["Description", "Qty", "Amount"] } },
+      { fragments: ["Amount due", "$40"], tableRow: { parentKey: owningSection?.key, columns: ["Description", "Qty", "Amount"] } },
+    ]);
+    expect(witnessedRows.every(({ key }) => key !== owningSection?.key)).toBe(true);
+    await tab.evaluate(() => {
+      const previousCell = document.querySelector("#line-items tbody td");
+      if (previousCell instanceof HTMLTableCellElement) previousCell.rowSpan = 2;
+    });
+    expect((await rows()).some(({ tableRow }) => tableRow !== undefined)).toBe(false);
+    await tab.evaluate(() => {
+      const previousCell = document.querySelector("#line-items tbody td");
+      if (previousCell instanceof HTMLTableCellElement) previousCell.rowSpan = 1;
+      const column = document.querySelector("#line-items th");
+      if (column instanceof HTMLElement) column.style.visibility = "hidden";
+    });
+    expect((await rows()).some(({ tableRow }) => tableRow !== undefined)).toBe(false);
+    await tab.evaluate(() => {
+      const column = document.querySelector("#line-items th");
+      if (column instanceof HTMLElement) {
+        column.style.visibility = "";
+        column.innerHTML = '<a href="/other">Description</a>';
+      }
+    });
+    expect((await rows()).some(({ tableRow }) => tableRow !== undefined)).toBe(false);
   });
 
   it("answers a snapshot through installControlChannel in its own isolated world as page-command.mjs does", async () => {

@@ -99,7 +99,10 @@ runs:
           echo "key=$key"
           echo "path<<EOF"
           if [[ $JOB == selftest-* ]]; then printf '%s\n' .cache/selftest/.spec-cache
-          else printf '%s\n' .spec-cache 'apps/*/.spec-cache' 'packages/*/.spec-cache' vibestack/studio/.spec-cache 'vibestack/examples/*/.spec-cache'
+          else
+            for cache in .spec-cache 'apps/*/.spec-cache' 'packages/*/.spec-cache' vibestack/studio/.spec-cache 'vibestack/examples/*/.spec-cache'; do
+              printf '%s\n' "$cache/*.json.zst" "$cache/*.json.gz"
+            done
           fi
           echo '~/.quint'
           echo "EOF"

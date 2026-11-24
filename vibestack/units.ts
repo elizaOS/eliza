@@ -165,10 +165,13 @@ export function mirrorGen(root: string, specs: Spec[], scope?: { scratch: string
   };
   const from = path.join(output, "gen");
   sweep(from);
-  for (const dir of scope ? [scope.ownerDir] : codeDirs(root).filter(Boolean)) {
+  const rootsByOwner = new Map<string, string[]>();
+  for (const dir of scope ? [scope.ownerDir] : codeDirs(root).filter(Boolean)) rootsByOwner.set(dir, []);
+  if (rootsByOwner.size) for (const spec of specs) rootsByOwner.get(`${owner(root, spec.file)}/`)?.push(spec.name);
+  for (const [dir, roots] of rootsByOwner) {
     const needed = new Set<string>();
     const need = (name: string) => { if (!needed.has(name)) { needed.add(name); specs.find((s) => s.name === name)?.imports.forEach(need); } };
-    for (const spec of specs) if (`${owner(root, spec.file)}/` === dir) need(spec.name);
+    for (const name of roots) need(name);
     const to = path.join(root, dir, "gen");
     const files = fs.existsSync(from) ? fs.readdirSync(from).filter((f) => needed.has(f.match(/^(\w+)\.(?:ts|conformance\.ts)$/)?.[1] ?? "")) : [];
     if (files.length) {
