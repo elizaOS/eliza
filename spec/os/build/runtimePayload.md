@@ -174,18 +174,27 @@ pure def lawAdmittedWorkerIsPinned(p: StagedPayload): bool =
 > As a device owner, I want my agent to start only from the payload my
 > build signed, so that a damaged or stale file never runs.
 
-### Extracted assets are extracted again when the package version changes
+### Extracted assets are reused only for the same package version and inventory
 
-The service records the package version code its extracted asset trees
-came from. Another version code, or none, extracts them again before any
-check.
+The installed identity is the positive package version code and the SHA-256
+of the inventory bytes read from the APK. An image-only update can change
+the inventory while keeping the version and file timestamps. A change to
+either identity field requires extracting the installed assets again. A
+missing or invalid inventory refuses the start even when a previous
+extraction exists.
 
 ```quint
-type Extraction = NotExtracted | ExtractedFor({ versionCode: int })
-pure def extractionCurrent(extraction: Extraction, versionCode: int): bool = match extraction {
-  | ExtractedFor(e) => e.versionCode == versionCode
+type PayloadIdentity = { versionCode: int, inventorySha256: str }
+type InstalledPayload = InventoryUnavailable | InventoryReady({ identity: PayloadIdentity })
+type Extraction = NotExtracted | ExtractedFor({ identity: PayloadIdentity })
+pure def extractionCurrent(extraction: Extraction, identity: PayloadIdentity): bool = match extraction {
+  | ExtractedFor(e) => e.identity == identity
   | NotExtracted => false }
-pure val extractionValues = Set(NotExtracted, ExtractedFor({ versionCode: 1 }), ExtractedFor({ versionCode: 2 }))
+pure val identityValues = Set(
+  { versionCode: 1, inventorySha256: "i1" },
+  { versionCode: 1, inventorySha256: "i2" },
+  { versionCode: 2, inventorySha256: "i1" })
+pure val extractionValues = identityValues.map(identity => ExtractedFor({ identity: identity })).union(Set(NotExtracted))
 ```
 
 ### The agent spawns only when every inventory digest matches on the device
@@ -202,18 +211,25 @@ pure def observedMatches(observed: Observed, expectedSha256: str, expectedSize: 
   | Present(o) => o.observedSha256 == expectedSha256 and o.observedSize == expectedSize
   | Missing => false }
 pure def fileIntact(f: DeviceFile): bool = observedMatches(f.observed, f.sha256, f.size)
-pure def startCheck(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile]): StartCheck =
-  if (not(extractionCurrent(extraction, versionCode))) ExtractPayload
-  else if (deviceFiles.length() > 0 and deviceFiles.every(f => fileIntact(f))) PayloadReady
-  else PayloadFailed
-pure val versionCodeValues = Set(1, 2)
+pure def startCheck(extraction: Extraction, installed: InstalledPayload, deviceFiles: List[DeviceFile]): StartCheck = match installed {
+  | InventoryUnavailable => PayloadFailed
+  | InventoryReady(p) => if (not(extractionCurrent(extraction, p.identity))) ExtractPayload
+    else if (deviceFiles.length() > 0 and deviceFiles.every(f => fileIntact(f))) PayloadReady
+    else PayloadFailed }
+pure val installedValues = identityValues.map(identity => InventoryReady({ identity: identity })).union(Set(InventoryUnavailable))
 pure val deviceFilesValues = Set(
   List(),
   List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, observed: Present({ observedSha256: "b1", observedSize: 4 }) }),
   List({ path: "assets/agent/agent.mjs", sha256: "b1", size: 4, observed: Present({ observedSha256: "b2", observedSize: 4 }) }),
   List({ path: "lib/arm64-v8a/libeliza_node.so", sha256: "a1", size: 9, observed: Missing }, { path: "assets/agent/agent.mjs", sha256: "b1", size: 4, observed: Present({ observedSha256: "b1", observedSize: 4 }) }))
-pure def lawStaleExtractionNeverSpawns(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile]): bool =
-  not(extractionCurrent(extraction, versionCode)) implies startCheck(extraction, versionCode, deviceFiles) == ExtractPayload
-pure def lawReadyMeansEveryFileMatches(extraction: Extraction, versionCode: int, deviceFiles: List[DeviceFile]): bool =
-  startCheck(extraction, versionCode, deviceFiles) == PayloadReady implies deviceFiles.every(f => f.observed == Present({ observedSha256: f.sha256, observedSize: f.size }))
+pure def lawStaleExtractionNeverSpawns(extraction: Extraction, identity: PayloadIdentity, deviceFiles: List[DeviceFile]): bool =
+  not(extractionCurrent(extraction, identity)) implies startCheck(extraction, InventoryReady({ identity: identity }), deviceFiles) == ExtractPayload
+pure def lawChangedInventoryRequiresExtraction(old: PayloadIdentity, identity: PayloadIdentity, deviceFiles: List[DeviceFile]): bool =
+  (old.versionCode == identity.versionCode and old.inventorySha256 != identity.inventorySha256) implies
+    startCheck(ExtractedFor({ identity: old }), InventoryReady({ identity: identity }), deviceFiles) == ExtractPayload
+pure def lawUnavailableInventoryCannotStart(extraction: Extraction, deviceFiles: List[DeviceFile]): bool =
+  startCheck(extraction, InventoryUnavailable, deviceFiles) == PayloadFailed
+pure def lawReadyMeansEveryFileMatches(extraction: Extraction, installed: InstalledPayload, deviceFiles: List[DeviceFile]): bool =
+  startCheck(extraction, installed, deviceFiles) == PayloadReady implies deviceFiles.every(f => f.observed == Present({ observedSha256: f.sha256, observedSize: f.size }))
+pure val oldValues = identityValues
 ```

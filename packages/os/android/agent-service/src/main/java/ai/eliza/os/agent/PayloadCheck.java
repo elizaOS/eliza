@@ -1,4 +1,4 @@
-// spec/os/build/runtimePayload.md, "Extracted assets are extracted again when the package version changes"; spec/os/build/runtimePayload.md, "The agent spawns only when every inventory digest matches on the device"; spec/os/build/runtimePayload.md, "The workflow worker is staged only under the digest the bundle manifest pins"
+// spec/os/build/runtimePayload.md, "Extracted assets are reused only for the same package version and inventory"; spec/os/build/runtimePayload.md, "The agent spawns only when every inventory digest matches on the device"; spec/os/build/runtimePayload.md, "The workflow worker is staged only under the digest the bundle manifest pins"
 package ai.eliza.os.agent;
 
 import java.io.ByteArrayOutputStream;
