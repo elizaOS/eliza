@@ -345,6 +345,12 @@ account or registration is no longer eligible. An inference credential
 never authorizes backup access. The native client encrypts the snapshot
 before sending it and holds the recovery key. The owner must have that key
 to restore. The cloud receives only the encrypted snapshot.
+Readiness tells a registered client which approval contract the deployment
+serves: once backup storage is ready, browser approval answers `204` with
+`X-Password-Backup-Version: 2` and native Google approval answers `204` with
+version `3`. Either approval names the owner and organization it covers, and a
+client that binds its vault to the organization checks both against its
+signed-in account.
 
 ```quint
 type BackupAccess = BackupDeviceGrant | BackupInferenceCredential
@@ -372,7 +378,10 @@ pure def lawBackupApprovalCannotBeReplayed(approved: PasswordBackupPurpose, requ
 ### Shared native approval authorizes only the enrolled owner’s requested backup operation
 
 Shared Cloud requires consent in the native flow and a fresh Google proof for
-the subject already linked to the current owner. The active device enrollment
+the subject already linked to the current owner. That link is read after
+Google's signing keys are fetched, and again when the granted operation is
+used, so a subject unlinked in between is refused and nothing is granted or
+changed. The active device enrollment
 must name that account and organization and match the exact registered app,
 environment and callback. The unspent proof must match the requested purpose,
 state and PKCE verifier. A refusal grants nothing. Owner verification returns

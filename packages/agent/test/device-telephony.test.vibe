@@ -4,6 +4,10 @@ import { assert, it } from "@effect/vitest"
 import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vibe"
+import type { DeviceOperation } from "../src/device-actions/operations.schema.vibe"
+import { phoneDialNumber, writtenPhoneNumbers } from "../src/device-actions/proposal/telephony/dial-number.vibe"
+import { groundTelephonyTarget } from "../src/device-actions/proposal/telephony/grounding.vibe"
+import { requestedSmsDraftRecipient } from "../src/device-actions/proposal/telephony/request.vibe"
 
 module node {
   import { setTimeout as wait } from "node:timers/promises"
@@ -510,3 +514,72 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
     copyReference: { reply: numberNotWritten, toldReference: true },
   }))
 }, 180_000)
+
+const telephony = "spec/agent/deviceActions/telephony.md"
+
+it.effect(`A written number is read as its one dial form: one digit may follow a country code, and a trunk (0) is dropped after +44, +49 and +41 and kept as a 0 after +39, +378 and +225 (${telephony}, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; ${telephony}, "A whole-message call, text or dial command hands through the owner's own recipient")`, effect () => {
+  const forms = [
+    "+33 1 23 45 67 89", "+61 2 9876 5432", "+54 9 11 1234-5678", "+33 1 2 34 56 78",
+    "+44 (0)20 7946 0958", "+49(0)30 1234567", "+41 (0) 44 668 18 00", "+39 (0)55 123 4567", "+39 (0)6 1234 5678",
+    "+378 (0)549 882 123", "+225 (0)7 07 12 34 56", "+44 (0)",
+  ]
+  const call = (number: string) => ({ type: "phone_call", target: { kind: "number", number } }) as DeviceOperation
+  try Effect.try(() => assert.deepStrictEqual({
+    dialForms: forms.map((written) => [written, phoneDialNumber(written)]),
+    written: [writtenPhoneNumbers("+39 (0)55 123 4567"), writtenPhoneNumbers("+44 (0)20 7946 0958")],
+    handedThrough: [
+      groundTelephonyTarget(call("+39551234567"), "call +39 (0)55 123 4567", [], false),
+      groundTelephonyTarget(call("+442079460958"), "call +44 (0)20 7946 0958", [], false),
+    ],
+  }, {
+    dialForms: [
+      ["+33 1 23 45 67 89", "+33123456789"], ["+61 2 9876 5432", "+61298765432"], ["+54 9 11 1234-5678", "+5491112345678"], ["+33 1 2 34 56 78", undefined],
+      ["+44 (0)20 7946 0958", "+442079460958"], ["+49(0)30 1234567", "+49301234567"], ["+41 (0) 44 668 18 00", "+41446681800"],
+      ["+39 (0)55 123 4567", "+390551234567"], ["+39 (0)6 1234 5678", "+390612345678"], ["+378 (0)549 882 123", "+3780549882123"],
+      ["+225 (0)7 07 12 34 56", "+2250707123456"], ["+44 (0)", undefined],
+    ],
+    written: [["+390551234567"], ["+442079460958"]],
+    handedThrough: [
+      { kind: "grounded", operation: call("+390551234567"), handedThrough: true },
+      { kind: "grounded", operation: call("+442079460958"), handedThrough: true },
+    ],
+  }))
+})
+
+it.effect(`A text keeps the recipient's name when the words to send are inside it (${telephony}, "A proposed contact name is one the owner wrote as whole words, outside the text to send")`, effect () => {
+  const named = (query: string, body: string) => ({ type: "sms_compose", target: { kind: "contact", query }, body }) as DeviceOperation
+  const requests: ReadonlyArray<readonly [string, string, string]> = [
+    ["Phil", "hi", "text Phil hi"],
+    ["Sophie", "hi", "text Sophie hi"],
+    ["Sophie", "hi", "send Sophie a text saying hi"],
+    ["Phil", "hi", "send Phil a text saying hi"],
+    ["Brooke", "ok", "send Brooke a text: ok"],
+    ["Sophia", "hi", "text Sophia hi"],
+    ["Noah", "no", "message Noah: no"],
+    ["Brooke", "ok", "send a text to Brooke: ok"],
+    ["Sam", "hi", "text Sam hi"],
+  ]
+  try Effect.try(() => assert.deepStrictEqual(
+    requests.map(([query, body, request]): readonly [string, unknown] => [request, groundTelephonyTarget(named(query, body), request, [], false)]),
+    requests.map(([query, body, request]): readonly [string, unknown] => [request, { kind: "grounded", operation: named(query, body), handedThrough: false }]),
+  ))
+})
+
+it.effect(`A drafted text's recipient ends where a clause of what to say begins (${telephony}, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there")`, effect () => {
+  const toSam = [
+    "Draft a text to Sam to ask him about dinner tonight",
+    "Write a message to Sam to tell him I'm running late",
+    "Draft a text to Sam to remind him about the tripod",
+    "Draft a text to Sam to see if he's free tonight",
+    "Draft a text to Sam to check if he got home",
+    "Draft a text to Sam to let him know I'm running late",
+    "Draft a text to Sam letting him know I'm running late",
+  ]
+  try Effect.try(() => assert.deepStrictEqual({
+    toSam: toSam.map((request) => [request, requestedSmsDraftRecipient(request)]),
+    toNumber: requestedSmsDraftRecipient("Draft a text to +1 (415) 555-0124 to ask about the tripod"),
+  }, {
+    toSam: toSam.map((request) => [request, { kind: "contact", query: "Sam" }]),
+    toNumber: { kind: "number", number: "+14155550124" },
+  }))
+})

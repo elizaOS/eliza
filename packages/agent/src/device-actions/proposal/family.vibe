@@ -91,7 +91,7 @@ export interface DeviceProposalFamily {
   readonly guidance: (device: NegotiatedDevice) => readonly string[]
   now?(turn: DeviceTurn): string | undefined
   prepare?(operation: unknown): unknown
-  ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable
+  ground(proposed: CheckedOperation, turn: DeviceTurn, asked?: unknown): Grounding!DeviceStoreUnavailable
   proposedText(operation: DeviceOperation, pending: PendingRequest): ProposalText | undefined
   settledText(operation: DeviceOperation, result: unknown, timeZone: string | undefined): ProposalText | undefined
   continueAfterRead?(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "message" | "negotiation" | "startedAt" | "timeZone">): (ReadContinuation | undefined)!DeviceStoreUnavailable

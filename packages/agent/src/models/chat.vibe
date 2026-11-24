@@ -17,7 +17,7 @@ export interface Endpoint {
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
   readonly reasoningHints: boolean
-  readonly uniformToolStrictness: boolean
+  readonly uniformToolStrictness: boolean | "OnCerebrasModels"
   readonly cloudRoute: boolean
 }
 
@@ -542,7 +542,7 @@ function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTex
   const effort = endpoint.reasoningHints ? efforts[effortFor(family, hintOf(params))] : undefined
   const named = cacheKeyOf(params)
   const cacheKey = cacheKeySent(family, endpoint.reasoningHints, named !== undefined) ? named : undefined
-  const tools = toolsOf(params.tools, endpoint.uniformToolStrictness)
+  const tools = toolsOf(params.tools, endpoint.uniformToolStrictness === "OnCerebrasModels" ? family !== "OtherReasoning" : endpoint.uniformToolStrictness)
   const toolChoice = toolChoiceOf(params.toolChoice)
   const format = responseFormatOf(params)
   return {

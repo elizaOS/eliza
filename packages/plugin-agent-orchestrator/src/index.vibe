@@ -1,9 +1,10 @@
-// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/index.md, "An @-mention of a subagent addresses only the subagents it mentions"
+import { normalizeKeywordMatchText, textIncludesKeywordTerm } from "@elizaos/core"
 import {
   evaluateTask,
+  peerAddress,
   routeDirective,
   type Evidence,
-  type PeerAddress,
   type PeerDirective,
   type TaskEvaluation,
 } from "../gen/agentOrchestrator.effect.vibe"
@@ -13,6 +14,7 @@ export error ChildSessionFailure { childId: string; reason: string }
 export interface ChildSession {
   readonly childId: string
   readonly sessionId: string
+  readonly label: string
   readonly running: boolean
 }
 
@@ -23,16 +25,32 @@ export service ChildAgentSessions {
   evidence(taskKey: string, generation: number): Evidence!ChildSessionFailure
 }
 
+function mentionsLabel(text: string, label: string): boolean {
+  const term = normalizeKeywordMatchText(label)
+  return term !== "" && normalizeKeywordMatchText(text).split("@").slice(1)
+    .some((rest) => rest.startsWith(term) && textIncludesKeywordTerm(rest.slice(0, term.length + 1), term))
+}
+
+function resolvePeerAddress(text: string, peers: readonly ChildSession[]) {
+  const childIds = (labelled: (label: string) => boolean) =>
+    peers.filter((peer) => labelled(peer.label)).map((peer) => peer.childId)
+  return peerAddress(
+    childIds((label) => mentionsLabel(text, label)),
+    childIds((label) => textIncludesKeywordTerm(text, label)),
+    text.includes("@"),
+  )
+}
+
 export effect function sendChildDirective(roomId: string, input: {
-  readonly address: PeerAddress
   readonly directive: PeerDirective
   readonly text: string
 }) {
   const sessions = try ChildAgentSessions
   const peers = try sessions.list(roomId)
+  const address = resolvePeerAddress(input.text, peers)
   const touched: string[] = []
   for (const peer of peers) {
-    const decision = routeDirective(input.address, input.directive, peer.childId, peers.length, peer.running)
+    const decision = routeDirective(address, input.directive, peer.childId, peers.length, peer.running)
     if (decision === "NoPeerAction") continue
     if (decision === "CancelTurn") try sessions.cancel(peer.sessionId)
     else try sessions.send(peer.sessionId, input.text)

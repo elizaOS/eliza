@@ -211,7 +211,7 @@ it.effect(`Read and change the managed Google calendar beside the resident one t
       const row = filed.at(-1)
       return row === undefined ? { result: "missing", text: "" } : try host.executeApproval({ id: row.id, action: row.action, payload: row.payload })
     }
-    const created = try runCalendarAction(host, ask, { subaction: "create_event", calendarId: "work", title: "Review", startAt: "2026-11-23T19:00:00Z", endAt: "2026-11-23T20:00:00Z", timeZone: "UTC" })
+    const created = try runCalendarAction(host, ask, { subaction: "create_event", calendarId: "work", title: "Review", startAt: "2026-11-23T19:00:00Z", endAt: "2026-11-23T20:00:00Z", timeZone: "UTC", statedClock: "none" })
     assert.deepEqual([created.success, at(filed.at(-1)?.payload.change, "source", "grantId"), (try approve()).result], [true, grant, "ChangeSucceeded"])
     assert.deepEqual([writes[0]?.method, writes[0]?.path, writes[0]?.idempotencyKey, at(writes[0]?.body, "grantId"), at(writes[0]?.body, "expectedAccountId"), at(writes[0]?.body, "title"), at(writes[0]?.body, "timeZone")],
       ["POST", `${api}/calendar/events`, filed.at(-1)?.id, grant, "subject-1", "Review", "UTC"])
@@ -236,7 +236,7 @@ it.effect(`Read and change the managed Google calendar beside the resident one t
 
     health.feed = true
     health.edits = true
-    const series = { subaction: "create_event", calendarId: "work", title: "Piano", startAt: "2030-03-04T17:00:00Z", endAt: "2030-03-04T18:00:00Z", timeZone: "UTC",
+    const series = { subaction: "create_event", calendarId: "work", title: "Piano", startAt: "2030-03-04T17:00:00Z", endAt: "2030-03-04T18:00:00Z", timeZone: "UTC", statedClock: "none",
       repeat: "weekly", repeatUntil: "2030-03-25T17:00:00Z", skipStarts: ["2030-03-11T17:00:00Z"] }
     const beforeSeries = writes.length
     const old = try runCalendarAction(host, { ...ask, id: "message-5" }, series)
@@ -254,7 +254,7 @@ it.effect(`Read and change the managed Google calendar beside the resident one t
     assert.deepEqual([parentEdit.success, at(denied, "failure", "code"), writes.length], [true, "CALENDAR_MANAGED_SERIES_REVIEW_REQUIRED", beforeSeries + 1])
     health.privateCreate = false
     const olderCloud = try runCalendarAction(host, { ...ask, id: "message-8" }, { subaction: "create_event", calendarId: "work",
-      title: "Private lesson", startAt: "2030-03-04T19:00:00Z", endAt: "2030-03-04T20:00:00Z", timeZone: series.timeZone })
+      title: "Private lesson", startAt: "2030-03-04T19:00:00Z", endAt: "2030-03-04T20:00:00Z", timeZone: series.timeZone, statedClock: "none" })
     const noPrivacy = try approve()
     assert.deepEqual([olderCloud.success, at(noPrivacy, "failure", "code"), writes.length], [true, "CALENDAR_PRIVATE_CREATE_UNAVAILABLE", beforeSeries + 1])
   })

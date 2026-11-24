@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does is restarted after the health delay"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does is restarted after the health delay"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
 import java.io.IOException;
@@ -13,6 +13,7 @@ public final class AgentPolicy {
   public enum Cause { PAYLOAD, STORAGE, CONFIG, CREDENTIAL, AGENT, RUNTIME }
   public enum AfterExit { STOP, START, RESTART, FAIL }
   public enum ExitClass { CLEAN, RELEASE_FAILED, CONFIG, CREDENTIAL, STORAGE, AGENT, CRASH }
+  public enum Notice { NONE, STATUS, ALERTS }
 
   public record UpdateTarget(long code, String digest) {
     boolean valid() { return code > 0 && digest != null && digest.matches("[a-f0-9]{64}"); }
@@ -24,6 +25,7 @@ public final class AgentPolicy {
     boolean credentialHeld, long credentialVersion, long delivered, String account, AfterExit afterExit, Cause afterExitCause,
     UpdateTarget hold, Recovery recovery, long staleEpoch) {
     public boolean child() { return staleEpoch != 0 || phase == Phase.SPAWNED || phase == Phase.RUNNING || phase == Phase.STOPPING; }
+    public Notice notice() { return phase == Phase.STOPPED ? Notice.NONE : phase == Phase.FAILED ? Notice.ALERTS : Notice.STATUS; }
   }
 
   public record Status(boolean available, String state, String failure, String error, long epoch, long requestBodyLimit) {}

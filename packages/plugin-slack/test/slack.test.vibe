@@ -1,0 +1,87 @@
+// spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"; spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer"
+import { assert, describe, it } from "@effect/vitest"
+import { webApi } from "@slack/bolt"
+import { decodeSlackText, slackWriteRetries } from "../src/index.vibe"
+
+module node {
+  import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+  import { once } from "node:events"
+
+  export type FirstAnswer = "502" | "reset" | "429"
+  export interface SlackApi { readonly apiUrl: string; readonly kept: string[]; close(): void }
+
+  function lose(answer: FirstAnswer, request: IncomingMessage, response: ServerResponse): void {
+    if (answer === "502") { response.writeHead(502); response.end("Bad Gateway"); return }
+    if (answer === "429") { response.writeHead(429, { "retry-after": "0" }); response.end(); return }
+    request.socket.destroy()
+  }
+
+  export async function slackApi(firstAnswer: FirstAnswer): Promise<SlackApi> {
+    const kept: string[] = []
+    let calls = 0
+    const server = createServer((request, response) => {
+      let body = ""
+      request.on("data", chunk => { body += String(chunk) })
+      request.on("end", () => {
+        const host = request.headers.host ?? ""
+        if (request.url?.includes("/files.getUploadURLExternal")) {
+          response.writeHead(200, { "content-type": "application/json" })
+          response.end(JSON.stringify({ ok: true, upload_url: `http://${host}/external-upload`, file_id: "F1" }))
+          return
+        }
+        if (request.url === "/external-upload") { response.writeHead(200); response.end("OK"); return }
+        calls += 1
+        const first = calls === 1
+        if (!(first && firstAnswer === "429")) kept.push(request.url?.includes("/files.completeUploadExternal") ? "completed upload" : new URLSearchParams(body).get("text") ?? "")
+        if (first) { lose(firstAnswer, request, response); return }
+        response.writeHead(200, { "content-type": "application/json" })
+        response.end(JSON.stringify(request.url?.includes("/files.completeUploadExternal") ? { ok: true, files: [{ id: "F1" }] } : { ok: true, channel: "C1", ts: "1.000001" }))
+      })
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const address = server.address()
+    const port = typeof address === "object" && address !== null ? address.port : 0
+    return { apiUrl: `http://127.0.0.1:${port}/api/`, kept, close: () => { server.close() } }
+  }
+
+  export const noteBytes = Buffer.from("local note")
+
+  export async function outcome(work: () => Promise<unknown>): Promise<"accepted" | "failed"> {
+    return work().then(() => "accepted" as const, () => "failed" as const)
+  }
+}
+import { noteBytes, outcome, slackApi, type FirstAnswer } from node
+
+const typed = "R&D: is a < b && c > d? (&lt; stays)"
+const wire = "R&amp;D: is a &lt; b &amp;&amp; c &gt; d? (&amp;lt; stays)"
+
+describe("Answer one Slack message through its proper installation and thread (spec/slack/index.md, \"Story: Answer one Slack message through its proper installation and thread\")", () => {
+  it("The agent reads the text the member typed, decoded once (spec/slack/index.md, \"The agent reads the &, < and > a Slack member typed\")", () => {
+    assert.deepStrictEqual([decodeSlackText(wire), decodeSlackText("<@U0> &quot;hi&quot;"), decodeSlackText("&amp;amp;")], [typed, "<@U0> &quot;hi&quot;", "&amp;"])
+  })
+})
+
+describe("Know how much of a Slack send reached the provider (spec/slack/index.md, \"Story: Know how much of a Slack send reached the provider\")", () => {
+  const writer = (apiUrl: string, waits = slackWriteRetries) => new webApi.WebClient("xoxb-local", { slackApiUrl: apiUrl, retryConfig: waits })
+  const cases: readonly [FirstAnswer, string][] = [["502", "a server error"], ["reset", "a reset connection"]]
+
+  for (const [answer, label] of cases) {
+    it(`A post Slack kept is not posted again when its answer is ${label} (spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer")`, async () => {
+      const api = await slackApi(answer)
+      const post = await outcome(() => writer(api.apiUrl).chat.postMessage({ channel: "C1", text: "agent reply" }))
+      const upload = await slackApi(answer)
+      const file = await outcome(() => writer(upload.apiUrl).files.uploadV2({ channel_id: "C1", file: noteBytes, filename: "note.txt" }))
+      api.close()
+      upload.close()
+      assert.deepStrictEqual({ post, kept: api.kept, file, completed: upload.kept }, { post: "failed", kept: ["agent reply"], file: "failed", completed: ["completed upload"] })
+    }, 20_000)
+  }
+
+  it("A rate-limited post is sent again (spec/slack/index.md, \"A Slack post is sent again only after a rate limit, never after a lost answer\")", async () => {
+    const api = await slackApi("429")
+    const post = await outcome(() => writer(api.apiUrl, { ...slackWriteRetries, minTimeout: 0, maxTimeout: 0 }).chat.postMessage({ channel: "C1", text: "agent reply" }))
+    api.close()
+    assert.deepStrictEqual({ post, kept: api.kept }, { post: "accepted", kept: ["agent reply"] })
+  }, 20_000)
+})
