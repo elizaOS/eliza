@@ -10,7 +10,9 @@ One machine instance is one account row. Rules across rows enter as
 observations the shell reads in the same transaction, each backed by a unique
 index: who holds a sign-in subject, who holds a proven email address, and who
 owns a referral code. Ids, referral codes, names and the funds row (balance
-0, `billing/funds`) are shell work.
+0, `billing/funds`) are shell work. The account read, `GET /api/v1/user`,
+leaves out an email, phone or name the account does not hold; it never sends
+`null`.
 
 ## Story: Get one account on first sign-in
 

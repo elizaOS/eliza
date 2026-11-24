@@ -8,6 +8,10 @@ export type CloudEnvironment = typeof EnvironmentSchema.Type
 export error ProfileInvalid { problem: string }
 export error SecretMissing { name: string }
 
+export interface MailBinding {
+  send(message: { from: string; to: string; subject: string; text: string }): Promise<unknown>
+}
+
 export const capabilityOf: Readonly<Record<Capability, SpecCapability>> = {
   inference: "InferenceCapability",
   speech: "SpeechCapability",
@@ -30,7 +34,7 @@ function isLoopback(origin: string): boolean {
 
 function signInSetup(settings: EnvironmentProfile): SignInSetup {
   return {
-    mail: settings.mail.kind === "https" ? "HttpsDelivery" : "LoopbackDelivery",
+    mail: settings.mail.kind === "https" ? "HttpsDelivery" : settings.mail.kind === "binding" ? "BindingDelivery" : "LoopbackDelivery",
     sms: settings.sms.kind === "https" ? "HttpsDelivery" : settings.sms.kind === "loopback" ? "LoopbackDelivery" : "NoDelivery",
     google: settings.google ? "GoogleOn" : "GoogleOff"
   }
@@ -82,9 +86,14 @@ export service Deployment {
   readonly environment: CloudEnvironment
   readonly settings: EnvironmentProfile
   secret(name: string): string!SecretMissing
+  mailBinding(name: string): MailBinding!SecretMissing
 }
 
-export function deploymentLayer(profile: CloudProfile, environment: CloudEnvironment): Layer.Layer<Deployment> {
+function isMailBinding(value: unknown): value is MailBinding {
+  return typeof value === "object" && value !== null && "send" in value && typeof value.send === "function"
+}
+
+export function deploymentLayer(profile: CloudProfile, environment: CloudEnvironment, bindings: object = {}): Layer.Layer<Deployment> {
   return Layer.effect(Deployment, effect {
     const provider = try ConfigProvider.ConfigProvider
     return {
@@ -94,6 +103,11 @@ export function deploymentLayer(profile: CloudProfile, environment: CloudEnviron
       secret: effect (name: string) => {
         const value = provideService(Config.Redacted(name), ConfigProvider.ConfigProvider, provider) catch effect () => { throw new SecretMissing({ name }) }
         return Redacted.value(value)
+      },
+      mailBinding: effect (name: string) => {
+        const bound: unknown = Reflect.get(bindings, name)
+        if (!isMailBinding(bound)) throw new SecretMissing({ name })
+        return bound
       }
     }
   })
@@ -115,6 +129,7 @@ export effect function requireSecrets(): void!SecretMissing!Deployment {
     ...(settings.maps?.provider === "google" ? [settings.maps.apiKeyEnv] : [])
   ]
   for (const name of names) try deployment.secret(name)
+  if (settings.mail.kind === "binding") try deployment.mailBinding(settings.mail.binding)
 }
 
 export function corsForOrigin(settings: EnvironmentProfile, origin: string): boolean {

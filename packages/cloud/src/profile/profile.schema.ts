@@ -39,6 +39,7 @@ export type LegalDocument = typeof LegalDocument.Type;
 
 export const MailDelivery = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("https"), url: ProviderUrl, apiKeyEnv: SecretName }),
+  Schema.Struct({ kind: Schema.Literal("binding"), binding: SecretName }),
   Schema.Struct({ kind: Schema.Literal("loopback") }),
 ]);
 

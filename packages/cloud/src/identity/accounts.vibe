@@ -182,13 +182,16 @@ export const routes: ReadonlyArray<Route> = [
       )))[0]
       if (row === undefined) throw refused("NotFound")
       const organizationId = toText(row.organization_id) ?? ""
+      const email = toText(row.email)
+      const phone = toText(row.phone)
+      const name = toText(row.name)
       return json({
         success: true,
         data: {
           id: userId,
-          email: toText(row.email) ?? null,
-          phone: toText(row.phone) ?? null,
-          name: toText(row.name) ?? null,
+          ...(email === undefined ? {} : { email }),
+          ...(phone === undefined ? {} : { phone }),
+          ...(name === undefined ? {} : { name }),
           organization_id: organizationId,
           organization: { id: organizationId, name: toText(row.organization_name) ?? "" }
         }

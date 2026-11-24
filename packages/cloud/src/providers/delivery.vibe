@@ -12,15 +12,19 @@ const deliveryBudget = 10_000
 
 const loopbackAddress = /^(?:127(?:\.\d{1,3}){3}|::1|::ffff:127(?:\.\d{1,3}){3})$/
 
+export effect function handed<A, E, R>(delivery: A!E!R): A!Refused!R {
+  const delivered = timeoutOrElse(delivery, { duration: deliveryBudget, orElse: () => fail(refused("ProviderUnavailable")) }) catch effect () => { throw refused("ProviderUnavailable") }
+  return delivered
+}
+
 export effect function posted(request: HttpClientRequest.HttpClientRequest): void!Refused!HttpClient.HttpClient {
-  const sent = effect {
+  const status = try handed(effect {
     provide FetchHttpClient.RequestInit = { redirect: "manual" } {
       const response = try HttpClient.execute(request)
       response.text catch () => ""
       return response.status
     }
-  }
-  const status = timeoutOrElse(sent, { duration: deliveryBudget, orElse: () => fail(refused("ProviderUnavailable")) }) catch effect () => { throw refused("ProviderUnavailable") }
+  })
   if (status < 200 || status >= 300) throw refused("ProviderUnavailable")
 }
 

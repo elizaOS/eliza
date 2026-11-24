@@ -128,6 +128,19 @@ pure def cloudSessionAllows(sessionEndsAt: int, nowAt: int, sessionPresent: bool
   sessionPresent and nowAt < sessionEndsAt
 ```
 
+### A browser sign-in opens no session for a person with a confirmed second factor
+
+The browser routes have no step that finishes a
+[second factor](./identity/secondFactor.md). When a proof lands on an account
+whose factors hold a confirmed one, the browser gets `403
+second_factor_required` and no session, so a stolen email or phone code alone
+never signs anyone in.
+
+```quint
+import secondFactor as Sf from "./identity/secondFactor"
+pure def opensBrowserSession(f: Sf::Factors): bool = Sf::afterFirstFactor(f) == Sf::SessionStarts
+```
+
 ### A registered device grant authorizes device services
 
 The person approves a short-lived grant for the registered Android client

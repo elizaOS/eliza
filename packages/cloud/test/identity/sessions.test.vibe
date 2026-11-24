@@ -55,7 +55,7 @@ describe("WP1 Identity: sessions and accounts", () => {
         landed: [true, false, true, "ada@example.com", "signed_in"],
         me: [200, {
           success: true,
-          data: { id: first.user.id, email: "ada@example.com", phone: null, name: "ada", organization_id: first.organizationId, organization: { id: first.organizationId, name: "ada" } }
+          data: { id: first.user.id, email: "ada@example.com", name: "ada", organization_id: first.organizationId, organization: { id: first.organizationId, name: "ada" } }
         }],
         rotated: [200, true, true, null, null],
         oldAccess: [401, "authentication_required", "credential_unknown"],

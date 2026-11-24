@@ -80,7 +80,7 @@ function platformLayer(env: ProfileBindings, ready: Prepared, store: Store.Shape
     Layer.succeed(Store, store),
     Layer.succeed(ProviderSockets, workerSockets),
     Layer.succeed(PageTemplates, { read: (file: string) => assetTemplate(env, file) }),
-    deploymentLayer(ready.profile, ready.environment).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(textBindings(env))))),
+    deploymentLayer(ready.profile, ready.environment, env).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(textBindings(env))))),
     FetchHttpClient.layer
   )
 }

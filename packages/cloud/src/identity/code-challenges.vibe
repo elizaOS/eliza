@@ -206,7 +206,14 @@ effect function attempt<A, E, R>(tx: Tx, request: VerifyRequest, digest: string,
     const failed = try step(tx, key, verifying("SessionStarts"), request.now)
     return refusedBy(verifyRefusal(failed.state))
   }
-  const finished = try finish(tx, probe.state)
+  const finished = finish(tx, probe.state) catch effect (failure) => match (failure) {
+    when Refused: failure;
+    default: throw failure;
+  }
+  if (finished instanceof Refused) {
+    try step(tx, key, verifying("SessionStarts"), request.now)
+    return refusedBy(finished.refusal)
+  }
   try step(tx, key, verifying(finished.factorOutcome), request.now)
   return { kind: "done", value: finished.value } as const
 }

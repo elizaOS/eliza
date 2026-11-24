@@ -263,9 +263,13 @@ export effect function factorChallenge(tx: Tx, landed: Landed, clientId: string,
   return { status: "mfa_required", challengeId, methods: confirmedMethods(opened), expiresAt: opened.challenge.expiresAt } satisfies MfaRequired
 }
 
-export effect function hasAccountSecondFactor(tx: Tx, userId: string, now: number) {
+export effect function accountFactors(tx: Tx, userId: string, now: number) {
   const who = try owner(tx, userId)
-  return hasFactor((try current(tx, who, signInCaller(now, who.personEpoch))).factors)
+  return (try current(tx, who, signInCaller(now, who.personEpoch))).factors
+}
+
+export effect function hasAccountSecondFactor(tx: Tx, userId: string, now: number) {
+  return hasFactor(try accountFactors(tx, userId, now))
 }
 
 export effect function afterFirstFactor(tx: Tx, landed: Landed, clientId: string, now: number) {
