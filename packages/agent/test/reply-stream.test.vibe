@@ -109,7 +109,7 @@ for (const transport of ["socket", "http"] as const) {
       })
     }, 120_000)
 
-    it.live('A client that leaves aborts the turn it streams (spec/agent/conversation/replyStream.md, "A client that leaves aborts the turn it streams, and nothing more is written to it")', effect () => {
+    it.live('A client that leaves aborts the turn it streams (spec/agent/conversation/replyStream.md, "A client that leaves aborts the turn it streams, and nothing more is written to it"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text")', effect () => {
       const { cloud, agent, id } = try streamingConversation(transport, () => partial("Let me think"))
       const started = try Effect.sync(() => cloud.nextCompletion())
       const body = { text: "Think forever.", clientMessageId: "cut-with-text" }
@@ -119,13 +119,16 @@ for (const transport of ["socket", "http"] as const) {
       const recovered = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`, body })
       if (!("status" in recovered)) return try Effect.die(new Error("The cut reply was not recovered"))
       const saved = recovered.json as { text?: string; failureKind?: string }
+      const history = try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` })
+      const row = "status" in history ? (history.json as { messages: readonly { id: string; role: string; failureKind?: string; abortCause?: string; stopReason?: string }[] }).messages.find(({ role }) => role === "assistant") : undefined
       try Effect.try(() => assert.deepStrictEqual({
         status: answer.status, frames: framesOf(answer), error: answer.error,
         recovered: [recovered.status, saved.text, saved.failureKind],
         calls: cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length,
+        marks: [row?.failureKind, row?.abortCause, row?.stopReason],
       }, {
         status: 200, frames: [{ type: "status", activity: "thinking" }, { type: "token", text: "Let me think", provisional: true }], error: "closed before complete",
-        recovered: [200, "Let me think", "aborted"], calls: 1,
+        recovered: [200, "Let me think", "aborted"], calls: 1, marks: ["aborted", "client_left", undefined],
       }))
     }, 120_000)
 

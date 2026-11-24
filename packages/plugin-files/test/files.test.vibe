@@ -114,7 +114,7 @@ it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperatio
           assert.deepEqual(moved, [{ path: "Download/keep.txt", status: "unchanged", to: "Download/keep.txt" }, { path: "Archive/lease.pdf", status: "moved", to: "Download/lease.pdf" }])
           assert.deepEqual(copied, [{ path: "Archive/lease.pdf", status: "missing" }])
           assert.deepEqual(intoItself, [{ path: "Archive", status: "invalid" }])
-          assert.deepEqual(listed.map(({ name, origin }) => ({ name, origin })), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
+          assert.deepEqual(listed.flatMap((item) => item.unreadable === true ? [] : [{ name: item.name, origin: item.origin }]), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
           assert.deepEqual(restored, [{ path: listed[0].id, status: "restored", to: "Download/lease (1).pdf" }])
           assert.equal(unconfirmed.status, "confirmation-required")
         })
@@ -126,6 +126,62 @@ it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperatio
           assert.deepEqual(expired, [])
         })
         assert.equal(try fs.exists(at(`.Trash-files/info/${again[0].to}.json`)), false)
+      }
+    })
+  }
+})
+
+it.effect('A torn trash record is listed as unreadable, refuses only its own restore, and can be emptied, even when its data is already gone (spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const { root, fs, at } = try storage({ "Download/lease.pdf": "lease", "Download/memo.txt": "memo", "Download/note.txt": "note", "Download/old.txt": "old" })
+      provide localVolume(root) {
+        const volume = try FilesVolume
+        const empty = try volume.trashList()
+        const [lease, memo, note, old] = try volume.trash({ paths: ["Download/lease.pdf", "Download/memo.txt", "Download/note.txt", "Download/old.txt"] })
+        const torn = lease.to ?? ""
+        const gone = note.to ?? ""
+        const stale = old.to ?? ""
+        const info = (id: string) => at(`.Trash-files/info/${id}.json`)
+        const data = (id: string) => at(`.Trash-files/files/${id}`)
+        const stray = "metadata"
+        try fs.writeFileString(info(stray), "{}")
+        try fs.writeFileString(info(torn), "{not json")
+        try fs.writeFileString(info(gone), "{not json")
+        try fs.remove(data(gone))
+        const listed = try volume.trashList()
+        const restored = try volume.restore([torn, gone, memo.to ?? "", "not-a-trash-id"])
+        const survived = [try fs.readFileString(info(torn)), try fs.readFileString(data(torn)), try fs.readFileString(info(gone))]
+        const stillListed = try volume.trashList()
+        try fs.remove(data(stale))
+        const erased = try volume.emptyTrash([torn, gone, stale, stray], true)
+        const strayRecordKept = try fs.exists(info(stray))
+        const staleRecordKept = try fs.exists(info(stale))
+        const remaining = try volume.trashList()
+        const leftBehind = [try fs.exists(info(torn)), try fs.exists(data(torn)), try fs.exists(info(gone)), try fs.exists(info(stale))]
+        const byId = <T extends { readonly id: string }>(items: readonly T[]): T[] => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+        try check(() => {
+          assert.deepEqual(empty, [])
+          assert.deepEqual([lease.status, memo.status, note.status, old.status], ["trashed", "trashed", "trashed", "trashed"])
+          assert.deepEqual(listed.flatMap((item) => item.unreadable === true ? [] : [{ name: item.name, origin: item.origin }]).sort((a, b) => a.name < b.name ? -1 : 1), [
+            { name: "memo.txt", origin: "Download/memo.txt" },
+            { name: "old.txt", origin: "Download/old.txt" },
+          ])
+          assert.deepEqual(listed.map((item) => item.unreadable === true), [false, false, true, true])
+          assert.deepEqual(byId(listed.filter((item) => item.unreadable === true)), byId([{ id: torn, name: torn, unreadable: true }, { id: gone, name: gone, unreadable: true }]))
+          assert.deepEqual(restored, [
+            { path: torn, status: "failed" },
+            { path: gone, status: "failed" },
+            { path: memo.to ?? "", status: "restored", to: "Download/memo.txt" },
+            { path: "not-a-trash-id", status: "missing" },
+          ])
+          assert.deepEqual(survived, ["{not json", "lease", "{not json"])
+          assert.deepEqual(byId(stillListed.map(({ id, unreadable }) => ({ id, unreadable }))), byId([{ id: torn, unreadable: true }, { id: gone, unreadable: true }, { id: stale, unreadable: undefined }]))
+          assert.equal(erased, 2)
+          assert.deepEqual([staleRecordKept, strayRecordKept], [true, true])
+          assert.deepEqual(remaining, [])
+          assert.deepEqual(leftBehind, [false, false, false, false])
+        })
       }
     })
   }

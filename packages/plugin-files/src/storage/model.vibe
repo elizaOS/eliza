@@ -1,4 +1,4 @@
-// spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"
+// spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied"
 import { expiryMillis } from "../../gen/files__reviewedOperations.effect.vibe"
 import { downloadsKnown, listingComplete, listingEmpty, type DownloadFolder } from "../../gen/files__requests.effect.vibe"
 
@@ -19,6 +19,11 @@ export type TrashEntry = {
   readonly mimeType: string
   readonly size: number
   readonly deletedAt: number
+  readonly unreadable?: undefined
+} | {
+  readonly id: string
+  readonly name: string
+  readonly unreadable: true
 }
 export type StorageVolume = {
   readonly id: string

@@ -1,3 +1,4 @@
+// spec/os/android/files/storage.md, "A listing or folder walk shows dot entries only when asked, and never the Trash under any spelling"; spec/os/android/files/storage.md, "A move into another volume takes the copy path, and its copy is written and cleaned up on that volume"
 package ai.eliza.plugins.filesystem.browser;
 
 import java.io.File;
